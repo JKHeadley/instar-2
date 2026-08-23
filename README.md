@@ -48,4 +48,5 @@ Three tests, all of which a person or a script can apply:
 
 ## Status
 
-Nothing written yet. Step 1 begins next.
+Step 1 drafted and awaiting approval: [`docs/01-the-rules.md`](docs/01-the-rules.md).
+Nothing is built on top of it until it is approved.
