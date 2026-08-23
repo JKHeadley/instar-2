@@ -46,7 +46,15 @@ Three tests, all of which a person or a script can apply:
 3. Every document has a plain-language twin. Something said in one and missing from the
    other is a defect.
 
+## How work gets approved here
+
+**`main` holds approved documents only.** Every draft arrives as a pull request, gets
+reviewed line by line, and only reaches `main` when Justin merges it. Merging *is* the
+approval, and it is bound to the exact content reviewed — edit the draft after a review
+and the review reopens on the new version. That is the approval rule from the readme,
+using a mechanism that already exists rather than one we have to build.
+
 ## Status
 
-Step 1 drafted and awaiting approval: [`docs/01-the-rules.md`](docs/01-the-rules.md).
-Nothing is built on top of it until it is approved.
+Step 1 is drafted and **in review** as an open pull request. It is not on `main` yet,
+because `main` holds approved work only.
