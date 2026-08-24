@@ -1,6 +1,6 @@
 # Step three — the glossary: the words the rules lean on
 
-**Status: draft, revision 2, awaiting approval. Nothing is built on top of this until it is approved.**
+**Status: draft, revision 3, awaiting approval. Nothing is built on top of this until it is approved.**
 
 Step one, finding 4: a rule that uses an undefined load-bearing term is not yet a rule. Five
 rules hinge on *significant*, *critical*, and *user-facing*; the register (step two) added
@@ -13,7 +13,10 @@ use, because a required fact that leans on an undefined noun is the same failure
 so a flood is critical, not merely bothersome; the terms registry is now a register kind of its
 own rather than a sentence; and *operator* / *user* are reframed around **principals** and
 **standing**, which resolves a contradiction the first draft carried. Each change is marked
-§R2 where it lands.*
+§R2 where it lands. Revision 3 (2026-08-24), from the conversation while the review was open:
+history becomes a rule (§R3) — every governing thing is versioned by construction, the rules
+themselves become a register kind with their relationships as checkable facts, and the rule book
+becomes a rendering of that kind.*
 
 ---
 
@@ -288,6 +291,90 @@ and it will move as the pre-send review team teaches us what a sentinel is — i
 with its dates. Which definition was in force when a given rule was written is a lookup, not an
 argument.
 
+
+## History is a lookup (§R3)
+
+The sentinel definition will move; so will *operator*, and so, eventually, will rule 28. The
+first two drafts handled that for terms alone (`supersedes`), and left the most fundamental thing
+in the system — the rules — as a hand-written file with no version, no date, and no record of
+what it said before an edit. That is the glossary's own failure one level *up*, and it is the
+same failure 1.x carries: its constitution's changelog is a table someone remembers to append to.
+
+Your question was whether a standard requires this. None does, in either rule book. So this is
+one, proposed as **rule 90** and written here because the glossary is where the nouns it needs
+were just defined.
+
+> **Rule 90 — History is a lookup.** Anything that governs — a rule, a term, a register kind, a
+> required fact, an entry — is versioned by construction. Each version carries when it began,
+> what it replaced, and the pull request and commit that approved it, all generated from git,
+> never written by hand. Nothing is edited in place: a change is a new version that supersedes
+> the old, and the old stays. "What did this mean on a given date?" is a lookup, never an
+> argument.
+
+Git already is the version store and the merge commit already is the version id; the register
+only has to record it instead of discarding it. So this costs two facts, and they join the
+common set every entry carries regardless of kind (a correction to step two's "what every entry
+carries"):
+
+| Fact | What it is | Who supplies it |
+|---|---|---|
+| `supersedes` | The previous version's id, when this entry replaced one. Absent on a first version. | Generated: the entry with the same `id` in the parent commit |
+| `approvedIn` | The pull request and merge commit that approved this version. | Generated from history |
+
+`since` (already in the common set) is then the first version's `approvedIn` date, and a
+retired entry keeps every version it ever had. The build refuses an in-place edit to a governing
+entry that does not produce a new version, and refuses any `approvedIn` that is not a real merge
+commit on main.
+
+### 13. Rules — *every rule in the rule book*
+
+The consequence of rule 90 for the rules themselves: to be versioned by construction they have to
+be entries, so **the register gains a thirteenth kind, and the rule book becomes a rendering of
+it** — the same relation the glossary has to the terms and the briefing has to the features. Once
+approved, `01-the-rules.md` becomes the first set of rule entries, and from then on the entries
+are the source; hand-editing the rendered book fails the build.
+
+This also answers the second thing you asked: whether the relationships between standards should
+be in the register. 1.x is the evidence that they must be. Its constitution *has* a tree — but as
+sentences: "tree placement: root," "a tree node under *Know Your Principal*," "merged into
+*Observable Intelligence* as a named subsection." One article records that it said "Extends" for
+weeks, which "reads as parentage to a human and is invisible to every check." A script cannot
+walk that tree, so nothing can catch a missing parent, a cycle, an orphan, or a merged article
+whose tripwires quietly vanished. Relationships are facts, and facts go in the register.
+
+| Required fact | Why |
+|---|---|
+| `number`, `name`, `statement` — the rule as it reads in the book | The rendered book is produced from these. `statement` is prose, reviewed by a human on every version, as a term's `definition` is. |
+| `held` — `script`, `shape`, or `mind` | Step one's first question, as a fact per rule. A `mind` rule must name its sentinel (kind 11) or it is a wish. |
+| `parent` — exactly one rule number, or `root` with a stated reason | The tree. 1.x already demands the reason for a root; it just cannot check that it was given. |
+| `mergedInto` — a rule number, when this rule has been folded under another | A merged rule stays live and binding as a named subsection of its parent and keeps its own tripwires. 1.x's merge model, made checkable: the merged rule's enforcers may never be removed on the strength of the merge. |
+| `deadline` — for a rule with no enforcer yet: the date by which one must exist | A documented-only rule is a countdown, not a resting state (1.x's `STD-COUNTDOWN` idea, as a required fact). A deadline in the past fails the build, exactly as a dark feature's does. |
+| `since`, `standards`, `supersedes`, `approvedIn` | As for every kind. For a rule, `standards` names the rule(s) it derives its authority from — normally its parent. |
+
+Derived, never declared — the same principle as the adjectives:
+
+- **`children`** and **`siblings`** — from `parent`. A rule does not get to claim children.
+- **`enforcedBy`** — every register entry whose `standards` fact names this rule. This is rule 69
+  from the rule's side: a rule with an empty `enforcedBy` and no `deadline` fails the build,
+  because a rule nothing enforces is a wish that has stopped admitting it.
+- **`usedBy`** — every term, fact, and rule that references this rule in prose.
+
+Any other relationship — "sharpens," "distinct from," "extends," "pairs with" — is either one of
+the declared facts above or plain prose in the `statement` with no structural weight. A
+relationship the build cannot check is not a relationship; it is a remark, and the two drafts of
+1.x's constitution that grew by remarks are the reason to say so.
+
+**What the build checks over kind 13.** No cycles through `parent` or `mergedInto`; every `root`
+carries its reason; every rule is either enforced (`enforcedBy` non-empty) or has a future
+`deadline`; a merged rule's enforcers are a superset of what they were at the merge; and the
+rendered book's tree matches the graph — a diff between them fails the build.
+
+**What this changes in step one.** Its form, not its content: the eighty-nine rules become
+eighty-nine entries (ninety, with this one), each with a `parent` — and writing the parents down
+is the first real audit of whether the rule book is a tree or a pile. I expect a handful of
+roots with reasons and at least one rule that turns out to be two. That audit is the next
+document's work, not this one's; this document only fixes the shape it runs in.
+
 ---
 
 ## How the glossary stays true
@@ -306,6 +393,10 @@ argument.
    history is never lost.
 4. **Standing is never inferred.** No code path grants a standing from content; the only sources
    are the recorded grants. (Rule 28, made a type in step four.)
+5. **Nothing governing is edited in place (§R3).** Every term, rule, kind, and fact is a
+   versioned entry with `supersedes` and `approvedIn`; the rendered documents — this one, the
+   rule book, the register's own description — are outputs, and hand-editing an output fails the
+   build. (Rule 90.)
 
 ---
 
@@ -315,7 +406,9 @@ Rules 34, 38, 43, 62, 76 — the five step one named — become checkable the mo
 declared on the relevant register kinds. With steps one through three approved: **40 of 89** by
 script, exactly as step two projected. The terms registry adds finding 4 itself to the checkable
 set, and the runaway rule gives the flood ceiling (1.x's bounded-notification standard) a
-definition to enforce against rather than a primitive to guard.
+definition to enforce against rather than a primitive to guard. Rule 90 (§R3) makes rule 69
+checkable from the rule's side (`enforcedBy`), and turns "is the rule book a tree?" from a
+reading exercise into a build check.
 
 ---
 
@@ -331,6 +424,14 @@ definition to enforce against rather than a primitive to guard.
    it, so a flood is `control` and critical. Is "bounded" the right line for `attention`?
 4. **The terms registry as kind 12, with this document generated from it.** That puts a human
    approval on every new load-bearing word. Is that the cost you want, everywhere it applies?
+5. **Rule 90 and the rules as kind 13 (§R3).** The rule book becomes a rendering of versioned
+   entries, with `parent` / `mergedInto` declared and `children` / `siblings` / `enforcedBy`
+   derived. This changes the *form* of step one. Do you want the rule book generated, and are
+   those the right edges — or is there a relationship you'd want the build to know about that I've
+   demoted to a remark?
+6. **The deadline fact on rules.** A rule with no enforcer must carry a date, and a past date
+   fails the build — the same treatment as a dark feature. Is that the right strictness for a
+   rule book that is still being written?
 
 The four questions from the first draft (derive-don't-declare, the profile's allowed values,
 visibility-vs-damage, the strictness of *done* and *approved*) drew no objection and stand as
@@ -340,6 +441,8 @@ attached.
 ---
 
 *Depends on: `01-the-rules.md`, `02-the-register.md` (both approved 2026-08-23). Corrects step
-two in two places: `userFacing` and `significance` on features are derived, not declared; and
-the register gains kind 12, terms. Next: `04-the-types.md` — the five rules that become a
-mistake you can't express, including `VerifiedPrincipal` and standing.*
+two in three places: `userFacing` and `significance` on features are derived, not declared;
+`supersedes` and `approvedIn` join the common facts; and the register gains kinds 12 (terms) and
+13 (rules). Changes the form of step one: on approval, the rule book becomes a rendering of kind
+13. Next: `04-the-types.md` — the five rules that become a mistake you can't express, including
+`VerifiedPrincipal` and standing — and the parent audit of the rule book that kind 13 forces.*
