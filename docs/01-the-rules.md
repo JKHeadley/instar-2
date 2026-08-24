@@ -1,6 +1,6 @@
 # Step one — the rules, and how each one is held
 
-**Status: draft, revision 2.1, awaiting approval. Nothing is built on top of this until it is approved.**
+**Status: draft, revision 2.2, awaiting approval. Nothing is built on top of this until it is approved.**
 
 Every rule from Instar 1.x's constitution, sorted by one question: *how is this rule held — by a
 script, by the shape of the code, or by the mind?*
@@ -68,7 +68,7 @@ and it is roughly what 1.x's own record shows: 92 checks in the running system, 
 
 ---
 
-## Four things that fell out of doing this
+## Five things that fell out of doing this
 
 **1. Fourteen rules are waiting on the same one thing: a list.**
 
@@ -113,6 +113,31 @@ the rule quietly becomes uncheckable. The fix generalizes into a standard:
 And it is checkable: the definitions live in a glossary, and a script confirms every term a rule
 leans on resolves to an entry. This document itself was the first offender — a table of rule
 *names* with no explanation of what each rule *means* — which is why revision 2 adds that column.
+
+**5. The improvement loop itself needs a rule: real cases become the benchmark, and the benchmark
+picks the door.**
+
+(Raised in review.) The retrospective review described under "held by the mind" is not just
+enforcement — it is the front end of the recursive self-improvement loop, and no 1.x rule states
+that loop as one thing. 1.x has the pieces scattered across three rules (decisions graded against
+outcomes "feeding the bench" in #58; the doorway/model map kept current in #56; a detector for the
+benchmark disagreeing with real life). But nothing says where benchmark scenarios come from, so in
+practice the 1.x benchmark is synthetic — hand-written, never promoted from a real case — and
+doorway-plus-model choices are defaults and habit, not measured results.
+
+The proposed standard:
+
+> **Every retrospective finding is a candidate scenario. Benchmark scenarios are promoted from
+> real, graded cases — each carrying a link back to the case it came from — never invented. When
+> a prompt or its context changes, the benchmark re-runs. For each scenario class, the choice of
+> doorway and model is decided by benchmark results, not by default; a routing choice no benchmark
+> backs is labelled unmeasured.**
+
+Three arms are checkable by a script: every scenario carries provenance to a real case; a prompt
+change without a benchmark re-run fails; every routing choice either cites a benchmark result or
+carries the "unmeasured" label. Which scenarios deserve promoting, and what "best" means for a
+class, is the mind's — the same pattern as the held-by-the-mind group. This standard is what makes
+every other rule get *better* over time rather than merely enforced.
 
 ---
 
@@ -174,8 +199,10 @@ reconstructable from the log* — argues the same way.
    cheating, say so — those nine are only free if we actually build the core that way.
 2. **Does "held by the mind" now say what you meant?** The first draft said "nothing to check,"
    which was wrong. The claim now is: the mind holds it, and a script proves the mind was looking.
-3. **Should the four findings become the first work, ahead of anything else?** My view: yes, in
-   this order — the register, the glossary (which is finding 4 absorbing finding 2), then the types.
+3. **Should the findings become the first work, ahead of anything else?** My view: yes, in this
+   order — the register, the glossary (finding 4 absorbing finding 2), the types, then the
+   benchmark loop (finding 5), which needs the register and the model doorway to exist first.
+5. **Findings 4 and 5 are proposed as new standards.** Do they earn a place in the constitution?
 4. **The open decision above:** full input/output at the model doorway, or metadata only?
 
 ---
