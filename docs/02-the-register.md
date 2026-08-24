@@ -1,6 +1,6 @@
 # Step two — the register of the things being governed
 
-**Status: draft, awaiting approval. Nothing is built on top of this until it is approved.**
+**Status: draft, revision 2, awaiting approval. Nothing is built on top of this until it is approved.**
 
 Step one found that fourteen rules all say *"every X must do Y"* and none can be checked, because
 nothing lists the X. This document is the design for that list. It is deliberately boring. It is
@@ -170,6 +170,7 @@ Unblocks rule 56, and is the subject of finding 5.
 |---|---|
 | `models` — the models behind this door, with exact ids and when last verified | Rule 56: a stale map is a defect. Older than its window fails. |
 | `billing` — subscription or metered | Cost decisions need to know. |
+| `subsidy` — the known discount or subsidy ratio on this door, with its basis (`researched`, `estimated`, or `measured`) and when last updated | Raised in review: a door's real cost is rarely its list price. Starts as a best guess or web research, and is replaced by measured data as the benchmark loop produces it. A stale or basis-less value is flagged, not trusted. |
 
 ### 11. Sentinels — *every focused background intelligence*
 
@@ -180,7 +181,62 @@ guards went dark unnoticed. It is what step one's "held by the mind" group needs
 |---|---|
 | `watches` — the rule or duty it holds | Every held-by-the-mind rule names its watcher, and every watcher names its rule. Both directions must resolve. |
 | `lastRan` — when it last actually ran, from its own record | A sentinel that exists but never runs is a dark guard. The check is on this field, not on config. |
-| `scope` — live or retrospective | Step one's rule: retrospective by default; live only for the irreversible. A live sentinel must name the irreversible moment it guards. |
+| `scope` — live or retrospective | Step one's rule: retrospective by default; live only for the irreversible. A live sentinel must name the irreversible moment it guards. Sending a message to the user *is* an irreversible moment — see the pre-send review team, below. |
+| `authority` — signal or block | Same field as a blocking site, because a live sentinel that can hold a message is one. Almost every sentinel is `signal`; the `block` set is tiny and named. |
+
+#### The pre-send review team (a named pattern, raised in review)
+
+A message to the user cannot be unsent, so reviewing it *before* it goes is legitimately live
+under step one's rule. The 1.x trap was never live review as such — it was *one* model reading
+*one* message with *no* context, holding it, and going silent when the model failed. The pattern
+we want instead:
+
+1. The agent drafts the message.
+2. A team of focused sentinels — one per pitfall or coherence check we have identified — each
+   reads the draft *with the conversation* and returns an objection or nothing.
+3. The agent revises against the objections. Repeat.
+4. When no sentinel objects, the message sends.
+
+With four bounds, each declared in the register so a check can see them:
+
+- **Objections are signals, not holds.** Every sentinel on the team is `authority: signal`. The
+  agent decides how to revise; a sentinel cannot rewrite or swallow the message. The only
+  `block` sentinels are the irreversible-harm pair from step one (a credential in the text; an
+  agent abandoning its own run), and they are deterministic, not judgment.
+- **Bounded rounds.** A fixed maximum number of revise cycles (say three). After the last round
+  the message sends with the surviving objections *attached to the record*, not with the message
+  held. This is rule 14 (the operator channel fails toward delivery) applied to review.
+- **A latency budget.** The whole loop has a time ceiling; a sentinel that has not answered by
+  then counts as no objection. Silence from a sentinel can never become silence to the user.
+- **Every round is recorded.** Draft, objections, revision, final — all of it lands in the record
+  the retrospective review reads. That is how the team gets *tuned*: a sentinel whose objections
+  are always overruled, or never raised when they should have been, shows up in the retrospective
+  and becomes a benchmark scenario (step one, finding 5).
+
+So the two reviews are not in tension. The live team catches the moment; the retrospective review
+tunes the team.
+
+---
+
+## When the shape of the register must change
+
+The shape — the kinds and their required facts — should generalize for a long time, and the
+eleven kinds above are meant to. But "should" is not a check. Three signals tell us the shape no
+longer fits, and each one is mechanical:
+
+1. **A rule with no kind.** A new or amended rule says *every X* and the both-directions check
+   finds no kind that lists X. The rule cannot be marked checkable until a kind exists.
+2. **A declaration that does not fit.** An author declares an entry and needs a fact the kind
+   does not have, or a kind that does not exist. The declaration fails the build. This is the
+   important one: the author is forced to change the *shape* through the approval flow, rather
+   than quietly cramming the new thing into the nearest existing slot — which is exactly how
+   registers rot.
+3. **A governed thing the retrospective review finds unregistered.** The review reads the real
+   system; if it finds a store, a blocking site, or a watcher with no entry, that is a finding.
+
+A shape change is a document, reviewed and approved like this one. The register's own shape is
+in the register: each kind and each required fact is an entry, with `since` and `standards`, so
+the history of the shape is never lost.
 
 ---
 
