@@ -1,6 +1,6 @@
 # Step one — the rules, and how each one is held
 
-**Status: draft, revision 2, awaiting approval. Nothing is built on top of this until it is approved.**
+**Status: draft, revision 2.1, awaiting approval. Nothing is built on top of this until it is approved.**
 
 Every rule from Instar 1.x's constitution, sorted by one question: *how is this rule held — by a
 script, by the shape of the code, or by the mind?*
@@ -36,10 +36,20 @@ core, stated as a number.
 That does *not* mean nothing is done. This system is intelligent, not just programmatic, so a rule
 in this group is held three ways: it is *read* (injected into every session so it shapes behavior),
 it is *watched* (a focused background intelligence — a sentinel — whose one job is to look for
-violations of that rule), and where there is an outbound message it is *reviewed* (an intelligent
-reviewer judging by meaning, not by string). The script's job shrinks to one thing: proving the
-reader, the watcher, and the reviewer actually exist and actually ran. Every rule in this group
-is as fundamental and binding as any other; the difference is *who* holds it, not *whether*.
+violations of that rule), and it is *reviewed in retrospect* (on a cadence, a strong model reads
+the collected transcripts, decisions, and outcomes as a whole and looks for the patterns no single
+message shows; its findings feed the improvement loop). The script's job shrinks to one thing:
+proving the reader, the watcher, and the retrospective review actually exist and actually ran.
+Every rule in this group is as fundamental and binding as any other; the difference is *who*
+holds it, not *whether*.
+
+A deliberate note on *when* review happens. Reviewing every outbound message live, one at a
+time, has been a trap in 1.x: it judges a message with no history, it adds latency and cost to
+every send, and when the model is unavailable it fails closed and the user hears silence. So the
+rule is: **judge patterns in retrospect with the best model available; judge moments live only
+when the moment is irreversible.** The live exceptions are few and nearly deterministic — a
+credential in outbound text, an agent abandoning its own run — and need no model reading for
+meaning.
 
 ---
 
@@ -270,10 +280,10 @@ These are binding. The mind holds them; the script proves the mind was looking.
 | # | Standard | What it means | How it's held |
 |---|---|---|---|
 | 3 | The Body and the Mind | The agent is two intelligences: the body (its code and docs, crystallized past evolution) and the mind (the model reasoning now). The body informs; the mind has final say. | Injected into every session. Its one mechanical arm, the list of places code may decide alone, belongs to #4 and #66. |
-| 16 | Name the Gravity Wells | Some self-deceptions come from training, not code, so every fresh instance rediscovers them. List them explicitly. | The list's existence is checkable. Noticing yourself falling into one is the mind's — an outbound reviewer watches for the named patterns. |
+| 16 | Name the Gravity Wells | Some self-deceptions come from training, not code, so every fresh instance rediscovers them. List them explicitly. | The list's existence is checkable. Noticing yourself falling into one is the mind's — the retrospective review looks for the named patterns across sessions. |
 | 17 | Architectural Agency in the Gap | Between what the model is biased to do and what it would prefer to do, structure gives it a way to act on the preference. | Injected. Held by the mind. |
 | 18 | Sovereignty | The agent's own accounts and infrastructure are its own. "Is this mine?" — if yes, act; if the human's, ask. | The judgment is the mind's. Consulting the owned-identities record is mechanical and belongs to #23. |
-| 19 | The Right to Stand Ground | The agent may hold a position, warmly, rather than capitulate by reflex. | Injected, and the outbound reviewer flags a reversal that follows pushback with no new argument. A disposition, but a watched one. |
+| 19 | The Right to Stand Ground | The agent may hold a position, warmly, rather than capitulate by reflex. | Injected, and the retrospective review flags the pattern of reversing after pushback with no new argument. A disposition, but a watched one. |
 | 25 | Remove What Demands Attention | When a defect recurs despite care, remove the structure that requires the care — don't add more care. | The recurrence signal from #24 is the input. What to remove is the mind's call. |
 | 48 | Tiered Development | Process formality scales with a change's size and risk. The system computes a suggested tier and informs; the agent declares the tier and owns the choice; the choice is audited. | The suggestion and the audit are mechanical. The declaration is deliberately the mind's — the standard itself says it informs rather than gates. |
 | 50 | Friction Is a Spec | A hard-won manual workaround becomes a permanent tool, or it is lost with the session. | Whether a workaround deserves productizing is the mind's. A sentinel watches transcripts for repeated manual sequences and proposes candidates. |
