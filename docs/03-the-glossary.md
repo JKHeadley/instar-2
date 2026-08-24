@@ -1,6 +1,6 @@
 # Step three — the glossary: the words the rules lean on
 
-**Status: draft, awaiting approval. Nothing is built on top of this until it is approved.**
+**Status: draft, revision 2, awaiting approval. Nothing is built on top of this until it is approved.**
 
 Step one, finding 4: a rule that uses an undefined load-bearing term is not yet a rule. Five
 rules hinge on *significant*, *critical*, and *user-facing*; the register (step two) added
@@ -8,6 +8,12 @@ rules hinge on *significant*, *critical*, and *user-facing*; the register (step 
 
 This document defines them. It also defines the handful of nouns the register's required facts
 use, because a required fact that leans on an undefined noun is the same failure one level down.
+
+*Revision 2 (2026-08-24), from the first review: `reversible` replaces `undoable`; a runaway rule
+so a flood is critical, not merely bothersome; the terms registry is now a register kind of its
+own rather than a sentence; and *operator* / *user* are reframed around **principals** and
+**standing**, which resolves a contradiction the first draft carried. Each change is marked
+§R2 where it lands.*
 
 ---
 
@@ -30,13 +36,37 @@ The profile has four facts. Each is a closed list, so a declaration is checkable
 
 | Fact | What it asks | Allowed values |
 |---|---|---|
-| `consequence` | What kind of thing goes wrong if this fails or misbehaves? | `none` · `attention` (the user is bothered) · `data` (something stored is lost or corrupted) · `money` (spend, quota, or billing) · `identity` (who someone is, or what they are allowed to do) · `control` (a session, run, or machine starts, stops, or moves) · `security` (a secret, or access to one) · `external` (an effect outside the system — a message sent, a PR merged, a payment made) |
-| `reversibility` | Once it has happened, can it be undone? | `undoable` (a later action fully reverses it) · `costly` (reversible, but with real cost or delay) · `irreversible` (no action reverses it — a sent message, a deleted secret, a spent dollar) |
-| `reach` | Who or what does it touch? | `internal` (only the system's own state) · `agent` (the agent's own behavior or memory) · `user` (something a person sees, receives, or must do) · `operator` (something the operator must decide or authorize) · `world` (a third party or external service) |
+| `consequence` | What kind of thing goes wrong if this fails or misbehaves? | `none` · `attention` (a person is bothered — **bounded**: a finite number of times, and they can still use the channel) · `data` (something stored is lost or corrupted) · `money` (spend, quota, or billing) · `identity` (who someone is, or what they are allowed to do) · `control` (a session, run, machine, **or channel** starts, stops, moves, or stops being usable) · `security` (a secret, or access to one) · `external` (an effect outside the system — a message sent, a PR merged, a payment made) |
+| `reversibility` | Once it has happened, can it be undone? | `reversible` (a later action fully reverses it) · `costly` (reversible, but with real cost or delay) · `irreversible` (no action reverses it — a sent message, a deleted secret, a spent dollar) |
+| `reach` | Who or what does it touch? | `internal` (only the system's own state) · `agent` (the agent's own behavior or memory) · `user` (something a person sees, receives, or must do) · `operator` (something that needs a decision from whoever holds operator standing) · `world` (a third party or external service) |
 | `surface` | Where does a person meet it, if anywhere? | `none` · `chat` (Telegram, Slack, any conversation channel) · `dashboard` · `link` (a page the agent sends) · `device` (a phone notification, a terminal) |
 
 Every entry in the register of kind *feature*, *blocking site*, *judgment point*, *critical
 outcome*, or *operator action* declares all four. A missing one fails the build.
+
+§R2 — *Why `reversible`, not `undoable`.* The field is `reversibility` and the rule's word is
+*irreversible*; the allowed values should read as answers to the field and as the plain opposite
+of the rule's word. `undoable` was a needless second vocabulary.
+
+### The runaway rule (§R2)
+
+A profile describes **the worst case the code can produce before anyone can stop it**, not the
+single occurrence. Anything that repeats — a retry, a poll, a notifier over a collection, a loop
+in the register's kind 5 — is profiled for its runaway, not for one iteration.
+
+This is what makes a flood come out right. One unwanted notice bothers a person: `attention`,
+bounded, not critical. A notifier that can post once per element, or once per tick, until the
+channel is unreadable has **not** bothered them — it has taken the channel away, which is
+`control`, and `control` is critical. The author does not get to declare the single-notice case
+and hope; the profile asks what happens at N, and if N is unbounded the answer is not `attention`.
+
+**Test.** If the failure can happen more times than a person could stop it, profile the
+many-times case. If `attention` is the honest answer, say what bounds it (a cap, a coalescer, a
+breaker) — that bound is itself a governed thing, and it is what keeps the word honest.
+
+1.x learned this three times over (the 2026-05-22, 05-28, and 06-05 topic floods) and answered
+with a ceiling at the topic-creation primitive. Here the ceiling is where it belongs: a repeating
+code path with no declared bound cannot honestly claim `attention`, so it cannot escape *critical*.
 
 ---
 
@@ -75,15 +105,21 @@ to which machine serves a conversation is — the user meets it as a pause — a
 `control`, or `external` — **or** when it is `data` and `reversibility` is `irreversible`.
 
 In words: a failure that touches who someone is, what they may do, a secret, spend, the life of
-a session or machine, or the world outside — or one that loses data for good.
+a session, machine, or channel, or the world outside — or one that loses data for good.
 
 **Used by.** Rule 38 (every critical pipeline has a model watching each step), rule 43 (every
 critical outcome has a live probe), the register's *critical outcomes* kind.
 
-**What it excludes, on purpose.** A feature whose failure merely bothers the user
-(`consequence: attention`) is not critical, however visible. Visibility is *user-facing*; damage is
-*critical*. 1.x blurred these, which is why the alerts channel was treated as critical and the
-secret store was not.
+**What it excludes, on purpose.** A feature whose failure bothers the user a bounded number of
+times (`consequence: attention`) is not critical, however visible. Visibility is *user-facing*;
+damage is *critical*. 1.x blurred these, which is why the alerts channel was treated as critical
+and the secret store was not.
+
+**What it no longer excludes (§R2).** A failure that makes a channel unusable — a flood, a
+notifier with no bound — is `control` under the runaway rule, and therefore critical. The first
+draft's "merely bothers" would have let a flood through on the strength of its single-message
+case. The split between visibility and damage stands; the correction is that taking the
+interface away *is* damage.
 
 ### Significant
 
@@ -95,7 +131,7 @@ third party — whether or not it is dangerous.
 
 **Used by.** Rule 34 (every significant feature has all three test tiers), rule 48's tier signal.
 
-**What it excludes.** Purely internal, undoable, unseen work — a refactor, a cache, a log line.
+**What it excludes.** Purely internal, reversible, unseen work — a refactor, a cache, a log line.
 Those get unit tests and a review; they do not pay for integration and live end-to-end proof.
 That exclusion is the point of the word: it is where the process gets *cheaper*, and the derived
 definition is what lets it be cheaper safely.
@@ -136,12 +172,6 @@ signal. (Rules 4, 66, 86.)
 having run, and a scope of *live* or *retrospective*. A scheduled script with no model behind it
 is a check, not a sentinel. (Step one, held-by-the-mind; the register's kind 11.)
 
-**Operator.** The one verified person whose decisions bind this agent in a given conversation,
-established from the authenticated sender — never from a name in content. (Rule 28.)
-
-**User.** Any verified person the agent serves. Every operator is a user; not every user is an
-operator.
-
 **Dark.** A feature that is built and shipped but switched off by default. Dark is a *status*
 with a *deadline*, never a resting state. (Rules 72, 73.)
 
@@ -150,23 +180,132 @@ required facts are present, and — if user-facing — its live proof exists. "D
 a claim; "done" in the register is a fact. (Rule 62, and step one's "merged is approved".)
 
 **Approved.** For a document: merged to main. For an operator action: the structured request has
-the operator's recorded decision. There is no third form. (Step one, PR #1.)
+the recorded decision of someone with operator standing for it. There is no third form. (Step
+one, PR #1.)
+
+### People, and what they may decide (§R2)
+
+The first draft defined *operator* as "the one verified person" and then said "every operator is
+a user," which reads as many. Both were half right, and the half each was missing is the same
+thing: **operator is not a person, it is a standing** — something a verified person *holds* in a
+scope, not something they *are*. Once that is said, the rest falls out, and the employee question
+has a real answer.
+
+**Principal.** Any verified party the agent serves, acts for, credits with a decision, or takes a
+request from. A person, or another agent. *Verified* means resolved to a known identity from an
+authenticated channel — never from a name that appears in content. An unverified party is not a
+principal; it is a question to resolve. (Rule 28, and the type that enforces it in step four:
+there is no way to make a `VerifiedPrincipal` from a string.)
+
+**Standing.** What a principal may decide, in a scope. Standing is *granted* — by the
+organization's declared intent, or by a principal who already holds a standing that can delegate
+it — and every grant is recorded, bounded to a scope, and expires or is revoked. A message can
+*claim* standing; it can never *confer* it. The agent resolves standing from the record of
+grants, exactly as it would check whether a colleague is allowed to ask for something: by the
+org's rules, not by how the request is phrased or how senior the requester sounds. Three
+standings are enough for the rules written so far:
+
+| Standing | What it lets a principal do | Where it comes from |
+|---|---|---|
+| **operator** | Bind the agent: approve an operator action, grant or revoke standing within their scope, set the agent's intent. | The organization's declared intent names who holds it and for what; within a conversation it is bound from the authenticated sender. |
+| **delegate** | Take a named, bounded set of actions the operator (or the org) has explicitly granted, for a term. | A recorded grant — 1.x's coordination mandate is the ancestor. The grant names the actions; nothing outside it. |
+| **requester** | Ask. The agent does the work its own standing already allows, and surfaces anything beyond it to whoever holds the standing to decide. | Being a verified principal at all. A colleague, a user, a peer agent. |
+
+**Operator.** A principal holding *operator* standing for a scope. **In one conversation there is
+exactly one** — the verified person the conversation is bound to — which is what the first draft
+was reaching for. **Across the organization there may be several**, each for their scope, which
+is what "every operator is a user" was reaching for. Both are true once operator is a standing.
+
+**User.** A principal the agent serves — any standing. Every operator is a user; a user with only
+requester standing is a user the agent works *for* but does not take *binding* decisions from.
+
+**How the employee question resolves.** Treating the agent as a regular employee is the right
+frame, and this is what it implies. A request from another employee is a request from a
+*requester*: the agent honors it to the full extent of its own standing, and no further — it does
+not decline because the requester is not its operator, and it does not escalate the requester's
+authority because they said "the boss wants this." When a request needs a standing the requester
+lacks, the agent does not refuse and does not guess; it *routes* — the structured request goes to
+whoever holds the standing, pre-filled, as rule 82 already requires for operator actions.
+Hierarchy enters through grants, not through inference: a manager who should be able to direct
+this agent is given the standing by the org's intent or by delegation, and that grant is the
+fact the agent checks. An org chart the agent has to *infer* from names and tone is exactly the
+unverified identity rule 28 forbids. The identity-bleed incident in 1.x (2026-06-05) is what it
+looks like when an agent seats someone in the operator's chair from context alone; standing as a
+recorded grant is the structural answer.
+
+Two things this deliberately does *not* decide, because they are policy and belong in the
+organization's intent document, not a glossary: *who* holds which standing, and whether a
+delegate may sub-delegate. The glossary fixes the nouns so that document can be written in them.
+
+---
+
+## The terms registry (§R2)
+
+The first draft said, in one sentence, that each definition "is itself a register entry (kind:
+*term*)." Your review asked the right question: is that a real structure — typed entities, allowed
+values, human-readable fields, versioned — or a figure of speech? It was a figure of speech,
+because the register has eleven kinds and *term* is not one of them. This section makes it real,
+and it is a correction to step two: **the register gains a twelfth kind.**
+
+### 12. Terms — *every word a rule or a required fact leans on*
+
+Unblocks step one's finding 4 (an undefined load-bearing term is not yet a rule), mechanically.
+
+| Required fact | Why |
+|---|---|
+| `name` — the term, as it appears in rules and facts | The key the resolver looks up. |
+| `kind` — `adjective` (derived), `fact` (a profile field or required fact), `noun`, or `standing` | Each kind has a different shape below; the build checks the shape. |
+| `definition` — the human-readable definition, as prose | The agreed, versioned explanation a person reads and a model is briefed with. Required, and reviewed by a human on every change, because it is what the change *means*. |
+| `derivedFrom` — for an `adjective`: the rule over profile facts, as data (`consequence in {identity, security, money, control, external} or (consequence = data and reversibility = irreversible)`) | The definition of a derived word is a computation, and it is stored as one — so the resolver, the build, and the briefing all evaluate the *same* rule, and a prose definition can never drift from the one the code runs. |
+| `allowedValues` — for a `fact`: the closed list, each value with its own one-line meaning | What makes a declaration checkable. The one-line meanings are what an author reads when choosing. |
+| `usedBy` — the rule numbers and register facts that lean on this term | Rule 69, references run from both ends: a term nothing uses is dead weight to remove; a rule using a term with no entry fails the build. Generated, not hand-written. |
+| `supersedes` — the previous entry, when a definition changes | A definition evolves by *replacing* its entry through the approval flow, never by editing in place; the old one stays, dated. |
+| `since`, `standards` | As for every kind. |
+
+Three consequences, stated plainly because they are the point:
+
+1. **This document is generated.** The glossary you are reading is the rendering of the term
+   entries, the same way the capability briefing is the rendering of the feature entries (rule 84).
+   Once approved, this markdown becomes the *first* set of term entries, and from then on the
+   entries are the source and the document is the output. Hand-editing the output fails the build.
+2. **A new load-bearing term is a build requirement, and a review requirement.** Your reading of
+   the last section was exact: a change that introduces a term in a rule, a required fact, or a
+   register declaration, with no entry in the terms registry, fails the build until the entry
+   exists — and the entry is a register change, so it goes through the same pull request and the
+   same human approval. The term therefore *cannot* land without a person agreeing on what it
+   means, which forces it to be stated plainly enough to be agreed on. That is a review cost, and
+   it is the cost we want: it is where a reader of a pull request gets the vocabulary to
+   understand the change.
+3. **The same definition reaches the code, the build, and the model.** A derived adjective is
+   evaluated from `derivedFrom` by the resolver at build time and by the register at runtime; the
+   session briefing is generated from `definition`; a sentinel or judgment point that needs to
+   know what *critical* means reads the entry. One source, three consumers — the alternative is
+   1.x's condition, where the word was defined nowhere and each consumer guessed.
+
+An entry's `definition` evolving over time — the sentinel definition is the example you flagged,
+and it will move as the pre-send review team teaches us what a sentinel is — is exactly the
+`supersedes` chain: the new entry is proposed, reviewed, approved, and the old one stays visible
+with its dates. Which definition was in force when a given rule was written is a lookup, not an
+argument.
 
 ---
 
 ## How the glossary stays true
 
 1. **Every load-bearing term resolves.** A script walks every rule and every register fact, finds
-   each italicized or backticked term, and confirms it has an entry here. A new term with no entry
+   each italicized or backticked term, and confirms it has a term entry. A new term with no entry
    fails the build. This is step one's finding 4, mechanical.
 2. **The derived words are never declared.** No register entry may carry a field named
-   `significant`, `critical`, or `userFacing` as a *declared* value; they are computed from the
-   profile. An author who wants a different answer changes the profile, and the change is visible.
-   (The register's `userFacing` fact from step two becomes a derived column, not a declared one —
-   that is a correction to step two, and it is noted there.)
-3. **Definitions have owners and dates.** Each entry is itself a register entry (kind: *term*),
-   with `since` and `standards`, so a definition can be amended through the approval flow and its
+   `significant`, `significance`, `critical`, or `userFacing` as a *declared* value; they are
+   computed from the profile via `derivedFrom`. An author who wants a different answer changes the
+   profile, and the change is visible. (§R2: the register's `userFacing` **and** `significance`
+   facts on features, from step two, both become derived columns — the first draft named only
+   one of them. That is a correction to step two, and it is noted there.)
+3. **Definitions have owners, dates, and history.** Each is a term entry with `since`,
+   `standards`, and `supersedes`, so a definition is amended through the approval flow and its
    history is never lost.
+4. **Standing is never inferred.** No code path grants a standing from content; the only sources
+   are the recorded grants. (Rule 28, made a type in step four.)
 
 ---
 
@@ -174,24 +313,33 @@ the operator's recorded decision. There is no third form. (Step one, PR #1.)
 
 Rules 34, 38, 43, 62, 76 — the five step one named — become checkable the moment the profile is
 declared on the relevant register kinds. With steps one through three approved: **40 of 89** by
-script, exactly as step two projected.
+script, exactly as step two projected. The terms registry adds finding 4 itself to the checkable
+set, and the runaway rule gives the flood ceiling (1.x's bounded-notification standard) a
+definition to enforce against rather than a primitive to guard.
 
 ---
 
 ## What I want from you on this document
 
-1. **Derive, don't declare.** The claim is that an author should never answer "is this
-   significant?" — only the four narrower questions. Does that match how you want authors to
-   think?
-2. **The four profile facts and their allowed values.** Is anything missing from a list that
-   would make a real change hard to classify honestly?
-3. **The definition of *critical* excludes "merely bothers the user."** That is a deliberate
-   split between visibility and damage. Say so if you think being bothered *is* damage.
-4. **"Done" and "approved" now have exact definitions.** Both are stricter than everyday use.
-   Are they the right strictness?
+1. **Operator as a standing, not a person.** Exactly one per conversation, several across the
+   org, granted and recorded, never inferred. Does this match how you want the agent to sit
+   inside a team of people?
+2. **Requester by default.** A verified colleague's request is honored to the agent's own
+   standing and routed beyond it — never refused for not being the operator, never escalated on
+   the requester's say-so. Right default?
+3. **The runaway rule.** A repeating path is profiled for its worst case before anyone can stop
+   it, so a flood is `control` and critical. Is "bounded" the right line for `attention`?
+4. **The terms registry as kind 12, with this document generated from it.** That puts a human
+   approval on every new load-bearing word. Is that the cost you want, everywhere it applies?
+
+The four questions from the first draft (derive-don't-declare, the profile's allowed values,
+visibility-vs-damage, the strictness of *done* and *approved*) drew no objection and stand as
+drafted; the only change among them is that visibility-vs-damage now has the runaway rule
+attached.
 
 ---
 
 *Depends on: `01-the-rules.md`, `02-the-register.md` (both approved 2026-08-23). Corrects step
-two in one place: `userFacing` on features is derived, not declared. Next: `04-the-types.md` —
-the five rules that become a mistake you can't express.*
+two in two places: `userFacing` and `significance` on features are derived, not declared; and
+the register gains kind 12, terms. Next: `04-the-types.md` — the five rules that become a
+mistake you can't express, including `VerifiedPrincipal` and standing.*
