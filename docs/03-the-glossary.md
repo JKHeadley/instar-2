@@ -1,6 +1,6 @@
 # Step three — the glossary: the words the rules lean on
 
-**Status: draft, revision 3, awaiting approval. Nothing is built on top of this until it is approved.**
+**Status: draft, awaiting approval. Nothing is built on top of this until it is approved.**
 
 Step one, finding 4: a rule that uses an undefined load-bearing term is not yet a rule. Five
 rules hinge on *significant*, *critical*, and *user-facing*; the register (step two) added
@@ -8,15 +8,6 @@ rules hinge on *significant*, *critical*, and *user-facing*; the register (step 
 
 This document defines them. It also defines the handful of nouns the register's required facts
 use, because a required fact that leans on an undefined noun is the same failure one level down.
-
-*Revision 2 (2026-08-24), from the first review: `reversible` replaces `undoable`; a runaway rule
-so a flood is critical, not merely bothersome; the terms registry is now a register kind of its
-own rather than a sentence; and *operator* / *user* are reframed around **principals** and
-**standing**, which resolves a contradiction the first draft carried. Each change is marked
-§R2 where it lands. Revision 3 (2026-08-24), from the conversation while the review was open:
-history becomes a rule (§R3) — every governing thing is versioned by construction, the rules
-themselves become a register kind with their relationships as checkable facts, and the rule book
-becomes a rendering of that kind.*
 
 ---
 
@@ -47,11 +38,11 @@ The profile has four facts. Each is a closed list, so a declaration is checkable
 Every entry in the register of kind *feature*, *blocking site*, *judgment point*, *critical
 outcome*, or *operator action* declares all four. A missing one fails the build.
 
-§R2 — *Why `reversible`, not `undoable`.* The field is `reversibility` and the rule's word is
-*irreversible*; the allowed values should read as answers to the field and as the plain opposite
-of the rule's word. `undoable` was a needless second vocabulary.
+*Why `reversible`.* The field is `reversibility` and the rule's word is *irreversible*; the
+allowed values read as answers to the field and as the plain opposite of the rule's word, so
+there is one vocabulary, not two.
 
-### The runaway rule (§R2)
+### The runaway rule
 
 A profile describes **the worst case the code can produce before anyone can stop it**, not the
 single occurrence. Anything that repeats — a retry, a poll, a notifier over a collection, a loop
@@ -118,11 +109,10 @@ times (`consequence: attention`) is not critical, however visible. Visibility is
 damage is *critical*. 1.x blurred these, which is why the alerts channel was treated as critical
 and the secret store was not.
 
-**What it no longer excludes (§R2).** A failure that makes a channel unusable — a flood, a
-notifier with no bound — is `control` under the runaway rule, and therefore critical. The first
-draft's "merely bothers" would have let a flood through on the strength of its single-message
-case. The split between visibility and damage stands; the correction is that taking the
-interface away *is* damage.
+**What this includes.** A failure that makes a channel unusable — a flood, a notifier with no
+bound — is `control` under the runaway rule, and therefore critical. A single flood message
+merely bothers; the flood takes the interface away, and taking the interface away *is* damage.
+The split between visibility and damage stands.
 
 ### Significant
 
@@ -186,10 +176,10 @@ a claim; "done" in the register is a fact. (Rule 62, and step one's "merged is a
 the recorded decision of someone with operator standing for it. There is no third form. (Step
 one, PR #1.)
 
-### People, and what they may decide (§R2)
+### People, and what they may decide
 
-The first draft defined *operator* as "the one verified person" and then said "every operator is
-a user," which reads as many. Both were half right, and the half each was missing is the same
+Two readings of *operator* pull against each other: "the one verified person" and "every operator
+is a user," which reads as many. Both are half right, and the half each is missing is the same
 thing: **operator is not a person, it is a standing** — something a verified person *holds* in a
 scope, not something they *are*. Once that is said, the rest falls out, and the employee question
 has a real answer.
@@ -215,9 +205,8 @@ standings are enough for the rules written so far:
 | **requester** | Ask. The agent does the work its own standing already allows, and surfaces anything beyond it to whoever holds the standing to decide. | Being a verified principal at all. A colleague, a user, a peer agent. |
 
 **Operator.** A principal holding *operator* standing for a scope. **In one conversation there is
-exactly one** — the verified person the conversation is bound to — which is what the first draft
-was reaching for. **Across the organization there may be several**, each for their scope, which
-is what "every operator is a user" was reaching for. Both are true once operator is a standing.
+exactly one** — the verified person the conversation is bound to. **Across the organization there
+may be several**, each for their scope. Both are true once operator is a standing.
 
 **User.** A principal the agent serves — any standing. Every operator is a user; a user with only
 requester standing is a user the agent works *for* but does not take *binding* decisions from.
@@ -242,13 +231,12 @@ delegate may sub-delegate. The glossary fixes the nouns so that document can be 
 
 ---
 
-## The terms registry (§R2)
+## The terms registry
 
-The first draft said, in one sentence, that each definition "is itself a register entry (kind:
-*term*)." Your review asked the right question: is that a real structure — typed entities, allowed
-values, human-readable fields, versioned — or a figure of speech? It was a figure of speech,
-because the register has eleven kinds and *term* is not one of them. This section makes it real,
-and it is a correction to step two: **the register gains a twelfth kind.**
+Each definition is itself a register entry. For that to be a real structure — typed entities,
+allowed values, human-readable fields, versioned — rather than a figure of speech, the register
+needs a kind for it, and step two's eleven kinds do not include one. This section adds it, and it
+is a correction to step two: **the register gains a twelfth kind.**
 
 ### 12. Terms — *every word a rule or a required fact leans on*
 
@@ -292,7 +280,7 @@ with its dates. Which definition was in force when a given rule was written is a
 argument.
 
 
-## History is a lookup (§R3)
+## History is a lookup
 
 The sentinel definition will move; so will *operator*, and so, eventually, will rule 28. The
 first two drafts handled that for terms alone (`supersedes`), and left the most fundamental thing
@@ -385,15 +373,15 @@ document's work, not this one's; this document only fixes the shape it runs in.
 2. **The derived words are never declared.** No register entry may carry a field named
    `significant`, `significance`, `critical`, or `userFacing` as a *declared* value; they are
    computed from the profile via `derivedFrom`. An author who wants a different answer changes the
-   profile, and the change is visible. (§R2: the register's `userFacing` **and** `significance`
-   facts on features, from step two, both become derived columns — the first draft named only
-   one of them. That is a correction to step two, and it is noted there.)
+   profile, and the change is visible. The register's `userFacing` **and** `significance`
+   facts on features, from step two, both become derived columns — a correction to step two,
+   noted there.
 3. **Definitions have owners, dates, and history.** Each is a term entry with `since`,
    `standards`, and `supersedes`, so a definition is amended through the approval flow and its
    history is never lost.
 4. **Standing is never inferred.** No code path grants a standing from content; the only sources
    are the recorded grants. (Rule 28, made a type in step four.)
-5. **Nothing governing is edited in place (§R3).** Every term, rule, kind, and fact is a
+5. **Nothing governing is edited in place.** Every term, rule, kind, and fact is a
    versioned entry with `supersedes` and `approvedIn`; the rendered documents — this one, the
    rule book, the register's own description — are outputs, and hand-editing an output fails the
    build. (Rule 90.)
@@ -406,7 +394,7 @@ Rules 34, 38, 43, 62, 76 — the five step one named — become checkable the mo
 declared on the relevant register kinds. With steps one through three approved: **40 of 89** by
 script, exactly as step two projected. The terms registry adds finding 4 itself to the checkable
 set, and the runaway rule gives the flood ceiling (1.x's bounded-notification standard) a
-definition to enforce against rather than a primitive to guard. Rule 90 (§R3) makes rule 69
+definition to enforce against rather than a primitive to guard. Rule 90 makes rule 69
 checkable from the rule's side (`enforcedBy`), and turns "is the rule book a tree?" from a
 reading exercise into a build check.
 
@@ -424,7 +412,7 @@ reading exercise into a build check.
    it, so a flood is `control` and critical. Is "bounded" the right line for `attention`?
 4. **The terms registry as kind 12, with this document generated from it.** That puts a human
    approval on every new load-bearing word. Is that the cost you want, everywhere it applies?
-5. **Rule 90 and the rules as kind 13 (§R3).** The rule book becomes a rendering of versioned
+5. **Rule 90 and the rules as kind 13.** The rule book becomes a rendering of versioned
    entries, with `parent` / `mergedInto` declared and `children` / `siblings` / `enforcedBy`
    derived. This changes the *form* of step one. Do you want the rule book generated, and are
    those the right edges — or is there a relationship you'd want the build to know about that I've
@@ -432,11 +420,6 @@ reading exercise into a build check.
 6. **The deadline fact on rules.** A rule with no enforcer must carry a date, and a past date
    fails the build — the same treatment as a dark feature. Is that the right strictness for a
    rule book that is still being written?
-
-The four questions from the first draft (derive-don't-declare, the profile's allowed values,
-visibility-vs-damage, the strictness of *done* and *approved*) drew no objection and stand as
-drafted; the only change among them is that visibility-vs-damage now has the runaway rule
-attached.
 
 ---
 
