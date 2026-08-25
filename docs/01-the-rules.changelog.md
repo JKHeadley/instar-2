@@ -3,11 +3,13 @@ rated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` — d
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 5 · 2026-08-25 · draft — operator approved rule 91 on PR #3 and asked for it to be folded into the rule book
+## Revision 5 · 2026-08-25 · approved — operator approved rule 91 on PR #3 and asked for it to be folded into the rule book
 
 - **Rule 91 (A Document Reads as Its First Version) added to the 'checkable now' group, and rule 90 (History Is a Lookup, defined in the glossary) added to the 'needs building' group; counts become 20 / 9 / 51 / 11 of 91.** — Both rules were approved but lived outside the rule book — 90 in the glossary, 91 as a proposal — so the book was not the full list. _(PR #5)_
 - **Rule 91 applied to this document: the 'what changed in revision 2' paragraph, the 'revision 2.2' status, and two 'the first draft said' remarks moved out of the body into this changelog.** — The rule book cannot carry the history rule 91 forbids. _(PR #5)_
 - **The rule 91 text moved from docs/proposals/ to docs/rules/91-a-document-reads-as-its-first-version.md, status approved, with the review-time asides and the resolved open question removed.** — It is a rule now, not a proposal; the full text needs a governed home the book can point at. _(PR #5)_
+
+Approved in: PR #5, merge `5bf996f`.
 
 ## Revision 4 · 2026-08-23 · approved — operator review on PR #1; operator's review on PR #1
 
