@@ -1,6 +1,6 @@
 # Step one — the rules, and how each one is held
 
-**Status: draft, revision 2.2, awaiting approval. Nothing is built on top of this until it is approved.**
+**Status: draft, awaiting approval. Governed. Nothing is built on top of this until it is approved.**
 
 Every rule from Instar 1.x's constitution, sorted by one question: *how is this rule held — by a
 script, by the shape of the code, or by the mind?*
@@ -10,13 +10,6 @@ document ships with a plain-language twin — I'd propose changing that rule to 
 must be readable as-is, and a technical version needs a plain twin," because a twin of this
 would just be a copy of it. That's the first correction the rules earned from contact with
 real work.
-
-**What changed in revision 2 (from the first review).** Every rule now has a plain "what it
-means" column — the first draft listed only names, which is exactly the ambiguity we are trying
-to design out. The fourth group was renamed: "a value" wrongly implied nothing could be done with
-it. A fourth finding was added (load-bearing definitions). A section of concrete examples for
-"make it a type" was added. And one open decision was surfaced about how much a model-call record
-keeps.
 
 ---
 
@@ -57,13 +50,13 @@ meaning.
 
 | Group | Count |
 |---|---|
-| Checkable now | 19 |
+| Checkable now | 20 |
 | Free from the core | 9 |
-| Needs building | 50 |
+| Needs building | 51 |
 | Held by the mind | 11 |
-| **Total** | **89** |
+| **Total** | **91** |
 
-Nineteen of eighty-nine can be checked by a script today. That is the honest starting position,
+Twenty of ninety-one can be checked by a script today. That is the honest starting position,
 and it is roughly what 1.x's own record shows: 92 checks in the running system, 20 confirmed on.
 
 ---
@@ -112,7 +105,8 @@ the rule quietly becomes uncheckable. The fix generalizes into a standard:
 
 And it is checkable: the definitions live in a glossary, and a script confirms every term a rule
 leans on resolves to an entry. This document itself was the first offender — a table of rule
-*names* with no explanation of what each rule *means* — which is why revision 2 adds that column.
+*names* with no explanation of what each rule *means* — which is why every rule now carries a
+"what it means" column.
 
 **5. The improvement loop itself needs a rule: real cases become the benchmark, and the benchmark
 picks the door.**
@@ -197,8 +191,8 @@ reconstructable from the log* — argues the same way.
 
 1. **Do the four groups make sense as a way of sorting?** If "free from the core" feels like
    cheating, say so — those nine are only free if we actually build the core that way.
-2. **Does "held by the mind" now say what you meant?** The first draft said "nothing to check,"
-   which was wrong. The claim now is: the mind holds it, and a script proves the mind was looking.
+2. **Does "held by the mind" say what you meant?** The claim is: the mind holds it, and a
+   script proves the mind was looking — not "nothing to check."
 3. **Should the findings become the first work, ahead of anything else?** My view: yes, in this
    order — the register, the glossary (finding 4 absorbing finding 2), the types, then the
    benchmark loop (finding 5), which needs the register and the model doorway to exist first.
@@ -207,7 +201,7 @@ reconstructable from the log* — argues the same way.
 
 ---
 
-### Checkable now — 19 of 89
+### Checkable now — 20 of 91
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -230,8 +224,9 @@ reconstructable from the log* — argues the same way.
 | 75 | Token-Audit Completeness | Every model call the system makes is tagged with who made it and metered for what it cost. An unmetered call cannot be accounted for. | A lint that every call site carries an attribution tag, and every provider reports usage or is on a written exception list. |
 | 81 | Dashboard UX Standard | The operator's dashboard meets eleven objective floors (reachable on every screen size, no collapsed primary action, and so on). | Eleven checks in CI. 1.x already enforces them. |
 | 83 | The Agent Carries the Loop | A promise is the agent's job to finish, never the user's job to remember. | A commitment cannot be created without declaring who owns it and what it waits on. Refused at creation. |
+| 91 | A Document Reads as Its First Version | A governed document reads as if written once, today: no revision notes, review responses, or "what changed" prose in the body. Its history lives beside it in `NAME.changelog.json`, one entry per revision, each change linking to the commit or review comment that caused it. Full text: `docs/rules/91-a-document-reads-as-its-first-version.md`. | A script walks every governed document and fails on a revision marker in the body; `scripts/validate-changelog.mjs` fails the sibling changelog on any missing field. Governed is a property a document declares (or a rule names it and then it must declare), never a folder. |
 
-### Free from the core — 9 of 89
+### Free from the core — 9 of 91
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -245,7 +240,7 @@ reconstructable from the log* — argues the same way.
 | 78 | No Manual Work (user *or* agent) | Capturing context and using available tools is automatic. Neither the user nor the agent should have to remember a feature exists. | Free once the capability list is generated from the modules rather than hand-written. The check: no hand-maintained list exists. |
 | 84 | Agent Awareness | Every feature is written into the agent's own briefing. A capability the agent doesn't know about, it doesn't have. | Free from the same generation as #78. A hand-maintained briefing is exactly how 1.x lost this one. |
 
-### Needs building — 50 of 89
+### Needs building — 51 of 91
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -299,8 +294,9 @@ reconstructable from the log* — argues the same way.
 | 87 | Near-Silent Notifications | Only messages that need action or carry a result push to the user. Status and churn go to a pull surface. | Needs messages classified at the outbound doorway. |
 | 88 | Self-Heal Before Notify | The operator hears about an internal issue only after self-healing has tried and failed. | Enforced by the notice type requiring a reference to the failed self-heal attempt. |
 | 89 | Truthful Provenance | Every message carries who it is really from. Infrastructure speaks as infrastructure; the agent speaks as itself. | Outbound messages carry signed provenance. Signing must be automatic, which it is not in 1.x. |
+| 90 | History Is a Lookup | Anything that governs — a rule, a term, a register kind, a required fact, an entry — is versioned by construction. Each version carries when it began, what it replaced, and the pull request and commit that approved it, generated from git. Nothing is edited in place; the old version stays. Defined in step three, the glossary. | Needs the register (step two) and its `supersedes` / `approvedIn` facts generated from git. The build refuses an in-place edit to a governing entry that does not produce a new version, and any `approvedIn` that is not a real merge commit on main. |
 
-### Held by the mind — 11 of 89
+### Held by the mind — 11 of 91
 
 These are binding. The mind holds them; the script proves the mind was looking.
 
@@ -321,5 +317,6 @@ These are binding. The mind holds them; the script proves the mind was looking.
 ---
 
 *Source: the 89 standards in Instar 1.x's `docs/STANDARDS-REGISTRY.md`, read on 2026-08-23.
-Every count in this document came from that file, not from recollection. Revision 2 incorporates
-the operator's first-round review on PR #1.*
+Every count of those 89 came from that file, not from recollection. Rules 90 and 91 are this
+project's own, born from doing steps one to three. This document's history is in
+`01-the-rules.changelog.json` beside it.*
