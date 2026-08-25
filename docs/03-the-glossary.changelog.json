@@ -1,0 +1,92 @@
+[
+  {
+    "revision": 4,
+    "date": "2026-08-24",
+    "status": "approved",
+    "cause": { "kind": "review", "pr": 3, "note": "operator's observation that embedded revision history bloats a document and skews later model readers" },
+    "approvedIn": { "pr": 3, "mergeCommit": null },
+    "changes": [
+      {
+        "what": "Restructured to read as a first version: revision paragraphs, section markers, and 'the first draft said' prose removed from the body; the history moved to this changelog.",
+        "why": "Embedded revision notes take up space and repeat the content they annotate, tilting a later reader — especially a model — toward what changed rather than what is. This is the shape proposed as rule 91.",
+        "commits": ["d737777", "03f13b1"],
+        "ref": "PR #3"
+      }
+    ]
+  },
+  {
+    "revision": 3,
+    "date": "2026-08-24",
+    "status": "approved",
+    "cause": { "kind": "conversation", "note": "conversation with the operator while the second review was open" },
+    "approvedIn": { "pr": 3, "mergeCommit": null },
+    "changes": [
+      {
+        "what": "History becomes a rule: 'History is a lookup' (rule 90). Every governing thing is versioned by construction; supersedes and approvedIn join the common facts, generated from git.",
+        "why": "A governed thing whose history is not recorded by construction can drift silently.",
+        "commits": ["3e1273f"],
+        "ref": "PR #3"
+      },
+      {
+        "what": "The rules themselves become register kind 13, with parent and mergedInto declared and children, siblings, enforcedBy derived; the rule book becomes a rendering of that kind.",
+        "why": "Writing the rule tree's edges down turns 'is the rule book a tree?' from a reading exercise into a build check.",
+        "commits": ["3e1273f"],
+        "ref": "PR #3"
+      }
+    ]
+  },
+  {
+    "revision": 2,
+    "date": "2026-08-24",
+    "status": "approved",
+    "cause": { "kind": "review", "pr": 3, "note": "operator's first review" },
+    "approvedIn": { "pr": 3, "mergeCommit": null },
+    "changes": [
+      {
+        "what": "reversible replaces undoable as the allowed value on the reversibility field.",
+        "why": "One vocabulary, matching the rule's word (irreversible); undoable was a needless second vocabulary.",
+        "commits": ["9b059b7"],
+        "ref": "PR #3 review comment on line 12"
+      },
+      {
+        "what": "Added the runaway rule: a profile describes the worst case the code can produce before anyone can stop it, so a failure that takes a channel away (a flood, an unbounded notifier) is control, therefore critical.",
+        "why": "The first draft's 'merely bothers' would have let a flood through on the strength of its single-message case.",
+        "commits": ["9b059b7"],
+        "ref": "PR #3 review comment"
+      },
+      {
+        "what": "Operator and user reframed around principals and standing.",
+        "why": "The first draft defined operator as 'the one verified person' and also said 'every operator is a user'; the contradiction resolves once operator is a standing a verified person holds in a scope.",
+        "commits": ["9b059b7"],
+        "ref": "PR #3 review comment"
+      },
+      {
+        "what": "The terms registry becomes a real register kind (12) rather than a sentence.",
+        "why": "The first draft said each definition 'is itself a register entry (kind: term)'; the review asked whether that was a real structure or a figure of speech — it was a figure of speech.",
+        "commits": ["9b059b7"],
+        "ref": "PR #3 review comment on line 29"
+      },
+      {
+        "what": "Both userFacing and significance on features become derived columns.",
+        "why": "The first draft named only one of them; a correction to step two (the register).",
+        "commits": ["9b059b7"],
+        "ref": "PR #3"
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-08-24",
+    "status": "approved",
+    "cause": { "kind": "draft" },
+    "approvedIn": { "pr": 3, "mergeCommit": null },
+    "changes": [
+      {
+        "what": "First draft of the glossary: derive irreversible, user-facing, critical and significant from a declared profile; define the nouns the register's required facts lean on; four questions for the operator.",
+        "why": "Step one, finding 4: a rule that uses an undefined load-bearing term is not yet a rule.",
+        "commits": ["2e58fdb"],
+        "ref": "PR #3"
+      }
+    ]
+  }
+]
