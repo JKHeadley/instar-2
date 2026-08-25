@@ -2,8 +2,11 @@
   {
     "revision": 5,
     "date": "2026-08-25",
-    "status": "draft",
-    "cause": { "kind": "conversation", "note": "operator approved rule 91 on PR #3 and asked for it to be folded into the rule book" },
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator approved rule 91 on PR #3 and asked for it to be folded into the rule book"
+    },
     "changes": [
       {
         "what": "Rule 91 (A Document Reads as Its First Version) added to the 'checkable now' group, and rule 90 (History Is a Lookup, defined in the glossary) added to the 'needs building' group; counts become 20 / 9 / 51 / 11 of 91.",
@@ -20,19 +23,32 @@
         "why": "It is a rule now, not a proposal; the full text needs a governed home the book can point at.",
         "ref": "PR #5"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 5,
+      "mergeCommit": "5bf996f"
+    }
   },
   {
     "revision": 4,
     "date": "2026-08-23",
     "status": "approved",
-    "cause": { "kind": "review", "pr": 1, "note": "operator's review on PR #1" },
-    "approvedIn": { "pr": 1, "mergeCommit": "c4cd6df" },
+    "cause": {
+      "kind": "review",
+      "pr": 1,
+      "note": "operator's review on PR #1"
+    },
+    "approvedIn": {
+      "pr": 1,
+      "mergeCommit": "c4cd6df"
+    },
     "changes": [
       {
         "what": "Finding 5: real cases become the benchmark, and the benchmark picks the door (proposed standard).",
         "why": "Operator review comment on PR #1.",
-        "commits": ["09abbbf"],
+        "commits": [
+          "09abbbf"
+        ],
         "ref": "PR #1"
       }
     ]
@@ -41,13 +57,22 @@
     "revision": 3,
     "date": "2026-08-23",
     "status": "approved",
-    "cause": { "kind": "review", "pr": 1, "note": "operator's review on PR #1" },
-    "approvedIn": { "pr": 1, "mergeCommit": "c4cd6df" },
+    "cause": {
+      "kind": "review",
+      "pr": 1,
+      "note": "operator's review on PR #1"
+    },
+    "approvedIn": {
+      "pr": 1,
+      "mergeCommit": "c4cd6df"
+    },
     "changes": [
       {
         "what": "Review is retrospective by default; live review only for irreversible moments.",
         "why": "Operator review comment on PR #1.",
-        "commits": ["e225278"],
+        "commits": [
+          "e225278"
+        ],
         "ref": "PR #1"
       }
     ]
@@ -56,25 +81,38 @@
     "revision": 2,
     "date": "2026-08-23",
     "status": "approved",
-    "cause": { "kind": "review", "pr": 1, "note": "operator's first review on PR #1" },
-    "approvedIn": { "pr": 1, "mergeCommit": "c4cd6df" },
+    "cause": {
+      "kind": "review",
+      "pr": 1,
+      "note": "operator's first review on PR #1"
+    },
+    "approvedIn": {
+      "pr": 1,
+      "mergeCommit": "c4cd6df"
+    },
     "changes": [
       {
         "what": "Every rule gains a plain 'what it means' column.",
         "why": "The first draft listed only names, which is exactly the ambiguity the rules are meant to design out.",
-        "commits": ["e0a368d"],
+        "commits": [
+          "e0a368d"
+        ],
         "ref": "PR #1"
       },
       {
         "what": "The fourth group renamed from 'a value' to 'held by the mind'; its claim becomes 'the mind holds it, and a script proves the mind was looking' rather than 'nothing to check'.",
         "why": "'A value' wrongly implied nothing could be done with those rules.",
-        "commits": ["e0a368d"],
+        "commits": [
+          "e0a368d"
+        ],
         "ref": "PR #1"
       },
       {
         "what": "Finding 4 (load-bearing definitions), a section of concrete 'make it a type' examples, and an open decision on how much a model-call record keeps.",
         "why": "Surfaced by the first review.",
-        "commits": ["e0a368d"],
+        "commits": [
+          "e0a368d"
+        ],
         "ref": "PR #1"
       }
     ]
@@ -83,13 +121,22 @@
     "revision": 1,
     "date": "2026-08-23",
     "status": "approved",
-    "cause": { "kind": "draft", "note": "first draft: all 89 Instar 1.x rules sorted by how each is held" },
-    "approvedIn": { "pr": 1, "mergeCommit": "c4cd6df" },
+    "cause": {
+      "kind": "draft",
+      "note": "first draft: all 89 Instar 1.x rules sorted by how each is held"
+    },
+    "approvedIn": {
+      "pr": 1,
+      "mergeCommit": "c4cd6df"
+    },
     "changes": [
       {
         "what": "First version.",
         "why": "Step one of Instar 2.0's docs-first foundation.",
-        "commits": ["0f52212", "49de06b"],
+        "commits": [
+          "0f52212",
+          "49de06b"
+        ],
         "ref": "PR #1"
       }
     ]
