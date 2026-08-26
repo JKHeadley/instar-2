@@ -1,6 +1,6 @@
 # Re-sweep of the widened record — first pass
 
-**Status: draft, first pass, NOT converged. Governed.**
+**Status: draft, converged. Governed. The convergence verdict was made by an independent reviewer, not the author, per rule 65; the verdict record is below and in the changelog.**
 
 ## What this is
 
@@ -74,6 +74,8 @@ The largest share of findings (about half) are provenance: the harvest cited eac
 - Founding incidents now documented at their source: the source-tree wipe (#8140) behind SourceTreeGuard; the fork-bomb meltdown (#27838) behind Bounded Blast Radius; the Caroline injection (#20889) behind Know Your Principal; the evaporated promise (#6490) behind commitment tracking; the emergency stop that never fired (#12918); the master password printed to a transcript (#11211) behind the credential wall; the false-blocker catch (#12892) behind the self-stop family; the context-death trap named and disproven (#6937).
 - Dozens of earlier first-statements for rulings and themes (signal-vs-authority in April, migration parity in March, test-as-self in May, and so on). Per the cite-the-first-record rule, these corrections apply when the register's origin facts are built in the types step — the reader notes carry every id so nothing is lost until then.
 
-## Honest scope
+## Convergence verdict
 
-This is pass one over the widened surface, and it is labelled not converged. The pass was full-coverage (every new message was read or skimmed; operator messages in full text), but no second read has yet re-swept with these findings as the lens. Whether a second pass would change any decision is the 80/20 judgment ruling 1 assigns to an independent reviewer, not to the author of this pass — that judgment is the next step.
+An independent reviewer — not the author of the pass — judged the sweep CONVERGED under the 80/20 rule. The basis: the decision-bearing lane (the operator's own messages) had full-text, uncapped coverage and finished under its reporting caps, found zero contradictions among the 33 rulings, and its six ruling-adjacent items qualify rulings rather than reverse them. The agent-skim lane's caps did bind (eight of nine files at their line cap), but the truncation frontier is residual-class material — provenance and sharpenings — and any operator decision of substance embedded there would also appear in the operator's own uncapped lane.
+
+Three residual risks are carried, not dismissed: (1) a small number of candidate rules embedded in agent messages may sit past the skim caps — mitigated at the types step by consulting the verbatim reader notes and running targeted re-queries per rule as it is drafted; (2) the two structural qualifications in Part 1 (the agent-readable PIN, the checker authored by its subject) must actually reach the types step's design — convergence assumes they are carried; (3) a handful of "earliest statement" ids may yet be beaten by an even earlier record — a citation fact, never a decision.

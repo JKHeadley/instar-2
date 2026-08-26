@@ -1,10 +1,37 @@
 [
   {
+    "revision": 2,
+    "date": "2026-08-26",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 8,
+      "note": "independent convergence judgment (rule 65: the reviewer is never the author)"
+    },
+    "approvedIn": {
+      "pr": 8,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Recorded the independent reviewer's CONVERGED verdict with its basis and the three carried residual risks; status updated from not-converged to converged.",
+        "why": "Rule 65 as amended assigns the stopping judgment to an independent reviewer; the verdict and its reasoning must be part of the record, not an assertion.",
+        "ref": "PR #8"
+      }
+    ]
+  },
+  {
     "revision": 1,
     "date": "2026-08-26",
     "status": "draft",
-    "cause": { "kind": "draft", "note": "first pass of the re-sweep over the record widened by the 2026-08-26 Telegram export (39,837 newly-visible messages)" },
-    "approvedIn": { "pr": null, "mergeCommit": null },
+    "cause": {
+      "kind": "draft",
+      "note": "first pass of the re-sweep over the record widened by the 2026-08-26 Telegram export (39,837 newly-visible messages)"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
     "changes": [
       {
         "what": "Created the re-sweep synthesis: six items bearing on the fresh rulings, the deduplicated set of operator-stated rules the harvest never carried, and the origin corrections now visible because the constitution's birth predates the relay log. Sixteen reader-note files preserved verbatim beside it.",
