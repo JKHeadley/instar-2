@@ -11,7 +11,7 @@ each linked to the git change that made it (rule 91).
 - **Recorded the reframing of 12 (model choice per scenario is data-driven from benchmark results in a recursive self-improvement loop), the scoping of 13 and 28 as 1.x convergence-effort artifacts rather than fundamentals, and the intent-led restatement of 33 (no flaky-test hostage-taking; quarantine plus defect, work proceeds).** — The operator's comments redirected these four from the recommended wording. _(PR #4 review comments 3862527755, 3862531848, 3862551437, 3862565190)_
 - **Marked the remaining eighteen tensions ruled by implicit approval and set the sheet status to approved.** — The operator's blanket statement covers every uncommented line. _(PR #4 review PRR_kwDOUCBncc8AAAABK89pZQ)_
 
-Approved in: PR #4.
+Approved in: PR #4, merge `616bc3b`.
 
 ## Revision 2 · 2026-08-25 · draft — operator review on PR #4; the operator's review of Aug 25 (changes requested): five rulings recorded, three answers reworked from comments, two re-explained, and a plainer-language pass over the whole sheet
 
@@ -21,10 +21,10 @@ Approved in: PR #4.
 - **Reworked tension 23: a new session reads the full topic history up to a generous size threshold, with older history covered by rolling summaries maintained by background jobs.** — The operator's comment reframed the convergence-specific full re-read as this general session-grounding rule. _(PR #4 review comment 3859768283)_
 - **Re-explained tensions 2 and 26 in plain words, and rewrote the whole sheet in plainer language.** — The operator could not tell what those two lines were about and asked for the document to be stated more plainly. _(PR #4 review comments 3859771651, 3859782243)_
 
-Approved in: PR #4.
+Approved in: PR #4, merge `616bc3b`.
 
 ## Revision 1 · 2026-08-25 · draft — first version of the decision sheet, distilled from the harvest's 33 tensions
 
 - **Created the one-page decision sheet: each of the 33 tensions as a question, a recommended answer, and one sentence of why; nine flagged as genuinely the operator's call.** — The operator asked for a reviewable surface smaller than the audit reports; the tensions are the only part that needs a human ruling. _(`33e09d2`, PR #4)_
 
-Approved in: PR #4.
+Approved in: PR #4, merge `616bc3b`.
