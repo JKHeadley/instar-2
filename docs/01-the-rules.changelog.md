@@ -4,6 +4,12 @@ _Generated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-08-26 · draft — operator review on PR #4; net-new rules implied by the operator's rulings and by the re-sweep of the widened Telegram record (PR #8): 22 rules added, 92-113
+
+- **Rules 92-98 added, each restating a decision-sheet ruling as an operating rule: check-in cadence (92, ruling 17), directive persistence (93, ruling 27), waiver-before-the-act (94, ruling 11), fail direction per consumer (95, ruling 5), full-history session grounding (96, ruling 23), exit-test-not-clock (97, ruling 16), silence-is-never-consent (98, ruling 10).** — The rulings are law but lived only in the decision sheet; the rule book is where sessions read their duties. _(docs/harvests/standards-and-registries-harvest.decisions.md; PR #4 merge 616bc3b)_
+- **Rules 99-113 added from the re-sweep's Part 2: operator-stated rules the original harvest never carried, each citing the message id of its first statement (recheck-dated walls 99; secret-stored-before-spent 100; hooks-never-skipped-silently 101; decisions-are-cheap 102; boundaries-from-governance 103; standing-grant ratchet 104; channel parity 105; working links 106; per-gate evidence bar 107; separately-falsifiable verdicts 108; frozen-under-review 109; compaction disclosure 110; layer-below review 111; green-history preservation 112; multi-machine posture declaration 113).** — The 2026-08-26 full export widened the record to March 8; these rules were stated in the newly-visible span. _(docs/harvests/standards-and-registries-resweep.md (Part 2); resweep-reader-notes/ for the verbatim citations)_
+- **Group counts updated (21 checkable / 9 free / 71 needs building / 12 mind, total 113) and the source note now names where rules 92-113 came from.** — Consequence of the additions. _(this revision)_
+
 ## Revision 6 · 2026-08-26 · draft — operator review on PR #4; the operator's rulings on the 33 tensions (decision sheet, merged in PR #4) applied to the five existing rules they directly amend
 
 - **Rule 65 rewritten: convergence is the 80/20 judgment of an independent reviewer, never the author; a round count is a floor and a confusion detector, never the stopping rule.** — Ruling 1. _(docs/harvests/standards-and-registries-harvest.decisions.md (ruling 1); PR #4 merge 616bc3b)_
