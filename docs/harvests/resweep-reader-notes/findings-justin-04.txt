@@ -1,0 +1,34 @@
+#22176 | 2026-06-07 | NEW | On LLM rate-limit/failure, falling back to brittle non-LLM code is almost never safe — the sanctioned fallback is block or swap to another provider, demanded as a constitutional standard plus a codebase audit.
+#17761 | 2026-06-01 | NEW | Infra-enforced rule that every piece of work must trace to a constitutional standard with an indisputable fit; unmatched work pauses for a constitution review or is declared unconstitutional.
+#17734 | 2026-06-01 | SHARPENS(Theme 12 #36351) | Track approved-vs-changed ratio on every operator approval, document why each divergence happened, and above a threshold trial auto-approval (#19697, #19727).
+#21424 | 2026-06-06 | NEW | Decisions waiting on the user collect on a durable rendered page, and every subsequent autonomous-session message links to it until answered.
+#18896 | 2026-06-03 | NEW | Anything injected only at session start goes stale because sessions run for days — boot injection neither scales nor survives long sessions (#20106, #20123).
+#17454 | 2026-05-31 | NEW | Grounding before every agent-to-agent interaction as a standard practice and constitutional candidate.
+#19301 | 2026-06-04 | NEW | A secret handed to the agent is STORED SECURELY FIRST, before any consumption — the repeated drop-the-secret failure class.
+#22362 | 2026-06-08 | NEW | Governance stress tests must probe org-UNIQUE constraints, not model-default refusals, run via throwaway agent with a realistic fake org.
+#22415 | 2026-06-08 | SHARPENS(Theme 5 #40006) | Governance proof requires a control arm: an identical agent WITHOUT the org constraints shown to comply with the same requests.
+#20532 | 2026-06-05 | NEW | Adversarial testing graded by an escalating-pressure ladder plus a standardized reusable org-values test harness for EXO compatibility.
+#19875 | 2026-06-04 | SHARPENS(ruling 4) | Load-driven automatic machine swaps must inform and ask the user, with a pin option on refusal.
+#17989 | 2026-06-01 | NEW | While an A2A conversation runs, the agent keeps the user in the loop with periodic conversational summaries and supports natural mid-conversation interruption.
+#17006 | 2026-05-30 | SHARPENS(Theme 18 #31852) | Earlier first statement of the delay pitfall family: "long tail of a session"/fresh-session/maxed-context excuses are invalid.
+#20502 | 2026-06-05 | UNSURE | A fundamental standard against raw/unbounded loop behavior, with a sanctioned exception for deliberately slow-paced never-give-up loops in critical self-healing.
+#17521 | 2026-05-31 | SHARPENS(Theme 6 #34085) | The primary-developer agent always self-updates to latest and restarts immediately, never waits.
+#18300 | 2026-06-02 | SHARPENS(Theme 6 #34085) | Earlier first statement of the "development agent" label deciding ship-dark vs ship-enabled per agent class.
+#20665 | 2026-06-05 | NEW | Channel-sender trust is an open security standard: roles/permissions enforced by conversational judgment; out-of-character requests trigger relationship-informed step-up authentication.
+#17805 | 2026-06-01 | UNSURE | Agent-to-agent transfer authorization rides trust levels; in high-trust situations no approval is needed.
+#21651 | 2026-06-06 | SHARPENS(Theme 6 #32443) | A concrete soak-window ceiling — incubation no longer than a week — plus mandatory proactive maturation check-ins.
+#21978 | 2026-06-07 | SHARPENS(Theme 9 kind 10) | Account-registry facts: no implicit default account; nickname + email + naming convention; exclusive per-agent dedication.
+#22245 | 2026-06-07 | SHARPENS(Theme 20 #34867) | LLM audit records store prompt VERSIONS with active-date ranges, and input/output selectively by scenario importance.
+#20853 | 2026-06-05 | SHARPENS(Theme 2 caseStudy) | The Caroline injection is the founding case study for Know Your Principal.
+#21325 | 2026-06-06 | NEW | Standing competitor-scan obligation: periodic jobs watching Instar alternatives with deep research and reviewable initiative proposals.
+#21331 | 2026-06-06 | SHARPENS(Theme 22 #35619) | User-facing documents carry a higher standard than internal docs — no shorthand or unexplained internal references.
+#19527 | 2026-06-04 | SHARPENS(Theme 12 #36439) | The ELI16 must live in the PR description itself, required on every PR.
+#19466 | 2026-06-04 | SHARPENS(Theme 22) | User-facing messages always use topic NAMES never ids, and always suggest conversational next steps.
+#20131 | 2026-06-05 | SHARPENS(Theme 22) | A strong rule never to send localhost links to the user.
+#17421 | 2026-05-31 | SHARPENS(Close the Loop) | First statement of "nothing falls through the cracks" as a constitutional principle with ONE general re-surfacing infrastructure.
+#19018 | 2026-06-03 | SHARPENS(Theme 23 #46805) | Much earlier first statements of routing sentinels/background work to Codex with size-preserving model mapping.
+#19274 | 2026-06-04 | SHARPENS(Theme 23 #32276) | Framework-agnosticism enforced by the review process itself — no Claude-specific solutions pass review.
+#18448 | 2026-06-02 | UNSURE | An independent Instar agent must self-recover with no external nudge agent; peer nudging is backup only.
+#18059 | 2026-06-01 | SHARPENS(Theme 10 #42390) | Sessions must robustly know and accurately report their own elapsed time — session-clock truth as fundamental.
+#17753 | 2026-06-01 | SHARPENS(Theme 12 #30879) | Cross-model review officially depends on installed agentic frameworks, subscription-based, available to all agents by default.
+#17888 | 2026-06-01 | UNSURE | Responding to inbound A2A messages should be event-driven, not dependent on an autonomous mode being active.

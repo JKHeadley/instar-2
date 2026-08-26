@@ -1,0 +1,16 @@
+[
+  {
+    "revision": 1,
+    "date": "2026-08-26",
+    "status": "draft",
+    "cause": { "kind": "draft", "note": "first pass of the re-sweep over the record widened by the 2026-08-26 Telegram export (39,837 newly-visible messages)" },
+    "approvedIn": { "pr": null, "mergeCommit": null },
+    "changes": [
+      {
+        "what": "Created the re-sweep synthesis: six items bearing on the fresh rulings, the deduplicated set of operator-stated rules the harvest never carried, and the origin corrections now visible because the constitution's birth predates the relay log. Sixteen reader-note files preserved verbatim beside it.",
+        "why": "The converging-audit standard requires a re-sweep when the audited surface widens; the harvest ran over the thinner relay-only record.",
+        "ref": "PR #4 (the harvest it extends); export evidence on the Studio"
+      }
+    ]
+  }
+]

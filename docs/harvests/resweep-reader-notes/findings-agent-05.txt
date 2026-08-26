@@ -1,0 +1,25 @@
+#28756 | 2026-06-25 | NEW | Birth of "The Operator Channel Is Sacred — critical-path gates fail toward delivery": the MessageSentinel consumed the operator's "Testing" as a pause command when its classifier failed under spawn-cap saturation.
+#29964 | 2026-07-01 | NEW | Six standards from the silent-loss postmortem ratified in one PR — including "A Refusal Stays a Refusal" and "Cross-Store Coherence" — via a numbered ratify-by-number proposal flow.
+#28390 | 2026-06-24 | SHARPENS(Theme 14 #45141) | Origin of "An LLM Gate Must Not String-Match": "an LLM in the loop isn't enough — the PROMPT must itself be intelligent".
+#28370 | 2026-06-24 | SHARPENS(Theme 14) | The forcing incident: B15's fixed phrase list evaded by a paraphrase; "brittle string matching must never make an important judgment call".
+#31091 | 2026-07-03 | SHARPENS(#31069) | "Intelligence Infers, Keywords Only Guard" locked in with a CI lint hard-failing new keyword-list meaning-decisions.
+#31267 | 2026-07-04 | NEW | Birth of "Capacity Safety — No Unbounded Self-Action": a CI test drives every self-triggering action under sustained pressure and fails the build if it doesn't settle.
+#29563 | 2026-06-29 | SHARPENS(Theme 22 #35097) | "The User Experience Is the Product" ratified as a top-level constitutional standard — "the outward-facing twin of Structure > Willpower".
+#28900 | 2026-06-26 | NEW | "A silently-denied session should be impossible" folded into The Agent Is Always Reachable (no-silent-resource-rejection), born from a run silently blocked by a false-critical memory reading.
+#27838 | 2026-06-20 | NEW | The fork-bomb OOM meltdown postmortem births the containment-floor spawn cap — origin of Bounded Blast Radius.
+#30685 | 2026-07-03 | NEW | Three standards drafted and ratified in one exchange: always-multi-machine, self-heal-before-notify, single-alerts-topic.
+#28731 | 2026-06-25 | NEW | Justin's thesis: "machine overload is probably a MISDIAGNOSIS — we have faulty tools for measuring machine state" — behind the load-assess doctrine, proven by the os.freemem false-critical and Spotlight-inflated load average.
+#30037 | 2026-07-01 | NEW | Justin's correction that filing self-drafted specs as a "documented stretch" instead of owed work is a violation — origin of scope-accretion completion discipline.
+#29853 | 2026-07-01 | SHARPENS(#29850) | Subscriptions are structurally incapable of runaway spend; any metered-key system must preserve that property — founding principle of the fail-closed budget funnel.
+#29847 | 2026-07-01 | SHARPENS(Theme 6) | "Dark-shipped self-healing is not self-healing" — earliest articulation of A Dark Feature Guards Nothing.
+#29229 | 2026-06-28 | SHARPENS(ruling 5) | The self-stop guard "goes blind when its judge is offline"; fixed with a deterministic backstop — the self-stop family made fail-closed.
+#28499 | 2026-06-25 | SHARPENS(ruling 5) | Origin of gating-fails-closed: outbound reviewers silently treated their own errors as "send it" until flipped fail-closed.
+#32491 | 2026-07-11 | SHARPENS(#36156) | Iterative-Audit-to-Convergence found documented-only by the system's own checker; the machine-earned converged-stamp validator + gates were built.
+#34780 | 2026-07-23 | SHARPENS(Theme 10 #42390) | Elapsed-time estimated instead of read twice in one session, named a pattern — origin of TIME_CLAIM.
+#30174 | 2026-07-02 | NEW | Anti-injection rule structural: a watcher treats what it reads as data, never instructions, proven by A/B; digest writers redact secrets rather than quote them.
+#32235 | 2026-07-10 | SHARPENS(Theme 8 #44870) | Completion-bar immutability enforced structurally: the server judges only the REGISTERED done-condition.
+#29793 | 2026-07-01 | SHARPENS(Theme 20 #39117) | Researched basis of subscription-only: only Claude and Codex are genuinely subsidized; interactive Claude Code is the sanctioned exception.
+#28343 | 2026-06-24 | SHARPENS(Theme 22) | Earliest test-as-self method statement — Playwright logged in AS the operator.
+#27897 | 2026-06-21 | SHARPENS(Theme 6 #34085) | "Off by default is a FLEET statement, not off-on-me" — dev/fleet ladder vocabulary.
+#27921 | 2026-06-22 | NEW | The operator-requested "false-excuse" sentinel ships fleet-wide — the birth of B15-B19 enforcement.
+#29008 | 2026-06-26 | SHARPENS(Theme 22) | The live test-as-self drive is the FINAL gate before "done", with load-work-offload round trip as the default scenario.
