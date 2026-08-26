@@ -1,0 +1,41 @@
+# Decision sheet — the 33 tensions
+
+**Status: approved — every tension is ruled. Rulings came from the operator's reviews of Aug 25 and Aug 26, 2026; items without an explicit comment are ruled by the operator's blanket statement of Aug 26: "any items I did not comment on are implicitly approved." The evidence behind each line is in the harvest beside it (Part 3, same numbers).**
+
+Each line is the question and the final ruling. Where the operator amended or overruled the recommendation, the ruling below is the operator's version, not the original recommendation.
+
+## Ruled explicitly
+
+**2. May an exact-match check ever block?** — Ruled: yes, for exactly two things — secrets and money; everywhere else an exact match may only flag, never block. The operator's condition: this must stay consistent with the existing standards. Checked: it is — the existing constitution's "an LLM gate must not string-match" rule already carries exactly this exception (a deterministic credential floor, and deterministic spend caps), so this ruling restates current law rather than changing it.
+
+**3. Who merges?** — Ruled: the agent merges anything that is honestly green. The operator is asked only about changes to the constitution and to a short protected list the register names. If main moves while an approval is waiting, the request is re-issued, not left hanging.
+
+**4. Which machine runs what.** — Overruled (the recommendation is withdrawn): no role-based placement prescription. There is no formal notion of a "coordinating" versus "working" session, and "the second machine" presumes a two-machine world — the multi-machine mesh's existing placement rules (load, quota, pins, leases) govern, and nothing here adds to them.
+
+**11. When a rule's letter gets in the way.** — Ruled: breaking the letter of a rule needs the operator's waiver, given before the act; without it, the act is a violation even when the outcome was good. Amendment: waivers are proactively collected as feedback on the rules themselves — a rule that keeps needing waivers is a rule that should evolve, with the waiver record as the evidence.
+
+**12. The strongest model always, or scheduled checks?** — Ruled as reframed by the operator: identify the areas where judgment is critical and default to more intelligent models there; the per-scenario model choice is data-driven from the benchmark results, which are themselves regularly updated by the audit and logging system — a recursive self-improvement loop. "Scripts detect, minds judge" survives as the general shape; the model assignment is measured, not asserted.
+
+**13. What the second observer may do.** — Scoped: this is an artifact of the 1.x converge-to-coherence effort, not an Instar fundamental. It stays in the harvest as a record of that effort. The one generalizable core — a reviewer may refuse to rubber-stamp an artifact to match a manager's wording — carries forward only if it earns its own place in the standards work.
+
+**16. When work stops, and when the next window starts.** — Ruled: a window closes when its exit test passes or is proven unreachable, never on the clock — the clock is only a safety ceiling. A solvable constraint is never a reason to stop. The next window starts on its own the moment the boundary review is posted.
+
+**17. How often a session reports, and to whom.** — Ruled: every autonomous session has a check-in cadence; the default is one hour; it is adjustable per session and per role by whatever charter governs it. A correction to a wrong claim always goes out promptly, outside the cadence — and a session that keeps correcting itself has a defect in its checks, fixed at the source. The 1.x convergence-effort role structure (paired observers, orchestrator, tenets) is not a fundamental; whether any of it becomes one is an open discussion held for the types step.
+
+**19. Which checks may decide, and what a dumb check may do.** — Ruled, in two parts: (a) a check with no model behind it may decide on its own only where the test is exact and a miss is irreversible — a live secret leaving, spend past a cap, the operator's emergency stop; (b) deciding power in general belongs to a short, named list in the register — every check not on that list, dumb or smart, only informs and advises, and the agent decides. Amendment: the deciding-checks list is not hand-picked — it is informed and driven by the formal qualitative assessment of how critical each scenario is. In all cases a block preserves its input. Consistency check: the existing constitution's hard-block set (deterministic credential floor, spend caps and freeze, the self-stop family, emergency stop) matches this list, with one precision worth naming — the self-stop family is a hard block but is judged by a model, so it belongs to (b)'s named list, not to (a)'s no-model deciders.
+
+**20. When the PIN is needed.** — Ruled: only above a spend threshold the operator sets, and for arming a paid door the first time. Below that, the operator's written yes from their verified account is enough, recorded by message id.
+
+**23. What a new session must read.** — Ruled: a new session reads the full history of its topic up to a generous token threshold; history beyond it is covered by rolling summaries kept current by background jobs. Substituting memory or a partial skim for that read is a violation, declared or not.
+
+**26. Two copies of the constitution now exist.** — Overruled (the recommendation is withdrawn): there is no formal requirement that the two projects stay synchronized, and no deadline. The 2.0 copy is a deliberate fork, free to evolve; in time either one project replaces the other, or the two evolve side by side and borrow from each other. The register records the fork relationship as a fact, not as an enforced loop.
+
+**27. Do the operator's directives expire?** — Ruled: never on a timer. A directive holds until the operator supersedes it or it is done.
+
+**28. One thing at a time — for whom?** — Scoped: another 1.x converge-to-coherence artifact, not an Instar fundamental. It stays in the harvest as a record of that effort.
+
+**33. Is one quiet re-run acceptable?** — Ruled, with the operator's intent leading: no one is ever held hostage by a flaky test. A test whose result flips without a code change is quarantined and a defect is filed — work proceeds; the flake gets fixed as its own item. A re-run is allowed to gather evidence, and a passing re-run is never exoneration of the flake — but neither does the flake block the work it interrupted.
+
+## Ruled by implicit approval
+
+Per the operator's Aug 26 statement, the following are approved as written: **1** (convergence is the 80/20 judgment by an independent reviewer, round counts are a floor), **5** (fail direction is per consumer: reachability fails open, change/release integrity fails closed), **6** (no red on main or at merge; red-then-green on a branch is fine; calendar/server-dependent tests are quarantined), **7** (the operator's exact words win when quoted; evidence that would trip a filter travels by an unreviewed channel), **8** (the merge commit is the record of approval; the chat yes is the authorization, kept by message id), **9** (parents declared, children derived; merges never delete; citations keep pointing at superseded rules), **10** (the operator's silence is never consent; peer silence past a declared deadline is concurrence), **14** (a result about a dark feature still goes out), **15** (capture everything internally; anonymize only at the point of sharing), **18** (a judgment must cite its numbers; numbers alone are never the verdict), **21** (approving a result does not forgive a skipped step), **22** (the operator's stated need is a valid graduation path, recorded as operator-directed), **24** (docs-only commits may carry evidence, never rule text that skipped review), **25** (a check is advisory only if the register says so; a red required check is red), **29** (a foundational spec pays the full review cost), **30** (restore first, class review after), **31** (first occurrence births a standard; recurrence is a defect; the corrections register tells them apart), **32** (governed does not mean on main; the register records a durable location).
