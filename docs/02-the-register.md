@@ -1,6 +1,6 @@
 # Step two — the register of the things being governed
 
-**Status: draft, revision 2, awaiting approval. Nothing is built on top of this until it is approved.**
+**Status: draft, awaiting approval. Governed. Nothing is built on top of this until it is approved.**
 
 Step one found that fourteen rules all say *"every X must do Y"* and none can be checked, because
 nothing lists the X. This document is the design for that list. It is deliberately boring. It is
@@ -41,7 +41,7 @@ in the same register, with a `kind` field. Reasons:
    single register lets an entry point at another entry regardless of kind.
 2. The checks are the same shape for every kind: *walk the entries of kind K, assert each has
    fact F.* One walker, many kinds, instead of fourteen walkers.
-3. A new kind is a new value for one field, not a new subsystem. The eleven kinds below are the
+3. A new kind is a new value for one field, not a new subsystem. The thirteen kinds below are the
    ones the constitution already needs; the register does not stop there.
 
 The cost is that entries of different kinds carry different required facts. That is handled by
@@ -62,7 +62,7 @@ giving each kind its own list of required facts, below.
 
 ---
 
-## The eleven kinds, and which rules each unblocks
+## The thirteen kinds, and which rules each unblocks
 
 ### 1. Stores — *every place state lives*
 
@@ -81,8 +81,11 @@ Unblocks rules 4, 66, 86.
 
 | Required fact | Why |
 |---|---|
-| `authority` — `signal` or `block` | Rule 86: only a full-context intelligent gate may block; a brittle filter may only signal. |
-| `exactMatchOnly` — yes or no | Rule 4: the only site allowed to decide alone is an exact whole-message match against a closed list. Any `block` site that is not the mind and not `exactMatchOnly` fails. |
+| `authority` — `signal` or `block` | Rule 86: a brittle low-context filter may only signal, with exactly two ruled exceptions — secrets and money. A check is advisory because its entry says `signal`, never by habit. (Ruling 2 on the decision sheet.) |
+| `decidesAlone` — yes only for the ruled three | Rule 4: a site may decide with no model behind it only where the test is exact and a miss is irreversible — a live secret leaving, spend past a cap, the operator's emergency stop. Every other `block` entry names the model that decides. (Ruling 19.) |
+| `criticality` — the assessment that justifies the power | Rule 4: the deciding list is driven by the formal assessment of how critical each scenario is, never hand-picked. The register's `block` entries *are* that list. (Ruling 19.) |
+| `failDirection` — `open` or `closed` | Chosen from who bears the miss: reachability to the user fails open; change and release integrity fails closed. (Ruling 5.) |
+| `preservesInput` — where a blocked input is kept | Rule 4: a block always preserves its input. A site that cannot say where fails. (Rulings 19 and 2.) |
 | `inspectedBy` — the check that walks this site | Rule 66: a blocking decision the checks cannot see is unwatched by construction. |
 
 This is the smallest kind and the most important one. In 1.x the number of places that could
@@ -216,12 +219,44 @@ With four bounds, each declared in the register so a check can see them:
 So the two reviews are not in tension. The live team catches the moment; the retrospective review
 tunes the team.
 
+### 12. Protected artifacts — *every path whose change needs the operator*
+
+Unblocks rule 82 as ruled: the agent merges anything honestly green; the operator is asked only
+about changes to the constitution and to this list — and the list is short by design, because
+every entry costs a human approval. (Ruling 3 on the decision sheet.)
+
+| Required fact | Why |
+|---|---|
+| `pattern` — the path or path pattern protected | The exception to agent merge authority must be enumerable, not felt. |
+| `why` — what makes this the operator's | A protected path with no stated reason rots into superstition. |
+| `surface` — where the approval is completed | Rule 79: completable from a phone. |
+
+The constitution is always on this list; the register names the rest. One known limit, carried
+from the re-sweep (#53701): the agent authors the checkers that would enforce this list, so the
+enforcement must ultimately sit outside the agent's write authority. That design lands in the
+types step; until it does, this kind lists the paths but cannot yet hold the door alone.
+
+### 13. Governed documents — *every document that declares itself governed*
+
+Unblocks rules 90 and 91, and records ruling 32: governed does not mean on main — what makes a
+document governed is that the register records where it durably lives.
+
+| Required fact | Why |
+|---|---|
+| `location` — the durable home of the document | Ruling 32. A governed document nobody can find is not governed. |
+| `changelog` — the sibling history file | Rule 91: the body reads as its first version; the history lives beside it, validated. |
+
+One entry of this kind is a plain recorded fact rather than an obligation: this constitution's
+fork relationship to Instar 1.x's. The two are free to evolve apart — one may replace the other,
+or they may borrow from each other indefinitely — and the register records the relationship as
+a fact, never as an enforced synchronization loop. (Ruling 26 on the decision sheet.)
+
 ---
 
 ## When the shape of the register must change
 
 The shape — the kinds and their required facts — should generalize for a long time, and the
-eleven kinds above are meant to. But "should" is not a check. Three signals tell us the shape no
+thirteen kinds above are meant to. But "should" is not a check. Three signals tell us the shape no
 longer fits, and each one is mechanical:
 
 1. **A rule with no kind.** A new or amended rule says *every X* and the both-directions check
@@ -273,7 +308,7 @@ and 84 become free, as step one predicted. The held-by-the-mind group gains a na
 ## What I want from you on this document
 
 1. **One register with kinds, rather than many registers** — does that sit right?
-2. **The eleven kinds.** Anything governed that isn't listed? Anything listed that isn't real?
+2. **The thirteen kinds.** Anything governed that isn't listed? Anything listed that isn't real?
 3. **Sentinels as a kind of their own.** This is the one addition with no 1.x ancestor. It exists
    so the held-by-the-mind rules have a named, running holder — your point from the step-one review.
 4. **Generated, never hand-written.** This is the strongest claim in the document and the one most
