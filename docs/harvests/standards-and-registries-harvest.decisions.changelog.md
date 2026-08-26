@@ -4,6 +4,15 @@ _Generated from `standards-and-registries-harvest.decisions.changelog.json` by `
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 3 · 2026-08-26 · approved — operator review on PR #4; the operator's review of Aug 26: explicit rulings on ten lines plus 'any items I did not comment on are implicitly approved' — every tension is now ruled
+
+- **Recorded the final rulings on all 33 tensions: 17 and 23 confirmed as reworked; 19 confirmed with the amendment that the deciding-checks list is driven by the formal criticality assessment; 2 confirmed with a consistency check against the existing constitution (it restates current law).** — The operator's second review answered the remaining flagged lines. _(PR #4 review comments 3862388063, 3862409163, 3862417863, 3862424777)_
+- **Recorded two overrules: 26 (no deadline-bound reconciliation between the two constitutions — the fork evolves freely; replace-or-coevolve) and 4 (no role-based machine placement — the mesh's existing placement rules govern).** — The operator rejected both recommendations and supplied the ruling. _(PR #4 review comments 3862437253, 3862454145)_
+- **Recorded the reframing of 12 (model choice per scenario is data-driven from benchmark results in a recursive self-improvement loop), the scoping of 13 and 28 as 1.x convergence-effort artifacts rather than fundamentals, and the intent-led restatement of 33 (no flaky-test hostage-taking; quarantine plus defect, work proceeds).** — The operator's comments redirected these four from the recommended wording. _(PR #4 review comments 3862527755, 3862531848, 3862551437, 3862565190)_
+- **Marked the remaining eighteen tensions ruled by implicit approval and set the sheet status to approved.** — The operator's blanket statement covers every uncommented line. _(PR #4 review PRR_kwDOUCBncc8AAAABK89pZQ)_
+
+Approved in: PR #4.
+
 ## Revision 2 · 2026-08-25 · draft — operator review on PR #4; the operator's review of Aug 25 (changes requested): five rulings recorded, three answers reworked from comments, two re-explained, and a plainer-language pass over the whole sheet
 
 - **Recorded the operator's rulings on tensions 3, 16, 20, and 27 (agreed as recommended), and on 11 with an amendment: waivers are proactively collected as feedback on how the rules should evolve.** — The review answered five of the nine flagged lines; the sheet now carries the rulings so they are not lost in review comments. _(PR #4 review comments 3859671317, 3859679225, 3859686458, 3859749172, 3859774676)_

@@ -1,10 +1,53 @@
 [
   {
+    "revision": 3,
+    "date": "2026-08-26",
+    "status": "approved",
+    "cause": {
+      "kind": "review",
+      "pr": 4,
+      "note": "the operator's review of Aug 26: explicit rulings on ten lines plus 'any items I did not comment on are implicitly approved' — every tension is now ruled"
+    },
+    "approvedIn": {
+      "pr": 4,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Recorded the final rulings on all 33 tensions: 17 and 23 confirmed as reworked; 19 confirmed with the amendment that the deciding-checks list is driven by the formal criticality assessment; 2 confirmed with a consistency check against the existing constitution (it restates current law).",
+        "why": "The operator's second review answered the remaining flagged lines.",
+        "ref": "PR #4 review comments 3862388063, 3862409163, 3862417863, 3862424777"
+      },
+      {
+        "what": "Recorded two overrules: 26 (no deadline-bound reconciliation between the two constitutions — the fork evolves freely; replace-or-coevolve) and 4 (no role-based machine placement — the mesh's existing placement rules govern).",
+        "why": "The operator rejected both recommendations and supplied the ruling.",
+        "ref": "PR #4 review comments 3862437253, 3862454145"
+      },
+      {
+        "what": "Recorded the reframing of 12 (model choice per scenario is data-driven from benchmark results in a recursive self-improvement loop), the scoping of 13 and 28 as 1.x convergence-effort artifacts rather than fundamentals, and the intent-led restatement of 33 (no flaky-test hostage-taking; quarantine plus defect, work proceeds).",
+        "why": "The operator's comments redirected these four from the recommended wording.",
+        "ref": "PR #4 review comments 3862527755, 3862531848, 3862551437, 3862565190"
+      },
+      {
+        "what": "Marked the remaining eighteen tensions ruled by implicit approval and set the sheet status to approved.",
+        "why": "The operator's blanket statement covers every uncommented line.",
+        "ref": "PR #4 review PRR_kwDOUCBncc8AAAABK89pZQ"
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-08-25",
     "status": "draft",
-    "cause": { "kind": "review", "pr": 4, "note": "the operator's review of Aug 25 (changes requested): five rulings recorded, three answers reworked from comments, two re-explained, and a plainer-language pass over the whole sheet" },
-    "approvedIn": { "pr": 4, "mergeCommit": null },
+    "cause": {
+      "kind": "review",
+      "pr": 4,
+      "note": "the operator's review of Aug 25 (changes requested): five rulings recorded, three answers reworked from comments, two re-explained, and a plainer-language pass over the whole sheet"
+    },
+    "approvedIn": {
+      "pr": 4,
+      "mergeCommit": null
+    },
     "changes": [
       {
         "what": "Recorded the operator's rulings on tensions 3, 16, 20, and 27 (agreed as recommended), and on 11 with an amendment: waivers are proactively collected as feedback on how the rules should evolve.",
@@ -37,13 +80,21 @@
     "revision": 1,
     "date": "2026-08-25",
     "status": "draft",
-    "cause": { "kind": "draft", "note": "first version of the decision sheet, distilled from the harvest's 33 tensions" },
-    "approvedIn": { "pr": 4, "mergeCommit": null },
+    "cause": {
+      "kind": "draft",
+      "note": "first version of the decision sheet, distilled from the harvest's 33 tensions"
+    },
+    "approvedIn": {
+      "pr": 4,
+      "mergeCommit": null
+    },
     "changes": [
       {
         "what": "Created the one-page decision sheet: each of the 33 tensions as a question, a recommended answer, and one sentence of why; nine flagged as genuinely the operator's call.",
         "why": "The operator asked for a reviewable surface smaller than the audit reports; the tensions are the only part that needs a human ruling.",
-        "commits": ["33e09d2"],
+        "commits": [
+          "33e09d2"
+        ],
         "ref": "PR #4"
       }
     ]

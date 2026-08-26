@@ -562,7 +562,7 @@ For the 2.0 project the constitutional standards and the North Star are carried 
 
 ## Part 3 — Tensions to rule on
 
-Listed, not resolved.
+Listed here as found in the record. Every tension is now ruled; the record of rulings is the sibling decision sheet (`standards-and-registries-harvest.decisions.md`), which is the single source for what was decided.
 
 **1. The convergence bar.** Justin "convergence does not mean converging till nothing is found" — versus rule 65 ("until a pass finds nothing new"), 02's "say three" cap, his own earlier "enforced default", and Echo's two-blind-readings. The observer then approved echo rounds "as a FLOOR, not a ceiling" (#38737) and a freeze-pair. A count and a judgment cannot both be the criterion. Pass 2 sharpens it four ways: the judgment sits with the independent reviewer, never the author (#40813, #41249); the documented cap was met at round 9 and the observer ruled "CONTINUE PAST THE CAP… the cap exists to surface a design too confused to review" (#42338, #42347) — so a cap is a confusion detector, not a stopping criterion, and 02's review team still carries it as one; a calm round counts only if reading depth was held constant and the source varied (#52412, #37946); and a true finding outside the artifact's authority must be classed accepted-with-decision or the loop cannot end (#36607).
 
