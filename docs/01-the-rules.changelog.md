@@ -4,6 +4,10 @@ _Generated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-08-26 · draft — operator review on PR #7; operator's review of PR #7: the 80/20 convergence judgment must apply recursively, or a review whose finding stream never dries (e.g. vulnerabilities) can never converge
+
+- **Rule 65: the 80/20 judgment applies recursively, at every level of the review — to the audit as a whole and to each stream of findings within it; a reviewer may accept a residue (recorded, not fixed) so the review can converge, and the convergence record must name any accepted residue.** — A live spec review ran twenty-plus iterations without converging because reviewers kept finding new vulnerabilities; applied recursively, 80/20 lets the reviewer judge that some residual findings are acceptable, which is what allows convergence at all. _(PR #7 review comment 3868871083)_
+
 ## Revision 6 · 2026-08-26 · draft — operator review on PR #4; the operator's rulings on the 33 tensions (decision sheet, merged in PR #4) applied to the five existing rules they directly amend
 
 - **Rule 65 rewritten: convergence is the 80/20 judgment of an independent reviewer, never the author; a round count is a floor and a confusion detector, never the stopping rule.** — Ruling 1. _(docs/harvests/standards-and-registries-harvest.decisions.md (ruling 1); PR #4 merge 616bc3b)_
