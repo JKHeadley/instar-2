@@ -1,5 +1,67 @@
 [
   {
+    "revision": 7,
+    "date": "2026-08-26",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 7,
+      "note": "operator's review of PR #7: the 80/20 convergence judgment must apply recursively, or a review whose finding stream never dries (e.g. vulnerabilities) can never converge"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Rule 65: the 80/20 judgment applies recursively, at every level of the review — to the audit as a whole and to each stream of findings within it; a reviewer may accept a residue (recorded, not fixed) so the review can converge, and the convergence record must name any accepted residue.",
+        "why": "A live spec review ran twenty-plus iterations without converging because reviewers kept finding new vulnerabilities; applied recursively, 80/20 lets the reviewer judge that some residual findings are acceptable, which is what allows convergence at all.",
+        "ref": "PR #7 review comment 3868871083"
+      }
+    ]
+  },
+  {
+    "revision": 6,
+    "date": "2026-08-26",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 4,
+      "note": "the operator's rulings on the 33 tensions (decision sheet, merged in PR #4) applied to the five existing rules they directly amend"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Rule 65 rewritten: convergence is the 80/20 judgment of an independent reviewer, never the author; a round count is a floor and a confusion detector, never the stopping rule.",
+        "why": "Ruling 1.",
+        "ref": "docs/harvests/standards-and-registries-harvest.decisions.md (ruling 1); PR #4 merge 616bc3b"
+      },
+      {
+        "what": "Rule 4 rewritten: the no-model decision set is the ruled list — a live secret leaving, spend past a cap, the emergency stop — driven by the formal criticality assessment; everything else informs and advises, and a block preserves its input.",
+        "why": "Rulings 19 and 2.",
+        "ref": "docs/harvests/standards-and-registries-harvest.decisions.md (rulings 19, 2); PR #4 merge 616bc3b"
+      },
+      {
+        "what": "Rule 86 gains the two ruled exceptions (secrets and money) and the block-preserves-its-input clause.",
+        "why": "Ruling 2.",
+        "ref": "docs/harvests/standards-and-registries-harvest.decisions.md (ruling 2); PR #4 merge 616bc3b"
+      },
+      {
+        "what": "Rule 37 scoped to main and merge, with the flake policy: a flipping test is quarantined with a defect filed, and interrupted work proceeds.",
+        "why": "Rulings 6 and 33.",
+        "ref": "docs/harvests/standards-and-registries-harvest.decisions.md (rulings 6, 33); PR #4 merge 616bc3b"
+      },
+      {
+        "what": "Rule 82 gains merge authority: the agent merges anything honestly green; the operator is asked only for the constitution and the protected list; an approval wait never outlives its proof.",
+        "why": "Ruling 3.",
+        "ref": "docs/harvests/standards-and-registries-harvest.decisions.md (ruling 3); PR #4 merge 616bc3b"
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-08-25",
     "status": "approved",
