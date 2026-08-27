@@ -2,15 +2,15 @@
   {
     "revision": 7,
     "date": "2026-08-26",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "review",
       "pr": 7,
       "note": "operator's review of PR #7: the 80/20 convergence judgment must apply recursively, or a review whose finding stream never dries (e.g. vulnerabilities) can never converge"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 7,
+      "mergeCommit": "2f531ba263d6d77267e0a7c22d9dd640a00758ac"
     },
     "changes": [
       {
@@ -23,15 +23,15 @@
   {
     "revision": 6,
     "date": "2026-08-26",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "review",
       "pr": 4,
       "note": "the operator's rulings on the 33 tensions (decision sheet, merged in PR #4) applied to the five existing rules they directly amend"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 7,
+      "mergeCommit": "2f531ba263d6d77267e0a7c22d9dd640a00758ac"
     },
     "changes": [
       {
