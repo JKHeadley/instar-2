@@ -1,5 +1,26 @@
 [
   {
+    "revision": 8,
+    "date": "2026-08-28",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 8,
+      "note": "operator's review of PR #8: the 80/20 judgment is fractal, and its per-category test is severity — a category whose new findings trend less severe, or fall below the severity threshold, has converged even while their count grows"
+    },
+    "approvedIn": {
+      "pr": 8,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Rule 65: 'recursively … each stream' becomes 'fractally … each category', and the judgment gains its concrete test — a category converges when its new findings run progressively less severe or fall below the review's severity threshold, even though new material keeps appearing. The check column now requires the accepted residue to name the severity basis on which it was accepted.",
+        "why": "Reviewers can keep finding new security flaws indefinitely; from outside that never looks like convergence. The operator's test makes the stopping judgment concrete and auditable: the trend of severity, not the count of findings.",
+        "ref": "PR #8 review comment 3878619074"
+      }
+    ]
+  },
+  {
     "revision": 7,
     "date": "2026-08-26",
     "status": "approved",

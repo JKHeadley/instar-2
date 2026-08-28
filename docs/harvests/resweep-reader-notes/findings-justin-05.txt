@@ -1,0 +1,25 @@
+#23918 | 2026-06-10 | NEW | Foundational autonomy doctrine: a four-step false-blocker pipeline (authority → document → who unblocks → get access, then dry-run/live-run/codify), plus "decisions are cheap at agent speed" — specs frontload all user decisions; mid-run decisions are recorded and reported afterwards rather than stopping to ask.
+#24137 | 2026-06-10 | NEW | Operator ruling that an agent may not self-declare safety boundaries never agreed to (also #23353): as an org employee it is OBLIGATED to perform every task it is capable of, explicitly including passing a CAPTCHA — org governance defines what is off-limits.
+#25511 | 2026-06-13 | NEW | Every feature/spec MUST state its relationship to the constitution and downstream standards; if none exists it stops and resolves whether the feature is unconstitutional or exposed a standards gap.
+#22655 | 2026-06-08 | NEW | Every Instar agent must have the complete capability to develop Instar with the same tools Instar uses on itself — dev skills installed by default for ALL agents.
+#25758 | 2026-06-13 | NEW | Human employees must NEVER have to remember anything — agents own all commitments end-to-end, and every authorization blocker is reviewed as an opportunity for a standing grant (a grant ratchet).
+#24244 | 2026-06-11 | NEW | First statement of token-audit completeness as a requirement: full insight into tokens spent per feature, sorted by model, as a precondition for ANY feature.
+#23994 | 2026-06-10 | NEW | Declared walls/blockers are re-verified on a cadence — "periodically checking in with walls to make sure they are still walls".
+#22873 | 2026-06-08 | NEW | Any link handed to the user must be complete, functional and clickable; an ELI16 overview without its link is useless; a file path instead of a tunnel link is a violation.
+#26646 | 2026-06-16 | UNSURE | A2A channels must let agents robustly verify each other's identity so secrets can be shared — the operator directive behind verified pairing.
+#27443 | 2026-06-19 | UNSURE | Durability of injected knowledge must survive COMPACTION, not just session start — "session-start is not sufficient" as a named gap.
+#28383 | 2026-06-24 | SHARPENS(Theme 14 #45141) | Prompt quality is part of the enforcement class: exact matching runs outside the prompt and is fed to the LLM as context.
+#22451 | 2026-06-08 | SHARPENS(Theme 8 #52332) | Injecting info into a topic should TRIGGER that topic's session to act on it, not wait for a nudge.
+#23980 | 2026-06-10 | SHARPENS(Theme 12 #36439) | ELI16 overviews must ALWAYS end with open questions in plain terms.
+#22727 | 2026-06-08 | UNSURE | Subscription balancing prioritizes accounts closest to reset (use-it-or-lose-it); extended to a continuous micro-trader model (#24592).
+#22527 | 2026-06-08 | UNSURE | An account/credential record must carry known re-auth longevity.
+#24605 | 2026-06-11 | SHARPENS(Theme 9 #40588) | Subscription accounts belong to the ORG, shared equally; per-machine account ownership is meaningless for one agent across machines (#27510).
+#26253 | 2026-06-15 | SHARPENS(Theme 23 #46805) | Earlier first statement of the routing default: gates/sentinels on Codex with ordered fallback chain, user-overridable.
+#22486 | 2026-06-08 | SHARPENS(Theme 10 #42390) | Earlier first statement of the accurate-time mandate; #25076 "MANDATE accurate time reporting and NOT allow guessing".
+#24607 | 2026-06-11 | SHARPENS(Theme 1 #30354) | Blindspot questions must be an automatic built-in process on EVERY proven operator correction.
+#22560 | 2026-06-08 | SHARPENS(Theme 9 #49562) | Earlier first statement of the browser-profile registry kind.
+#24984 | 2026-06-12 | SHARPENS(Theme 16 #34414) | Earlier first statement of mobile-completeness as a constitutional standard.
+#25671 | 2026-06-13 | SHARPENS(Theme 11 #36676) | Earlier first statement of per-principal identity: agents hold their OWN platform accounts.
+#26295 | 2026-06-15 | UNSURE | Origin of word≠action tracking as infrastructure: sentinels detect action claims and track follow-through — the impetus for commitment tracking.
+#24309 | 2026-06-11 | UNSURE | Cross-channel feature parity as a standing requirement for every new channel.
+#22524 | 2026-06-08 | UNSURE | User-facing documents should rarely display command-line calls — all functionality presented conversationally.

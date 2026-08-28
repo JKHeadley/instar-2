@@ -1,0 +1,25 @@
+#19411 | 2026-06-04 | SHARPENS(T8/Know-Your-Principal) | Origin incident of "relayed approval is non-authoritative": the requester vouching for itself under deadline pressure; Dawn refused, Echo ratified her line — deadline is never an authorization input.
+#20889 | 2026-06-05 | SHARPENS(Theme 16) | Birth of Know Your Principal, ratified out of the Caroline identity-contamination incident.
+#18191 | 2026-06-02 | SHARPENS(self-stop family) | Origin incident of the self-stop hard block: a 12h session closed early citing "maxed context"; the self-stop-guard shipped days later.
+#17494 | 2026-05-31 | SHARPENS(Theme 10 #42390) | Fabrication incident behind derive-at-writing: invented version/gitHead values, retracted, "every value is read from a command before I write it".
+#22067 | 2026-06-07 | NEW | Birth of AGENT-RETRIEVES-FIRST secrets standard: "agent fetches any secret it can reach itself; Secret Drop is last resort," baked into template + migration fleet-wide.
+#20561 | 2026-06-05 | SHARPENS(Capacity-Safety) | No Unbounded Loops ratified with the Eternal Sentinel caveat as a first-class clause, born from the 17,503-kill reaper flood.
+#21887 | 2026-06-07 | SHARPENS(Guard-Posture Tripwire) | Origin incident of "a disabled guard is itself an incident": an emergency load-shed silently disabled NINE guards.
+#18062 | 2026-06-01 | NEW | Birth of TIME_CLAIM/SessionClock: caught winding down a 12h window at 4h; fix became a durable session record + per-turn clock injection.
+#17838 | 2026-06-01 | SHARPENS(ruling 3) | Earliest explicit merge ruling, locked by read-back: the agent auto-merges clean green PRs; the operator spot-checks.
+#20152 | 2026-06-05 | SHARPENS(ruling 3) | Operator role narrowed to approvals only, saved durably: "'Ready for your merge' is retired from my vocabulary."
+#17456 | 2026-05-31 | NEW | Birth record of Close the Loop (Untracked = Abandoned) — proposed, ratified in chat, landed beside Deferral = Deletion.
+#17452 | 2026-05-31 | NEW | Birth of "Ground Before You Assert" + the grounding-before-messaging gate on threadline_send.
+#17354 | 2026-05-31 | SHARPENS(#50976) | First structural anti-stall guard: the stop-gate hook catching announce-then-go-silent, verified firing on Echo itself.
+#18304 | 2026-06-02 | SHARPENS(Theme 6 #34085) | Birth of the development-agent gate: ship ENABLED on the dev agent, dark for the fleet — the flag used everywhere since.
+#20144 | 2026-06-05 | NEW | Compaction Parity constitutional amendment: anything injected at session start must re-inject after every compaction.
+#18957 | 2026-06-03 | SHARPENS(Theme 1) | Two standards ratified with exact-words ratification: Distrust Temporary Success and Friction Is a Spec.
+#20815 | 2026-06-05 | SHARPENS(rule 89) | Birth of Truthful Provenance: infrastructure notices landed as if the operator wrote them and the agent replied to its own machinery.
+#22303 | 2026-06-07 | SHARPENS(rule 65) | Birth of the Iterative Converging Audit as skill + standard, generalized from the live LLM-fallback audit.
+#22166 | 2026-06-07 | SHARPENS(Theme 5 #38929) | Birth of Observable Intelligence: any autonomous LLM action must be auditable after the fact.
+#19792 | 2026-06-04 | SHARPENS(Theme 16 grants) | Birth of the Coordination Mandate: deny-by-default permission slips issued only via dashboard PIN.
+#19714 | 2026-06-04 | SHARPENS(#53921) | "The approval layer must be un-authorable by the agent": refusing to modify branch-protection even with explicit authorization.
+#21421 | 2026-06-06 | SHARPENS(Theme 14) | Operator ruling the tone/clarity gate is inform-only — the June origin of the advisory-gate model.
+#19733 | 2026-06-04 | SHARPENS(T8 #30687) | Approval-as-Data generalized: the ledger records ALL approvals wherever they occur, tagged with provenance.
+#19675 | 2026-06-04 | NEW | Notice + Solve Inefficiencies codified as the proactive sibling of Friction Is a Spec.
+#22380 | 2026-06-08 | SHARPENS(Self-Unblock) | "An agent dependency is NOT a blocker" made structural: the stop-reason guard blocks peer-dependency stop-reasons fleet-wide.
