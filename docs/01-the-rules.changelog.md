@@ -4,11 +4,11 @@ _Generated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 8 · 2026-08-28 · draft — operator review on PR #8; operator's review of PR #8: the 80/20 judgment is fractal, and its per-category test is severity — a category whose new findings trend less severe, or fall below the severity threshold, has converged even while their count grows
+## Revision 8 · 2026-08-28 · approved — operator review on PR #8; operator's review of PR #8: the 80/20 judgment is fractal, and its per-category test is severity — a category whose new findings trend less severe, or fall below the severity threshold, has converged even while their count grows
 
 - **Rule 65: 'recursively … each stream' becomes 'fractally … each category', and the judgment gains its concrete test — a category converges when its new findings run progressively less severe or fall below the review's severity threshold, even though new material keeps appearing. The check column now requires the accepted residue to name the severity basis on which it was accepted.** — Reviewers can keep finding new security flaws indefinitely; from outside that never looks like convergence. The operator's test makes the stopping judgment concrete and auditable: the trend of severity, not the count of findings. _(PR #8 review comment 3878619074)_
 
-Approved in: PR #8.
+Approved in: PR #8, merge `2b44142ff`.
 
 ## Revision 7 · 2026-08-26 · approved — operator review on PR #7; operator's review of PR #7: the 80/20 convergence judgment must apply recursively, or a review whose finding stream never dries (e.g. vulnerabilities) can never converge
 

@@ -10,7 +10,7 @@
     },
     "approvedIn": {
       "pr": 8,
-      "mergeCommit": null
+      "mergeCommit": "2b44142"
     },
     "changes": [
       {
@@ -46,7 +46,7 @@
     },
     "approvedIn": {
       "pr": 8,
-      "mergeCommit": null
+      "mergeCommit": "2b44142"
     },
     "changes": [
       {
@@ -65,8 +65,8 @@
       "note": "first pass of the re-sweep over the record widened by the 2026-08-26 Telegram export (39,837 newly-visible messages)"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 8,
+      "mergeCommit": "2b44142"
     },
     "changes": [
       {

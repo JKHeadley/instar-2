@@ -2,7 +2,7 @@
   {
     "revision": 8,
     "date": "2026-08-28",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "review",
       "pr": 8,
@@ -10,7 +10,7 @@
     },
     "approvedIn": {
       "pr": 8,
-      "mergeCommit": null
+      "mergeCommit": "2b44142ffd7820f927fa12e2795704fd93df6fa6"
     },
     "changes": [
       {
