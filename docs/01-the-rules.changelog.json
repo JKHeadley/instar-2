@@ -2,15 +2,15 @@
   {
     "revision": 9,
     "date": "2026-08-26",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "review",
       "pr": 4,
       "note": "net-new rules implied by the operator's rulings and by the re-sweep of the widened Telegram record (PR #8): 22 rules added, 92-113"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 9,
+      "mergeCommit": "9f5cbaa0a912553e37df1032f7b74c7506cefdc7"
     },
     "changes": [
       {
