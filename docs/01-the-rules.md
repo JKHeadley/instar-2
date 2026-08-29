@@ -50,14 +50,15 @@ meaning.
 
 | Group | Count |
 |---|---|
-| Checkable now | 20 |
+| Checkable now | 21 |
 | Free from the core | 9 |
-| Needs building | 51 |
-| Held by the mind | 11 |
-| **Total** | **91** |
+| Needs building | 71 |
+| Held by the mind | 12 |
+| **Total** | **113** |
 
-Twenty of ninety-one can be checked by a script today. That is the honest starting position,
-and it is roughly what 1.x's own record shows: 92 checks in the running system, 20 confirmed on.
+Twenty-one of one hundred thirteen can be checked by a script today. That is the honest starting
+position, and it is roughly what 1.x's own record shows: 92 checks in the running system, 20
+confirmed on.
 
 ---
 
@@ -201,7 +202,7 @@ reconstructable from the log* — argues the same way.
 
 ---
 
-### Checkable now — 20 of 91
+### Checkable now — 21 of 113
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -225,8 +226,9 @@ reconstructable from the log* — argues the same way.
 | 81 | Dashboard UX Standard | The operator's dashboard meets eleven objective floors (reachable on every screen size, no collapsed primary action, and so on). | Eleven checks in CI. 1.x already enforces them. |
 | 83 | The Agent Carries the Loop | A promise is the agent's job to finish, never the user's job to remember. | A commitment cannot be created without declaring who owns it and what it waits on. Refused at creation. |
 | 91 | A Document Reads as Its First Version | A governed document reads as if written once, today: no revision notes, review responses, or "what changed" prose in the body. Its history lives beside it in `NAME.changelog.json`, one entry per revision, each change linking to the commit or review comment that caused it. Full text: `docs/rules/91-a-document-reads-as-its-first-version.md`. | A script walks every governed document and fails on a revision marker in the body; `scripts/validate-changelog.mjs` fails the sibling changelog on any missing field. Governed is a property a document declares (or a rule names it and then it must declare), never a folder. |
+| 106 | A Link Handed to a Human Works | Every link sent to a person is complete and clickable from where they are: never localhost, never a bare id where a name exists, never a path only the agent can open. | A lint over link shapes at the outbound doorway — 1.x already refuses localhost links in automated sends. (First stated by the operator at #22873, #20131, #19466; recovered by the 2026-08-26 re-sweep.) |
 
-### Free from the core — 9 of 91
+### Free from the core — 9 of 113
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -240,7 +242,7 @@ reconstructable from the log* — argues the same way.
 | 78 | No Manual Work (user *or* agent) | Capturing context and using available tools is automatic. Neither the user nor the agent should have to remember a feature exists. | Free once the capability list is generated from the modules rather than hand-written. The check: no hand-maintained list exists. |
 | 84 | Agent Awareness | Every feature is written into the agent's own briefing. A capability the agent doesn't know about, it doesn't have. | Free from the same generation as #78. A hand-maintained briefing is exactly how 1.x lost this one. |
 
-### Needs building — 51 of 91
+### Needs building — 71 of 113
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -295,8 +297,28 @@ reconstructable from the log* — argues the same way.
 | 88 | Self-Heal Before Notify | The operator hears about an internal issue only after self-healing has tried and failed. | Enforced by the notice type requiring a reference to the failed self-heal attempt. |
 | 89 | Truthful Provenance | Every message carries who it is really from. Infrastructure speaks as infrastructure; the agent speaks as itself. | Outbound messages carry signed provenance. Signing must be automatic, which it is not in 1.x. |
 | 90 | History Is a Lookup | Anything that governs — a rule, a term, a register kind, a required fact, an entry — is versioned by construction. Each version carries when it began, what it replaced, and the pull request and commit that approved it, generated from git. Nothing is edited in place; the old version stays. Defined in step three, the glossary. | Needs the register (step two) and its `supersedes` / `approvedIn` facts generated from git. The build refuses an in-place edit to a governing entry that does not produce a new version, and any `approvedIn` that is not a real merge commit on main. |
+| 92 | An Autonomous Session Reports on a Cadence | Every autonomous session has a check-in cadence — one hour by default, adjustable per session and per role by whatever charter governs it. A correction to a wrong claim goes out promptly, outside the cadence — and a session that keeps correcting itself has a defect in its checks, fixed at the source. | A registered run carries its cadence, and a missed check-in is visible on the throughput surface (#64). (Ruling 17 on the decision sheet.) |
+| 93 | A Directive Holds Until Superseded or Done | The operator's directives never expire on a timer. One holds until the operator supersedes it or it is complete. | Directives are recorded with no expiry to misuse; a directive closes only by supersession or completion, each citing its cause. (Ruling 27 on the decision sheet.) |
+| 94 | A Waiver Comes Before the Act — and Feeds the Rule | Breaking the letter of a rule needs the operator's waiver, given before the act; without it the act is a violation even when the outcome was good. Waivers are collected as feedback on the rules themselves: a rule that keeps needing waivers should evolve, and the waiver record is the evidence. | A waiver is a recorded artifact linked to its rule; the rules review reads the waiver counts per rule. (Ruling 11 on the decision sheet.) |
+| 95 | Fail Direction Is Declared Per Consumer | Every gate declares which way it fails when it cannot decide, chosen from who bears the miss: reachability to the user fails open; change and release integrity fails closed. | Every gate carries a declared fail direction; a gate without one fails the build. (Ruling 5 on the decision sheet.) |
+| 96 | A Session Grounds in Its Full History | A new session reads the full history of its topic up to a generous token threshold; history beyond it is covered by rolling summaries kept current by background jobs. Grounding includes time: elapsed time is unreadable from inside a session — a resume after a day is indistinguishable from a resume after a minute — so the session reads the actual clock rather than assuming, and reasons from the gap it finds. Substituting memory or a partial skim for that read is a violation, declared or not. | The grounding read is a recorded step a session cannot skip, the clock read is part of that step, and the summaries' freshness is checked on a cadence. (Ruling 23 on the decision sheet; the clock clause from the operator's PR #8 review.) |
+| 97 | Work Stops on Its Exit Test, Never the Clock | A window of work closes when its exit test passes or is proven unreachable; the clock is only a safety ceiling, and a solvable constraint is never a reason to stop. The next window starts on its own the moment the boundary review is posted. | A registered run declares its exit test; a stop that cites neither a passed test nor a proven-unreachable record is refused. (Ruling 16 on the decision sheet.) |
+| 98 | Silence Is Never the Operator's Consent | The operator's silence never means yes. A peer agent's silence past a declared deadline is concurrence — but only because the deadline was declared. | An approval cannot be constructed from absence — it is a type that requires an explicit yes; peer-review deadlines are recorded, never implied. (Ruling 10 on the decision sheet.) |
+| 99 | A Settled Wall Carries a Recheck Date | "It can't be done" is re-verified on a cadence: a settled true-blocker records when it will be tested again, because walls fall — models improve, access changes, vendors ship. Extends #20. | The blocker record requires a recheck-after date, and an overdue recheck is a defect. (First stated by the operator at #23994, #24007; recovered by the 2026-08-26 re-sweep.) |
+| 100 | A Secret Is Stored Before It Is Spent | A secret handed to the agent goes into secure storage before anything consumes it — never used from chat and lost. A fixed-lifetime credential is a scheduled outage: its expiry is a registry fact with escalating reminders. | The intake path writes to the vault first; a credential record carries its expiry and reminder schedule. (First stated by the operator at #19301, #48090, #11087; recovered by the 2026-08-26 re-sweep.) |
+| 101 | Hooks Are Never Skipped Silently | Bypassing a guard hook (`--no-verify` and its kin) happens only on the operator's explicit ask, and any use is disclosed at the time. | Every bypass is recorded with its authorization; an unauthorized bypass in the audit fails the review. (First stated by the operator at #9617; recovered by the 2026-08-26 re-sweep.) |
+| 102 | Decisions Are Cheap at Agent Speed | A spec frontloads every decision the operator must make. A decision that surfaces mid-run is made, recorded, and reported — never a stop-and-ask, because at agent speed re-deciding later costs less than an idle run waiting on a human. | A run's mid-course decisions land in the decision journal; a stop whose reason is an answerable question is refused by the same machinery as #22. (First stated by the operator at #23918; recovered by the 2026-08-26 re-sweep.) |
+| 103 | Boundaries Come From Governance, Not Self-Declaration | The agent may not invent a safety boundary nobody agreed to and refuse work behind it. What is off-limits is defined by org governance; a proposed new boundary is a question for the operator, never a unilateral fence. | A refusal citing a boundary must cite the governing constraint it comes from. (First stated by the operator at #24137, #23353; recovered by the 2026-08-26 re-sweep.) |
+| 104 | Every Authorization Is a Candidate Standing Grant | Humans never have to remember anything — including that they already said yes. Each authorization that reaches the operator is reviewed as a candidate standing grant, so the same yes is never asked twice. | Approvals are recorded with scope; a review walks repeated asks and proposes the grant. (First stated by the operator at #25758; recovered by the 2026-08-26 re-sweep.) |
+| 105 | Channel Parity | What the agent can do on one messaging surface it can do on every messaging surface, and the gap is measured, not guessed: a register of every platform feature is the measuring stick, modeled on Migration Parity (#44). | The feature-by-channel register exists, and a new channel feature lands with its parity row. (First stated by the operator at #12276, #12280, #4165; recovered by the 2026-08-26 re-sweep.) |
+| 107 | Each Gate Has Its Own Bar | Evidence is submitted to a gate on that gate's bar. Red evidence goes in as red, with each failure classified — never held back to be judged on a later gate's higher bar. | The gate submission carries per-item classification; withholding shows as a gap between what was produced and what was submitted. (First stated by the operator at #57428; recovered by the 2026-08-26 re-sweep.) |
+| 109 | A Document Under Review Is Frozen | While reviewers read, the document does not move — a moving target voids the review. Between rounds, an append-heavy draft that stops converging is rewritten as a synthesis rather than grown further. | Governed documents carry a review state; a push to a frozen document is refused. (First stated by the operator at #38733, #46831; recovered by the 2026-08-26 re-sweep.) |
+| 110 | A Compaction Is Disclosed, Not Papered Over | When a session resumes from a compacted context it says so, and provably accounts for the last message it received before the pause rather than bluffing continuity. Extends #47. | The post-compaction injection carries the last inbound message id, and the first reply must account for it. (First stated by the operator at #7715; recovered by the 2026-08-26 re-sweep.) |
+| 111 | A Review Audits the Layer Below | Every convergence review checks not only the artifact before it but the foundation one layer beneath it — an approved spec on a rotten assumption is rot with a signature. | The review artifact names the layer-below items it checked; an empty section is a finding. (First stated by the operator at #23904; recovered by the 2026-08-26 re-sweep.) |
+| 112 | Green History Is Preserved | A branch's record of passing checks is evidence and is kept. A history-erasing redo is allowed only when the useful signal never existed. | A redo that erases green history requires a recorded reason; the CI record itself is append-only. (First stated by the operator at #16696; recovered by the 2026-08-26 re-sweep.) |
+| 113 | Every Change Declares Its Multi-Machine Posture | A change states in writing how it behaves when the agent runs on several machines — even when the answer is "machine-local, deliberately." Silence is not single-machine. #32 declares this for state; this declares it for every change. | A required posture field on the change artifact; absence fails. (First stated by the operator at #25011; recovered by the 2026-08-26 re-sweep.) |
 
-### Held by the mind — 11 of 91
+### Held by the mind — 12 of 113
 
 These are binding. The mind holds them; the script proves the mind was looking.
 
@@ -313,10 +335,14 @@ These are binding. The mind holds them; the script proves the mind was looking.
 | 51 | Notice + Solve Inefficiencies | Actively look for waste and eliminate it, continuously — not only the waste that blocks you. | A dedicated background sentinel whose one job is scanning for inefficiency and filing candidates. The script proves the sentinel exists and ran. |
 | 54 | Conservative Outbound: Act, Don't Notify | The default for any candidate message is to act on it, not to tell the user about it. Notifying must clear a bar. | The per-message call is the mind's. Requiring a stated reason for notifying is the checkable arm. |
 | 80 | Operator-Surface Quality | A surface the operator uses must not just be reachable, it must be *good*: primary action first, plain language, nothing collapsed. | Whether it is genuinely clear is the mind's. #81 is the mechanical floor underneath it. |
+| 108 | A Conclusion and Its Reason Are Separately Falsifiable | A verdict records the conclusion and the justification as separate claims. Refuting the reason forces re-derivation even when the conclusion still stands — a right answer for a wrong reason is an unexamined answer. | The verdict record carries both fields (checkable); noticing that a cited reason has been refuted, and re-deriving, is the mind's — the retrospective review looks for verdicts standing on refuted reasons. (First stated by the operator at #47925; recovered by the 2026-08-26 re-sweep.) |
 
 ---
 
 *Source: the 89 standards in Instar 1.x's `docs/STANDARDS-REGISTRY.md`, read on 2026-08-23.
 Every count of those 89 came from that file, not from recollection. Rules 90 and 91 are this
-project's own, born from doing steps one to three. This document's history is in
-`01-the-rules.changelog.json` beside it.*
+project's own, born from doing steps one to three. Rules 92 to 113 are the operator's: seven
+restate rulings from his decision-sheet reviews of Aug 25–26, 2026 (each names its ruling), and
+fifteen are rules he stated in the full Telegram record and the original harvest never carried,
+recovered by the 2026-08-26 re-sweep (each cites the message id of its first statement). This
+document's history is in `01-the-rules.changelog.json` beside it.*
