@@ -1,0 +1,25 @@
+#47499 | 2026-08-17 | NEW | Operator ruled kill-vs-quiesce for duplicate sessions: the losing copy STANDS DOWN rather than being force-killed — the ruling that birthed the stand-down feature.
+#46831 | 2026-08-16 | NEW | Operator-supplied mechanism for a review that can't converge: rewrite/synthesize the document between rounds instead of appending history (birth of "review history belongs in the report").
+#47925 | 2026-08-18 | NEW | A ruling can uphold a verdict while refusing both of its stated reasons — conclusion and justification are separately falsifiable.
+#48090 | 2026-08-18 | NEW | Fixed-lifetime credential = scheduled outage class: npm publish token expired at its 90-day default; npm returns 404 (not 403) for an unauthorized token.
+#46957 | 2026-08-16 | SHARPENS(#41039) | Live reproduction that the enforcement number is prose-driven — manufactured enforcement demonstrated.
+#46902 | 2026-08-16 | SHARPENS(#47205) | Birth incident of the mutation battery: 13/13 ratchets tested were hollowable.
+#46908 | 2026-08-16 | SHARPENS(T19 #39695) | The outbound gate blocked the audit's honest report for quoting the constitution while a rewording sailed through — a blocking gate trains evasion.
+#46950 | 2026-08-16 | SHARPENS(T19 #39658) | The outbound check measured as inverted on honest traffic — a gate's polarity must be graded.
+#46972 | 2026-08-16 | SHARPENS(Theme 7 #48442) | Earlier live instance of could-not-look: a probe returned clean PASS when it could not acquire posture at all.
+#47972 | 2026-08-18 | SHARPENS(#49367) | Certification does not travel with transplanted code — it must be re-earned on the destination.
+#47966 | 2026-08-18 | SHARPENS(#47477) | A confirming review found contaminated is withdrawn wholesale and redone, never patched.
+#50398 | 2026-08-20 | SHARPENS(Theme 24 #55974) | "Merging will not deliver it to a single agent" — merged ≠ delivered; merge decisions must consult publish-pipeline health.
+#50409 | 2026-08-20 | SHARPENS(Theme 5) | The guard built precisely for publish outages existed but never fired — an existing-but-blind guard extends silence while claiming coverage.
+#50214 | 2026-08-20 | SHARPENS(Theme 8) | The relay printed "Sent … success" for BOTH copies when the server suppressed one — sender-side success is not delivery.
+#48250 | 2026-08-18 | SHARPENS(Theme 8 #35743) | A PR whose only checks were deployment previews was never tested at all while presenting as clean; checks-ran is a distinct rung below checks-green.
+#49110 | 2026-08-19 | SHARPENS(#43240) | A missing ruling is never reconstructed from its summary — the agent held work and demanded the text resend.
+#51195 | 2026-08-20 | SHARPENS(Theme 11 #49295) | Charter authenticity checked before acting; whole redelivered ruling bursts refused and acted on zero times.
+#50350 | 2026-08-20 | SHARPENS(Theme 11) | The machine-to-machine hand-off path performs no signature check at all — verification missing at the injection consumer.
+#49331 | 2026-08-19 | SHARPENS(#48625) | "Rehearsal-exercised" is not production-proven — rehearsal evidence must be re-earned on the production path.
+#49436 | 2026-08-19 | SHARPENS(#41883) | A record can be fresh and unreproducible at once; freshness scoped to cited hashes leaves uncited artifacts a blind spot.
+#51586 | 2026-08-21 | SHARPENS(Theme 7) | "A search that lied by finding something" — a positive match also needs shape verification before it counts.
+#50537 | 2026-08-20 | SHARPENS(#56129) | A duty written as "mine to send" in two owners' state files double-fires — an obligation needs exactly one recorded custodian.
+#46846 | 2026-08-16 | SHARPENS(#46828) | The between-round holistic synthesis step existed in the process definition but had never been run — running it converged a review 30 append-rounds could not.
+#45862 | 2026-08-15 | SHARPENS(#50428) | Byte-identical duplicate requests are hash-checked and answered by reference, never re-executed.
+#46513 | 2026-08-16 | SHARPENS(#43671) | The night's three "new" problems were already in the agent's own commitment log — prior-findings registers must be consulted before rework.

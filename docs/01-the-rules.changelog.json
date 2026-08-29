@@ -1,16 +1,68 @@
 [
   {
-    "revision": 7,
+    "revision": 9,
     "date": "2026-08-26",
     "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 4,
+      "note": "net-new rules implied by the operator's rulings and by the re-sweep of the widened Telegram record (PR #8): 22 rules added, 92-113"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Rules 92-98 added, each restating a decision-sheet ruling as an operating rule: check-in cadence (92, ruling 17), directive persistence (93, ruling 27), waiver-before-the-act (94, ruling 11), fail direction per consumer (95, ruling 5), full-history session grounding (96, ruling 23), exit-test-not-clock (97, ruling 16), silence-is-never-consent (98, ruling 10).",
+        "why": "The rulings are law but lived only in the decision sheet; the rule book is where sessions read their duties.",
+        "ref": "docs/harvests/standards-and-registries-harvest.decisions.md; PR #4 merge 616bc3b"
+      },
+      {
+        "what": "Rules 99-113 added from the re-sweep's Part 2: operator-stated rules the original harvest never carried, each citing the message id of its first statement (recheck-dated walls 99; secret-stored-before-spent 100; hooks-never-skipped-silently 101; decisions-are-cheap 102; boundaries-from-governance 103; standing-grant ratchet 104; channel parity 105; working links 106; per-gate evidence bar 107; separately-falsifiable verdicts 108; frozen-under-review 109; compaction disclosure 110; layer-below review 111; green-history preservation 112; multi-machine posture declaration 113).",
+        "why": "The 2026-08-26 full export widened the record to March 8; these rules were stated in the newly-visible span.",
+        "ref": "docs/harvests/standards-and-registries-resweep.md (Part 2); resweep-reader-notes/ for the verbatim citations"
+      },
+      {
+        "what": "Group counts updated (21 checkable / 9 free / 71 needs building / 12 mind, total 113) and the source note now names where rules 92-113 came from.",
+        "why": "Consequence of the additions.",
+        "ref": "this revision"
+      }
+    ]
+  },
+  {
+    "revision": 8,
+    "date": "2026-08-28",
+    "status": "approved",
+    "cause": {
+      "kind": "review",
+      "pr": 8,
+      "note": "operator's review of PR #8: the 80/20 judgment is fractal, and its per-category test is severity — a category whose new findings trend less severe, or fall below the severity threshold, has converged even while their count grows"
+    },
+    "approvedIn": {
+      "pr": 8,
+      "mergeCommit": "2b44142ffd7820f927fa12e2795704fd93df6fa6"
+    },
+    "changes": [
+      {
+        "what": "Rule 65: 'recursively … each stream' becomes 'fractally … each category', and the judgment gains its concrete test — a category converges when its new findings run progressively less severe or fall below the review's severity threshold, even though new material keeps appearing. The check column now requires the accepted residue to name the severity basis on which it was accepted.",
+        "why": "Reviewers can keep finding new security flaws indefinitely; from outside that never looks like convergence. The operator's test makes the stopping judgment concrete and auditable: the trend of severity, not the count of findings.",
+        "ref": "PR #8 review comment 3878619074"
+      }
+    ]
+  },
+  {
+    "revision": 7,
+    "date": "2026-08-26",
+    "status": "approved",
     "cause": {
       "kind": "review",
       "pr": 7,
       "note": "operator's review of PR #7: the 80/20 convergence judgment must apply recursively, or a review whose finding stream never dries (e.g. vulnerabilities) can never converge"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 7,
+      "mergeCommit": "2f531ba263d6d77267e0a7c22d9dd640a00758ac"
     },
     "changes": [
       {
@@ -23,15 +75,15 @@
   {
     "revision": 6,
     "date": "2026-08-26",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "review",
       "pr": 4,
       "note": "the operator's rulings on the 33 tensions (decision sheet, merged in PR #4) applied to the five existing rules they directly amend"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 7,
+      "mergeCommit": "2f531ba263d6d77267e0a7c22d9dd640a00758ac"
     },
     "changes": [
       {

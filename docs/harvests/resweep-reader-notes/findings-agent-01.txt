@@ -1,0 +1,25 @@
+#8140 | 2026-04-23 | NEW | An instar agent's E2E fixture wiped the entire instar source tree and pushed the wipe to public GitHub — the founding incident behind SourceTreeGuard/SafeGitExecutor.
+#8244 | 2026-04-26 | SHARPENS(Theme 8 #52811) | Second wipe traced to a "follow-up" nobody owned — the birth of Deferral = Deletion.
+#8255 | 2026-04-26 | NEW | Operator ruling: allowed deadlines for spec-deferred items are cut by ten.
+#6937 | 2026-04-17 | NEW | Birth of the "context-death trap": Justin names it; Echo verifies no such instruction exists on disk — origin of No Context-Death Self-Stops and the later B15 wall.
+#6490 | 2026-04-15 | NEW | Birth of the commitment-backing standard: "I'll relay back when Dawn responds" silently evaporated with the session — every promise must be backed by durable infrastructure.
+#10126 | 2026-05-15 | NEW | Justin locks two foundational Anthropic path rules — subscription path is the always-available floor; no raw metered API — enforced by sweep + canary.
+#10536 | 2026-05-17 | NEW | Birth of the Agent Worktree Convention: macOS sandbox revoked mid-session access, so worktrees move to the agent home as a fleet-wide rule.
+#7001 | 2026-04-17 | NEW | Birth of parallel-dev isolation: one session's stash/clean destroyed another's 1028 uncommitted lines — every session works only in its own copy.
+#6417 | 2026-04-15 | SHARPENS(Theme 14) | The April birth of signal-vs-authority: detectors become signals, judgment becomes singular authority.
+#6570 | 2026-04-15 | SHARPENS(Theme 13) | Justin verbally commissions /spec-converge — the origin of the convergence discipline.
+#11470 | 2026-05-21 | SHARPENS(ruling 1) | Justin's strict convergence definition on record: zero corrections AND zero new findings — the pre-80/20 baseline rule.
+#11717 | 2026-05-22 | SHARPENS(Theme 13) | External cross-model review catches what internal same-prior reviewers miss — the recorded rationale for mandatory external rounds.
+#10211 | 2026-05-15 | SHARPENS(Theme 8 #49088) | "Phase 4 complete" declared on structural-only evidence with zero real API calls — evidence-must-execute.
+#8221 | 2026-04-26 | SHARPENS(Theme 5 #38321) | The guard shipped to stop the wipe did not prevent the second wipe — ancestral exists≠wired≠effective.
+#10578 | 2026-05-17 | SHARPENS(Theme 22) | Birth of test-driver-as-self through real Telegram — ancestor of Live-User-Channel Proof.
+#11211 | 2026-05-20 | SHARPENS(ruling 2) | The operator's master password printed into the transcript by a fallback branch — the incident behind the hardened never-print retrieve path and deterministic credential wall.
+#11285 | 2026-05-20 | SHARPENS | "The unlock script was on disk this whole time" — the discoverability failure seeding Self-Discovery / Rung 0.
+#8751 | 2026-05-01 | SHARPENS(Theme 8 #48460) | Merged-on-main ≠ published-to-npm established as distinct delivered-ladder rungs.
+#9249 | 2026-05-11 | SHARPENS(Theme 12) | Standing rules: every handoff leads with the ELI16; approval by chat reply recorded into frontmatter, never operator file edits.
+#9864 | 2026-05-13 | SHARPENS(Theme 12) | The ELI16 requirement made structural — a gate in /instar-dev shipped for every agent.
+#9846 | 2026-05-13 | SHARPENS(Theme 8 #50314) | Seamless migration hardened into nine named gated invariants.
+#11779 | 2026-05-22 | SHARPENS(ruling 19) | B15 ships as a structural outbound gate — the first self-stop wall becoming machinery.
+#9617 | 2026-05-12 | NEW | Standing rule: never skip hooks (--no-verify) unless the operator explicitly asked, and any use must be disclosed.
+#7102 | 2026-04-18 | SHARPENS(ruling 16) | Each PR is a step, not a stopping point — approved scope chains PR→CI→merge→next PR with no per-PR check-ins.
+#11772 | 2026-05-22 | SHARPENS(ruling 10) | "'User didn't contradict' isn't evidence — agent-originated evidence can launder into authority."

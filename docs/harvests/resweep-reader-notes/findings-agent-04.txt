@@ -1,0 +1,25 @@
+#23936 | 2026-06-10 | SHARPENS(Theme 7 / Self-Unblock) | The operator's two "Agent Autonomy Principles" captured verbatim as docs/AGENT-AUTONOMY-PRINCIPLES.md — documented origin of the Blocker Ledger and Decision-Completeness gate.
+#23599 | 2026-06-09 | SHARPENS(ruling 3 #40854) | Earliest record of the who-merges ruling, noted "permanently": a green PR the agent authored is the agent's to merge.
+#25522 | 2026-06-13 | SHARPENS(Theme 6 #34085) | Birth of the Maturation Path standard after Justin reversed the polarity ("dark features rot"): every feature ships ENABLED on dev agents.
+#26513 | 2026-06-15 | SHARPENS(Theme 22 #35097) | Live-User-Channel Proof merged, born the same day the operator discovered a broken transfer himself.
+#25000 | 2026-06-12 | SHARPENS(Theme 16 #34414) | Mobile-Complete Operator Actions ratified the same day the agent handed the operator a terminal command.
+#25305 | 2026-06-13 | SHARPENS(Theme 22) | Operator-Surface Quality merged after the "abysmal" Mandates tab; later a build-time gate blocking operator screens requiring pasted JSON.
+#25761 | 2026-06-13 | SHARPENS(Agent-Carries-the-Loop) | The parking-decisions-on-the-operator incident that birthed The Agent Carries the Loop, ratified the same evening.
+#25706 | 2026-06-13 | SHARPENS(Self-Unblock) | Self-Unblock Before Escalating drafted at Justin's ask and merged.
+#26289 | 2026-06-15 | SHARPENS(Theme 7 #42826) | Justin names scope "laundered as follow-ups" — ancestor of the scope-accretion discipline.
+#25011 | 2026-06-12 | NEW | Multi-machine review gate: every future change must declare in writing its multi-machine posture; a machine-blind spec blocks.
+#24247 | 2026-06-11 | SHARPENS(Theme 20) | Full token auditability per feature AND per model as a precondition before any cost-bearing feature turns on.
+#25110 | 2026-06-12 | SHARPENS(Theme 10 #42390) | "YOUR TIME MANDATE" — elapsed/remaining claims structurally verified against the session clock (TIME_CLAIM).
+#23140 | 2026-06-09 | SHARPENS(#31852) | The illegitimate-stop taxonomy named and turned into the legitimate-stops allowlist plus a structural stop-gate.
+#23482 | 2026-06-09 | SHARPENS(Theme 8 #45521) | Fake multi-user test caught: one real account relabeled per role invalidates the proof — birth of real-distinct-principals live tests.
+#23904 | 2026-06-10 | NEW | Convergence review permanently gains a mandatory foundation audit one layer below the spec under review.
+#25535 | 2026-06-13 | SHARPENS(Theme 21 #37458) | "Never auto-create a topic for a single message" plus the default flip to existing topics — origin of single-alerts-topic routing.
+#25658 | 2026-06-13 | SHARPENS(Theme 11 #36676) | Mis-attributed parallel-hand commits under the shared account produce the SelfIdentityRegistry and the own-employee-identity ruling.
+#24431 | 2026-06-11 | SHARPENS(Theme 16 #50122) | Peer agent HELD execution because a cited operator order did not verify in its own message history.
+#24007 | 2026-06-10 | NEW | Ruled: a settled true-blocker carries a recheck-after date and is re-walked when due — "walls get re-tested".
+#26483 | 2026-06-15 | SHARPENS(Theme 23 #46805) | The "everything off Claude by default" directive shipped as Provider-Fallback Default Policy — June origin.
+#27426 | 2026-06-19 | SHARPENS(Theme 10) | The load-average misread became the standing structural rule and tool — load-assess verdicts, never uptime.
+#22493 | 2026-06-08 | SHARPENS(Theme 10) | Earliest session-clock rule instance: guessing elapsed time instead of computing it.
+#24712 | 2026-06-11 | SHARPENS(Threadline one-voice) | The warm-session cutover-lock incident — closed structurally by the single-negotiator lease + prose-is-inert.
+#25309 | 2026-06-13 | SHARPENS(Theme 8 #54637) | Commit-before-yield + OrphanedWorkSentinel born: uncommitted work in a dead session's worktree is a detected failure class.
+#22671 | 2026-06-08 | SHARPENS(Theme 16 #32120) | A sign-in landed as the wrong account, caught only at enrollment — the incident class behind credential-collection binding the target identity.
