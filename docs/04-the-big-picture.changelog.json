@@ -1,0 +1,22 @@
+[
+  {
+    "revision": 1,
+    "date": "2026-09-01",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "first draft: the small-core architecture that the approved rules, register, and glossary imply"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "First version.",
+        "why": "The repository plan requires the big-picture design after the rules foundation and before any part design or code.",
+        "ref": "README.md; docs/01-the-rules.md; docs/02-the-register.md; docs/03-the-glossary.md"
+      }
+    ]
+  }
+]
