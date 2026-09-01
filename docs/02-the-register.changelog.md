@@ -4,12 +4,14 @@ _Generated from `02-the-register.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 3 · 2026-08-26 · draft — operator review on PR #4; the operator's rulings on the 33 tensions (decision sheet, merged in PR #4) applied to the register's design
+## Revision 3 · 2026-08-26 · approved — operator review on PR #4; the operator's rulings on the 33 tensions (decision sheet, merged in PR #4) applied to the register's design
 
 - **Blocking-sites kind rewritten: `exactMatchOnly` replaced by `decidesAlone` (yes only for the ruled three — a live secret leaving, spend past a cap, the emergency stop), plus `criticality` (the deciding list is driven by the formal criticality assessment, never hand-picked), `failDirection` (per consumer), and `preservesInput`.** — Rulings 19, 2, and 5. _(docs/harvests/standards-and-registries-harvest.decisions.md (rulings 19, 2, 5); PR #4 merge 616bc3b)_
 - **Kind 12 added — protected artifacts: the short list of paths whose change needs the operator, with the known limit that its enforcement must sit outside the agent's write authority (carried from re-sweep #53701).** — Ruling 3 gives the agent merge authority over everything else; the exception must be enumerable. _(docs/harvests/standards-and-registries-harvest.decisions.md (ruling 3); docs/harvests/standards-and-registries-resweep.md (Part 1, item 2))_
 - **Kind 13 added — governed documents: durable location and sibling changelog as required facts, and the 1.x fork relationship recorded as a plain fact, never an enforced synchronization loop.** — Rulings 32 and 26, and rule 91. _(docs/harvests/standards-and-registries-harvest.decisions.md (rulings 32, 26); PR #4 merge 616bc3b)_
 - **Document brought under rule 91 governance: the revision marker left the body, this changelog was created, and the status line declares the document governed.** — Rule 91 postdates this document's last revision; steps one and three were already converted. _(docs/rules/91-a-document-reads-as-its-first-version.md)_
+
+Approved in: PR #10, merge `33d1cb8`.
 
 ## Revision 2 · 2026-08-23 · approved — operator review on PR #2; the operator's review of the first draft
 

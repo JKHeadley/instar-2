@@ -2,15 +2,15 @@
   {
     "revision": 3,
     "date": "2026-08-26",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "review",
       "pr": 4,
       "note": "the operator's rulings on the 33 tensions (decision sheet, merged in PR #4) applied to the register's design"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 10,
+      "mergeCommit": "33d1cb8"
     },
     "changes": [
       {
