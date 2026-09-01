@@ -1,0 +1,85 @@
+[
+  {
+    "revision": 3,
+    "date": "2026-08-26",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 4,
+      "note": "the operator's rulings on the 33 tensions (decision sheet, merged in PR #4) applied to the register's design"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Blocking-sites kind rewritten: `exactMatchOnly` replaced by `decidesAlone` (yes only for the ruled three — a live secret leaving, spend past a cap, the emergency stop), plus `criticality` (the deciding list is driven by the formal criticality assessment, never hand-picked), `failDirection` (per consumer), and `preservesInput`.",
+        "why": "Rulings 19, 2, and 5.",
+        "ref": "docs/harvests/standards-and-registries-harvest.decisions.md (rulings 19, 2, 5); PR #4 merge 616bc3b"
+      },
+      {
+        "what": "Kind 12 added — protected artifacts: the short list of paths whose change needs the operator, with the known limit that its enforcement must sit outside the agent's write authority (carried from re-sweep #53701).",
+        "why": "Ruling 3 gives the agent merge authority over everything else; the exception must be enumerable.",
+        "ref": "docs/harvests/standards-and-registries-harvest.decisions.md (ruling 3); docs/harvests/standards-and-registries-resweep.md (Part 1, item 2)"
+      },
+      {
+        "what": "Kind 13 added — governed documents: durable location and sibling changelog as required facts, and the 1.x fork relationship recorded as a plain fact, never an enforced synchronization loop.",
+        "why": "Rulings 32 and 26, and rule 91.",
+        "ref": "docs/harvests/standards-and-registries-harvest.decisions.md (rulings 32, 26); PR #4 merge 616bc3b"
+      },
+      {
+        "what": "Document brought under rule 91 governance: the revision marker left the body, this changelog was created, and the status line declares the document governed.",
+        "why": "Rule 91 postdates this document's last revision; steps one and three were already converted.",
+        "ref": "docs/rules/91-a-document-reads-as-its-first-version.md"
+      }
+    ]
+  },
+  {
+    "revision": 2,
+    "date": "2026-08-23",
+    "status": "approved",
+    "cause": {
+      "kind": "review",
+      "pr": 2,
+      "note": "the operator's review of the first draft"
+    },
+    "approvedIn": {
+      "pr": 2,
+      "mergeCommit": "e007bc0"
+    },
+    "changes": [
+      {
+        "what": "Subsidy fact added to model doorways; the pre-send review team named as a bounded live pattern under the sentinels kind; the 'when the shape must change' section added.",
+        "why": "Raised in the operator's PR #2 review.",
+        "commits": [
+          "00e03de"
+        ],
+        "ref": "PR #2"
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-08-23",
+    "status": "approved",
+    "cause": {
+      "kind": "draft",
+      "note": "first draft: the register of the things being governed, eleven kinds"
+    },
+    "approvedIn": {
+      "pr": 2,
+      "mergeCommit": "e007bc0"
+    },
+    "changes": [
+      {
+        "what": "First version.",
+        "why": "Step two of Instar 2.0's docs-first foundation.",
+        "commits": [
+          "8276b18"
+        ],
+        "ref": "PR #2"
+      }
+    ]
+  }
+]
