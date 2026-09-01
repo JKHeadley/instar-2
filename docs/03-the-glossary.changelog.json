@@ -4,7 +4,7 @@
     "date": "2026-08-24",
     "status": "approved",
     "cause": { "kind": "review", "pr": 3, "note": "operator's observation that embedded revision history bloats a document and skews later model readers" },
-    "approvedIn": { "pr": 3, "mergeCommit": null },
+    "approvedIn": { "pr": 3, "mergeCommit": "0e23464" },
     "changes": [
       {
         "what": "Restructured to read as a first version: revision paragraphs, section markers, and 'the first draft said' prose removed from the body; the history moved to this changelog.",
@@ -19,7 +19,7 @@
     "date": "2026-08-24",
     "status": "approved",
     "cause": { "kind": "conversation", "note": "conversation with the operator while the second review was open" },
-    "approvedIn": { "pr": 3, "mergeCommit": null },
+    "approvedIn": { "pr": 3, "mergeCommit": "0e23464" },
     "changes": [
       {
         "what": "History becomes a rule: 'History is a lookup' (rule 90). Every governing thing is versioned by construction; supersedes and approvedIn join the common facts, generated from git.",
@@ -40,7 +40,7 @@
     "date": "2026-08-24",
     "status": "approved",
     "cause": { "kind": "review", "pr": 3, "note": "operator's first review" },
-    "approvedIn": { "pr": 3, "mergeCommit": null },
+    "approvedIn": { "pr": 3, "mergeCommit": "0e23464" },
     "changes": [
       {
         "what": "reversible replaces undoable as the allowed value on the reversibility field.",
@@ -79,7 +79,7 @@
     "date": "2026-08-24",
     "status": "approved",
     "cause": { "kind": "draft" },
-    "approvedIn": { "pr": 3, "mergeCommit": null },
+    "approvedIn": { "pr": 3, "mergeCommit": "0e23464" },
     "changes": [
       {
         "what": "First draft of the glossary: derive irreversible, user-facing, critical and significant from a declared profile; define the nouns the register's required facts lean on; four questions for the operator.",

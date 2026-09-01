@@ -8,14 +8,14 @@ each linked to the git change that made it (rule 91).
 
 - **Restructured to read as a first version: revision paragraphs, section markers, and 'the first draft said' prose removed from the body; the history moved to this changelog.** — Embedded revision notes take up space and repeat the content they annotate, tilting a later reader — especially a model — toward what changed rather than what is. This is the shape proposed as rule 91. _(`d737777`, `03f13b1`, PR #3)_
 
-Approved in: PR #3.
+Approved in: PR #3, merge `0e23464`.
 
 ## Revision 3 · 2026-08-24 · approved — conversation with the operator while the second review was open
 
 - **History becomes a rule: 'History is a lookup' (rule 90). Every governing thing is versioned by construction; supersedes and approvedIn join the common facts, generated from git.** — A governed thing whose history is not recorded by construction can drift silently. _(`3e1273f`, PR #3)_
 - **The rules themselves become register kind 13, with parent and mergedInto declared and children, siblings, enforcedBy derived; the rule book becomes a rendering of that kind.** — Writing the rule tree's edges down turns 'is the rule book a tree?' from a reading exercise into a build check. _(`3e1273f`, PR #3)_
 
-Approved in: PR #3.
+Approved in: PR #3, merge `0e23464`.
 
 ## Revision 2 · 2026-08-24 · approved — operator review on PR #3; operator's first review
 
@@ -25,10 +25,10 @@ Approved in: PR #3.
 - **The terms registry becomes a real register kind (12) rather than a sentence.** — The first draft said each definition 'is itself a register entry (kind: term)'; the review asked whether that was a real structure or a figure of speech — it was a figure of speech. _(`9b059b7`, PR #3 review comment on line 29)_
 - **Both userFacing and significance on features become derived columns.** — The first draft named only one of them; a correction to step two (the register). _(`9b059b7`, PR #3)_
 
-Approved in: PR #3.
+Approved in: PR #3, merge `0e23464`.
 
 ## Revision 1 · 2026-08-24 · approved — first draft
 
 - **First draft of the glossary: derive irreversible, user-facing, critical and significant from a declared profile; define the nouns the register's required facts lean on; four questions for the operator.** — Step one, finding 4: a rule that uses an undefined load-bearing term is not yet a rule. _(`2e58fdb`, PR #3)_
 
-Approved in: PR #3.
+Approved in: PR #3, merge `0e23464`.
