@@ -4,11 +4,13 @@ _Generated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 10 · 2026-09-01 · draft — operator review on PR #12; operator's big-picture-design review: recursive session composition and a provider-independent native harness must be first-class requirements
+## Revision 10 · 2026-09-01 · approved — operator review on PR #12; operator's big-picture-design review: recursive session composition and a provider-independent native harness must be first-class requirements
 
 - **Rule 114 added — agency composes recursively: sessions may delegate to durable child runs on local sessions or remote agents, which may delegate again, while preserving scope, ownership, authority, evidence, bounds, cancellation, transport, and result routing; the platform supports rather than prescribes the topology.** — The existing rules made delegated runs durable but never required session-to-session orchestration, nested specialist groups, or cross-agent composition through a protocol-independent transport as official capabilities. _(PR #12 review comment 3910436663; operator Threadline follow-up in topic 52075)_
 - **Rule 115 added — Instar ships a first-party native harness, built only on public core ports, able to use any compatible registered model doorway and to develop, extend, and repair Instar itself without privileged bypasses.** — Rule 2 requires self-hosting tools to ship, and rule 30 requires harness independence, but neither required Instar itself to provide the reference harness that proves both properties together. _(PR #12 review comments 3910394463 and 3910573910)_
 - **Group counts updated to 21 checkable / 9 free / 73 needs building / 12 held by the mind, total 115.** — Consequence of adding rules 114 and 115. _(this revision)_
+
+Approved in: PR #12, merge `0d525aef0`.
 
 ## Revision 9 · 2026-08-26 · approved — operator review on PR #4; net-new rules implied by the operator's rulings and by the re-sweep of the widened Telegram record (PR #8): 22 rules added, 92-113
 

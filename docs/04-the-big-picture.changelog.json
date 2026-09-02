@@ -2,15 +2,15 @@
   {
     "revision": 2,
     "date": "2026-09-01",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "review",
       "pr": 12,
       "note": "operator's first review: make fractal self-hosting, recursive session composition, the native harness, Grok Build, and scoped degradation explicit"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 12,
+      "mergeCommit": "0d525aef088c75da9e0c7b6d92a2860a4f700374"
     },
     "changes": [
       {

@@ -56,6 +56,6 @@ using a mechanism that already exists rather than one we have to build.
 
 ## Status
 
-The rules foundation is approved on `main`: the rule book, register, glossary, rulings,
-and converged re-sweep are complete. The next review is the big-picture design: what the
-small core does and how the pieces fit. Part designs and code wait behind its approval.
+The rules foundation and big-picture design are approved on `main`. Part designs now proceed
+in dependency order, beginning with constitutional types and runtime decoders. Code waits
+until the part designs it depends on are approved.
