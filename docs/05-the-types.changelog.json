@@ -1,0 +1,22 @@
+[
+  {
+    "revision": 1,
+    "date": "2026-09-02",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "first version: the constitutional types and the decoding boundary, the first part design the approved big picture names"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "First version.",
+        "why": "The big-picture design (section 13) orders the part designs and puts constitutional types and runtime decoders first; the register (kind 12) hands the protected-artifact enforcement question to this step.",
+        "ref": "docs/04-the-big-picture.md section 13; docs/02-the-register.md kind 12; docs/03-the-glossary.md footer"
+      }
+    ]
+  }
+]
