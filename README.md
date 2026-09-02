@@ -56,5 +56,6 @@ using a mechanism that already exists rather than one we have to build.
 
 ## Status
 
-Step 1 is drafted and **in review** as an open pull request. It is not on `main` yet,
-because `main` holds approved work only.
+The rules foundation is approved on `main`: the rule book, register, glossary, rulings,
+and converged re-sweep are complete. The next review is the big-picture design: what the
+small core does and how the pieces fit. Part designs and code wait behind its approval.

@@ -1,0 +1,63 @@
+[
+  {
+    "revision": 2,
+    "date": "2026-09-01",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 12,
+      "note": "operator's first review: make fractal self-hosting, recursive session composition, the native harness, Grok Build, and scoped degradation explicit"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Self-hosting and local evolution made architectural: every development tool ships as a capability, each agent can build and preserve local capability packages, and the observe-change-verify-graduate loop repeats fractally at platform, agent, feature, and run-group scale.",
+        "why": "Rule 2 existed, but the first draft did not show how an individual agent remains able to evolve without waiting for the official source.",
+        "ref": "PR #12 review comment 3910394463"
+      },
+      {
+        "what": "Durable work changed from an implicitly flat set of runs to a recursively composable run graph supporting conversation-session → orchestrator → specialist-group topologies, capability-aware placement, and other topologies chosen by the work.",
+        "why": "Session-to-session delegation is a powerful first-class operating pattern and cannot remain an implementation accident.",
+        "ref": "PR #12 review comment 3910436663"
+      },
+      {
+        "what": "Instar Native added as a required first-party, provider-independent reference harness; Grok Build added by its verified official harness name.",
+        "why": "The system must prove harness independence through its own unprivileged reference client and include the current external harness set accurately.",
+        "ref": "PR #12 review comment 3910573910; https://docs.x.ai/build/overview"
+      },
+      {
+        "what": "Startup and failure handling changed from an easily read global integrity gate to scoped admission and degradation: a minimal communication/repair plane, per-family gates, quarantine, safe last-known-good reads, and fault-matrix proof that non-minimal failures cannot make the whole agent unusable.",
+        "why": "Integrity checks must increase reliability rather than repeatedly shutting down the system they protect.",
+        "ref": "PR #12 review comment 3910616904"
+      },
+      {
+        "what": "A protocol-independent agent-transport port added to the recursive run graph; Threadline named as its reference adapter; delegation envelopes, durable run-to-thread mapping, local/remote parity, and authoritative delivery states fixed while concrete Threadline protocol choices remain deferred to its part design.",
+        "why": "Cross-agent delegation must be designed before the work engine can assume every child is local, while Threadline itself must remain a replaceable adapter rather than enter the constitutional core.",
+        "ref": "operator Threadline follow-up in topic 52075"
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-01",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "first draft: the small-core architecture that the approved rules, register, and glossary imply"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "First version.",
+        "why": "The repository plan requires the big-picture design after the rules foundation and before any part design or code.",
+        "ref": "README.md; docs/01-the-rules.md; docs/02-the-register.md; docs/03-the-glossary.md"
+      }
+    ]
+  }
+]
