@@ -1,5 +1,41 @@
 [
   {
+    "revision": 2,
+    "date": "2026-09-01",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 12,
+      "note": "operator's first review: make fractal self-hosting, recursive session composition, the native harness, Grok Build, and scoped degradation explicit"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Self-hosting and local evolution made architectural: every development tool ships as a capability, each agent can build and preserve local capability packages, and the observe-change-verify-graduate loop repeats fractally at platform, agent, feature, and run-group scale.",
+        "why": "Rule 2 existed, but the first draft did not show how an individual agent remains able to evolve without waiting for the official source.",
+        "ref": "PR #12 review comment 3910394463"
+      },
+      {
+        "what": "Durable work changed from an implicitly flat set of runs to a recursively composable run graph supporting conversation-session → orchestrator → specialist-group topologies, capability-aware placement, and other topologies chosen by the work.",
+        "why": "Session-to-session delegation is a powerful first-class operating pattern and cannot remain an implementation accident.",
+        "ref": "PR #12 review comment 3910436663"
+      },
+      {
+        "what": "Instar Native added as a required first-party, provider-independent reference harness; Grok Build added by its verified official harness name.",
+        "why": "The system must prove harness independence through its own unprivileged reference client and include the current external harness set accurately.",
+        "ref": "PR #12 review comment 3910573910; https://docs.x.ai/build/overview"
+      },
+      {
+        "what": "Startup and failure handling changed from an easily read global integrity gate to scoped admission and degradation: a minimal communication/repair plane, per-family gates, quarantine, safe last-known-good reads, and fault-matrix proof that non-minimal failures cannot make the whole agent unusable.",
+        "why": "Integrity checks must increase reliability rather than repeatedly shutting down the system they protect.",
+        "ref": "PR #12 review comment 3910616904"
+      }
+    ]
+  },
+  {
     "revision": 1,
     "date": "2026-09-01",
     "status": "draft",

@@ -5,7 +5,7 @@
 Instar is an agent operating system: it receives a principal's intent, keeps work alive across
 sessions and machines, lets a model make bounded judgments, changes the world through explicit
 doorways, and learns from what happened. The design is small because the constitution is large.
-Instead of asking every feature to remember 113 rules, the system gives each kind of action one
+Instead of asking every feature to remember 115 rules, the system gives each kind of action one
 path and makes that path hold the rules for every caller.
 
 This document is the plain-language design. Every architectural claim is marked either **Rule**
@@ -155,6 +155,18 @@ resource budget, retry policy, side-effect lease, and next wake time. A session 
 that may hold the run for a while. Losing a session releases or expires its lease; it does not end
 the run. Another worker or machine resumes from the last committed step.
 
+Runs form a durable graph, not a flat queue. A session may create bounded child runs, and those
+children may create children of their own. One useful topology is a conversation session whose
+only job is staying with the user and steering an orchestrator; that orchestrator delegates to
+specialist groups placed on the machine, harness, and model best suited to each task. It is an
+official pattern, not a mandatory one. A small job may remain one run, and a different topology
+may be chosen whenever the work calls for it.
+
+Every edge records the delegated scope, authority, owner, budget, exit test, placement reason,
+result destination, and cancellation relationship. A child receives no authority merely because
+its parent has it; the parent passes only the standing the child needs. Results return as durable
+facts, so a dead parent or worker cannot strand them, and a replacement can reconstruct the graph.
+
 Each step is a small state transition:
 
 1. read the run and its evidence;
@@ -169,10 +181,11 @@ backoff, cap, breaker, resource ceiling, and declared fail direction. A clock ma
 execution at a ceiling, but only the exit test completes the work.
 
 **Rule — the run outlives the worker.** Rules 8, 20, 22, 24, 26, 27, 31, 46, 55, 60, 61, 63,
-64, 68, 71, 83, 92, 93, 97, 99, 102, and 113 govern the work engine. **Check:** model-based state
+64, 68, 71, 83, 92, 93, 97, 99, 102, 113, and 114 govern the work engine. **Check:** model-based state
 tests kill workers at every transition and prove the run either resumes or ends with a typed
-blocker; duplicate-worker tests prove a side effect occurs at most once; every stopped run cites
-a passed exit test or a proven-unreachable record with a recheck date.
+blocker; graph tests kill parents, orchestrators, and nested workers during fan-out and collection;
+duplicate-worker tests prove a side effect and a child result are each delivered at most once;
+every stopped run cites a passed exit test or a proven-unreachable record with a recheck date.
 
 **Value — step-sized commits.** The constitution requires durability and idempotence but not the
 transaction size. One proposed action per transition limits replay ambiguity and makes recovery
@@ -283,12 +296,39 @@ governing changes require a new version and approval record.
 
 ---
 
-## 9. Adapters are replaceable edges
+## 9. Self-hosting and local evolution
+
+Instar is developed through Instar. The tools used to inspect, design, implement, test, review,
+and install the platform are product capabilities available to every agent. The official source
+is one upstream, not the ceiling of an individual agent: an agent may build and install a local
+capability package against the same public ports, register it, test it, mature it, and carry it
+forward across updates without waiting for the upstream project to adopt it.
+
+The pattern is fractal. The whole platform improves from observed outcomes, and each agent,
+feature, run graph, and specialist group has the same smaller loop: observe friction, preserve the
+case, propose a bounded change, verify it, graduate it, measure the outcome, and feed the result
+back. Local evolution never means an untracked fork: provenance names its parent and version,
+migrations preserve it, protected artifacts retain their approval boundary, and useful local
+capabilities can be proposed upstream without being coupled to upstream acceptance.
+
+**Rule — the platform is its own development environment.** Rules 2, 5, 24, 25, 30, 44, 49, 50,
+51, 58, 65, 69, 72, 78, 84, 90, 111, 113, and 115 govern self-hosting. **Check:** inventory every
+tool used to build Instar and resolve it to a shipped capability; run a self-hosting lifecycle in
+which the native harness creates, tests, installs, updates, and recovers a local capability;
+upgrade tests prove upstream updates preserve registered local packages and their provenance.
+
+**Value — local capability packages.** The rules require self-hosting and migration parity but do
+not prescribe the extension unit. A versioned package behind public ports gives local evolution a
+durable boundary without making private edits to the core the normal path.
+
+---
+
+## 10. Adapters are replaceable edges
 
 There are six adapter families:
 
 - **conversation:** Telegram, Slack, WhatsApp, iMessage, web;
-- **harness:** Codex, Claude Code, Gemini, and future session runtimes;
+- **harness:** Instar Native, Codex, Claude Code, Gemini, Grok Build, and future session runtimes;
 - **model:** subscription and metered model doorways;
 - **persistence:** local files, databases, vaults, and cross-machine replication;
 - **effects:** GitHub, email, payments, processes, files, and other external services;
@@ -304,9 +344,20 @@ recorded rather than hidden behind special cases.
 captured fixtures; the generated parity matrix names every unsupported capability; core packages
 contain no adapter identity branches.
 
+Instar Native is the first-party reference harness. It is assembled from the same public ports as
+the other adapters and may use any compatible registered model doorway; it has no private route
+around identity, judgment, effects, or verification. Grok Build is the verified name of xAI's
+coding-agent harness; its separate models remain model-doorway entries rather than being confused
+with the harness.
+
+**Rule — a native reference without privilege.** Rules 2, 30, 56, 69, 75, 84, and 115 require
+the native harness. **Check:** run the full harness contract suite with Instar Native against every
+compatible registered doorway; dependency lint refuses private imports and direct provider calls;
+the parity matrix compares it under the same rules as every external harness.
+
 ---
 
-## 10. How the pieces start and fail
+## 11. How the pieces start and fail
 
 Startup is a rebuild, not a hope that the last process shut down cleanly:
 
@@ -318,20 +369,33 @@ Startup is a rebuild, not a hope that the last process shut down cleanly:
 6. resume due work;
 7. open intake.
 
-If steps 1–5 cannot establish integrity, mutation and release paths fail closed while the user
-channel remains able to explain and recover. Read-only diagnosis stays available. A subsystem
-failure cannot silently turn into global success, and a recovery action uses the same bounded
-work and effect machinery as ordinary work.
+Startup is scoped, not all-or-nothing. The minimal communication and repair plane opens from a
+small independently verified fact segment. Each other projection, adapter, and operation family
+earns admission separately. If one segment or projection fails verification, the system
+quarantines that scope, serves a clearly marked last-known-good read view where safe, rebuilds it
+in the background, and keeps unrelated capabilities live. A GitHub projection defect cannot take
+down chat; a broken model doorway cannot take down deterministic repair; one machine's corrupt
+segment cannot make healthy machines unreachable.
+
+Mutation and release paths fail closed only for the affected consumer while the user channel
+fails toward delivery and remains able to explain, steer, and recover. Read-only diagnosis and
+bounded repair stay available. A subsystem failure cannot silently turn into global success, and
+a recovery action uses the same bounded work and effect machinery as ordinary work. The system
+enters a global closed state only when the minimal plane itself cannot establish identity or
+history integrity; that state has an independently tested recovery path rather than a generic
+shutdown.
 
 **Rule — failure has a declared direction.** Rules 14, 20, 21, 27, 31, 32, 33, 37, 42, 45, 46,
 55, 59, 60, 61, 64, 68, 77, 88, 95, 99, and 113 govern startup and recovery. **Check:** fault
-injection corrupts or removes each dependency and asserts the declared availability and refusal;
-boot cannot open mutating intake before integrity gates pass; reachability tests prove the user
-channel remains usable during a closed mutation path.
+injection corrupts or removes each dependency and asserts that only its declared scope closes;
+boot cannot open a mutation family before that family's integrity gate passes; last-known-good
+views are visibly stale and never authorize effects; reachability and repair tests prove the
+minimal plane remains usable during every non-minimal failure; a fleet fault matrix proves there
+is no single non-minimal dependency whose loss makes the whole agent unusable.
 
 ---
 
-## 11. The dependency direction
+## 12. The dependency direction
 
 ```text
  constitutional types
@@ -356,7 +420,7 @@ not null or a no-op.
 
 ---
 
-## 12. The first part designs this architecture implies
+## 13. The first part designs this architecture implies
 
 Once this document is approved, part designs proceed in dependency order:
 
@@ -364,11 +428,11 @@ Once this document is approved, part designs proceed in dependency order:
 2. fact envelope, version chain, and projection contract;
 3. declarations, register generator, terms resolver, and rule/holder graph;
 4. intake and identity/standing resolution;
-5. durable run state machine, leases, loop primitive, and recovery;
+5. durable run graph, delegation contracts, leases, loop primitive, and recovery;
 6. judgment doorway and benchmark record;
 7. effect doorway and operation adapters;
 8. verification holders, probes, retrospective review, and outcome grading;
-9. adapter contracts and executable assembly;
+9. native-harness and external-adapter contracts, executable assembly, and local capability packages;
 10. operator surfaces and the first vertical slice.
 
 The first vertical slice should be deliberately small: receive one authenticated message, create
@@ -400,4 +464,4 @@ adapter boundary and makes the next reviews about evidence rather than taste.
 ---
 
 *Depends on: the approved rules, register, glossary, and their changelogs. Next after approval:
-the part designs in section 12, beginning with constitutional types and runtime decoders.*
+the part designs in section 13, beginning with constitutional types and runtime decoders.*
