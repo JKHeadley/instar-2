@@ -58,27 +58,43 @@ door. Code outside the package cannot assemble the fields by hand.
 A decoder for a value that carries authority — a principal, a grant, a revocation, an
 authorization — takes a second input the message bytes cannot supply: a **Provenance** value
 (see the supporting types). Provenance is itself decoded, inside the package, from
-**authentication evidence** the adapter hands over: a signature and the bytes it covers, a
-review-approval record fetched from the repository host with its own hash, a dashboard session
-token. The package verifies what it can verify on its own — a signature against a registered
-key, a record hash against the fetched record, a token against the session registry — and marks
-the result `verified`. Evidence the package cannot re-check, such as a platform's sender id
-inside an update the adapter received, yields provenance marked `asserted`. The two classes are
-distinct values, and **every value that confers or exercises standing above `requester` decodes
-only from `verified` provenance**; `asserted` provenance can produce a requester principal and
-nothing more. The decoder then cross-checks every identity-bearing field in the bytes against the
-provenance and refuses on any disagreement.
+**authentication evidence** the adapter hands over. The package verifies what it can verify on
+its own — a signature against a key in the registered key set, including a host's signed
+delivery (a webhook body signed with a secret the key set holds, a signed commit or approval
+event), and a session token the package itself minted — and marks the result `verified`. A
+record the adapter merely fetched, even with a hash that matches its bytes, is **not**
+verified: hash agreement proves the bytes were not altered after the adapter produced them, not
+that the host produced them, and a faulty adapter can fabricate both. Such evidence, and a
+platform's sender id inside an update the adapter received over a channel it authenticated,
+yields provenance marked `channel-attested`: the adapter attests that the value arrived through
+a channel it authenticated, and the package records that attestation without being able to
+re-check it. The two classes are distinct values.
 
-This is the honest shape of the guarantee. A faulty adapter can lie about what it received, so
-the package does not promise to catch every lie; it promises that nothing the package cannot
-verify itself can mint operator or delegate standing, an authorization, or a revocation.
+What each class may produce follows the glossary's own definition of *verified* — "resolved to a
+known identity from an authenticated channel, never from a name that appears in content". A
+`channel-attested` provenance from an authenticated channel may produce a `VerifiedPrincipal`
+with **requester** standing and nothing more; a name that appears in content, or a channel the
+adapter did not authenticate, produces an `UnresolvedInput`, never a principal. **Every value
+that confers or exercises standing above requester — a grant, a revocation, an authorization, an
+operator or delegate principal — decodes only from `verified` provenance.** The decoder then
+cross-checks every identity-bearing field in the bytes against the provenance and refuses on any
+disagreement.
+
+This is the honest shape of the guarantee. A faulty adapter can lie about what channel it
+authenticated, so the package does not promise to catch every lie; it promises that nothing the
+package cannot verify itself can mint operator or delegate standing, an authorization, or a
+revocation, and that requester standing rests on an attested authenticated channel, never on
+content. Whether requester standing should also require package-verified evidence is put to the
+operator as an open question below.
 
 **Rule — no open constructors, and no authority from bytes alone.** Rules 13, 28, 29, 42, and
 98 each depend on a value that cannot be made casually. **Check:** every constitutional type's
 constructor is private to the package; a negative fixture that assembles the fields from outside
-fails to compile; the Provenance decoder is the only producer of a Provenance; decoders for
-grants, revocations, authorizations, and non-requester principals refuse `asserted` provenance,
-refuse when the bytes disagree with the provenance, and refuse when no provenance is supplied.
+fails to compile; the Provenance decoder is the only producer of a Provenance; a fetched record
+with an internally matching hash decodes as `channel-attested`, never `verified`; decoders for
+grants, revocations, authorizations, and non-requester principals refuse `channel-attested`
+provenance, refuse when the bytes disagree with the provenance, and refuse when no provenance is
+supplied; a sender from an unauthenticated channel or from content yields `UnresolvedInput`.
 
 ### 2. Equality is declared, three ways
 
@@ -102,8 +118,8 @@ equal and never silently resolved to the newer one: the comparison yields a **Co
 naming both, and the fact spine of part two records it, as the big picture requires for
 cross-machine reconciliation. Each type section names its immutable fields.
 
-**Rule — conflict is recorded, not resolved.** Rules 24, 31, and 33 require that divergent
-records be surfaced. **Check:** fixtures compare the same `id` from two machines with an
+**Rule — conflict is recorded, not resolved.** Rules 31 and 33 require that divergent records
+be surfaced. **Check:** fixtures compare the same `id` from two machines with an
 incompatible immutable field and assert a `Conflict`; fixtures compare the same `id` across two
 schema versions and assert that migration precedes comparison and does not by itself produce a
 `Conflict`.
@@ -438,7 +454,7 @@ it expires the moment either moves.
 | `base` | The base the artifact was reviewed against: a merge target's head commit, a fact-sequence position, a register generation. |
 | `kind` | `approval`, `waiver { rule }`, or `grant`. A waiver names the rule it waives and must precede the act it waives. |
 | `requestedBy` | The `VerifiedPrincipal` who asked. Must differ from `approver` for a protected artifact. |
-| `explicitYes` | A `Provenance` for the authenticated record in which the approver said yes: a merge event, a dashboard action, a signed reply. Required. Absence, a timeout, or a default is not a record. |
+| `explicitYes` | A `Provenance` for the authenticated record in which the approver said yes: a host's review-approval event, a dashboard action, a signed reply. For a repository-protected artifact it must be `verified` and must be an approval or review record — a merge event never qualifies. Required. Absence, a timeout, or a default is not a record. |
 
 Equality: identity by `id`; version by `id` and content hash; value field for field. Every field
 is immutable; a differing field under one `id` is a `Conflict`.
@@ -469,7 +485,10 @@ it is not the merge itself — rule 82 says the agent merges anything honestly g
 operator never merges. The anchor is the host's **review-approval record**: the branch rules
 require an approval from a non-agent account before a change to a protected path can merge,
 the agent's account cannot change those rules, and the decoder's `explicitYes` provenance is
-that approval record, fetched from the host and hash-bound. The agent then performs the merge,
+that approval record in a form the package can mark `verified`: a host-signed delivery of the
+approval event, checked against the host's signing secret in the registered key set. A record
+the adapter merely fetched over the host's API is `channel-attested` and does not qualify, so
+the anchor stands only where the host signs its events. The agent then performs the merge,
 exactly as rule 82 wants; the merge event proves nothing by itself and is not the record. For a **dashboard-governed artifact** or a
 **runtime artifact on the agent's own machine**, no such anchor exists: an agent with filesystem
 authority can edit the decoder, the list, or the artifact, and a probe that later notices the
@@ -498,18 +517,25 @@ Seven smaller types carry pieces the core types share. They follow the same conv
 authentication evidence: the adapter, the authentication method (a closed list the register
 owns), a reference to the authenticated record with the canonical hash of its capture, the clock
 measurement at verification, the machine that verified, and the class — `verified` when the
-package re-checked the evidence itself (a signature, a fetched record's hash, a session token),
-`asserted` when it could only take the adapter's word. A principal, a grant, a revocation, and an
-authorization each carry one, and their decoders cross-check every identity-bearing field
+package re-checked the evidence itself (a signature against the registered key set, a host-signed
+delivery or event, a session token it minted), `channel-attested` when the adapter attests the
+value came through a channel it authenticated and the package cannot re-check it (a platform
+sender id; a fetched record, even with a matching hash). A principal, a grant, a revocation, and
+an authorization each carry one, and their decoders cross-check every identity-bearing field
 against it. Anything above requester standing requires `verified`. (Rules 28, 29, 98.)
 
 **Conflict.** The result of comparing two records with the same identity whose immutable
 fields disagree: both versions, their origins, and the fields that differ. It is a value, not an
 error, so the fact spine can record it and a person can resolve it. The package provides exactly
-one resolution doorway, which takes the `Conflict` and a `Decision` by a verified principal and
-returns the chosen version; an architecture lint refuses any other function that returns a side
-of a `Conflict`. The compiler cannot hold this — a function can always return a value it was
-handed — so it is a lint, not a compile fixture. (Rules 24, 31, 33.)
+one resolution doorway. It takes the `Conflict`, a `Decision`, and the live `StandingGrant`
+under which the decision is made, and it returns the chosen version only when that grant is live
+at `now`, its scope covers the conflict's subject, and its standing is sufficient: any live
+standing above requester for an ordinary record, and **operator** standing in that scope for a
+conflict over a grant, a revocation, an authorization, or a principal. Identity alone never
+resolves a conflict. An architecture lint refuses any other function that returns a side of a
+`Conflict`. The compiler cannot hold the lint's part — a function can always return a value it
+was handed — so that is a lint, not a compile fixture; the standing check is a decode-time
+refusal. (Rules 31, 33, 28, 104.)
 
 **UnresolvedInput.** A message whose sender could not be resolved to a principal: the raw hash,
 the channel, the time, and the reason resolution failed. It carries no authority and cannot be
@@ -640,7 +666,7 @@ this package at all, and naming that group is part of the design.
 | Two measurements of different subject kinds compared | Two measurements of the same kind, different unit or instance, compared by the same-instance function | That the probe measured what it says — the probe's fixture |
 | A `Directive` closed by anything other than supersession or completion | A `supersedes` cycle | Whether an operator meant to supersede — the mind |
 | An `Authorization` built without `approver`, `artifact`, or `base` | No `explicitYes` record; a moved base, a moved artifact, a non-live standing, a self-approved or agent-approved protected artifact, a waiver dated after the act | For a repository merge: that the branch rules exist — the host and its probe. For dashboard and runtime artifacts: nothing yet — an open question carried to parts nine and eleven |
-| Two values of different types compared; a `Provenance` built outside its decoder | Same `id`, incompatible immutable fields → `Conflict`, never equal; `asserted` provenance offered for standing above requester | Which side of a `Conflict` is right — a person, through the resolution doorway; a function returning a side elsewhere — the lint |
+| Two values of different types compared; a `Provenance` built outside its decoder | Same `id`, incompatible immutable fields → `Conflict`, never equal; `channel-attested` provenance offered for standing above requester; a fetched record with a matching hash decoded as `verified` | Which side of a `Conflict` is right — a principal with standing in scope, through the resolution doorway; a function returning a side elsewhere — the lint |
 | A `Decision` with no separate `reason` | A chosen action outside the floor | Whether the reason is true — the retrospective review |
 | A `Profile` with an adjective field | `attention` with `unbounded` repetition; a value off its closed list | Whether the declared profile is honest — the review, and rule 24's recurrence signal |
 | `Evidence` with no `source`, `observedAt`, or `capture` | A claim requested past its window (the freshness function refuses); a capture hash that does not match | A consumer that bypasses the freshness function — the lint; whether the source is trustworthy — the holder's own freshness proof |
@@ -770,11 +796,14 @@ lint; "test" means a runnable case whose assertion must hold.
 | NF-65 | Evidence | A claim read past its `freshFor` window through the freshness function | decode | 26 |
 | NF-66 | Evidence | A consumer that reads `claim` without the freshness function | lint | 26 |
 | NF-67 | any | Two values of different types compared | compile | 13 |
-| NF-68 | any | Same `id`, incompatible immutable fields, from two machines — must yield `Conflict`; the same pair across two schema versions must migrate first and must not conflict on migration alone | test | 24, 31, 33 |
-| NF-69 | Conflict | A function other than the resolution doorway that returns one side of a `Conflict` | lint | 24 |
+| NF-68 | any | Same `id`, incompatible immutable fields, from two machines — must yield `Conflict`; the same pair across two schema versions must migrate first and must not conflict on migration alone | test | 31, 33 |
+| NF-69 | Conflict | A function other than the resolution doorway that returns one side of a `Conflict` | lint | 31, 33 |
 | NF-71 | Provenance | A `Provenance` constructed anywhere but the Provenance decoder | compile | 28 |
-| NF-72 | Provenance | `asserted` provenance offered to the grant, revocation, authorization, or operator/delegate principal decoders | decode | 28, 98 |
-| NF-73 | Provenance | A signature that fails against the registered key, or a fetched record whose hash does not match, decoded as `verified` | decode | 28 |
+| NF-72 | Provenance | `channel-attested` provenance offered to the grant, revocation, authorization, or operator/delegate principal decoders | decode | 28, 98 |
+| NF-73 | Provenance | A signature that fails against the registered key set decoded as `verified`; a fetched record with an internally matching hash but no host signature decoded as `verified` | decode | 28 |
+| NF-74 | VerifiedPrincipal | A sender from a channel the adapter did not authenticate, or a name from content, decoded as a principal of any standing | decode | 28 |
+| NF-75 | Conflict | The resolution doorway accepting a `Decision` whose principal holds only requester standing, or a standing whose scope does not cover the conflict's subject | decode | 28, 104 |
+| NF-76 | Conflict | The resolution doorway resolving a conflict over a grant, revocation, authorization, or principal on less than operator standing in that scope | decode | 28, 82 |
 | NF-70 | Revocation | Decoded with no `Provenance`, or naming a grant id that does not exist | decode | 28, 104 |
 
 **Rule — the fixtures are the contract.** Rules 34, 36, 37, and 69 require that the invariants
@@ -800,8 +829,8 @@ term entries; until the register exists, they are defined here.
 | **scope** | noun | A closed set of registered places and action kinds where a standing, directive, or authorization applies. Compared by inclusion. |
 | **freshness** | fact | The window after an observation during which its claim may be relied on. Never unbounded. |
 | **strength** | fact | How an evidence claim was produced: `proof`, `observation`, `attestation`, or `inference`. An aggregate keeps the weakest. |
-| **provenance** | noun | Where an authority-bearing value came from, as decoded by the package from authentication evidence: the adapter, the method, the authenticated record and its capture hash, the time, the machine, and whether the package could verify the evidence itself (`verified`) or only take the adapter's word (`asserted`). |
-| **explicit-yes record** | noun | The authenticated record in which an approver said yes: a merge event, a dashboard action, a signed reply. An authorization decodes only from one. |
+| **provenance** | noun | Where an authority-bearing value came from, as decoded by the package from authentication evidence: the adapter, the method, the authenticated record and its capture hash, the time, the machine, and its class — `verified` when the package re-checked the evidence (a signature, a host-signed event, a token it minted), `channel-attested` when the adapter attests an authenticated channel the package cannot re-check. |
+| **explicit-yes record** | noun | The authenticated record in which an approver said yes: a host's review-approval event, a dashboard action, a signed reply. A merge event is not one. An authorization decodes only from one. |
 | **conflict** | noun | Two records with the same identity whose immutable fields disagree. A value the fact spine records for a person to resolve, never a comparison result of true or false. |
 
 ---
@@ -849,6 +878,11 @@ question stays open and is carried to parts nine and eleven.
    outside the agent's write authority yet. Do you accept carrying that open question to the
    verification and operator-surface parts, or do you want a reference monitor designed before
    any code part starts?
+7. **Requester standing on an attested channel.** A principal with requester standing may rest
+   on `channel-attested` provenance — the adapter's word that the message came through a channel
+   it authenticated — which is what the glossary's definition of *verified* allows. The stricter
+   reading would require package-verified evidence even for requester standing, which today's
+   Telegram channel cannot provide. Which do you want?
 
 ---
 

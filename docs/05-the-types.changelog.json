@@ -1,5 +1,46 @@
 [
   {
+    "revision": 4,
+    "date": "2026-09-02",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 13,
+      "note": "review desk round 3 \u2014 independent Codex reviewer, five findings above the severity line, all accepted"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Verified provenance now requires evidence the package re-checks against its registered key set \u2014 a signature, a host-signed delivery or event, a token it minted. A record the adapter fetched, even with a matching hash, is channel-attested; the repository anchor therefore stands only where the host signs its approval events. NF-73 covers a forged record with an internally matching hash.",
+        "why": "Hash agreement proves the bytes were not altered after the adapter produced them, not that the host produced them.",
+        "ref": "review desk topic 66384, message 66440, finding 1"
+      },
+      {
+        "what": "The lower provenance class is renamed channel-attested and defined against the glossary's own definition of verified (an authenticated channel, never content): it may produce a requester principal and nothing more; a sender from an unauthenticated channel or from content yields UnresolvedInput (NF-74). Whether requester standing should require package-verified evidence is put to the operator as open question 7.",
+        "why": "The reviewer read the adapter's word as failing rule 28; the glossary's definition admits an authenticated channel, so the document now says exactly which it relies on and asks the operator to confirm.",
+        "ref": "review desk topic 66384, message 66440, finding 2"
+      },
+      {
+        "what": "The Conflict resolution doorway takes the live StandingGrant under which the decision is made and refuses unless the grant is live, its scope covers the subject, and its standing suffices \u2014 operator standing for a conflict over a grant, revocation, authorization, or principal. NF-75 and NF-76 added.",
+        "why": "Identity alone let any requester choose the authoritative side of a conflict, including one over operator identity.",
+        "ref": "review desk topic 66384, message 66440, finding 3"
+      },
+      {
+        "what": "Merge events removed from the explicit-yes field and term; for a repository-protected artifact the record must be a verified approval or review event.",
+        "why": "The definitions still permitted what the invariant and NF-42 reject.",
+        "ref": "review desk topic 66384, message 66440, finding 4"
+      },
+      {
+        "what": "Rule 24 removed from the Conflict clause, NF-68, and NF-69; rules 31 and 33 carry them.",
+        "why": "Rule 24 governs recurring failures hidden by temporary success, not divergent records.",
+        "ref": "review desk topic 66384, message 66440, finding 5"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-09-02",
     "status": "draft",
