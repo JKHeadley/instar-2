@@ -4,6 +4,11 @@ _Generated from `05-the-types.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-09-02 · draft — operator review on PR #13; review desk round 4 (final round) — independent Codex reviewer confirmed all round-3 closures; two findings above the line, both accepted
+
+- **Authorization gains a requestDigest: the canonical hash of approver, action, scope, artifact, and base that the explicit-yes record must carry; the decoder recomputes and refuses on any difference. For a host review event the artifact is the reviewed head and the base is the target branch head recorded in the same signed delivery; an event without a base does not decode. Fixtures NF-77 to NF-80 cover a genuine yes replayed against another action, scope, artifact, or base.** — A genuine approval for one head could be paired with a caller-supplied base or action the reviewer never approved, and rule 82's re-issue-when-main-moves needs the base bound. _(review desk topic 66384, message 66447, finding 1)_
+- **The Conflict doorway's standing sufficiency matrix is marked a Value that the register declares; the doorway's rule cites 28, 31, and 33 only; NF-75 and NF-76 cite the same and name the matrix as Value.** — Rules 82 and 104 do not entail who may resolve which conflict. _(review desk topic 66384, message 66447, finding 2)_
+
 ## Revision 4 · 2026-09-02 · draft — operator review on PR #13; review desk round 3 — independent Codex reviewer, five findings above the severity line, all accepted
 
 - **Verified provenance now requires evidence the package re-checks against its registered key set — a signature, a host-signed delivery or event, a token it minted. A record the adapter fetched, even with a matching hash, is channel-attested; the repository anchor therefore stands only where the host signs its approval events. NF-73 covers a forged record with an internally matching hash.** — Hash agreement proves the bytes were not altered after the adapter produced them, not that the host produced them. _(review desk topic 66384, message 66440, finding 1)_

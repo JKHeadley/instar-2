@@ -455,12 +455,18 @@ it expires the moment either moves.
 | `kind` | `approval`, `waiver { rule }`, or `grant`. A waiver names the rule it waives and must precede the act it waives. |
 | `requestedBy` | The `VerifiedPrincipal` who asked. Must differ from `approver` for a protected artifact. |
 | `explicitYes` | A `Provenance` for the authenticated record in which the approver said yes: a host's review-approval event, a dashboard action, a signed reply. For a repository-protected artifact it must be `verified` and must be an approval or review record — a merge event never qualifies. Required. Absence, a timeout, or a default is not a record. |
+| `requestDigest` | The canonical hash of the **authorization request** the approver saw: `approver`, `action`, `scope`, `artifact`, and `base`, in canonical bytes. The explicit-yes record must carry or reference this same digest; the decoder recomputes it from the fields above and refuses on any difference. A genuine yes to one request can therefore not be paired with another action, scope, artifact, or base. |
 
 Equality: identity by `id`; version by `id` and content hash; value field for field. Every field
 is immutable; a differing field under one `id` is a `Conflict`.
 
 A pure function `isValid(authorization, currentBase, artifactHash, now)` answers whether it still
-holds. It returns a reason, not a boolean: `valid`, `artifact-moved`, `base-moved`, `standing-not-
+holds. For a host review event the two bound commits are captured from the same signed delivery:
+the `artifact` is the reviewed head, and the `base` is the target branch head recorded in that
+delivery at the moment of the review; a host that does not record the base in the event cannot
+supply a verified `base`, and an authorization without one does not decode. When the target
+branch moves after the review, `base-moved` invalidates the authorization and the request is
+re-issued, exactly as rule 82 requires. It returns a reason, not a boolean: `valid`, `artifact-moved`, `base-moved`, `standing-not-
 live`, or `scope-mismatch`.
 
 **What it makes impossible.** Approval from silence: there is no producer of an `Authorization`
@@ -474,8 +480,10 @@ requires `at` earlier than the act's evidence time, checked where the act is rec
 **Rule — an approval is an explicit, bound yes.** Rules 82, 94, 98, 104, and 109 require it.
 **Check:** compile-time fixtures constructing an authorization from a timeout, from a missing
 reply, or without a base fail; decoders refuse an authorization without an `explicitYes` record,
-one whose fields disagree with that record's provenance, a self-approved protected artifact, and
-an agent-kind approver on one; the validity function is tested on every reason.
+one whose recomputed `requestDigest` differs from the digest the explicit-yes record carries
+(a genuine yes replayed against another action, scope, artifact, or base), one whose fields
+disagree with that record's provenance, a self-approved protected artifact, and an agent-kind
+approver on one; the validity function is tested on every reason.
 
 **Where the door for protected artifacts actually is — and where it is not.** The register
 (kind 12) hands this design one open question: the agent writes the checkers, so the enforcement
@@ -529,13 +537,18 @@ fields disagree: both versions, their origins, and the fields that differ. It is
 error, so the fact spine can record it and a person can resolve it. The package provides exactly
 one resolution doorway. It takes the `Conflict`, a `Decision`, and the live `StandingGrant`
 under which the decision is made, and it returns the chosen version only when that grant is live
-at `now`, its scope covers the conflict's subject, and its standing is sufficient: any live
-standing above requester for an ordinary record, and **operator** standing in that scope for a
-conflict over a grant, a revocation, an authorization, or a principal. Identity alone never
-resolves a conflict. An architecture lint refuses any other function that returns a side of a
-`Conflict`. The compiler cannot hold the lint's part — a function can always return a value it
-was handed — so that is a lint, not a compile fixture; the standing check is a decode-time
-refusal. (Rules 31, 33, 28, 104.)
+at `now`, its scope covers the conflict's subject, and its standing is sufficient. Identity
+alone never resolves a conflict. An architecture lint refuses any other function that returns a
+side of a `Conflict`. The compiler cannot hold the lint's part — a function can always return a
+value it was handed — so that is a lint, not a compile fixture; the standing check is a
+decode-time refusal. (Rules 28, 31, 33: verified identity, and conflicts recorded rather than
+silently resolved.)
+
+**Value — the sufficiency matrix.** No rule says who may resolve which conflict. This package
+chooses: any live standing above requester for an ordinary record, and operator standing in
+that scope for a conflict over a grant, a revocation, an authorization, or a principal. The
+doorway enforces whatever matrix the register declares; this is the starting matrix, and it is
+a choice the operator can change.
 
 **UnresolvedInput.** A message whose sender could not be resolved to a principal: the raw hash,
 the channel, the time, and the reason resolution failed. It carries no authority and cannot be
@@ -773,6 +786,10 @@ lint; "test" means a runnable case whose assertion must hold.
 | NF-42 | Authorization | Protected artifact whose approver was not read from the external authenticated record | decode | 82, 98 |
 | NF-43 | Authorization | `kind: waiver` with `at` later than the act it waives | decode | 94 |
 | NF-44 | Authorization | A "no" or "declined" variant | compile | 98 |
+| NF-77 | Authorization | A genuine, verified explicit-yes record replayed with a different `action` | decode | 82, 98 |
+| NF-78 | Authorization | A genuine, verified explicit-yes record replayed with a different `scope` | decode | 82, 98 |
+| NF-79 | Authorization | A genuine, verified explicit-yes record replayed with a different `artifact` hash | decode | 82, 109 |
+| NF-80 | Authorization | A genuine, verified explicit-yes record replayed with a different `base`, or a host review event that records no base | decode | 82 |
 | NF-45 | Scope | Standing in a narrower scope used to authorize a wider one | decode | 103, 104 |
 | NF-46 | Outcome | `uncertain` retried as `did-not-happen` | lint | 24, 26 |
 | NF-47 | SecretRef | A field typed to carry secret bytes anywhere in the package | compile | 100 |
@@ -802,8 +819,8 @@ lint; "test" means a runnable case whose assertion must hold.
 | NF-72 | Provenance | `channel-attested` provenance offered to the grant, revocation, authorization, or operator/delegate principal decoders | decode | 28, 98 |
 | NF-73 | Provenance | A signature that fails against the registered key set decoded as `verified`; a fetched record with an internally matching hash but no host signature decoded as `verified` | decode | 28 |
 | NF-74 | VerifiedPrincipal | A sender from a channel the adapter did not authenticate, or a name from content, decoded as a principal of any standing | decode | 28 |
-| NF-75 | Conflict | The resolution doorway accepting a `Decision` whose principal holds only requester standing, or a standing whose scope does not cover the conflict's subject | decode | 28, 104 |
-| NF-76 | Conflict | The resolution doorway resolving a conflict over a grant, revocation, authorization, or principal on less than operator standing in that scope | decode | 28, 82 |
+| NF-75 | Conflict | The resolution doorway accepting a `Decision` whose principal holds only requester standing, or a standing whose scope does not cover the conflict's subject | decode | 28, 31, 33 (matrix: Value) |
+| NF-76 | Conflict | The resolution doorway resolving a conflict over a grant, revocation, authorization, or principal on less than operator standing in that scope | decode | 28, 31, 33 (matrix: Value) |
 | NF-70 | Revocation | Decoded with no `Provenance`, or naming a grant id that does not exist | decode | 28, 104 |
 
 **Rule — the fixtures are the contract.** Rules 34, 36, 37, and 69 require that the invariants
