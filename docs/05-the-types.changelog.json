@@ -1,5 +1,66 @@
 [
   {
+    "revision": 3,
+    "date": "2026-09-02",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 13,
+      "note": "review desk round 2 \u2014 independent Codex reviewer, eight findings above the severity line, all accepted; five of them corrected overclaims introduced by the round-1 fixes"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Provenance is decoded inside the package from authentication evidence and carries a class: verified (a signature, a fetched record's hash, or a session token the package re-checked) or asserted (the adapter's word). Anything above requester standing decodes only from verified provenance. The guarantee is restated honestly: nothing the package cannot verify itself can mint standing, an authorization, or a revocation.",
+        "why": "An adapter-built Provenance was a third construction door, and an adapter that supplies both the bytes and the provenance could pass its own cross-check.",
+        "ref": "review desk topic 66384, message 66410, finding 1"
+      },
+      {
+        "what": "The comparison domain is fixed once (same type, same schema version; older versions migrate first, and migration is not a conflict); each type names its immutable fields; the principal, grant, intent, directive, evidence, decision, and authorization equality lines are aligned with the convention; NF-67 and NF-68 restated.",
+        "why": "The global equality rules contradicted their own applications, and schema evolution would have produced false conflicts.",
+        "ref": "review desk topic 66384, message 66410, finding 2"
+      },
+      {
+        "what": "Result claims centralization only: one consumption function plus a lint enumerates every place a refusal is handled; holding rule 42 against a lying report is assigned to the recorded Result on the fact spine (part two) and the verification holders (part nine), and said so.",
+        "why": "A handler can return whatever a caller's reporting path accepts, so the consumption function did not hold the behaviour claimed for it.",
+        "ref": "review desk topic 66384, message 66410, finding 3"
+      },
+      {
+        "what": "Conflict gains one resolution doorway (Conflict plus a verified principal's Decision) and a lint; NF-69 moved from compile to lint.",
+        "why": "A language cannot stop a function from returning a value it was handed; the compile claim repeated the overclaim just corrected for Result.",
+        "ref": "review desk topic 66384, message 66410, finding 4"
+      },
+      {
+        "what": "The repository anchor is the host's non-agent review-approval record required by branch rules on protected paths, with the agent performing the merge as rule 82 requires; a merge event is explicitly not the explicit-yes record.",
+        "why": "The previous wording required a merge by a non-agent account, contradicting approved rule 82.",
+        "ref": "review desk topic 66384, message 66410, finding 5"
+      },
+      {
+        "what": "Fixture citations completed: NF-30 marked Value, NF-40 and NF-42 cite 82 and 98.",
+        "why": "Three citations survived the round-1 cleanup.",
+        "ref": "review desk topic 66384, message 66410, finding 6"
+      },
+      {
+        "what": "Open question 2 now asks about the repository anchor and the initial protected paths instead of the withdrawn decoder-on-the-list idea; open question 3 restated for the new Result shape.",
+        "why": "The question asked approval of an answer the body no longer gives.",
+        "ref": "review desk topic 66384, message 66410, finding 7"
+      },
+      {
+        "what": "Result is two-armed as the approved big picture fixes it; a budget applied as designed is a required capacity field on Success rather than a third arm. Fixture NF-15, the inventory, the tables, and the terms follow.",
+        "why": "A part design may not silently change a shape its approved parent fixes.",
+        "ref": "review desk topic 66384, message 66410, finding 8"
+      },
+      {
+        "what": "Three fixtures added (NF-71 to NF-73) for Provenance construction, class, and evidence verification.",
+        "why": "The new Provenance decoder needs its own negative contract.",
+        "ref": "review desk topic 66384, message 66410, finding 1"
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-02",
     "status": "draft",

@@ -55,19 +55,30 @@ boundary, which reads bytes and either produces the value or refuses, or by a **
 inside the package, which computes one value from others already trusted. There is no third
 door. Code outside the package cannot assemble the fields by hand.
 
-A decoder for a value that carries authority — a principal, a grant, an authorization — takes a
-second input the bytes cannot supply: a **Provenance** value (see the supporting types) that the
-adapter establishes from the authenticated record itself, outside the message. The decoder
-cross-checks every identity-bearing field in the bytes against that provenance and refuses on
-any disagreement, and the produced value keeps the provenance inside it. A message that merely
-claims to come from an authenticated record therefore cannot satisfy the decoder, and a faulty
-adapter that forwards content-supplied fields is caught by the cross-check rather than trusted.
+A decoder for a value that carries authority — a principal, a grant, a revocation, an
+authorization — takes a second input the message bytes cannot supply: a **Provenance** value
+(see the supporting types). Provenance is itself decoded, inside the package, from
+**authentication evidence** the adapter hands over: a signature and the bytes it covers, a
+review-approval record fetched from the repository host with its own hash, a dashboard session
+token. The package verifies what it can verify on its own — a signature against a registered
+key, a record hash against the fetched record, a token against the session registry — and marks
+the result `verified`. Evidence the package cannot re-check, such as a platform's sender id
+inside an update the adapter received, yields provenance marked `asserted`. The two classes are
+distinct values, and **every value that confers or exercises standing above `requester` decodes
+only from `verified` provenance**; `asserted` provenance can produce a requester principal and
+nothing more. The decoder then cross-checks every identity-bearing field in the bytes against the
+provenance and refuses on any disagreement.
+
+This is the honest shape of the guarantee. A faulty adapter can lie about what it received, so
+the package does not promise to catch every lie; it promises that nothing the package cannot
+verify itself can mint operator or delegate standing, an authorization, or a revocation.
 
 **Rule — no open constructors, and no authority from bytes alone.** Rules 13, 28, 29, 42, and
 98 each depend on a value that cannot be made casually. **Check:** every constitutional type's
 constructor is private to the package; a negative fixture that assembles the fields from outside
-fails to compile; decoders for principals, grants, and authorizations refuse when the bytes
-disagree with the provenance, and refuse when no provenance is supplied at all.
+fails to compile; the Provenance decoder is the only producer of a Provenance; decoders for
+grants, revocations, authorizations, and non-requester principals refuse `asserted` provenance,
+refuse when the bytes disagree with the provenance, and refuse when no provenance is supplied.
 
 ### 2. Equality is declared, three ways
 
@@ -79,17 +90,23 @@ them it supports:
   version, same canonical content hash.
 - **value** — the same content, field for field, regardless of `id`.
 
-Two records with the same `id` whose *immutable* fields disagree are never equal and never
-silently resolved to the newer one: the comparison yields a **Conflict** value naming both, and
-the fact spine of part two records it, as the big picture requires for cross-machine
-reconciliation. A type never compares two values of different type, subject, scope, or schema
-as equal or unequal; that comparison is refused, because `false` would let a caller treat a
-category error as an ordinary mismatch.
+The comparison domain is fixed once: two values are comparable only when they are the same
+type at the same schema version. A value at an older schema version is first migrated forward
+(convention 3), then compared; migration is not a conflict, even when it adds or renames
+fields. Comparing two values of different types, or of the same type but different subject
+kinds or scopes where the type declares those, is refused rather than answered, because `false`
+would let a caller treat a category error as an ordinary mismatch.
+
+Within the domain, two records with the same `id` whose *immutable* fields disagree are never
+equal and never silently resolved to the newer one: the comparison yields a **Conflict** value
+naming both, and the fact spine of part two records it, as the big picture requires for
+cross-machine reconciliation. Each type section names its immutable fields.
 
 **Rule — conflict is recorded, not resolved.** Rules 24, 31, and 33 require that divergent
-records be surfaced. **Check:** fixtures compare the same `id` across two schema versions and
-across two machines with an incompatible immutable field and assert a `Conflict`, never `true`
-or `false`.
+records be surfaced. **Check:** fixtures compare the same `id` from two machines with an
+incompatible immutable field and assert a `Conflict`; fixtures compare the same `id` across two
+schema versions and assert that migration precedes comparison and does not by itself produce a
+`Conflict`.
 
 ### 3. Every value carries its schema version
 
@@ -158,8 +175,9 @@ prompt is a string, not a principal.
 | `kind` | `person`, `agent`, or `system` (the scheduler, a recovery signal, a sentinel). |
 | `provenance` | A `Provenance`: the adapter, the authentication method (`telegram-sender`, `signed-envelope`, `dashboard-pin`, `github-merge`, `os-scheduler`, … — a closed list the register owns), a reference to the authenticated record with its capture hash, the clock measurement at verification, and the machine that verified. Established outside the bytes; never read from them. |
 
-Equality: identity by `id`; value by `id` and `kind`. Two principals with the same `id` and a
-different `kind` are a `Conflict`.
+Equality: identity by `id`; value field for field. Immutable fields: `id`, `kind`, and the
+provenance's record reference; two principals with the same `id` and a different `kind` are a
+`Conflict`.
 
 **What it makes impossible.** There is no function from a string to a `VerifiedPrincipal`. The
 only producers are the intake adapters' decoders, and each names its authentication method. A
@@ -194,8 +212,9 @@ no grant. The other two exist only as recorded grants.
 
 A **Revocation** is its own value: `{ id, grantId, by: VerifiedPrincipal, at, reason, source: Provenance }`.
 
-Equality: identity by `id`; version by `id` and content hash. A grant is immutable, so two
-records with the same `id` and different fields are a `Conflict`.
+Equality: identity by `id`; version by `id` and content hash; value field for field. Every field
+of a grant is immutable, so two records with the same `id` and any differing field are a
+`Conflict`.
 
 A grant is never edited. Revocation is a separate value, `Revocation { grantId, by, at, reason }`,
 and the question "is this grant live now?" is a pure function over the grant, the set of
@@ -236,8 +255,9 @@ instructions do not lapse on a timer.
 | `supersedes` | The directive it replaces, when any. |
 | `closedBy` | Absent while live. Otherwise exactly one of `Superseded { by }` or `Completed { evidence }`. |
 
-Equality, both types: identity by `id`; version by `id` and content hash. An intent's `raw`
-hash is immutable, so two intents with the same `id` and different `raw` are a `Conflict`.
+Equality, both types: identity by `id`; version by `id` and content hash; value field for field.
+Immutable fields: an intent's `raw`, `principal`, and `receivedAt`; a directive's `principal`,
+`scope`, `statement`, and `issuedAt`. Differing immutable fields under one `id` are a `Conflict`.
 
 **What it makes impossible.** A directive cannot expire: the type has no such variant, so no code
 path can time one out. An intent cannot lose its raw form, because `raw` is required and hashed
@@ -251,13 +271,15 @@ a raw hash; the lineage function detects a cycle in `supersedes` and refuses it.
 
 ### Result — success or refusal, with no way from one to the other
 
-Every operation that can fail returns a `Result<T>`. It has three forms, and two of them are
-successes:
+Every operation that can fail returns a `Result<T>`. As the big picture fixes it, the type has
+two arms:
 
-- `Success<T>` — the operation did what was asked.
-- `BudgetApplied<T>` — the operation did what was asked *and* a declared capacity bound acted as
-  designed: a store trimmed to its limit, a notifier coalesced, a loop hit its cap. This is a
-  success. It names the bound (a register id) and what the bound did.
+- `Success<T>` — the operation did what was asked. It carries a required `capacity` field:
+  `none`, or `applied { bound, action }` when a declared capacity bound acted as designed — a
+  store trimmed to its limit, a notifier coalesced, a loop hit its cap — naming the bound (a
+  register id) and what it did. A budget applied as designed is therefore a *kind* of success,
+  distinguishable by every consumer that cares and indistinguishable from plain success to one
+  that does not; it can never be routed as an error, because it is not on the `Refused` arm.
 - `Refused` — the operation did not happen.
 
 `Refused` carries: `reason` from a closed list (`standing`, `decode`, `floor`, `stale-base`,
@@ -267,21 +289,27 @@ or doorway that refused); `failDirection` (`open` or `closed`, the one that site
 cannot be constructed.
 
 **What it makes impossible, and what it only makes visible.** The compiler holds *recognition*:
-the three variants are a closed union, a match that forgets one does not build, and the package
-contains no function from `Refused` to any success. The compiler cannot hold *behaviour*: a
-caller can still match `Refused` and go on to report success, or match `BudgetApplied` and log an
-error. So behaviour is held one level up, by a single **consumption function** in the package
-through which a caller obtains the `T`, and which requires a handler for each variant with a
-typed outcome; an architecture lint refuses a direct match on `Refused` or `BudgetApplied` outside
-that function. A refusal cannot forget its input: `preserved` is required.
+the two arms are a closed union, a match that forgets one does not build, and the package
+contains no function from `Refused` to `Success`. The compiler cannot hold *behaviour*: a caller
+can match `Refused` and go on to report success by some other path, and no handler signature
+prevents that, because a handler can return whatever the caller's reporting path accepts. This
+package therefore claims only *centralization*: one **consumption function** through which a
+caller obtains the `T`, with one handler per arm, and an architecture lint that refuses a direct
+match on `Refused` anywhere else, so every place a refusal is handled is enumerable. Rule 42 is
+held across parts, not here alone: the `Result` itself is appended to the fact spine (part two)
+before any report can be made, so a report that contradicts the recorded `Result` is a
+detectable lie for the verification holders (part nine), not an undetectable conversion. A
+refusal cannot forget its input: `preserved` is required.
 
-Equality: value, field for field. A `Refused` is never equal to any success.
+Equality: value, field for field. A `Refused` is never equal to any `Success`.
 
 **Rule — a refusal stays a refusal; a budget applied is a success.** Rules 40, 42, 4, 86, and 95
-require it. **Check:** a compile-time fixture that omits a variant from a match fails to build;
-a lint fixture that matches `Refused` or `BudgetApplied` outside the consumption function fails
-the build; the decoder refuses a `Refused` whose `reason`, `site`, or `preserved` is missing or
-whose `failDirection` disagrees with the site's register entry.
+require it. **Check:** a compile-time fixture that omits an arm from a match fails to build; a
+lint fixture that matches `Refused` outside the consumption function fails the build; a lint
+fixture that treats `capacity: applied` as an error fails; the decoder refuses a `Refused` whose
+`reason`, `site`, or `preserved` is missing or whose `failDirection` disagrees with the site's
+register entry. The cross-part check — recorded `Result` versus later report — belongs to part
+nine and is named there, not claimed here.
 
 ### Measurement — a number that knows what it measured
 
@@ -355,8 +383,9 @@ with a bound on how long it can be relied on, and a hash of the raw capture behi
 read as current: the only function that hands a claim to a consumer takes `now`, and it returns
 `Refused { reason: stale }` past the window rather than the claim.
 
-Equality: identity by `id`; version by `id` and `capture` hash. Two rows with the same `id` and a
-different capture are a `Conflict`.
+Equality: identity by `id`; version by `id` and `capture` hash; value field for field. Immutable
+fields: `claim`, `source`, `observedAt`, `capture`. A differing immutable field under one `id`
+is a `Conflict`.
 
 **Rule — evidence carries its provenance.** Rules 26, 36, and 70 require it. **Check:** decoders
 refuse evidence missing any field; a fixture with `freshFor` unbounded fails; a fixture that reads
@@ -385,7 +414,8 @@ reopen the decision even when the conclusion still looks right.
 folded into the conclusion. A model choosing an action outside its floor: the chosen action is
 typed as a member of the floor's list, so an outside action does not decode.
 
-Equality: identity by `id`; version by `id` and content hash.
+Equality: identity by `id`; version by `id` and content hash; value field for field. Every field
+is immutable; a differing field under one `id` is a `Conflict`.
 
 **Rule — conclusion and reason are separate claims.** Rules 57, 58, 108, and 41 require it.
 **Check:** a compile-time fixture with `reason` absent fails; a fixture whose chosen action is not
@@ -410,8 +440,8 @@ it expires the moment either moves.
 | `requestedBy` | The `VerifiedPrincipal` who asked. Must differ from `approver` for a protected artifact. |
 | `explicitYes` | A `Provenance` for the authenticated record in which the approver said yes: a merge event, a dashboard action, a signed reply. Required. Absence, a timeout, or a default is not a record. |
 
-Equality: identity by `id`; version by `id` and content hash. An authorization is immutable, so
-two records with the same `id` and different fields are a `Conflict`.
+Equality: identity by `id`; version by `id` and content hash; value field for field. Every field
+is immutable; a differing field under one `id` is a `Conflict`.
 
 A pure function `isValid(authorization, currentBase, artifactHash, now)` answers whether it still
 holds. It returns a reason, not a boolean: `valid`, `artifact-moved`, `base-moved`, `standing-not-
@@ -434,10 +464,13 @@ an agent-kind approver on one; the validity function is tested on every reason.
 **Where the door for protected artifacts actually is — and where it is not.** The register
 (kind 12) hands this design one open question: the agent writes the checkers, so the enforcement
 of the protected list must sit outside the agent's write authority. This package answers it for
-one class of artifact only. For a **repository merge**, the external anchor exists today: the
-repository host's branch rules require a merge record from a non-agent account before content
-reaches `main`, the agent's account cannot change those rules, and the decoder's `explicitYes`
-provenance is that merge record, read from the host. For a **dashboard-governed artifact** or a
+one class of artifact only. For a **repository merge**, the external anchor exists today, and
+it is not the merge itself — rule 82 says the agent merges anything honestly green and the
+operator never merges. The anchor is the host's **review-approval record**: the branch rules
+require an approval from a non-agent account before a change to a protected path can merge,
+the agent's account cannot change those rules, and the decoder's `explicitYes` provenance is
+that approval record, fetched from the host and hash-bound. The agent then performs the merge,
+exactly as rule 82 wants; the merge event proves nothing by itself and is not the record. For a **dashboard-governed artifact** or a
 **runtime artifact on the agent's own machine**, no such anchor exists: an agent with filesystem
 authority can edit the decoder, the list, or the artifact, and a probe that later notices the
 edit is detection, not prevention. Listing the decoder on the protected list does not close
@@ -450,8 +483,10 @@ the repository are the only protected artifacts this design claims to hold.
 
 **Rule — requester is never authorizer.** Rules 82 and 98 require it. **Check:** decoders refuse
 a protected-artifact authorization whose approver equals the requester or is an agent-kind
-principal; for a repository merge, a probe on a cadence verifies the branch rules are present,
-and the probe's absence is itself a critical outcome. No check is claimed for the open classes.
+principal, and one whose `explicitYes` is a merge event rather than an approval record; for a
+repository merge, a probe on a cadence verifies the branch rules still require a non-agent
+approval on protected paths, and the probe's absence is itself a critical outcome. No check is
+claimed for the open classes.
 
 ---
 
@@ -459,18 +494,22 @@ and the probe's absence is itself a critical outcome. No check is claimed for th
 
 Seven smaller types carry pieces the core types share. They follow the same conventions.
 
-**Provenance.** Where an authority-bearing value came from, established by an adapter from the
-authenticated record itself and never from message bytes: the adapter, the authentication
-method (a closed list the register owns), a reference to the authenticated record with the
-canonical hash of its capture, the clock measurement at verification, and the machine that
-verified. A principal, a grant, a revocation, and an authorization each carry one, and their
-decoders cross-check every identity-bearing field against it. Provenance is a required *input*
-to those decoders; a decoder called without it refuses. (Rules 28, 29, 98.)
+**Provenance.** Where an authority-bearing value came from, as a value the package decoded from
+authentication evidence: the adapter, the authentication method (a closed list the register
+owns), a reference to the authenticated record with the canonical hash of its capture, the clock
+measurement at verification, the machine that verified, and the class — `verified` when the
+package re-checked the evidence itself (a signature, a fetched record's hash, a session token),
+`asserted` when it could only take the adapter's word. A principal, a grant, a revocation, and an
+authorization each carry one, and their decoders cross-check every identity-bearing field
+against it. Anything above requester standing requires `verified`. (Rules 28, 29, 98.)
 
 **Conflict.** The result of comparing two records with the same identity whose immutable
 fields disagree: both versions, their origins, and the fields that differ. It is a value, not an
-error, so the fact spine can record it and a person can resolve it; no function in the package
-turns a `Conflict` into either side. (Rules 24, 31, 33.)
+error, so the fact spine can record it and a person can resolve it. The package provides exactly
+one resolution doorway, which takes the `Conflict` and a `Decision` by a verified principal and
+returns the chosen version; an architecture lint refuses any other function that returns a side
+of a `Conflict`. The compiler cannot hold this — a function can always return a value it was
+handed — so it is a lint, not a compile fixture. (Rules 24, 31, 33.)
 
 **UnresolvedInput.** A message whose sender could not be resolved to a principal: the raw hash,
 the channel, the time, and the reason resolution failed. It carries no authority and cannot be
@@ -517,7 +556,7 @@ schema, fails the build. Fixture coverage ranges over this table, not over a pro
 | Revocation | core | decoder, with Provenance |
 | Intent | core | decoder |
 | Directive | core | decoder |
-| Result (Success, BudgetApplied, Refused) | core | derivation |
+| Result (Success with `capacity`, Refused) | core | derivation |
 | Measurement | core | decoder or derivation |
 | Profile | core | decoder |
 | Evidence | core | decoder |
@@ -527,7 +566,7 @@ schema, fails the build. Fixture coverage ranges over this table, not over a pro
 | ActionFloor | supporting | decoder |
 | Outcome | supporting | derivation |
 | SecretRef | supporting | decoder (after the vault write) |
-| Provenance | supporting | adapter, from the authenticated record |
+| Provenance | supporting | the Provenance decoder, from authentication evidence |
 | Conflict | supporting | derivation (the equality functions) |
 | UnresolvedInput | supporting | decoder (the intake fallback) |
 
@@ -596,12 +635,12 @@ this package at all, and naming that group is part of the design.
 | Refused at compile time — the program does not build | Refused at the boundary — the decoder returns `Refused` | Not held here — held by another part or outside the agent |
 |---|---|---|
 | A string, display name, or unverified sender record passed where a `VerifiedPrincipal` is required | A principal, grant, or authorization whose fields disagree with its provenance, or decoded with no provenance; an authentication method the register does not list | That the adapter's authentication is real — the adapter contract suite, real captured fixtures |
-| A match that forgets a `Result` variant; a conversion function from `Refused` to a success (none exists in the package) | A refusal missing `site`, `reason`, or `preserved` | A caller that matches `Refused` and then reports success — the consumption-function lint, not the compiler |
-| — | A `BudgetApplied` naming a bound the register does not know | A caller that treats `BudgetApplied` as an error — the consumption-function lint; that the bound really fires — the bound's own tests |
+| A match that forgets a `Result` arm; a conversion function from `Refused` to `Success` (none exists in the package) | A refusal missing `site`, `reason`, or `preserved` | A caller that handles `Refused` and then reports success by another path — the recorded `Result` versus the report, part nine |
+| — | A `capacity: applied` naming a bound the register does not know | A caller that treats `capacity: applied` as an error — the lint; that the bound really fires — the bound's own tests |
 | Two measurements of different subject kinds compared | Two measurements of the same kind, different unit or instance, compared by the same-instance function | That the probe measured what it says — the probe's fixture |
 | A `Directive` closed by anything other than supersession or completion | A `supersedes` cycle | Whether an operator meant to supersede — the mind |
 | An `Authorization` built without `approver`, `artifact`, or `base` | No `explicitYes` record; a moved base, a moved artifact, a non-live standing, a self-approved or agent-approved protected artifact, a waiver dated after the act | For a repository merge: that the branch rules exist — the host and its probe. For dashboard and runtime artifacts: nothing yet — an open question carried to parts nine and eleven |
-| Two values of different type or schema compared | Same `id`, incompatible immutable fields → `Conflict`, never equal | Which side of a `Conflict` is right — a person, through the fact spine |
+| Two values of different types compared; a `Provenance` built outside its decoder | Same `id`, incompatible immutable fields → `Conflict`, never equal; `asserted` provenance offered for standing above requester | Which side of a `Conflict` is right — a person, through the resolution doorway; a function returning a side elsewhere — the lint |
 | A `Decision` with no separate `reason` | A chosen action outside the floor | Whether the reason is true — the retrospective review |
 | A `Profile` with an adjective field | `attention` with `unbounded` repetition; a value off its closed list | Whether the declared profile is honest — the review, and rule 24's recurrence signal |
 | `Evidence` with no `source`, `observedAt`, or `capture` | A claim requested past its window (the freshness function refuses); a capture hash that does not match | A consumer that bypasses the freshness function — the lint; whether the source is trustworthy — the holder's own freshness proof |
@@ -678,7 +717,7 @@ lint; "test" means a runnable case whose assertion must hold.
 | NF-12 | Directive | A `supersedes` chain that loops | decode | 93 |
 | NF-13 | Intent | An intent with `ask` but no `raw` hash | decode | 4, 110 |
 | NF-14 | Result | A `Refused` matched into `Success<T>` by a function outside the package | lint | 42 |
-| NF-15 | Result | A `BudgetApplied<T>` handled in the error branch | lint | 40 |
+| NF-15 | Result | A `Success<T>` with `capacity: applied` handled in the error branch | lint | 40 |
 | NF-16 | Result | A `Refused` with no `preserved` reference | decode | 4, 86 |
 | NF-17 | Result | A `Refused` whose `failDirection` disagrees with its `site`'s register entry | decode | 95 |
 | NF-18 | Result | A `Refused` whose `reason` is off the closed list | decode | 42 |
@@ -693,7 +732,7 @@ lint; "test" means a runnable case whose assertion must hold.
 | NF-27 | Evidence | Missing `source`, `observedAt`, `capture`, or `strength` | compile | 26, 70 |
 | NF-28 | Evidence | `freshFor` unbounded | decode | 26 |
 | NF-29 | Evidence | `capture` hash that does not match the stored bytes | decode | 36, 26 |
-| NF-30 | Evidence | An aggregate that reports a strength stronger than its weakest member | test | 107, 111 |
+| NF-30 | Evidence | An aggregate that reports a strength stronger than its weakest member | test | Value (see Evidence) |
 | NF-31 | Evidence | `isFresh` asked without `now` | compile | 96 |
 | NF-32 | Decision | No `reason`, or `reason` is the same object as `conclusion` | compile | 108 |
 | NF-33 | Decision | A model's chosen action outside the given `ActionFloor` | decode | 57 |
@@ -703,9 +742,9 @@ lint; "test" means a runnable case whose assertion must hold.
 | NF-37 | Authorization | `artifact` no longer matches the current content | decode / validity | 82, 109 |
 | NF-38 | Authorization | `base` has moved | decode / validity | 82 |
 | NF-39 | Authorization | `under` names a grant not live at `at`, or not covering the action's scope | decode | 104, 28 |
-| NF-40 | Authorization | Protected artifact with `approver` equal to `requestedBy` | decode | 82, 103 |
+| NF-40 | Authorization | Protected artifact with `approver` equal to `requestedBy` | decode | 82, 98 |
 | NF-41 | Authorization | Protected artifact with an `approver` of `kind: agent` | decode | 82, 98 |
-| NF-42 | Authorization | Protected artifact whose approver was not read from the external authenticated record | decode | 82, 101 |
+| NF-42 | Authorization | Protected artifact whose approver was not read from the external authenticated record | decode | 82, 98 |
 | NF-43 | Authorization | `kind: waiver` with `at` later than the act it waives | decode | 94 |
 | NF-44 | Authorization | A "no" or "declined" variant | compile | 98 |
 | NF-45 | Scope | Standing in a narrower scope used to authorize a wider one | decode | 103, 104 |
@@ -730,9 +769,12 @@ lint; "test" means a runnable case whose assertion must hold.
 | NF-64 | any | A serialized value missing its type name or schema version | decode | 90 |
 | NF-65 | Evidence | A claim read past its `freshFor` window through the freshness function | decode | 26 |
 | NF-66 | Evidence | A consumer that reads `claim` without the freshness function | lint | 26 |
-| NF-67 | any | Two values of different type or schema compared | compile | 13 |
-| NF-68 | any | Same `id`, incompatible immutable fields, from two schema versions or two machines — must yield `Conflict` | test | 24, 31, 33 |
-| NF-69 | Conflict | A function that returns one side of a `Conflict` as the value | compile | 24 |
+| NF-67 | any | Two values of different types compared | compile | 13 |
+| NF-68 | any | Same `id`, incompatible immutable fields, from two machines — must yield `Conflict`; the same pair across two schema versions must migrate first and must not conflict on migration alone | test | 24, 31, 33 |
+| NF-69 | Conflict | A function other than the resolution doorway that returns one side of a `Conflict` | lint | 24 |
+| NF-71 | Provenance | A `Provenance` constructed anywhere but the Provenance decoder | compile | 28 |
+| NF-72 | Provenance | `asserted` provenance offered to the grant, revocation, authorization, or operator/delegate principal decoders | decode | 28, 98 |
+| NF-73 | Provenance | A signature that fails against the registered key, or a fetched record whose hash does not match, decoded as `verified` | decode | 28 |
 | NF-70 | Revocation | Decoded with no `Provenance`, or naming a grant id that does not exist | decode | 28, 104 |
 
 **Rule — the fixtures are the contract.** Rules 34, 36, 37, and 69 require that the invariants
@@ -758,7 +800,7 @@ term entries; until the register exists, they are defined here.
 | **scope** | noun | A closed set of registered places and action kinds where a standing, directive, or authorization applies. Compared by inclusion. |
 | **freshness** | fact | The window after an observation during which its claim may be relied on. Never unbounded. |
 | **strength** | fact | How an evidence claim was produced: `proof`, `observation`, `attestation`, or `inference`. An aggregate keeps the weakest. |
-| **provenance** | noun | Where an authority-bearing value came from: the adapter, the authentication method, the authenticated record and its capture hash, the time, and the machine — established outside the message bytes. |
+| **provenance** | noun | Where an authority-bearing value came from, as decoded by the package from authentication evidence: the adapter, the method, the authenticated record and its capture hash, the time, the machine, and whether the package could verify the evidence itself (`verified`) or only take the adapter's word (`asserted`). |
 | **explicit-yes record** | noun | The authenticated record in which an approver said yes: a merge event, a dashboard action, a signed reply. An authorization decodes only from one. |
 | **conflict** | noun | Two records with the same identity whose immutable fields disagree. A value the fact spine records for a person to resolve, never a comparison result of true or false. |
 
@@ -788,11 +830,14 @@ question stays open and is carried to parts nine and eleven.
 1. **The language capability floor.** Three static-checker capabilities are fixed here and the
    language is chosen later by compiling the fixtures. Is it right to constrain the choice this
    way now, or would you rather choose the language in this part?
-2. **Requester is never authorizer, anchored outside the agent.** The design is honest that the
-   decoder verifies the external anchor and cannot replace it. Do you accept that boundary, with
-   the decoder itself on the protected list?
-3. **`BudgetApplied` as a second success variant.** Rule 40 could be met by a flag on `Success`.
-   A distinct variant is stricter and slightly noisier to handle. Which do you want?
+2. **The repository anchor is the host's non-agent approval record, not the merge.** Rule 82
+   has the agent merge; the branch rules require a non-agent approval on protected paths, and
+   that approval record is what an authorization binds to. Is that the anchor you want, and
+   should the constitution and `docs/` be the only protected paths at first?
+3. **A budget applied as designed rides inside `Success`.** The approved parent fixes `Result`
+   as two arms, so the capacity signal is a required field on `Success` rather than a third
+   arm. Rule 40 is met (it cannot be routed as an error); do you accept this over amending the
+   parent?
 4. **Decoders inside the types package.** One implementation per invariant, at the cost of a
    central package that knows every adapter's byte shape through its fixtures. Alternative: one
    decoder per adapter, with the fixtures shared. I recommend the first.
