@@ -42,8 +42,9 @@ document runnable in isolation.
 
 ## The conventions every type follows
 
-Nine types are described below, and each would be tedious to trust if it invented its own rules
-for construction, equality, versioning, time, and failure. So the rules are fixed once here and
+Every constitutional type is listed in the inventory at the end of this section, and each would
+be tedious to trust if it invented its own rules for construction, equality, versioning, time,
+and failure. So the rules are fixed once here and
 every type inherits them. A reviewer checks a type against this list, not against its author's
 taste.
 
@@ -54,17 +55,41 @@ boundary, which reads bytes and either produces the value or refuses, or by a **
 inside the package, which computes one value from others already trusted. There is no third
 door. Code outside the package cannot assemble the fields by hand.
 
-**Rule — no open constructors.** Rules 13, 28, 29, 42, and 98 each depend on a value that cannot
-be made casually. **Check:** every constitutional type's constructor is private to the package; a
-negative fixture that assembles the fields from outside fails to compile.
+A decoder for a value that carries authority — a principal, a grant, an authorization — takes a
+second input the bytes cannot supply: a **Provenance** value (see the supporting types) that the
+adapter establishes from the authenticated record itself, outside the message. The decoder
+cross-checks every identity-bearing field in the bytes against that provenance and refuses on
+any disagreement, and the produced value keeps the provenance inside it. A message that merely
+claims to come from an authenticated record therefore cannot satisfy the decoder, and a faulty
+adapter that forwards content-supplied fields is caught by the cross-check rather than trusted.
 
-### 2. Equality is declared
+**Rule — no open constructors, and no authority from bytes alone.** Rules 13, 28, 29, 42, and
+98 each depend on a value that cannot be made casually. **Check:** every constitutional type's
+constructor is private to the package; a negative fixture that assembles the fields from outside
+fails to compile; decoders for principals, grants, and authorizations refuse when the bytes
+disagree with the provenance, and refuse when no provenance is supplied at all.
 
-Every type says how two values compare. Most compare by value: same fields, same value. Types
-that name a durable thing compare by identity: same `id`, whatever else changed. A type never
-compares two values of different subject, scope, or schema as equal; the comparison is refused
-rather than answered `false`, because `false` would let a caller treat a category error as an
-ordinary mismatch.
+### 2. Equality is declared, three ways
+
+Every type declares three separate comparisons, and each type section below names which of
+them it supports:
+
+- **identity** — the same durable thing: same `id`. Says nothing about content.
+- **version** — the same thing at the same point in its history: same `id`, same schema
+  version, same canonical content hash.
+- **value** — the same content, field for field, regardless of `id`.
+
+Two records with the same `id` whose *immutable* fields disagree are never equal and never
+silently resolved to the newer one: the comparison yields a **Conflict** value naming both, and
+the fact spine of part two records it, as the big picture requires for cross-machine
+reconciliation. A type never compares two values of different type, subject, scope, or schema
+as equal or unequal; that comparison is refused, because `false` would let a caller treat a
+category error as an ordinary mismatch.
+
+**Rule — conflict is recorded, not resolved.** Rules 24, 31, and 33 require that divergent
+records be surfaced. **Check:** fixtures compare the same `id` across two schema versions and
+across two machines with an incompatible immutable field and assert a `Conflict`, never `true`
+or `false`.
 
 ### 3. Every value carries its schema version
 
@@ -106,7 +131,8 @@ inside it. The hash algorithm is named in the schema and can change only by a sc
 machines encoding the same value produce the same bytes, so a hash made on one machine verifies on
 another.
 
-**Rule — one artifact, one hash.** Rules 82, 100, and 109 require binding to exact content.
+**Rule — one artifact, one hash.** Rules 82, 90, and 109 require binding to exact content and
+versions.
 **Check:** a fixture set of values with their expected canonical bytes and hashes is part of the
 package tests; a change in encoding without a schema version bump fails.
 
@@ -115,7 +141,8 @@ package tests; a change in encoding without a schema version bump fails.
 ## The types
 
 Each type is given in the same shape: what it is in plain words, what it holds, the mistake it
-makes impossible, how it comes into being, and which rules it carries. The field lists are the
+makes impossible, how it comes into being, which equality it supports, and which rules it
+carries. The field lists are the
 design, not a language; a field named here is a field the implementation must have, whatever it
 is called.
 
@@ -129,9 +156,10 @@ prompt is a string, not a principal.
 |---|---|
 | `id` | The stable identity within the system's own registry. Never a display name. |
 | `kind` | `person`, `agent`, or `system` (the scheduler, a recovery signal, a sentinel). |
-| `verifiedBy` | The adapter that authenticated the source and the method it used: `telegram-sender`, `signed-envelope`, `dashboard-pin`, `github-merge`, `os-scheduler`, and so on — a closed list the register owns. |
-| `verifiedAt` | The clock measurement at verification. |
-| `on` | The machine that performed the verification. |
+| `provenance` | A `Provenance`: the adapter, the authentication method (`telegram-sender`, `signed-envelope`, `dashboard-pin`, `github-merge`, `os-scheduler`, … — a closed list the register owns), a reference to the authenticated record with its capture hash, the clock measurement at verification, and the machine that verified. Established outside the bytes; never read from them. |
+
+Equality: identity by `id`; value by `id` and `kind`. Two principals with the same `id` and a
+different `kind` are a `Conflict`.
 
 **What it makes impossible.** There is no function from a string to a `VerifiedPrincipal`. The
 only producers are the intake adapters' decoders, and each names its authentication method. A
@@ -159,10 +187,15 @@ no grant. The other two exist only as recorded grants.
 | `standing` | `operator` or `delegate`. (`requester` is never granted; it is implied.) |
 | `scope` | A `Scope` — see the supporting types. |
 | `actions` | For `delegate` only: the closed list of registered action kinds the grant permits. Nothing outside it. |
-| `grantor` | Either `org-intent` (the organization's declared intent names the holder) or a `VerifiedPrincipal` who held a standing able to delegate it. |
+| `grantor` | Exactly one of: `org-intent { documentVersion, approvedIn }` — the organization's declared intent, at a named approved version, names the holder; or `principal { who, authorization }` — a `VerifiedPrincipal` who held a standing able to delegate it, and the `Authorization` id that recorded the delegation. A grantor without its source reference does not decode. |
+| `source` | A `Provenance` for the record that created the grant: the intent document's approval, or the authorization record. |
 | `issuedAt` | Clock measurement. |
 | `expiresAt` | Optional clock instant. A grant with no expiry is allowed only for `grantor: org-intent`. |
-| `approvedIn` | For a grant issued through an approval, the `Authorization` that created it. |
+
+A **Revocation** is its own value: `{ id, grantId, by: VerifiedPrincipal, at, reason, source: Provenance }`.
+
+Equality: identity by `id`; version by `id` and content hash. A grant is immutable, so two
+records with the same `id` and different fields are a `Conflict`.
 
 A grant is never edited. Revocation is a separate value, `Revocation { grantId, by, at, reason }`,
 and the question "is this grant live now?" is a pure function over the grant, the set of
@@ -175,10 +208,12 @@ delegate cannot act outside its listed actions, because the check is a set membe
 value, not a judgment. A delegate cannot re-delegate unless the organization's intent says so; the
 package leaves that policy to the intent document and only supplies the check.
 
-**Rule — standing is recorded, never inferred.** Rules 28, 93, 98, 103, and 104 require it.
+**Rule — standing is recorded, never inferred.** Rules 28, 98, 103, and 104 require it.
 **Check:** decoders refuse a grant whose grantor lacks a live standing able to delegate the
-requested standing; a negative fixture with a grant "from the conversation" (no approval, no intent
-source) fails to decode; the liveness function returns `revoked` or `expired`, never `false`.
+requested standing, a grant whose `grantor` carries no source reference, and a grant whose
+`source` provenance disagrees with its fields; a negative fixture with a grant "from the
+conversation" (no approval, no intent source) fails to decode; the liveness function returns
+`revoked` or `expired`, never `false`.
 
 ### Intent and Directive — what was asked, and the line it descends from
 
@@ -200,6 +235,9 @@ instructions do not lapse on a timer.
 | `id`, `principal`, `scope`, `statement`, `issuedAt` | Who gave it, where it applies, what it says. |
 | `supersedes` | The directive it replaces, when any. |
 | `closedBy` | Absent while live. Otherwise exactly one of `Superseded { by }` or `Completed { evidence }`. |
+
+Equality, both types: identity by `id`; version by `id` and content hash. An intent's `raw`
+hash is immutable, so two intents with the same `id` and different `raw` are a `Conflict`.
 
 **What it makes impossible.** A directive cannot expire: the type has no such variant, so no code
 path can time one out. An intent cannot lose its raw form, because `raw` is required and hashed
@@ -228,16 +266,22 @@ or doorway that refused); `failDirection` (`open` or `closed`, the one that site
 `preserved` (a reference to where the refused input was kept). A refusal without a preserved input
 cannot be constructed.
 
-**What it makes impossible.** There is no function from `Refused` to `Success` anywhere in the
-package, and the language must not allow one to be written outside it. A caller that wants the
-`T` must match on the result and handle the refusal by name. A capacity bound acting as designed
-cannot be routed as an error, because it is a success variant. A refusal cannot forget its input.
+**What it makes impossible, and what it only makes visible.** The compiler holds *recognition*:
+the three variants are a closed union, a match that forgets one does not build, and the package
+contains no function from `Refused` to any success. The compiler cannot hold *behaviour*: a
+caller can still match `Refused` and go on to report success, or match `BudgetApplied` and log an
+error. So behaviour is held one level up, by a single **consumption function** in the package
+through which a caller obtains the `T`, and which requires a handler for each variant with a
+typed outcome; an architecture lint refuses a direct match on `Refused` or `BudgetApplied` outside
+that function. A refusal cannot forget its input: `preserved` is required.
+
+Equality: value, field for field. A `Refused` is never equal to any success.
 
 **Rule — a refusal stays a refusal; a budget applied is a success.** Rules 40, 42, 4, 86, and 95
-require it. **Check:** compile-time fixtures that pattern-match `Refused` into a success value, or
-that treat `BudgetApplied` as an error, fail to type-check; the decoder refuses a `Refused` whose
-`reason`, `site`, or `preserved` is missing or whose `failDirection` disagrees with the site's
-register entry.
+require it. **Check:** a compile-time fixture that omits a variant from a match fails to build;
+a lint fixture that matches `Refused` or `BudgetApplied` outside the consumption function fails
+the build; the decoder refuses a `Refused` whose `reason`, `site`, or `preserved` is missing or
+whose `failDirection` disagrees with the site's register entry.
 
 ### Measurement — a number that knows what it measured
 
@@ -259,7 +303,9 @@ kind is a decode-time refusal unless the function is explicitly the cross-instan
 README's own test — "every claim about 1.x carries the number and the command that produced it" —
 is this type applied to documents: `value`, `subject`, `by`.
 
-**Rule — a number binds its subject.** Rules 13, 26, 64, and 75 require it. **Check:** a
+Equality: value, and only between the same subject kind, instance, and unit.
+
+**Rule — a number binds its subject.** Rules 13 and 26 require it. **Check:** a
 compile-time fixture comparing a latency to a remaining-time fails; a decoder refuses a
 measurement whose unit is not on its subject kind's list, or whose `by` is not a registered
 producer.
@@ -284,6 +330,8 @@ field named `critical` does not decode.
 for a path that can repeat without a bound: the decoder refuses `consequence: attention` together
 with `repeats: unbounded`, because the glossary already says that combination is `control`.
 
+Equality: value, field for field.
+
 **Rule — derive, never declare.** Rules 34, 38, 43, 62, 76, and the glossary's derivation rule
 require it. **Check:** the schema has no adjective field; the derivation functions are generated
 from the terms registry and a diff between them and the term entries fails the build; a fixture
@@ -304,14 +352,20 @@ with a bound on how long it can be relied on, and a hash of the raw capture behi
 | `strength` | `proof` (a deterministic check ran), `observation` (a probe or adapter saw it), `attestation` (a principal said so), or `inference` (a model concluded it). |
 
 **What it makes impossible.** A claim with no source, no time, or no capture. A stale claim being
-read as current: `isFresh(evidence, now)` is the only way to use it, and it is a pure function.
-Blending strengths: an aggregate over evidence keeps the weakest strength present, so a proof and
-an inference averaged together cannot report as proof.
+read as current: the only function that hands a claim to a consumer takes `now`, and it returns
+`Refused { reason: stale }` past the window rather than the claim.
 
-**Rule — evidence carries its provenance.** Rules 26, 36, 70, 107, and 111 require it. **Check:**
-decoders refuse evidence missing any field; a fixture with `freshFor` unbounded fails; the
-aggregation function is tested to keep the weakest strength; every `source` resolves to a register
-entry.
+Equality: identity by `id`; version by `id` and `capture` hash. Two rows with the same `id` and a
+different capture are a `Conflict`.
+
+**Rule — evidence carries its provenance.** Rules 26, 36, and 70 require it. **Check:** decoders
+refuse evidence missing any field; a fixture with `freshFor` unbounded fails; a fixture that reads
+a claim past its window without going through the freshness function fails the lint; every
+`source` resolves to a register entry.
+
+**Value — an aggregate keeps the weakest strength.** No rule fixes how strengths combine. This
+package chooses the conservative rule: an aggregate over evidence reports the weakest strength
+present, so a proof and an inference combined can never report as proof. Tested as a fixture.
 
 ### Decision — a conclusion and a reason, each falsifiable on its own
 
@@ -330,6 +384,8 @@ reopen the decision even when the conclusion still looks right.
 **What it makes impossible.** A decision with a conclusion and no reason, or with the reason
 folded into the conclusion. A model choosing an action outside its floor: the chosen action is
 typed as a member of the floor's list, so an outside action does not decode.
+
+Equality: identity by `id`; version by `id` and content hash.
 
 **Rule — conclusion and reason are separate claims.** Rules 57, 58, 108, and 41 require it.
 **Check:** a compile-time fixture with `reason` absent fails; a fixture whose chosen action is not
@@ -352,6 +408,10 @@ it expires the moment either moves.
 | `base` | The base the artifact was reviewed against: a merge target's head commit, a fact-sequence position, a register generation. |
 | `kind` | `approval`, `waiver { rule }`, or `grant`. A waiver names the rule it waives and must precede the act it waives. |
 | `requestedBy` | The `VerifiedPrincipal` who asked. Must differ from `approver` for a protected artifact. |
+| `explicitYes` | A `Provenance` for the authenticated record in which the approver said yes: a merge event, a dashboard action, a signed reply. Required. Absence, a timeout, or a default is not a record. |
+
+Equality: identity by `id`; version by `id` and content hash. An authorization is immutable, so
+two records with the same `id` and different fields are a `Conflict`.
 
 A pure function `isValid(authorization, currentBase, artifactHash, now)` answers whether it still
 holds. It returns a reason, not a boolean: `valid`, `artifact-moved`, `base-moved`, `standing-not-
@@ -365,34 +425,57 @@ an authorization for a protected-artifact action whose `approver` and `requested
 principal, or whose approver is any `kind: agent` principal. A waiver after the fact: `kind: waiver`
 requires `at` earlier than the act's evidence time, checked where the act is recorded.
 
-**Rule — an approval is an explicit, bound yes.** Rules 82, 94, 98, 100, 101, 104, and 109
-require it. **Check:** compile-time fixtures constructing an authorization from a timeout, from a
-missing reply, or without a base fail; decoders refuse a self-approved protected artifact and an
-agent-kind approver on one; the validity function is tested on every reason.
+**Rule — an approval is an explicit, bound yes.** Rules 82, 94, 98, 104, and 109 require it.
+**Check:** compile-time fixtures constructing an authorization from a timeout, from a missing
+reply, or without a base fail; decoders refuse an authorization without an `explicitYes` record,
+one whose fields disagree with that record's provenance, a self-approved protected artifact, and
+an agent-kind approver on one; the validity function is tested on every reason.
 
-**Where the door for protected artifacts actually is.** The register (kind 12) hands this design
-one open question: the agent writes the checkers, so the enforcement of the protected list must sit
-outside the agent's write authority. This package cannot supply that alone, and it says so. What it
-supplies is the invariant: an authorization for a protected artifact decodes only from an external
-authenticated record — a merge on `main` performed by a non-agent account, or a dashboard action
-completed with the operator's PIN — with the approver identity read from that external system, not
-from the request. The anchor outside the agent is the external system's own protection: the
-repository's branch rules require that record to exist before content reaches `main`, and the
-agent's account cannot change those rules. The decoder verifies the anchor; it does not replace it.
-If the anchor is ever removed, the decoder still refuses, but nothing then prevents the agent from
-editing the decoder. That is the honest boundary, and it is why the protected list includes the
-decoder itself.
+**Where the door for protected artifacts actually is — and where it is not.** The register
+(kind 12) hands this design one open question: the agent writes the checkers, so the enforcement
+of the protected list must sit outside the agent's write authority. This package answers it for
+one class of artifact only. For a **repository merge**, the external anchor exists today: the
+repository host's branch rules require a merge record from a non-agent account before content
+reaches `main`, the agent's account cannot change those rules, and the decoder's `explicitYes`
+provenance is that merge record, read from the host. For a **dashboard-governed artifact** or a
+**runtime artifact on the agent's own machine**, no such anchor exists: an agent with filesystem
+authority can edit the decoder, the list, or the artifact, and a probe that later notices the
+edit is detection, not prevention. Listing the decoder on the protected list does not close
+this, because the decoder would be enforcing the list that protects it. So the register's
+question stays **open** for those classes. It is carried to part nine (verification holders and
+probes) and part eleven (operator surfaces), which must name a reference monitor outside the
+agent's write authority — a host-side rule, a separate signing principal, or a hardware-backed
+approval — before any such artifact can be called protected. Until then, the constitution and
+the repository are the only protected artifacts this design claims to hold.
 
-**Rule — requester is never authorizer.** Rules 82, 98, and 103 require it. **Check:** the
-protected-artifact list in the register includes this package's decoders and the external branch
-rules are verified present by a probe on a cadence; the probe's absence is itself a critical
-outcome.
+**Rule — requester is never authorizer.** Rules 82 and 98 require it. **Check:** decoders refuse
+a protected-artifact authorization whose approver equals the requester or is an agent-kind
+principal; for a repository merge, a probe on a cadence verifies the branch rules are present,
+and the probe's absence is itself a critical outcome. No check is claimed for the open classes.
 
 ---
 
 ## Supporting types
 
-Four smaller types carry pieces the nine above share. They follow the same conventions.
+Seven smaller types carry pieces the core types share. They follow the same conventions.
+
+**Provenance.** Where an authority-bearing value came from, established by an adapter from the
+authenticated record itself and never from message bytes: the adapter, the authentication
+method (a closed list the register owns), a reference to the authenticated record with the
+canonical hash of its capture, the clock measurement at verification, and the machine that
+verified. A principal, a grant, a revocation, and an authorization each carry one, and their
+decoders cross-check every identity-bearing field against it. Provenance is a required *input*
+to those decoders; a decoder called without it refuses. (Rules 28, 29, 98.)
+
+**Conflict.** The result of comparing two records with the same identity whose immutable
+fields disagree: both versions, their origins, and the fields that differ. It is a value, not an
+error, so the fact spine can record it and a person can resolve it; no function in the package
+turns a `Conflict` into either side. (Rules 24, 31, 33.)
+
+**UnresolvedInput.** A message whose sender could not be resolved to a principal: the raw hash,
+the channel, the time, and the reason resolution failed. It carries no authority and cannot be
+passed where a principal is required; it exists so the message is kept rather than dropped
+(see the decoding boundary). (Rules 14, 28.)
 
 **Scope.** Where a standing, directive, or authorization applies: a closed set of registered
 scope kinds — a conversation id, a project, a repository, an artifact path pattern, a set of
@@ -406,18 +489,51 @@ The floor is a value the register owns and the judgment doorway hands to the mod
 
 **Outcome.** What an effect turned out to do in the world: `happened`, `did-not-happen`, or
 `uncertain`. `uncertain` is not a failure and is never retried as one; it is the state until a
-verification asks the external system. This type is small, and it exists here rather than in the
-effect doorway because it is a constitutional distinction, not an implementation detail. (Rules 24,
-26, 42.)
+verification asks the external system. As with `Result`, the compiler holds recognition and a
+consumption function plus lint hold behaviour: the only way to schedule a retry takes an
+`Outcome` and refuses `uncertain`. This type is small, and it exists here rather than in the
+effect doorway because it is a constitutional distinction, not an implementation detail. (Rules
+24, 26, 42.)
 
 **SecretRef.** A reference to a secret by vault name, never the value. No constitutional type has
 a field that can carry secret bytes, and no decoder in this package produces one from input. A
 secret arriving through intake is written to the vault by the adapter first and enters the core
 as a `SecretRef`. (Rules 100 and 86.)
 
-**Value — four supporting types, not more.** Each is here because a type above cannot state its
+**Value — seven supporting types, not more.** Each is here because a type above cannot state its
 invariant without it. Anything else — fact envelopes, register entries, run records, delivery
 states — belongs to the later parts and is built from these.
+
+### The inventory
+
+Every value this package can produce is listed here, so "every type" in a check has a finite
+meaning. A schema registered for a name not in this table, or a name here with no registered
+schema, fails the build. Fixture coverage ranges over this table, not over a prose count.
+
+| Name | Role | Constructed by |
+|---|---|---|
+| VerifiedPrincipal | core | decoder, with Provenance |
+| StandingGrant | core | decoder, with Provenance |
+| Revocation | core | decoder, with Provenance |
+| Intent | core | decoder |
+| Directive | core | decoder |
+| Result (Success, BudgetApplied, Refused) | core | derivation |
+| Measurement | core | decoder or derivation |
+| Profile | core | decoder |
+| Evidence | core | decoder |
+| Decision | core | decoder or derivation |
+| Authorization | core | decoder, with Provenance |
+| Scope | supporting | decoder |
+| ActionFloor | supporting | decoder |
+| Outcome | supporting | derivation |
+| SecretRef | supporting | decoder (after the vault write) |
+| Provenance | supporting | adapter, from the authenticated record |
+| Conflict | supporting | derivation (the equality functions) |
+| UnresolvedInput | supporting | decoder (the intake fallback) |
+
+**Rule — the inventory is closed.** Rules 5, 69, and 90 require every governed thing to be
+enumerated and versioned. **Check:** the schema registry and this table are compared by a build
+step; every fixture names an inventory entry.
 
 ---
 
@@ -429,13 +545,17 @@ adapter's job is to hand the bytes to a **decoder**, and the decoder's job is to
 or a refusal. Raw shapes exist only between the adapter and the decoder. After the decoder, the
 core sees types.
 
-A decoder is a total, pure function from bytes plus context to `Result<T>`. It:
+A decoder is a total, pure function from bytes plus context to `Result<T>`. For a principal,
+grant, revocation, or authorization the context includes a `Provenance` the adapter built from
+the authenticated record, and the decoder refuses without it. It:
 
 1. checks the schema version and migrates a known earlier version forward;
 2. checks every required field is present and every closed-list value is on its list;
 3. checks every cross-field invariant named in this document (a directive with no expiry, a
    refusal with a preserved input, a profile with no adjective fields, an authorization with a
-   base);
+   base and an explicit-yes record);
+3a. for an authority-bearing value, cross-checks every identity-bearing field against the
+   supplied provenance and refuses on any disagreement;
 4. verifies every content hash against the bytes it claims to hash;
 5. checks every register reference resolves — the check takes the register generation as an
    argument, so it stays pure;
@@ -475,20 +595,23 @@ this package at all, and naming that group is part of the design.
 
 | Refused at compile time — the program does not build | Refused at the boundary — the decoder returns `Refused` | Not held here — held by another part or outside the agent |
 |---|---|---|
-| A string, display name, or unverified sender record passed where a `VerifiedPrincipal` is required | A `verifiedBy` method the register does not list | That the adapter's authentication is real — the adapter contract suite, real captured fixtures |
-| `Refused` converted to any success variant | A refusal missing `site`, `reason`, or `preserved` | That the refusing site's `failDirection` was the right choice — the register review |
-| `BudgetApplied` handled as an error | A `BudgetApplied` naming a bound the register does not know | That the bound really fires — the bound's own tests and probes |
+| A string, display name, or unverified sender record passed where a `VerifiedPrincipal` is required | A principal, grant, or authorization whose fields disagree with its provenance, or decoded with no provenance; an authentication method the register does not list | That the adapter's authentication is real — the adapter contract suite, real captured fixtures |
+| A match that forgets a `Result` variant; a conversion function from `Refused` to a success (none exists in the package) | A refusal missing `site`, `reason`, or `preserved` | A caller that matches `Refused` and then reports success — the consumption-function lint, not the compiler |
+| — | A `BudgetApplied` naming a bound the register does not know | A caller that treats `BudgetApplied` as an error — the consumption-function lint; that the bound really fires — the bound's own tests |
 | Two measurements of different subject kinds compared | Two measurements of the same kind, different unit or instance, compared by the same-instance function | That the probe measured what it says — the probe's fixture |
 | A `Directive` closed by anything other than supersession or completion | A `supersedes` cycle | Whether an operator meant to supersede — the mind |
-| An `Authorization` built without `approver`, `artifact`, or `base` | A moved base, a moved artifact, a non-live standing, a self-approved or agent-approved protected artifact, a waiver dated after the act | That the branch rules exist and the agent cannot edit them — the external system and its probe |
+| An `Authorization` built without `approver`, `artifact`, or `base` | No `explicitYes` record; a moved base, a moved artifact, a non-live standing, a self-approved or agent-approved protected artifact, a waiver dated after the act | For a repository merge: that the branch rules exist — the host and its probe. For dashboard and runtime artifacts: nothing yet — an open question carried to parts nine and eleven |
+| Two values of different type or schema compared | Same `id`, incompatible immutable fields → `Conflict`, never equal | Which side of a `Conflict` is right — a person, through the fact spine |
 | A `Decision` with no separate `reason` | A chosen action outside the floor | Whether the reason is true — the retrospective review |
 | A `Profile` with an adjective field | `attention` with `unbounded` repetition; a value off its closed list | Whether the declared profile is honest — the review, and rule 24's recurrence signal |
-| `Evidence` with no `source`, `observedAt`, or `capture` | A stale claim used as current; a capture hash that does not match | Whether the source is trustworthy — the holder's own freshness proof |
+| `Evidence` with no `source`, `observedAt`, or `capture` | A claim requested past its window (the freshness function refuses); a capture hash that does not match | A consumer that bypasses the freshness function — the lint; whether the source is trustworthy — the holder's own freshness proof |
 | A field typed to carry secret bytes | A decoder input containing a secret value where a `SecretRef` is expected | That the vault write happened first — the intake adapter's contract test |
 
 **Rule — every forbidden state names its rejection point.** Rules 1, 49, and 69 require that a
-rule name its enforcer. **Check:** every row in this table is a numbered negative fixture below,
-and the fixture suite is the enforcer the rule book's rows 13, 28, 29, 40, and 42 name.
+rule name its enforcer. **Check:** every cell in the first two columns of this table is covered
+by at least one numbered negative fixture below (a build step maps cells to fixture numbers and
+fails on an uncovered cell), and the fixture suite is the enforcer the rule book's rows 13, 28,
+29, 40, and 42 name. The third column is, by definition, not held here.
 
 ---
 
@@ -536,7 +659,8 @@ marks every type `shared`; a type declared `machine-local` in this package fails
 These are the invalid shapes every implementation must reject. Each is one test. The fixture
 number is stable and is what a later part or a code review cites. "Compile" means the fixture is a
 program that must fail to build; "decode" means the fixture is a byte record that must produce
-`Refused { reason: decode }`.
+`Refused { reason: decode }`; "lint" means a program that builds but must fail the architecture
+lint; "test" means a runnable case whose assertion must hold.
 
 | # | Type | The invalid shape | Rejected at | Rules |
 |---|---|---|---|---|
@@ -553,8 +677,8 @@ program that must fail to build; "decode" means the fixture is a byte record tha
 | NF-11 | Directive | A directive closed with a variant other than `Superseded` or `Completed` | compile | 93 |
 | NF-12 | Directive | A `supersedes` chain that loops | decode | 93 |
 | NF-13 | Intent | An intent with `ask` but no `raw` hash | decode | 4, 110 |
-| NF-14 | Result | A `Refused` matched into `Success<T>` by a function outside the package | compile | 42 |
-| NF-15 | Result | A `BudgetApplied<T>` handled in the error branch | compile | 40 |
+| NF-14 | Result | A `Refused` matched into `Success<T>` by a function outside the package | lint | 42 |
+| NF-15 | Result | A `BudgetApplied<T>` handled in the error branch | lint | 40 |
 | NF-16 | Result | A `Refused` with no `preserved` reference | decode | 4, 86 |
 | NF-17 | Result | A `Refused` whose `failDirection` disagrees with its `site`'s register entry | decode | 95 |
 | NF-18 | Result | A `Refused` whose `reason` is off the closed list | decode | 42 |
@@ -585,7 +709,7 @@ program that must fail to build; "decode" means the fixture is a byte record tha
 | NF-43 | Authorization | `kind: waiver` with `at` later than the act it waives | decode | 94 |
 | NF-44 | Authorization | A "no" or "declined" variant | compile | 98 |
 | NF-45 | Scope | Standing in a narrower scope used to authorize a wider one | decode | 103, 104 |
-| NF-46 | Outcome | `uncertain` retried as `did-not-happen` | compile | 24, 26 |
+| NF-46 | Outcome | `uncertain` retried as `did-not-happen` | lint | 24, 26 |
 | NF-47 | SecretRef | A field typed to carry secret bytes anywhere in the package | compile | 100 |
 | NF-48 | SecretRef | Decoder input carrying a secret value where a ref is expected | decode | 100, 86 |
 | NF-49 | any | A serialized value with an unknown schema version | decode | 90 |
@@ -593,6 +717,23 @@ program that must fail to build; "decode" means the fixture is a byte record tha
 | NF-51 | any | A constructor called from outside the package | compile | 1 |
 | NF-52 | any | A decoder that reads the clock, a file, or the network | build lint | 96, 1 |
 | NF-53 | UnresolvedInput | Passed where a `VerifiedPrincipal` or `VerifiedIntent` is required | compile | 14, 28 |
+| NF-54 | VerifiedPrincipal | Decoded with no `Provenance` supplied | decode | 28 |
+| NF-55 | VerifiedPrincipal | `id` or `kind` in the bytes disagrees with the provenance's authenticated record | decode | 28 |
+| NF-56 | StandingGrant | `grantor: org-intent` without `documentVersion` and `approvedIn` | decode | 103, 104 |
+| NF-57 | StandingGrant | Grant fields disagree with the `source` provenance | decode | 28, 104 |
+| NF-58 | Authorization | No `explicitYes` record | decode | 98 |
+| NF-59 | Authorization | Fields disagree with the `explicitYes` provenance — ordinary action | decode | 98 |
+| NF-60 | Authorization | Fields disagree with the `explicitYes` provenance — protected artifact | decode | 82, 98 |
+| NF-61 | Result | A `Refused` missing `site` or `reason` | decode | 42, 95 |
+| NF-62 | Result | A match that omits a variant | compile | 42 |
+| NF-63 | Directive | A serialized directive carrying an `expiresAt` field | decode | 93 |
+| NF-64 | any | A serialized value missing its type name or schema version | decode | 90 |
+| NF-65 | Evidence | A claim read past its `freshFor` window through the freshness function | decode | 26 |
+| NF-66 | Evidence | A consumer that reads `claim` without the freshness function | lint | 26 |
+| NF-67 | any | Two values of different type or schema compared | compile | 13 |
+| NF-68 | any | Same `id`, incompatible immutable fields, from two schema versions or two machines — must yield `Conflict` | test | 24, 31, 33 |
+| NF-69 | Conflict | A function that returns one side of a `Conflict` as the value | compile | 24 |
+| NF-70 | Revocation | Decoded with no `Provenance`, or naming a grant id that does not exist | decode | 28, 104 |
 
 **Rule — the fixtures are the contract.** Rules 34, 36, 37, and 69 require that the invariants
 be tested and that the rule book's enforcer references resolve. **Check:** every fixture number
@@ -605,7 +746,7 @@ enforcer once code exists.
 ## The terms this part introduces
 
 The glossary's rule is that a load-bearing term needs a definition before the rule that uses it
-is a rule. This part uses seven terms the glossary does not yet carry. On approval they become
+is a rule. This part uses ten terms the glossary does not yet carry. On approval they become
 term entries; until the register exists, they are defined here.
 
 | Term | Kind | Definition |
@@ -617,6 +758,9 @@ term entries; until the register exists, they are defined here.
 | **scope** | noun | A closed set of registered places and action kinds where a standing, directive, or authorization applies. Compared by inclusion. |
 | **freshness** | fact | The window after an observation during which its claim may be relied on. Never unbounded. |
 | **strength** | fact | How an evidence claim was produced: `proof`, `observation`, `attestation`, or `inference`. An aggregate keeps the weakest. |
+| **provenance** | noun | Where an authority-bearing value came from: the adapter, the authentication method, the authenticated record and its capture hash, the time, and the machine — established outside the message bytes. |
+| **explicit-yes record** | noun | The authenticated record in which an approver said yes: a merge event, a dashboard action, a signed reply. An authorization decodes only from one. |
+| **conflict** | noun | Two records with the same identity whose immutable fields disagree. A value the fact spine records for a person to resolve, never a comparison result of true or false. |
 
 ---
 
@@ -633,8 +777,9 @@ separate reason). They are not yet fully checkable — each needs the register o
 later part — but the shape they need now exists, and a later part that weakens it fails a fixture.
 
 One rule this part explicitly does not hold alone: 82's protected-artifact clause. The package
-supplies the invariant and names the external anchor; the anchor itself is a probe in the
-verification part and a rule in the repository host.
+supplies the invariant and, for repository merges, names the external anchor the host provides.
+For dashboard-governed and runtime artifacts it names no anchor, because none exists yet; that
+question stays open and is carried to parts nine and eleven.
 
 ---
 
@@ -654,6 +799,11 @@ verification part and a rule in the repository host.
 5. **`UnresolvedInput` as a value.** An unresolvable sender's message is kept and queued as an
    authority-free value rather than refused. This is the one place the boundary is soft, and it
    is soft toward delivery on purpose. Is that the right place for the softness?
+6. **Protected artifacts beyond the repository.** This part holds the protected list for
+   repository merges only and says so; dashboard-governed and runtime artifacts have no anchor
+   outside the agent's write authority yet. Do you accept carrying that open question to the
+   verification and operator-surface parts, or do you want a reference monitor designed before
+   any code part starts?
 
 ---
 
