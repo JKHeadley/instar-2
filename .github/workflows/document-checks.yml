@@ -1,0 +1,28 @@
+# The three document checks the rule book names, run on every pull request and on main.
+# Until this workflow existed the checks were scripts a person had to remember to run —
+# exactly the 1.x failure this repository exists to avoid (rule 73: a dark enforcer guards nothing).
+name: document-checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the governed-document check counts approved versions on main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: changelogs carry every required field (rule 91)
+        run: node scripts/validate-changelog.mjs docs/*.changelog.json docs/harvests/*.changelog.json
+      - name: generated changelog markdown is current (rule 91)
+        run: |
+          node scripts/render-changelog.mjs docs/*.changelog.json docs/harvests/*.changelog.json
+          git diff --exit-code -- '*.changelog.md'
+      - name: no history markers in a governed body (rule 91)
+        run: node scripts/check-governed-docs.mjs docs
+      - name: no whitespace errors
+        run: git diff --check origin/main...HEAD || git diff --check HEAD~1
