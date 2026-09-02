@@ -32,6 +32,11 @@
         "what": "Startup and failure handling changed from an easily read global integrity gate to scoped admission and degradation: a minimal communication/repair plane, per-family gates, quarantine, safe last-known-good reads, and fault-matrix proof that non-minimal failures cannot make the whole agent unusable.",
         "why": "Integrity checks must increase reliability rather than repeatedly shutting down the system they protect.",
         "ref": "PR #12 review comment 3910616904"
+      },
+      {
+        "what": "A protocol-independent agent-transport port added to the recursive run graph; Threadline named as its reference adapter; delegation envelopes, durable run-to-thread mapping, local/remote parity, and authoritative delivery states fixed while concrete Threadline protocol choices remain deferred to its part design.",
+        "why": "Cross-agent delegation must be designed before the work engine can assume every child is local, while Threadline itself must remain a replaceable adapter rather than enter the constitutional core.",
+        "ref": "operator Threadline follow-up in topic 52075"
       }
     ]
   },

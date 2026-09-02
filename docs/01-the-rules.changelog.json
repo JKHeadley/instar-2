@@ -14,9 +14,9 @@
     },
     "changes": [
       {
-        "what": "Rule 114 added — agency composes recursively: sessions may delegate to durable child runs which may delegate again, while preserving scope, ownership, authority, evidence, bounds, and result routing; the platform supports rather than prescribes the topology.",
-        "why": "The existing rules made delegated runs durable but never required session-to-session orchestration or nested specialist groups as an official capability.",
-        "ref": "PR #12 review comment 3910436663"
+        "what": "Rule 114 added — agency composes recursively: sessions may delegate to durable child runs on local sessions or remote agents, which may delegate again, while preserving scope, ownership, authority, evidence, bounds, cancellation, transport, and result routing; the platform supports rather than prescribes the topology.",
+        "why": "The existing rules made delegated runs durable but never required session-to-session orchestration, nested specialist groups, or cross-agent composition through a protocol-independent transport as official capabilities.",
+        "ref": "PR #12 review comment 3910436663; operator Threadline follow-up in topic 52075"
       },
       {
         "what": "Rule 115 added — Instar ships a first-party native harness, built only on public core ports, able to use any compatible registered model doorway and to develop, extend, and repair Instar itself without privileged bypasses.",

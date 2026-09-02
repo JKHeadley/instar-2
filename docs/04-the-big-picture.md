@@ -163,9 +163,24 @@ official pattern, not a mandatory one. A small job may remain one run, and a dif
 may be chosen whenever the work calls for it.
 
 Every edge records the delegated scope, authority, owner, budget, exit test, placement reason,
-result destination, and cancellation relationship. A child receives no authority merely because
-its parent has it; the parent passes only the standing the child needs. Results return as durable
-facts, so a dead parent or worker cannot strand them, and a replacement can reconstruct the graph.
+result destination, transport, and cancellation relationship. A child receives no authority
+merely because its parent has it; the parent passes only the standing the child needs. Results
+return as durable facts, so a dead parent or worker cannot strand them, and a replacement can
+reconstruct the graph.
+
+A child may be a session of this agent or a different agent. Crossing that boundary uses an
+agent-transport port; the work engine does not know which protocol carries it. The edge maps its
+parent and child run ids to the transport's durable conversation id, and the signed envelope
+carries verified agent identity, delegated standing, scope, budget, evidence references,
+cancellation, idempotency key, and the destination for results. The remote agent remains a
+principal with its own standing, never a process that inherits the sender's identity.
+
+Delivery is a state machine, not a boolean: `accepted-by-transport`, `durably-queued`,
+`delivered-to-worker`, `answered`, `refused`, or `uncertain`. Each state names the authority that
+can prove it. A relay accepting bytes is not worker delivery; worker delivery is not an answer;
+and timeout is uncertain until reconciliation proves whether the remote effect occurred. Local
+and remote children implement this same contract, so changing placement cannot change the meaning
+of delegation.
 
 Each step is a small state transition:
 
@@ -183,8 +198,9 @@ execution at a ceiling, but only the exit test completes the work.
 **Rule — the run outlives the worker.** Rules 8, 20, 22, 24, 26, 27, 31, 46, 55, 60, 61, 63,
 64, 68, 71, 83, 92, 93, 97, 99, 102, 113, and 114 govern the work engine. **Check:** model-based state
 tests kill workers at every transition and prove the run either resumes or ends with a typed
-blocker; graph tests kill parents, orchestrators, and nested workers during fan-out and collection;
-duplicate-worker tests prove a side effect and a child result are each delivered at most once;
+blocker; graph tests kill parents, orchestrators, nested workers, and transports during fan-out and
+collection; duplicate-worker tests prove a side effect and a child result are each delivered at
+most once; transport tests prove every claimed delivery state from its authoritative record;
 every stopped run cites a passed exit test or a proven-unreachable record with a recheck date.
 
 **Value — step-sized commits.** The constitution requires durability and idempotence but not the
@@ -325,10 +341,11 @@ durable boundary without making private edits to the core the normal path.
 
 ## 10. Adapters are replaceable edges
 
-There are six adapter families:
+There are seven adapter families:
 
 - **conversation:** Telegram, Slack, WhatsApp, iMessage, web;
 - **harness:** Instar Native, Codex, Claude Code, Gemini, Grok Build, and future session runtimes;
+- **agent transport:** Threadline first; A2A and future inter-agent protocols through the same port;
 - **model:** subscription and metered model doorways;
 - **persistence:** local files, databases, vaults, and cross-machine replication;
 - **effects:** GitHub, email, payments, processes, files, and other external services;
@@ -339,10 +356,23 @@ or limitation; it may not reinterpret standing, swallow refusal, invent retry po
 the register. Channel and harness parity are measured from the same contract suites, with gaps
 recorded rather than hidden behind special cases.
 
-**Rule — framework and channel parity.** Rules 30, 36, 44, 47, 59, 62, 79, 81, 84, 89, 105,
-106, and 110 govern adapters. **Check:** every adapter runs its family contract suite against real
-captured fixtures; the generated parity matrix names every unsupported capability; core packages
-contain no adapter identity branches.
+Threadline is the reference agent-transport adapter because Instar 1.x has already exercised the
+hard parts this contract needs: persistent conversations, authenticated agent identity,
+trust-gated delivery, relay and direct paths, session resumption, and durable recovery when a
+receiving worker dies. Threadline is not part of the constitutional core. A local transport, A2A,
+or a future protocol can replace it by proving the same delivery and delegation contract.
+
+This document deliberately does not choose Threadline's relay topology, discovery, wire format,
+cryptography, trust bootstrap, retention, or bridge design, and it does not presume the 1.x code
+is carried forward unchanged. Those are decisions for the agent-transport part design after a
+layer-below audit of the 1.x implementation. Here we fix only the seam and its semantics, before
+the work engine can accidentally assume every child belongs to one Instar instance.
+
+**Rule — framework, channel, and transport parity.** Rules 30, 36, 44, 47, 59, 62, 79, 81, 84,
+89, 105, 106, 110, and 114 govern adapters. **Check:** every adapter runs its family contract suite
+against real captured fixtures; the generated parity matrix names every unsupported capability;
+agent-transport adapters prove each delivery state and preserve the delegation envelope; core
+packages contain no adapter identity or transport-protocol branches.
 
 Instar Native is the first-party reference harness. It is assembled from the same public ports as
 the other adapters and may use any compatible registered model doorway; it has no private route
@@ -428,12 +458,13 @@ Once this document is approved, part designs proceed in dependency order:
 2. fact envelope, version chain, and projection contract;
 3. declarations, register generator, terms resolver, and rule/holder graph;
 4. intake and identity/standing resolution;
-5. durable run graph, delegation contracts, leases, loop primitive, and recovery;
-6. judgment doorway and benchmark record;
-7. effect doorway and operation adapters;
-8. verification holders, probes, retrospective review, and outcome grading;
-9. native-harness and external-adapter contracts, executable assembly, and local capability packages;
-10. operator surfaces and the first vertical slice.
+5. durable run graph, delegation contracts, and the agent-transport port;
+6. Threadline reference-adapter design, leases, loop primitive, and recovery;
+7. judgment doorway and benchmark record;
+8. effect doorway and operation adapters;
+9. verification holders, probes, retrospective review, and outcome grading;
+10. native-harness and remaining adapter contracts, executable assembly, and local capability packages;
+11. operator surfaces and the first vertical slice.
 
 The first vertical slice should be deliberately small: receive one authenticated message, create
 a durable run, make one bounded model judgment, send one attributable response, verify delivery,
