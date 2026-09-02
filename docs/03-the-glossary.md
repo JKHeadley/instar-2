@@ -427,5 +427,5 @@ reading exercise into a build check.
 two in three places: `userFacing` and `significance` on features are derived, not declared;
 `supersedes` and `approvedIn` join the common facts; and the register gains kinds 12 (terms) and
 13 (rules). Changes the form of step one: on approval, the rule book becomes a rendering of kind
-13. Next: `04-the-types.md` — the five rules that become a mistake you can't express, including
+13. Next: `05-the-types.md` — the five rules that become a mistake you can't express, including
 `VerifiedPrincipal` and standing — and the parent audit of the rule book that kind 13 forces.*
