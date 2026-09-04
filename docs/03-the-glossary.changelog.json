@@ -1,5 +1,21 @@
 [
   {
+    "date": "2026-09-04",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge"
+    },
+    "changes": [
+      {
+        "what": "The term-kind value fact is renamed field (a profile field or required fact), in the kind list and the allowedValues row.",
+        "why": "Part two surfaced the homonym between fact-the-term-kind and fact-the-record; the operator approved routing the rename.",
+        "ref": "part two question 9; operator approval 2026-09-04"
+      }
+    ],
+    "revision": 6
+  },
+  {
     "revision": 5,
     "date": "2026-09-02",
     "status": "approved",

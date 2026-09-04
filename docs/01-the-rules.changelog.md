@@ -4,6 +4,10 @@ _Generated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 11 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
+
+- **Rule 4 gains its third deciding-alone category: deterministic enforcement of recorded governed state — an exact test that refuses malformed, unverifiable, or standing-uncovered input and preserves it.** — Part one's decoders and part two's admission ladder block deterministically without being on the ruled-three list; part two surfaced the gap and the operator approved routing the amendment. _(part two question 10; operator approval 2026-09-04)_
+
 ## Revision 10 · 2026-09-01 · approved — operator review on PR #12; operator's big-picture-design review: recursive session composition and a provider-independent native harness must be first-class requirements
 
 - **Rule 114 added — agency composes recursively: sessions may delegate to durable child runs on local sessions or remote agents, which may delegate again, while preserving scope, ownership, authority, evidence, bounds, cancellation, transport, and result routing; the platform supports rather than prescribes the topology.** — The existing rules made delegated runs durable but never required session-to-session orchestration, nested specialist groups, or cross-agent composition through a protocol-independent transport as official capabilities. _(PR #12 review comment 3910436663; operator Threadline follow-up in topic 52075)_

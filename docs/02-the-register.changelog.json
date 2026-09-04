@@ -1,5 +1,26 @@
 [
   {
+    "date": "2026-09-04",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge"
+    },
+    "changes": [
+      {
+        "what": "The kind-2 decidesAlone fact's value space becomes no / ruled-three / governed-state, with the per-rung sub-declaration rule for multi-rung boundaries.",
+        "why": "Executes rule 4's third-category amendment at the register's blocking-site kind; the failDirection per-consumer precedent extends to decidesAlone.",
+        "ref": "part three, amendment one"
+      },
+      {
+        "what": "The kind-1 growth closed list gains redacts: deletes bytes only under an operator-standing tombstone fact, with the envelope, hash, and redaction record retained.",
+        "why": "Part two's capture store declared it and formally proposed the shape amendment; the operator approved routing it.",
+        "ref": "part two question 4; operator approval 2026-09-04"
+      }
+    ],
+    "revision": 4
+  },
+  {
     "revision": 3,
     "date": "2026-08-26",
     "status": "approved",
@@ -14,17 +35,17 @@
     },
     "changes": [
       {
-        "what": "Blocking-sites kind rewritten: `exactMatchOnly` replaced by `decidesAlone` (yes only for the ruled three — a live secret leaving, spend past a cap, the emergency stop), plus `criticality` (the deciding list is driven by the formal criticality assessment, never hand-picked), `failDirection` (per consumer), and `preservesInput`.",
+        "what": "Blocking-sites kind rewritten: `exactMatchOnly` replaced by `decidesAlone` (yes only for the ruled three \u2014 a live secret leaving, spend past a cap, the emergency stop), plus `criticality` (the deciding list is driven by the formal criticality assessment, never hand-picked), `failDirection` (per consumer), and `preservesInput`.",
         "why": "Rulings 19, 2, and 5.",
         "ref": "docs/harvests/standards-and-registries-harvest.decisions.md (rulings 19, 2, 5); PR #4 merge 616bc3b"
       },
       {
-        "what": "Kind 12 added — protected artifacts: the short list of paths whose change needs the operator, with the known limit that its enforcement must sit outside the agent's write authority (carried from re-sweep #53701).",
+        "what": "Kind 12 added \u2014 protected artifacts: the short list of paths whose change needs the operator, with the known limit that its enforcement must sit outside the agent's write authority (carried from re-sweep #53701).",
         "why": "Ruling 3 gives the agent merge authority over everything else; the exception must be enumerable.",
         "ref": "docs/harvests/standards-and-registries-harvest.decisions.md (ruling 3); docs/harvests/standards-and-registries-resweep.md (Part 1, item 2)"
       },
       {
-        "what": "Kind 13 added — governed documents: durable location and sibling changelog as required facts, and the 1.x fork relationship recorded as a plain fact, never an enforced synchronization loop.",
+        "what": "Kind 13 added \u2014 governed documents: durable location and sibling changelog as required facts, and the 1.x fork relationship recorded as a plain fact, never an enforced synchronization loop.",
         "why": "Rulings 32 and 26, and rule 91.",
         "ref": "docs/harvests/standards-and-registries-harvest.decisions.md (rulings 32, 26); PR #4 merge 616bc3b"
       },

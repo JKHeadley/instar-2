@@ -4,6 +4,10 @@ _Generated from `06-the-fact-envelope.changelog.json` by `scripts/render-changel
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 10 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
+
+- **The admission boundary's decidesAlone declaration is restated per rung under the amended closed list: ruled-three for the secret-shape scan, governed-state for the remaining rungs — superseding the pre-amendment yes-for-one-rung wording.** — The kind-2 amendment restructured the value space; leaving the flagship blocking-site declaration on a value the closed list no longer carries would refuse under part three's own machinery. _(part three, amendment one)_
+
 ## Revision 9 · 2026-09-04 · approved — operator accepted the remaining defaults (questions 1, 3, 4, 6, 7, 9, 10 as recommended) and directed the merge; merging is the approval, bound to the reviewed content
 
 - **Part two is approved on main; the document status line reads approved.** — All ten operator questions are answered: 2 confirmed with the rare-approval scope direction (revision 8), 5 and 8 answered in conversation with the recommendations accepted, and the remaining six accepted as recommended. _(topic 52075, operator messages 2026-09-04)_
