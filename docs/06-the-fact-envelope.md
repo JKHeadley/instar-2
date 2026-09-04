@@ -630,7 +630,12 @@ perform merges, a merge-commit anchor would let the agent approve its own consti
 together: the pull request's review approval is the authority (`approvedIn`), the commit is the
 location (`landedIn`), and both are carried. This document flags that reading explicitly rather
 than silently reinterpreting the rule; confirming it (or routing a formal amendment to rule 90's
-wording) is one of the questions at the end. Part one's limit is restated here so it cannot be
+wording) is one of the questions at the end. **The scope of the operator's yes, stated so it
+cannot inflate:** an explicit-yes record is demanded only of versions of things that *govern* —
+a rule, a term, a register entry, a governed document, a protected artifact. Ordinary work — a
+feature, a fix, a refactor — merges on green with no human approval, exactly as rule 82 already
+provides; nothing in this part adds an approval step to it. Operator approval is designed to be
+the rare event, not the routine one (operator direction, 2026-09-04). Part one's limit is restated here so it cannot be
 assumed away: a host that does not sign its review events can produce only `channel-attested`
 approval records, and those do not qualify as the `approvedIn` of a protected artifact — a
 governed thing on such a host has no valid repository anchor, which is a refusal, not a

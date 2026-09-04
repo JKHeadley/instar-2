@@ -1,5 +1,22 @@
 [
   {
+    "revision": 8,
+    "date": "2026-09-04",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "pr": 16,
+      "note": "operator answers, round one: question 2 confirmed with a scope direction"
+    },
+    "changes": [
+      {
+        "what": "The scope of the operator's explicit yes is stated so it cannot inflate: only versions of governing things demand one; ordinary work merges on green with no human approval, and operator approval is designed to be rare.",
+        "why": "The operator confirmed the two-anchor reading of rule 90 and directed that approval must not become a routine step on every pull request.",
+        "ref": "topic 52075, operator message 2026-09-04 16:29 PDT"
+      }
+    ]
+  },
+  {
     "revision": 7,
     "date": "2026-09-04",
     "status": "draft",

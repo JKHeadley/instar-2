@@ -4,6 +4,10 @@ _Generated from `06-the-fact-envelope.changelog.json` by `scripts/render-changel
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 8 · 2026-09-04 · draft — operator answers, round one: question 2 confirmed with a scope direction
+
+- **The scope of the operator's explicit yes is stated so it cannot inflate: only versions of governing things demand one; ordinary work merges on green with no human approval, and operator approval is designed to be rare.** — The operator confirmed the two-anchor reading of rule 90 and directed that approval must not become a routine step on every pull request. _(topic 52075, operator message 2026-09-04 16:29 PDT)_
+
 ## Revision 7 · 2026-09-04 · draft — operator review on PR #16; review desk round 6 (final) — internal confirmation: zero findings, converged; the external reviewer's five minor items folded editorially
 
 - **Replication-path facts with a newer schema version hold in the pending set until schema support arrives, instead of terminally refusing mid-rolling-upgrade.** — An older machine receiving a valid future-schema fact from an upgraded peer is seeing an upgrade in progress, not corruption. _(review desk round 6, external finding 1)_
