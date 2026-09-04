@@ -337,7 +337,11 @@ honestly "audit every fact alone, and every capture this machine holds." So that
 be reversed without a redesign, the alternative's *interface* is fixed now even though no adapter
 implements it: a machine holding a bounded suffix fetches older segments on demand through the
 same verified replication-ingest path — same chain checks, same contiguity, nothing bypassed —
-so moving to bounded suffixes later changes an adapter, not this contract. The growth instruments
+so moving to bounded suffixes later changes an adapter, not this contract. One consequence is
+named rather than silent: full replication puts every machine in possession of the whole record —
+principals, provenance, refusal metadata — so at-rest access control and encryption for the
+replicated stores are a stated requirement on the storage adapters, deferred explicitly to the
+adapter-contract part (part ten), not absent. The growth instruments
 below are what turn "revisit this" into a real trigger instead of a hope.
 
 ---
@@ -407,9 +411,11 @@ implementable:
 7. **Unresolvable `principal`** (`standing`) — refused *unless* wrapped as an
    `unattributable-observation`, which is the only door for unresolved input (P2-NF-29).
 8. **Causal references** (`decode`) — the in-segment link always; per-kind mandatory references —
-   for a standing-gated kind that includes the grant state relied on and, as a declared body
-   element, the folded-through vector the appender resolved against; dangling references refuse
-   on intake and hold on replication (P2-NF-23, P2-NF-24, P2-NF-25). Resolving references
+   for a standing-gated kind that includes the grant state relied on, by fact id. The vector the
+   appender resolved against is declared exactly once: it *is* the envelope's causal frontier,
+   and the causal cone rung 9 resolves over is the closure of `predecessors` (the in-segment
+   chain plus that frontier) — there is no second, disagreeing declaration to reconcile.
+   Dangling references refuse on intake and hold on replication (P2-NF-23, P2-NF-24, P2-NF-25). Resolving references
    *before* standing means an unresolved grant is always this rung's case — a hold on
    replication, a `decode` refusal on intake — never a terminal `standing` refusal for what is
    only an ordering accident.
@@ -436,7 +442,14 @@ implementable:
    the fold primitive delivers an authority-bearing fact together with its current status, and a
    projection consuming one either propagates that taint into its output or refuses authority
    output — untainted authority computed from tainted input is a fixture failure, not a style
-   choice (P2-NF-76). **The reconciliation pass,
+   choice (P2-NF-76). One check runs at the **origin only**, because only there is it
+   deterministic: at local append, the declared frontier is compared against the appending
+   machine's own folded-through vector within the named grant scopes — a fact whose frontier
+   omits a relevant revocation head its own machine had already folded is refused at origin
+   (P2-NF-77), since omitting what the appender provably held is not an ordering accident but
+   the one way left to write an honest-looking fact around a known revocation. Receivers never
+   re-run this against their own state — the cone rule keeps replica verdicts identical — and a
+   received fact's trailing frontier remains the provisional/reconciliation path's business. **The reconciliation pass,
    pinned:** its predicate is a revocation that is neither inside the fact's cone nor causally
    after the fact (concurrent, or prior-but-unseen); each machine appends any resulting
    `Conflict`-class record under its own system principal on its own segment, keyed on the
@@ -495,6 +508,17 @@ unauthorized) from the moment the revocation folds; the flagged fact stays in th
 visibly contested, for the operator or a standing-covered resolution to settle. Nothing was
 refused for being early, nothing silently extended revoked authority, no replica ever disagreed
 about admissibility, and every step above names the machinery that performed it.
+
+The same lifecycle, as a table — every state a standing-gated fact can occupy, and what moves it:
+
+| State | Entered when | Leaves by |
+|---|---|---|
+| refused (origin) | its frontier omits a relevant revocation its own machine held (P2-NF-77), or any ladder rung fails | terminal — metadata retained |
+| held (replication) | a causal reference has not yet arrived | referent arrives → ladder resumes; TTL → escalated as conflict-class |
+| admitted | the ladder passes with the cone covering this machine's relevant revocation heads | terminal for the fact; its *authority* lives on below |
+| admitted, `provisional` | the ladder passes but the cone trails this machine's relevant revocation heads | reconciliation clears it (no held revocation satisfies the predicate at the horizon, P2-NF-75) → plain admitted; or a revocation satisfies it → contested |
+| contested | the reconciliation predicate matches a revocation | a standing-covered resolution or the operator settles the `Conflict`; the fact itself stays readable |
+| folded, tainted | a projection consumes it while provisional/contested/evidence-unavailable | taint propagates into the view or authority output refuses (P2-NF-76) |
 
 ---
 
@@ -592,7 +616,11 @@ perform merges, a merge-commit anchor would let the agent approve its own consti
 together: the pull request's review approval is the authority (`approvedIn`), the commit is the
 location (`landedIn`), and both are carried. This document flags that reading explicitly rather
 than silently reinterpreting the rule; confirming it (or routing a formal amendment to rule 90's
-wording) is one of the questions at the end.
+wording) is one of the questions at the end. Part one's limit is restated here so it cannot be
+assumed away: a host that does not sign its review events can produce only `channel-attested`
+approval records, and those do not qualify as the `approvedIn` of a protected artifact — a
+governed thing on such a host has no valid repository anchor, which is a refusal, not a
+downgrade.
 
 **Honest scope for runtime-governed things.** Part one carried an open question: dashboard and
 runtime artifacts have no approval anchor outside the agent's write authority yet. A runtime
@@ -652,8 +680,12 @@ become something else, and each names its check.
 3. **Its only other input is the register generation, as an argument.** A projection that needs
    governed metadata — schema shapes, declared immutable fields, the standing matrix — takes the
    register generation as an explicit parameter, exactly as part one's decoders do; it never reads
-   another projection's storage (P2-NF-50 — the fold signature admits facts and the generation,
-   nothing else, so there is no channel for a peer view to arrive through). The register
+   another projection's storage (P2-NF-50). The fold signature admitting only facts and the
+   generation is the convention; the *enforcement* is an import-and-effect lint over each
+   projection package: pure except for writes to its own storage and checkpoints — no ambient
+   store, clock, file, global, cache, or network reaches it (P2-NF-49 and P2-NF-50 are both
+   lint-backed, not signature-implied), so there is no channel for a peer view — or any
+   undeclared input — to arrive through. The register
    projection's own bootstrap rides the big picture §11 minimal plane: a small, independently
    verified segment whose facts describe the register itself.
 4. **It is deterministic to the byte.** Ordered iteration only; exact decimal or integer
@@ -726,7 +758,7 @@ required fact; the `agreesWith` invariants are the scheduled tests named here.
 
 | Entry | `growth` | `holdsAgentMemory` | `machineScope` | `agreesWith` | `standards` | `status` |
 |---|---|---|---|---|---|---|
-| fact store (segments) | `unbounded` | **yes** — learnings, commitments, corrections land here; rule 7's ban attaches with full force | `shared` (its per-segment verified-through watermarks are machine-local maintenance state carried inside this entry) | projections via pinned rebuild-equivalence; capture store via reference resolution | rules 7, 28–33, 89, 90, 100, 112, 113 — checks P2-NF-15/16, 05–14, 57/58 | `live` (effective at the part-two build) |
+| fact store (segments) | `unbounded` | **yes** — learnings, commitments, corrections land here; rule 7's ban attaches with full force | `shared` (its per-segment verified-through watermarks and the provisional marks are machine-local maintenance state carried inside this entry) | projections via pinned rebuild-equivalence; capture store via reference resolution | rules 7, 28–33, 89, 90, 100, 112, 113 — checks P2-NF-15/16, 05–14, 57/58 | `live` (effective at the part-two build) |
 | capture store | **proposed `redacts`** — deletes bytes only under an operator-standing tombstone fact with the envelope retained; this value does not exist in the register's closed list, and its addition is formally proposed as a register-shape amendment riding this document's approval (question 4) | yes | `shared`, judgment-capture classes excepted (machine-local, part nine's retention decision) | fact store: every referenced capture resolves or carries a tombstone (P2-NF-64/65) | rules 7, 26, 100 — checks P2-NF-64/65/37/66/67 | `live` (effective at the part-two build) |
 | refusal store | `deletes` (bounded window; aggregate survives row shedding) | no — metadata only, never bodies | `machine-local`, stated reason: refusals are evidence about a *local* boundary's traffic | fact store: a terminally-refused hash never admitted without an intervening admissibility-state change (holds + curable decode sub-classes excluded) | rules 4, 46, 60 — checks P2-NF-30/31 | `live` (effective at the part-two build) |
 | pending set (replication holds) | `deletes` (bounded, TTL-escalated) | no | `machine-local`, stated reason: an ordering accident is local to the receiving replica | fact store: a held fact either admits or escalates, never vanishes | rules 46, 60 — check P2-NF-25 | `live` (effective at the part-two build) |
@@ -897,6 +929,7 @@ table extends the same map.
 | P2-NF-74 | build | A projection folding a kind with no declared merge class | Commutativity is declared per kind, not assumed per author. |
 | P2-NF-75 | test | A provisional mark surviving after every held revocation in the fact's grant scopes fails the reconciliation predicate at the horizon | Clearing must happen and be correct — the complement of P2-NF-73. |
 | P2-NF-76 | test | A projection emitting untainted authority output computed from provisional or contested input | Taint propagates through the fold or authority output refuses; it never launders. |
+| P2-NF-77 | decode | A fact appended at origin whose declared frontier omits a relevant revocation head its own machine had folded | Omitting what the appender provably held is evasion, not an ordering accident; checked at origin only, where it is deterministic. |
 
 ---
 
