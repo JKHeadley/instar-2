@@ -22,6 +22,11 @@ accident, and only a signature gives it against an author who can recompute the 
 part builds it from part one's provenance and the machine key set. A record with integrity and
 no authenticity is a diary anyone may write in neatly.
 
+A third separation runs through everything time-shaped: the appender's clock is **testimony**, and
+causal position is **evidence**. A clock reading orders a display; it never resolves authority.
+Every check in this part that decides what a principal *may do* resolves at causal position — what
+the appender had provably seen — never at a wall-clock instant the appender itself chose.
+
 This document chooses no database, no wire format, and no ordering service. It fixes what any
 implementation must guarantee, and it lists the exact shapes every implementation must refuse.
 
@@ -46,11 +51,13 @@ only one.
 **Check:** held by shape and by behaviour, not by naming: the fact-store port's interface exposes
 exactly one mutating method (an arity check on the port type — fixture P2-NF-15); a contract test
 asserts that after *any* sequence of port operations, every previously admitted fact is still
-readable, hash-verifying, and at its original position (P2-NF-16); and boot plus a scheduled sweep
-re-verify each segment's hash chain so an out-of-band mutation of the underlying storage is
-detected even though no code path performed it (also P2-NF-16). A lint on exported names (update,
-delete, truncate, prune, vacuum, rewrite) runs as a secondary tripwire and is labelled as such —
-per rule 26, the name lint is the symbol and the contract test is the state.
+readable, hash-verifying, and at its original position (P2-NF-16); and segment hash chains are
+re-verified against tamper out-of-band — incrementally at boot from a durable per-segment
+verified-through watermark to head (cheap, so boot never rides the full-history curve), and in
+full by the scheduled sweep (rare, budgeted, the only form that catches watermark corruption — the
+same incremental/genesis split the projection rebuild check uses). A lint on exported names
+(update, delete, truncate, prune, vacuum, rewrite) runs as a secondary tripwire and is labelled as
+such — per rule 26, the name lint is the symbol and the contract test is the state.
 
 **Value — one logical record, many physical segments.** The constitution requires reconstructable
 history, not a single database. Segments are chosen so a machine can keep appending while
@@ -92,16 +99,16 @@ is what a projection is for. The distinction is load-bearing: "the run is active
 | `id` | Stable, globally unique, never reused — and namespaced to the appending machine (it is derivable from `machine` + `segment` + position, or verifiable against the appending key), so a cross-machine collision is a decode refusal, not a conflict to adjudicate. |
 | `kind` | The registered fact schema this fact is an instance of. |
 | `schemaVersion` | The version of that schema, per part one's versioning convention. |
-| `at` | A clock measurement, in part one's sense: a reading taken by a named holder, not an assumed instant. |
+| `at` | A clock measurement, in part one's sense: a reading taken by a named holder. Testimony for presentation; never an input to an authority resolution. |
 | `machine` | The stable opaque key of the machine that appended it. A rename changes a nickname elsewhere, never this key. |
 | `principal` | The `VerifiedPrincipal` that caused it. System-originated action uses `kind: system` through the same door, per part one — there is no bare-identifier alternative. |
 | `provenance` | Part one's `Provenance` for that principal, pinned at append: the adapter, method, authenticated-record reference and capture hash, time, verifying machine, and class (`verified` or `channel-attested`). A replicated fact decodes to a principal *pinned at origin* — a distinct decode path from live intake, which never re-mints authority from bytes. |
-| `segment` | The append segment this fact belongs to, and its position within it. Positions are dense: a gap is detectable and refused (P2-NF-12). |
-| `prevInSegment` | The `contentHash` of the previous fact in this segment (a defined genesis value for the first). This makes each segment a strict hash chain, so a fork — two facts at one position — breaks the chain visibly at every receiver (P2-NF-09, P2-NF-10). Distinct from `predecessors`, which is causal. |
-| `predecessors` | The set of fact ids this one causally follows: always the in-segment predecessor's id, plus every other segment head the appender had folded when it appended. A merge after a partition is therefore expressible. Kinds the schema registry marks *causally bound* (an authorization, a supersession, a revocation-dependent act) must include their required reference or be refused (P2-NF-23). |
-| `body` | The kind-specific payload, whose shape the registered schema fixes. |
-| `contentHash` | The canonical hash over every field above — excluding itself. |
-| `signature` | The appending machine's signature over `contentHash`, verifying against that machine's key in part one's registered key set. `machine` must equal the signing key's registered owner (P2-NF-07, P2-NF-08). |
+| `segment` | The append segment this fact belongs to — the owning machine, the segment **epoch**, and the position within it. Positions are dense: a gap is detectable and refused (P2-NF-12). A machine's segments are totally ordered by epoch: each new segment's genesis records the closing head hash of its predecessor segment, so a machine's whole history is one auditable lineage even across restores. |
+| `prevInSegment` | The `contentHash` of the previous fact in this segment (a defined genesis value for the first, which for a successor segment binds the predecessor segment's closing head). This makes each segment a strict hash chain, so a fork — two facts at one position — breaks the chain visibly at every receiver (P2-NF-09, P2-NF-10). Distinct from `predecessors`, which is causal. |
+| `predecessors` | The set of fact ids this one causally follows: always the in-segment predecessor's id, plus every other segment head the appender had folded when it appended. A merge after a partition is therefore expressible. Kinds the schema registry marks *causally bound* — every standing-gated kind, an authorization, a supersession, a revocation-dependent act — must include their required references or be refused (P2-NF-23). |
+| `body` | The kind-specific payload, whose shape the registered schema fixes. It enters the hash preimage as its as-appended canonical bytes, so hash verification never needs the body's schema. |
+| `contentHash` | The canonical hash over every field above — excluding itself and `signature`. |
+| `signature` | The appending machine's signature over `contentHash`, verifying against that machine's key in the governed key set for the fact's segment-position range. `machine` must equal the signing key's registered owner (P2-NF-07, P2-NF-08). |
 
 **The canonical preimage, exactly.** The hash is computed over the canonical encoding (part one's
 convention 6) of the envelope minus `contentHash` and `signature`, with three additional
@@ -123,20 +130,35 @@ resolved is recorded as a fact *about an unattributable observation* — a regis
 `unattributable-observation`, whose `principal` is the observing holder (with `kind: system`
 provenance) and whose body carries part one's `UnresolvedInput`; the admission ladder names this
 wrap as the only door for such input (P2-NF-29), so rule 14's deliver-when-unsure softness
-survives the fact boundary instead of being silently undone by it. A fact that cannot be placed:
-`machine`, `segment`, `at`, `prevInSegment` all required. A forged or quietly altered fact:
-alteration breaks `contentHash` (integrity), and authorship is carried by `signature` +
-`provenance` (authenticity) — the hash alone is never claimed as proof of origin.
+survives the fact boundary instead of being silently undone by it. Because the wrap admits input
+from the cheapest identity there is, it is budgeted: sustained unresolvable traffic coalesces per
+(channel, window) into one counted observation fact whose raw items land in the redactable capture
+store, and `unattributable-wrap-rate` is an emitted measurement — rules 60 and 46 apply to this
+accumulation like any other. A fact that cannot be placed: `machine`, `segment`, `at`,
+`prevInSegment` all required. A forged or quietly altered fact: alteration breaks `contentHash`
+(integrity), and authorship is carried by `signature` + `provenance` (authenticity) — the hash
+alone is never claimed as proof of origin.
 
 **Rule — every fact is attributable and verifiable.** The parent's §2 requires every fact to carry
 id, causal predecessor, machine, principal, schema version, and content hash; rules 28 and 29
-require every principal — human, agent, or system — verified through one door; rule 89 requires
-provenance to be truthful and signing to be automatic. **Check:** the decoder refuses an envelope
-missing any field (absent-as-value is a defined encoding, not an omission); `principal` admits
-only `VerifiedPrincipal` (P2-NF-03); a fact whose effect exceeds requester standing carries
-`verified` provenance or is refused (P2-NF-04); signatures verify against the registered key set
-(P2-NF-07, P2-NF-08); a recomputed `contentHash` mismatch is refused at ingest and at read
-(P2-NF-05).
+require every principal — human, agent, or system — verified through one door; rule 89's
+message-provenance obligation gains its substrate here: signing is automatic at the record layer.
+**Check:** the decoder refuses an envelope missing any field (absent-as-value is a defined
+encoding, not an omission); `principal` admits only `VerifiedPrincipal` (P2-NF-03); a fact whose
+effect exceeds requester standing carries `verified` provenance or is refused (P2-NF-04);
+signatures verify against the governed key set (P2-NF-07, P2-NF-08); a recomputed `contentHash`
+mismatch is refused at ingest and at read (P2-NF-05).
+
+**The machine key set is governed state with a lifecycle, not an assumption.** Registering a new
+machine key requires operator standing; the key set is a governed version chain riding the minimal
+plane (see the bootstrap paragraph under Admission), so verifying it never requires the record it
+verifies. A key's validity window is keyed on **segment position ranges** — causal, not wall-clock,
+so a backdated `at` cannot move a fact into an old key's window. Rotation opens a new range; facts
+verify against the key that was valid for their position (P2-NF-69). Compromise is handled by an
+operator-attested compromise position: facts at or after it in the compromised key's segments are
+quarantined as a conflict class awaiting operator review — never silently kept, never silently
+dropped (P2-NF-70); facts before it stand. De-registering a machine closes its segments' lineage
+with an operator segment-close fact.
 
 **Rule — a fact carries no secret.** Rule 100 requires a secret stored before it is spent, never
 travelling through incidental surfaces. **Check:** three layers, honestly graded. A fact body may
@@ -169,8 +191,8 @@ segments the honest relation is a partial order: A precedes B when A is reachabl
 
 Two orders are then deliberately kept apart:
 
-- **Causal order** is the partial order above. It is the only ordering a decision or a projected
-  value may rest on.
+- **Causal order** is the partial order above. It is the only ordering a decision, a projected
+  value, or an **authority resolution** may rest on.
 - **Fold order** is a deterministic total order used only so that projection output is identical
   across machines at the same folded-through state. Concurrent facts order by the tuple (the
   fold-key instant, `machine`, `id`), compared as fixed-width canonical bytes. The **fold-key
@@ -185,16 +207,22 @@ agreements tested. The old form of this rule — "a decision may not rest on fol
 unenforceable, because a projection could launder a tiebreak into a folded value that a later
 decision reads legitimately. So the obligation moves onto projections, where it is mechanical:
 **a projection must be commutative over concurrent facts — where its output would depend on their
-fold order, it must emit a `Conflict` instead of a value.** **Check:** the permutation test — every
-projection's fixture set is replayed under permutations of its concurrent facts, and any output
-difference that is not a `Conflict` fails (P2-NF-51); the reconciliation suite (reorder,
-duplication, partition, conflict, late-segment insertion) produces byte-identical output on every
-machine *at the same folded-through vector*.
+fold order, it must emit a `Conflict` instead of a value.** **Check:** the permutation test, with
+its bound stated so it is actually runnable: for a fold, invariance under every adjacent-pair
+transposition of concurrent facts implies invariance under all their permutations, so the check
+replays each projection fixture under all adjacent swaps (quadratic, budgeted per projection)
+plus a seeded random sample of full permutations and property-generated concurrent sets as a
+tripwire (P2-NF-51). The check is fixture-and-generation-bounded — a projection non-commutative
+only on inputs outside both remains possible, and that residual is stated here the same way the
+secret-scan residual is. The reconciliation suite (reorder, duplication, partition, conflict,
+late-segment insertion) produces byte-identical output on every machine *at the same
+folded-through vector*.
 
 **Value — the presentation tiebreak is the appender's clock, flagged when implausible.** No rule
 forces a tiebreak; clock order is chosen because it is close to human expectation. It is also
-appender-controlled, and the design treats it accordingly: it can no longer select an authoritative
-value (the commutativity rule above), so what remains is presentation. A reading implausibly far
+appender-controlled, and the design treats it accordingly: it cannot select an authoritative value
+(the commutativity rule above) and it cannot move an authority resolution (standing resolves at
+causal position — Admission rung 8), so what remains is presentation. A reading implausibly far
 from the receiving machine's own clock is admitted but flagged, the divergence recorded as a fact
 and shown beside the entry, so a broken or lying clock distorts a labelled display, never an
 unlabelled one. The alternative — refusing to linearize concurrent facts at all — is safe and
@@ -208,24 +236,26 @@ last checkpoint, not from genesis), and the checkpoint section below is what mak
 
 **What this does not give us.** Fold order does not make a later clock reading a later event;
 causal order is sparse where appenders lack links. So the schema registry declares, per kind,
-which causal references are mandatory — an authorization names its base, a supersession names its
-predecessor, a revocation-dependent act names the revocation state it read — and the decoder
-refuses a causally-bound kind whose reference is absent (P2-NF-23). The in-segment link is
-mandatory for every fact (P2-NF-24), so each machine's own history is always fully ordered even
-when nothing else is.
+which causal references are mandatory — every standing-gated kind names the grant state it relies
+on, an authorization names its base, a supersession names its predecessor, a revocation-dependent
+act names the revocation state it read — and the decoder refuses a causally-bound kind whose
+reference is absent (P2-NF-23). The in-segment link is mandatory for every fact (P2-NF-24), so
+each machine's own history is always fully ordered even when nothing else is.
 
 ---
 
 ## Durability, replication, and what a segment owner owes
 
-**Append returns a typed durability state, not a boolean.** `local-durable` means the fact
-survives this machine's crash; `replicated(n)` means n peers have acknowledged holding it. The
-effect doorway (part eight) must name which state an irreversible effect demands before it acts;
-this part supplies the states and the measurement (replication lag per segment), and the fixture
-for effects-on-insufficient-durability lands with part eight, named now (P2-NF-63). Without this,
-"no fact is machine-local" is a statement about schemas wearing the costume of a statement about
-reality: every fact is physically machine-local between append and replication, and the window is
-now measured and bounded rather than unmentioned.
+**Append returns a typed durability state, not a boolean** — and that this is typed is a choice:
+
+**Value — durability is a state the caller can demand.** No rule forces typed durability;
+`local-durable` (survives this machine's crash) and `replicated(n)` (n peers acknowledged) are
+chosen so the effect doorway (part eight) can *name* which state an irreversible effect demands
+before it acts. This part supplies the states and the measurement (replication lag per segment);
+the fixture for effects-on-insufficient-durability lands with part eight, named now (P2-NF-63).
+Without this, "no fact is machine-local" is a statement about schemas wearing the costume of a
+statement about reality: every fact is physically machine-local between append and replication,
+and the window is now measured and bounded rather than unmentioned.
 
 **Replication is additive, authenticated, and complete.** A peer delivers only segments it owns
 (P2-NF-11), over an authenticated channel, and the receiver runs the same admission boundary as
@@ -241,15 +271,26 @@ dangling reference is a refusal — the client is talking about something that d
 the replication path it is an ordering accident: the fact is parked in a bounded, deduplicated
 **pending set** keyed by the unresolved reference, admitted when the reference arrives, and
 escalated as a conflict-class record when a declared TTL expires — never silently dropped
-(P2-NF-25). The pending set is a registered store with a declared bound.
+(P2-NF-25). Because standing-gated kinds are causally bound, a grant that has not yet arrived is
+exactly this case — a dangling reference that holds — so an honest inter-segment ordering accident
+can never quarantine an honest peer's stream, and an adversary cannot induce that quarantine by
+delivering segments grant-last. At its bound the pending set refuses *new* holds back to the
+replication layer for redelivery — held facts are never shed (the never-vanish agreement) — with
+per-peer sub-bounds so one peer cannot exhaust it, and `pending-set-depth` alarms before
+saturation.
 
 **Segment ownership survives restore, loss, and rename.** Machine identity is the stable opaque
 key; a rename never moves ownership. A machine restoring from backup cannot prove it stands at its
-own true head, so it must open a *new* segment — resuming the old one would fork a total order,
-which the `prevInSegment` chain makes visible at every receiver as a chain break (P2-NF-09,
-P2-NF-10) rather than a silent divergence. A machine that is permanently lost leaves its segment
-open-ended; the folded-through vector says honestly "this segment's head is the last I saw," and a
-deliberate operator fact may close a segment so readers can distinguish finished from partitioned.
+own true head, so it must open a *new* segment epoch — its genesis binds the predecessor segment's
+closing head, so lineage is auditable and resuming the old segment would fork a total order, which
+the `prevInSegment` chain makes visible at every receiver as a chain break (P2-NF-09, P2-NF-10)
+rather than a silent divergence. A machine that is permanently lost leaves its segment open-ended;
+the folded-through vector says honestly "this lineage's head is the last I saw," and a deliberate
+operator fact closes a segment lineage so readers can distinguish finished from partitioned. A
+closed lineage folds into a compact per-machine closed-through summary in every view's known-set,
+so retired laptops and dead VMs do not grow the per-view structure forever;
+`known-segment-set-size` and `machine-key-count` are emitted measurements so that curve is
+visible, not assumed flat.
 
 **Rule — reconciliation is deterministic and records conflicts.** The parent's §2 requires it;
 rules 31 and 33 require degraded-condition coherence and tested agreements. **Check:** the
@@ -262,8 +303,11 @@ fold-primitive test (P2-NF-52).
 smallest disk in the fleet bounds retention for all of it, and total fleet storage is machine-count
 times history size. The alternative — a bounded local suffix with older segments fetched on demand
 — removes no fact and remains open. Full copies are chosen first because every machine can then
-audit, rebuild, and serve alone through a partition; the growth instruments below are what turn
-"revisit this" into a real trigger instead of a hope.
+audit, rebuild, and serve alone through a partition — **bounded by capture availability**: the
+capture store replicates with segments *except* the judgment-capture classes whose machine-local,
+retention-bounded handling the big picture promises and part nine owns, so "audit alone" is
+honestly "audit every fact alone, and every capture this machine holds." The growth instruments
+below are what turn "revisit this" into a real trigger instead of a hope.
 
 ---
 
@@ -272,33 +316,58 @@ audit, rebuild, and serve alone through a partition; the growth instruments belo
 The admission boundary is a **blocking site** in the register's sense, and it declares the
 register's required facts for that kind rather than describing itself only in prose: `authority:
 block`; `decidesAlone: yes` for exactly one rung (the deterministic secret-shape scan — a live
-secret leaving is one of the three ruled exceptions) and `no` elsewhere — every other rung is a
-deterministic *decode*, not a judgment; `criticality`: the record is the substrate every audit
-rule stands on; `failDirection`: **closed** for the mutation path (an unverifiable fact does not
-enter), **toward preservation** for intake-origin input (the unattributable-observation wrap and
-the metadata retention below — rule 14's direction); `preservesInput`: the refusal store, named
-below; `inspectedBy`: the fixture suite.
+secret leaving is one of the three ruled exceptions) — the remaining rungs are deterministic
+integrity/decode refusals, a category rule 4's ruled-three list does not currently name, shared
+with every decoder part one already ships; question 10 routes the honest fix (a third recognized
+category) to the operator rather than gaming `decidesAlone: no` semantics; `criticality`: the
+record is the substrate every audit rule stands on; `failDirection`: **closed** for the mutation
+path (an unverifiable fact does not enter), **open** for intake-origin input — rule 14's direction
+— with the preservation mechanics under `preservesInput`; `preservesInput`: the refusal store and
+the unattributable-observation wrap, named below; `inspectedBy`: the fixture suite.
+
+**Bootstrap — what the first facts stand on.** The standing projection is folded from grant facts
+that themselves pass standing checks, and signatures verify against a key set that is itself
+governed state — both circular at genesis. The circle is broken the way the big picture's §11
+minimal plane breaks it: a small, independently verified segment carries the genesis facts — the
+machine key set's first version and the org-intent-grounded standing grants — and rung 8's ground
+for *those* facts is verification against the org-intent document's own approval anchor
+(`approvedIn`), not against the projection they create. Everything after genesis resolves
+normally.
 
 The ladder, in refusal order — fixed so a refusal reason is stable, and each mapped onto part
-one's closed `Refused` reason list rather than minting new reasons:
+one's closed `Refused` reason list rather than minting new reasons. Rungs 2–6 share one
+structural phase: any failure to parse, re-encode, or verify the envelope's own bytes classifies
+as rung 2's `decode` reason regardless of where it surfaced, so the stability promise is
+implementable:
 
-1. **Secret shape** (`policy`) — the deterministic scan, first so that what it catches is never
-   retained below.
-2. **Unknown or unregistered `kind`** (`decode`) — refused before the body is parsed.
-3. **Signature** (`integrity`) — the appender's signature verifies against the registered key for
-   `machine`; refused before anything downstream trusts a field.
-4. **Content hash** (`integrity`) — recomputed over the as-appended canonical bytes **at the
-   as-appended schema version, before any migration** — a hash can only ever verify against the
-   bytes it was taken over, so verification precedes migration in every path (P2-NF-22).
-5. **Unknown `schemaVersion`** (`decode`) — refused unless a migration forward exists; migration
-   runs only after step 4 passed.
-6. **Malformed envelope** (`decode`) — any missing or ill-typed envelope field, absent-as-value
-   encodings included.
+1. **Secret shape** (`policy`) — the deterministic scan, over the raw bytes, first — so that what
+   it catches is never parsed further, never retained below.
+2. **Structural parse** (`decode`) — the minimal untrusted parse of the envelope shape: any
+   missing or ill-typed envelope field, absent-as-value encodings included, an unnormalizable
+   fold-key reading.
+3. **Content hash** (`integrity`) — recomputed over the as-appended canonical bytes; the body
+   enters as its as-appended bytes, so no body schema is needed. Verified **before the signature**,
+   because the signature is over the hash: authenticating an unverified hash value would prove
+   who signed while leaving open *what* was signed (P2-NF-22 also pins: before any migration).
+4. **Signature** (`integrity`) — over the now-verified hash, against the governed key set for the
+   fact's segment-position range; `machine` must own the key.
+5. **Unknown or unregistered `kind`** (`decode`).
+6. **Unknown `schemaVersion`** (`decode`) — refused unless a migration forward exists; migration
+   runs only after rungs 3–4 passed.
 7. **Unresolvable `principal`** (`standing`) — refused *unless* wrapped as an
    `unattributable-observation`, which is the only door for unresolved input (P2-NF-29).
 8. **Standing** (`standing`) — the appending principal holds live standing covering this kind and
-   scope, resolved against the standing projection at the fact's `at`; without it, appending would
-   be minting (P2-NF-26, P2-NF-27). A body field typed as a constitutional value decodes through
+   scope, **resolved at causal position**: a standing-gated kind is causally bound (rung 9's
+   registry machinery), so the fact names the grant state it relies on, and rung 8 verifies that
+   the named grants are live and unrevoked *in the causal history this fact descends from* — never
+   at the appender-chosen `at`, which would let a backdated clock resurrect revoked standing
+   (P2-NF-72). During a partition this resolves over locally-held causal state, and the fact
+   records the folded-through vector it resolved against; on reconnection, a reconciliation pass
+   flags any fact admitted under standing that a late-arriving revocation had already withdrawn —
+   a `Conflict`-class record, with authority projections serving the narrower answer meanwhile —
+   so partition availability and no-silent-extension are both kept, at the cost of retroactive
+   flagging (question 7 puts that trade to the operator). Appending without standing would be
+   minting (P2-NF-26, P2-NF-27). A body field typed as a constitutional value decodes through
    part one's decoder with this fact's pinned provenance, so part one's refusals apply inside the
    body, not only at intake (P2-NF-28).
 9. **Causal references** (`decode`) — the in-segment link always; per-kind mandatory references;
@@ -307,18 +376,25 @@ one's closed `Refused` reason list rather than minting new reasons:
     stronger reason.
 
 **Rule — a refusal preserves metadata, never the body.** Rule 4 requires a block to preserve its
-input; rules 60 and 61 bound what anything may accumulate; rule 100 forbids the guard that catches
+input; rules 60 and 46 bound what anything may accumulate; rule 100 forbids the guard that catches
 a secret from becoming the thing that stores it. **Check:** the refusal store retains refusal
 reason, submitting principal or peer, canonical hash, byte length, and first/last-seen with an
 occurrence count — deduplicated on (hash, reason) so a loop collapses to one counted row — and
 never the body bytes (P2-NF-30); it is a registered store with a declared bound, retention window,
-and saturation behaviour that sheds the noisiest source first (P2-NF-31); the per-source refusal
+and saturation behaviour that degrades to a coarser per-source aggregate (count, first/last,
+reason histogram) rather than to nothing — stated plainly: under a high-variance flood the
+row-level forensics of the flood itself are what age out first, and the aggregate is what survives
+(P2-NF-31). Its agreement with the fact store — a refusal's hash is never also admitted — is
+scoped to the terminal refusal classes (`policy`, `integrity`, `standing`, `decode` on intake);
+a replication-path ordering event is recorded as a *hold*, not a refusal, precisely so a later
+legitimate admission of the same bytes does not falsify the invariant. The per-source refusal
 rate is an emitted measurement, since a refusal stream is exactly the evidence the retention
 exists to keep.
 
 **Value — a fixed refusal order.** No rule forces this sequence. Stability of the reason is chosen
 so a client can rely on which refusal it will see; secrets are screened first because rung 1 is
-the one place where retention of the evidence would itself be the harm.
+the one place where retention of the evidence would itself be the harm; integrity precedes
+authenticity because a signature over an unverified hash authenticates nothing.
 
 ---
 
@@ -326,18 +402,21 @@ the one place where retention of the evidence would itself be the harm.
 
 A fact is wrong sometimes. None of it is repaired by changing the record.
 
-**Rule — unsaying takes standing.** A retraction asserts a named fact should not be relied on; a
-correction is a new fact of the same kind naming the fact it corrects. Both are writes against the
-*meaning* of the record — stronger than appending, as strong as resolving a conflict — and part
-one already gates conflict resolution on live standing in scope. So: the retracting or correcting
-principal must hold live standing covering the named fact's kind and scope, at least equal to the
-standing its append required; retracting or correcting a fact that confers standing, authorization,
-or ownership requires the standing of the original grant. Rules 28, 86, and 104 are what leak
-without this. **Check:** decode-time standing resolution, as admission rung 8 (P2-NF-32,
-P2-NF-33); a self-serving case — a component retracting the refusal or judgment records that name
-it — is a fixture, not a hope.
+**Rule — unsaying takes standing.** A retraction asserts a named fact should not be relied on,
+**with a required `reason`** — a retraction without one does not decode (P2-NF-68), which is also
+what makes rule 112's recorded-reason requirement mechanical; a correction is a new fact of the
+same kind naming the fact it corrects. Both are writes against the *meaning* of the record —
+stronger than appending, as strong as resolving a conflict — and part one already gates conflict
+resolution on live standing in scope. So: the retracting or correcting principal must hold live
+standing covering the named fact's kind and scope, at least equal to the standing its append
+required; retracting or correcting a fact that confers standing, authorization, or ownership
+requires the standing of the original grant. Rules 28, 86, and 104 are what leak without this.
+**Check:** decode-time standing resolution, as admission rung 8 (P2-NF-32, P2-NF-33); a
+self-serving case — a component retracting the refusal or judgment records that name it — is a
+fixture, not a hope.
 
-**Rule — the fold owns corrections.** Left to each author, a projection that ignores the
+**Rule — the fold owns corrections.** Rule 24: a double-count that survives rebuild is exactly
+the recurrence a hidden correction hides. Left to each author, a projection that ignores the
 `corrects` field folds a mis-recorded $400 and its $40 correction as $440 — and passes
 rebuild-equivalence, because it double-counts identically on rebuild. So correction handling lives
 in the fold primitive, not in author discipline: the fold delivers a corrected fact and its
@@ -352,18 +431,32 @@ without recording that a retraction applied fails rebuild-equivalence (P2-NF-35)
 fact stays readable with a verifying hash (P2-NF-34); retraction counts per kind are emitted
 measurements.
 
-**Rule — incidental third-party content has a lawful exit that is not deletion of history.**
-Rule 7's subject is what the *agent knows* — its memory. A third party's personal data arriving
-incidentally in a message body, a mis-routed private message, a sensitive claim mis-attributed to
-a named person: none of that is agent memory, all of it can land in the record, and a design with
-no exit forces the operator into emergency deletion — the exact act the rules forbid — the first
-time an erasure obligation arrives. So bodies that can carry such content live in the capture
-store by reference, and an operator-standing **redaction fact** tombstones the capture *bytes*
-while the fact's envelope, hash, the reference, and the redaction itself remain permanent: the
-history that something was recorded and redacted, by whom and why, is complete; the content is
-gone. **Check:** redaction requires operator standing (P2-NF-37); a capture deletion without a
-tombstone fails the capture-store agreement (P2-NF-65); the redaction path is the *only* byte
-removal in the system, and the append-only contract test asserts exactly that carve-out.
+**Value — incidental third-party content gets a lawful exit that is not deletion of history.**
+This rests on a stated reading of rule 7, not on a rule that requires it — which is why it is a
+Value and why question 4 puts the whole mechanism to the operator. Rule 7's subject is what the
+*agent knows* — its memory. A third party's personal data arriving incidentally in a message
+body, a mis-routed private message, a sensitive claim mis-attributed to a named person: none of
+that is agent memory, all of it can land in the record, and a design with no exit forces the
+operator into emergency deletion — the exact act the rules forbid — the first time an erasure
+obligation arrives. So bodies that can carry such content live in the capture store by reference,
+and an operator-standing **redaction fact** tombstones the capture *bytes* while the fact's
+envelope, hash, the reference, and the redaction itself remain permanent. The redaction's scope is
+bounded to its motivation, not only to its byte-mechanics: its `reason` is from a closed list
+(erasure-obligation, mis-routed private content, mis-attributed sensitive claim — others refuse,
+P2-NF-66); a capture referenced by an `Authorization`'s provenance, an open `Conflict`, or an
+unresolved judgment record is not redactable (P2-NF-67) — the one byte-destruction primitive must
+not be able to un-verify an approval or destroy contested evidence; and a redaction executes
+after a declared delay window during which it is surfaced on the attention surface, so a
+self-serving redaction is visible before it runs. **What redaction honestly achieves:** it is
+cooperative deletion — every compliant store deletes the bytes and every compliant surface stops
+serving them; a partitioned replica holds them until it reconnects and honours the tombstone, and
+no proof of erasure exists. After redaction, what remains provable: that the fact occurred, its
+envelope's integrity and authorship, the removed content's hash and byte length, and who redacted
+it, when, for which listed reason. What is no longer possible: re-inspecting the content;
+projections treat a redacted capture as unavailable evidence, never as silently absent.
+**Check:** P2-NF-37 (standing), P2-NF-66 (closed reasons), P2-NF-67 (protected references),
+P2-NF-65 (tombstone), and the append-only contract test asserts this is the sole byte-removal
+carve-out.
 
 **Value — no compaction in the first implementation.** Rule 7 forbids deleting what the agent
 knows outright once `holdsAgentMemory` is yes — which for this store it is — so fact deletion is
@@ -417,13 +510,19 @@ fails the build (P2-NF-43).
 
 **Rule — a fork in a governing chain degrades to a conflict, never to a wedge.** Rules 31 and 33:
 partitions are legitimate, so two machines can blamelessly append versions superseding the same
-head — and an adversary can do it deliberately. A permanent build failure would hand either of
-them a durable denial of service against governance itself. **Check:** a concurrent fork yields a
-recorded `Conflict` surfaced to the operator, with the *earlier-approved* version serving as the
-in-force one until resolution (governing state fails toward the narrower, already-reviewed
-answer); resolution is a **merge version** whose `supersedes` names both heads, appended under
-operator standing in scope, carrying its own `approvedIn` (P2-NF-44, P2-NF-45); the chain walk
-then passes. A cycle or a gap remains a hard failure — those cannot arise blamelessly.
+head — and an adversary can try to induce it deliberately. A permanent build failure would hand
+either a durable denial of service against governance itself. The cheap induction is closed at
+decode: a second version with the **same content hash and same approval** superseding the same
+head collapses idempotently into the first — a replay cannot manufacture a fork (P2-NF-71); a
+*different* concurrent version requires its own explicit-yes record, which is not cheap to mint.
+A genuine fork yields a recorded `Conflict` surfaced to the operator, and until resolution **the
+superseded head — the incumbent — remains in force**: neither contender takes effect, which fails
+toward the already-reviewed state and grants nothing new (the freeze an attacker could force is
+"the rules stay as they were," at the cost of delaying a legitimate change until the operator
+merges — a human-loop cost this document accepts and names). Resolution is a **merge version**
+whose `supersedes` names both heads, appended under operator standing in scope, carrying its own
+`approvedIn` (P2-NF-44, P2-NF-45); the chain walk then passes. A cycle or a gap remains a hard
+failure — those cannot arise blamelessly.
 
 **Value — approval records differ by host, the chain does not.** A repository approval resolves
 through the host's signed review event; a runtime approval through a verified operator action.
@@ -476,48 +575,60 @@ become something else, and each names its check.
    architecture lint over the query surface), and a register entry carries no occurrence-time
    claim of its own.
 8. **It says how current it is, honestly.** A view carries its **folded-through vector** — one
-   monotone high-water entry per *machine* (segments roll; machines are few — keying by machine
-   bounds the vector) — plus the set of segments it knows to exist. "Current" is only ever
-   relative to that set: a reader can see "I have never seen machine C's segment," which a scalar
-   position cannot express (P2-NF-54).
+   entry per machine, each a monotone (epoch, position) pair over that machine's totally-ordered
+   segment lineage, with closed lineages collapsed to a closed-through summary — plus the set of
+   machine lineages it knows to exist. "Current" is only ever relative to that set. **The known
+   set has a defined origin:** it derives from the governed machine registry on the minimal plane,
+   never from gossip alone — so a registered machine whose lineage head has not been observed
+   within the staleness bound reads as *unknown-staleness*, and authority reads fail closed on it
+   exactly as on a known-but-unfolded segment; an idle machine distinguishes itself from a
+   withheld one by heartbeat facts or an operator lineage-close (P2-NF-54). A segment carrying a
+   revocation cannot be invisible-by-omission, because the machine that owns it is in the
+   registry or its facts were never admissible at all.
 
 **Rule — staleness is a value, and authority fails closed on it.** Rule 95 requires a declared
 fail direction per consumer; rule 14 sets the user channel's. A projection answering an
 **authority question** — standing live, authorization valid, ownership held, spend within cap —
-refuses past a declared staleness bound on any known-but-unfolded segment, and serves the
-*narrower* answer while a relevant record is in conflict (P2-NF-55, P2-NF-56): a revocation that
-has not arrived is exactly the case where "current over what I hold" and "true" diverge, and the
-absence of a negative fact must not read as permission. User-channel views keep serving, labelled.
-**Check:** every registered projection declares its class (authority-answering or informational)
-and its bound; the partition fixture — revocation on machine A, authority read on partitioned
-machine B — fails any authority projection that answers live.
+refuses past a declared staleness bound on any known-but-unfolded (or unknown-staleness) lineage,
+and serves the *narrower* answer while a relevant record is in conflict (P2-NF-55, P2-NF-56): a
+revocation that has not arrived is exactly the case where "current over what I hold" and "true"
+diverge, and the absence of a negative fact must not read as permission. User-channel views keep
+serving, labelled. Admission's own standing resolution (rung 8) is the one authority consumer
+with a stated carve-out — it resolves over locally-held causal state so a partitioned machine
+keeps recording, and the post-reconnection reconciliation pass plus retroactive `Conflict`
+flagging is what keeps that carve-out from silently extending revoked standing. **Check:** every
+registered projection declares its class (authority-answering or informational) and its bound; the
+partition fixture — revocation on machine A, authority read on partitioned machine B — fails any
+authority projection that answers live.
 
 **Value — lagging reads are served, labelled, and the strong read is scoped to what exists.** A
 reader may demand currency **relative to a position it has previously observed** — read-your-writes
-and monotonic reads, both locally satisfiable — or relative to a named segment set. A demand for
+and monotonic reads, both locally satisfiable — or relative to a named lineage set. A demand for
 global "now" is not offered: under a partial order with no ordering service, knowing the global
 head requires every machine to answer, which converts the strong reader's partition into an
 outage and is precisely what this design refuses to do. That limit is stated so callers design
 against it rather than discovering it.
 
 **Rule — every store this part creates is a register entry, with its facts actually supplied.**
-Rules 32, 33, 69; the register's kind 1. The table below is the declaration, not a promise of one.
-`standards` on each entry names the checks that enforce this document's rules against it — rule
-69's both-ends resolution made mechanical. **Check:** the register build fails on a missing
+Rules 32, 33, 69; the register's kind 1. The table below is the declaration, not a promise of one
+— including `standards` (rule 69's both-ends resolution) and `status`. Growth values are from the
+register's closed list; where this part genuinely needs a value the list lacks, it proposes the
+shape change through the register's own amendment process rather than writing prose beside the
+field — that is question 4's second half. **Check:** the register build fails on a missing
 required fact; the `agreesWith` invariants are the scheduled tests named here.
 
-| Entry | `growth` | `holdsAgentMemory` | `machineScope` | `agreesWith` |
-|---|---|---|---|---|
-| fact store (segments) | `unbounded` | **yes** — learnings, commitments, corrections land here, so rule 7's ban attaches with full force | `shared` | projections, via pinned rebuild-equivalence; capture store, via reference resolution |
-| capture store | `unbounded`, redaction-tombstones excepted | yes | `shared` (replicates with segments), machine-local capture classes carried to part nine's retention decision | fact store: every referenced capture resolves or carries a tombstone |
-| refusal store | bounded, deduplicated, windowed | no — metadata only, never bodies | `machine-local`, stated reason: refusals are evidence about a *local* boundary's traffic | fact store: a refusal's hash never also admitted |
-| pending set (replication holds) | bounded, TTL-escalated | no | `machine-local`, stated reason: an ordering accident is local to the receiving replica | fact store: a held fact either admits or escalates, never vanishes |
-| projections (each) | per its declared retention rule | no — *the facts hold it*; the view is disposable | `machine-local`, stated reason: derived, rebuildable from the shared record | the fact store, via clause 5's pinned test |
+| Entry | `growth` | `holdsAgentMemory` | `machineScope` | `agreesWith` | `standards` | `status` |
+|---|---|---|---|---|---|---|
+| fact store (segments) | `unbounded` | **yes** — learnings, commitments, corrections land here; rule 7's ban attaches with full force | `shared` | projections via pinned rebuild-equivalence; capture store via reference resolution | rules 7, 28–33, 89, 90, 100, 112, 113 — checks P2-NF-15/16, 05–14, 57/58 | design; live at part-two build |
+| capture store | **proposed `redacts`** — deletes bytes only under an operator-standing tombstone fact with the envelope retained; this value does not exist in the register's closed list, and its addition is formally proposed as a register-shape amendment riding this document's approval (question 4) | yes | `shared`, judgment-capture classes excepted (machine-local, part nine's retention decision) | fact store: every referenced capture resolves or carries a tombstone (P2-NF-64/65) | rules 7, 26, 100 — checks P2-NF-64/65/37/66/67 | design; live at part-two build |
+| refusal store | `deletes` (bounded window; aggregate survives row shedding) | no — metadata only, never bodies | `machine-local`, stated reason: refusals are evidence about a *local* boundary's traffic | fact store: a terminally-refused hash never also admitted (holds excluded) | rules 4, 46, 60 — checks P2-NF-30/31 | design; live at part-two build |
+| pending set (replication holds) | `deletes` (bounded, TTL-escalated) | no | `machine-local`, stated reason: an ordering accident is local to the receiving replica | fact store: a held fact either admits or escalates, never vanishes | rules 46, 60 — check P2-NF-25 | design; live at part-two build |
+| projections (each) | `deletes` (per its declared retention rule; disposable by contract) | no — *the facts hold it*; the view is disposable | `machine-local`, stated reason: derived, rebuildable from the shared record | the fact store, via clause 5's pinned test | rules 24, 31–33, 45, 95 — checks P2-NF-46–58 | design; per-projection at registration |
 
 (The register's `growth: deletes`-plus-`holdsAgentMemory: yes` build failure is what forces the
-last row's posture: a projection never answers yes, because deleting a *view* of memory deletes no
-memory — the spine still holds it. A projection kind whose view genuinely held memory the spine
-did not would be mis-designed, and the build failure firing is the correct outcome.)
+projection row's posture: a projection never answers yes, because deleting a *view* of memory
+deletes no memory — the spine still holds it. A projection kind whose view genuinely held memory
+the spine did not would be mis-designed, and the build failure firing is the correct outcome.)
 
 ---
 
@@ -528,18 +639,19 @@ costs is measured, because "revisit when a problem is measured" is only honest i
 exists and something re-surfaces it.
 
 **Rule — the store emits its own cost curve.** Rule 13 (a measurement knows what it measured);
-rule 8 (untracked is abandoned); rules 46 and 61 (bounded backlogs, bounded self-action).
+rule 8 (untracked is abandoned); rules 46 and 60 (bounded backlogs, bounded accumulation).
 **Check:** these are registered measurement subjects with a named producer: `sequence-length`
 (facts, per segment), `segment-bytes`, `append-rate` (windowed), `genesis-replay-duration` (per
 projection), `checkpoint-replay-duration` (per projection), `boot-rebuild-duration`,
-`replication-lag` (per segment), `refusal-rate` (per source), `conflict-backlog-age`,
-`pending-set-depth`, `historical-encoder-count` (every schema version's canonical encoder stays
-load-bearing forever — the count is visible so its growth is a fact, not a surprise), and a
-canonical-bytes re-encode fixture per *retired* schema version, since decode fixtures alone do not
-keep an old encoder honest. The compaction question re-opens at a declared
-**replay-duration threshold** — replay time, not byte count, is what actually breaks, and a faster
-disk legitimately moves it — and that re-opening is a registered loop with a re-surfacing cadence,
-per rule 8, opened by this document rather than deferred to memory.
+`replication-lag` (per segment), `refusal-rate` (per source), `unattributable-wrap-rate`,
+`conflict-backlog-age`, `pending-set-depth`, `known-segment-set-size`, `machine-key-count`, and
+`historical-encoder-count` (every schema version's canonical encoder stays load-bearing forever —
+the count is visible so its growth is a fact, not a surprise), plus a canonical-bytes re-encode
+fixture per *retired* schema version, since decode fixtures alone do not keep an old encoder
+honest. The compaction question re-opens at a declared **replay-duration threshold** — replay
+time, not byte count, is what actually breaks, and a faster disk legitimately moves it — and that
+re-opening is a registered loop with a re-surfacing cadence, per rule 8, opened by this document
+rather than deferred to memory.
 
 **Rule — checkpoints exist, and a checkpoint is a projection.** Rule 15: boot time rides replay
 cost, and an agent unreachable for the length of a genesis replay is the exact failure "the agent
@@ -550,8 +662,9 @@ deterministic — and never licenses removing a fact beneath it (P2-NF-59: a che
 compaction wearing a costume). The rebuild check splits: **incremental** (from last checkpoint —
 frequent, cheap, catches fold bugs) and **genesis** (from nothing — rare, budgeted, the only form
 that catches checkpoint corruption and the only one that fully holds rule 33's agreement). The
-minimal plane's projections are named by part eleven and their genesis-replay time is one of the
-measurements above, so rule 15's boot path has a number attached instead of an assumption.
+segment hash-chain verification splits the same way (watermark at boot, full chain in the sweep).
+The minimal plane's projections are named by part eleven and their genesis-replay time is one of
+the measurements above, so rule 15's boot path has a number attached instead of an assumption.
 
 ---
 
@@ -559,15 +672,17 @@ measurements above, so rule 15's boot path has a number attached instead of an a
 
 Stated explicitly, as rule 113 requires:
 
-- **The fact record is shared.** Each machine owns its segments and never appends to another's —
-  held by the signature (only the owner's key signs) and the chain (P2-NF-09, P2-NF-11), not by
-  politeness. Replication is additive, authenticated, contiguity-checked.
+- **The fact record is shared.** Each machine owns its segment lineage and never appends to
+  another's — held by the signature (only the owner's key signs) and the chain (P2-NF-09,
+  P2-NF-11), not by politeness. Replication is additive, authenticated, contiguity-checked.
 - **Projections, the refusal store, and the pending set are machine-local, with their reasons
   declared in the register table above.** Derived or boundary-local state replicating would
   replicate conclusions instead of evidence.
-- **A partitioned machine keeps working** — appending locally, serving labelled-stale views,
-  failing closed only on authority questions past their bound. On reconnection segments merge by
-  the reconciliation rules, and genuine divergence surfaces as `Conflict`s.
+- **A partitioned machine keeps working — within locally-provable standing.** It appends locally
+  where the standing its facts rely on is provable from segments it holds (rung 8's carve-out),
+  serves labelled-stale views, and fails closed on authority questions past their bound. On
+  reconnection segments merge by the reconciliation rules, retroactive standing conflicts are
+  flagged, and genuine divergence surfaces as `Conflict`s.
 - **Durability is a state, not an assumption** — the append states and replication-lag measurement
   above are this posture's honesty about the window in which a fact exists on one disk.
 
@@ -603,31 +718,31 @@ table extends the same map.
 | P2-NF-04 | decode | An authority-bearing fact whose provenance is `channel-attested` or absent | Part one's provenance floor applies to facts. |
 | P2-NF-05 | decode | Stored `contentHash` differs from recomputation | The record was altered — integrity. |
 | P2-NF-06 | test | Two envelopes differing only in absent-vs-empty `predecessors` hash identically | Field-omission second preimage; absent must encode distinctly. |
-| P2-NF-07 | decode | A `signature` that does not verify against the registered key for `machine` | Authenticity, not integrity, is what proves origin. |
+| P2-NF-07 | decode | A `signature` that does not verify against the governed key for `machine` at this position | Authenticity, not integrity, is what proves origin. |
 | P2-NF-08 | decode | `machine` differs from the signing key's registered owner | A valid signature under the wrong identity is a forgery. |
 | P2-NF-09 | ingest | A fact whose `prevInSegment` does not extend the receiver's held head | Chain break: fork, tamper, or gap — surfaced, never merged silently. |
-| P2-NF-10 | ingest | Two facts at one (segment, position) with different ids | A forked total order; restore-from-backup must open a new segment. |
+| P2-NF-10 | ingest | Two facts at one (segment, position) with different ids | A forked total order; restore-from-backup must open a new epoch. |
 | P2-NF-11 | ingest | A peer delivering a segment it does not own | Segment ownership is what makes in-segment order total. |
 | P2-NF-12 | ingest | A replication stream with a positional gap accepted silently | An incomplete replica that answers confidently. |
 | P2-NF-13 | decode | An append targeting an existing `id` | Ids are never reused; this is an edit wearing an append's clothes. |
 | P2-NF-14 | decode | An `id` outside the appender's namespace | A cross-machine collision must be a refusal, not a manufactured conflict. |
 | P2-NF-15 | arch | A fact-store port exposing more than one mutating method, whatever its name | Append-only is held by shape, not by vocabulary. |
-| P2-NF-16 | test | An out-of-band segment mutation surviving boot and sweep verification | The chain re-verification is what catches what no code path did. |
-| P2-NF-17 | decode | A body containing a live credential value | Rule 100; screened first so it is never retained. |
+| P2-NF-16 | test | An out-of-band segment mutation surviving watermark-boot and full-sweep verification | The chain re-verification catches what no code path did. |
+| P2-NF-17 | decode | A body containing a live credential value | Rule 100; screened first, on raw bytes, so it is never retained. |
 | P2-NF-18 | build | A fact kind declaring a secret-valued field | The same violation, one layer earlier. |
 | P2-NF-19 | build | A free-text body field undeclared or unclamped in its schema | The scan needs an enumerated, bounded surface. |
 | P2-NF-20 | decode | A fact of an unregistered `kind` | The registry is the closed set. |
 | P2-NF-21 | decode | A `schemaVersion` with no migration forward | Part one's versioning convention. |
 | P2-NF-22 | test | A hash verified after migration rather than against as-appended bytes | A hash only verifies over the bytes it was taken over. |
-| P2-NF-23 | decode | A causally-bound kind missing its registry-declared reference | Omission is the cheapest evasion of ordering; the registry names what is mandatory. |
+| P2-NF-23 | decode | A causally-bound kind missing its registry-declared reference | Omission is the cheapest evasion of ordering; standing-gated kinds are always causally bound. |
 | P2-NF-24 | decode | A non-genesis fact missing its in-segment predecessor | Each machine's own history is always totally ordered. |
-| P2-NF-25 | ingest | A replication-path dangling reference refused or dropped instead of held | Ordering accidents are held in the pending set, escalated on TTL, never lost. |
+| P2-NF-25 | ingest | A replication-path dangling reference refused or dropped instead of held | Ordering accidents — a not-yet-arrived grant included — hold in the pending set, escalate on TTL, never lost. |
 | P2-NF-26 | decode | An appender without live standing for the kind and scope | Appending must not be minting. |
 | P2-NF-27 | decode | An authority-bearing fact appended under requester standing | Part one's floor, applied at the record. |
 | P2-NF-28 | decode | A constitutional value in a body decoded without the fact's provenance | Part one's refusals apply inside bodies. |
 | P2-NF-29 | test | An unresolvable-principal input dropped instead of wrapped as an unattributable observation | Rule 14: preservation is the fail direction for intake. |
 | P2-NF-30 | test | A refusal retained with body bytes | Metadata only — the guard must not store what it caught. |
-| P2-NF-31 | build | A refusal store or pending set without a registered bound | Rules 60/61: nothing accumulates unboundedly, least of all evidence of malfunction. |
+| P2-NF-31 | build | A refusal store or pending set without a registered bound | Rules 46/60: nothing accumulates unboundedly, least of all evidence of malfunction. |
 | P2-NF-32 | decode | A retraction by a principal without standing over the named fact | Unsaying takes standing. |
 | P2-NF-33 | decode | A correction to an authority-conferring fact without the original grant's standing | Correction must not be a cheaper path than the authorization machinery. |
 | P2-NF-34 | test | A retraction that removes the retracted fact from readability | Rule 7: never deletion. |
@@ -640,17 +755,17 @@ table extends the same map.
 | P2-NF-41 | decode | A version landed on a moved `base` without re-issue | A stale approval does not transfer. |
 | P2-NF-42 | build | A `supersedes` naming a version that does not exist | The chain must walk. |
 | P2-NF-43 | build | An in-place edit to a governing thing producing no new version | Rule 90 forbids it. |
-| P2-NF-44 | test | A concurrent chain fork producing a wedge instead of a recorded `Conflict` | Governance must degrade to a flagged state, not an outage. |
+| P2-NF-44 | test | A concurrent chain fork producing a wedge instead of a recorded `Conflict` with the incumbent in force | Governance degrades to a flagged, already-reviewed state, not an outage. |
 | P2-NF-45 | decode | A fork-merge version appended without operator standing in scope | Only the operator reunifies a governing chain. |
 | P2-NF-46 | arch | A projection whose storage is writable by anything but its own fold | The fold is the only writer. |
 | P2-NF-47 | build | A projection folding a kind it did not declare | The consumer graph must be real. |
 | P2-NF-48 | build | A registered kind with no folds/ignores decision from some projection — or a fold with no quarantine path for a poison fact | Silent ignorance and silent wedging are the two ways a fold lies. |
 | P2-NF-49 | build | A projection reading a clock | Purity; part one's time convention. |
 | P2-NF-50 | arch | A fold signature admitting anything beyond facts and the register generation | No channel for derived-on-derived. |
-| P2-NF-51 | test | A projection whose output changes under permutation of concurrent facts without emitting `Conflict` | Fold order must not be able to become a value. |
+| P2-NF-51 | test | A projection whose output changes under an adjacent transposition (or sampled permutation) of concurrent facts without emitting `Conflict` | Fold order must not be able to become a value; the bound makes the check runnable. |
 | P2-NF-52 | test | A fold resolving a same-identity immutable-field disagreement silently | Conflicts are recorded through part one's equality primitives, never absorbed. |
 | P2-NF-53 | build | A monetary or countable quantity accumulated in binary floating point | Cross-architecture determinism; spend is a projection. |
-| P2-NF-54 | test | A view served without its folded-through vector and known-segment set | A scalar cannot express "I have never seen segment B." |
+| P2-NF-54 | test | A view served without its folded-through vector and known-lineage set, or an unknown-staleness lineage read as current | A scalar cannot express "I have never seen machine C"; an unobserved registered machine is not a current one. |
 | P2-NF-55 | test | An authority-answering projection serving past its staleness bound | The absence of a revocation must not read as permission. |
 | P2-NF-56 | test | A conflicted authority-bearing record served as live | Contested authority serves the narrower answer. |
 | P2-NF-57 | test | A rebuild compared against a live view at a different vector | The comparison must be pinned or it measures lag, not divergence. |
@@ -659,9 +774,16 @@ table extends the same map.
 | P2-NF-60 | test | A compaction that removes facts | Rule 7, with `holdsAgentMemory: yes` declared — forbidden, not declined. |
 | P2-NF-61 | build | A fact schema declaring machine-local scope | This design's stricter-than-32 choice, marked as a Value above. |
 | P2-NF-62 | test | Replication removing or rewriting a fact on the receiver | Replication is additive. |
-| P2-NF-63 | test (part eight) | An irreversible effect on a fact whose durability state is below the operation's declared demand | Named here with the durability states; the effect doorway owns the fixture. |
+| P2-NF-63 | test | An irreversible effect on a fact whose durability state is below the operation's declared demand | Named here with the durability states; owned by part eight. |
 | P2-NF-64 | decode | A capture reference that does not resolve at append | Verify the state, not the symbol: a hash pointing nowhere proves nothing. |
 | P2-NF-65 | test | A capture deleted under a live reference without a tombstone fact | The audit trail must not rot silently. |
+| P2-NF-66 | decode | A redaction whose reason is not on the closed list | The byte-destruction primitive is bounded to its motivation. |
+| P2-NF-67 | decode | A redaction of a capture referenced by an `Authorization`'s provenance, an open `Conflict`, or an unresolved judgment record | Redaction must not un-verify an approval or destroy contested evidence. |
+| P2-NF-68 | decode | A retraction without a `reason` | Rule 112's recorded reason, made mechanical. |
+| P2-NF-69 | ingest | A fact verifying only against a key outside its segment-position validity range | Key windows are causal; a backdated clock cannot reach an old key. |
+| P2-NF-70 | test | Facts at or after an operator-attested compromise position not quarantined as a conflict class | Compromise recovery is defined, not improvised. |
+| P2-NF-71 | decode | An identical-content, identical-approval duplicate version forking a chain instead of collapsing | A replay cannot manufacture a governance fork. |
+| P2-NF-72 | test | A standing resolution keyed on the appender's `at` rather than causal position | A backdated clock must not resurrect revoked standing. |
 
 ---
 
@@ -679,17 +801,19 @@ user-correction sense.
 |---|---|---|
 | **fact** | noun | An immutable, signed, attributable record that something occurred, carrying the envelope above. Never a statement of what is currently true. |
 | **envelope** | noun | The fields every fact carries regardless of kind, sufficient to attribute, place, order, and verify it without knowing the kind. |
-| **segment** | noun | An append-ordered, hash-chained sequence owned by exactly one machine. Order within is total; across, partial. |
-| **causal order** | noun | The partial order given by `predecessors` and in-segment position. The only ordering a decision or a projected value may rest on. |
-| **fold order** | noun | The deterministic linearization used only to make projection output identical across machines at equal vectors. Structurally unable to select a value (the commutativity rule). |
+| **segment** | noun | An append-ordered, hash-chained sequence owned by exactly one machine, one epoch of that machine's lineage. Order within is total; across, partial. |
+| **lineage** | noun | A machine's segments in epoch order, each genesis bound to its predecessor's closing head — one auditable history per machine across restores. |
+| **causal order** | noun | The partial order given by `predecessors` and in-segment position. The only ordering a decision, a projected value, or an authority resolution may rest on. |
+| **fold order** | noun | The deterministic linearization used only to make projection output identical across machines at equal vectors. Structurally unable to select a value or resolve authority. |
+| **fold-key instant** | noun | The clock measurement's value normalized to one canonical unit and encoded fixed-width, so byte order over it is time order. Pinned by the preimage rules; unnormalizable readings refuse. |
 | **admission** | noun | The single boundary through which a fact enters — local append and replication receipt run the same ladder with different fail directions. |
-| **pending set** | noun | The bounded, deduplicated hold for replication-path facts whose causal references have not yet arrived. Admits or escalates; never drops. |
+| **pending set** | noun | The bounded, deduplicated hold for replication-path facts whose causal references have not yet arrived. Admits or escalates; never drops; refuses new holds at its bound. |
 | **projection** | noun | A pure, deterministic, declared-input fold over facts producing a disposable view. Never written to by a caller, never an authority about what occurred. |
 | **checkpoint** | noun | A projection's persisted state at a folded-through vector. A projection in every respect; never a license to remove facts. |
-| **folded-through vector** | noun | Per-machine high-water marks plus the known-segment set, carried on every view, so currency is always relative to a stated horizon. |
-| **retraction** | noun | A standing-gated fact asserting a named fact should not be relied on. The retracted fact remains readable, visibly retracted. |
+| **folded-through vector** | noun | Per-machine (epoch, position) high-water marks over each lineage plus the known-lineage set, carried on every view, so currency is always relative to a stated horizon. |
+| **retraction** | noun | A standing-gated fact, with a required reason, asserting a named fact should not be relied on. The retracted fact remains readable, visibly retracted. |
 | **correction** | noun | A standing-gated fact of the same kind superseding a named fact's content in the fold. Distinct from rule 85's user correction, which is about feedback becoming durable improvement. |
-| **redaction** | noun | The operator-standing tombstone of capture *bytes* under a permanent record that the redaction occurred. The only byte removal in the system. |
+| **redaction** | noun | The operator-standing, closed-reason, delay-windowed tombstone of capture *bytes* under a permanent record that the redaction occurred. The only byte removal in the system; cooperative, with no proof of erasure. |
 | **version chain** | noun | `since` / `supersedes` / `approvedIn` / `landedIn` / `base` — how a governing thing carries its history as a lookup. |
 | **durability state** | noun | What `append` returns: `local-durable` or `replicated(n)`. The effect doorway names its demand per operation. |
 
@@ -703,21 +827,21 @@ answered:
 
 | Rule | Verdict here |
 |---|---|
-| 7 (never delete) | **Held**: no delete exists; NF-34/59/60; redaction removes capture bytes only, under a permanent record. |
-| 15 (always reachable) | **Engaged, part-bounded**: checkpoints + the boot-rebuild measurement keep boot off the genesis-replay curve; the live-session guarantee itself is part eleven's. |
-| 24 (distrust temporary success) | **Explicitly not held here**: visibility of retractions/corrections is built; fingerprint comparison across recurrences needs the judgment doorway — part seven. |
+| 7 (never delete) | **Held**: no delete exists; P2-NF-34/59/60; redaction removes capture bytes only, under a permanent record, resting on the stated scope reading marked as a Value. |
+| 15 (always reachable) | **Engaged, part-bounded**: checkpoints + watermark boot verification + the boot-rebuild measurement keep boot off the genesis-replay curve; the live-session guarantee itself is part eleven's. |
+| 24 (distrust temporary success) | **Partially held**: fold-owned corrections + visible retractions make recurrence *visible* (P2-NF-35/36); fingerprint comparison across recurrences needs the judgment doorway — part seven. |
 | 31/32/33 (multi-machine coherence, scope, agreement) | **Held**: register table declarations; reconciliation + partition fixtures; pinned rebuild-equivalence as the tested agreement. |
 | 41/58 (observable, reviewable judgment) | **Substrate held, doorway deferred**: judgments land as attributable facts with pinned provenance; the doorway that writes them is part seven; the capture-retention tension is stated, not hidden. |
 | 45 (consumers move with sources) | **Held**: declared inputs + the folds/ignores decision per kind are the consumer graph (P2-NF-47/48). |
-| 69 (references both ways) | **Held for what this part declares**: every register entry above carries `standards` naming its checks; every Rule block names fixtures. |
+| 69 (references both ways) | **Held for what this part declares**: the register table's `standards` column names each entry's rules and checks; every Rule block names fixtures. |
 | 75 (token audit) | **Deferred to part seven** — nothing here makes a model call. |
 | 85 (never-waste feedback) | **Deferred to part nine**, and the term collision with this part's *correction* is named in the terms table so the deferral cannot hide behind the homonym. |
-| 89 (truthful provenance) | **Held at the record**: signature + pinned provenance on every fact; message-surface provenance is the intake part's. |
+| 89 (truthful provenance) | **Substrate held**: signature + pinned provenance on every fact — automatic signing at the record layer; the message-surface obligation itself is the intake part's. |
 | 90 (history is a lookup) | **Held**, with the two-anchor reading (`approvedIn` + `landedIn`) flagged for the operator's confirmation. |
 | 94 (waiver before the act) | **Substrate only**: a waiver is an `Authorization` fact; the waiver-count review is a projection part nine names. |
 | 100 (secret stored before spent) | **Held with a stated residual**: three-layer check; prose leaks rotate-and-record, never delete. |
 | 108 (conclusion and reason separate) | **Deferred to part seven** with its type already fixed in part one. |
-| 112 (green history preserved) | **Held — built in this part**: a CI/check record is a registered fact kind; a history-erasing redo is expressible only as a retraction carrying its recorded reason; the CI record itself is append-only because everything here is. |
+| 112 (green history preserved) | **Append-only half held here** — everything is; and the recorded-reason half is mechanical via the retraction's required `reason` (P2-NF-68). The CI-record fact kind itself is a named part-three deliverable, so the verdict is substrate-plus-mechanism, not "built". |
 | 113 (declared multi-machine posture) | **Held**: the posture section and register table. |
 
 ---
@@ -727,16 +851,18 @@ answered:
 Rule 90 moves from "needs the register" to held by the chain and its walker — an in-place edit, a
 dangling supersession, a merge-event approval, a moved base, all refuse mechanically. Rule 7 gains
 a mechanical form — there is no delete to call, and the one byte-removal that exists (redaction)
-is operator-gated and permanently recorded. Rule 45's consumer graph becomes real and two-sided:
-declared inputs plus a mandatory decision per new kind. Rules 31/32/33 gain their subject and
-their tested agreement. Rule 112 gains its append-only CI record. Rule 89 gains automatic signing
-at the record layer. And the two properties 1.x could never distinguish — integrity and
-authenticity — are separate fields with separate fixtures, so "the bytes are intact" can never
+is operator-gated, closed-reasoned, delay-windowed, and permanently recorded. Rule 45's consumer
+graph becomes real and two-sided: declared inputs plus a mandatory decision per new kind. Rules
+31/32/33 gain their subject and their tested agreement. Rule 112 gains its recorded-reason
+mechanism. Rule 89 gains automatic signing at the record layer. Authority resolution gains a time
+base an appender cannot choose. And the two properties 1.x could never distinguish — integrity
+and authenticity — are separate fields with separate fixtures, so "the bytes are intact" can never
 again impersonate "the author is proven."
 
 What this part deliberately does not hold, it names: recurrence fingerprinting (24), the judgment
 doorway's own duties (41/58/75/108), feedback-into-improvement (85), the waiver review (94), the
-runtime approval anchor (parts nine/eleven), and the live-reachability guarantee (15).
+runtime approval anchor (parts nine/eleven), the CI-record kind (part three), and the
+live-reachability guarantee (15).
 
 ---
 
@@ -759,24 +885,30 @@ runtime approval anchor (parts nine/eleven), and the live-reachability guarantee
    be noise or harm. Default: operator surfaces show retractions; user surfaces show them only on
    request. Right line?
 
-4. **The redaction carve-out.** For incidental third-party content (an erasure obligation, a
-   mis-routed private message), an operator-standing redaction tombstones capture *bytes* while
-   every envelope, hash, and the redaction record stay permanent. This is the only byte removal
-   in the design, and it exists so the alternative is never emergency deletion. Do you want it,
-   and do you want it this narrow?
+4. **The redaction carve-out, and the register amendment it needs.** For incidental third-party
+   content, an operator-standing redaction — reason from a closed list, protected references
+   unredactable, a surfaced delay window — tombstones capture *bytes* while every envelope, hash,
+   and the redaction record stay permanent. It is cooperative deletion with no proof of erasure,
+   and the document says so. It also needs one register-shape amendment: a `growth: redacts`
+   value for the capture store, since the existing closed list cannot describe "deletes bytes
+   only under a permanent operator tombstone." Do you want the mechanism, this narrow, and do
+   you approve routing the register amendment with it?
 
 5. **No machine-local facts — stricter than rule 32.** A machine-local *store* is permitted with
    a reason; a machine-local *fact* is forbidden outright. Keep the stricter line?
 
 6. **Full history on every machine.** Every machine holds all segments — each can audit, rebuild,
-   and serve alone, at the cost that the smallest disk governs fleet retention and storage is
-   machine-count × history. The alternative (bounded local suffix, older segments fetched on
-   demand) stays open behind the same measurements. Start with full copies?
+   and serve alone (bounded by capture availability, stated in the text), at the cost that the
+   smallest disk governs fleet retention and storage is machine-count × history. The alternative
+   (bounded local suffix, older segments fetched on demand) stays open behind the same
+   measurements. Start with full copies?
 
-7. **Authority reads fail closed on staleness.** Standing, authorization, ownership, and spend
-   projections refuse past a staleness bound on known-but-unfolded segments and serve the narrower
-   answer under conflict — so a partition can pause authority decisions rather than silently
-   extend revoked authority. The user channel keeps failing open. Accept the split?
+7. **Authority fails closed on staleness — and partitions flag retroactively.** Standing,
+   authorization, ownership, and spend projections refuse past a staleness bound and serve the
+   narrower answer under conflict. Admission itself carries the one carve-out: a partitioned
+   machine keeps appending within locally-provable standing, and a late-arriving revocation
+   retroactively flags the facts it undercuts as conflicts rather than silently invalidating or
+   silently keeping them. Accept the split, including the retroactive-flagging trade?
 
 8. **The capture-retention tension, stated not solved.** The big picture promises judgment
    captures are machine-local with bounded retention; this part makes facts that reference them
@@ -788,6 +920,14 @@ runtime approval anchor (parts nine/eleven), and the live-reachability guarantee
 9. **The glossary homonym.** This part keeps **fact** for the record (matching the approved
    parent's usage) and proposes renaming the glossary's term-kind value `fact` to `field` through
    its own supersedes chain. Approve routing that small amendment?
+
+10. **A third category for rule 4's blocking sites.** The admission ladder (and every decoder
+    part one already ships) blocks deterministically without a model, yet is neither on rule 4's
+    ruled-three list nor "names the model that decides." Rather than game the `decidesAlone`
+    field, this part proposes amending rule 4 / the register's blocking-site kind with a third
+    recognized category — *deterministic integrity/decode refusal* (exact test, refuses malformed
+    or unverifiable input, preserves it) — under which part one's decoders and this boundary both
+    register honestly. Approve routing that amendment?
 
 ---
 
