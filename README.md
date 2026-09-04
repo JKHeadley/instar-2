@@ -56,6 +56,6 @@ using a mechanism that already exists rather than one we have to build.
 
 ## Status
 
-The rules foundation and big-picture design are approved on `main`. Part designs now proceed
-in dependency order, beginning with constitutional types and runtime decoders. Code waits
-until the part designs it depends on are approved.
+The rules foundation and big-picture design are approved on `main`. The first part design —
+constitutional types and the decoding boundary — is the current review. Part designs proceed in
+dependency order; code waits until the part designs it depends on are approved.

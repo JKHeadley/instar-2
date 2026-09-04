@@ -1,0 +1,201 @@
+[
+  {
+    "revision": 5,
+    "date": "2026-09-02",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 13,
+      "note": "review desk round 4 (final round) \u2014 independent Codex reviewer confirmed all round-3 closures; two findings above the line, both accepted"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Authorization gains a requestDigest: the canonical hash of approver, action, scope, artifact, and base that the explicit-yes record must carry; the decoder recomputes and refuses on any difference. For a host review event the artifact is the reviewed head and the base is the target branch head recorded in the same signed delivery; an event without a base does not decode. Fixtures NF-77 to NF-80 cover a genuine yes replayed against another action, scope, artifact, or base.",
+        "why": "A genuine approval for one head could be paired with a caller-supplied base or action the reviewer never approved, and rule 82's re-issue-when-main-moves needs the base bound.",
+        "ref": "review desk topic 66384, message 66447, finding 1"
+      },
+      {
+        "what": "The Conflict doorway's standing sufficiency matrix is marked a Value that the register declares; the doorway's rule cites 28, 31, and 33 only; NF-75 and NF-76 cite the same and name the matrix as Value.",
+        "why": "Rules 82 and 104 do not entail who may resolve which conflict.",
+        "ref": "review desk topic 66384, message 66447, finding 2"
+      }
+    ]
+  },
+  {
+    "revision": 4,
+    "date": "2026-09-02",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 13,
+      "note": "review desk round 3 \u2014 independent Codex reviewer, five findings above the severity line, all accepted"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Verified provenance now requires evidence the package re-checks against its registered key set \u2014 a signature, a host-signed delivery or event, a token it minted. A record the adapter fetched, even with a matching hash, is channel-attested; the repository anchor therefore stands only where the host signs its approval events. NF-73 covers a forged record with an internally matching hash.",
+        "why": "Hash agreement proves the bytes were not altered after the adapter produced them, not that the host produced them.",
+        "ref": "review desk topic 66384, message 66440, finding 1"
+      },
+      {
+        "what": "The lower provenance class is renamed channel-attested and defined against the glossary's own definition of verified (an authenticated channel, never content): it may produce a requester principal and nothing more; a sender from an unauthenticated channel or from content yields UnresolvedInput (NF-74). Whether requester standing should require package-verified evidence is put to the operator as open question 7.",
+        "why": "The reviewer read the adapter's word as failing rule 28; the glossary's definition admits an authenticated channel, so the document now says exactly which it relies on and asks the operator to confirm.",
+        "ref": "review desk topic 66384, message 66440, finding 2"
+      },
+      {
+        "what": "The Conflict resolution doorway takes the live StandingGrant under which the decision is made and refuses unless the grant is live, its scope covers the subject, and its standing suffices \u2014 operator standing for a conflict over a grant, revocation, authorization, or principal. NF-75 and NF-76 added.",
+        "why": "Identity alone let any requester choose the authoritative side of a conflict, including one over operator identity.",
+        "ref": "review desk topic 66384, message 66440, finding 3"
+      },
+      {
+        "what": "Merge events removed from the explicit-yes field and term; for a repository-protected artifact the record must be a verified approval or review event.",
+        "why": "The definitions still permitted what the invariant and NF-42 reject.",
+        "ref": "review desk topic 66384, message 66440, finding 4"
+      },
+      {
+        "what": "Rule 24 removed from the Conflict clause, NF-68, and NF-69; rules 31 and 33 carry them.",
+        "why": "Rule 24 governs recurring failures hidden by temporary success, not divergent records.",
+        "ref": "review desk topic 66384, message 66440, finding 5"
+      }
+    ]
+  },
+  {
+    "revision": 3,
+    "date": "2026-09-02",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 13,
+      "note": "review desk round 2 \u2014 independent Codex reviewer, eight findings above the severity line, all accepted; five of them corrected overclaims introduced by the round-1 fixes"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Provenance is decoded inside the package from authentication evidence and carries a class: verified (a signature, a fetched record's hash, or a session token the package re-checked) or asserted (the adapter's word). Anything above requester standing decodes only from verified provenance. The guarantee is restated honestly: nothing the package cannot verify itself can mint standing, an authorization, or a revocation.",
+        "why": "An adapter-built Provenance was a third construction door, and an adapter that supplies both the bytes and the provenance could pass its own cross-check.",
+        "ref": "review desk topic 66384, message 66410, finding 1"
+      },
+      {
+        "what": "The comparison domain is fixed once (same type, same schema version; older versions migrate first, and migration is not a conflict); each type names its immutable fields; the principal, grant, intent, directive, evidence, decision, and authorization equality lines are aligned with the convention; NF-67 and NF-68 restated.",
+        "why": "The global equality rules contradicted their own applications, and schema evolution would have produced false conflicts.",
+        "ref": "review desk topic 66384, message 66410, finding 2"
+      },
+      {
+        "what": "Result claims centralization only: one consumption function plus a lint enumerates every place a refusal is handled; holding rule 42 against a lying report is assigned to the recorded Result on the fact spine (part two) and the verification holders (part nine), and said so.",
+        "why": "A handler can return whatever a caller's reporting path accepts, so the consumption function did not hold the behaviour claimed for it.",
+        "ref": "review desk topic 66384, message 66410, finding 3"
+      },
+      {
+        "what": "Conflict gains one resolution doorway (Conflict plus a verified principal's Decision) and a lint; NF-69 moved from compile to lint.",
+        "why": "A language cannot stop a function from returning a value it was handed; the compile claim repeated the overclaim just corrected for Result.",
+        "ref": "review desk topic 66384, message 66410, finding 4"
+      },
+      {
+        "what": "The repository anchor is the host's non-agent review-approval record required by branch rules on protected paths, with the agent performing the merge as rule 82 requires; a merge event is explicitly not the explicit-yes record.",
+        "why": "The previous wording required a merge by a non-agent account, contradicting approved rule 82.",
+        "ref": "review desk topic 66384, message 66410, finding 5"
+      },
+      {
+        "what": "Fixture citations completed: NF-30 marked Value, NF-40 and NF-42 cite 82 and 98.",
+        "why": "Three citations survived the round-1 cleanup.",
+        "ref": "review desk topic 66384, message 66410, finding 6"
+      },
+      {
+        "what": "Open question 2 now asks about the repository anchor and the initial protected paths instead of the withdrawn decoder-on-the-list idea; open question 3 restated for the new Result shape.",
+        "why": "The question asked approval of an answer the body no longer gives.",
+        "ref": "review desk topic 66384, message 66410, finding 7"
+      },
+      {
+        "what": "Result is two-armed as the approved big picture fixes it; a budget applied as designed is a required capacity field on Success rather than a third arm. Fixture NF-15, the inventory, the tables, and the terms follow.",
+        "why": "A part design may not silently change a shape its approved parent fixes.",
+        "ref": "review desk topic 66384, message 66410, finding 8"
+      },
+      {
+        "what": "Three fixtures added (NF-71 to NF-73) for Provenance construction, class, and evidence verification.",
+        "why": "The new Provenance decoder needs its own negative contract.",
+        "ref": "review desk topic 66384, message 66410, finding 1"
+      }
+    ]
+  },
+  {
+    "revision": 2,
+    "date": "2026-09-02",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 13,
+      "note": "review desk round 1 \u2014 independent Codex reviewer, seven findings above the severity line, all accepted"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "Authority-bearing values (principal, grant, revocation, authorization) now carry a Provenance established from the authenticated record outside the bytes; their decoders take it as a required input and cross-check every identity-bearing field against it. Authorization gains a required explicit-yes record; a grant's grantor carries its source reference.",
+        "why": "A faulty adapter could promote content-supplied fields while satisfying every listed shape; nothing bound the value to the record that produced it.",
+        "ref": "review desk topic 66384, message 66396, finding 1"
+      },
+      {
+        "what": "Result and Outcome now claim only recognition at compile time; behaviour (a refusal reported as success, a budget applied treated as an error, an uncertain outcome retried) is held by one consumption function plus an architecture lint. Fixtures NF-14, NF-15, NF-46 moved from compile to lint.",
+        "why": "A tagged union cannot stop a caller from matching a variant and then misbehaving; the guarantee was overstated.",
+        "ref": "review desk topic 66384, message 66396, finding 2"
+      },
+      {
+        "what": "The protected-artifact answer is narrowed to repository merges, where the host's branch rules are the external anchor; dashboard-governed and runtime artifacts are declared an open question carried to parts nine and eleven, and the circular 'decoder on its own protected list' claim is removed.",
+        "why": "Branch protection does not protect artifacts the agent can edit with filesystem authority, and a decoder cannot enforce the list that protects it.",
+        "ref": "review desk topic 66384, message 66396, finding 3"
+      },
+      {
+        "what": "Equality is declared three ways (identity, version, value) and each type section names which it supports; same identity with incompatible immutable fields yields a Conflict value, never equality or silent latest-wins.",
+        "why": "No type actually declared its equality, and identity equality hid the cross-machine conflicts the big picture requires to be recorded.",
+        "ref": "review desk topic 66384, message 66396, finding 4"
+      },
+      {
+        "what": "Seventeen negative fixtures added (NF-54 to NF-70) so every named rejection has a stable fixture, and the coverage claim is restated as a build step mapping table cells to fixtures.",
+        "why": "The claim that every table row was a numbered fixture was false.",
+        "ref": "review desk topic 66384, message 66396, finding 5"
+      },
+      {
+        "what": "Rule citations corrected: 100 removed from canonical bytes and authorization; 64 and 75 removed from measurement; 107 and 111 removed from evidence (the weakest-strength aggregate is now a marked Value); 101 and 103 removed from the authorization and requester-authorizer rules; 93 removed from standing grants.",
+        "why": "Each cited a rule that does not govern the claim.",
+        "ref": "review desk topic 66384, message 66396, finding 6"
+      },
+      {
+        "what": "An explicit inventory table lists every constitutional value (eleven core, seven supporting, including Revocation, Provenance, Conflict, UnresolvedInput) with its constructor, and the completeness checks range over it.",
+        "why": "The prose count of nine types was not stable, so complete schema registration and fixture coverage were uncheckable.",
+        "ref": "review desk topic 66384, message 66396, finding 7"
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-02",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "first version: the constitutional types and the decoding boundary, the first part design the approved big picture names"
+    },
+    "approvedIn": {
+      "pr": null,
+      "mergeCommit": null
+    },
+    "changes": [
+      {
+        "what": "First version.",
+        "why": "The big-picture design (section 13) orders the part designs and puts constitutional types and runtime decoders first; the register (kind 12) hands the protected-artifact enforcement question to this step.",
+        "ref": "docs/04-the-big-picture.md section 13; docs/02-the-register.md kind 12; docs/03-the-glossary.md footer"
+      }
+    ]
+  }
+]
