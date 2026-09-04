@@ -388,6 +388,13 @@ about what the fact changed is answered from a projection that is current within
 bound, or refuses. Everything else in this section is what happens when one of those six steps
 cannot proceed.
 
+One ladder, two ports, named: **authorAndAppend** (the origin port — *constructs* position,
+frontier, `prevInSegment`, hash, and signature, then runs the ladder including the origin-only
+frontier check) and **verifyAndAdmit** (the replication port — every one of those fields arrives
+authored and immutable and is *verified*, never generated). They share the decoders, the
+refusal reasons, and every rung below; what differs is which fields each trusts, which it
+produces, and the fail directions already declared.
+
 The ladder, in refusal order — fixed so a refusal reason is stable, and each mapped onto part
 one's closed `Refused` reason list rather than minting new reasons. Rungs 2–6 share one
 structural phase: any failure to parse, re-encode, or verify the envelope's own bytes classifies
@@ -406,8 +413,12 @@ implementable:
 4. **Signature** (`integrity`) — over the now-verified hash, against the governed key set for the
    fact's segment-position range; `machine` must own the key.
 5. **Unknown or unregistered `kind`** (`decode`).
-6. **Unknown `schemaVersion`** (`decode`) — refused unless a migration forward exists; migration
-   runs only after rungs 3–4 passed.
+6. **Unknown `schemaVersion`** (`decode`) — on intake, refused unless a migration forward
+   exists; migration runs only after rungs 3–4 passed. On the replication path a version
+   *newer* than this machine understands is a rolling upgrade in progress, not corruption: the
+   fact holds in the pending set exactly as a not-yet-arrived reference does — bounded,
+   measured, admitted when the schema support arrives — so a fleet mid-upgrade never terminally
+   refuses its own future.
 7. **Unresolvable `principal`** (`standing`) — refused *unless* wrapped as an
    `unattributable-observation`, which is the only door for unresolved input (P2-NF-29).
 8. **Causal references** (`decode`) — the in-segment link always; per-kind mandatory references —
@@ -577,7 +588,10 @@ serving them; a partitioned replica holds them until it reconnects and honours t
 no proof of erasure exists. After redaction, what remains provable: that the fact occurred, its
 envelope's integrity and authorship, the removed content's hash and byte length, and who redacted
 it, when, for which listed reason. What is no longer possible: re-inspecting the content;
-projections treat a redacted capture as unavailable evidence, never as silently absent — and
+projections treat a redacted capture as unavailable evidence, never as silently absent — every
+capture-referencing read carries a `captureStatus` of `available`, `tombstoned`, `expired`, or
+`missing`, and a bare historical hash is never presented as live evidence (it proves the identity
+of bytes that cannot be re-inspected, nothing more) — and
 that status propagates: a fact or conclusion whose named evidence is a redacted capture carries
 the same evidence-unavailable taint the fold uses for provisional authority, so anything still
 relying on it is visibly resting on unverifiable ground (part seven's outcome grading treats
@@ -685,7 +699,11 @@ become something else, and each names its check.
    projection package: pure except for writes to its own storage and checkpoints — no ambient
    store, clock, file, global, cache, or network reaches it (P2-NF-49 and P2-NF-50 are both
    lint-backed, not signature-implied), so there is no channel for a peer view — or any
-   undeclared input — to arrive through. The register
+   undeclared input — to arrive through. Honestly bounding effects this way is beyond a
+   best-effort grep in most languages, so this adds one capability to part one's language
+   capability floor — the toolchain must be able to bound a package's effects (a capability
+   system, an effect-aware checker, or an injected-capability runtime), and the language is
+   chosen, as part one fixed, by compiling the fixtures. The register
    projection's own bootstrap rides the big picture §11 minimal plane: a small, independently
    verified segment whose facts describe the register itself.
 4. **It is deterministic to the byte.** Ordered iteration only; exact decimal or integer
@@ -718,7 +736,10 @@ become something else, and each names its check.
    never from gossip alone — so a registered machine whose lineage head has not been observed
    within the staleness bound reads as *unknown-staleness*, and authority reads fail closed on it
    exactly as on a known-but-unfolded segment; an idle machine distinguishes itself from a
-   withheld one by heartbeat facts or an operator lineage-close (P2-NF-54). A segment carrying a
+   withheld one by heartbeat facts or an operator lineage-close (P2-NF-54) — and that close is
+   deliberately a minimal-plane operation, verified against the genesis anchor the way the first
+   grants are, so freeing authority reads from a dead machine's lineage never depends on the
+   very authority projection that lineage is blocking. A segment carrying a
    revocation cannot be invisible-by-omission, because the machine that owns it is in the
    registry or its facts were never admissible at all.
 
