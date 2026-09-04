@@ -844,8 +844,8 @@ term entries; until the register exists, they are defined here.
 | **artifact** | noun | The exact content an authorization binds to, identified by its canonical hash. |
 | **base** | noun | The state an artifact was reviewed against — a target branch head, a fact-sequence position, a register generation. An approval expires when the base moves. |
 | **scope** | noun | A closed set of registered places and action kinds where a standing, directive, or authorization applies. Compared by inclusion. |
-| **freshness** | fact | The window after an observation during which its claim may be relied on. Never unbounded. |
-| **strength** | fact | How an evidence claim was produced: `proof`, `observation`, `attestation`, or `inference`. An aggregate keeps the weakest. |
+| **freshness** | field | The window after an observation during which its claim may be relied on. Never unbounded. |
+| **strength** | field | How an evidence claim was produced: `proof`, `observation`, `attestation`, or `inference`. An aggregate keeps the weakest. |
 | **provenance** | noun | Where an authority-bearing value came from, as decoded by the package from authentication evidence: the adapter, the method, the authenticated record and its capture hash, the time, the machine, and its class — `verified` when the package re-checked the evidence (a signature, a host-signed event, a token it minted), `channel-attested` when the adapter attests an authenticated channel the package cannot re-check. |
 | **explicit-yes record** | noun | The authenticated record in which an approver said yes: a host's review-approval event, a dashboard action, a signed reply. A merge event is not one. An authorization decodes only from one. |
 | **conflict** | noun | Two records with the same identity whose immutable fields disagree. A value the fact spine records for a person to resolve, never a comparison result of true or false. |

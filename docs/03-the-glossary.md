@@ -245,10 +245,10 @@ Unblocks step one's finding 4 (an undefined load-bearing term is not yet a rule)
 | Required fact | Why |
 |---|---|
 | `name` — the term, as it appears in rules and facts | The key the resolver looks up. |
-| `kind` — `adjective` (derived), `fact` (a profile field or required fact), `noun`, or `standing` | Each kind has a different shape below; the build checks the shape. |
+| `kind` — `adjective` (derived), `field` (a profile field or required fact), `noun`, or `standing` | Each kind has a different shape below; the build checks the shape. |
 | `definition` — the human-readable definition, as prose | The agreed, versioned explanation a person reads and a model is briefed with. Required, and reviewed by a human on every change, because it is what the change *means*. |
 | `derivedFrom` — for an `adjective`: the rule over profile facts, as data (`consequence in {identity, security, money, control, external} or (consequence = data and reversibility = irreversible)`) | The definition of a derived word is a computation, and it is stored as one — so the resolver, the build, and the briefing all evaluate the *same* rule, and a prose definition can never drift from the one the code runs. |
-| `allowedValues` — for a `fact`: the closed list, each value with its own one-line meaning | What makes a declaration checkable. The one-line meanings are what an author reads when choosing. |
+| `allowedValues` — for a `field`: the closed list, each value with its own one-line meaning | What makes a declaration checkable. The one-line meanings are what an author reads when choosing. |
 | `usedBy` — the rule numbers and register facts that lean on this term | Rule 69, references run from both ends: a term nothing uses is dead weight to remove; a rule using a term with no entry fails the build. Generated, not hand-written. |
 | `supersedes` — the previous entry, when a definition changes | A definition evolves by *replacing* its entry through the approval flow, never by editing in place; the old one stays, dated. |
 | `since`, `standards` | As for every kind. |

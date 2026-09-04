@@ -82,7 +82,7 @@ Unblocks rules 4, 66, 86.
 | Required fact | Why |
 |---|---|
 | `authority` — `signal` or `block` | Rule 86: a brittle low-context filter may only signal, with exactly two ruled exceptions — secrets and money. A check is advisory because its entry says `signal`, never by habit. (Ruling 2 on the decision sheet.) |
-| `decidesAlone` — yes only for the ruled three | Rule 4: a site may decide with no model behind it only where the test is exact and a miss is irreversible — a live secret leaving, spend past a cap, the operator's emergency stop. Every other `block` entry names the model that decides. (Ruling 19.) |
+| `decidesAlone` — `no` (names the model that decides), `ruled-three` (a live secret leaving, spend past a cap, the operator's emergency stop), or `governed-state` (deterministic enforcement of recorded governed state: an exact test that refuses malformed, unverifiable, or standing-uncovered input and preserves it) | Rule 4: a site may decide with no model behind it only on an exact test — the three irreversible-miss cases, or enforcement of what the record already says. Every other `block` entry names the model that decides. (Ruling 19.) |
 | `criticality` — the assessment that justifies the power | Rule 4: the deciding list is driven by the formal assessment of how critical each scenario is, never hand-picked. The register's `block` entries *are* that list. (Ruling 19.) |
 | `failDirection` — `open` or `closed` | Chosen from who bears the miss: reachability to the user fails open; change and release integrity fails closed. (Ruling 5.) |
 | `preservesInput` — where a blocked input is kept | Rule 4: a block always preserves its input. A site that cannot say where fails. (Rulings 19 and 2.) |
