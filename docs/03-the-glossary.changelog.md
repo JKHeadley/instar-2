@@ -4,9 +4,11 @@ _Generated from `03-the-glossary.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 5 · 2026-09-02 · draft — layer-below audit while drafting the types part design
+## Revision 5 · 2026-09-02 · approved — layer-below audit while drafting the types part design
 
 - **The footer's pointer to the types design now names 05-the-types.md; 04 is the big-picture design.** — The pointer named a file that does not exist and a number the big picture now occupies; a reader following it found nothing. Found by the layer-below audit rule 111 requires of every review. _(docs/04-the-big-picture.md section 13; PR #12 (assigned the number 04))_
+
+Approved in: PR #13, merge `71c91078e`.
 
 ## Revision 4 · 2026-08-24 · approved — operator review on PR #3; operator's observation that embedded revision history bloats a document and skews later model readers
 

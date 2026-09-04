@@ -1,6 +1,6 @@
 # Part one — the constitutional types and the decoding boundary
 
-**Status: draft, awaiting approval. Governed. No later part design or code is built on top of this until it is approved.**
+**Status: approved. Governed.**
 
 The big-picture design puts a small package at the very center of the system: the constitutional
 types. Everything else depends on it and it depends on nothing. Its job is to make the mistakes the

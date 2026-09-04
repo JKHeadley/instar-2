@@ -56,6 +56,12 @@ using a mechanism that already exists rather than one we have to build.
 
 ## Status
 
-The rules foundation and big-picture design are approved on `main`. The first part design —
-constitutional types and the decoding boundary — is the current review. Part designs proceed in
-dependency order; code waits until the part designs it depends on are approved.
+The rules foundation, big-picture design, and the first part design (constitutional types and
+the decoding boundary) are approved on `main`. Part designs proceed in dependency order; next is
+part two, the fact envelope, version chain, and projection contract. Code waits until the part
+designs it depends on are approved.
+
+Review model (operator decision, 2026-09-03): the independent review desk runs every pull
+request to convergence first; the operator then reviews a concise plain-language overview and
+decides only the direction-, value-, and policy-level questions, which each PR lists explicitly.
+The agent carries responsibility for technical correctness; merging still records the approval.

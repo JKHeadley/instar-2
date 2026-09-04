@@ -2,15 +2,15 @@
   {
     "revision": 5,
     "date": "2026-09-02",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "review",
       "pr": 13,
       "note": "review desk round 4 (final round) \u2014 independent Codex reviewer confirmed all round-3 closures; two findings above the line, both accepted"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 13,
+      "mergeCommit": "71c91078e75e9ba992435d4c91de3a121ee56747"
     },
     "changes": [
       {
@@ -35,8 +35,8 @@
       "note": "review desk round 3 \u2014 independent Codex reviewer, five findings above the severity line, all accepted"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 13,
+      "mergeCommit": "71c91078e75e9ba992435d4c91de3a121ee56747"
     },
     "changes": [
       {
@@ -76,8 +76,8 @@
       "note": "review desk round 2 \u2014 independent Codex reviewer, eight findings above the severity line, all accepted; five of them corrected overclaims introduced by the round-1 fixes"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 13,
+      "mergeCommit": "71c91078e75e9ba992435d4c91de3a121ee56747"
     },
     "changes": [
       {
@@ -137,8 +137,8 @@
       "note": "review desk round 1 \u2014 independent Codex reviewer, seven findings above the severity line, all accepted"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 13,
+      "mergeCommit": "71c91078e75e9ba992435d4c91de3a121ee56747"
     },
     "changes": [
       {
@@ -187,8 +187,8 @@
       "note": "first version: the constitutional types and the decoding boundary, the first part design the approved big picture names"
     },
     "approvedIn": {
-      "pr": null,
-      "mergeCommit": null
+      "pr": 13,
+      "mergeCommit": "71c91078e75e9ba992435d4c91de3a121ee56747"
     },
     "changes": [
       {

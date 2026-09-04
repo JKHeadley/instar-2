@@ -4,10 +4,12 @@ _Generated from `05-the-types.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 5 · 2026-09-02 · draft — operator review on PR #13; review desk round 4 (final round) — independent Codex reviewer confirmed all round-3 closures; two findings above the line, both accepted
+## Revision 5 · 2026-09-02 · approved — operator review on PR #13; review desk round 4 (final round) — independent Codex reviewer confirmed all round-3 closures; two findings above the line, both accepted
 
 - **Authorization gains a requestDigest: the canonical hash of approver, action, scope, artifact, and base that the explicit-yes record must carry; the decoder recomputes and refuses on any difference. For a host review event the artifact is the reviewed head and the base is the target branch head recorded in the same signed delivery; an event without a base does not decode. Fixtures NF-77 to NF-80 cover a genuine yes replayed against another action, scope, artifact, or base.** — A genuine approval for one head could be paired with a caller-supplied base or action the reviewer never approved, and rule 82's re-issue-when-main-moves needs the base bound. _(review desk topic 66384, message 66447, finding 1)_
 - **The Conflict doorway's standing sufficiency matrix is marked a Value that the register declares; the doorway's rule cites 28, 31, and 33 only; NF-75 and NF-76 cite the same and name the matrix as Value.** — Rules 82 and 104 do not entail who may resolve which conflict. _(review desk topic 66384, message 66447, finding 2)_
+
+Approved in: PR #13, merge `71c91078e`.
 
 ## Revision 4 · 2026-09-02 · draft — operator review on PR #13; review desk round 3 — independent Codex reviewer, five findings above the severity line, all accepted
 
@@ -16,6 +18,8 @@ each linked to the git change that made it (rule 91).
 - **The Conflict resolution doorway takes the live StandingGrant under which the decision is made and refuses unless the grant is live, its scope covers the subject, and its standing suffices — operator standing for a conflict over a grant, revocation, authorization, or principal. NF-75 and NF-76 added.** — Identity alone let any requester choose the authoritative side of a conflict, including one over operator identity. _(review desk topic 66384, message 66440, finding 3)_
 - **Merge events removed from the explicit-yes field and term; for a repository-protected artifact the record must be a verified approval or review event.** — The definitions still permitted what the invariant and NF-42 reject. _(review desk topic 66384, message 66440, finding 4)_
 - **Rule 24 removed from the Conflict clause, NF-68, and NF-69; rules 31 and 33 carry them.** — Rule 24 governs recurring failures hidden by temporary success, not divergent records. _(review desk topic 66384, message 66440, finding 5)_
+
+Approved in: PR #13, merge `71c91078e`.
 
 ## Revision 3 · 2026-09-02 · draft — operator review on PR #13; review desk round 2 — independent Codex reviewer, eight findings above the severity line, all accepted; five of them corrected overclaims introduced by the round-1 fixes
 
@@ -29,6 +33,8 @@ each linked to the git change that made it (rule 91).
 - **Result is two-armed as the approved big picture fixes it; a budget applied as designed is a required capacity field on Success rather than a third arm. Fixture NF-15, the inventory, the tables, and the terms follow.** — A part design may not silently change a shape its approved parent fixes. _(review desk topic 66384, message 66410, finding 8)_
 - **Three fixtures added (NF-71 to NF-73) for Provenance construction, class, and evidence verification.** — The new Provenance decoder needs its own negative contract. _(review desk topic 66384, message 66410, finding 1)_
 
+Approved in: PR #13, merge `71c91078e`.
+
 ## Revision 2 · 2026-09-02 · draft — operator review on PR #13; review desk round 1 — independent Codex reviewer, seven findings above the severity line, all accepted
 
 - **Authority-bearing values (principal, grant, revocation, authorization) now carry a Provenance established from the authenticated record outside the bytes; their decoders take it as a required input and cross-check every identity-bearing field against it. Authorization gains a required explicit-yes record; a grant's grantor carries its source reference.** — A faulty adapter could promote content-supplied fields while satisfying every listed shape; nothing bound the value to the record that produced it. _(review desk topic 66384, message 66396, finding 1)_
@@ -39,6 +45,10 @@ each linked to the git change that made it (rule 91).
 - **Rule citations corrected: 100 removed from canonical bytes and authorization; 64 and 75 removed from measurement; 107 and 111 removed from evidence (the weakest-strength aggregate is now a marked Value); 101 and 103 removed from the authorization and requester-authorizer rules; 93 removed from standing grants.** — Each cited a rule that does not govern the claim. _(review desk topic 66384, message 66396, finding 6)_
 - **An explicit inventory table lists every constitutional value (eleven core, seven supporting, including Revocation, Provenance, Conflict, UnresolvedInput) with its constructor, and the completeness checks range over it.** — The prose count of nine types was not stable, so complete schema registration and fixture coverage were uncheckable. _(review desk topic 66384, message 66396, finding 7)_
 
+Approved in: PR #13, merge `71c91078e`.
+
 ## Revision 1 · 2026-09-02 · draft — first version: the constitutional types and the decoding boundary, the first part design the approved big picture names
 
 - **First version.** — The big-picture design (section 13) orders the part designs and puts constitutional types and runtime decoders first; the register (kind 12) hands the protected-artifact enforcement question to this step. _(docs/04-the-big-picture.md section 13; docs/02-the-register.md kind 12; docs/03-the-glossary.md footer)_
+
+Approved in: PR #13, merge `71c91078e`.
