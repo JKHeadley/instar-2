@@ -110,7 +110,7 @@ is what a projection is for. The distinction is load-bearing: "the run is active
 | `provenance` | Part one's `Provenance` for that principal, pinned at append: the adapter, method, authenticated-record reference and capture hash, time, verifying machine, and class (`verified` or `channel-attested`). A replicated fact decodes to a principal *pinned at origin* — a distinct decode path from live intake, which never re-mints authority from bytes. |
 | `segment` | The append segment this fact belongs to — the owning machine, the segment **epoch**, and the position within it. Positions are dense: a gap is detectable and refused (P2-NF-12). A machine's segments are totally ordered by epoch: each new segment's genesis records the closing head hash of its predecessor segment, so a machine's whole history is one auditable lineage even across restores. |
 | `prevInSegment` | The `contentHash` of the previous fact in this segment (a defined genesis value for the first, which for a successor segment binds the predecessor segment's closing head). This makes each segment a strict hash chain, so a fork — two facts at one position — breaks the chain visibly at every receiver (P2-NF-09, P2-NF-10). Distinct from `predecessors`, which is causal. |
-| `predecessors` | The set of fact ids this one causally follows: always the in-segment predecessor's id, plus every other segment head the appender had folded when it appended. A merge after a partition is therefore expressible. Kinds the schema registry marks *causally bound* — every standing-gated kind, an authorization, a supersession, a revocation-dependent act — must include their required references or be refused (P2-NF-23). |
+| `predecessors` | What this fact causally follows, in two parts whose cost is bounded and stated: the in-segment predecessor's id, plus a **causal frontier** — one (epoch, position) pair per machine lineage the appender had folded, vector-clock-shaped and bounded by machine count rather than by fact count, so a long partition or a big fleet grows it linearly in machines, never in history. A merge after a partition is therefore expressible. Kinds the schema registry marks *causally bound* — every standing-gated kind, an authorization, a supersession, a revocation-dependent act — must additionally include their required references **by fact id** or be refused (P2-NF-23). |
 | `body` | The kind-specific payload, whose shape the registered schema fixes. It enters the hash preimage as its as-appended canonical bytes, so hash verification never needs the body's schema. |
 | `contentHash` | The canonical hash over every field above — excluding itself and `signature`. |
 | `signature` | The appending machine's signature over `contentHash`, verifying against that machine's key in the governed key set for the fact's segment-position range. `machine` must equal the signing key's registered owner (P2-NF-07, P2-NF-08). |
@@ -271,6 +271,18 @@ Without this, "no fact is machine-local" is a statement about schemas wearing th
 statement about reality: every fact is physically machine-local between append and replication,
 and the window is now measured and bounded rather than unmentioned.
 
+**The failure model, stated.** The substrate is assumed **crash-only**: a machine may stop, lose
+unreplicated tail, restart from backup, or partition — and the envelope machinery (chains,
+signatures, contiguity, epochs) is what turns each of those into a detectable, recoverable
+condition. The one Byzantine case this design defends is the one it can: a **compromised machine
+key**, whose forged facts verify until the compromise is attested and whose handling is the key
+lifecycle's quarantine — a colluding majority of machines, or a compromised operator, is outside
+this part's threat model and said so. What is demanded *of* a replication substrate is
+correspondingly small — durable local append and at-least-once, eventually-complete delivery of
+owned segments; ordering, dedup, integrity, authenticity, and completeness detection all live in
+the envelope, which is why a proven log component can carry the substrate without inheriting any
+trust.
+
 **Replication is additive, authenticated, and complete.** A peer delivers only segments it owns
 (P2-NF-11), over an authenticated channel, and the receiver runs the same admission boundary as
 local append — same decoders, same checks, different fail direction (see Admission). Receipt
@@ -360,6 +372,18 @@ document, and the host-verification material needed to check that anchor is dist
 out-of-band with the installation — a residual trust root this document names rather than hides,
 exactly as the secret-scan residual is named. Everything after genesis resolves normally.
 
+**The happy path, before the refusals.** One ordinary append-and-replicate, with the terms in
+their places: (1) a doorway hands the boundary a candidate fact — principal verified, provenance
+pinned; (2) the appender fills the envelope: its lineage's next position, `prevInSegment`, the
+causal frontier it has folded, the grant references its kind requires; (3) admission runs the
+ladder below and the fact enters the owning machine's segment — `append` returns `local-durable`;
+(4) peers receive the segment slice, re-run the same ladder, and acknowledge — the durability
+state climbs to `replicated(n)`; (5) each machine's projections fold the fact under their
+declared merge classes and carry their folded-through vector forward; (6) an authority question
+about what the fact changed is answered from a projection that is current within its staleness
+bound, or refuses. Everything else in this section is what happens when one of those six steps
+cannot proceed.
+
 The ladder, in refusal order — fixed so a refusal reason is stable, and each mapped onto part
 one's closed `Refused` reason list rather than minting new reasons. Rungs 2–6 share one
 structural phase: any failure to parse, re-encode, or verify the envelope's own bytes classifies
@@ -398,9 +422,21 @@ implementable:
    receiver holds that lies *outside* the fact's cone routes to the reconciliation pass below,
    never to an ingest refusal — otherwise two honest replicas would disagree about admissibility
    and a chain gap would quarantine an honest stream. A fact admitted whose cone did not include
-   the newest revocation head this machine holds is admitted **marked `provisional`**, and a
-   provisional fact's authority may not feed an irreversible effect until reconciliation clears
-   it (P2-NF-73, owned by part eight with the durability fixture). **The reconciliation pass,
+   this machine's newest revocation head *within the grant scopes the fact names* is admitted
+   **marked `provisional`** — scoped to relevant grants, so ordinary replication lag does not
+   make every fact provisional — and a provisional fact's authority may not feed an irreversible
+   effect until reconciliation clears it (P2-NF-73, owned by part eight with the durability
+   fixture). The marker's lifecycle is pinned, not implied: provisional marks are machine-local
+   sidecar state homed inside the fact-store register entry exactly as the verified-through
+   watermarks are; the reconciliation pass is level-triggered — it runs whenever a revocation
+   folds — and a mark clears when no revocation this machine holds, within the fact's named
+   grant scopes, satisfies the reconciliation predicate, evaluated at the same staleness horizon
+   authority reads use (P2-NF-75 tests that clearing happens and is correct, the complement of
+   P2-NF-73's never-feeds test). Provisional and contested are **taint the fold itself carries**:
+   the fold primitive delivers an authority-bearing fact together with its current status, and a
+   projection consuming one either propagates that taint into its output or refuses authority
+   output — untainted authority computed from tainted input is a fixture failure, not a style
+   choice (P2-NF-76). **The reconciliation pass,
    pinned:** its predicate is a revocation that is neither inside the fact's cone nor causally
    after the fact (concurrent, or prior-but-unseen); each machine appends any resulting
    `Conflict`-class record under its own system principal on its own segment, keyed on the
@@ -517,7 +553,11 @@ serving them; a partitioned replica holds them until it reconnects and honours t
 no proof of erasure exists. After redaction, what remains provable: that the fact occurred, its
 envelope's integrity and authorship, the removed content's hash and byte length, and who redacted
 it, when, for which listed reason. What is no longer possible: re-inspecting the content;
-projections treat a redacted capture as unavailable evidence, never as silently absent.
+projections treat a redacted capture as unavailable evidence, never as silently absent — and
+that status propagates: a fact or conclusion whose named evidence is a redacted capture carries
+the same evidence-unavailable taint the fold uses for provisional authority, so anything still
+relying on it is visibly resting on unverifiable ground (part seven's outcome grading treats
+such conclusions as unverifiable rather than wrong), instead of quietly keeping its force.
 **Check:** P2-NF-37 (standing), P2-NF-66 (closed reasons), P2-NF-67 (protected references),
 P2-NF-65 (tombstone), and the append-only contract test asserts this is the sole byte-removal
 carve-out.
@@ -805,7 +845,7 @@ table extends the same map.
 | P2-NF-22 | test | A hash verified after migration rather than against as-appended bytes | A hash only verifies over the bytes it was taken over. |
 | P2-NF-23 | decode | A causally-bound kind missing its registry-declared reference | Omission is the cheapest evasion of ordering; standing-gated kinds are always causally bound. |
 | P2-NF-24 | decode | A non-genesis fact missing its in-segment predecessor | Each machine's own history is always totally ordered. |
-| P2-NF-25 | ingest | A replication-path dangling reference refused or dropped instead of held | Ordering accidents — a not-yet-arrived grant included — hold in the pending set, escalate on TTL, never lost. |
+| P2-NF-25 | ingest | A replication-path dangling reference refused or dropped instead of held, below the pending set's declared bound | Ordering accidents — a not-yet-arrived grant included — hold in the pending set, escalate on TTL, never lost; at the bound, refusing back to replication for redelivery is the designed behaviour. |
 | P2-NF-26 | decode | An appender without live standing for the kind and scope | Appending must not be minting. |
 | P2-NF-27 | decode | An authority-bearing fact appended under requester standing | Part one's floor, applied at the record. |
 | P2-NF-28 | decode | A constitutional value in a body decoded without the fact's provenance | Part one's refusals apply inside bodies. |
@@ -855,6 +895,8 @@ table extends the same map.
 | P2-NF-72 | test | A standing resolution keyed on the appender's `at` rather than causal position | A backdated clock must not resurrect revoked standing. |
 | P2-NF-73 | test | A `provisional`-marked fact's authority feeding an irreversible effect before reconciliation clears it | Partition-local standing is usable, never spendable; owned by part eight with P2-NF-63. |
 | P2-NF-74 | build | A projection folding a kind with no declared merge class | Commutativity is declared per kind, not assumed per author. |
+| P2-NF-75 | test | A provisional mark surviving after every held revocation in the fact's grant scopes fails the reconciliation predicate at the horizon | Clearing must happen and be correct — the complement of P2-NF-73. |
+| P2-NF-76 | test | A projection emitting untainted authority output computed from provisional or contested input | Taint propagates through the fold or authority output refuses; it never launders. |
 
 ---
 
