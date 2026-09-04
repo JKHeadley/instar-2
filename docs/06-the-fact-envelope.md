@@ -1,6 +1,6 @@
 # Part two — the fact envelope, the version chain, and the projection contract
 
-**Status: draft, awaiting approval. Governed. No later part design or code is built on top of this until it is approved.**
+**Status: approved. Governed.**
 
 The big-picture design gives the system one logical append-only record of facts, and says that
 every current view — active runs, open commitments, standing grants, register entries, spend,

@@ -1,5 +1,26 @@
 [
   {
+    "revision": 9,
+    "date": "2026-09-04",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "pr": 16,
+      "note": "operator accepted the remaining defaults (questions 1, 3, 4, 6, 7, 9, 10 as recommended) and directed the merge; merging is the approval, bound to the reviewed content"
+    },
+    "approvedIn": {
+      "pr": 16,
+      "mergeCommit": "d403a070468126278c4dae54f27107009fcd7c99"
+    },
+    "changes": [
+      {
+        "what": "Part two is approved on main; the document status line reads approved.",
+        "why": "All ten operator questions are answered: 2 confirmed with the rare-approval scope direction (revision 8), 5 and 8 answered in conversation with the recommendations accepted, and the remaining six accepted as recommended.",
+        "ref": "topic 52075, operator messages 2026-09-04"
+      }
+    ]
+  },
+  {
     "revision": 8,
     "date": "2026-09-04",
     "status": "draft",
@@ -14,7 +35,11 @@
         "why": "The operator confirmed the two-anchor reading of rule 90 and directed that approval must not become a routine step on every pull request.",
         "ref": "topic 52075, operator message 2026-09-04 16:29 PDT"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 16,
+      "mergeCommit": "d403a070468126278c4dae54f27107009fcd7c99"
+    }
   },
   {
     "revision": 7,
@@ -51,7 +76,11 @@
         "why": "The projection-purity lint is beyond a best-effort grep in most languages; the toolchain requirement is stated rather than assumed.",
         "ref": "review desk round 6, external finding 5"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 16,
+      "mergeCommit": "d403a070468126278c4dae54f27107009fcd7c99"
+    }
   },
   {
     "revision": 6,
@@ -78,7 +107,11 @@
         "why": "Round-5 external findings 3-5 and the internal round's two precision pins.",
         "ref": "review desk round 5"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 16,
+      "mergeCommit": "d403a070468126278c4dae54f27107009fcd7c99"
+    }
   },
   {
     "revision": 5,
@@ -105,7 +138,11 @@
         "why": "Per-fact causal metadata must not grow with history; substrate assumptions were semantic, not implementation detail.",
         "ref": "review desk round 4, external findings 2, 3, 5"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 16,
+      "mergeCommit": "d403a070468126278c4dae54f27107009fcd7c99"
+    }
   },
   {
     "revision": 4,
@@ -127,7 +164,11 @@
         "why": "Round-3 external findings 1-5 and internal D3-D6 with the precision sweep.",
         "ref": "review desk round 3"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 16,
+      "mergeCommit": "d403a070468126278c4dae54f27107009fcd7c99"
+    }
   },
   {
     "revision": 3,
@@ -149,7 +190,11 @@
         "why": "Round-2 external findings and the rules-conformance partials (69, 112).",
         "ref": "review desk round 2"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 16,
+      "mergeCommit": "d403a070468126278c4dae54f27107009fcd7c99"
+    }
   },
   {
     "revision": 2,
@@ -166,7 +211,11 @@
         "why": "The first draft had integrity without authenticity, an authority-free write port, and an approval anchor the agent itself could produce.",
         "ref": "review desk round 1"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 16,
+      "mergeCommit": "d403a070468126278c4dae54f27107009fcd7c99"
+    }
   },
   {
     "revision": 1,
@@ -182,6 +231,10 @@
         "why": "Next part in the dependency order after part one's approval.",
         "ref": "docs/04-the-big-picture.md section 13"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 16,
+      "mergeCommit": "d403a070468126278c4dae54f27107009fcd7c99"
+    }
   }
 ]
