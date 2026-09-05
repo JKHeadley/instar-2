@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, openSync, closeSync, writeSync, fsyncSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { createFactStore, authorAndAppend, decodeEnvelope, wrapUnresolved, verifyAndAdmit, prepareSnapshot, signVerifiedPrefix, restoreVerifiedPrefix, conflictFactSchema, signEnvelope, drainConflictFacts } from '../../src/facts/index.js';
 import type { SegmentStoragePort } from '../../src/facts/index.js';
 import { factsFixture, value, json, refused, privateKey, publicKey, point } from '../facts/fixtures.js';
@@ -213,6 +214,31 @@ it('P2-NF-15 P2-NF-52 P2-NF-62 P2-NF-75 conflict obligations drain after restart
     const crashing = createFactStore(ctx, crashStorage, { conflictAppender: f.conflictAppender });
     refused(crashing.readForProjection(), 'crash after conflict fsync');
     expect(f.storage.read()).toHaveLength(4);
+    // Fresh public-package process: no retained WeakMaps or live fixture values.
+    const restarted = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import {readFileSync} from 'node:fs';
+      import {decode,decodeMeasurement,consumeResult,defineDecoder} from './dist/index.js';
+      import {createFactStore,signEnvelope} from './dist/facts/index.js';
+      const {context:raw,principal:identity,proof,path,key}=JSON.parse(readFileSync(0,'utf8'));
+      const take=r=>consumeResult(r,{Success:v=>v,Refused:r=>{throw Error(r.detail)}});
+      const decodeContext={...raw.decode,principals:[],grants:[],revocations:[],authorizations:[]};
+      const now=take(decodeMeasurement('clock',raw.genesis.clock,decodeContext));
+      const provenance=take(decode('Provenance',proof,decodeContext));
+      const principal=take(decode('VerifiedPrincipal',{type:'VerifiedPrincipal',schemaVersion:1,id:identity.id,kind:identity.kind},{...decodeContext,provenance}));
+      const context={...raw,decode:decodeContext,genesis:{...raw.genesis,clock:now},schemas:raw.schemas.map(s=>({...s,scope:take(decode('Scope',s.scope,decodeContext))}))};
+      const boundary={site:context.site,preserved:context.preserved,register:decodeContext.register};
+      const result=value=>take(defineDecoder({owner:'part-ten',name:'RestartProvider',currentVersion:1,versions:{1:{validate:v=>({ok:true,value:v})}},migrations:{},decodeCurrent:()=>({ok:true,value})},context.preserved)).decode({schemaVersion:1},boundary);
+      let appends=0;
+      const storage={owner:'part-ten',read:()=>readFileSync(path,'utf8').trim().split('\\n').map(JSON.parse),append:()=>{appends++;throw Error('duplicate append after restart')}};
+      const appender={owner:'part-ten',machine:'machine-a',principal,provenance,clock:()=>now,sign:wire=>result(signEnvelope(wire,key))};
+      const store=createFactStore(context,storage,{conflictAppender:appender});
+      const snapshot=take(store.readForProjection());
+      process.stdout.write(JSON.stringify({appends,facts:take(store.read()).length,keys:[...new Set(snapshot.entries.flatMap(e=>e.conflicts).map(c=>c.key))]}));
+    `], { encoding: 'utf8', input: JSON.stringify({ context: ctx, principal: f.conflictAppender.principal,
+      proof: f.proof({ id: f.conflictAppender.principal.id, kind: 'system' }, { id: f.conflictAppender.principal.id, kind: 'system' }, 'identity').input,
+      path: f.path, key: privateKey }) });
+    expect(restarted.status, restarted.stderr).toBe(0);
+    expect(JSON.parse(restarted.stdout)).toEqual({ appends: 0, facts: 4, keys: [`revocation:${candidate.id}:${rev.id}`] });
     const recovered = createFactStore(ctx, f.storage, { conflictAppender: f.conflictAppender });
     const snapshot = value(recovered.readForProjection()), persisted = value(recovered.read());
     expect(persisted).toHaveLength(4); value(recovered.readForProjection()); expect(value(recovered.read())).toHaveLength(4);
