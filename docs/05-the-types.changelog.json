@@ -1,5 +1,21 @@
 [
   {
+    "date": "2026-09-04",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge"
+    },
+    "changes": [
+      {
+        "what": "The freshness and strength term rows carry kind field instead of the superseded kind value fact.",
+        "why": "Carries the glossary's fact-to-field rename into part one's terms table.",
+        "ref": "part three, amendment two"
+      }
+    ],
+    "revision": 6
+  },
+  {
     "revision": 5,
     "date": "2026-09-02",
     "status": "approved",

@@ -350,13 +350,11 @@ below are what turn "revisit this" into a real trigger instead of a hope.
 
 The admission boundary is a **blocking site** in the register's sense, and it declares the
 register's required facts for that kind rather than describing itself only in prose: `authority:
-block`; `decidesAlone: yes` for exactly one rung (the deterministic secret-shape scan — a live
-secret leaving is one of the three ruled exceptions) — the remaining rungs are deterministic
-refusals — integrity/decode rungs, plus the standing rungs, which deterministically enforce
-*recorded governed state* rather than judge anything — a category rule 4's ruled-three list does
-not currently name, shared with every decoder part one already ships; question 10 routes the
-honest fix (a third recognized category wide enough for both) to the operator rather than gaming
-`decidesAlone: no` semantics; `criticality`: the
+block`; `decidesAlone`, carried per rung exactly as `failDirection` is carried per consumer:
+`ruled-three` for the secret-shape scan (a live secret leaving) and `governed-state` for the
+remaining rungs — the integrity/decode and standing rungs deterministically enforce *recorded
+governed state* rather than judge anything, the category rule 4 names, shared with every decoder
+part one already ships; `criticality`: the
 record is the substrate every audit rule stands on; `failDirection`: **closed** for the mutation
 path (an unverifiable fact does not enter), **open** for intake-origin input — rule 14's direction
 — with the preservation mechanics under `preservesInput` (the register field is binary; this entry
@@ -1039,6 +1037,9 @@ live-reachability guarantee (15).
 ---
 
 ## What I want from you on this document
+
+*(Each question below was decided at approval; the changelog records the decisions. The list is
+retained as the decision surface of record.)*
 
 1. **Unbounded growth, now with a gauge.** No deletion, no compaction; the record only grows. The
    instruments section attaches the measurements and a replay-duration threshold that mechanically

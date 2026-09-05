@@ -4,6 +4,10 @@ _Generated from `05-the-types.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 6 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
+
+- **The freshness and strength term rows carry kind field instead of the superseded kind value fact.** — Carries the glossary's fact-to-field rename into part one's terms table. _(part three, amendment two)_
+
 ## Revision 5 · 2026-09-02 · approved — operator review on PR #13; review desk round 4 (final round) — independent Codex reviewer confirmed all round-3 closures; two findings above the line, both accepted
 
 - **Authorization gains a requestDigest: the canonical hash of approver, action, scope, artifact, and base that the explicit-yes record must carry; the decoder recomputes and refuses on any difference. For a host review event the artifact is the reviewed head and the base is the target branch head recorded in the same signed delivery; an event without a base does not decode. Fixtures NF-77 to NF-80 cover a genuine yes replayed against another action, scope, artifact, or base.** — A genuine approval for one head could be paired with a caller-supplied base or action the reviewer never approved, and rule 82's re-issue-when-main-moves needs the base bound. _(review desk topic 66384, message 66447, finding 1)_

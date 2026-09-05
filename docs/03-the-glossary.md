@@ -1,6 +1,6 @@
 # Step three — the glossary: the words the rules lean on
 
-**Status: draft, awaiting approval. Nothing is built on top of this until it is approved.**
+**Status: approved. Governed.**
 
 Step one, finding 4: a rule that uses an undefined load-bearing term is not yet a rule. Five
 rules hinge on *significant*, *critical*, and *user-facing*; the register (step two) added
@@ -20,11 +20,11 @@ as a rule.
 
 The alternative, which 1.x designed but never built, is this: **every governed thing declares a
 small profile of plain facts, and the adjectives are computed from the profile.** An author never
-answers "is this significant?" They answer four narrower questions that have real answers, and
+answers "is this significant?" They answer five narrower questions that have real answers, and
 the word follows. The build can check the profile is complete; the word is then never argued
 about, because it was never declared — it was derived.
 
-The profile has four facts. Each is a closed list, so a declaration is checkable.
+The profile has five facts. Each is a closed list, so a declaration is checkable.
 
 ### The profile
 
@@ -34,9 +34,10 @@ The profile has four facts. Each is a closed list, so a declaration is checkable
 | `reversibility` | Once it has happened, can it be undone? | `reversible` (a later action fully reverses it) · `costly` (reversible, but with real cost or delay) · `irreversible` (no action reverses it — a sent message, a deleted secret, a spent dollar) |
 | `reach` | Who or what does it touch? | `internal` (only the system's own state) · `agent` (the agent's own behavior or memory) · `user` (something a person sees, receives, or must do) · `operator` (something that needs a decision from whoever holds operator standing) · `world` (a third party or external service) |
 | `surface` | Where does a person meet it, if anywhere? | `none` · `chat` (Telegram, Slack, any conversation channel) · `dashboard` · `link` (a page the agent sends) · `device` (a phone notification, a terminal) |
+| `repeats` | Can the failure recur before anyone can stop it? | `no` · `bounded { by }` (naming the declared cap, coalescer, or breaker that bounds it) · `unbounded` — the runaway rule's subject, made a declared fact: `attention` with `unbounded` is not an honest combination |
 
 Every entry in the register of kind *feature*, *blocking site*, *judgment point*, *critical
-outcome*, or *operator action* declares all four. A missing one fails the build.
+outcome*, or *operator action* declares all five. A missing one fails the build.
 
 *Why `reversible`.* The field is `reversibility` and the rule's word is *irreversible*; the
 allowed values read as answers to the field and as the plain opposite of the rule's word, so
@@ -245,10 +246,10 @@ Unblocks step one's finding 4 (an undefined load-bearing term is not yet a rule)
 | Required fact | Why |
 |---|---|
 | `name` — the term, as it appears in rules and facts | The key the resolver looks up. |
-| `kind` — `adjective` (derived), `fact` (a profile field or required fact), `noun`, or `standing` | Each kind has a different shape below; the build checks the shape. |
+| `kind` — `adjective` (derived), `field` (a profile field or required fact), `noun`, or `standing` | Each kind has a different shape below; the build checks the shape. |
 | `definition` — the human-readable definition, as prose | The agreed, versioned explanation a person reads and a model is briefed with. Required, and reviewed by a human on every change, because it is what the change *means*. |
 | `derivedFrom` — for an `adjective`: the rule over profile facts, as data (`consequence in {identity, security, money, control, external} or (consequence = data and reversibility = irreversible)`) | The definition of a derived word is a computation, and it is stored as one — so the resolver, the build, and the briefing all evaluate the *same* rule, and a prose definition can never drift from the one the code runs. |
-| `allowedValues` — for a `fact`: the closed list, each value with its own one-line meaning | What makes a declaration checkable. The one-line meanings are what an author reads when choosing. |
+| `allowedValues` — for a `field`: the closed list, each value with its own one-line meaning | What makes a declaration checkable. The one-line meanings are what an author reads when choosing. |
 | `usedBy` — the rule numbers and register facts that lean on this term | Rule 69, references run from both ends: a term nothing uses is dead weight to remove; a rule using a term with no entry fails the build. Generated, not hand-written. |
 | `supersedes` — the previous entry, when a definition changes | A definition evolves by *replacing* its entry through the approval flow, never by editing in place; the old one stays, dated. |
 | `since`, `standards` | As for every kind. |
@@ -342,9 +343,11 @@ whose tripwires quietly vanished. Relationships are facts, and facts go in the r
 Derived, never declared — the same principle as the adjectives:
 
 - **`children`** and **`siblings`** — from `parent`. A rule does not get to claim children.
-- **`enforcedBy`** — every register entry whose `standards` fact names this rule. This is rule 69
-  from the rule's side: a rule with an empty `enforcedBy` and no `deadline` fails the build,
-  because a rule nothing enforces is a wish that has stopped admitting it.
+- **`enforcedBy`** — every holder entry whose `holds` fact names this rule: enforcement is
+  declared by the holder and derived on the rule's side, and an entry's `standards` (what governs
+  it) never mints an enforcement edge — a store governed by rule 7 does not thereby enforce rule
+  7. This is rule 69 from the rule's side: a rule with an empty `enforcedBy` and no `deadline`
+  fails the build, because a rule nothing enforces is a wish that has stopped admitting it.
 - **`usedBy`** — every term, fact, and rule that references this rule in prose.
 
 Any other relationship — "sharpens," "distinct from," "extends," "pairs with" — is either one of

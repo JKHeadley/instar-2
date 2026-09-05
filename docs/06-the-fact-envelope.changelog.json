@@ -1,5 +1,26 @@
 [
   {
+    "date": "2026-09-04",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge"
+    },
+    "changes": [
+      {
+        "what": "The admission boundary's decidesAlone declaration is restated per rung under the amended closed list: ruled-three for the secret-shape scan, governed-state for the remaining rungs \u2014 superseding the pre-amendment yes-for-one-rung wording.",
+        "why": "The kind-2 amendment restructured the value space; leaving the flagship blocking-site declaration on a value the closed list no longer carries would refuse under part three's own machinery.",
+        "ref": "part three, amendment one"
+      },
+      {
+        "what": "The decision-surface list carries a one-line preface stating its questions were decided at approval, with the changelog as the record.",
+        "why": "The bundle's amendments made the body assert what one question still asked; the preface restores a coherent first-version read.",
+        "ref": "part three bundle, review round 2"
+      }
+    ],
+    "revision": 10
+  },
+  {
     "revision": 9,
     "date": "2026-09-04",
     "status": "approved",

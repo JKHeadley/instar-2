@@ -1,0 +1,86 @@
+[
+  {
+    "revision": 5,
+    "date": "2026-09-04",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 17,
+      "note": "review desk round 4 (final) \u2014 internal confirmation: zero findings, converged; the external's five refinements folded"
+    },
+    "changes": [
+      {
+        "what": "A repo-only generation is a shape verdict that cannot mint an entering-force record; held evidence must appear in check-run records or renders declared (P3-NF-28); per-language enforcement-boundary declarations annotate coverage (P3-NF-29); family declarations name deterministic instance sources (P3-NF-30); the bootstrap is a five-step linear sequence.",
+        "why": "A false extract must be able to waste a merge but never govern; named evidence is not wired evidence.",
+        "ref": "review desk round 4, external findings 1-5"
+      }
+    ]
+  },
+  {
+    "revision": 4,
+    "date": "2026-09-04",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 17,
+      "note": "review desk round 3 \u2014 internal: zero design findings; external at minor"
+    },
+    "changes": [
+      {
+        "what": "The landing-completion recovery protocol (pending-landing legal on main, idempotent level-triggered completion, generated overdue loop); declaration cardinality with family declarations; the enforceable-subject table's minimal model; gap/deferred loop owners and overdue actions; the add-a-sentinel worked example; five precision pins including the parents' status-line alignment.",
+        "why": "Round-3 external findings 1-5 and the internal round's five line-level items.",
+        "ref": "review desk round 3"
+      }
+    ]
+  },
+  {
+    "revision": 3,
+    "date": "2026-09-04",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 17,
+      "note": "review desk round 2 \u2014 all round-1 closures verified; the redesign propagated into the parents"
+    },
+    "changes": [
+      {
+        "what": "The bundle grows to six amendments (enforcedBy derives from holds; the profile gains repeats; the sentinel kind aligns with the graph); gap becomes a synthetic generated record; deferred edges carry a calendar ceiling; coverage totals never merge held-reviewed with held*; the landing completion's authority model and the generation-record kind; the extract staleness bound; governed ports restated on part one's closure sentence; the enforceable-subject table as its own shape data.",
+        "why": "The holder-graph redesign was built inside part three but not propagated into the documents it rewrites.",
+        "ref": "review desk round 2"
+      }
+    ]
+  },
+  {
+    "revision": 2,
+    "date": "2026-09-04",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 17,
+      "note": "review desk round 1 \u2014 external + security/adversarial + rules-conformance: ~39 findings; full rewrite"
+    },
+    "changes": [
+      {
+        "what": "Anchored generations (entering-force facts + a consumer-side register decoder); the chain extract pinned by a fact-position vector and committed beside the register; the two-phase landing; governed-state as a checkable reference with separation of powers; holds split from standards; held* review-state rendering; part-bound deferral deadlines; the check-run-record kind; the fifteen-kind roster; governed ports; duplicate/resurrected-id refusals; structured term references; the per-kind invariant layer and deadline walker; the protected toolchain; the third routed amendment executed and part two's orphaned declaration amended.",
+        "why": "Round 1's common root: pins not anchored outside the tree they check; plus two amendment-execution gaps the desk caught.",
+        "ref": "review desk round 1"
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-04",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "initial draft: declarations, the register generator, the terms resolver, and the rule graph"
+    },
+    "changes": [
+      {
+        "what": "First complete draft of part three, executing the two amendments then known.",
+        "why": "Next part in the dependency order after part two's approval.",
+        "ref": "docs/04-the-big-picture.md section 13"
+      }
+    ]
+  }
+]

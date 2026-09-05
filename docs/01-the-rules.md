@@ -1,6 +1,6 @@
 # Step one — the rules, and how each one is held
 
-**Status: draft, awaiting approval. Governed. Nothing is built on top of this until it is approved.**
+**Status: approved. Governed.**
 
 Every rule from Instar 1.x's constitution, sorted by one question: *how is this rule held — by a
 script, by the shape of the code, or by the mind?*
@@ -247,7 +247,7 @@ reconstructable from the log* — argues the same way.
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
 | 2 | Self-Hosting | Every tool we build to develop this system must also ship to users as a capability. The best agent framework and the best framework for building agents are the same thing. | Inventory every tool needed to build the project; assert each ships in the product and runs on every harness. |
-| 4 | Structure Decides Alone Only on an Exact Match | Code may make a decision without consulting the mind only where the test is exact and a miss is irreversible: a live secret leaving, spend past a cap, and the operator's emergency stop. Everything else, the mind decides — every other check, dumb or smart, informs and advises. A block always preserves its input. | Enumerate every site that blocks without asking the mind; assert each is on the ruled list, and the list itself is informed by the formal criticality assessment of each scenario, never hand-picked. Needs a blocking-site registry. (Rulings 19 and 2 on the decision sheet.) |
+| 4 | Structure Decides Alone Only on an Exact Match | Code may make a decision without consulting the mind only where the test is exact: the three irreversible-miss cases — a live secret leaving, spend past a cap, and the operator's emergency stop — and deterministic enforcement of recorded governed state, an exact test that refuses malformed, unverifiable, or standing-uncovered input and preserves it. Everything else, the mind decides — every other check, dumb or smart, informs and advises. A block always preserves its input. | Enumerate every site that blocks without asking the mind; assert each is on the ruled list, and the list itself is informed by the formal criticality assessment of each scenario, never hand-picked. Needs a blocking-site registry. (Rulings 19 and 2 on the decision sheet.) |
 | 6 | Deferral = Deletion | "I'll note this later" means never. Capture it now, while the context exists. | A change containing a deferral must carry a tracked commitment in the same change. |
 | 7 | Archiving May Never Mean Deleting | A store that limits its own size may compress or summarize, but may never delete what the agent knows. | Every store declares whether it compacts or deletes; deleting agent memory fails. Needs a store registry. |
 | 8 | Close the Loop | Every loop the agent opens (a promise, a dark feature, a flagged issue) is re-surfaced on a schedule until deliberately closed. Untracked is abandoned. | Every opened loop carries a re-surfacing cadence. Needs a loop registry with a due date per entry. |

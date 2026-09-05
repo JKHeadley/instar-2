@@ -1,6 +1,6 @@
 # Step two — the register of the things being governed
 
-**Status: draft, awaiting approval. Governed. Nothing is built on top of this until it is approved.**
+**Status: approved. Governed.**
 
 Step one found that fourteen rules all say *"every X must do Y"* and none can be checked, because
 nothing lists the X. This document is the design for that list. It is deliberately boring. It is
@@ -56,7 +56,7 @@ giving each kind its own list of required facts, below.
 | `id` | A stable name. Never reused, never renamed silently. | The code |
 | `kind` | One of the kinds below. | The code |
 | `owner` | The module that declares it. Where to look. | Generated from the declaration site |
-| `standards` | The rule numbers this entry exists to satisfy. This is rule 69 (references run from both ends) made mechanical: the code names the standard. | The author, required |
+| `standards` | The rule numbers this entry is governed by — the governed-by half of rule 69, made mechanical: the code names the standard it answers to. Enforcement edges are minted only by a holder's `holds` fact, never by `standards`. | The author, required |
 | `since` | When it first appeared. | Generated from history |
 | `status` | `live`, `dark`, `soaking`, or `retired`. Retired entries stay in the register forever — rule 7 says archiving never means deleting, and that applies to the register itself. | The author, required |
 
@@ -70,7 +70,7 @@ Unblocks rules 7, 32, 33.
 
 | Required fact | Why |
 |---|---|
-| `growth` — `unbounded`, `compacts`, `summarizes`, or `deletes` | Rule 7: a store holding agent memory that says `deletes` fails the build. |
+| `growth` — `unbounded`, `compacts`, `summarizes`, `deletes`, or `redacts` (deletes bytes only under an operator-standing tombstone fact, with the envelope, hash, and redaction record retained) | Rule 7: a store holding agent memory that says `deletes` fails the build. |
 | `holdsAgentMemory` — yes or no | The subject of rule 7's ban. |
 | `machineScope` — `shared` or `machine-local` plus a stated reason | Rule 32: shared is the default; machine-local must justify itself. A store with no scope fails. |
 | `agreesWith` — other store ids and the invariant that must hold | Rule 33: two stores answering the same question declare how they agree, and a scheduled check tests it. |
@@ -82,7 +82,7 @@ Unblocks rules 4, 66, 86.
 | Required fact | Why |
 |---|---|
 | `authority` — `signal` or `block` | Rule 86: a brittle low-context filter may only signal, with exactly two ruled exceptions — secrets and money. A check is advisory because its entry says `signal`, never by habit. (Ruling 2 on the decision sheet.) |
-| `decidesAlone` — yes only for the ruled three | Rule 4: a site may decide with no model behind it only where the test is exact and a miss is irreversible — a live secret leaving, spend past a cap, the operator's emergency stop. Every other `block` entry names the model that decides. (Ruling 19.) |
+| `decidesAlone` — `no` (names the model that decides), `ruled-three` (a live secret leaving, spend past a cap, the operator's emergency stop), or `governed-state` (deterministic enforcement of recorded governed state: an exact test that refuses malformed, unverifiable, or standing-uncovered input and preserves it) | Rule 4: a site may decide with no model behind it only on an exact test — the three irreversible-miss cases, or enforcement of what the record already says. Every other `block` entry names the model that decides. A multi-rung boundary is one entry carrying `decidesAlone` per rung, exactly as `failDirection` is carried per consumer. (Ruling 19.) |
 | `criticality` — the assessment that justifies the power | Rule 4: the deciding list is driven by the formal assessment of how critical each scenario is, never hand-picked. The register's `block` entries *are* that list. (Ruling 19.) |
 | `failDirection` — `open` or `closed` | Chosen from who bears the miss: reachability to the user fails open; change and release integrity fails closed. (Ruling 5.) |
 | `preservesInput` — where a blocked input is kept | Rule 4: a block always preserves its input. A site that cannot say where fails. (Rulings 19 and 2.) |
@@ -182,8 +182,8 @@ guards went dark unnoticed. It is what step one's "held by the mind" group needs
 
 | Required fact | Why |
 |---|---|
-| `watches` — the rule or duty it holds | Every held-by-the-mind rule names its watcher, and every watcher names its rule. Both directions must resolve. |
-| `lastRan` — when it last actually ran, from its own record | A sentinel that exists but never runs is a dark guard. The check is on this field, not on config. |
+| `holds` — the rules or duties it enforces, with the honesty class and can-fail evidence | Every held-by-the-mind rule names its holder, and every holder names its rule. Both directions resolve — the holder side declared, the rule side derived. |
+| `freshnessProbe` — the declared probe that proves it actually runs | A sentinel that exists but never runs is a dark guard. The build checks the probe is declared; the runtime guard-posture holder checks it fires, from the probe's own record, not from config. |
 | `scope` — live or retrospective | Step one's rule: retrospective by default; live only for the irreversible. A live sentinel must name the irreversible moment it guards. Sending a message to the user *is* an irreversible moment — see the pre-send review team, below. |
 | `authority` — signal or block | Same field as a blocking site, because a live sentinel that can hold a message is one. Almost every sentinel is `signal`; the `block` set is tiny and named. |
 
