@@ -2,12 +2,31 @@ name: constitutional-types
 on: [push, pull_request]
 jobs:
   contract:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
       - run: npm run test:all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: register-${{ matrix.os }}
+          path: generated/register.json
+  register-determinism:
+    needs: contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: register-*
+          path: register-artifacts
+      - name: P3-NF-07 compare independently verified architecture outputs
+        run: cmp register-artifacts/register-ubuntu-latest/register.json register-artifacts/register-ubuntu-24.04-arm/register.json
