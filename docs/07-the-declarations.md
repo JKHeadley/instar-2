@@ -101,12 +101,22 @@ declared id, so building a store or a blocking site without a declaration is a t
 convention violation. The diff-scoped static sweep (a governed-port call with no declaration in the tree,
 P3-NF-04) is the belt over those braces, and what neither can see — a construct reached through
 genuinely dynamic paths — is the retrospective review's named residual, exactly as the register
-document's third signal assigned it. Cardinality is fixed so "beside the thing" has one meaning
+document's third signal assigned it. And the residual is *measured*, never waved at: each
+language or runtime the system is built in carries an **enforcement-boundary declaration** —
+which construct forms the governed ports make impossible, which the sweep catches, and which
+remain residual (reflection, config-loaded routes, plugin registration) — and the coverage
+report annotates every kind with its boundary strength, so a residual-heavy kind can never
+render as completely enumerated (P3-NF-29). Cardinality is fixed so "beside the thing" has one meaning
 for every shape of thing: **one declaration per governed thing**; a construct *class*
 instantiated many times — a shared decoder, a middleware, a generated family — declares the
 class once, at the class's definition site, and the generator emits the instance entries from
-it, so a family is governed without a hand-written declaration per instance and an instance can
-never exist outside its family's declaration.
+it — the family declaration names its **instance source** (the closed input the generator
+enumerates instances from) and that source must be deterministic over (C, E) like every
+generator input; a family whose instances are enumerable only at runtime cannot be a family
+declaration — its instances register through the governed port at construction like any other
+governed thing, and a family declaration citing a runtime-only source refuses (P3-NF-30). A
+family is thus governed without a hand-written declaration per instance, and an instance can
+never exist outside either its family's enumeration or the port's demand.
 
 **Declarations must be live, both ways.** The sweep pairs constructs to declarations; the pairing
 is bidirectional. A declaration no construct pairs with is a loud warning — a phantom guard
@@ -187,8 +197,18 @@ with the shape entries this part seeds**: the holder fields (`holds`, `semantica
 the sentinel `freshnessProbe` that supersedes the old run-record fact under this bundle's
 amendments), the enforceable-subject table, and the generation-record and check-run-record
 kinds, so the first generation's holder declarations validate against a shape that carries
-them. From then on the documents are outputs. The boundary moment is explicit: hand edits to those documents
-before the conversion are the bootstrap; after it, they fail P3-NF-01.
+them. From then on the documents are outputs. The boundary moment is explicit: hand edits to
+those documents before the conversion are the bootstrap; after it, they fail P3-NF-01. As a
+linear sequence, once: (1) this part is approved — inputs: the approved markdown corpus; every
+check below suspended, because nothing is generated yet. (2) The one-time conversion emits the
+first declaration set from the approved documents — shape entries (kinds, facts, holder fields,
+the enforceable-subject table, the generation-record and check-run-record kinds), rules, terms.
+(3) The first generation runs over that set with an empty chain extract — validation reads the
+shape entries just converted; P3-NF-01/07/16/17 active from here. (4) The first entering-force
+record is appended under the minimal plane's genesis grants, anchoring the first generation —
+P3-NF-21 active from here. (5) Every later change is an ordinary declaration or shape change
+against the parent generation, with the full ladder active. Nothing in the sequence consults a
+register that does not yet exist, and each step names the checks it turns on.
 
 **The register generation, anchored.** The generator's output is canonically encoded and hashed;
 that hash is the **register generation**. Two anchors keep it from being a self-consistent name:
@@ -317,9 +337,11 @@ what `gap` means (P3-NF-13, restated for the declared side only).
 | `gap` | Not an edge at all, structurally: a **synthetic rule-side record** the generator emits for every rule whose derived `enforcedBy` is empty — there is no holder to declare it, so nothing declares it; it is computed. Its loop entry is generated with it, from the rule's own deadline. Reconciled with the approved rule-book machinery rather than replacing it: a rule with empty `enforcedBy` must carry a **future deadline**, and a past deadline *fails the build* — so a `gap` builds only while its rule's deadline is in the future; the 20-of-92 number is a permanent, current dashboard fact *within deadlines the operator set*, never an indefinitely tolerable one. |
 
 **The can-fail test is the edge's admission bar — split by what each stage can see.** A `held`
-edge must name its failing evidence, and the walker verifies what a tree can verify: a named
-fixture exists at its declared stage; a named probe declares its cadence; a named sentinel *has a
-declared freshness probe*. What a tree cannot verify — that the sentinel actually ran within its
+edge must name its failing evidence, and evidence must be *wired*, not merely present: the walker
+verifies a named fixture exists at its declared stage **and appears in the check-run records of
+the current branch's runs** — a fixture no run has ever executed is named but not wired, and the
+edge renders **`declared`**, a mark below `held*`, until a run record carries it (P3-NF-28); a
+named probe declares its cadence; a named sentinel *has a declared freshness probe*. What a tree cannot verify — that the sentinel actually ran within its
 window — is runtime state, and a build that read it would be non-hermetic and machine-relative;
 that check belongs to the runtime guard-posture holder the big picture's §7 names (part nine),
 whose verdicts feed the coverage report's rendering, never the build's exit code (P3-NF-14 covers
@@ -434,11 +456,15 @@ Stated explicitly, as rule 113 requires — including an honest limit a naive re
   extract is a mirrored, committed projection of spine facts — disposable and regenerable like
   any projection, never a second authority: a divergence between extract and spine is resolved by
   regeneration from the spine, and the landing lint refuses an extract edit outside the
-  completion step. The verification loci are named honestly: CI, holding only the repository,
-  verifies shape and lint; the machines holding spine replicas are the detectors of an extract
-  that is completion-shaped but wrong — their register decoders compare the extract's rows
-  against the spine on every generation they consume, and a mismatch raises, which is where
-  P3-NF-23's "unverifiable vector" verdict actually runs.
+  completion step. The verification loci are named honestly, and so is their authority: CI,
+  holding only the repository, verifies shape and lint — and a repo-only generation is therefore
+  a **shape verdict, explicitly non-authoritative**: it can fail a pull request but can never
+  mint an entering-force record, so a merge blesses the shape and nothing more. The
+  generation-record fact that gives a generation force is appended only by a spine-holding
+  machine that has verified the extract's rows against the spine — the same machines whose
+  register decoders compare on every generation they consume, where P3-NF-23's
+  "unverifiable vector" verdict actually runs. A false extract can thus waste a merge; it cannot
+  govern anything.
 
 ---
 
@@ -515,6 +541,9 @@ Continuing the cross-part convention: **P3-NF-nn**, each with its stage (`decode
 | P3-NF-25 | build | A `held` edge citing runtime evidence with no declared freshness probe | The build checks declarations; the runtime holder checks freshness. |
 | P3-NF-26 | build | A `governed-state` blocking site naming no enforced record, or whose named decoder its code does not invoke | Admission to rule 4's third category is a reference, not an adjective; reference presence refuses at decode via the required-fact machinery, the invocation check runs where code is visible. |
 | P3-NF-27 | build | A `governed-state` site whose enforced record is writable under the site's own standing | A gate must not enforce a list it can author. |
+| P3-NF-28 | build | A `held` edge whose named fixture appears in no check-run record of the branch | Named is not wired; unexecuted evidence renders `declared`, below `held*`. |
+| P3-NF-29 | build | A kind rendered as completely enumerated under a residual-heavy enforcement boundary | The boundary declaration is what keeps coverage denominators honest. |
+| P3-NF-30 | decode | A family declaration citing a runtime-only instance source | Family enumeration is deterministic over the generator's inputs, or it is the port's job. |
 
 ---
 
