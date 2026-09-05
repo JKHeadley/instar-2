@@ -64,7 +64,7 @@ function measurement(v: Obj, c: DecodeContext, expected?: string): T.Measurement
   tagged(v, 'Measurement', ['subject', 'value', 'unit', 'at', 'by']);
   const s = obj(v.subject, 'subject'); fields(s, ['kind', 'instance']);
   const kind = text(s.kind, 'subject.kind'); text(s.instance, 'subject.instance');
-  requireThat(!expected || kind === expected, 'subject.kind: clock required');
+  requireThat(expected === undefined || kind === expected, `subject.kind: expected ${expected}`);
   const units = c.register.subjects[kind]; requireThat(units, 'subject.kind: unregistered');
   one(v.unit, units, 'unit'); number(v.value, 'value'); one(v.by, c.register.producers, 'by');
   if (kind === 'clock') { one(v.unit, ['unix-ms'], 'clock.unit'); number(v.at, 'at'); requireThat(Number.isSafeInteger(v.value) && v.at === v.value, 'clock.at must equal a safe integer sampled instant'); ref(s.instance, c, 'clock.instance'); }
@@ -337,6 +337,13 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
   }
 }
 
+// Expected subject is caller knowledge checked against data, never inferred from unknown bytes.
+export function decodeMeasurement<S extends string>(expectedSubject: S, input: unknown, context: DecodeContext): T.Result<T.Measurement<S>> {
+  return runBoundary(input, context, shape => {
+    text(expectedSubject, 'expected subject');
+    return success(measurement(obj(shape), context, expectedSubject) as T.Measurement<S>);
+  });
+}
 export function decode<N extends keyof T.Inventory>(type: N, input: unknown, context: DecodeContext): T.Result<T.Inventory[N]> {
   return runBoundary(input, context, (shape, original) => {
     requireThat(Object.hasOwn(schemaRegistry, type), 'type: outside constitutional inventory');

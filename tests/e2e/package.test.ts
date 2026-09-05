@@ -24,11 +24,11 @@ it('R3 saves records and reconstructs historical authority and unavailable Evide
   const bundle = { records, pins, register: f.ctx.register, captures: f.captures, now: f.clockRaw() };
   const output = execFileSync(process.execPath, ['--input-type=module', '-e', `
     import { readFileSync } from 'node:fs';
-    import { consumeResult, decode, readHistorical, readHistoricalEvidence } from '@instar/constitutional-types';
+    import { consumeResult, decode, decodeMeasurement, readHistorical, readHistoricalEvidence } from '@instar/constitutional-types';
     const bundle = JSON.parse(readFileSync(0, 'utf8'));
     const value = result => consumeResult(result, { Success: v => v, Refused: r => { throw new Error(r.detail); } });
     const base = { register: bundle.register, captures: bundle.captures, preserved: 'capture:fresh-read', captureStatuses: { 'capture:evidence': 'tombstoned' } };
-    const context = { ...base, now: value(decode('Measurement', bundle.now, base)) };
+    const context = { ...base, now: value(decodeMeasurement('clock', bundle.now, base)) };
     const grant = value(readHistorical('StandingGrant', bundle.records.grant, bundle.pins.grant, context));
     const withGrant = { ...context, history: [grant] };
     const authorization = value(readHistorical('Authorization', bundle.records.authorization, bundle.pins.authorization, withGrant));

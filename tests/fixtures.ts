@@ -1,5 +1,5 @@
 import { createPrivateKey, createPublicKey, createHash, sign } from 'node:crypto';
-import { canonical, compare, consumeResult, decode, authorizationRequestDigest } from '../src/index.js';
+import { canonical, compare, consumeResult, decode, decodeMeasurement, authorizationRequestDigest } from '../src/index.js';
 import type { Clock, Conflict, DecodeContext, Inventory, Provenance, Result, Scope, VerifiedPrincipal } from '../src/index.js';
 
 export const raw = <N extends keyof Inventory, F extends object>(type: N, fields: F) => ({ type, schemaVersion: 1 as const, ...fields });
@@ -38,7 +38,7 @@ export function fixture() {
     preserved: 'capture:input', captures, principals, grants, revocations, authorizations, directives, evidence, recordSubjects,
   };
   const clockRaw = (at = 100, machine = 'machine-a') => raw('Measurement', { subject: { kind: 'clock', instance: machine }, value: at, unit: 'unix-ms', at, by: 'probe' });
-  const clock = (at = 100) => value(decode('Measurement', clockRaw(at), ctx)) as Clock;
+  const clock = (at = 100) => value(decodeMeasurement('clock', clockRaw(at), ctx));
   const now = clock();
   function capture(text: string, ref?: string) { const hash = captureHash(text); captures[ref ?? hash] = text; return hash; }
   function historyPin(record: unknown) {

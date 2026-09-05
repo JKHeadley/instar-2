@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHmac } from 'node:crypto';
-import { aggregateStrength, canonical, compare, compareMeasurements, consumeResult, decode, decodeIntake, grantLiveness, isValid,
+import { aggregateStrength, canonical, compare, compareMeasurements, consumeResult, decode, decodeMeasurement, decodeIntake, grantLiveness, isValid,
   readEvidence, retryPermission, scopeIncludes } from '../../src/index.js';
 import type { Clock, Inventory, Measurement, Result } from '../../src/index.js';
 import { bytes, clone, digest, fixture, omission, raw, value } from '../fixtures.js';
@@ -27,9 +27,17 @@ describe('part one decoding contract', () => {
   it('NF-16 refusals require preserved input', () => { const f = fixture(); rejected(decode('Result', omission(f.refusedInput(), 'preserved'), f.ctx), 'preserved'); });
   it('NF-17 refusal direction matches its site', () => { const f = fixture(); rejected(decode('Result', f.refusedInput({ failDirection: 'open' }), f.ctx), 'failDirection'); });
   it('NF-18 refusal reasons are closed', () => { const f = fixture(); rejected(decode('Result', f.refusedInput({ reason: 'oops' }), f.ctx), 'reason'); });
+  it('NF-19 checks the public producers expected subject against actual bytes', () => {
+    const f = fixture();
+    rejected(decodeMeasurement('detection-latency', f.clockRaw(), f.ctx), 'subject.kind');
+    rejected(decodeMeasurement('', f.clockRaw(), f.ctx), 'expected subject');
+    const clock = value(decodeMeasurement('clock', f.clockRaw(), f.ctx));
+    expect(grantLiveness(f.g, [], clock)).toBe('live');
+    expect(value(compareMeasurements(clock, f.now, f.ctx.preserved))).toBe(0);
+  });
   it('NF-20 measurement units match the subject registry', () => { const f = fixture(); rejected(decode('Measurement', { ...f.clockRaw(), unit: 'bananas' }, f.ctx), 'unit'); });
   it('NF-21 measurements name a registered producer', () => { const f = fixture(); for (const by of ['unknown', 'vault']) rejected(decode('Measurement', { ...f.clockRaw(), by }, f.ctx), 'by'); });
-  it('NF-22 same-instance comparison refuses other instances', () => { const f = fixture(); const other = value(decode('Measurement', f.clockRaw(100, 'machine-b'), f.ctx)) as Clock; rejected(compareMeasurements(f.now, other, f.ctx.preserved), 'instance'); expect(value(compareMeasurements(f.now, other, f.ctx.preserved, true))).toBe(0); });
+  it('NF-22 same-instance comparison refuses other instances', () => { const f = fixture(); const other = value(decodeMeasurement('clock', f.clockRaw(100, 'machine-b'), f.ctx)); rejected(compareMeasurements(f.now, other, f.ctx.preserved), 'instance'); expect(value(compareMeasurements(f.now, other, f.ctx.preserved, true))).toBe(0); });
   it('NF-23 adjectives cannot be declared as profile fields', () => { const f = fixture(); for (const key of ['critical', 'significant', 'userFacing', 'significance']) rejected(decode('Profile', f.profileInput({ [key]: true }), f.ctx), key); });
   it('NF-24 unbounded attention is control', () => { const f = fixture(); rejected(decode('Profile', f.profileInput({ repeats: { kind: 'unbounded' } }), f.ctx), 'attention'); expect(value(decode('Profile', f.profileInput({ consequence: 'control', repeats: { kind: 'unbounded' } }), f.ctx)).consequence).toBe('control'); });
   it('NF-25 bounded repetition names its registered bound', () => { const f = fixture(); for (const repeats of [{ kind: 'bounded' }, { kind: 'bounded', by: 'unknown' }]) rejected(decode('Profile', f.profileInput({ repeats }), f.ctx), 'by'); });
