@@ -5,7 +5,8 @@
     "status": "draft",
     "cause": {
       "kind": "conversation",
-      "note": "part-four bundle (atomic): approval fields are pending-landing and completed at the bundle's merge"
+      "note": "part-four bundle (atomic): approval fields are pending-landing and completed at the bundle's merge",
+      "pr": 18
     },
     "changes": [
       {
