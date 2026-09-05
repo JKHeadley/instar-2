@@ -1,10 +1,12 @@
-# instar-next (working name)
+# Instar
 
 The second-generation agent operating system. A separate project from `instar` 1.x,
 which continues to run and improve on its own. Nothing here changes 1.x.
 
-**Name is deliberately temporary.** We rename once the shape is clear. GitHub redirects
-old links after a rename, so this costs nothing.
+**The name is settled (operator decision, 2026-09-05): this project is Instar.** The
+repository slug is an artifact of setup, not a second name. Why the name carries forward,
+what this project is for, and who decides what are all in
+[docs/00-the-purpose.md](docs/00-the-purpose.md) — read that first.
 
 ## What this project is for
 
@@ -56,12 +58,13 @@ using a mechanism that already exists rather than one we have to build.
 
 ## Status
 
-The rules foundation, big-picture design, and the first three part designs (constitutional
+The rules foundation, big-picture design, and the first four part designs (constitutional
 types and the decoding boundary; the fact envelope, version chain, and projection contract;
-declarations, the register generator, the terms resolver, and the rule graph) are approved on
-`main`, together with the first six constitutional amendments, landed atomically with part
-three. Part designs proceed in dependency order; next is part four — intake and
-identity/standing resolution. Code waits until the part designs it depends on are approved.
+declarations, the register generator, the terms resolver, and the rule graph; intake and
+identity/standing resolution) are approved on `main`, together with the first six
+constitutional amendments landed atomically with part three and the five amendments routed
+through part four. Seven part designs remain. Code waits until the part designs it depends
+on are approved.
 
 Review model (operator decision, 2026-09-03): the independent review desk runs every pull
 request to convergence first; the operator then reviews a concise plain-language overview and
