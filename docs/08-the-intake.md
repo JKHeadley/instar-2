@@ -113,8 +113,14 @@ reaching every conversation whose bound principal is selectable through the comp
 transport, each within its own binding's scope, their union and no more; and within that reach
 it can only steer already-granted work, because every binding act needs its own verified act.
 That bounded union — not "one conversation," and not "everything" — is the honest blast radius,
-and it is why the walls and the highest-stakes operator actions live on surfaces whose
-provenance the package itself verifies, never on chat attestation.
+and steering is not nothing: directed work exercises the agent's real operating standing, so a
+thief can cause real effects inside it (the effect doorway's profile gates and floors are what
+stand between steering and the irreversible). Two containments are named: the organization's
+intent may designate high-risk directive classes that require step-up verification even from a
+bound operator — a policy hook, not new machinery — and the transport token's revocation is the
+containment lever, with its blast radius (the bound-conversation count per transport) a
+registered measurement. And it is why the walls and the highest-stakes operator actions live on
+surfaces whose provenance the package itself verifies, never on chat attestation.
 
 **Rule — operator standing resolves only through a binding.** Rules 28 and 104; part one's
 provenance floor. **Check:** the standing resolution's operator arm consults the binding-grant
@@ -144,7 +150,10 @@ entry (it reads untrusted real-world text; rule 36's captured-bytes fixtures are
 and this part routes the shape amendments its facts need (two of the bundle's five), in part
 three's bundle convention: the parsers kind gains `authenticationClass` (the class the adapter can honestly
 provide per stimulus type — `verified` where it re-checks evidence, `channel-attested` where it
-can only vouch for its channel), `eventIdAuthority` (who mints the stimulus id and its
+can only vouch for its channel — declaring, with it, the authenticated conversation-id and
+sender-id evidence it rests on, that evidence's stability semantics, its forwarding and
+impersonation handling, and its identity-churn detector, so "the platform authenticated this
+sender" is a per-transport contract rather than a hope), `eventIdAuthority` (who mints the stimulus id and its
 uniqueness scope, replay window, and fallback fingerprint policy — the dedup contract below
 consumes this), and `ackPolicy` (a closed choice — `always`, `bound-only`, `never` — so who
 gets acknowledged is a declared, reviewed fact per adapter, not a vibe; step 9's ack Value
@@ -169,12 +178,15 @@ P4-NF-02), the dedup contract against its declared `eventIdAuthority` (missing, 
 unstable, and replayed ids each have a fixture — P4-NF-03) — with one hard floor: an adapter
 whose stimuli change state must declare a provider-minted event id; the hash fallback is legal
 only for idempotent or informational stimuli, and its entry carries the may-collapse warning in
-writing — and the flood bound from its profile. Adapters without sender-shaped stimuli satisfy the suite per the stimulus-class table
+writing — the ackPolicy conformance fixture (P4-NF-28), and the flood bound from its profile. Adapters without sender-shaped stimuli satisfy the suite per the stimulus-class table
 below rather than vacuously. And the suite's honesty outlives the build: contract fixtures
 catch declared dishonesty at review time, not runtime compromise, so **every live adapter
 carries a probe entry** that replays its captured-bytes fixtures against the running adapter
 on a cadence — part three's freshness machinery pointed at the doorway — and a live adapter
-whose replay drifts from its fixtures surfaces before its lies do (P4-NF-29).
+whose replay drifts from its fixtures surfaces before its lies do (P4-NF-29). Honestly labeled:
+this is a regression check — it catches drift from the recorded contract, not a compromise that
+still passes it; live canary and authentication probes per adapter class belong to part nine's
+probe designs, named here so the gap is owned.
 
 **Value — the doorway is thin over named seams, and says so.** The review asked whether one
 doorway does too much; the honest answer is that the doorway *composes* four layers that
@@ -290,7 +302,9 @@ the outbound doorway's, and is deliberately not in this inbound enumeration.
 
 **Rule — the operator's emergency stop is recognized at the doorway.** Rule 4 names it among
 the ruled three: exact test, irreversible miss. **Check:** a deterministic stop surface — a
-dedicated command shape the port recognizes without interpretation, honored only from the
+dedicated command shape the port recognizes without interpretation, carried on every transport
+as a native affordance a panicked human actually finds (a pinned command or button beside the
+exact text shape — discoverability and latency are in the fixture), honored only from the
 conversation's bound operator or a verified operator surface — bypasses the ordinary sequence's
 tail: it is preserved, deduplicated, authenticated, **resolved against the binding**, and then
 acts *before* grounding, minting, or any queue. Acting emits a **stop fact first** — the
@@ -367,8 +381,10 @@ to an attack the first review named:
   reported command ("he told me to say: stop everything") must not match, and a near-miss
   must hold for judgment rather than round to the nearest shape (P4-NF-27). Natural language
   is pre-decision input: it either matches that surface deterministically or rides judgment
-  refinement first, which is the common case for conversation and costs nothing, because
-  classification is only ever needed at the moment authority would actually be exercised. The holder set comes from the grant record;
+  refinement first — the common case for conversation, with its costs stated rather than waved
+  off: the judgment-hold rate and hold-queue age are registered measurements under rule 46's
+  bounds, and classification is only ever needed at the moment authority would actually be
+  exercised, so ordinary talk never waits on it. The holder set comes from the grant record;
   selection takes the *narrowest* standing that covers the operation, tied to the operator of
   the affected scope. And the approval is re-validated at the effect doorway against the *actual*
   operation — an approval harvested for a narrower-sounding classification does not transfer
@@ -574,8 +590,8 @@ the operator surfaces where authorizations complete and bindings are established
 2. **Five amendments ride this bundle, atomically** (part three's convention): part one gains
    the exercise split (authority-conferring vs directive — the wall's honest answer to chat);
    the glossary's operator clause reads "selected … within the recorded conversation binding";
-   the parsers kind gains `authenticationClass` and `eventIdAuthority`; the glossary's
-   profile-declaring kinds gain parsers; and the blocking-site kind gains the `enforces`
+   the parsers kind gains `authenticationClass`, `eventIdAuthority`, and `ackPolicy`; the
+   glossary's profile-declaring kinds gain parsers; and the blocking-site kind gains the `enforces`
    companion row. Striking any item returns the whole to review. Approve the bundle?
 3. **Beyond-standing requests route, bounded and quoted.** The approver sees the system's
    framing with the sender quoted as untrusted content; needed standing is computed from the
