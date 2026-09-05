@@ -146,6 +146,8 @@ Unblocks rule 36.
 | Required fact | Why |
 |---|---|
 | `fixture` — the captured real bytes it is tested against | Rule 36: no hand-typed approximations. Missing fixture fails. |
+| `authenticationClass` — per stimulus type, the provenance class the parser can honestly provide: `verified` (it re-checks evidence) or `channel-attested` (it vouches for its channel) | Rules 28 and 29 at the doorway: the class is what the evidence supports, never what the adapter asserts. |
+| `eventIdAuthority` — who mints the stimulus id, its uniqueness scope, replay window, and fallback fingerprint policy | Exactly-once admission is declared and fixture-priced per adapter, never assumed. |
 
 ### 8. Critical outcomes — *every result that must provably still work in production*
 

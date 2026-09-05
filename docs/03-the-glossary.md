@@ -37,7 +37,8 @@ The profile has five facts. Each is a closed list, so a declaration is checkable
 | `repeats` | Can the failure recur before anyone can stop it? | `no` · `bounded { by }` (naming the declared cap, coalescer, or breaker that bounds it) · `unbounded` — the runaway rule's subject, made a declared fact: `attention` with `unbounded` is not an honest combination |
 
 Every entry in the register of kind *feature*, *blocking site*, *judgment point*, *critical
-outcome*, or *operator action* declares all five. A missing one fails the build.
+outcome*, *operator action*, or *parser* declares all five. A missing one fails the build —
+an intake adapter's runaway case is a flood, and its bound entry is load-bearing.
 
 *Why `reversible`.* The field is `reversibility` and the rule's word is *irreversible*; the
 allowed values read as answers to the field and as the plain opposite of the rule's word, so
