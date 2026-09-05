@@ -70,10 +70,14 @@ export function inspectSource(path, source, sources = {}, program = sourceProgra
   }
   visit(file); return { constructs, reads, invokes, residual, scopes };
 }
-export function checkWiring(register, sourceFiles) {
+export function scanSources(sourceFiles) {
   const program = sourceProgram(sourceFiles);
-  const reports = Object.entries(sourceFiles).map(([path, source]) => inspectSource(path, source, sourceFiles, program)); const issues = [];
+  const reports = Object.entries(sourceFiles).map(([path, source]) => inspectSource(path, source, sourceFiles, program));
   const constructs = reports.flatMap(r => r.constructs); const residual = reports.flatMap(r => r.residual);
+  return { reports, constructs, residual };
+}
+export function checkWiring(register, sourceFiles, scanned = scanSources(sourceFiles)) {
+  const { reports, constructs, residual } = scanned; const issues = [];
   for (const c of constructs) if (!register.entries.some(e => e.declaration.id === c.id && e.declaration.kind === c.kind)) issues.push(`P3-NF-04: ${c.path} constructs undeclared ${c.id}`);
   for (const { declaration: d } of register.entries) if (d.kind === 'blocking sites') {
     const multi = d.requiredFacts.rungs !== undefined;
@@ -83,7 +87,7 @@ export function checkWiring(register, sourceFiles) {
     }
     if (rungs.some(r => !r || !['no', 'ruled-three', 'governed-state'].includes(r.decidesAlone) || !['open', 'closed'].includes(r.failDirection) || !r.preservesInput || !r.criticality)) issues.push(`P3-NF-26: ${d.id} malformed rung`);
     for (const rung of rungs) if (rung.decidesAlone === 'governed-state') {
-      const source = sourceFiles[d.declaredBy.path]; const report = source === undefined ? undefined : inspectSource(d.declaredBy.path, source, sourceFiles, program);
+      const report = reports[Object.keys(sourceFiles).indexOf(d.declaredBy.path)];
       const e = rung.enforces;
       const scope = report?.scopes[d.declaredBy.symbol];
       if (!e || !scope?.reads.includes(e.record) || !scope.invokes.includes(e.decoder)) issues.push(`P3-NF-26: ${d.id} does not read enforced record and invoke named decoder`);

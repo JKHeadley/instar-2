@@ -7,6 +7,19 @@ import { decodeShape } from '../dist/register/index.js';
 
 export const value = result => consumeResult(result, { Success: value => value, Refused: refusal => { throw new Error(refusal.detail); } });
 export const bytes = input => value(canonical(input)).bytes;
+// A sidecar does not get to author declaredBy. Resolve its adjacent source and
+// literal core construct through the same symbol-aware sweep used by the gates.
+export function bindColocatedDeclarations(sources, constructs) {
+  return sources.map(source => {
+    if (!source.path.endsWith('.declarations.json')) return source;
+    const path = source.path.replace(/\.declarations\.json$/, '.ts');
+    const matches = constructs.filter(c => c.path === path && c.id === source.declaration.id && c.kind === source.declaration.kind);
+    if (matches.length > 1) throw new Error(`P3-NF-19: ambiguous colocated construct ${source.declaration.id}`);
+    // Keep a phantom's actual JSON provenance: downstream load-bearing pairing
+    // and governed-state checks must refuse it, not pair by id across files.
+    return matches.length === 1 ? { ...source, path, symbol: matches[0].symbol } : source;
+  });
+}
 export function readCommit(root, commit) {
   const git = args => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
   if (!/^[a-f0-9]{40}$/.test(commit) || git(['rev-parse', '--verify', `${commit}^{commit}`]).trim() !== commit) throw new Error('source commit is not an exact commit id');
