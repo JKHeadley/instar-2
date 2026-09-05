@@ -27,6 +27,10 @@ are explicit inputs. Every schema is shared across machines.
 - Clock measurements bottom out at safe integer Unix milliseconds; `at` equals the sampled
   clock value. Other measurements use finite JavaScript numbers. Exact money arithmetic and
   fact fold-key encoding belong to part two, and are not implied by Measurement.
+  `decodeMeasurement(expectedSubject, input, context)` checks that subject at runtime and
+  preserves it in the return type. A decoded `clock` feeds time APIs without casts. Generic
+  inventory reads remain unrefined; `compareMeasurements` rejects their broad string subject
+  at compile time until the caller uses the checked producer with a known subject.
 - Scope inclusion uses explicit registered member sets; it never infers containment from a
   path spelling or expands an artifact glob into wider authority. Providers resolve their
   governed sets before supplying them. The organization scope contains all other scopes.
@@ -61,17 +65,33 @@ structural inputs below. Neither input ports nor historical wrappers add an inve
    payload. The outer Result reports whether the read succeeded; an inner recorded refusal
    stays a refusal. `rehydrateOutcome` checks the occurrence variant and evidence references.
    `rehydrateConflict(input, context, {left, right})` decodes both sides, derives their conflict
-   again, and compares every serialized field. A changed side, difference list, origin, or
-   subject is refused. `decode('Conflict', ...)` deliberately directs callers to derivation.
-4. `readHistorical('Provenance' | 'VerifiedPrincipal', input, pin, context)` verifies exact
-   origin bytes with a registered Ed25519 `fact-envelope` key and selects the record at
-   `pin.path`. The signed frame's root `id` must equal `pin.origin.id`. Part two supplies that
-   origin and the key position after its own chain verification; this package does not
-   pretend a valid signature verifies the chain. `HistoricalRead<T>` exposes an immutable,
-   unbranded `view` and `captureStatus`. It preserves original verified/attested class and
-   verification time. Neither it nor its view type-checks as a live principal/provenance;
-   live decoders also reject them after an unsafe cast. Missing old captures stay visibly
-   unavailable. A historical read never establishes current standing.
+   again, and compares every serialized field. Jurisdiction comes from intrinsic scope
+   (including Authorization.action.scope and organization-scoped principal identity) or
+   separate `recordSubjects[canonicalRecordHash]` supplied by the admission context. Records
+   without intrinsic scope, including Intent, require that separate mapping. The exact
+   derived union must match the subject; the serialized subject never supplies its own
+   authority. An altered difference list, origin or rebound subject refuses; side records
+   must independently validate and agree with that admission context. `decode('Conflict',
+   ...)` deliberately directs callers to derivation.
+4. `readHistorical(type, input, pin, HistoricalDecodeContext)` validates every inventory
+   body's invariants inside a private historical session. It first verifies the captured P2
+   envelope's canonical preimage (all fields except contentHash/signature), then the Ed25519
+   signature over the UTF-8 contentHash string. It requires a registered `fact-envelope` key
+   whose owner matches the envelope machine, root id matching `pin.origin.id`, and exact
+   selected record at `pin.path`. No second signature or invented byte-signed frame is needed.
+   Part two supplies the admitted key position, causal cone, register generation and explicit
+   clock proof; this package does not implement chain/key-position/causal-cone admission.
+   Reconstruct dependencies with earlier genuine `HistoricalRead` wrappers in `context.history`.
+   For example, read a grant, then pass it in history when reading its authorization/revocation.
+   Nested provenance and principals validate against their pinned records without needing any
+   surviving live instances. Authority-bearing Conflict sides use that same historical path.
+   Optional historical conversation bindings use a pinned source wrapper and decoded scope.
+   `HistoricalRead<T>` exposes an immutable unbranded `view`, `captureStatus`, and detailed
+   `unavailableCaptures` (tombstoned/expired/missing). The original class/time are preserved;
+   available bytes must still hash correctly. Missing Evidence remains a historical record,
+   not a usable claim: `readHistoricalEvidence` requires available dependencies and freshness.
+   Dependencies propagate their unavailable taint. Neither the wrapper nor its view can
+   supply live authority, even through a cast; historical validation never live-issues them.
 5. `defineDecoder` registers a later part's `DecoderDefinition` as an immutable
    `VersionedDecoder`, outside the closed inventory. Names belonging to part one are refused.
    Every version needs its validator, and every prior version needs a consecutive pure
@@ -79,6 +99,8 @@ structural inputs below. Neither input ports nor historical wrappers add an inve
    step, and refuses unknown versions, bad migration output, or thrown callback errors.
    `deriveThrough` validates an internally derived input through the same decoder. Core and
    extension decoding share `runBoundary`, which is not a public construction door.
+   The boundary pins a validated registered site/direction before examining input, retaining
+   it for explicit and thrown failures alike. Only invalid metadata uses types.decode/closed.
 
 `src/decode/canonical.ts` supplies sorted UTF-16 JSON keys, UTF-8 encoding and SHA-256;
 schema-1 byte/hash fixtures pin all 18 types. `src/decode/schema.ts` is the inventory metadata.
@@ -88,11 +110,13 @@ schema-1 byte/hash fixtures pin all 18 types. `src/decode/schema.ts` is the inve
 outcome consumption/retry permission, and the sole conflict-resolution function. Profile
 adjectives evaluate `ProfileTermsReadPort.derivedFrom` supplied by part three; this package
 does not maintain a competing term registry. `src/types/internal.ts` holds the private issuer
-and centralized Result consumer. `src/index.ts` is the public import surface.
+and centralized Result/Capacity consumers. `src/index.ts` is the public import surface.
 
 The architecture checker analyzes resolved TypeScript types to reject direct Result, Outcome,
-Evidence-claim and Conflict-side access outside their owning functions, plus ambient I/O/time
-in the core. As the design states, a lint is not a proof about arbitrary caller behavior or
+Evidence-claim, Capacity discriminator and Conflict-side access outside their owning functions,
+including parameter/variable/nested/rest/alias bindings, assignments, loops and methods, plus
+ambient I/O/time in the core. `consumeCapacity` handles applied bounds as success data.
+As the design states, a lint is not a proof about arbitrary caller behavior or
 malicious unsafe casts. Part nine still compares recorded results to later reports.
 
 `npm run test:all` runs type checks, builds the public entry, executes unit/decoder, integration,
@@ -100,6 +124,23 @@ and package-process lifecycle tests, runs architecture checks, and prints the ch
 the actual Vitest report. The inventory is compared against the approved design as well.
 This pure package has no HTTP server; its lifecycle proof starts a fresh Node process and
 imports the built package, rather than claiming a nonexistent server route is live.
+
+## Desk repair round (base 3f688bf)
+
+R1–R6 are repaired in the implementation and their counterexample tests, not only the named
+map. NF-19 obtains values from actual checked producers. Each of NF-14/15/46/66/69 executes
+ten independently compiling bypass forms and actual permitted handlers. NF-75 changes only
+the Conflict subject and attempts wrong-jurisdiction resolution. Historical lifecycle tests
+save and reconstruct grants, authorization, revocation, authority Conflict and unavailable
+Evidence in a fresh Node process through the public built package.
+
+NF-68 now runs a fixture-owned versioned transport migration into real decoded Intents,
+then calls public compare: migration-only is equal; immutable differences from machine-a and
+machine-b yield the same Conflict as current-version input. This exercises the extension
+seam without inventing a constitutional schema-2. Intent origins now use receivedAt's sampler
+machine, correcting the former unspecified-origin fallback. The Conflict golden hash changed
+only for those corrected fixture origin values; the other 17 hashes and schema layouts did not.
+Independent desk review still owns the convergence verdict.
 
 ## Side effects and undo
 
