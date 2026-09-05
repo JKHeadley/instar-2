@@ -2,7 +2,7 @@
 import { createHmac, timingSafeEqual, verify } from 'node:crypto';
 import type * as T from '../types/values.js';
 import type { DecodeContext } from '../types/ports.js';
-import { seal, success, trusted } from '../types/internal.js';
+import { bindRecordSubject, seal, success, trusted } from '../types/internal.js';
 import { canonicalText, hashText, snapshot } from './canonical.js';
 import { schemaRegistry } from './schema.js';
 import { runBoundary } from './framework.js';
@@ -319,6 +319,11 @@ export function decode<N extends keyof T.Inventory>(type: N, input: unknown, con
       requireThat(!ds.reason || !ds.conclusion || ds.reason.value !== ds.conclusion.value, 'reason: must be separate from conclusion');
     }
     const value = decodeRecord(type, obj(shape), context);
+    const subject = context.recordSubjects?.[hashText(canonicalText(value))];
+    if (subject) {
+      requireThat(trusted(subject, 'Scope'), 'record subject context requires a decoded Scope');
+      bindRecordSubject(value, subject);
+    }
     return success(value);
   });
 }

@@ -1,5 +1,8 @@
-import type { Capacity, Refused, RefusalReason, Result, Success } from './values.js';
+import type { Capacity, Refused, RefusalReason, Result, Scope, Success } from './values.js';
 const issued = new WeakSet<object>();
+const subjects = new WeakMap<object, Scope>();
+export function bindRecordSubject(record: object, scope: Scope): void { subjects.set(record, scope); }
+export function recordSubject(record: object): Scope | undefined { return subjects.get(record); }
 // Not exported by the package. Only decoders and pure derivations may use this factory.
 export function seal<T>(value: object): T {
   function freeze(item: object): void {

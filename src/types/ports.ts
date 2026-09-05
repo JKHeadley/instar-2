@@ -47,6 +47,9 @@ export interface DecodeContext {
   // The adapter stores input/captures before invoking the pure decoder.
   readonly preserved: string;
   readonly captures: Readonly<Record<string, string>>;
+  // Admission supplies these from its scoped causal records, independently of a Conflict body.
+  // Keys are canonical hashes of constitutional records that have no intrinsic Scope.
+  readonly recordSubjects?: Readonly<Record<string, Scope>>;
   readonly provenance?: Provenance;
   readonly principals?: readonly VerifiedPrincipal[];
   readonly grants?: readonly StandingGrant[];

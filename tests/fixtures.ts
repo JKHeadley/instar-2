@@ -21,6 +21,7 @@ export function fixture() {
   const authorizations: Inventory['Authorization'][] = [];
   const directives: Inventory['Directive'][] = [];
   const evidence: Inventory['Evidence'][] = [];
+  const recordSubjects: Record<string, Scope> = {};
   const ctx: DecodeContext = {
     register: {
       generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'generation:1' },
@@ -34,7 +35,7 @@ export function fixture() {
       allowRedelegation: false,
       conflictStanding: { ordinary: 'delegate', authority: 'operator' },
     },
-    preserved: 'capture:input', captures, principals, grants, revocations, authorizations, directives, evidence,
+    preserved: 'capture:input', captures, principals, grants, revocations, authorizations, directives, evidence, recordSubjects,
   };
   const clockRaw = (at = 100, machine = 'machine-a') => raw('Measurement', { subject: { kind: 'clock', instance: machine }, value: at, unit: 'unix-ms', at, by: 'probe' });
   const clock = (at = 100) => value(decode('Measurement', clockRaw(at), ctx)) as Clock;
@@ -87,7 +88,11 @@ export function fixture() {
   function authorize(overrides: Record<string, unknown> = {}) { const a = authInput(overrides); const result = value(decode('Authorization', a.input, a.context)); authorizations.push(result); return result; }
   const authorization = authorize();
   const directiveInput = (overrides: Record<string, unknown> = {}) => raw('Directive', { id: 'd1', principal: alice, scope, statement: 'Do the work', issuedAt: now, ...overrides });
-  const intentInput = (overrides: Record<string, unknown> = {}) => raw('Intent', { id: 'i1', principal: alice, receivedAt: now, via: 'host', raw: capture('request bytes'), ask: 'work', under: [], ...overrides });
+  const intentInput = (overrides: Record<string, unknown> = {}) => {
+    const input = raw('Intent', { id: 'i1', principal: alice, receivedAt: now, via: 'host', raw: capture('request bytes'), ask: 'work', under: [], ...overrides });
+    recordSubjects[digest(input)] = scope;
+    return input;
+  };
   const floor = value(decode('ActionFloor', raw('ActionFloor', { actions: ['work'], default: 'work' }), ctx));
   const decisionInput = (overrides: Record<string, unknown> = {}) => raw('Decision', { id: 'decision:1', at: now,
     by: { judgment: 'judgment', model: 'model', route: 'route' },

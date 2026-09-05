@@ -1,6 +1,6 @@
 import type * as T from './values.js';
 import type { DecodeContext } from './ports.js';
-import { refusal, seal, success, trusted } from './internal.js';
+import { recordSubject, refusal, seal, success, trusted } from './internal.js';
 import { canonicalText, hashText } from '../decode/canonical.js';
 import { grantLiveness, scopeIncludes } from '../decode/decode.js';
 import { schemaRegistry } from '../decode/schema.js';
@@ -73,9 +73,22 @@ export function compare<N extends keyof T.Inventory>(type: N, left: T.Inventory[
       return canonicalText((left as T.VerifiedPrincipal).provenance.record) !== canonicalText((right as T.VerifiedPrincipal).provenance.record);
     return canonicalText(l[k]) !== canonicalText(r[k]);
   });
-  if (typeof l.id === 'string' && l.id === r.id && differences.length)
+  if (typeof l.id === 'string' && l.id === r.id && differences.length) {
+    const intrinsic = (v: T.ConstitutionalValue): T.Scope | undefined => {
+      if ('scope' in v) return v.scope;
+      if (v.type === 'Authorization') return v.action.scope;
+      if (v.type === 'VerifiedPrincipal') return seal<T.Scope>({ type: 'Scope', schemaVersion: 1, kind: 'organization' });
+      return recordSubject(v);
+    };
+    const a = intrinsic(left); const b = intrinsic(right);
+    if (!a || !b) return refusal('conflict subject requires independent admission context for both records', preserved);
+    const expected = a.kind === 'organization' || b.kind === 'organization' || a.kind !== b.kind
+      ? { type: 'Scope', schemaVersion: 1, kind: 'organization' }
+      : { type: 'Scope', schemaVersion: 1, kind: a.kind, members: [...new Set([...a.members, ...b.members])].sort() };
+    if (canonicalText(subject) !== canonicalText(expected)) return refusal('conflict subject differs from authoritative record context', preserved);
     return success(seal<T.Conflict>({ type: 'Conflict', schemaVersion: 1, left, right,
       origins: [origin(left), origin(right)], fields: differences, subject }));
+  }
   if (mode !== 'value' && typeof l.id !== 'string') return refusal('comparison mode: this type supports value equality only', preserved);
   if (mode === 'version' && type === 'VerifiedPrincipal') return refusal('VerifiedPrincipal supports identity and value equality', preserved);
   if (mode === 'identity') return success(l.id === r.id);

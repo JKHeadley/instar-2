@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { compare, consumeResult, decode, defineDecoder, rehydrateConflict, rehydrateOutcome, rehydrateResult } from '../../src/index.js';
+import { compare, consumeResult, decode, defineDecoder, rehydrateConflict, rehydrateOutcome, rehydrateResult, resolveConflict } from '../../src/index.js';
 import type { BoundaryContext, Conflict, Json, Result, Validation } from '../../src/index.js';
-import { clone, fixture, raw, value } from '../fixtures.js';
+import { clone, digest, fixture, raw, value } from '../fixtures.js';
 const refused = <T>(result: Result<T>, text: string) => consumeResult(result, { Success: () => { throw new Error('expected refusal'); }, Refused: r => expect(r.detail).toContain(text) });
 const validator = (version: number) => (input: Json): Validation<Json> => {
   const v = input as Record<string, Json>;
@@ -57,5 +57,23 @@ describe('downstream decoder extension and historical value reads', () => {
     const conflict = value(compare('Intent', left, right, 'identity', f.scope, f.ctx.preserved)) as Conflict;
     expect(value(rehydrateConflict(clone(conflict), f.ctx))).toEqual(conflict);
     refused(rehydrateConflict({ ...clone(conflict), fields: [] }, f.ctx), 'disagrees');
+  });
+  it('NF-75 R1 refuses altered Conflict subject and wrong-jurisdiction resolution', () => {
+    const f = fixture(); const left = value(decode('Intent', f.intentInput(), f.ctx)); const right = value(decode('Intent', f.intentInput({ raw: f.capture('other') }), f.ctx));
+    const conflict = value(compare('Intent', left, right, 'identity', f.scope, f.ctx.preserved)) as Conflict;
+    const projectB = value(decode('Scope', raw('Scope', { kind: 'project', members: ['project-b'] }), f.ctx));
+    const moved = { ...clone(conflict), subject: projectB };
+    expect(value(rehydrateConflict(clone(conflict), f.ctx))).toEqual(conflict);
+    refused(rehydrateConflict(moved, f.ctx), 'authoritative record context');
+    const wrongGrant = f.grant({ id: 'wrong-jurisdiction', scope: projectB });
+    const { floor: _f, ...decisionInput } = f.decisionInput({ by: f.alice, conclusion: { subject: digest(moved), predicate: 'resolve-to-hash', value: digest(left), evidence: ['e1'] } });
+    const decision = value(decode('Decision', decisionInput, f.ctx));
+    const attempted = consumeResult(rehydrateConflict(moved, f.ctx), {
+      Refused: r => r,
+      Success: restored => resolveConflict(restored, decision, wrongGrant, f.now, f.ctx),
+    });
+    refused(attempted, 'authoritative record context');
+    refused(resolveConflict(conflict, decision, wrongGrant, f.now, f.ctx), 'scope');
+    refused(rehydrateConflict(clone(conflict), { ...f.ctx, recordSubjects: {} }), 'independent admission context');
   });
 });
