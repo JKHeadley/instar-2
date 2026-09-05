@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { compare, consumeResult, decode, defineDecoder, deriveThrough, rehydrateConflict, rehydrateOutcome, rehydrateResult, resolveConflict } from '../../src/index.js';
-import type { BoundaryContext, Conflict, Json, Result, Validation } from '../../src/index.js';
+import { compare, consumeResult, decode, decodeMeasurement, defineDecoder, deriveThrough, rehydrateConflict, rehydrateOutcome, rehydrateResult, resolveConflict } from '../../src/index.js';
+import type { BoundaryContext, Conflict, DecodeContext, Intent, Json, Result, Validation } from '../../src/index.js';
 import { clone, digest, fixture, raw, value } from '../fixtures.js';
 const refused = <T>(result: Result<T>, text: string) => consumeResult(result, { Success: () => { throw new Error('expected refusal'); }, Refused: r => expect(r.detail).toContain(text) });
 const validator = (version: number) => (input: Json): Validation<Json> => {
@@ -18,12 +18,35 @@ function framework() {
   return { f, context, definition, decoder: value(defineDecoder(definition, f.ctx.preserved)) };
 }
 describe('downstream decoder extension and historical value reads', () => {
-  it('NF-68 migration precedes comparison and alone causes no conflict', () => {
-    const { decoder, context } = framework();
-    const old = { type: 'ExampleDeclaration', schemaVersion: 1, id: 'd', oldName: 'same content' };
-    const current = { type: 'ExampleDeclaration', schemaVersion: 2, id: 'd', name: 'same content' };
-    expect(value(decoder.decode(old, context))).toEqual(value(decoder.decode(current, context)));
-    expect(old).toEqual({ type: 'ExampleDeclaration', schemaVersion: 1, id: 'd', oldName: 'same content' });
+  it('NF-68 migrates versioned inputs then compares actual constitutional values from two machines', () => {
+    const f = fixture();
+    const context = { ...f.ctx, site: 'types.decode' };
+    // A fixture-owned transport schema migrates; no fictitious P1 schema-2 is installed.
+    const validator = (key: string) => (input: Json): Validation<Json> => {
+      const record = input as Record<string, Json>;
+      return record[key] && typeof record[key] === 'object' ? { ok: true, value: input } : { ok: false, detail: 'record missing' };
+    };
+    const decoder = value(defineDecoder<Intent, DecodeContext & BoundaryContext>({
+      name: 'IntentTransportFixture', owner: 'test', currentVersion: 2,
+      versions: { 1: { validate: validator('oldRecord') }, 2: { validate: validator('record') } },
+      migrations: { 1: input => ({ type: 'IntentTransportFixture', schemaVersion: 2, record: (input as Record<string, Json>).oldRecord! }) },
+      decodeCurrent: (input, c) => consumeResult<Intent, Validation<Intent>>(decode('Intent', (input as Record<string, Json>).record, c), {
+        Success: v => ({ ok: true as const, value: v }), Refused: r => ({ ok: false as const, detail: r.detail }),
+      }),
+    }, context.preserved));
+    const left = f.intentInput();
+    const machineB = value(decodeMeasurement('clock', f.clockRaw(101, 'machine-b'), f.ctx));
+    const right = f.intentInput({ raw: f.capture('incompatible input from machine B'), receivedAt: machineB });
+    const old = { type: decoder.name, schemaVersion: 1, oldRecord: clone(left) };
+    const current = (record: unknown) => ({ type: decoder.name, schemaVersion: 2, record });
+    const migrated = value(decoder.decode(old, context));
+    const same = value(decoder.decode(current(left), context));
+    expect(value(compare('Intent', migrated, same, 'version', f.scope, context.preserved))).toBe(true);
+    const other = value(decoder.decode(current(right), context));
+    const conflict = value(compare('Intent', migrated, other, 'identity', f.scope, context.preserved));
+    expect(conflict).toMatchObject({ type: 'Conflict', fields: ['raw', 'receivedAt'], origins: ['machine-a', 'machine-b'] });
+    expect(conflict).toEqual(value(compare('Intent', same, other, 'identity', f.scope, context.preserved)));
+    expect(old.oldRecord).toEqual(left);
   });
   it('missing migrations, extra versions, and constitutional name capture refuse registration', () => {
     const { definition, f } = framework();

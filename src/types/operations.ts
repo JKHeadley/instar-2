@@ -113,6 +113,7 @@ function origin(v: T.ConstitutionalValue): string {
   if ('provenance' in v) return v.provenance.machine;
   if ('source' in v && typeof v.source === 'object' && 'machine' in v.source) return v.source.machine;
   if ('observedAt' in v) return v.observedAt.subject.instance;
+  if ('receivedAt' in v) return v.receivedAt.subject.instance;
   if ('at' in v && typeof v.at === 'object') return v.at.subject.instance;
   return 'shared:unspecified-origin';
 }
