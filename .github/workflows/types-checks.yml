@@ -33,3 +33,18 @@ jobs:
           pattern: p2-*
           path: outputs
       - run: cmp outputs/p2-x64/p2-output.json outputs/p2-arm64/p2-output.json
+  p3-body-seam:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci && npm run build
+      - uses: actions/checkout@v4
+        with:
+          ref: 0d66a86fa102a98dd80a0d4a590b057cffd8b8ad
+          path: .provider-test
+      - run: npm ci && npm run build
+        working-directory: .provider-test
+      - run: node scripts/test-p3-body-seam.mjs .provider-test
