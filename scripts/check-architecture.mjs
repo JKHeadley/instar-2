@@ -29,14 +29,31 @@ export function lintProgram(program, files) {
     return false;
   };
   const tagOf = node => {
-    const t = checker.getTypeAtLocation(node); const p = t.getProperty('type');
+    const t = checker.getNonNullableType(checker.getTypeAtLocation(node)); const p = t.getProperty('type');
     return p ? checker.typeToString(checker.getTypeOfSymbolAtLocation(p, node)).replaceAll('"', '') : '';
+  };
+  const capacityOf = node => {
+    const t = checker.getNonNullableType(checker.getTypeAtLocation(node));
+    const p = t.getProperty('kind');
+    const kinds = p && checker.typeToString(checker.getTypeOfSymbolAtLocation(p, node));
+    return checker.typeToString(t).includes('Capacity') || kinds === '"none" | "applied"' || kinds === '"applied" | "none"';
   };
   const add = (file, node, rule, detail) => issues.push({ file: relative(process.cwd(), file), line: ts.getLineAndCharacterOfPosition(node.getSourceFile(), node.getStart()).line + 1, rule, detail });
   for (const source of program.getSourceFiles()) {
     if (!targets.has(resolve(source.fileName))) continue;
     const file = source.fileName;
     const isCore = relative(process.cwd(), file).replaceAll('\\', '/').startsWith('src/');
+    const inspect = (expression, field, node) => {
+      const tag = tagOf(expression);
+      const allowed = (path, fns) => fns.some(fn => owner(file, { file: path, function: fn }, node));
+      if (tag === 'Result' && ['kind', 'value', '*'].includes(field) && !allowed('types/internal.ts', ['consumeResult']))
+        add(file, node, 'NF-14', 'Result may only be inspected by consumeResult');
+      if (((tag === 'Result' && ['capacity', '*'].includes(field)) || (capacityOf(expression) && ['kind', '*'].includes(field)))
+        && !allowed('types/internal.ts', ['consumeResult', 'consumeCapacity'])) add(file, node, 'NF-15', 'capacity is success data; use consumeCapacity');
+      if (tag === 'Evidence' && ['claim', '*'].includes(field) && !allowed('types/operations.ts', ['readEvidence'])) add(file, node, 'NF-66', 'claim requires freshness doorway');
+      if (tag === 'Outcome' && ['kind', '*'].includes(field) && !allowed('types/operations.ts', ['consumeOutcome', 'retryPermission'])) add(file, node, 'NF-46', 'Outcome requires consumption/retry doorway');
+      if (tag === 'Conflict' && ['left', 'right', '*'].includes(field) && !allowed('types/operations.ts', ['resolveConflict'])) add(file, node, 'NF-69', 'Conflict side requires resolution doorway');
+    };
     const visit = node => {
       if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
         const spec = node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : '';
@@ -48,20 +65,21 @@ export function lintProgram(program, files) {
       if (isCore && ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) add(file, node, 'NF-52', 'dynamic import');
       if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
         const field = ts.isPropertyAccessExpression(node) ? node.name.text : node.argumentExpression && ts.isStringLiteral(node.argumentExpression) ? node.argumentExpression.text : '*';
-        const tag = tagOf(node.expression);
-        if (tag === 'Result' && ['kind', 'value', '*'].includes(field) && !owner(file, { file: 'types/internal.ts', function: 'consumeResult' }, node))
-          add(file, node, 'NF-14', 'Result may only be inspected by consumeResult');
-        const typename = checker.typeToString(checker.getTypeAtLocation(node.expression));
-        if ((tag === 'Result' && field === 'capacity') || (typename.includes('Capacity') && ['kind', '*'].includes(field))) {
-          if (!owner(file, { file: 'types/internal.ts', function: 'consumeResult' }, node)) add(file, node, 'NF-15', 'capacity is success data; consume through Result');
-        }
-        if (tag === 'Evidence' && ['claim', '*'].includes(field) && !owner(file, { file: 'types/operations.ts', function: 'readEvidence' }, node)) add(file, node, 'NF-66', 'claim requires freshness doorway');
-        if (tag === 'Outcome' && ['kind', '*'].includes(field) && !['consumeOutcome', 'retryPermission'].some(fn => owner(file, { file: 'types/operations.ts', function: fn }, node))) add(file, node, 'NF-46', 'Outcome requires consumption/retry doorway');
-        if (tag === 'Conflict' && ['left', 'right', '*'].includes(field) && !owner(file, { file: 'types/operations.ts', function: 'resolveConflict' }, node)) add(file, node, 'NF-69', 'Conflict side requires resolution doorway');
+        inspect(node.expression, field, node);
       }
-      if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) && node.initializer) {
-        const tag = tagOf(node.initializer);
-        if (['Result', 'Evidence', 'Outcome', 'Conflict'].includes(tag)) add(file, node, ({ Result: 'NF-14', Evidence: 'NF-66', Outcome: 'NF-46', Conflict: 'NF-69' })[tag], 'destructuring bypasses consumption doorway');
+      // The binding pattern has the resolved contextual type for parameters, nested
+      // bindings, for-of declarations, aliases and rest alike — not only variables.
+      if (ts.isObjectBindingPattern(node)) {
+        for (const element of node.elements) {
+          const key = element.propertyName ?? element.name;
+          inspect(node, element.dotDotDotToken ? '*' : ts.isIdentifier(key) || ts.isStringLiteral(key) ? key.text : '*', element);
+        }
+      }
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isObjectLiteralExpression(node.left)) {
+        for (const property of node.left.properties) {
+          const key = property.name;
+          inspect(node.right, key && (ts.isIdentifier(key) || ts.isStringLiteral(key)) ? key.text : '*', property);
+        }
       }
       ts.forEachChild(node, visit);
     };

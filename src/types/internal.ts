@@ -29,3 +29,6 @@ export function refusal(detail: string, preserved: string, reason: RefusalReason
 export function consumeResult<T, R>(result: Result<T>, handlers: { Success: (value: T, capacity: Capacity) => R; Refused: (refused: Refused) => R }): R {
   return result.kind === 'Success' ? handlers.Success(result.value, result.capacity) : handlers.Refused(result);
 }
+export function consumeCapacity<R>(capacity: Capacity, handlers: { none: () => R; applied: (bound: string, action: string) => R }): R {
+  return capacity.kind === 'none' ? handlers.none() : handlers.applied(capacity.bound, capacity.action);
+}

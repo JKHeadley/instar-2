@@ -1,6 +1,6 @@
 export type * from './types/values.js';
 export type * from './types/ports.js';
-export { consumeResult } from './types/internal.js';
+export { consumeResult, consumeCapacity } from './types/internal.js';
 export { compareMeasurements, isFresh, readEvidence, aggregateStrength, consumeOutcome, retryPermission, isValid,
   authorizationRequestDigest, compare, resolveConflict, deriveProfile } from './types/operations.js';
 export type { AuthorizationValidity, ProfileExpression, ProfileTermsReadPort } from './types/operations.js';
