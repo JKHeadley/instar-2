@@ -115,15 +115,17 @@ predecessor transition, operation class, exact proposed-operation digest, eviden
 current directive references, required judgment or authorization references, requested budget
 allocation, part-six ownership reference, result destination, and the admitted register
 generation. Its kind is one of `compute`, `judge`, `effect`, `delegate`, `collect`, `wait`,
-`ground`, or `evaluate-exit`. All fields are immutable. A retry uses the same logical step
-and operation key; its attempt evidence is additional history, not a replacement identity.
+`ground`, or `evaluate-exit`. All fields are immutable. Redelivery and recovery preserve
+the logical step and existing operation identity; they do not authorize another invocation.
+For judgment, section 3 binds each seven-owned attempt to one six-owned operation; a fresh
+provider attempt under the same logical request needs a new mapping after reconciliation.
 A changed operation is a new step and cannot bypass an unresolved predecessor's effects.
 
 **Rule — the work graph is acyclic, but work can repeat.** Rules 55 and 114. **Check:**
 P5-NF-06 refuses self-parentage, two owning parents, a dependency cycle, or a graph exceeding
 its declared node, depth, or fan-out bound. The depth bound is a resource declaration, not a
-fixed topology in the core. Sequential attempts and subsequent work windows use new causally
-linked steps through part six's loop primitive; they never create a cycle in the dependency
+fixed topology in the core. Sequential attempts append causally linked attempt evidence;
+subsequent work windows use new steps through part six's loop primitive; they never create a cycle in the dependency
 graph. Adding a dependency must name an existing admitted target; missing remote references
 hold under part two's replication contract, never count as satisfied.
 
@@ -197,13 +199,73 @@ notification to the old worker is not an alternative authority mechanism.
 7. Transition admission consumes that outcome once, records next state and next wake, and only
    then enables dependent work or advertises a completed result.
 
+**Rule — five adopts the composed judgment order.** Rules 41, 55, 60, 63, 75, and 114.
+**Check:** P5-NF-59 checks this specialization of record-before-dispatch across five, six,
+seven, and eight, including a crash at every boundary:
+
+1. Persist the pending step and seven's logical judgment request, durably linked by five.
+   Seven retains ownership of the request. This preparation grants no execution permission.
+2. Six grants ownership.
+3. Admission validates the expected predecessor, stop, current standing and generation,
+   and resources; five records actual-start grounding before the worker acts.
+4. Seven persists its attempt identity; six persists the exact operation identity mapping.
+5. Six conditionally admits and durably reserves that operation under the current fence
+   and enforceable spend bound, meeting eight's durability demand.
+6. Eight's effect boundary consumes the reservation's single dispatch-claim and dispatches
+   to the registered model adapter. The run cannot call the provider directly.
+7. Seven records the provider receipt, part one's `Outcome` and `Result`, and the decoded
+   answer/`Decision`, preserving the evidence eight needs for execution and charge settlement.
+8. Five conditionally accepts the recorded answer against the pending run predecessor.
+9. Five advances from that accepted reference. A later business effect has its own operation
+   identity, authorization checks and admission; judgment acceptance is not effect permission.
+
+**Rule — the judgment seam has one named owner per record.** **Check:** P5-NF-59/60
+verifies the joins and refuses competing authorities. These are references to owned records,
+not additional outcome, result, decision, reservation or acceptance types:
+
+| Record | Sole owner | Binding consumed by five |
+|---|---|---|
+| Logical judgment request | Seven | `JudgmentRequest.logicalKey` and request id, bound to the pending run/step and exact input digest |
+| Attempt | Seven | Stable attempt id within that request; one provider invocation proposal |
+| Operation identity and reservation | Six | Immutable, injective mapping from `(request id, attempt id)` to one operation id and its exact request digest and reservation |
+| Provider receipt | Seven | Original response/usage evidence and decoded part-one `Outcome`, `Result`, and `Decision` references; eight owns their effect settlement |
+| Spend reservation | Six | Credits in the same fenced operation admission; seven's usage observations are not an allocator |
+| Run-acceptance reference | Five | The conditional `RunTransition` linking the pending step/request to the accepted answer and its attempt, operation, reservation and receipt references |
+
+**Rule — recovery preserves the attempt mapping; a fresh attempt earns admission.**
+**Check:** P5-NF-60. Transport redelivery and recovery retain the same request, seven-owned
+attempt and six-owned operation mapping. A changed digest under that mapping is `Conflict`;
+duplicate evidence cannot allocate another reservation or invoke the provider again. An
+uncertain operation permits only observation, including read-only retrieval of stored receipts
+or results, not resubmission with the same key. A genuinely new provider attempt gets a new
+seven-owned attempt id and six-owned operation id linked to its predecessor only after six's
+recovery reconciles the prior execution and charge uncertainty using eight's settlement.
+A proposed attempt may be recorded while waiting but cannot dispatch. Extra budget, a fresh
+lease, another provider or a changed route cannot bypass the hold. Six retains maximum
+unresolved exposure and alone converts or releases its reserved credits from eight's settlement;
+a never-dispatched prepared reservation can close only with conditional proof no dispatch-claim
+exists. Seven records usage evidence without changing those credits.
+
+**Rule — recorded judgment is not yet run acceptance.** **Check:** P5-NF-59/60.
+Five's accepting `RunTransition` references the pending step and logical request, exact input
+digest, seven's attempt/receipt/decoded answer, six's operation/reservation, and the current
+predecessor, standing, generation, fence and stop checks. It consumes part one's `Result`,
+`Outcome` and floor-bound `Decision`, never a socket return or unvalidated answer. Conditional
+admission accepts at most one answer for the logical request in that step; an identical
+duplicate returns the existing acceptance. A different answer cannot replace it silently.
+A stale predecessor, stale authority or stop blocks new acceptance and advancement while the
+receipt, late answer and charge evidence remain preserved. Missing charge evidence does not
+erase a recorded answer or release capacity: eight's settlement remains independently pending,
+and any dependent work must satisfy the run's pending obligations and its own admission.
+
 **Rule — restart observes pending work; it does not repeat unknown effects.** **Check:** P5-NF-11/12.
 Part six must enumerate every nonterminal run with a missing worker, preserve its pending
 operation identity across machine changes, establish new ownership, and query the authoritative
 operation outcome. `Outcome.uncertain` remains a wait for observation, even when no external
-lookup exists. A retry requires evidence of `did-not-happen`, or the effect doorway's proof
-that submitting the identical operation key cannot duplicate the effect. The latter is outcome
-reconciliation inside that doorway, not the graph treating uncertainty as failure. Six owns
+lookup exists. Recovery is read-only with respect to that uncertain effect: even an idempotent
+same-key resubmission is forbidden. A retry requires evidence of `did-not-happen`, proof that
+the old dispatch-claim cannot still execute, and settlement of any charge. A missing record,
+timeout or fresh lease supplies none of that proof. Six owns
 recovery attempts; this part owns the unfinished assignment they service. During permanent
 loss of an unreplicated tail, missing evidence remains missing: no claim of lossless recovery
 is made beyond the recorded durability state.
@@ -543,7 +605,9 @@ recorded disposition. Same key and different digest records a conflict with pres
 Closing a run does not remove the compact identity/digest tombstone needed to recognize its
 replays. A bounded transport queue may shed no accepted item without handing back a durable
 terminal or responsibility transfer. Overflow refuses new acceptance with honest backpressure;
-retries still use part six's loop and the existing key.
+recovery uses part six's bounded read-only receipt/result lookup with the existing semantic
+key. A lookup miss cannot create work or resubmit an uncertain offer; duplicate submissions
+already in flight still pass semantic deduplication.
 
 **Rule — a peer's silence needs proof it had a chance to answer.** Rule 98 and P4-NF-23.
 **Check:** P5-NF-43. Only a declared peer-review request that reached `delivered-to-worker`
@@ -633,7 +697,7 @@ for user communication never grants mutation authority.
 | S2: ownership and resumption | Six's leases/recovery; five supplies pending run state | Run/session admission and eight's effect admission | Six's ownership/fencing record; five's transition head; eight's operation outcome, each for its own question | Durable work → current ownership → expected-head/resource/stop admission → actual-start grounding → step intent → action → outcome → advance; recovery observes pending keys first | Close execution on stale/lost/contested ownership; preserve observations; minimal communication stays independently available | Six closes recovery/fencing attempts; five closes work; eight settles effects |
 | S3: resource and repeats | Five's budget/step requests; six's allocation and loop machinery | All run/child admissions | Budget allocation and charge facts under six's admission, linked to five's ancestor budgets | Reserve within ancestors → admit action → meter/settle → release only proved unused capacity; wake through bounded loop | Close new allocation/retry; keep unresolved maximum charge and visible repair | Six closes allocations/loop attempts; five owns remaining assignment and exhausted-capacity decision |
 | S4: delegation over transport | Parent run and transport adapter; remote receiving intake | Remote run; parent collection | Contract/offer, recipient acceptance/mapping, delivery witnesses, child terminal, collection receipt | Edge durable → send → receiver intake/admission → worker consumes → child outcome/result durable → parent collects → receipt | Close unverified/out-of-scope execution; queue or preserve uncertain delivery; never promote an ack | Five owns edge and collection; receiving agent owns accepted child; six owns adapter delivery/recovery |
-| S5: judgment and refined ask | Run's bounded request; seven's doorway response | Seven, then run admission and four's operation classification | Seven's decision/benchmark record plus immutable request and step identity | Durable judge step → doorway call/record → decode floor-bound response → current-authority recheck → advance/classify | Use the registered doorway's fail direction/default; no unclassified ask grants authority; owned wait if no safe progress | Seven closes the call record; five carries the wait/next step; four closes classification/routing |
+| S5: judgment and refined ask | Five's pending step; seven's request/attempt/answer; six's admission | Eight's model dispatch, then five's acceptance; four's classification | Seven's request/attempt/receipt and part-one Outcome/Result/Decision; six's operation/spend reservation; five's RunTransition acceptance; eight's settlement | Adopt section 3: persist step/request → own → validate/ground → persist attempt/operation → fenced durable spend reserve → effect dispatch → record receipt/Outcome/answer → conditional acceptance → advance; later effect separately admitted | No dispatch on stale/unreserved operation or unresolved prior execution/charge; doorway default stays within floor; stop/stale predecessor blocks acceptance | Seven closes question/answer; six owns ownership/reservation/recovery and credit release; eight settles effect; five owns run acceptance/wait; four closes classification |
 | S6: effects | Five's admitted proposal | Eight's effect doorway; five consumes result | Eight's operation record, `Result`, `Outcome`, authorization validation and verification obligation | Step intent durable at demanded level → eight validates current scope/base/lease → effect → eight records outcome → five consumes once | Close unsafe/stale mutation; uncertainty routes to observation; user communication applies its own declared consumer direction | Eight settles operation and schedules verification; five advances work; nine grades evidence |
 | S7: authorization lifecycle | Four's routed request; eleven's verified response; four's decoder | Five's wait and eight's effect validation | Exact request digest and part-one `Authorization` or preserved decline/expiry; run wait transition | Request durable → owned wait → surface response through intake → exact match/current validation → eligibility → effect re-validation | Silence never yes; expired/declined receipt drains; conflict inhibits action | Eleven owns response surface, four owns authority decoding/standing candidates, five owns wait/receipts, eight owns final eligibility |
 | S8: grounding and continuity | Four's history substrate, three's generated briefing, harness read receipt | Five's actual-start gate and reply accounting | `SessionGrounding`, `ContinuityAccounting`, original inbound and reply fact | Fresh clock/history/current graph → delivered-context receipt → ordinary work; compaction accounting → first reply send | Close affected ordinary execution on ungrounded input; independently grounded repair/stop remains available | Five owns grounding/accounting; ten realizes consumption; nine reviews substantive adequacy |
@@ -661,17 +725,18 @@ realization to supply the witnesses; a mocked “lease held” boolean cannot pa
 
 | Trace | Durable facts before failure | What this part does | What remains open, and who closes it |
 |---|---|---|---|
-| Crash after effect, before record | Root R owns edge E to child C; step S and exact operation key K were admitted and durable. The effect occurs, but the worker dies before recording its response. | R and C remain. Recovery finds pending S/K, obtains current ownership, then observes K through eight. Positive occurrence evidence records the outcome and advances once; proved non-occurrence allows the doorway's safe same-key retry; no answer leaves `uncertain`. A new worker or new key cannot turn the unknown into fresh work. | Six closes recovery admission; eight settles K. Five holds C, E's collection, R's exit, and the maximum uncertain resource charge until their evidence permits settlement. Permanent evidence loss is visible, not successful recovery. |
-| Duplicate delivery | E's offer or C's result has a semantic key and digest; the prior attempt may already have been consumed, while its receipt was lost. | Four preserves and deduplicates events; five looks up the semantic key even if the retry has a new fact id. Equal digest replays the original disposition/collection receipt; changed digest records Conflict and admits no new child/result. Rebuild retains the tombstone needed after closure. | Five owns the single collection transition. Six only redelivers or reconciles transport receipts. Neither “lease obtained twice” nor “fact ids differ” justifies executing twice. |
+| Crash after effect, before record | Root R owns edge E to child C; step S and exact operation key K were admitted and durable. The effect occurs, but the worker dies before recording its response. | R and C remain. Recovery finds pending S/K, obtains current ownership, then observes K through eight. Positive occurrence evidence records the outcome and advances once; proved non-occurrence plus old-executor quiescence and settled charge permits a newly admitted bounded attempt; judgment uses section 3's new attempt/operation mapping. No answer leaves `uncertain` and permits only read-only observation, never same-key resubmission. A new worker or new key cannot turn the unknown into fresh work. | Six closes recovery admission; eight settles K. Five holds C, E's collection, R's exit, and the maximum uncertain resource charge until their evidence permits settlement. Permanent evidence loss is visible, not successful recovery. |
+| Duplicate delivery | E's offer or C's result has a semantic key and digest; the prior attempt may already have been consumed, while its receipt was lost. | Four preserves and deduplicates events; five looks up the semantic key even if the retry has a new fact id. Equal digest replays the original disposition/collection receipt; changed digest records Conflict and admits no new child/result. Rebuild retains the tombstone needed after closure. | Five owns the single collection transition. Six retrieves stored receipts/results in read-only lookup mode; missing evidence cannot create work or resubmit the uncertain offer. Neither “lease obtained twice” nor “fact ids differ” justifies executing twice. |
 | Cancellation racing completion | Stop X names R's scope; completion proposal Y names C's exit evidence and expected predecessor. Delivery order may differ across machines. | X inhibits new admission locally when received. If Y causally precedes X, preserve achieved work and cancel only remaining work. If X precedes Y, accept late observations without new execution/success authority. If incompatible X/Y are concurrent, expose Conflict, inhibit execution, and reconcile the pending operation evidence. Queueing cancel to C does not prove C stopped. | Five owns run/edge terminal resolution; six fences and proves cancellation delivery/admission; eight accounts for effects already admitted. Parent closure waits for child/effect settlement or an accepted responsibility transfer. |
 | Stale authority | Worker W has an old ownership reference or a grant/generation view that is stale, provisional, or contested; a new holder has been admitted. | Refuse W's next session/step/effect/resource admission even if W never receives a loss notification. Authenticated observations may still enter under W's separate observer standing, subject to intake verification; they cannot advance the graph themselves. Current holder adopts only verified evidence and observes any pending key before advancing. | Six proves fencing at the execution boundary; four resolves standing, three generation, two taint; eight settles effects. Five keeps the run and its blocked-on owner, not W's claimed authority. |
 
 **Rule — “at most once” has an exact subject and stated limit.** **Check:** P5-NF-35/50 checks
 one logical result collection and one admitted logical operation under the declared
 failure model. It does not claim universal exactly-once behavior from an arbitrary external
-service. Without an external idempotency guarantee or a conclusive observation, the effect
-remains uncertain and automatic replay is refused. Six/eight must document how a delayed
-already-admitted external call is bounded; fencing prevents new admissions, not the physical
+service. While the effect remains uncertain, automatic replay is refused even with an
+external idempotency guarantee. Conclusive non-occurrence, proof the old claim cannot still
+execute, and settled charge are required before a new execution attempt. Six/eight must
+document how a delayed already-admitted external call is bounded; fencing prevents new admissions, not the physical
 undoing of a packet already accepted elsewhere. This distinction is part of the contract,
 not an exception quietly invented during recovery.
 
@@ -837,7 +902,7 @@ these significant features; no code or runtime test result is claimed by this de
 | P5-NF-08 | test | Any state pair outside section 2 admitted; due timer used as evidence of a satisfied dependency | 68/97/98: explicit transitions |
 | P5-NF-09 | test | Permuting concurrent incompatible transitions picks a clean winner rather than Conflict and inhibited execution | 31/33/63: no authority from fold order |
 | P5-NF-10 | lifecycle | Former worker starts/advances/allocates/effects after fencing, despite loss notification being withheld; tainted authority used cleanly | 28/63/68: admission enforces current ownership |
-| P5-NF-11 | lifecycle | Crash after external effect but before recorded response causes blind retry or a fresh operation identity | 24/26/42/68: observe unknown effects |
+| P5-NF-11 | lifecycle | Crash after external effect but before recorded response causes any uncertain-effect resubmission, including same-key/idempotent replay, or a fresh operation identity | 24/26/42/68: observe unknown effects |
 | P5-NF-12 | test | Inconclusive absence query treated as non-occurrence; conclusive occurrence advances twice; permanent evidence loss described as recovered | 26/42: honest uncertainty |
 | P5-NF-13 | lifecycle | Nonterminal run has no live worker, durable due obligation, or owned inhibition; heartbeat alone counted as progress | 8/46/64/68/83/92: no silent abandonment |
 | P5-NF-14 | test | Concurrent parent/child allocation exceeds an ancestor cap, uses wrong measurement subject, or treats zero as a default | 13/60/61/114: compositional limits |
@@ -885,6 +950,8 @@ these significant features; no code or runtime test result is claimed by this de
 | P5-NF-56 | lifecycle | Production assembly supplies null/no-op ports, feature returns unavailable instead of its live contract, or real-surface first slice cannot survive crash cuts | 34/43/62/114: feature actually alive |
 | P5-NF-57 | build | Inherited duty missing or still deferred to five; partial duty hides its residual; gap lacks owner, due loop, evidence requirement or calendar ceiling | 8/9/49/69/71; P3-NF-24: honest closure of inheritance |
 | P5-NF-58 | build | Rule has no check, fixture reference has no row, row has no protected rule, or an unexecuted fixture is counted held | 1/26/34/37/69: references and coverage cannot inflate |
+| P5-NF-59 | contract / lifecycle | Composed judgment order skips a durable boundary, calls provider before fenced spend reservation, accepts undecoded/stale/stopped output, duplicates acceptance, or treats paid judgment as business-effect permission; valid recorded answer advances once | 41/42/60/63/68/75/114: composed dispatch and conditional run acceptance |
+| P5-NF-60 | contract / lifecycle | Attempt maps to multiple operations, digest collision replaces a mapping, recovery re-invokes provider, unsettled execution/charge permits a new attempt, or five/seven releases six's credits; settled predecessor permits a newly admitted linked attempt, and read-only retrieval preserves original mapping and collection | 24/26/33/55/60/63/75/114: single owners, stable retry mapping and no uncertain resubmission |
 
 ---
 
