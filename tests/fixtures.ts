@@ -31,7 +31,7 @@ export function fixture() {
       actions: { work: { protected: false, repository: false }, other: { protected: false, repository: false }, merge: { protected: true, repository: true }, delegate: { protected: false, repository: false } },
       subjects: { clock: ['unix-ms'], 'detection-latency': ['ms', 's'], 'time-remaining': ['ms'] },
       sites: { 'types.decode': 'closed', delivery: 'open' },
-      keys: { host: { algorithm: 'ed25519', publicKey, methods: ['signed-envelope', 'github-review', 'github-merge', 'fact-envelope'], adapters: ['host'] } },
+      keys: { host: { algorithm: 'ed25519', publicKey, methods: ['signed-envelope', 'github-review', 'github-merge', 'fact-envelope'], adapters: ['host'], owner: 'machine-a' } },
       allowRedelegation: false,
       conflictStanding: { ordinary: 'delegate', authority: 'operator' },
     },
@@ -42,10 +42,17 @@ export function fixture() {
   const now = clock();
   function capture(text: string, ref?: string) { const hash = captureHash(text); captures[ref ?? hash] = text; return hash; }
   function historyPin(record: unknown) {
-    const signedBytes = bytes({ id: 'fact:1', body: record });
-    return { origin: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: 'fact:1' },
-      capture: { reference: 'capture:envelope', hash: capture(signedBytes, 'capture:envelope') }, machineKeyId: 'host',
-      signature: sign(null, Buffer.from(signedBytes), privateKey).toString('hex'), path: ['body'] };
+    // P2: signature covers contentHash, which covers the as-appended canonical preimage.
+    const preimage = { type: 'FactEnvelope', schemaVersion: 1, id: 'machine-a:1:1', kind: 'constitutional-record',
+      at: now, machine: 'machine-a', principal: alice, provenance: alice.provenance,
+      segment: { machine: 'machine-a', epoch: 1, position: 1 }, prevInSegment: 'genesis:machine-a',
+      predecessors: { inSegment: null, frontier: {} }, body: record };
+    const contentHash = digest(preimage);
+    const signature = sign(null, Buffer.from(contentHash, 'utf8'), privateKey).toString('hex');
+    const signedBytes = bytes({ ...preimage, contentHash, signature });
+    return { origin: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: preimage.id },
+      capture: { reference: `capture:envelope:${contentHash}`, hash: capture(signedBytes, `capture:envelope:${contentHash}`) }, machineKeyId: 'host',
+      path: ['body'] };
   }
   function proof(payload: object, actor = { id: 'alice', kind: 'person' }, recordType = 'approval', attested = false) {
     const recordBytes = bytes({ principal: actor, recordType, payload });

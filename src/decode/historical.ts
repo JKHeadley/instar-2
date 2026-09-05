@@ -20,7 +20,6 @@ export interface OriginPinInput {
   readonly origin: FactEnvelopeReference;
   readonly capture: CaptureInput;
   readonly machineKeyId: string;
-  readonly signature: string;
   readonly path: readonly string[];
 }
 
@@ -31,11 +30,19 @@ export function readHistorical<N extends 'Provenance' | 'VerifiedPrincipal'>(typ
   try {
     if (pin.origin.owner !== 'part-two' || pin.origin.name !== 'FactEnvelope' || !pin.origin.id) return refusal('historical origin must name a fact envelope', context.preserved);
     const bytes = context.captures[pin.capture.reference]; const key = context.register.keys[pin.machineKeyId];
-    if (typeof bytes !== 'string' || hashText(bytes) !== pin.capture.hash || !key || key.algorithm !== 'ed25519' || !key.methods.includes('fact-envelope') || !/^[a-f0-9]{128}$/.test(pin.signature)
-      || !verify(null, Buffer.from(bytes), key.publicKey, Buffer.from(pin.signature, 'hex'))) return refusal('historical origin signature or capture failed', context.preserved, 'integrity');
+    if (typeof bytes !== 'string' || hashText(bytes) !== pin.capture.hash || !key || key.algorithm !== 'ed25519' || !key.methods.includes('fact-envelope'))
+      return refusal('historical origin key or capture failed', context.preserved, 'integrity');
     const envelope = snapshot(JSON.parse(bytes));
     if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope) || (envelope as Record<string, unknown>).id !== pin.origin.id)
       return refusal('historical origin identity differs from signed envelope', context.preserved, 'integrity');
+    const frame = envelope as Record<string, unknown>;
+    if (typeof frame.type !== 'string' || !frame.type || !Number.isSafeInteger(frame.schemaVersion) || Number(frame.schemaVersion) < 1 || frame.machine !== key.owner)
+      return refusal('historical envelope domain or machine/key owner mismatch', context.preserved, 'integrity');
+    const preimage = Object.fromEntries(Object.entries(frame).filter(([field]) => field !== 'contentHash' && field !== 'signature'));
+    if (frame.contentHash !== hashText(canonicalText(preimage))) return refusal('historical envelope contentHash does not bind its preimage', context.preserved, 'integrity');
+    if (typeof frame.signature !== 'string' || !/^[a-f0-9]{128}$/.test(frame.signature)
+      || !verify(null, Buffer.from(String(frame.contentHash), 'utf8'), key.publicKey, Buffer.from(frame.signature, 'hex')))
+      return refusal('historical envelope signature over contentHash failed', context.preserved, 'integrity');
     let selected: unknown = envelope;
     for (const field of pin.path) {
       if (!selected || typeof selected !== 'object' || !Object.hasOwn(selected, field)) return refusal('historical path is absent from signed origin', context.preserved);

@@ -12,6 +12,7 @@ export type JudgmentRequestReference = OwnedReference<'part-seven', 'JudgmentReq
 export type RegisteredKeyInput = Readonly<{
   readonly methods: readonly string[];
   readonly adapters: readonly string[];
+  readonly owner?: string;
 }> & (Readonly<{ algorithm: 'ed25519'; publicKey: string }> | Readonly<{ algorithm: 'hmac-sha256'; verificationKey: Uint8Array }>);
 export type AuthenticationEvidenceInput =
   | Readonly<{ kind: 'signature'; keyId: string; signature: string }>

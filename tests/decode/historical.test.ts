@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { consumeResult, decode, readHistorical } from '../../src/index.js';
 import type { Provenance, Result } from '../../src/index.js';
-import { clone, fixture, raw, value } from '../fixtures.js';
+import { bytes, clone, fixture, raw, value } from '../fixtures.js';
 const refused = <T>(result: Result<T>, text: string) => consumeResult(result, { Success: () => { throw new Error('expected refusal'); }, Refused: r => expect(r.detail).toContain(text) });
 describe('origin-pinned historical principal and provenance reads', () => {
   it('preserves channel attestation under a valid machine signature', () => {
@@ -23,7 +23,11 @@ describe('origin-pinned historical principal and provenance reads', () => {
   });
   it('rejects changed origin bytes, invalid signatures, wrong paths and altered identity', () => {
     const f = fixture(); const p = f.alice; const pin = f.historyPin(p);
-    refused(readHistorical('VerifiedPrincipal', clone(p), { ...pin, signature: '00'.repeat(64) }, f.ctx), 'signature');
+    const original = JSON.parse(f.captures[pin.capture.reference]!);
+    const altered = (changes: object) => { const changed = bytes({ ...original, ...changes }); const hash = f.capture(changed, 'altered-envelope'); return { ...pin, capture: { reference: 'altered-envelope', hash } }; };
+    refused(readHistorical('VerifiedPrincipal', clone(p), altered({ signature: '00'.repeat(64) }), f.ctx), 'signature');
+    refused(readHistorical('VerifiedPrincipal', clone(p), altered({ body: { ...clone(p), id: 'another' } }), f.ctx), 'contentHash');
+    refused(readHistorical('VerifiedPrincipal', clone(p), altered({ contentHash: `sha256:${'00'.repeat(32)}` }), f.ctx), 'contentHash');
     refused(readHistorical('VerifiedPrincipal', clone(p), { ...pin, path: ['missing'] }, f.ctx), 'path');
     refused(readHistorical('VerifiedPrincipal', { ...clone(p), id: 'another' }, pin, f.ctx), 'origin pin');
     f.captures[pin.capture.reference] = '{}'; refused(readHistorical('VerifiedPrincipal', clone(p), pin, f.ctx), 'capture');
