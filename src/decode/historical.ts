@@ -1,7 +1,7 @@
 import { verify } from 'node:crypto';
 import type * as T from '../types/values.js';
 import type { CaptureInput, DecodeContext, FactEnvelopeReference } from '../types/ports.js';
-import { consumeResult, errorDetail, refusal, seal, success, trusted } from '../types/internal.js';
+import { consumeResult, errorDetail, evaluateGrantLiveness, refusal, seal, success, trusted } from '../types/internal.js';
 import { canonicalText, hashText, snapshot } from './canonical.js';
 import { decode } from './decode.js';
 import { rehydrateConflict } from './rehydrate.js';
@@ -28,7 +28,9 @@ export interface OriginPinInput {
   readonly path: readonly string[];
 }
 export interface HistoricalDecodeContext extends Omit<DecodeContext, 'provenance' | 'principals' | 'grants' | 'revocations' | 'authorizations' | 'directives' | 'evidence' | 'recordSubjects' | 'binding'> {
-  // Part two selects only the fact's causal dependencies and supplies its explicit clock proof.
+  // Part two selects the ORIGINATING fact's causal dependencies and explicit clock
+  // proof. This is additional to each body's own at/issuedAt invariant. A later
+  // containing/appending fact must receive its own separate P2 admission check.
   readonly history?: readonly HistoricalRead<T.ConstitutionalValue>[];
   readonly captureStatuses?: Readonly<Record<string, CaptureStatus>>;
   readonly recordSubjects?: Readonly<Record<string, unknown>>;
@@ -117,4 +119,28 @@ export function readHistoricalEvidence(record: HistoricalRead<T.Evidence>, now: 
   if (!value || value.type !== 'Evidence') return refusal('historical Evidence must be origin-verified', preserved);
   if (record.unavailableCaptures.length) return refusal('evidence-unavailable: historical capture cannot be reinspected', preserved, 'integrity');
   return readEvidence(value, now, preserved);
+}
+
+// P2 selects the cone and its clock before calling. This returns a historical
+// classification, never a live grant/principal/authorization or a new issuer token.
+// Every supplied revocation is causally effective regardless of its testimony at.
+export function historicalGrantLiveness(grant: HistoricalRead<T.StandingGrant>,
+  revocations: readonly HistoricalRead<T.Revocation>[], now: T.Clock, preserved: string): T.Result<T.GrantLiveness> {
+  const reference = typeof preserved === 'string' && preserved ? preserved : 'input://caller';
+  try {
+    if (reference !== preserved) return refusal('historical liveness requires preservation reference', reference);
+    if (!trusted(now, 'Measurement') || now.subject.kind !== 'clock') return refusal('historical liveness requires a decoded causal clock', reference);
+    const g = records.get(grant);
+    if (!g || g.type !== 'StandingGrant') return refusal('historical liveness requires an origin-verified StandingGrant', reference, 'standing');
+    if (!Array.isArray(revocations)) return refusal('historical revocations must be a list', reference);
+    const decoded: T.Revocation[] = [];
+    for (const wrapper of revocations) {
+      const r = records.get(wrapper);
+      if (!r || r.type !== 'Revocation') return refusal('historical liveness requires origin-verified Revocations', reference, 'standing');
+      decoded.push(r);
+    }
+    if ([grant, ...revocations].some(r => r.unavailableCaptures.length > 0))
+      return refusal('evidence-unavailable: historical standing dependencies cannot be reinspected', reference, 'integrity');
+    return success(evaluateGrantLiveness(g, decoded, now, true));
+  } catch (error) { return refusal(errorDetail(error), reference); }
 }

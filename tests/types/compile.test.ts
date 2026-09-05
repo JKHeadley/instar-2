@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { createProgram } from '../../scripts/check-architecture.mjs';
 
 const prelude = `
-import { compare, compareMeasurements, consumeResult, decode, decodeMeasurement, grantLiveness, isFresh } from '../src/index.js';
+import { compare, compareMeasurements, consumeResult, decode, decodeMeasurement, grantLiveness, historicalGrantLiveness, isFresh, readHistorical } from '../src/index.js';
 import type { Authorization, Clock, Decision, Directive, Evidence, HistoricalRead, Measurement, Provenance, Result, Scope, SecretRef, StandingGrant, UnresolvedInput, VerifiedIntent, VerifiedPrincipal } from '../src/index.js';
 type Fields<T> = Pick<T, Extract<keyof T, string>>;
 declare const principal: VerifiedPrincipal, otherPrincipal: VerifiedPrincipal, provenance: Provenance;
@@ -18,6 +18,7 @@ const remainingInput = { ...latencyInput, subject: { kind: 'time-remaining', ins
 const latency = decoded(decodeMeasurement('detection-latency', latencyInput, f.ctx));
 const remaining = decoded(decodeMeasurement('time-remaining', remainingInput, f.ctx));
 const decodedClock = decoded(decodeMeasurement('clock', f.clockRaw(), f.ctx));
+const historyGrant = decoded(readHistorical('StandingGrant', f.g, f.historyPin(f.g), f.ctx));
 function parse(subject: 'detection-latency' | 'time-remaining', bytes: unknown) {
   return decoded(decodeMeasurement(subject, bytes, f.ctx));
 }
@@ -52,6 +53,9 @@ const cases = {
   'NF-71': ['const { ...fields }: Fields<Provenance> = provenance; const forged: Provenance = fields;', 'const x: Provenance = provenance;'],
   'NF-51-spread': ['const x: VerifiedPrincipal = { ...principal, kind: "system" };', 'const x: VerifiedPrincipal = principal;'],
   'historical-standing': ['needsPrincipal(archived.view);', 'const originalClass = archived.view.provenance.class;'],
+  'historical-liveness': ['grantLiveness(historyGrant, [], decodedClock);', 'const status = decoded(historicalGrantLiveness(historyGrant, [], decodedClock, f.ctx.preserved));'],
+  'historical-liveness-view': ['grantLiveness(historyGrant.view, [], decodedClock);', 'const status = decoded(historicalGrantLiveness(historyGrant, [], decodedClock, f.ctx.preserved));'],
+  'historical-liveness-clock': ['historicalGrantLiveness(historyGrant, [], latency, f.ctx.preserved);', 'historicalGrantLiveness(historyGrant, [], decodedClock, f.ctx.preserved);'],
 } as const;
 const sources = Object.fromEntries(Object.entries(cases).flatMap(([id, [invalid, valid]]) => [
   [`tests/virtual-${id}-invalid.ts`, prelude + invalid], [`tests/virtual-${id}-valid.ts`, prelude + valid],
