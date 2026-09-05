@@ -85,17 +85,18 @@ it.each(['both', 'left', 'right', 'neither'] as const)('P2-NF-52 P2-NF-76 comple
   for (const equal of [true, false]) {
     const f = diskFixture(); try {
       const left = value(decode('Intent', f.intentInput(), f.ctx.decode));
-      const right = value(decode('Intent', f.intentInput({ raw: equal ? left.raw : f.capture('different immutable raw') }), f.ctx.decode));
+      const right = value(decode('Intent', f.intentInput({ principal: equal ? f.alice : f.bob, raw: equal ? left.raw : f.capture('different immutable raw') }), f.ctx.decode));
       const otherOrigin = f.proof({ receive: 'second signed origin' }).p;
-      const a = f.wire({ body: { identity: 'one', amount: '1', intent: left } });
-      const b = f.wire({ machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 }, provenance: otherOrigin, body: { identity: 'one', amount: '1', intent: right } });
+      const a = f.wire({ provenance: otherOrigin, body: { identity: 'one', amount: '1', intent: left } });
+      const b = f.wire({ machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 }, principal: f.bob, provenance: f.bob.provenance, body: { identity: 'one', amount: '1', intent: right } });
       const ctx = { ...f.ctx, schemas: [conflictFactSchema(f.scope), { ...f.schema, fields: { ...f.schema.fields, intent: { kind: 'constitutional' as const, type: 'Intent' as const } } }],
-        decode: { ...f.ctx.decode, principals: live === 'both' || live === 'left' ? [f.alice] : [], ...(live === 'both' || live === 'right' ? { provenance: otherOrigin } : {}) } };
+        decode: { ...f.ctx.decode, principals: [f.alice, ...(live === 'both' || live === 'right' ? [f.bob] : [])], ...(live === 'both' || live === 'left' ? { provenance: otherOrigin } : {}) } };
       const store = createFactStore(ctx, f.storage, { conflictAppender: f.conflictAppender });
       value(store.append(a, { peer: 'machine-a' })); value(store.append(b, { peer: 'machine-b' }));
       if (!equal && live !== 'both') { refused(store.readForProjection(), 'historical comparison consumer required'); continue; }
       const snapshot = value(store.readForProjection());
       expect(snapshot.entries.slice(0, 2).map(e => e.historical.length)).toEqual([1, 1]);
+      expect(snapshot.entries.slice(0, 2).map(e => e.constitutional.length)).toEqual([Number(live === 'both' || live === 'left'), Number(live === 'both' || live === 'right')]);
       const def = { id: 'matrix', class: 'authority-answering' as const, retention: 'all-identities' as const, stalenessBound: 100,
         decisions: { note: { kind: 'folds' as const, merge: 'additive' as const, identity: 'identity', value: 'amount' }, 'conflict-record': { kind: 'ignores' as const, reason: 'status still propagates' } } };
       const view = value(foldProjection(def, snapshot, { reference: ctx.decode.register.generation, kinds: Object.keys(def.decisions),
