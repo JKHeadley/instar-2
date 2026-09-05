@@ -1,15 +1,31 @@
 // P1's historical wrappers retain validation identity without acquiring live standing.
 import { readHistorical } from '../index.js';
-import type { ConstitutionalValue, DecodeContext, HistoricalRead, Json, Result } from '../index.js';
+import type { ConstitutionalValue, DecodeContext, HistoricalRead, Json, Result, StandingGrant, Revocation } from '../index.js';
 import { boundary, encoding, fields, object, requireFact, same, string, take } from './boundary.js';
 import { causalCone, causalStanding, migrateBody } from './admission.js';
 import { decodeFrame, hashBytes, schemaFor } from './envelope.js';
 import { contextBoundary } from './contracts.js';
 import type { AuthorityTaint, FactContext, FactEnvelope } from './contracts.js';
+import { decodeOwnedBody } from './owned.js';
 
 export interface HistoricalBody {
   readonly fields: Readonly<Record<string, Json | HistoricalRead<ConstitutionalValue>>>;
   readonly taint: readonly AuthorityTaint[];
+  readonly records: readonly HistoricalRead<ConstitutionalValue>[];
+  readonly grants: readonly HistoricalRead<StandingGrant>[];
+  readonly revocations: readonly HistoricalRead<Revocation>[];
+}
+export function historicalAuthority(context: FactContext): FactContext {
+  const historicalGrants = [...context.historicalGrants ?? []], historicalRevocations = [...context.historicalRevocations ?? []];
+  const c = { ...context, historicalGrants, historicalRevocations };
+  for (const fact of [...context.facts].sort((a, b) => causalCone(a, context.facts).length - causalCone(b, context.facts).length)) {
+    const schema = schemaFor(c, fact.kind, fact.schemaVersion);
+    if (!Object.values(schema.fields).some(f => f.kind === 'constitutional' && ['StandingGrant', 'Revocation'].includes(f.type))) continue;
+    const body = take(decodeHistoricalBody(fact, c, causalStanding(fact, c, false).decode));
+    historicalGrants.push(...body.grants.map(grant => ({ factId: fact.id, grant })));
+    historicalRevocations.push(...body.revocations.map(revocation => ({ factId: fact.id, revocation })));
+  }
+  return c;
 }
 export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, decoderContext: DecodeContext): Result<HistoricalBody> {
   return boundary('HistoricalFactBody', fact.body, contextBoundary(context), () => {
@@ -37,6 +53,7 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
         capture: { reference, hash: hashBytes(bytes) }, machineKeyId: checked.keyId, path: [] as string[] };
       const out: Record<string, Json | HistoricalRead<ConstitutionalValue>> = {};
       const own: HistoricalRead<ConstitutionalValue>[] = [];
+      const grants: HistoricalRead<StandingGrant>[] = [], revocations: HistoricalRead<Revocation>[] = [];
       let unavailable = false;
       for (const [type, path] of [['VerifiedPrincipal', 'principal'], ['Provenance', 'provenance']] as const) {
         const identity = take(readHistorical(type, record[path], { ...pin, path: [path] }, hc));
@@ -48,13 +65,22 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
       for (const [name, field] of Object.entries(schema.fields)) {
         const value = body[name]; if (value === undefined && schema.optional?.includes(name)) continue;
         requireFact(value !== undefined, `missing body field ${name}`);
+        if (field.kind === 'owned') {
+          requireFact(same(value, object(record.body)[name]), 'owned body migration must retain its signed field pin');
+          const decoded = decodeOwnedBody(field.owner, field.name, value, record, 'historical', context);
+          out[name] = decoded.value; unavailable ||= decoded.taint.includes('evidence-unavailable'); continue;
+        }
         if (field.kind === 'constitutional') {
           requireFact(same(value, object(record.body)[name]), 'constitutional migration must retain its signed field pin', 'integrity');
           const shape = object(value);
           const source = field.type === 'StandingGrant' || field.type === 'Revocation' ? shape.source
             : field.type === 'Authorization' ? shape.explicitYes : undefined;
           if (source !== undefined) requireFact(same(source, record.provenance), 'body authority provenance differs from fact provenance', 'standing');
-          const result = take(readHistorical(field.type, value, { ...pin, path: ['body', name] }, hc));
+          const fieldPin = { ...pin, path: ['body', name] };
+          let result: HistoricalRead<ConstitutionalValue>;
+          if (field.type === 'StandingGrant') { const grant = take(readHistorical('StandingGrant', value, fieldPin, hc)); grants.push(grant); result = grant; }
+          else if (field.type === 'Revocation') { const revocation = take(readHistorical('Revocation', value, fieldPin, hc)); revocations.push(revocation); result = revocation; }
+          else result = take(readHistorical(field.type, value, fieldPin, hc));
           own.push(result); history.push(result); out[name] = result;
           unavailable ||= result.unavailableCaptures.length > 0;
         } else {
@@ -72,7 +98,7 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
           out[name] = value;
         }
       }
-      const result: HistoricalBody = { fields: out, taint: unavailable ? ['evidence-unavailable'] : [] };
+      const result: HistoricalBody = { fields: out, records: own, grants, revocations, taint: unavailable ? ['evidence-unavailable'] : [] };
       issued.set(record.id, own); cache.set(record.id, result); return result;
     };
     return read(fact, decoderContext);

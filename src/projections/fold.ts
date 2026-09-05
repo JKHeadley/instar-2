@@ -7,6 +7,8 @@ import type { FactBoundary } from '../facts/boundary.js';
 import type { AuthorityTaint, CausalFrontier, ConflictClass, FactEnvelope, LineagePosition } from '../facts/contracts.js';
 import { comparePosition, foldKey } from '../facts/envelope.js';
 import { causalCone } from '../facts/admission.js';
+import { snapshotCurrent } from '../facts/snapshot.js';
+import type { FactSnapshot, FactStatus } from '../facts/snapshot.js';
 
 export type MergeClass = 'additive' | 'set-union' | 'max' | 'min' | 'exclusive-singleton' | 'cap-checked aggregate';
 export type InputDecision = Readonly<{ kind: 'ignores'; reason: string } | {
@@ -29,6 +31,7 @@ export interface FoldInput {
 }
 class ViewIdentity { private readonly product!: void }
 const producedViews = new WeakSet<object>();
+const sources = new WeakMap<object, FactSnapshot>();
 export interface ProjectedView extends ViewIdentity {
   readonly projection: string; readonly generation: string;
   readonly policy: Readonly<{ class: 'authority-answering' | 'informational'; stalenessBound: number }>;
@@ -60,15 +63,17 @@ function validate(def: ProjectionDefinition, generation: ProjectionGeneration): 
 function concurrent(a: FactEnvelope, b: FactEnvelope, facts: readonly FactEnvelope[]): boolean {
   return !causalCone(a, facts).some(f => f.id === b.id) && !causalCone(b, facts).some(f => f.id === a.id);
 }
-export function foldProjection(def: ProjectionDefinition, inputs: readonly FoldInput[], generation: ProjectionGeneration, context: FactBoundary): Result<ProjectedView> {
+export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, generation: ProjectionGeneration, context: FactBoundary): Result<ProjectedView> {
   return boundary('ProjectionFold', null, context, () => {
+    requireFact(snapshotCurrent(input), 'fold requires current admitted status snapshot', 'integrity');
+    const inputs = input.entries;
     validate(def, generation);
-    const dedup = new Map<string, FoldInput>();
+    const dedup = new Map<string, FactStatus>();
     const conflicts: ConflictClass[] = [], taint = new Set<AuthorityTaint>();
     for (const input of inputs) {
       const prior = dedup.get(input.fact.id);
       requireFact(!prior || prior.fact.contentHash === input.fact.contentHash, 'same fact id with immutable-field disagreement');
-      dedup.set(input.fact.id, input); input.taint.forEach(t => taint.add(t));
+      dedup.set(input.fact.id, input); input.taint.forEach(t => taint.add(t)); conflicts.push(...input.conflicts);
     }
     const rows = [...dedup.values()].sort((a, b) => Buffer.compare(Buffer.from(foldKey(a.fact)), Buffer.from(foldKey(b.fact))));
     const facts = rows.map(r => r.fact), foldedThrough: Record<string, LineagePosition> = {};
@@ -97,7 +102,7 @@ export function foldProjection(def: ProjectionDefinition, inputs: readonly FoldI
       const result = retractions.some(r => object(r.body).target === id && !isRetracted(r.id, new Set(visiting)));
       return result;
     };
-    const excluded = new Set<string>(), corrections: { original: string; replacement: string }[] = [];
+    const excluded = new Set(rows.filter(r => r.conflicts.some(c => c.kind === 'poison-fact')).map(r => r.fact.id)), corrections: { original: string; replacement: string }[] = [];
     for (const original of facts) {
       const replacements = facts.filter(f => object(f.body).corrects === original.id && !isRetracted(f.id));
       for (const replacement of replacements) requireFact(replacement.kind === original.kind && causalCone(replacement, facts).some(f => f.id === original.id), 'correction must follow same-kind original');
@@ -112,7 +117,7 @@ export function foldProjection(def: ProjectionDefinition, inputs: readonly FoldI
     }
     const groups = new Map<string, { decision: Extract<InputDecision, { kind: 'folds' }>; rows: FactEnvelope[] }>();
     const constitutional = new Map<string, { fact: FactEnvelope; value: ConstitutionalValue; subject: Scope }>();
-    for (const input of rows) for (const field of input.constitutional ?? []) {
+    for (const input of rows) for (const field of input.constitutional) {
       requireFact(encoding(object(input.fact.body)[field.field]).bytes === encoding(field.value).bytes, 'constitutional fold input differs from stored field');
       if (!('id' in field.value)) continue;
       const key = `${field.value.type}:${field.value.id}`, prior = constitutional.get(key);
@@ -124,11 +129,18 @@ export function foldProjection(def: ProjectionDefinition, inputs: readonly FoldI
         }
       } else constitutional.set(key, { fact: input.fact, value: field.value, subject: field.subject });
     }
+    const historical = new Map<string, Json>();
+    for (const row of rows) for (const record of row.historical) if ('id' in record.view) {
+      const key = `${record.view.type}:${record.view.id}`, shape = JSON.parse(encoding(record.view).bytes) as Json;
+      const prior = historical.get(key);
+      requireFact(!prior || encoding(prior).bytes === encoding(shape).bytes, 'P1 historical comparison consumer required; authority cannot resolve historical disagreement', 'standing');
+      historical.set(key, shape);
+    }
     for (const fact of facts) {
       const decision = def.decisions[fact.kind]; requireFact(decision, 'projection received undeclared kind');
       if (decision.kind === 'ignores' || excluded.has(fact.id) || isRetracted(fact.id)) continue;
       try {
-        const body = object(fact.body), identity = body[decision.identity];
+        const body = object(dedup.get(fact.id)!.body), identity = body[decision.identity];
         requireFact(typeof identity === 'string' && identity.length > 0 && body[decision.value] !== undefined, 'poison fact: missing fold field');
         if (['additive', 'max', 'min', 'cap-checked aggregate'].includes(decision.merge)) exact(body[decision.value]);
         const key = `${fact.kind}:${identity}`;
@@ -140,12 +152,12 @@ export function foldProjection(def: ProjectionDefinition, inputs: readonly FoldI
     const values: Record<string, Json> = {};
     for (const [key, group] of [...groups].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
       const d = group.decision, members = group.rows;
-      const data = members.map(f => object(f.body)[d.value]!);
+      const data = members.map(f => object(dedup.get(f.id)!.body)[d.value]!);
       if (d.merge === 'exclusive-singleton') {
         const heads = members.filter(a => !members.some(b => a.id !== b.id && causalCone(b, facts).some(f => f.id === a.id)));
         if (heads.some((a, i) => heads.slice(i + 1).some(b => concurrent(a, b, facts)))) {
           conflicts.push({ key: `exclusive:${key}`, kind: 'immutable-disagreement', facts: heads.map(f => f.id).sort(), detail: 'concurrent singleton writers; no presentation winner' }); taint.add('contested');
-        } else if (heads[0]) values[key] = object(heads[0].body)[d.value]!;
+        } else if (heads[0]) values[key] = object(dedup.get(heads[0].id)!.body)[d.value]!;
       } else if (d.merge === 'set-union') values[key] = [...new Map(data.map(v => [encoding(v).bytes, v])).entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, v]) => v);
       else {
         const numbers = data.map(exact);
@@ -161,12 +173,13 @@ export function foldProjection(def: ProjectionDefinition, inputs: readonly FoldI
     const view = { projection: def.id, generation: generation.reference.id, policy: { class: def.class, stalenessBound: def.stalenessBound }, values,
       conflicts: conflicts.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0), taint: [...taint].sort(), foldedThrough,
       knownLineages: generation.lineages, retractions: retractions.map(f => f.id).sort(), corrections: corrections.sort((a, b) => a.original < b.original ? -1 : 1) } as unknown as ProjectedView;
-    producedViews.add(view); return view;
+    producedViews.add(view); sources.set(view, input); return view;
   });
 }
 export function readProjection(view: ProjectedView, definition: ProjectionDefinition, now: Clock, context: FactBoundary, demand: CausalFrontier = {}): Result<{ view: ProjectedView; stale: readonly string[] }> {
   return boundary('ProjectionRead', null, context, () => {
     requireFact(producedViews.has(view), 'view was not produced by fold or verified restore', 'integrity');
+    requireFact(snapshotCurrent(sources.get(view)!), 'projection source changed; reconcile before serving', 'stale-base');
     requireFact(definition.id === view.projection, 'projection definition does not name this view');
     requireFact(Number.isFinite(definition.stalenessBound) && definition.stalenessBound > 0, 'invalid reader staleness bound');
     // A caller may demand a stronger read, but cannot relabel an authority view or widen

@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { checkpoint, foldProjection, readProjection, verifyRebuild } from '../../src/projections/index.js';
 import type { ProjectionDefinition, ProjectionGeneration, FoldInput } from '../../src/projections/index.js';
-import { decodeEnvelope, preimage } from '../../src/facts/index.js';
+import { decodeEnvelope, preimage, prepareSnapshot } from '../../src/facts/index.js';
 import { factsFixture, value, refused, point } from '../facts/fixtures.js';
 
 function fixture() {
@@ -10,7 +10,9 @@ function fixture() {
     'machine-a': { head: point(a), observedAt: 100, closed: false }, 'machine-b': { head: point(b), observedAt: 100, closed: false } } };
   const definition: ProjectionDefinition = { id: 'totals', class: 'informational', stalenessBound: 100, retention: 'all-identities', decisions: { note: { kind: 'folds', identity: 'identity', value: 'amount', merge: 'additive' } } };
   const inputs: FoldInput[] = [{ fact: a, taint: [] }, { fact: b, taint: [] }];
-  const fold = (rows = inputs, def = definition, gen = generation) => foldProjection(def, rows, gen, f.c);
+  const ctx = { ...f.ctx, schemas: [{ ...f.schema, fields: { ...f.schema.fields, corrects: { kind: 'reference' as const } }, optional: ['corrects'] },
+    { ...f.schema, kind: 'retraction', fields: { target: { kind: 'reference' as const }, reason: { kind: 'text' as const, maxLength: 100 } } }] };
+  const fold = (rows = inputs, def = definition, gen = generation) => foldProjection(def, value(prepareSnapshot(rows.map(r => r.fact), ctx)), gen, f.c);
   return { ...f, a, b, generation, definition, inputs, fold };
 }
 it('P2-NF-35 retracted facts remain visible as retracted in the view', () => {
@@ -112,12 +114,11 @@ it('P2-NF-74 every folded kind must declare a merge class', () => {
   const f = fixture(), def = { ...f.definition, decisions: { note: { kind: 'folds', identity: 'identity', value: 'amount' } } };
   refused(f.fold(f.inputs, def as never), 'merge class');
 });
-it('P2-NF-76 provisional, contested and unavailable evidence taint propagates to authority', () => {
+it('P2-NF-76 callers cannot provide an empty or invented clean status annotation', () => {
   const f = fixture();
-  for (const taint of ['provisional', 'contested', 'evidence-unavailable'] as const) {
-    const view = value(f.fold([{ fact: f.a, taint: [taint] }, f.inputs[1]!]));
-    expect(view.taint).toContain(taint); refused(readProjection(view, { ...f.definition, class: 'authority-answering' }, f.now, f.c), 'tainted');
-  }
+  refused(foldProjection(f.definition, f.inputs as never, f.generation, f.c), 'status snapshot');
+  const snapshot = value(prepareSnapshot([f.a, f.b], f.ctx));
+  refused(foldProjection(f.definition, { ...snapshot, entries: snapshot.entries.map(r => ({ ...r, taint: [] })) } as never, f.generation, f.c), 'status snapshot');
 });
 it('cap-checked aggregate emits a violation, with no invented constitutional Conflict', () => {
   const f = fixture(), def = { ...f.definition, decisions: { note: { kind: 'folds' as const, identity: 'identity', value: 'amount', merge: 'cap-checked aggregate' as const, cap: '25' } } };

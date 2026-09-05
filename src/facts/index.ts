@@ -15,3 +15,7 @@ export { receiveReplication } from './replication.js';
 export type { ReplicationReceipt } from './replication.js';
 export { decodeHistoricalBody } from './historical.js';
 export type { HistoricalBody } from './historical.js';
+export { prepareSnapshot } from './snapshot.js';
+export type { FactSnapshot, FactStatus } from './snapshot.js';
+export { registerOwnedBody } from './owned.js';
+export type { OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from './owned.js';

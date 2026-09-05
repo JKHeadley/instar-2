@@ -1,10 +1,11 @@
 // Rules 28/31/33/90; P2-NF-23..28, 32..33, 72, 77.
-import { decode, defineDecoder, grantLiveness, rehydrateConflict, rehydrateOutcome, rehydrateResult, scopeIncludes } from '../index.js';
+import { decode, defineDecoder, grantLiveness, historicalGrantLiveness, rehydrateConflict, rehydrateOutcome, rehydrateResult, scopeIncludes } from '../index.js';
 import type { Clock, ConstitutionalValue, DecodeContext, Json, Result, VerifiedPrincipal, UnresolvedInput } from '../index.js';
 import { boundary, encoding, fields, integer, object, requireFact, same, string, take } from './boundary.js';
 import type { AuthorityTaint, FactContext, FactEnvelope, FactSchema } from './contracts.js';
 import { contextBoundary } from './contracts.js';
 import { comparePosition, schemaFor, hashBytes } from './envelope.js';
+import { decodeOwnedBody } from './owned.js';
 
 export function causalCone(fact: FactEnvelope, facts: readonly FactEnvelope[]): readonly FactEnvelope[] {
   const byId = new Map(facts.map(f => [f.id, f]));
@@ -68,20 +69,31 @@ export function causalStanding(fact: FactEnvelope, context: FactContext, origin:
     if (anchor.clock.value > now.value) now = anchor.clock;
   }
   const scoped = context.grants.filter(g => fact.predecessors.required.includes(g.factId) && scopeIncludes(g.grant.scope, schema.scope));
+  const historicalRevocations = (context.historicalRevocations ?? []).filter(r => ids.has(r.factId)).map(r => r.revocation);
+  const historical = (context.historicalGrants ?? []).filter(g => fact.predecessors.required.includes(g.factId)
+    && scopeIncludes(take(decode('Scope', g.grant.view.scope, context.decode)), schema.scope));
   if (schema.standing !== 'requester') {
-    requireFact(schema.causallyBound && scoped.length > 0, 'standing-gated kind must name grant references');
+    requireFact(schema.causallyBound && scoped.length + historical.length > 0, 'standing-gated kind must name grant references');
     requireFact(fact.provenance.class === 'verified', 'verified provenance required above requester', 'standing');
     const grant = scoped.find(r => ids.has(r.factId) && r.grant.grantee.id === fact.principal.id
       && (schema.standing !== 'operator' || r.grant.standing === 'operator')
       && (r.grant.standing === 'operator' || r.grant.actions.includes(schema.action))
       && !revocations.some(v => v.grantId === r.grant.id)
+      && !historicalRevocations.some(v => v.view.grantId === r.grant.id)
       && grantLiveness(r.grant, revocations, now) === 'live');
-    requireFact(grant, 'no live covering standing in declared causal cone', 'standing');
+    const historicalGrant = historical.find(r => ids.has(r.factId) && r.grant.view.grantee.id === fact.principal.id
+      && (schema.standing !== 'operator' || r.grant.view.standing === 'operator')
+      && (r.grant.view.standing === 'operator' || r.grant.view.actions.includes(schema.action))
+      && !revocations.some(v => v.grantId === r.grant.view.id)
+      && take(historicalGrantLiveness(r.grant, historicalRevocations, now, context.preserved)) === 'live');
+    requireFact(grant || historicalGrant, 'no live covering standing in declared causal cone', 'standing');
   }
   if (schema.authority === 'conferring') requireFact(schema.standing !== 'requester' && fact.provenance.class === 'verified', 'requester cannot confer authority', 'standing');
   // Bound directive exercise is reserved for part four's binding port; no local substitute.
   requireFact(!(schema.authority === 'directive' && fact.provenance.class === 'channel-attested'), 'part-four bound directive admission port required', 'standing');
-  const relevant = context.revocations.filter(v => scoped.some(g => g.grant.id === v.revocation.grantId) && !ids.has(v.factId));
+  const grantIds = [...scoped.map(g => g.grant.id), ...historical.map(g => g.grant.view.id)];
+  const relevant = [...context.revocations.map(v => ({ factId: v.factId, grantId: v.revocation.grantId })),
+    ...(context.historicalRevocations ?? []).map(v => ({ factId: v.factId, grantId: v.revocation.view.grantId }))].filter(v => grantIds.includes(v.grantId) && !ids.has(v.factId));
   if (origin) for (const r of relevant) {
     const rev = context.facts.find(f => f.id === r.factId), folded = rev && context.folded[rev.machine];
     requireFact(!rev || !folded || comparePosition(rev.segment, folded) > 0, 'origin frontier omitted an already-folded relevant revocation', 'standing');
@@ -101,7 +113,8 @@ export function validateSchemas(schemas: readonly FactSchema[], context: FactCon
       requireFact(s.standing === 'requester' || s.causallyBound === true, 'standing kind must be causally bound');
       for (const definition of Object.values(object(s.fields ?? null))) {
         const f = object(definition);
-        requireFact(['text', 'integer', 'exact', 'boolean', 'reference', 'capture', 'constitutional'].includes(string(f.kind, 'field.kind')), 'undeclared/secret-valued field');
+        requireFact(['text', 'integer', 'exact', 'boolean', 'reference', 'capture', 'constitutional', 'owned'].includes(string(f.kind, 'field.kind')), 'undeclared/secret-valued field');
+        if (f.kind === 'owned') { string(f.owner, 'owner'); string(f.name, 'name'); }
         if (f.kind === 'text') integer(f.maxLength, 'maxLength', 1);
         if (f.kind === 'exact') string(f.unit, 'unit');
       }
@@ -109,15 +122,19 @@ export function validateSchemas(schemas: readonly FactSchema[], context: FactCon
     return schemas;
   });
 }
+const bodyManifests = new WeakMap<object, readonly { readonly field: string; readonly value: ConstitutionalValue }[]>();
+export function bodyConstitutionalFields(body: object) { return bodyManifests.get(body) ?? []; }
 export function decodeBody(fact: FactEnvelope, context: FactContext, decoderContext: DecodeContext): Result<Readonly<Record<string, Json | ConstitutionalValue>>> {
   return boundary('FactBody', fact.body, contextBoundary(context), raw => {
     const migrated = migrateBody(fact, context, raw);
     const schema = schemaFor(context, fact.kind, migrated.version), body = object(migrated.body);
     fields(body, Object.keys(schema.fields).filter(k => !schema.optional?.includes(k)), schema.optional);
     const out: Record<string, Json | ConstitutionalValue> = {};
+    const manifest: { field: string; value: ConstitutionalValue }[] = [];
     for (const [name, field] of Object.entries(schema.fields)) {
       const value = body[name]; if (value === undefined && schema.optional?.includes(name)) continue;
       requireFact(value !== undefined, `missing body field ${name}`);
+      if (field.kind === 'owned') { out[name] = decodeOwnedBody(field.owner, field.name, value, fact, 'origin', context).value; continue; }
       if (field.kind === 'text') requireFact(typeof value === 'string' && value.length <= field.maxLength, `${name}: text exceeds declared bound`);
       if (field.kind === 'integer') requireFact(typeof value === 'number' && Number.isSafeInteger(value), `${name}: integer required`);
       if (field.kind === 'exact') requireFact(typeof value === 'string' && /^-?(0|[1-9][0-9]*)$/.test(value), `${name}: exact integer minor units required`);
@@ -135,16 +152,18 @@ export function decodeBody(fact: FactEnvelope, context: FactContext, decoderCont
           : context.decode.principals?.find(p => same(p.provenance, fact.provenance))?.provenance;
         requireFact(pinned, 'pinned live provenance unavailable; historical body seam required', 'standing');
         const c = { ...decoderContext, provenance: pinned };
-        if (field.type === 'Outcome') out[name] = take(rehydrateOutcome(value, c));
-        else if (field.type === 'Conflict') out[name] = take(rehydrateConflict(value, c));
+        let decoded: ConstitutionalValue;
+        if (field.type === 'Outcome') decoded = take(rehydrateOutcome(value, c));
+        else if (field.type === 'Conflict') decoded = take(rehydrateConflict(value, c));
         else if (field.type === 'Result') {
           // Payload JSON is validated by its own schema; rehydration never reconstructs by cast.
           const recorded = take(rehydrateResult(value, c, payload => boundary('RecordedPayload', payload, contextBoundary(context), x => x)));
-          out[name] = recorded;
-        } else out[name] = take(decode(field.type, value, c));
+          decoded = recorded;
+        } else decoded = take(decode(field.type, value, c));
+        out[name] = decoded; manifest.push({ field: name, value: decoded });
       } else out[name] = value;
     }
-    return out;
+    bodyManifests.set(out, manifest); return out;
   });
 }
 

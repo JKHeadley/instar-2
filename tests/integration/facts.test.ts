@@ -2,10 +2,10 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, openSync, closeSync, writeSync, fsyncSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createFactStore, authorAndAppend, decodeEnvelope, wrapUnresolved, verifyAndAdmit } from '../../src/facts/index.js';
+import { createFactStore, authorAndAppend, decodeEnvelope, wrapUnresolved, verifyAndAdmit, prepareSnapshot } from '../../src/facts/index.js';
 import type { SegmentStoragePort } from '../../src/facts/index.js';
-import { factsFixture, value, json, refused, privateKey } from '../facts/fixtures.js';
-import { foldProjection } from '../../src/projections/index.js';
+import { factsFixture, value, json, refused, privateKey, point } from '../facts/fixtures.js';
+import { foldProjection, readProjection } from '../../src/projections/index.js';
 import { decode } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
 
@@ -27,7 +27,7 @@ function diskFixture() {
   return { ...f, ctx, storage, store, path, author, cleanup: () => rmSync(directory, { recursive: true, force: true }) };
 }
 it('P2-NF-15 public fact store exposes exactly one mutating method', () => {
-  const f = diskFixture(); try { expect(Object.keys(f.store).sort()).toEqual(['append', 'read']); expect(value(f.author()).durability).toEqual({ kind: 'local-durable' }); } finally { f.cleanup(); }
+  const f = diskFixture(); try { expect(Object.keys(f.store).sort()).toEqual(['append', 'read', 'readForProjection']); expect(value(f.author()).durability).toEqual({ kind: 'local-durable' }); } finally { f.cleanup(); }
 });
 it('P2-NF-16 out-of-band disk mutation fails read verification', () => {
   const f = diskFixture(); try {
@@ -55,7 +55,7 @@ it('P2-NF-52 part-one immutable-field disagreement becomes a recorded projection
   const a = f.fact({ body: { identity: 'one', amount: '1', intent: left } }), b = f.fact({ machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 }, body: { identity: 'one', amount: '1', intent: right } });
   const result = value(foldProjection({ id: 'intents', class: 'informational', retention: 'all-identities', stalenessBound: 100,
     decisions: { note: { kind: 'folds', merge: 'additive', identity: 'identity', value: 'amount' } } },
-    [{ fact: a, taint: [], constitutional: [{ field: 'intent', value: left, subject: f.scope }] }, { fact: b, taint: [], constitutional: [{ field: 'intent', value: right, subject: f.scope }] }],
+    value(prepareSnapshot([a, b], { ...f.ctx, schemas: [{ ...f.schema, fields: { ...f.schema.fields, intent: { kind: 'constitutional', type: 'Intent' } } }] })),
     { reference: f.ctx.decode.register.generation, kinds: ['note'], lineages: { 'machine-a': { head: a.segment, observedAt: 100, closed: false }, 'machine-b': { head: b.segment, observedAt: 100, closed: false } } }, f.c));
   expect(result.conflicts[0]?.constitutional?.type).toBe('Conflict'); expect(result.values).toEqual({});
 });
@@ -81,7 +81,7 @@ it('P2-NF-23 P2-NF-33 P2-NF-36 same-kind corrections pass the real append/replic
     refused(store.append(remote, { peer: 'machine-b' }), 'causally');
     value(store.append(correction, { peer: 'machine-a' }));
     const facts = value(store.read());
-    const view = value(foldProjection({ id: 'corrected', class: 'informational', stalenessBound: 100, retention: 'all-identities', decisions: { note: { kind: 'folds', merge: 'additive', identity: 'identity', value: 'amount' } } }, facts.map(fact => ({ fact, taint: [] })), { reference: ctx.decode.register.generation, kinds: ['note'], lineages: { 'machine-a': { head: correction.segment, observedAt: 100, closed: false } } }, f.c));
+    const view = value(foldProjection({ id: 'corrected', class: 'informational', stalenessBound: 100, retention: 'all-identities', decisions: { note: { kind: 'folds', merge: 'additive', identity: 'identity', value: 'amount' } } }, value(store.readForProjection()), { reference: ctx.decode.register.generation, kinds: ['note'], lineages: { 'machine-a': { head: correction.segment, observedAt: 100, closed: false } } }, f.c));
     expect(view.values['note:one']).toBe('40');
     const old = { ...schema, standing: 'operator' as const, authority: 'conferring' as const, causallyBound: true };
     const lower = { ...schema, version: 2 };
@@ -107,3 +107,43 @@ it('P2-NF-62 replication durably appends through the sole write port, preserving
   } finally { f.cleanup(); }
 });
 it.skip('P2-NF-73 SKIPPED: part eight owns blocking irreversible effects on provisional authority; part two emits and tests taint but does not dispatch effects', () => {});
+it('P2-NF-76 append -> capture expiry -> status-bearing read refuses old and rebuilt authority without annotations', () => {
+  const f = diskFixture(); try {
+    const captures = { 'capture:evidence': { hash: f.e.capture.hash, bytes: 'observed bytes' as string | null, status: 'available' as 'available' | 'expired', byteLength: 14 } };
+    const ctx = { ...f.ctx, captures, schemas: [{ ...f.schema, fields: { ...f.schema.fields, evidence: { kind: 'constitutional' as const, type: 'Evidence' as const } } }] };
+    const store = createFactStore(ctx, f.storage), fact = f.fact({ body: { identity: 'one', amount: '10', evidence: f.e } }); value(store.append(fact));
+    const def = { id: 'evidence', class: 'authority-answering' as const, retention: 'all-identities' as const, stalenessBound: 100, decisions: { note: { kind: 'folds' as const, merge: 'additive' as const, identity: 'identity', value: 'amount' } } };
+    const generation = { reference: ctx.decode.register.generation, kinds: ['note'], lineages: { 'machine-a': { head: fact.segment, observedAt: 100, closed: false } } };
+    const view = value(foldProjection(def, value(store.readForProjection()), generation, f.c)); value(readProjection(view, def, f.now, f.c));
+    captures['capture:evidence'].status = 'expired'; captures['capture:evidence'].bytes = null;
+    refused(readProjection(view, def, f.now, f.c), 'source changed');
+    const rebuilt = value(foldProjection(def, value(store.readForProjection()), generation, f.c));
+    expect(rebuilt.taint).toContain('evidence-unavailable'); refused(readProjection(rebuilt, def, f.now, f.c), 'tainted');
+  } finally { f.cleanup(); }
+});
+it('P2-NF-72 P2-NF-75 P2-NF-76 historical-only store derives late revocation status from actual bodies', () => {
+  const f = diskFixture(); try {
+    const grantSchema = { ...f.schema, kind: 'grant-record', fields: { grant: { kind: 'constitutional' as const, type: 'StandingGrant' as const } } };
+    const revSchema = { ...f.schema, kind: 'revocation-record', fields: { revocation: { kind: 'constitutional' as const, type: 'Revocation' as const } } };
+    const schema = { ...f.schema, standing: 'operator' as const, causallyBound: true };
+    const ctx = { ...f.ctx, schemas: [grantSchema, revSchema, schema], decode: { ...f.ctx.decode, principals: [], grants: [], authorizations: [] }, grants: [], revocations: [] };
+    const store = createFactStore(ctx, f.storage);
+    const grant = value(decodeEnvelope(f.wire({ kind: 'grant-record', provenance: f.g.source, body: { grant: f.g } }), ctx, 'replication'));
+    value(store.append(grant, { peer: 'machine-a' }));
+    const candidate = f.next(grant, { predecessors: { inSegment: grant.id, frontier: {}, required: [grant.id] } });
+    value(store.append(candidate, { peer: 'machine-a' }));
+    const def = { id: 'standing', class: 'authority-answering' as const, retention: 'all-identities' as const, stalenessBound: 100, decisions: {
+      note: { kind: 'folds' as const, merge: 'additive' as const, identity: 'identity', value: 'amount' }, 'grant-record': { kind: 'ignores' as const, reason: 'standing' }, 'revocation-record': { kind: 'ignores' as const, reason: 'standing' } } };
+    const generation = { reference: ctx.decode.register.generation, kinds: Object.keys(def.decisions), lineages: { 'machine-a': { head: candidate.segment, observedAt: 100, closed: false } } };
+    const view = value(foldProjection(def, value(store.readForProjection()), generation, f.c)); value(readProjection(view, def, f.now, f.c));
+    const payload = { id: 'late', grantId: f.g.id, by: f.alice, at: f.now, reason: 'withdrawn' }, proof = f.proof(payload);
+    const revocation = value(decode('Revocation', { type: 'Revocation', schemaVersion: 1, ...payload, source: proof.p }, { ...f.ctx.decode, provenance: proof.p }));
+    const rev = value(decodeEnvelope(f.wire({ kind: 'revocation-record', machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 }, provenance: proof.p, predecessors: { inSegment: null, required: [grant.id], frontier: { 'machine-a': point(grant) } }, body: { revocation } }), ctx, 'replication'));
+    value(store.append(rev, { peer: 'machine-b' }));
+    refused(readProjection(view, def, f.now, f.c), 'source changed');
+    const snapshot = value(store.readForProjection());
+    expect(snapshot.entries.find(e => e.fact.id === candidate.id)?.conflicts[0]?.kind).toBe('revocation-conflict');
+    const current = value(foldProjection(def, snapshot, { ...generation, lineages: { ...generation.lineages, 'machine-b': { head: rev.segment, observedAt: 100, closed: false } } }, f.c));
+    refused(readProjection(current, def, f.now, f.c), 'tainted');
+  } finally { f.cleanup(); }
+});

@@ -1,4 +1,4 @@
-import type { Clock, Conflict, DecodeContext, Hash, HistoricalShape, Inventory, Json, Provenance, Revocation, Scope, StandingGrant, VerifiedPrincipal } from '../index.js';
+import type { Clock, Conflict, DecodeContext, Hash, HistoricalRead, HistoricalShape, Inventory, Json, Provenance, Revocation, Scope, StandingGrant, VerifiedPrincipal } from '../index.js';
 
 export interface SegmentPosition { readonly machine: string; readonly epoch: number; readonly position: number }
 export interface LineagePosition { readonly epoch: number; readonly position: number }
@@ -37,6 +37,7 @@ export type FieldSchema = Readonly<
   | { kind: 'reference' }
   | { kind: 'capture' }
   | { kind: 'constitutional'; type: keyof Inventory }
+  | { kind: 'owned'; owner: string; name: string }
 >;
 export interface FactSchema {
   readonly kind: string; readonly version: number; readonly fields: Readonly<Record<string, FieldSchema>>;
@@ -54,12 +55,15 @@ export interface FactContext {
   readonly schemas: readonly FactSchema[]; readonly keys: readonly MachineKey[];
   readonly facts: readonly FactEnvelope[];
   readonly grants: readonly RecordedGrant[]; readonly revocations: readonly RecordedRevocation[];
+  readonly historicalGrants?: readonly { readonly factId: string; readonly grant: HistoricalRead<StandingGrant> }[];
+  readonly historicalRevocations?: readonly { readonly factId: string; readonly revocation: HistoricalRead<Revocation> }[];
   // Pinned installation data; governance of this trust root is the minimal-plane owner's port.
   readonly genesis: { readonly hash: Hash; readonly clock: Clock };
   readonly timeAnchors: readonly TimeAnchor[];
   readonly captures: Readonly<Record<string, CapturedContent>>;
   readonly folded: CausalFrontier;
   readonly migrations?: readonly { readonly kind: string; readonly from: number; readonly to: number; readonly migrate: (body: Json) => Json }[];
+  readonly ownedBodies?: readonly import('./owned.js').OwnedBodyRegistration[];
 }
 export function contextBoundary(context: FactContext) {
   return { site: context.site, preserved: context.preserved, register: context.decode.register };
