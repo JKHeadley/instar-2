@@ -152,6 +152,59 @@ nine/eleven, with explicit unavailable agent identity. It never starts an unveri
 voice. No claim promises availability when all hardware, its trust root or its reserved
 resources are gone. Ordinary recovery cannot write the anchor whose verification failed.
 
+**Rule — the minimal responder has explicit authority and dependency admission.**
+Rules 14, 15, 28, 31, 43, 63 and 95; **checks: P10-NF-51/52/53**. The manifest binds
+one registered minimal-plane Run to its own current system-principal grant, exact repair and
+communication operations, six-owned serialized authority domains, and independently reserved
+finite worker, memory, storage, queue, transport and effect budgets. For an attributable reply
+in a conversation it also requires four's current binding and six's current exclusive
+conversation lease/fence at dispatch. A local repair-domain lease cannot grant conversation
+ownership. The responder neither resumes nor authorizes the ordinary run it describes.
+A non-owner preserves and queues input or emits only an independently admitted infrastructure
+receipt under its own registered operation; it cannot label that receipt an agent reply.
+
+AssemblyManifest enumerates the following required dependencies, their exact implementations,
+source horizons, freshness/loss policies and measured budgets. AssemblyAdmission records their
+actual evidence separately; one healthy worker cannot stand in for the conjunction.
+
+| Required dependency | Realization and admitted use | Loss consequence |
+|---|---|---|
+| Source and custody | Verified local-durable minimal segment; eleven's six projections rebuilt from that source; current anchored register/decoder generation, keys, clock and custody handles | No guessed identity, stale authority or invented preserved input; inhibit dependent operations and expose independently administered recovery where available |
+| Authority | Current minimal system grant and operation scope; current binding and six's authoritative lease/fence for conversation service; required authority-prefix/membership evidence | Local repair stays within its own valid domain; missing conversation authority forbids attributable conversation dispatch |
+| Intake and route | Four's actual authenticated intake, admitted conversation adapter, credentials and route; exact operation/semantic identity mapping | Preserve only where durable custody is available; an unavailable route is a minimal-path outage, not ordinary worker starvation |
+| Effect and durability | Eight's real message operation, reservation, one-use claim and full causal evidence closure; two's matching durability receipts | Insufficient closure or peer proof prevents dispatch even when reserved transport and money are free |
+| Observation | Actual adapter query/receipt and independent witness for the demanded delivery stage, nine's bar and eight's settlement path | Available evidence may establish a weaker stage only; absent decisive evidence retains owned uncertainty, never proves delivery |
+
+The reference reply demand is eight's **replicated(1)**: local durability plus one distinct
+authenticated peer acknowledgment covering the required exact facts and prefixes. This includes
+the grant/approval basis, governing references, run/attempt, operation definition, reservation,
+dispatch-claim and reconstructable verification obligation required by eight. A live lease
+quorum is not that acknowledgment, and a stored replication receipt is not current ownership.
+The assembly does not select a local-durable exception when peers disappear. Any separately
+approved operation policy is consumed through eight with its explicit loss model; reserved
+capacity alone changes neither demand nor authority. Local stop retains its existing admitted
+primitive and does not wait for an ordinary reply's replication, but remote stop remains
+unconfirmed until its own evidence arrives.
+
+**Rule — ordinary degradation and minimal-path loss have different outcomes.**
+**Checks: P10-NF-51/52/54** cut each dependency alone and in combinations. Loss of an ordinary
+model, benchmark, business effect or non-minimal projection leaves a limited response eligible
+only if every dependency needed by that response remains admitted. Loss of a shared source,
+required peer acknowledgment, current ownership, adapter route or demanded evidence service is
+loss of that minimal function, even if the first symptom appeared in an ordinary run. Admission
+is derived from actual dependency edges, not a component label called optional.
+
+The measured response bound is conditional on those exact sources, authorities, routes,
+durability and observation capabilities, their finite recovery windows and the workload used to
+prove it. Record start/end or open outage, missing dependency, preserved-input status, pending
+operation and repair owner in AssemblyAdmission and existing run facts. An outage or timed-out
+sample remains in the population and invalidates an unconditional bound; never replace it with
+a successful sample's duration. Locally durable accepted input remains pending. If even that
+custody is absent, no durable acceptance is claimed. The independent recovery surface can report
+only when its own administrator, source and transport path remain available; total path loss
+cannot promise a delivered notification. Restoration revalidates authority and observes original
+claims before resuming. It never converts an uncertain send into a fresh limited-response send.
+
 **Rule — stopping and upgrading preserve unresolved work.** **Checks: P10-NF-08/09/30**.
 Stop new affected admissions, record drain intent, and ask six/five for current workers,
 claims and pending observations. An old executor may still finish an already-claimed action;
@@ -309,7 +362,8 @@ stimulus class, original authenticated byte fields, authentication method and ke
 binding, sender and conversation identity namespaces, stability/reuse rules, forwarding and
 impersonation treatment, churn detector and revocation response, event-id authority and replay
 retention/fallback policy, ackPolicy, disclosure scope, captured positive/negative fixtures,
-probe references and contract version. Parser required facts remain three/four's fields;
+probe references, the effect-evidence capability matrix below and contract version. Parser
+required facts remain three/four's fields;
 this fact provides their per-family details by reference, not a new register kind.
 
 **Rule — identity and acknowledgment are declared per mode.** **Checks: P10-NF-22/23/24**
@@ -336,6 +390,35 @@ their grants, never by a conveniently smaller claim of one affected conversation
 churn triggers recorded re-verification; silence is not evidence an old binding still belongs
 to the same person. Other acknowledgment choices require an explicit parser declaration and
 conformance cases for resolved, unresolved, bound, unbound and group stimuli.
+
+**Rule — adapter evidence capabilities are explicit, including permanent absence.**
+Rules 26, 42, 63 and 69; **checks: P10-NF-53/55/56**. Each concrete operation/mode in
+AdapterEvidenceContract declares every row below as supported with a precise source, predicate,
+subject binding, consistency/completeness horizon, finite observation budget and captured/live
+conformance reference, or unsupported with its reason. Unknown or untested support cannot pass
+activation for a claim requiring it. Identity attestation, receiver acknowledgment, factual
+delivery and effect settlement are separate capabilities. This adds fields to ten's contract,
+not a new evidence grade or an alternative to eight's OperationDefinition or nine's bar.
+
+| Capability | What a supported implementation must actually expose | Unsupported or insufficient evidence |
+|---|---|---|
+| Stable operation and receipt lookup | Original semantic operation, attempt, account/destination and immutable digest survive takeover; read-only lookup cannot create missing work | New key, SDK resend or reconstructed payload cannot recover a lost receipt |
+| Application and delivery stage | Authentic exact-operation evidence specifying accepted, persisted, delivered or consumed, as applicable; an independent witness for the claimed stage | Transport success alone cannot prove consumption; a send-only API with no receipt/query leaves application unknown after a lost answer |
+| Decisive non-occurrence | Authoritative complete history or destination rejection covering the original operation and the relevant execution horizon | Eventual search miss, timeout and expired lookup history do not establish absence; declare non-occurrence unsupported if nothing stronger exists |
+| Exclusion of delayed execution | Destination-enforced fence/cancellation or authoritative quiescence covering all accepted/queued attempts, with its observed horizon | Local process death or cancellation accepted without a completion guarantee leaves delayed execution possible; unsupported adapters say so |
+| Final charge | Final accounting tied to the original attempt and residual liability, including evidenced zero charge for a genuinely uncharged mode | Missing usage, a cost estimate or cancel request is not final accounting; opaque billing explicitly cannot close charge exposure |
+| Prerequisite durability | Two's receipts for exact local and required peer durable prefixes; adapter limitations and custody dependencies preserved | Platform delivery receipt, reserved capacity and lease quorum cannot satisfy replicated(1) |
+
+A bot, device, webhook, provider or other adapter with no authoritative negative query declares
+non-occurrence unsupported. A mode lacking destination quiescence declares delayed-execution
+exclusion unsupported. A billed mode lacking final accounting declares final-charge evidence
+unsupported. Such a mode may perform otherwise admitted work under an explicitly declared
+uncertainty policy, but cannot qualify for bounded completion after a cut requiring those
+predicates. Family membership never supplies missing proof. AdapterConformance records the
+actual available and unsupported rows for each artifact/account/protocol mode; missing evidence
+is not deferred to nine to invent. Nine assesses only what exists, eight settles its proved
+portions, and six retains unresolved exposure. Neither an idempotency key nor supported positive
+lookup permits resubmitting an uncertain effect.
 
 **Rule — acknowledgment policy survives packaging and composition.**
 **Checks: P10-NF-24/25** enumerate every parser instance from the assembly and local package
@@ -367,8 +450,26 @@ admitted provider operation and six's claim, submits those exact bytes, and retu
 provider observations to seven's receipt recorder. It never executes proposed tools, releases
 credits or derives business settlement. Asynchronous provider callbacks enter four. External
 observation/cancellation requests are separately admitted eight-owned operations, not hidden
-SDK helpers. Client automatic retries are disabled or explicitly counted by six's policy;
-unknown invocation cannot be retried merely to reconstruct a missing answer.
+SDK helpers. Client automatic retries are disabled. One exchange consumes one valid claim
+for at most one provider invocation; a known rejection does not authorize another invocation
+under that claim. The adapter returns the actual observation and yields control to the owners.
+Before any new invocation, nine assesses the required evidence, eight settles the prior
+execution and final charge with delayed execution excluded, and six persists the owning attempt
+mapping and grants fresh conditional admission/reservation under current authority. Eight's
+executor then consumes a new valid one-use claim. Counting attempts, rotating a provider or
+accurately reporting duplicate charges cannot replace that sequence. An uncertain invocation
+remains observation-only and cannot be retried to reconstruct a missing answer.
+
+**Rule — retry tests distinguish bookkeeping from permission.**
+**Checks: P10-NF-26/57** run the real adapter/executor boundary with a retrying SDK. After a
+known rejection, an automatic second provider invocation under the original exchange/claim must
+fail even when both attempts are reported accurately and budget remains. After an uncertain
+timeout, the same automatic retry must fail with original exposure retained and zero subsequent
+provider invocation. The permitted neighbor first establishes the required non-occurrence,
+quiescence and final charge through nine/eight, durably maps and conditionally admits a new
+attempt through six, then consumes a new valid claim through eight. It produces exactly one
+provider invocation for that new attempt. A client whose retries cannot be disabled fails
+activation for the mode; a counter or after-the-fact admission cannot make it conform.
 
 **Rule — provider compatibility is granular and benchmark-gated.**
 **Checks: P10-NF-14/26/27** test finite input/output and charge ceilings, actual submitted
@@ -693,6 +794,8 @@ The separate coordination record contains the same declarations outside governed
 | Package builder and source authorities | Installer/three/six/eight | Exact package, PackageTransition, approval/generation | Stage inert → validate/test → fence/drain → intent → switch → observe → record | Keep compatible incumbent; unknown switch observed | Ten lifecycle; eight switch; six fence; three generation |
 | Instruments and two/three source facts | Nine/five | GrowthObservation, GrowthPolicy, owned loop/Decision | Measure → compare → coalesce episode → investigate → measured close | Missing unknown; breach visible; no deletion | Ten measurement; five work; nine adequacy |
 | Nine holders | Activation and seven route | Exact-subject assessment/probe/check-run evidence | Record → assess independently → consume fresh evidence → admit | No no-op/stale grade certifies live; unrelated scopes continue | Nine evidence; ten activation; seven route eligibility |
+| Eleven required path; two/four/six/eight | Minimal responder and eleven posture | AssemblyAdmission, current grant/binding/lease, exact durable closure | Verify source/domain → reserve → verify ownership/route → record claim → meet demand → consume claim → witness | Ordinary cuts preserve admitted reply; minimal cuts record outage and inhibit affected action | Ten realization; six authority; eight effect; eleven posture |
+| Concrete adapter capabilities | Nine/eight/eleven | AdapterEvidenceContract/AdapterConformance and exact observations | Declare supported/unsupported predicates → exercise → assess → settle or retain pending | Missing decisive proof retains owner/exposure and zero replay | Ten capability proof; nine assessment; eight settlement; six credit; eleven slice |
 
 **Rule — all four traces run through production implementations.**
 **Checks: P10-NF-08/13/20/30/33/38/40/43** exercise a launch, message, provider call,
@@ -704,6 +807,27 @@ package switch and replicated write, with local and remote workers and duplicate
 | Duplicate delivery | Four owns event dedup, five semantic message/collection, six delivery-attempt and operation admission. Ten preserves these distinct references. Equal digest returns the original observation/receipt; changed digest conflicts. Encrypted-write retry cannot fork a segment; package replay cannot rerun migration; lost result ack cannot launch a child. |
 | Cancellation racing completion | A local-durable authenticated stop inhibits new claims. Previously claimed effects may finish; record their late output and charge without reviving work. Five owns causal terminals, six fences, eight settles the world. Concurrent incompatible terminals remain Conflict. Package rollback is a new admitted action, never deletion of successful history. |
 | Stale authority | Revalidate caller incarnation, scope, generation, grants and relevant fence at port use. Custody refuses stale disclosure, launch refuses old claims, and protected target refuses moved base. Observer-only evidence can remain receivable under its own standing. Missing isolation proof refuses the affected mode; a still-running process is not permission. |
+
+**Rule — crash-cut proof admits owned uncertainty as a distinct result.**
+**Checks: P10-NF-54/55/56**, joined to P11-NF-43–51, execute the actual production boot path
+at every adjacent durable boundary from intake through model/send claims, effects, observations,
+settlements and rebuild. The positive completion case pins concrete model and outbound adapters
+with the required application or decisive non-occurrence evidence, delayed-execution exclusion
+and final accounting, and finite recovery windows for source, authority, peer, route and evidence
+services. Ten supplies their real bindings and witnesses; eleven owns the whole-slice verdict.
+A claim-before-invocation crash is observationally uncertain when available durable evidence
+cannot distinguish it from invocation-before-record. No fixture resolves that by its test-only
+knowledge of where it killed the worker.
+
+For an opaque or still-unavailable adapter, the required neighbor is the same original operation,
+durable accountable owner, pending observation obligation, retained maximum exposure, and zero
+replay or replacement invocation. A query can complete while the business effect remains
+uncertain indefinitely. Each execution's genesis/checkpoint rebuild reproduces its own actual
+facts at one vector, including pending uncertainty; different executions are compared by stable
+logical identities, truthful evidence, no ownerless obligations and at most one application,
+not by equal clocks, model prose or fabricated completed outcomes. After restoration, fresh
+admission cannot bypass unresolved original exposure. Only six/eight/nine's existing bar permits
+further effect execution; no completion fixture weakens it.
 
 **Rule — receipt retrieval and effect retry remain different operations.**
 **Checks: P10-NF-20/26/40** reproduce six's lost-ack trace: child/effect/provider invocation
@@ -763,7 +887,7 @@ is asserted. Correctness invariants have zero tolerated violations.
 
 | Property and measurement | Automatic workload/check | Bar and consequence |
 |---|---|---|
-| Startup and scoped availability | Kill each startup phase; remove every dependency in turn; saturate ordinary resources | Zero premature scope activations; minimal plane opens within its declared budget for every non-minimal defect. Report real outage/overrun, never call a socket listen readiness. |
+| Startup and scoped availability | Kill each startup phase; remove every dependency in turn; saturate ordinary resources | Zero premature scope activations; minimal plane opens within its declared budget for every non-minimal defect while its explicit section-2 dependencies remain admitted. Report real outage/overrun, never call a socket listen readiness. |
 | Worker isolation and identity | Run every section-4 escape attempt and its permitted port neighbor on each platform; child and copied-handle variants | Zero unauthorized access or private effects; failed mode cannot receive credentials or run governed work. |
 | Harness context and stop | Delayed start, compaction, stdin-only receipt, stale incarnation, saturated worker and concurrent stop | Zero ungrounded ordinary actions or fabricated consumption; local stop within six's declared bound. Remote halt remains unconfirmed until evidence. |
 | Provider usage and replay | Streams, lost response/ack, account switch, missing usage and changed configuration | Zero unrecorded calls or liability releases; exact affected-suite execution required before changed service, with separate grade eligibility. |
@@ -837,6 +961,13 @@ production initialization and actual confined adapters. Naming all three is not 
 | P10-NF-48 | load | Scan/catch-up/key rotation exceeds budget, resets episodes or borrows repair reserve; bounded fair maintenance passes. |
 | P10-NF-49 | episode/rebuild | Replay breach creates no owner or many episodes, timer closes it or permits deletion; one measured closure and retained history pass. |
 | P10-NF-50 | activation/load | Absent numeric bounds, zero treated default, plaintext reserve spill or no-op critical holder; concrete zero/bound-plus-one and scoped failure pass. |
+| P10-NF-51 | wiring/lifecycle | Minimal run borrows ordinary authority or local repair lease speaks for conversation; actual separately granted run plus current conversation ownership passes. |
+| P10-NF-52 | fault | Healthy reserved responder dispatches without required peer receipt, binding or fence; all valid prerequisites permit the limited response and local stop keeps its own primitive. |
+| P10-NF-53 | contract | Adapter omits unsupported predicate or delivery ack substitutes for durability/consumption; exact capability matrix and genuine stage-specific witnesses pass. |
+| P10-NF-54 | load/fault | Minimal dependency loss counted as ordinary degradation, failed sample omitted or unconditional response bound asserted; finite admitted-path response and explicit measured outage remain distinct. |
+| P10-NF-55 | crash/lifecycle | Claim-before-call cut uses test-only certainty or opaque adapter earns completed slice; original owned uncertain operation and zero replay survive every boot/rebuild cut. |
+| P10-NF-56 | integration | Eventual miss, local kill, lost billing or dedup permits replay; actual complete absence, destination quiescence and final charge are separately assessed through six/eight/nine. |
+| P10-NF-57 | adapter/executor integration | SDK retries known rejection or uncertain timeout under old exchange/claim, even with accurate counters; both fail. Independently reconciled prior attempt, durable mapping, fresh conditional admission and new consumed claim permit exactly one new invocation. |
 
 ---
 
@@ -856,6 +987,7 @@ A partial row names the actual residual instead of leaving the promised machiner
 | Five — harness actual-start and compaction consumption | **Partial:** real delivered-context evidence, public-port start and P10-NF-10–16. Five owns coverage/accounting; no receipt proves comprehension, and opaque unsupported harness modes remain unavailable. |
 | Six/eight — executable capability isolation | **Partial:** real restricted execution, no raw worker credentials, platform attack matrix, P10-NF-17–21. Administrator/custodian compromise is outside worker confinement; nine owns independent protected enforcement. |
 | Big picture — native/self-hosting/local evolution | **Held contract:** same-port native, exact local packages, development-tool inventory and install/upgrade/crash lifecycle P10-NF-12/30/41–45. No built or independently converged runtime is claimed. |
+| Eleven — minimal-path realization and crash-cut evidence | **Partial:** explicit authority/dependency/durability admission and concrete evidence capability proof, P10-NF-51–56. Required peer, ownership, route or evidence loss defeats a response/completion bound; opaque effects remain owned uncertain with zero replay. Ten owns realization, eleven the conditional surface/slice verdict. |
 
 **Rule — parent rule coverage is scoped to the automatic checks.**
 **Check: P10-NF-02** walks the big picture's adapter, startup, dependency and self-hosting
