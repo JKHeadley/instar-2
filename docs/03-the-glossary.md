@@ -1,6 +1,6 @@
 # Step three — the glossary: the words the rules lean on
 
-**Status: draft, awaiting approval. Nothing is built on top of this until it is approved.**
+**Status: approved. Governed.**
 
 Step one, finding 4: a rule that uses an undefined load-bearing term is not yet a rule. Five
 rules hinge on *significant*, *critical*, and *user-facing*; the register (step two) added
@@ -20,7 +20,7 @@ as a rule.
 
 The alternative, which 1.x designed but never built, is this: **every governed thing declares a
 small profile of plain facts, and the adjectives are computed from the profile.** An author never
-answers "is this significant?" They answer four narrower questions that have real answers, and
+answers "is this significant?" They answer five narrower questions that have real answers, and
 the word follows. The build can check the profile is complete; the word is then never argued
 about, because it was never declared — it was derived.
 

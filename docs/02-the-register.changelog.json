@@ -26,6 +26,11 @@
         "what": "The sentinel kind's watches becomes holds (one enforcement vocabulary) and lastRan becomes freshnessProbe (declared at build, fired-checked by the runtime guard-posture holder).",
         "why": "Runtime state cannot feed a deterministic generator; the dark-guard check moves to the stage that can run it.",
         "ref": "part three, amendment six"
+      },
+      {
+        "what": "The status line reads approved, matching the changelog's record of the document's latest approved version.",
+        "why": "Part three defines a status line as stating the latest approved version's status; the body predated that semantic.",
+        "ref": "part three bundle, review round 3"
       }
     ],
     "revision": 4

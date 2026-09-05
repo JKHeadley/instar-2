@@ -7,6 +7,7 @@ each linked to the git change that made it (rule 91).
 ## Revision 11 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 
 - **Rule 4 gains its third deciding-alone category: deterministic enforcement of recorded governed state — an exact test that refuses malformed, unverifiable, or standing-uncovered input and preserves it.** — Part one's decoders and part two's admission ladder block deterministically without being on the ruled-three list; part two surfaced the gap and the operator approved routing the amendment. _(part two question 10; operator approval 2026-09-04)_
+- **The status line reads approved, matching the changelog's record of the document's latest approved version.** — Part three defines a status line as stating the latest approved version's status; the body predated that semantic. _(part three bundle, review round 3)_
 
 ## Revision 10 · 2026-09-01 · approved — operator review on PR #12; operator's big-picture-design review: recursive session composition and a provider-independent native harness must be first-class requirements
 

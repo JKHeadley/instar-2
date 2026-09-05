@@ -9,6 +9,8 @@ each linked to the git change that made it (rule 91).
 - **The term-kind value fact is renamed field (a profile field or required fact), in the kind list and the allowedValues row.** — Part two surfaced the homonym between fact-the-term-kind and fact-the-record; the operator approved routing the rename. _(part two question 9; operator approval 2026-09-04)_
 - **The rules kind's enforcedBy derives from holder entries' holds fact, never from standards.** — Governed-by and enforces are different facts with different sources; conflating them inflates coverage. _(part three, amendment four)_
 - **The profile gains a fifth fact, repeats (no / bounded naming its bound / unbounded), aligning the table with part one's approved Profile and making the runaway rule refusable at the field.** — Boundedness lived in prose; a declared closed-list fact is what a build can check. _(part three, amendment five)_
+- **The status line reads approved, matching the changelog's record of the document's latest approved version.** — Part three defines a status line as stating the latest approved version's status; the body predated that semantic. _(part three bundle, review round 3)_
+- **The profile's introductory count reads five narrower questions, matching the amended five-fact table.** — Amendment five updated the table; one prose count lagged. _(part three bundle, review round 3)_
 
 ## Revision 5 · 2026-09-02 · approved — layer-below audit while drafting the types part design
 

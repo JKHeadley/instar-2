@@ -10,6 +10,7 @@ each linked to the git change that made it (rule 91).
 - **The kind-1 growth closed list gains redacts: deletes bytes only under an operator-standing tombstone fact, with the envelope, hash, and redaction record retained.** — Part two's capture store declared it and formally proposed the shape amendment; the operator approved routing it. _(part two question 4; operator approval 2026-09-04)_
 - **The common standards fact is reworded as the governed-by half of rule 69; enforcement edges are minted only by a holder's holds fact.** — Deriving enforcement from governed-by makes nearly every rule read enforced — the coverage inflation part three exists to kill. _(part three, amendment four)_
 - **The sentinel kind's watches becomes holds (one enforcement vocabulary) and lastRan becomes freshnessProbe (declared at build, fired-checked by the runtime guard-posture holder).** — Runtime state cannot feed a deterministic generator; the dark-guard check moves to the stage that can run it. _(part three, amendment six)_
+- **The status line reads approved, matching the changelog's record of the document's latest approved version.** — Part three defines a status line as stating the latest approved version's status; the body predated that semantic. _(part three bundle, review round 3)_
 
 ## Revision 3 · 2026-08-26 · approved — operator review on PR #4; the operator's rulings on the 33 tensions (decision sheet, merged in PR #4) applied to the register's design
 

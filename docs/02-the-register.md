@@ -1,6 +1,6 @@
 # Step two — the register of the things being governed
 
-**Status: draft, awaiting approval. Governed. Nothing is built on top of this until it is approved.**
+**Status: approved. Governed.**
 
 Step one found that fourteen rules all say *"every X must do Y"* and none can be checked, because
 nothing lists the X. This document is the design for that list. It is deliberately boring. It is

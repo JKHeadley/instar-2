@@ -1,6 +1,6 @@
 # Step one — the rules, and how each one is held
 
-**Status: draft, awaiting approval. Governed. Nothing is built on top of this until it is approved.**
+**Status: approved. Governed.**
 
 Every rule from Instar 1.x's constitution, sorted by one question: *how is this rule held — by a
 script, by the shape of the code, or by the mind?*

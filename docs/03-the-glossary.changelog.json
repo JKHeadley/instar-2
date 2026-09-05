@@ -21,6 +21,16 @@
         "what": "The profile gains a fifth fact, repeats (no / bounded naming its bound / unbounded), aligning the table with part one's approved Profile and making the runaway rule refusable at the field.",
         "why": "Boundedness lived in prose; a declared closed-list fact is what a build can check.",
         "ref": "part three, amendment five"
+      },
+      {
+        "what": "The status line reads approved, matching the changelog's record of the document's latest approved version.",
+        "why": "Part three defines a status line as stating the latest approved version's status; the body predated that semantic.",
+        "ref": "part three bundle, review round 3"
+      },
+      {
+        "what": "The profile's introductory count reads five narrower questions, matching the amended five-fact table.",
+        "why": "Amendment five updated the table; one prose count lagged.",
+        "ref": "part three bundle, review round 3"
       }
     ],
     "revision": 6
