@@ -513,22 +513,46 @@ new real-world provenance roots. **Check:** P7-NF-32/46/48.
 **Rule — measured routing has a checked evidence chain.** Rules 56 and 58. A measured
 route names compatible scenario, BenchmarkRunRecord and part-nine evaluation references for
 the requested judgment class, prompt, context-assembly version, floor/schema, model identity
-and generation settings. Changing a semantic component invalidates that match and creates
-an affected-suite rerun obligation before the changed route can claim measured. The compatibility
+and generation settings. Changing a semantic component invalidates that match and requires
+recorded execution of the affected suite before the changed configuration can serve, separately
+from the evidence required to claim measured. The compatibility
 digest records these components individually; a prompt hash alone is insufficient. Per-call
 conversation bytes are recorded for audit, but vary within the tested scenario class rather
 than demanding a new benchmark for every user message. Changes to the context assembly,
 retrieval/summary policy or distribution assumptions do require reassessment. **Check:**
 P7-NF-47/49/50; the deadline walker checks model-map verification windows.
 
+**Rule — changed configurations run their affected suite before serving.** Rules 56 and 58,
+the rule book's finding 5 and the big picture's section 8. The activation and live-dispatch
+gate requires a sealed BenchmarkRunRecord for the exact changed compatibility digest and the
+complete affected scenario/candidate set. The affected set is derived from recorded dependency
+references against the incumbent configuration; a caller cannot replace it with a convenient
+subset. A queued obligation, an old-configuration run, a changed label or an unverified empty
+set does not satisfy this gate. **Check:** P7-NF-53 checks the gate at activation and dispatch.
+
+Every affected execution must have its recorded attempt and terminal execution outcome,
+including failure or refusal. Failed executions stay in the run and its denominator; they are
+not discarded or described as passes. A crashed, cancelled or incomplete suite retains all
+produced results and its missing-execution list, but cannot open the changed configuration for
+service. Recovery completes the missing work under the same recorded suite/configuration
+identity. Completing execution is not passing evaluation: consumer floors and quality/evaluation
+requirements still apply independently. Benchmark-purpose dispatch may exercise the changed
+configuration to produce this evidence through the existing bounded doorway; it cannot satisfy
+live work or execute the business actions it proposes. The incumbent eligible configuration and
+unrelated communication remain available while the changed configuration waits.
+
 **Rule — unmeasured is usable only as unmeasured.** Rules 56, 57, 67, and 95. At cold
-start or after invalidation, the registered compatible default route may serve within its
-floor with an explicit unmeasured reason and owned benchmark obligation. It may not claim
+start, the registered compatible default route may serve within its floor with an explicit
+unmeasured reason and owned benchmark obligation only where no configuration-change rerun gate
+is outstanding. After a configuration change, unmeasured service requires the affected-suite
+execution record above first; dropping measured status never waives that gate. A configuration
+whose evaluation support alone was invalidated still obeys every applicable execution gate.
+An unmeasured route may not claim
 benchmark-backed superiority. If that consumer requires measured evidence, it refuses that
 operation under its declared default. Unknown provider model versions cannot silently inherit
 an older model's results; stale doorway verification prevents measured status and flags the
 map for refresh. Provider availability alone proves neither quality nor exact model identity.
-**Check:** P7-NF-06/49/50.
+**Check:** P7-NF-06/49/50/53.
 
 **Value — quality and representativeness belong to judgment.** Which cases deserve promotion,
 what "best" means across quality, cost and latency, the adequacy of held-out samples, and
@@ -570,7 +594,7 @@ makes the fixture pass. **Check:** P7-NF-41/42/52 and P3-NF-28.
 | Judgment (7) | Effect doorway (8) | Recorded proposal plus current effect admission, actual operation and Result/Outcome | Record → revalidate current operation, standing, evidence, budget and fence → execute → observe | Closed for affected irreversible operation; user reachability remains open | Eight closes effect/reconciliation; five closes business step |
 | Register and spine (2/3) | Judgment (7) | Anchored generation, causal facts, current taint/capture status | Verify at use → derive → append through admission → consume at required durability | Stale/tainted authority cannot fund calls or effects; labelled historical reads continue | Two/three close source integrity/conflict; seven closes affected refusal |
 | Judgment (7) | Grading/review (9) | BenchmarkRecord and referenced source facts/captures at pinned vector | Seal → discover from request facts → inspect available evidence → append separate assessment | Missing evidence stays unavailable; no default grade | Seven closes completeness; nine closes grade and assessment pin |
-| Grading/review (9) | Scenario admission/routing (7) | Separate grade and promotion Decision, real source case, benchmark execution and evaluation facts | Grade real case → promote → replay → evaluate → derive compatible route | No real grade: no scenario; no compatible evaluation: unmeasured or consumer refusal | Nine closes evaluation; seven closes execution/routing record |
+| Grading/review (9) | Scenario admission/routing (7) | Separate grade and promotion Decision, real source case, benchmark execution and evaluation facts | Grade real case → promote → replay → record affected-suite execution → evaluate → derive compatible route | Missing changed-configuration execution: no service; no compatible evaluation after execution: unmeasured or consumer refusal | Nine closes evaluation; seven closes execution/routing record |
 | Capture owner (2, adapters 10) | Judgment/review (7/9) | Custody record, current captureStatus, lawful tombstone and pin references | Store scrubbed bytes → reference → assess; remove only after eligible closure and tombstone | Missing bytes cannot prove claims; capacity stops new capture work | Nine settles retention/assessment policy; capture owner executes custody rules |
 | Independent enforcement surface (9/11) | Record attestation (7), grader (9) | External evidence with enforcing principal/protection version | Observe external prevention → authenticate evidence → record → assess | Self-attestation cannot prove external prevention | Nine/eleven explicitly assign monitor; nine closes adequacy review; seven closes evidence completeness |
 
@@ -727,6 +751,7 @@ until semantically reviewed at the relevant generation. **Check:** P7-NF-01 and 
 | P7-NF-50 | build/runtime | Stale doorway/model verification silently trusted; refresh evidence restores eligibility without fabricated model identity. |
 | P7-NF-51 | semantic cases | Same cause/different wording and different cause/similar wording are indistinguishable in recorded evidence; both questions/answers are fully recorded for grading. |
 | P7-NF-52 | cross-part fault | All four section-10 traces under reordered replication, partition, worker loss and both cancellation orders; no clock winner, lost refusal, unmetered retry or stale-authority continuation. |
+| P7-NF-53 | build/integration | Changed prompt/context/model/floor serves with only unmeasured label, queued rerun, wrong digest, incomplete execution or omitted scenarios; exact affected-suite execution opens only the execution gate, failed outcomes remain red, and separate evaluation/consumer requirements still apply. Benchmark-purpose execution cannot serve live work. |
 
 **Rule — non-functional promises carry measured proof.** Rules 13, 34, 39, 43, 46,
 55, 60, 75, and 113. The table defines the required measurement and failure action; a test
@@ -765,7 +790,7 @@ compares this table to inherited references and P3-NF-24 checks landing/deadline
 | Part four P4-NF-26/27: ask refinement before classification; rules 10/57/82/103 | Held for refined proposal shape and sequencing P7-NF-23/24/25. Semantic correctness is a Value reviewed by nine; effect re-validation stays eight's P4-NF-18 portion. |
 | Part four judgment-hold rate/age and changelog cost follow-on: rules 13/39/46/60/75 | Claimed and held for measurement/bound semantics in section 6, P7-NF-27/29/31. No measured deployment result is asserted. |
 | Part four durable owner, silence and continuation implications: rules 22/46/83/98 | Partial: questions/waits never manufacture consent or lose owners, P7-NF-19/26. Five owns parent work and awaiting-authorization; six owns recovery. |
-| Big picture §§5/8, rule 56 and real-case improvement chain | Held for provenance, compatibility, measured/unmeasured separation P7-NF-44/46/47/48/49/50. Quality rankings and divergence judgment remain nine's portion. |
+| Big picture §§5/8, rule 56 and real-case improvement chain | Held for provenance, compatibility, the independent changed-configuration execution gate and measured/unmeasured separation P7-NF-44/46/47/48/49/50/53. Quality rankings and divergence judgment remain nine's portion. |
 | Big picture §5 rule 69 | Held for named checks and declared ownership, P7-NF-01; actual graph edges follow part three's execution/review honesty, never this prose alone. |
 
 **Rule — the grading recipient's inherited inventory is visible at this seam.** Rules 7,
