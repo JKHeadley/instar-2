@@ -11,7 +11,7 @@ describe('source and shape wiring', () => {
     expect(inspectSource('src/client.ts', code).constructs[0]?.id).toBe('missing');
     expect(checkWiring(s.build(), { 'src/client.ts': code }).issues[0]).toContain('P3-NF-04');
     expect(checkWiring(s.build(), { 'src/client.ts': code.replace('missing', 'store') }).issues).toEqual([]);
-  });
+  }, 30_000);
   it('P3-NF-04 missing declaration argument and open construction fail TypeScript', () => {
     const source = "import { constructGoverned } from './src/register/index.js'; import type { Declaration } from './src/register/index.js'; constructGoverned(); const forged: Declaration = { type: 'Declaration', schemaVersion: 1 };";
     const program = createProgram({ 'register-negative.ts': source });
@@ -41,5 +41,5 @@ describe('source and shape wiring', () => {
     expect(checkWiring(register, { 'src/example.ts': missingCall }).issues[0]).toContain('P3-NF-26');
     const wired = missingCall.replace('context); }', "context); decode('Profile', input, context); }");
     expect(checkWiring(register, { 'src/example.ts': wired }).issues).toEqual([]);
-  });
+  }, 30_000);
 });

@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 // Computed ids and dynamic construction remain an explicit residual, not complete coverage.
 function sourceProgram(sources) {
   const config = ts.readConfigFile('tsconfig.json', ts.sys.readFile).config;
-  const options = ts.parseJsonConfigFileContent(config, ts.sys, process.cwd()).options;
+  // Symbol ownership needs the import graph, not ambient DOM/Node/test libraries.
+  const options = { ...ts.parseJsonConfigFileContent(config, ts.sys, process.cwd()).options, noLib: true, types: [] };
   const host = ts.createCompilerHost(options);
   const originals = host.getSourceFile.bind(host);
   const files = new Map(Object.entries(sources).map(([p, s]) => [resolve(p), s]));

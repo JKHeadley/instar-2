@@ -71,7 +71,7 @@ describe('compiled register build adapter lifecycle', () => {
       expect(completed.register.entries.every(e => !('state' in e.approvedIn))).toBe(true);
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 60_000);
-  it('P3-NF-09 P3-NF-13 P3-NF-24 P3-NF-26 R1/R3/R5 shipped CLI rejects invalid holders, deadlines, rungs and unbound shape changes', () => {
+  it('P3-NF-09 P3-NF-13 P3-NF-24 P3-NF-26 R1/R3/R5 shipped CLI rejects invalid holders, deadlines, rungs and unbound shape changes', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-repair-e2e-'));
     const script = resolve('scripts/build-register.mjs');
     try {
@@ -102,6 +102,7 @@ describe('compiled register build adapter lifecycle', () => {
         const result = spawnSync(process.execPath, [script, '--bootstrap', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
         if (error) { expect(result.status, result.stderr).not.toBe(0); expect(result.stderr).toContain(error); }
         else { expect(result.status, result.stderr).toBe(0); expect(JSON.parse(result.stdout).prerequisites).toBeGreaterThan(0); }
+        await new Promise<void>(done => setImmediate(done));
       }
       const shapePath = join(root, 'register-source/bootstrap-shape.json');
       const shape = JSON.parse(readFileSync(shapePath, 'utf8')) as { kinds: { name: string; invariants: string[]; fields: { name: string; values: string[] }[] }[] };
@@ -110,6 +111,7 @@ describe('compiled register build adapter lifecycle', () => {
         mutation(); writeFileSync(shapePath, JSON.stringify(shape)); const revision = commit();
         const result = spawnSync(process.execPath, [script, '--bootstrap', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
         expect(result.status).not.toBe(0); expect(result.stderr).toContain('P3-NF-09');
+        await new Promise<void>(done => setImmediate(done));
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 60_000);
