@@ -8,6 +8,8 @@ each linked to the git change that made it (rule 91).
 
 - **The kind-2 decidesAlone fact's value space becomes no / ruled-three / governed-state, with the per-rung sub-declaration rule for multi-rung boundaries.** — Executes rule 4's third-category amendment at the register's blocking-site kind; the failDirection per-consumer precedent extends to decidesAlone. _(part three, amendment one)_
 - **The kind-1 growth closed list gains redacts: deletes bytes only under an operator-standing tombstone fact, with the envelope, hash, and redaction record retained.** — Part two's capture store declared it and formally proposed the shape amendment; the operator approved routing it. _(part two question 4; operator approval 2026-09-04)_
+- **The common standards fact is reworded as the governed-by half of rule 69; enforcement edges are minted only by a holder's holds fact.** — Deriving enforcement from governed-by makes nearly every rule read enforced — the coverage inflation part three exists to kill. _(part three, amendment four)_
+- **The sentinel kind's watches becomes holds (one enforcement vocabulary) and lastRan becomes freshnessProbe (declared at build, fired-checked by the runtime guard-posture holder).** — Runtime state cannot feed a deterministic generator; the dark-guard check moves to the stage that can run it. _(part three, amendment six)_
 
 ## Revision 3 · 2026-08-26 · approved — operator review on PR #4; the operator's rulings on the 33 tensions (decision sheet, merged in PR #4) applied to the register's design
 

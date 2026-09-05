@@ -7,6 +7,7 @@ each linked to the git change that made it (rule 91).
 ## Revision 10 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 
 - **The admission boundary's decidesAlone declaration is restated per rung under the amended closed list: ruled-three for the secret-shape scan, governed-state for the remaining rungs — superseding the pre-amendment yes-for-one-rung wording.** — The kind-2 amendment restructured the value space; leaving the flagship blocking-site declaration on a value the closed list no longer carries would refuse under part three's own machinery. _(part three, amendment one)_
+- **The decision-surface list carries a one-line preface stating its questions were decided at approval, with the changelog as the record.** — The bundle's amendments made the body assert what one question still asked; the preface restores a coherent first-version read. _(part three bundle, review round 2)_
 
 ## Revision 9 · 2026-09-04 · approved — operator accepted the remaining defaults (questions 1, 3, 4, 6, 7, 9, 10 as recommended) and directed the merge; merging is the approval, bound to the reviewed content
 

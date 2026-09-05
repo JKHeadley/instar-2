@@ -56,7 +56,7 @@ giving each kind its own list of required facts, below.
 | `id` | A stable name. Never reused, never renamed silently. | The code |
 | `kind` | One of the kinds below. | The code |
 | `owner` | The module that declares it. Where to look. | Generated from the declaration site |
-| `standards` | The rule numbers this entry exists to satisfy. This is rule 69 (references run from both ends) made mechanical: the code names the standard. | The author, required |
+| `standards` | The rule numbers this entry is governed by — the governed-by half of rule 69, made mechanical: the code names the standard it answers to. Enforcement edges are minted only by a holder's `holds` fact, never by `standards`. | The author, required |
 | `since` | When it first appeared. | Generated from history |
 | `status` | `live`, `dark`, `soaking`, or `retired`. Retired entries stay in the register forever — rule 7 says archiving never means deleting, and that applies to the register itself. | The author, required |
 
@@ -182,8 +182,8 @@ guards went dark unnoticed. It is what step one's "held by the mind" group needs
 
 | Required fact | Why |
 |---|---|
-| `watches` — the rule or duty it holds | Every held-by-the-mind rule names its watcher, and every watcher names its rule. Both directions must resolve. |
-| `lastRan` — when it last actually ran, from its own record | A sentinel that exists but never runs is a dark guard. The check is on this field, not on config. |
+| `holds` — the rules or duties it enforces, with the honesty class and can-fail evidence | Every held-by-the-mind rule names its holder, and every holder names its rule. Both directions resolve — the holder side declared, the rule side derived. |
+| `freshnessProbe` — the declared probe that proves it actually runs | A sentinel that exists but never runs is a dark guard. The build checks the probe is declared; the runtime guard-posture holder checks it fires, from the probe's own record, not from config. |
 | `scope` — live or retrospective | Step one's rule: retrospective by default; live only for the irreversible. A live sentinel must name the irreversible moment it guards. Sending a message to the user *is* an irreversible moment — see the pre-send review team, below. |
 | `authority` — signal or block | Same field as a blocking site, because a live sentinel that can hold a message is one. Almost every sentinel is `signal`; the `block` set is tiny and named. |
 

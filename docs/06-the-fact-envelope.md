@@ -1038,6 +1038,9 @@ live-reachability guarantee (15).
 
 ## What I want from you on this document
 
+*(Each question below was decided at approval; the changelog records the decisions. The list is
+retained as the decision surface of record.)*
+
 1. **Unbounded growth, now with a gauge.** No deletion, no compaction; the record only grows. The
    instruments section attaches the measurements and a replay-duration threshold that mechanically
    re-opens the compaction question as a registered loop. Do you accept unbounded growth on those

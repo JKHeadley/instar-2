@@ -86,7 +86,7 @@ it means a structured data file beside the document, of which the rendered markd
 | `requiredFacts` | The kind's required facts, complete, values from their closed lists. |
 | `profile` | For the kinds the glossary names: the **five** plain facts — consequence, reversibility, reach, surface, and `repeats` (`no` / `bounded { by }` / `unbounded`) — profiled for the runaway case per the glossary's rule. A `bounded` repeats names its bound as a reference to a declared bound entry, required at decode and resolved at generation (P3-NF-06); `attention` with `repeats: unbounded` is refused outright — the glossary's rule says that combination cannot be honest. |
 | `standards` | The rule numbers this entry is *governed by*. Present on every entry; **never** a source of rule-graph edges (see the graph section — conflating governed-by with enforces is how a coverage report inflates). |
-| `holds` | Holder kinds only (blocking sites, sentinels, parsers-as-fixture-holders, critical-outcome probes, duties of observation): the rules this entry *enforces*, each with its honesty class and can-fail evidence. This is what mints graph edges. A `holds` citation is lint-checked against the register document's per-kind unblock lists — an entry may claim to hold only rules whose subject its kind lists (P3-NF-18). |
+| `holds` | Holder kinds only (blocking sites, sentinels, parsers-as-fixture-holders, critical-outcome probes, duties of observation): the rules this entry *enforces*, each with its honesty class and can-fail evidence. This is what mints graph edges. A `holds` citation is lint-checked against a **per-kind enforceable-subject table**, seeded as shape data by this part — which rules each holder kind may claim to enforce. The register document's "unblocks" headers record which rules a kind's *existence* makes checkable, which is a different fact, and sentinels have no such header at all; the enforceable-subject table is therefore its own shape entry set, reviewed like any shape, not a reuse of the wrong table (P3-NF-18). |
 | `declaredBy` | Generated from the declaration site. Never typed. |
 
 **What a declaration is not.** It is not prose (it decodes or it refuses); it is not the entry
@@ -94,9 +94,11 @@ it means a structured data file beside the document, of which the rendered markd
 `approvedIn`, `landedIn`, `base` — the author cannot supply and therefore cannot fake); and it is
 not optional at the boundary. The enforcement of that last clause is structural, not textual:
 **governed constructs are constructible only through core ports that demand a declaration id** —
-part one's types give every governed kind a constructor whose signature requires the declared id,
-so building a store or a blocking site without a declaration is a type error, not a convention
-violation. The diff-scoped static sweep (a governed-port call with no declaration in the tree,
+the governed ports are defined by *this* part and built from part one's types under part one's
+own closure sentence (register entries and their machinery "belong to the later parts and is
+built from these"): each governed kind's port is a constructor whose signature requires the
+declared id, so building a store or a blocking site without a declaration is a type error, not a
+convention violation. The diff-scoped static sweep (a governed-port call with no declaration in the tree,
 P3-NF-04) is the belt over those braces, and what neither can see — a construct reached through
 genuinely dynamic paths — is the retrospective review's named residual, exactly as the register
 document's third signal assigned it.
@@ -135,6 +137,14 @@ facts to exist, not who writes them. The split is chosen so the fakeable surface
 the author supplies is what only the author knows; what the build can know is generated and
 therefore un-fakeable. The cost is generator complexity, priced next.
 
+**Value — known machinery, named.** This is a schema registry plus a generated catalog plus
+policy-as-code, and saying so imports the right lessons: adopted — declarations beside code
+(annotation systems), generated catalogs with required fields, policy evaluated from data rather
+than prose; declined, with reasons — an external policy engine (the rules must live in the same
+version chain and decode boundary as everything else, or they become a second constitution) and
+a standalone schema registry service (the register is a projection with a pinned generation, not
+a network dependency). The delegable layer is the catalog tooling, never the contract.
+
 ---
 
 ## The generator
@@ -156,7 +166,10 @@ whatever their local replica holds. Git supplies location and lineage; the extra
 authority; a commit alone never names a record position, so the generator takes both and the
 generated register **carries both** — C and E's vector — in its header. Two machines with the
 same C and E produce the same bytes; a machine whose extract trails its own spine is generating
-an honest register *at a stated horizon*, visibly, not a divergent one silently.
+an honest register *at a stated horizon*, visibly, not a divergent one silently — and
+consumption applies part two's staleness rule to that horizon: an authority-bearing consumer
+refuses a generation whose extract vector trails the newest entering-force record the consumer
+holds past the declared bound, at build, at runtime, and in review alike.
 
 **Output, exactly.** One register: every entry of every kind with its author-declared facts, its
 generated facts, and its full version history as a lookup. Plus the renderings — the capability
@@ -164,8 +177,12 @@ briefing (rule 84), the glossary document, **the rule book**, and the coverage r
 rendering of entries under the same regenerate-and-compare check. Before the generator exists,
 the approved markdown documents are hand-authored; **the bootstrap converts them once**: on this
 part's approval, the approved rule book, glossary, and register document become the first rules,
-terms, and shape entries — the glossary already mandates exactly this for itself — and from then
-on the documents are outputs. The boundary moment is explicit: hand edits to those documents
+terms, and shape entries — the glossary already mandates exactly this for itself — **together
+with the shape entries this part seeds**: the holder fields (`holds`, `semanticallyReviewed`,
+the sentinel `freshnessProbe` that supersedes the old run-record fact under this bundle's
+amendments), the enforceable-subject table, and the generation-record and check-run-record
+kinds, so the first generation's holder declarations validate against a shape that carries
+them. From then on the documents are outputs. The boundary moment is explicit: hand edits to those documents
 before the conversion are the bootstrap; after it, they fail P3-NF-01.
 
 **The register generation, anchored.** The generator's output is canonically encoded and hashed;
@@ -184,11 +201,17 @@ PR's committed register carries its new or superseded entries with the landing-d
 (`approvedIn`, `landedIn`, and the chain-extract rows they will occupy) in a declared
 `pending-landing` state — visible, reviewable, incomplete by design. The merge appends the real
 version-chain facts (approval resolved once, at append, per part two). The **landing completion**
-is then a mechanical, zero-authority step: CI regenerates, and the only diff it may produce or
-commit is the completion of `pending-landing` fields and the extract-mirror rows — a lint on the
-completion commit enforces exactly that shape, and P3-NF-01 is defined to accept that one
-transition and nothing else (P3-NF-22: a completion commit whose diff exceeds pending-field
-completion). The same two-phase shape governs changelog entries for amended documents: the entry
+is then a mechanical step whose authority is inherited, not fresh: the completion commit is
+authored by the landing machinery's **system principal** — a `VerifiedPrincipal` of part one's
+`kind: system`, whose standing to append the version-chain, **generation-record**, and
+check-run-record kinds is granted in the minimal plane's genesis grants — and its *repository*
+authority derives from the approved merge itself, because the approved content declared exactly
+these `pending-landing` completions and rule 82's binding covers what was reviewed; no fresh
+approval exists to need. CI regenerates, and the only diff the completion may produce is the
+completion of `pending-landing` fields and the extract-mirror rows — a lint enforces exactly
+that shape, and P3-NF-01 is defined to accept that one transition and nothing else (P3-NF-22).
+The generation-record fact kind (the generation hash, C, E's vector, the clock measurement) is
+a shape entry this part seeds, beside check-run-record. The same two-phase shape governs changelog entries for amended documents: the entry
 lands in the PR with `approvedIn` pending, and the completion fills it — which is how this pull
 request's own five changelog entries are written.
 
@@ -276,10 +299,10 @@ what `gap` means (P3-NF-13, restated for the declared side only).
 
 | Class | Meaning |
 |---|---|
-| `held` | The holder can fail for this rule; the failing fixture, probe, or record is named. Every `held` edge also carries `semanticallyReviewed: <generation or never>` — the coverage report renders unreviewed `held` distinctly (`held*`), and the count of never-reviewed held edges is itself a rendered number, so mechanical holding and reviewed holding are different marks from the first day, not after part nine ships. |
+| `held` | The holder can fail for this rule; the failing fixture, probe, or record is named. Every `held` edge also carries `semanticallyReviewed: <generation or never>` — and the coverage report's **totals never merge the two**: `held-reviewed` and `held-unreviewed` (`held*`) are separate counted columns beside `partial`, `deferred`, and `gap`, so mechanical holding cannot inflate a headline number from the first day, not merely after part nine ships. |
 | `partial` | The holder covers a named portion; the remainder is a sibling edge or a named gap, carried on the same `holds` declaration. |
-| `deferred` | The holder is a named later part — validated against the declared part plan (an unknown part number refuses), with the loop entry's `dueBy` bound to that part's landing: when the named part lands, every edge deferred to it must flip to `held`, `partial`, or an honest `gap`, or the build fails (P3-NF-24). Deferral is honest the way a feature gate is — it has a deadline, not just a cadence. |
-| `gap` | No holder exists. Visible by design, and reconciled with the approved rule-book machinery rather than replacing it: the glossary's rules kind already requires a rule with empty `enforcedBy` to carry a **future deadline**, and a past deadline *fails the build*. A `gap` therefore builds only while its rule's deadline is in the future; the 20-of-92 number is a permanent, current dashboard fact *within deadlines the operator set*, not an indefinitely tolerable one. |
+| `deferred` | The holder is a named later part — validated against the declared part plan (an unknown part number refuses), with the loop entry's `dueBy` bound to that part's landing **and to a calendar ceiling**: when the named part lands, every edge deferred to it must flip to `held`, `partial`, or an honest `gap`, or the build fails — and a part that never lands cannot park the rule forever, because the ceiling date is compared by the deadline walker like any other and a passed ceiling fails the build the way a passed rule deadline does (P3-NF-24 covers both arms). Deferral is honest the way a feature gate is — it has a deadline, not just a cadence. |
+| `gap` | Not an edge at all, structurally: a **synthetic rule-side record** the generator emits for every rule whose derived `enforcedBy` is empty — there is no holder to declare it, so nothing declares it; it is computed. Its loop entry is generated with it, from the rule's own deadline. Reconciled with the approved rule-book machinery rather than replacing it: a rule with empty `enforcedBy` must carry a **future deadline**, and a past deadline *fails the build* — so a `gap` builds only while its rule's deadline is in the future; the 20-of-92 number is a permanent, current dashboard fact *within deadlines the operator set*, never an indefinitely tolerable one. |
 
 **The can-fail test is the edge's admission bar — split by what each stage can see.** A `held`
 edge must name its failing evidence, and the walker verifies what a tree can verify: a named
@@ -313,10 +336,13 @@ past its rule's deadline — is chosen.
 
 ---
 
-## The three routed amendments, executed atomically
+## The six routed amendments, executed atomically
 
-Part two surfaced three constitutional amendments and the operator approved routing them; all
-three ride this pull request through their documents' own version chains, and the bundle is
+Part two surfaced three constitutional amendments and the operator approved routing them; this
+part's own review surfaced three more that its holder-graph and profile designs require of the
+parents — a redesign a part builds must be propagated into the documents it rewrites, or the
+corpus contradicts itself. All six ride this pull request through their documents' own version
+chains, and the bundle is
 **atomic**: one approval event covers part three and the amendments together, and striking any
 item returns the whole pull request to review — there is no partial merge of a reviewed bundle
 (the approval binds to exact content, so this is rule 82's binding restated, not new machinery).
@@ -328,9 +354,11 @@ carry a companion required fact, `enforces` — a resolvable reference to the go
 enforces (a register entry, fact kind, or schema, whose own version chain shows its approval) —
 and must name the part-one decoder that implements the exact test. A `governed-state` site naming
 no record, or naming one its code does not read, refuses (P3-NF-26); and the enforced record's
-writes must require standing the blocking site itself does not hold, so a site can never enforce
-a record it can also author — deterministic enforcement of one's own blocklist is the censorship
-shape this bound exists to refuse (P3-NF-27). Applied to `01-the-rules.md` rule 4's row and the
+writes must require standing that the site's **executing principal** — the system principal the
+site runs under — does not hold and cannot be granted short of the operator, so a site can never
+enforce a record it can also author — deterministic enforcement of one's own blocklist is the
+censorship shape this bound exists to refuse (P3-NF-27, whose test is a standing comparison
+between two named principals, never a property of code). Applied to `01-the-rules.md` rule 4's row and the
 register document's kind-2 table, which also gains the per-rung sub-declaration rule: a
 multi-rung boundary is one entry whose `decidesAlone` is carried per rung, exactly as part two
 already carries `failDirection` per consumer — and part two's admission declaration is amended in
@@ -346,9 +374,32 @@ declared it and formally proposed it; the closed list in the register document n
 hash, and redaction record retained. Without this the approved part-two register table cites a
 value the closed list lacks, which this part's own P3-NF-05 would refuse.
 
+**Amendment four — `enforcedBy` derives from `holds`, not from `standards`.** The glossary's
+rules kind derived `enforcedBy` from every entry whose `standards` names the rule — under which
+anything *governed by* a rule counts as *enforcing* it, nearly every rule reads enforced, and
+the deadline check never bites: the exact coverage inflation this part exists to kill. The
+glossary's bullet and the register document's `standards` row are amended so governed-by and
+enforces are different facts with different sources, and only `holds` mints edges.
+
+**Amendment five — the glossary profile gains `repeats`.** Part one's approved `Profile`
+already carries five fields; the glossary's table carried four, with boundedness living in the
+runaway rule's prose. The table now carries `repeats` (`no` / `bounded { by }` / `unbounded`) as
+a declared, closed-list fact — the runaway rule's subject made checkable at the field, which is
+what P3-NF-06 refuses against.
+
+**Amendment six — the sentinel kind's facts align with the graph.** `watches` becomes `holds`
+(one vocabulary for enforcement, both directions resolving as before), and `lastRan` — runtime
+state no deterministic generator can consume — becomes `freshnessProbe`: the build checks the
+probe is declared, the runtime guard-posture holder checks it fires. The dark-guard check the
+old fact wanted is kept, and moved to the stage that can actually run it.
+
 **Rule — an amendment is a version, never an edit.** Rule 90. **Check:** each amended document's
 changelog entry lands in this pull request with `approvedIn` in the `pending-landing` state and
-is completed by the landing step; the supersedes walker holds; the governed-document checks pass.
+is completed by the landing step; the supersedes walker holds; the governed-document checks
+pass. A document's status line states the latest *approved* version's status — a pending entry
+in its changelog never flips it, and the completion diff cannot touch status prose (P3-NF-22's
+shape excludes it), so an approved document carrying a pending bundle entry reads approved,
+honestly, until the bundle lands.
 
 ---
 
@@ -369,18 +420,23 @@ Stated explicitly, as rule 113 requires — including an honest limit a naive re
   extract is a mirrored, committed projection of spine facts — disposable and regenerable like
   any projection, never a second authority: a divergence between extract and spine is resolved by
   regeneration from the spine, and the landing lint refuses an extract edit outside the
-  completion step.
+  completion step. The verification loci are named honestly: CI, holding only the repository,
+  verifies shape and lint; the machines holding spine replicas are the detectors of an extract
+  that is completion-shaped but wrong — their register decoders compare the extract's rows
+  against the spine on every generation they consume, and a mismatch raises, which is where
+  P3-NF-23's "unverifiable vector" verdict actually runs.
 
 ---
 
 ## What is rejected where
 
-Declaration decode refusals surface at build, through part one's boundary, in this order: unknown
-kind (against the shape entries), missing required fact, closed-list violation (the superseded
-`fact` kind-value included), profile violations (unbounded `attention`; an unresolvable bound
-reference), duplicate or resurrected `id`, an over-claiming `holds`, an unanchored
-`governed-state`, unresolved term references, and — at generation rather than decode — incomplete
-inputs, unrecorded generations, and completion commits exceeding their permitted shape. The
+Refusals surface at the stage that can see them, in a stable order. At decode, through part
+one's boundary: unknown kind (against the shape entries), missing required fact, closed-list
+violation (the superseded `fact` kind-value included), an `attention` profile with an unbounded
+or unnamed repeat. At build, where the tree is visible: the sweep, over-claiming `holds`,
+unanchored `governed-state`, unresolved term references. At generation, where the register and
+record are visible: duplicate or resurrected `id`, unresolvable references, incomplete inputs,
+unrecorded generations. At landing: completion commits exceeding their permitted shape. The
 refusal output names the declaration site: the point of declaring beside the thing is that the
 failure lands where the author is.
 
@@ -401,7 +457,7 @@ Continuing the cross-part convention: **P3-NF-nn**, each with its stage (`decode
 | P3-NF-03 | decode | A declaration whose kind is absent from the shape entries | The shape-change flow is the only door. |
 | P3-NF-04 | build | A governed-port construct with no declaration in the tree | The sweep; the ports themselves demand a declaration id by type. |
 | P3-NF-05 | decode | A required-fact value outside its closed list | Closed lists are what make declarations checkable. |
-| P3-NF-06 | decode | An `attention` profile with `repeats: unbounded`, or `repeats: bounded` whose bound reference is absent or unresolvable | The glossary's runaway rule, made refusable at the field. |
+| P3-NF-06 | decode / generation | An `attention` profile with `repeats: unbounded` or an absent bound reference (decode); a bound reference that does not resolve (generation) | The glossary's runaway rule, made refusable at the field — absence is visible to a decoder, resolution needs the register. |
 | P3-NF-07 | test | Two generations at one (C, E) differing across machines or architectures | Deterministic over both named inputs, not over a commit alone. |
 | P3-NF-08 | decode | Register content reaching a consumer whose canonical hash differs from the generation it was loaded under | The register decoder at part one's boundary — verification at use, not only in a harness. |
 | P3-NF-09 | build | Kind or fact validation reading constants not generated from the shape entries | The shape's authority is the register. |
@@ -421,7 +477,7 @@ Continuing the cross-part convention: **P3-NF-nn**, each with its stage (`decode
 | P3-NF-23 | generation | A generation attempted over a partial checkout or an unverifiable extract vector | An incomplete input refuses; it never yields a smaller register. |
 | P3-NF-24 | build | An edge deferred to an unknown part, or still deferred after its named part landed | Deferral has a deadline, like every dark feature. |
 | P3-NF-25 | build | A `held` edge citing runtime evidence with no declared freshness probe | The build checks declarations; the runtime holder checks freshness. |
-| P3-NF-26 | decode | A `governed-state` blocking site naming no enforced record, or a decoder its code does not invoke | Admission to rule 4's third category is a reference, not an adjective. |
+| P3-NF-26 | build | A `governed-state` blocking site naming no enforced record, or whose named decoder its code does not invoke | Admission to rule 4's third category is a reference, not an adjective; reference presence refuses at decode via the required-fact machinery, the invocation check runs where code is visible. |
 | P3-NF-27 | build | A `governed-state` site whose enforced record is writable under the site's own standing | A gate must not enforce a list it can author. |
 
 ---
@@ -478,9 +534,9 @@ two); dynamic-path constructs the sweep cannot see (the retrospective review's r
    future — the approved glossary machinery — and a past deadline fails the build. The red count
    is permanent and current, but never indefinitely tolerable. Accept?
 3. **Dead terms warn; missing terms fail.** The asymmetry as designed. Right line?
-4. **The three amendments ride this pull request atomically.** One approval event; striking any
-   item returns the whole to review. Confirm this as the standing convention for routed
-   amendments?
+4. **The six amendments ride this pull request atomically.** One approval event covering the
+   three routed from part two and the three this part's own review surfaced; striking any item
+   returns the whole to review. Confirm this as the standing convention for routed amendments?
 5. **The author-supplied surface is minimal by design.** Authors declare only what the build
    cannot know; everything else is generated and unfakeable. Accept the split, with its generator
    complexity?

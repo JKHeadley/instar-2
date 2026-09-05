@@ -11,6 +11,16 @@
         "what": "The term-kind value fact is renamed field (a profile field or required fact), in the kind list and the allowedValues row.",
         "why": "Part two surfaced the homonym between fact-the-term-kind and fact-the-record; the operator approved routing the rename.",
         "ref": "part two question 9; operator approval 2026-09-04"
+      },
+      {
+        "what": "The rules kind's enforcedBy derives from holder entries' holds fact, never from standards.",
+        "why": "Governed-by and enforces are different facts with different sources; conflating them inflates coverage.",
+        "ref": "part three, amendment four"
+      },
+      {
+        "what": "The profile gains a fifth fact, repeats (no / bounded naming its bound / unbounded), aligning the table with part one's approved Profile and making the runaway rule refusable at the field.",
+        "why": "Boundedness lived in prose; a declared closed-list fact is what a build can check.",
+        "ref": "part three, amendment five"
       }
     ],
     "revision": 6

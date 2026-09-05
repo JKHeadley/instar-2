@@ -16,6 +16,16 @@
         "what": "The kind-1 growth closed list gains redacts: deletes bytes only under an operator-standing tombstone fact, with the envelope, hash, and redaction record retained.",
         "why": "Part two's capture store declared it and formally proposed the shape amendment; the operator approved routing it.",
         "ref": "part two question 4; operator approval 2026-09-04"
+      },
+      {
+        "what": "The common standards fact is reworded as the governed-by half of rule 69; enforcement edges are minted only by a holder's holds fact.",
+        "why": "Deriving enforcement from governed-by makes nearly every rule read enforced \u2014 the coverage inflation part three exists to kill.",
+        "ref": "part three, amendment four"
+      },
+      {
+        "what": "The sentinel kind's watches becomes holds (one enforcement vocabulary) and lastRan becomes freshnessProbe (declared at build, fired-checked by the runtime guard-posture holder).",
+        "why": "Runtime state cannot feed a deterministic generator; the dark-guard check moves to the stage that can run it.",
+        "ref": "part three, amendment six"
       }
     ],
     "revision": 4
