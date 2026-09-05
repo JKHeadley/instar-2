@@ -1,0 +1,18 @@
+export type * from './types.js';
+export { decodeShape } from './shape.js';
+export { registeredFactSchemas, decodeRegisteredFact } from './records.js';
+export { generateAgainstParent } from './shape-authority.js';
+export type { ShapeApprovalPort, ShapeChangeBinding } from './shape-authority.js';
+export { runRegisterChecks } from './workflow.js';
+export type { WorkflowChecks } from './workflow.js';
+export { decodeDeclaration, decodeReference, invariantCoverage, implementedInvariants } from './declarations.js';
+export { decodeExtract, generateRegister, generationOf, decodeGeneration, decodeGenerationRecord, loadRegister } from './generator.js';
+export { readRegisterEntry, constructGoverned, checkPairing, checkBoundaryCoverage, checkGovernedState, checkSeparation, verifyGenerated, verifyLandingCompletion } from './governance.js';
+export type { GovernedConstruct, ConstructObservation, GovernedStateObservation } from './governance.js';
+export { renderRegister } from './render.js';
+export type { Renderings } from './render.js';
+export { planLandingCompletion } from './landing.js';
+export { resolveTerms, verifyDerivedColumns } from '../terms/resolver.js';
+export type { TermResolution } from '../terms/resolver.js';
+export { decodeCheckRun, buildRuleGraph, checkGraphLoops, checkDeadlines, semanticReviewSubject } from '../rulegraph/graph.js';
+export type { RuleGraph, CheckCatalog } from '../rulegraph/graph.js';
