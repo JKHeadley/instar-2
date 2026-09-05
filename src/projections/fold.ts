@@ -9,6 +9,8 @@ import { comparePosition, foldKey } from '../facts/envelope.js';
 import { causalCone } from '../facts/admission.js';
 import { snapshotCurrent } from '../facts/snapshot.js';
 import type { FactSnapshot, FactStatus } from '../facts/snapshot.js';
+import { openCache, signCache } from '../facts/cache.js';
+import type { CacheKey } from '../facts/cache.js';
 
 export type MergeClass = 'additive' | 'set-union' | 'max' | 'min' | 'exclusive-singleton' | 'cap-checked aggregate';
 export type InputDecision = Readonly<{ kind: 'ignores'; reason: string } | {
@@ -32,6 +34,7 @@ export interface FoldInput {
 class ViewIdentity { private readonly product!: void }
 const producedViews = new WeakSet<object>();
 const sources = new WeakMap<object, FactSnapshot>();
+const definitions = new WeakMap<object, ProjectionDefinition>();
 export interface ProjectedView extends ViewIdentity {
   readonly projection: string; readonly generation: string;
   readonly policy: Readonly<{ class: 'authority-answering' | 'informational'; stalenessBound: number }>;
@@ -173,7 +176,7 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
     const view = { projection: def.id, generation: generation.reference.id, policy: { class: def.class, stalenessBound: def.stalenessBound }, values,
       conflicts: conflicts.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0), taint: [...taint].sort(), foldedThrough,
       knownLineages: generation.lineages, retractions: retractions.map(f => f.id).sort(), corrections: corrections.sort((a, b) => a.original < b.original ? -1 : 1) } as unknown as ProjectedView;
-    producedViews.add(view); sources.set(view, input); return view;
+    producedViews.add(view); sources.set(view, input); definitions.set(view, def); return view;
   });
 }
 export function readProjection(view: ProjectedView, definition: ProjectionDefinition, now: Clock, context: FactBoundary, demand: CausalFrontier = {}): Result<{ view: ProjectedView; stale: readonly string[] }> {
@@ -204,5 +207,82 @@ export function verifyRebuild(live: Checkpoint, rebuilt: Checkpoint, context: Fa
   return boundary('ProjectionRebuild', null, context, () => {
     requireFact(encoding(live.vector).bytes === encoding(rebuilt.vector).bytes, 'comparison vectors differ');
     requireFact(encoding(live.view).hash === live.hash && encoding(rebuilt.view).hash === rebuilt.hash && live.hash === rebuilt.hash, 'pinned rebuild divergence', 'integrity'); return 'equal';
+  });
+}
+export function signCheckpoint(saved: Checkpoint, keyId: string, privateKey: string): Json {
+  requireFact(producedViews.has(saved.view) && sources.has(saved.view), 'checkpoint must have a validated producer');
+  requireFact(encoding(saved.view).hash === saved.hash && encoding(saved.vector).bytes === encoding(saved.view.foldedThrough).bytes, 'checkpoint has been altered');
+  return signCache('P2ProjectionCheckpoint:1', { checkpoint: saved, definition: definitions.get(saved.view),
+    records: sources.get(saved.view)!.entries.map(e => ({ id: e.fact.id, hash: e.fact.contentHash, status: encoding(e).hash })) }, keyId, privateKey);
+}
+export function restoreCheckpoint(input: unknown, snapshot: FactSnapshot, context: FactBoundary, independentlyTrustedKeys: readonly CacheKey[]): Result<Checkpoint> {
+  return boundary('RestoreProjectionCheckpoint', input, context, raw => {
+    requireFact(snapshotCurrent(snapshot), 'restore requires admitted snapshot');
+    const saved = object(openCache('P2ProjectionCheckpoint:1', raw, independentlyTrustedKeys));
+    const stored = object(saved.checkpoint!), view = object(stored.view!);
+    requireFact(encoding(view).hash === stored.hash && encoding(stored.vector).bytes === encoding(view.foldedThrough).bytes, 'checkpoint divergence', 'integrity');
+    requireFact(Array.isArray(saved.records), 'checkpoint record witnesses absent');
+    const prefix = saved.records.map(record => {
+      const r = object(record), entry = snapshot.entries.find(e => e.fact.id === r.id);
+      requireFact(entry && entry.fact.contentHash === r.hash && encoding(entry).hash === r.status, 'checkpoint source changed; rebuild earlier prefix'); return entry;
+    });
+    // Trusted certificate pins a product of this fold. Record witnesses are re-bound to
+    // current admitted status; serialized values alone cannot enter the authority reader.
+    const restored = view as unknown as ProjectedView;
+    producedViews.add(restored); sources.set(restored, snapshot); definitions.set(restored, saved.definition as unknown as ProjectionDefinition);
+    restoredPrefixes.set(restored, prefix);
+    return { vector: restored.foldedThrough, view: restored, hash: String(stored.hash) };
+  });
+}
+const restoredPrefixes = new WeakMap<object, readonly FactStatus[]>();
+export interface RebuildReceipt { readonly view: ProjectedView; readonly folded: number; readonly resumedFrom: CausalFrontier | null }
+export function rebuildProjection(def: ProjectionDefinition, snapshot: FactSnapshot, generation: ProjectionGeneration, context: FactBoundary,
+  checkpoints: readonly Checkpoint[] = [], budget = Number.MAX_SAFE_INTEGER): Result<RebuildReceipt> {
+  return boundary('BoundedProjectionRebuild', null, context, () => {
+    requireFact(snapshotCurrent(snapshot), 'rebuild requires admitted snapshot'); validate(def, generation);
+    const entries = [...new Map(snapshot.entries.map(e => [e.fact.id, e])).values()];
+    const ordered = [...entries].sort((a, b) => foldKey(a.fact) < foldKey(b.fact) ? -1 : 1);
+    const candidates = checkpoints.filter(cp => producedViews.has(cp.view) && encoding(cp.view).hash === cp.hash
+      && encoding(definitions.get(cp.view)).bytes === encoding(def).bytes && cp.view.generation === generation.reference.id)
+      .map(cp => ({ cp, prefix: restoredPrefixes.get(cp.view) ?? sources.get(cp.view)!.entries }))
+      .filter(({ cp, prefix }) => cp.view.conflicts.length === 0 && cp.view.taint.length === 0 && prefix.every(p => entries.some(e => e.fact.id === p.fact.id && encoding(e).hash === encoding(p).hash)))
+      .filter(({ prefix }) => {
+        const ids = new Set(prefix.map(p => p.fact.id)), last = prefix.map(p => foldKey(p.fact)).sort().at(-1);
+        return entries.filter(e => !ids.has(e.fact.id)).every(e => (!last || foldKey(e.fact) > last)
+          && e.fact.kind !== 'retraction' && object(e.body).corrects === undefined && e.constitutional.length === 0 && e.historical.length === 0 && e.conflicts.length === 0 && e.taint.length === 0);
+      }).sort((a, b) => b.prefix.length - a.prefix.length);
+    const chosen = candidates[0];
+    const ids = new Set(chosen?.prefix.map(e => e.fact.id) ?? []), suffix = ordered.filter(e => !ids.has(e.fact.id));
+    requireFact(suffix.length <= budget, 'rebuild budget exhausted', 'budget-exhausted');
+    if (!chosen) return { view: take(foldProjection(def, snapshot, generation, context)), folded: entries.length, resumedFrom: null };
+    // Completeness remains mandatory on resume; a certified prefix replaces folding,
+    // never the causal/vector proof. Any non-incremental repair uses an earlier checkpoint.
+    const facts = entries.map(e => e.fact);
+    for (const f of facts) causalCone(f, facts);
+    for (const machine of new Set(facts.map(f => f.machine))) {
+      const line = facts.filter(f => f.machine === machine).sort((a, b) => comparePosition(a.segment, b.segment));
+      requireFact(line[0]!.segment.epoch === 0 && line[0]!.segment.position === 0, 'incomplete resume prefix');
+      for (let i = 1; i < line.length; i++) requireFact(line[i]!.prevInSegment === line[i - 1]!.contentHash, 'incomplete resume prefix');
+    }
+    const values: Record<string, Json> = { ...chosen.cp.view.values }, conflicts: ConflictClass[] = [];
+    let fallback = false;
+    for (const row of suffix) {
+      const d = def.decisions[row.fact.kind]; requireFact(d, 'undeclared resume kind'); if (d.kind === 'ignores') continue;
+      const b = object(row.body), identity = b[d.identity]; requireFact(typeof identity === 'string' && b[d.value] !== undefined, 'resume poison field');
+      const key = `${row.fact.kind}:${identity}`, old = values[key], value = b[d.value]!;
+      if (d.merge === 'set-union') values[key] = [...new Map([...(Array.isArray(old) ? old : []), value].map(v => [encoding(v).bytes, v])).entries()].sort(([a], [b]) => a < b ? -1 : 1).map(([, v]) => v);
+      else if (d.merge === 'exclusive-singleton') { fallback = true; break; }
+      else {
+        const a = old === undefined ? undefined : exact(old), v = exact(value);
+        values[key] = (a === undefined ? v : d.merge === 'max' ? a > v ? a : v : d.merge === 'min' ? a < v ? a : v : a + v).toString();
+        if (d.merge === 'cap-checked aggregate' && exact(values[key]) > exact(d.cap)) { fallback = true; break; }
+      }
+    }
+    if (fallback) { requireFact(entries.length <= budget, 'rebuild budget exhausted', 'budget-exhausted'); return { view: take(foldProjection(def, snapshot, generation, context)), folded: entries.length, resumedFrom: null }; }
+    const vector: Record<string, LineagePosition> = {};
+    for (const e of entries) { const prev = vector[e.fact.machine]; if (!prev || comparePosition(prev, e.fact.segment) < 0) vector[e.fact.machine] = { epoch: e.fact.segment.epoch, position: e.fact.segment.position }; }
+    const view = { ...chosen.cp.view, values, conflicts, foldedThrough: vector, knownLineages: generation.lineages } as unknown as ProjectedView;
+    producedViews.add(view); sources.set(view, snapshot); definitions.set(view, def);
+    return { view, folded: suffix.length, resumedFrom: chosen.cp.vector };
   });
 }

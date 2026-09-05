@@ -19,3 +19,7 @@ export { prepareSnapshot } from './snapshot.js';
 export type { FactSnapshot, FactStatus } from './snapshot.js';
 export { registerOwnedBody } from './owned.js';
 export type { OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from './owned.js';
+export { signVerifiedPrefix, restoreVerifiedPrefix } from './prefix.js';
+export type { VerifiedPrefix } from './prefix.js';
+export type { CacheKey } from './cache.js';
+export type { StoreRecovery } from './store.js';

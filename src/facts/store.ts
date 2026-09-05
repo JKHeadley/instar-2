@@ -9,6 +9,8 @@ import { contextBoundary } from './contracts.js';
 import { decodeHistoricalBody, historicalAuthority } from './historical.js';
 import { prepareSnapshot } from './snapshot.js';
 import type { FactSnapshot } from './snapshot.js';
+import { issuePrefix, prefixValid, prefixContext } from './prefix.js';
+import type { VerifiedPrefix } from './prefix.js';
 
 export interface SegmentStoragePort {
   readonly owner: 'part-ten';
@@ -21,19 +23,34 @@ export interface FactStorePort {
   append(input: unknown, replication?: { readonly peer: string }): Result<AppendReceipt>;
   read(): Result<readonly FactEnvelope[]>;
   readForProjection(): Result<FactSnapshot>;
+  verifiedPrefix(): Result<VerifiedPrefix>;
+  sweep(): Result<readonly FactEnvelope[]>;
 }
-export function createFactStore(context: FactContext, storage: SegmentStoragePort): FactStorePort {
+export interface StoreRecovery { readonly prefix?: VerifiedPrefix; readonly verificationBudget?: number; readonly onVerified?: (fact: FactEnvelope) => void }
+export function createFactStore(context: FactContext, storage: SegmentStoragePort, recovery: StoreRecovery = {}): FactStorePort {
   let revision = 0;
+  let prefix = recovery.prefix;
+  let cached: readonly FactEnvelope[] = [];
+  let checkedContext = prefixContext(context);
   const c = contextBoundary(context);
   const read = (): Result<readonly FactEnvelope[]> => boundary('FactStoreRead', null, c, () => {
-    const facts: FactEnvelope[] = [];
-    for (const input of storage.read()) {
+    const raw = storage.read();
+    if (checkedContext !== prefixContext(context)) { cached = []; checkedContext = prefixContext(context); }
+    if (prefix) { requireFact(prefixValid(prefix, context), 'prefix not verified under current context'); cached = prefix.facts; prefix = undefined; }
+    requireFact(raw.length >= cached.length, 'stored verified prefix was truncated', 'integrity');
+    for (let i = 0; i < cached.length; i++) requireFact(encoding(raw[i]).bytes === encoding(cached[i]).bytes, 'stored verified prefix changed', 'integrity');
+    requireFact(raw.length - cached.length <= (recovery.verificationBudget ?? Number.MAX_SAFE_INTEGER), 'verification budget exhausted', 'budget-exhausted');
+    const facts: FactEnvelope[] = [...cached];
+    for (const input of raw.slice(cached.length)) {
       const at = { ...context, facts: [...context.facts, ...facts] };
-      const fact = take(decodeEnvelope(input, at, 'replication')); extendsChain(fact, at); facts.push(fact);
+      const fact = take(decodeEnvelope(input, at, 'replication')); extendsChain(fact, at); facts.push(fact); recovery.onVerified?.(fact);
     }
+    cached = facts;
     return facts;
   });
   return Object.freeze({ read,
+    verifiedPrefix: () => boundary('FactStoreVerifiedPrefix', null, c, () => issuePrefix(take(read()), context)),
+    sweep: () => { cached = []; prefix = undefined; return read(); },
     readForProjection: () => boundary('FactStoreProjectionRead', null, c, () => {
       const facts = take(read()), at = revision;
       const fingerprint = encoding({ facts: storage.read(), captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [], historicalRevocations: context.historicalRevocations ?? [] }).hash;
@@ -56,6 +73,7 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
         if (duplicate) return { fact: duplicate, durability: { kind: 'local-durable' as const }, taint: [...new Set([...standing.taint, ...bodyTaint])] };
         const receipt = take(storage.append(encoding(safe).bytes, persisted.at(-1)?.contentHash ?? null));
         revision++;
+        cached = [...persisted, fact]; recovery.onVerified?.(fact);
         requireFact(receipt.kind === 'local-durable' || receipt.kind === 'replicated', 'storage returned no durability receipt', 'integrity');
         if (receipt.kind === 'replicated') requireFact(receipt.n > 0 && receipt.n === new Set(receipt.peers).size && receipt.peers.length === receipt.n && !receipt.peers.includes(fact.machine), 'invalid peer acknowledgement count');
         return { fact, durability: receipt, taint: [...new Set([...standing.taint, ...bodyTaint])] };
