@@ -1,7 +1,7 @@
 export type * from './contracts.js';
 export type { FactBoundary } from './boundary.js';
 export { decodeEnvelope, signEnvelope, preimage, genesisHash, factId, foldKey, clockKey, hashBytes, secretShape } from './envelope.js';
-export { causalCone, causalStanding, validateSchemas, decodeBody, extendsChain, validateRepair } from './admission.js';
+export { causalCone, causalStanding, validateSchemas, decodeBody, extendsChain, validateRepair, wrapUnresolved } from './admission.js';
 export { createFactStore, authorAndAppend, verifyAndAdmit, reconcileAuthority } from './store.js';
 export type { SegmentStoragePort, FactStorePort, AppendReceipt, AuthorInput } from './store.js';
 export { RefusalStore, PendingSet } from './stores.js';

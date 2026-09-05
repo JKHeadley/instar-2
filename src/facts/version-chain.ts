@@ -44,6 +44,7 @@ export function decodeVersion(input: unknown, context: FactContext, scope: Scope
 export function walkVersions(versions: readonly GovernedVersion[]): { current: readonly GovernedVersion[]; conflicts: readonly ConflictClass[]; duplicates: readonly string[] } {
   const unique = new Map<string, GovernedVersion>(), duplicateIds = new Map<string, string>();
   for (const version of versions) {
+    requireFact(encoding(version.content).hash === version.contentHash && version.approvedIn.artifact === version.contentHash, 'governing version content/approval mismatch');
     const existingId = unique.get(version.id); requireFact(!existingId || encoding(existingId).bytes === encoding(version).bytes, 'in-place version mutation');
     const duplicate = [...unique.values()].find(v => v.subject === version.subject && v.contentHash === version.contentHash && v.approvedIn.id === version.approvedIn.id && encoding(v.supersedes).bytes === encoding(version.supersedes).bytes);
     if (duplicate) { duplicateIds.set(version.id, duplicate.id); continue; }

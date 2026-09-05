@@ -11,7 +11,7 @@ export interface FactEnvelope {
   readonly [envelopeBrand]: true;
   readonly type: 'FactEnvelope'; readonly envelopeVersion: 1;
   readonly id: string; readonly kind: string; readonly schemaVersion: number;
-  readonly at: Clock; readonly machine: string;
+  readonly at: Clock; readonly foldKeyInstant: string; readonly machine: string;
   readonly principal: HistoricalShape<VerifiedPrincipal>; readonly provenance: HistoricalShape<Provenance>;
   readonly segment: SegmentPosition; readonly prevInSegment: Hash; readonly predecessors: Predecessors;
   readonly body: Json; readonly contentHash: Hash; readonly signature: string;
@@ -59,6 +59,7 @@ export interface FactContext {
   readonly timeAnchors: readonly TimeAnchor[];
   readonly captures: Readonly<Record<string, CapturedContent>>;
   readonly folded: CausalFrontier;
+  readonly migrations?: readonly { readonly kind: string; readonly from: number; readonly to: number; readonly migrate: (body: Json) => Json }[];
 }
 export function contextBoundary(context: FactContext) {
   return { site: context.site, preserved: context.preserved, register: context.decode.register };

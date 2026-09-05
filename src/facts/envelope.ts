@@ -44,6 +44,9 @@ export function preimage(input: unknown): { bytes: string; hash: Hash } {
 }
 export function signEnvelope(input: unknown, privateKey: string): unknown {
   const value = object(JSON.parse(encoding(input).bytes) as Json);
+  const reading = object(value.at ?? null).value;
+  requireFact(typeof reading === 'number' && Number.isSafeInteger(reading), 'unnormalizable fold-key clock');
+  value.foldKeyInstant = (BigInt(reading) + (1n << 63n)).toString(16).padStart(16, '0');
   const { hash: contentHash } = preimage(value);
   return { ...value, contentHash, signature: sign(null, Buffer.from(contentHash, 'utf8'), privateKey).toString('hex') };
 }
@@ -53,14 +56,15 @@ export function decodeEnvelope(input: unknown, context: FactContext, mode: 'orig
     // The public boundary snapshots without evaluating getters. No refused body is retained here.
     requireFact(!secretShape(encoding(raw).bytes), 'secret-shaped bytes', 'policy');
     const v = object(raw);
-    fields(v, ['type', 'envelopeVersion', 'id', 'kind', 'schemaVersion', 'at', 'machine', 'principal', 'provenance', 'segment', 'prevInSegment', 'predecessors', 'body', 'contentHash', 'signature']);
+    fields(v, ['type', 'envelopeVersion', 'id', 'kind', 'schemaVersion', 'at', 'foldKeyInstant', 'machine', 'principal', 'provenance', 'segment', 'prevInSegment', 'predecessors', 'body', 'contentHash', 'signature']);
     requireFact(v.type === 'FactEnvelope' && v.envelopeVersion === 1, 'unknown envelope type/version');
     const id = string(v.id, 'id'), kind = string(v.kind, 'kind'), version = integer(v.schemaVersion, 'schemaVersion', 1);
     const machine = string(v.machine, 'machine');
     const atValue = take(decode('Measurement', v.at, context.decode));
     requireFact(atValue.subject.kind === 'clock', 'at must be a clock');
     // Narrow the clock through its generic decoder contract; no principal/provenance is cast.
-    const at = atValue as Clock; clockKey(at);
+    const at = atValue as Clock;
+    const foldKeyInstant = clockKey(at); requireFact(v.foldKeyInstant === foldKeyInstant, 'fold-key bytes disagree with clock measurement');
     const s = object(v.segment ?? null); fields(s, ['machine', 'epoch', 'position']);
     const segment = { machine: string(s.machine, 'segment.machine'), epoch: integer(s.epoch, 'epoch'), position: integer(s.position, 'position') };
     requireFact(segment.machine === machine && id === factId(segment), 'fact id outside appender namespace');
@@ -90,7 +94,7 @@ export function decodeEnvelope(input: unknown, context: FactContext, mode: 'orig
       requireFact(same(provenance, v.provenance), 'origin provenance mismatch', 'integrity');
     }
     requireFact(segment.position === 0 ? parents.inSegment === null : parents.inSegment !== null, 'in-segment predecessor missing or invalid');
-    return { type: 'FactEnvelope', envelopeVersion: 1, id, kind, schemaVersion: version, at, machine, principal, provenance,
+    return { type: 'FactEnvelope', envelopeVersion: 1, id, kind, schemaVersion: version, at, foldKeyInstant, machine, principal, provenance,
       segment, prevInSegment, predecessors: parents, body: v.body!, contentHash, signature } as FactEnvelope;
   });
 }

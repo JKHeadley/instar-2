@@ -1,6 +1,6 @@
 // Rules 28/31/33/90; P2-NF-23..28, 32..33, 72, 77.
-import { decode, grantLiveness, rehydrateConflict, rehydrateOutcome, rehydrateResult, scopeIncludes } from '../index.js';
-import type { Clock, ConstitutionalValue, DecodeContext, Json, Result } from '../index.js';
+import { decode, defineDecoder, grantLiveness, rehydrateConflict, rehydrateOutcome, rehydrateResult, scopeIncludes } from '../index.js';
+import type { Clock, ConstitutionalValue, DecodeContext, Json, Result, VerifiedPrincipal, UnresolvedInput } from '../index.js';
 import { boundary, encoding, fields, integer, object, requireFact, same, string, take } from './boundary.js';
 import type { AuthorityTaint, FactContext, FactEnvelope, FactSchema } from './contracts.js';
 import { contextBoundary } from './contracts.js';
@@ -110,7 +110,8 @@ export function validateSchemas(schemas: readonly FactSchema[], context: FactCon
 }
 export function decodeBody(fact: FactEnvelope, context: FactContext, decoderContext: DecodeContext): Result<Readonly<Record<string, Json | ConstitutionalValue>>> {
   return boundary('FactBody', fact.body, contextBoundary(context), raw => {
-    const schema = schemaFor(context, fact.kind, fact.schemaVersion), body = object(raw);
+    const migrated = migrateBody(fact, context, raw);
+    const schema = schemaFor(context, fact.kind, migrated.version), body = object(migrated.body);
     fields(body, Object.keys(schema.fields).filter(k => !schema.optional?.includes(k)), schema.optional);
     const out: Record<string, Json | ConstitutionalValue> = {};
     for (const [name, field] of Object.entries(schema.fields)) {
@@ -145,6 +146,24 @@ export function decodeBody(fact: FactEnvelope, context: FactContext, decoderCont
   });
 }
 
+function migrateBody(fact: FactEnvelope, context: FactContext, body: Json): { body: Json; version: number } {
+  const schemas = context.schemas.filter(s => s.kind === fact.kind);
+  const current = Math.max(...schemas.map(s => s.version));
+  const versions = Object.fromEntries(schemas.map(s => [s.version, { validate: (input: Json) => {
+    const raw = object(input), payload = object(raw.body ?? null);
+    fields(payload, Object.keys(s.fields).filter(k => !s.optional?.includes(k)), s.optional);
+    return { ok: true as const, value: input };
+  } }]));
+  const migrations = Object.fromEntries((context.migrations ?? []).filter(m => m.kind === fact.kind).map(m => {
+    requireFact(m.to === m.from + 1, 'migration must advance one version');
+    return [m.from, (input: Json) => ({ ...object(input), schemaVersion: m.to, body: m.migrate(object(input).body!) })];
+  }));
+  const decoder = take(defineDecoder<Json, ReturnType<typeof contextBoundary>>({ name: `Body:${fact.kind}`, owner: 'part-two', currentVersion: current, versions, migrations,
+    decodeCurrent: input => ({ ok: true, value: object(input).body! }) }, context.preserved));
+  // Admission has already verified original hashes/signatures; migrations cannot affect them.
+  return { body: take(decoder.decode({ type: `Body:${fact.kind}`, schemaVersion: fact.schemaVersion, body }, contextBoundary(context))), version: current };
+}
+
 export function validateRepair(fact: FactEnvelope, context: FactContext): void {
   if (!['retraction', 'correction'].includes(fact.kind)) return;
   const body = object(fact.body), targetId = string(body.target, 'target');
@@ -159,4 +178,12 @@ export function validateRepair(fact: FactEnvelope, context: FactContext): void {
     requireFact(!seen.has(current.id), 'repair cycle'); seen.add(current.id);
     current = context.facts.find(f => f.id === object(current!.body).target);
   }
+}
+
+export function wrapUnresolved(input: unknown, observer: VerifiedPrincipal, context: FactContext): Result<{ kind: 'unattributable-observation'; principal: VerifiedPrincipal; body: { input: UnresolvedInput } }> {
+  return boundary('UnattributableObservation', input, contextBoundary(context), raw => {
+    requireFact(observer.kind === 'system' && context.decode.principals?.some(p => same(p, observer)), 'observation requires decoded system principal', 'standing');
+    const unresolved = take(decode('UnresolvedInput', raw, context.decode));
+    return { kind: 'unattributable-observation', principal: observer, body: { input: unresolved } };
+  });
 }

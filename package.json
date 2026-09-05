@@ -3,13 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./facts": { "types": "./dist/facts/index.d.ts", "default": "./dist/facts/index.js" },
+    "./projections": { "types": "./dist/projections/index.d.ts", "default": "./dist/projections/index.js" }
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "pretest": "npm run build",
-    "test:all": "npm run typecheck && npm run build && vitest run --reporter=default --reporter=json --outputFile=.test-results.json && npm run lint && node scripts/check-contract-map.mjs",
+    "test:all": "npm run typecheck && npm run build && vitest run --reporter=default --reporter=json --outputFile=.test-results.json && npm run lint && node scripts/check-contract-map.mjs && node scripts/check-p2-contract-map.mjs",
     "lint": "node scripts/check-architecture.mjs"
   },
   "devDependencies": {
