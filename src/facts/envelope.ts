@@ -51,8 +51,8 @@ export function signEnvelope(input: unknown, privateKey: string): unknown {
   return { ...value, contentHash, signature: sign(null, Buffer.from(contentHash, 'utf8'), privateKey).toString('hex') };
 }
 
-export function decodeEnvelope(input: unknown, context: FactContext, mode: 'origin' | 'replication' = 'origin'): Result<FactEnvelope> {
-  return boundary('FactEnvelopeDecode', input, contextBoundary(context), raw => {
+export function decodeFrame(input: unknown, context: FactContext) {
+  return boundary('SignedFactFrame', input, contextBoundary(context), raw => {
     // The public boundary snapshots without evaluating getters. No refused body is retained here.
     requireFact(!secretShape(encoding(raw).bytes), 'secret-shaped bytes', 'policy');
     const v = object(raw);
@@ -76,25 +76,34 @@ export function decodeEnvelope(input: unknown, context: FactContext, mode: 'orig
       && verify(null, Buffer.from(contentHash, 'utf8'), k.publicKey, Buffer.from(signature, 'hex')));
     requireFact(key, 'signature, signing owner, or key position invalid', 'integrity');
     requireFact(!key.compromisedAt || comparePosition(segment, key.compromisedAt) < 0, 'compromised-key: quarantine required', 'integrity');
+    requireFact(segment.position === 0 ? parents.inSegment === null : parents.inSegment !== null, 'in-segment predecessor missing or invalid');
+    return { raw, keyId: key.id, frame: { type: 'FactEnvelope' as const, envelopeVersion: 1 as const, id, kind, schemaVersion: version, at, foldKeyInstant, machine,
+      principal: v.principal!, provenance: v.provenance!, segment, prevInSegment, predecessors: parents, body: v.body!, contentHash, signature } };
+  });
+}
+
+export function decodeEnvelope(input: unknown, context: FactContext, mode: 'origin' | 'replication' = 'origin'): Result<FactEnvelope> {
+  return boundary('FactEnvelopeDecode', input, contextBoundary(context), raw => {
+    const checked = take(decodeFrame(raw, context));
+    const { principal: principalInput, provenance: provenanceInput, ...base } = checked.frame;
+    const { id, kind, schemaVersion: version, signature } = base;
     schemaFor(context, kind, version);
     let principal: HistoricalShape<VerifiedPrincipal>, provenance: HistoricalShape<Provenance>;
     if (mode === 'origin') {
-      const p = context.decode.principals?.find(p => same(p, v.principal));
-      requireFact(p && same(p.provenance, v.provenance), 'principal must be independently decoded with matching provenance', 'standing');
+      const p = context.decode.principals?.find(p => same(p, principalInput));
+      requireFact(p && same(p.provenance, provenanceInput), 'principal must be independently decoded with matching provenance', 'standing');
       // Revalidate through P1's producer, never trust caller field construction.
       const decoded = take(decode('VerifiedPrincipal', { type: 'VerifiedPrincipal', schemaVersion: 1, id: p.id, kind: p.kind }, { ...context.decode, provenance: p.provenance }));
       principal = decoded; provenance = decoded.provenance;
     } else {
       const bytes = encoding(raw).bytes, reference = `origin:${id}`;
-      const pin = { origin: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id }, capture: { reference, hash: hashBytes(bytes) }, machineKeyId: key.id, signature, path: ['principal'] };
+      const pin = { origin: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id }, capture: { reference, hash: hashBytes(bytes) }, machineKeyId: checked.keyId, signature, path: ['principal'] };
       // G1: this seam fails closed with P1 3f688bf: readHistorical signs raw bytes, while
       // this contract signs contentHash. Do not add a second signature or cast to live authority.
-      const historical = take(readHistorical('VerifiedPrincipal', v.principal, pin, { ...context.decode, captures: { ...context.decode.captures, [reference]: bytes } }));
+      const historical = take(readHistorical('VerifiedPrincipal', principalInput, pin, { ...context.decode, captures: { ...context.decode.captures, [reference]: bytes } }));
       principal = historical.view; provenance = historical.view.provenance;
-      requireFact(same(provenance, v.provenance), 'origin provenance mismatch', 'integrity');
+      requireFact(same(provenance, provenanceInput), 'origin provenance mismatch', 'integrity');
     }
-    requireFact(segment.position === 0 ? parents.inSegment === null : parents.inSegment !== null, 'in-segment predecessor missing or invalid');
-    return { type: 'FactEnvelope', envelopeVersion: 1, id, kind, schemaVersion: version, at, foldKeyInstant, machine, principal, provenance,
-      segment, prevInSegment, predecessors: parents, body: v.body!, contentHash, signature } as FactEnvelope;
+    return { ...base, principal, provenance } as FactEnvelope;
   });
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeEnvelope, extendsChain, preimage, signEnvelope, validateSchemas, decodeBody, verifyAndAdmit, clockKey } from '../../src/facts/index.js';
+import { decodeEnvelope, extendsChain, preimage, signEnvelope, validateSchemas, decodeBody, verifyAndAdmit, clockKey, verifyHistory, compromisedKeyConflicts, receiveReplication, PendingSet } from '../../src/facts/index.js';
 import { canonical, consumeResult } from '../../src/index.js';
 import { factsFixture, value, clone, refused, privateKey } from './fixtures.js';
 
@@ -47,6 +47,18 @@ describe('fact envelope boundary', () => {
     refused(decodeEnvelope(v, f.ctx), 'hash mismatch');
     refused(decodeEnvelope(signEnvelope(v, privateKey), f.ctx), 'schema version');
   });
+  it('P2-NF-21 replication holds an authentic future schema while a forged future frame refuses', () => {
+    const f = factsFixture(), future = f.wire({ schemaVersion: 2 }), pending = new PendingSet(2, 2, 100);
+    expect(value(receiveReplication(future, 'machine-a', f.ctx, pending, 100))).toEqual({ kind: 'held', dependency: 'schema:note:2' });
+    expect(pending.depth).toBe(1);
+    refused(receiveReplication({ ...(future as object), signature: '0'.repeat(128) }, 'machine-a', f.ctx, pending, 101), 'signature');
+    expect(pending.depth).toBe(1);
+  });
+  it('P2-NF-22 forward migration runs after integrity and preserves original bytes', () => {
+    const f = factsFixture(), original = f.fact(), before = preimage(original).hash;
+    const ctx = { ...f.ctx, schemas: [f.schema, { ...f.schema, version: 2 }], migrations: [{ kind: 'note', from: 1, to: 2, migrate: (body: import('../../src/index.js').Json) => body }] };
+    expect(value(decodeBody(original, ctx, ctx.decode)).amount).toBe('10'); expect(preimage(original).hash).toBe(before);
+  });
   it('P2-NF-24 non-genesis facts require their in-segment predecessor', () => { const f = factsFixture(); refused(decodeEnvelope(f.wire({ segment: { machine: 'machine-a', epoch: 0, position: 1 } }), f.ctx), 'predecessor'); });
   it('P2-NF-61 machine-local fact schemas refuse', () => { const f = factsFixture(); refused(validateSchemas([{ ...f.schema, machineScope: 'machine-local' } as never], f.ctx), 'machine-local'); });
   it('P2-NF-64 a capture must resolve with matching actual bytes', () => {
@@ -62,6 +74,16 @@ describe('fact envelope boundary', () => {
     const f = factsFixture(), a = f.fact(), ctx = { ...f.ctx, keys: f.ctx.keys.map(k => ({ ...k, compromisedAt: { epoch: 0, position: 1 } })) };
     expect(value(decodeEnvelope(a, ctx)).id).toBe(a.id);
     refused(decodeEnvelope(f.next(a), ctx), 'compromised-key');
+    expect(compromisedKeyConflicts([a, f.next(a)], ctx).map(c => c.kind)).toEqual(['compromised-key']);
+  });
+  it('P2-NF-16 boot verifies the suffix and full sweep catches corruption beneath the durable watermark', () => {
+    const f = factsFixture(), a = f.fact(), b = f.next(a), c = f.next(b);
+    const initial = value(verifyHistory([a, b], f.ctx, 'sweep'));
+    expect(value(verifyHistory([a, b, c], f.ctx, 'boot', initial.watermarks)).checked).toBe(1);
+    const changed = { ...a, body: { identity: 'altered', amount: '999' } };
+    expect(value(verifyHistory([changed, b, c], f.ctx, 'boot', initial.watermarks)).checked).toBe(1);
+    refused(verifyHistory([changed, b, c], f.ctx, 'sweep'), 'hash mismatch');
+    refused(verifyHistory([a, b, { ...c, body: { changed: true } }], f.ctx, 'boot', initial.watermarks), 'hash mismatch');
   });
   it('all untrusted boundary inputs are total, including getters and cycles', () => {
     const f = factsFixture(), cycle: Record<string, unknown> = {}; cycle.self = cycle;

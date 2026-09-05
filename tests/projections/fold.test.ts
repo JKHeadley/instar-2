@@ -71,6 +71,8 @@ it('P2-NF-55 stale authority refuses while the informational channel stays label
   refused(readProjection(view, { ...f.definition, class: 'authority-answering' }, f.clock(201), f.c), 'staleness');
   expect(value(readProjection(view, f.definition, f.clock(201), f.c)).stale).toHaveLength(2);
   expect(value(readProjection(view, { ...f.definition, class: 'authority-answering' }, f.clock(200), f.c)).stale).toEqual([]);
+  const authoritative = value(f.fold(f.inputs, { ...f.definition, class: 'authority-answering' }));
+  refused(readProjection(authoritative, { ...f.definition, stalenessBound: 100000 }, f.clock(201), f.c), 'staleness');
 });
 it('P2-NF-56 conflicted authority never serves as live', () => {
   const f = fixture(), def = { ...f.definition, decisions: { note: { kind: 'folds' as const, identity: 'identity', value: 'amount', merge: 'exclusive-singleton' as const } } };

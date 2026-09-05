@@ -29,6 +29,7 @@ export interface FoldInput {
 }
 export interface ProjectedView {
   readonly projection: string; readonly generation: string;
+  readonly policy: Readonly<{ class: 'authority-answering' | 'informational'; stalenessBound: number }>;
   readonly values: Readonly<Record<string, Json>>;
   readonly conflicts: readonly ConflictClass[]; readonly taint: readonly AuthorityTaint[];
   readonly foldedThrough: CausalFrontier; readonly knownLineages: Readonly<Record<string, KnownLineage>>;
@@ -141,20 +142,25 @@ export function foldProjection(def: ProjectionDefinition, inputs: readonly FoldI
     }
     // A dangling correction is not an ordinary occurrence.
     for (const fact of facts) { const target = object(fact.body).corrects; if (typeof target === 'string') requireFact(byId.has(target), 'correction target missing'); }
-    return { projection: def.id, generation: generation.reference.id, values,
+    return { projection: def.id, generation: generation.reference.id, policy: { class: def.class, stalenessBound: def.stalenessBound }, values,
       conflicts: conflicts.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0), taint: [...taint].sort(), foldedThrough,
       knownLineages: generation.lineages, retractions: retractions.map(f => f.id).sort(), corrections: corrections.sort((a, b) => a.original < b.original ? -1 : 1) };
   });
 }
 export function readProjection(view: ProjectedView, definition: ProjectionDefinition, now: Clock, context: FactBoundary, demand: CausalFrontier = {}): Result<{ view: ProjectedView; stale: readonly string[] }> {
   return boundary('ProjectionRead', null, context, () => {
+    requireFact(definition.id === view.projection, 'projection definition does not name this view');
+    requireFact(Number.isFinite(definition.stalenessBound) && definition.stalenessBound > 0, 'invalid reader staleness bound');
+    // A caller may demand a stronger read, but cannot relabel an authority view or widen
+    // the source's declared bound. The producing fold's policy travels with its output.
+    const stalenessBound = Math.min(view.policy.stalenessBound, definition.stalenessBound);
     const stale: string[] = [];
     for (const [machine, known] of Object.entries(view.knownLineages)) {
       const folded = view.foldedThrough[machine];
-      if (!known.head || !folded || comparePosition(folded, known.head) < 0 || (!known.closed && (known.observedAt === null || now.value < known.observedAt || now.value - known.observedAt > definition.stalenessBound))) stale.push(machine);
+      if (!known.head || !folded || comparePosition(folded, known.head) < 0 || (!known.closed && (known.observedAt === null || now.value < known.observedAt || now.value - known.observedAt > stalenessBound))) stale.push(machine);
     }
     for (const [machine, position] of Object.entries(demand)) requireFact(view.foldedThrough[machine] && comparePosition(view.foldedThrough[machine]!, position) >= 0, 'currency demand not reached', 'stale-base');
-    if (definition.class === 'authority-answering') {
+    if (definition.class === 'authority-answering' || view.policy.class === 'authority-answering') {
       requireFact(stale.length === 0, 'unknown or exceeded staleness bound', 'stale-base');
       requireFact(view.taint.length === 0 && view.conflicts.length === 0, 'conflicted or tainted authority', 'standing');
     }

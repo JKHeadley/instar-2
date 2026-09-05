@@ -9,3 +9,7 @@ export { decodeVersion, walkVersions } from './version-chain.js';
 export type { GovernedVersion, LandingReadPort } from './version-chain.js';
 export { redactCapture, redactionReasons } from './captures.js';
 export type { ProtectedCaptureReference } from './captures.js';
+export { verifyHistory, compromisedKeyConflicts } from './verification.js';
+export type { VerifiedWatermark } from './verification.js';
+export { receiveReplication } from './replication.js';
+export type { ReplicationReceipt } from './replication.js';

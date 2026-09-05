@@ -43,7 +43,7 @@ export function decodeVersion(input: unknown, context: FactContext, scope: Scope
 }
 export function walkVersions(versions: readonly GovernedVersion[]): { current: readonly GovernedVersion[]; conflicts: readonly ConflictClass[]; duplicates: readonly string[] } {
   const unique = new Map<string, GovernedVersion>(), duplicateIds = new Map<string, string>();
-  for (const version of versions) {
+  for (const version of [...versions].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
     requireFact(encoding(version.content).hash === version.contentHash && version.approvedIn.artifact === version.contentHash, 'governing version content/approval mismatch');
     const existingId = unique.get(version.id); requireFact(!existingId || encoding(existingId).bytes === encoding(version).bytes, 'in-place version mutation');
     const duplicate = [...unique.values()].find(v => v.subject === version.subject && v.contentHash === version.contentHash && v.approvedIn.id === version.approvedIn.id && encoding(v.supersedes).bytes === encoding(version.supersedes).bytes);
@@ -71,5 +71,5 @@ export function walkVersions(versions: readonly GovernedVersion[]): { current: r
     requireFact(incumbent.length === 1, 'fork has no unique reviewed incumbent'); current.push(incumbent[0]!);
     const ids = heads.map(v => v.id).sort(); conflicts.push({ key: `version:${subject}:${ids.join(':')}`, kind: 'version-fork', facts: heads.map(v => v.since).sort(), detail: 'concurrent governing versions; incumbent remains in force' });
   }
-  return { current: current.sort((a, b) => a.subject.localeCompare(b.subject)), conflicts, duplicates: [...duplicateIds.keys()].sort() };
+  return { current: current.sort((a, b) => a.subject < b.subject ? -1 : a.subject > b.subject ? 1 : 0), conflicts, duplicates: [...duplicateIds.keys()].sort() };
 }
