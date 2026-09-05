@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { decodeVersion, walkVersions } from '../../src/facts/index.js';
 import type { GovernedVersion } from '../../src/facts/index.js';
-import { canonical } from '../../src/index.js';
+import { canonical, decode } from '../../src/index.js';
 import { factsFixture, value, refused } from './fixtures.js';
 
 function fixture() {
@@ -39,6 +39,28 @@ it('P2-NF-40 version bytes must match exactly the approved content hash', () => 
 it('P2-NF-41 moving the approved base requires reissue', () => {
   const f = fixture(); refused(decodeVersion({ ...f.input, base: 'base:2' }, f.ctx, f.scope, [], f.landing), 'base');
   refused(decodeVersion(f.input, { ...f.ctx, decode: { ...f.ctx.decode, currentBase: 'base:2' } }, f.scope, [], f.landing), 'base');
+  for (const repository of [false, true]) for (const base of ['base:1', 'moved-base']) for (const currentBase of ['base:1', 'moved-base']) {
+    const auth = f.authorize({ id: 'matrix', artifact: f.authorization.artifact, action: { kind: repository ? 'merge' : 'work', scope: f.scope } });
+    const c = { ...f.ctx, decode: { ...f.ctx.decode, currentBase, authorizations: [auth] } };
+    const input = { ...f.input, base, approvedIn: auth.id, landedIn: repository ? 'merge' : null };
+    const result = decodeVersion(input, c, f.scope, [], { owner: 'part-ten', merges: [{ commit: 'merge', onMain: true, parentCount: 2, reviewedBase: base }] });
+    if (base === 'base:1' && currentBase === 'base:1') expect(value(result).base).toBe(auth.base);
+    else refused(result, 'base');
+  }
+});
+it('P2-NF-38 P2-NF-39 owner-produced review and runtime yes variants enter; merge and attested events do not', () => {
+  const f = fixture();
+  for (const recordType of ['approval', 'review-approval', 'signed-yes', 'dashboard-yes', 'merge']) for (const repository of [false, true]) {
+    const raw = f.authInput({ id: 'variant', artifact: f.authorization.artifact, action: { kind: repository ? 'merge' : 'work', scope: f.scope } }, false, recordType);
+    const permitted = recordType !== 'merge' && (!repository || ['approval', 'review-approval'].includes(recordType));
+    if (!permitted) { refused(decode('Authorization', raw.input, raw.context)); continue; }
+    const auth = value(decode('Authorization', raw.input, raw.context)), ctx = { ...f.ctx, decode: { ...f.ctx.decode, authorizations: [auth] } };
+    const input = { ...f.input, approvedIn: auth.id, landedIn: repository ? 'merge' : null };
+    const landing = { owner: 'part-ten' as const, merges: [{ commit: 'merge', onMain: true, parentCount: 2, reviewedBase: 'base:1' }] };
+    expect(value(decodeVersion(input, ctx, f.scope, [], landing)).approvedIn).toBe(auth);
+    refused(decodeVersion({ ...input, content: { wrong: true } }, ctx, f.scope, [], landing), 'hash');
+  }
+  const attested = f.authInput({}, true, 'review-approval'); refused(decode('Authorization', attested.input, attested.context));
 });
 it('P2-NF-42 all supersedes references resolve in the same subject chain', () => {
   const f = fixture(); refused(decodeVersion({ ...f.input, supersedes: ['missing'] }, f.ctx, f.scope, [], f.landing), 'supersedes missing');

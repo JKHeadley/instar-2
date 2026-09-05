@@ -30,7 +30,8 @@ export function decodeVersion(input: unknown, context: FactContext, scope: Scope
     const base = string(v.base, 'base'), contentHash = encoding(v.content).hash;
     requireFact(contentHash === v.contentHash, 'version content hash differs', 'integrity');
     const authorization = context.decode.authorizations?.find(a => a.id === v.approvedIn);
-    requireFact(authorization && authorization.explicitYes.class === 'verified' && ['approval', 'review'].includes(authorization.explicitYes.authenticated.recordType), 'approvedIn must name verified explicit yes, never merge', 'standing');
+    requireFact(authorization && authorization.explicitYes.class === 'verified' && ['approval', 'review-approval', 'signed-yes', 'dashboard-yes'].includes(authorization.explicitYes.authenticated.recordType), 'approvedIn must name verified explicit yes, never merge', 'standing');
+    requireFact(base === authorization.base, 'version base differs from approved base', 'stale-base');
     requireFact(isValid(authorization, context.decode.currentBase ?? base, contentHash, atApproval.now, atApproval.decode) === 'valid', 'approval content/base/standing invalid', 'stale-base');
     requireFact(scopeIncludes(authorization.action.scope, scope), 'approval scope does not cover version', 'standing');
     if (supersedes.length === 2) requireFact(atApproval.decode.grants?.some(g => g.id === authorization.under && g.standing === 'operator' && scopeIncludes(g.scope, scope)), 'fork merge requires operator standing', 'standing');

@@ -167,18 +167,23 @@ export function migrateBody(fact: FactEnvelope, context: FactContext, body: Json
 }
 
 export function validateRepair(fact: FactEnvelope, context: FactContext): void {
-  if (!['retraction', 'correction'].includes(fact.kind)) return;
-  const body = object(fact.body), targetId = string(body.target, 'target');
+  const body = object(fact.body), correction = body.corrects !== undefined;
+  requireFact(fact.kind !== 'correction', 'correction must be the original kind with corrects');
+  if (fact.kind !== 'retraction' && !correction) return;
+  const targetId = string(correction ? body.corrects : body.target, correction ? 'corrects' : 'target');
   const target = context.facts.find(f => f.id === targetId); requireFact(target, 'repair target missing');
   if (fact.kind === 'retraction') string(body.reason, 'reason');
+  requireFact(!correction || fact.kind === target.kind, 'correction must name same-kind original');
+  requireFact(causalCone(fact, context.facts).some(f => f.id === target.id), 'repair must causally follow target');
   const original = schemaFor(context, target.kind, target.schemaVersion), repair = schemaFor(context, fact.kind, fact.schemaVersion);
   const rank = { requester: 0, delegate: 1, operator: 2 };
   requireFact(rank[repair.standing] >= rank[original.standing] && scopeIncludes(repair.scope, original.scope), 'repair has less standing than target', 'standing');
   if (original.authority === 'conferring') requireFact(repair.standing === 'operator', 'authority repair requires original grant standing', 'standing');
   const seen = new Set([fact.id]); let current: FactEnvelope | undefined = target;
-  while (current && ['retraction', 'correction'].includes(current.kind)) {
+  while (current) {
     requireFact(!seen.has(current.id), 'repair cycle'); seen.add(current.id);
-    current = context.facts.find(f => f.id === object(current!.body).target);
+    const body = object(current.body); const next: Json | undefined = current.kind === 'retraction' ? body.target : body.corrects;
+    current = context.facts.find(f => f.id === next);
   }
 }
 

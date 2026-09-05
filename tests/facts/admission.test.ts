@@ -65,8 +65,20 @@ it('P2-NF-32 retraction cannot use less standing than the target', () => {
   expect(() => validateRepair(repair, ctx)).toThrow('less standing');
 });
 it('P2-NF-33 correction of authority requires original grant standing', () => {
-  const f = standing(), schema = { ...f.schema, kind: 'correction', standing: 'delegate' as const }, ctx = { ...f.ctx, schemas: [...f.ctx.schemas, schema] };
-  const repair = f.next(f.root, { kind: 'correction', body: { target: f.root.id } }, ctx); expect(() => validateRepair(repair, ctx)).toThrow('less standing');
+  const f = standing(), schema = { ...f.schema, version: 2, standing: 'delegate' as const }, ctx = { ...f.ctx, schemas: [...f.ctx.schemas, schema] };
+  const repair = f.next(f.root, { schemaVersion: 2, body: { corrects: f.root.id } }, ctx); expect(() => validateRepair(repair, ctx)).toThrow('less standing');
+});
+it('P2-NF-72 P2-NF-75 transitive frontier and epoch edges preserve the same later-revocation verdict', () => {
+  const f = standing(), payload = { id: 'rev', grantId: f.g.id, by: f.alice, at: f.now, reason: 'revoked' }, proof = f.proof(payload);
+  const revocation = value(decode('Revocation', { type: 'Revocation', schemaVersion: 1, ...payload, source: proof.p }, { ...f.ctx.decode, provenance: proof.p }));
+  const bridge = f.fact({ machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 }, predecessors: { inSegment: null, required: [], frontier: { 'machine-a': point(f.candidate) } } });
+  for (const epoch of [0, 1]) for (const redundant of [false, true]) {
+    const frontier = { ...(epoch ? { 'machine-b': point(bridge) } : {}), ...(redundant ? { 'machine-a': point(f.candidate) } : {}) };
+    const rev = f.next(bridge, { segment: { machine: 'machine-b', epoch, position: epoch ? 0 : 1 }, predecessors: { inSegment: epoch ? null : bridge.id, required: [], frontier } });
+    const ctx = { ...f.ctx, facts: [f.root, f.candidate, bridge, rev], revocations: [{ factId: rev.id, revocation }], folded: { 'machine-a': point(f.candidate), 'machine-b': point(rev) } };
+    expect(causalCone(rev, ctx.facts).map(f => f.id)).toContain(f.candidate.id);
+    expect(reconcileAuthority(f.candidate, ctx, ctx.folded)).toEqual({ taint: [], conflicts: [] });
+  }
 });
 it('P2-NF-37 redaction refuses non-operator standing', () => {
   const f = factsFixture(), ctx = { ...f.ctx, schemas: [{ ...f.schema, kind: 'redaction' }] }, fact = f.fact({ kind: 'redaction', body: { reference: 'cap', reason: 'erasure-obligation' } }, ctx);

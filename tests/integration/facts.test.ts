@@ -71,6 +71,25 @@ it('P2-NF-62 replication duplicate is idempotent and altered duplicate refuses w
   expect(value(verifyAndAdmit(a, 'machine-a', ctx)).id).toBe(a.id);
   refused(verifyAndAdmit({ ...a, body: { tampered: true } }, 'machine-a', ctx), 'changed bytes'); expect(JSON.stringify(ctx.facts)).toBe(before);
 });
+it('P2-NF-23 P2-NF-33 P2-NF-36 same-kind corrections pass the real append/replication path only with causal and original standing', () => {
+  const f = diskFixture(); try {
+    const schema = { ...f.schema, fields: { ...f.schema.fields, corrects: { kind: 'reference' as const } }, optional: ['corrects'] };
+    const ctx = { ...f.ctx, schemas: [schema] }, store = createFactStore(ctx, f.storage);
+    const original = f.fact(); value(store.append(original));
+    const correction = f.next(original, { body: { identity: 'one', amount: '40', corrects: original.id } });
+    const remote = f.fact({ machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 }, body: correction.body });
+    refused(store.append(remote, { peer: 'machine-b' }), 'causally');
+    value(store.append(correction, { peer: 'machine-a' }));
+    const facts = value(store.read());
+    const view = value(foldProjection({ id: 'corrected', class: 'informational', stalenessBound: 100, retention: 'all-identities', decisions: { note: { kind: 'folds', merge: 'additive', identity: 'identity', value: 'amount' } } }, facts.map(fact => ({ fact, taint: [] })), { reference: ctx.decode.register.generation, kinds: ['note'], lineages: { 'machine-a': { head: correction.segment, observedAt: 100, closed: false } } }, f.c));
+    expect(view.values['note:one']).toBe('40');
+    const old = { ...schema, standing: 'operator' as const, authority: 'conferring' as const, causallyBound: true };
+    const lower = { ...schema, version: 2 };
+    const low = f.next(original, { schemaVersion: 2, body: correction.body }, { ...ctx, schemas: [old, lower] });
+    const lowContext = { ...ctx, schemas: [old, lower], facts: [original], migrations: [{ kind: 'note', from: 1, to: 2, migrate: (body: Json) => body }] };
+    refused(verifyAndAdmit(low, 'machine-a', lowContext), 'less standing');
+  } finally { f.cleanup(); }
+});
 it.skip('P2-NF-63 SKIPPED: part eight owns irreversible-effect durability admission; only typed storage receipts exist in part two', () => {});
 it('P2-NF-62 replication durably appends through the sole write port, preserving receiver bytes across duplicate and rejected deliveries', () => {
   const f = diskFixture(); try {

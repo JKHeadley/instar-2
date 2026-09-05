@@ -2,7 +2,7 @@
 import { consumeResult } from '../index.js';
 import type { Json, Result } from '../index.js';
 import { boundary, encoding, frozen, object, requireFact, take } from './boundary.js';
-import { causalStanding, decodeBody, extendsChain, validateRepair, validateSchemas } from './admission.js';
+import { causalCone, causalStanding, decodeBody, extendsChain, validateRepair, validateSchemas } from './admission.js';
 import { decodeEnvelope, factId, genesisHash, signEnvelope } from './envelope.js';
 import type { AuthorityTaint, CausalFrontier, ConflictClass, DurabilityState, FactContext, FactEnvelope } from './contracts.js';
 import { contextBoundary } from './contracts.js';
@@ -41,9 +41,9 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
         if (duplicate) requireFact(encoding(duplicate).bytes === encoding(safe).bytes, 'duplicate id changed bytes', 'integrity');
         else extendsChain(fact, at);
         const standing = causalStanding(fact, at, !replication);
+        validateRepair(fact, at);
         const bodyTaint = replication ? take(decodeHistoricalBody(fact, at, standing.decode)).taint
           : (take(decodeBody(fact, at, standing.decode)), []);
-        validateRepair(fact, at);
         if (duplicate) return { fact: duplicate, durability: { kind: 'local-durable' as const }, taint: [...new Set([...standing.taint, ...bodyTaint])] };
         const receipt = take(storage.append(encoding(safe).bytes, persisted.at(-1)?.contentHash ?? null));
         requireFact(receipt.kind === 'local-durable' || receipt.kind === 'replicated', 'storage returned no durability receipt', 'integrity');
@@ -77,7 +77,7 @@ export function verifyAndAdmit(input: unknown, peer: string, context: FactContex
     if (existing) { requireFact(encoding(existing).bytes === encoding(safe).bytes, 'duplicate id changed bytes', 'integrity'); return existing; }
     const fact = take(decodeEnvelope(safe, context, 'replication'));
     extendsChain(fact, context); const standing = causalStanding(fact, context, false);
-    take(decodeHistoricalBody(fact, context, standing.decode)); validateRepair(fact, context); return fact;
+    validateRepair(fact, context); take(decodeHistoricalBody(fact, context, standing.decode)); return fact;
   });
 }
 export function reconcileAuthority(fact: FactEnvelope, context: FactContext, horizon: CausalFrontier): { taint: readonly AuthorityTaint[]; conflicts: readonly ConflictClass[] } {
@@ -87,14 +87,9 @@ export function reconcileAuthority(fact: FactEnvelope, context: FactContext, hor
   for (const row of context.revocations) {
     if (!named.some(g => g.grant.id === row.revocation.grantId)) continue;
     const rev = context.facts.find(f => f.id === row.factId); if (!rev) continue;
-    const contains = (candidate: FactEnvelope, id: string) => {
-      const seen = new Set<string>(); const queue = [candidate];
-      while (queue.length) { const f = queue.pop()!; for (const parent of [f.predecessors.inSegment, ...f.predecessors.required]) if (parent !== null && !seen.has(parent)) { seen.add(parent); const p = context.facts.find(x => x.id === parent); if (p) queue.push(p); } }
-      return seen.has(id);
-    };
-    const coneCovers = fact.predecessors.frontier[rev.machine];
-    const after = contains(rev, fact.id) || (rev.predecessors.frontier[fact.machine] && (rev.predecessors.frontier[fact.machine]!.epoch > fact.segment.epoch || (rev.predecessors.frontier[fact.machine]!.epoch === fact.segment.epoch && rev.predecessors.frontier[fact.machine]!.position >= fact.segment.position)));
-    const inCone = contains(fact, rev.id) || (coneCovers && (coneCovers.epoch > rev.segment.epoch || (coneCovers.epoch === rev.segment.epoch && coneCovers.position >= rev.segment.position)));
+    const facts = context.facts.some(f => f.id === fact.id) ? context.facts : [...context.facts, fact];
+    const after = causalCone(rev, facts).some(f => f.id === fact.id);
+    const inCone = causalCone(fact, facts).some(f => f.id === rev.id);
     if (!inCone && !after) conflicts.push({ key: `revocation:${fact.id}:${rev.id}`, kind: 'revocation-conflict', facts: [fact.id, rev.id], detail: 'revocation concurrent or prior-but-unseen' });
   }
   const fullyObserved = Object.entries(context.folded).every(([m, p]) => horizon[m] && (horizon[m]!.epoch > p.epoch || (horizon[m]!.epoch === p.epoch && horizon[m]!.position >= p.position)));
