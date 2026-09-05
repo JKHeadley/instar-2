@@ -196,6 +196,38 @@ desk parser is also type-erased and executed in a fresh process with valid measu
 retain the existing runtime mismatch refusal for JS callers. No runtime behavior, historical
 code, authority contract, inventory entry or schema/hash fixture changed in this round.
 
+## Historical comparison follow-up (from merged main)
+
+`compareHistoricalReads(type, leftRead, rightRead, mode, subject, context)` is the public
+historical-only comparison consumer. `mode` is identity/version/value, following the same
+P1 comparison rules as live `compare`; the private historical implementation remains private.
+Both inputs must be genuine `HistoricalRead` wrappers of the requested type. Copied wrappers,
+bare views, live values and live/historical mixtures refuse. The context is
+`HistoricalComparisonContext`: a register, preservation reference, and independently admitted
+`recordSubjects[canonicalRecordHash]` Scope inputs. The subject is decoded through P1 Scope.
+Intrinsic record scopes still govern the domain. Scopeless same-id disagreements need both
+independent bindings, supplied here or already pinned during the original reads; an existing
+binding cannot be rebound. Comparison uses call-local historical copies, so it cannot install
+or replace subject metadata on either input read.
+
+The result is `Result<boolean | HistoricalConflict>`. Equality uses the existing boolean
+meaning. A conflict is a frozen, nominal, owner-produced wrapper with owner `part-one`, mode
+`historical`, kind `derived-conflict`, two source FactEnvelope references, and an unbranded
+`view` of the derived Conflict. It is NOT a live Conflict and NOT a newly origin-signed read.
+It may be retained in P2's ConflictClass product, but neither wrapper, view nor side can enter
+live comparison, standing, or resolution. Object-spread reconstruction fails type checking.
+Serialized copies are not new capabilities: regenerate the product from verified reads.
+Unavailable dependencies refuse before equality or Conflict so no untainted result hides
+missing captures. P2 retains ownership of origin/key/chain verification, admission context
+and its outer ConflictClass; no P2 implementation is recreated here.
+
+Tests cover real two-machine disagreements, equality modes, pinned and newly supplied scopes,
+rebinding/missing-scope failures, mixed Intent/principal/grant/authorization inputs, typed
+nonconstruction, unavailable inputs, and a fresh public-package process. A historical authority
+Conflict is retained by a downstream-style consumer and then refused by live resolution and
+standing. Main's existing generated register source pin is refreshed by its offline replay
+generator after the source commit; this does not perform a governed-state landing.
+
 ## Side effects and undo
 
 This adds an isolated library, tests, development tooling, and a CI job. It opens no runtime

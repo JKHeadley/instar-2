@@ -1,12 +1,12 @@
 import { verify } from 'node:crypto';
 import type * as T from '../types/values.js';
 import type { CaptureInput, DecodeContext, FactEnvelopeReference } from '../types/ports.js';
-import { consumeResult, errorDetail, evaluateGrantLiveness, refusal, seal, success, trusted } from '../types/internal.js';
+import { bindRecordSubject, consumeResult, errorDetail, evaluateGrantLiveness, recordSubject, refusal, seal, success, trusted } from '../types/internal.js';
 import { canonicalText, hashText, snapshot } from './canonical.js';
 import { decode } from './decode.js';
 import { rehydrateConflict } from './rehydrate.js';
-import { readEvidence } from '../types/operations.js';
-import { inSession } from './session.js';
+import { compareHistorical, readEvidence } from '../types/operations.js';
+import { inSession, sealInContext } from './session.js';
 import type { CaptureStatus, HistoricalSession } from './session.js';
 
 // Historical values have private validation identity, but never live constitutional authority.
@@ -37,6 +37,23 @@ export interface HistoricalDecodeContext extends Omit<DecodeContext, 'provenance
   readonly historicalBinding?: Omit<NonNullable<DecodeContext['binding']>, 'source' | 'scope'> & {
     readonly source: HistoricalRead<T.Provenance>; readonly scope: unknown;
   };
+}
+declare class HistoricalConflictBrand {
+  private readonly historicalConflict: true;
+  private constructor();
+}
+// A derived product of two pinned reads, not a new origin fact or live Conflict.
+export interface HistoricalConflict extends HistoricalConflictBrand {
+  readonly owner: 'part-one';
+  readonly mode: 'historical';
+  readonly kind: 'derived-conflict';
+  readonly sources: readonly [FactEnvelopeReference, FactEnvelopeReference];
+  readonly view: HistoricalShape<T.Conflict>;
+}
+export interface HistoricalComparisonContext extends Pick<DecodeContext, 'register' | 'preserved'> {
+  // Independently admitted record-hash-to-Scope bindings, never copied from a
+  // candidate Conflict. A binding already pinned on a read cannot be replaced.
+  readonly recordSubjects: Readonly<Record<string, unknown>>;
 }
 const records = new WeakMap<object, T.ConstitutionalValue>();
 function take<V>(result: T.Result<V>): V {
@@ -143,4 +160,42 @@ export function historicalGrantLiveness(grant: HistoricalRead<T.StandingGrant>,
       return refusal('evidence-unavailable: historical standing dependencies cannot be reinspected', reference, 'integrity');
     return success(evaluateGrantLiveness(g, decoded, now, true));
   } catch (error) { return refusal(errorDetail(error), reference); }
+}
+
+export function compareHistoricalReads<N extends keyof T.Inventory>(type: N,
+  left: HistoricalRead<T.Inventory[N]>, right: HistoricalRead<T.Inventory[NoInfer<N>]>,
+  mode: 'identity' | 'version' | 'value', subject: unknown, context: HistoricalComparisonContext): T.Result<boolean | HistoricalConflict> {
+  let preserved = 'input://caller';
+  try {
+    if (typeof context.preserved !== 'string' || !context.preserved) return refusal('historical comparison requires preservation reference', preserved);
+    preserved = context.preserved;
+    const a = records.get(left); const b = records.get(right);
+    if (!a || !b || a.type !== type || b.type !== type)
+      return refusal('historical comparison requires two origin-verified reads of the requested type; live or copied values are refused', preserved, 'integrity');
+    if (!['identity', 'version', 'value'].includes(mode)) return refusal('unknown historical comparison mode', preserved);
+    // A boolean or an untainted Conflict must not conceal unavailable evidence.
+    if (left.unavailableCaptures.length || right.unavailableCaptures.length)
+      return refusal('evidence-unavailable: historical comparison dependencies cannot be reinspected', preserved, 'integrity');
+    const bindings = snapshot(context.recordSubjects);
+    if (!bindings || typeof bindings !== 'object' || Array.isArray(bindings)) return refusal('historical comparison requires independent record subject context', preserved);
+    const session: HistoricalSession = { issued: new WeakSet(), unavailable: new Map(), statuses: {} };
+    const c = inSession({ register: context.register, captures: {}, preserved }, session);
+    const domain = take(decode('Scope', subject, c));
+    const prepare = (record: T.ConstitutionalValue): T.Inventory[N] => {
+      const hash = hashText(canonicalText(record));
+      const bound = recordSubject(record);
+      const supplied = (bindings as Record<string, T.Json>)[hash];
+      const admitted = supplied === undefined ? bound : take(decode('Scope', supplied, c));
+      if (bound && admitted && canonicalText(bound) !== canonicalText(admitted)) throw new Error('historical subject binding differs from original admission context');
+      // Call-local historical copies avoid changing either original read's subject
+      // metadata. Neither the copies nor the resulting Conflict enter live issuance.
+      const copy = sealInContext<T.Inventory[N]>({ ...record }, c);
+      if (admitted) bindRecordSubject(copy, admitted);
+      return copy;
+    };
+    const comparison = take(compareHistorical(type, prepare(a), prepare(b), domain, c, mode));
+    if (typeof comparison === 'boolean') return success(comparison);
+    return success(seal<HistoricalConflict>({ owner: 'part-one', mode: 'historical', kind: 'derived-conflict',
+      sources: [left.origin, right.origin], view: comparison }, false));
+  } catch (error) { return refusal(errorDetail(error), preserved); }
 }
