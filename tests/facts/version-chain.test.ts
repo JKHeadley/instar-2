@@ -5,10 +5,10 @@ import { canonical } from '../../src/index.js';
 import { factsFixture, value, refused } from './fixtures.js';
 
 function fixture() {
-  const f = factsFixture(), since = f.fact(), content = { rule: 'one' }, encoded = value(canonical(content));
+  const f = factsFixture(), root = f.fact(), since = f.next(root), content = { rule: 'one' }, encoded = value(canonical(content));
   f.capture(encoded.bytes, encoded.hash);
   const authorization = f.authorize({ artifact: encoded.hash, id: 'version-approval' });
-  const ctx = { ...f.ctx, facts: [since] };
+  const ctx = { ...f.ctx, facts: [root, since], grants: [{ factId: root.id, grant: f.g }] };
   const input = { id: 'v1', subject: 'rule:one', content, contentHash: encoded.hash, since: since.id, supersedes: [], approvedIn: authorization.id, base: 'base:1', landedIn: null };
   const landing = { owner: 'part-ten' as const, merges: [] };
   const version = value(decodeVersion(input, ctx, f.scope, [], landing));
@@ -17,7 +17,7 @@ function fixture() {
     const approval = f.authorize({ id: `approval:${id}`, artifact: encoded.hash });
     return value(decodeVersion({ ...input, id, content, contentHash: encoded.hash, approvedIn: approval.id, supersedes: parents.map(p => p.id) }, ctx, f.scope, parents, landing));
   }
-  return { ...f, ctx, input, authorization, landing, version, make };
+  return { ...f, ctx, root, input, authorization, landing, version, make };
 }
 it('P2-NF-38 approvedIn must be explicit yes, never a merge event', () => {
   const f = fixture(), event = f.authInput({ artifact: f.authorization.artifact, id: 'merge-event' }, false, 'merge');
@@ -38,6 +38,7 @@ it('P2-NF-40 version bytes must match exactly the approved content hash', () => 
 });
 it('P2-NF-41 moving the approved base requires reissue', () => {
   const f = fixture(); refused(decodeVersion({ ...f.input, base: 'base:2' }, f.ctx, f.scope, [], f.landing), 'base');
+  refused(decodeVersion(f.input, { ...f.ctx, decode: { ...f.ctx.decode, currentBase: 'base:2' } }, f.scope, [], f.landing), 'base');
 });
 it('P2-NF-42 all supersedes references resolve in the same subject chain', () => {
   const f = fixture(); refused(decodeVersion({ ...f.input, supersedes: ['missing'] }, f.ctx, f.scope, [], f.landing), 'supersedes missing');
@@ -58,7 +59,8 @@ it('P2-NF-45 fork merge refuses without operator standing', () => {
   const f = fixture(); const delegate = f.grant({ id: 'delegate', standing: 'delegate', actions: ['work'], expiresAt: 1000 });
   const auth = f.authorize({ id: 'delegate-approval', under: delegate.id, artifact: f.authorization.artifact });
   const parents = [{ ...f.version, id: 'left' }, { ...f.version, id: 'right' }];
-  refused(decodeVersion({ ...f.input, id: 'merge', approvedIn: auth.id, supersedes: ['left', 'right'] }, f.ctx, f.scope, parents, f.landing), 'operator standing');
+  const ctx = { ...f.ctx, grants: [...f.ctx.grants, { factId: f.root.id, grant: delegate }] };
+  refused(decodeVersion({ ...f.input, id: 'merge', approvedIn: auth.id, supersedes: ['left', 'right'] }, ctx, f.scope, parents, f.landing), 'operator standing');
 });
 it('P2-NF-71 identical approval and content replay collapses, never creates a fork', () => {
   const f = fixture(); const a = { ...f.version, id: 'a', supersedes: ['v1'] }, b = { ...a, id: 'b' };

@@ -39,6 +39,14 @@ it('P2-NF-28 constitutional fields run the actual part-one decoder with pinned p
   const good = f.fact({ body: { value: { type: 'VerifiedPrincipal', schemaVersion: 1, id: 'alice', kind: 'person' } } }, ctx);
   expect(value(decodeBody(good, ctx, ctx.decode)).value).toMatchObject({ id: 'alice' });
 });
+it('P2-NF-28 authority bodies consume action provenance separately from principal identity evidence', () => {
+  const f = factsFixture();
+  for (const [type, valueInBody, provenance] of [['StandingGrant', f.g, f.g.source], ['Authorization', f.authorization, f.authorization.explicitYes]] as const) {
+    const ctx = { ...f.ctx, decode: { ...f.ctx.decode, provenance }, schemas: [{ ...f.schema, fields: { value: { kind: 'constitutional' as const, type } } }] };
+    const fact = f.fact({ provenance, body: { value: valueInBody } }, ctx);
+    expect(value(decodeBody(fact, ctx, ctx.decode)).value).toEqual(valueInBody);
+  }
+});
 it('P2-NF-30 refusal storage never retains body bytes and coalesces repeated failures', () => {
   const store = new RefusalStore(2, 10, 2);
   const input = { hash: 'abc', reason: 'policy' as const, source: 'peer', byteLength: 42, body: 'sensitive-body' };

@@ -4,6 +4,7 @@ import type { Authorization, Json, Result, Scope } from '../index.js';
 import { boundary, encoding, fields, object, requireFact, string, strings } from './boundary.js';
 import type { FactContext, ConflictClass } from './contracts.js';
 import { contextBoundary } from './contracts.js';
+import { causalStanding } from './admission.js';
 
 export interface GovernedVersion {
   readonly id: string; readonly subject: string; readonly content: Json; readonly contentHash: string;
@@ -22,16 +23,17 @@ export function decodeVersion(input: unknown, context: FactContext, scope: Scope
     const v = object(raw); fields(v, ['id', 'subject', 'content', 'contentHash', 'since', 'supersedes', 'approvedIn', 'base', 'landedIn']);
     const id = string(v.id, 'id'), subject = string(v.subject, 'subject');
     requireFact(!versions.some(x => x.id === id), 'in-place version edit forbidden');
-    const since = string(v.since, 'since'); requireFact(context.facts.some(f => f.id === since), 'since fact missing');
+    const since = string(v.since, 'since'); const sinceFact = context.facts.find(f => f.id === since); requireFact(sinceFact, 'since fact missing');
+    const atApproval = causalStanding(sinceFact, context, false);
     const supersedes = strings(v.supersedes, 'supersedes'); requireFact(supersedes.length <= 2 && !supersedes.includes(id), 'supersession cycle or invalid arity');
     for (const parent of supersedes) requireFact(versions.some(x => x.id === parent && x.subject === subject), 'supersedes missing or wrong subject');
     const base = string(v.base, 'base'), contentHash = encoding(v.content).hash;
     requireFact(contentHash === v.contentHash, 'version content hash differs', 'integrity');
     const authorization = context.decode.authorizations?.find(a => a.id === v.approvedIn);
     requireFact(authorization && authorization.explicitYes.class === 'verified' && ['approval', 'review'].includes(authorization.explicitYes.authenticated.recordType), 'approvedIn must name verified explicit yes, never merge', 'standing');
-    requireFact(isValid(authorization, base, contentHash, context.genesis.clock, context.decode) === 'valid', 'approval content/base/standing invalid', 'stale-base');
+    requireFact(isValid(authorization, context.decode.currentBase ?? base, contentHash, atApproval.now, atApproval.decode) === 'valid', 'approval content/base/standing invalid', 'stale-base');
     requireFact(scopeIncludes(authorization.action.scope, scope), 'approval scope does not cover version', 'standing');
-    if (supersedes.length === 2) requireFact(context.decode.grants?.some(g => g.id === authorization.under && g.standing === 'operator' && scopeIncludes(g.scope, scope)), 'fork merge requires operator standing', 'standing');
+    if (supersedes.length === 2) requireFact(atApproval.decode.grants?.some(g => g.id === authorization.under && g.standing === 'operator' && scopeIncludes(g.scope, scope)), 'fork merge requires operator standing', 'standing');
     const repository = context.decode.register.actions[authorization.action.kind]?.repository;
     let landedIn: string | null = null;
     if (repository) {

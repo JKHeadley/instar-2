@@ -62,6 +62,7 @@ export function causalStanding(fact: FactEnvelope, context: FactContext, origin:
     if (!f) continue;
     const declared = schemaFor(context, f.kind, f.schemaVersion);
     requireFact(f.kind === 'time-anchor' && declared.standing === 'operator' && f.provenance.class === 'verified', 'time anchor lacks governed operator origin', 'standing');
+    causalStanding(f, context, false);
     const body = object(f.body);
     requireFact(same(body.clock, anchor.clock), 'time anchor differs from recorded body', 'integrity');
     if (anchor.clock.value > now.value) now = anchor.clock;
@@ -130,9 +131,10 @@ export function decodeBody(fact: FactEnvelope, context: FactContext, decoderCont
       if (field.kind === 'constitutional') {
         // P1 producers are always used. A body's authority record must have its own pinned
         // authentication context matching the fact; an arbitrary second provenance is refused.
-        const p = context.decode.principals?.find(p => same(p.provenance, fact.provenance));
-        requireFact(p, 'pinned live provenance unavailable; historical body seam required', 'standing');
-        const c = { ...decoderContext, provenance: p.provenance };
+        const pinned = context.decode.provenance && same(context.decode.provenance, fact.provenance) ? context.decode.provenance
+          : context.decode.principals?.find(p => same(p.provenance, fact.provenance))?.provenance;
+        requireFact(pinned, 'pinned live provenance unavailable; historical body seam required', 'standing');
+        const c = { ...decoderContext, provenance: pinned };
         if (field.type === 'Outcome') out[name] = take(rehydrateOutcome(value, c));
         else if (field.type === 'Conflict') out[name] = take(rehydrateConflict(value, c));
         else if (field.type === 'Result') {

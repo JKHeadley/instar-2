@@ -91,10 +91,11 @@ export function decodeEnvelope(input: unknown, context: FactContext, mode: 'orig
     let principal: HistoricalShape<VerifiedPrincipal>, provenance: HistoricalShape<Provenance>;
     if (mode === 'origin') {
       const p = context.decode.principals?.find(p => same(p, principalInput));
-      requireFact(p && same(p.provenance, provenanceInput), 'principal must be independently decoded with matching provenance', 'standing');
+      const pinned = context.decode.provenance ?? p?.provenance;
+      requireFact(p && pinned && same(pinned, provenanceInput) && pinned.authenticated.principal.id === p.id && pinned.authenticated.principal.kind === p.kind, 'principal must be independently decoded with matching provenance', 'standing');
       // Revalidate through P1's producer, never trust caller field construction.
       const decoded = take(decode('VerifiedPrincipal', { type: 'VerifiedPrincipal', schemaVersion: 1, id: p.id, kind: p.kind }, { ...context.decode, provenance: p.provenance }));
-      principal = decoded; provenance = decoded.provenance;
+      principal = decoded; provenance = pinned;
     } else {
       const bytes = encoding(raw).bytes, reference = `origin:${id}`;
       const pin = { origin: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id }, capture: { reference, hash: hashBytes(bytes) }, machineKeyId: checked.keyId, signature, path: ['principal'] };
