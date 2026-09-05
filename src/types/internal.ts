@@ -4,13 +4,13 @@ const subjects = new WeakMap<object, Scope>();
 export function bindRecordSubject(record: object, scope: Scope): void { subjects.set(record, scope); }
 export function recordSubject(record: object): Scope | undefined { return subjects.get(record); }
 // Not exported by the package. Only decoders and pure derivations may use this factory.
-export function seal<T>(value: object): T {
+export function seal<T>(value: object, live = true): T {
   function freeze(item: object): void {
     for (const child of Object.values(item)) if (child && typeof child === 'object' && !Object.isFrozen(child)) freeze(child);
     Object.freeze(item);
   }
   freeze(value);
-  issued.add(value);
+  if (live) issued.add(value);
   return value as T;
 }
 export function trusted(value: unknown, type: string): boolean {

@@ -4,6 +4,7 @@ import { recordSubject, refusal, seal, success, trusted } from './internal.js';
 import { canonicalText, hashText } from '../decode/canonical.js';
 import { grantLiveness, scopeIncludes } from '../decode/decode.js';
 import { schemaRegistry } from '../decode/schema.js';
+import { sealInContext, sessionFor, trustedIn } from '../decode/session.js';
 
 export function compareMeasurements<S extends string>(left: T.Measurement<S>, right: T.Measurement<NoInfer<S>>, preserved: string, crossInstance = false): T.Result<number> {
   if (left.subject.kind !== right.subject.kind || left.unit !== right.unit || (!crossInstance && left.subject.instance !== right.subject.instance))
@@ -50,7 +51,18 @@ export function authorizationRequestDigest(request: {
 }
 export function compare<N extends keyof T.Inventory>(type: N, left: T.Inventory[N], right: T.Inventory[NoInfer<N>],
   mode: 'identity' | 'version' | 'value', subject: T.Scope, preserved: string): T.Result<boolean | T.Conflict> {
-  if (!trusted(left, type) || !trusted(right, type) || left.schemaVersion !== right.schemaVersion)
+  return compareImpl(type, left, right, mode, subject, preserved);
+}
+// Internal historical comparison; not exported by the package and requires a private session.
+export function compareHistorical<N extends keyof T.Inventory>(type: N, left: T.Inventory[N], right: T.Inventory[N],
+  subject: T.Scope, context: DecodeContext): T.Result<boolean | T.Conflict> {
+  if (!sessionFor(context)) return refusal('historical comparison requires origin validation session', context.preserved);
+  return compareImpl(type, left, right, 'identity', subject, context.preserved, context);
+}
+function compareImpl<N extends keyof T.Inventory>(type: N, left: T.Inventory[N], right: T.Inventory[N],
+  mode: 'identity' | 'version' | 'value', subject: T.Scope, preserved: string, context?: DecodeContext): T.Result<boolean | T.Conflict> {
+  const known = (value: unknown) => context ? trustedIn(context, value, type) : trusted(value, type);
+  if (!known(left) || !known(right) || left.schemaVersion !== right.schemaVersion)
     return refusal('comparison domain: type or schema mismatch; migrate before comparison', preserved);
   const l = left as unknown as Record<string, unknown>; const r = right as unknown as Record<string, unknown>;
   for (const record of [left, right]) if ('scope' in record && !scopeIncludes(subject, record.scope))
@@ -86,8 +98,9 @@ export function compare<N extends keyof T.Inventory>(type: N, left: T.Inventory[
       ? { type: 'Scope', schemaVersion: 1, kind: 'organization' }
       : { type: 'Scope', schemaVersion: 1, kind: a.kind, members: [...new Set([...a.members, ...b.members])].sort() };
     if (canonicalText(subject) !== canonicalText(expected)) return refusal('conflict subject differs from authoritative record context', preserved);
-    return success(seal<T.Conflict>({ type: 'Conflict', schemaVersion: 1, left, right,
-      origins: [origin(left), origin(right)], fields: differences, subject }));
+    const fields = { type: 'Conflict', schemaVersion: 1, left, right,
+      origins: [origin(left), origin(right)], fields: differences, subject };
+    return success(context ? sealInContext<T.Conflict>(fields, context) : seal<T.Conflict>(fields));
   }
   if (mode !== 'value' && typeof l.id !== 'string') return refusal('comparison mode: this type supports value equality only', preserved);
   if (mode === 'version' && type === 'VerifiedPrincipal') return refusal('VerifiedPrincipal supports identity and value equality', preserved);

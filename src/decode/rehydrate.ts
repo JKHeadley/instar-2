@@ -1,7 +1,8 @@
 import type { Conflict, Inventory, Json, Outcome, Result } from '../types/values.js';
 import type { DecodeContext } from '../types/ports.js';
 import { consumeResult, refusal, success } from '../types/internal.js';
-import { compare } from '../types/operations.js';
+import { compare, compareHistorical } from '../types/operations.js';
+import { sessionFor } from './session.js';
 import { decode } from './decode.js';
 import { canonicalText, snapshot } from './canonical.js';
 
@@ -29,7 +30,7 @@ export function rehydrateConflict(input: unknown, context: DecodeContext, sides:
     return consumeResult(decode(type, left, sides.left), { Refused: r => r, Success: a =>
       consumeResult(decode(type, right, sides.right), { Refused: r => r, Success: b =>
         consumeResult(decode('Scope', v.subject, context), { Refused: r => r, Success: subject =>
-          consumeResult(compare(type, a, b, 'identity', subject, context.preserved), { Refused: r => r, Success: conflict => {
+          consumeResult(sessionFor(context) ? compareHistorical(type, a, b, subject, context) : compare(type, a, b, 'identity', subject, context.preserved), { Refused: r => r, Success: conflict => {
             if (typeof conflict === 'boolean' || canonicalText(conflict) !== canonicalText(v)) return refusal('serialized conflict disagrees with derived conflict', context.preserved);
             return success(conflict);
           } }),
