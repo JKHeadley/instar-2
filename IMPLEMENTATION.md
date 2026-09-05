@@ -30,7 +30,7 @@ are explicit inputs. Every schema is shared across machines.
   `decodeMeasurement(expectedSubject, input, context)` checks that subject at runtime and
   preserves it in the return type. A decoded `clock` feeds time APIs without casts. Generic
   inventory reads remain unrefined; `compareMeasurements` rejects their broad string subject
-  or union subject at compile time until the caller uses the checked producer with one
+  or union/open-pattern subject at compile time until the caller uses the checked producer with one
   known subject. An ordinary union-typed parser is allowed to decode, but its output cannot
   prove two operands have the same subject. Runtime mismatch refusal still protects JS calls.
 - Scope inclusion uses explicit registered member sets; it never infers containment from a
@@ -179,6 +179,22 @@ and unavailable grant/revocation dependencies. Integration tests consume a histo
 grant → approval → revocation chain and verify no live issuance; a fresh Node process
 reconstructs and evaluates the same public wrappers. P2 still owns cone selection,
 appender admission and integration of this consumer; no lane-two files were changed.
+
+## Desk repair round three (base 9e81772)
+
+R4.2 fixes only the Measurement comparison's static subject guard. A candidate subject must
+require a concrete property in its mapped Record (open string/template/intrinsic/branded
+patterns admit an empty record and fail this test), and it must not be a union of keys.
+This replaces the unsupported assumption that every non-string, non-union subtype is a
+singleton. No registry-name whitelist or ASCII-only character parser is introduced.
+
+NF-19 compiles public-package producers for the desk pattern, prefix/suffix, number/bigint,
+case-intrinsic, intersected/branded, mixed pattern/literal, finite-template, broad-string and
+union subject types, then requires diagnostics only on their comparisons. Concrete literal,
+Unicode literal, concrete-template, enum-member and Clock positives still compile. The exact
+desk parser is also type-erased and executed in a fresh process with valid measurements to
+retain the existing runtime mismatch refusal for JS callers. No runtime behavior, historical
+code, authority contract, inventory entry or schema/hash fixture changed in this round.
 
 ## Side effects and undo
 
