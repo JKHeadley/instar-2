@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compare, consumeResult, decode, defineDecoder, rehydrateConflict, rehydrateOutcome, rehydrateResult, resolveConflict } from '../../src/index.js';
+import { compare, consumeResult, decode, defineDecoder, deriveThrough, rehydrateConflict, rehydrateOutcome, rehydrateResult, resolveConflict } from '../../src/index.js';
 import type { BoundaryContext, Conflict, Json, Result, Validation } from '../../src/index.js';
 import { clone, digest, fixture, raw, value } from '../fixtures.js';
 const refused = <T>(result: Result<T>, text: string) => consumeResult(result, { Success: () => { throw new Error('expected refusal'); }, Refused: r => expect(r.detail).toContain(text) });
@@ -42,6 +42,44 @@ describe('downstream decoder extension and historical value reads', () => {
     const { definition, context, f } = framework();
     const throwing = value(defineDecoder({ ...definition, decodeCurrent: () => { throw new Error('bad data'); } }, f.ctx.preserved));
     refused(throwing.decode({ type: definition.name, schemaVersion: 2, id: 'x', name: 'valid' }, context), 'bad data');
+  });
+  for (const [site, direction] of [['delivery', 'open'], ['types.decode', 'closed']] as const) {
+    for (const failure of ['unknown-version', 'null', 'accessor', 'bad-migration', 'thrown-migration', 'thrown-validator', 'thrown-current', 'explicit-validator', 'explicit-current', 'mutated-context', 'thrown-derivation'] as const) {
+      it(`NF-17 R6 preserves ${site}/${direction} on ${failure}`, () => {
+        const { definition, context: base, f } = framework();
+        const context = { ...base, site: site as string, preserved: 'capture:extension-attempt' };
+        const input = { type: definition.name, schemaVersion: 1, id: 'x', oldName: 'valid' };
+        const throws = (): never => { throw new Error('callback failed'); };
+        const rejects = (): Validation<Json> => ({ ok: false, detail: 'policy rejection', reason: 'policy' });
+        const changes = failure === 'bad-migration' ? { migrations: { 1: () => null } }
+          : failure === 'thrown-migration' ? { migrations: { 1: throws } }
+          : failure === 'thrown-validator' ? { versions: { ...definition.versions, 1: { validate: throws } } }
+          : failure === 'explicit-validator' ? { versions: { ...definition.versions, 1: { validate: rejects } } }
+          : failure === 'thrown-current' ? { decodeCurrent: throws }
+          : failure === 'explicit-current' ? { decodeCurrent: rejects }
+          : failure === 'mutated-context' ? { decodeCurrent: () => { context.site = 'invented'; context.preserved = 'wrong'; return rejects(); } }
+          : {};
+        const decoder = value(defineDecoder<Json, BoundaryContext>({ ...definition, ...changes }, f.ctx.preserved));
+        const data = failure === 'unknown-version' ? { ...input, schemaVersion: 99 }
+          : failure === 'null' ? null
+          : failure === 'accessor' ? { get type() { throw new Error('accessor'); } } : input;
+        const result = failure === 'thrown-derivation' ? deriveThrough({ ...decoder, decode: throws }, data, context) : decoder.decode(data, context);
+        consumeResult(result, { Success: () => { throw new Error('failure accepted'); }, Refused: r => {
+          expect(r).toMatchObject({ site, failDirection: direction, preserved: 'capture:extension-attempt',
+            reason: ['explicit-validator', 'explicit-current', 'mutated-context'].includes(failure) ? 'policy' : 'decode' });
+          expect(r.detail.length).toBeGreaterThan(0);
+        } });
+      });
+    }
+  }
+  it('NF-17 R6 uses a conservative fallback only for untrusted boundary metadata', () => {
+    const { decoder, context } = framework();
+    for (const bad of [{ ...context, site: 'invented' }, { ...context, register: { ...context.register, generation: { ...context.register.generation, id: '' } } }]) {
+      consumeResult(decoder.decode(null, bad), { Success: () => { throw new Error('invalid metadata accepted'); }, Refused: r => {
+        expect(r).toMatchObject({ site: 'types.decode', failDirection: 'closed', preserved: context.preserved });
+        expect(r.detail).toContain('registered site and generation');
+      } });
+    }
   });
   it('rehydrates recorded Success and Refused without downstream constructors', () => {
     const f = fixture();

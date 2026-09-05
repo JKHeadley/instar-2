@@ -32,19 +32,30 @@ export interface VersionedDecoder<T, C extends BoundaryContext> {
   readonly currentVersion: number;
   readonly decode: (input: unknown, context: C) => Result<T>;
 }
-function boundaryFailure(context: BoundaryContext, detail: string, reason: RefusalReason = 'decode') {
-  return refusal(detail, context.preserved, reason, context.site, context.register.sites[context.site] ?? 'closed');
-}
 // Shared by constitutional and extension decoders; deliberately absent from package exports.
 export function runBoundary<T>(input: unknown, context: { readonly preserved: string },
-  validate: (shape: Json, original: unknown) => Result<T>): Result<T> {
+  validate: (shape: Json, original: unknown, fail: (detail: string, reason?: RefusalReason) => Result<never>) => Result<T>,
+  metadata?: BoundaryContext): Result<T> {
   let preserved = 'input://caller';
+  let site = 'types.decode'; let direction: 'open' | 'closed' = 'closed';
+  const fail = (detail: string, reason: RefusalReason = 'decode') => refusal(detail, preserved, reason, site, direction);
   try {
     const reference = context.preserved;
     if (typeof reference !== 'string' || !reference) return refusal('preserved: expected nonempty input reference', preserved);
     preserved = reference;
-    return validate(snapshot(input), input);
-  } catch (error) { return refusal(errorDetail(error), preserved); }
+    // Pin metadata before even snapshotting malformed input. Only a validated
+    // registered site may replace the explicit conservative fallback.
+    if (metadata !== undefined) {
+      const requested = metadata.site; const register = metadata.register;
+      if (typeof requested !== 'string' || !requested || register.generation.owner !== 'part-three'
+        || typeof register.generation.id !== 'string' || !register.generation.id || !Object.hasOwn(register.sites, requested))
+        return fail('boundary requires registered site and generation');
+      const declared = register.sites[requested];
+      if (declared !== 'open' && declared !== 'closed') return fail('boundary requires registered fail direction');
+      site = requested; direction = declared;
+    }
+    return validate(snapshot(input), input, fail);
+  } catch (error) { return fail(errorDetail(error)); }
 }
 export function defineDecoder<T, C extends BoundaryContext>(definition: DecoderDefinition<T, C>, preserved: string): Result<VersionedDecoder<T, C>> {
   try {
@@ -60,9 +71,7 @@ export function defineDecoder<T, C extends BoundaryContext>(definition: DecoderD
     const current = definition.decodeCurrent; const name = definition.name; const owner = definition.owner;
     return success(Object.freeze({ name, owner, currentVersion: n,
       decode(input: unknown, context: C): Result<T> {
-        return runBoundary(input, context, initial => {
-          if (!Object.hasOwn(context.register.sites, context.site)
-            || context.register.generation.owner !== 'part-three' || !context.register.generation.id) return refusal('boundary requires registered site and generation', context.preserved);
+        return runBoundary(input, context, (initial, _original, fail) => {
           let shape = initial;
           const versionOf = (value: Json, expected?: number): number => {
             if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('versioned input must be an object');
@@ -74,14 +83,14 @@ export function defineDecoder<T, C extends BoundaryContext>(definition: DecoderD
           let version = versionOf(shape);
           for (;;) {
             const checked = validators[version]!(shape, context);
-            if (!checked.ok) return boundaryFailure(context, checked.detail, checked.reason);
+            if (!checked.ok) return fail(checked.detail, checked.reason);
             shape = snapshot(checked.value); versionOf(shape, version);
             if (version === n) break;
             shape = snapshot(migrations[version]!(shape, context)); versionOf(shape, ++version);
           }
           const decoded = current(shape, context);
-          return decoded.ok ? success(decoded.value) : boundaryFailure(context, decoded.detail, decoded.reason);
-        });
+          return decoded.ok ? success(decoded.value) : fail(decoded.detail, decoded.reason);
+        }, context);
       },
     }));
   } catch { return refusal('malformed decoder definition', preserved); }
@@ -90,5 +99,5 @@ export function defineDecoder<T, C extends BoundaryContext>(definition: DecoderD
 // Later parts validate their own derived output here without recreating Success/Refused.
 // This invokes the registered decoder, so it is not a public unchecked Success constructor.
 export function deriveThrough<T, C extends BoundaryContext>(decoder: VersionedDecoder<T, C>, input: unknown, context: C): Result<T> {
-  try { return decoder.decode(input, context); } catch { return boundaryFailure(context, 'derivation callback threw'); }
+  return runBoundary(input, context, (_shape, original) => decoder.decode(original, context), context);
 }
