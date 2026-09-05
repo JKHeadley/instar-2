@@ -19,7 +19,7 @@ export function renderRegister(register: GeneratedRegister, generation: Register
     const capabilities = '# Capabilities\n\n' + header + '\n' + entries.filter(d => d.kind === 'features').map(d =>
       `- ${d.id}: ${d.status}; metrics: ${JSON.stringify(d.requiredFacts.metrics)}; live proof: ${d.requiredFacts.liveProof ?? 'unavailable'}\n`).join('');
     const coverage = '# Rule coverage\n\n' + header + '\n' + (graph
-      ? '| Class | Count |\n|---|---:|\n' + Object.entries(graph.totals).map(([name, count]) => `| ${name} | ${count} |`).join('\n') + '\n\n' + JSON.stringify(graph.rules, null, 2)
+      ? '| Class | Count |\n|---|---:|\n' + Object.entries(graph.totals).map(([name, count]) => `| ${name} | ${count} |`).join('\n') + '\n\n' + JSON.stringify({ rules: graph.rules, loops: graph.loops, prerequisites: graph.prerequisites }, null, 2)
       : 'Bootstrap coverage is unavailable: rule deadlines/standing routes and holder declarations have not been approved. No rule is claimed held.\n');
     return { register: encoding(register).bytes + '\n', ruleBook, glossary, capabilities, coverage };
   });

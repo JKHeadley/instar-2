@@ -4,6 +4,7 @@ import type { Declaration, EnforcementBoundary, GeneratedRegister, Reference, Re
 import { checked, encoding, list, object, requireThat, strings, take, text } from './boundary.js';
 import { decodeReference } from './declarations.js';
 import { wasVerified } from './generator.js';
+import { boundaryRungs } from './rungs.js';
 
 export type GovernedConstruct = RegisterValue<'GovernedConstruct'> & Readonly<{ kind: string; declaration: Reference }>;
 export function readRegisterEntry(id: string, register: VerifiedRegister, context: RegisterContext) {
@@ -53,7 +54,7 @@ export interface GovernedStateObservation {
 export function checkGovernedState(observations: readonly GovernedStateObservation[], register: GeneratedRegister, context: RegisterContext) {
   return checked('GovernedStateWiring', observations, context, () => {
     for (const { declaration: d } of register.entries.filter(e => e.declaration.kind === 'blocking sites')) {
-      const rungs = d.requiredFacts.rungs ? list(d.requiredFacts.rungs, 'rungs').map(object) : [d.requiredFacts];
+      const rungs = boundaryRungs(d.requiredFacts);
       for (const rung of rungs) if (rung.decidesAlone === 'governed-state') {
         const enforced = object(rung.enforces!); const record = text(enforced.record, 'enforced record'); const decoder = text(enforced.decoder, 'decoder');
         requireThat(register.entries.some(e => e.declaration.id === record && !('state' in e.approvedIn)), `P3-NF-26: enforced record ${record} lacks approved history`);

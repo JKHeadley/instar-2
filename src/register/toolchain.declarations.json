@@ -144,5 +144,69 @@
       82
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "terms-contracts",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "tests/terms/**",
+      "why": "Part-three toolchain changes require operator approval; external enforcement is owned by parts nine and eleven.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "graph-contracts",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "tests/rulegraph/**",
+      "why": "Part-three toolchain changes require operator approval; external enforcement is owned by parts nine and eleven.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "register-integration",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "tests/integration/register.test.ts",
+      "why": "Part-three toolchain changes require operator approval; external enforcement is owned by parts nine and eleven.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "register-e2e",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "tests/e2e/register.test.ts",
+      "why": "Part-three toolchain changes require operator approval; external enforcement is owned by parts nine and eleven.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
   }
 ]

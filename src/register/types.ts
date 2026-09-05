@@ -1,14 +1,17 @@
 import type { BoundaryContext, Clock, DecodeContext, Hash, Json, OwnedReference, Profile, ProfileExpression,
   Provenance, Result, Scope, StandingGrant, Revocation, VerifiedPrincipal } from '../index.js';
+import type { FactSchema } from './fact-schema.js';
 
 declare class RegisterBrand<N extends string> { private readonly registerValue: N; private constructor(); }
 export type RegisterValue<N extends string> = RegisterBrand<N> & Readonly<{ type: N; schemaVersion: 1 }>;
 export type Reference = RegisterValue<'Reference'> & Readonly<{ id: string; target: string }>;
 export type FieldShape = Readonly<{ name: string; format: 'text' | 'number' | 'boolean' | 'array' | 'object' | 'scalar';
-  required: boolean; values: readonly string[]; reference: boolean; terms: readonly string[] }>;
+  required: boolean; values: readonly string[]; reference: boolean; terms: readonly string[]; schema?: FactSchema }>;
 export type KindShape = Readonly<{ name: string; fields: readonly FieldShape[]; profile: boolean;
   holder: boolean; enforceable: readonly number[]; invariants: readonly string[] }>;
 export type ShapeEntries = RegisterValue<'ShapeEntries'> & Readonly<{ kinds: readonly KindShape[];
+  factSchemas: readonly Readonly<{ kind: string; owner: 'part-three'; bodyType: string; schemaVersion: 1;
+    decoder: 'decodeGenerationRecord' | 'decodeCheckRun'; requiredFields: readonly string[] }>[];
   parts: readonly number[]; derivedFrom: Readonly<Record<'critical' | 'significant' | 'userFacing' | 'irreversible', ProfileExpression>> }>;
 export type CanFailEvidence = Readonly<{ kind: 'fixture' | 'probe' | 'sentinel'; id: string; stage: string }>;
 export type Hold = Readonly<{ rule: number }> & (
@@ -54,6 +57,7 @@ export type CheckRunRecord = RegisterValue<'CheckRunRecord'> & Readonly<{
   fixtures: readonly Readonly<{ id: string; stage: string; outcome: 'passed' | 'failed' | 'incomplete' }>[]; at: Clock;
 }>;
 export interface RegisterContext extends BoundaryContext {
+  readonly references?: readonly Readonly<{ provider: string; id: string; kind?: string }>[];
   readonly types: DecodeContext;
   readonly shape: ShapeEntries;
   readonly provenance: Provenance;

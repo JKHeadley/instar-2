@@ -1,9 +1,10 @@
-import { decode } from '../index.js';
+import { decode, decodeMeasurement } from '../index.js';
 import type { Clock, Json } from '../index.js';
 import type { CheckRunRecord, GeneratedRegister, RegisterContext, RegisterValue } from '../register/types.js';
 import { checked, encoding, exact, list, number, object, requireThat, take, text, validated } from '../register/boundary.js';
 
 export type RuleGraph = RegisterValue<'RuleGraph'> & Readonly<{
+  prerequisites: readonly Readonly<{ rule: number; owner: string; required: string }>[];
   rules: readonly Readonly<{ number: number; parent: number | 'root'; children: readonly number[]; siblings: readonly number[];
     enforcedBy: readonly string[]; deadline: number | null }>[];
   edges: readonly Readonly<{ rule: number; holder: string; class: 'held-reviewed' | 'held-unreviewed' | 'declared' | 'partial' | 'deferred';
@@ -37,15 +38,15 @@ export function decodeCheckRun(input: unknown, context: RegisterContext) {
     const fixtures = list(v.fixtures, 'fixtures').map(raw => { const f = object(raw); exact(f, ['id', 'stage', 'outcome']);
       return { id: text(f.id, 'fixture.id'), stage: text(f.stage, 'fixture.stage'), outcome: verdict(f.outcome) }; });
     requireThat(new Set(fixtures.map(f => `${f.id}\u0000${f.stage}`)).size === fixtures.length, 'duplicate executed fixture');
-    const at = take(decode('Measurement', v.at, context.types)); requireThat(at.subject.kind === 'clock', 'check run requires clock measurement');
+    const at = take(decodeMeasurement('clock', v.at, context.types));
     const outcome = verdict(v.outcome);
     requireThat(outcome !== 'passed' || fixtures.every(f => f.outcome === 'passed'), 'passing run cannot hide failed/incomplete fixtures');
     return { type: 'CheckRunRecord', schemaVersion: 1, id: text(v.id, 'run.id'), commit: text(v.commit, 'commit'), branch: text(v.branch, 'branch'),
-      providerRun: text(v.providerRun, 'providerRun'), outcome, fixtures, at: at as Clock } as unknown as CheckRunRecord;
+      providerRun: text(v.providerRun, 'providerRun'), outcome, fixtures, at } as unknown as CheckRunRecord;
   });
 }
 export function buildRuleGraph(register: GeneratedRegister, branch: string, runs: readonly CheckRunRecord[], catalog: CheckCatalog,
-  context: RegisterContext) {
+  context: RegisterContext, bootstrapRules: readonly Readonly<{ number: number; declarationHash: string; owner: string }>[] = []) {
   return checked<RuleGraph, RegisterContext>('RuleGraph', { register, branch, runs, catalog }, context, () => {
     const rules = register.entries.filter(e => e.declaration.kind === 'rules').map(e => {
       const facts = e.declaration.requiredFacts; const n = number(facts.number, 'rule.number');
@@ -68,6 +69,9 @@ export function buildRuleGraph(register: GeneratedRegister, branch: string, runs
     const edges: { rule: number; holder: string; class: RuleGraph['edges'][number]['class']; portion?: string; remainder?: string }[] = [];
     const loops: { id: string; rule: number; holder: string | null; dueBy: number; part: number | null; owner: string; overdueAction: string }[] = [];
     for (const { declaration: d } of register.entries) {
+      // History stays in the register. Retired holders have no current power.
+      // Dark/soaking holders likewise cannot establish live enforcement.
+      if (d.status !== 'live') continue;
       for (const standard of d.standards) requireThat(byNumber.has(standard), `P3-NF-13: standard ${standard} missing for ${d.id}`);
       for (const h of d.holds) {
         requireThat(byNumber.has(h.rule), `P3-NF-13: holder ${d.id} names missing rule ${h.rule}`);
@@ -96,14 +100,23 @@ export function buildRuleGraph(register: GeneratedRegister, branch: string, runs
       }
     }
     const gaps = rules.filter(r => !edges.some(e => e.rule === r.number)).map(r => r.number);
+    const prerequisites: { rule: number; owner: string; required: string }[] = [];
     for (const n of gaps) {
-      const rule = byNumber.get(n)!; requireThat(rule.deadline !== null, `P3-NF-15: uncovered rule ${n} needs deadline`);
+      const rule = byNumber.get(n)!;
+      const declared = register.entries.find(e => e.declaration.kind === 'rules' && e.declaration.requiredFacts.number === n)!.declaration;
+      const { declaredBy: _site, ...authored } = declared;
+      const bootstrap = bootstrapRules.find(r => r.number === n && r.declarationHash === encoding(authored).hash);
+      if (rule.deadline === null && bootstrap) {
+        prerequisites.push({ rule: n, owner: text(bootstrap.owner, 'bootstrap prerequisite owner'), required: 'operator-approved gap deadline and standing route before entering force' });
+        continue;
+      }
+      requireThat(rule.deadline !== null, `P3-NF-15: uncovered rule ${n} needs deadline`);
       loops.push({ id: `gap:${n}`, rule: n, holder: null, dueBy: rule.deadline, part: null,
         owner: text(rule.owner, `rule ${n} gap owner`), overdueAction: text(rule.overdueAction, `rule ${n} overdue action`) });
     }
     const totals = { 'held-reviewed': 0, 'held-unreviewed': 0, declared: 0, partial: 0, deferred: 0, gap: gaps.length };
     for (const edge of edges) totals[edge.class]++;
-    return { type: 'RuleGraph', schemaVersion: 1, rules: rules.map(r => ({ number: r.number, parent: r.parent, deadline: r.deadline,
+    return { type: 'RuleGraph', schemaVersion: 1, prerequisites, rules: rules.map(r => ({ number: r.number, parent: r.parent, deadline: r.deadline,
       children: rules.filter(c => c.parent === r.number).map(c => c.number), siblings: rules.filter(s => s.number !== r.number && s.parent === r.parent).map(s => s.number),
       enforcedBy: edges.filter(e => e.rule === r.number).map(e => e.holder) })), edges, gaps, loops, totals } as unknown as RuleGraph;
   });
@@ -111,7 +124,9 @@ export function buildRuleGraph(register: GeneratedRegister, branch: string, runs
 export function checkGraphLoops(graph: RuleGraph, context: RegisterContext) {
   return checked('GraphLoopCheck', graph, context, raw => {
     const v = object(raw); const loops = list(v.loops, 'loops').map(object);
-    for (const gap of list(v.gaps, 'gaps')) requireThat(loops.some(l => l.rule === gap && l.holder === null), `P3-NF-15: missing loop for gap ${gap}`);
+    const prerequisites = list(v.prerequisites, 'prerequisites').map(object);
+    for (const p of prerequisites) { text(p.owner, 'prerequisite.owner'); text(p.required, 'prerequisite.required'); }
+    for (const gap of list(v.gaps, 'gaps')) requireThat(loops.some(l => l.rule === gap && l.holder === null) || prerequisites.some(p => p.rule === gap), `P3-NF-15: missing loop for gap ${gap}`);
     for (const raw of list(v.edges, 'edges')) { const e = object(raw); if (e.class === 'deferred')
       requireThat(loops.some(l => l.rule === e.rule && l.holder === e.holder), 'P3-NF-15: missing deferred loop'); }
     for (const l of loops) { text(l.owner, 'loop.owner'); text(l.overdueAction, 'overdueAction'); number(l.dueBy, 'dueBy'); }
@@ -120,7 +135,7 @@ export function checkGraphLoops(graph: RuleGraph, context: RegisterContext) {
 }
 export function checkDeadlines(graph: RuleGraph, register: GeneratedRegister, landedParts: readonly number[], now: Clock, context: RegisterContext) {
   return checked('DeadlineCheck', { graph, register, landedParts, now }, context, () => {
-    const clock = take(decode('Measurement', now, context.types)); requireThat(clock.subject.kind === 'clock', 'now must be clock measurement');
+    const clock = take(decodeMeasurement('clock', now, context.types));
     take(checkGraphLoops(graph, context));
     for (const loop of graph.loops) {
       requireThat(loop.part === null || (register.shape.parts.includes(loop.part) && !landedParts.includes(loop.part)), `P3-NF-24: deferred part ${loop.part} unknown or landed`);

@@ -2,8 +2,11 @@ import { decode, deriveProfile } from '../index.js';
 import type { Json, Profile } from '../index.js';
 import type { CanFailEvidence, Declaration, Hold, Reference, RegisterContext, ShapeEntries } from './types.js';
 import { checked, exact, list, number, object, requireThat, strings, take, text, validated } from './boundary.js';
+import { boundaryRungs, rungFields } from './rungs.js';
+import { validateFact } from './fact-schema.js';
 
 const invariants: Readonly<Record<string, (facts: Readonly<Record<string, Json>>, status: string, profile: Profile | undefined, context: RegisterContext) => void>> = {
+  'live-sentinel-moment': facts => { if (facts.scope === 'live') text(facts.irreversibleMoment, 'live sentinel irreversible moment'); },
   'memory-not-deleted': facts => requireThat(!(facts.growth === 'deletes' && facts.holdsAgentMemory === 'yes'), 'P3-NF-20: agent memory cannot be deleted'),
   'feature-metrics': facts => requireThat(list(facts.metrics, 'metrics').length > 0, 'P3-NF-20: metrics cannot be empty'),
   'feature-gate': (facts, status) => {
@@ -15,7 +18,7 @@ const invariants: Readonly<Record<string, (facts: Readonly<Record<string, Json>>
     if (derived.userFacing) text(facts.liveProof, 'P3-NF-20: user-facing feature liveProof');
   },
   'governed-state-reference': facts => {
-    const rungs = facts.rungs ? list(facts.rungs, 'rungs').map(object) : [facts];
+    const rungs = boundaryRungs(facts);
     for (const rung of rungs) if (rung.decidesAlone === 'governed-state') {
       const e = object(rung.enforces!); text(e.record, 'P3-NF-26: enforces.record'); text(e.decoder, 'P3-NF-26: enforces.decoder');
     }
@@ -66,8 +69,10 @@ export function decodeDeclaration(input: unknown, context: RegisterContext) {
     const facts = object(v.requiredFacts!);
     for (const field of shape.fields) {
       const value = facts[field.name];
-      requireThat(!field.required || value !== undefined, `P3-NF-02: ${kind}.${field.name} is required`);
+      const inRungs = kind === 'blocking sites' && facts.rungs !== undefined && (rungFields as readonly string[]).includes(field.name);
+      requireThat(inRungs || !field.required || value !== undefined, `P3-NF-02: ${kind}.${field.name} is required`);
       if (value === undefined) continue;
+      if (field.schema) validateFact(value, field.schema, `${kind}.${field.name}`);
       const matches = field.format === 'text' ? typeof value === 'string' && value.length > 0
         : field.format === 'number' ? typeof value === 'number'
         : field.format === 'boolean' ? typeof value === 'boolean'

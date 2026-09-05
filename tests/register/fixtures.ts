@@ -12,7 +12,8 @@ export function setup() {
   const f = fixture(); const shape = value(decodeShape(shapeInput(), { site: 'types.decode', preserved: f.ctx.preserved, register: f.ctx.register }));
   const proof = f.proof({ commit: 'commit:1' });
   const context: RegisterContext = { site: 'types.decode', preserved: f.ctx.preserved, register: f.ctx.register, types: f.ctx,
-    shape, provenance: proof.p, source: { path: 'src/example.ts', symbol: 'example' } };
+    shape, provenance: proof.p, source: { path: 'src/example.ts', symbol: 'example' },
+    references: [{ provider: 'probe', id: 'probe' }, { provider: 'fixture', id: 'check' }, { provider: 'decoder', id: 'decode:Profile' }] };
   const declaration = (id = 'store', kind = 'stores', requiredFacts: object = { growth: 'compacts', holdsAgentMemory: 'yes', machineScope: { kind: 'shared' }, agreesWith: [] }, extra: object = {}) =>
     json('Declaration', { id, kind, status: 'live', requiredFacts, standards: [], holds: [], ...extra });
   const extract = json('ChainExtract', { vector: { owner: 'part-two', name: 'FactPositionVector', id: 'vector:genesis' }, rows: [] });

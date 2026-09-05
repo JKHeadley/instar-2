@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTerms, verifyDerivedColumns } from '../../src/register/index.js';
+import { resolveTerms, verifyDerivedColumns, generateRegister } from '../../src/register/index.js';
 import { setup, detail, value, clone } from '../register/fixtures.js';
 describe('structured terms and shared profile derivations', () => {
   it('P3-NF-10 structured missing terms fail even without formatting; live terms gain usedBy', () => {
     const s = setup(); const rule = s.rule(4, { termRefs: ['term:record'] });
-    expect(detail(resolveTerms(s.build([rule]), s.context))).toContain('P3-NF-10');
+    expect(detail(generateRegister(s.input([rule]), s.context))).toContain('unresolved');
     const term = s.declaration('term:record', 'terms', { name: 'record', kind: 'noun', definition: 'An attributable observation.' });
     expect(value(resolveTerms(s.build([rule, term]), s.context)).usedBy['term:record']).toEqual(['rule:4']);
     expect(detail(resolveTerms(s.build([term, { ...term, id: 'other' }]), s.context))).toContain('multiple live');

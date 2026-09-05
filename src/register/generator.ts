@@ -1,10 +1,11 @@
-import { decode } from '../index.js';
+import { decode, decodeMeasurement } from '../index.js';
 import type { Clock, Json } from '../index.js';
 import type { ChainExtract, Declaration, FactPositionVectorReference, FactReference, GeneratedRegister, GenerationRecord,
   RegisterContext, RegisterEntry, RegisterGeneration, SpineReadPort, VersionRowInput, VerifiedRegister } from './types.js';
 import { checked, encoding, exact, list, object, requireThat, strings, take, text, validated } from './boundary.js';
 import { decodeDeclaration } from './declarations.js';
 import { decodeShape } from './shape.js';
+import { resolveFact } from './fact-schema.js';
 
 const loaded = new WeakSet<object>();
 export const wasVerified = (register: GeneratedRegister): register is VerifiedRegister => loaded.has(register);
@@ -90,10 +91,11 @@ export function generateRegister(input: unknown, context: RegisterContext) {
           `P3-NF-06: unresolved live bound/probe ${d.profile.repeats.by}`);
       }
       const shape = ctx.shape.kinds.find(k => k.name === d.kind)!;
+      for (const field of shape.fields) if (field.schema) resolveFact(d.requiredFacts[field.name], field.schema, `${d.id}.${field.name}`, seen, ctx);
       for (const field of shape.fields.filter(f => f.reference)) {
         const target = d.requiredFacts[field.name]; if (target === undefined) continue;
         for (const ref of typeof target === 'string' ? [target] : strings(target, field.name))
-          requireThat(seen.has(ref) || ctx.register.entries.includes(ref), `unresolved ${d.id}.${field.name}: ${ref}`);
+          requireThat(seen.has(ref), `unresolved ${d.id}.${field.name}: ${ref}`);
       }
     }
     const entries = declarations.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0).map(d => entry(d, extract, commit));
@@ -118,9 +120,8 @@ export function decodeGeneration(input: unknown, context: RegisterContext) {
 }
 export function decodeGenerationRecord(input: unknown, context: RegisterContext) {
   return validated<GenerationRecord, RegisterContext>('GenerationRecord', input, context, v => {
-    exact(v, ['type', 'schemaVersion', 'generation', 'at']); const at = take(decode('Measurement', v.at, context.types));
-    requireThat(at.subject.kind === 'clock', 'generation record requires clock measurement');
-    return { type: 'GenerationRecord', schemaVersion: 1, generation: take(decodeGeneration(v.generation, context)), at: at as Clock } as GenerationRecord;
+    exact(v, ['type', 'schemaVersion', 'generation', 'at']); const at = take(decodeMeasurement('clock', v.at, context.types));
+    return { type: 'GenerationRecord', schemaVersion: 1, generation: take(decodeGeneration(v.generation, context)), at } as GenerationRecord;
   });
 }
 export function loadRegister(input: unknown, expected: RegisterGeneration, context: RegisterContext, spine: SpineReadPort, now: Clock) {

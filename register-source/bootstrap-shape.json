@@ -36,7 +36,37 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "union",
+            "alternatives": [
+              {
+                "type": "object",
+                "fields": {
+                  "kind": {
+                    "type": "string",
+                    "values": [
+                      "shared"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "fields": {
+                  "kind": {
+                    "type": "string",
+                    "values": [
+                      "machine-local"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
         },
         {
           "name": "agreesWith",
@@ -44,7 +74,31 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "fields": {
+                "store": {
+                  "type": "string",
+                  "reference": {
+                    "provider": "declaration",
+                    "kind": "stores"
+                  }
+                },
+                "invariant": {
+                  "type": "string"
+                },
+                "check": {
+                  "type": "string",
+                  "reference": {
+                    "provider": "fixture"
+                  }
+                }
+              }
+            }
+          }
         }
       ],
       "profile": false,
@@ -113,7 +167,13 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "string",
+            "reference": {
+              "provider": "fixture"
+            }
+          }
         },
         {
           "name": "enforces",
@@ -121,7 +181,24 @@
           "required": false,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "object",
+            "fields": {
+              "record": {
+                "type": "string",
+                "reference": {
+                  "provider": "declaration"
+                }
+              },
+              "decoder": {
+                "type": "string",
+                "reference": {
+                  "provider": "decoder"
+                }
+              }
+            }
+          }
         },
         {
           "name": "rungs",
@@ -129,7 +206,78 @@
           "required": false,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "array",
+            "minimum": 1,
+            "items": {
+              "type": "object",
+              "fields": {
+                "decidesAlone": {
+                  "type": "string",
+                  "values": [
+                    "no",
+                    "ruled-three",
+                    "governed-state"
+                  ]
+                },
+                "criticality": {
+                  "type": "string"
+                },
+                "failDirection": {
+                  "type": "string",
+                  "values": [
+                    "open",
+                    "closed"
+                  ]
+                },
+                "preservesInput": {
+                  "type": "string"
+                },
+                "enforces": {
+                  "type": "object",
+                  "fields": {
+                    "record": {
+                      "type": "string",
+                      "reference": {
+                        "provider": "declaration"
+                      }
+                    },
+                    "decoder": {
+                      "type": "string",
+                      "reference": {
+                        "provider": "decoder"
+                      }
+                    }
+                  },
+                  "optional": true
+                },
+                "model": {
+                  "type": "string",
+                  "reference": {
+                    "provider": "declaration",
+                    "kind": "model doorways"
+                  },
+                  "optional": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "model",
+          "format": "text",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": [],
+          "schema": {
+            "type": "string",
+            "reference": {
+              "provider": "declaration",
+              "kind": "model doorways"
+            }
+          }
         }
       ],
       "profile": true,
@@ -158,7 +306,14 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minimum": 1
+          }
         },
         {
           "name": "gate",
@@ -166,7 +321,22 @@
           "required": false,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "object",
+            "fields": {
+              "test": {
+                "type": "string",
+                "reference": {
+                  "provider": "fixture"
+                }
+              },
+              "deadline": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
         },
         {
           "name": "liveProof",
@@ -174,7 +344,14 @@
           "required": false,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "string",
+            "reference": {
+              "provider": "record",
+              "kind": "e2e-run"
+            }
+          }
         }
       ],
       "profile": true,
@@ -203,7 +380,32 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "object",
+            "fields": {
+              "action": {
+                "type": "string"
+              },
+              "subject": {
+                "type": "string"
+              },
+              "parameters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "fields": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       ],
       "profile": true,
@@ -220,7 +422,11 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "number",
+            "minimum": 1
+          }
         },
         {
           "name": "dueBy",
@@ -228,7 +434,11 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "number",
+            "minimum": 0
+          }
         },
         {
           "name": "closedBy",
@@ -236,7 +446,21 @@
           "required": false,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "object",
+            "fields": {
+              "record": {
+                "type": "string",
+                "reference": {
+                  "provider": "record"
+                }
+              },
+              "action": {
+                "type": "string"
+              }
+            }
+          }
         },
         {
           "name": "owner",
@@ -269,7 +493,14 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "string",
+            "reference": {
+              "provider": "record",
+              "kind": "observation-proof"
+            }
+          }
         },
         {
           "name": "watcher",
@@ -277,7 +508,14 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "string",
+            "reference": {
+              "provider": "declaration",
+              "kind": "sentinels"
+            }
+          }
         },
         {
           "name": "cadence",
@@ -285,7 +523,11 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "number",
+            "minimum": 1
+          }
         }
       ],
       "profile": false,
@@ -308,18 +550,41 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "string",
+            "reference": {
+              "provider": "fixture",
+              "kind": "captured-bytes"
+            }
+          }
         },
         {
           "name": "authenticationClass",
-          "format": "text",
+          "format": "array",
           "required": true,
-          "values": [
-            "verified",
-            "channel-attested"
-          ],
+          "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "fields": {
+                "stimulusType": {
+                  "type": "string"
+                },
+                "class": {
+                  "type": "string",
+                  "values": [
+                    "verified",
+                    "channel-attested"
+                  ]
+                }
+              }
+            },
+            "minimum": 1
+          }
         },
         {
           "name": "eventIdAuthority",
@@ -327,7 +592,37 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "object",
+            "fields": {
+              "mintedBy": {
+                "type": "string"
+              },
+              "uniquenessScope": {
+                "type": "string"
+              },
+              "replayWindow": {
+                "type": "number",
+                "minimum": 0
+              },
+              "fallbackFingerprint": {
+                "type": "object",
+                "fields": {
+                  "policy": {
+                    "type": "string",
+                    "values": [
+                      "none",
+                      "canonical-hash"
+                    ]
+                  },
+                  "basis": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         },
         {
           "name": "ackPolicy",
@@ -363,7 +658,13 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "string",
+            "reference": {
+              "provider": "probe"
+            }
+          }
         },
         {
           "name": "cadence",
@@ -371,7 +672,11 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "number",
+            "minimum": 1
+          }
         }
       ],
       "profile": true,
@@ -421,7 +726,27 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "fields": {
+                "id": {
+                  "type": "string"
+                },
+                "verifiedAt": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "freshFor": {
+                  "type": "number",
+                  "minimum": 1
+                }
+              }
+            },
+            "minimum": 1
+          }
         },
         {
           "name": "billing",
@@ -440,7 +765,32 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "object",
+            "fields": {
+              "ratio": {
+                "type": "number",
+                "minimum": 0
+              },
+              "basis": {
+                "type": "string",
+                "values": [
+                  "researched",
+                  "estimated",
+                  "measured"
+                ]
+              },
+              "updatedAt": {
+                "type": "number",
+                "minimum": 0
+              },
+              "freshFor": {
+                "type": "number",
+                "minimum": 1
+              }
+            }
+          }
         }
       ],
       "profile": false,
@@ -457,7 +807,13 @@
           "required": true,
           "values": [],
           "reference": false,
-          "terms": []
+          "terms": [],
+          "schema": {
+            "type": "string",
+            "reference": {
+              "provider": "probe"
+            }
+          }
         },
         {
           "name": "scope",
@@ -480,6 +836,17 @@
           ],
           "reference": false,
           "terms": []
+        },
+        {
+          "name": "irreversibleMoment",
+          "format": "text",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": [],
+          "schema": {
+            "type": "string"
+          }
         }
       ],
       "profile": true,
@@ -503,7 +870,9 @@
         80,
         108
       ],
-      "invariants": []
+      "invariants": [
+        "live-sentinel-moment"
+      ]
     },
     {
       "name": "protected artifacts",
@@ -616,7 +985,7 @@
           "format": "array",
           "required": false,
           "values": [],
-          "reference": false,
+          "reference": true,
           "terms": []
         }
       ],
@@ -719,7 +1088,7 @@
           "format": "array",
           "required": true,
           "values": [],
-          "reference": false,
+          "reference": true,
           "terms": []
         },
         {
@@ -867,5 +1236,38 @@
         "irreversible"
       ]
     }
-  }
+  },
+  "factSchemas": [
+    {
+      "kind": "generation-record",
+      "owner": "part-three",
+      "bodyType": "GenerationRecord",
+      "schemaVersion": 1,
+      "decoder": "decodeGenerationRecord",
+      "requiredFields": [
+        "type",
+        "schemaVersion",
+        "generation",
+        "at"
+      ]
+    },
+    {
+      "kind": "check-run-record",
+      "owner": "part-three",
+      "bodyType": "CheckRunRecord",
+      "schemaVersion": 1,
+      "decoder": "decodeCheckRun",
+      "requiredFields": [
+        "type",
+        "schemaVersion",
+        "id",
+        "commit",
+        "branch",
+        "providerRun",
+        "outcome",
+        "fixtures",
+        "at"
+      ]
+    }
+  ]
 }
