@@ -2,11 +2,11 @@
 import { createHmac, timingSafeEqual, verify } from 'node:crypto';
 import type * as T from '../types/values.js';
 import type { DecodeContext } from '../types/ports.js';
-import { bindRecordSubject, seal, success, trusted } from '../types/internal.js';
+import { bindRecordSubject, evaluateGrantLiveness, seal, success, trusted } from '../types/internal.js';
 import { canonicalText, hashText, snapshot } from './canonical.js';
 import { schemaRegistry } from './schema.js';
 import { runBoundary } from './framework.js';
-import { authorityTime, childContext, sealInContext, sessionFor, trustedIn } from './session.js';
+import { causalClock, childContext, sealInContext, sessionFor, trustedIn } from './session.js';
 
 type Obj = Record<string, T.Json>;
 function requireThat(condition: unknown, detail: string): asserts condition {
@@ -104,15 +104,20 @@ export function scopeIncludes(outer: T.Scope, inner: T.Scope): boolean {
   if (inner.kind === 'organization' || outer.kind !== inner.kind) return false;
   return inner.members.every(m => outer.members.includes(m));
 }
-export function grantLiveness(grant: T.StandingGrant, revocations: readonly T.Revocation[], now: T.Clock): 'live' | 'revoked' | 'expired' | 'not-yet-live' {
-  if (now.value < grant.issuedAt.value) return 'not-yet-live';
-  if (revocations.some(r => r.grantId === grant.id && r.at.value <= now.value)) return 'revoked';
-  if (grant.expiresAt !== undefined && now.value >= grant.expiresAt) return 'expired';
-  return 'live';
+export function grantLiveness(grant: T.StandingGrant, revocations: readonly T.Revocation[], now: T.Clock): T.GrantLiveness {
+  return evaluateGrantLiveness(grant, revocations, now);
+}
+function grantLiveForBody(c: DecodeContext, grant: T.StandingGrant, at: T.Clock): boolean {
+  const revocations = c.revocations ?? [];
+  // NF-06/39 and the analogous Directive/Revocation checks refer to the body's
+  // OWN clock. The originating causal-standing check composes with that obligation.
+  if (!trustedIn(c, grant, 'StandingGrant') || grantLiveness(grant, revocations, at) !== 'live') return false;
+  const causal = causalClock(c);
+  return causal === undefined || evaluateGrantLiveness(grant, revocations, causal, true) === 'live';
 }
 function grantAt(c: DecodeContext, id: unknown, at: T.Clock): T.StandingGrant {
   const g = c.grants?.find(g => g.id === id && trustedIn(c, g, 'StandingGrant'));
-  requireThat(g && grantLiveness(g, c.revocations ?? [], authorityTime(c, at)) === 'live', 'standing: grant missing or not live'); return g;
+  requireThat(g && grantLiveForBody(c, g, at), 'standing: grant missing or not live'); return g;
 }
 function covers(g: T.StandingGrant, s: T.Scope, a: string): boolean {
   return scopeIncludes(g.scope, s) && (g.standing === 'operator' || g.actions.includes(a));
@@ -187,7 +192,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
       const id = text(v.id, 'id'); const kind = one(v.kind, ['person', 'agent', 'system'], 'kind');
       requireThat(p.authenticated.principal.id === id && p.authenticated.principal.kind === kind, 'principal: id or kind disagrees with authenticated record');
       requireThat(canonicalText(p.authenticated.payload) === canonicalText({ id, kind }), 'principal: payload disagrees');
-      if (v.standing && v.standing !== 'requester') requireThat(c.grants?.some(g => g.grantee.id === id && g.standing === v.standing && c.now && grantLiveness(g, c.revocations ?? [], c.now) === 'live'), 'standing: non-requester requires recorded live grant');
+      if (v.standing && v.standing !== 'requester') requireThat(c.grants?.some(g => g.grantee.id === id && g.standing === v.standing && c.now && grantLiveForBody(c, g, c.now)), 'standing: non-requester requires recorded live grant');
       if (v.provenance !== undefined) requireThat(canonicalText(v.provenance) === canonicalText(p), 'provenance: field disagrees');
       return seal({ type, schemaVersion: 1, id, kind, provenance: p });
     }
@@ -222,7 +227,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
       const p = provenance(c, true); bound(v, p, ['source']); requireThat(canonicalText(v.source) === canonicalText(p), 'source: provenance disagrees');
       const by = principal(v.by, c); const at = clock(v.at, c); const target = c.grants?.find(g => g.id === v.grantId && trustedIn(c, g, 'StandingGrant'));
       requireThat(target, 'grantId: nonexistent'); requireThat(by.id === p.authenticated.principal.id, 'by: differs from provenance');
-      requireThat(c.grants?.some(g => g.grantee.id === by.id && g.standing === 'operator' && scopeIncludes(g.scope, target.scope) && grantLiveness(g, c.revocations ?? [], authorityTime(c, at)) === 'live'), 'revocation: operator standing required');
+      requireThat(c.grants?.some(g => g.grantee.id === by.id && g.standing === 'operator' && scopeIncludes(g.scope, target.scope) && grantLiveForBody(c, g, at)), 'revocation: operator standing required');
       return seal({ ...v, by, at, source: p });
     }
     case 'Intent': {
@@ -235,7 +240,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
     case 'Directive': {
       tagged(v, type, ['id', 'principal', 'scope', 'statement', 'issuedAt'], ['supersedes', 'closedBy']); text(v.id, 'id'); text(v.statement, 'statement');
       const p = principal(v.principal, c); const s = scope(v.scope, c); const at = clock(v.issuedAt, c);
-      const grant = c.grants?.find(g => g.grantee.id === p.id && scopeIncludes(g.scope, s) && grantLiveness(g, c.revocations ?? [], authorityTime(c, at)) === 'live');
+      const grant = c.grants?.find(g => g.grantee.id === p.id && scopeIncludes(g.scope, s) && grantLiveForBody(c, g, at));
       requireThat(grant, 'directive: live scoped standing required');
       if (p.provenance.class !== 'verified') {
         const b = c.binding;

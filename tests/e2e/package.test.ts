@@ -42,3 +42,25 @@ it('R3 saves records and reconstructs historical authority and unavailable Evide
   `], { input: JSON.stringify(bundle), encoding: 'utf8' });
   expect(JSON.parse(output)).toEqual({ grant: 'g1', authorization: 'g1', revocation: 'g1', conflict: 'Conflict', status: 'tombstoned', unavailable: true, liveRefused: true });
 });
+it('NF-39 N1 historical body timestamps are independently checked in a fresh public-package process', () => {
+  const f = fixture(); const grant = f.grant({ id: 'limited', expiresAt: 105 });
+  const grantPin = f.historyPin(grant);
+  const cases = [99, 100, 104, 105, 106].map(at => {
+    const record = f.authInput({ under: grant.id, at: f.clock(at) }).input;
+    return { at, record, pin: f.historyPin(record) };
+  });
+  const bundle = { grant, grantPin, cases, register: f.ctx.register, captures: f.captures, now: f.clockRaw() };
+  const output = execFileSync(process.execPath, ['--input-type=module', '-e', `
+    import { readFileSync } from 'node:fs';
+    import { consumeResult, decodeMeasurement, readHistorical } from '@instar/constitutional-types';
+    const b = JSON.parse(readFileSync(0, 'utf8'));
+    const take = r => consumeResult(r, { Success: v => v, Refused: r => { throw new Error(r.detail); } });
+    const base = { register: b.register, captures: b.captures, preserved: 'capture:body-time-e2e' };
+    const context = { ...base, now: take(decodeMeasurement('clock', b.now, base)) };
+    const grant = take(readHistorical('StandingGrant', b.grant, b.grantPin, context));
+    console.log(JSON.stringify(b.cases.map(c => [c.at, consumeResult(readHistorical('Authorization', c.record, c.pin, { ...context, history: [grant] }), {
+      Success: () => 'accepted', Refused: r => r.detail.includes('not live') ? 'not-live' : r.detail,
+    })])));
+  `], { input: JSON.stringify(bundle), encoding: 'utf8' });
+  expect(JSON.parse(output)).toEqual([[99, 'not-live'], [100, 'accepted'], [104, 'accepted'], [105, 'not-live'], [106, 'not-live']]);
+});

@@ -1,8 +1,16 @@
-import type { Capacity, Refused, RefusalReason, Result, Scope, Success } from './values.js';
+import type { Capacity, Clock, GrantLiveness, Refused, RefusalReason, Result, Revocation, Scope, StandingGrant, Success } from './values.js';
 const issued = new WeakSet<object>();
 const subjects = new WeakMap<object, Scope>();
 export function bindRecordSubject(record: object, scope: Scope): void { subjects.set(record, scope); }
 export function recordSubject(record: object): Scope | undefined { return subjects.get(record); }
+// Causal inputs have already been selected by P2; their revocations are effective
+// by ancestry, never by their testimony clock. Body-time checks retain P1's clock rule.
+export function evaluateGrantLiveness(grant: StandingGrant, revocations: readonly Revocation[], now: Clock, causal = false): GrantLiveness {
+  if (now.value < grant.issuedAt.value) return 'not-yet-live';
+  if (revocations.some(r => r.grantId === grant.id && (causal || r.at.value <= now.value))) return 'revoked';
+  if (grant.expiresAt !== undefined && now.value >= grant.expiresAt) return 'expired';
+  return 'live';
+}
 // Not exported by the package. Only decoders and pure derivations may use this factory.
 export function seal<T>(value: object, live = true): T {
   function freeze(item: object): void {
