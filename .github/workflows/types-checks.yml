@@ -2,7 +2,14 @@ name: constitutional-types
 on: [push, pull_request]
 jobs:
   contract:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -11,3 +18,18 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:all
+      - run: node -e "if (process.arch !== '${{ matrix.arch }}') process.exit(1)"
+      - run: node scripts/p2-determinism.mjs p2-output.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p2-${{ matrix.arch }}
+          path: p2-output.json
+  cross-architecture:
+    needs: contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: p2-*
+          path: outputs
+      - run: cmp outputs/p2-x64/p2-output.json outputs/p2-arm64/p2-output.json

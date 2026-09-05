@@ -91,6 +91,5 @@ describe('fact envelope boundary', () => {
   });
   it('fixed-width fold clock bytes order negative and positive instants', () => {
     const f = factsFixture(); expect([100, -1, 0].map(x => clockKey(f.clock(x))).sort()).toEqual([-1, 0, 100].map(x => clockKey(f.clock(x))));
-    expect(value(canonical(f.fact())).bytes).toBe(value(canonical(f.fact())).bytes);
   });
 });
