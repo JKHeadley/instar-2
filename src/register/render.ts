@@ -12,7 +12,7 @@ export function renderRegister(register: GeneratedRegister, generation: Register
     const header = `Register generation: ${generation.id}\nSource commit: ${register.commit}\nExtract vector: ${register.extract.vector.id}\nAuthority: shape-only; entering-force verification required at consumption.\n`;
     const entries = register.entries.map(e => e.declaration);
     const ruleBook = '# Generated rules\n\n' + header + '\n' + entries.filter(d => d.kind === 'rules').map(d => {
-      const f = d.requiredFacts; return `## ${f.number}. ${f.name}\n\n${f.statement}\n\nCheck: ${f.checkDescription}\nTerms: ${(f.termRefs as readonly string[]).join(', ')}\n`;
+      const f = d.requiredFacts; return `## ${f.number}. ${f.name}\n\n${f.statement}\n\nCheck: ${f.checkDescription}\nTerms: ${(f.termRefs as readonly string[]).join(', ') || '(none)'}\n`;
     }).join('\n');
     const glossary = '# Generated glossary\n\n' + header + '\n' + entries.filter(d => d.kind === 'terms').map(d =>
       `## ${d.requiredFacts.name}\n\n${d.requiredFacts.definition}\n\nUsed by: ${(resolution.usedBy[d.id] ?? []).join(', ') || '(unused)'}\n`).join('\n');

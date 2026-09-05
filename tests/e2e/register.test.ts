@@ -14,6 +14,7 @@ describe('compiled register build adapter lifecycle', () => {
       const before = readFileSync(join(root, 'register.json'), 'utf8'); run('--check'); run();
       expect(readFileSync(join(root, 'register.json'), 'utf8')).toBe(before);
       expect(readFileSync(join(root, 'capabilities.md'), 'utf8')).toContain('register-tooling');
+      expect(readFileSync(join(root, 'rules.md'), 'utf8').split('\n').some(line => /[ \t]+$/.test(line))).toBe(false);
       writeFileSync(join(root, 'shape.json'), '{}\n');
       const fail = spawnSync(process.execPath, ['scripts/build-register.mjs', '--out', root, '--check'], { encoding: 'utf8' });
       expect(fail.status).not.toBe(0); expect(fail.stderr).toContain('P3-NF-09');
