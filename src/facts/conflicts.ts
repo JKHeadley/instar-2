@@ -20,7 +20,13 @@ export interface ConflictAppenderPort {
   clock(): Clock;
   sign(envelope: Json): Result<unknown>;
 }
-const wireRecord = (conflict: ConflictClass) => encoding(conflict).bytes;
+const wireRecord = (conflict: ConflictClass) => {
+  const { historicalConstitutional, ...record } = conflict;
+  // Keep existing signed record bytes stable across live/historical receivers.
+  // The wire field is DATA, never a live Conflict: replay re-derives the owner's
+  // non-authorizing product, including its signed source references.
+  return encoding(historicalConstitutional ? { ...record, constitutional: historicalConstitutional.view } : record).bytes;
+};
 // A signed assertion is not a license to fabricate conflicts. Recompute its exact
 // pair from origin-verified predecessors. No serialized P1 brand is reconstructed.
 export function validateConflictFact(fact: FactEnvelope, context: FactContext): ConflictClass | undefined {

@@ -1,4 +1,4 @@
-import type { Clock, Conflict, DecodeContext, Hash, HistoricalRead, HistoricalShape, Inventory, Json, Provenance, Revocation, Scope, StandingGrant, VerifiedPrincipal } from '../index.js';
+import type { Clock, Conflict, DecodeContext, Hash, HistoricalConflict, HistoricalRead, HistoricalShape, Inventory, Json, Provenance, Revocation, Scope, StandingGrant, VerifiedPrincipal } from '../index.js';
 
 export interface SegmentPosition { readonly machine: string; readonly epoch: number; readonly position: number }
 export interface LineagePosition { readonly epoch: number; readonly position: number }
@@ -24,6 +24,8 @@ export interface ConflictClass {
   readonly kind: 'immutable-disagreement' | 'pending-expired' | 'compromised-key' | 'version-fork' | 'revocation-conflict' | 'concurrent-correction' | 'aggregate-breach' | 'poison-fact';
   readonly facts: readonly string[]; readonly detail: string;
   readonly constitutional?: Conflict;
+  // Owner-produced comparison evidence, explicitly NOT a live constitutional Conflict.
+  readonly historicalConstitutional?: HistoricalConflict;
 }
 export interface MachineKey {
   readonly id: string; readonly machine: string; readonly publicKey: string;

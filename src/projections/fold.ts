@@ -209,7 +209,7 @@ export function restoreCheckpoint(input: unknown, snapshot: FactSnapshot, contex
     requireFact(Array.isArray(view.conflicts), 'checkpoint conflict list absent');
     const currentConflicts = snapshot.entries.flatMap(e => e.conflicts);
     const rebound = view.conflicts.map(c => {
-      const wire = object(c); if (!wire.constitutional) return c;
+      const wire = object(c); if (!wire.constitutional && !wire.historicalConstitutional) return c;
       const current = currentConflicts.find(c => c.key === wire.key && encoding(c).bytes === encoding(wire).bytes);
       requireFact(current, 'checkpoint constitutional conflict requires current producer'); return current;
     });

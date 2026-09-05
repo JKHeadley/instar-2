@@ -1,7 +1,7 @@
 // The mandatory store -> projection handoff. Status is derived, never an input annotation.
-import { compare, consumeResult } from '../index.js';
-import type { ConstitutionalValue, HistoricalRead, Json, Result, Scope } from '../index.js';
-import { boundary, encoding, object, requireFact, same, take } from './boundary.js';
+import { compareHistoricalReads, consumeResult, decode } from '../index.js';
+import type { ConstitutionalValue, HistoricalRead, Inventory, Json, Result, Scope } from '../index.js';
+import { boundary, encoding, same, take } from './boundary.js';
 import { bodyConstitutionalFields, causalCone, causalStanding, decodeBody, migrateBody, validateRepair } from './admission.js';
 import { decodeEnvelope, schemaFor } from './envelope.js';
 import { decodeHistoricalBody, historicalAuthority } from './historical.js';
@@ -74,15 +74,19 @@ export function prepareSnapshot(facts: readonly FactEnvelope[], context: FactCon
       if (!('id' in record.view)) continue;
       const key = `${record.view.type}:${record.view.id}`;
       for (const prior of seen.get(key) ?? []) {
-        const left = prior.status.constitutional.find(f => same(f.value, prior.record.view));
-        const right = status.constitutional.find(f => same(f.value, record.view));
-        // Temporary safe boundary until the P1 public historical comparison arrives.
-        // Every live/mixed/historical orientation reaches this same identity loop.
-        requireFact(left && right || same(prior.record.view, record.view), 'P1 historical comparison consumer required; authority cannot resolve historical disagreement', 'standing');
-        const compared = left && right ? take(compare(left.value.type, left.value, right.value, 'identity', right.subject, c.preserved)) : true;
+        const leftScope = schemaFor(c, prior.status.fact.kind, prior.status.fact.schemaVersion).scope;
+        const rightScope = schemaFor(c, status.fact.kind, status.fact.schemaVersion).scope;
+        const subject = take(decode('Scope', leftScope.kind === 'organization' || rightScope.kind === 'organization' || leftScope.kind !== rightScope.kind
+          ? { type: 'Scope', schemaVersion: 1, kind: 'organization' }
+          : { type: 'Scope', schemaVersion: 1, kind: leftScope.kind, members: [...new Set([...leftScope.members, ...rightScope.members])].sort() }, c.decode));
+        // ONE owner operation for every reconstruction route. The scope proposal
+        // comes from admitted schemas; P1 checks it against independent record-hash
+        // bindings/intrinsic scopes. No candidate Conflict supplies its own scope.
+        const compared = take(compareHistoricalReads<keyof Inventory>(record.view.type, prior.record, record, 'identity', subject,
+          { register: c.decode.register, preserved: c.preserved, recordSubjects: c.decode.recordSubjects ?? {} }));
         if (typeof compared !== 'boolean') {
           const pair = [prior.status.fact.id, status.fact.id].sort();
-          const conflict: ConflictClass = { key: `constitutional:${key}:${pair.join(',')}`, kind: 'immutable-disagreement', facts: pair, detail: 'part-one immutable-field conflict', constitutional: compared };
+          const conflict: ConflictClass = { key: `constitutional:${key}:${pair.join(',')}`, kind: 'immutable-disagreement', facts: pair, detail: 'part-one immutable-field conflict', historicalConstitutional: compared };
           for (const id of conflict.facts) additions.set(id, [...additions.get(id) ?? [], conflict]);
         }
       }

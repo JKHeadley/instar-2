@@ -15,6 +15,7 @@ const cases = {
   'P2-NF-46': ['const replacement: ProjectedView = {...view,values:{authority:true},conflicts:[],taint:[]};', 'const current: ProjectedView = view;'],
   'P2-NF-49': ['const d: ProjectionDefinition = {...definition, fold: () => Date.now()};', 'const d: ProjectionDefinition = definition;'],
   'P2-NF-50': ['const g: ProjectionGeneration = {...generation, peerView: view};', 'const g: ProjectionGeneration = generation;'],
+  'P2-NF-52': ['const c: import("../src/index.js").Conflict = view.conflicts[0]!.historicalConstitutional!;', 'const c: import("../src/index.js").HistoricalConflict | undefined = view.conflicts[0]!.historicalConstitutional;'],
   'P2-NF-60': ['store.truncate();', 'store.read();'],
   'P2-NF-61': ['const s: FactSchema = {...schema,machineScope:"machine-local"};', 'const s: FactSchema = {...schema,machineScope:"shared"};'],
   'P2-NF-74': ['const d: ProjectionDefinition = {...definition,decisions:{note:{kind:"folds",identity:"id",value:"amount"}}};', 'const d: ProjectionDefinition = {...definition,decisions:{note:{kind:"folds",identity:"id",value:"amount",merge:"additive"}}};'],

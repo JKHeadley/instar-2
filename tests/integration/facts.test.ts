@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createFactStore, authorAndAppend, decodeEnvelope, wrapUnresolved, verifyAndAdmit, prepareSnapshot, signVerifiedPrefix, restoreVerifiedPrefix, conflictFactSchema, signEnvelope, drainConflictFacts } from '../../src/facts/index.js';
-import type { SegmentStoragePort } from '../../src/facts/index.js';
+import type { FactContext, SegmentStoragePort } from '../../src/facts/index.js';
 import { factsFixture, value, json, refused, privateKey, publicKey, point } from '../facts/fixtures.js';
-import { foldProjection, readProjection } from '../../src/projections/index.js';
-import { decode } from '../../src/index.js';
+import { foldProjection, readProjection, checkpoint, signCheckpoint, restoreCheckpoint } from '../../src/projections/index.js';
+import { compare, decode } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
 
 function diskFixture() {
@@ -35,6 +35,13 @@ function diskFixture() {
   const store = createFactStore(ctx, storage, { conflictAppender });
   const author = (body: Record<string, Json> = { identity: 'one', amount: '10' }, kind = 'note') => authorAndAppend({ kind, schemaVersion: 1, machine: 'machine-a', principal: json(f.alice), provenance: json(f.alice.provenance), at: json(f.now), body, required: [] }, ctx, store, privateKey);
   return { ...f, ctx, storage, store, path, conflictAppender, outbox: join(directory, 'conflict-outbox.jsonl'), author, cleanup: () => rmSync(directory, { recursive: true, force: true }) };
+}
+function restartStatus(f: ReturnType<typeof diskFixture>, context: FactContext) {
+  const restarted = spawnSync(process.execPath, ['scripts/test-conflict-restart.mjs'], { encoding: 'utf8', input: JSON.stringify({ context, principal: f.conflictAppender.principal,
+    proof: f.proof({ id: f.conflictAppender.principal.id, kind: 'system' }, { id: f.conflictAppender.principal.id, kind: 'system' }, 'identity').input,
+    path: f.path, key: privateKey }) });
+  expect(restarted.status, restarted.stderr).toBe(0);
+  return JSON.parse(restarted.stdout);
 }
 it('P2-NF-15 public fact store exposes exactly one mutating method', () => {
   const f = diskFixture(); try { expect(Object.keys(f.store).sort()).toEqual(['append', 'read', 'readForProjection', 'sweep', 'verifiedPrefix']); expect(value(f.author()).durability).toEqual({ kind: 'local-durable' }); } finally { f.cleanup(); }
@@ -70,20 +77,22 @@ it('P2-NF-52 part-one immutable-field disagreement becomes a recorded projection
     decisions: { 'conflict-record': { kind: 'ignores', reason: 'status is mandatory' }, note: { kind: 'folds', merge: 'additive', identity: 'identity', value: 'amount' } } },
     value(store.readForProjection()),
     { reference: f.ctx.decode.register.generation, kinds: ['note', 'conflict-record'], lineages: { 'machine-a': { head: a.segment, observedAt: 100, closed: false }, 'machine-b': { head: b.segment, observedAt: 100, closed: false } } }, f.c));
-  expect(result.conflicts[0]?.constitutional?.type).toBe('Conflict'); expect(result.values).toEqual({});
+  expect(result.conflicts[0]?.historicalConstitutional?.view.type).toBe('Conflict'); expect(result.values).toEqual({});
   expect(readFileSync(f.outbox, 'utf8')).toContain('immutable-disagreement');
   } finally { f.cleanup(); }
 });
-it('P2-NF-52 historical-only disagreement refuses instead of laundering absent comparison annotations', () => {
+it('P2-NF-52 historical-only disagreement produces owner-derived Conflict without live identities', () => {
   const f = factsFixture(), left = value(decode('Intent', f.intentInput(), f.ctx.decode)), right = value(decode('Intent', f.intentInput({ raw: f.capture('different') }), f.ctx.decode));
   const a = f.fact({ body: { identity: 'one', amount: '1', intent: left } }), b = f.fact({ machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 }, body: { identity: 'one', amount: '1', intent: right } });
   const ctx = { ...f.ctx, decode: { ...f.ctx.decode, principals: [] }, schemas: [{ ...f.schema, fields: { ...f.schema.fields, intent: { kind: 'constitutional' as const, type: 'Intent' as const } } }] };
-  refused(prepareSnapshot([a, b], ctx), 'historical comparison consumer required');
+  const snapshot = value(prepareSnapshot([a, b], ctx));
+  expect(snapshot.entries.map(e => e.constitutional.length)).toEqual([0, 0]);
+  expect(snapshot.entries.map(e => e.conflicts[0]?.historicalConstitutional)).toEqual([expect.objectContaining({ owner: 'part-one', kind: 'derived-conflict' }), expect.objectContaining({ owner: 'part-one', kind: 'derived-conflict' })]);
+  expect(snapshot.entries.map(e => e.taint)).toEqual([['contested'], ['contested']]);
 });
-it.skip('P2-NF-52 SKIPPED: producing a historical-only constitutional Conflict requires P1 public comparison over HistoricalRead wrappers; the current owner export only accepts live values', () => {});
 it.each(['both', 'left', 'right', 'neither'] as const)('P2-NF-52 P2-NF-76 complete identity set across %s live origins has equal and unequal controls', live => {
   for (const equal of [true, false]) {
-    const f = diskFixture(); try {
+    const f = diskFixture(), receiverDisk = diskFixture(); try {
       const left = value(decode('Intent', f.intentInput(), f.ctx.decode));
       const right = value(decode('Intent', f.intentInput({ principal: equal ? f.alice : f.bob, raw: equal ? left.raw : f.capture('different immutable raw') }), f.ctx.decode));
       const otherOrigin = f.proof({ receive: 'second signed origin' }).p;
@@ -93,7 +102,6 @@ it.each(['both', 'left', 'right', 'neither'] as const)('P2-NF-52 P2-NF-76 comple
         decode: { ...f.ctx.decode, principals: [f.alice, ...(live === 'both' || live === 'right' ? [f.bob] : [])], ...(live === 'both' || live === 'left' ? { provenance: otherOrigin } : {}) } };
       const store = createFactStore(ctx, f.storage, { conflictAppender: f.conflictAppender });
       value(store.append(a, { peer: 'machine-a' })); value(store.append(b, { peer: 'machine-b' }));
-      if (!equal && live !== 'both') { refused(store.readForProjection(), 'historical comparison consumer required'); continue; }
       const snapshot = value(store.readForProjection());
       expect(snapshot.entries.slice(0, 2).map(e => e.historical.length)).toEqual([1, 1]);
       expect(snapshot.entries.slice(0, 2).map(e => e.constitutional.length)).toEqual([Number(live === 'both' || live === 'left'), Number(live === 'both' || live === 'right')]);
@@ -102,9 +110,53 @@ it.each(['both', 'left', 'right', 'neither'] as const)('P2-NF-52 P2-NF-76 comple
       const view = value(foldProjection(def, snapshot, { reference: ctx.decode.register.generation, kinds: Object.keys(def.decisions),
         lineages: { 'machine-a': { head: point(snapshot.entries.filter(e => e.fact.machine === 'machine-a').at(-1)!.fact), observedAt: 100, closed: false }, 'machine-b': { head: { epoch: 0, position: 0 }, observedAt: 100, closed: false } } }, f.c));
       if (equal) { value(readProjection(view, def, f.now, f.c)); expect(view.values['note:one']).toBe('2'); expect(view.conflicts).toEqual([]); }
-      else { refused(readProjection(view, def, f.now, f.c), 'tainted'); expect(view.conflicts).toHaveLength(1); expect(value(store.read()).filter(f => f.kind === 'conflict-record')).toHaveLength(1); }
-    } finally { f.cleanup(); }
+      else {
+        refused(readProjection(view, def, f.now, f.c), 'tainted'); expect(view.conflicts).toHaveLength(1);
+        expect(view.conflicts[0]!.historicalConstitutional).toMatchObject({ owner: 'part-one', mode: 'historical', kind: 'derived-conflict',
+          sources: [{ owner: 'part-two', name: 'FactEnvelope', id: 'machine-a:0:0' }, { owner: 'part-two', name: 'FactEnvelope', id: 'machine-b:0:0' }] });
+        expect(view.conflicts[0]).not.toHaveProperty('constitutional');
+        const persisted = value(store.read()), recorded = persisted.filter(f => f.kind === 'conflict-record');
+        expect(recorded).toHaveLength(1);
+        // Preserve already-signed version-one Conflict-class payload bytes. The
+        // runtime product is historical even when its wire view matches live data.
+        const liveConflict = value(compare('Intent', left, right, 'identity', f.scope, ctx.preserved));
+        expect(JSON.parse((recorded[0]!.body as { record: string }).record).constitutional).toEqual(liveConflict);
+        const { provenance: _origin, ...receiverDecode } = ctx.decode;
+        const receiverContext = { ...ctx, decode: { ...receiverDecode, principals: [], grants: [], authorizations: [] } };
+        const observerB = f.principal('constitutional-observer-b', 'system');
+        const appenderB = { ...f.conflictAppender, machine: 'machine-b', principal: observerB, provenance: observerB.provenance,
+          sign: (input: Json) => f.success(f.wire(input as Record<string, unknown>)) };
+        const receiver = createFactStore(receiverContext, receiverDisk.storage, { conflictAppender: appenderB });
+        for (const fact of persisted) value(receiver.append(json(fact), { peer: fact.machine }));
+        const received = value(receiver.readForProjection());
+        expect(received.entries.slice(0, 2).every(e => e.constitutional.length === 0)).toBe(true);
+        expect(value(receiver.read()).filter(f => f.kind === 'conflict-record')).toHaveLength(2);
+        const keys = new Set(received.entries.flatMap(e => e.conflicts).map(c => c.key)); expect(keys.size).toBe(1);
+        const currentGeneration = { reference: ctx.decode.register.generation, kinds: Object.keys(def.decisions), lineages: Object.fromEntries(['machine-a', 'machine-b'].map(machine => [machine,
+          { head: point(received.entries.filter(e => e.fact.machine === machine).at(-1)!.fact), observedAt: 100, closed: false }])) };
+        const receiverView = value(foldProjection(def, received, currentGeneration, f.c));
+        refused(readProjection(receiverView, def, f.now, f.c), 'tainted'); expect(receiverView.conflicts).toHaveLength(1);
+        const certificate = signCheckpoint(checkpoint(receiverView), 'cache', privateKey);
+        const restored = value(restoreCheckpoint(json(certificate), received, f.c, [{ id: 'cache', publicKey }]));
+        expect(restored.view.conflicts[0]!.historicalConstitutional).toBe(received.entries.flatMap(e => e.conflicts).find(c => c.key === receiverView.conflicts[0]!.key)!.historicalConstitutional);
+        refused(readProjection(restored.view, def, f.now, f.c), 'tainted');
+        if (live === 'neither') {
+          const fresh = restartStatus(f, receiverContext);
+          expect(fresh).toMatchObject({ appends: 0, facts: 3, liveRefused: true, keys: [...keys], historical: [{ owner: 'part-one', kind: 'derived-conflict' }] });
+        }
+      }
+    } finally { f.cleanup(); receiverDisk.cleanup(); }
   }
+});
+it('P2-NF-52 P2-NF-76 historical comparisons refuse missing subject bindings, wrong domains and unavailable dependencies', () => {
+  const f = factsFixture(), left = value(decode('Intent', f.intentInput(), f.ctx.decode)), right = value(decode('Intent', f.intentInput({ raw: f.capture('different') }), f.ctx.decode));
+  const a = f.fact({ body: { identity: 'one', amount: '1', intent: left } }), b = f.fact({ machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 }, body: { identity: 'one', amount: '1', intent: right } });
+  const schema = { ...f.schema, fields: { ...f.schema.fields, intent: { kind: 'constitutional' as const, type: 'Intent' as const } } };
+  const ctx = { ...f.ctx, decode: { ...f.ctx.decode, principals: [] }, schemas: [schema] };
+  refused(prepareSnapshot([a, b], { ...ctx, decode: { ...ctx.decode, recordSubjects: {} } }), 'independent admission context');
+  refused(prepareSnapshot([a, b], { ...ctx, schemas: [{ ...schema, scope: f.org }] }), 'authoritative record context');
+  delete f.captures[left.raw];
+  refused(prepareSnapshot([a, b], ctx), 'evidence-unavailable');
 });
 it('P2-NF-60 no operation sequence can compact facts out of the exposed store', () => {
   const f = diskFixture(); try {
@@ -216,30 +268,8 @@ it('P2-NF-15 P2-NF-52 P2-NF-62 P2-NF-75 conflict obligations drain after restart
     refused(crashing.readForProjection(), 'crash after conflict fsync');
     expect(f.storage.read()).toHaveLength(4);
     // Fresh public-package process: no retained WeakMaps or live fixture values.
-    const restarted = spawnSync(process.execPath, ['--input-type=module', '-e', `
-      import {readFileSync} from 'node:fs';
-      import {decode,decodeMeasurement,consumeResult,defineDecoder} from './dist/index.js';
-      import {createFactStore,signEnvelope} from './dist/facts/index.js';
-      const {context:raw,principal:identity,proof,path,key}=JSON.parse(readFileSync(0,'utf8'));
-      const take=r=>consumeResult(r,{Success:v=>v,Refused:r=>{throw Error(r.detail)}});
-      const decodeContext={...raw.decode,principals:[],grants:[],revocations:[],authorizations:[]};
-      const now=take(decodeMeasurement('clock',raw.genesis.clock,decodeContext));
-      const provenance=take(decode('Provenance',proof,decodeContext));
-      const principal=take(decode('VerifiedPrincipal',{type:'VerifiedPrincipal',schemaVersion:1,id:identity.id,kind:identity.kind},{...decodeContext,provenance}));
-      const context={...raw,decode:decodeContext,genesis:{...raw.genesis,clock:now},schemas:raw.schemas.map(s=>({...s,scope:take(decode('Scope',s.scope,decodeContext))}))};
-      const boundary={site:context.site,preserved:context.preserved,register:decodeContext.register};
-      const result=value=>take(defineDecoder({owner:'part-ten',name:'RestartProvider',currentVersion:1,versions:{1:{validate:v=>({ok:true,value:v})}},migrations:{},decodeCurrent:()=>({ok:true,value})},context.preserved)).decode({schemaVersion:1},boundary);
-      let appends=0;
-      const storage={owner:'part-ten',read:()=>readFileSync(path,'utf8').trim().split('\\n').map(JSON.parse),append:()=>{appends++;throw Error('duplicate append after restart')}};
-      const appender={owner:'part-ten',machine:'machine-a',principal,provenance,clock:()=>now,sign:wire=>result(signEnvelope(wire,key))};
-      const store=createFactStore(context,storage,{conflictAppender:appender});
-      const snapshot=take(store.readForProjection());
-      process.stdout.write(JSON.stringify({appends,facts:take(store.read()).length,keys:[...new Set(snapshot.entries.flatMap(e=>e.conflicts).map(c=>c.key))]}));
-    `], { encoding: 'utf8', input: JSON.stringify({ context: ctx, principal: f.conflictAppender.principal,
-      proof: f.proof({ id: f.conflictAppender.principal.id, kind: 'system' }, { id: f.conflictAppender.principal.id, kind: 'system' }, 'identity').input,
-      path: f.path, key: privateKey }) });
-    expect(restarted.status, restarted.stderr).toBe(0);
-    expect(JSON.parse(restarted.stdout)).toEqual({ appends: 0, facts: 4, keys: [`revocation:${candidate.id}:${rev.id}`] });
+    const restarted = restartStatus(f, ctx);
+    expect(restarted).toEqual({ appends: 0, facts: 4, keys: [`revocation:${candidate.id}:${rev.id}`], historical: [], liveRefused: true });
     const recovered = createFactStore(ctx, f.storage, { conflictAppender: f.conflictAppender });
     const snapshot = value(recovered.readForProjection()), persisted = value(recovered.read());
     expect(persisted).toHaveLength(4); value(recovered.readForProjection()); expect(value(recovered.read())).toHaveLength(4);
