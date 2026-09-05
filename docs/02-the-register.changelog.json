@@ -1,5 +1,21 @@
 [
   {
+    "revision": 5,
+    "date": "2026-09-04",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "part-four bundle (atomic): approval fields are pending-landing and completed at the bundle's merge"
+    },
+    "changes": [
+      {
+        "what": "The parsers kind gains authenticationClass and eventIdAuthority; the blocking-site kind gains the enforces companion fact for governed-state sites.",
+        "why": "Intake adapters' facts must fit their kind rather than live in prose, and amendment one's checkable-not-claimable requirement needs its register row.",
+        "ref": "part four, shape amendments"
+      }
+    ]
+  },
+  {
     "date": "2026-09-04",
     "status": "draft",
     "cause": {

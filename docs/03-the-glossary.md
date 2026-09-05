@@ -202,7 +202,7 @@ standings are enough for the rules written so far:
 
 | Standing | What it lets a principal do | Where it comes from |
 |---|---|---|
-| **operator** | Bind the agent: approve an operator action, grant or revoke standing within their scope, set the agent's intent. | The organization's declared intent names who holds it and for what; within a conversation it is bound from the authenticated sender. |
+| **operator** | Bind the agent: approve an operator action, grant or revoke standing within their scope, set the agent's intent. | The organization's declared intent names who holds it and for what; within a conversation it is selected by the authenticated sender within the recorded conversation binding — the binding itself is established only by a verified act, never by a message. |
 | **delegate** | Take a named, bounded set of actions the operator (or the org) has explicitly granted, for a term. | A recorded grant — 1.x's coordination mandate is the ancestor. The grant names the actions; nothing outside it. |
 | **requester** | Ask. The agent does the work its own standing already allows, and surfaces anything beyond it to whoever holds the standing to decide. | Being a verified principal at all. A colleague, a user, a peer agent. |
 

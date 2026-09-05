@@ -55,8 +55,12 @@ from the system's own classification of the operation, and silence never becomin
 ## The conversation binding — the anchor, anchored
 
 The glossary says an operator "within a conversation … is bound from the authenticated sender,"
-and left the binding itself undefined. This part defines it, because a pin that anchors operator
-standing must itself be anchored outside what it pins.
+and left the binding itself undefined. This part defines it — and because the definition inverts
+the clause's plain reading (a verified act binds; the sender merely selects), the glossary's
+operator row is **amended in this bundle** to read "selected by the authenticated sender within
+the recorded binding," per the corpus discipline that a redesign is propagated into the
+documents it rewrites. A pin that anchors operator standing must itself be anchored outside
+what it pins.
 
 **A conversation binding is a recorded grant.** It names a conversation (by the platform's
 authenticated conversation identity), the principal who holds operator standing within it, and
@@ -64,7 +68,13 @@ the scope that standing covers — and it is established only by an act with `ve
 provenance: the organization's declared intent naming the holder, or an operator-standing action
 on an authenticated non-chat surface (a signed or PIN-gated operator surface, whose design is
 part eleven's). **A conversation's first sender never self-binds** — a new conversation with no
-binding has no operator, only a requester, until a verified act binds it (P4-NF-04).
+binding has no operator, only a requester, until a verified act binds it (P4-NF-04). That is a
+state, not a deadlock, and the bootstrap paths are named now rather than deferred whole: the
+organization's intent — carried in the genesis grants — may pre-bind conversations by naming
+the operator's platform identities, so the operator's own conversations are bound before their
+first message; a pairing act on a verified surface (a signed invite or a PIN-confirmed code —
+the minimal shape is fixed here, the full surface is part eleven's) binds a new conversation;
+and an unbound conversation is simply served at requester level, honestly, indefinitely.
 
 **How this composes with part one's wall — stated, not slipped.** Part one, approved: a value
 that confers standing above requester decodes only from `verified` provenance. Today's chat
@@ -72,7 +82,17 @@ platforms give the adapter only `channel-attested` evidence per message. The com
 part proposes: the **operator principal's provenance is the binding grant's** — the verified,
 recorded act that bound the conversation — and the per-message `channel-attested` sender
 evidence does one job only: it *selects* the already-bound principal within the already-granted
-scope. Prose never enters it; the message's attestation elevates nothing — it locates. The
+scope. Prose never enters it; the message's attestation elevates nothing — it locates. And the
+review pressed the composition one level deeper, rightly: exercising operator standing through
+an attested message is still attested exercise, so **the exercise itself is tiered**. A
+**binding act** — granting or revoking standing, minting an `Authorization`, changing a wall,
+re-binding a conversation — requires its own `verified`-provenance act (a PIN-gated or signed
+surface, a host review record); a chat message can *request* one, and the request routes like
+any beyond-standing ask. A **directive act** — day-to-day direction, priorities, the ordinary
+"proceed" — rides the binding: the bound operator directs the agent's own operating standing
+through chat, which grants nothing and binds nothing beyond what part one's `Directive` type
+already carries. So the thing a stolen chat session can do is *steer* one conversation's
+already-granted work; it can never mint, widen, or approve. The
 residual is named rather than implied away: **a platform bot-token takeover collapses every
 attestation on that transport**, so an attacker holding the token speaks as any bound sender —
 which is why the binding's scope bounds the blast radius (that conversation's standing, nothing
@@ -115,7 +135,11 @@ consumes this); and the glossary's profile-declaring kind list gains parsers, be
 adapter's runaway case is a flood and its bound entry is load-bearing. **The port itself is a
 blocking site** and declares the full kind-2 facts in part two's own format: `authority: block`;
 `decidesAlone` per gate — `ruled-three` for the secret scan and the emergency stop,
-`governed-state` for dedup, authentication, resolution, and admission; `criticality`: this is
+`governed-state` for the rest, each naming its enforced record and decoder per amendment one's
+companion requirement (dedup enforces the admission ledger through the port's dedup decoder;
+authentication enforces the governed key and credential records through part one's provenance
+decoder; resolution enforces the principal record through part one's principal decoder;
+admission enforces the fact-schema and standing records through part two's ladder); `criticality`: this is
 the door authority enters through; `failDirection` per consumer — **open toward delivery** for
 the operator and user channel, **closed** for standing and admission; `preservesInput`: the
 capture store and the held queue, named below; `inspectedBy`: the contract suite.
@@ -195,7 +219,7 @@ has a sender is lying about something easy.
 8. **Mint the intent and admit it.** The `Intent` — its principal (carrying provenance), the
    arrival hash as `raw`, the interpreted `ask` (a separate, revisable field; the doorway's
    interpretation is deterministic — anything needing a model waits for the judgment doorway,
-   which no feature calls directly), the directive ids in force (`under`, resolved at the same
+   the one sanctioned path to a model), the directive ids in force (`under`, resolved at the same
    causal position as standing) — is appended through part two's admission as durable work
    **with a declared owner and blocked-on state, refused at creation without them** (rule 83's
    own check, held here by fixture — P4-NF-12). The run graph that executes it is part five's.
@@ -214,10 +238,10 @@ has a sender is lying about something easy.
 | Stimulus | Dedup id (step 3) | Principal (4–5) | Standing (6) | Ground (7) | Ack (9) |
 |---|---|---|---|---|---|
 | User/operator message | platform event id per `eventIdAuthority` | adapter evidence → principal, or held | binding / grants / requester floor | on session start or resume | conversational ack |
-| Webhook | sender-independent id per `eventIdAuthority`, else the port's fallback fingerprint | service principal via its registered credential | the service's recorded grant | none | transport response |
+| Webhook | sender-independent id per `eventIdAuthority`, else the port's fallback fingerprint — (credential principal, canonical body hash, endpoint, declared replay window), semantic limit stated in the adapter's entry: identical events inside one window collapse | service principal via its registered credential | the service's recorded grant | none | transport response |
 | Scheduled tick | the port mints (job id, scheduled instant) | `kind: system`, package-minted token | the job's recorded grant | scoped to the run the tick names | the admission record |
 | Peer-agent request | the peer protocol's signed message id | `kind: agent`, signed | the peer's recorded grant | the thread it names | protocol ack |
-| Operator-surface action | the surface's minted action id | `verified` by the surface itself | operator, per the surface's binding | the affected scope | the surface's receipt |
+| Operator-surface action | the surface's minted action id | `verified` by the surface itself | operator, per the recorded grant the surface's verified action exercises | the affected scope | the surface's receipt |
 | Recovery signal | the port mints (source, incident id) | `kind: system`, signed source | the recovery holder's grant | the affected run | the admission record |
 
 **Rule — the protected channel fails toward delivery, and only the protected channel.** Rule 14
@@ -237,8 +261,12 @@ the outbound doorway's, and is deliberately not in this inbound enumeration.
 the ruled three: exact test, irreversible miss. **Check:** a deterministic stop surface — a
 dedicated command shape the port recognizes without interpretation, honored only from the
 conversation's bound operator or a verified operator surface — bypasses the ordinary sequence's
-tail: it is preserved, deduplicated, authenticated, and then acts *before* grounding, minting,
-or any queue, with its own fixture measuring recognition-to-halt (P4-NF-14). An ambiguous
+tail: it is preserved, deduplicated, authenticated, **resolved against the binding**, and then
+acts *before* grounding, minting, or any queue. Acting emits a **stop fact first** — the
+authority basis (the binding), the reach, the clock reading — appended local-durable, which is
+enough to halt (replication follows; a stop must never wait on a peer), and the stop is
+idempotent: a replayed or re-delivered stop re-asserts the halted state and appends nothing
+new. The fixture measures recognition-to-halt and the fact's precedence (P4-NF-14). An ambiguous
 "maybe stop" rides the ordinary sequence; the deterministic path exists precisely so the
 unambiguous one never waits behind it.
 
@@ -286,10 +314,14 @@ to an attack the first review named:
   the register; the sender's ask appears only as delimited, quoted, untrusted content, never
   blended into the frame (P4-NF-17).
 - **The needed standing is computed, never phrased.** Which standing the operation requires
-  derives from the system's own classification of the operation — its register profile and
-  kind — not from how the ask was worded; the holder set comes from the grant record; selection
-  takes the *narrowest* standing that covers the operation, tied to the operator of the
-  affected scope. And the approval is re-validated at the effect doorway against the *actual*
+  derives from the system's own classification of the operation — and classification is
+  deterministic over the *registered command shapes*: an ask that matches one classifies with
+  no model; an ask that is ambiguous, matches several operations, or matches none is a
+  **needs-judgment hold** — it waits for the judgment doorway (part seven) to refine `ask`
+  before any standing computation runs, and no routing, holder selection, or candidate grant
+  derives from an unclassified ask (P4-NF-26). The holder set comes from the grant record;
+  selection takes the *narrowest* standing that covers the operation, tied to the operator of
+  the affected scope. And the approval is re-validated at the effect doorway against the *actual*
   operation — an approval harvested for a narrower-sounding classification does not transfer
   (P4-NF-18).
 - **Routing is bounded.** Authorization requests coalesce per (requester, operation class) —
@@ -400,7 +432,7 @@ through three.
 | P4-NF-08 | test | A dedup collapse whose redelivery hash differs from the original, handled as a silent duplicate | Same id, different bytes is an attack signal, recorded and surfaced. |
 | P4-NF-09 | test | A system-class stimulus admitted on locality rather than a package-minted or signed credential | A local process reaching the port is rule 29's threat, not its exemption. |
 | P4-NF-10 | test | An unresolvable sender's message dropped, or answered as if verified | Held, authority-inert, drained on a bound. |
-| P4-NF-11 | test | A post-compaction first reply that does not account for the last inbound id | Continuity is disclosed, never bluffed. |
+| P4-NF-11 | test | A post-compaction first reply that does not account for the last inbound id (named here, owned by part five with the session side) | Continuity is disclosed, never bluffed; the doorway supplies the last-inbound substrate. |
 | P4-NF-12 | test | An intent admitted as durable work without a declared owner and blocked-on state | Rule 83's own check, held at minting. |
 | P4-NF-13 | test | A gate withholding a resolved user's or operator's message on a cannot-decide signal | The protected channel fails toward delivery; cannot-decide is not decided-unresolved. |
 | P4-NF-14 | test | An unambiguous operator stop riding the ordinary sequence behind grounding and minting | The one message whose latency matters most has the deterministic fast path. |
@@ -415,6 +447,7 @@ through three.
 | P4-NF-23 | test | Peer-silence concurrence without the declared deadline, the deadline floor, and proof of delivery | A partitioned peer never went silent; it never heard. |
 | P4-NF-24 | test | A doorway refusal naming neither a rule nor a missing grant | Boundaries come from governance, not taste. |
 | P4-NF-25 | test | A session acting on an intent whose `under` omits a directive live at its causal position | The operator's standing instructions shape the work, structurally. |
+| P4-NF-26 | test | Routing, holder selection, or a candidate grant derived from an ask that matched no registered command shape | An unclassified ask holds for judgment; nothing downstream derives from ambiguity. |
 
 ---
 
@@ -481,8 +514,9 @@ the operator surfaces where authorizations complete and bindings are established
 
 1. **The conversation binding, and how it reads against part one.** Operator standing anchors
    to a recorded, verified-provenance binding; the per-message chat attestation only selects
-   within it; a bot-token takeover therefore reaches one conversation's scope, never the walls
-   or the PIN surfaces. I believe this composes faithfully with part one's provenance wall;
+   within it; a bot-token takeover therefore reaches each bound conversation's scope on that
+   transport — their union — and can only steer already-granted work there; it can never mint,
+   widen, or approve, and it never reaches the walls or the PIN surfaces. I believe this composes faithfully with part one's provenance wall;
    the alternative is a formal part-one amendment through its version chain. Confirm the
    composition reading, or direct the amendment?
 2. **Two shape amendments ride this bundle** (part three's convention): the parsers kind gains

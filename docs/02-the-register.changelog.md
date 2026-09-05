@@ -4,6 +4,10 @@ _Generated from `02-the-register.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-09-04 · draft — part-four bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
+
+- **The parsers kind gains authenticationClass and eventIdAuthority; the blocking-site kind gains the enforces companion fact for governed-state sites.** — Intake adapters' facts must fit their kind rather than live in prose, and amendment one's checkable-not-claimable requirement needs its register row. _(part four, shape amendments)_
+
 ## Revision 4 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 
 - **The kind-2 decidesAlone fact's value space becomes no / ruled-three / governed-state, with the per-rung sub-declaration rule for multi-rung boundaries.** — Executes rule 4's third-category amendment at the register's blocking-site kind; the failDirection per-consumer precedent extends to decidesAlone. _(part three, amendment one)_

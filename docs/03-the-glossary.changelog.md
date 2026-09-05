@@ -4,6 +4,10 @@ _Generated from `03-the-glossary.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-09-04 · draft — part-four bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
+
+- **The profile-declaring kinds gain parser; the operator row's conversation clause reads: selected by the authenticated sender within the recorded conversation binding, established only by a verified act.** — An intake adapter's runaway case is a flood, and the old clause's plain reading licensed first-sender self-binding — the identity-bleed shape part four refuses. _(part four, shape amendments; review round 2)_
+
 ## Revision 6 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 
 - **The term-kind value fact is renamed field (a profile field or required fact), in the kind list and the allowedValues row.** — Part two surfaced the homonym between fact-the-term-kind and fact-the-record; the operator approved routing the rename. _(part two question 9; operator approval 2026-09-04)_
