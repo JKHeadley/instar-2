@@ -25,7 +25,10 @@ export function generateAgainstParent(input: unknown, parent: VerifiedRegister, 
       take(approvals.verifyShapeChange(change));
     } else requireThat(change === null, 'unchanged shape must not smuggle a change binding');
     // Candidate schema never supplies permission to its ordinary declarations.
-    const register = take(generateRegister(input, { ...context, shape: parent.shape }));
-    return { ...register, shape: candidate } as GeneratedRegister;
+    take(generateRegister(input, { ...context, shape: parent.shape }));
+    // Approval permits a schema change, not an unloadable representation. Both
+    // schemas must accept the same authored input; incompatible migrations refuse
+    // here, before a generation can be published or its schema relabelled.
+    return take(generateRegister(input, { ...context, shape: candidate }));
   });
 }

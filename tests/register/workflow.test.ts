@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defineDecoder, consumeResult } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
-import { decodeShape, generationOf, decodeGenerationRecord, loadRegister, generateAgainstParent, runRegisterChecks, decodeDeclaration } from '../../src/register/index.js';
+import { decodeShape, generateRegister, generationOf, decodeGenerationRecord, loadRegister, generateAgainstParent, runRegisterChecks, decodeDeclaration } from '../../src/register/index.js';
 import type { RegisterContext, SpineReadPort, FactReference, WorkflowChecks } from '../../src/register/index.js';
 import { checkProtectedTests } from '../../scripts/check-register-protection.mjs';
 import { readFileSync } from 'node:fs';
@@ -13,6 +13,35 @@ function reply<T>(payload: T, context: RegisterContext): Result<T> {
     .decode(json('WorkflowFixtureReply', {}), context);
 }
 describe('repair workflow composition', () => {
+  it.each(['loosening', 'tightening', 'incompatible tightening', 'required field', 'missing required field'])('P3-NF-09 N1 approved %s is loadable or refuses before publication', variant => {
+    const s = setup();
+    const raw = shapeInput() as { kinds: { name: string; invariants: string[]; fields: { name: string; format: string; required: boolean; values: string[]; reference: boolean; terms: string[] }[] }[] };
+    const storeShape = raw.kinds.find(k => k.name === 'stores')!;
+    storeShape.fields.push({ name: 'retentionLabel', format: 'text', required: false, values: [], reference: false, terms: [] });
+    const context = { ...s.context, shape: value(decodeShape(raw, s.context)) };
+    const store = { ...s.declaration(), requiredFacts: { ...s.declaration().requiredFacts,
+      ...(variant === 'required field' ? { retentionLabel: 'kept' } : {}) } };
+    const input = s.input([store]);
+    const before = value(generateRegister(input, context)); const generation = value(generationOf(before, context));
+    let record = value(decodeGenerationRecord(json('GenerationRecord', { generation, at: s.f.now }), context));
+    const fact: FactReference = { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:approval' };
+    const provider = { owner: 'part-two' as const, verifyExtract: () => reply(fact, context), enteringForce: () => reply(record, context),
+      isCurrent: () => reply(true, context), verifyShapeChange: () => reply(fact, context) };
+    const parent = value(loadRegister(before, generation, context, provider, s.f.now));
+    if (variant === 'loosening') storeShape.invariants = [];
+    else if (variant.includes('tightening')) storeShape.fields.find(f => f.name === 'growth')!.values = [variant.startsWith('incompatible') ? 'summarizes' : 'compacts'];
+    else storeShape.fields.find(f => f.name === 'retentionLabel')!.required = true;
+    const candidate = value(decodeShape(raw, context));
+    const binding = { parent: generation.id, candidateShape: hash(candidate), document: { path: 'approved-change.json', hash: hash(variant) } };
+    const result = generateAgainstParent(input, parent, candidate, binding, provider, context);
+    if (variant.startsWith('incompatible') || variant.startsWith('missing')) {
+      expect(detail(result)).toMatch(/closed list|retentionLabel/); return;
+    }
+    const next = value(result); const nextGeneration = value(generationOf(next, context));
+    record = value(decodeGenerationRecord(json('GenerationRecord', { generation: nextGeneration, at: s.f.now }), context));
+    expect(value(loadRegister(next, nextGeneration, context, provider, s.f.now))).toEqual(next);
+    expect(next.shape).toEqual(candidate);
+  });
   it('P3-NF-09 R5 ordinary declarations use verified parent shape; shape changes need exact approved binding', () => {
     const s = setup(); const before = s.build(); const generation = value(generationOf(before, s.context));
     const record = value(decodeGenerationRecord(json('GenerationRecord', { generation, at: s.f.now }), s.context));
