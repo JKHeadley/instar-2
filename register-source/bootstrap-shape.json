@@ -1,0 +1,871 @@
+{
+  "type": "ShapeEntries",
+  "schemaVersion": 1,
+  "kinds": [
+    {
+      "name": "stores",
+      "fields": [
+        {
+          "name": "growth",
+          "format": "text",
+          "required": true,
+          "values": [
+            "unbounded",
+            "compacts",
+            "summarizes",
+            "deletes",
+            "redacts"
+          ],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "holdsAgentMemory",
+          "format": "text",
+          "required": true,
+          "values": [
+            "yes",
+            "no"
+          ],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "machineScope",
+          "format": "object",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "agreesWith",
+          "format": "array",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": false,
+      "holder": false,
+      "enforceable": [],
+      "invariants": [
+        "memory-not-deleted"
+      ]
+    },
+    {
+      "name": "blocking sites",
+      "fields": [
+        {
+          "name": "authority",
+          "format": "text",
+          "required": true,
+          "values": [
+            "signal",
+            "block"
+          ],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "decidesAlone",
+          "format": "text",
+          "required": true,
+          "values": [
+            "no",
+            "ruled-three",
+            "governed-state"
+          ],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "criticality",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "failDirection",
+          "format": "text",
+          "required": true,
+          "values": [
+            "open",
+            "closed"
+          ],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "preservesInput",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "inspectedBy",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "enforces",
+          "format": "object",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "rungs",
+          "format": "array",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": true,
+      "holder": true,
+      "enforceable": [
+        4,
+        14,
+        26,
+        28,
+        42,
+        66,
+        82,
+        86,
+        95
+      ],
+      "invariants": [
+        "governed-state-reference"
+      ]
+    },
+    {
+      "name": "features",
+      "fields": [
+        {
+          "name": "metrics",
+          "format": "array",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "gate",
+          "format": "object",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "liveProof",
+          "format": "text",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": true,
+      "holder": false,
+      "enforceable": [],
+      "invariants": [
+        "feature-metrics",
+        "feature-gate",
+        "feature-live-proof"
+      ]
+    },
+    {
+      "name": "operator actions",
+      "fields": [
+        {
+          "name": "surface",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "request",
+          "format": "object",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": true,
+      "holder": false,
+      "enforceable": [],
+      "invariants": []
+    },
+    {
+      "name": "loops",
+      "fields": [
+        {
+          "name": "cadence",
+          "format": "number",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "dueBy",
+          "format": "number",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "closedBy",
+          "format": "object",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "owner",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "overdueAction",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": false,
+      "holder": false,
+      "enforceable": [],
+      "invariants": []
+    },
+    {
+      "name": "duties of observation",
+      "fields": [
+        {
+          "name": "proof",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "watcher",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "cadence",
+          "format": "number",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": false,
+      "holder": true,
+      "enforceable": [
+        9,
+        24,
+        26,
+        65,
+        69
+      ],
+      "invariants": []
+    },
+    {
+      "name": "parsers",
+      "fields": [
+        {
+          "name": "fixture",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "authenticationClass",
+          "format": "text",
+          "required": true,
+          "values": [
+            "verified",
+            "channel-attested"
+          ],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "eventIdAuthority",
+          "format": "object",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "ackPolicy",
+          "format": "text",
+          "required": true,
+          "values": [
+            "always",
+            "bound-only",
+            "never"
+          ],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": true,
+      "holder": true,
+      "enforceable": [
+        28,
+        29,
+        36,
+        42,
+        46,
+        110
+      ],
+      "invariants": []
+    },
+    {
+      "name": "critical outcomes",
+      "fields": [
+        {
+          "name": "probe",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "cadence",
+          "format": "number",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": true,
+      "holder": true,
+      "enforceable": [
+        26,
+        34,
+        37,
+        43,
+        62
+      ],
+      "invariants": []
+    },
+    {
+      "name": "judgment points",
+      "fields": [
+        {
+          "name": "floor",
+          "format": "object",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "benchmark",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": true,
+      "holder": false,
+      "enforceable": [],
+      "invariants": [
+        "judgment-floor"
+      ]
+    },
+    {
+      "name": "model doorways",
+      "fields": [
+        {
+          "name": "models",
+          "format": "array",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "billing",
+          "format": "text",
+          "required": true,
+          "values": [
+            "subscription",
+            "metered"
+          ],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "subsidy",
+          "format": "object",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": false,
+      "holder": false,
+      "enforceable": [],
+      "invariants": []
+    },
+    {
+      "name": "sentinels",
+      "fields": [
+        {
+          "name": "freshnessProbe",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "scope",
+          "format": "text",
+          "required": true,
+          "values": [
+            "live",
+            "retrospective"
+          ],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "authority",
+          "format": "text",
+          "required": true,
+          "values": [
+            "signal",
+            "block"
+          ],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": true,
+      "holder": true,
+      "enforceable": [
+        3,
+        9,
+        16,
+        17,
+        18,
+        19,
+        24,
+        25,
+        26,
+        48,
+        50,
+        51,
+        54,
+        65,
+        69,
+        80,
+        108
+      ],
+      "invariants": []
+    },
+    {
+      "name": "protected artifacts",
+      "fields": [
+        {
+          "name": "pattern",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "why",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "surface",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": false,
+      "holder": false,
+      "enforceable": [],
+      "invariants": []
+    },
+    {
+      "name": "governed documents",
+      "fields": [
+        {
+          "name": "location",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "changelog",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": false,
+      "holder": false,
+      "enforceable": [],
+      "invariants": []
+    },
+    {
+      "name": "terms",
+      "fields": [
+        {
+          "name": "name",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "kind",
+          "format": "text",
+          "required": true,
+          "values": [
+            "adjective",
+            "field",
+            "noun",
+            "standing"
+          ],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "definition",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "derivedFrom",
+          "format": "object",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "allowedValues",
+          "format": "array",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "termRefs",
+          "format": "array",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": false,
+      "holder": false,
+      "enforceable": [],
+      "invariants": [
+        "term-shape"
+      ]
+    },
+    {
+      "name": "rules",
+      "fields": [
+        {
+          "name": "number",
+          "format": "number",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "name",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "statement",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "held",
+          "format": "text",
+          "required": true,
+          "values": [
+            "script",
+            "shape",
+            "mind"
+          ],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "parent",
+          "format": "scalar",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "rootReason",
+          "format": "text",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "deadline",
+          "format": "number",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "owner",
+          "format": "text",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "overdueAction",
+          "format": "text",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "mergedInto",
+          "format": "number",
+          "required": false,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "termRefs",
+          "format": "array",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        },
+        {
+          "name": "checkDescription",
+          "format": "text",
+          "required": true,
+          "values": [],
+          "reference": false,
+          "terms": []
+        }
+      ],
+      "profile": false,
+      "holder": false,
+      "enforceable": [],
+      "invariants": []
+    }
+  ],
+  "parts": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "derivedFrom": {
+    "critical": {
+      "any": [
+        {
+          "field": "consequence",
+          "in": [
+            "identity",
+            "security",
+            "money",
+            "control",
+            "external"
+          ]
+        },
+        {
+          "all": [
+            {
+              "field": "consequence",
+              "in": [
+                "data"
+              ]
+            },
+            {
+              "field": "reversibility",
+              "in": [
+                "irreversible"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "userFacing": {
+      "any": [
+        {
+          "field": "reach",
+          "in": [
+            "user",
+            "operator"
+          ]
+        },
+        {
+          "field": "surface",
+          "in": [
+            "chat",
+            "dashboard",
+            "link",
+            "device"
+          ]
+        }
+      ]
+    },
+    "significant": {
+      "any": [
+        {
+          "any": [
+            {
+              "field": "consequence",
+              "in": [
+                "identity",
+                "security",
+                "money",
+                "control",
+                "external"
+              ]
+            },
+            {
+              "all": [
+                {
+                  "field": "consequence",
+                  "in": [
+                    "data"
+                  ]
+                },
+                {
+                  "field": "reversibility",
+                  "in": [
+                    "irreversible"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "any": [
+            {
+              "field": "reach",
+              "in": [
+                "user",
+                "operator"
+              ]
+            },
+            {
+              "field": "surface",
+              "in": [
+                "chat",
+                "dashboard",
+                "link",
+                "device"
+              ]
+            }
+          ]
+        },
+        {
+          "field": "reach",
+          "in": [
+            "world"
+          ]
+        }
+      ]
+    },
+    "irreversible": {
+      "field": "reversibility",
+      "in": [
+        "irreversible"
+      ]
+    }
+  }
+}
