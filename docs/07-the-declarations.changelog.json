@@ -1,5 +1,26 @@
 [
   {
+    "revision": 6,
+    "date": "2026-09-04",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "pr": 17,
+      "note": "operator accepted all seven defaults and directed the merge; merging is the approval, bound to the reviewed content; the six-amendment bundle lands atomically with it"
+    },
+    "approvedIn": {
+      "pr": 17,
+      "mergeCommit": "5a746e54258669e06be83a4bc18010060f67216d"
+    },
+    "changes": [
+      {
+        "what": "Part three is approved on main; the document status line reads approved; the pending-landing approval fields across the six amended documents are completed by this landing.",
+        "why": "All seven operator questions accepted as recommended (defaults), 2026-09-04.",
+        "ref": "topic 52075, operator messages 2026-09-04"
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-09-04",
     "status": "draft",
@@ -14,7 +35,11 @@
         "why": "A false extract must be able to waste a merge but never govern; named evidence is not wired evidence.",
         "ref": "review desk round 4, external findings 1-5"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 17,
+      "mergeCommit": "5a746e54258669e06be83a4bc18010060f67216d"
+    }
   },
   {
     "revision": 4,
@@ -31,7 +56,11 @@
         "why": "Round-3 external findings 1-5 and the internal round's five line-level items.",
         "ref": "review desk round 3"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 17,
+      "mergeCommit": "5a746e54258669e06be83a4bc18010060f67216d"
+    }
   },
   {
     "revision": 3,
@@ -48,7 +77,11 @@
         "why": "The holder-graph redesign was built inside part three but not propagated into the documents it rewrites.",
         "ref": "review desk round 2"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 17,
+      "mergeCommit": "5a746e54258669e06be83a4bc18010060f67216d"
+    }
   },
   {
     "revision": 2,
@@ -65,7 +98,11 @@
         "why": "Round 1's common root: pins not anchored outside the tree they check; plus two amendment-execution gaps the desk caught.",
         "ref": "review desk round 1"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 17,
+      "mergeCommit": "5a746e54258669e06be83a4bc18010060f67216d"
+    }
   },
   {
     "revision": 1,
@@ -81,6 +118,10 @@
         "why": "Next part in the dependency order after part two's approval.",
         "ref": "docs/04-the-big-picture.md section 13"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 17,
+      "mergeCommit": "5a746e54258669e06be83a4bc18010060f67216d"
+    }
   }
 ]

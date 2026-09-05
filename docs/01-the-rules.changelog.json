@@ -4,7 +4,8 @@
     "status": "draft",
     "cause": {
       "kind": "conversation",
-      "note": "part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge"
+      "note": "part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge",
+      "pr": 17
     },
     "changes": [
       {
@@ -18,7 +19,11 @@
         "ref": "part three bundle, review round 3"
       }
     ],
-    "revision": 11
+    "revision": 11,
+    "approvedIn": {
+      "pr": 17,
+      "mergeCommit": "5a746e54258669e06be83a4bc18010060f67216d"
+    }
   },
   {
     "revision": 10,

@@ -56,11 +56,12 @@ using a mechanism that already exists rather than one we have to build.
 
 ## Status
 
-The rules foundation, big-picture design, and the first two part designs (constitutional types
-and the decoding boundary; the fact envelope, version chain, and projection contract) are
-approved on `main`. Part designs proceed in dependency order; next is part three — declarations,
-the register generator, the terms resolver, and the rule/holder graph. Code waits until the part
-designs it depends on are approved.
+The rules foundation, big-picture design, and the first three part designs (constitutional
+types and the decoding boundary; the fact envelope, version chain, and projection contract;
+declarations, the register generator, the terms resolver, and the rule graph) are approved on
+`main`, together with the first six constitutional amendments, landed atomically with part
+three. Part designs proceed in dependency order; next is part four — intake and
+identity/standing resolution. Code waits until the part designs it depends on are approved.
 
 Review model (operator decision, 2026-09-03): the independent review desk runs every pull
 request to convergence first; the operator then reviews a concise plain-language overview and

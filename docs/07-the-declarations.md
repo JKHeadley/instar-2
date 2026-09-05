@@ -1,6 +1,6 @@
 # Part three — declarations, the register generator, the terms resolver, and the rule graph
 
-**Status: draft, awaiting approval. Governed. No later part design or code is built on top of this until it is approved.**
+**Status: approved. Governed.**
 
 The register (step two) and the glossary (step three) were approved as designs for *lists*: every
 governed thing enumerated with required facts, every load-bearing word defined once. This part

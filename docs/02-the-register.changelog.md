@@ -12,6 +12,8 @@ each linked to the git change that made it (rule 91).
 - **The sentinel kind's watches becomes holds (one enforcement vocabulary) and lastRan becomes freshnessProbe (declared at build, fired-checked by the runtime guard-posture holder).** — Runtime state cannot feed a deterministic generator; the dark-guard check moves to the stage that can run it. _(part three, amendment six)_
 - **The status line reads approved, matching the changelog's record of the document's latest approved version.** — Part three defines a status line as stating the latest approved version's status; the body predated that semantic. _(part three bundle, review round 3)_
 
+Approved in: PR #17, merge `5a746e542`.
+
 ## Revision 3 · 2026-08-26 · approved — operator review on PR #4; the operator's rulings on the 33 tensions (decision sheet, merged in PR #4) applied to the register's design
 
 - **Blocking-sites kind rewritten: `exactMatchOnly` replaced by `decidesAlone` (yes only for the ruled three — a live secret leaving, spend past a cap, the emergency stop), plus `criticality` (the deciding list is driven by the formal criticality assessment, never hand-picked), `failDirection` (per consumer), and `preservesInput`.** — Rulings 19, 2, and 5. _(docs/harvests/standards-and-registries-harvest.decisions.md (rulings 19, 2, 5); PR #4 merge 616bc3b)_
