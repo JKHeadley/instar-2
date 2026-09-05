@@ -1,12 +1,14 @@
 import { decode, grantLiveness, scopeIncludes } from '../index.js';
 import type { Json, Scope, VerifiedPrincipal } from '../index.js';
-import type { Declaration, EnforcementBoundary, GeneratedRegister, Reference, RegisterContext, RegisterValue, StandingContext } from './types.js';
+import type { Declaration, EnforcementBoundary, GeneratedRegister, Reference, RegisterContext, RegisterValue, StandingContext, VerifiedRegister } from './types.js';
 import { checked, encoding, list, object, requireThat, strings, take, text } from './boundary.js';
 import { decodeReference } from './declarations.js';
+import { wasVerified } from './generator.js';
 
 export type GovernedConstruct = RegisterValue<'GovernedConstruct'> & Readonly<{ kind: string; declaration: Reference }>;
-export function readRegisterEntry(id: string, register: GeneratedRegister, context: RegisterContext) {
+export function readRegisterEntry(id: string, register: VerifiedRegister, context: RegisterContext) {
   return checked('RegisterEntryRead', { id }, context, () => {
+    requireThat(wasVerified(register), 'register consumer must use loadRegister with entering-force and extract verification');
     const entry = register.entries.find(e => e.declaration.id === id);
     requireThat(entry, `unresolved register entry ${id}`); return entry;
   });

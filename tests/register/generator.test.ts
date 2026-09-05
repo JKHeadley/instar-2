@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { canonical, defineDecoder } from '../../src/index.js';
+import { canonical, consumeResult, decode, defineDecoder } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
 import { decodeExtract, decodeGenerationRecord, generateRegister, generationOf, loadRegister, verifyGenerated, constructGoverned, checkPairing, checkBoundaryCoverage,
-  verifyLandingCompletion } from '../../src/register/index.js';
-import type { FactReference, GeneratedRegister, GenerationRecord, RegisterContext, SpineReadPort } from '../../src/register/index.js';
+  verifyLandingCompletion, readRegisterEntry } from '../../src/register/index.js';
+import type { FactReference, GeneratedRegister, GenerationRecord, RegisterContext, SpineReadPort, VerifiedRegister } from '../../src/register/index.js';
 import { setup, json, detail, value, hash, clone } from './fixtures.js';
 
 export function portResult<T>(payload: T, context: RegisterContext): Result<T> {
@@ -42,8 +42,17 @@ describe('register generation and consumption', () => {
   });
   it('P3-NF-08 consumer decoder rejects changed bytes under a genuine generation', () => {
     const s = setup(); const r = s.build(); const g = value(generationOf(r, s.context)); const spine = spineFor(r, s);
-    expect(value(loadRegister(r, g, s.context, spine, s.f.now))).toEqual(r);
+    const loaded = value(loadRegister(r, g, s.context, spine, s.f.now)); expect(loaded).toEqual(r);
+    expect(value(readRegisterEntry('store', loaded, s.context)).declaration.id).toBe('store');
+    expect(detail(readRegisterEntry('store', r as VerifiedRegister, s.context))).toContain('loadRegister');
     expect(detail(loadRegister({ ...r, commit: 'tampered' }, g, s.context, spine, s.f.now))).toContain('P3-NF-08');
+  });
+  it('nested spine refusals retain their original reason, site, direction and preserved input', () => {
+    const s = setup(); const r = s.build(); const g = value(generationOf(r, s.context)); const spine = spineFor(r, s);
+    const failed = decode('Profile', null, { ...s.f.ctx, preserved: 'capture:spine-original' });
+    const refusal = consumeResult(failed, { Success: () => { throw new Error('expected refusal'); }, Refused: r => r });
+    const loaded = loadRegister(r, g, s.context, { ...spine, verifyExtract: () => refusal }, s.f.now);
+    consumeResult(loaded, { Success: () => { throw new Error('refusal swallowed'); }, Refused: r => expect(r).toBe(refusal) });
   });
   it('P3-NF-16 duplicate ids name both declaration sites and refuse', () => {
     const s = setup(); const input = s.input(); const sources = [s.source(s.declaration(), 'src/one.ts'), s.source(s.declaration(), 'src/two.ts')];

@@ -1,10 +1,13 @@
 import { decode } from '../index.js';
 import type { Clock, Json } from '../index.js';
 import type { ChainExtract, Declaration, FactPositionVectorReference, FactReference, GeneratedRegister, GenerationRecord,
-  RegisterContext, RegisterEntry, RegisterGeneration, SpineReadPort, VersionRowInput } from './types.js';
+  RegisterContext, RegisterEntry, RegisterGeneration, SpineReadPort, VersionRowInput, VerifiedRegister } from './types.js';
 import { checked, encoding, exact, list, object, requireThat, strings, take, text, validated } from './boundary.js';
 import { decodeDeclaration } from './declarations.js';
 import { decodeShape } from './shape.js';
+
+const loaded = new WeakSet<object>();
+export const wasVerified = (register: GeneratedRegister): register is VerifiedRegister => loaded.has(register);
 
 function reference<N extends 'FactEnvelope' | 'FactPositionVector'>(input: Json, name: N) {
   const r = object(input); exact(r, ['owner', 'name', 'id']);
@@ -121,7 +124,7 @@ export function decodeGenerationRecord(input: unknown, context: RegisterContext)
   });
 }
 export function loadRegister(input: unknown, expected: RegisterGeneration, context: RegisterContext, spine: SpineReadPort, now: Clock) {
-  return validated<GeneratedRegister, RegisterContext>('GeneratedRegister', input, context, (v, ctx) => {
+  return validated<VerifiedRegister, RegisterContext>('GeneratedRegister', input, context, (v, ctx) => {
     exact(v, ['type', 'schemaVersion', 'commit', 'extract', 'shape', 'entries', 'authority']);
     requireThat(encoding(v).hash === expected.id && v.commit === expected.commit, 'P3-NF-08: register content differs from pinned generation');
     requireThat(spine.owner === 'part-two', 'part-two verified spine required');
@@ -143,7 +146,8 @@ export function loadRegister(input: unknown, expected: RegisterGeneration, conte
     });
     requireThat(new Set(decoded.map(e => e.declaration.id)).size === decoded.length, 'P3-NF-16: duplicate loaded entry');
     requireThat(v.authority === 'shape-only', 'register bytes may not self-assert authority');
-    return { type: 'GeneratedRegister', schemaVersion: 1, commit: text(v.commit, 'commit'), extract, shape, entries: decoded, authority: 'shape-only' } as unknown as GeneratedRegister;
+    const result = { type: 'GeneratedRegister', schemaVersion: 1, commit: text(v.commit, 'commit'), extract, shape, entries: decoded, authority: 'shape-only' } as unknown as VerifiedRegister;
+    loaded.add(result); return result;
   });
 }
 // The vector and envelope reference imports above intentionally remain owned by P2.

@@ -11,7 +11,7 @@ if (!report.success) throw new Error('test run failed');
 console.log('| Check | Executed test file | Status |'); console.log('|---|---|---|');
 for (const id of [...expected].sort()) {
   const rows = map.get(id); if (!rows?.length) throw new Error(`missing actual test for ${id}`);
-  for (const row of rows) if (row.status !== 'passed' && !(row.status === 'pending' && /SKIPPED:.+/.test(row.name))) throw new Error(`${id}: neither passed nor explicitly skipped with reason`);
+  for (const row of rows) if (row.status !== 'passed' && !(['pending', 'skipped'].includes(row.status) && /SKIPPED:.+/.test(row.name))) throw new Error(`${id}: neither passed nor explicitly skipped with reason`);
   console.log(`| ${id} | ${[...new Set(rows.map(r => r.file))].join('; ')} | ${[...new Set(rows.map(r => r.status))].join(', ')} |`);
 }
 console.log(`${expected.size} P3 contracts mapped to actual run results.`);

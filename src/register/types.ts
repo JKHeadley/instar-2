@@ -42,6 +42,8 @@ export type GeneratedRegister = RegisterValue<'GeneratedRegister'> & Readonly<{
   commit: string; extract: ChainExtract; shape: ShapeEntries; entries: readonly RegisterEntry[];
   authority: 'shape-only';
 }>;
+declare class VerifiedConsumption { private readonly verifiedConsumption: true; private constructor(); }
+export type VerifiedRegister = GeneratedRegister & VerifiedConsumption;
 export type RegisterGeneration = RegisterValue<'RegisterGeneration'> & Readonly<{ id: Hash; commit: string;
   vector: FactPositionVectorReference }>;
 export type GenerationRecord = RegisterValue<'GenerationRecord'> & Readonly<{
