@@ -1,0 +1,42 @@
+import type { Capacity, Clock, GrantLiveness, Refused, RefusalReason, Result, Revocation, Scope, StandingGrant, Success } from './values.js';
+const issued = new WeakSet<object>();
+const subjects = new WeakMap<object, Scope>();
+export function bindRecordSubject(record: object, scope: Scope): void { subjects.set(record, scope); }
+export function recordSubject(record: object): Scope | undefined { return subjects.get(record); }
+// Causal inputs have already been selected by P2; their revocations are effective
+// by ancestry, never by their testimony clock. Body-time checks retain P1's clock rule.
+export function evaluateGrantLiveness(grant: StandingGrant, revocations: readonly Revocation[], now: Clock, causal = false): GrantLiveness {
+  if (now.value < grant.issuedAt.value) return 'not-yet-live';
+  if (revocations.some(r => r.grantId === grant.id && (causal || r.at.value <= now.value))) return 'revoked';
+  if (grant.expiresAt !== undefined && now.value >= grant.expiresAt) return 'expired';
+  return 'live';
+}
+// Not exported by the package. Only decoders and pure derivations may use this factory.
+export function seal<T>(value: object, live = true): T {
+  function freeze(item: object): void {
+    for (const child of Object.values(item)) if (child && typeof child === 'object' && !Object.isFrozen(child)) freeze(child);
+    Object.freeze(item);
+  }
+  freeze(value);
+  if (live) issued.add(value);
+  return value as T;
+}
+export function trusted(value: unknown, type: string): boolean {
+  return !!value && typeof value === 'object' && issued.has(value) && (value as { type?: unknown }).type === type;
+}
+export function errorDetail(error: unknown): string {
+  try { return error instanceof Error && typeof error.message === 'string' ? error.message : 'malformed input or decoding context'; }
+  catch { return 'malformed input or decoding context'; }
+}
+export function success<T>(value: T, capacity: Capacity = { kind: 'none' }): Success<T> {
+  return seal({ type: 'Result', schemaVersion: 1, kind: 'Success', value, capacity });
+}
+export function refusal(detail: string, preserved: string, reason: RefusalReason = 'decode', site = 'types.decode', failDirection: 'open' | 'closed' = 'closed'): Refused {
+  return seal({ type: 'Result', schemaVersion: 1, kind: 'Refused', reason, detail, site, failDirection, preserved });
+}
+export function consumeResult<T, R>(result: Result<T>, handlers: { Success: (value: T, capacity: Capacity) => R; Refused: (refused: Refused) => R }): R {
+  return result.kind === 'Success' ? handlers.Success(result.value, result.capacity) : handlers.Refused(result);
+}
+export function consumeCapacity<R>(capacity: Capacity, handlers: { none: () => R; applied: (bound: string, action: string) => R }): R {
+  return capacity.kind === 'none' ? handlers.none() : handlers.applied(capacity.bound, capacity.action);
+}
