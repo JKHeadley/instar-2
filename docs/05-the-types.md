@@ -80,6 +80,16 @@ operator or delegate principal — decodes only from `verified` provenance.** Th
 cross-checks every identity-bearing field in the bytes against the provenance and refuses on any
 disagreement.
 
+Exercise itself splits in two, and the wall above binds the half that changes the record of
+authority. An **authority-conferring exercise** — issuing or revoking a grant, minting an
+`Authorization`, changing a protected boundary, binding or re-binding a conversation — decodes
+only from `verified` provenance, always. A **directive exercise** — the day-to-day direction of
+work already within granted standing — may decode from `channel-attested` evidence *when and
+only when* a recorded, `verified`-provenance **conversation binding** already grants the
+standing being directed, and the attested evidence does exactly one job: it selects the bound
+principal within the bound scope. Attestation never establishes, widens, or transfers standing;
+a conversation without a binding yields requester standing and nothing more, exactly as above.
+
 This is the honest shape of the guarantee. A faulty adapter can lie about what channel it
 authenticated, so the package does not promise to catch every lie; it promises that nothing the
 package cannot verify itself can mint operator or delegate standing, an authorization, or a

@@ -1,5 +1,22 @@
 [
   {
+    "revision": 7,
+    "date": "2026-09-04",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "part-four bundle (atomic): approval fields are pending-landing and completed at the bundle's merge",
+      "pr": 18
+    },
+    "changes": [
+      {
+        "what": "The profile-declaring kinds gain parser; the operator row's conversation clause reads: selected by the authenticated sender within the recorded conversation binding, established only by a verified act.",
+        "why": "An intake adapter's runaway case is a flood, and the old clause's plain reading licensed first-sender self-binding \u2014 the identity-bleed shape part four refuses.",
+        "ref": "part four, shape amendments; review round 2"
+      }
+    ]
+  },
+  {
     "date": "2026-09-04",
     "status": "draft",
     "cause": {

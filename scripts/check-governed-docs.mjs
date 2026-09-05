@@ -27,7 +27,7 @@ function approvedVersions(file) {
 // history. Every entry is a visible, reviewable exception; adding one is a reviewed change.
 const ALLOW = [
   { file: "docs/rules/91-a-document-reads-as-its-first-version.md", why: "the rule's own full text quotes the markers it bans" },
-  { file: "docs/02-the-register.md", line: 214, why: "'revision' names a round of the pre-send review pattern, not a document history" },
+  { file: "docs/02-the-register.md", line: 218, why: "'revision' names a round of the pre-send review pattern, not a document history" },
   { file: "docs/01-the-rules.md", line: 228, why: "rule 91's own row in the rule book quotes the marker it bans" },
 ];
 

@@ -87,6 +87,7 @@ Unblocks rules 4, 66, 86.
 | `failDirection` — `open` or `closed` | Chosen from who bears the miss: reachability to the user fails open; change and release integrity fails closed. (Ruling 5.) |
 | `preservesInput` — where a blocked input is kept | Rule 4: a block always preserves its input. A site that cannot say where fails. (Rulings 19 and 2.) |
 | `inspectedBy` — the check that walks this site | Rule 66: a blocking decision the checks cannot see is unwatched by construction. |
+| `enforces` — for a `governed-state` site (or rung): the resolvable reference to the governed record it enforces, and the decoder implementing the exact test | Rule 4's third category is checkable, not claimable; a site may never enforce a record it can author. |
 
 This is the smallest kind and the most important one. In 1.x the number of places that could
 silently block was never known. Here it is a number in the register, and adding one is a visible
@@ -146,6 +147,9 @@ Unblocks rule 36.
 | Required fact | Why |
 |---|---|
 | `fixture` — the captured real bytes it is tested against | Rule 36: no hand-typed approximations. Missing fixture fails. |
+| `authenticationClass` — per stimulus type, the provenance class the parser can honestly provide: `verified` (it re-checks evidence) or `channel-attested` (it vouches for its channel) | Rules 28 and 29 at the doorway: the class is what the evidence supports, never what the adapter asserts. |
+| `eventIdAuthority` — who mints the stimulus id, its uniqueness scope, replay window, and fallback fingerprint policy | Exactly-once admission is declared and fixture-priced per adapter, never assumed. |
+| `ackPolicy` — `always`, `bound-only`, or `never` | Who gets acknowledged at the doorway is a declared, reviewed fact — an enumeration oracle is a choice, never a default. |
 
 ### 8. Critical outcomes — *every result that must provably still work in production*
 
