@@ -7,6 +7,8 @@ import type { CausalFrontier, FactContext, FactEnvelope, FactSchema, LineagePosi
 import { contextBoundary } from './contracts.js';
 
 export const genesisHash: Hash = `sha256:${'0'.repeat(64)}`;
+const admittedEnvelopes = new WeakMap<object, string>();
+const envelopeContext = (context: FactContext) => encoding({ keys: context.keys, register: context.decode.register }).hash;
 export function comparePosition(a: LineagePosition, b: LineagePosition): number { return a.epoch - b.epoch || a.position - b.position; }
 export function factId(segment: SegmentPosition): string { return `${encodeURIComponent(segment.machine)}:${segment.epoch}:${segment.position}`; }
 export function clockKey(clock: Clock): string {
@@ -80,6 +82,9 @@ export function decodeFrame(input: unknown, context: FactContext) {
 }
 
 export function decodeEnvelope(input: unknown, context: FactContext, mode: 'origin' | 'replication' = 'origin'): Result<FactEnvelope> {
+  if (mode === 'replication' && input && typeof input === 'object' && admittedEnvelopes.get(input) === envelopeContext(context)) {
+    return boundary('VerifiedEnvelopeReuse', null, contextBoundary(context), () => input as FactEnvelope);
+  }
   return boundary('FactEnvelopeDecode', input, contextBoundary(context), raw => {
     const checked = take(decodeFrame(raw, context));
     const { principal: principalInput, provenance: provenanceInput, ...base } = checked.frame;
@@ -102,6 +107,7 @@ export function decodeEnvelope(input: unknown, context: FactContext, mode: 'orig
       provenance = take(readHistorical('Provenance', provenanceInput, { ...pin, path: ['provenance'] }, historicalContext)).view;
       requireFact(provenance.authenticated.principal.id === principal.id && provenance.authenticated.principal.kind === principal.kind, 'origin actor mismatch', 'integrity');
     }
-    return { ...base, principal, provenance } as FactEnvelope;
+    const fact = { ...base, principal, provenance } as FactEnvelope;
+    admittedEnvelopes.set(fact, envelopeContext(context)); return fact;
   });
 }

@@ -2,9 +2,9 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, openSync, closeSync, writeSync, fsyncSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createFactStore, authorAndAppend, decodeEnvelope, wrapUnresolved, verifyAndAdmit, prepareSnapshot } from '../../src/facts/index.js';
+import { createFactStore, authorAndAppend, decodeEnvelope, wrapUnresolved, verifyAndAdmit, prepareSnapshot, signVerifiedPrefix, restoreVerifiedPrefix } from '../../src/facts/index.js';
 import type { SegmentStoragePort } from '../../src/facts/index.js';
-import { factsFixture, value, json, refused, privateKey, point } from '../facts/fixtures.js';
+import { factsFixture, value, json, refused, privateKey, publicKey, point } from '../facts/fixtures.js';
 import { foldProjection, readProjection } from '../../src/projections/index.js';
 import { decode } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
@@ -13,6 +13,13 @@ function diskFixture() {
   const f = factsFixture(), directory = mkdtempSync(join(tmpdir(), 'instar-p2-test-')), path = join(directory, 'segment.jsonl');
   const read = () => { try { return readFileSync(path, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as unknown); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []; throw e; } };
   const storage: SegmentStoragePort = { owner: 'part-ten', read,
+    recordConflicts(records) {
+      const file = join(directory, 'conflict-outbox.jsonl');
+      const existing = (() => { try { return readFileSync(file, 'utf8').trim().split('\n').filter(Boolean).map(s => JSON.parse(s) as { key: string }); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []; throw e; } })();
+      const fd = openSync(file, 'a'); try { for (const record of records) if (!existing.some(r => r.key === record.key)) writeSync(fd, JSON.stringify(record) + '\n'); fsyncSync(fd); } finally { closeSync(fd); }
+      const dir = openSync(directory, 'r'); try { fsyncSync(dir); } finally { closeSync(dir); }
+      return f.success({ kind: 'local-durable' });
+    },
     append(bytes, expected) {
       const head = read().at(-1) as { contentHash: string } | undefined;
       if ((head?.contentHash ?? null) !== expected) throw new Error('compare-head failed');
@@ -24,15 +31,15 @@ function diskFixture() {
   const ctx = { ...f.ctx, schemas: [...f.ctx.schemas, { ...f.schema, kind: 'retraction', fields: { target: { kind: 'reference' as const }, reason: { kind: 'text' as const, maxLength: 100 } } }] };
   const store = createFactStore(ctx, storage);
   const author = (body: Record<string, Json> = { identity: 'one', amount: '10' }, kind = 'note') => authorAndAppend({ kind, schemaVersion: 1, machine: 'machine-a', principal: json(f.alice), provenance: json(f.alice.provenance), at: json(f.now), body, required: [] }, ctx, store, privateKey);
-  return { ...f, ctx, storage, store, path, author, cleanup: () => rmSync(directory, { recursive: true, force: true }) };
+  return { ...f, ctx, storage, store, path, outbox: join(directory, 'conflict-outbox.jsonl'), author, cleanup: () => rmSync(directory, { recursive: true, force: true }) };
 }
 it('P2-NF-15 public fact store exposes exactly one mutating method', () => {
-  const f = diskFixture(); try { expect(Object.keys(f.store).sort()).toEqual(['append', 'read', 'readForProjection']); expect(value(f.author()).durability).toEqual({ kind: 'local-durable' }); } finally { f.cleanup(); }
+  const f = diskFixture(); try { expect(Object.keys(f.store).sort()).toEqual(['append', 'read', 'readForProjection', 'sweep', 'verifiedPrefix']); expect(value(f.author()).durability).toEqual({ kind: 'local-durable' }); } finally { f.cleanup(); }
 });
 it('P2-NF-16 out-of-band disk mutation fails read verification', () => {
   const f = diskFixture(); try {
     value(f.author()); const bytes = readFileSync(f.path, 'utf8'); writeFileSync(f.path, bytes.replace('"amount":"10"', '"amount":"11"'));
-    refused(f.store.read(), 'hash mismatch');
+    refused(f.store.read(), 'prefix changed');
   } finally { f.cleanup(); }
 });
 it('P2-NF-29 unresolved input becomes an attributed system observation, never lost or promoted', () => {
@@ -50,15 +57,29 @@ it('P2-NF-34 retraction does not remove prior facts from the durable read port',
   } finally { f.cleanup(); }
 });
 it('P2-NF-52 part-one immutable-field disagreement becomes a recorded projection conflict', () => {
-  const f = factsFixture(), left = value(decode('Intent', f.intentInput(), f.ctx.decode));
+  const f = diskFixture(); try {
+  const left = value(decode('Intent', f.intentInput(), f.ctx.decode));
   const right = value(decode('Intent', f.intentInput({ raw: f.capture('different') }), f.ctx.decode));
   const a = f.fact({ body: { identity: 'one', amount: '1', intent: left } }), b = f.fact({ machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 }, body: { identity: 'one', amount: '1', intent: right } });
+  const ctx = { ...f.ctx, schemas: [{ ...f.schema, fields: { ...f.schema.fields, intent: { kind: 'constitutional' as const, type: 'Intent' as const } } }] }, store = createFactStore(ctx, f.storage);
+  value(store.append(a)); value(store.append(b, { peer: 'machine-b' }));
   const result = value(foldProjection({ id: 'intents', class: 'informational', retention: 'all-identities', stalenessBound: 100,
     decisions: { note: { kind: 'folds', merge: 'additive', identity: 'identity', value: 'amount' } } },
-    value(prepareSnapshot([a, b], { ...f.ctx, schemas: [{ ...f.schema, fields: { ...f.schema.fields, intent: { kind: 'constitutional', type: 'Intent' } } }] })),
+    value(store.readForProjection()),
     { reference: f.ctx.decode.register.generation, kinds: ['note'], lineages: { 'machine-a': { head: a.segment, observedAt: 100, closed: false }, 'machine-b': { head: b.segment, observedAt: 100, closed: false } } }, f.c));
   expect(result.conflicts[0]?.constitutional?.type).toBe('Conflict'); expect(result.values).toEqual({});
+  expect(readFileSync(f.outbox, 'utf8')).toContain('immutable-disagreement');
+  } finally { f.cleanup(); }
 });
+it('P2-NF-52 historical-only disagreement refuses instead of laundering absent comparison annotations', () => {
+  const f = factsFixture(), left = value(decode('Intent', f.intentInput(), f.ctx.decode)), right = value(decode('Intent', f.intentInput({ raw: f.capture('different') }), f.ctx.decode));
+  const a = f.fact({ body: { identity: 'one', amount: '1', intent: left } }), b = f.fact({ machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 }, body: { identity: 'one', amount: '1', intent: right } });
+  const ctx = { ...f.ctx, decode: { ...f.ctx.decode, principals: [] }, schemas: [{ ...f.schema, fields: { ...f.schema.fields, intent: { kind: 'constitutional' as const, type: 'Intent' as const } } }] };
+  const snapshot = value(prepareSnapshot([a, b], ctx));
+  refused(foldProjection({ id: 'historical-conflict', class: 'authority-answering', retention: 'all-identities', stalenessBound: 100, decisions: { note: { kind: 'folds', merge: 'additive', identity: 'identity', value: 'amount' } } }, snapshot,
+    { reference: ctx.decode.register.generation, kinds: ['note'], lineages: { 'machine-a': { head: point(a), observedAt: 100, closed: false }, 'machine-b': { head: point(b), observedAt: 100, closed: false } } }, f.c), 'historical comparison consumer required');
+});
+it.skip('P2-NF-52 SKIPPED: producing a historical-only constitutional Conflict requires P1 public comparison over HistoricalRead wrappers; the current owner export only accepts live values', () => {});
 it('P2-NF-60 no operation sequence can compact facts out of the exposed store', () => {
   const f = diskFixture(); try {
     const hashes = [value(f.author()).fact.contentHash, value(f.author({ identity: 'two', amount: '20' })).fact.contentHash];
@@ -121,6 +142,27 @@ it('P2-NF-76 append -> capture expiry -> status-bearing read refuses old and reb
     expect(rebuilt.taint).toContain('evidence-unavailable'); refused(readProjection(rebuilt, def, f.now, f.c), 'tainted');
   } finally { f.cleanup(); }
 });
+it('P2-NF-16 production store restores certified prefix, verifies only suffix on load/append, and still sweeps genesis', () => {
+  const f = diskFixture(); try {
+    const first = value(f.author()).fact, second = value(f.author({ identity: 'two', amount: '20' })).fact;
+    const certificate = signVerifiedPrefix(value(f.store.verifiedPrefix()), 'local-cache', privateKey);
+    const keys = [{ id: 'local-cache', publicKey }];
+    const prefix = value(restoreVerifiedPrefix(JSON.parse(JSON.stringify(certificate)), f.ctx, keys));
+    let checked = 0;
+    const reopened = createFactStore(f.ctx, f.storage, { prefix, verificationBudget: 1, onVerified: () => checked++ });
+    expect(value(reopened.read())).toHaveLength(2); expect(checked).toBe(0);
+    value(reopened.append(f.next(second))); expect(checked).toBe(1);
+    value(reopened.read()); expect(checked).toBe(1);
+    refused(createFactStore(f.ctx, f.storage, { verificationBudget: 1 }).read(), 'budget exhausted');
+    refused(restoreVerifiedPrefix(certificate, f.ctx, []), 'independently trusted');
+    const changed = JSON.parse(JSON.stringify(certificate)); changed.payload.value.facts[0].body.amount = '99';
+    refused(restoreVerifiedPrefix(changed, f.ctx, keys), 'hash mismatch');
+    const before = readFileSync(f.path, 'utf8'); writeFileSync(f.path, before.replace('"amount":"10"', '"amount":"99"'));
+    refused(reopened.read(), 'prefix changed');
+    refused(createFactStore(f.ctx, f.storage).sweep(), 'hash mismatch');
+    expect(before).toContain(first.contentHash);
+  } finally { f.cleanup(); }
+});
 it('P2-NF-72 P2-NF-75 P2-NF-76 historical-only store derives late revocation status from actual bodies', () => {
   const f = diskFixture(); try {
     const grantSchema = { ...f.schema, kind: 'grant-record', fields: { grant: { kind: 'constitutional' as const, type: 'StandingGrant' as const } } };
@@ -142,6 +184,8 @@ it('P2-NF-72 P2-NF-75 P2-NF-76 historical-only store derives late revocation sta
     value(store.append(rev, { peer: 'machine-b' }));
     refused(readProjection(view, def, f.now, f.c), 'source changed');
     const snapshot = value(store.readForProjection());
+    const outbox = readFileSync(f.outbox, 'utf8'); expect(outbox).toContain('revocation-conflict');
+    value(store.readForProjection()); expect(readFileSync(f.outbox, 'utf8')).toBe(outbox);
     expect(snapshot.entries.find(e => e.fact.id === candidate.id)?.conflicts[0]?.kind).toBe('revocation-conflict');
     const current = value(foldProjection(def, snapshot, { ...generation, lineages: { ...generation.lineages, 'machine-b': { head: rev.segment, observedAt: 100, closed: false } } }, f.c));
     refused(readProjection(current, def, f.now, f.c), 'tainted');

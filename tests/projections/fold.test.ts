@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { checkpoint, foldProjection, readProjection, verifyRebuild } from '../../src/projections/index.js';
-import type { ProjectionDefinition, ProjectionGeneration, FoldInput } from '../../src/projections/index.js';
+import type { ProjectionDefinition, ProjectionGeneration } from '../../src/projections/index.js';
+import type { FactEnvelope, AuthorityTaint } from '../../src/facts/index.js';
 import { decodeEnvelope, preimage, prepareSnapshot } from '../../src/facts/index.js';
 import { factsFixture, value, refused, point } from '../facts/fixtures.js';
 
@@ -9,7 +10,7 @@ function fixture() {
   const generation: ProjectionGeneration = { reference: f.ctx.decode.register.generation, kinds: ['note'], lineages: {
     'machine-a': { head: point(a), observedAt: 100, closed: false }, 'machine-b': { head: point(b), observedAt: 100, closed: false } } };
   const definition: ProjectionDefinition = { id: 'totals', class: 'informational', stalenessBound: 100, retention: 'all-identities', decisions: { note: { kind: 'folds', identity: 'identity', value: 'amount', merge: 'additive' } } };
-  const inputs: FoldInput[] = [{ fact: a, taint: [] }, { fact: b, taint: [] }];
+  const inputs: { fact: FactEnvelope; taint: readonly AuthorityTaint[] }[] = [{ fact: a, taint: [] }, { fact: b, taint: [] }];
   const ctx = { ...f.ctx, schemas: [{ ...f.schema, fields: { ...f.schema.fields, corrects: { kind: 'reference' as const } }, optional: ['corrects'] },
     { ...f.schema, kind: 'retraction', fields: { target: { kind: 'reference' as const }, reason: { kind: 'text' as const, maxLength: 100 } } }] };
   const fold = (rows = inputs, def = definition, gen = generation) => foldProjection(def, value(prepareSnapshot(rows.map(r => r.fact), ctx)), gen, f.c);
@@ -98,7 +99,7 @@ it('P2-NF-46 P2-NF-55 P2-NF-56 copied or reclassified views are never authority 
 it('P2-NF-54 P2-NF-57 a missing interior fact cannot advance the prefix or satisfy currency', () => {
   const f = fixture(), middle = f.next(f.a), last = f.next(middle), rows = [f.a, middle, last].map(fact => ({ fact, taint: [] }));
   const generation = { ...f.generation, lineages: { 'machine-a': { head: point(last), observedAt: 100, closed: false } } };
-  refused(f.fold([rows[0]!, rows[2]!], f.definition, generation), 'prefix');
+  refused(prepareSnapshot([f.a, last], f.ctx), 'dangling');
   expect(value(f.fold(rows, f.definition, generation)).values['note:one']).toBe('30');
   const missing = value(f.fold([], f.definition, generation));
   refused(readProjection(missing, { ...f.definition, class: 'authority-answering' }, f.now, f.c, { 'machine-a': point(last) }), 'currency');

@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { factsFixture } from '../facts/fixtures.js';
-import { decodeEnvelope } from '../../src/facts/index.js';
+import { factsFixture, privateKey, publicKey } from '../facts/fixtures.js';
+import { createFactStore, decodeEnvelope, signVerifiedPrefix } from '../../src/facts/index.js';
 import { value } from '../fixtures.js';
 
 it('public fact and projection packages initialize and fold a signed fact in a fresh process', () => {
@@ -30,6 +30,25 @@ it('public fact and projection packages initialize and fold a signed fact in a f
   `;
   const output = execFileSync(process.execPath, ['--input-type=module', '-e', code], { input: JSON.stringify(input), encoding: 'utf8' });
   expect(JSON.parse(output)).toEqual({ facts: 1, total: '10', rebuild: 'equal' });
+});
+
+it('P2-NF-16 a fresh public-package process boots from its authenticated verification prefix without replaying signatures', () => {
+  const f = factsFixture(), fact = f.fact();
+  const storage = { owner: 'part-ten' as const, read: () => [fact], append: () => f.success({ kind: 'local-durable' as const }) };
+  const certificate = signVerifiedPrefix(value(createFactStore(f.ctx, storage).verifiedPrefix()), 'cache', privateKey);
+  const code = `
+    import {readFileSync} from 'node:fs';
+    import {consumeResult,decodeMeasurement} from '@instar/constitutional-types';
+    import {restoreVerifiedPrefix,createFactStore} from '@instar/constitutional-types/facts';
+    const seed=JSON.parse(readFileSync(0,'utf8'));
+    const take=r=>consumeResult(r,{Success:v=>v,Refused:r=>{throw new Error(r.detail)}});
+    const c={...seed.context,genesis:{...seed.context.genesis,clock:take(decodeMeasurement('clock',seed.context.genesis.clock,seed.context.decode))}};
+    const prefix=take(restoreVerifiedPrefix(seed.certificate,c,[{id:'cache',publicKey:seed.publicKey}]));
+    let verified=0;
+    const store=createFactStore(c,{owner:'part-ten',read:()=>[seed.fact],append:()=>{throw new Error('read only')}},{prefix,verificationBudget:0,onVerified:()=>verified++});
+    console.log(JSON.stringify({facts:take(store.read()).length,verified,watermarks:Object.keys(prefix.watermarks)}));
+  `;
+  expect(JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', code], { input: JSON.stringify({ context: f.ctx, fact, certificate, publicKey }), encoding: 'utf8' }))).toEqual({ facts: 1, verified: 0, watermarks: ['machine-a'] });
 });
 
 it('P2-NF-28 fresh-process history composes signed grants, authorizations and unavailable Evidence without live principals', () => {

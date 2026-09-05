@@ -17,6 +17,9 @@ export interface SegmentStoragePort {
   read(): readonly unknown[];
   // Atomic compare-head + durable append. A receipt is returned only after durable storage.
   append(bytes: string, expectedHead: string | null): Result<DurabilityState>;
+  // Durable, idempotent sidecar outbox for P2 conflict-record obligations. Does not delete
+  // or rewrite any fact; a later fact appender may drain it into registered Conflict facts.
+  recordConflicts?(records: readonly ConflictClass[]): Result<DurabilityState>;
 }
 export interface AppendReceipt { readonly fact: FactEnvelope; readonly durability: DurabilityState; readonly taint: readonly AuthorityTaint[] }
 export interface FactStorePort {
@@ -54,7 +57,13 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
     readForProjection: () => boundary('FactStoreProjectionRead', null, c, () => {
       const facts = take(read()), at = revision;
       const fingerprint = encoding({ facts: storage.read(), captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [], historicalRevocations: context.historicalRevocations ?? [] }).hash;
-      return take(prepareSnapshot(facts, context, () => revision === at && fingerprint === encoding({ facts: storage.read(), captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [], historicalRevocations: context.historicalRevocations ?? [] }).hash));
+      const snapshot = take(prepareSnapshot(facts, context, () => revision === at && fingerprint === encoding({ facts: storage.read(), captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [], historicalRevocations: context.historicalRevocations ?? [] }).hash));
+      const conflicts = [...new Map(snapshot.entries.flatMap(e => e.conflicts).map(c => [c.key, c])).values()];
+      if (conflicts.length) {
+        requireFact(storage.recordConflicts, 'durable conflict recording provider required');
+        const receipt = take(storage.recordConflicts(conflicts)); requireFact(receipt.kind === 'local-durable' || receipt.kind === 'replicated', 'conflict recording did not acknowledge durability');
+      }
+      return snapshot;
     }),
     append(input: unknown, replication?: { readonly peer: string }): Result<AppendReceipt> {
       return boundary('FactStoreAppend', input, c, safe => {

@@ -1,7 +1,7 @@
 // P1's historical wrappers retain validation identity without acquiring live standing.
 import { readHistorical } from '../index.js';
 import type { ConstitutionalValue, DecodeContext, HistoricalRead, Json, Result, StandingGrant, Revocation } from '../index.js';
-import { boundary, encoding, fields, object, requireFact, same, string, take } from './boundary.js';
+import { boundary, encoding, fields, frozen, object, requireFact, same, string, take } from './boundary.js';
 import { causalCone, causalStanding, migrateBody } from './admission.js';
 import { decodeFrame, hashBytes, schemaFor } from './envelope.js';
 import { contextBoundary } from './contracts.js';
@@ -15,6 +15,7 @@ export interface HistoricalBody {
   readonly grants: readonly HistoricalRead<StandingGrant>[];
   readonly revocations: readonly HistoricalRead<Revocation>[];
 }
+const decodedBodies = new WeakMap<object, { fingerprint: string; owners: FactContext['ownedBodies']; migrations: FactContext['migrations']; body: HistoricalBody }>();
 export function historicalAuthority(context: FactContext): FactContext {
   const historicalGrants = [...context.historicalGrants ?? []], historicalRevocations = [...context.historicalRevocations ?? []];
   const c = { ...context, historicalGrants, historicalRevocations };
@@ -33,6 +34,12 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
     const issued = new Map<string, readonly HistoricalRead<ConstitutionalValue>[]>();
     const read = (record: FactEnvelope, c: DecodeContext): HistoricalBody => {
       const cached = cache.get(record.id); if (cached) return cached;
+      const fingerprint = encoding({ register: c.register, captures: c.captures, captureStatuses: context.captures, schemas: context.schemas,
+        now: c.now ?? null, currentBase: c.currentBase ?? null, artifact: c.artifact ?? null, subjects: c.recordSubjects ?? {},
+        grants: c.grants ?? [], revocations: c.revocations ?? [], keys: context.keys,
+        cone: causalCone(record, context.facts).map(f => f.contentHash).sort() }).hash;
+      const reused = decodedBodies.get(record);
+      if (reused?.fingerprint === fingerprint && reused.owners === context.ownedBodies && reused.migrations === context.migrations) { cache.set(record.id, reused.body); issued.set(record.id, reused.body.records); return reused.body; }
       const history: HistoricalRead<ConstitutionalValue>[] = [];
       for (const ancestor of causalCone(record, context.facts)) {
         read(ancestor, causalStanding(ancestor, context, false).decode);
@@ -99,7 +106,7 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
         }
       }
       const result: HistoricalBody = { fields: out, records: own, grants, revocations, taint: unavailable ? ['evidence-unavailable'] : [] };
-      issued.set(record.id, own); cache.set(record.id, result); return result;
+      issued.set(record.id, own); cache.set(record.id, result); decodedBodies.set(record, { fingerprint, owners: context.ownedBodies, migrations: context.migrations, body: frozen(result) }); return result;
     };
     return read(fact, decoderContext);
   });

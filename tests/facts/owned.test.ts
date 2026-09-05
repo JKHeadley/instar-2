@@ -41,3 +41,10 @@ it('P2-NF-22 owned decoders never run on an altered signed preimage', () => {
   const f = setup(), frame = f.wire({ body: { transition: f.record } }) as object;
   refused(verifyAndAdmit({ ...frame, body: { changed: true } }, 'machine-a', f.ctx), 'hash mismatch'); expect(f.calls()).toBe(0);
 });
+it('P2-NF-16 unchanged historical owned bodies reuse verified decoding but capture changes invalidate it', () => {
+  const f = setup(), fact = value(decodeEnvelope(f.wire({ body: { transition: f.record } }), f.ctx));
+  value(decodeHistoricalBody(fact, f.ctx, f.ctx.decode)); const calls = f.calls();
+  value(decodeHistoricalBody(fact, f.ctx, f.ctx.decode)); expect(f.calls()).toBe(calls);
+  f.ctx.captures['owned:capture'].status = 'expired'; f.ctx.captures['owned:capture'].bytes = null;
+  expect(value(decodeHistoricalBody(fact, f.ctx, f.ctx.decode)).taint).toContain('evidence-unavailable'); expect(f.calls()).toBe(calls + 1);
+});

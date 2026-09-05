@@ -1,7 +1,6 @@
 // Rules 24/31/33/45/95. A closed data-only fold language is the effect boundary:
 // callers cannot inject callbacks, imports, clocks, caches, or other projections.
-import { compare, consumeResult } from '../index.js';
-import type { Clock, ConstitutionalValue, Json, RegisterGenerationReference, Result, Scope } from '../index.js';
+import type { Clock, Json, RegisterGenerationReference, Result } from '../index.js';
 import { boundary, encoding, frozen, object, requireFact, take } from '../facts/boundary.js';
 import type { FactBoundary } from '../facts/boundary.js';
 import type { AuthorityTaint, CausalFrontier, ConflictClass, FactEnvelope, LineagePosition } from '../facts/contracts.js';
@@ -27,14 +26,12 @@ export interface ProjectionGeneration {
   readonly kinds: readonly string[];
   readonly lineages: Readonly<Record<string, KnownLineage>>;
 }
-export interface FoldInput {
-  readonly fact: FactEnvelope; readonly taint: readonly AuthorityTaint[];
-  readonly constitutional?: readonly { readonly field: string; readonly value: ConstitutionalValue; readonly subject: Scope }[];
-}
+export type FoldInput = FactSnapshot;
 class ViewIdentity { private readonly product!: void }
 const producedViews = new WeakSet<object>();
 const sources = new WeakMap<object, FactSnapshot>();
 const definitions = new WeakMap<object, ProjectionDefinition>();
+const recoveryOnly = new WeakSet<object>();
 export interface ProjectedView extends ViewIdentity {
   readonly projection: string; readonly generation: string;
   readonly policy: Readonly<{ class: 'authority-answering' | 'informational'; stalenessBound: number }>;
@@ -105,9 +102,9 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
       const result = retractions.some(r => object(r.body).target === id && !isRetracted(r.id, new Set(visiting)));
       return result;
     };
-    const excluded = new Set(rows.filter(r => r.conflicts.some(c => c.kind === 'poison-fact')).map(r => r.fact.id)), corrections: { original: string; replacement: string }[] = [];
+    const excluded = new Set(rows.filter(r => r.conflicts.some(c => c.kind === 'poison-fact' || c.kind === 'immutable-disagreement')).map(r => r.fact.id)), corrections: { original: string; replacement: string }[] = [];
     for (const original of facts) {
-      const replacements = facts.filter(f => object(f.body).corrects === original.id && !isRetracted(f.id));
+      const replacements = facts.filter(f => object(f.body).corrects === original.id && !excluded.has(f.id) && !isRetracted(f.id));
       for (const replacement of replacements) requireFact(replacement.kind === original.kind && causalCone(replacement, facts).some(f => f.id === original.id), 'correction must follow same-kind original');
       const heads = replacements.filter(a => !replacements.some(b => b.id !== a.id && causalCone(b, facts).some(p => p.id === a.id)));
       if (heads.length > 1) {
@@ -119,19 +116,6 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
       }
     }
     const groups = new Map<string, { decision: Extract<InputDecision, { kind: 'folds' }>; rows: FactEnvelope[] }>();
-    const constitutional = new Map<string, { fact: FactEnvelope; value: ConstitutionalValue; subject: Scope }>();
-    for (const input of rows) for (const field of input.constitutional) {
-      requireFact(encoding(object(input.fact.body)[field.field]).bytes === encoding(field.value).bytes, 'constitutional fold input differs from stored field');
-      if (!('id' in field.value)) continue;
-      const key = `${field.value.type}:${field.value.id}`, prior = constitutional.get(key);
-      if (prior && 'id' in prior.value) {
-        const comparison = take(compare(field.value.type, prior.value, field.value, 'identity', field.subject, context.preserved));
-        if (typeof comparison !== 'boolean') {
-          conflicts.push({ key: `constitutional:${key}`, kind: 'immutable-disagreement', facts: [prior.fact.id, input.fact.id].sort(), detail: 'part-one immutable-field conflict', constitutional: comparison });
-          taint.add('contested'); excluded.add(prior.fact.id); excluded.add(input.fact.id);
-        }
-      } else constitutional.set(key, { fact: input.fact, value: field.value, subject: field.subject });
-    }
     const historical = new Map<string, Json>();
     for (const row of rows) for (const record of row.historical) if ('id' in record.view) {
       const key = `${record.view.type}:${record.view.id}`, shape = JSON.parse(encoding(record.view).bytes) as Json;
@@ -174,15 +158,16 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
     // A dangling correction is not an ordinary occurrence.
     for (const fact of facts) { const target = object(fact.body).corrects; if (typeof target === 'string') requireFact(byId.has(target), 'correction target missing'); }
     const view = { projection: def.id, generation: generation.reference.id, policy: { class: def.class, stalenessBound: def.stalenessBound }, values,
-      conflicts: conflicts.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0), taint: [...taint].sort(), foldedThrough,
+      conflicts: [...new Map(conflicts.map(c => [c.key, c])).values()].sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0), taint: [...taint].sort(), foldedThrough,
       knownLineages: generation.lineages, retractions: retractions.map(f => f.id).sort(), corrections: corrections.sort((a, b) => a.original < b.original ? -1 : 1) } as unknown as ProjectedView;
-    producedViews.add(view); sources.set(view, input); definitions.set(view, def); return view;
+    producedViews.add(view); sources.set(view, input); definitions.set(view, frozen(JSON.parse(encoding(def).bytes) as ProjectionDefinition)); return view;
   });
 }
 export function readProjection(view: ProjectedView, definition: ProjectionDefinition, now: Clock, context: FactBoundary, demand: CausalFrontier = {}): Result<{ view: ProjectedView; stale: readonly string[] }> {
   return boundary('ProjectionRead', null, context, () => {
     requireFact(producedViews.has(view), 'view was not produced by fold or verified restore', 'integrity');
     requireFact(snapshotCurrent(sources.get(view)!), 'projection source changed; reconcile before serving', 'stale-base');
+    requireFact(!recoveryOnly.has(view), 'checkpoint covers only a prefix; resume before serving', 'stale-base');
     requireFact(definition.id === view.projection, 'projection definition does not name this view');
     requireFact(Number.isFinite(definition.stalenessBound) && definition.stalenessBound > 0, 'invalid reader staleness bound');
     // A caller may demand a stronger read, but cannot relabel an authority view or widen
@@ -228,9 +213,17 @@ export function restoreCheckpoint(input: unknown, snapshot: FactSnapshot, contex
     });
     // Trusted certificate pins a product of this fold. Record witnesses are re-bound to
     // current admitted status; serialized values alone cannot enter the authority reader.
-    const restored = view as unknown as ProjectedView;
+    requireFact(Array.isArray(view.conflicts), 'checkpoint conflict list absent');
+    const currentConflicts = snapshot.entries.flatMap(e => e.conflicts);
+    const rebound = view.conflicts.map(c => {
+      const wire = object(c); if (!wire.constitutional) return c;
+      const current = currentConflicts.find(c => c.key === wire.key && encoding(c).bytes === encoding(wire).bytes);
+      requireFact(current, 'checkpoint constitutional conflict requires current producer'); return current;
+    });
+    const restored = { ...view, conflicts: rebound } as unknown as ProjectedView;
     producedViews.add(restored); sources.set(restored, snapshot); definitions.set(restored, saved.definition as unknown as ProjectionDefinition);
     restoredPrefixes.set(restored, prefix);
+    if (prefix.length !== snapshot.entries.length) recoveryOnly.add(restored);
     return { vector: restored.foldedThrough, view: restored, hash: String(stored.hash) };
   });
 }
@@ -258,11 +251,17 @@ export function rebuildProjection(def: ProjectionDefinition, snapshot: FactSnaps
     // Completeness remains mandatory on resume; a certified prefix replaces folding,
     // never the causal/vector proof. Any non-incremental repair uses an earlier checkpoint.
     const facts = entries.map(e => e.fact);
-    for (const f of facts) causalCone(f, facts);
+    for (const f of facts) { requireFact(Object.hasOwn(generation.lineages, f.machine), 'fact from unknown lineage'); causalCone(f, facts); }
     for (const machine of new Set(facts.map(f => f.machine))) {
       const line = facts.filter(f => f.machine === machine).sort((a, b) => comparePosition(a.segment, b.segment));
       requireFact(line[0]!.segment.epoch === 0 && line[0]!.segment.position === 0, 'incomplete resume prefix');
-      for (let i = 1; i < line.length; i++) requireFact(line[i]!.prevInSegment === line[i - 1]!.contentHash, 'incomplete resume prefix');
+      for (let i = 1; i < line.length; i++) {
+        const previous = line[i - 1]!, next = line[i]!;
+        requireFact(next.prevInSegment === previous.contentHash && (next.segment.epoch === previous.segment.epoch
+          ? next.segment.position === previous.segment.position + 1 && next.predecessors.inSegment === previous.id
+          : next.segment.epoch === previous.segment.epoch + 1 && next.segment.position === 0
+            && next.predecessors.frontier[machine]?.epoch === previous.segment.epoch && next.predecessors.frontier[machine]?.position === previous.segment.position), 'incomplete resume prefix');
+      }
     }
     const values: Record<string, Json> = { ...chosen.cp.view.values }, conflicts: ConflictClass[] = [];
     let fallback = false;
@@ -282,7 +281,7 @@ export function rebuildProjection(def: ProjectionDefinition, snapshot: FactSnaps
     const vector: Record<string, LineagePosition> = {};
     for (const e of entries) { const prev = vector[e.fact.machine]; if (!prev || comparePosition(prev, e.fact.segment) < 0) vector[e.fact.machine] = { epoch: e.fact.segment.epoch, position: e.fact.segment.position }; }
     const view = { ...chosen.cp.view, values, conflicts, foldedThrough: vector, knownLineages: generation.lineages } as unknown as ProjectedView;
-    producedViews.add(view); sources.set(view, snapshot); definitions.set(view, def);
+    producedViews.add(view); sources.set(view, snapshot); definitions.set(view, frozen(JSON.parse(encoding(def).bytes) as ProjectionDefinition));
     return { view, folded: suffix.length, resumedFrom: chosen.cp.vector };
   });
 }
