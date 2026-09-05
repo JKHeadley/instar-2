@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
-    "test:all": "npm run typecheck && npm test && npm run lint",
+    "pretest": "npm run build",
+    "test:all": "npm run typecheck && npm run build && vitest run --reporter=default --reporter=json --outputFile=.test-results.json && npm run lint && node scripts/check-contract-map.mjs",
     "lint": "node scripts/check-architecture.mjs"
   },
   "devDependencies": {
