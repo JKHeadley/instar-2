@@ -314,7 +314,7 @@ credentials would evade this design, so workers receive effect-port capabilities
 credentials. The executable capability-isolation proof belongs to part ten; no launch family
 can claim this protection before that proof exists.
 
-**Rule — observation precedes replay, and absence is not proof.** Rules 24, 26, 42;
+**Rule — observation precedes effect retry, and absence is not proof.** Rules 24, 26, 42;
 **checks: P6-NF-13/14**. An unresolved dispatch is represented to the owner as Outcome uncertain.
 Recovery enqueues verification using the same operation identity and asks part eight to query the
 external adapter. Happened closes from verified evidence; did-not-happen allows a new bounded
@@ -323,7 +323,12 @@ must be fenced at the destination or proven quiescent. A missing search result, 
 socket or process disappearance is insufficient by itself. An adapter lacking decisive lookup
 and deduplication leaves the attempt uncertain; no fresh key, alternate transport or regenerated
 payload escapes that hold. Independent observations are retained even when their originating
-worker no longer owns the run.
+worker no longer owns the run. The non-occurrence and quiescence bar applies to another
+execution attempt of the uncertain effect. It does not forbid section 7's explicitly read-only
+retrieval of a receipt or result already stored for a semantic message. That retrieval has its
+own delivery-attempt identity and bounded observation admission; it cannot submit missing work,
+invoke a provider, release the original reservation or treat a missing record as non-occurrence.
+P6-NF-40 checks this separation in both directions.
 
 **Rule — eight and nine retain settlement authority.** **Checks: P6-NF-14/15**. Six provides the
 owned wakeup and evidence references, not a new effect verdict type. Eight owns reconciliation
@@ -431,8 +436,9 @@ claim of conformance. No 1.x deployment is certified by this four-observation au
 **Value — topology and wire choices.** No check mandates a relay provider. The reference uses
 an optional relay for discovery and encrypted store-and-forward, plus authenticated direct paths
 when available. Discovery proposes addresses; it confers no trust or standing. Relay loss permits
-a bounded direct attempt for the same operation, not a new delegation. Wire frames are
-schema-versioned, length-bounded canonical encodings of the port's envelope and adapter receipt;
+a bounded alternate-route lookup for the same semantic message under section 7. Resubmitting
+an uncertain effect still requires section 4's bar; route choice does not authorize it.
+Wire frames are schema-versioned, length-bounded canonical encodings of the port's envelope and adapter receipt;
 the core never switches on a Threadline name. The crypto implementation is an adapter dependency,
 not a second constitutional decoder. The design calls for signed end-to-end authenticated
 encryption through a reviewed library; it does not infer forward secrecy from the presence of
@@ -494,9 +500,29 @@ an unsupported worker or pick a stronger grant to make delivery succeed.
 
 ## 7. Delivery claims and receipt evidence
 
+**Rule — message, delivery attempt and effect have distinct identities.** Rules 26, 42, 63,
+114; **checks: P6-NF-25/29/40**. These are identity fields and references in the existing
+contracts, not additional types or a second definition of part five's port:
+
+| Identity | Owner and meaning | Behavior across delivery and recovery |
+|---|---|---|
+| Semantic-message identity | Five owns the logical request/result identity, scoped to authenticated sender, recipient and conversation and bound to its immutable content digest; six carries it unchanged | Stable across routes, worker replacement and duplicate delivery; a result additionally names the request it answers |
+| Delivery-attempt identity | Six assigns a unique identity to one transport send or receipt/result lookup, with its mode, semantic-message reference and exact digest | Each separately admitted transmission has its own identity; retransmitted bytes retain theirs; transport duplication is not another logical request |
+| Effect identity | Six's stable reserved operation identity, interpreted and settled by eight, including the unchanged seven-attempt mapping in section 4 | Independent of both message and delivery-attempt identity; recovery never changes it to evade an uncertain execution or charge |
+
+A semantic request can refer to child work containing several effects; the receiver's durable
+admission links the message to that one child and its effect references. A delivery attempt names
+whether it submits the initial message or retrieves stored evidence. A lookup references the
+original effect where relevant but is not an execution attempt of it. A transport transmission
+that itself needs an effect reservation carries its own reservation reference, separate from the
+child's effect identity. Changing a delivery-attempt id never mints a new semantic message,
+provider attempt or child-effect reservation. Only initial submission enters the work-creation
+path; lookup mode has no create-if-missing arm.
+
 **Rule — the adapter implements the port's states without redefining them.** Rules 26, 42, 98,
-114; **checks: P6-NF-25/27/28**. ThreadlineReceipt contains id, schema version, port message and
-operation references, envelope digest, claimed port state, authenticated receipt producer,
+114; **checks: P6-NF-25/27/28**. ThreadlineReceipt contains id, schema version, semantic-message
+identity, delivery-attempt reference and separately named effect references, envelope digest,
+claimed port state, authenticated receipt producer,
 authoritative record reference, achieved durability, causal predecessor receipts, clock
 measurement and capture reference. All fields are immutable; duplicate identical receipts
 collapse, incompatible receipts remain evidence of conflict. This table is the adapter mapping
@@ -511,15 +537,43 @@ into part five's vocabulary, not a second port union:
 | refused | Authentic typed refusal from the named boundary, preserved unchanged; transport denial is distinguished from worker refusal |
 | uncertain | No adequate proof of a stronger state, or an unresolved dispatch; carries the last proven state and missing evidence |
 
-**Rule — transport acknowledgment never closes business work.** **Checks: P6-NF-27/28/29**.
-The sender preserves an outbox fact before sending. Receiver intake durably records the semantic
-request before a durable receipt. A crash between admission and acknowledgment causes redelivery
-of the same request; intake and the run graph collapse their own identities. The receiver keeps
-its result until the sender's result owner acknowledges durable collection; lost acknowledgment
-causes receipt/result redelivery, not child re-execution. A relay TTL may expire its custody copy,
-not the sender's work obligation. Terminal replay indexes derive from permanent facts, so pruning
-a cache cannot resurrect a child. Unknown delivery state cannot be upgraded on a timer. Receipt
-transitions use evidence and causal links, not a numeric ranking that would erase a refusal.
+**Rule — lost acknowledgment recovers evidence, never resubmits uncertain work.**
+Rules 26, 42, 63, 114; **checks: P6-NF-27/28/29/40**. The sender preserves an outbox fact
+before initial submission. Receiver intake durably records the semantic request and its child
+reference before a durable receipt. If the acknowledgment is lost, the sender retains the
+original unresolved effect and requests a receipt/result lookup by semantic-message identity,
+using a new delivery-attempt identity in lookup mode. It does not repeat the initial submission.
+The authenticated lookup consumer checks sender, recipient, conversation and digest, then reads
+the existing admission/result facts. It has no work-creation, worker-launch or provider-call
+capability. Its responses have these exact meanings:
+
+| Existing record | Lookup response and permitted consequence |
+|---|---|
+| Durable admission, work pending | Return that receipt and pending status; sender records proven custody, keeps waiting, and does not restart the child |
+| Durable result | Return the same stored result identity, digest, provenance and original effect references; sender's five-owned collector conditionally accepts it once |
+| Durable collection acknowledgment | Return that same collection evidence; sender of the result can settle its delivery bookkeeping without generating another result |
+| Record absent, stale, inaccessible or conflicted | Return unavailable/unknown or Conflict as appropriate; preserve uncertainty and the original reservation; never create missing work or infer non-occurrence |
+
+A receiver keeps its stored result until the sender's result owner acknowledges durable
+collection. If that acknowledgment is lost, the receiver looks up collection by the result's
+semantic identity. A collector already holding the result returns its existing acknowledgment.
+If collection is not yet proven, an authorized collector may fetch the already-stored result
+through lookup mode and conditionally collect it; this transfers evidence, not child work.
+Lost lookup responses permit another bounded lookup delivery attempt. The observation path uses
+registered authentication, disclosure limits, loop/resource admission and any required transport
+reservation; it never bypasses an uncertain chargeable observation effect's own section-4 bar.
+It cannot perform a fresh chargeable model call to reconstruct a missing result. A historical
+receipt retains its original authoritative record and time even when returned by a new attempt;
+the new lookup timestamp does not establish fresh worker delivery or reset a peer deadline.
+
+Duplicates of the original submission already in flight still enter intake's semantic dedup:
+an existing matching admission returns its stored receipt instead of launching another child;
+a changed digest is Conflict. This handles duplicate arrival, not permission to retry an
+uncertain submission. If the receiver cannot prove its dedup state, it holds rather than creating
+work. A relay TTL may expire its custody copy, not the sender's work obligation. Terminal indexes
+derive from permanent facts, so pruning a cache cannot resurrect a child. Unknown delivery state
+cannot be upgraded on a timer. Receipt transitions use evidence and causal links, not a numeric
+ranking that would erase a refusal.
 
 **Rule — a peer deadline begins on proven peer receipt.** Rule 98, P4-NF-23;
 **check: P6-NF-28**. Concurrence needs the peer's signed worker-delivery receipt that binds the
@@ -616,14 +670,14 @@ asserted by their presence.
 | Effect and retry | Eight supplies classified operation and evidence demand; six supplies reservation/wake | Eight's executor and reconciliation | Reservation plus eight's Result/Outcome and nine's accepted verification evidence | Validate → reserve → dispatch-claim → effect → record; on uncertainty schedule verification before retry | Close new/repeated effects on uncertainty; preserve observations | Eight settles effect; nine judges evidence; six closes wake/attempt |
 | Judgment and charge | Seven supplies request/attempt; six reserves operation and spend | Eight's model-effect dispatch; five's answer acceptance | Seven's provider receipt/Decision; six's reservation; eight's settlement; five's acceptance | Pending request → ownership/grounding → attempt → fenced spend reserve → effect dispatch → receipt/Outcome/answer → conditional run acceptance | Unresolved execution or charge blocks new attempts; declared default stays within floor | Seven owns answer; eight settles charge; six alone releases credits; five accepts run progress |
 | Cancellation/stop | Four authenticates stop; five records run cancellation | Six's admissions, loops and adapter | Four's stop fact, five's causal run state, six's fence | Preserve authenticated stop local-durable → inhibit local admissions → propagate boundedly → reconcile in-flight evidence | Stop locally without waiting for quorum; unknown remote halt stays unknown | Five settles cancellation/work; six drains its reservations and wakeups |
-| Results and peer silence | Receiving five through ThreadlineReceipt | Sending five; four's concurrence consumer | Receiver worker/result facts and authenticated receipt binding deadline | Worker receipt → answer → sender durable collection → receipt retention decision | Uncertain never becomes delivered or concurrence | Five collects result; four owns concurrence; six owns delivery evidence |
+| Results and peer silence | Receiving five through ThreadlineReceipt | Sending five; four's concurrence consumer | Receiver worker/result facts and authenticated receipt binding deadline | Worker receipt → answer → sender durable collection; lost ack → read-only evidence lookup → receipt retention decision | Uncertain never becomes delivered or concurrence | Five collects result; four owns concurrence; six owns delivery evidence |
 | Verification/observability | Six's probes, metrics and recovery records | Nine's holders; eleven's operator surfaces | Check/probe observations with subject, capture and clock | Record attempts → measure outcome → evaluate freshness → aggregate surface | Stale proof is unknown/red, not green; status does not close user channel | Nine owns verification adequacy; eleven owns surface action; six owns remediation attempt |
 | Assembly and isolation | Ten's registered adapters and executable assembly | Six's authority, timer, launcher and transport ports | Wiring/isolation check-run records and adapter declarations | Verify adapters and authority storage → reserve minimal capacity → activate domains | Close affected family; preserve minimal repair | Ten owns capability isolation; six owns runtime admission |
 
-## 11. The four shared failure traces
+## 11. The five shared failure traces
 
 **Rule — the trace assertions run across parts, not only inside lease code.** Rules 24, 31, 42,
-63, 68, 114; **checks: P6-NF-11/13/25/29/34/35**. The integration fixture records each side's
+63, 68, 114; **checks: P6-NF-11/13/25/29/34/35/40**. The integration fixture records each side's
 causal evidence and checks the following answers:
 
 1. **Crash after effect, before record.** Worker A has committed dispatch-claim K and the remote
@@ -636,7 +690,8 @@ causal evidence and checks the following answers:
    stimulus admission; five deduplicates its delegation/result semantic key across distinct fact
    ids; six deduplicates its command ids and receipts. Two facts are not necessarily two
    operations. Same key with different digest yields Conflict and no new permission. Lost result
-   acknowledgment causes redelivery of the stored result, never repetition of the child work.
+   acknowledgment triggers lookup of stored collection/result evidence as in trace five, never
+   another submission of the child request.
 3. **Cancellation racing completion.** An authenticated stop is preserved local-durable and then inhibits new admissions
    on the fast path; its durable stop fact precedes the halt per four. If an effect was
    already dispatch-claimed, it may still happen and its evidence survives. Completion causally
@@ -650,6 +705,18 @@ causal evidence and checks the following answers:
    release B's resources or restart a child. B reconciles A's unresolved claims before retrying.
    A stale register, grant, key binding or tainted fact independently refuses authority, even
    when B has a current lease.
+5. **Lost acknowledgment after a durable receipt.** Sender A submits semantic request M in
+   delivery attempt D1; receiver B durably admits M, links child C and effect E, and records
+   receipt R. R's acknowledgment is lost. A does not know E's outcome. E's reservation
+   stays held by its authority while A sends lookup attempt D2 for M; D2 does not execute E. B returns
+   the existing R, and either pending status or its already-stored result S. A verifies the
+   binding and records R; five conditionally collects S once if present. If S has not been
+   produced, A waits for C rather than creating C again. If A's collection acknowledgment is
+   then lost, B looks up collection of S and gets A's original collection evidence. Repeated
+   lookup responses do not duplicate acceptance. If either lookup finds unavailable evidence,
+   uncertainty remains; absence never licenses another E. The fixture asserts unchanged child,
+   provider-invocation and child-effect-reservation counts while the distinct delivery-attempt count
+   grows within its loop bound, and also tests lost lookup responses and conflicting digests.
 
 ## 12. Register declarations and inherited-duty dispositions
 
@@ -741,7 +808,7 @@ or shorter backoff may conceal an unmet target.
 
 | Stall | Detection evidence | Bounded recovery |
 |---|---|---|
-| Transport unavailable / relay down | Failed authenticated send or challenge; last proven receipt | Loop-governed alternate route, same operation |
+| Transport unavailable / relay down | Failed authenticated send or challenge; last proven receipt | Loop-governed evidence lookup on alternate route; effect retry only under section 4 |
 | Worker never receives input | Receiver custody exists, no worker acknowledgment | Preserve input; verify launch; resume only under fresh fence |
 | Worker dies after receipt | Grounded worker receipt then missing worker plus pending run | Recover run and unresolved operations, never infer answer |
 | Worker alive but no progress | Cadenced progress evidence absent beyond registered threshold | Signal supervisor; bounded diagnosis, not blind respawn |
@@ -797,6 +864,7 @@ are required implementation artifacts, not tests this document claims already ex
 | P6-NF-37 | build | Empty inheritance misrepresented; a forward requirement lacks disposition or check; declared protection inflated into held |
 | P6-NF-38 | onboarding / lifecycle | Stall class absent, detected only by label, or recovery bypasses finite loop/authority admission |
 | P6-NF-39 | integration | Chargeable model call before fenced spend reservation; attempt maps to multiple operations; takeover double-charges; unknown charge releases credit; seven mutates a parallel spend ledger; stale answer advances run |
+| P6-NF-40 | integration | Lost ack after durable receipt resubmits uncertain effect, creates missing work, re-calls provider or duplicates collection; lookup miss clears uncertainty; delivery-attempt id substitutes for semantic/effect identity; returned old receipt resets peer deadline |
 
 ## 15. Terms introduced here
 
@@ -817,6 +885,10 @@ Names owned by earlier parts retain their existing definitions.
 | Breaker | Durable inhibition after sustained failure, with bounded cooldown and half-open trials |
 | Level-triggered wake | Work remains discoverably due until a durable disposition, regardless of lost timer signals |
 | Recovery episode | Owned, bounded reconciliation of an incident and its still-pending work/effects |
+| Semantic-message identity | Stable authenticated logical request/result identity owned by five; unchanged across transmission attempts |
+| Delivery-attempt identity | Six's identity for one admitted transmission or evidence lookup, never an identity for child work |
+| Effect identity | Six's reserved operation identity settled by eight; independent of message and transmission identities |
+| Evidence lookup | Authenticated read of stored receipt/result/collection facts with no create-if-missing or effect-execution capability |
 | Custody receipt | Authenticated evidence that a named store durably holds exact message bytes/references |
 
 ## 16. Operator decisions and honest limits
