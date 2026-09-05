@@ -1,48 +1,157 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { generateRegister, generationOf, renderRegister, resolveTerms, invariantCoverage, implementedInvariants } from '../dist/register/index.js';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { decodeMeasurement, canonical, schemas } from '../dist/index.js';
+import { generateRegister, generationOf, renderRegister, invariantCoverage, implementedInvariants, decodeCheckRun,
+  decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion } from '../dist/register/index.js';
 import { bootstrapDeclarations, buildContext, readCommit, value, bytes } from './register-source.mjs';
+import { checkWiring } from './check-register-wiring.mjs';
 
-export function build(root, commit) {
+const hash = input => value(canonical(input)).hash;
+const corpus = sources => Object.fromEntries(Object.entries(sources).filter(([p]) => p.startsWith('docs/')).map(([p, text]) => [p, hash(text)]));
+const emptyCatalog = { fixtures: [], probes: [], sentinels: [], semanticReviews: [] };
+function resolveBuildReferences(root, input, workflow, provider, shape) {
+  return (workflow.references ?? []).map(reference => {
+    if (reference.provider === 'decoder') {
+      if (!(reference.id.startsWith('decode:') && Object.hasOwn(schemas, reference.id.slice(7)))
+        && !shape.factSchemas.some(r => r.decoder === reference.id)) throw new Error('unresolved decoder ' + reference.id);
+    } else if (reference.provider === 'fixture' || reference.provider === 'probe') {
+      const catalog = reference.provider === 'fixture' ? workflow.catalog?.fixtures : workflow.catalog?.probes;
+      const entry = catalog?.find(e => e.id === reference.id);
+      const artifact = entry?.artifact;
+      if (!artifact || !input.files.includes(artifact.path)) throw new Error('unresolved captured source artifact for ' + reference.id);
+      const content = execFileSync('git', ['-C', root, 'show', `${input.commit}:${artifact.path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+      if (hash(content) !== artifact.hash) throw new Error('reference artifact hash differs: ' + reference.id);
+      if (reference.provider === 'probe' && !(entry.cadence > 0)) throw new Error('probe requires cadence');
+    } else {
+      if (!provider?.resolveReference || !value(provider.resolveReference(reference))) throw new Error('unresolved verified external reference ' + reference.id);
+    }
+    return reference;
+  });
+}
+export function build(root, commit, options = {}) {
   const input = readCommit(root, commit);
   const shapeInput = JSON.parse(input.sources['register-source/bootstrap-shape.json']);
-  const sources = bootstrapDeclarations(input.sources, shapeInput);
-  const context = buildContext(shapeInput, sources, commit);
+  const mode = options.mode;
+  if (!['bootstrap', 'normal', 'completion'].includes(mode)) throw new Error('Explicit --bootstrap or --workflow is required; bootstrap is not the normal build');
+  const workflow = options.workflow ?? {};
+  if (Object.keys(workflow).length && !Object.entries(input.sources).some(([p, content]) => {
+    if (!p.startsWith('register-source/') || !p.endsWith('.json')) return false;
+    try { return bytes(JSON.parse(content)) === bytes(workflow); } catch { return false; }
+  })) throw new Error('workflow/check inputs must match committed source bytes');
+  const anchor = JSON.parse(input.sources['register-source/bootstrap-anchor.json'] ?? 'null');
+  let sources;
+  if (mode === 'bootstrap') {
+    if (options.provider?.hasEnteredForce || workflow.parent || workflow.extract) throw new Error('Bootstrap transition already anchored; use normal workflow');
+    if (!anchor || anchor.phase !== 'converted-unanchored' || anchor.shape !== hash(shapeInput) || bytes(anchor.documents) !== bytes(corpus(input.sources)))
+      throw new Error('P3-NF-09: bootstrap differs from bound conversion anchor');
+    sources = bootstrapDeclarations(input.sources, shapeInput);
+  } else {
+    for (const field of ['branch', 'catalog', 'runs', 'landedParts', 'references', 'claims', 'extract', 'parent', 'conversion'])
+      if (!Object.hasOwn(workflow, field)) throw new Error(`normal workflow missing explicit ${field}`);
+    const conversion = workflow.conversion;
+    if (!conversion || bytes(conversion.documents) !== bytes(corpus(input.sources)) || !Array.isArray(conversion.sources))
+      throw new Error('Normal build requires committed conversion bound to source documents');
+    sources = [...conversion.sources, ...Object.entries(input.sources).filter(([p]) => p.endsWith('.declarations.json'))
+      .flatMap(([path, content]) => JSON.parse(content).map(declaration => ({ path, symbol: declaration.id, declaration })))];
+    if (!options.provider || options.provider.owner !== 'part-two') throw new Error('P3-NF-21: normal build needs verified part-two provider');
+    const numbers = [...input.sources['docs/01-the-rules.md'].matchAll(/^\| (\d+) \|/gm)].map(m => Number(m[1]));
+    for (const n of numbers) if (sources.filter(s => s.declaration.kind === 'rules' && s.declaration.requiredFacts.number === n).length !== 1)
+      throw new Error(`P3-NF-23: committed conversion omits/duplicates authoritative rule ${n}`);
+  }
+  const nowValue = options.now ?? Date.now();
+  const context = { ...buildContext(shapeInput, sources, commit, nowValue), references: resolveBuildReferences(root, input, workflow, options.provider, shapeInput),
+    ...(options.provider?.types ? { authorityTypes: options.provider.types } : {}) };
+  const now = value(decodeMeasurement('clock', { type: 'Measurement', schemaVersion: 1, subject: { kind: 'clock', instance: 'build-machine' },
+    value: nowValue, unit: 'unix-ms', at: nowValue, by: 'register.generator' }, context.types));
   value(invariantCoverage(context.shape, implementedInvariants, context));
-  const extract = { type: 'ChainExtract', schemaVersion: 1, vector: { owner: 'part-two', name: 'FactPositionVector', id: 'genesis:empty-extract' }, rows: [] };
-  const register = value(generateRegister({ commit, complete: true, sources, extract, instances: {} }, context));
+  const extract = mode === 'bootstrap'
+    ? { type: 'ChainExtract', schemaVersion: 1, vector: { owner: 'part-two', name: 'FactPositionVector', id: 'genesis:empty-extract' }, rows: [] }
+    : workflow.extract;
+  const sourceCommit = mode === 'completion' ? workflow.pending?.commit : commit;
+  if (mode === 'completion') {
+    const reviewed = readCommit(root, sourceCommit);
+    if (bytes(reviewed.code) !== bytes(input.code) || bytes(corpus(reviewed.sources)) !== bytes(corpus(input.sources)))
+      throw new Error('P3-NF-22: completion changed reviewed code or documents');
+  }
+  const buildInput = { commit: sourceCommit, complete: true, sources, extract, instances: workflow.instances ?? {} };
+  let register;
+  let completion;
+  if (mode === 'bootstrap') register = value(generateRegister(buildInput, context));
+  else {
+    const provider = options.provider;
+    const parentGeneration = value(decodeGeneration(workflow.parent?.generation, context));
+    const parent = value(loadRegister(workflow.parent?.register, parentGeneration, context, provider, now));
+    const e = value(decodeExtract(extract, context)); value(provider.verifyExtract(e));
+    if (!value(provider.isCurrent(e.vector, now))) throw new Error('P3-NF-23: current extract is stale');
+    const change = workflow.shapeChange ?? null;
+    if (change && hash(input.sources[change.document.path]) !== change.document.hash) throw new Error('P3-NF-09: shape-change document bytes do not match approval binding');
+    register = value(generateAgainstParent(buildInput, parent, context.shape, change, provider, context));
+    if (mode === 'completion') {
+      if (!provider.landingStanding) throw new Error('completion requires live system standing provider');
+      completion = value(planLandingCompletion(workflow.pending, extract, provider.landingStanding, provider,
+        { ...context, types: context.authorityTypes ?? context.types }));
+      if (bytes(completion.register) !== bytes(register)) throw new Error('P3-NF-22: completion differs from source regeneration');
+    }
+  }
+  const wiring = checkWiring(register, input.code);
+  if (wiring.issues.length) throw new Error(wiring.issues.join('\n'));
+  const observations = register.entries.filter(e => e.declaration.kind === 'blocking sites').flatMap(({ declaration: d }) => {
+    const rungs = d.requiredFacts.rungs ?? [d.requiredFacts];
+    const report = wiring.reports[Object.keys(input.code).indexOf(d.declaredBy.path)]?.scopes[d.declaredBy.symbol];
+    return rungs.filter(r => r.decidesAlone === 'governed-state').map(r => ({ site: d.id, record: r.enforces.record, decoder: r.enforces.decoder, reads: report?.reads ?? [], invokes: report?.invokes ?? [] }));
+  });
+  const checks = { mode: mode === 'bootstrap' ? 'bootstrap' : 'normal', branch: workflow.branch ?? 'bootstrap',
+    runs: (workflow.runs ?? []).map(r => value(decodeCheckRun(r, context))), catalog: workflow.catalog ?? emptyCatalog, landedParts: workflow.landedParts ?? [], now,
+    constructs: wiring.constructs, observations, separations: options.provider?.separations ?? [],
+    boundaries: context.shape.kinds.map(k => ({ kind: k.name, language: 'TypeScript imported core ports',
+      impossible: ['missing typed declaration argument'], swept: ['resolved static core calls'],
+      residual: ['reflection', 'computed ids', 'plugins', 'configuration-loaded routes', ...wiring.residual.map(r => r.reason)] })),
+    claims: workflow.claims ?? context.shape.kinds.map(k => ({ kind: k.name, complete: false })),
+    bootstrapRules: mode === 'bootstrap' ? anchor.rules : [] };
+  const checked = value(runRegisterChecks(register, checks, context));
   const generation = value(generationOf(register, context));
-  const terms = value(resolveTerms(register, context));
-  const outputs = value(renderRegister(register, generation, terms, null, context));
-  return { input, register, generation, outputs, metrics: { entries: register.entries.length, rules: register.entries.filter(e => e.declaration.kind === 'rules').length,
-    terms: register.entries.filter(e => e.declaration.kind === 'terms').length, warnings: terms.warnings.length } };
+  const outputs = value(renderRegister(register, generation, checked.terms, checked.graph, context));
+  const conversion = { documents: corpus(input.sources), sources: sources.filter(s => !s.path.endsWith('.declarations.json')) };
+  return { input, register, generation, outputs, completion, conversion, graph: checked.graph, metrics: {
+    entries: register.entries.length, rules: checked.graph.rules.length, terms: register.entries.filter(e => e.declaration.kind === 'terms').length,
+    warnings: checked.terms.warnings.length, prerequisites: checked.graph.prerequisites.length } };
 }
-export function run(args, root = process.cwd()) {
-  const check = args.includes('--check'); const ci = args.indexOf('--commit'); const outIndex = args.indexOf('--out');
-  const output = resolve(root, outIndex < 0 ? 'generated' : args[outIndex + 1]);
+export async function run(args, root = process.cwd()) {
+  const flag = name => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
+  const check = args.includes('--check'); const output = resolve(root, flag('--out') ?? 'generated');
   const manifest = resolve(output, 'source.json');
-  const commit = ci < 0 ? (existsSync(manifest) ? JSON.parse(readFileSync(manifest, 'utf8')).commit
-    : execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()) : args[ci + 1];
-  const result = build(root, commit);
-  // A stale pin must never hide a changed rule or shape in the working tree.
+  const recorded = existsSync(manifest) ? JSON.parse(readFileSync(manifest, 'utf8')) : {};
+  const commit = flag('--commit') ?? (recorded.commit
+    ? recorded.commit
+    : execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim());
+  const workflowPath = flag('--workflow') ?? flag('--checks') ?? recorded.workflow;
+  const workflow = workflowPath ? JSON.parse(readCommit(root, commit).sources[workflowPath] ?? 'null') : undefined;
+  if (workflowPath && !workflow) throw new Error('workflow must be a committed register-source JSON input');
+  if (args.includes('--bootstrap') && workflow?.mode && workflow.mode !== 'bootstrap') throw new Error('ambiguous bootstrap/normal workflow');
+  const provider = flag('--provider') ? (await import(pathToFileURL(resolve(root, flag('--provider'))))).provider : undefined;
+  const mode = args.includes('--bootstrap') || !workflow && recorded.mode === 'bootstrap' ? 'bootstrap' : workflow?.mode;
+  const result = build(root, commit, { mode, workflow, provider, ...(flag('--now') ? { now: Number(flag('--now')) } : {}) });
   const tracked = execFileSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).trim().split('\n');
-  const live = tracked.filter(p => Object.hasOwn(result.input.sources, p) || p.startsWith('docs/rules/') && p.endsWith('.md') || p.endsWith('.declarations.json')).sort();
-  if (JSON.stringify(live) !== JSON.stringify(Object.keys(result.input.sources).sort())) throw new Error('P3-NF-23: source roster changed; regenerate from a new source commit');
-  for (const [path, content] of Object.entries(result.input.sources)) if (readFileSync(resolve(root, path), 'utf8').replaceAll('\r\n', '\n') !== content)
+  const live = tracked.filter(p => Object.hasOwn(result.input.sources, p) || p.startsWith('docs/rules/') && p.endsWith('.md')
+    || p.endsWith('.declarations.json') || p.startsWith('register-source/') && p.endsWith('.json')).sort();
+  if (bytes(live) !== bytes(Object.keys(result.input.sources).sort())) throw new Error('P3-NF-23: source roster changed; regenerate from a new source commit');
+  for (const [path, content] of Object.entries({ ...result.input.sources, ...result.input.code })) if (readFileSync(resolve(root, path), 'utf8').replaceAll('\r\n', '\n') !== content)
     throw new Error(`P3-NF-01: source pin trails ${path}; commit source changes and regenerate`);
   const files = { 'register.json': result.outputs.register, 'rules.md': result.outputs.ruleBook, 'glossary.md': result.outputs.glossary,
     'capabilities.md': result.outputs.capabilities, 'coverage.md': result.outputs.coverage, 'shape.json': bytes(result.register.shape) + '\n',
-    'source.json': JSON.stringify({ commit, generation: result.generation.id, authority: 'shape-only' }, null, 2) + '\n' };
+    'fact-schemas.json': bytes(result.register.shape.factSchemas) + '\n', 'conversion.json': bytes(result.conversion) + '\n',
+    ...(result.completion ? { 'completion.json': bytes(result.completion) + '\n' } : {}),
+    'source.json': JSON.stringify({ commit, generation: result.generation.id, authority: 'shape-only', mode, ...(workflowPath ? { workflow: workflowPath } : {}) }, null, 2) + '\n' };
   if (!check) mkdirSync(output, { recursive: true });
   for (const [name, text] of Object.entries(files)) {
     const path = resolve(output, name);
     if (check) { if (!existsSync(path) || readFileSync(path, 'utf8') !== text) throw new Error(`P3-NF-01/P3-NF-09: generated ${name} differs`); }
     else writeFileSync(path, text);
   }
-  console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only' }));
+  console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only', mode }));
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { run(process.argv.slice(2)); } catch (error) { console.error(error.message); process.exitCode = 1; }
+  run(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode = 1; });
 }

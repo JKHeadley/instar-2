@@ -47,6 +47,19 @@ describe('repair workflow composition', () => {
     expect(detail(runRegisterChecks(s.build([s.rule(4), s.holder([{ rule: 999, class: 'deferred', part: 99, ceiling: 1000, owner: 'operator', overdueAction: 'surface' }])]), checks, s.context))).toContain('missing rule');
     expect(detail(runRegisterChecks(s.build([s.rule(4)]), { ...checks, claims: checks.claims.map(c => ({ ...c, complete: true })) }, s.context))).toContain('residual');
     expect(detail(runRegisterChecks(s.build([s.bound, { ...s.declaration(), profile: s.f.profileInput() }]), checks, s.context))).toContain('paired construct');
+    const holder = s.holder([]);
+    const guarded = { ...holder, requiredFacts: { ...holder.requiredFacts, decidesAlone: 'governed-state', enforces: { record: 'store', decoder: 'decode:Profile' } } };
+    const row = { id: 'store', version: 'v1', status: 'live', since: 'commit:old', supersedes: [], approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'approval:1' },
+      landedIn: 'commit:old', base: 'base:old', contentHash: hash(s.declaration()) };
+    const governed = s.build([s.declaration(), guarded], { extract: { ...s.extract, rows: [row] } });
+    const observed = { ...checks, observations: [{ site: 'holder', record: 'store', decoder: 'decode:Profile', reads: ['store'], invokes: ['decode:Profile'] }] };
+    expect(detail(runRegisterChecks(governed, observed, s.context))).toContain('standing evidence');
+    const machine = s.f.principal('executor', 'system');
+    const separated = { ...observed, separations: [{ site: 'holder', record: 'store', execution: { principal: machine, grants: s.f.grants, revocations: [], scope: s.f.scope, now: s.f.now },
+      writer: s.f.alice, scope: s.f.scope, action: 'work' }] };
+    expect(value(runRegisterChecks(governed, separated, s.context)).graph.gaps).toEqual([]);
+    s.f.grant({ id: 'executor:write', grantee: machine, standing: 'delegate', actions: ['work'], expiresAt: 1000 });
+    expect(detail(runRegisterChecks(governed, separated, s.context))).toContain('executing principal');
   });
   it('P3-NF-09 R8 every P3 suite path is protected, including moved/new mapped fixtures', () => {
     const s = setup(); const declarations = JSON.parse(readFileSync('src/register/toolchain.declarations.json', 'utf8')) as object[];

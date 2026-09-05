@@ -146,6 +146,9 @@ export function loadRegister(input: unknown, expected: RegisterGeneration, conte
       requireThat(encoding(rebuilt).bytes === encoding(entries[i]).bytes, 'generated entry metadata differs from source history'); return rebuilt;
     });
     requireThat(new Set(decoded.map(e => e.declaration.id)).size === decoded.length, 'P3-NF-16: duplicate loaded entry');
+    const instances = Object.fromEntries(decoded.filter(e => e.declaration.family).map(e => [e.declaration.family!.source, []]));
+    const rebuilt = take(generateRegister({ commit: v.commit, complete: true, sources, extract, instances }, { ...ctx, shape }));
+    requireThat(encoding(rebuilt).bytes === encoding(v).bytes, 'loaded register does not match complete declaration/reference validation');
     requireThat(v.authority === 'shape-only', 'register bytes may not self-assert authority');
     const result = { type: 'GeneratedRegister', schemaVersion: 1, commit: text(v.commit, 'commit'), extract, shape, entries: decoded, authority: 'shape-only' } as unknown as VerifiedRegister;
     loaded.add(result); return result;

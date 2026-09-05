@@ -58,6 +58,7 @@ export type CheckRunRecord = RegisterValue<'CheckRunRecord'> & Readonly<{
 }>;
 export interface RegisterContext extends BoundaryContext {
   readonly references?: readonly Readonly<{ provider: string; id: string; kind?: string }>[];
+  readonly authorityTypes?: DecodeContext;
   readonly types: DecodeContext;
   readonly shape: ShapeEntries;
   readonly provenance: Provenance;

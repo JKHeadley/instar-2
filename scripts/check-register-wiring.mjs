@@ -21,23 +21,32 @@ export function inspectSource(path, source, sources = {}, program = sourceProgra
   const file = program.getSourceFile(resolve(path));
   const checker = program.getTypeChecker();
   const core = new Set(['src/register/governance.ts', 'dist/register/governance.d.ts', 'src/decode/decode.ts', 'dist/decode/decode.d.ts'].map(p => resolve(p)));
-  function identity(node) {
+  function identity(node, depth = 0) {
+    if (depth > 12) return undefined;
     let symbol = checker.getSymbolAtLocation(node);
     if (symbol?.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
     if (symbol?.declarations?.some(d => core.has(resolve(d.getSourceFile().fileName)))) return symbol.name;
+    const variable = symbol?.declarations?.find(ts.isVariableDeclaration);
+    if (variable?.initializer && (ts.isIdentifier(variable.initializer) || ts.isPropertyAccessExpression(variable.initializer)))
+      return identity(ts.isPropertyAccessExpression(variable.initializer) ? variable.initializer.name : variable.initializer, depth + 1);
     return undefined;
   }
   const imported = new Map(); const namespaces = new Set(); const constructs = []; const reads = []; const invokes = []; const residual = []; const scopes = {};
   for (const node of file.statements) if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
     const resolved = ts.resolveModuleName(node.moduleSpecifier.text, resolve(path), { moduleResolution: ts.ModuleResolutionKind.NodeNext }, ts.sys).resolvedModule?.resolvedFileName;
     if (![resolve('src/index.ts'), resolve('src/register/index.ts'), resolve('src/register/governance.ts'), resolve('dist/index.d.ts'), resolve('dist/register/index.d.ts')].includes(resolved)
-      && !node.moduleSpecifier.text.startsWith('@instar/constitutional-types')) continue;
+      && !['@instar/constitutional-types', '@instar/constitutional-types/register'].includes(node.moduleSpecifier.text)) {
+      if (!resolved && node.importClause?.getText(file).match(/constructGoverned|readRegisterEntry|decode/))
+        residual.push({ path, reason: 'unresolved static import of a possible core port: ' + node.moduleSpecifier.text });
+      continue;
+    }
     const bindings = node.importClause?.namedBindings;
     if (bindings && ts.isNamedImports(bindings)) for (const e of bindings.elements) imported.set(e.name.text, e.propertyName?.text ?? e.name.text);
     if (bindings && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
   }
   function visit(node) {
     if (ts.isCallExpression(node)) {
+      if (node.expression.kind === ts.SyntaxKind.ImportKeyword) residual.push({ path, reason: 'dynamic import is outside static port proof' });
       const name = identity(ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression)
         ?? (ts.isIdentifier(node.expression) ? imported.get(node.expression.text)
         : ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression) && namespaces.has(node.expression.expression.text) ? node.expression.name.text : undefined);

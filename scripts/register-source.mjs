@@ -13,11 +13,12 @@ export function readCommit(root, commit) {
   if (git(['rev-parse', '--is-shallow-repository']).trim() !== 'false') throw new Error('P3-NF-23: shallow checkout refuses');
   const files = git(['ls-tree', '-r', '--name-only', commit]).trim().split('\n');
   const selected = files.filter(p => ['docs/01-the-rules.md', 'docs/02-the-register.md', 'docs/03-the-glossary.md', 'docs/07-the-declarations.md', 'register-source/bootstrap-shape.json'].includes(p)
-    || p.startsWith('docs/rules/') && p.endsWith('.md') || p.endsWith('.declarations.json'));
+    || p.startsWith('docs/rules/') && p.endsWith('.md') || p.endsWith('.declarations.json') || p.startsWith('register-source/') && p.endsWith('.json'));
   for (const required of ['docs/01-the-rules.md', 'docs/02-the-register.md', 'docs/03-the-glossary.md', 'register-source/bootstrap-shape.json'])
     if (!selected.includes(required)) throw new Error(`P3-NF-23: missing source ${required}`);
   const sources = Object.fromEntries(selected.sort().map(p => [p, git(['show', `${commit}:${p}`]).replaceAll('\r\n', '\n')]));
-  return { commit, sources, files };
+  const code = Object.fromEntries(files.filter(p => p.startsWith('src/') && p.endsWith('.ts')).map(p => [p, git(['show', `${commit}:${p}`])]));
+  return { commit, sources, files, code };
 }
 export function bootstrapDeclarations(documents, shape) {
   const sources = []; const glossary = documents['docs/03-the-glossary.md'];

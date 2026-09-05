@@ -33,7 +33,8 @@ export function runRegisterChecks(register: GeneratedRegister, checks: WorkflowC
         const separation = checks.separations.find(s => s.site === d.id && s.record === enforced.record);
         requireThat(separation, `P3-NF-27: missing writer/executor standing evidence for ${d.id}`);
         requireThat(separation.execution.now.value === checks.now.value, 'standing check uses a different clock');
-        take(checkSeparation(separation.execution, separation.writer, separation.scope, separation.action, context));
+        take(checkSeparation(separation.execution, separation.writer, separation.scope, separation.action,
+          { ...context, types: context.authorityTypes ?? context.types }));
       }
     }
     const graph = take(buildRuleGraph(register, checks.branch, checks.runs, checks.catalog, context, checks.bootstrapRules));

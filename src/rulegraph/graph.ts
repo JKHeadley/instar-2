@@ -48,7 +48,7 @@ export function decodeCheckRun(input: unknown, context: RegisterContext) {
 export function buildRuleGraph(register: GeneratedRegister, branch: string, runs: readonly CheckRunRecord[], catalog: CheckCatalog,
   context: RegisterContext, bootstrapRules: readonly Readonly<{ number: number; declarationHash: string; owner: string }>[] = []) {
   return checked<RuleGraph, RegisterContext>('RuleGraph', { register, branch, runs, catalog }, context, () => {
-    const rules = register.entries.filter(e => e.declaration.kind === 'rules').map(e => {
+    const rules = register.entries.filter(e => e.declaration.kind === 'rules' && e.declaration.status === 'live').map(e => {
       const facts = e.declaration.requiredFacts; const n = number(facts.number, 'rule.number');
       requireThat(Number.isSafeInteger(n) && n > 0, 'rule number must be positive integer');
       const parent: number | 'root' = facts.parent === 'root' ? 'root' : number(facts.parent, 'parent');
@@ -148,6 +148,10 @@ export function checkDeadlines(graph: RuleGraph, register: GeneratedRegister, la
       if (d.kind === 'model doorways') for (const raw of list(d.requiredFacts.models, 'models')) {
         const model = object(raw); const at = number(model.verifiedAt, 'model verifiedAt'); const window = number(model.freshFor, 'model freshness');
         requireThat(window > 0 && at <= now.value && now.value - at <= window, `model map stale for ${d.id}`);
+      }
+      if (d.kind === 'model doorways' && d.status === 'live') {
+        const subsidy = object(d.requiredFacts.subsidy!); const at = number(subsidy.updatedAt, 'subsidy.updatedAt');
+        requireThat(at <= now.value && now.value - at <= number(subsidy.freshFor, 'subsidy.freshFor'), `stale subsidy for ${d.id}; not trusted`);
       }
     }
     return true;
