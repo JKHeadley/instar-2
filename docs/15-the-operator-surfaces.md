@@ -74,10 +74,14 @@ page view, link click, biometric unlock alone, and a successful chat reply are n
 **Rule — the surface cannot certify itself.** Rules 26, 82 and 98; **checks: P11-NF-10–13**.
 Part nine's external protection broker verifies the authorization with pinned decoders and current
 authority, then journals and applies protected changes. The surface displays broker receipt,
-effective digest/version, independent witness freshness, and any uncertainty separately. If the
-broker or its witness is unavailable, protected mutation stays closed; the request, decline,
-emergency stop, read-only evidence, repair path and honest status remain reachable. A green client
-toast, HTTP 2xx, merge event, or the agent's own report cannot stand in for that receipt.
+effective policy, the latest forbidden-write/load-path probe result, effective loaded
+digest/version, independent witness freshness, and any uncertainty separately. A protected label
+requires every item current for the exact artifact class plus part ten's live isolation proof;
+missing or stale evidence renders that class explicitly `unprotected`, never merely degraded or
+implicitly safe. If the broker or its witness is unavailable, protected mutation stays closed;
+the request, decline, emergency stop, read-only evidence, repair path and honest status remain
+reachable. A green client toast, HTTP 2xx, merge event, repository rule, or the agent's own report
+cannot stand in for the broker's independently authenticated receipt and effective-path witness.
 
 **Rule — authorization waits drain without becoming consent.** Rules 46, 52, 87, 88 and 98;
 **checks: P11-NF-14/15**. Pending requests are a pull-first bounded list ordered by consequence and
