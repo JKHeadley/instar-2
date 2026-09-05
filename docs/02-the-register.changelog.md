@@ -6,7 +6,7 @@ each linked to the git change that made it (rule 91).
 
 ## Revision 5 · 2026-09-04 · draft — part-four bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 
-- **The parsers kind gains authenticationClass and eventIdAuthority; the blocking-site kind gains the enforces companion fact for governed-state sites.** — Intake adapters' facts must fit their kind rather than live in prose, and amendment one's checkable-not-claimable requirement needs its register row. _(part four, shape amendments)_
+- **The parsers kind gains authenticationClass, eventIdAuthority, and ackPolicy; the blocking-site kind gains the enforces companion fact for governed-state sites.** — Intake adapters' facts must fit their kind rather than live in prose, and amendment one's checkable-not-claimable requirement needs its register row. _(part four, shape amendments)_
 
 ## Revision 4 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 

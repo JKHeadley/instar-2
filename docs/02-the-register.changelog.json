@@ -9,7 +9,7 @@
     },
     "changes": [
       {
-        "what": "The parsers kind gains authenticationClass and eventIdAuthority; the blocking-site kind gains the enforces companion fact for governed-state sites.",
+        "what": "The parsers kind gains authenticationClass, eventIdAuthority, and ackPolicy; the blocking-site kind gains the enforces companion fact for governed-state sites.",
         "why": "Intake adapters' facts must fit their kind rather than live in prose, and amendment one's checkable-not-claimable requirement needs its register row.",
         "ref": "part four, shape amendments"
       }

@@ -81,7 +81,9 @@ has at most one binding, naming one operator principal (a shared inbox or group 
 principal; every other participant is a requester); **transfer is supersession** — a new binding
 names what it replaces, through the same verified-act machinery; **a concurrent re-binding race
 is part two's `Conflict`** — no operator serves that conversation until it resolves, the
-narrower answer; **platform identity churn** (a renamed or recycled platform account) voids the
+narrower answer, with exactly one carve-out: the emergency stop, which a previously-bound
+operator retains through the freeze, because a stop fails toward safety and a frozen brake is
+the one failure the freeze must not manufacture; **platform identity churn** (a renamed or recycled platform account) voids the
 selection until re-verified — the binding names the platform identity it trusts, and a changed
 one no longer selects.
 
@@ -107,11 +109,12 @@ already carries. So the thing a stolen chat session can do is *steer* one conver
 already-granted work; it can never mint, widen, or approve. The
 residual is named rather than implied away: **a platform bot-token takeover collapses every
 attestation on that transport**, so an attacker holding the token speaks as any bound sender —
-which is why the binding's scope bounds the blast radius (that conversation's standing, nothing
-wider), and why the walls and the highest-stakes operator actions live on surfaces whose
-provenance the package itself verifies, never on chat attestation. Whether this composition is a
-faithful reading of part one or needs a formal amendment through part one's version chain is
-question 1 — the exact discipline the two-anchor reading of rule 90 set.
+reaching every conversation whose bound principal is selectable through the compromised
+transport, each within its own binding's scope, their union and no more; and within that reach
+it can only steer already-granted work, because every binding act needs its own verified act.
+That bounded union — not "one conversation," and not "everything" — is the honest blast radius,
+and it is why the walls and the highest-stakes operator actions live on surfaces whose
+provenance the package itself verifies, never on chat attestation.
 
 **Rule — operator standing resolves only through a binding.** Rules 28 and 104; part one's
 provenance floor. **Check:** the standing resolution's operator arm consults the binding-grant
@@ -141,9 +144,11 @@ entry (it reads untrusted real-world text; rule 36's captured-bytes fixtures are
 and this part routes the shape amendments its facts need (two of the bundle's five), in part
 three's bundle convention: the parsers kind gains `authenticationClass` (the class the adapter can honestly
 provide per stimulus type — `verified` where it re-checks evidence, `channel-attested` where it
-can only vouch for its channel) and `eventIdAuthority` (who mints the stimulus id and its
+can only vouch for its channel), `eventIdAuthority` (who mints the stimulus id and its
 uniqueness scope, replay window, and fallback fingerprint policy — the dedup contract below
-consumes this); and the glossary's profile-declaring kind list gains parsers, because an intake
+consumes this), and `ackPolicy` (a closed choice — `always`, `bound-only`, `never` — so who
+gets acknowledged is a declared, reviewed fact per adapter, not a vibe; step 9's ack Value
+resolves through it, P4-NF-28); and the glossary's profile-declaring kind list gains parsers, because an intake
 adapter's runaway case is a flood and its bound entry is load-bearing. **The port itself is a
 blocking site** and declares the full kind-2 facts in part two's own format: `authority: block`;
 `decidesAlone` per gate — `ruled-three` for the secret scan and the emergency stop,
@@ -165,7 +170,11 @@ unstable, and replayed ids each have a fixture — P4-NF-03) — with one hard f
 whose stimuli change state must declare a provider-minted event id; the hash fallback is legal
 only for idempotent or informational stimuli, and its entry carries the may-collapse warning in
 writing — and the flood bound from its profile. Adapters without sender-shaped stimuli satisfy the suite per the stimulus-class table
-below rather than vacuously.
+below rather than vacuously. And the suite's honesty outlives the build: contract fixtures
+catch declared dishonesty at review time, not runtime compromise, so **every live adapter
+carries a probe entry** that replays its captured-bytes fixtures against the running adapter
+on a cadence — part three's freshness machinery pointed at the doorway — and a live adapter
+whose replay drifts from its fixtures surfaces before its lies do (P4-NF-29).
 
 **Value — the doorway is thin over named seams, and says so.** The review asked whether one
 doorway does too much; the honest answer is that the doorway *composes* four layers that
@@ -350,10 +359,16 @@ to an attack the first review named:
   before any standing computation runs, and no routing, holder selection, or candidate grant
   derives from an unclassified ask (P4-NF-26). Authority-bearing operations therefore have a
   **registered command surface** — the closed set of command shapes the register carries —
-  and natural language is pre-decision input: it either matches that surface deterministically
-  or rides judgment refinement first, which is the common case for conversation and costs
-  nothing, because classification is only ever needed at the moment authority would actually
-  be exercised. The holder set comes from the grant record;
+  under a stated parser contract, because "registered shapes" without one is magic: matching
+  runs over a canonical parse input (normalized encoding and casing per the shape's own
+  declaration), precedence is longest-most-specific-match with ties refused as ambiguous,
+  every shape carries its schema version, and the near-match, injection-shaped,
+  quoted-command, and non-declared-language cases are negative fixtures — a quoted or
+  reported command ("he told me to say: stop everything") must not match, and a near-miss
+  must hold for judgment rather than round to the nearest shape (P4-NF-27). Natural language
+  is pre-decision input: it either matches that surface deterministically or rides judgment
+  refinement first, which is the common case for conversation and costs nothing, because
+  classification is only ever needed at the moment authority would actually be exercised. The holder set comes from the grant record;
   selection takes the *narrowest* standing that covers the operation, tied to the operator of
   the affected scope. And the approval is re-validated at the effect doorway against the *actual*
   operation — an approval harvested for a narrower-sounding classification does not transfer
@@ -482,6 +497,9 @@ through three.
 | P4-NF-24 | test | A doorway refusal naming neither a rule nor a missing grant | Boundaries come from governance, not taste. |
 | P4-NF-25 | test | A session acting on an intent whose `under` omits a directive live at its causal position | The operator's standing instructions shape the work, structurally. |
 | P4-NF-26 | test | Routing, holder selection, or a candidate grant derived from an ask that matched no registered command shape | An unclassified ask holds for judgment; nothing downstream derives from ambiguity. |
+| P4-NF-27 | test | A near-miss rounded to the nearest command shape, an ambiguous tie matched, or a quoted or reported command matched as a command | The parser contract refuses toward judgment; matching is exact, versioned, and unspoofable by framing. |
+| P4-NF-28 | contract | An adapter acknowledging outside its declared `ackPolicy` | Who gets acknowledged is a declared, reviewed fact — an oracle is a choice, never a default. |
+| P4-NF-29 | test | A live adapter whose cadenced fixture replay drifts from its captured-bytes contract | Contract fixtures catch declared dishonesty; the probe catches runtime drift. |
 
 ---
 
@@ -546,13 +564,13 @@ the operator surfaces where authorizations complete and bindings are established
 
 ## What I want from you on this document
 
-1. **The conversation binding, and how it reads against part one.** Operator standing anchors
-   to a recorded, verified-provenance binding; the per-message chat attestation only selects
-   within it; a bot-token takeover therefore reaches each bound conversation's scope on that
-   transport — their union — and can only steer already-granted work there; it can never mint,
-   widen, or approve, and it never reaches the walls or the PIN surfaces. I believe this composes faithfully with part one's provenance wall;
-   the alternative is a formal part-one amendment through its version chain. Confirm the
-   composition reading, or direct the amendment?
+1. **The conversation binding, and the risk you are accepting with chat.** Operator standing
+   anchors to a recorded, verified binding; a chat message can only select within it and steer
+   already-granted work. The honest residual: if a chat platform's bot token is ever stolen, the
+   thief can steer every conversation bound on that platform — each within its own scope, never
+   the walls or the PIN surfaces, never granting or approving anything. The exercise-split
+   amendment in question 2 is what makes this the constitution's position rather than a reading
+   around it. Accept that residual as the price of directing work over chat?
 2. **Five amendments ride this bundle, atomically** (part three's convention): part one gains
    the exercise split (authority-conferring vs directive — the wall's honest answer to chat);
    the glossary's operator clause reads "selected … within the recorded conversation binding";
