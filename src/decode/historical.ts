@@ -56,7 +56,8 @@ export function readHistorical<N extends keyof T.Inventory>(type: N, input: unkn
     if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope) || (envelope as Record<string, unknown>).id !== pin.origin.id)
       return refusal('historical origin identity differs from signed envelope', context.preserved, 'integrity');
     const frame = envelope as Record<string, unknown>;
-    if (typeof frame.type !== 'string' || !frame.type || !Number.isSafeInteger(frame.schemaVersion) || Number(frame.schemaVersion) < 1 || frame.machine !== key.owner)
+    if (typeof frame.type !== 'string' || !frame.type || !Number.isSafeInteger(frame.schemaVersion) || Number(frame.schemaVersion) < 1
+      || typeof frame.machine !== 'string' || !frame.machine || typeof key.owner !== 'string' || frame.machine !== key.owner)
       return refusal('historical envelope domain or machine/key owner mismatch', context.preserved, 'integrity');
     const preimage = Object.fromEntries(Object.entries(frame).filter(([field]) => field !== 'contentHash' && field !== 'signature'));
     if (frame.contentHash !== hashText(canonicalText(preimage))) return refusal('historical envelope contentHash does not bind its preimage', context.preserved, 'integrity');
@@ -85,7 +86,11 @@ export function readHistorical<N extends keyof T.Inventory>(type: N, input: unkn
     }
     const ofType = <K extends keyof T.Inventory>(name: K) => values.filter(v => v.type === name) as T.Inventory[K][];
     const recordSubjects: Record<string, T.Scope> = {};
-    const c = inSession({ ...context, recordSubjects, principals: ofType('VerifiedPrincipal'), grants: ofType('StandingGrant'),
+    // Copy only the published historical inputs, not accidental live-context extras.
+    const c = inSession({ register: context.register, captures: context.captures, preserved, recordSubjects,
+      ...(context.now ? { now: context.now } : {}), ...(context.currentBase ? { currentBase: context.currentBase } : {}),
+      ...(context.artifact ? { artifact: context.artifact } : {}), ...(context.actAt ? { actAt: context.actAt } : {}),
+      principals: ofType('VerifiedPrincipal'), grants: ofType('StandingGrant'),
       revocations: ofType('Revocation'), authorizations: ofType('Authorization'), directives: ofType('Directive'), evidence: ofType('Evidence') }, session);
     for (const [hash, scope] of Object.entries(context.recordSubjects ?? {})) recordSubjects[hash] = take(decode('Scope', scope, c));
     let validationContext = c;
@@ -94,6 +99,7 @@ export function readHistorical<N extends keyof T.Inventory>(type: N, input: unkn
       const source = records.get(binding.source);
       if (!source || source.type !== 'Provenance') return refusal('binding source requires origin-verified Provenance', preserved);
       session.issued.add(source);
+      for (const capture of binding.source.unavailableCaptures) session.unavailable.set(capture.reference, capture);
       validationContext = inSession({ ...c, binding: { ...binding, source, scope: take(decode('Scope', binding.scope, c)) } }, session);
     }
     const decoded = type === 'Conflict' ? take(rehydrateConflict(shape, validationContext)) : take(decode(type, shape, validationContext));

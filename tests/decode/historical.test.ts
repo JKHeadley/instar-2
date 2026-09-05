@@ -28,6 +28,8 @@ describe('origin-pinned historical principal and provenance reads', () => {
     refused(readHistorical('VerifiedPrincipal', clone(p), altered({ signature: '00'.repeat(64) }), f.ctx), 'signature');
     refused(readHistorical('VerifiedPrincipal', clone(p), altered({ body: { ...clone(p), id: 'another' } }), f.ctx), 'contentHash');
     refused(readHistorical('VerifiedPrincipal', clone(p), altered({ contentHash: `sha256:${'00'.repeat(32)}` }), f.ctx), 'contentHash');
+    const wrongOwner = { ...f.ctx, register: { ...f.ctx.register, keys: { host: { ...f.ctx.register.keys.host!, owner: 'machine-b' } } } };
+    refused(readHistorical('VerifiedPrincipal', clone(p), pin, wrongOwner), 'machine/key owner');
     refused(readHistorical('VerifiedPrincipal', clone(p), { ...pin, path: ['missing'] }, f.ctx), 'path');
     refused(readHistorical('VerifiedPrincipal', { ...clone(p), id: 'another' }, pin, f.ctx), 'origin pin');
     f.captures[pin.capture.reference] = '{}'; refused(readHistorical('VerifiedPrincipal', clone(p), pin, f.ctx), 'capture');
@@ -42,8 +44,13 @@ describe('origin-pinned historical principal and provenance reads', () => {
     const grant = value(readHistorical('StandingGrant', clone(f.g), grantPin, context));
     expect(value(readHistorical('Authorization', clone(f.authorization), authPin, { ...context, history: [grant] })).view.under).toBe('g1');
     refused(readHistorical('Authorization', clone(f.authorization), authPin, context), 'grant missing');
+    refused(readHistorical('Authorization', clone(f.authorization), authPin, f.ctx), 'grant missing');
     refused(readHistorical('Authorization', clone(f.authorization), authPin, { ...context, history: [{ ...grant }] }), 'origin-verified reads');
     refused(readHistorical('Authorization', clone(f.authorization), authPin, { ...context, history: [grant], now: f.clock(99) }), 'not live');
+    const changed = f.grantInput({ standing: 'requester' }).input;
+    refused(readHistorical('StandingGrant', changed, f.historyPin(changed), context), 'standing');
+    const rebound = { ...clone(f.g), scope: raw('Scope', { kind: 'project', members: ['project-b'] }) };
+    refused(readHistorical('StandingGrant', rebound, f.historyPin(rebound), context), 'authenticated fields disagree');
   });
   it('R3 Evidence retains each unavailable-capture state and cannot supply a live claim', () => {
     const f = fixture(); const pin = f.historyPin(f.e);
