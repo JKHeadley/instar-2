@@ -27,7 +27,9 @@ export interface FoldInput {
   readonly fact: FactEnvelope; readonly taint: readonly AuthorityTaint[];
   readonly constitutional?: readonly { readonly field: string; readonly value: ConstitutionalValue; readonly subject: Scope }[];
 }
-export interface ProjectedView {
+class ViewIdentity { private readonly product!: void }
+const producedViews = new WeakSet<object>();
+export interface ProjectedView extends ViewIdentity {
   readonly projection: string; readonly generation: string;
   readonly policy: Readonly<{ class: 'authority-answering' | 'informational'; stalenessBound: number }>;
   readonly values: Readonly<Record<string, Json>>;
@@ -70,6 +72,20 @@ export function foldProjection(def: ProjectionDefinition, inputs: readonly FoldI
     }
     const rows = [...dedup.values()].sort((a, b) => Buffer.compare(Buffer.from(foldKey(a.fact)), Buffer.from(foldKey(b.fact))));
     const facts = rows.map(r => r.fact), foldedThrough: Record<string, LineagePosition> = {};
+    // A largest observed offset is not a prefix witness. Verify every interior and causal edge.
+    for (const machine of new Set(facts.map(f => f.machine))) {
+      const lineage = facts.filter(f => f.machine === machine).sort((a, b) => comparePosition(a.segment, b.segment));
+      requireFact(lineage[0]!.segment.epoch === 0 && lineage[0]!.segment.position === 0, 'incomplete lineage prefix');
+      for (let i = 1; i < lineage.length; i++) {
+        const prior = lineage[i - 1]!, next = lineage[i]!;
+        requireFact(next.prevInSegment === prior.contentHash, 'incomplete lineage hash prefix');
+        requireFact(next.segment.epoch === prior.segment.epoch
+          ? next.segment.position === prior.segment.position + 1 && next.predecessors.inSegment === prior.id
+          : next.segment.epoch === prior.segment.epoch + 1 && next.segment.position === 0
+            && next.predecessors.frontier[machine]?.epoch === prior.segment.epoch && next.predecessors.frontier[machine]?.position === prior.segment.position, 'incomplete lineage prefix');
+      }
+    }
+    for (const fact of facts) causalCone(fact, facts);
     for (const fact of facts) {
       requireFact(Object.hasOwn(generation.lineages, fact.machine), 'fact from unknown lineage');
       const prev = foldedThrough[fact.machine]; if (!prev || comparePosition(fact.segment, prev) > 0) foldedThrough[fact.machine] = { epoch: fact.segment.epoch, position: fact.segment.position };
@@ -142,13 +158,15 @@ export function foldProjection(def: ProjectionDefinition, inputs: readonly FoldI
     }
     // A dangling correction is not an ordinary occurrence.
     for (const fact of facts) { const target = object(fact.body).corrects; if (typeof target === 'string') requireFact(byId.has(target), 'correction target missing'); }
-    return { projection: def.id, generation: generation.reference.id, policy: { class: def.class, stalenessBound: def.stalenessBound }, values,
+    const view = { projection: def.id, generation: generation.reference.id, policy: { class: def.class, stalenessBound: def.stalenessBound }, values,
       conflicts: conflicts.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0), taint: [...taint].sort(), foldedThrough,
-      knownLineages: generation.lineages, retractions: retractions.map(f => f.id).sort(), corrections: corrections.sort((a, b) => a.original < b.original ? -1 : 1) };
+      knownLineages: generation.lineages, retractions: retractions.map(f => f.id).sort(), corrections: corrections.sort((a, b) => a.original < b.original ? -1 : 1) } as unknown as ProjectedView;
+    producedViews.add(view); return view;
   });
 }
 export function readProjection(view: ProjectedView, definition: ProjectionDefinition, now: Clock, context: FactBoundary, demand: CausalFrontier = {}): Result<{ view: ProjectedView; stale: readonly string[] }> {
   return boundary('ProjectionRead', null, context, () => {
+    requireFact(producedViews.has(view), 'view was not produced by fold or verified restore', 'integrity');
     requireFact(definition.id === view.projection, 'projection definition does not name this view');
     requireFact(Number.isFinite(definition.stalenessBound) && definition.stalenessBound > 0, 'invalid reader staleness bound');
     // A caller may demand a stronger read, but cannot relabel an authority view or widen
@@ -168,7 +186,7 @@ export function readProjection(view: ProjectedView, definition: ProjectionDefini
   });
 }
 export interface Checkpoint { readonly vector: CausalFrontier; readonly view: ProjectedView; readonly hash: string }
-export function checkpoint(view: ProjectedView): Checkpoint { return frozen({ vector: view.foldedThrough, view, hash: encoding(view).hash }); }
+export function checkpoint(view: ProjectedView): Checkpoint { requireFact(producedViews.has(view), 'checkpoint requires a produced view'); return frozen({ vector: view.foldedThrough, view, hash: encoding(view).hash }); }
 export function verifyRebuild(live: Checkpoint, rebuilt: Checkpoint, context: FactBoundary): Result<'equal'> {
   return boundary('ProjectionRebuild', null, context, () => {
     requireFact(encoding(live.vector).bytes === encoding(rebuilt.vector).bytes, 'comparison vectors differ');

@@ -12,7 +12,7 @@ const cases = {
   'P2-NF-15': ['store.update({});', 'store.read();'],
   'P2-NF-18': ['const field: FactSchema["fields"][string] = {kind:"secret"};', 'const field: FactSchema["fields"][string] = {kind:"constitutional",type:"SecretRef"};'],
   'P2-NF-19': ['const field: FactSchema["fields"][string] = {kind:"text"};', 'const field: FactSchema["fields"][string] = {kind:"text",maxLength:100};'],
-  'P2-NF-46': ['view.values["authority"] = true;', 'const current = view.values["authority"];'],
+  'P2-NF-46': ['const replacement: ProjectedView = {...view,values:{authority:true},conflicts:[],taint:[]};', 'const current: ProjectedView = view;'],
   'P2-NF-49': ['const d: ProjectionDefinition = {...definition, fold: () => Date.now()};', 'const d: ProjectionDefinition = definition;'],
   'P2-NF-50': ['const g: ProjectionGeneration = {...generation, peerView: view};', 'const g: ProjectionGeneration = generation;'],
   'P2-NF-60': ['store.truncate();', 'store.read();'],

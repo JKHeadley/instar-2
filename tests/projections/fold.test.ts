@@ -82,8 +82,26 @@ it('P2-NF-57 rebuild comparisons must use the same pinned vector', () => {
   const f = fixture(), a = checkpoint(value(f.fold())), b = checkpoint(value(f.fold(f.inputs.slice(0, 1)))); refused(verifyRebuild(a, b, f.c), 'vectors differ');
 });
 it('P2-NF-58 changed view at the same vector fails rebuild equivalence', () => {
-  const f = fixture(), a = checkpoint(value(f.fold())), bad = checkpoint({ ...a.view, values: { 'note:one': '999' } });
+  const f = fixture(), a = checkpoint(value(f.fold())), bad = { ...a, hash: 'changed' };
   refused(verifyRebuild(a, bad, f.c), 'divergence'); expect(value(verifyRebuild(a, checkpoint(value(f.fold())), f.c))).toBe('equal');
+});
+it('P2-NF-46 P2-NF-55 P2-NF-56 copied or reclassified views are never authority products', () => {
+  const f = fixture(), view = value(f.fold()), def = { ...f.definition, class: 'authority-answering' as const };
+  expect(value(readProjection(view, def, f.now, f.c)).stale).toEqual([]);
+  for (const change of [{ values: { 'note:one': '999' } }, { conflicts: [], taint: [] }, { policy: { class: 'informational', stalenessBound: 999999 } }]) {
+    // Runtime JS/serialized callers also cannot replace the nominal product.
+    refused(readProjection({ ...view, ...change } as never, def, f.now, f.c), 'not produced');
+  }
+});
+it('P2-NF-54 P2-NF-57 a missing interior fact cannot advance the prefix or satisfy currency', () => {
+  const f = fixture(), middle = f.next(f.a), last = f.next(middle), rows = [f.a, middle, last].map(fact => ({ fact, taint: [] }));
+  const generation = { ...f.generation, lineages: { 'machine-a': { head: point(last), observedAt: 100, closed: false } } };
+  refused(f.fold([rows[0]!, rows[2]!], f.definition, generation), 'prefix');
+  expect(value(f.fold(rows, f.definition, generation)).values['note:one']).toBe('30');
+  const missing = value(f.fold([], f.definition, generation));
+  refused(readProjection(missing, { ...f.definition, class: 'authority-answering' }, f.now, f.c, { 'machine-a': point(last) }), 'currency');
+  const ignored = { ...f.definition, decisions: { note: { kind: 'ignores' as const, reason: 'not this view' } } };
+  expect(value(f.fold(rows, ignored, generation)).foldedThrough['machine-a']).toEqual(point(last));
 });
 it('P2-NF-59 checkpoint has no authority to remove any underlying facts', () => {
   const f = fixture(), before = JSON.stringify(f.inputs), saved = checkpoint(value(f.fold()));
