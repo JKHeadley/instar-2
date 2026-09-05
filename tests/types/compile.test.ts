@@ -18,6 +18,11 @@ const remainingInput = { ...latencyInput, subject: { kind: 'time-remaining', ins
 const latency = decoded(decodeMeasurement('detection-latency', latencyInput, f.ctx));
 const remaining = decoded(decodeMeasurement('time-remaining', remainingInput, f.ctx));
 const decodedClock = decoded(decodeMeasurement('clock', f.clockRaw(), f.ctx));
+function parse(subject: 'detection-latency' | 'time-remaining', bytes: unknown) {
+  return decoded(decodeMeasurement(subject, bytes, f.ctx));
+}
+const unionLatency = parse('detection-latency', latencyInput);
+const unionRemaining = parse('time-remaining', remainingInput);
 declare const result: Result<string>;
 declare const archived: HistoricalRead<VerifiedPrincipal>;
 declare function needsPrincipal(p: VerifiedPrincipal): void;
@@ -30,6 +35,9 @@ const cases = {
   'NF-11': ['const x: Fields<Directive> = { ...directive, closedBy: { kind: "Expired" } };', 'const x: Fields<Directive> = { ...directive, closedBy: { kind: "Superseded", by: "next" } };'],
   'NF-19': ['compareMeasurements(latency, remaining, "capture");', 'compareMeasurements(latency, latency, "capture");'],
   'NF-19-unrefined': ['const broad = decoded(decode("Measurement", latencyInput, f.ctx)); compareMeasurements(broad, broad, "capture");', 'grantLiveness(grant, [], decodedClock); isFresh(evidence, decodedClock);'],
+  'NF-19-union': ['compareMeasurements(unionLatency, unionRemaining, "capture:desk");', 'const parsed = [unionLatency, unionRemaining]; compareMeasurements(latency, latency, "capture");'],
+  'NF-19-union-right': ['compareMeasurements(latency, unionRemaining, "capture:desk");', 'compareMeasurements(decodedClock, decodedClock, "capture");'],
+  'NF-19-union-generic': ['compareMeasurements<"detection-latency" | "time-remaining">(latency, remaining, "capture:desk");', 'compareMeasurements<"detection-latency">(latency, latency, "capture");'],
   'NF-27': ['const { source, observedAt, capture, strength, ...missing } = evidence; const x: Fields<Evidence> = missing;', 'const x: Fields<Evidence> = evidence;'],
   'NF-31': ['isFresh(evidence);', 'isFresh(evidence, now);'],
   'NF-32': ['const { reason, ...missing } = decision; const x: Fields<Decision> = missing; const y: Fields<Decision> = { ...decision, reason: decision.conclusion };', 'const x: Fields<Decision> = decision;'],
@@ -54,6 +62,12 @@ describe('compiler executes negative programs and positive counterparts', () => 
   for (const [id] of Object.entries(cases)) it(`${id} rejects the forbidden program only`, () => {
     const forPath = (kind: string) => errors.filter(d => d.file?.fileName === resolve(`tests/virtual-${id}-${kind}.ts`));
     expect(forPath('invalid').map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n'))).not.toEqual([]);
+    if (id.startsWith('NF-19-union')) for (const diagnostic of forPath('invalid')) {
+      // The parser/producer must compile: only the actual comparison is rejected.
+      const source = diagnostic.file!;
+      const line = source.text.split('\n')[source.getLineAndCharacterOfPosition(diagnostic.start!).line];
+      expect(line).toContain('compareMeasurements');
+    }
     expect(forPath('valid').map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n'))).toEqual([]);
   });
 });
