@@ -95,6 +95,10 @@ it('P2-NF-46 P2-NF-55 P2-NF-56 copied or reclassified views are never authority 
     // Runtime JS/serialized callers also cannot replace the nominal product.
     refused(readProjection({ ...view, ...change } as never, def, f.now, f.c), 'not produced');
   }
+  const exclusive = { ...def, decisions: { note: { kind: 'folds' as const, merge: 'exclusive-singleton' as const, identity: 'identity', value: 'amount' } } };
+  const conflicted = value(f.fold(f.inputs, exclusive));
+  refused(readProjection(conflicted, exclusive, f.now, f.c), 'tainted');
+  refused(readProjection({ ...conflicted, values: { 'note:one': '999' }, conflicts: [], taint: [] } as never, exclusive, f.now, f.c), 'not produced');
 });
 it('P2-NF-54 P2-NF-57 a missing interior fact cannot advance the prefix or satisfy currency', () => {
   const f = fixture(), middle = f.next(f.a), last = f.next(middle), rows = [f.a, middle, last].map(fact => ({ fact, taint: [] }));
