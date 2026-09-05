@@ -1,0 +1,589 @@
+{
+  "phase": "converted-unanchored",
+  "approvalBasis": "docs/02-the-register.md and docs/07-the-declarations.md approved designs; provisional conversion has no entering-force authority",
+  "shape": "sha256:9b11f3e33cdcc03e091aa12c3828f042b1c3591c5b03073a24457fef16713536",
+  "documents": {
+    "docs/01-the-rules.md": "sha256:a396a68c53cd611ed89430a1c4a6dbe91611d85a840f00dfdec93e956dfc168b",
+    "docs/02-the-register.md": "sha256:206e4995e8707590f8bd07f643100fbb5cd4112ae6f8b466f314329b551f056b",
+    "docs/03-the-glossary.md": "sha256:e33d1368c609151951a0892c57b10ac3357fe5dc96ed68573974fafa2e1dcf9a",
+    "docs/07-the-declarations.md": "sha256:21362d9c0475300a84395d1ac096c02c300067e321ec603902ca3f7e9b733e11",
+    "docs/rules/91-a-document-reads-as-its-first-version.md": "sha256:49e37e4f31009804f28a2dd38f67b3c894a5d662d3a4ea2d9c703310252492a0"
+  },
+  "rules": [
+    {
+      "number": 1,
+      "declarationHash": "sha256:ffcdde81c13e36b5fe8cc5788ac989329cb7237ef2727129aa48b90ef4fdf180",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 5,
+      "declarationHash": "sha256:177adec7a74c7c61cb7a1e91503beaaf16667a2849df095571a3e4d5d1e94841",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 30,
+      "declarationHash": "sha256:064567f4b499c6eba90d29a1d7dd534c38fcb699f7d5c1d16d0b38ad4f566aa2",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 35,
+      "declarationHash": "sha256:34262875f3a68f69f807da21c57a71fb3b8dd14c0b3d16ee9781f13fd2d3ec58",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 37,
+      "declarationHash": "sha256:65bf5ce3bedddd3dabf794737f62ea444b62b8d623abe79512aca2a156e31919",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 44,
+      "declarationHash": "sha256:62de7d648498918eb22730f0db83d55da716225d87bc46c8bf81982207ba34b1",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 47,
+      "declarationHash": "sha256:e6730d98f2bd3bf2627e1d905b740f4acfdd83e3361bb6739be385f2c28b6cce",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 49,
+      "declarationHash": "sha256:75bfcbd43ce0dc5e88f9235a565d4056a864c838d17fe969b0feb0603890f056",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 52,
+      "declarationHash": "sha256:426e55a11d550a37d54736476526ed85645479d519dc987f57ee8acffecab1e6",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 53,
+      "declarationHash": "sha256:5ac59a218eef2f21eb72a2d98d84bc4653fdd3f9d023c1f96b4b7ed4bcd5a496",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 56,
+      "declarationHash": "sha256:3493494f851d207e52cc8e502198f14c235464d50d7c308bebc67b4f87a7f351",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 59,
+      "declarationHash": "sha256:0955219f4201962dd142a0db60351317602ba79cef2ad06c69d13fd1e8263784",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 65,
+      "declarationHash": "sha256:41280218f74a61d0093f216c9ffa7e77785819b1754a532c85608edaad461e74",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 69,
+      "declarationHash": "sha256:d7aac12f85856de50c29263b70d0e53756df74b0faa3fec57d047ca1cc4ca9a7",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 71,
+      "declarationHash": "sha256:929228d653e661851f1698160deee9b1179e69fb66500497626e932649f28f2b",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 74,
+      "declarationHash": "sha256:b98b0af044bfcee6557c11c6c69ac39f4c8c01e69d23c4a899cfdac0f6651377",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 75,
+      "declarationHash": "sha256:17594788130d256d22d837e9ab4b2f40ad32371b14b1d55a50178575371296cd",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 81,
+      "declarationHash": "sha256:19d3884a75f5e028edd1eb3f9d3be85c413adf0e3d4a4da76d36079bb1340d92",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 83,
+      "declarationHash": "sha256:7fe8c9a03ade12e8948e72be1fce321026e07958474f0befbaa22a94053dd4d7",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 91,
+      "declarationHash": "sha256:6228af26e3f598249871a248ad4baad552e13c3a7614d9da41f7ffa4d40d2c5a",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 106,
+      "declarationHash": "sha256:aa7e66c120f6e11b4b453e6ebd6e472bcacc490dbb9dd77d361019530e7fa04e",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 41,
+      "declarationHash": "sha256:aa73785bb16ab75bc0492349dbccfd45e48a3e3affa60f9d2a13a09a11ce2316",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 55,
+      "declarationHash": "sha256:a6319aed6da08f5f1b9c3ce7726d61aadd85b7527a1d786e74aeac18e9784442",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 58,
+      "declarationHash": "sha256:20a1bcd4d926ea460be1d6f0c5fba62b801362ce57b316ea7e895572058f8fb1",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 60,
+      "declarationHash": "sha256:8846c3af6ef48e9af9c065e5dbcbd323019e94e2af2262e0a9a91548869cba3c",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 61,
+      "declarationHash": "sha256:ea70e946c5083dd7b380dce1b5db57740f6656966ece8e93dc616e94f4690e8a",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 63,
+      "declarationHash": "sha256:83fc279e247b1343059c1592f9a1e5c7e97681a955c09876fa2ebd681b722905",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 67,
+      "declarationHash": "sha256:8e077f6449bd0a16115c5109f004d99db5f3a722890a3ecf0167a84a4069ae5c",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 78,
+      "declarationHash": "sha256:506ce088e393a1e9bbbd7481d9a176b4ebfbaac819288f789e9eab54ef7fea3d",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 84,
+      "declarationHash": "sha256:010bfde980098866e81b2dcc019df67391dcd4d4e7dfb2e12e06dd36bcd10feb",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 2,
+      "declarationHash": "sha256:609157b9bc20dab0b8ec3c8f8841ac83c11d12db1d819873257418ef1def5bfd",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 4,
+      "declarationHash": "sha256:61e428959c0b41226983c15d84bdb82d991d35c1a40628d27c64f5935279dc6c",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 6,
+      "declarationHash": "sha256:10f05319bb940b96eeaa5687715311f3379467257c798d4b4f2045c0fd958b7c",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 7,
+      "declarationHash": "sha256:96bac939fbcdd561466048ed4064f1c7987540f03ba039c431ea637885640039",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 8,
+      "declarationHash": "sha256:39c803b7bc9a467fffb5d89962c06f3de130c0c046887ef462e048cac7423aee",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 9,
+      "declarationHash": "sha256:34f06cdc3fc4d26475a44836b6afd80decb29cf089cfd4b16eb9e3dcbceb2da1",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 10,
+      "declarationHash": "sha256:bcae4984b7d79f78645b5a823f66e4f9fab701ffa9c237e31ed496285943315c",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 11,
+      "declarationHash": "sha256:dec5ab502775e71488f60fc99f9dba4a2b3f667dbb13191853c088aaf28000c3",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 12,
+      "declarationHash": "sha256:3e1739de31f4253424e0bfb28d1ace1c8755a81d799ce96b7b63223979a794f0",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 13,
+      "declarationHash": "sha256:f2d6eec571a7ab9b1a79fb24834acc94ba743987fe26c35f5b12e0a9d8c49f61",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 14,
+      "declarationHash": "sha256:c4b19d2d40f444a01a85b134236f0e5bce027d97981d5e51186f1d8e5c555a55",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 15,
+      "declarationHash": "sha256:6e97f1aae57dd94708251c65811dd5995e89d87c741a527c0cf8df05a0e49611",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 20,
+      "declarationHash": "sha256:b7e14e756167a441184857557305b29524a0072e21dfd6b8602c5a214e0d87d1",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 21,
+      "declarationHash": "sha256:966af604a7796c447ce44764f8bd644c41fe2e70a4e9e784ed309cfa0ec46e4f",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 22,
+      "declarationHash": "sha256:cf613298fb020dc8f114a389ac0b1321b1bee9c57912bb03ace048b02ec235e0",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 23,
+      "declarationHash": "sha256:aee418d73ae02274c7e799a73a6e375b752ba6e22aa34ce373adf2f0a5e2efa0",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 24,
+      "declarationHash": "sha256:7a810ded2242482f3653b26a7e8bc0b8f7ec9b433a2e8e02e142dbe5caf45878",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 26,
+      "declarationHash": "sha256:f05c046f4196feaf03e0f880adb660506ac188fc8bd46b0783b3e034e39d7147",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 27,
+      "declarationHash": "sha256:d71f89c02bf5802f997d17e8bd756e92d6252824be29320f6efedfda6dc79c5d",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 28,
+      "declarationHash": "sha256:56d3ab5e86bca76082929328803b575602860701a38667a9c351329fa750def0",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 29,
+      "declarationHash": "sha256:e0026d06e15cc7d48e60495771ad3db04dfafa819655fd1cfe3e0ce7cfed22e7",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 31,
+      "declarationHash": "sha256:0140a57e11291a9b9f82b3d53cda3032e6d62c3a3c882e10a6c4d48809fc6aee",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 32,
+      "declarationHash": "sha256:02c29664161a58a29e2301bd8fdc4162ea0300b4c89ccc02cdda3d0891360482",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 33,
+      "declarationHash": "sha256:3f3d7cce0706c5587f838712255cde9e300b24c6f2289811f42f2bbded1da6f7",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 34,
+      "declarationHash": "sha256:13d2979bd3321b8c475519ac2c0ebcf357419d4e5ab044dc4902b7b104a71360",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 36,
+      "declarationHash": "sha256:435ee2bb1c13b5417ee87d34a91af092fc2298445f3fe859be690dbf8479911d",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 38,
+      "declarationHash": "sha256:5259e9ac1581dd6b2b49929f920babe601fd53f414293c931420fb1e3f902470",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 39,
+      "declarationHash": "sha256:2d0bddf359afef25b54512c186645c49b111a5fec708cddeb86775616b0c138a",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 40,
+      "declarationHash": "sha256:e3763c0020762aeb7f3276243e67e38063261230a4992ac4a4bd1af53f7dae87",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 42,
+      "declarationHash": "sha256:825879192c60cb7266bd99956eb85a51134052d2743ac4af7b55de3fb75c4e00",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 43,
+      "declarationHash": "sha256:c541f8e470b33e6ebdb9fab87ea64f9b5f50ea23274612c6ba80e6d6ee8fe3a7",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 45,
+      "declarationHash": "sha256:42993c4ecc1618cb7c84308f58894afb83b8de6e932e9d66f941a948e9fe2765",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 46,
+      "declarationHash": "sha256:ccb736b8fdda2e61adbcd95dbc19624178dd7dbec116236f9ec75269ecfae0a0",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 57,
+      "declarationHash": "sha256:438fdc5fb54ef1cc9997ea069857e50391556769856d35aa41155c91e31b9777",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 62,
+      "declarationHash": "sha256:e3a345fbf123ca3be5b7e5359236d1f7ad582bbe49755d179592623a63a9a47b",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 64,
+      "declarationHash": "sha256:cf40542ab3786a62e8700b9ca9b0cb31f077831a1c34f429b6eda74f0341afcb",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 66,
+      "declarationHash": "sha256:12b56fb5f6e4955f3b7a0f94f1661ee55ce7cfcacb950551d15a24c7e85bda49",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 68,
+      "declarationHash": "sha256:050b273ae836bafbc97e3d3c84169fdeaec86581264874c0b0392135ccc97268",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 70,
+      "declarationHash": "sha256:b26d11669ca2605621579f32539c0e53384b3303889103a3a20b192b369c8720",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 72,
+      "declarationHash": "sha256:44a1512d4020db4774736b6b8d3b40b38cc6730c17d23e75711390af918d17ef",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 73,
+      "declarationHash": "sha256:f224721700fb9940685564ab52ca08997bbf24565d15ba716a6adec8599de643",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 76,
+      "declarationHash": "sha256:9a12864a2ea23087bde3a4ea146a0e6662dee7865d143cb7bc593147a3b31386",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 77,
+      "declarationHash": "sha256:fbd143085d6f14a796e596bc2541be8f5ee2d2568566f4ec0d123b05b3dcc6b7",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 79,
+      "declarationHash": "sha256:078455fc12eae46b809c2ef16d2872b8d9132f6dd996d3fe559fd0f2205f20a3",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 82,
+      "declarationHash": "sha256:34bc4367c4b5a60624d343cae2f6e76184b51e033ccfcd7a724da07269812b35",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 85,
+      "declarationHash": "sha256:6487504a9c78ec233f540b44c1a5788985e2af3716e317133fe5df4b78488844",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 86,
+      "declarationHash": "sha256:9ee08dc257715b8dddbe053bb3883122ceeea62b3b15320e71680f444580eecd",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 87,
+      "declarationHash": "sha256:03835c66eac92dc9c4c1e882def094da347f49fc65741e4aefc734fa670af7ab",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 88,
+      "declarationHash": "sha256:4c4e9c17813e39b0c864ea9b87944302978d7410d88d4df905bb6b681b999458",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 89,
+      "declarationHash": "sha256:4819fc07fcc40549f04a727bf530e6f4df2c5af5d575cbcbc554e2651daa07a0",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 90,
+      "declarationHash": "sha256:0fba413af3f9e83c252b03207dc21368adec6e9721954ae2ea0acd0ecd03b1e5",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 92,
+      "declarationHash": "sha256:2d5bd192540574fb262212167368db4d948eab7fdd40eae9513ba03bd8b7400f",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 93,
+      "declarationHash": "sha256:4f986a3b993c6706b7049b3924c613909123a24dd9f156ee3d0c2ab130caf2e0",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 94,
+      "declarationHash": "sha256:c4bcec42d4232e8f272be3595a32c263fe684c836423dc2932e842d6890297ce",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 95,
+      "declarationHash": "sha256:948a214905ea1549abeac427302acd7a2b336b40532a0295f6023230aec41f41",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 96,
+      "declarationHash": "sha256:2c0d726268b4d327ce28915f83c816e8b7f45273e154cc4a133db8274f0f8a15",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 97,
+      "declarationHash": "sha256:ed4080b19bf5b5811dbf3177c5a631e3e0c2ea3a3808e8df806de0e9be8de973",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 98,
+      "declarationHash": "sha256:cb16fb3179e4f22faf1e6d4eabdb8604e4b583730729b1ddbaa383ad28f936a0",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 99,
+      "declarationHash": "sha256:59299bcc4278e1feb94f08837b3cba5275a779bdecf10e659dc8eef2911c775a",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 100,
+      "declarationHash": "sha256:f0d78e818a9cac964ac036d9df1e72f935985f18564a0a957fe6299932b48e9c",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 101,
+      "declarationHash": "sha256:90371a7b0b3d48f74739fbd9b3aae741229c7a14caa183125f834bd86b83416b",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 102,
+      "declarationHash": "sha256:ecbb482e87a8dc882bf62b541b32195f67b473b677604f8cb965d0a2442242e3",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 103,
+      "declarationHash": "sha256:78c26e243157b48e5122201a302fd27a1181d790db9440347934422946d59353",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 104,
+      "declarationHash": "sha256:60e6ba119042d95ffd2292765445522af4247e80129a9c95b2409187b128d147",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 105,
+      "declarationHash": "sha256:f36b8ac6f5a855358290f9ccb25debabe8a7f32ccbf779d4877bf613d6c1fe35",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 107,
+      "declarationHash": "sha256:afa4ae6a1548a555cc2134ac196aeddcf449164727ee36418e2afa9ad5cf9b4f",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 109,
+      "declarationHash": "sha256:87b710fe5a776fc47360fa46ec65ec98668e7a01a8d4c3396d86d7638c39719a",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 110,
+      "declarationHash": "sha256:c67dd703feac59b436e5630657b3011ff9577265eb07cc4b8601f7a32c1914d3",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 111,
+      "declarationHash": "sha256:12f8417c0fc1dfa6925d0b7583aa60ef6d130877d543a7c12ec861700ef0dbfd",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 112,
+      "declarationHash": "sha256:dcdfdeba32d6a6799938b2956deb6eff23635702dbd33c215920932b7a5e84a9",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 113,
+      "declarationHash": "sha256:a0efd92acd13a419039eeac1c04c6e6b0b4b42d968fee683e05fcc2fa94b47c3",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 114,
+      "declarationHash": "sha256:d5f413ac4fa097d9220abff9ef6938c1a0a1eada144928b29bb5dd1bb2c2d1f2",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 115,
+      "declarationHash": "sha256:16701cdb6da9e366dbfd37e3d5f2376c28d41e16c3f5f99f2bab09ecd120c2c3",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 3,
+      "declarationHash": "sha256:d9a910690975cc79204711a0a1fe2466c8b0bd4fd69319a9f66f13c3faadef1b",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 16,
+      "declarationHash": "sha256:7493cea43a824b180b8a54aecd5531a778d77a0fa57f337659db39dfa9d185a4",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 17,
+      "declarationHash": "sha256:f9bc952e33c842be78f74751abd4f8efb51dc333f8fa09c36919e8715e14e3c5",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 18,
+      "declarationHash": "sha256:598999bd874fe2db0a5320b1b31987c593f11633219cc66ccaf9b341a5aae324",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 19,
+      "declarationHash": "sha256:ed9ee3350e46f49c128ff96460113f1707bb00547da0787c568448f23738bfa6",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 25,
+      "declarationHash": "sha256:1f8e3479949518d2f86b25a2b2a41050f928e2ea0b6ca7d4d8727ff119cbac89",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 48,
+      "declarationHash": "sha256:6536af7571a96760fe61eadfc7de3c23bfc04db006f9d761323120b5a416c15e",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 50,
+      "declarationHash": "sha256:4856b3c52349df484d132454a4c558c109a2650aa4b11ad2ff6e824cf39ed46c",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 51,
+      "declarationHash": "sha256:5426915665429d037298d5feeaf824fc99bf7f91a1d642042e7e55198a5d276e",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 54,
+      "declarationHash": "sha256:a3483ac14e38015571fa21ff95f2a412857fe867db4cdd62daee3ddcd16fa1ec",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 80,
+      "declarationHash": "sha256:1c5a96dff770bfa7d98f4cd7f20179f79c792024c16f506ac28982e3bbf0aa5b",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 108,
+      "declarationHash": "sha256:954c1a5118fbbe4a1ed3e145bde146446000106bb95479a96a2f17eb65457440",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    }
+  ]
+}

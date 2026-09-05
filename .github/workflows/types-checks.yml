@@ -3,15 +3,18 @@ on: [push, pull_request]
 jobs:
   contract:
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-24.04
+          - os: ubuntu-latest
             arch: x64
-          - runner: ubuntu-24.04-arm
+          - os: ubuntu-24.04-arm
             arch: arm64
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -24,6 +27,10 @@ jobs:
         with:
           name: p2-${{ matrix.arch }}
           path: p2-output.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: register-${{ matrix.os }}
+          path: generated/register.json
   cross-architecture:
     needs: contract
     runs-on: ubuntu-24.04
@@ -33,6 +40,16 @@ jobs:
           pattern: p2-*
           path: outputs
       - run: cmp outputs/p2-x64/p2-output.json outputs/p2-arm64/p2-output.json
+  register-determinism:
+    needs: contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: register-*
+          path: register-artifacts
+      - name: P3-NF-07 compare independently verified architecture outputs
+        run: cmp register-artifacts/register-ubuntu-latest/register.json register-artifacts/register-ubuntu-24.04-arm/register.json
   p3-body-seam:
     runs-on: ubuntu-24.04
     steps:
@@ -41,10 +58,4 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci && npm run build
-      - uses: actions/checkout@v4
-        with:
-          ref: 0d66a86fa102a98dd80a0d4a590b057cffd8b8ad
-          path: .provider-test
-      - run: npm ci && npm run build
-        working-directory: .provider-test
-      - run: node scripts/test-p3-body-seam.mjs .provider-test
+      - run: node scripts/test-p3-body-seam.mjs .
