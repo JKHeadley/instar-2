@@ -58,7 +58,8 @@ The glossary says an operator "within a conversation … is bound from the authe
 and left the binding itself undefined. This part defines it — and because the definition inverts
 the clause's plain reading (a verified act binds; the sender merely selects), the glossary's
 operator row is **amended in this bundle** to read "selected by the authenticated sender within
-the recorded binding," per the corpus discipline that a redesign is propagated into the
+the recorded conversation binding — the binding itself is established only by a verified act,
+never by a message," per the corpus discipline that a redesign is propagated into the
 documents it rewrites. A pin that anchors operator standing must itself be anchored outside
 what it pins.
 
@@ -75,14 +76,25 @@ the operator's platform identities, so the operator's own conversations are boun
 first message; a pairing act on a verified surface (a signed invite or a PIN-confirmed code —
 the minimal shape is fixed here, the full surface is part eleven's) binds a new conversation;
 and an unbound conversation is simply served at requester level, honestly, indefinitely.
+The binding's lifecycle is explicit facts, not folklore: **cardinality is one** — a conversation
+has at most one binding, naming one operator principal (a shared inbox or group chat binds one
+principal; every other participant is a requester); **transfer is supersession** — a new binding
+names what it replaces, through the same verified-act machinery; **a concurrent re-binding race
+is part two's `Conflict`** — no operator serves that conversation until it resolves, the
+narrower answer; **platform identity churn** (a renamed or recycled platform account) voids the
+selection until re-verified — the binding names the platform identity it trusts, and a changed
+one no longer selects.
 
-**How this composes with part one's wall — stated, not slipped.** Part one, approved: a value
-that confers standing above requester decodes only from `verified` provenance. Today's chat
-platforms give the adapter only `channel-attested` evidence per message. The composition this
-part proposes: the **operator principal's provenance is the binding grant's** — the verified,
-recorded act that bound the conversation — and the per-message `channel-attested` sender
-evidence does one job only: it *selects* the already-bound principal within the already-granted
-scope. Prose never enters it; the message's attestation elevates nothing — it locates. And the
+**How this meets part one's wall — by amendment, not by reading around it.** Part one,
+approved: a value that confers standing above requester decodes only from `verified`
+provenance; today's chat platforms give the adapter only `channel-attested` evidence per
+message. Three review rounds pressed the same point — an attested exercise of bound standing is
+still attested — and this bundle answers it the honest way: **part one is amended through its
+own version chain** with the exercise split (authority-conferring exercise: `verified` always;
+directive exercise: attested selection within a recorded `verified`-provenance binding, and
+nothing more). Under the amended wall, the operator principal's provenance is the binding
+grant's, and the per-message evidence does one job only: it *selects* the already-bound
+principal within the already-granted scope. Prose never enters it; the message's attestation elevates nothing — it locates. And the
 review pressed the composition one level deeper, rightly: exercising operator standing through
 an attested message is still attested exercise, so **the exercise itself is tiered**. A
 **binding act** — granting or revoking standing, minting an `Authorization`, changing a wall,
@@ -126,8 +138,8 @@ path) is the retrospective review's named residual, as part three assigned it.
 
 **An adapter is a register entry, and its facts are its leash.** Each adapter is a parsers-kind
 entry (it reads untrusted real-world text; rule 36's captured-bytes fixtures are its floor) —
-and this part routes the **two shape amendments** its facts need, in part three's bundle
-convention: the parsers kind gains `authenticationClass` (the class the adapter can honestly
+and this part routes the shape amendments its facts need (two of the bundle's five), in part
+three's bundle convention: the parsers kind gains `authenticationClass` (the class the adapter can honestly
 provide per stimulus type — `verified` where it re-checks evidence, `channel-attested` where it
 can only vouch for its channel) and `eventIdAuthority` (who mints the stimulus id and its
 uniqueness scope, replay window, and fallback fingerprint policy — the dedup contract below
@@ -149,9 +161,19 @@ rules 36 and 42 give it teeth. **Check:** the suite every adapter passes before 
 `live`: preservation-before-interpretation (P4-NF-01), refusal-as-value on every path,
 authentication-class honesty (claiming `verified` for attestable-only stimuli fails —
 P4-NF-02), the dedup contract against its declared `eventIdAuthority` (missing, reused,
-unstable, and replayed ids each have a fixture — P4-NF-03), and the flood bound from its
-profile. Adapters without sender-shaped stimuli satisfy the suite per the stimulus-class table
+unstable, and replayed ids each have a fixture — P4-NF-03) — with one hard floor: an adapter
+whose stimuli change state must declare a provider-minted event id; the hash fallback is legal
+only for idempotent or informational stimuli, and its entry carries the may-collapse warning in
+writing — and the flood bound from its profile. Adapters without sender-shaped stimuli satisfy the suite per the stimulus-class table
 below rather than vacuously.
+
+**Value — the doorway is thin over named seams, and says so.** The review asked whether one
+doorway does too much; the honest answer is that the doorway *composes* four layers that
+already exist with narrow contracts, and implements almost nothing itself: the ingress record
+is part two's spine; identity and authentication are part one's decoders; the authorization
+workflow is this part's routing over the grant record; command admission is part two's ladder.
+The port's own code is translation, ordering, and placement — which is why its checks are
+mostly placements of existing fixtures at the boundary.
 
 **Value — adapters are thin, and the port is where the thinking is.** Nothing forces this
 split; it is chosen so authentication, dedup, preservation, and resolution are implemented once,
@@ -266,7 +288,14 @@ acts *before* grounding, minting, or any queue. Acting emits a **stop fact first
 authority basis (the binding), the reach, the clock reading — appended local-durable, which is
 enough to halt (replication follows; a stop must never wait on a peer), and the stop is
 idempotent: a replayed or re-delivered stop re-asserts the halted state and appends nothing
-new. The fixture measures recognition-to-halt and the fact's precedence (P4-NF-14). An ambiguous
+new. The fixture measures recognition-to-halt and the fact's precedence (P4-NF-14). Three widths,
+so a broken binding never strands the brake: the **verified operator surface's stop always
+works** — it does not depend on any conversation's binding; a **previously-bound operator's
+stop during a contested or stale binding is honored** — a stop fails toward safety, because a
+malicious stop costs availability and a missed one costs integrity; and **any resolved
+principal's stop-shaped message** surfaces instantly as the highest-priority routed signal —
+it never halts by itself (a requester brake would be a denial-of-service handle), but it is
+never queued behind anything either. An ambiguous
 "maybe stop" rides the ordinary sequence; the deterministic path exists precisely so the
 unambiguous one never waits behind it.
 
@@ -319,7 +348,12 @@ to an attack the first review named:
   no model; an ask that is ambiguous, matches several operations, or matches none is a
   **needs-judgment hold** — it waits for the judgment doorway (part seven) to refine `ask`
   before any standing computation runs, and no routing, holder selection, or candidate grant
-  derives from an unclassified ask (P4-NF-26). The holder set comes from the grant record;
+  derives from an unclassified ask (P4-NF-26). Authority-bearing operations therefore have a
+  **registered command surface** — the closed set of command shapes the register carries —
+  and natural language is pre-decision input: it either matches that surface deterministically
+  or rides judgment refinement first, which is the common case for conversation and costs
+  nothing, because classification is only ever needed at the moment authority would actually
+  be exercised. The holder set comes from the grant record;
   selection takes the *narrowest* standing that covers the operation, tied to the operator of
   the affected scope. And the approval is re-validated at the effect doorway against the *actual*
   operation — an approval harvested for a narrower-sounding classification does not transfer
@@ -519,9 +553,12 @@ the operator surfaces where authorizations complete and bindings are established
    widen, or approve, and it never reaches the walls or the PIN surfaces. I believe this composes faithfully with part one's provenance wall;
    the alternative is a formal part-one amendment through its version chain. Confirm the
    composition reading, or direct the amendment?
-2. **Two shape amendments ride this bundle** (part three's convention): the parsers kind gains
-   `authenticationClass` and `eventIdAuthority`; the glossary's profile-declaring kinds gain
-   parsers. Approve the bundle?
+2. **Five amendments ride this bundle, atomically** (part three's convention): part one gains
+   the exercise split (authority-conferring vs directive — the wall's honest answer to chat);
+   the glossary's operator clause reads "selected … within the recorded conversation binding";
+   the parsers kind gains `authenticationClass` and `eventIdAuthority`; the glossary's
+   profile-declaring kinds gain parsers; and the blocking-site kind gains the `enforces`
+   companion row. Striking any item returns the whole to review. Approve the bundle?
 3. **Beyond-standing requests route, bounded and quoted.** The approver sees the system's
    framing with the sender quoted as untrusted content; needed standing is computed from the
    operation, not the phrasing; requests coalesce per requester and class. The receipt does

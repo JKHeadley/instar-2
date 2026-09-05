@@ -4,6 +4,10 @@ _Generated from `05-the-types.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-09-04 · draft — part-four bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
+
+- **The provenance wall gains the exercise split: authority-conferring exercise decodes only from verified provenance, always; directive exercise may decode from channel-attested evidence only within a recorded verified-provenance conversation binding, where attestation selects and never establishes, widens, or transfers standing.** — Three part-four review rounds pressed the same point — an attested exercise of bound standing is still attested — and the honest answer is an amendment through this document's own chain, not a reading around its wall. _(part four, the conversation binding; review rounds 1-3)_
+
 ## Revision 6 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 
 - **The freshness and strength term rows carry kind field instead of the superseded kind value fact.** — Carries the glossary's fact-to-field rename into part one's terms table. _(part three, amendment two)_
