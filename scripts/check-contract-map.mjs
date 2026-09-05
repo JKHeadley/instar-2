@@ -9,7 +9,7 @@ if (JSON.stringify(inventory) !== JSON.stringify(Object.keys(schemas).sort())) t
 const report = JSON.parse(readFileSync('.test-results.json', 'utf8'));
 const map = new Map();
 for (const file of report.testResults) for (const test of file.assertionResults) {
-  const ids = test.fullName.match(/\bNF-\d+\b/g) ?? [];
+  const ids = test.fullName.match(/(?<![A-Za-z0-9-])NF-\d+\b/g) ?? [];
   for (const id of ids) {
     if (!expected.has(id)) throw new Error(`test cites unknown design check ${id}`);
     const list = map.get(id) ?? []; list.push({ file: relative(process.cwd(), file.name), name: test.title, status: test.status }); map.set(id, list);
