@@ -180,13 +180,27 @@ administered recovery path; it never paints cached green.
 
 ## 5. Rule 15 while a session is live
 
-**Rule — an authenticated user always reaches a bounded responder.** Rules 14, 15, 46, 52, 64,
-77 and 95; **checks: P11-NF-33–38**. While the service is admitted, every authenticated message is
-preserved and receives, within the deployment's measured live-response bound, either the requested
-attributable response or an attributable limited response naming what is pending, blocked or
-uncertain and what owned repair is active. The responder has a reserved finite worker, storage,
-queue, transport and effect budget independent of ordinary workloads. Ordinary model, benchmark,
-projection, peer, run-owner, or business-effect failure cannot consume that reserve.
+**Rule — an authenticated user reaches a bounded responder while the minimal path is admitted.**
+Rules 14, 15, 46, 52, 64, 77 and 95; **checks: P11-NF-33–38**. Every authenticated message reaching
+an admitted intake is preserved. It receives, within the deployment's measured live-response
+bound, either the requested attributable response or an attributable limited response naming what
+is pending, blocked or uncertain and what owned repair is active **only while the dependencies in
+the next paragraph remain admitted**. Loss of that path is a measured outage with preserved work,
+not a promise that reserved capacity can replace missing authority or durability.
+
+The minimal responder's authority domain is one registered minimal-plane run under its own current
+system-principal grant, a current conversation binding, and six's current exclusive lease/fence;
+it has no authority over the ordinary run it reports on. Its required source dependencies are the
+verified local-durable minimal fact segment, current register/decoder generation, identity keys and
+clock. Its required transport dependency is the admitted conversation adapter and route capable of
+accepting intake and independently evidencing the delivery stage it declares. Its response uses
+eight's ordinary message operation and **replicated(1)** durability demand: local preparation is
+not dispatch permission until one required peer acknowledges the exact facts. The responder has a
+reserved finite worker, local storage, queue, transport and effect budget independent of ordinary
+workloads, but that reserve cannot manufacture a peer acknowledgment, current binding, lease,
+fence, key, route or decisive effect evidence. Loss of an ordinary model, benchmark, projection,
+run owner or business-effect dependency leaves the minimal path eligible for a limited response;
+loss of a required dependency named here does not.
 
 **Rule — always-reachable never means always-powerful.** Rules 28, 42, 63, 86 and 95; **checks:
 P11-NF-34/36/39**. The minimal responder may preserve, authenticate, explain recorded state,
@@ -196,14 +210,20 @@ manufacture a judgment, authorize the blocked run, or report an effect complete 
 When safe attribution itself is unavailable, it preserves the input and returns only through the
 independent recovery surface; it does not speak as the agent on guessed identity.
 
-**Rule — live reachability is measured under hostile cuts.** Rules 13, 15, 37, 60, 62 and 64;
-**checks: P11-NF-35–38**. The lifecycle workload saturates ordinary workers and queues, kills the
-current conversation worker, withdraws its lease, makes the model/effect/peer adapters unavailable,
-corrupts each non-source projection in turn, and injects messages before and during recovery. It
-records receipt-to-preservation, receipt-to-first-honest-response, stop-to-halt, queue age, reserved
-resource use and lost/duplicate replies. The finite bound published for a deployment is the worst
-successful observed sample plus its declared margin; any missed authenticated input, false answer,
-unbounded queue, or exceeded budget fails admission.
+**Rule — live reachability is measured under declared cuts.** Rules 13, 15, 37, 60, 62 and 64;
+**checks: P11-NF-35–38**. One fault class saturates ordinary workers and queues, kills the ordinary
+conversation worker, makes ordinary model/business-effect dependencies unavailable and corrupts
+each non-source projection while retaining every minimal-path prerequisite above; messages must
+still receive the bounded honest response. A second fault class removes each required minimal
+dependency, including the replication peer, lease authority and route, and requires preserved
+input, an owned outage/repair obligation, retained maximum exposure, zero replay under a fresh
+identity, and recovery once that exact prerequisite returns—never an impossible response during
+its absence. The workload records receipt-to-preservation, receipt-to-first-honest-response when
+eligible, stop-to-halt when its authority path exists, outage interval, queue age, reserved resource
+use and lost/duplicate replies. The finite bound applies only to samples whose declared minimal
+prerequisites held. Any lost accepted input, false answer, unbounded queue, replay, or exceeded
+budget fails admission; dependency downtime is reported separately and cannot be omitted from
+availability evidence.
 
 **Value — a narrow voice is better than a counterfeit full one.** The constitution requires
 reachability and truth, not conversational elegance during failure. A limited responder should be
@@ -221,7 +241,7 @@ does not imply authority it lacks.
 |---|---|---|---|---|---|---|
 | Authorization completion | Four's request | Eleven surface; four/eight/nine validate | Exact request digest and existing authorization/decline fact; broker journal for protected change | render → verified act through intake → current exact validation → effect/broker → receipt | authority closed; diagnosis, stop and preserved request open | Eleven interaction; four authority decode; eight effect; nine broker |
 | Conversation binding | Genesis or verified operator act | Four standing resolution | Existing grant/revocation facts at causal frontier | inspect → verify → append → fold → receipt | no self-bind; conflict freezes new authority, not stop | Eleven surface act; four resolution; two conflict/replay |
-| Minimal plane | Facts from source parts and ten assembly | Live responder and operator views | Spine at stated vector; projections disposable | verify/replay → compare → admit scope → serve/repair | mutation closed on stale; intake/explanation/stop toward reachability | Eleven admission/live posture; source owners close their facts; ten wiring |
+| Minimal plane | Facts from source parts and ten assembly | Live responder and operator views | Spine at stated vector; projections disposable | verify/replay → compare → admit scope/dependencies → preserve → replicate(1) → serve/repair | mutation closed on stale; accepted intake preserved; response requires the declared minimal path | Eleven admission/live posture; source owners close their facts; ten wiring |
 | Vertical slice | Four → five → seven → eight → nine | Ten assembly and acceptance harness | Causally linked facts plus independent delivery evidence | preserve/authenticate → run → judgment → response effect → verify → rebuild | affected effect closed; accepted input and owned repair remain live | each part its transition; eleven whole-slice verdict |
 
 **Rule — four shared traces have one answer.** Rules 24, 26, 31, 33, 42, 63 and 68;
@@ -251,24 +271,53 @@ standing resolution; after run creation; after grounding; after judgment request
 dispatch and recorded resolution; after outbound operation preparation, claim, external send and
 settlement; after delivery evidence; and before each projection rebuild. Each restart begins from
 the executable assembly's public boot path, not a test-only recovery helper. A deterministic kill
-schedule enumerates every adjacent pair and records which cut actually fired. One uninterrupted
-control run and every cut run converge at the same causal vector to canonical projection bytes and
-the same externally observed single message.
+schedule enumerates every adjacent pair and records which cut actually fired.
 
-**Rule — success is factual and bounded.** **Checks: P11-NF-45–50**. Passing requires: one admitted
+**Within each execution**, reconstruction takes that execution's actual admitted facts at one
+pinned vector and compares canonical projection bytes across a clean genesis rebuild, checkpoint
+rebuild and every supported implementation. It preserves that execution's clock readings,
+incarnations, recovery facts, attempts, costs and model output; it never normalizes real history to
+look like the control. **Across the uninterrupted control and cut executions**, comparison uses a
+semantic acceptance predicate: input preserved; logical intake, run, judgment and outbound
+operation identities stable through takeover within that execution; every obligation in an allowed
+terminal or owned-pending disposition; evidence truthful to its source and stage; exposure retained;
+and at most one external application per semantic outbound identity. Reply content need not equal a
+separate control execution's model output. Once one execution has durably prepared an immutable
+outbound payload, recovery of that same execution must use its exact payload digest or refuse a
+conflicting replacement.
+
+**Rule — success and uncertainty are factual and bounded.** **Checks: P11-NF-45–50**. The positive
+slice names an adapter whose stable semantic operation key survives takeover, whose query/receipt
+can prove application or decisive non-occurrence, whose delayed executions have a declared finite
+quiescence observation, and whose final charge becomes observable. Its replication peer, lease
+authority, route, identity source and evidence service eventually recover within the fixture's
+declared finite recovery window. Under those prerequisites, passing requires: one admitted
 input; one durable run identity; one accepted judgment resolution with complete capture/meter
 references; no action outside its floor; one attributable outbound operation; no more than one
 externally observed reply for the semantic message identity; delivery proved only to the adapter's
-declared stage; no open ownerless obligation; identical rebuild bytes; and recorded duration,
-memory, tokens, money, attempts and notification counts inside declared finite bounds. Refusal and
-uncertainty fixtures are separate required neighbors and must remain honest, not be coerced green.
+declared stage; no open ownerless obligation; within-execution rebuild equality; the across-run
+semantic predicate above; and recorded duration, memory, tokens, money, attempts and notification
+counts inside declared finite bounds.
+
+For a cut after model or send dispatch-claim where the adapter cannot provide decisive application,
+non-occurrence, quiescence or final-charge evidence, the required result is not success: the same
+logical operation remains owned and uncertain, its maximum execution and charge exposure remains
+reserved, no new semantic key/provider/route is invoked, and every projection rebuild reproduces
+that pending state. Later evidence may settle it through six/eight/nine's existing contract. A
+permanently opaque adapter remains uncertain indefinitely. Refusal and uncertainty are required
+neighbors, never failures coerced green or permission to weaken six's or eight's rules.
 
 **Rule — the fixture uses the real assembly.** Rules 30, 37, 62, 69, 105 and 115; **checks:
 P11-NF-43/49/51**. Part ten's executable assembly supplies real persistence, intake, run, lease,
 judgment, effect, verification, surface and harness ports with non-null wiring evidence. Test
 credentials and probe resources are isolated; a real platform witness observes delivery. A mock
 provider may be a unit control but cannot satisfy the live slice. Unsupported adapter evidence is
-reported as partial and cannot be promoted by the surface.
+reported as partial and cannot be promoted by the surface. Part ten must realize the minimal
+authority domain and every named source/transport/effect dependency above, enforce replicated(1)
+before reply dispatch, expose dependency admission and outage state, supply the adapter evidence
+and eventual-recovery controls used by the positive slice, and prove the owned-uncertain/retained-
+exposure/zero-replay outcome for opaque cuts. Eleven supplies these acceptance requirements; ten
+must not invent weaker substitutes or a private recovery path.
 
 **Value — the first slice is deliberately boring.** Its reply may be a harmless paraphrase or
 classification whose outcome can be observed without a risky side effect. The value is proof of
@@ -284,7 +333,7 @@ durable attributable agency, not product breadth.
 | Property | Automatic workload and measurement | Bar and failure action |
 |---|---|---|
 | Genesis replay | delete views/checkpoints; cold/warm full replay over release corpus on each deployment class | measured maximum plus declared margin fits startup budget; divergence or overrun blocks admission |
-| Live reachability | saturate ordinary resources and cut each non-minimal dependency while sending authenticated messages/stops | zero lost input/false success; worst observed response/stop time plus margin becomes finite published bound |
+| Live reachability | saturate ordinary resources; separately cut non-minimal and required minimal dependencies while sending authenticated messages/stops | bounded response while prerequisites hold; otherwise preserved owned outage with zero replay; availability and dependency downtime reported separately |
 | Surface integrity | mutate rendering, digest, base, scope, identity, challenge and broker availability at each confirmation cut | zero unauthorized effective acts; protected mutation closes while diagnosis and stop stay live |
 | Mobile completion | supported phone viewport, keyboard and assistive navigation through every operator action | every action completes without terminal/desktop; hidden or unreachable primary action fails |
 | Delivery uniqueness | kill around send, lose receipt, duplicate callback and expire caches | one external semantic reply maximum; uncertainty never triggers a fresh identity |
@@ -339,22 +388,22 @@ plane is called live from screenshots, mocks, configured routes, self-report or 
 | P11-NF-30 | fault | Failed/timeout sample omitted from bound; release admission fails honestly |
 | P11-NF-31 | load | Replay memory/time exceeds finite budget unnoticed; measured defect blocks admission |
 | P11-NF-32 | fault | Corrupt non-source view takes down all intake/stop; scoped rebuild path passes |
-| P11-NF-33 | integration | Authenticated input lost while ordinary owner is dead; reserved responder preserves it |
+| P11-NF-33 | integration | Authenticated input lost while ordinary owner is dead; admitted minimal authority/path preserves and serves it |
 | P11-NF-34 | security | Limited responder borrows stale authority or claims completion; honest narrow response passes |
-| P11-NF-35 | load | Ordinary saturation consumes reachability reserve; separate finite reserve passes |
-| P11-NF-36 | fault | Non-minimal dependency outage silences all response; labelled limited response passes |
-| P11-NF-37 | timing | Configured SLA or successful-only percentile called measured; worst complete sample plus margin passes |
-| P11-NF-38 | lifecycle | Message/stop misses published bound; admission/live claim fails and repair remains owned |
+| P11-NF-35 | load | Ordinary saturation consumes reachability reserve, or reserve is claimed to replace missing lease/peer/durability; separate finite reserve with explicit prerequisites passes |
+| P11-NF-36 | fault | Non-minimal outage silences an admitted minimal path, or minimal-path outage promises a reply; limited response versus preserved owned outage follows the dependency split |
+| P11-NF-37 | timing | Configured SLA, successful-only percentile or dependency downtime hidden in response bound; eligible worst sample plus margin and separate availability record pass |
+| P11-NF-38 | lifecycle | Eligible message/stop misses bound, or ineligible path loses input/replays; scoped admission failure and owned recovery pass |
 | P11-NF-39 | security | Unknown identity speaks as agent; preservation and independent recovery pass |
 | P11-NF-40 | build | Seam misses producer/consumer/record/order/direction/owner; complete row passes |
 | P11-NF-41 | integration | Shared seam implementations disagree on identity/order/closure; joint contract passes |
 | P11-NF-42 | fault | Any shared trace retries, duplicates, revives or authorizes incorrectly; required trace result passes |
 | P11-NF-43 | e2e | Slice uses test-only boot/private port/null adapter; production public assembly passes |
 | P11-NF-44 | fault | Kill schedule skips an adjacent durable boundary; complete recorded schedule passes |
-| P11-NF-45 | lifecycle | Cut run changes canonical result or external message count; equal-vector convergence passes |
+| P11-NF-45 | lifecycle | Rebuilds of one run diverge at equal vector, or separate runs are forced byte-identical; within-run equality plus across-run semantic predicate passes |
 | P11-NF-46 | integration | Judgment exceeds floor or loses capture/meter reference; bounded complete record passes |
 | P11-NF-47 | lifecycle | Relay ack labeled verified delivery; declared-stage independent witness passes |
-| P11-NF-48 | rebuild | Open ownerless obligation or missing fact disappears from view; honest pending state passes |
+| P11-NF-48 | rebuild | Open ownerless obligation, uncertain exposure or missing fact disappears from view; honest pending state with retained maximum charge/application exposure passes |
 | P11-NF-49 | wiring/e2e | Any required port is null/no-op or bypassed; real delegation evidence passes |
 | P11-NF-50 | accounting | Duration/memory/token/money/attempt count missing or beyond cap; complete bounded sample passes |
 | P11-NF-51 | live | Mock/canned provider or synthetic delivery satisfies production slice; real bounded call/witness passes |
