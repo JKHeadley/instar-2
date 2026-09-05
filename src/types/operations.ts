@@ -60,9 +60,9 @@ export function compare<N extends keyof T.Inventory>(type: N, left: T.Inventory[
 }
 // Internal historical comparison; not exported by the package and requires a private session.
 export function compareHistorical<N extends keyof T.Inventory>(type: N, left: T.Inventory[N], right: T.Inventory[N],
-  subject: T.Scope, context: DecodeContext): T.Result<boolean | T.Conflict> {
+  subject: T.Scope, context: DecodeContext, mode: 'identity' | 'version' | 'value' = 'identity'): T.Result<boolean | T.Conflict> {
   if (!sessionFor(context)) return refusal('historical comparison requires origin validation session', context.preserved);
-  return compareImpl(type, left, right, 'identity', subject, context.preserved, context);
+  return compareImpl(type, left, right, mode, subject, context.preserved, context);
 }
 function compareImpl<N extends keyof T.Inventory>(type: N, left: T.Inventory[N], right: T.Inventory[N],
   mode: 'identity' | 'version' | 'value', subject: T.Scope, preserved: string, context?: DecodeContext): T.Result<boolean | T.Conflict> {
