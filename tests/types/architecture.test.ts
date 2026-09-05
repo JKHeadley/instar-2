@@ -23,6 +23,8 @@ const programs = Object.entries(fixtures).flatMap(([id, code]) => {
     { id, form: 'rest', code: `function bypass({ ...rest }: ${type}) { return rest; }` },
     { id, form: 'nested', code: `function bypass({ wrapped: { ${field} } }: { wrapped: ${type} }) { return ${field}; }` },
     { id, form: 'assignment', code: `declare const input: ${type}; let chosen: unknown; ({ ${field}: chosen } = input);` },
+    { id, form: 'nested-assignment', code: `declare const input: { wrapped: ${type} }; let chosen: unknown; ({ wrapped: { ${field}: chosen } } = input);` },
+    { id, form: 'tuple-assignment', code: `declare const input: [${type}]; let chosen: unknown; ([{ ${field}: chosen }] = input);` },
     { id, form: 'for-of', code: `declare const inputs: ${type}[]; for (const { ${field} } of inputs) { void ${field}; }` },
     { id, form: 'method', code: `const object = { bypass({ ${field} }: ${type}) { return ${field}; } };` },
   ];

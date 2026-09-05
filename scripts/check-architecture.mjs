@@ -28,12 +28,12 @@ export function lintProgram(program, files) {
     for (let n = node; n; n = n.parent) if (ts.isFunctionDeclaration(n) && n.name?.text === name.function) return true;
     return false;
   };
-  const tagOf = node => {
-    const t = checker.getNonNullableType(checker.getTypeAtLocation(node)); const p = t.getProperty('type');
+  const tagOf = (node, type = checker.getTypeAtLocation(node)) => {
+    const t = checker.getNonNullableType(type); const p = t.getProperty('type');
     return p ? checker.typeToString(checker.getTypeOfSymbolAtLocation(p, node)).replaceAll('"', '') : '';
   };
-  const capacityOf = node => {
-    const t = checker.getNonNullableType(checker.getTypeAtLocation(node));
+  const capacityOf = (node, type = checker.getTypeAtLocation(node)) => {
+    const t = checker.getNonNullableType(type);
     const p = t.getProperty('kind');
     const kinds = p && checker.typeToString(checker.getTypeOfSymbolAtLocation(p, node));
     return checker.typeToString(t).includes('Capacity') || kinds === '"none" | "applied"' || kinds === '"applied" | "none"';
@@ -43,16 +43,31 @@ export function lintProgram(program, files) {
     if (!targets.has(resolve(source.fileName))) continue;
     const file = source.fileName;
     const isCore = relative(process.cwd(), file).replaceAll('\\', '/').startsWith('src/');
-    const inspect = (expression, field, node) => {
-      const tag = tagOf(expression);
+    const inspect = (expression, field, node, type = checker.getTypeAtLocation(expression)) => {
+      const tag = tagOf(expression, type);
       const allowed = (path, fns) => fns.some(fn => owner(file, { file: path, function: fn }, node));
       if (tag === 'Result' && ['kind', 'value', '*'].includes(field) && !allowed('types/internal.ts', ['consumeResult']))
         add(file, node, 'NF-14', 'Result may only be inspected by consumeResult');
-      if (((tag === 'Result' && ['capacity', '*'].includes(field)) || (capacityOf(expression) && ['kind', '*'].includes(field)))
+      if (((tag === 'Result' && ['capacity', '*'].includes(field)) || (capacityOf(expression, type) && ['kind', '*'].includes(field)))
         && !allowed('types/internal.ts', ['consumeResult', 'consumeCapacity'])) add(file, node, 'NF-15', 'capacity is success data; use consumeCapacity');
       if (tag === 'Evidence' && ['claim', '*'].includes(field) && !allowed('types/operations.ts', ['readEvidence'])) add(file, node, 'NF-66', 'claim requires freshness doorway');
       if (tag === 'Outcome' && ['kind', '*'].includes(field) && !allowed('types/operations.ts', ['consumeOutcome', 'retryPermission'])) add(file, node, 'NF-46', 'Outcome requires consumption/retry doorway');
       if (tag === 'Conflict' && ['left', 'right', '*'].includes(field) && !allowed('types/operations.ts', ['resolveConflict'])) add(file, node, 'NF-69', 'Conflict side requires resolution doorway');
+    };
+    const inspectAssignment = (target, type) => {
+      if (ts.isBinaryExpression(target) && target.operatorToken.kind === ts.SyntaxKind.EqualsToken) return inspectAssignment(target.left, type);
+      if (ts.isObjectLiteralExpression(target)) for (const property of target.properties) {
+        const key = property.name;
+        const field = key && (ts.isIdentifier(key) || ts.isStringLiteral(key)) ? key.text : '*';
+        inspect(target, field, property, type);
+        const member = checker.getPropertyOfType(checker.getNonNullableType(type), field);
+        if (member && ts.isPropertyAssignment(property)) inspectAssignment(property.initializer, checker.getTypeOfSymbolAtLocation(member, property));
+      }
+      if (ts.isArrayLiteralExpression(target)) for (const [index, element] of target.elements.entries()) {
+        const member = checker.getPropertyOfType(type, String(index));
+        const elementType = member ? checker.getTypeOfSymbolAtLocation(member, element) : checker.getIndexTypeOfType(type, ts.IndexKind.Number);
+        if (elementType) inspectAssignment(element, elementType);
+      }
     };
     const visit = node => {
       if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
@@ -75,12 +90,8 @@ export function lintProgram(program, files) {
           inspect(node, element.dotDotDotToken ? '*' : ts.isIdentifier(key) || ts.isStringLiteral(key) ? key.text : '*', element);
         }
       }
-      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isObjectLiteralExpression(node.left)) {
-        for (const property of node.left.properties) {
-          const key = property.name;
-          inspect(node.right, key && (ts.isIdentifier(key) || ts.isStringLiteral(key)) ? key.text : '*', property);
-        }
-      }
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken)
+        inspectAssignment(node.left, checker.getTypeAtLocation(node.right));
       ts.forEachChild(node, visit);
     };
     visit(source);
