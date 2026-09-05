@@ -15,9 +15,11 @@ describe('source and shape wiring', () => {
   it('P3-NF-04 missing declaration argument and open construction fail TypeScript', () => {
     const source = "import { constructGoverned } from './src/register/index.js'; import type { Declaration } from './src/register/index.js'; constructGoverned(); const forged: Declaration = { type: 'Declaration', schemaVersion: 1 };";
     const program = createProgram({ 'register-negative.ts': source });
-    const diagnostics = program.getSemanticDiagnostics().filter(d => d.file?.fileName.endsWith('register-negative.ts'));
+    const file = program.getSourceFiles().find(f => f.fileName.endsWith('register-negative.ts'));
+    expect(file).toBeDefined();
+    const diagnostics = program.getSemanticDiagnostics(file);
     expect(diagnostics.some(d => d.code === 2554)).toBe(true); expect(diagnostics.some(d => d.code === 2322)).toBe(true);
-  });
+  }, 30_000); // A real compiler invocation, not a five-second runtime-latency assertion.
   it('P3-NF-09 kind validation consumes generated shape instead of independent constants', () => {
     const s = setup(); const raw = shapeInput(); const canonicalShape = value(decodeShape(raw, s.context));
     expect(value(verifyGenerated(canonicalShape, s.context.shape, s.context))).toBe(true);
