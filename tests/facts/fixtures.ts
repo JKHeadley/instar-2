@@ -23,8 +23,8 @@ export function factsFixture() {
   const f = fixture();
   const c = { site: 'facts.admit', preserved: 'refusal:metadata', register: { ...f.ctx.register, entries: [...f.ctx.register.entries, 'facts.admit'], sites: { ...f.ctx.register.sites, 'facts.admit': 'closed' as const },
     keys: { ...f.ctx.register.keys,
-      'machine-a-key': { algorithm: 'ed25519' as const, publicKey, methods: ['fact-envelope'], adapters: ['host'] },
-      'machine-b-key': { algorithm: 'ed25519' as const, publicKey: secondPublicKey, methods: ['fact-envelope'], adapters: ['host'] } } } };
+      'machine-a-key': { algorithm: 'ed25519' as const, owner: 'machine-a', publicKey, methods: ['fact-envelope'], adapters: ['host'] },
+      'machine-b-key': { algorithm: 'ed25519' as const, owner: 'machine-b', publicKey: secondPublicKey, methods: ['fact-envelope'], adapters: ['host'] } } } };
   const schema: FactSchema = { kind: 'note', version: 1, fields: { identity: { kind: 'text', maxLength: 80 }, amount: { kind: 'exact', unit: 'minor' } }, machineScope: 'shared', standing: 'requester', action: 'work', scope: f.scope, causallyBound: false, requiredReferences: [], authority: 'none' };
   const ctx: FactContext = { site: c.site, preserved: c.preserved, decode: { ...f.ctx, register: c.register },
     schemas: [schema], keys: ['machine-a', 'machine-b'].map(machine => ({ id: `${machine}-key`, machine, publicKey: machine === 'machine-a' ? publicKey : secondPublicKey, from: { epoch: 0, position: 0 } })),

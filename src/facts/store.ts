@@ -6,6 +6,7 @@ import { causalStanding, decodeBody, extendsChain, validateRepair, validateSchem
 import { decodeEnvelope, factId, genesisHash, signEnvelope } from './envelope.js';
 import type { AuthorityTaint, CausalFrontier, ConflictClass, DurabilityState, FactContext, FactEnvelope } from './contracts.js';
 import { contextBoundary } from './contracts.js';
+import { decodeHistoricalBody } from './historical.js';
 
 export interface SegmentStoragePort {
   readonly owner: 'part-ten';
@@ -15,7 +16,7 @@ export interface SegmentStoragePort {
 }
 export interface AppendReceipt { readonly fact: FactEnvelope; readonly durability: DurabilityState; readonly taint: readonly AuthorityTaint[] }
 export interface FactStorePort {
-  append(input: unknown): Result<AppendReceipt>;
+  append(input: unknown, replication?: { readonly peer: string }): Result<AppendReceipt>;
   read(): Result<readonly FactEnvelope[]>;
 }
 export function createFactStore(context: FactContext, storage: SegmentStoragePort): FactStorePort {
@@ -24,23 +25,30 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
     const facts: FactEnvelope[] = [];
     for (const input of storage.read()) {
       const at = { ...context, facts: [...context.facts, ...facts] };
-      const fact = take(decodeEnvelope(input, at)); extendsChain(fact, at); facts.push(fact);
+      const fact = take(decodeEnvelope(input, at, 'replication')); extendsChain(fact, at); facts.push(fact);
     }
     return facts;
   });
   return Object.freeze({ read,
-    append(input: unknown): Result<AppendReceipt> {
+    append(input: unknown, replication?: { readonly peer: string }): Result<AppendReceipt> {
       return boundary('FactStoreAppend', input, c, safe => {
         requireFact(storage.owner === 'part-ten', 'storage adapter owner mismatch');
         take(validateSchemas(context.schemas, context));
         const persisted = take(read()), at = { ...context, facts: [...context.facts, ...persisted] };
-        const fact = take(decodeEnvelope(safe, at)); extendsChain(fact, at);
-        const standing = causalStanding(fact, at, true);
-        take(decodeBody(fact, at, standing.decode)); validateRepair(fact, at);
+        const fact = take(decodeEnvelope(safe, at, replication ? 'replication' : 'origin'));
+        if (replication) requireFact(fact.machine === replication.peer, 'peer delivered segment it does not own', 'integrity');
+        const duplicate = replication && persisted.find(f => f.id === fact.id);
+        if (duplicate) requireFact(encoding(duplicate).bytes === encoding(safe).bytes, 'duplicate id changed bytes', 'integrity');
+        else extendsChain(fact, at);
+        const standing = causalStanding(fact, at, !replication);
+        const bodyTaint = replication ? take(decodeHistoricalBody(fact, at, standing.decode)).taint
+          : (take(decodeBody(fact, at, standing.decode)), []);
+        validateRepair(fact, at);
+        if (duplicate) return { fact: duplicate, durability: { kind: 'local-durable' as const }, taint: [...new Set([...standing.taint, ...bodyTaint])] };
         const receipt = take(storage.append(encoding(safe).bytes, persisted.at(-1)?.contentHash ?? null));
         requireFact(receipt.kind === 'local-durable' || receipt.kind === 'replicated', 'storage returned no durability receipt', 'integrity');
         if (receipt.kind === 'replicated') requireFact(receipt.n > 0 && receipt.n === new Set(receipt.peers).size && receipt.peers.length === receipt.n && !receipt.peers.includes(fact.machine), 'invalid peer acknowledgement count');
-        return { fact, durability: receipt, taint: standing.taint };
+        return { fact, durability: receipt, taint: [...new Set([...standing.taint, ...bodyTaint])] };
       });
     },
   });
@@ -69,7 +77,7 @@ export function verifyAndAdmit(input: unknown, peer: string, context: FactContex
     if (existing) { requireFact(encoding(existing).bytes === encoding(safe).bytes, 'duplicate id changed bytes', 'integrity'); return existing; }
     const fact = take(decodeEnvelope(safe, context, 'replication'));
     extendsChain(fact, context); const standing = causalStanding(fact, context, false);
-    take(decodeBody(fact, context, standing.decode)); return fact;
+    take(decodeHistoricalBody(fact, context, standing.decode)); validateRepair(fact, context); return fact;
   });
 }
 export function reconcileAuthority(fact: FactEnvelope, context: FactContext, horizon: CausalFrontier): { taint: readonly AuthorityTaint[]; conflicts: readonly ConflictClass[] } {

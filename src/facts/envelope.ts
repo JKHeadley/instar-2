@@ -1,6 +1,6 @@
 // P2-NF-01..24, 64, 69: canonical integrity precedes body migration and authority.
 import { sign, verify, createHash } from 'node:crypto';
-import { decode, readHistorical } from '../index.js';
+import { decode, decodeMeasurement, readHistorical } from '../index.js';
 import type { Clock, Hash, HistoricalShape, Json, Provenance, Result, VerifiedPrincipal } from '../index.js';
 import { boundary, encoding, fields, integer, object, requireFact, same, string, strings, take } from './boundary.js';
 import type { CausalFrontier, FactContext, FactEnvelope, FactSchema, LineagePosition, Predecessors, SegmentPosition } from './contracts.js';
@@ -60,10 +60,7 @@ export function decodeFrame(input: unknown, context: FactContext) {
     requireFact(v.type === 'FactEnvelope' && v.envelopeVersion === 1, 'unknown envelope type/version');
     const id = string(v.id, 'id'), kind = string(v.kind, 'kind'), version = integer(v.schemaVersion, 'schemaVersion', 1);
     const machine = string(v.machine, 'machine');
-    const atValue = take(decode('Measurement', v.at, context.decode));
-    requireFact(atValue.subject.kind === 'clock', 'at must be a clock');
-    // Narrow the clock through its generic decoder contract; no principal/provenance is cast.
-    const at = atValue as Clock;
+    const at = take(decodeMeasurement('clock', v.at, context.decode));
     const foldKeyInstant = clockKey(at); requireFact(v.foldKeyInstant === foldKeyInstant, 'fold-key bytes disagree with clock measurement');
     const s = object(v.segment ?? null); fields(s, ['machine', 'epoch', 'position']);
     const segment = { machine: string(s.machine, 'segment.machine'), epoch: integer(s.epoch, 'epoch'), position: integer(s.position, 'position') };
@@ -98,12 +95,12 @@ export function decodeEnvelope(input: unknown, context: FactContext, mode: 'orig
       principal = decoded; provenance = pinned;
     } else {
       const bytes = encoding(raw).bytes, reference = `origin:${id}`;
-      const pin = { origin: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id }, capture: { reference, hash: hashBytes(bytes) }, machineKeyId: checked.keyId, signature, path: ['principal'] };
-      // G1: this seam fails closed with P1 3f688bf: readHistorical signs raw bytes, while
-      // this contract signs contentHash. Do not add a second signature or cast to live authority.
-      const historical = take(readHistorical('VerifiedPrincipal', principalInput, pin, { ...context.decode, captures: { ...context.decode.captures, [reference]: bytes } }));
-      principal = historical.view; provenance = historical.view.provenance;
-      requireFact(same(provenance, provenanceInput), 'origin provenance mismatch', 'integrity');
+      const pin = { origin: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id }, capture: { reference, hash: hashBytes(bytes) }, machineKeyId: checked.keyId, path: ['principal'] };
+      const historicalContext = { ...context.decode, captures: { ...context.decode.captures, [reference]: bytes } };
+      // Identity evidence and action evidence may be different captures of the same actor.
+      principal = take(readHistorical('VerifiedPrincipal', principalInput, pin, historicalContext)).view;
+      provenance = take(readHistorical('Provenance', provenanceInput, { ...pin, path: ['provenance'] }, historicalContext)).view;
+      requireFact(provenance.authenticated.principal.id === principal.id && provenance.authenticated.principal.kind === principal.kind, 'origin actor mismatch', 'integrity');
     }
     return { ...base, principal, provenance } as FactEnvelope;
   });

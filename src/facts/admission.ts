@@ -148,7 +148,7 @@ export function decodeBody(fact: FactEnvelope, context: FactContext, decoderCont
   });
 }
 
-function migrateBody(fact: FactEnvelope, context: FactContext, body: Json): { body: Json; version: number } {
+export function migrateBody(fact: FactEnvelope, context: FactContext, body: Json): { body: Json; version: number } {
   const schemas = context.schemas.filter(s => s.kind === fact.kind);
   const current = Math.max(...schemas.map(s => s.version));
   const versions = Object.fromEntries(schemas.map(s => [s.version, { validate: (input: Json) => {

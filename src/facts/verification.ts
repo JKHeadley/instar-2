@@ -26,7 +26,7 @@ export function verifyHistory(input: readonly unknown[], context: FactContext, m
         start = index + 1; marks[machine] = watermark;
       }
       for (let i = start; i < records.length; i++) {
-        const fact = take(decodeEnvelope(records[i], context));
+        const fact = take(decodeEnvelope(records[i], context, 'replication'));
         const previous = records[i - 1];
         if (previous) {
           const position = object(previous.segment!);

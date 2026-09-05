@@ -13,3 +13,5 @@ export { verifyHistory, compromisedKeyConflicts } from './verification.js';
 export type { VerifiedWatermark } from './verification.js';
 export { receiveReplication } from './replication.js';
 export type { ReplicationReceipt } from './replication.js';
+export { decodeHistoricalBody } from './historical.js';
+export type { HistoricalBody } from './historical.js';

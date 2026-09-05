@@ -72,4 +72,19 @@ it('P2-NF-62 replication duplicate is idempotent and altered duplicate refuses w
   refused(verifyAndAdmit({ ...a, body: { tampered: true } }, 'machine-a', ctx), 'changed bytes'); expect(JSON.stringify(ctx.facts)).toBe(before);
 });
 it.skip('P2-NF-63 SKIPPED: part eight owns irreversible-effect durability admission; only typed storage receipts exist in part two', () => {});
+it('P2-NF-62 replication durably appends through the sole write port, preserving receiver bytes across duplicate and rejected deliveries', () => {
+  const f = diskFixture(); try {
+    const receiver = createFactStore({ ...f.ctx, decode: { ...f.ctx.decode, principals: [], grants: [], authorizations: [] } }, f.storage);
+    const first = f.fact();
+    expect(value(receiver.append(first, { peer: 'machine-a' })).durability.kind).toBe('local-durable');
+    const before = readFileSync(f.path, 'utf8');
+    expect(value(receiver.append(first, { peer: 'machine-a' })).fact.id).toBe(first.id);
+    refused(receiver.append({ ...first, body: { changed: true } }, { peer: 'machine-a' }), 'hash mismatch');
+    refused(receiver.append(f.next(first), { peer: 'machine-b' }), 'does not own');
+    expect(readFileSync(f.path, 'utf8')).toBe(before);
+    value(receiver.append(f.next(first), { peer: 'machine-a' }));
+    expect(value(receiver.read())).toHaveLength(2);
+    expect(readFileSync(f.path, 'utf8').startsWith(before)).toBe(true);
+  } finally { f.cleanup(); }
+});
 it.skip('P2-NF-73 SKIPPED: part eight owns blocking irreversible effects on provisional authority; part two emits and tests taint but does not dispatch effects', () => {});
