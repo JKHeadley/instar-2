@@ -5,10 +5,13 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { build } from '../../scripts/build-register.mjs';
 import { defineDecoder, decode } from '../../src/index.js';
-import { decode as emittedDecode } from '../../dist/index.js';
 import { generationOf, decodeGenerationRecord } from '../../src/register/index.js';
 import type { FactReference, RegisterContext } from '../../src/register/index.js';
 import { setup, value, json, hash } from '../register/fixtures.js';
+// Emitted runtime is available when tests execute (after build), but a fresh
+// checkout must be typecheckable before dist exists.
+const emittedModule = '../../dist/index.js';
+const { decode: emittedDecode } = await import(emittedModule) as typeof import('../../src/index.js');
 
 describe('compiled register build adapter lifecycle', () => {
   it('P3-NF-21 P3-NF-22 P3-NF-23 P3-NF-24 R1 normal extract and completion workflows invoke the provider and full graph ladder', () => {
