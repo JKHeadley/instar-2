@@ -30,7 +30,9 @@ are explicit inputs. Every schema is shared across machines.
   `decodeMeasurement(expectedSubject, input, context)` checks that subject at runtime and
   preserves it in the return type. A decoded `clock` feeds time APIs without casts. Generic
   inventory reads remain unrefined; `compareMeasurements` rejects their broad string subject
-  at compile time until the caller uses the checked producer with a known subject.
+  or union subject at compile time until the caller uses the checked producer with one
+  known subject. An ordinary union-typed parser is allowed to decode, but its output cannot
+  prove two operands have the same subject. Runtime mismatch refusal still protects JS calls.
 - Scope inclusion uses explicit registered member sets; it never infers containment from a
   path spelling or expands an artifact glob into wider authority. Providers resolve their
   governed sets before supplying them. The organization scope contains all other scopes.
@@ -92,6 +94,22 @@ structural inputs below. Neither input ports nor historical wrappers add an inve
    not a usable claim: `readHistoricalEvidence` requires available dependencies and freshness.
    Dependencies propagate their unavailable taint. Neither the wrapper nor its view can
    supply live authority, even through a cast; historical validation never live-issues them.
+   Historical bodies retain their OWN temporal invariants: a grant must be live at an
+   Authorization's `at`, a Directive/delegated grant's `issuedAt`, and a Revocation's `at`.
+   These checks compose with (never substitute) liveness at `context.now`, the originating
+   fact's P2-selected causal clock. All revocations supplied in that selected cone are
+   causally effective regardless of their testimony timestamps. The containing/appending
+   fact's principal/scope/action admission remains a separate P2 check; replaying an earlier
+   body's original validation must use that body's originating context, not receiver state.
+   `historicalGrantLiveness(grantRead, revocationReads, causalClock, preserved)` is the public
+   historical-only standing consumer. It returns `Result<GrantLiveness>` with the existing
+   live/revoked/expired/not-yet-live labels, not a constitutional value or authority token.
+   Only genuine origin-verified wrappers and an explicitly decoded Clock are accepted.
+   P2 supplies only the relevant causal cone, never the receiver's wider history. Revocations
+   in that cone apply by ancestry even when their `at` is later than the causal clock.
+   Unavailable dependencies refuse with evidence-unavailable detail (integrity), rather than
+   producing untainted standing from missing captures. This is a conservative consumption
+   choice; it does not discard the already reconstructed historical record.
 5. `defineDecoder` registers a later part's `DecoderDefinition` as an immutable
    `VersionedDecoder`, outside the closed inventory. Names belonging to part one are refused.
    Every version needs its validator, and every prior version needs a consecutive pure
@@ -141,6 +159,26 @@ seam without inventing a constitutional schema-2. Intent origins now use receive
 machine, correcting the former unspecified-origin fallback. The Conflict golden hash changed
 only for those corrected fixture origin values; the other 17 hashes and schema layouts did not.
 Independent desk review still owns the convergence verdict.
+
+## Desk repair round two (base f578166)
+
+N1 is repaired by separating body-time and causal checks in one shared grant predicate;
+the live evaluator's timestamp semantics are unchanged. NF-39 varies Authorization body
+times 99/100/104/105/106 against a grant valid in [100,105), holding the causal clock at 100,
+and repeats the matrix in a fresh public-package process. Independently invalid causal
+clocks and an in-cone revocation timestamped in the future still refuse. NF-06 audits the
+same boundaries for delegated grants, Directives and Revocations.
+
+R4.1's ordinary union parser now compiles on its own, but only the comparison gets a compiler
+diagnostic. Singleton producer, same-subject, and decoded-Clock positives remain cast-free.
+Union right operands and explicit union generic parameters are tested as well.
+
+The historical-only liveness consumer closes the P1 API absence recorded by lane two.
+Unit tests check all status boundaries, forged wrappers, unrelated/out-of-cone revocations,
+and unavailable grant/revocation dependencies. Integration tests consume a historical
+grant → approval → revocation chain and verify no live issuance; a fresh Node process
+reconstructs and evaluates the same public wrappers. P2 still owns cone selection,
+appender admission and integration of this consumer; no lane-two files were changed.
 
 ## Side effects and undo
 
