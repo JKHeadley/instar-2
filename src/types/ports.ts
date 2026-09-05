@@ -12,6 +12,7 @@ export type JudgmentRequestReference = OwnedReference<'part-seven', 'JudgmentReq
 export type RegisteredKeyInput = Readonly<{
   readonly methods: readonly string[];
   readonly adapters: readonly string[];
+  readonly owner?: string;
 }> & (Readonly<{ algorithm: 'ed25519'; publicKey: string }> | Readonly<{ algorithm: 'hmac-sha256'; verificationKey: Uint8Array }>);
 export type AuthenticationEvidenceInput =
   | Readonly<{ kind: 'signature'; keyId: string; signature: string }>
@@ -47,6 +48,9 @@ export interface DecodeContext {
   // The adapter stores input/captures before invoking the pure decoder.
   readonly preserved: string;
   readonly captures: Readonly<Record<string, string>>;
+  // Admission supplies these from its scoped causal records, independently of a Conflict body.
+  // Keys are canonical hashes of constitutional records that have no intrinsic Scope.
+  readonly recordSubjects?: Readonly<Record<string, Scope>>;
   readonly provenance?: Provenance;
   readonly principals?: readonly VerifiedPrincipal[];
   readonly grants?: readonly StandingGrant[];

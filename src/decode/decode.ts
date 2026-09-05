@@ -2,10 +2,11 @@
 import { createHmac, timingSafeEqual, verify } from 'node:crypto';
 import type * as T from '../types/values.js';
 import type { DecodeContext } from '../types/ports.js';
-import { seal, success, trusted } from '../types/internal.js';
+import { bindRecordSubject, seal, success, trusted } from '../types/internal.js';
 import { canonicalText, hashText, snapshot } from './canonical.js';
 import { schemaRegistry } from './schema.js';
 import { runBoundary } from './framework.js';
+import { authorityTime, childContext, sealInContext, sessionFor, trustedIn } from './session.js';
 
 type Obj = Record<string, T.Json>;
 function requireThat(condition: unknown, detail: string): asserts condition {
@@ -47,6 +48,13 @@ function action(v: unknown, c: DecodeContext): string {
 function hash(v: unknown, c: DecodeContext, path: string, reference?: string): T.Hash {
   const s = text(v, path); requireThat(/^sha256:[a-f0-9]{64}$/.test(s), `${path}: malformed SHA-256 hash`);
   const bytes = c.captures[reference ?? s];
+  const historical = sessionFor(c);
+  if (historical) {
+    const key = reference ?? s;
+    const status = historical.statuses[key] ?? (typeof bytes === 'string' ? 'available' : 'missing');
+    if (typeof bytes === 'string') requireThat(hashText(bytes) === s, `${path}: capture hash mismatch`);
+    if (status !== 'available') { historical.unavailable.set(key, { reference: key, hash: s as T.Hash, status }); return s as T.Hash; }
+  }
   requireThat(typeof bytes === 'string' && hashText(bytes) === s, `${path}: capture absent or hash mismatch`); return s as T.Hash;
 }
 function clock(v: unknown, c: DecodeContext): T.Clock {
@@ -56,7 +64,7 @@ function measurement(v: Obj, c: DecodeContext, expected?: string): T.Measurement
   tagged(v, 'Measurement', ['subject', 'value', 'unit', 'at', 'by']);
   const s = obj(v.subject, 'subject'); fields(s, ['kind', 'instance']);
   const kind = text(s.kind, 'subject.kind'); text(s.instance, 'subject.instance');
-  requireThat(!expected || kind === expected, 'subject.kind: clock required');
+  requireThat(expected === undefined || kind === expected, `subject.kind: expected ${expected}`);
   const units = c.register.subjects[kind]; requireThat(units, 'subject.kind: unregistered');
   one(v.unit, units, 'unit'); number(v.value, 'value'); one(v.by, c.register.producers, 'by');
   if (kind === 'clock') { one(v.unit, ['unix-ms'], 'clock.unit'); number(v.at, 'at'); requireThat(Number.isSafeInteger(v.value) && v.at === v.value, 'clock.at must equal a safe integer sampled instant'); ref(s.instance, c, 'clock.instance'); }
@@ -65,12 +73,13 @@ function measurement(v: Obj, c: DecodeContext, expected?: string): T.Measurement
 }
 function principal(v: unknown, c: DecodeContext): T.VerifiedPrincipal {
   const raw = obj(v, 'principal');
+  if (sessionFor(c)) return decodeRecord('VerifiedPrincipal', raw, c);
   const found = c.principals?.find(p => trusted(p, 'VerifiedPrincipal') && p.id === raw.id && canonicalText(p) === canonicalText(raw));
   requireThat(found, 'principal: requires a previously decoded matching principal'); return found;
 }
 function provenance(c: DecodeContext, aboveRequester: boolean): T.Provenance {
   const p = c.provenance;
-  requireThat(trusted(p, 'Provenance'), 'provenance: missing or not produced by Provenance decoder');
+  requireThat(trustedIn(c, p, 'Provenance'), 'provenance: missing or not produced by Provenance decoder');
   requireThat(p && (!aboveRequester || p.class === 'verified'), 'provenance: verified required above requester'); return p;
 }
 function bound(v: Obj, p: T.Provenance, omitted: string[]): void {
@@ -102,15 +111,15 @@ export function grantLiveness(grant: T.StandingGrant, revocations: readonly T.Re
   return 'live';
 }
 function grantAt(c: DecodeContext, id: unknown, at: T.Clock): T.StandingGrant {
-  const g = c.grants?.find(g => g.id === id && trusted(g, 'StandingGrant'));
-  requireThat(g && grantLiveness(g, c.revocations ?? [], at) === 'live', 'standing: grant missing or not live'); return g;
+  const g = c.grants?.find(g => g.id === id && trustedIn(c, g, 'StandingGrant'));
+  requireThat(g && grantLiveness(g, c.revocations ?? [], authorityTime(c, at)) === 'live', 'standing: grant missing or not live'); return g;
 }
 function covers(g: T.StandingGrant, s: T.Scope, a: string): boolean {
   return scopeIncludes(g.scope, s) && (g.standing === 'operator' || g.actions.includes(a));
 }
 function knownEvidence(v: unknown, c: DecodeContext): string[] {
   const ids = list(v, 'evidence', true);
-  for (const id of ids) requireThat(c.evidence?.some(e => trusted(e, 'Evidence') && e.id === id), `evidence: unresolved ${id}`);
+  for (const id of ids) requireThat(c.evidence?.some(e => trustedIn(c, e, 'Evidence') && e.id === id), `evidence: unresolved ${id}`);
   return ids;
 }
 function claim(v: unknown): void {
@@ -118,10 +127,28 @@ function claim(v: unknown): void {
 }
 function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeContext): T.Inventory[N] {
   requireThat(c.register.generation.owner === 'part-three' && c.register.generation.name === 'RegisterGeneration' && c.register.generation.id, 'register generation required');
+  if (sessionFor(c)) {
+    const field = type === 'VerifiedPrincipal' ? 'provenance' : type === 'StandingGrant' || type === 'Revocation' ? 'source' : type === 'Authorization' ? 'explicitYes' : undefined;
+    if (field) c = childContext(c, { provenance: decodeRecord('Provenance', obj(v[field], field), c) });
+  }
+  const seal = <V>(record: object): V => sealInContext<V>(record, c);
   switch (type) {
     case 'Measurement': return measurement(v, c) as T.Inventory[N];
     case 'Scope': return scope(v, c) as T.Inventory[N];
     case 'Provenance': {
+      if (sessionFor(c)) {
+        tagged(v, type, ['adapter', 'method', 'record', 'verifiedAt', 'machine', 'class', 'authenticated']);
+        ref(v.adapter, c, 'adapter'); one(v.method, c.register.methods, 'method'); ref(v.machine, c, 'machine');
+        one(v.class, ['verified', 'channel-attested'], 'class');
+        const record = obj(v.record); fields(record, ['reference', 'hash']); const reference = text(record.reference, 'record.reference');
+        hash(record.hash, c, 'record.hash', reference);
+        const authenticated = obj(v.authenticated); fields(authenticated, ['principal', 'recordType', 'payload']);
+        const identity = obj(authenticated.principal); fields(identity, ['id', 'kind']); text(identity.id, 'principal.id');
+        one(identity.kind, ['person', 'agent', 'system'], 'principal.kind'); text(authenticated.recordType, 'recordType');
+        const captured = c.captures[reference];
+        if (captured !== undefined) requireThat(canonicalText(JSON.parse(captured)) === canonicalText(authenticated), 'historical authenticated record disagrees with capture');
+        return seal({ ...v, verifiedAt: clock(v.verifiedAt, c) });
+      }
       tagged(v, type, ['adapter', 'method', 'record', 'verifiedAt', 'machine', 'evidence']);
       ref(v.adapter, c, 'adapter'); one(v.method, c.register.methods, 'method'); ref(v.machine, c, 'machine');
       v.verifiedAt = clock(v.verifiedAt, c) as unknown as T.Json;
@@ -180,7 +207,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
         fields(grantor, ['kind', 'who', 'authorization']); const who = principal(grantor.who, c);
         requireThat(p.authenticated.principal.id === who.id, 'grantor: authenticated principal differs');
         requireThat(v.expiresAt !== undefined, 'expiresAt: required for principal grantor');
-        const a = c.authorizations?.find(a => a.id === grantor.authorization && trusted(a, 'Authorization'));
+        const a = c.authorizations?.find(a => a.id === grantor.authorization && trustedIn(c, a, 'Authorization'));
         requireThat(a && a.kind.kind === 'grant' && a.approver.id === who.id, 'grantor: missing delegation authorization');
         const g = grantAt(c, a.under, at);
         requireThat(g.grantee.id === who.id && scopeIncludes(g.scope, s) && scopeIncludes(a.action.scope, s), 'grantor: insufficient scope');
@@ -193,9 +220,9 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
     case 'Revocation': {
       tagged(v, type, ['id', 'grantId', 'by', 'at', 'reason', 'source']); text(v.id, 'id'); text(v.reason, 'reason');
       const p = provenance(c, true); bound(v, p, ['source']); requireThat(canonicalText(v.source) === canonicalText(p), 'source: provenance disagrees');
-      const by = principal(v.by, c); const at = clock(v.at, c); const target = c.grants?.find(g => g.id === v.grantId && trusted(g, 'StandingGrant'));
+      const by = principal(v.by, c); const at = clock(v.at, c); const target = c.grants?.find(g => g.id === v.grantId && trustedIn(c, g, 'StandingGrant'));
       requireThat(target, 'grantId: nonexistent'); requireThat(by.id === p.authenticated.principal.id, 'by: differs from provenance');
-      requireThat(c.grants?.some(g => g.grantee.id === by.id && g.standing === 'operator' && scopeIncludes(g.scope, target.scope) && grantLiveness(g, c.revocations ?? [], at) === 'live'), 'revocation: operator standing required');
+      requireThat(c.grants?.some(g => g.grantee.id === by.id && g.standing === 'operator' && scopeIncludes(g.scope, target.scope) && grantLiveness(g, c.revocations ?? [], authorityTime(c, at)) === 'live'), 'revocation: operator standing required');
       return seal({ ...v, by, at, source: p });
     }
     case 'Intent': {
@@ -208,11 +235,11 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
     case 'Directive': {
       tagged(v, type, ['id', 'principal', 'scope', 'statement', 'issuedAt'], ['supersedes', 'closedBy']); text(v.id, 'id'); text(v.statement, 'statement');
       const p = principal(v.principal, c); const s = scope(v.scope, c); const at = clock(v.issuedAt, c);
-      const grant = c.grants?.find(g => g.grantee.id === p.id && scopeIncludes(g.scope, s) && grantLiveness(g, c.revocations ?? [], at) === 'live');
+      const grant = c.grants?.find(g => g.grantee.id === p.id && scopeIncludes(g.scope, s) && grantLiveness(g, c.revocations ?? [], authorityTime(c, at)) === 'live');
       requireThat(grant, 'directive: live scoped standing required');
       if (p.provenance.class !== 'verified') {
         const b = c.binding;
-        requireThat(b && trusted(b.source, 'Provenance') && b.source.class === 'verified' && b.principalId === p.id && b.channel === p.provenance.adapter && b.grantId === grant.id && scopeIncludes(b.scope, s), 'directive: verified conversation binding required');
+        requireThat(b && trustedIn(c, b.source, 'Provenance') && b.source.class === 'verified' && b.principalId === p.id && b.channel === p.provenance.adapter && b.grantId === grant.id && scopeIncludes(b.scope, s), 'directive: verified conversation binding required');
         requireThat(canonicalText(b.source.authenticated.payload) === canonicalText({ principalId: b.principalId, channel: b.channel, grantId: b.grantId, scope: b.scope }), 'binding: fields disagree with verified record');
       }
       const seen = new Set([text(v.id, 'id')]); let next = v.supersedes;
@@ -310,6 +337,13 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
   }
 }
 
+// Expected subject is caller knowledge checked against data, never inferred from unknown bytes.
+export function decodeMeasurement<S extends string>(expectedSubject: S, input: unknown, context: DecodeContext): T.Result<T.Measurement<S>> {
+  return runBoundary(input, context, shape => {
+    text(expectedSubject, 'expected subject');
+    return success(measurement(obj(shape), context, expectedSubject) as T.Measurement<S>);
+  });
+}
 export function decode<N extends keyof T.Inventory>(type: N, input: unknown, context: DecodeContext): T.Result<T.Inventory[N]> {
   return runBoundary(input, context, (shape, original) => {
     requireThat(Object.hasOwn(schemaRegistry, type), 'type: outside constitutional inventory');
@@ -319,6 +353,11 @@ export function decode<N extends keyof T.Inventory>(type: N, input: unknown, con
       requireThat(!ds.reason || !ds.conclusion || ds.reason.value !== ds.conclusion.value, 'reason: must be separate from conclusion');
     }
     const value = decodeRecord(type, obj(shape), context);
+    const subject = context.recordSubjects?.[hashText(canonicalText(value))];
+    if (subject) {
+      requireThat(trusted(subject, 'Scope'), 'record subject context requires a decoded Scope');
+      bindRecordSubject(value, subject);
+    }
     return success(value);
   });
 }

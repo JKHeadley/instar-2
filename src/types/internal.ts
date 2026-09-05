@@ -1,13 +1,16 @@
-import type { Capacity, Refused, RefusalReason, Result, Success } from './values.js';
+import type { Capacity, Refused, RefusalReason, Result, Scope, Success } from './values.js';
 const issued = new WeakSet<object>();
+const subjects = new WeakMap<object, Scope>();
+export function bindRecordSubject(record: object, scope: Scope): void { subjects.set(record, scope); }
+export function recordSubject(record: object): Scope | undefined { return subjects.get(record); }
 // Not exported by the package. Only decoders and pure derivations may use this factory.
-export function seal<T>(value: object): T {
+export function seal<T>(value: object, live = true): T {
   function freeze(item: object): void {
     for (const child of Object.values(item)) if (child && typeof child === 'object' && !Object.isFrozen(child)) freeze(child);
     Object.freeze(item);
   }
   freeze(value);
-  issued.add(value);
+  if (live) issued.add(value);
   return value as T;
 }
 export function trusted(value: unknown, type: string): boolean {
@@ -25,4 +28,7 @@ export function refusal(detail: string, preserved: string, reason: RefusalReason
 }
 export function consumeResult<T, R>(result: Result<T>, handlers: { Success: (value: T, capacity: Capacity) => R; Refused: (refused: Refused) => R }): R {
   return result.kind === 'Success' ? handlers.Success(result.value, result.capacity) : handlers.Refused(result);
+}
+export function consumeCapacity<R>(capacity: Capacity, handlers: { none: () => R; applied: (bound: string, action: string) => R }): R {
+  return capacity.kind === 'none' ? handlers.none() : handlers.applied(capacity.bound, capacity.action);
 }

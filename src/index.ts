@@ -1,8 +1,10 @@
 export type * from './types/values.js';
 export type * from './types/ports.js';
-export { consumeResult } from './types/internal.js';
-export * from './types/operations.js';
-export { decode, grantLiveness, scopeIncludes } from './decode/decode.js';
+export { consumeResult, consumeCapacity } from './types/internal.js';
+export { compareMeasurements, isFresh, readEvidence, aggregateStrength, consumeOutcome, retryPermission, isValid,
+  authorizationRequestDigest, compare, resolveConflict, deriveProfile } from './types/operations.js';
+export type { AuthorizationValidity, ProfileExpression, ProfileTermsReadPort } from './types/operations.js';
+export { decode, decodeMeasurement, grantLiveness, scopeIncludes } from './decode/decode.js';
 export { decodeIntake } from './decode/intake.js';
 export { canonical } from './decode/canonical.js';
 export { schemas } from './decode/schema.js';

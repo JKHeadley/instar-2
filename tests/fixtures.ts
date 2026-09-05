@@ -1,5 +1,5 @@
 import { createPrivateKey, createPublicKey, createHash, sign } from 'node:crypto';
-import { canonical, compare, consumeResult, decode, authorizationRequestDigest } from '../src/index.js';
+import { canonical, compare, consumeResult, decode, decodeMeasurement, authorizationRequestDigest } from '../src/index.js';
 import type { Clock, Conflict, DecodeContext, Inventory, Provenance, Result, Scope, VerifiedPrincipal } from '../src/index.js';
 
 export const raw = <N extends keyof Inventory, F extends object>(type: N, fields: F) => ({ type, schemaVersion: 1 as const, ...fields });
@@ -21,6 +21,7 @@ export function fixture() {
   const authorizations: Inventory['Authorization'][] = [];
   const directives: Inventory['Directive'][] = [];
   const evidence: Inventory['Evidence'][] = [];
+  const recordSubjects: Record<string, Scope> = {};
   const ctx: DecodeContext = {
     register: {
       generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'generation:1' },
@@ -30,21 +31,28 @@ export function fixture() {
       actions: { work: { protected: false, repository: false }, other: { protected: false, repository: false }, merge: { protected: true, repository: true }, delegate: { protected: false, repository: false } },
       subjects: { clock: ['unix-ms'], 'detection-latency': ['ms', 's'], 'time-remaining': ['ms'] },
       sites: { 'types.decode': 'closed', delivery: 'open' },
-      keys: { host: { algorithm: 'ed25519', publicKey, methods: ['signed-envelope', 'github-review', 'github-merge', 'fact-envelope'], adapters: ['host'] } },
+      keys: { host: { algorithm: 'ed25519', publicKey, methods: ['signed-envelope', 'github-review', 'github-merge', 'fact-envelope'], adapters: ['host'], owner: 'machine-a' } },
       allowRedelegation: false,
       conflictStanding: { ordinary: 'delegate', authority: 'operator' },
     },
-    preserved: 'capture:input', captures, principals, grants, revocations, authorizations, directives, evidence,
+    preserved: 'capture:input', captures, principals, grants, revocations, authorizations, directives, evidence, recordSubjects,
   };
   const clockRaw = (at = 100, machine = 'machine-a') => raw('Measurement', { subject: { kind: 'clock', instance: machine }, value: at, unit: 'unix-ms', at, by: 'probe' });
-  const clock = (at = 100) => value(decode('Measurement', clockRaw(at), ctx)) as Clock;
+  const clock = (at = 100) => value(decodeMeasurement('clock', clockRaw(at), ctx));
   const now = clock();
   function capture(text: string, ref?: string) { const hash = captureHash(text); captures[ref ?? hash] = text; return hash; }
   function historyPin(record: unknown) {
-    const signedBytes = bytes({ id: 'fact:1', body: record });
-    return { origin: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: 'fact:1' },
-      capture: { reference: 'capture:envelope', hash: capture(signedBytes, 'capture:envelope') }, machineKeyId: 'host',
-      signature: sign(null, Buffer.from(signedBytes), privateKey).toString('hex'), path: ['body'] };
+    // P2: signature covers contentHash, which covers the as-appended canonical preimage.
+    const preimage = { type: 'FactEnvelope', schemaVersion: 1, id: 'machine-a:1:1', kind: 'constitutional-record',
+      at: now, machine: 'machine-a', principal: alice, provenance: alice.provenance,
+      segment: { machine: 'machine-a', epoch: 1, position: 1 }, prevInSegment: 'genesis:machine-a',
+      predecessors: { inSegment: null, frontier: {} }, body: record };
+    const contentHash = digest(preimage);
+    const signature = sign(null, Buffer.from(contentHash, 'utf8'), privateKey).toString('hex');
+    const signedBytes = bytes({ ...preimage, contentHash, signature });
+    return { origin: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: preimage.id },
+      capture: { reference: `capture:envelope:${contentHash}`, hash: capture(signedBytes, `capture:envelope:${contentHash}`) }, machineKeyId: 'host',
+      path: ['body'] };
   }
   function proof(payload: object, actor = { id: 'alice', kind: 'person' }, recordType = 'approval', attested = false) {
     const recordBytes = bytes({ principal: actor, recordType, payload });
@@ -87,7 +95,11 @@ export function fixture() {
   function authorize(overrides: Record<string, unknown> = {}) { const a = authInput(overrides); const result = value(decode('Authorization', a.input, a.context)); authorizations.push(result); return result; }
   const authorization = authorize();
   const directiveInput = (overrides: Record<string, unknown> = {}) => raw('Directive', { id: 'd1', principal: alice, scope, statement: 'Do the work', issuedAt: now, ...overrides });
-  const intentInput = (overrides: Record<string, unknown> = {}) => raw('Intent', { id: 'i1', principal: alice, receivedAt: now, via: 'host', raw: capture('request bytes'), ask: 'work', under: [], ...overrides });
+  const intentInput = (overrides: Record<string, unknown> = {}) => {
+    const input = raw('Intent', { id: 'i1', principal: alice, receivedAt: now, via: 'host', raw: capture('request bytes'), ask: 'work', under: [], ...overrides });
+    recordSubjects[digest(input)] = scope;
+    return input;
+  };
   const floor = value(decode('ActionFloor', raw('ActionFloor', { actions: ['work'], default: 'work' }), ctx));
   const decisionInput = (overrides: Record<string, unknown> = {}) => raw('Decision', { id: 'decision:1', at: now,
     by: { judgment: 'judgment', model: 'model', route: 'route' },

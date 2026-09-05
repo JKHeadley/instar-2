@@ -4,13 +4,20 @@ import { resolve } from 'node:path';
 import { createProgram } from '../../scripts/check-architecture.mjs';
 
 const prelude = `
-import { compare, compareMeasurements, consumeResult, grantLiveness, isFresh } from '../src/index.js';
+import { compare, compareMeasurements, consumeResult, decode, decodeMeasurement, grantLiveness, isFresh } from '../src/index.js';
 import type { Authorization, Clock, Decision, Directive, Evidence, HistoricalRead, Measurement, Provenance, Result, Scope, SecretRef, StandingGrant, UnresolvedInput, VerifiedIntent, VerifiedPrincipal } from '../src/index.js';
 type Fields<T> = Pick<T, Extract<keyof T, string>>;
 declare const principal: VerifiedPrincipal, otherPrincipal: VerifiedPrincipal, provenance: Provenance;
 declare const grant: StandingGrant, now: Clock, scope: Scope, evidence: Evidence, unresolved: UnresolvedInput;
 declare const authorization: Authorization, decision: Decision, directive: Directive;
-declare const latency: Measurement<'detection-latency'>, remaining: Measurement<'time-remaining'>;
+import { fixture } from './fixtures.js';
+const f = fixture();
+function decoded<T>(result: Result<T>): T { return consumeResult(result, { Success: v => v, Refused: r => { throw new Error(r.detail); } }); }
+const latencyInput = { type: 'Measurement', schemaVersion: 1, subject: { kind: 'detection-latency', instance: 'machine-a' }, value: 5, unit: 'ms', at: f.now, by: 'probe' };
+const remainingInput = { ...latencyInput, subject: { kind: 'time-remaining', instance: 'machine-a' } };
+const latency = decoded(decodeMeasurement('detection-latency', latencyInput, f.ctx));
+const remaining = decoded(decodeMeasurement('time-remaining', remainingInput, f.ctx));
+const decodedClock = decoded(decodeMeasurement('clock', f.clockRaw(), f.ctx));
 declare const result: Result<string>;
 declare const archived: HistoricalRead<VerifiedPrincipal>;
 declare function needsPrincipal(p: VerifiedPrincipal): void;
@@ -22,6 +29,7 @@ const cases = {
   'NF-10': ['grantLiveness(grant, []);', 'grantLiveness(grant, [], now);'],
   'NF-11': ['const x: Fields<Directive> = { ...directive, closedBy: { kind: "Expired" } };', 'const x: Fields<Directive> = { ...directive, closedBy: { kind: "Superseded", by: "next" } };'],
   'NF-19': ['compareMeasurements(latency, remaining, "capture");', 'compareMeasurements(latency, latency, "capture");'],
+  'NF-19-unrefined': ['const broad = decoded(decode("Measurement", latencyInput, f.ctx)); compareMeasurements(broad, broad, "capture");', 'grantLiveness(grant, [], decodedClock); isFresh(evidence, decodedClock);'],
   'NF-27': ['const { source, observedAt, capture, strength, ...missing } = evidence; const x: Fields<Evidence> = missing;', 'const x: Fields<Evidence> = evidence;'],
   'NF-31': ['isFresh(evidence);', 'isFresh(evidence, now);'],
   'NF-32': ['const { reason, ...missing } = decision; const x: Fields<Decision> = missing; const y: Fields<Decision> = { ...decision, reason: decision.conclusion };', 'const x: Fields<Decision> = decision;'],
