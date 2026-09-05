@@ -23,9 +23,9 @@ export function sealInContext<T>(value: object, context: DecodeContext): T {
 export function trustedIn(context: DecodeContext, value: unknown, type: string): boolean {
   return trusted(value, type) || (!!value && typeof value === 'object' && sessionFor(context)?.issued.has(value) === true && (value as { type?: unknown }).type === type);
 }
-export function authorityTime(context: DecodeContext, liveTime: Clock): Clock {
+export function causalClock(context: DecodeContext): Clock | undefined {
   const session = sessionFor(context);
-  if (!session) return liveTime;
+  if (!session) return undefined;
   if (!session.now) throw new Error('historical standing requires an explicit causal clock proof');
   return session.now;
 }

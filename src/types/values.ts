@@ -12,6 +12,7 @@ export type Measurement<S extends string = string> = Value<'Measurement'> & Read
   at: S extends 'clock' ? number : string extends S ? number | Measurement<'clock'> : Measurement<'clock'>; by: string;
 }>;
 export type Clock = Measurement<'clock'>;
+export type GrantLiveness = 'live' | 'revoked' | 'expired' | 'not-yet-live';
 export type Provenance = Value<'Provenance'> & Readonly<{
   adapter: string; method: string; record: { reference: string; hash: Hash };
   verifiedAt: Clock; machine: string; class: 'verified' | 'channel-attested';

@@ -34,6 +34,14 @@ describe('part one decoding contract', () => {
     const clock = value(decodeMeasurement('clock', f.clockRaw(), f.ctx));
     expect(grantLiveness(f.g, [], clock)).toBe('live');
     expect(value(compareMeasurements(clock, f.now, f.ctx.preserved))).toBe(0);
+    const latency = value(decodeMeasurement('detection-latency', raw('Measurement', {
+      subject: { kind: 'detection-latency', instance: 'machine-a' }, value: 5, unit: 'ms', at: f.now, by: 'probe',
+    }), f.ctx));
+    const remaining = value(decodeMeasurement('time-remaining', raw('Measurement', {
+      subject: { kind: 'time-remaining', instance: 'machine-a' }, value: 5, unit: 'ms', at: f.now, by: 'probe',
+    }), f.ctx));
+    // An untyped JavaScript consumer still meets the runtime mismatch guard.
+    rejected(Reflect.apply(compareMeasurements, undefined, [latency, remaining, f.ctx.preserved]), 'subject');
   });
   it('NF-20 measurement units match the subject registry', () => { const f = fixture(); rejected(decode('Measurement', { ...f.clockRaw(), unit: 'bananas' }, f.ctx), 'unit'); });
   it('NF-21 measurements name a registered producer', () => { const f = fixture(); for (const by of ['unknown', 'vault']) rejected(decode('Measurement', { ...f.clockRaw(), by }, f.ctx), 'by'); });

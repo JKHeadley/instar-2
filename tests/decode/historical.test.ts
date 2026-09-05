@@ -64,4 +64,50 @@ describe('origin-pinned historical principal and provenance reads', () => {
       refused(readHistoricalEvidence(record, f.now, f.ctx.preserved), 'evidence-unavailable');
     }
   });
+  for (const at of [99, 100, 104, 105, 106]) it(`NF-39 N1 historical Authorization retains its own at=${at} with causal clock 100`, () => {
+    const f = fixture(); const grant = f.grant({ id: 'limited', expiresAt: 105 });
+    const context = { register: f.ctx.register, captures: f.captures, preserved: f.ctx.preserved, now: f.now };
+    const historical = value(readHistorical('StandingGrant', grant, f.historyPin(grant), context));
+    const auth = f.authInput({ under: grant.id, at: f.clock(at) });
+    const live = decode('Authorization', auth.input, auth.context);
+    const restored = readHistorical('Authorization', clone(auth.input), f.historyPin(auth.input), { ...context, history: [historical] });
+    if (at === 100 || at === 104) {
+      expect(value(live).at.value).toBe(at); expect(value(restored).view.at.value).toBe(at);
+    } else { refused(live, 'not live'); refused(restored, 'not live'); }
+  });
+  it('NF-39 N1 causal standing remains separate from body-time validation', () => {
+    const f = fixture(); const grant = f.grant({ id: 'limited', expiresAt: 105 });
+    const context = { register: f.ctx.register, captures: f.captures, preserved: f.ctx.preserved, now: f.now };
+    const historical = value(readHistorical('StandingGrant', grant, f.historyPin(grant), context));
+    const auth = f.authInput({ under: grant.id, at: f.now }); const pin = f.historyPin(auth.input);
+    const payload = { id: 'revoke-limited', grantId: grant.id, by: f.alice, at: f.clock(104), reason: 'revoked in cone' };
+    const revocation = raw('Revocation', { ...payload, source: f.proof(payload).p });
+    const rev = value(readHistorical('Revocation', revocation, f.historyPin(revocation), { ...context, history: [historical] }));
+    // Its timestamp is later than BOTH clocks, but inclusion in the selected cone revokes.
+    refused(readHistorical('Authorization', auth.input, pin, { ...context, history: [historical, rev] }), 'not live');
+    expect(value(readHistorical('Authorization', auth.input, pin, { ...context, history: [historical] })).view.at.value).toBe(100);
+    for (const now of [99, 105, 106]) refused(readHistorical('Authorization', auth.input, pin, { ...context, history: [historical], now: f.clock(now) }), 'not live');
+    const { now: _now, ...withoutClock } = context;
+    refused(readHistorical('Authorization', auth.input, pin, { ...withoutClock, history: [historical] }), 'explicit causal clock');
+  });
+  for (const at of [99, 100, 104, 105, 106]) it(`NF-06 N1 audits Directive, Revocation and delegation body clocks at ${at}`, () => {
+    const f = fixture(); const grant = f.grant({ id: 'limited', expiresAt: 105 });
+    const context = { register: f.ctx.register, captures: f.captures, preserved: f.ctx.preserved, now: f.now };
+    const historical = value(readHistorical('StandingGrant', grant, f.historyPin(grant), context));
+    const hc = { ...context, history: [historical] };
+    const directive = f.directiveInput({ issuedAt: f.clock(at) });
+    const revPayload = { id: 'r-at', grantId: grant.id, by: f.alice, at: f.clock(at), reason: 'withdrawn' };
+    const revocation = raw('Revocation', { ...revPayload, source: f.proof(revPayload).p });
+    const delegation = f.authInput({ under: grant.id, kind: { kind: 'grant' } });
+    const authorization = value(readHistorical('Authorization', delegation.input, f.historyPin(delegation.input), hc));
+    const child = f.grantInput({ id: 'child', issuedAt: f.clock(at), expiresAt: 200,
+      grantor: { kind: 'principal', who: f.alice, authorization: delegation.input.id } }).input;
+    const results = [readHistorical('Directive', directive, f.historyPin(directive), hc),
+      readHistorical('Revocation', revocation, f.historyPin(revocation), hc),
+      readHistorical('StandingGrant', child, f.historyPin(child), { ...hc, history: [historical, authorization], currentBase: f.authorization.base, artifact: f.artifact })];
+    for (const result of results) consumeResult<unknown, void>(result, {
+      Success: () => expect(at === 100 || at === 104).toBe(true),
+      Refused: r => { expect(at === 99 || at >= 105, r.detail).toBe(true); expect(r.detail).toMatch(/standing|not live/); },
+    });
+  });
 });

@@ -6,7 +6,12 @@ import { grantLiveness, scopeIncludes } from '../decode/decode.js';
 import { schemaRegistry } from '../decode/schema.js';
 import { sealInContext, sessionFor, trustedIn } from '../decode/session.js';
 
-export function compareMeasurements<S extends string>(left: T.Measurement<S> & (string extends S ? never : unknown), right: T.Measurement<NoInfer<S>>, preserved: string, crossInstance = false): T.Result<number> {
+// A concrete singleton requires a mapped property; an open string/template/
+// intrinsic/branded pattern only produces an index signature and admits {}.
+// Distribution additionally rejects finite unions of otherwise concrete keys.
+type SingleSubject<S extends string, Whole = S> = {} extends Record<S, unknown> ? never
+  : S extends Whole ? [Whole] extends [S] ? unknown : never : never;
+export function compareMeasurements<S extends string>(left: T.Measurement<S> & SingleSubject<S>, right: T.Measurement<NoInfer<S>>, preserved: string, crossInstance = false): T.Result<number> {
   if (left.subject.kind !== right.subject.kind || left.unit !== right.unit || (!crossInstance && left.subject.instance !== right.subject.instance))
     return refusal('measurement comparison: subject, instance, or unit mismatch', preserved);
   const delta = left.value - right.value;
