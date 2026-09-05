@@ -116,13 +116,6 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
       }
     }
     const groups = new Map<string, { decision: Extract<InputDecision, { kind: 'folds' }>; rows: FactEnvelope[] }>();
-    const historical = new Map<string, Json>();
-    for (const row of rows) for (const record of row.historical) if ('id' in record.view) {
-      const key = `${record.view.type}:${record.view.id}`, shape = JSON.parse(encoding(record.view).bytes) as Json;
-      const prior = historical.get(key);
-      requireFact(!prior || encoding(prior).bytes === encoding(shape).bytes, 'P1 historical comparison consumer required; authority cannot resolve historical disagreement', 'standing');
-      historical.set(key, shape);
-    }
     for (const fact of facts) {
       const decision = def.decisions[fact.kind]; requireFact(decision, 'projection received undeclared kind');
       if (decision.kind === 'ignores' || excluded.has(fact.id) || isRetracted(fact.id)) continue;

@@ -11,14 +11,15 @@ import { prepareSnapshot } from './snapshot.js';
 import type { FactSnapshot } from './snapshot.js';
 import { issuePrefix, prefixValid, prefixContext } from './prefix.js';
 import type { VerifiedPrefix } from './prefix.js';
+import { drainConflictFacts, validateConflictFact } from './conflicts.js';
+import type { ConflictAppenderPort } from './conflicts.js';
 
 export interface SegmentStoragePort {
   readonly owner: 'part-ten';
   read(): readonly unknown[];
   // Atomic compare-head + durable append. A receipt is returned only after durable storage.
   append(bytes: string, expectedHead: string | null): Result<DurabilityState>;
-  // Durable, idempotent sidecar outbox for P2 conflict-record obligations. Does not delete
-  // or rewrite any fact; a later fact appender may drain it into registered Conflict facts.
+  // Optional durable intent journal. A receipt NEVER substitutes for conflict fact append.
   recordConflicts?(records: readonly ConflictClass[]): Result<DurabilityState>;
 }
 export interface AppendReceipt { readonly fact: FactEnvelope; readonly durability: DurabilityState; readonly taint: readonly AuthorityTaint[] }
@@ -29,7 +30,7 @@ export interface FactStorePort {
   verifiedPrefix(): Result<VerifiedPrefix>;
   sweep(): Result<readonly FactEnvelope[]>;
 }
-export interface StoreRecovery { readonly prefix?: VerifiedPrefix; readonly verificationBudget?: number; readonly onVerified?: (fact: FactEnvelope) => void }
+export interface StoreRecovery { readonly prefix?: VerifiedPrefix; readonly verificationBudget?: number; readonly onVerified?: (fact: FactEnvelope) => void; readonly conflictAppender?: ConflictAppenderPort }
 export function createFactStore(context: FactContext, storage: SegmentStoragePort, recovery: StoreRecovery = {}): FactStorePort {
   let revision = 0;
   let prefix = recovery.prefix;
@@ -51,25 +52,37 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
     cached = facts;
     return facts;
   });
-  return Object.freeze({ read,
+  const store: FactStorePort = Object.freeze({ read,
     verifiedPrefix: () => boundary('FactStoreVerifiedPrefix', null, c, () => issuePrefix(take(read()), context)),
     sweep: () => { cached = []; prefix = undefined; return read(); },
     readForProjection: () => boundary('FactStoreProjectionRead', null, c, () => {
-      const facts = take(read()), at = revision;
-      const fingerprint = encoding({ facts: storage.read(), captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [], historicalRevocations: context.historicalRevocations ?? [] }).hash;
-      const snapshot = take(prepareSnapshot(facts, context, () => revision === at && fingerprint === encoding({ facts: storage.read(), captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [], historicalRevocations: context.historicalRevocations ?? [] }).hash));
+      let snapshot = take(prepareSnapshot(take(read()), context));
       const conflicts = [...new Map(snapshot.entries.flatMap(e => e.conflicts).map(c => [c.key, c])).values()];
       if (conflicts.length) {
-        requireFact(storage.recordConflicts, 'durable conflict recording provider required');
-        const receipt = take(storage.recordConflicts(conflicts)); requireFact(receipt.kind === 'local-durable' || receipt.kind === 'replicated', 'conflict recording did not acknowledge durability');
+        if (storage.recordConflicts) {
+          const receipt = take(storage.recordConflicts(conflicts)); requireFact(receipt.kind === 'local-durable' || receipt.kind === 'replicated', 'conflict recording did not acknowledge durability');
+        }
+        requireFact(recovery.conflictAppender, 'signed conflict fact appender required; outbox receipt is insufficient');
+        take(drainConflictFacts(context, store, recovery.conflictAppender));
       }
+      const at = revision;
+      const fingerprint = () => encoding({ facts: storage.read(), captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [], historicalRevocations: context.historicalRevocations ?? [] }).hash;
+      const current = fingerprint();
+      snapshot = take(prepareSnapshot(take(read()), context, () => revision === at && current === fingerprint()));
       return snapshot;
     }),
     append(input: unknown, replication?: { readonly peer: string }): Result<AppendReceipt> {
       return boundary('FactStoreAppend', input, c, safe => {
         requireFact(storage.owner === 'part-ten', 'storage adapter owner mismatch');
         take(validateSchemas(context.schemas, context));
-        const persisted = take(read()), at = historicalAuthority({ ...context, facts: [...context.facts, ...persisted] });
+        const persisted = take(read());
+        let at = historicalAuthority({ ...context, facts: [...context.facts, ...persisted] });
+        const appender = recovery.conflictAppender;
+        if (!replication && object(safe).kind === 'conflict-record' && appender) {
+          // The independently supplied live system identity is validated by P1's
+          // normal origin decoder; historical receiver identities stay historical.
+          at = { ...at, decode: { ...at.decode, principals: [...at.decode.principals ?? [], appender.principal], provenance: appender.provenance } };
+        }
         const fact = take(decodeEnvelope(safe, at, replication ? 'replication' : 'origin'));
         if (replication) requireFact(fact.machine === replication.peer, 'peer delivered segment it does not own', 'integrity');
         const duplicate = replication && persisted.find(f => f.id === fact.id);
@@ -77,6 +90,7 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
         else extendsChain(fact, at);
         const standing = causalStanding(fact, at, !replication);
         validateRepair(fact, at);
+        validateConflictFact(fact, { ...at, decode: context.decode });
         const bodyTaint = replication ? take(decodeHistoricalBody(fact, at, standing.decode)).taint
           : (take(decodeBody(fact, at, standing.decode)), []);
         if (duplicate) return { fact: duplicate, durability: { kind: 'local-durable' as const }, taint: [...new Set([...standing.taint, ...bodyTaint])] };
@@ -89,6 +103,7 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
       });
     },
   });
+  return store;
 }
 export interface AuthorInput {
   readonly kind: string; readonly schemaVersion: number; readonly machine: string;
@@ -115,7 +130,7 @@ export function verifyAndAdmit(input: unknown, peer: string, context: FactContex
     if (existing) { requireFact(encoding(existing).bytes === encoding(safe).bytes, 'duplicate id changed bytes', 'integrity'); return existing; }
     const fact = take(decodeEnvelope(safe, context, 'replication'));
     extendsChain(fact, context); const standing = causalStanding(fact, context, false);
-    validateRepair(fact, context); take(decodeHistoricalBody(fact, context, standing.decode)); return fact;
+    validateRepair(fact, context); validateConflictFact(fact, context); take(decodeHistoricalBody(fact, context, standing.decode)); return fact;
   });
 }
 export function reconcileAuthority(fact: FactEnvelope, context: FactContext, horizon: CausalFrontier): { taint: readonly AuthorityTaint[]; conflicts: readonly ConflictClass[] } {
@@ -124,7 +139,7 @@ export function reconcileAuthority(fact: FactEnvelope, context: FactContext, hor
   const conflicts: ConflictClass[] = [];
   for (const row of [...context.revocations.map(r => ({ factId: r.factId, grantId: r.revocation.grantId })), ...(context.historicalRevocations ?? []).map(r => ({ factId: r.factId, grantId: r.revocation.view.grantId }))]) {
     if (!named.some(g => g.id === row.grantId)) continue;
-    const rev = context.facts.find(f => f.id === row.factId); if (!rev) continue;
+    const rev = context.facts.find(f => f.id === row.factId); if (!rev || rev.id === fact.id) continue;
     const facts = context.facts.some(f => f.id === fact.id) ? context.facts : [...context.facts, fact];
     const after = causalCone(rev, facts).some(f => f.id === fact.id);
     const inCone = causalCone(fact, facts).some(f => f.id === rev.id);

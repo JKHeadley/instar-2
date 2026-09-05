@@ -23,3 +23,5 @@ export { signVerifiedPrefix, restoreVerifiedPrefix } from './prefix.js';
 export type { VerifiedPrefix } from './prefix.js';
 export type { CacheKey } from './cache.js';
 export type { StoreRecovery } from './store.js';
+export { conflictFactKind, conflictFactSchema, drainConflictFacts } from './conflicts.js';
+export type { ConflictAppenderPort } from './conflicts.js';

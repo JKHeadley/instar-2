@@ -93,7 +93,7 @@ export function causalStanding(fact: FactEnvelope, context: FactContext, origin:
   requireFact(!(schema.authority === 'directive' && fact.provenance.class === 'channel-attested'), 'part-four bound directive admission port required', 'standing');
   const grantIds = [...scoped.map(g => g.grant.id), ...historical.map(g => g.grant.view.id)];
   const relevant = [...context.revocations.map(v => ({ factId: v.factId, grantId: v.revocation.grantId })),
-    ...(context.historicalRevocations ?? []).map(v => ({ factId: v.factId, grantId: v.revocation.view.grantId }))].filter(v => grantIds.includes(v.grantId) && !ids.has(v.factId));
+    ...(context.historicalRevocations ?? []).map(v => ({ factId: v.factId, grantId: v.revocation.view.grantId }))].filter(v => v.factId !== fact.id && grantIds.includes(v.grantId) && !ids.has(v.factId));
   if (origin) for (const r of relevant) {
     const rev = context.facts.find(f => f.id === r.factId), folded = rev && context.folded[rev.machine];
     requireFact(!rev || !folded || comparePosition(rev.segment, folded) > 0, 'origin frontier omitted an already-folded relevant revocation', 'standing');

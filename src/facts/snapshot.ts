@@ -1,11 +1,12 @@
 // The mandatory store -> projection handoff. Status is derived, never an input annotation.
 import { compare, consumeResult } from '../index.js';
 import type { ConstitutionalValue, HistoricalRead, Json, Result, Scope } from '../index.js';
-import { boundary, encoding, object, same, take } from './boundary.js';
+import { boundary, encoding, object, requireFact, same, take } from './boundary.js';
 import { bodyConstitutionalFields, causalCone, causalStanding, decodeBody, migrateBody, validateRepair } from './admission.js';
 import { decodeEnvelope, schemaFor } from './envelope.js';
 import { decodeHistoricalBody, historicalAuthority } from './historical.js';
 import { reconcileAuthority } from './store.js';
+import { validateConflictFact } from './conflicts.js';
 import { contextBoundary } from './contracts.js';
 import type { AuthorityTaint, ConflictClass, FactContext, FactEnvelope } from './contracts.js';
 
@@ -39,6 +40,8 @@ export function prepareSnapshot(facts: readonly FactEnvelope[], context: FactCon
       const status = boundary('FactSemanticStatus', null, contextBoundary(c), () => {
         const standing = causalStanding(fact, c, false), reconciled = reconcileAuthority(fact, c, c.folded);
         validateRepair(fact, c);
+        const recorded = validateConflictFact(fact, c);
+        if (recorded) { conflicts.push(recorded); taint.add('contested'); }
         reconciled.taint.forEach(t => taint.add(t)); conflicts.push(...reconciled.conflicts);
         const migrated = migrateBody(fact, c, fact.body); body = migrated.body;
         const schema = schemaFor(c, fact.kind, migrated.version);
@@ -47,11 +50,17 @@ export function prepareSnapshot(facts: readonly FactEnvelope[], context: FactCon
         // Historical capture loss must be visible even if an old live value still exists.
         const historicalBody = take(decodeHistoricalBody(fact, c, standing.decode));
         historicalBody.taint.forEach(t => taint.add(t));
+        // Every origin takes part in ONE identity set, even when live decoding is
+        // also available. Live/historical availability may never partition comparison.
+        historical.push(...historicalBody.records);
         if (hasLiveOrigin && historicalBody.taint.length === 0) {
-          const decoded = take(decodeBody(fact, c, standing.decode));
-          constitutional.push(...bodyConstitutionalFields(decoded).map(f => ({ ...f, subject: schema.scope })));
+          // Historical validation already succeeded. Partial live context must not
+          // turn an inspectable historical record into a poison fact.
+          consumeResult(decodeBody(fact, c, standing.decode), {
+            Success: decoded => constitutional.push(...bodyConstitutionalFields(decoded).map(f => ({ ...f, subject: schema.scope }))),
+            Refused: () => {},
+          });
         }
-        else historical.push(...historicalBody.records);
       });
       consumeResult(status, { Success: () => {}, Refused: refusal => {
         conflicts.push({ key: `poison:status:${fact.id}`, kind: 'poison-fact', facts: [fact.id], detail: refusal.detail });
@@ -59,19 +68,25 @@ export function prepareSnapshot(facts: readonly FactEnvelope[], context: FactCon
       } });
       entries.push({ fact, body, conflicts, taint: [...taint].sort(), constitutional, historical });
     }
-    const seen = new Map<string, { status: FactStatus; value: ConstitutionalValue }>();
+    const seen = new Map<string, { status: FactStatus; record: HistoricalRead<ConstitutionalValue> }[]>();
     const additions = new Map<string, ConflictClass[]>();
-    for (const status of [...entries].sort((a, b) => a.fact.id < b.fact.id ? -1 : 1)) for (const field of status.constitutional) {
-      if (!('id' in field.value)) continue;
-      const key = `${field.value.type}:${field.value.id}`, prior = seen.get(key);
-      if (prior && 'id' in prior.value) {
-        const compared = take(compare(field.value.type, prior.value, field.value, 'identity', field.subject, c.preserved));
+    for (const status of [...entries].sort((a, b) => a.fact.id < b.fact.id ? -1 : 1)) for (const record of status.historical) {
+      if (!('id' in record.view)) continue;
+      const key = `${record.view.type}:${record.view.id}`;
+      for (const prior of seen.get(key) ?? []) {
+        const left = prior.status.constitutional.find(f => same(f.value, prior.record.view));
+        const right = status.constitutional.find(f => same(f.value, record.view));
+        // Temporary safe boundary until the P1 public historical comparison arrives.
+        // Every live/mixed/historical orientation reaches this same identity loop.
+        requireFact(left && right || same(prior.record.view, record.view), 'P1 historical comparison consumer required; authority cannot resolve historical disagreement', 'standing');
+        const compared = left && right ? take(compare(left.value.type, left.value, right.value, 'identity', right.subject, c.preserved)) : true;
         if (typeof compared !== 'boolean') {
           const pair = [prior.status.fact.id, status.fact.id].sort();
           const conflict: ConflictClass = { key: `constitutional:${key}:${pair.join(',')}`, kind: 'immutable-disagreement', facts: pair, detail: 'part-one immutable-field conflict', constitutional: compared };
           for (const id of conflict.facts) additions.set(id, [...additions.get(id) ?? [], conflict]);
         }
-      } else seen.set(key, { status, value: field.value });
+      }
+      seen.set(key, [...seen.get(key) ?? [], { status, record }]);
     }
     const snapshot = { entries: entries.map(e => additions.has(e.fact.id) ? { ...e, conflicts: [...e.conflicts, ...additions.get(e.fact.id)!], taint: [...new Set<AuthorityTaint>([...e.taint, 'contested'])].sort() } : e) } as unknown as FactSnapshot;
     const policy = snapshotPolicyHash(context), owners = context.ownedBodies, migrations = context.migrations;
