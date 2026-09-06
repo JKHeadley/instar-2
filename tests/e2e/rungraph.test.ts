@@ -67,7 +67,9 @@ it('P5-NF-11 fresh public-package worker survives effect-before-response kill wi
     expect(JSON.stringify(regrounded.body)).toContain('replacement-worker');
     expect(JSON.stringify(regrounded.body)).toContain('operation:1');
   } finally { rmSync(directory, { recursive: true, force: true }); }
-});
+  // Measured 13.4s on x64 CI: real compiled-package kill/restart and signed
+  // history reconstruction, not a runtime-latency assertion.
+}, 30000);
 
 it('P5-NF-04 P5-NF-44 R6 actual pre-root and pre-start kills rebuild one accountable root and freshly ground its replacement', () => {
   const directory = mkdtempSync(join(tmpdir(), 'rungraph-intake-cut-'));
