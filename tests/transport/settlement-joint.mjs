@@ -73,8 +73,9 @@ export function integration() {
   j.quiescent(); const s3 = settlement();
   let candidate;
   const capture = createTransportAuthority(j.host, { ...j.spine, append(r) {
-    assert.equal(f.assessmentGuardActive(), true);
-    assert.throws(() => f.withdrawAssessment(), /held by synchronous consumer/);
+    // Preparation, not the consequential decision: eight's non-waiting guard is
+    // NOT held while six writes, so this storage wait cannot expire its evidence.
+    assert.equal(f.assessmentGuardActive(), false);
     candidate = r; throw Error('injected pre-append failure');
   } }, j.c, effects.consumeEffectSettlement);
   refused(capture.settle(f.fence, s3), 'pre-append failure');
@@ -83,7 +84,7 @@ export function integration() {
   refused(j.spine.append({ ...candidate, exposure: 0, released: 20 }, [candidate.predecessor, candidate.settlementFact]), 'accounting differs');
   refused(j.spine.append(candidate, [candidate.predecessor, candidate.settlementFact]), 'live eight settlement');
   const lostAck = createTransportAuthority(j.host, { ...j.spine, append(r, required) {
-    assert.equal(f.assessmentGuardActive(), true);
+    assert.equal(f.assessmentGuardActive(), false);
     value(j.spine.append(r, required)); throw Error('injected lost acknowledgement');
   } }, j.c, effects.consumeEffectSettlement);
   refused(lostAck.settle(f.fence, s3), 'lost acknowledgement');

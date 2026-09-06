@@ -3,9 +3,37 @@ import type { AppendReceipt, FactEnvelope } from '../facts/index.js';
 import type { AdmissionReservation, SettlementAccountingInput, SettlementApplication, TransportFact, TransportHost } from './contracts.js';
 import { encoded, ensure, take } from './boundary.js';
 
-// A raw P2 caller cannot manufacture a credit receipt. This ticket exists only
-// while the trusted assembly's eight consumer is on-stack; replay never mints it.
+// A raw P2 caller cannot manufacture a conditional accounting row. Its admission
+// ticket exists only inside a live six settlement attempt whose preparation view
+// came from the registered eight consumer; replay never mints it. Qualification
+// below is a SEPARATE requirement and only the final guarded callback grants it.
 const consumers = new WeakMap<TransportHost, unknown>();
+// Durable application bytes are conditional preparation, not a reconstructed live
+// authorization. Only eight's final no-wait consequential callback qualifies a row
+// for credit release. A fresh process must reconsume current eight authority for
+// the same once-only application before that row can fund new admission.
+const qualified = new WeakMap<TransportHost, Map<string, string>>();
+const attempts = new WeakSet<TransportHost>();
+const revisions = new WeakMap<TransportHost, number>();
+export function accountingRevision(host: TransportHost): number { return revisions.get(host) ?? 0; }
+export function noteAccountingCandidate(host: TransportHost): void {
+  const next = accountingRevision(host) + 1;
+  ensure(Number.isSafeInteger(next), 'accounting revision exhausted'); revisions.set(host, next);
+}
+export function invalidateAccounting(host: TransportHost, operation: string): void { qualified.get(host)?.delete(operation); }
+export function qualifyAccounting(host: TransportHost, row: TransportFact): void {
+  ensure(row.record.type === 'SettlementApplication', 'accounting qualification requires an application');
+  const map = qualified.get(host) ?? new Map<string, string>(); qualified.set(host, map);
+  map.set(row.record.operation, encoded(row.fact).bytes);
+}
+function accountingQualified(host: TransportHost, row: TransportFact): boolean {
+  return row.record.type === 'SettlementApplication' && qualified.get(host)?.get(row.record.operation) === encoded(row.fact).bytes;
+}
+// One settlement attempt at a time per host; preparation cannot nest or interleave.
+export function withSettlementAttempt<T>(host: TransportHost, run: () => T): T {
+  ensure(!attempts.has(host), 'settlement preparation already active');
+  attempts.add(host); try { return run(); } finally { attempts.delete(host); }
+}
 export function bindSettlementConsumer(host: TransportHost, consumer: unknown): void {
   if (consumer === undefined) return;
   ensure(!consumers.has(host) || consumers.get(host) === consumer, 'registered settlement consumer cannot be replaced');
@@ -17,6 +45,7 @@ export function requireSettlementConsumer(host: TransportHost, consumer: unknown
 const tickets = new WeakMap<TransportHost, Map<string, unknown>>();
 export function withApplication<T>(host: TransportHost, r: SettlementApplication, consumer: unknown, run: () => T): T {
   requireSettlementConsumer(host, consumer);
+  ensure(attempts.has(host), 'application requires a live six settlement attempt');
   const set = tickets.get(host) ?? new Map<string, unknown>(); tickets.set(host, set);
   const key = encoded(r).hash; ensure(!set.has(key), 'settlement application already active');
   set.set(key, consumer); try { return run(); } finally { set.delete(key); }
@@ -50,8 +79,13 @@ export function admissionAccounting(all: readonly TransportFact[], reservation: 
   // A local record may increase exposure/inhibit immediately. Reduction requires
   // current proof of THIS accounting fact at the ORIGINAL operation's demand.
   const held = { exposure: Math.max(reservation.charge, ...applications.map(v => (v.record as SettlementApplication).exposure)), unresolved: 1 };
-  if (!latest) return held;
-  try { requireAccountingDurability(latest, reservation, host); }
+  // Durable bytes alone are never spendable: this exact row must ALSO carry live
+  // qualification from eight's final guarded callback in this process.
+  if (!latest || !accountingQualified(host, latest)) return held;
+  try {
+    requireAccountingDurability(latest, reservation, host);
+    ensure(accountingQualified(host, latest), 'accounting qualification changed during custody wait');
+  }
   catch { return held; }
   return latest.record as SettlementApplication;
 }
@@ -81,7 +115,7 @@ export function checkApplicationEvidence(r: SettlementApplication, past: readonl
   ensure(fact.contentHash === r.settlementHash && s.id === r.settlement && s.operation === r.operation
     && s.request === r.request && s.reservation === r.reservation && s.claim === r.claim && s.digest === r.digest, 'settlement identity or bytes changed');
   const op = all.filter(v => v.record.type === 'AdmissionReservation' && v.record.operation === r.operation).at(-1);
-  ensure(op?.record.type === 'AdmissionReservation' && op.record.state !== 'prepared' && op.fact.id === r.reservation
+  ensure(op?.record.type === 'AdmissionReservation' && (op.record.state === 'dispatch-claimed' || op.record.state === 'consumed') && op.fact.id === r.reservation
     && op.record.request === r.request && op.record.digest === r.digest, 'settlement reservation mismatch');
   const claim = all.find(v => v.fact.id === r.claim)?.record;
   ensure(claim?.type === 'AdmissionReservation' && claim.state === 'dispatch-claimed'

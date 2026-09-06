@@ -18,9 +18,12 @@ declare const host: TransportHost, spine: TransportSpine, c: BoundaryContext, fe
 const api = createTransportAuthority(host, spine, c, consumeEffectSettlement);
 registerTransportBodies(host, c, consumeEffectSettlement);
 api.settle(fence, settlement);
+const closed = api.close('close', fence, 'operation:1');
 const composed: EffectComposition['transport'] = api;
 // @ts-expect-error Request-written input is not an eight-owned issuance.
 api.settle(fence, {});
+// @ts-expect-error A conditional close names an operation, never a settlement.
+api.close('close', fence, settlement);
 // @ts-expect-error Missing owner consumer leaves the seam statically dark.
 createTransportAuthority(host, spine, c).settle(fence, settlement);
 `);

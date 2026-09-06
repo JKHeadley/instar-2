@@ -4,7 +4,7 @@ import { causalCone, registerOwnedBody } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, SettlementConsumer, TransportFact, TransportHost, TransportRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
-import { admissionAccounting, bindSettlementConsumer, checkApplicationEvidence, latestApplication, requireApplication } from './settlement.js';
+import { admissionAccounting, bindSettlementConsumer, checkApplicationEvidence, latestApplication, noteAccountingCandidate, requireApplication } from './settlement.js';
 
 const txt = { kind: 'text', maxLength: 256 } as const;
 const int = { kind: 'integer' } as const;
@@ -145,7 +145,9 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
   } else {
     const lease = active();
     if (r.type === 'AdmissionReservation') {
-      ensure(encoded(r.fence).bytes === encoded(fenceFor(all, lease)).bytes, 'stale fence at durable boundary');
+      // A conditional close exists BECAUSE the reserving fence is gone; it keeps
+      // the immutable original fence and is still written under the live lease.
+      ensure(r.state === 'closed' || encoded(r.fence).bytes === encoded(fenceFor(all, lease)).bytes, 'stale fence at durable boundary');
       ensure(r.charge >= 0 && r.request.length > 0 && r.attempt.length > 0 && /^sha256:[a-f0-9]{64}$/.test(r.digest), 'reservation identity or demand');
       ensure(r.operation === `operation:${encoded([r.domain, r.request, r.attempt]).hash}`, 'operation mapping must be injective');
       ensure(r.deliveryAttempt === `delivery:${encoded([r.operation, r.semanticMessage]).hash}`, 'delivery attempt identity changed');
@@ -157,7 +159,10 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
         // Different request/attempt/semantic keys cannot erase a same-run breach.
         ensure(!reservations(all).some(p => p.run === r.run && all.some(v => v.record.type === 'SettlementApplication'
           && v.record.operation === p.operation && v.record.capViolation === 1)), 'cap violation inhibits affected admission');
-        const states = new Map(reservations(all).map(p => [p.operation, origin ? admissionAccounting(all, p, host)
+        // A closed operation is proven never dispatch-claimed: zero exposure and
+        // resolved. Every other state still needs qualified accounting evidence.
+        const states = new Map(reservations(all).map(p => [p.operation, p.state === 'closed' ? { exposure: 0, unresolved: 0 }
+          : origin ? admissionAccounting(all, p, host)
           : latestApplication(all, p.operation) ?? { exposure: p.charge, unresolved: 1 }]));
         ensure(!reservations(all).some(p => p.request === r.request || p.semanticMessage === r.semanticMessage
           || p.run === r.run && states.get(p.operation)!.unresolved !== 0), 'unresolved execution, charge or accounting durability prohibits a new attempt');
@@ -166,8 +171,16 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       } else {
         const immutable = (v: AdmissionReservation) => ({ ...v, command: '', predecessor: '', tick: 0, authority: '', state: '', executor: '' });
         ensure(encoded(immutable(r)).bytes === encoded(immutable(prior)).bytes, 'immutable operation mapping changed');
-        ensure((prior.state === 'prepared' && r.state === 'dispatch-claimed') || (prior.state === 'dispatch-claimed' && r.state === 'consumed'), 'claim is one-use');
-        ensure(r.executor === lease.incarnation && (prior.executor === '' || prior.executor === r.executor), 'executor binding mismatch');
+        if (r.state === 'closed') {
+          // Proof, not assumption: no row for this operation ever left 'prepared'
+          // anywhere in the committed prefix. A close is terminal and unexecuted.
+          ensure(prior.state === 'prepared' && !all.some(v => v.record.type === 'AdmissionReservation'
+            && v.record.operation === r.operation && v.record.state !== 'prepared'), 'close requires proof no dispatch-claim exists');
+          ensure(r.executor === '', 'a closed operation has no executor');
+        } else {
+          ensure((prior.state === 'prepared' && r.state === 'dispatch-claimed') || (prior.state === 'dispatch-claimed' && r.state === 'consumed'), 'claim is one-use');
+          ensure(r.executor === lease.incarnation && (prior.executor === '' || prior.executor === r.executor), 'executor binding mismatch');
+        }
       }
     } else if (r.type === 'LoopRecord') {
       policyCheck(r.policy);
@@ -191,7 +204,7 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       ensure(r.nextWake >= r.tick + r.policy.minDelay, 'minimum wake delay');
     } else if (r.type === 'SettlementApplication') {
       const op = reservations(all).find(p => p.operation === r.operation);
-      ensure(op && op.state !== 'prepared', 'application requires dispatched reservation');
+      ensure(op && (op.state === 'dispatch-claimed' || op.state === 'consumed'), 'application requires dispatched reservation');
       ensure(!all.some(v => v.record.type === 'SettlementApplication' && v.record.settlement === r.settlement), 'settlement already applied');
       const prior = latestApplication(all, r.operation);
       ensure(!prior || prior.actualCharge === -1 || prior.actualCharge === r.actualCharge, 'settled charge changed');
@@ -238,7 +251,12 @@ export function registerTransportBodies<S = never>(host: TransportHost, c: Bound
           // Such a fact is already in its verified input set; it is NOT a new
           // append. Only a new origin candidate may perform current custody I/O.
           // Raw P2 origin append still lacks this fact and therefore checks R1.
-          const admitting = ctx.mode === 'origin' && !ctx.facts.facts.some(f => f.id === ctx.origin.id);
+          const candidate = !ctx.facts.facts.some(f => f.id === ctx.origin.id);
+          // Any NEW six candidate, origin or replicated, invalidates an in-memory
+          // prepared prefix. Historical/projection reads are pure and do not.
+          // Even a subsequently refused candidate conservatively invalidates it.
+          if (candidate) noteAccountingCandidate(host);
+          const admitting = ctx.mode === 'origin' && candidate;
           validateTransition(v, past, host, admitting);
           if (v.type === 'SettlementApplication') {
             checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past);

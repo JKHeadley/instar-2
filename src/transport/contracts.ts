@@ -25,7 +25,9 @@ export interface AdmissionReservation extends Row, Owned {
   readonly request: string; readonly attempt: string; readonly digest: string;
   readonly run: string; readonly semanticMessage: string; readonly deliveryAttempt: string;
   readonly fence: FenceToken; readonly charge: number;
-  readonly state: 'prepared' | 'dispatch-claimed' | 'consumed';
+  // 'closed' is six's conditional close of a NEVER-dispatched prepared operation.
+  // It is terminal, carries no executor, and is not an effect outcome.
+  readonly state: 'prepared' | 'dispatch-claimed' | 'consumed' | 'closed';
   readonly executor: string; readonly durability: 'local-durable' | 'replicated';
   readonly replicas: number;
 }
@@ -57,6 +59,8 @@ export interface SettlementApplication extends Row, Owned {
 // Structural consumption requirements only. S remains the producer's own branded
 // type; callers bind eight's consumeEffectSettlement at trusted assembly, not per
 // request. This base need not duplicate or import an unmerged sibling package.
+// Six consumes this seam TWICE per settlement: an authenticated preparation view
+// whose callback is a pure in-memory copy, and the later consequential decision.
 export interface SettlementAccountingInput {
   readonly id: string; readonly operation: string; readonly request: string;
   readonly reservation: string; readonly claim: string; readonly digest: string;
@@ -81,6 +85,8 @@ export interface TransportHost {
     readonly owner: 'part-ten';
     ensure(facts: readonly FactEnvelope[]): Result<readonly AppendReceipt[]>;
   };
+  // Non-waiting local accessors, also used inside eight's final no-wait guard.
+  // They must not perform storage/provider refresh or reentrant mutations.
   monotonic(): number;
   current(): { readonly decode: DecodeContext; readonly clock: Clock;
     readonly generation: RegisterGenerationReference; readonly stopped: boolean };
@@ -118,5 +124,8 @@ export interface TransportAuthority<S = never> {
   claim(command: string, fence: FenceToken, operation: string): Result<DispatchClaim>;
   consume(claim: DispatchClaim, fence: FenceToken): Result<AdmissionReservation>;
   recover(command: string, fence: FenceToken, operation: string, observer: ObservationPort): Result<RecoveryRecord>;
+  // Conditional close of a prepared operation proven never dispatch-claimed.
+  // It releases that operation's reserved credit; it never settles an effect.
+  close(command: string, fence: FenceToken, operation: string): Result<AdmissionReservation>;
   settle(fence: FenceToken, settlement: S): Result<SettlementApplication>;
 }

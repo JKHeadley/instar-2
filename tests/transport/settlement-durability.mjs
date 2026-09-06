@@ -12,9 +12,9 @@ export function durabilityCut() {
   f.assess('happened', 7); j.quiescent();
   const settlement = j.settlement();
   const dropping = createTransportAuthority(j.host, { ...j.spine, append(r, required) {
-    // Eight has completed all its evidence durability/custody rechecks. Lose
-    // the real peer ONLY at six's subsequent accounting append.
-    assert.equal(f.assessmentGuardActive(), true);
+    // Preparation runs between eight's two consumptions, outside its guard. Lose
+    // the real peer ONLY at six's accounting append.
+    assert.equal(f.assessmentGuardActive(), false);
     assert.equal(r.type, 'SettlementApplication'); f.replicas.enable(false);
     const receipt = j.spine.append(r, required);
     assert.equal(value(receipt).durability.kind, 'local-durable');

@@ -38,11 +38,24 @@ Composition order:
    used by eight can implement this structural port). Missing proof never releases
    credit; this is a trusted host dependency, not an application-supplied receipt.
 
-Settlement consumption rechecks eight's independent assessment and exact durability
-before reading six's fresh status-bearing prefix. A `SettlementApplication` binds
+Six enters eight's consumption seam TWICE for one settlement. Pass one obtains an
+authenticated CURRENT preparation view; that callback runs inside the owner's
+non-waiting current-assessment guard and only copies bounded in-memory bytes.
+BETWEEN the passes, outside every owner guard, six reads P2, conditionally appends
+or deduplicates its application, and proves the ORIGINAL operation's custody
+durability. Pass two is the consequential decision: eight rechecks assessment,
+evidence, custody and durability after all six waits and calls back inside the
+guard, where six performs only bounded in-memory comparisons, non-waiting local
+clock/authority accessors and private qualification of the exact prepared row. No
+P2 read, append, fsync or peer lookup runs inside that callback. A local
+owner-candidate revision invalidates a prepared prefix when another API call, raw
+P2 append or replicated six write intervenes.
+
+A `SettlementApplication` binds
 the exact operation/request/reservation-fact/claim-fact/digest and settlement fact
 hash, with that fact in its causal closure. The private on-stack admission ticket
-is required inside P2's origin boundary; raw authoring cannot mint a credit release.
+is required inside P2's origin boundary and only inside a live six settlement
+attempt; raw authoring cannot mint even a prepared row.
 Replay checks the signed evidence binding and arithmetic, never reconstructs a live
 eight issuance. Eight's wire charge is decimal text or `unknown`; six only matches
 that referenced field and imports P1's Outcome consumer, not an eight decoder.
@@ -51,7 +64,12 @@ Applications deduplicate by settlement identity, with exact changed-byte refusal
 successor settlements for an operation conditionally replace its accounting view.
 `released` is cumulative unused credit, not an additive payment. Budget admission
 uses the latest exposure once per operation only when the exact accounting fact
-meets the ORIGINAL reservation's demand. Local-only application history is retained,
+carries final live qualification AND meets the ORIGINAL reservation's demand.
+Qualification is not a serialized flag and is never inferred from durable bytes: a
+fresh process must reconsume genuine current eight authority for the same once-only
+application before its release can fund new admission. A failed final check erases
+qualification, leaving durable preparation as conservative unresolved exposure.
+Local-only application history is retained,
 but first acknowledgment and duplicates refuse usable release until that demand is
 met. New origin admission rechecks P2 custody, including after reopen and inside
 P2's owner validator. A projection's optional live reconstruction of a fact already
@@ -107,7 +125,17 @@ Bounds and honesty:
   slice supplies no automatic quiescence override. The obligation and count remain.
 - Charges are integer host-declared capacity units (not an invented money type).
   Uncertain charges remain held until sufficient eight-owned settlement arrives;
-  there is no automatic retry, prepared-operation cancellation or new spend ledger.
+  there is no automatic retry or new spend ledger.
+- `close(command, fence, operation)` is the conditional close docs/10 section 4
+  assigns to six: a PREPARED operation with no `dispatch-claimed` or `consumed` row
+  anywhere in the committed prefix becomes terminal `closed`, releasing its reserved
+  exposure so its run may reserve again. It keeps its immutable original fence — a
+  close exists precisely because that fence is gone — but is written under the
+  caller's live lease. It never settles an effect, never applies a charge, never
+  reopens, and cannot be used on a claimed operation. A closed operation still
+  blocks a new attempt for the SAME request or semantic message; only the run-level
+  unresolved block is lifted. Cancelling a dispatch-claimed operation remains
+  eight's settlement, not this close.
 - Recovery observers are synchronous, read-only host ports. The policy timeout is
   declared but host process supervision must bound a wedged observer. There is no
   asynchronous timeout supervisor in this package; process-kill tests prove recovery
@@ -136,9 +164,14 @@ source into this package. Nine's independent assessor remains an explicit fixtur
 stand-in and the replica is a second local directory, not an independent failure
 domain. The current producer includes its physical receipt-custody checks and uses
 nine's approved VerificationAssessment reference and synchronous current-assessment
-guard. Tests verify that the actual six accounting append runs inside that guard
-and reentrant assessment withdrawal refuses. Tests drop the peer precisely at
-accounting append, reopen origin, attempt weaker-budget use through both public six
-and raw P2 admission, and resume exact proof with one application. Three real
-SIGKILL cuts cover held, replicated release, and local-only accounting before ACK.
+guard. Tests verify that every six accounting read, append and custody proof runs
+OUTSIDE that guard, with exact evidence-expiry neighbours at 199/200/201 covering
+both first application and duplicate acknowledgement, and a failed finalization
+holding exposure across a reopened store and a fresh owner registration. Tests drop
+the peer precisely at accounting append, reopen origin, attempt weaker-budget use
+through both public six and raw P2 admission, and resume exact proof with one
+application. They also continue past a successful new reservation into inspection,
+claim and consumption with a bounded custody call count, in-process and in a fresh
+replacement process, so projection reconstruction cannot recurse through custody.
+Three real SIGKILL cuts cover held, replicated release, and local-only accounting before ACK.
 This seam does not activate production effects or establish nine's bar.
