@@ -148,6 +148,69 @@ it.each(['both', 'left', 'right', 'neither'] as const)('P2-NF-52 P2-NF-76 comple
     } finally { f.cleanup(); receiverDisk.cleanup(); }
   }
 });
+it.each([false, true])('P2-NF-15 P2-NF-52 P2-NF-62 P2-NF-76 N2 two constitutional fields in one signed fact survive drain/restart/receiver (equal=%s)', equal => {
+  const f = diskFixture(), receiverDisk = diskFixture(); try {
+    const left = value(decode('Intent', f.intentInput(), f.ctx.decode));
+    const right = value(decode('Intent', f.intentInput({ raw: equal ? left.raw : f.capture('different field in the same fact') }), f.ctx.decode));
+    const ctx = { ...f.ctx, decode: { ...f.ctx.decode, principals: [], grants: [], authorizations: [] },
+      schemas: [conflictFactSchema(f.scope), { ...f.schema, fields: { ...f.schema.fields,
+        left: { kind: 'constitutional' as const, type: 'Intent' as const }, right: { kind: 'constitutional' as const, type: 'Intent' as const } } }] };
+    const store = createFactStore(ctx, f.storage, { conflictAppender: f.conflictAppender });
+    const source = value(store.append(f.wire({ body: { identity: 'one', amount: '1', left, right } }), { peer: 'machine-a' })).fact;
+    expect(value(store.read())).toHaveLength(1);
+    const snapshot = value(store.readForProjection()), persisted = value(store.read());
+    expect(snapshot.entries[0]!.historical).toHaveLength(2); expect(snapshot.entries[0]!.constitutional).toHaveLength(0);
+    expect(persisted).toHaveLength(equal ? 1 : 2);
+    const conflict = snapshot.entries[0]!.conflicts[0];
+    if (equal) { expect(conflict).toBeUndefined(); expect(snapshot.entries[0]!.taint).toEqual([]); }
+    else {
+      expect(snapshot.entries[0]!.taint).toContain('contested');
+      expect(conflict!.facts).toEqual([source.id, source.id]);
+      const historical = conflict!.historicalConstitutional!;
+      expect(historical).toMatchObject({ owner: 'part-one', kind: 'derived-conflict', sources: [
+        { owner: 'part-two', name: 'FactEnvelope', id: source.id }, { owner: 'part-two', name: 'FactEnvelope', id: source.id }] });
+      expect(historical.view.left).toMatchObject({ id: left.id, raw: left.raw });
+      expect(historical.view.right).toMatchObject({ id: right.id, raw: right.raw });
+      expect(left.raw).not.toBe(right.raw);
+      const recorded = persisted[1]!;
+      expect(recorded.kind).toBe('conflict-record'); expect(recorded.principal.kind).toBe('system');
+      expect(recorded.predecessors.required).toEqual([source.id]);
+      expect(JSON.parse((recorded.body as { record: string }).record).facts).toEqual([source.id, source.id]);
+    }
+    const def = { id: 'same-fact-fields', class: 'authority-answering' as const, retention: 'all-identities' as const, stalenessBound: 100,
+      decisions: { note: { kind: 'folds' as const, merge: 'additive' as const, identity: 'identity', value: 'amount' },
+        'conflict-record': { kind: 'ignores' as const, reason: 'mandatory status still propagates' } } };
+    const view = value(foldProjection(def, snapshot, { reference: ctx.decode.register.generation, kinds: Object.keys(def.decisions),
+      lineages: { 'machine-a': { head: point(persisted.at(-1)!), observedAt: 100, closed: false } } }, f.c));
+    if (equal) { value(readProjection(view, def, f.now, f.c)); expect(view.values['note:one']).toBe('1'); }
+    else { refused(readProjection(view, def, f.now, f.c), 'tainted'); expect(view.conflicts).toHaveLength(1); }
+    const bytes = readFileSync(f.path, 'utf8');
+    value(store.readForProjection()); expect(readFileSync(f.path, 'utf8')).toBe(bytes);
+    const fresh = restartStatus(f, ctx);
+    expect(fresh).toMatchObject({ appends: 0, facts: equal ? 1 : 2, liveRefused: true, keys: equal ? [] : [conflict!.key] });
+    expect(fresh.historical).toEqual(equal ? [] : [{ owner: 'part-one', kind: 'derived-conflict', sources: conflict!.historicalConstitutional!.sources }]);
+    const observerB = f.principal('same-fact-observer-b', 'system');
+    const appenderB = { ...f.conflictAppender, machine: 'machine-b', principal: observerB, provenance: observerB.provenance,
+      sign: (input: Json) => f.success(f.wire(input as Record<string, unknown>)) };
+    const receiver = createFactStore(ctx, receiverDisk.storage, { conflictAppender: appenderB });
+    value(receiver.append(json(source), { peer: source.machine }));
+    if (!equal) {
+      // Deduplication belongs to composition; signed duplicate dependencies must
+      // still fail normal admission and leave the receiver's durable bytes intact.
+      const recorded = persisted[1]!, before = readFileSync(receiverDisk.path, 'utf8');
+      refused(receiver.append(f.wire({ ...recorded, predecessors: { ...recorded.predecessors, required: [source.id, source.id] } }), { peer: recorded.machine }), 'required: duplicate reference');
+      expect(readFileSync(receiverDisk.path, 'utf8')).toBe(before);
+      value(receiver.append(json(recorded), { peer: recorded.machine }));
+    }
+    const received = value(receiver.readForProjection()), records = value(receiver.read()).filter(f => f.kind === 'conflict-record');
+    expect(records).toHaveLength(equal ? 0 : 2);
+    expect(records.every(fact => JSON.stringify(fact.predecessors.required) === JSON.stringify([source.id]))).toBe(true);
+    expect([...new Set(received.entries.flatMap(e => e.conflicts).map(c => c.key))]).toEqual(equal ? [] : [conflict!.key]);
+    const receiverBytes = readFileSync(receiverDisk.path, 'utf8');
+    value(createFactStore(ctx, receiverDisk.storage, { conflictAppender: appenderB }).readForProjection());
+    expect(readFileSync(receiverDisk.path, 'utf8')).toBe(receiverBytes);
+  } finally { f.cleanup(); receiverDisk.cleanup(); }
+});
 it('P2-NF-52 P2-NF-76 historical comparisons refuse missing subject bindings, wrong domains and unavailable dependencies', () => {
   const f = factsFixture(), left = value(decode('Intent', f.intentInput(), f.ctx.decode)), right = value(decode('Intent', f.intentInput({ raw: f.capture('different') }), f.ctx.decode));
   const a = f.fact({ body: { identity: 'one', amount: '1', intent: left } }), b = f.fact({ machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 }, body: { identity: 'one', amount: '1', intent: right } });

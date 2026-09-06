@@ -60,10 +60,13 @@ export function drainConflictFacts(context: FactContext, store: FactStorePort, a
       const segment = { machine: appender.machine, epoch: head?.segment.epoch ?? 0, position: head ? head.segment.position + 1 : 0 };
       const frontier = { ...context.folded };
       for (const f of facts) if (!frontier[f.machine] || comparePosition(f.segment, frontier[f.machine]!) > 0) frontier[f.machine] = { epoch: f.segment.epoch, position: f.segment.position };
+      // Comparison sides may be distinct fields of ONE fact. Keep both sides and
+      // their origin evidence in the record; envelope dependencies are a set.
+      const required = [...new Set(conflict.facts)].sort();
       const unsigned = JSON.parse(encoding({ type: 'FactEnvelope', envelopeVersion: 1, id: factId(segment), kind: conflictFactKind, schemaVersion: 1,
         machine: appender.machine, principal: appender.principal, provenance: appender.provenance, at: appender.clock(), segment,
         prevInSegment: head?.contentHash ?? context.genesis.hash,
-        predecessors: { inSegment: head?.id ?? null, frontier, required: [...conflict.facts].sort() }, body: { record: wireRecord(conflict) } }).bytes) as Json;
+        predecessors: { inSegment: head?.id ?? null, frontier, required }, body: { record: wireRecord(conflict) } }).bytes) as Json;
       const signed = take(appender.sign(unsigned)), wire = object(JSON.parse(encoding(signed).bytes) as Json);
       requireFact(Object.entries(object(unsigned)).every(([key, value]) => same(wire[key], value)), 'signing provider changed conflict envelope', 'integrity');
       receipts.push(take(store.append(signed)));
