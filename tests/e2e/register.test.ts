@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { build } from '../../scripts/build-register.mjs';
 import type { BootstrapBinding } from '../../scripts/build-register.mjs';
 import { defineDecoder, decode } from '../../src/index.js';
@@ -17,6 +17,10 @@ const emittedModule = '../../dist/index.js';
 const { decode: emittedDecode } = await import(emittedModule) as typeof import('../../src/index.js');
 
 describe('compiled register build adapter lifecycle', () => {
+  // Separate synchronous CLI batches with an actual event-loop turn. On x64 CI
+  // consecutive passing tests can otherwise starve Vitest's 60s reporting RPC.
+  // The long multi-case test also yields between cases; no assertion is relaxed.
+  afterEach(() => new Promise<void>(done => setImmediate(done)));
   it('P3-NF-21 P3-NF-22 P3-NF-23 P3-NF-24 P3-NF-26 P3-NF-27 R1 normal extract and completion workflows invoke the provider and full graph ladder', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-normal-e2e-'));
     try {
