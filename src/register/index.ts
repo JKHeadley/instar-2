@@ -7,7 +7,7 @@ export { runRegisterChecks } from './workflow.js';
 export type { WorkflowChecks } from './workflow.js';
 export { decodeDeclaration, decodeReference, invariantCoverage, implementedInvariants } from './declarations.js';
 export { decodeExtract, generateRegister, generationOf, decodeGeneration, decodeGenerationRecord, loadRegister } from './generator.js';
-export { readRegisterEntry, constructGoverned, checkPairing, checkBoundaryCoverage, checkGovernedState, checkSeparation, verifyGenerated, verifyLandingCompletion } from './governance.js';
+export { readRegisterEntry, readEnforcedRecord, constructGoverned, checkPairing, checkBoundaryCoverage, checkGovernedState, checkSeparation, verifyGenerated, verifyLandingCompletion } from './governance.js';
 export type { GovernedConstruct, ConstructObservation, GovernedStateObservation } from './governance.js';
 export { renderRegister } from './render.js';
 export type { Renderings } from './render.js';

@@ -1,0 +1,11 @@
+{
+  "owner": "part-seven",
+  "status": "dark",
+  "activation": "not registered as a live or gated runtime feature",
+  "provider": "fake-deterministic",
+  "ownedRecords": ["JudgmentRequest", "JudgmentAttemptRecord", "JudgmentResolution"],
+  "meter": "captured raw provider observations, never six-owned spend authority",
+  "outOfScope": ["BenchmarkRecord", "BenchmarkScenario", "BenchmarkRunRecord", "AskRefinement", "JudgmentHoldCost cohort metrics", "compatibility digests", "assessment pins", "grading"],
+  "activationGaps": ["anchored P3 judgment point and governed bounds", "five pending-step grounding and conditional acceptance", "eight effect admission/disclosure/durability and settlement", "ten credential isolation and live-provider adapter", "nine live probe, supervisor and semantic review"],
+  "liveProviderCheck": "P7-NF-41 LIVE-PROVIDER: explicitly skipped pending separately authorized full slice fixture"
+}

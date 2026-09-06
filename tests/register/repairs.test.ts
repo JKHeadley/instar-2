@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { decodeDeclaration, generateRegister, buildRuleGraph, checkGovernedState } from '../../src/register/index.js';
 import { inspectSource, checkWiring } from '../../scripts/check-register-wiring.mjs';
-import { setup, value, detail } from './fixtures.js';
+import { setup, value, detail, wiringSources } from './fixtures.js';
 
 describe('desk counterexamples', () => {
   it('P3-NF-26 R3 empty or malformed rungs cannot suppress admission', () => {
@@ -47,11 +47,11 @@ describe('desk counterexamples', () => {
       "import * as core from '@instar/constitutional-types/register'; core.constructGoverned('stores', 'missing', register, context);",
       "import { constructGoverned as make } from '@instar/constitutional-types/register'; make('stores', 'missing', register, context);",
     ]) {
-      expect(inspectSource('src/client.ts', code).constructs[0]?.id).toBe('missing');
-      expect(checkWiring(s.build(), { 'src/client.ts': code }).issues.join()).toContain('missing');
-      expect(checkWiring(s.build(), { 'src/client.ts': code.replace('missing', 'store') }).issues).toEqual([]);
+      expect(inspectSource('src/client.ts', code, wiringSources()).constructs[0]?.id).toBe('missing');
+      expect(checkWiring(s.build(), { ...wiringSources(), 'src/client.ts': code }).issues.join()).toContain('missing');
+      expect(checkWiring(s.build(), { ...wiringSources(), 'src/client.ts': code.replace('missing', 'store') }).issues).toEqual([]);
     }
-    const sources = { 'src/barrel.ts': "export { constructGoverned as make } from '@instar/constitutional-types/register';",
+    const sources = { ...wiringSources(), 'src/barrel.ts': "export { constructGoverned as make } from '@instar/constitutional-types/register';",
       'src/client.ts': "import { make } from './barrel.js'; make('stores', 'missing', register, context);" };
     expect(checkWiring(s.build(), sources).issues.join()).toContain('missing');
   }, 30_000);

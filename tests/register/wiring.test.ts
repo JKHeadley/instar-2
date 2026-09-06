@@ -3,14 +3,14 @@ import { readFileSync } from 'node:fs';
 import { createProgram } from '../../scripts/check-architecture.mjs';
 import { inspectSource, checkWiring } from '../../scripts/check-register-wiring.mjs';
 import { decodeShape, checkGovernedState, generateRegister, verifyGenerated } from '../../src/register/index.js';
-import { setup, detail, value, shapeInput, hash } from './fixtures.js';
+import { setup, detail, value, shapeInput, hash, wiringSources } from './fixtures.js';
 
 describe('source and shape wiring', () => {
   it('P3-NF-04 real source sweep follows import aliases and finds undeclared ports', () => {
     const s = setup(); const code = "import { constructGoverned as create } from './register/index.js'; create('stores', 'missing', register, context);";
-    expect(inspectSource('src/client.ts', code).constructs[0]?.id).toBe('missing');
-    expect(checkWiring(s.build(), { 'src/client.ts': code }).issues[0]).toContain('P3-NF-04');
-    expect(checkWiring(s.build(), { 'src/client.ts': code.replace('missing', 'store') }).issues).toEqual([]);
+    expect(inspectSource('src/client.ts', code, wiringSources()).constructs[0]?.id).toBe('missing');
+    expect(checkWiring(s.build(), { ...wiringSources(), 'src/client.ts': code }).issues[0]).toContain('P3-NF-04');
+    expect(checkWiring(s.build(), { ...wiringSources(), 'src/client.ts': code.replace('missing', 'store') }).issues).toEqual([]);
   }, 30_000);
   it('P3-NF-04 missing declaration argument and open construction fail TypeScript', () => {
     const source = "import { constructGoverned } from './src/register/index.js'; import type { Declaration } from './src/register/index.js'; constructGoverned(); const forged: Declaration = { type: 'Declaration', schemaVersion: 1 };";
@@ -38,8 +38,8 @@ describe('source and shape wiring', () => {
     expect(detail(checkGovernedState([], register, s.context))).toContain('P3-NF-26');
     expect(value(checkGovernedState([{ site: 'holder', record: 'store', decoder: 'decode:Profile', reads: ['store'], invokes: ['decode:Profile'] }], register, s.context))).toBe(true);
     const missingCall = "import { readRegisterEntry } from './register/index.js'; import { decode } from './index.js'; function example() { readRegisterEntry('store', register, context); }";
-    expect(checkWiring(register, { 'src/example.ts': missingCall }).issues[0]).toContain('P3-NF-26');
+    expect(checkWiring(register, { ...wiringSources(), 'src/example.ts': missingCall }).issues[0]).toContain('P3-NF-26');
     const wired = missingCall.replace('context); }', "context); decode('Profile', input, context); }");
-    expect(checkWiring(register, { 'src/example.ts': wired }).issues).toEqual([]);
+    expect(checkWiring(register, { ...wiringSources(), 'src/example.ts': wired }).issues).toEqual([]);
   }, 30_000);
 });
