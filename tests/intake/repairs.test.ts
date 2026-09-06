@@ -108,6 +108,9 @@ it('P4-NF-04 P4-NF-05 P4-NF-14 narrow binding does not select broader work; over
   refused(broad.receive(message('overlap'),{ ...route,eventId: 'overlap' }),'stopped');
   const disjoint=value(decode('Scope',{ type: 'Scope',schemaVersion: 1,kind: 'project',members: ['project-b'] },f.context.decode));
   expect(value(withScope(f,disjoint).receive(message('disjoint'),{ ...route,eventId: 'disjoint' })).kind).toBe('admitted');
+});
+
+it('P4-NF-04 P4-NF-05 P4-NF-14 a covered binding selects operator context and its stop inhibits later covered work', () => {
   const covered=intakeFixture(); covered.bind();
   const result=value(covered.port().receive(message(),route));
   if(result.kind!=='admitted') throw new Error('expected admission');

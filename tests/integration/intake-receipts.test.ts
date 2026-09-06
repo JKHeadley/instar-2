@@ -13,8 +13,10 @@ function ownerContext(f: ReturnType<typeof intakeFixture>) {
   return { ...f.context,ownedBodies: [value(intakeWorkRegistration(b,f.deps.author.principal.id)),value(intakeStopRegistration(b,f.deps.author.principal.id))] };
 }
 
-it('P4-NF-10 P4-NF-14 P4-NF-24 malformed preserved routes cannot poison unrelated admission, reconstruction or the authenticated brake', () => {
-  for(const malformed of [{},null,[],{ ...route,channel: 4 },{ ...route,eventId: {} },{ ...route,extra: 'not a route field' }]) {
+// Each hostile history is an independent integration case, with its own timeout.
+// A single six-history loop exceeded Vitest's 5s default on the ARM CI runner.
+for(const malformed of [{},null,[],{ ...route,channel: 4 },{ ...route,eventId: {} },{ ...route,extra: 'not a route field' }]) {
+  it(`P4-NF-10 P4-NF-14 P4-NF-24 malformed route ${JSON.stringify(malformed)} cannot poison unrelated admission, reconstruction or the authenticated brake`, () => {
     const f=intakeFixture(); f.bind();
     // Deliberately cross the public unknown-at-runtime boundary; do not validate
     // malformed inputs away in a transport test double before preservation.
@@ -28,8 +30,8 @@ it('P4-NF-10 P4-NF-14 P4-NF-24 malformed preserved routes cannot poison unrelate
     const facts=f.facts(),c=ownerContext(f);
     expect(value(prepareSnapshot(facts,{ ...c,facts })).entries.flatMap(r => r.taint)).toEqual([]);
     expect(f.facts().find(r => r.id===retained.id)).toEqual(retained);
-  }
-});
+  });
+}
 
 it('P4-NF-10 P4-NF-14 P4-NF-24 invalid JSON in a genuinely signed retained receipt is inert, never a global parsing failure', () => {
   const f=intakeFixture(); f.bind();
