@@ -49,6 +49,14 @@ reservation, one-use claim, exposure and bounded observation wakes.
    evidence/durability checks, and rejects copied JSON/history. Assessment inputs
    and P1 evidence freshness are rechecked after each durability wait, including
    the final wait immediately before issuance or consequential consumption.
+   After the last potentially waiting assessment/custody/storage work, nine's
+   required `consumeCurrent` guard supplies and holds the complete current assessment
+   (including charge, quiescence and availability) for a **synchronous** callback.
+   Eight compares it to the original proof and checks P1 Evidence inside that guard;
+   the public consequential consumer also runs inside it, not after it returns.
+   A missing/unavailable guard refuses: another potentially waiting `read` is NOT
+   a fallback. Host `current()` is a non-waiting local snapshot. Consumers must not
+   wait, defer authority use or schedule asynchronous work from this capability.
    Changed assessment, evidence, reservation or observations refuse that attempt;
    an already durable historical settlement is not erased. It does **not**
    change credits. Six's conditional settlement/accounting extension is a routed
@@ -100,7 +108,13 @@ claimed complete: their inherited skips remain visible in the full suite.
 - The P5 pending/result and P9 evidence-acceptance fixtures are named stand-ins.
   No P9 type, constructor or production assessor is reimplemented here. The P9
   consumer interface states requirements; production composition must provide its
-  owned fact decoder/current acceptance contract. Merely supplying a no-op does
+  owned fact decoder/current acceptance contract, including a non-waiting guard
+  that refuses if it cannot hold current conclusions stable through consumption.
+  The shipped nine stand-in implements a real local critical section over its
+  mutable assessment and refuses reentrant updates; it performs no I/O or calls
+  to the potentially waiting read port while guarded. This is not a production
+  distributed assessment lease or an implementation of nine's stored records.
+  Merely supplying a no-op does
   not constitute conformance. Current approval/evidence are rechecked through P1.
 - The full causal standing-record provider, provisional-clearing matrix,
   evidence-withdrawal/accounting correction, separately scoped late observer,

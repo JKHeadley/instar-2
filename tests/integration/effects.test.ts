@@ -11,6 +11,83 @@ import { json, privateKey } from '../facts/fixtures.js';
 // This does not yield inside any tested atomic/reentrant handoff.
 afterEach(async () => { await new Promise<void>(done => setImmediate(done)); });
 
+for (const change of ['unchanged', 'charge', 'quiescence', 'withdrawn'] as const) {
+  it(`P8-NF-19 P8-NF-21 P8-NF-23 N1 final custody wait assessment ${change}`, () => {
+    const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
+    f.assess('happened', 0, change === 'quiescence');
+    let armed = false, checks = 0, callbacks = 0;
+    const assessor = f.composition.assessment!;
+    let readArgs: Parameters<typeof assessor.read> | undefined;
+    const api = createEffectDoorway({ ...f.composition, assessment: { ...assessor, read: (...args) => {
+      readArgs = args; return assessor.read(...args);
+    } }, custody: { owner: 'part-ten', verify: (captures, policy) => {
+      const verified = f.composition.custody.verify(captures, policy);
+      if (armed && ++checks === 2) {
+        f.time(101);
+        if (change === 'charge') f.assess('happened', 7);
+        if (change === 'quiescence') f.assess('happened', 0, false);
+        if (change === 'withdrawn') f.withdrawAssessment();
+      }
+      return verified;
+    } } });
+    const s = value(api.settle(o.operation)); armed = true;
+    const consumed = consumeEffectSettlement(s, f.host.boundary, current => {
+      expect(f.assessmentGuardActive()).toBe(true);
+      expect(() => f.assess('happened', 9)).toThrow('held by synchronous consumer');
+      expect(() => f.withdrawAssessment()).toThrow('held by synchronous consumer');
+      callbacks++; return current.finalCharge;
+    });
+    expect(f.assessmentGuardActive()).toBe(false);
+    expect(checks).toBe(2);
+    if (change === 'unchanged') { expect(value(consumed)).toBe(0); expect(callbacks).toBe(1); }
+    else { refused(consumed, change === 'withdrawn' ? 'withdrawn' : 'assessment changed'); expect(callbacks).toBe(0); }
+    expect(readArgs).toBeDefined();
+    if (change === 'withdrawn') expect(() => assessor.read(...readArgs!)).toThrow('withdrawn');
+    else expect(value(assessor.read(...readArgs!))).toMatchObject({ finalCharge: change === 'charge' ? 7 : 0, delayedExecutionExcluded: false });
+    const ids = consumeOutcome(s.outcome, { happened: e => e, 'did-not-happen': e => e, uncertain: e => e });
+    const evidence = value(decode('Evidence', f.evidence.find(e => e.id === ids[0]), f.host.current().decode));
+    value(readEvidence(evidence, f.host.current().clock, f.host.boundary.preserved));
+    value(f.composition.custody.verify([o.capture], f.d));
+    expect(value(f.api.inspect()).filter(r => r.record.type === 'EffectSettlement')).toHaveLength(1);
+    expect(value(f.transport.inspect()).filter(r => r.record.type === 'AdmissionReservation').at(-1)!.record)
+      .toMatchObject({ state: 'consumed', charge: 20 });
+    expect(f.calls()).toBe(1);
+  }, 30000);
+}
+
+it('P8-NF-19 P8-NF-21 N1 absent assessment guard refuses; consumer exceptions release the real guard', () => {
+  const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
+  f.assess('happened', 0);
+  const api = createEffectDoorway({ ...f.composition, assessment: { ...f.composition.assessment!,
+    // @ts-expect-error Deliberately missing required owner guard at the runtime seam.
+    consumeCurrent: undefined,
+  } });
+  refused(api.settle(o.operation), 'assessment guard unavailable');
+  const s = value(f.api.settle(o.operation));
+  refused(consumeEffectSettlement(s, f.host.boundary, () => { expect(f.assessmentGuardActive()).toBe(true); throw new Error('consumer failed'); }), 'consumer failed');
+  expect(f.assessmentGuardActive()).toBe(false);
+  f.assess('happened', 7); // Mutation after the critical section is permitted.
+  refused(consumeEffectSettlement(s, f.host.boundary, () => { throw new Error('stale callback must not run'); }), 'charge disagreement');
+  expect(f.calls()).toBe(1);
+}, 30000);
+
+it('P8-NF-19 P8-NF-21 P8-NF-23 N1 blocking assessment reads finish before final custody and current guard', () => {
+  const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
+  f.assess('happened', 0); let armed = false, reads = 0, callbacks = 0;
+  const path = join(f.directory, 'peer-captures', `${o.capture.hash.slice(7)}.capture`);
+  const api = createEffectDoorway({ ...f.composition, assessment: { ...f.composition.assessment!, read: (...args) => {
+    const result = f.composition.assessment!.read(...args);
+    if (armed && ++reads === 3) renameSync(path, `${path}.withheld`);
+    return result;
+  } } });
+  const s = value(api.settle(o.operation)); armed = true;
+  refused(consumeEffectSettlement(s, f.host.boundary, () => { callbacks++; }), 'custody');
+  expect(reads).toBe(3); expect(callbacks).toBe(0); expect(f.assessmentGuardActive()).toBe(false);
+  renameSync(`${path}.withheld`, path);
+  expect(value(consumeEffectSettlement(s, f.host.boundary, current => current.id))).toBe(s.id);
+  expect(f.calls()).toBe(1);
+}, 30000);
+
 for (const loss of ['both-missing', 'peer-missing', 'peer-corrupt'] as const) {
   it(`P8-NF-23 P8-NF-25 P8-NF-27 P8-NF-30 P8-NF-39 current physical custody refuses ${loss} and permits restoration`, () => {
     const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));

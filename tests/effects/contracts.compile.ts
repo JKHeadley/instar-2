@@ -1,4 +1,4 @@
-import type { EffectRequest, EffectSettlement, OperationDefinition, OutboundMessage } from '../../src/effects/index.js';
+import type { EffectAssessmentPort, EffectRequest, EffectSettlement, OperationDefinition, OutboundMessage } from '../../src/effects/index.js';
 import type { DispatchClaim } from '../../src/transport/index.js';
 import type { OwnedReference } from '../../src/index.js';
 declare const request: EffectRequest;
@@ -15,4 +15,7 @@ const wrong: OutboundMessage = definition;
 const replay: EffectRequest = settlement;
 // @ts-expect-error Nine's approved name is VerificationAssessment, not a consumer-invented alias.
 const invented: OwnedReference<'part-nine', 'VerificationAssessment'> = { owner: 'part-nine', name: 'EvidenceAcceptance', id: 'fake' };
-void [message, claim, fake, wrong, replay, invented];
+declare const assessmentWithoutGuard: Omit<EffectAssessmentPort, 'consumeCurrent'>;
+// @ts-expect-error A potentially waiting read cannot substitute for the owner guard.
+const unguarded: EffectAssessmentPort = assessmentWithoutGuard;
+void [message, claim, fake, wrong, replay, invented, unguarded];

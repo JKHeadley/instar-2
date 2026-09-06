@@ -73,22 +73,33 @@ export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), in
   };
   let assessmentState: 'happened' | 'uncertain' = 'uncertain';
   let finalCharge: number | null = null;
+  let delayedExecutionExcluded = false, assessmentAvailable = true, assessmentGuards = 0;
   let acceptanceId = '';
   let assessmentEvidence = '';
+  const mutableAssessment = () => { if (assessmentGuards) throw new Error('assessment held by synchronous consumer'); };
+  const assessmentView = (ref: Parameters<EffectAssessmentPort['read']>[0], input: Parameters<EffectAssessmentPort['read']>[1]) => {
+    if (!assessmentAvailable) throw new Error('assessment withdrawn');
+    if (ref.id !== acceptanceId || !input.observations.length) throw new Error('assessment binding');
+    return Object.freeze({ outcome: value(decode('Outcome', { type: 'Outcome', schemaVersion: 1, kind: assessmentState, evidence: [assessmentEvidence] }, decodeContext)),
+      finalCharge, delayedExecutionExcluded, required: Object.freeze([acceptanceId]) });
+  };
   // EXPLICIT nine stand-in. It records a note, not a counterfeit P9 fact/type.
   // No production claim or automatic retry may rely on this fixture composition.
   const assessor: EffectAssessmentPort = { owner: 'part-nine',
-    assess: input => { acceptanceId ||= note('independent nine assessment STAND-IN').id;
+    assess: input => { mutableAssessment(); acceptanceId ||= note('independent nine assessment STAND-IN').id;
       const evidenceId = `assessment:${input.reservation.operation}:${assessmentState}`;
       if (!f.evidence.some(e => e.id === evidenceId)) f.evidence.push(value(decode('Evidence', f.evidenceInput({ id: evidenceId,
         claim: { subject: input.reservation.operation, predicate: input.request.digest, value: assessmentState },
         strength: 'observation', observedAt: f.clock(now), freshFor: 100 }), decodeContext)));
       assessmentEvidence = evidenceId;
       return f.success({ owner: 'part-nine', name: 'VerificationAssessment', id: acceptanceId }); },
-    read: (ref, input) => {
-      if (ref.id !== acceptanceId || !input.observations.length) throw new Error('assessment binding');
-      return f.success({ outcome: value(decode('Outcome', { type: 'Outcome', schemaVersion: 1, kind: assessmentState, evidence: [assessmentEvidence] }, decodeContext)),
-        finalCharge, delayedExecutionExcluded: false, required: [acceptanceId] });
+    read: (ref, input) => f.success(assessmentView(ref, input)),
+    consumeCurrent: (ref, input, consume) => {
+      // Actual local non-waiting guard: no call through read/note/custody/storage.
+      // Both fixture mutation paths and reentrant assess refuse while it is held.
+      const current = assessmentView(ref, input);
+      assessmentGuards++;
+      try { return f.success(consume(current)); } finally { assessmentGuards--; }
     },
   };
   const composition: EffectComposition = { host, spine, transport, durability: replicas.durability, custody: custody.custody, adapter, assessment: assessor };
@@ -102,7 +113,12 @@ export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), in
     d, definition, message, pending, run, obligation, fence, prepare,
     calls: () => calls, queries: () => queries, onInvoke: (fn: () => void) => { invoke = fn; },
     stop: () => { stopped = true; }, time: (v: number) => { now = v; },
-    assess: (state: typeof assessmentState, charge: number | null) => { assessmentState = state; finalCharge = charge; },
+    assess: (state: typeof assessmentState, charge: number | null, excluded = false) => {
+      mutableAssessment();
+      assessmentState = state; finalCharge = charge; delayedExecutionExcluded = excluded;
+    },
+    withdrawAssessment: () => { mutableAssessment(); assessmentAvailable = false; },
+    assessmentGuardActive: () => assessmentGuards > 0,
     versions: (v: GovernedVersion[]) => { versions = v; },
   };
 }

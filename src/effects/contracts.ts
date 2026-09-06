@@ -51,6 +51,7 @@ export type EffectRecord = OperationDefinition | OutboundMessage | EffectRequest
 export interface EffectHost {
   readonly machine: string; readonly incarnation: string; readonly principal: VerifiedPrincipal;
   readonly scope: Scope; readonly boundary: BoundaryContext;
+  // Non-waiting local snapshot/clock accessor; never refresh external providers here.
   current(): { readonly decode: DecodeContext; readonly clock: Clock; readonly stopped: boolean;
     readonly versions: readonly GovernedVersion[]; readonly authority: readonly string[] };
   capture(bytes: string): Result<{ readonly reference: string; readonly hash: string }>;
@@ -84,16 +85,26 @@ export interface OperationAdapterPort {
 }
 // Consumer requirements only, not a replacement nine-owned record or constructor.
 // The assembly must bind this port to nine's independent assessor, not the adapter.
+export interface EffectAssessmentInput {
+  readonly request: EffectRequest; readonly reservation: AdmissionReservation;
+  readonly claim: string; readonly observations: readonly OperationObservation[]; readonly bar: string;
+}
+export interface EffectAssessmentView {
+  readonly outcome: Outcome; readonly finalCharge: number | null;
+  readonly delayedExecutionExcluded: boolean; readonly required: readonly string[];
+}
 export interface EffectAssessmentPort {
   readonly owner: 'part-nine';
-  assess(input: { readonly request: EffectRequest; readonly reservation: AdmissionReservation;
-    readonly claim: string; readonly observations: readonly OperationObservation[];
-    readonly bar: string }): Result<OwnedReference<'part-nine', 'VerificationAssessment'>>;
-  read(acceptance: OwnedReference<'part-nine', 'VerificationAssessment'>, input: {
-    readonly request: EffectRequest; readonly reservation: AdmissionReservation; readonly claim: string;
-    readonly observations: readonly OperationObservation[]; readonly bar: string;
-  }): Result<{ readonly outcome: Outcome; readonly finalCharge: number | null;
-    readonly delayedExecutionExcluded: boolean; readonly required: readonly string[] }>;
+  assess(input: EffectAssessmentInput): Result<OwnedReference<'part-nine', 'VerificationAssessment'>>;
+  read(acceptance: OwnedReference<'part-nine', 'VerificationAssessment'>, input: EffectAssessmentInput): Result<EffectAssessmentView>;
+  // Non-waiting, synchronous owner guard, NOT another potentially blocking read.
+  // Must establish current binding/availability and hold the complete assessment
+  // stable through the callback; no I/O, refresh, yield or reentrant mutation.
+  // If this cannot be established immediately, refuse WITHOUT calling consumer.
+  // The callback must not wait or defer use. No production guard is inferred from
+  // the explicit in-process nine stand-in shipped by this reference slice.
+  consumeCurrent<T>(acceptance: OwnedReference<'part-nine', 'VerificationAssessment'>, input: EffectAssessmentInput,
+    consumer: (current: EffectAssessmentView) => T): Result<T>;
 }
 export interface EffectDoorway {
   readonly owner: 'part-eight';

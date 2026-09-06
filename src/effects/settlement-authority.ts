@@ -6,8 +6,9 @@ import { boundary, encoded, ensure, take } from './boundary.js';
 // A ticket exists only on the stack after independent acceptance and durability
 // checks. Historical replay checks signed data, never recreates this live ticket.
 const tickets = new WeakMap<EffectHost, Set<string>>();
-const issued = new WeakMap<object, () => Result<EffectSettlement>>();
-export function issuedSettlement(value: EffectSettlement, recheck: () => Result<EffectSettlement>): EffectSettlement {
+type SettlementRecheck = <T>(consumer: (value: EffectSettlement) => T) => Result<T>;
+const issued = new WeakMap<object, SettlementRecheck>();
+export function issuedSettlement(value: EffectSettlement, recheck: SettlementRecheck): EffectSettlement {
   issued.set(value, recheck); return value;
 }
 // Consumer six must use this current, owner-produced view rather than trusting
@@ -15,9 +16,11 @@ export function issuedSettlement(value: EffectSettlement, recheck: () => Result<
 export function consumeEffectSettlement<T>(value: EffectSettlement, c: BoundaryContext, consumer: (value: EffectSettlement) => T): Result<T> {
   return boundary('EffectSettlementConsume', { id: value?.id }, c, () => {
     const recheck = issued.get(value); ensure(recheck, 'settlement is not a live eight-owned issuance');
-    const current = take(recheck());
-    ensure(encoded(current).bytes === encoded(value).bytes, 'settlement changed or evidence was withdrawn');
-    return consumer(current);
+    // Consequential use stays INSIDE the owner's synchronous assessment guard.
+    return take(recheck(current => {
+      ensure(encoded(current).bytes === encoded(value).bytes, 'settlement changed or evidence was withdrawn');
+      return consumer(current);
+    }));
   });
 }
 export function withSettlement<T>(host: EffectHost, value: EffectSettlement, run: () => T): T {
