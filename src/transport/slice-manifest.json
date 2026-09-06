@@ -1,0 +1,20 @@
+{
+  "owner": "part-six",
+  "status": "dark",
+  "activation": "not registered as a live or gated runtime feature",
+  "reason": "Reference composition only. Production P3 gate/catalog, current authority feed, five/eight composition, channel proof and supervisor must precede runtime activation.",
+  "metricsToWire": ["transport.lease-epoch", "transport.unresolved-operations", "transport.observation-attempts"],
+  "inheritedDeferrals": [],
+  "forwardContracts": {
+    "five-exclusive-admission": "partial: one-voter fence; five owns run transitions",
+    "five-loop-and-resources": "partial: one durable episode and finite budget; no nested allocation/fleet fairness",
+    "five-delivery-result-cancellation": "partial: semantic identity carriage; no peer receipt/result collection protocol",
+    "eight-ownership-idempotency": "partial: durable reservation and one-use claim; production eight consumes the port",
+    "eight-crash-uncertainty": "partial: original reservation and charge retained; eight owns Outcome",
+    "eight-verification-before-retry": "partial: read-only wake; no new attempt enabled; evidence adequacy eight/nine",
+    "eight-durability-authority": "partial: local proof never substitutes for replicated demand; no replica adapter",
+    "five-seven-eight-chargeable-judgment": "partial: operation/spend seam; model invocation and answer acceptance not owned here",
+    "four-ten-threadline-identity": "out-of-scope: full Threadline adapter excluded by slice brief",
+    "eleven-degraded-serving-repair": "out-of-scope: independent minimal repair plane and quorum excluded"
+  }
+}
