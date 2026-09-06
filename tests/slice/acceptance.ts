@@ -158,6 +158,12 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
     if (!SIX_OPERATION_ROLES.includes(op.role)) bad.push(`six-owned operation with no declared section-7 role: ${op.role}`);
     byRole.set(op.role, (byRole.get(op.role) ?? 0) + 1);
     if (report.run && op.run !== report.run.id) bad.push(`six-owned operation ${op.role} belongs to another run`);
+    // `resolved` is not a six record field: it is eleven's SUMMARY of two six record
+    // fields carried in the same row, and `unaccounted()` below keys on it. A summary
+    // contradicting the state and application it summarizes is REFUSED, never silently
+    // recomputed — the row is six's testimony as the report carries it (desk R2).
+    if (op.resolved !== (op.state === 'closed' || (op.application !== null && op.application.unresolved === 0)))
+      bad.push(`the resolved flag for ${op.role} contradicts six's own state and application`);
     // Six's own accounting, never recomputed here: a released credit must be exactly
     // the part of the reservation the settled exposure did not consume.
     if (op.application) {

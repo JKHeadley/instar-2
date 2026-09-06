@@ -257,6 +257,17 @@ it('P11-NF-48 on REAL history, a terminal obligation label relabelled over six\'
   expect(withinExecution(laundered, SLICE_INPUT)
     .some(v => v.includes('obligation closed-unexecuted names an operation six records as consumed'))).toBe(true);
 
+  // The desk's M1 shape (R2), on the same real history: flip ONLY the row's resolved
+  // summary to true and drop the obligation naming the operation. The flag then
+  // contradicts the state and application in its own row, and is refused by name.
+  const m1 = { ...judgment.report,
+    sixOperations: judgment.report.sixOperations.map(o =>
+      o.operation === model.operation ? { ...o, resolved: true } : o),
+    obligations: judgment.report.obligations.filter(o =>
+      o.operation !== model.operation && !o.operation.endsWith(`:${model.operation}`)) };
+  expect(withinExecution(m1, SLICE_INPUT)
+    .some(v => v.includes('the resolved flag for model-judgment contradicts six\'s own state and application'))).toBe(true);
+
   // The same class on a settlement-bearing execution: a cut after the dispatch-claim
   // leaves six holding an APPLIED but unresolved operation with its exposure retained.
   const cut = await execute({ profile: 'reply', cuts: ['outbound-claim'] });

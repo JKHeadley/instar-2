@@ -422,3 +422,45 @@ it('P11-NF-48 the LEGITIMATE terminal rows still pass, and the repair is not a w
     expect(OPEN_OBLIGATION_STATES, state).not.toContain(state);
   expect(SIX_RECORD_OBLIGATION_STATES).toEqual(['closed-unexecuted', 'applied-resolved', 'applied-unresolved']);
 });
+
+// R2 (desk `de86084`): the six row's `resolved` field is eleven's summary of the
+// row's own `state` and `application`, and `unaccounted()` keyed on it unchecked —
+// so `resolved: true` over a consumed, unapplied operation needed no obligation at
+// all (the desk's M1 shape). The rule refuses the inconsistency; it never
+// recomputes the field and carries on.
+it('P11-NF-48 the resolved flag is refused when it contradicts the state and application it summarizes', () => {
+  // The desk's M1 shape: resolved:true over consumed / no application, and the
+  // obligation naming the operation DROPPED. R1's rules cannot see it; this one does.
+  const m1 = model({ sixOperations: [modelOp({ resolved: true })],
+    obligations: [{ operation: 'unreserved:request:1', state: 'owned-pending-unadmitted', owner: 'part-six', blocker: 'part-six', exposure: '20' }] });
+  expect(withinExecution(m1, SLICE_INPUT)
+    .some(v => v.includes('the resolved flag for model-judgment contradicts six\'s own state and application'))).toBe(true);
+  // M2: the same flag with the obligation kept — inconsistent, refused the same way.
+  expect(withinExecution(model({ sixOperations: [modelOp({ resolved: true })] }), SLICE_INPUT)
+    .some(v => v.includes('the resolved flag for model-judgment contradicts'))).toBe(true);
+  // The inverse contradiction: a row whose application says resolved, flagged not.
+  expect(withinExecution(report({ sixOperations: [outboundOp({ resolved: false })] }), SLICE_INPUT)
+    .some(v => v.includes('the resolved flag for outbound-reply contradicts'))).toBe(true);
+  // ...and a closed row flagged unresolved.
+  expect(withinExecution(report({ settlement: null, deliveryEvidence: [], externalApplications: [], charges: [],
+    accounting: { ...report().accounting, notifications: 0, money: 0 },
+    sixOperations: [outboundOp({ state: 'closed', application: null, resolved: false })],
+    obligations: [{ operation: OPERATION, state: 'closed-unexecuted', owner: 'part-six', blocker: 'none', exposure: '0' }] }), SLICE_INPUT)
+    .some(v => v.includes('the resolved flag for outbound-reply contradicts'))).toBe(true);
+  // The CONSISTENT real rows are unchanged: applied-resolved (consumed, unresolved 0,
+  // resolved true), closed/resolved, applied-unresolved (dispatch-claimed, unresolved
+  // 1, resolved false), and the plain consumed/unresolved model row.
+  expect(withinExecution(report(), SLICE_INPUT)).toEqual([]);
+  expect(withinExecution(report({ settlement: null, deliveryEvidence: [], externalApplications: [], charges: [],
+    accounting: { ...report().accounting, notifications: 0, money: 0 },
+    sixOperations: [outboundOp({ state: 'closed', application: null, resolved: true })],
+    obligations: [{ operation: OPERATION, state: 'closed-unexecuted', owner: 'part-six', blocker: 'none', exposure: '0' }] }), SLICE_INPUT)).toEqual([]);
+  expect(withinExecution(report({ settlement: { outcome: 'did-not-happen', finalCharge: null,
+    retainedExposure: 20, delayedExecutionExcluded: true }, externalApplications: [], charges: [],
+  accounting: { ...report().accounting, notifications: 0, money: 0 },
+  deliveryEvidence: [{ operation: OPERATION, stage: 'service-applied', decisive: 'decisive', value: 'did-not-happen' }],
+  sixOperations: [outboundOp({ state: 'dispatch-claimed', resolved: false,
+    application: { exposure: 20, released: 0, unresolved: 1, actualCharge: -1 } })],
+  obligations: [{ operation: OPERATION, state: 'applied-unresolved', owner: 'part-six', blocker: 'none', exposure: '20' }] }), SLICE_INPUT)).toEqual([]);
+  expect(withinExecution(model(), SLICE_INPUT)).toEqual([]);
+});
