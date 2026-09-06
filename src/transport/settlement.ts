@@ -1,7 +1,7 @@
 import { consumeOutcome } from '../index.js';
-import type { FactEnvelope } from '../facts/index.js';
+import type { AppendReceipt, FactEnvelope } from '../facts/index.js';
 import type { AdmissionReservation, SettlementAccountingInput, SettlementApplication, TransportFact, TransportHost } from './contracts.js';
-import { encoded, ensure } from './boundary.js';
+import { encoded, ensure, take } from './boundary.js';
 
 // A raw P2 caller cannot manufacture a credit receipt. This ticket exists only
 // while the trusted assembly's eight consumer is on-stack; replay never mints it.
@@ -28,6 +28,32 @@ export function requireApplication(host: TransportHost, r: SettlementApplication
 export function latestApplication(all: readonly TransportFact[], operation: string): SettlementApplication | undefined {
   const r = all.filter(v => v.record.type === 'SettlementApplication' && v.record.operation === operation).at(-1)?.record;
   return r?.type === 'SettlementApplication' ? r : undefined;
+}
+export function checkAccountingReceipt(fact: FactEnvelope, receipt: AppendReceipt, reservation: AdmissionReservation): void {
+  ensure(!receipt.taint.length && encoded(receipt.fact).bytes === encoded(fact).bytes, 'accounting receipt is tainted or for different facts');
+  const d = receipt.durability;
+  ensure(d.kind === 'local-durable' || d.kind === 'replicated', 'accounting lacks durable receipt');
+  if (reservation.durability === 'replicated') ensure(d.kind === 'replicated' && d.n >= reservation.replicas
+    && new Set(d.peers).size >= reservation.replicas && !d.peers.includes(fact.machine), 'original accounting durability demand unmet');
+}
+export function requireAccountingDurability(row: TransportFact, reservation: AdmissionReservation, host: TransportHost): void {
+  // P2's status-bearing local prefix already establishes local-durable custody.
+  if (reservation.durability === 'local-durable') return;
+  ensure(host.accountingDurability?.owner === 'part-ten', 'original accounting durability demand unmet: no configured custody reader');
+  const receipts = take(host.accountingDurability.ensure([row.fact]));
+  ensure(receipts.length === 1, 'accounting receipt must cover exact application');
+  checkAccountingReceipt(row.fact, receipts[0]!, reservation);
+}
+export function admissionAccounting(all: readonly TransportFact[], reservation: AdmissionReservation, host: TransportHost) {
+  const applications = all.filter(v => v.record.type === 'SettlementApplication' && v.record.operation === reservation.operation);
+  const latest = applications.at(-1);
+  // A local record may increase exposure/inhibit immediately. Reduction requires
+  // current proof of THIS accounting fact at the ORIGINAL operation's demand.
+  const held = { exposure: Math.max(reservation.charge, ...applications.map(v => (v.record as SettlementApplication).exposure)), unresolved: 1 };
+  if (!latest) return held;
+  try { requireAccountingDurability(latest, reservation, host); }
+  catch { return held; }
+  return latest.record as SettlementApplication;
 }
 export function accounting(s: SettlementAccountingInput, reservation: AdmissionReservation) {
   ensure(s.retryEligible === false && typeof s.delayedExecutionExcluded === 'boolean', 'unsupported retry or quiescence contract');

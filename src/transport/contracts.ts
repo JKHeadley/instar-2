@@ -75,6 +75,12 @@ export interface TransportHost {
   readonly domain: string; readonly machine: string; readonly incarnation: string;
   readonly authorityIncarnation: string; readonly principal: VerifiedPrincipal;
   readonly scope: Scope; readonly maxLeaseTerm: number; readonly budget: number;
+  // P10 checks exact P2 facts/receipts, including after restart. Absence never
+  // makes replicated accounting spendable; it does not block observation.
+  readonly accountingDurability?: {
+    readonly owner: 'part-ten';
+    ensure(facts: readonly FactEnvelope[]): Result<readonly AppendReceipt[]>;
+  };
   monotonic(): number;
   current(): { readonly decode: DecodeContext; readonly clock: Clock;
     readonly generation: RegisterGenerationReference; readonly stopped: boolean };

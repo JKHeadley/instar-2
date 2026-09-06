@@ -5,7 +5,7 @@ import type { AdmissionReservation, DispatchClaim, FactAuthor, FenceToken, Lease
   SettlementApplication, SettlementConsumer, TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { checkFence, fenceFor, kindFor, latestLease, latestLoop, live, loopActive, observationAdmission, policyCheck, reservations, rows, validateTransition } from './records.js';
-import { accounting, checkApplicationEvidence, requireSettlementConsumer, settlementMatches, withApplication } from './settlement.js';
+import { accounting, checkAccountingReceipt, checkApplicationEvidence, requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication } from './settlement.js';
 
 export function createTransportSpine(host: TransportHost, author: FactAuthor, store: FactStorePort): TransportSpine {
   return Object.freeze({ store, append: (record: TransportRecord, required: readonly string[]) => authorAndAppend({
@@ -34,7 +34,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
   const meta = (all: readonly TransportFact[], command: string) => ({ schemaVersion: 1 as const, domain: host.domain,
     command, predecessor: all.at(-1)?.fact.id ?? '', authority: host.authorityIncarnation, tick: tick() });
   const write = <T extends TransportRecord>(all: readonly TransportFact[], r: T): { record: T; all: readonly TransportFact[] } => {
-    validateTransition(r, all, host);
+    validateTransition(r, all, host, true);
     const required = r.predecessor ? [r.predecessor] : [];
     if (r.type === 'SettlementApplication') required.push(r.settlementFact);
     const receipt = take(spine.append(r, [...new Set(required)]));
@@ -42,6 +42,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
     ensure(receipt.fact.kind === kindFor(r.type) && encoded(receipt.fact.body).bytes === encoded({ record: r }).bytes, 'append returned different record');
     if (r.type === 'AdmissionReservation' && r.durability === 'replicated')
       ensure(receipt.durability.kind === 'replicated' && receipt.durability.n >= r.replicas, 'effect requires stronger durability than lease');
+    if (r.type === 'SettlementApplication') checkAccountingReceipt(receipt.fact, receipt, reservations(all).find(p => p.operation === r.operation)!);
     const result = freeze(r); return { record: result, all: [...all, { record: result, fact: receipt.fact }] };
   };
   const fence = (all: readonly TransportFact[], token: FenceToken) => checkFence(all, token, host, tick());
@@ -78,6 +79,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         const prior = all.find(v => v.record.type === 'SettlementApplication' && v.record.settlement === s.id)?.record;
         if (prior) {
           ensure(prior.type === 'SettlementApplication' && Object.entries(fields).every(([k, v]) => prior[k as keyof SettlementApplication] === v), 'settlement identity reused with changed application');
+          requireAccountingDurability(all.find(v => v.record === prior)!, op, host);
           return prior;
         }
         const r = { ...meta(all, `settle:${encoded([s.operation, s.id]).hash}`), type: 'SettlementApplication', ...fields } as SettlementApplication;

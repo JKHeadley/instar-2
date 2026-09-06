@@ -4,7 +4,7 @@ import { causalCone, registerOwnedBody } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, SettlementConsumer, TransportFact, TransportHost, TransportRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
-import { bindSettlementConsumer, checkApplicationEvidence, latestApplication, requireApplication } from './settlement.js';
+import { admissionAccounting, bindSettlementConsumer, checkApplicationEvidence, latestApplication, requireApplication } from './settlement.js';
 
 const txt = { kind: 'text', maxLength: 256 } as const;
 const int = { kind: 'integer' } as const;
@@ -117,7 +117,7 @@ export function live(host: TransportHost): void {
 // The owner validator runs INSIDE P2's append boundary, after signed-chain checks and
 // before its compare-head durable append. A caller bypassing the authority API cannot
 // rebase a stale transition on a newer envelope head.
-export function validateTransition(r: TransportRecord, all: readonly TransportFact[], host: TransportHost): void {
+export function validateTransition(r: TransportRecord, all: readonly TransportFact[], host: TransportHost, origin = false): void {
   ensure(r.domain === host.domain && r.schemaVersion === 1 && r.command.length > 0 && r.tick >= 0, 'record domain or identity');
   ensure(r.predecessor === (all.at(-1)?.fact.id ?? ''), 'conditional predecessor changed');
   ensure(!all.some(v => v.record.command === r.command), 'command already committed');
@@ -153,9 +153,15 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       const prior = reservations(all).find(p => p.operation === r.operation);
       if (!prior) {
         ensure(r.state === 'prepared' && r.executor === '', 'reservation must precede claim');
+        // Inhibition is sticky until an owned governed reconciliation exists.
+        // Different request/attempt/semantic keys cannot erase a same-run breach.
+        ensure(!reservations(all).some(p => p.run === r.run && all.some(v => v.record.type === 'SettlementApplication'
+          && v.record.operation === p.operation && v.record.capViolation === 1)), 'cap violation inhibits affected admission');
+        const states = new Map(reservations(all).map(p => [p.operation, origin ? admissionAccounting(all, p, host)
+          : latestApplication(all, p.operation) ?? { exposure: p.charge, unresolved: 1 }]));
         ensure(!reservations(all).some(p => p.request === r.request || p.semanticMessage === r.semanticMessage
-          || p.run === r.run && latestApplication(all, p.operation)?.unresolved !== 0), 'unresolved execution or charge prohibits a new attempt');
-        ensure(reservations(all).reduce((n, p) => n + (latestApplication(all, p.operation)?.exposure ?? p.charge), r.charge) <= host.budget, 'spend bound exhausted');
+          || p.run === r.run && states.get(p.operation)!.unresolved !== 0), 'unresolved execution, charge or accounting durability prohibits a new attempt');
+        ensure(reservations(all).reduce((n, p) => n + states.get(p.operation)!.exposure, r.charge) <= host.budget, 'spend bound exhausted');
         const loop = latestLoop(all, r.run); ensure(loop && loop.state !== 'stopped', 'durable recovery wake required before reservation');
       } else {
         const immutable = (v: AdmissionReservation) => ({ ...v, command: '', predecessor: '', tick: 0, authority: '', state: '', executor: '' });
@@ -228,7 +234,7 @@ export function registerTransportBodies<S = never>(host: TransportHost, c: Bound
           const past = rows(causalCone(ctx.origin, ctx.facts.facts), host.domain);
           ensure(past.every(({ fact }) => fact.machine === host.machine && fact.principal.id === host.principal.id
             && fact.principal.kind === host.principal.kind), 'predecessor issuer is not this authority');
-          validateTransition(v, past, host);
+          validateTransition(v, past, host, ctx.mode === 'origin');
           if (v.type === 'SettlementApplication') {
             checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past);
             if (ctx.mode === 'origin') requireApplication(host, v, settlementConsumer);

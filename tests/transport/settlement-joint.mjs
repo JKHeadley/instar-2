@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { effects, fixtures, bindings, effectCommit } from './effect-pin.mjs';
 import { createTransportAuthority, registerTransportBodies } from '../../dist/transport/index.js';
 import { decode } from '../../dist/index.js';
+import { createFactStore } from '../../dist/facts/index.js';
 const { value, refused } = fixtures;
 
 export function joint() {
   const f = fixtures.effectFixture();
   const [host, spine, c] = bindings.get(f.transport);
+  Object.assign(host, { accountingDurability: f.replicas.durability });
   const api = createTransportAuthority(host, spine, c, effects.consumeEffectSettlement);
   const request = f.prepare(); value(f.api.dispatch(request, f.fence));
   const reservation = value(api.inspect()).filter(v => v.record.type === 'AdmissionReservation').at(-1).record;
@@ -90,10 +92,21 @@ export function integration() {
   assert.equal(value(fresh(93)).charge, 93); // Exactly 100 exposure, not 80 or 113.
   assert.equal(f.calls(), 1);
 
-  const cap = joint(); cap.f.assess('happened', 120); cap.quiescent();
+  const cap = joint(); cap.f.assess('happened', 30); cap.quiescent();
   const violation = value(cap.api.settle(cap.f.fence, cap.settlement()));
-  assert.equal(violation.exposure, 120); assert.equal(violation.capViolation, 1); assert.equal(violation.released, 0);
-  refused(cap.fresh(0), 'spend bound');
+  assert.equal(violation.exposure, 30); assert.equal(violation.capViolation, 1); assert.equal(violation.released, 0);
+  assert.equal(violation.unresolved, 0); // Aggregate budget 100 is NOT exhausted.
+  refused(cap.fresh(20), 'cap violation');
+  refused(cap.fresh(0), 'cap violation');
+  const reopened = createTransportAuthority(cap.host, { ...cap.spine, store: createFactStore(cap.f.ctx, cap.f.replicas.storage) }, cap.c, effects.consumeEffectSettlement);
+  refused(reopened.reserve({ command: 'reopened-cap-bypass', fence: cap.f.fence,
+    request: { owner: 'part-eight', name: 'EffectRequest', id: 'fresh-after-cap-reopen' }, attempt: 'new-attempt',
+    payloadDigest: cap.reservation.digest, charge: 20, run: cap.f.run, semanticMessage: 'fresh-after-cap-reopen',
+    durability: 'local-durable', replicas: 0 }), 'cap violation');
+  assert.equal(value(cap.api.settle(cap.f.fence, cap.settlement())).exposure, 30); // Accounting recovery remains available.
+  cap.f.time(110);
+  value(cap.api.recover('observe-cap-breach', cap.f.fence, cap.reservation.operation, cap.producer));
+  assert.equal(cap.f.queries(), 1); assert.equal(cap.f.calls(), 1); // Observation, never dispatch.
 
   const unknown = joint(); unknown.f.assess('happened', null); unknown.quiescent();
   const unknownCharge = value(unknown.api.settle(unknown.f.fence, unknown.settlement()));
@@ -106,4 +119,4 @@ export function integration() {
   refused(no.fresh(20, { request: { owner: 'part-eight', name: 'EffectRequest', id: no.reservation.request } }), 'unresolved');
   return { effectCommit, applications: 3, exposure: released.exposure, released: released.released, calls: f.calls() };
 }
-if (process.argv[2] === 'integration') console.log(JSON.stringify(integration()));
+if (process.argv[1]?.endsWith('/settlement-joint.mjs') && process.argv[2] === 'integration') console.log(JSON.stringify(integration()));

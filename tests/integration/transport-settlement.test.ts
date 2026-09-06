@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { expect, it } from 'vitest';
 
-it('P6-NF-14 P6-NF-15 P6-NF-19 P6-NF-35 P6-NF-39 actual eight public seam applies once, preserves holds and refuses changed/copy/undurable settlement', async () => {
+it('P6-NF-14 P6-NF-15 P6-NF-19 P6-NF-35 P6-NF-39 actual eight public seam applies once, preserves holds and inhibits a cap breach below aggregate budget', async () => {
   // x64 ran this real child for 70.7s. Blocking the Vitest worker with spawnSync
   // starved its onTaskUpdate RPC despite every assertion passing. Keep the worker
   // responsive; do not raise reporting/global timeouts or weaken the fixture.

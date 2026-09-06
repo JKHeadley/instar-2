@@ -33,6 +33,10 @@ Composition order:
    not a competing settlement type or decoder. This is a trusted assembly dependency,
    like the store/clock, never a callback selected by an untrusted request. Omitting
    it refuses all settlement applications and keeps reservations held.
+   For replicated accounting, bind `host.accountingDurability` to P10's exact-fact
+   custody reader returning P2 append receipts (the same real durability reader
+   used by eight can implement this structural port). Missing proof never releases
+   credit; this is a trusted host dependency, not an application-supplied receipt.
 
 Settlement consumption rechecks eight's independent assessment and exact durability
 before reading six's fresh status-bearing prefix. A `SettlementApplication` binds
@@ -46,10 +50,18 @@ that referenced field and imports P1's Outcome consumer, not an eight decoder.
 Applications deduplicate by settlement identity, with exact changed-byte refusal;
 successor settlements for an operation conditionally replace its accounting view.
 `released` is cumulative unused credit, not an additive payment. Budget admission
-uses the latest exposure once per operation. A lost ACK or duplicate cannot release
-twice. Unknown occurrence, unknown charge, or possible delayed execution holds at
+uses the latest exposure once per operation only when the exact accounting fact
+meets the ORIGINAL reservation's demand. Local-only application history is retained,
+but first acknowledgment and duplicates refuse usable release until that demand is
+met. New origin admission rechecks P2 custody, including after reopen and inside
+P2's owner validator. Unsupported accounting retains the maximum observed exposure;
+a weaker NEW request cannot lower the old demand. Historical parsing itself does
+not require a live peer or erase the locally preserved accounting row. A lost ACK
+or duplicate cannot release twice. Unknown occurrence, unknown charge, or possible delayed execution holds at
 least the original maximum. A known charge above that maximum records a cap
-violation and blocks spending beyond the domain cap. Only decisive known-charge,
+violation and inhibits new affected same-run admissions even BELOW the domain cap,
+including fresh request/attempt/semantic IDs. Accounting and observation recovery
+remain available; this slice has no governed cap-reconciliation override. Only decisive known-charge,
 quiescent settlement releases unused credit. Eight's reply producer has
 `retryEligible: false`: no new attempt of the same request/semantic message is
 enabled, even after proven non-occurrence. Distinct work in the same run may use
@@ -113,9 +125,14 @@ last cut proves fail-closed active retention with zero replacement calls. Its ei
 test stand-in, not the sibling's eventual implementation or an actual Telegram send.
 
 The settlement integration and SIGKILL lifecycle tests import eight's ACTUAL public
-exports and fixture from pushed commit `4048b2d2799112df4ab8809b7462e8b801f527c5`,
+exports and fixture from pushed commit `6a9cb2186df841949815327ddd8ba1ce71d1832b`,
 using git objects and this branch's emitted P1/P2/P6 packages. They require a full
 history checkout, fail when the pinned input is absent, and never copy eight's
 source into this package. Nine's independent assessor remains an explicit fixture
 stand-in and the replica is a second local directory, not an independent failure
-domain. This seam does not activate production effects or establish nine's bar.
+domain. The current producer includes its physical receipt-custody checks and uses
+nine's approved VerificationAssessment reference. Tests drop the peer precisely at
+accounting append, reopen origin, attempt weaker-budget use through both public six
+and raw P2 admission, and resume exact proof with one application. Three real
+SIGKILL cuts cover held, replicated release, and local-only accounting before ACK.
+This seam does not activate production effects or establish nine's bar.

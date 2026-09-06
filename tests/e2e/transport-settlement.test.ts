@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 
 it('P6-NF-11 P6-NF-14 P6-NF-19 P6-NF-34 P6-NF-36 P6-NF-39 SIGKILL after settlement commit before ACK rebuilds one application and exact spend bound', async () => {
-  for (const cut of ['held', 'released']) {
+  for (const cut of ['held', 'released', 'local-only']) {
     const seed = join(mkdtempSync(join(tmpdir(), 'p6-settlement-kill-')), 'seed.json');
     const child = spawn(process.execPath, ['tests/transport/settlement-worker.mjs', 'start', seed, cut], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
@@ -25,6 +25,6 @@ it('P6-NF-11 P6-NF-14 P6-NF-19 P6-NF-34 P6-NF-36 P6-NF-39 SIGKILL after settleme
       expect(JSON.parse(restored.stdout)).toEqual({ applications: 1, exposure: cut === 'held' ? 20 : 7, released: cut === 'held' ? 0 : 13, calls: 0 });
     } finally { child.kill('SIGKILL'); }
   }
-  // Two real compiled-owner SIGKILL/restart cycles with replicated signed history;
+  // Three real compiled-owner SIGKILL/restart cycles, including missing accounting replica;
   // not a claim about production recovery latency.
 }, 150000);
