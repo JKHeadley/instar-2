@@ -14,6 +14,20 @@ export function readRegisterEntry(id: string, register: VerifiedRegister, contex
     requireThat(entry, `unresolved register entry ${id}`); return entry;
   });
 }
+// Runtime consumer route: checks the actual declared pair and approved record.
+// It does not accept reads/invokes claims, execute a callback or grant standing.
+// Source wiring still separately proves the real consumer invocation at this site.
+export function readEnforcedRecord(site: string, record: string, decoder: string, register: VerifiedRegister, context: RegisterContext) {
+  return checked('EnforcedRecordRead', { site, record, decoder }, context, () => {
+    const gate = take(readRegisterEntry(site, register, context)).declaration;
+    requireThat(gate.kind === 'blocking sites' && gate.status === 'live', 'P3-NF-26: enforced-record read requires a live blocking site');
+    requireThat(boundaryRungs(gate.requiredFacts).some(r => r.decidesAlone === 'governed-state'
+      && object(r.enforces!).record === record && object(r.enforces!).decoder === decoder), 'P3-NF-26: declared enforced record/decoder pair differs');
+    const entry = take(readRegisterEntry(record, register, context));
+    requireThat(entry.declaration.status === 'live' && !('state' in entry.approvedIn), 'P3-NF-26: enforced record lacks live approved history');
+    return entry;
+  });
+}
 export function constructGoverned(kind: string, id: string, register: GeneratedRegister, context: RegisterContext) {
   return checked<GovernedConstruct, RegisterContext>('GovernedConstruct', { kind, id }, context, () => {
     const entry = register.entries.find(e => e.declaration.id === id && e.declaration.kind === kind && e.declaration.status !== 'retired');
