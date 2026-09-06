@@ -2,9 +2,9 @@ import { decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../inde
 import type { BoundaryContext, Json, Result } from '../index.js';
 import { causalCone, registerOwnedBody } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
-import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, TransportFact, TransportHost, TransportRecord } from './contracts.js';
+import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, SettlementConsumer, TransportFact, TransportHost, TransportRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
-import { checkApplicationEvidence, latestApplication, requireApplication } from './settlement.js';
+import { bindSettlementConsumer, checkApplicationEvidence, latestApplication, requireApplication } from './settlement.js';
 
 const txt = { kind: 'text', maxLength: 256 } as const;
 const int = { kind: 'integer' } as const;
@@ -204,8 +204,9 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
     }
   }
 }
-export function registerTransportBodies(host: TransportHost, c: BoundaryContext): Result<readonly OwnedBodyRegistration[]> {
-  return boundary('TransportRegistrations', null, c, () => Object.entries(transportShapes).map(([name, shape]) => take(registerOwnedBody({
+export function registerTransportBodies<S = never>(host: TransportHost, c: BoundaryContext, settlementConsumer?: SettlementConsumer<S>): Result<readonly OwnedBodyRegistration[]> {
+  return boundary('TransportRegistrations', null, c, () => {
+    const registrations = Object.entries(transportShapes).map(([name, shape]) => take(registerOwnedBody({
     name, owner: 'part-six', currentVersion: 1, versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
     decodeCurrent: (input, ctx) => {
       try {
@@ -230,7 +231,7 @@ export function registerTransportBodies(host: TransportHost, c: BoundaryContext)
           validateTransition(v, past, host);
           if (v.type === 'SettlementApplication') {
             checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past);
-            if (ctx.mode === 'origin') requireApplication(host, v);
+            if (ctx.mode === 'origin') requireApplication(host, v, settlementConsumer);
           }
           if (ctx.mode === 'origin') {
             live(host);
@@ -249,5 +250,7 @@ export function registerTransportBodies(host: TransportHost, c: BoundaryContext)
         return { ok: true, value: freeze(input) };
       } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'transport record refused' }; }
     },
-  }, shape, c))));
+    }, shape, c)));
+    bindSettlementConsumer(host, settlementConsumer); return registrations;
+  });
 }

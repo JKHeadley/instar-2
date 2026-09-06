@@ -33,7 +33,7 @@ if (mode === 'start') {
   for (const e of seed.evidence) if (!f.evidence.some(old => old.id === e.id)) f.evidence.push(value(decode('Evidence', e, f.ctx.decode)));
   const [oldHost, , c] = bindings.get(f.transport);
   const host = { ...oldHost, incarnation: 'replacement', authorityIncarnation: 'authority:replacement', monotonic: () => 110 };
-  const ctx = { ...f.ctx, ownedBodies: [...value(registerTransportBodies(host, c)), ...value(effects.registerEffectBodies(f.host))] };
+  const ctx = { ...f.ctx, ownedBodies: [...value(registerTransportBodies(host, c, effects.consumeEffectSettlement)), ...value(effects.registerEffectBodies(f.host))] };
   const result = run => f.success(run());
   const peer = createFactStore(ctx, createTransportFileStorage(join(seed.directory, 'peer'), result));
   const replicas = replicaHost.createEffectReplicaStorage(join(seed.directory, 'origin'), { id: 'fixture-peer-directory', store: peer }, result);

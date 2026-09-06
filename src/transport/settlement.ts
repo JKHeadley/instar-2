@@ -5,14 +5,25 @@ import { encoded, ensure } from './boundary.js';
 
 // A raw P2 caller cannot manufacture a credit receipt. This ticket exists only
 // while the trusted assembly's eight consumer is on-stack; replay never mints it.
-const tickets = new WeakMap<TransportHost, Set<string>>();
-export function withApplication<T>(host: TransportHost, r: SettlementApplication, run: () => T): T {
-  const set = tickets.get(host) ?? new Set<string>(); tickets.set(host, set);
-  const key = encoded(r).hash; ensure(!set.has(key), 'settlement application already active');
-  set.add(key); try { return run(); } finally { set.delete(key); }
+const consumers = new WeakMap<TransportHost, unknown>();
+export function bindSettlementConsumer(host: TransportHost, consumer: unknown): void {
+  if (consumer === undefined) return;
+  ensure(!consumers.has(host) || consumers.get(host) === consumer, 'registered settlement consumer cannot be replaced');
+  consumers.set(host, consumer);
 }
-export function requireApplication(host: TransportHost, r: SettlementApplication): void {
-  ensure(tickets.get(host)?.has(encoded(r).hash), 'application requires live eight settlement consumption');
+export function requireSettlementConsumer(host: TransportHost, consumer: unknown): void {
+  ensure(consumer !== undefined && consumers.get(host) === consumer, 'consumer differs from fact-boundary registration');
+}
+const tickets = new WeakMap<TransportHost, Map<string, unknown>>();
+export function withApplication<T>(host: TransportHost, r: SettlementApplication, consumer: unknown, run: () => T): T {
+  requireSettlementConsumer(host, consumer);
+  const set = tickets.get(host) ?? new Map<string, unknown>(); tickets.set(host, set);
+  const key = encoded(r).hash; ensure(!set.has(key), 'settlement application already active');
+  set.set(key, consumer); try { return run(); } finally { set.delete(key); }
+}
+export function requireApplication(host: TransportHost, r: SettlementApplication, registeredConsumer: unknown): void {
+  ensure(registeredConsumer !== undefined && tickets.get(host)?.get(encoded(r).hash) === registeredConsumer,
+    'application requires live eight settlement consumption');
 }
 export function latestApplication(all: readonly TransportFact[], operation: string): SettlementApplication | undefined {
   const r = all.filter(v => v.record.type === 'SettlementApplication' && v.record.operation === operation).at(-1)?.record;

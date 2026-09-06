@@ -24,6 +24,9 @@ Composition order:
    run completion. Weak absence, a fresh key, or restart cannot enable another send.
 6. Bind eight's public `consumeEffectSettlement` as the optional fourth argument
    to `createTransportAuthority(host, spine, boundary, consumeEffectSettlement)`.
+   Supply that SAME consumer to `registerTransportBodies(host, boundary,
+   consumeEffectSettlement)` when configuring P2. The owner boundary captures this
+   binding; an authority with a substituted callback refuses, including duplicates.
    Pass the actual `EffectDoorway.settle(operation)` issuance to
    `authority.settle(fence, settlement)`. The generic parameter preserves eight's
    branded input type; `SettlementAccountingInput` states consumption requirements,

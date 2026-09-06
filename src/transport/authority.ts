@@ -5,7 +5,7 @@ import type { AdmissionReservation, DispatchClaim, FactAuthor, FenceToken, Lease
   SettlementApplication, SettlementConsumer, TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { checkFence, fenceFor, kindFor, latestLease, latestLoop, live, loopActive, observationAdmission, policyCheck, reservations, rows, validateTransition } from './records.js';
-import { accounting, checkApplicationEvidence, settlementMatches, withApplication } from './settlement.js';
+import { accounting, checkApplicationEvidence, requireSettlementConsumer, settlementMatches, withApplication } from './settlement.js';
 
 export function createTransportSpine(host: TransportHost, author: FactAuthor, store: FactStorePort): TransportSpine {
   return Object.freeze({ store, append: (record: TransportRecord, required: readonly string[]) => authorAndAppend({
@@ -62,6 +62,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
     inspect: () => boundary('TransportInspect', null, c, read),
     settle: (token, settlement) => checked('SettlementApply', { token }, () => {
       ensure(settlementConsumer, 'eight settlement consumer is not installed');
+      requireSettlementConsumer(host, settlementConsumer);
       return take(settlementConsumer(settlement, c, s => {
         // Eight may have persisted assessment/settlement facts during consumption.
         // Read the fresh status-bearing prefix only AFTER that owner recheck.
@@ -81,7 +82,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         }
         const r = { ...meta(all, `settle:${encoded([s.operation, s.id]).hash}`), type: 'SettlementApplication', ...fields } as SettlementApplication;
         checkApplicationEvidence(r, facts, all);
-        return withApplication(host, r, () => write(all, r).record);
+        return withApplication(host, r, settlementConsumer, () => write(all, r).record);
       }));
     }),
     acquire: (command, expected, term) => checked('LeaseAcquire', { command, expected, term }, () => {

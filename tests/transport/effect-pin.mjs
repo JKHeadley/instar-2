@@ -11,6 +11,8 @@ const local = path => pathToFileURL(resolve(path)).href;
 const sixUrl = local('dist/transport/index.js');
 const shim = data(`export * from ${JSON.stringify(sixUrl)}; import * as six from ${JSON.stringify(sixUrl)};
 export const bindings=new WeakMap();
+let consumer; export function configureSettlementConsumer(value){consumer=value;}
+export function registerTransportBodies(host,c){return six.registerTransportBodies(host,c,consumer);}
 export function createTransportAuthority(...args){const api=six.createTransportAuthority(...args);bindings.set(api,args);return api;}`);
 export const { bindings } = await import(shim);
 const shared = new Map(['src/index.ts', 'src/facts/index.ts', 'src/register/index.ts', 'src/projections/index.ts',
@@ -31,6 +33,7 @@ function moduleUrl(path) {
   const url = data(code); modules.set(path, url); return url;
 }
 export const effects = await import(moduleUrl('src/effects/index.ts'));
+(await import(shim)).configureSettlementConsumer(effects.consumeEffectSettlement);
 export const fixtures = await import(moduleUrl('tests/effects/fixture.ts'));
 export const replicaHost = await import(moduleUrl('scripts/effect-replica-storage.mjs'));
 export const factFixtures = await import(moduleUrl('tests/facts/fixtures.ts'));

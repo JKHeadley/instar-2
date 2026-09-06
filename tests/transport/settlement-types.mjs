@@ -9,13 +9,14 @@ const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', effectCommit,
 const files = new Map(paths.map(path => [resolve(path), execFileSync('git', ['show', `${effectCommit}:${path}`], { encoding: 'utf8' })]));
 const seam = resolve('src/settlement-owner-typecheck.ts');
 files.set(seam, `
-import { createTransportAuthority } from './transport/index.js';
+import { createTransportAuthority, registerTransportBodies } from './transport/index.js';
 import type { TransportHost, TransportSpine, FenceToken } from './transport/index.js';
 import type { BoundaryContext } from './index.js';
 import { consumeEffectSettlement } from './effects/index.js';
 import type { EffectSettlement, EffectComposition } from './effects/index.js';
 declare const host: TransportHost, spine: TransportSpine, c: BoundaryContext, fence: FenceToken, settlement: EffectSettlement;
 const api = createTransportAuthority(host, spine, c, consumeEffectSettlement);
+registerTransportBodies(host, c, consumeEffectSettlement);
 api.settle(fence, settlement);
 const composed: EffectComposition['transport'] = api;
 // @ts-expect-error Request-written input is not an eight-owned issuance.

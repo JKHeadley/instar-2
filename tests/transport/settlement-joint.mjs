@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { effects, fixtures, bindings, effectCommit } from './effect-pin.mjs';
-import { createTransportAuthority } from '../../dist/transport/index.js';
+import { createTransportAuthority, registerTransportBodies } from '../../dist/transport/index.js';
 import { decode } from '../../dist/index.js';
 const { value, refused } = fixtures;
 
@@ -40,6 +40,10 @@ export function joint() {
 export function integration() {
   const j = joint(), { f, api, reservation, settlement, applications, fresh } = j;
   const s1 = settlement();
+  const counterfeit = (v, _boundary, consumer) => f.success(consumer(v));
+  const bypass = createTransportAuthority(j.host, j.spine, j.c, counterfeit);
+  refused(bypass.settle(f.fence, JSON.parse(JSON.stringify(s1))), 'fact-boundary registration');
+  refused(registerTransportBodies(j.host, j.c, counterfeit), 'cannot be replaced');
   refused(api.settle(f.fence, JSON.parse(JSON.stringify(s1))), 'live eight-owned');
   for (const key of ['operation', 'reservation', 'claim', 'digest'])
     refused(api.settle(f.fence, { ...s1, [key]: 'changed' }), 'live eight-owned');
@@ -48,6 +52,7 @@ export function integration() {
   assert.equal(first.exposure, 20); assert.equal(first.released, 0);
   assert.deepEqual({ ...value(api.settle(f.fence, settlement())) }, { ...first });
   assert.equal(applications().length, 1);
+  refused(bypass.settle(f.fence, s1), 'fact-boundary registration'); // Duplicate is not a bypass either.
   refused(fresh(), 'unresolved');
   f.assess('happened', 7);
   refused(api.settle(f.fence, s1), 'changed'); // Old authentic issuance also fails after reassessment.
