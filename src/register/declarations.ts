@@ -12,10 +12,12 @@ const invariants: Readonly<Record<string, (facts: Readonly<Record<string, Json>>
   'feature-gate': (facts, status) => {
     if (status === 'dark' || status === 'soaking') { const gate = object(facts.gate!); text(gate.test, 'gate.test'); number(gate.deadline, 'gate.deadline'); }
   },
-  'feature-live-proof': (facts, _status, profile, context) => {
+  'feature-live-proof': (facts, status, profile, context) => {
     requireThat(profile, 'feature requires profile');
     const derived = take(deriveProfile(profile, { owner: 'part-three', derivedFrom: context.shape.derivedFrom }, context.preserved));
-    if (derived.userFacing) text(facts.liveProof, 'P3-NF-20: user-facing feature liveProof');
+    // The existing optional field's absence explicitly means unavailable while
+    // dark. A real gate/deadline remains mandatory; promotion is not evidence.
+    if (derived.userFacing && status !== 'dark') text(facts.liveProof, 'P3-NF-20: user-facing feature liveProof');
   },
   'governed-state-reference': facts => {
     const rungs = boundaryRungs(facts);
