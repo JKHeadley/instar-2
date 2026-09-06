@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, cpSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -16,6 +16,22 @@ import { installIntakeOwnerFixture } from '../register/intake-owner-fixture.js';
 const emittedModule = '../../dist/index.js';
 const { decode: emittedDecode } = await import(emittedModule) as typeof import('../../src/index.js');
 
+// The real merged owner graph includes P4 as well as P5. Compare every declared
+// governed-state rung, including per-consumer directions, instead of assuming
+// only P5's five prerequisites exist. This preserves exact omission detection.
+function expectOwnerPrerequisites(root: string, actual: readonly { site: string; record: string; required: string }[]) {
+  const expected = ['src/rungraph/rungraph.declarations.json', 'src/intake/port.declarations.json'].flatMap(path => {
+    if (!existsSync(join(root, path))) return [];
+    const declarations = JSON.parse(readFileSync(join(root, path), 'utf8')) as {
+      id: string; kind: string; requiredFacts: { rungs?: { decidesAlone: string; enforces?: { record: string } }[]; decidesAlone?: string; enforces?: { record: string } };
+    }[];
+    return declarations.filter(d => d.kind === 'blocking sites').flatMap(d =>
+      (d.requiredFacts.rungs ?? [d.requiredFacts]).filter(r => r.decidesAlone === 'governed-state').map(r => `${d.id}:${r.enforces!.record}`));
+  }).sort();
+  expect(actual.map(p => `${p.site}:${p.record}`).sort()).toEqual(expected);
+  expect(actual.every(p => p.required.includes('verified enforced-record approval history and live writer/executor separation'))).toBe(true);
+}
+
 describe('compiled register build adapter lifecycle', () => {
   // Separate synchronous CLI batches with an actual event-loop turn. On x64 CI
   // consecutive passing tests can otherwise starve Vitest's 60s reporting RPC.
@@ -31,7 +47,7 @@ describe('compiled register build adapter lifecycle', () => {
       const initial = git('rev-parse', 'HEAD').trim();
       const replay = build(root, initial, { mode: 'replay', now: 100 });
       const conversion = replay.conversion;
-      expect(replay.authorityPrerequisites).toHaveLength(5);
+      expectOwnerPrerequisites(root, replay.authorityPrerequisites);
       expect(replay.register.entries.find(e => e.declaration.id === 'rungraph.contract')!.approvedIn).toEqual({ state: 'pending-landing' });
       for (const source of conversion.sources) if (source.declaration.requiredFacts.number) Object.assign(source.declaration.requiredFacts, { deadline: 1000, owner: 'fixture-operator', overdueAction: 'surface' });
       const s = setup(); const parent = s.build(); const generation = value(generationOf(parent, s.context));
@@ -266,7 +282,7 @@ describe('compiled register build adapter lifecycle', () => {
       const revision = commit(); const good = run(revision);
       expect(good.status, good.stderr).toBe(0);
       const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
-      expect(source.authority).toBe('shape-only'); expect(source.authorityPrerequisites).toHaveLength(5);
+      expect(source.authority).toBe('shape-only'); expectOwnerPrerequisites(root, source.authorityPrerequisites);
       const declared = JSON.parse(readFileSync(join(root, 'out/register.json'), 'utf8'));
       expect(declared.entries.find((e: { declaration: { id: string } }) => e.declaration.id === 'rungraph-core').declaration).toMatchObject({ status: 'dark', profile: { reach: 'user', consequence: 'control', reversibility: 'costly', surface: 'chat' } });
       const path = join(root, 'src/rungraph/rungraph.ts'); const original = readFileSync(path, 'utf8');
