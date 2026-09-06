@@ -10,6 +10,7 @@ import { generationOf, decodeGenerationRecord } from '../../src/register/index.j
 import type { FactReference, RegisterContext } from '../../src/register/index.js';
 import { setup, value, json, hash } from '../register/fixtures.js';
 import { installOwnerFixture } from '../register/owner-fixture.js';
+import { installIntakeOwnerFixture } from '../register/intake-owner-fixture.js';
 // Emitted runtime is available when tests execute (after build), but a fresh
 // checkout must be typecheckable before dist exists.
 const emittedModule = '../../dist/index.js';
@@ -214,6 +215,38 @@ describe('compiled register build adapter lifecycle', () => {
   // Measured 63.4s on GitHub x64 (~24s locally): this real compiled-CLI,
   // multi-invocation refusal test needs slow-runner headroom, not a runtime-latency assertion.
   }, 120_000);
+  it('P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring', () => {
+    const root = mkdtempSync(join(tmpdir(), 'instar-intake-cli-'));
+    try {
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
+      installOwnerFixture(root); installIntakeOwnerFixture(root);
+      const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8' }).trim();
+      git('init', '-q');
+      const script = resolve('scripts/build-register.mjs');
+      const run = () => {
+        git('add', '.'); git('commit', '-qm', 'intake owner source');
+        return spawnSync(process.execPath, [script, '--replay', '--now', '100', '--commit', git('rev-parse', 'HEAD'), '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
+      };
+      const good = run(); expect(good.status, good.stderr).toBe(0);
+      const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
+      expect(source.authority).toBe('shape-only'); expect(source.authorityPrerequisites).toHaveLength(10);
+      expect(source.authorityPrerequisites.filter((p: { record: string }) => p.record === 'intake.contract')).toHaveLength(5);
+      const path = join(root, 'src/intake/port.ts'), original = readFileSync(path, 'utf8');
+      for (const [from, to] of [
+        ["readEnforcedRecord('intake.dedup', 'intake.contract', 'readProjection', register, ctx);", ''],
+        ["'intake.contract', 'readProjection'", "'intake.contract', 'authorAndAppend'"],
+        ['prepareSnapshot(read(), ctx)', 'prepareSnapshot([], ctx)'],
+        ['ownedBodies: [work]', 'ownedBodies: []'],
+      ]) {
+        writeFileSync(path, original.replace(from!, to!)); const bad = run();
+        expect(bad.status).not.toBe(0); expect(bad.stderr).toContain('P3-NF-26');
+      }
+      writeFileSync(path, original);
+      const manifestPath = join(root, 'register-source/owner-references/part-four.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); manifest.owner = 'part-five'; writeFileSync(manifestPath, JSON.stringify(manifest));
+      const wrongOwner = run(); expect(wrongOwner.status).not.toBe(0); expect(wrongOwner.stderr).toContain('owner');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 60_000);
   it('P3-P5 shipped CLI defaults resolve committed owner bindings, but never spoofed calls or stale artifacts', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-owner-cli-'));
     try {

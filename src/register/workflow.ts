@@ -7,6 +7,7 @@ import { checkPairing, checkBoundaryCoverage, checkGovernedState, checkGovernedS
 import { buildRuleGraph, checkDeadlines } from '../rulegraph/graph.js';
 import { boundaryRungs } from './rungs.js';
 import { resolveTerms } from '../terms/resolver.js';
+import { ownerDocuments } from './owner-contracts.js';
 
 export interface WorkflowChecks {
   readonly mode: 'bootstrap' | 'normal' | 'replay';
@@ -27,11 +28,11 @@ export function runRegisterChecks(register: GeneratedRegister, checks: WorkflowC
     for (const kind of register.shape.kinds) requireThat(checks.claims.some(c => c.kind === kind.name), `P3-NF-29: missing enumeration claim ${kind.name}`);
     take(checkBoundaryCoverage(checks.boundaries, checks.claims, context));
     const replay = checks.mode === 'replay';
-    // This extension is deliberately only the P5 governed-document seam. It is
-    // not a general replay waiver for unapproved stores/policies/other owners.
-    const sourceOnly = (record: string) => replay && record === 'rungraph.contract' && register.entries.some(e =>
+    // Only the declared P4/P5 governed-document seams; not a general replay
+    // waiver for unapproved stores/policies/other owners.
+    const sourceOnly = (record: string) => replay && Object.hasOwn(ownerDocuments, record) && register.entries.some(e =>
       e.declaration.id === record && e.declaration.kind === 'governed documents'
-      && e.declaration.requiredFacts.location === 'docs/09-the-run-graph.md');
+      && e.declaration.requiredFacts.location === ownerDocuments[record as keyof typeof ownerDocuments].location);
     const authorityPrerequisites: { site: string; record: string; required: string }[] = [];
     take((replay ? checkGovernedStateSources : checkGovernedState)(checks.observations, register, context));
     if (replay) for (const { declaration: d } of register.entries.filter(e => e.declaration.kind === 'blocking sites'))
