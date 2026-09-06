@@ -8,6 +8,7 @@ import { generateRegister, generationOf, renderRegister, invariantCoverage, impl
 import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, value, bytes } from './register-source.mjs';
 import { checkWiring, scanSources } from './check-register-wiring.mjs';
 import { loadOwnerReferences, mergeOwnerReferences } from './register-owner-references.mjs';
+import { ownerDocuments } from '../dist/register/owner-contracts.js';
 
 const hash = input => value(canonical(input)).hash;
 const corpus = sources => Object.fromEntries(Object.entries(sources).filter(([p]) => p.startsWith('docs/')).map(([p, text]) => [p, hash(text)]));
@@ -88,12 +89,12 @@ export function build(root, commit, options = {}) {
   for (const binding of owner.documents) {
     const declared = sources.filter(s => s.declaration.id === binding.id);
     if (declared.length !== 1 || declared[0].declaration.kind !== 'governed documents'
-      || declared[0].path !== 'src/rungraph/rungraph.declarations.json'
+      || declared[0].path !== binding.declarationPath
       || declared[0].declaration.requiredFacts.location !== binding.artifact.path)
       throw new Error('governed document binding does not match declaration ' + binding.id);
   }
-  if (sources.some(s => s.declaration.id === 'rungraph.contract') && !owner.documents.some(d => d.id === 'rungraph.contract'))
-    throw new Error('rungraph.contract requires committed governed document binding');
+  for (const id of Object.keys(ownerDocuments)) if (sources.some(s => s.declaration.id === id) && !owner.documents.some(d => d.id === id))
+    throw new Error(id + ' requires committed governed document binding');
   const scanned = scanSources(input.code, owner.decoders);
   sources = bindColocatedDeclarations(sources, scanned.constructs);
   const context = { ...buildContext(shapeInput, sources, commit, nowValue), references: resolveBuildReferences(root, input, workflow, options.provider, shapeInput, owner),

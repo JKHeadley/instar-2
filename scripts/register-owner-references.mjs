@@ -1,22 +1,44 @@
-// P3 resolves committed owner inputs; implementations/declarations remain P5's.
+// P3 resolves committed owner inputs; implementations/declarations stay owned.
 import { execFileSync } from 'node:child_process';
 import { canonical } from '../dist/index.js';
 import { value } from './register-source.mjs';
+import { ownerDocuments } from '../dist/register/owner-contracts.js';
 
 export const ownerManifestPath = 'register-source/owner-references.json';
 const hash = input => value(canonical(input)).hash;
-const decoders = new Set(['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit', 'decodeSessionGrounding']);
+export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five'].map(owner => `register-source/owner-references/${owner}.json`)];
+const owned = (namespace, names) => Object.fromEntries(names.map(id => [id, { module: `src/${namespace}/index.ts`, artifact: `src/${namespace}/records.ts` }]));
+const contracts = {
+  'part-five': { decoders: owned('rungraph', ['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit', 'decodeSessionGrounding']),
+    fixture: id => id === 'P5-NF-54', probe: id => id === 'P5-NF-55',
+    test: (kind, path) => path === (kind === 'fixture' ? 'tests/rungraph/governance.test.ts' : 'tests/rungraph/scope.test.ts') },
+  'part-four': { decoders: { ...owned('intake', ['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration']),
+    'decode:Provenance': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
+    'decode:VerifiedPrincipal': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
+    readProjection: { module: 'src/projections/index.ts', artifact: 'src/projections/fold.ts', requires: 'intakeDedupDefinition' },
+    authorAndAppend: { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', requires: 'intakeWorkRegistration' },
+    'createFactStore.append': { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', symbol: 'createFactStore', requires: 'intakeWorkRegistration' } },
+    fixture: id => /^P4-NF-(0[1-9]|1[0-9]|2[0-9])$/.test(id), probe: id => id === 'P4-NF-29',
+    test: (_kind, path) => /^tests\/intake\/[a-z][a-z0-9-]*\.test\.ts$/.test(path) },
+};
 const exact = (v, keys) => {
   if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !keys.includes(k)) || keys.some(k => !Object.hasOwn(v, k)))
     throw new Error('invalid owner reference manifest fields');
 };
 export function loadOwnerReferences(root, input) {
-  const raw = input.sources[ownerManifestPath];
   const result = { references: [], catalog: { fixtures: [], probes: [] }, decoders: [], documents: [], artifacts: {} };
-  if (raw === undefined) return result;
+  const seen = new Set();
+  for (const path of Object.keys(input.sources)) if (path.startsWith('register-source/owner-references/') && !ownerManifestPaths.includes(path))
+    throw new Error('unknown owner manifest path ' + path);
+  for (const manifestPath of ownerManifestPaths) {
+  const raw = input.sources[manifestPath]; if (raw === undefined) continue;
   const manifest = JSON.parse(raw);
   exact(manifest, ['schemaVersion', 'owner', 'fixtures', 'probes', 'decoders', 'documents']);
-  if (manifest.schemaVersion !== 1 || manifest.owner !== 'part-five') throw new Error('unknown reference owner/version');
+  if (manifest.schemaVersion !== 1 || typeof manifest.owner !== 'string' || !Object.hasOwn(contracts, manifest.owner)) throw new Error('unknown reference owner/version');
+  if (manifestPath !== ownerManifestPath && manifestPath !== `register-source/owner-references/${manifest.owner}.json`)
+    throw new Error('owner manifest path disagrees with declared owner');
+  if (seen.has(manifest.owner)) throw new Error('duplicate owner manifest'); seen.add(manifest.owner);
+  const contract = contracts[manifest.owner];
   for (const field of ['fixtures', 'probes', 'decoders', 'documents']) if (!Array.isArray(manifest[field])) throw new Error('owner reference list required');
   const artifact = (a, path) => {
     exact(a, ['path', 'hash']);
@@ -25,29 +47,37 @@ export function loadOwnerReferences(root, input) {
     if (hash(content) !== a.hash) throw new Error('reference artifact hash differs: ' + path);
     result.artifacts[path] = content;
   };
-  const unique = (rows, name) => { if (new Set(rows.map(r => r.id)).size !== rows.length) throw new Error('duplicate owner ' + name); };
-  for (const [kind, id, path] of [['fixture', 'P5-NF-54', 'tests/rungraph/governance.test.ts'], ['probe', 'P5-NF-55', 'tests/rungraph/scope.test.ts']]) {
+  const unique = (rows, name) => {
+    if (rows.some(r => !r || typeof r.id !== 'string' || !r.id)) throw new Error('owner reference id must be a nonempty string');
+    if (new Set(rows.map(r => r.id)).size !== rows.length) throw new Error('duplicate owner ' + name);
+  };
+  for (const kind of ['fixture', 'probe']) {
     const rows = manifest[kind + 's']; unique(rows, kind);
     for (const row of rows) {
       exact(row, kind === 'fixture' ? ['id', 'stage', 'artifact'] : ['id', 'cadence', 'execution', 'artifact']);
-      if (row.id !== id || (kind === 'fixture' ? row.stage !== 'build' : row.execution !== 'ci' || !Number.isFinite(row.cadence) || row.cadence <= 0))
+      if (!contract[kind](row.id) || (kind === 'fixture' ? row.stage !== 'build' : row.execution !== 'ci' || !Number.isFinite(row.cadence) || row.cadence <= 0))
         throw new Error('unknown owner fixture/probe or invalid CI cadence');
-      artifact(row.artifact, path);
-      result.catalog[kind + 's'].push(row); result.references.push({ provider: kind, id });
+      if (!contract.test(kind, row.artifact?.path)) throw new Error('wrong-owner inspection artifact');
+      artifact(row.artifact, row.artifact.path);
+      result.catalog[kind + 's'].push(row); result.references.push({ provider: kind, id: row.id });
     }
   }
   unique(manifest.decoders, 'decoder');
   for (const row of manifest.decoders) {
     exact(row, ['id', 'module', 'artifact']);
-    if (!decoders.has(row.id)) throw new Error('unknown owner decoder ' + row.id);
-    artifact(row.module, 'src/rungraph/index.ts'); artifact(row.artifact, 'src/rungraph/records.ts');
-    result.decoders.push(row); result.references.push({ provider: 'decoder', id: row.id });
+    if (!Object.hasOwn(contract.decoders, row.id)) throw new Error('unknown owner decoder ' + row.id);
+    const binding = contract.decoders[row.id];
+    if (binding.requires && !manifest.decoders.some(r => r.id === binding.requires)) throw new Error('owner consumer requires ' + binding.requires);
+    artifact(row.module, binding.module); artifact(row.artifact, binding.artifact);
+    result.decoders.push({ ...row, ...(binding.symbol ? { symbol: binding.symbol } : {}) }); result.references.push({ provider: 'decoder', id: row.id });
   }
   unique(manifest.documents, 'document');
   for (const row of manifest.documents) {
     exact(row, ['id', 'artifact']);
-    if (row.id !== 'rungraph.contract') throw new Error('unknown owner governed document');
-    artifact(row.artifact, 'docs/09-the-run-graph.md'); result.documents.push(row);
+    const binding = Object.hasOwn(ownerDocuments, row.id) && ownerDocuments[row.id];
+    if (!binding || binding.owner !== manifest.owner) throw new Error('unknown owner governed document');
+    artifact(row.artifact, binding.location); result.documents.push({ ...row, declarationPath: binding.declarationPath });
+  }
   }
   return result;
 }
