@@ -6,9 +6,14 @@ import { createRunGraph, recordWire, runFactSchemas, runIdFor } from '../../src/
 import type { RunDecodeContext, RunGraphDependencies, RunTransition, RunView } from '../../src/rungraph/index.js';
 import { factsFixture, privateKey, json, refused } from '../facts/fixtures.js';
 import { digest, value } from '../fixtures.js';
+import { governanceFixture } from './governance-fixture.js';
 export { value, refused, json, digest };
 export const ref = (f: FactEnvelope): FactEnvelopeReference => ({ owner: 'part-two', name: 'FactEnvelope', id: f.id });
-export function setup(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort) {
+export function setup(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort, recovery?: {
+  admissions: Set<string>; witness: (id: string) => void; worker: string; harness: string; lease: string;
+  message: string;
+  afterIntake?: () => void;
+}) {
   const f = factsFixture(); let now = f.now, liveLease = 'lease:1'; const wire: unknown[] = [];
   const types = { ...f.ctx.decode, provenance: f.bob.provenance,
     register: { ...f.ctx.decode.register, subjects: { ...f.ctx.decode.register.subjects, 'elapsed-time': ['ms'], 'run-work': ['steps'] } } };
@@ -20,8 +25,8 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
     { ...f.schema, kind: 'result-record', fields: { result: { kind: 'constitutional', type: 'Result' } } },
     f.schema,
   ];
-  const hash = f.capture('request bytes', 'message:1');
-  const captures: FactContext['captures'] = { 'message:1': { bytes: 'request bytes', hash, status: 'available', byteLength: 13 } };
+  const message = recovery?.message ?? 'request bytes', hash = f.capture(message, 'message:1');
+  const captures: FactContext['captures'] = { 'message:1': { bytes: message, hash, status: 'available', byteLength: Buffer.byteLength(message) } };
   let ctx: FactContext = { ...f.ctx, decode: types, schemas, captures };
   let c: RunDecodeContext = { site: ctx.site, preserved: ctx.preserved, register: types.register, types, facts: ctx,
     stimulusKinds: ['stimulus'], evidenceSources: { settlement: 'probe', exit: 'probe' } };
@@ -32,13 +37,19 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
     wire.push(JSON.parse(bytes)); return f.success({ kind: 'local-durable' });
   } }) ?? { owner: 'part-ten' as const, read: () => wire, append: (bytes: string) => { wire.push(JSON.parse(bytes)); return f.success({ kind: 'local-durable' as const }); } };
   const store = createFactStore(ctx, storage);
-  const append = (kind: string, body: Json, required: readonly string[] = []) => value(authorAndAppend({ kind, body, required, schemaVersion: 1,
+  const append = (kind: string, body: Json, required: readonly string[] = [], schemaVersion = 1) => value(authorAndAppend({ kind, body, required, schemaVersion,
     machine: 'machine-a', principal: json(f.bob), provenance: json(f.bob.provenance), at: json(now) }, ctx, store, privateKey));
   const intent = value(decode('Intent', f.intentInput({ principal: f.bob }), types));
-  const opening = append('stimulus', json({ intent, owner: f.bob, capture: { reference: 'message:1', hash } })).fact;
+  // Restart harness reconstructs from the durable cause plus installation policy,
+  // never from a Run supplied by its dead caller. Existing input is not reauthored.
+  const opening = value(store.read()).find(f => f.kind === 'stimulus')
+    ?? append('stimulus', json({ intent, owner: f.bob, capture: { reference: 'message:1', hash } })).fact;
+  recovery?.afterIntake?.();
   const owner = { type: 'VerifiedPrincipal' as const, id: 'bob', fact: ref(opening), field: 'owner' };
   const id = runIdFor(ref(opening)), binding = { owner: 'part-four', name: 'ConversationBinding', id: 'binding:1' } as const;
   const lease = { owner: 'part-six', name: 'Lease', id: 'lease:1' } as const;
+  if (recovery) liveLease = recovery.lease;
+  let execution = { worker: recovery?.worker ?? 'w', harness: recovery?.harness ?? 'h', ownership: { ...lease, id: liveLease }, context: ref(opening) };
   const run = { type: 'Run', schemaVersion: 1, id, opening: ref(opening), intent: { type: 'Intent', id: intent.id, fact: ref(opening), field: 'intent' },
     directives: [], owner, scope: f.scope, authority: { resolution: ref(opening), grants: [] },
     exitTest: { check: 'probe', version: 'v1', subject: 'artifact', acceptance: digest('complete artifact'), evidenceKinds: ['proof'], freshFor: 1000 },
@@ -52,21 +63,24 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
   const generation = () => ({ reference: types.register.generation, kinds: ctx.schemas.map(s => s.kind), lineages: {
     'machine-a': { head: { epoch: 0, position: value(store.read()).at(-1)!.segment.position }, observedAt: now.value, closed: false },
   } });
-  let groundCounter = 0;
-  const admissions = new Set<string>();
+  let groundCounter = value(store.read()).filter(f => f.kind === 'session-grounding').length;
+  const admissions = recovery?.admissions ?? new Set<string>();
   const commit = (write: () => import('../../src/index.js').Result<import('../../src/facts/index.js').AppendReceipt>) => {
-    const receipt = value(write()); admissions.add(receipt.fact.id); return f.success(receipt);
+    const receipt = value(write()); admissions.add(receipt.fact.id); recovery?.witness(receipt.fact.id); return f.success(receipt);
   };
-  const deps: RunGraphDependencies = { context: c, store, generation, clock: () => now, groundingPolicy: { entry: 'bound', threshold: 20, maxAge: 50, briefingClasses: ['identity', 'rules', 'directives', 'pending-work'] },
+  const deps: RunGraphDependencies = { governance: governanceFixture(c), context: c, store, generation, clock: () => now, groundingPolicy: { entry: 'bound', threshold: 20, maxAge: 50, briefingClasses: ['identity', 'rules', 'directives', 'pending-work'] },
     writer: { owner: 'part-ten', append: (kind, run, record, required) => f.success(append(kind, json({ run, record: recordWire(record) }), required)) },
     admission: { owner: 'part-six', verify: reference => { if (!admissions.has(reference.id)) throw new Error('not admitted by six'); return f.success(reference); },
+      execution: (run, ownership) => { if (run !== id || ownership.id !== liveLease) throw new Error('stale execution fence'); return f.success(execution); },
+      reservation: (reference, step) => { if (reference.name !== 'AdmissionReservation' || reference.id !== `reservation:${step.operation.key}`) throw new Error('reservation identity mismatch'); return f.success(ref(opening)); },
       create: (_opening, _run, write) => commit(write), commit: (request, write) => {
       if (request.ownership.id !== liveLease) return consumeResult(value(decode('Result', f.refusedInput({ detail: 'stale fence' }), types)), { Refused: r => r, Success: () => { throw new Error('expected refusal'); } }); return commit(write);
     } },
-    grounding: { owner: 'part-ten', read: ({ run: view, worker, harness, reason }) => {
+    grounding: { owner: 'part-ten', read: ({ run: view, worker, harness, reason, execution }) => {
       const messages = [{ fact: ref(opening), sequence: opening.segment.position, capture: 'message:1', hash }];
       const consumption = append('consumption', json({ worker, harness, hashes: JSON.stringify(messages.map(m => m.hash)), classes: JSON.stringify(deps.groundingPolicy.briefingClasses) }));
-      return f.success({ type: 'SessionGrounding', schemaVersion: 1, id: `ground:${++groundCounter}`, run: id, expected: view.head, worker, harness, reason,
+      return f.success({ type: 'SessionGrounding', schemaVersion: 2, id: `ground:${++groundCounter}`, run: id, expected: view.head, worker, harness, reason,
+        ownership: execution.ownership, executionContext: execution.context,
         at: now, previousActivity: f.now, elapsed: { type: 'Measurement', schemaVersion: 1, subject: { kind: 'elapsed-time', instance: worker }, value: now.value - f.now.value, unit: 'ms', at: now, by: 'probe' },
         principal: owner, intake: ref(opening), binding, directives: [], generation: types.register.generation,
         frontier: { 'machine-a': { epoch: 0, position: consumption.fact.segment.position } }, knownLineages: ['machine-a'], threshold: 20, messages,
@@ -84,7 +98,7 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
       blockedOn: { kind: 'step', reference: `step:${key}`, owner, nextObservation: f.clock(1000) }, nextWake: run.nextWake,
       grounding: ref(ground), step: { type: 'RunStep', schemaVersion: 1, id: `step:${key}`, run: id, expected: view.head, kind: 'effect',
         operation: { key, digest: digest({ key, effect: 'test' }), classification: ref(opening) }, evidence: [], directives: [], authorizations: [],
-        allocation: { budget: 'budget:1', reservation: { owner: 'part-six', name: 'ResourceReservation', id: `reservation:${key}` } }, ownership: lease,
+        allocation: { budget: 'budget:1', reservation: { owner: 'part-six', name: 'AdmissionReservation', id: `reservation:${key}` } }, ownership: lease,
         resultDestination: run.resultDestination, generation: types.register.generation } };
   }
   const observe = (view: RunView, kind: 'happened' | 'did-not-happen' | 'uncertain' = 'uncertain') => {
@@ -97,5 +111,7 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
       affectedStep: view.pending[0]!.id, outcome: { type: 'Outcome', id: `outcome:${fact.id}`, fact: ref(fact), field: 'outcome' } };
   };
   return { ...f, ctx, c, context, wire, store, append, deps, graph, run, id, owner, opening, lease, start, observe, generation, admissions,
-    setClock: (n: number) => { now = value(decodeMeasurement('clock', f.clockRaw(n), types)); }, fence: () => { liveLease = 'lease:2'; } };
+    setClock: (n: number) => { now = value(decodeMeasurement('clock', f.clockRaw(n), types)); }, fence: () => { liveLease = 'lease:2'; execution = { ...execution, worker: 'replacement', harness: 'h2', ownership: { ...lease, id: liveLease } }; },
+    place: (worker: string, harness: string) => { execution = { worker, harness, ownership: { ...lease, id: liveLease },
+      context: ref(append('note', json({ identity: `${worker}:${harness}`, amount: '0' })).fact) }; } };
 }

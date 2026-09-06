@@ -12,5 +12,236 @@
     },
     "standards": [26, 31, 33, 34, 63, 68, 69, 96],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "rungraph.contract",
+    "kind": "governed documents",
+    "status": "live",
+    "requiredFacts": {
+      "location": "docs/09-the-run-graph.md",
+      "changelog": "git-history:docs/09-the-run-graph.md"
+    },
+    "standards": [],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "rungraph.bound",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P5-NF-55",
+      "cadence": 1000
+    },
+    "standards": [],
+    "holds": [],
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "none",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    }
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "rungraph.admit",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "governed-state",
+      "criticality": "Worst-case control loss for bounded user-facing work",
+      "failDirection": "closed",
+      "preservesInput": "part-two:run-input",
+      "inspectedBy": "P5-NF-54",
+      "enforces": {
+        "record": "rungraph.contract",
+        "decoder": "decodeRun"
+      }
+    },
+    "standards": [],
+    "holds": [],
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "costly",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "bounded",
+        "by": "rungraph.bound"
+      }
+    }
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "rungraph.step",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "governed-state",
+      "criticality": "Worst-case control loss for bounded user-facing work",
+      "failDirection": "closed",
+      "preservesInput": "part-two:run-input",
+      "inspectedBy": "P5-NF-54",
+      "enforces": {
+        "record": "rungraph.contract",
+        "decoder": "decodeRunStep"
+      }
+    },
+    "standards": [],
+    "holds": [],
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "costly",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "bounded",
+        "by": "rungraph.bound"
+      }
+    }
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "rungraph.transition",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "governed-state",
+      "criticality": "Worst-case control loss for bounded user-facing work",
+      "failDirection": "closed",
+      "preservesInput": "part-two:run-input",
+      "inspectedBy": "P5-NF-54",
+      "enforces": {
+        "record": "rungraph.contract",
+        "decoder": "decodeRunTransition"
+      }
+    },
+    "standards": [],
+    "holds": [],
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "costly",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "bounded",
+        "by": "rungraph.bound"
+      }
+    }
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "rungraph.exit",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "governed-state",
+      "criticality": "Worst-case control loss for bounded user-facing work",
+      "failDirection": "closed",
+      "preservesInput": "part-two:run-input",
+      "inspectedBy": "P5-NF-54",
+      "enforces": {
+        "record": "rungraph.contract",
+        "decoder": "decodeRunExit"
+      }
+    },
+    "standards": [],
+    "holds": [],
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "costly",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "bounded",
+        "by": "rungraph.bound"
+      }
+    }
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "rungraph.grounding",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "governed-state",
+      "criticality": "Worst-case control loss for bounded user-facing work",
+      "failDirection": "closed",
+      "preservesInput": "part-two:run-input",
+      "inspectedBy": "P5-NF-54",
+      "enforces": {
+        "record": "rungraph.contract",
+        "decoder": "decodeSessionGrounding"
+      }
+    },
+    "standards": [],
+    "holds": [],
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "costly",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "bounded",
+        "by": "rungraph.bound"
+      }
+    }
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "rungraph.stop",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "criticality": "Worst-case control loss for bounded user-facing work",
+      "failDirection": "open",
+      "preservesInput": "part-two:run-input",
+      "inspectedBy": "P5-NF-54"
+    },
+    "standards": [],
+    "holds": [],
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "costly",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "bounded",
+        "by": "rungraph.bound"
+      }
+    }
   }
 ]

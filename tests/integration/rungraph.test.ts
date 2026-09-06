@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { decode } from '../../src/index.js';
+import { decode, decodeMeasurement } from '../../src/index.js';
 import { createRunGraph } from '../../src/rungraph/index.js';
 import { setup, value, refused, json, ref } from '../rungraph/fixtures.js';
 
@@ -19,8 +19,9 @@ it('P5-NF-12 P5-NF-59 recorded outcome and exact settlement advance once through
   const f = fixture(), ready = value(f.graph.transition(f.observed));
   expect(ready.pending).toEqual([]); expect(ready.settled).toEqual(['operation:1']);
   expect(value(f.graph.transition(f.observed)).head).toBe(ready.head);
-  const ground = value(f.graph.ground(f.id, 'w2', 'h', 'start', f.lease));
-  refused(f.graph.transition({ ...f.start(ready, ground, 'operation:1'), id: 'retry-same-operation' }), 'already admitted');
+  f.place('w2', 'h'); const ground = value(f.graph.ground(f.id, 'w2', 'h', 'start', f.lease));
+  const retry = f.start(ready, ground, 'operation:1');
+  refused(f.graph.transition({ ...retry, id: 'retry-same-operation', step: { ...retry.step, id: 'retry-step' }, blockedOn: { ...retry.blockedOn, reference: 'retry-step' } }), 'already admitted');
   expect(value(f.graph.transition(f.start(ready, ground, 'operation:2'))).pending).toHaveLength(1);
 });
 it('P5-NF-17 exact fresh exit test is mandatory; worker exit, lower bar, missing evidence and refused results cannot close', () => {
@@ -38,9 +39,13 @@ it('P5-NF-17 exact fresh exit test is mandatory; worker exit, lower bar, missing
     trigger: ref(checkFact), kind: 'propose-exit', from: 'ready', to: 'closing', responsible: f.owner, standing: ref(f.opening), ownership: f.lease,
     generation: f.run.generation, at: f.now, blockedOn: { kind: 'nothing' }, nextWake: f.run.nextWake, exit };
   for (const changed of [{ ...exit, evidence: [] }, { ...exit, exitTest: { ...exit.exitTest, acceptance: f.artifact } }, { ...exit, settledOperations: [] }]) refused(f.graph.transition({ ...transition, exit: changed }));
+  const foreignExitClock = value(decodeMeasurement('clock', f.clockRaw(100, 'machine-b'), f.ctx.decode));
+  refused(f.graph.transition({ ...transition, exit: { ...exit, at: foreignExitClock } }), 'subject, instance, or unit mismatch');
   const refusedResult = f.append('result-record', json({ result: value(decode('Result', f.refusedInput(), f.ctx.decode)) })).fact;
   refused(f.graph.transition({ ...transition, exit: { ...exit, result: { ...exit.result, fact: ref(refusedResult) } } }), 'refused work');
   const closing = value(f.graph.transition(transition)); expect(closing.state).toBe('closing');
+  refused(f.graph.transition({ ...transition, id: 'close-reused-exit', expected: closing.head, kind: 'close', from: 'closing', to: 'completed',
+    exit: { ...exit, expected: closing.head } }), 'immutable RunExit identity');
   const completed = value(f.graph.transition({ ...transition, id: 'close:1', expected: closing.head, kind: 'close', from: 'closing', to: 'completed',
     exit: { ...exit, id: 'exit:2', expected: closing.head } }));
   expect(completed.state).toBe('completed');
@@ -55,3 +60,35 @@ it('P5-NF-15 P5-NF-60 an owner settlement disagreement cannot be hidden during r
   const wrong = value(createRunGraph({ ...f.deps, settlement: { owner: 'part-eight', read: record => f.success({ record, outcome: f.outcome, claimClosed: false, chargeSettled: false }) } }));
   refused(wrong.read(f.id), 'unsettled replay');
 });
+it('P5-NF-02 P5-NF-07 R2 settlement never frees immutable step identities for another operation', () => {
+  const f = fixture(), ready = value(f.graph.transition(f.observed));
+  const g = value(f.graph.ground(f.id, 'w', 'h', 'start', f.lease)), next = f.start(ready, g, 'operation:2');
+  const reused = { ...next, step: { ...next.step, id: f.running.pending[0]!.id }, blockedOn: { ...next.blockedOn, reference: f.running.pending[0]!.id } };
+  refused(f.graph.transition(reused), 'immutable RunStep identity');
+  expect(ready.identities.some(row => row.type === 'RunStep' && row.id === f.running.pending[0]!.id)).toBe(true);
+  expect(value(f.graph.transition(next)).state).toBe('running');
+});
+it('P5-NF-08 P5-NF-17 P5-NF-20 P5-NF-21 R4 authenticated stop cannot be cleared by freshly proposed completion', () => {
+  const f = setup(), ready = value(f.graph.open(f.run));
+  const graph = value(createRunGraph({ ...f.deps, control: { owner: 'part-four', verify: () => f.success(ref(f.opening)) } }));
+  const common = { type: 'RunTransition', schemaVersion: 1, run: f.id, trigger: ref(f.opening), responsible: f.owner,
+    standing: ref(f.opening), ownership: f.lease, generation: f.run.generation, at: f.now, nextWake: f.run.nextWake };
+  const halted = value(graph.transition({ ...common, id: 'stop-before-completion', expected: ready.head, kind: 'stop', from: 'ready', to: 'halted',
+    blockedOn: { kind: 'stop', reference: 'stop', owner: f.owner, nextObservation: f.clock(1000) } }));
+  f.setClock(110);
+  const check = value(decode('Evidence', f.evidenceInput({ id: 'post-stop-proof', observedAt: f.clock(110), claim: { subject: f.run.exitTest.subject,
+    predicate: `exit:${f.run.exitTest.check}:${f.run.exitTest.version}`, value: f.run.exitTest.acceptance }, freshFor: 1000 }), f.ctx.decode));
+  const checkFact = f.append('evidence-record', json({ evidence: check })).fact;
+  const resultFact = f.append('result-record', json({ result: value(decode('Result', { type: 'Result', schemaVersion: 1, kind: 'Success', value: 'artifact', capacity: { kind: 'none' } }, f.ctx.decode)) })).fact;
+  const exit = { type: 'RunExit', schemaVersion: 1, id: 'post-stop-exit', run: f.id, expected: halted.head, proposer: f.owner, standing: ref(f.opening),
+    frontier: halted.source.foldedThrough, at: f.clock(110), kind: 'completed', exitTest: f.run.exitTest, check: ref(checkFact),
+    evidence: [{ type: 'Evidence', id: check.id, fact: ref(checkFact), field: 'evidence' }], result: { type: 'Result', id: 'result', fact: ref(resultFact), field: 'result' }, settledOperations: [] };
+  const proposal = { ...common, id: 'post-stop-proposal', expected: halted.head, kind: 'propose-exit', from: 'halted', to: 'closing', at: f.clock(110), blockedOn: { kind: 'nothing' }, exit };
+  refused(graph.transition(proposal), 'stopped run'); expect(value(graph.read(f.id)).state).toBe('halted');
+  const resumed = value(graph.transition({ ...common, id: 'authorized-resume', expected: halted.head, kind: 'resume', from: 'halted', to: 'ready', at: f.clock(110), blockedOn: { kind: 'nothing' } }));
+  const closing = value(graph.transition({ ...proposal, expected: resumed.head, from: 'ready', exit: { ...exit, expected: resumed.head } }));
+  const completed = value(graph.transition({ ...proposal, id: 'close', expected: closing.head, kind: 'close', from: 'closing', to: 'completed', exit: { ...exit, id: 'closing-exit', expected: closing.head } }));
+  expect(completed.state).toBe('completed');
+  refused(graph.transition({ ...common, id: 'late-stop', expected: completed.head, kind: 'stop', from: 'completed', to: 'halted', at: f.clock(110), blockedOn: { kind: 'stop', reference: 'stop', owner: f.owner, nextObservation: f.clock(1000) } }), 'state pair');
+  expect(value(graph.read(f.id)).state).toBe('completed');
+}, 15_000);

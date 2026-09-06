@@ -37,7 +37,7 @@ export const runShapes: Readonly<Record<string, OwnedShape>> = {
   RunTransition: shape({ ...base, run: text, expected: text, trigger: ref, kind: text, from: text, to: text, responsible: recordRef,
     standing: ref, ownership: ref, generation: ref, at: clock, blockedOn: blocked, nextWake: wake,
     step, grounding: ref, affectedStep: text, outcome: recordRef, settlement: ref, exit }, ['step', 'grounding', 'affectedStep', 'outcome', 'settlement', 'exit']),
-  SessionGrounding: shape({ ...base, run: text, expected: text, worker: text, harness: text, reason: text, at: clock, previousActivity: clock, elapsed: measurement,
+  SessionGrounding: shape({ ...base, run: text, expected: text, worker: text, harness: text, reason: text, ownership: ref, executionContext: ref, at: clock, previousActivity: clock, elapsed: measurement,
     principal: recordRef, intake: ref, binding: ref, directives: list(recordRef), generation: ref, frontier: vectorText,
     knownLineages: list(text), threshold: integer, messages: list(shape({ fact: ref, sequence: integer, capture: text, hash: text })),
     lastInbound: ref, pendingOperations: list(text), children: list(text), receipts: list(text), briefingClasses: list(text), consumption: ref }),
@@ -85,7 +85,7 @@ function validateExitTest(v: Json, c: RunDecodeContext): void {
 }
 function validateDestination(v: Json, c: RunDecodeContext): void { const d = object(v); reference(d.binding!, 'part-four', 'ConversationBinding'); factReference(d.route!, c); }
 function decodeRecord(name: string, input: Json, c: RunDecodeContext): Json {
-  const v = object(input), policy = runShapes[name]; need(policy && v.type === name && v.schemaVersion === 1, 'type or schema version unknown');
+  const v = object(input), policy = runShapes[name]; need(policy && v.type === name && v.schemaVersion === (name === 'SessionGrounding' ? 2 : 1), 'type or schema version unknown');
   // Canonical vector text is a bounded wire encoding of P2's vector, not a rival vector.
   checkShape(input, policy);
   for (const field of ['at', 'createdAt', 'previousActivity', 'safetyCeiling']) if (v[field]) v[field] = json(take(decodeMeasurement('clock', v[field], c.types)));
@@ -106,7 +106,11 @@ function decodeRecord(name: string, input: Json, c: RunDecodeContext): Json {
     const opening = factReference(v.opening!, c); need(c.stimulusKinds.includes(opening.kind), 'opening must be an admitted stimulus');
     need(v.id === runIdFor(v.opening), 'root identity must be derived from opening cause');
     const intent = constitutional(v.intent as unknown as ConstitutionalReference<'Intent'>, 'Intent', c);
-    need(object(object(v.intent).fact).id === opening.id && object(object(v.owner).fact).id === opening.id, 'intent and owner must come from opening admission');
+    need(object(object(v.intent).fact).id === opening.id, 'intent must come from opening admission');
+    if (opening.kind === 'intake-admitted') {
+      const resolved = take(resolveIntakeOwner(opening, c));
+      need(same(v.owner, resolved.owner) && same(v.intent, resolved.intent), 'run changed resolved intake accountability');
+    } else need(object(object(v.owner).fact).id === opening.id, 'owner must come from opening admission');
     principal(v.owner!, c); v.scope = json(take(decode('Scope', v.scope, c.types)));
     const declared = c.facts.schemas.find(s => s.kind === opening.kind && s.version === opening.schemaVersion); need(declared && scopeIncludes(declared.scope, take(decode('Scope', v.scope, c.types))), 'run scope exceeds admitted stimulus scope');
     const directives = v.directives as unknown as ConstitutionalReference<'Directive'>[];
@@ -117,7 +121,7 @@ function decodeRecord(name: string, input: Json, c: RunDecodeContext): Json {
   } else if (name === 'RunStep') {
     need(['compute', 'effect', 'ground', 'evaluate-exit'].includes(String(v.kind)), 'out of slice scope: step kind');
     const operation = object(v.operation); need(/^sha256:[a-f0-9]{64}$/.test(String(operation.digest)), 'exact operation digest required'); factReference(operation.classification!, c);
-    reference(v.ownership!, 'part-six', 'Lease'); reference(object(v.allocation).reservation!, 'part-six', 'ResourceReservation');
+    reference(v.ownership!, 'part-six', 'Lease'); reference(object(v.allocation).reservation!, 'part-six', 'AdmissionReservation');
     (v.evidence as Json[]).forEach(r => factReference(r, c));
     (v.directives as unknown as ConstitutionalReference<'Directive'>[]).forEach(r => constitutional(r, 'Directive', c));
     (v.authorizations as unknown as ConstitutionalReference<'Authorization'>[]).forEach(r => constitutional(r, 'Authorization', c));
@@ -134,6 +138,7 @@ function decodeRecord(name: string, input: Json, c: RunDecodeContext): Json {
     (v.evidence as unknown as ConstitutionalReference<'Evidence'>[]).forEach(r => constitutional(r, 'Evidence', c));
     constitutional(v.result as unknown as ConstitutionalReference<'Result'>, 'Result', c);
   } else if (name === 'SessionGrounding') {
+    reference(v.ownership!, 'part-six', 'Lease'); factReference(v.executionContext!, c);
     principal(v.principal!, c); factReference(v.intake!, c); factReference(v.lastInbound!, c); factReference(v.consumption!, c); reference(v.binding!, 'part-four', 'ConversationBinding');
     need(['start', 'recovery', 'resume'].includes(String(v.reason)), 'out of slice scope: compaction accounting');
     need((v.children as Json[]).length === 0, 'out of slice scope: child grounding');
@@ -163,6 +168,34 @@ function fromWire(input: Json): Json {
   return input;
 }
 export const runIdFor = (opening: unknown): string => `run:${encoded(opening).hash}`;
+/** Consume P4's actual IntakeWork through its installed P2 owner decoder. The
+ * opaque owner key resolves only through trusted installation context. No new
+ * stimulus, principal, authority, or altered intake cause is authored here. */
+export function resolveIntakeOwner(admitted: FactEnvelope, c: RunDecodeContext): Result<{
+  opening: import('../index.js').FactEnvelopeReference;
+  intent: ConstitutionalReference<'Intent'>;
+  owner: import('./types.js').PrincipalReference;
+}> {
+  return boundary('ResolveIntakeOwner', admitted, c, () => {
+    const opening = { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: admitted.id };
+    const original = factReference(json(opening), c);
+    need(same(original, admitted) && original.kind === 'intake-admitted', 'actual admitted intake fact required');
+    const schema = c.facts.schemas.find(s => s.kind === original.kind && s.version === original.schemaVersion);
+    const workField = schema?.fields.work;
+    need(workField?.kind === 'owned' && workField.owner === 'part-four' && workField.name === 'IntakeWork', 'part-four IntakeWork owner decoder required');
+    const body = take(decodeHistoricalBody(original, c.facts, causalStanding(original, c.facts, false).decode));
+    need(body.taint.length === 0, 'intake resolution evidence unavailable');
+    const work = object(json(body.fields.work));
+    need(typeof work.owner === 'string' && work.blockedOn === 'run-admission' && work.standing === 'requester', 'admitted requester work must await run admission');
+    const owner = c.intakeOwners?.[work.owner]; need(owner, 'accountable intake owner is unresolved');
+    principal(json(owner), c);
+    const rawIntent = object(object(original.body).intent);
+    need(typeof rawIntent.id === 'string', 'admitted Intent identity required');
+    const intent = { type: 'Intent' as const, id: rawIntent.id, fact: opening, field: 'intent' };
+    constitutional(intent, 'Intent', c);
+    return { opening, intent, owner };
+  });
+}
 function decoded<T>(name: string, input: unknown, c: RunDecodeContext): Result<T> {
   // P5's own brand does not mint P1 values. Restore every embedded measurement
   // and Scope through its owner's public decoder after validating the wire tree.
@@ -188,8 +221,10 @@ export const recordFromWire = (record: Json): Json => fromWire(record);
 export const runKinds = { Run: 'run-opening', RunTransition: 'run-transition', SessionGrounding: 'session-grounding' } as const;
 export function runFactSchemas(context: RunDecodeContext): Result<{ schemas: readonly FactSchema[]; registrations: readonly OwnedBodyRegistration[] }> {
   return boundary('RunFactSchemas', null, context, () => {
-    const registrations = Object.keys(runKinds).map(name => take(registerOwnedBody({ owner: 'part-five', name, currentVersion: 1,
-      versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {}, decodeCurrent: (value, c) => {
+    const registrations = Object.keys(runKinds).map(name => take(registerOwnedBody({ owner: 'part-five', name, currentVersion: name === 'SessionGrounding' ? 2 : 1,
+      versions: { 1: { validate: value => name === 'SessionGrounding' ? { ok: false, detail: 'legacy grounding lacks execution context; re-ground required' } : { ok: true, value } },
+        ...(name === 'SessionGrounding' ? { 2: { validate: (value: Json) => ({ ok: true as const, value }) } } : {}) },
+      migrations: name === 'SessionGrounding' ? { 1: () => { throw new Error('grounding ownership cannot be inferred by migration'); } } : {}, decodeCurrent: (value, c) => {
         const local = { ...context, types: c.facts.decode, facts: c.facts };
         const record = decodeRecord(name, value, local);
         const cone = new Set(causalCone(c.origin, c.facts.facts).map(f => f.id));

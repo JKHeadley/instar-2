@@ -1,4 +1,4 @@
-import { consumeOutcome, consumeResult, decode, decodeMeasurement, readHistoricalEvidence } from '../index.js';
+import { consumeOutcome, consumeResult, decode, compareMeasurements, readHistoricalEvidence } from '../index.js';
 import type { Clock, Evidence, FactEnvelopeReference, Inventory, Json, Outcome, Result } from '../index.js';
 import { causalCone, causalStanding, decodeHistoricalBody, hashBytes } from '../facts/index.js';
 import type { ConflictClass, FactEnvelope, FactSnapshot } from '../facts/index.js';
@@ -7,6 +7,9 @@ import type { ProjectionDefinition, ProjectionGeneration } from '../projections/
 import { boundary, encoded, freeze, json, need, object, same, take } from './boundary.js';
 import { constitutional, decodeRun, decodeRunExit, decodeRunTransition, decodeSessionGrounding, factReference, recordFromWire, runKinds } from './records.js';
 import type { Run, RunDecodeContext, RunExit, RunStep, RunTransition, RunView, SessionGrounding, RunReplayPort } from './types.js';
+import { checkIdentities, identityIndex } from './identity.js';
+
+export const clockDifference = (left: Clock, right: Clock, c: RunDecodeContext): number => take(compareMeasurements<'clock'>(left, right, c.preserved));
 
 export const statePairs: Readonly<Record<string, readonly string[]>> = freeze({
   ready: ['running', 'waiting', 'halted', 'closing'], running: ['ready', 'waiting', 'recovering', 'halted', 'closing'],
@@ -56,7 +59,7 @@ export function validateExit(exit: RunExit, run: Run, head: string, pending: rea
   need(exit.run === run.id && exit.expected === head && same(exit.proposer, run.owner), 'exit run/head/proposer mismatch');
   need(pending.length === 0 && same([...exit.settledOperations].sort(), [...settledKeys].sort()), 'exit has unsettled operations or incomplete settlement manifest');
   need(same(exit.exitTest, run.exitTest), 'exit test changed; cannot lower the completion bar');
-  need(exit.at.value <= now.value && now.value - exit.at.value <= run.exitTest.freshFor, 'exit evidence is stale');
+  const age = clockDifference(now, exit.at, c); need(age >= 0 && age <= run.exitTest.freshFor, 'exit evidence is stale');
   need(evidenceClaims(exit.check, c.evidenceSources.exit, now, c).some(claim => claim.subject === run.exitTest.subject
     && claim.predicate === `exit:${run.exitTest.check}:${run.exitTest.version}` && claim.value === run.exitTest.acceptance), 'registered exact exit check has not passed');
   need(exit.evidence.length > 0, 'completion requires subject-matching fresh evidence');
@@ -105,6 +108,7 @@ export function validateGrounding(g: SessionGrounding, run: Run, head: string, p
 }
 export function validateTransition(t: RunTransition, view: RunView, c: RunDecodeContext): void {
   const run = view.run;
+  checkIdentities(json(t), view.identities);
   need(t.run === run.id && t.expected === view.head && t.from === view.state, 'transition expected predecessor/state differs');
   need(statePairs[t.from]?.includes(t.to), 'state pair is not permitted');
   need(same(t.responsible, run.owner) && same(t.generation, run.generation), 'transition owner/generation differs');
@@ -114,11 +118,12 @@ export function validateTransition(t: RunTransition, view: RunView, c: RunDecode
     const s = t.step; need(s.run === run.id && s.expected === view.head && same(s.ownership, t.ownership) && same(s.generation, run.generation), 'step identity/predecessor/ownership differs');
     need(!view.usedKeys.includes(s.operation.key), 'operation key is already admitted; no resubmission');
     need(s.allocation.budget === run.budget.id && run.budget.maxWorkers > 0 && run.budget.maxProcesses > 0
-      && view.pending.length < run.budget.maxOutstanding && t.at.value <= run.budget.safetyCeiling.value, 'budget ceiling or zero capacity forbids work');
+      && view.pending.length < run.budget.maxOutstanding && clockDifference(t.at, run.budget.safetyCeiling, c) <= 0, 'budget ceiling or zero capacity forbids work');
     need(same(s.directives, run.directives) && same(s.resultDestination, run.resultDestination), 'step changed directives/destination');
     const fact = factReference(json(t.grounding), c); need(fact.kind === runKinds.SessionGrounding, 'grounding reference has wrong schema');
     const grounding = take(decodeSessionGrounding(readRecordFact(fact), c)); validateGrounding(grounding, run, view.head, view.pending, c);
-    need(grounding.at.value <= t.at.value, 'grounding clock is in the future');
+    need(same(grounding.ownership, t.ownership), 'grounding belongs to another ownership context');
+    need(clockDifference(t.at, grounding.at, c) >= 0, 'grounding clock is in the future');
     need(t.blockedOn.kind === 'step' && t.blockedOn.reference === s.id, 'running step must retain an owned pending obligation');
   } else if (t.kind === 'observe') {
     need(['running', 'waiting', 'recovering'].includes(t.from) && ['ready', 'waiting'].includes(t.to) && t.affectedStep && t.outcome && !t.step, 'outcome transition requires pending step');
@@ -135,6 +140,7 @@ export function validateTransition(t: RunTransition, view: RunView, c: RunDecode
   } else if (t.kind === 'resume') {
     need(t.from === 'halted' && t.to === (view.pending.length ? 'recovering' : 'ready') && !t.step && !t.outcome, 'resume cannot bypass unresolved work');
   } else if (t.kind === 'propose-exit') {
+    need(t.from !== 'halted', 'stopped run cannot acquire new completion authority without authorized resume');
     need(t.to === 'closing' && t.exit && !t.step && !t.outcome, 'closure requires exit proposal'); validateExit(t.exit, run, view.head, view.pending, view.settled, t.at, c);
   } else {
     need(t.kind === 'close' && t.from === 'closing' && t.to === 'completed' && t.exit && !t.step && !t.outcome, 'only checked completed exit is in slice scope');
@@ -152,12 +158,14 @@ export function foldRun(runId: string, snapshot: FactSnapshot, generation: Proje
     need(same(take(witnesses.verify(root, run, null)), factRef(root)), 'root admission witness mismatch');
     const facts = snapshot.entries.map(e => e.fact).filter(f => f.kind === runKinds.RunTransition && object(f.body).run === runId);
     const transitions = facts.map(fact => ({ fact, record: take(decodeRunTransition(readRecordFact(fact), c)) }));
-    const ids = new Map<string, string>(), conflicts: ConflictClass[] = [];
-    for (const { record, fact } of transitions) {
-      const bytes = encoded(record).bytes, old = ids.get(record.id); if (old && old !== bytes) conflicts.push({ key: `run:${record.id}`, kind: 'immutable-disagreement', facts: [fact.id], detail: 'immutable transition identity disagreement' });
-      ids.set(record.id, bytes);
+    const identities = identityIndex(snapshot.entries.map(e => e.fact)), conflicts: ConflictClass[] = [];
+    const localFacts = new Set(snapshot.entries.filter(e => object(e.fact.body).run === runId).map(e => e.fact.id));
+    for (const row of identities) {
+      const peers = identities.filter(r => r.type === row.type && r.id === row.id);
+      if (peers.length > 1 && peers.some(r => r.facts.some(id => localFacts.has(id))) && !conflicts.some(c => c.key === `${row.type}:${row.id}`))
+        conflicts.push({ key: `${row.type}:${row.id}`, kind: 'immutable-disagreement', facts: [...new Set(peers.flatMap(r => r.facts))].sort(), detail: 'immutable owned identity disagreement' });
     }
-    let view: RunView = { run, head: run.id, state: 'ready', pending: [], settled: [], usedKeys: [], blockedOn: run.blockedOn, nextWake: run.nextWake, source, conflicts };
+    let view: RunView = { run, head: run.id, state: 'ready', pending: [], settled: [], usedKeys: [], blockedOn: run.blockedOn, nextWake: run.nextWake, source, conflicts, identities };
     const remaining = new Map(transitions.map(t => [encoded(t.record).bytes, t]));
     while (remaining.size && !conflicts.length) {
       const successors = [...remaining.values()].filter(t => t.record.expected === view.head);
@@ -169,6 +177,10 @@ export function foldRun(runId: string, snapshot: FactSnapshot, generation: Proje
         ?? snapshot.entries.find(e => e.fact.kind === runKinds.Run && object(e.fact.body).run === runId)?.fact;
       need(predecessor && causalCone(fact, c.facts.facts).some(f => f.id === predecessor.id), 'transition is not causally linked to predecessor');
       validateTransition(t, view, c);
+      if (t.grounding) {
+        const groundingFact = factReference(json(t.grounding), c), grounding = take(decodeSessionGrounding(readRecordFact(groundingFact), c));
+        need(same(take(witnesses.verify(groundingFact, grounding, view)), factRef(groundingFact)), 'grounding admission witness mismatch');
+      }
       need(same(take(witnesses.verify(fact, t, view)), factRef(fact)), 'transition admission witness mismatch');
       let pending = [...view.pending], settledKeys = [...view.settled], used = [...view.usedKeys];
       if (t.kind === 'start') { pending.push(t.step!); used.push(t.step!.operation.key); }

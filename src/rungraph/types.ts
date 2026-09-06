@@ -2,9 +2,10 @@ import type { BoundaryContext, Clock, ConversationBindingReference, DecodeContex
   Hash, LeaseReference, Measurement, Outcome, OwnedReference, RegisterGenerationReference, Result, Scope } from '../index.js';
 import type { AppendReceipt, CausalFrontier, ConflictClass, DurabilityState, FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
 import type { ProjectionGeneration, ProjectedView } from '../projections/index.js';
+import type { RegisterContext, VerifiedRegister } from '../register/index.js';
 
 declare class RunBrand<N extends string> { private readonly runValue: N; private constructor(); }
-type RecordValue<N extends string> = RunBrand<N> & Readonly<{ type: N; schemaVersion: 1; id: string }>;
+type RecordValue<N extends string, V extends number = 1> = RunBrand<N> & Readonly<{ type: N; schemaVersion: V; id: string }>;
 // References identify owner-admitted records; they never confer the referenced authority.
 export type ConstitutionalReference<N extends string> = Readonly<{ type: N; id: string; fact: FactEnvelopeReference; field: string }>;
 export type PrincipalReference = ConstitutionalReference<'VerifiedPrincipal'>;
@@ -31,7 +32,7 @@ export type RunStep = RecordValue<'RunStep'> & Readonly<{
   operation: Readonly<{ key: string; digest: Hash; classification: FactEnvelopeReference }>;
   evidence: readonly FactEnvelopeReference[]; directives: readonly ConstitutionalReference<'Directive'>[];
   authorizations: readonly ConstitutionalReference<'Authorization'>[];
-  allocation: Readonly<{ budget: string; reservation: OwnedReference<'part-six', 'ResourceReservation'> }>;
+  allocation: Readonly<{ budget: string; reservation: OwnedReference<'part-six', 'AdmissionReservation'> }>;
   ownership: LeaseReference; resultDestination: RunDestination; generation: RegisterGenerationReference;
 }>;
 export type RunState = 'ready' | 'running' | 'waiting' | 'recovering' | 'halted' | 'closing' | 'completed' | 'unreachable' | 'cancelled';
@@ -41,8 +42,9 @@ export type RunExit = RecordValue<'RunExit'> & Readonly<{
   check: FactEnvelopeReference; evidence: readonly ConstitutionalReference<'Evidence'>[];
   result: ConstitutionalReference<'Result'>; settledOperations: readonly string[];
 }>;
-export type SessionGrounding = RecordValue<'SessionGrounding'> & Readonly<{
+export type SessionGrounding = RecordValue<'SessionGrounding', 2> & Readonly<{
   run: string; expected: string; worker: string; harness: string; reason: 'start' | 'recovery' | 'resume';
+  ownership: LeaseReference; executionContext: FactEnvelopeReference;
   at: Clock; previousActivity: Clock; elapsed: Measurement<'elapsed-time'>;
   principal: PrincipalReference; intake: FactEnvelopeReference; binding: ConversationBindingReference;
   directives: readonly ConstitutionalReference<'Directive'>[]; generation: RegisterGenerationReference;
@@ -64,18 +66,28 @@ export type RunRecord = Run | RunTransition | SessionGrounding;
 export interface RunDecodeContext extends BoundaryContext {
   readonly types: DecodeContext; readonly facts: FactContext; readonly stimulusKinds: readonly string[];
   readonly evidenceSources: Readonly<{ settlement: string; exit: string }>;
+  // Installation-owned resolution of P4's opaque accountable work-owner keys.
+  // Values are references to P1-verified records, not self-asserted identities.
+  readonly intakeOwners?: Readonly<Record<string, PrincipalReference>>;
 }
 export interface RunView {
   readonly run: Run; readonly state: RunState; readonly head: string;
   readonly pending: readonly RunStep[]; readonly settled: readonly string[]; readonly usedKeys: readonly string[];
   readonly blockedOn: RunBlockedOn; readonly nextWake: RunWake; readonly source: ProjectedView;
   readonly conflicts: readonly ConflictClass[];
+  readonly identities: readonly Readonly<{ type: string; id: string; hash: Hash; facts: readonly string[] }>[];
 }
+// This is the run consumer's demanded observation, not a new six-owned record.
+export type RunExecutionObservation = Readonly<{ worker: string; harness: string; ownership: LeaseReference; context: FactEnvelopeReference }>;
 // Six realizes exclusion AT the append boundary, not a preflight boolean. The
 // callback must execute once under the current fence and expected-head CAS. A
 // refusal/throw after durable commit may lose an ACK, never erase the fact.
 export interface RunAdmissionPort {
   readonly owner: 'part-six';
+  // Resolve the executing worker from independently verified placement/ownership,
+  // never from a caller-supplied worker string. Called inside fenced admission.
+  execution(run: string, ownership: LeaseReference): Result<RunExecutionObservation>;
+  reservation(reference: OwnedReference<'part-six', 'AdmissionReservation'>, step: RunStep): Result<FactEnvelopeReference>;
   // Read-only witness check against six's durable admission ledger. Historical
   // acceptance is not a live lease check and must remain readable after takeover.
   verify(record: FactEnvelopeReference): Result<FactEnvelopeReference>;
@@ -93,9 +105,15 @@ export interface RunWriterPort {
 export interface GroundingReadPort {
   readonly owner: 'part-ten';
   // Must measure NOW and deliver the enumerated bytes to this worker before return.
-  read(request: Readonly<{ run: RunView; worker: string; harness: string; reason: SessionGrounding['reason'] }>): Result<unknown>;
+  read(request: Readonly<{ run: RunView; worker: string; harness: string; reason: SessionGrounding['reason']; execution: RunExecutionObservation }>): Result<unknown>;
+}
+export interface RunGovernance {
+  readonly register: VerifiedRegister;
+  readonly context: RegisterContext;
+  readonly capture: Readonly<{ owner: 'part-two'; preserve(input: unknown): Result<string> }>;
 }
 export interface RunGraphDependencies {
+  readonly governance: RunGovernance;
   readonly context: RunDecodeContext; readonly store: FactStorePort; readonly writer: RunWriterPort;
   readonly admission: RunAdmissionPort; readonly grounding: GroundingReadPort;
   readonly settlement: Readonly<{ owner: 'part-eight'; read(reference: FactEnvelopeReference, step: RunStep): Result<{

@@ -10,7 +10,10 @@ dispatch. No exactly-once external-effect claim is made.
 ## Owned records and ordering
 
 Five owns `Run`, `RunBudget`, `RunStep`, `RunTransition`, `RunExit` and
-`SessionGrounding`, their closed version-1 decoders and the run projection.
+`SessionGrounding`, their closed decoders and the run projection. Grounding uses
+schema version 2 to bind worker/harness to independently resolved ownership and
+execution context. Version 1 grounding cannot acquire that missing authority by
+migration: it requires a new actual read. Other owned records remain version 1.
 `Run` is immutable; its id hashes its admitted opening cause. A start transition
 contains the immutable step in the SAME signed fact, before any executor may
 consume it. An outcome transition references a prior P1 Outcome and eight's
@@ -19,6 +22,12 @@ keeps the step pending, including after restart. Replaying the identical accepte
 transition retrieves state; it never dispatches. An old operation key cannot be
 admitted again even after settlement. Independent newly admitted work is allowed
 only after the predecessor is settled. Attempts and credits remain seven/six's.
+Canonical identity commitments include every embedded RunBudget, RunStep and
+RunExit as well as Run/RunTransition/SessionGrounding, and survive settlement.
+Safety-ceiling, actual-start and exit clock comparisons use P1's subject-aware
+consumer; a foreign clock domain is uncertainty, not a comparable scalar.
+An authenticated stop cannot acquire newly proposed completed authority without
+authorized resume. Causally prior completed work is not erased by a late stop.
 
 P2's status-bearing snapshot and current-source authority read are mandatory.
 The fold also calls the durable owner-witness reader: a raw shape-valid fact is
@@ -43,9 +52,9 @@ implemented. Conversation ordering is single-lineage in this slice.
 | One | Five | constitutional decoders, historical readers and Result/Outcome consumers | Verify signed origin before consuming; rehydrate only through owner APIs | Typed refusal; no cast into authority | One for types; five for calls |
 | Two | Five | FactStorePort.readForProjection; ProjectedView | Complete signed prefix and mandatory taint before every decision | Poison, unknown coverage, stale view or conflict inhibits | Two for spine; five for fold |
 | Three | Five / build | decodeRunGraphRegistration; colocated declaration; ProjectionGeneration | Decode shape at installation/build; assembly supplies pinned generation before reads | Unknown schema/generation refused; shape-only is not live governance | Three for register; eleven for entering-force assembly |
-| Four | Five | admitted stimulus; ConstitutionalReference; control.verify | Intake admission before stable root; verify stop/resume before append AND replay | No root from unresolved stimulus; stop never settles effects; timer never resumes | Four for identity/control; five for acceptance |
+| Four | Five | resolveIntakeOwner; actual intake-admitted; control.verify | Resolve opaque IntakeWork owner through installation-pinned P1 record; retain original cause/Intent; verify stop/resume before append AND replay | Unresolved/mismatched ownership refuses; stop never settles effects; timer never resumes | Four for intake/control; five for owner-resolving acceptance |
 | Five | Six | RunAdmissionPort.create/commit | Conditional cause/head/fence admission surrounds exact append callback | No-op, mismatched receipt, stale fence and duplicate callback refuse | Six for atomic exclusion; five for acceptance |
-| Six | Five | RunAdmissionPort.verify | Read durable historical acceptance witness on every rebuild | Missing witness refuses; old lease expiry does not erase accepted facts | Six; real adapter composition pending |
+| Six | Five | RunAdmissionPort.verify/execution/reservation; AdmissionReservation | Read historical witness for root/transition/consumed grounding; independently resolve actual worker under ownership; verify exact operation reservation | Old-worker/new-lease grounding refuses; missing witness/reservation refuses; expiry does not erase history | Six; real adapter composition pending |
 | Eight | Five | settlement.read; P1 Evidence and Outcome refs | Recorded outcome, closed executor claim and settled charge before advance | Unknown execution/charge retains original key and pending obligation | Eight for settlement; five for state |
 | Nine | Five | exitCheck.verify; P1 Evidence and Result refs | Exact unchanged exit bar, subject and fresh evidence before closing | Refused/missing/stale/changed proof cannot complete | Nine for check; five for closure |
 | Ten | Five | RunWriterPort | Sole P2 append and durability receipt before return; required refs deduplicated | Lost ACK preserves fact; missing durable append refuses | Ten for persistence adapter |
@@ -72,6 +81,11 @@ slice depth is 1 and children are empty. Zero resource capacity remains zero.
 
 Tests exercise P1/P2/P3 public consumers, a real fsynced disk spine, a killed
 compiled-package worker, and controlled six/eight/nine/ten contract fixtures.
+The intake-durable/pre-root SIGKILL leaves only the intake fact. Separate fresh
+boots reconstruct one accountable root from that fact plus installation policy,
+not a parent-supplied Run. A pre-start kill and independent persisted replacement
+placement then prove old-grounding refusal and newly grounded start. The separate
+effect-before-response kill remains an uncertainty/reconciliation test.
 Those fixtures are NOT evidence that the other owners' real adapters converge.
 P5-NF-29/49/50/55/56/59/60 retain explicit production/residual skips alongside
 the implemented portions. No Rule is labeled fully held by this package.

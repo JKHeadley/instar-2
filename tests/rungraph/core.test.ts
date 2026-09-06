@@ -9,7 +9,7 @@ import { prepareSnapshot } from '../../src/facts/index.js';
 
 function active() {
   const f = setup(), ready = value(f.graph.open(f.run));
-  const ground = value(f.graph.ground(f.id, 'worker:1', 'harness:1', 'start', f.lease));
+  const ground = value(f.graph.ground(f.id, 'w', 'h', 'start', f.lease));
   const start = f.start(ready, ground), running = value(f.graph.transition(start));
   return { ...f, ready, ground, startRecord: start, running };
 }
@@ -92,7 +92,7 @@ it('P5-NF-16 P5-NF-60 retry identity cannot reset the admitted-operation ledger'
 });
 it('P5-NF-44 actual-start clock cannot reuse intake time and late grounding must be refreshed', () => {
   const f = setup(), ready = value(f.graph.open(f.run)); f.setClock(110);
-  const stale = value(f.deps.grounding.read({ run: ready, worker: 'w', harness: 'h', reason: 'start' }));
+  const stale = value(f.deps.grounding.read({ run: ready, worker: 'w', harness: 'h', reason: 'start', execution: value(f.deps.admission.execution(f.id, f.lease)) }));
   f.setClock(120);
   const graph = value(createRunGraph({ ...f.deps, grounding: { owner: 'part-ten', read: () => f.success(stale) } }));
   refused(graph.ground(f.id, 'w', 'h', 'start', f.lease), 'intake clock');
@@ -141,7 +141,7 @@ it('P5-NF-20 stop requires owner verification and neither time nor resume can er
 });
 it('P5-NF-07 P5-NF-11 pending fact survives reconstruction and rejects fresh operation identity', () => {
   const f = setup(), view = value(f.graph.open(f.run));
-  const ground = value(f.graph.ground(f.id, 'worker:1', 'harness:1', 'start', f.lease));
+  const ground = value(f.graph.ground(f.id, 'w', 'h', 'start', f.lease));
   const transition = f.start(view, ground), running = value(f.graph.transition(transition));
   expect(running.pending[0]!.operation.key).toBe('operation:1');
   expect(value(f.graph.transition(transition)).head).toBe(running.head);

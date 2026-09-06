@@ -15,7 +15,7 @@ const residuals = [
   ['18', 'child settlement and accepted responsibility transfer are not built'],
   ['19', 'late child collection is not built'],
   ['20', 'operator/requester and Directive closure realization belongs to four; no cancellation API'],
-  ['21', 'cancellation/terminal races are not built'],
+  ['21', 'remote/full-cancellation races are not built; local stop/completed and authorized resume are tested'],
   ['22', 'judgment-driven question work is not built'],
   ['23', 'exhaustion/escalation records are not built'],
   ['24', 'exhaustive impossibility and lawful-avenue exploration are not built'],
