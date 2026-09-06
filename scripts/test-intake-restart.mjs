@@ -73,7 +73,8 @@ const port = take(createIntakePort({
   clock: () => now, governance: { register, context: regContext }, scope: context.schemas.find(s => s.kind === 'intake-admitted').scope,
   workOwner: 'slice-run-owner', holdMaxAge: 1000, holdMaxActive: 2, dedupGeneration: generation, dedupStalenessBound: 1000,
 }));
-const result = port.receive(seed.raw, seed.route);
+// Recovery receives neither lost caller bytes nor route; only the durable spine.
+const result = seed.recover ? port.recover(storage.read().find(f => f.kind === 'intake-receipt').id) : port.receive(seed.raw, seed.route);
 const outcome = consumeResult(result, { Success: v => v.kind, Refused: r => `Refused:${r.detail}` });
 const facts = take(createFactStore(context, storage).read());
 const snapshot = take(prepareSnapshot(facts, { ...context, facts }));
@@ -81,5 +82,6 @@ const definition = intakeDedupDefinition(generation().kinds, 1000);
 const first = checkpoint(take(foldProjection(definition, snapshot, generation(), b)));
 const rebuilt = checkpoint(take(foldProjection(definition, snapshot, generation(), b)));
 console.log(JSON.stringify({ outcome, kinds: facts.map(f => f.kind), admitted: facts.filter(f => f.kind === 'intake-admitted').map(f => f.body.logicalId),
+  arrivals: facts.filter(f => f.kind === 'intake-admitted').map(f => ({ at: f.body.intent.receivedAt.value, channel: f.body.channel, sender: f.body.sender, eventId: f.body.eventId })),
   stops: facts.filter(f => f.kind === 'intake-stop').map(f => f.id), hash: first.hash, rebuilt: first.hash === rebuilt.hash,
   taint: first.view.taint, contextLivePrincipals: context.decode.principals.map(p => p.id) }));

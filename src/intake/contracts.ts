@@ -51,6 +51,8 @@ export type IntakeDisposition=Readonly<
 >;
 export interface IntakePort {
   receive(raw: string,route: InboundRoute): Result<IntakeDisposition>;
+  // Reprocess a durable receipt; route, bytes and original clock come from the ledger.
+  recover(receiptId: string): Result<IntakeDisposition>;
   // A package-authenticated maintenance operation; the scheduler calls this same port.
   expireHolds(): Result<number>;
 }

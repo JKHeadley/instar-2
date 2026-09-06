@@ -94,9 +94,11 @@ it('P4-NF-25 directives are derived from admitted facts even if the provider omi
   const body = last.body as Record<string, Json>;
   const c = { ...f.context, decode: { ...f.context.decode, principals: [...f.context.decode.principals ?? [], result.intent.principal] },
     ownedBodies: [value(intakeWorkRegistration({ site: 'intake.admit', preserved: 'capture:omitted-directive', register: f.context.decode.register }, f.deps.author.principal.id))] };
-  const wire = signEnvelope({ ...last, id: `machine-a:0:${last.segment.position + 1}`, segment: { ...last.segment, position: last.segment.position + 1 },
-    prevInSegment: last.contentHash, predecessors: { ...last.predecessors, inSegment: last.id }, body: { ...body, intent: { ...result.intent, under: [] } } }, privateKey);
-  refused(createFactStore(c, f.storage).append(wire), 'P4-NF-25');
+  // Replace the not-yet-appended candidate, not a second admission of an already
+  // admitted event (which would exercise dedup before the directive invariant).
+  const prefix = f.frames.slice(0, -1);
+  const wire = signEnvelope({ ...last, body: { ...body, intent: { ...result.intent, under: [] } } }, privateKey);
+  refused(createFactStore(c, { ...f.storage, read: () => prefix }).append(wire), 'P4-NF-25');
 });
 
 it('P4-NF-14 receiver admission refuses a requester-authored stop and a stop with widened reach', () => {

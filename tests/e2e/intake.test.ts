@@ -20,7 +20,8 @@ it('P4-NF-01 P4-NF-03 P4-NF-04 P4-NF-11 P4-NF-14 public boot survives process de
       expect(killed.status, killed.stderr).toBe(86);
       const run = (raw: string, eventId = route.eventId) => JSON.parse(execFileSync(process.execPath, ['scripts/test-intake-restart.mjs'], {
         input: JSON.stringify({ ...base, directory, raw, route: { ...route, eventId } }), encoding: 'utf8' }));
-      const resumed = run(raw);
+      const resumed = cut === 'intake-receipt' ? JSON.parse(execFileSync(process.execPath, ['scripts/test-intake-restart.mjs'], {
+        input: JSON.stringify({ ...base, directory, route: undefined, raw: undefined, recover: true, at: 500 }), encoding: 'utf8' })) : run(raw);
       expect(resumed.rebuilt).toBe(true); expect(resumed.taint).toEqual([]);
       expect(resumed.contextLivePrincipals).toEqual(['intake-observer']);
       if (cut === 'intake-stop') {
@@ -30,6 +31,7 @@ it('P4-NF-01 P4-NF-03 P4-NF-04 P4-NF-11 P4-NF-14 public boot survives process de
       } else {
         expect(resumed.outcome).toBe(cut === 'intake-admitted' ? 'duplicate' : 'admitted');
         expect(resumed.admitted).toHaveLength(1);
+        expect(resumed.arrivals).toEqual([{ at: 100, channel: route.channel, sender: route.sender, eventId: route.eventId }]);
         expect(run(raw).admitted).toEqual(resumed.admitted);
       }
     } finally { rmSync(directory, { recursive: true, force: true }); }

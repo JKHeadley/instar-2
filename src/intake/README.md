@@ -49,16 +49,29 @@ refinement are designed, not yet built. There is no model or keyword-classificat
 ## Durable order and recovery
 
 `receive(raw, route)` samples the clock once, durably stores the exact UTF-8 capture, then
-appends `intake-receipt` through P2 before inspecting the route, deduplicating or parsing.
+appends `intake-receipt` through P2 with a canonical, uninterpreted `ingress` encoding of
+the complete route before validating it, deduplicating or parsing. The receipt's signed
+clock is the original arrival clock, not the last retry's clock.
 The adapter must make its new capture and authentication records available in the supplied
 capture index. Capture and fact-storage failures return Refused and never invoke the parser.
+`recover(receiptId)` obtains route and bytes from that receipt and the durable capture index;
+it needs no lost caller route or raw text. Authentication is performed again, never restored
+as live authority from a historical view. A scheduler may enumerate retained receipts and
+invoke this port. Overlapping calls preserve their receipt before the per-instance recursion
+guard defers interpretation; the refusal identifies the receipt to recover. This is durable
+queue substrate, not an autonomous scheduler or proof that the capture-only pre-receipt cut
+has an acknowledged transport event.
 
 The logical identity hashes adapter, authenticated channel, sender, identity epoch and
 provider event id. The epoch prevents recycled platform identities inheriting an old key.
 Each redelivery still has its own durable receipt. An equal-hash completed admission appends
-an `intake-collapse` referencing the original. A changed hash appends an `intake-mismatch`
+an `intake-collapse` referencing the original. The first receipt commits the hash, including
+before authentication or holding. A changed hash appends an `intake-mismatch`
 attack signal and refuses. A duplicate returns a reference, never a fresh executable Intent.
-Native provider ids are retained as `lastInboundId` and on the durable resolution/work facts.
+Native provider ids are retained as `lastInboundId` and on the durable receipt/resolution/work
+facts. A final same-ledger recheck collapses interleaving ports; the P4 owner decoder also
+rejects a second admission in the same causal history. Partitioned concurrent admissions
+remain the P2 singleton Conflict case, not a claimed distributed lock.
 
 Authentication uses P1's actual Provenance and VerifiedPrincipal decoders. Unresolved
 identity becomes P1 UnresolvedInput in an observer-authored `intake-held` fact; the result
@@ -66,7 +79,7 @@ remains Refused, with the hold fact as its preserved reference. Holds have an ow
 and bounded active slots. Overflow is counted by durable coalesced observations; raw captures
 remain individually recoverable. `expireHolds()` writes receipted expired terminals and is
 idempotent; the assembly schedules this package-authenticated maintenance port. An admitted
-retry closes its matching hold logically and retains the first recorded arrival time while
+retry closes only its matching logical-id/hash hold and retains the first receipt's arrival time while
 its new fact records resolution/admission time. No timeout becomes consent.
 
 A pre-existing `conversation-binding` fact is an operator/conferring, causally bound fact
@@ -89,7 +102,11 @@ and held-queue maintenance. It appends one local-durable `intake-stop` naming bi
 authenticated identity/capture, receipt and clock. A replay authenticates again and returns
 the same stop fact (a new delivery receipt is still preserved). Receiver-side P4 validation
 refuses other authors and altered binding reach. A stop fact inhibits new intake work in its
-scope across restart. The returned fact reference and `fencingOwner: part-six` identify the
+scope across restart, including work whose broader or differently dimensioned scope is not
+proved disjoint. Disjoint members of the same scope kind remain serviceable. The P4 work
+decoder enforces this at the candidate's own causal position for both origin and historical
+rebuild; a later stop does not retroactively invalidate a pre-stop admission. A narrow binding
+cannot select operator context for a broader port. The returned fact reference and `fencingOwner: part-six` identify the
 fencing handoff: this port does not acquire leases, fence effects or claim already-running
 work has halted. A requester's exact stop produces a highest-priority, non-halting signal.
 

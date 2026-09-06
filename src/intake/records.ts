@@ -1,6 +1,6 @@
 import type { BoundaryContext,Json,Scope } from '../index.js';
 import { causalCone,causalStanding,registerOwnedBody } from '../facts/index.js';
-import { decode,historicalGrantLiveness,scopeIncludes } from '../index.js';
+import { canonical,decode,historicalGrantLiveness,scopeIncludes } from '../index.js';
 import type { FactSchema,OwnedBodyRegistration } from '../facts/index.js';
 import type { Result } from '../index.js';
 import { object,requireIntake,same,take,text } from './boundary.js';
@@ -8,6 +8,15 @@ import type { ProjectionDefinition } from '../projections/index.js';
 
 export const intakeKinds=Object.freeze(['intake-receipt','intake-resolved','intake-admitted','intake-held','intake-expired',
   'intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','conversation-binding'] as const);
+
+// Different scope dimensions are not evidence of disjoint work.
+export function intakeScopesOverlap(a: Scope,b: Scope): boolean {
+  return a.kind==='organization'||b.kind==='organization'||a.kind!==b.kind||a.members.some(m => b.members.includes(m));
+}
+export function intakeArrivalId(adapter: Json,ingress: Json,fallback: string): string {
+  const r=object(ingress);
+  return take(canonical([adapter,r.channel,r.sender,r.identityEpoch,r.eventId??fallback])).hash;
+}
 
 // Binding writes require the existing P2 operator/conferring ladder. Intake never authors one.
 export function intakeFactSchemas(scope: Scope): readonly FactSchema[] {
@@ -18,7 +27,8 @@ export function intakeFactSchemas(scope: Scope): readonly FactSchema[] {
   };
   const common={ logicalId: short,receipt: { kind: 'reference' as const },rawHash: short,adapter: short,channel: short,sender: short,identityEpoch: short,eventId: short };
   return [
-    { ...shared,kind: 'intake-receipt',fields: { capture: { kind: 'capture' },rawHash: short,adapter: short } },
+    { ...shared,kind: 'intake-receipt',fields: { capture: { kind: 'capture' },rawHash: short,adapter: short,
+      ingress: { kind: 'text',maxLength: 1048576 } } },
     { ...shared,kind: 'intake-resolved',fields: { ...common,principalId: short,authentication: { kind: 'capture' },binding: short } },
     {
       ...shared,kind: 'intake-admitted',fields: {
@@ -71,7 +81,19 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
         requireIntake(intent.id===body.logicalId&&intent.raw===body.rawHash&&object(receipt.body).rawHash===body.rawHash,
           'P4-NF-01/12: work changed its preserved input identity');
         const cone=causalCone(c.origin,c.facts.facts);
+        const ingress=object(JSON.parse(text(object(receipt.body).ingress,'receipt ingress')) as Json);
+        requireIntake(intakeArrivalId(object(receipt.body).adapter!,ingress,receipt.id)===body.logicalId,
+          'P4-NF-01/03: work changed receipt route/event identity');
+        for(const key of ['channel','sender','identityEpoch','eventId']) requireIntake(same(ingress[key],body[key]),'P4-NF-01: work changed ingress');
+        const arrivals=cone.filter(f => f.kind==='intake-receipt'&&intakeArrivalId(object(f.body).adapter!,JSON.parse(text(object(f.body).ingress,'ingress')) as Json,f.id)===body.logicalId);
+        const first=arrivals[0]??receipt;
+        requireIntake(object(first.body).rawHash===body.rawHash,'P4-NF-03/08: arrival hash commitment changed');
+        requireIntake(same(intent.receivedAt,first.at),'P4-NF-10: work changed original arrival clock');
+        requireIntake(!cone.some(f => f.kind==='intake-admitted'&&object(f.body).logicalId===body.logicalId),
+          'P4-NF-03: event already admitted in causal history');
         const scope=c.facts.schemas.find(s => s.kind===c.origin.kind&&s.version===c.origin.schemaVersion)!.scope;
+        requireIntake(!cone.some(f => f.kind==='intake-stop'&&intakeScopesOverlap(take(decode('Scope',object(f.body).scope,c.facts.decode)),scope)),
+          'P4-NF-14: in-cone stop inhibits overlapping work');
         const directives=cone.flatMap(f => c.facts.schemas.filter(s => s.kind===f.kind&&s.version===f.schemaVersion)
           .flatMap(s => Object.entries(s.fields).filter(([,v]) => v.kind==='constitutional'&&v.type==='Directive')
             .map(([field]) => object(object(f.body)[field]!))));

@@ -8,7 +8,7 @@ import { constructGoverned } from '../register/index.js';
 import { foldProjection,readProjection } from '../projections/index.js';
 import { boundary,IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
 import type { InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort } from './contracts.js';
-import { intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,intakeWorkRegistration } from './records.js';
+import { intakeArrivalId,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,intakeWorkRegistration } from './records.js';
 
 const reference=(f: FactEnvelope): FactEnvelopeReference => Object.freeze({ owner: 'part-two',name: 'FactEnvelope',id: f.id });
 type Classified={ kind: 'conversation'; ask: string; flags: readonly 'cannot-decide'[] }|{ kind: 'stop' }|{ kind: 'needs-judgment' };
@@ -58,6 +58,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     const authenticate=deps.adapter.authenticate.bind(deps.adapter),parse=deps.adapter.parse.bind(deps.adapter);
     const author=Object.freeze({ ...deps.author });
     let busy=false;
+    const identity=(f: FactEnvelope) => take(canonical([object(f.body).logicalId,object(f.body).rawHash])).bytes;
 
     function context(preserved: string,principal?: VerifiedPrincipal): FactContext {
       const c=deps.context();
@@ -95,16 +96,16 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     }
     function expire(at: Clock,preserved: string): number {
       const facts=read(preserved),terminals=new Set(facts.filter(f => f.kind==='intake-expired').map(f => object(f.body).hold));
-      const resolved=new Set(facts.filter(f => f.kind==='intake-admitted').map(f => object(f.body).logicalId));
-      const overdue=facts.filter(f => f.kind==='intake-held'&&!terminals.has(f.id)&&!resolved.has(object(f.body).logicalId)&&Number(object(f.body).expiresAt)<=at.value);
+      const resolved=new Set(facts.filter(f => f.kind==='intake-admitted').map(identity));
+      const overdue=facts.filter(f => f.kind==='intake-held'&&!terminals.has(f.id)&&!resolved.has(identity(f))&&Number(object(f.body).expiresAt)<=at.value);
       for(const f of overdue) append('intake-expired',{ hold: f.id,terminal: object(f.body).reason==='needs-judgment'? 'expired-judgment':'expired-unresolved' },at,preserved,[f.id]);
       return overdue.length;
     }
     function hold(reason: string,common: Record<string,Json>,at: Clock,capture: string): never {
       expire(at,capture);
       const facts=read(capture),expired=new Set(facts.filter(f => f.kind==='intake-expired').map(f => object(f.body).hold));
-      const resolved=new Set(facts.filter(f => f.kind==='intake-admitted').map(f => object(f.body).logicalId));
-      const active=facts.filter(f => f.kind==='intake-held'&&!expired.has(f.id)&&!resolved.has(object(f.body).logicalId)&&object(f.body).coalescedInto==='none');
+      const resolved=new Set(facts.filter(f => f.kind==='intake-admitted').map(identity));
+      const active=facts.filter(f => f.kind==='intake-held'&&!expired.has(f.id)&&!resolved.has(identity(f))&&object(f.body).coalescedInto==='none');
       const group=active.length>=maxActive? active.find(f => object(f.body).channel===common.channel):undefined;
       // Each input still has its own capture + counted hold fact. Only active queue slots coalesce.
       const coalescedInto=active.length>=maxActive? group?.id??'overflow':'none';
@@ -122,18 +123,19 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       throw new Error('unreachable');
     }
     function receive(raw: string,routeInput: InboundRoute): Result<IntakeDisposition> {
-      // No route access, hash collapse, authentication or parse before durable preservation.
+      // Ingress is retained uninterpreted; no classification or admission before receipt.
       let preserved=initial.preserved;
       return boundary('IntakeReceive',{ ...b,preserved },() => {
-        requireIntake(!busy,'P4-NF-24: reentrant intake refused; caller retains input','integrity');
-        busy=true;
-        try {
           const at=take(decodeMeasurement('clock',deps.clock(),initial.decode));
           const captured=take(deps.capture.preserve(raw,at)); preserved=captured.reference;
           requireIntake(captured.hash===hashBytes(raw),'P4-NF-01: capture hash differs from received bytes','integrity');
-          const receipt=append('intake-receipt',{ capture: json(captured),rawHash: captured.hash,adapter: adapterId },at,preserved);
+          const receipt=append('intake-receipt',{ capture: json(captured),rawHash: captured.hash,adapter: adapterId,
+            ingress: take(canonical(routeInput)).bytes },at,preserved);
           return take(boundary<IntakeDisposition>('IntakePreserved',{ ...b,preserved: receipt.id },() => {
-            const route=object(json(routeInput));
+            requireIntake(!busy,'P4-NF-01: overlapping arrival durably queued; recover its receipt','integrity');
+            busy=true;
+            try {
+            const route=object(JSON.parse(text(object(receipt.body).ingress,'ingress')) as Json);
             const channel=text(route.channel,'authenticated channel'),sender=text(route.sender,'transport sender');
             const identityEpoch=text(route.identityEpoch,'identity epoch');
             const logicalId=take(canonical([adapterId,channel,sender,identityEpoch,route.eventId??receipt.id])).hash;
@@ -142,9 +144,11 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               eventId: typeof route.eventId==='string'&&route.eventId.length? route.eventId:'missing'
             };
             if(typeof route.eventId!=='string'||route.eventId.length===0) hold('missing-provider-event-id',common,at,preserved);
+            const arrivals=read(preserved).filter(f => f.kind==='intake-receipt'&&intakeArrivalId(object(f.body).adapter!,JSON.parse(text(object(f.body).ingress,'ingress')) as Json,f.id)===logicalId);
+            const original=arrivals[0]!;
             const prior=read(preserved).find(f => ['intake-admitted','intake-stop','intake-stop-signal'].includes(f.kind)&&object(f.body).logicalId===logicalId);
-            if(prior&&object(prior.body).rawHash!==captured.hash) {
-              const signal=append('intake-mismatch',{ ...common,original: prior.id },at,preserved,[receipt.id,prior.id]);
+            if(object(original.body).rawHash!==captured.hash) {
+              const signal=append('intake-mismatch',{ ...common,original: original.id },at,preserved,[receipt.id,original.id]);
               return take(boundary<IntakeDisposition>('IntakeMismatch',{ ...b,preserved: signal.id },() => { throw new IntakeFailure('P4-NF-03/08: same event id, different arrival bytes; attack signal recorded','integrity'); }));
             }
             // Ordinary duplicate returns no reusable Intent/authority. Stops authenticate again
@@ -192,6 +196,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               &&take(historicalGrantLiveness(g.grant,historicalRevocations.filter(v => causalCone(r.fact,historicalContext.facts).some(f => f.id===v.factId)).map(v => v.revocation),
                 causalStanding(r.fact,authorityContext,false).now,preserved))==='live');
             const binding=heads.length===1&&matches(heads[0]!)&&grantFor(heads[0]!)
+              &&scopeIncludes(take(decode('Scope',object(heads[0]!.body).scope,initial.decode)),scope)
               &&heads[0]!.taint.length===0&&heads[0]!.conflicts.length===0
               &&take(historicalGrantLiveness(grantFor(heads[0]!)!.grant,historicalRevocations.map(r => r.revocation),causalNow,preserved))==='live'? heads[0]:undefined;
             // A stale/contested selection grants no direction. A previously verified binding
@@ -220,7 +225,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             if(classification.kind==='needs-judgment') return hold('needs-judgment',common,at,preserved);
             expire(at,preserved);
             if(statuses(preserved).some(r => r.fact.kind==='intake-stop'&&!r.conflicts.length&&!r.taint.length
-              &&scopeIncludes(take(decode('Scope',object(r.body).scope,context(preserved).decode)),scope))) return hold('stopped',common,at,preserved);
+              &&intakeScopesOverlap(take(decode('Scope',object(r.body).scope,context(preserved).decode)),scope))) return hold('stopped',common,at,preserved);
             checkDedup(at,preserved);
             // Requester service is deliberately the only admission class. Bound operator
             // selection is context, not an Authorization or a permission to change governance.
@@ -243,14 +248,22 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               requireIntake(record,'P4-NF-25: directive missing from admitted causal position','integrity');
               required.push(record.fact.id); under.push(directive.id);
             }
-            const previouslyHeld=read(preserved).find(f => ['intake-held','intake-resolved'].includes(f.kind)&&object(f.body).logicalId===logicalId&&object(f.body).rawHash===captured.hash);
-            const receivedAt=previouslyHeld?.at??at;
-            if(previouslyHeld) required.push(previouslyHeld.id);
+            const receivedAt=original.at;
+            required.push(original.id);
             const intent=take(decode('Intent',{
               type: 'Intent',schemaVersion: 1,id: logicalId,principal,receivedAt,
               via: adapterId,raw: captured.hash,ask: classification.ask,under: under.sort()
             },
               { ...context(preserved,principal).decode,directives: liveDirectives }));
+            // A second port may have completed while our adapter callback ran. P2's
+            // owner decoder also rejects a causally prior admission at the append seam.
+            const committed=read(preserved).find(f => f.kind==='intake-admitted'&&object(f.body).logicalId===logicalId);
+            if(committed) {
+              requireIntake(object(committed.body).rawHash===captured.hash,'P4-NF-03: concurrent arrival hash mismatch','integrity');
+              checkDedup(at,preserved);
+              append('intake-collapse',{ ...common,original: committed.id },at,preserved,[receipt.id,committed.id]);
+              return { kind: 'duplicate',logicalId,original: reference(committed) };
+            }
             const admitted=append('intake-admitted',{
               ...common,intent: json(intent),
               work: {
@@ -263,12 +276,19 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               kind: 'admitted',logicalId,lastInboundId: common.eventId,intent,fact: reference(admitted),owner,blockedOn: 'run-admission',standing: 'requester',boundOperator: !!binding,
               flags: Object.freeze([...classification.flags])
             };
+            } finally { busy=false; }
           }));
-        } finally { busy=false; }
       });
     }
     return Object.freeze({
-      receive,expireHolds: () => boundary('IntakeExpiry',b,
+      receive,recover: (receiptId: string) => boundary('IntakeRecovery',{ ...b,preserved: receiptId },() => {
+        const receipt=read(receiptId).find(f => f.id===receiptId&&f.kind==='intake-receipt'&&object(f.body).adapter===adapterId);
+        requireIntake(receipt,'P4-NF-01: unknown durable intake receipt');
+        const body=object(receipt.body),capture=context(receiptId).captures[text(object(body.capture!).reference,'capture')];
+        requireIntake(capture?.status==='available'&&typeof capture.bytes==='string'&&hashBytes(capture.bytes)===body.rawHash,'P4-NF-01: recovery capture unavailable','integrity');
+        const route=object(JSON.parse(text(body.ingress,'ingress')) as Json);
+        return take(receive(capture.bytes,{ channel: text(route.channel,'channel'),sender: text(route.sender,'sender'),identityEpoch: text(route.identityEpoch,'epoch'),eventId: route.eventId===null? null:text(route.eventId,'event id') }));
+      }),expireHolds: () => boundary('IntakeExpiry',b,
         () => expire(take(decodeMeasurement('clock',deps.clock(),initial.decode)),initial.preserved))
     });
   });
