@@ -187,7 +187,9 @@ describe('compiled register build adapter lifecycle', () => {
         await new Promise<void>(done => setImmediate(done));
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
-  }, 60_000);
+  // Measured 63.4s on GitHub x64 (~24s locally): this real compiled-CLI,
+  // multi-invocation refusal test needs slow-runner headroom, not a runtime-latency assertion.
+  }, 120_000);
   it('P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-e2e-'));
     try {
