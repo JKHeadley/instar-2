@@ -96,7 +96,18 @@ export function integration() {
   refused(fresh(20, { semanticMessage: reservation.semanticMessage }), 'unresolved');
   refused(api.claim('replay', f.fence, reservation.operation), 'already issued');
   refused(fresh(94), 'spend bound');
-  assert.equal(value(fresh(93)).charge, 93); // Exactly 100 exposure, not 80 or 113.
+  const next = value(fresh(93));
+  assert.equal(next.charge, 93); // Exactly 100 exposure, not 80 or 113.
+  const originalReader = j.host.accountingDurability;
+  let custodyReads = 0;
+  Object.assign(j.host, { accountingDurability: { owner: 'part-ten', ensure(facts) {
+    custodyReads++; assert.ok(custodyReads <= 4, 'projection recursively traversed custody');
+    return originalReader.ensure(facts);
+  } } });
+  value(api.inspect()); value(api.inspect());
+  const continued = value(api.claim('next-claim', f.fence, next.operation));
+  value(api.consume(continued, f.fence)); value(api.inspect());
+  assert.equal(custodyReads, 0); // Admission checked proof; reconstruction does not.
   assert.equal(f.calls(), 1);
 
   const cap = joint(); cap.f.assess('happened', 30); cap.quiescent();

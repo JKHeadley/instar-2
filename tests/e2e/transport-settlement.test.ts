@@ -23,6 +23,11 @@ it('P6-NF-11 P6-NF-14 P6-NF-19 P6-NF-34 P6-NF-36 P6-NF-39 SIGKILL after settleme
       // Leave Vitest's reporting RPC responsive while the real restart runs.
       const restored = await promisify(execFile)(process.execPath, ['tests/transport/settlement-worker.mjs', 'restore', seed], { encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024 });
       expect(JSON.parse(restored.stdout)).toEqual({ applications: 1, exposure: cut === 'held' ? 20 : 7, released: cut === 'held' ? 0 : 13, calls: 0 });
+      if (cut !== 'held') {
+        const inspected = await promisify(execFile)(process.execPath, ['tests/transport/settlement-worker.mjs', 'inspect-next', seed],
+          { encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024 });
+        expect(JSON.parse(inspected.stdout)).toEqual({ inspected: true, state: 'consumed', custodyReads: 0, calls: 0 });
+      }
     } finally { child.kill('SIGKILL'); }
   }
   // Three real compiled-owner SIGKILL/restart cycles, including missing accounting replica;

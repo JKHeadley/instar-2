@@ -234,7 +234,12 @@ export function registerTransportBodies<S = never>(host: TransportHost, c: Bound
           const past = rows(causalCone(ctx.origin, ctx.facts.facts), host.domain);
           ensure(past.every(({ fact }) => fact.machine === host.machine && fact.principal.id === host.principal.id
             && fact.principal.kind === host.principal.kind), 'predecessor issuer is not this authority');
-          validateTransition(v, past, host, ctx.mode === 'origin');
+          // P2 also live-decodes preserved facts for projection reconstruction.
+          // Such a fact is already in its verified input set; it is NOT a new
+          // append. Only a new origin candidate may perform current custody I/O.
+          // Raw P2 origin append still lacks this fact and therefore checks R1.
+          const admitting = ctx.mode === 'origin' && !ctx.facts.facts.some(f => f.id === ctx.origin.id);
+          validateTransition(v, past, host, admitting);
           if (v.type === 'SettlementApplication') {
             checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past);
             if (ctx.mode === 'origin') requireApplication(host, v, settlementConsumer);

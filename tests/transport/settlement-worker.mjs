@@ -46,6 +46,19 @@ if (mode === 'start') {
   const api = createTransportAuthority(host, spine, c, effects.consumeEffectSettlement);
   const before = value(api.inspect());
   assert.equal(before.filter(v => v.record.type === 'SettlementApplication').length, 1);
+  if (mode === 'inspect-next') {
+    let reads = 0;
+    Object.assign(host, { accountingDurability: { owner: 'part-ten', ensure(facts) {
+      reads++; assert.ok(reads <= 4, 'fresh-process projection recursed through custody');
+      return replicas.durability.ensure(facts);
+    } } });
+    const history = value(api.inspect());
+    const next = history.filter(v => v.record.type === 'AdmissionReservation' && v.record.request === 'new-request').at(-1);
+    assert.equal(next.record.state, 'consumed');
+    assert.equal(reads, 0);
+    console.log(JSON.stringify({ inspected: true, state: next.record.state, custodyReads: reads, calls: f.calls() }));
+    process.exit(0);
+  }
   const fence = value(api.acquire('takeover', before.at(-1).fact.id, 500));
   if (seed.cut === 'local-only') {
     assert.equal(value(peer.read()).filter(f => f.kind === 'transport-SettlementApplication').length, 0);
@@ -81,6 +94,14 @@ if (mode === 'start') {
   const request = charge => api.reserve({ command: 'next', fence, request: { owner: 'part-eight', name: 'EffectRequest', id: 'new-request' },
     attempt: 'new-attempt', payloadDigest: old.digest, charge, run: f.run, semanticMessage: 'new-key', durability: 'replicated', replicas: 1 });
   if (seed.cut === 'held') { assert.equal(application.exposure, 20); refused(request(1), 'unresolved'); }
-  else { assert.equal(application.exposure, 7); refused(request(94), 'spend bound'); value(request(93)); }
+  else {
+    assert.equal(application.exposure, 7); refused(request(94), 'spend bound');
+    const next = value(request(93));
+    // The replacement process must CONTINUE past the successful reservation,
+    // not stop immediately before the projection/custody recursion boundary.
+    value(api.inspect());
+    value(api.consume(value(api.claim('next-claim', fence, next.operation)), fence));
+    value(api.inspect());
+  }
   console.log(JSON.stringify({ applications: 1, exposure: application.exposure, released: application.released, calls: f.calls() }));
 }

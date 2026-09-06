@@ -54,7 +54,10 @@ uses the latest exposure once per operation only when the exact accounting fact
 meets the ORIGINAL reservation's demand. Local-only application history is retained,
 but first acknowledgment and duplicates refuse usable release until that demand is
 met. New origin admission rechecks P2 custody, including after reopen and inside
-P2's owner validator. Unsupported accounting retains the maximum observed exposure;
+P2's owner validator. A projection's optional live reconstruction of a fact already
+in P2's verified input set is not an origin append and does not perform custody
+I/O; it cannot recursively read a peer projection. Raw P2 origin candidates still
+perform the current-demand check. Unsupported accounting retains the maximum observed exposure;
 a weaker NEW request cannot lower the old demand. Historical parsing itself does
 not require a live peer or erase the locally preserved accounting row. A lost ACK
 or duplicate cannot release twice. Unknown occurrence, unknown charge, or possible delayed execution holds at
