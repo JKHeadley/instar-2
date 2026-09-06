@@ -67,7 +67,9 @@ const PUBLIC_KEY = createPublicKey(SECRET).export({ format: 'pem', type: 'spki' 
 /** Pinned installation configuration; deterministic test identities only. */
 export function sliceConfig(overrides = {}) {
   return Object.freeze({
-    profile: 'reply',                 // 'reply' | 'judgment'
+    // 'full' is the PRIMARY single-chain profile: docs/15 section 7 in ONE profile,
+    // in section 7's own order. 'reply' and 'judgment' are the reduced controls.
+    profile: 'full',                  // 'full' | 'reply' | 'judgment'
     adapter: 'telegram-slice',        // 'telegram-slice' | 'telegram-opaque'
     machine: 'machine-a',
     domain: 'conversation:1',
@@ -96,11 +98,22 @@ export function sliceConfig(overrides = {}) {
 // the suite assert the converse, that every declared name in a profile is fired.
 const REBUILD_BOUNDARIES = minimalPlaneProjectionIds.map(id => `rebuild:${id}`);
 
-/** What each profile ACTUALLY fires, in executed order. */
+/**
+ * What each profile ACTUALLY fires, in executed order. `full` is FIRST because it is
+ * the primary single-chain profile; `reply` and `judgment` are the reduced controls.
+ *
+ * `full` and `judgment` fire the SAME list, and that equality is itself the finding:
+ * the single chain stops at exactly the boundary the reduced control stops at,
+ * because no published seam can resolve a part-seven model operation. See
+ * `.instar/lanes/slice-six-seven-resolution-gap.md`.
+ */
 export const PROFILE_BOUNDARIES = Object.freeze({
+  full: Object.freeze(['preservation', 'authentication', 'standing', 'run-creation',
+    'judgment-request', 'judgment-reservation', 'judgment-claim', 'judgment-dispatch',
+    'model-invocation', 'judgment-resolution', 'outbound-preparation', ...REBUILD_BOUNDARIES]),
   reply: Object.freeze(['preservation', 'authentication', 'standing', 'run-creation',
     'outbound-preparation', 'outbound-reservation', 'outbound-claim', 'outbound-consume',
-    'external-send', 'delivery-evidence', 'settlement', ...REBUILD_BOUNDARIES]),
+    'external-send', 'delivery-evidence', 'settlement', 'settlement-application', ...REBUILD_BOUNDARIES]),
   judgment: Object.freeze(['preservation', 'authentication', 'standing', 'run-creation',
     'judgment-request', 'judgment-reservation', 'judgment-claim', 'judgment-dispatch',
     'model-invocation', 'judgment-resolution', 'outbound-preparation', ...REBUILD_BOUNDARIES]),
@@ -117,8 +130,22 @@ export const SLICE_BOUNDARIES = Object.freeze([...new Set(Object.values(PROFILE_
  */
 export const UNREACHED_BOUNDARIES = Object.freeze({ grounding: 'part-five refuses grounding for an intake-opened run; slice-five-gap.md' });
 
+/**
+ * Declared, and reached ONLY on a recovery path, so no control execution fires them.
+ * `operation-close` is six's conditional close of a prepared operation whose reserving
+ * fence died with its worker. It is reachable only after a cut that leaves a
+ * reservation prepared and unclaimed — the `outbound-reservation` cut in the reply
+ * profile and the `judgment-reservation` cut in the single chain. The kill schedule
+ * reaches it, and the suite asserts that it is reached and never itself cut.
+ */
+export const RECOVERY_BOUNDARIES = Object.freeze({
+  'operation-close': 'six conditionally closes a prepared operation whose reserving fence is gone; reached only '
+    + 'after a cut that leaves a reservation unclaimed (outbound-reservation, or judgment-reservation in the single chain)',
+});
+
 /** Every name `boundary()` may use. */
-export const DECLARED_BOUNDARIES = Object.freeze([...SLICE_BOUNDARIES, ...Object.keys(UNREACHED_BOUNDARIES)]);
+export const DECLARED_BOUNDARIES = Object.freeze([...SLICE_BOUNDARIES,
+  ...Object.keys(UNREACHED_BOUNDARIES), ...Object.keys(RECOVERY_BOUNDARIES)]);
 
 // ------------------------------------------------------------ the boot path
 /**
@@ -353,6 +380,10 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   // ------------------------------------------------------------------- hosts
   const transportHost = { domain: config.domain, machine: config.machine, incarnation, authorityIncarnation,
     principal: bob, scope, maxLeaseTerm: config.maxLeaseTerm, budget: config.budget, monotonic: tick,
+    // Part ten's custody reader, required by six before it will release reserved
+    // credit for a REPLICATED operation. It is the SAME reader part eight demands
+    // durability through, so accounting and effect durability cannot disagree.
+    get accountingDurability() { return replicas.durability; },
     current: () => ({ decode: decodeContext, clock: now(), generation: registerShape.generation, stopped: false }) };
   const effectHost = { machine: config.machine, incarnation, principal: bob, scope, boundary: boundaryContext,
     capture: custody.capture,
@@ -429,7 +460,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     // the intake port installs its own copies for its own calls.
     take(intakeWorkRegistration(intakeBoundary, observer.id)),
     take(intakeStopRegistration(intakeBoundary, observer.id)),
-    ...take(registerTransportBodies(transportHost, boundaryContext)),
+    ...take(registerTransportBodies(transportHost, boundaryContext, consumeEffectSettlement)),
     ...take(registerJudgmentBodies(judgmentHost, boundaryContext)),
     ...take(registerEffectBodies(effectHost)),
     ...runRegistration.registrations,
@@ -486,7 +517,9 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     return { reference: hash, hash };
   }) };
 
-  const transport = createTransportAuthority(transportHost, createTransportSpine(transportHost, author, store), boundaryContext);
+  // Six is constructed WITH eight's published settlement consumer, so `settle` can
+  // apply an authentic eight-issued settlement and mark the operation RESOLVED.
+  const transport = createTransportAuthority(transportHost, createTransportSpine(transportHost, author, store), boundaryContext, consumeEffectSettlement);
   const transportFacts = memo(() => take(transport.inspect()));
   const currentFenceEpoch = () => { const l = transportFacts().filter(v => v.record.type === 'Lease').at(-1); return l ? l.record.epoch : 0; };
 
@@ -813,15 +846,15 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     }
 
     // ---- 5. one bounded model judgment through the registered doorway --------
-    if (config.profile === 'judgment') await driveJudgment(opening);
+    if (asksJudgment()) { await driveJudgment(opening); ownModelOperation(); }
     else record('judgment', 'declared-out-of-this-profile',
       { detail: 'six admits ONE operation per run in this domain; this profile spends it on the reply. See .instar/lanes/slice-six-gap.md' });
 
     // ---- 6. render one attributable ordinary reply --------------------------
-    // In the judgment profile the reply is the judgment's; an unresolved judgment
-    // produces NO reply, only an owned-pending obligation.
+    // In a judgment-bearing profile the reply is the judgment's; an unresolved
+    // judgment produces NO reply, only an owned-pending obligation.
     if (!factOfKind('slice-reply-source') && opening) {
-      if (config.profile === 'judgment' && !factOfKind('judgment-JudgmentResolution')) {
+      if (asksJudgment() && !factOfKind('judgment-JudgmentResolution')) {
         obligation({ operation: 'pending:slice-semantic-reply:judgment', blocker: 'part-seven',
           semanticMessage: 'slice-semantic-reply:judgment', state: 'owned-pending-no-answer', owner: 'part-seven',
           exposure: config.maxCharge, detail: 'the durable question has no provider receipt; no reply may be rendered' });
@@ -829,12 +862,108 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
       } else renderReply();
     }
 
+    // ---- 6b. RESOLVE the model operation, so the reply may reserve ----------
+    // docs/10 line 671: an unresolved execution or charge blocks a new attempt.
+    // The single chain therefore has to resolve part seven's model operation
+    // before part eight's reply can be admitted in the SAME run.
+    if (config.profile === 'full' && opening) resolveModelOperation();
+
     // ---- 7. admit and send it through the effect doorway --------------------
     if (factOfKind('slice-reply-source') && opening) driveOutbound(opening);
 
     // ---- 8. rebuild every resulting projection from facts -------------------
     const rebuilds = rebuildAll();
     return report(rebuilds);
+  }
+
+  /** Profiles that ask part seven a real question: the single chain and its control. */
+  const asksJudgment = () => config.profile === 'full' || config.profile === 'judgment';
+
+  // Six's LATEST reservation row per operation, plus the first row, which is the one
+  // that carries the reserving command and therefore the operation's section-7 ROLE.
+  const sixOperationRows = () => {
+    const first = new Map(), latest = new Map();
+    for (const v of transportFacts()) {
+      if (v.record.type !== 'AdmissionReservation') continue;
+      if (!first.has(v.record.operation)) first.set(v.record.operation, v.record);
+      latest.set(v.record.operation, v.record);
+    }
+    return [...latest.entries()].map(([operation, record]) => ({ operation, record, opened: first.get(operation) }));
+  };
+  const roleOf = opened => (String(opened.command).startsWith('judgment:') ? 'model-judgment' : 'outbound-reply');
+  const modelOperation = () => sixOperationRows().find(row => roleOf(row.opened) === 'model-judgment');
+  const applicationFor = operation => transportFacts()
+    .filter(v => v.record.type === 'SettlementApplication' && v.record.operation === operation).at(-1);
+  const obligationNames = operation => factsOfKind('slice-obligation')
+    .some(f => f.body.operation === operation || f.body.operation.endsWith(`:${operation}`));
+
+  /**
+   * An unresolved six operation retains its reserved exposure and blocks this run's
+   * next attempt. Record that ownership explicitly rather than leaving a live
+   * reservation nobody names — the model operation is charge-bearing and, on this
+   * base, permanently unresolvable.
+   */
+  function ownModelOperation() {
+    const row = modelOperation();
+    if (!row || obligationNames(row.operation)) return;
+    if (applicationFor(row.operation) || row.record.state === 'closed') return;
+    obligation({ operation: row.operation, blocker: 'part-six', semanticMessage: row.record.semanticMessage,
+      state: 'owned-unresolved-model', owner: 'part-seven', exposure: row.record.charge,
+      detail: `six-owned model operation in state ${row.record.state}; its reserved exposure is retained and blocks a second reservation for this run` });
+  }
+
+  /**
+   * Apply an AUTHENTIC eight-issued settlement through six's public seam, so the
+   * operation becomes RESOLVED and stops blocking its run. Six re-enters eight's
+   * `consumeEffectSettlement` itself; nothing here forges or copies a settlement.
+   */
+  function applySettlement(operation) {
+    const already = applicationFor(operation);
+    if (already) return { ok: true, value: already.record, already: true };
+    const issued = settled(effects.settle(operation));
+    if (!issued.ok) return issued;
+    const applied = settled(transport.settle(liveFence(), issued.value));
+    if (applied.ok) boundary('settlement-application', { operation, released: applied.value.released,
+      exposure: applied.value.exposure, unresolved: applied.value.unresolved });
+    return applied;
+  }
+
+  /**
+   * The single chain's resolution step. Part seven's model operation is dispatched
+   * and consumed, so six's rule (b) keeps it blocking until it is RESOLVED. Both
+   * published resolution seams are ENTERED here — eight's settlement producer and
+   * six's conditional close — and both refusals are recorded verbatim. Nothing is
+   * relabelled, minted or worked around; see
+   * `.instar/lanes/slice-six-seven-resolution-gap.md`.
+   *
+   * Attempted ONCE per execution: the recorded obligation is the guard, so a refused
+   * step does not grow the plane on every boot.
+   */
+  function resolveModelOperation() {
+    const row = modelOperation();
+    if (!row) return;
+    if (applicationFor(row.operation)) { record('resolve', 'already-resolved'); return; }
+    if (factsOfKind('slice-obligation').some(f => f.body.operation === `resolve:${row.operation}`)) {
+      record('resolve', 'held', { detail: 'recorded owned-pending; not re-attempted' }); return;
+    }
+    const applied = applySettlement(row.operation);
+    if (applied.ok) { record('resolve', 'applied', { released: applied.value.released, unresolved: applied.value.unresolved }); return; }
+    // A model operation that was reserved and NEVER claimed — part seven refuses to
+    // re-ask a durable question with no provider receipt — is exactly what six's
+    // conditional close is for: terminal, unexecuted, and its credit released.
+    const closed = settled(transport.close(`slice-close-model:${incarnation}`, liveFence(), row.operation));
+    if (closed.ok) {
+      boundary('operation-close', { operation: row.operation });
+      record('resolve', 'closed');
+      obligation({ operation: row.operation, semanticMessage: row.record.semanticMessage, state: 'closed-unexecuted',
+        owner: 'part-six', exposure: 0, detail: 'six conditionally closed the model operation: the committed prefix '
+          + 'proves it was never dispatch-claimed, so its reserved credit is released and the run is not wedged' });
+      return;
+    }
+    record('resolve', 'refused', { detail: applied.detail, close: closed.detail });
+    obligation({ operation: `resolve:${row.operation}`, blocker: 'part-seven', semanticMessage: row.record.semanticMessage,
+      state: 'owned-pending-unresolvable', owner: 'part-seven', exposure: row.record.charge,
+      detail: `settlement producer: ${String(applied.detail).slice(0, 1400)} | conditional close: ${String(closed.detail).slice(0, 1400)}` });
   }
 
   async function driveJudgment(opening) {
@@ -949,6 +1078,15 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     // ---- independent delivery evidence for the DECLARED stage ---------------
     if (!evidenceRowFor(operation)) collectDeliveryEvidence(operation, record8);
 
+    // ---- the dead-fence wedge: six's conditional close ----------------------
+    // A crash between the reservation and its claim leaves a PREPARED operation
+    // under a fence that died with its worker. It can never be claimed, so it can
+    // never be settled either, and it used to wedge the run with its whole
+    // exposure retained. Six's conditional close proves from the COMMITTED PREFIX
+    // that no dispatch-claim exists, makes the operation terminal and releases the
+    // reserved credit. It never settles an effect and never reopens dispatch.
+    if (closeDeadFenced(operation, record8)) return;
+
     // ---- settlement ---------------------------------------------------------
     if (!factOfKind('effect-EffectSettlement') && evidenceRowFor(operation)) {
       const outcome = settled(effects.settle(operation));
@@ -968,6 +1106,39 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
           exposure: operationDefinition.maxCharge, detail: String(outcome.detail).slice(0, 3000) });
       }
     }
+
+    // ---- six APPLIES the settlement: the operation becomes RESOLVED ---------
+    // Level-triggered and independent of which boot wrote the settlement fact: a
+    // replacement re-enters eight's own producer for the same operation, which
+    // returns its existing settlement, and applies THAT through six.
+    if (factOfKind('effect-EffectSettlement') && !applicationFor(operation)) {
+      const applied = applySettlement(operation);
+      record('settlement-application', applied.ok ? 'applied' : 'refused', applied.ok
+        ? { released: applied.value.released, exposure: applied.value.exposure, unresolved: applied.value.unresolved }
+        : { detail: applied.detail });
+      if (applied.ok) obligation({ operation, semanticMessage: record8.semanticMessage,
+        state: applied.value.unresolved === 0 ? 'applied-resolved' : 'applied-unresolved', owner: 'part-six',
+        exposure: applied.value.exposure,
+        detail: `released=${applied.value.released}; actualCharge=${applied.value.actualCharge}` });
+      else obligation({ operation, semanticMessage: record8.semanticMessage, state: 'owned-unapplied-unsettled',
+        blocker: 'part-six', owner: 'part-eight', exposure: operationDefinition.maxCharge,
+        detail: String(applied.detail).slice(0, 3000) });
+    }
+  }
+
+  /** True when six conditionally closed a prepared operation whose fence is gone. */
+  function closeDeadFenced(operation, record8) {
+    const current = reservationFor(record8.id);
+    if (!current || current.record.state !== 'prepared') return false;
+    if (current.record.fence.epoch === currentFenceEpoch()) return false;
+    const closed = settled(transport.close(`slice-close:${incarnation}`, liveFence(), operation));
+    record('close', closed.ok ? 'closed' : 'refused', { detail: closed.ok ? null : closed.detail });
+    if (!closed.ok) return false;
+    boundary('operation-close', { operation });
+    obligation({ operation, semanticMessage: record8.semanticMessage, state: 'closed-unexecuted', owner: 'part-six',
+      exposure: 0, detail: 'six conditionally closed a prepared operation whose reserving fence is gone: the committed '
+        + 'prefix proves no dispatch-claim exists, so the reserved credit is released and the run is not wedged' });
+    return true;
   }
 
   // The LATEST reservation row carries the current state; the first is always 'prepared'.
@@ -1130,6 +1301,18 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
         return Object.fromEntries(Object.entries(trail).map(([k, v]) => [k, [...new Set(v)]]));
       })(),
       operations: [...new Set(transportFacts().filter(v => v.record.type === 'AdmissionReservation').map(v => v.record.operation))],
+      // Every six-owned operation of this run with its section-7 ROLE, its terminal
+      // state, and six's own accounting for it. `resolved` is six's word, not
+      // eleven's: an operation is resolved when six either applied an authentic
+      // eight settlement to it (unresolved 0) or conditionally closed it.
+      sixOperations: sixOperationRows().map(row => {
+        const application = applicationFor(row.operation);
+        return { operation: row.operation, role: roleOf(row.opened), run: row.record.run,
+          state: row.record.state, charge: row.record.charge,
+          application: application ? { exposure: application.record.exposure, released: application.record.released,
+            unresolved: application.record.unresolved, actualCharge: application.record.actualCharge } : null,
+          resolved: row.record.state === 'closed' || (application ? application.record.unresolved === 0 : false) };
+      }),
       semanticKeys: [...new Set(transportFacts().filter(v => v.record.type === 'AdmissionReservation').map(v => v.record.semanticMessage))],
       routes: [...new Set(factsOfKind('effect-OperationObservation').map(f => `${f.body.record.account}/${f.body.record.conversation}`))],
       adapterCapabilities: adapterContract().capabilities,

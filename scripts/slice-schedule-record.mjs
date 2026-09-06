@@ -12,8 +12,8 @@ import { join } from 'node:path';
 import { PROFILE_BOUNDARIES } from './slice-assembly.mjs';
 
 export const SCHEDULE_HEADER = [
-  '| Profile | Cut after | then after | Boots | Cuts that fired | External applications | Terminal disposition |',
-  '|---|---|---|---|---|---|---|',
+  '| Profile | Cut after | then after | Boots | Cuts that fired | External applications | Six operations | Terminal disposition |',
+  '|---|---|---|---|---|---|---|---|',
 ].join('\n');
 
 /** Every adjacent pair of a profile's executed boundaries. */
@@ -23,12 +23,21 @@ export function adjacentPairs(boundaries) {
   return pairs;
 }
 
-/** One row of the record, derived from an execution's own report. */
+/**
+ * One row of the record, derived from an execution's own report.
+ *
+ * The `Six operations` column carries each six-owned operation's ROLE, its terminal
+ * state and whether SIX resolved it — an applied settlement or a conditional close.
+ * Without it the record could not distinguish a wedged prepared operation from one
+ * six closed, since neither is an `owned-` obligation state.
+ */
 export function scheduleRow(profile, pair, boots, fired, report) {
   const settlement = report.settlement ? `settled ${report.settlement.outcome}` : 'no settlement';
   const owned = [...new Set(report.obligations.filter(o => o.state.startsWith('owned-')).map(o => o.state))];
+  const six = (report.sixOperations ?? []).map(o => `${o.role}:${o.state}${o.resolved ? '/resolved' : ''}`);
   return `| ${profile} | \`${pair[0]}\` | \`${pair[1]}\` | ${boots} | ${fired.join(', ') || 'none'} `
-    + `| ${report.externalApplications.length} | ${settlement}${owned.length ? `; ${owned.join(', ')}` : ''} |`;
+    + `| ${report.externalApplications.length} | ${six.join(', ') || 'none'} `
+    + `| ${settlement}${owned.length ? `; ${owned.join(', ')}` : ''} |`;
 }
 
 export function renderScheduleRecord(rows) { return [SCHEDULE_HEADER, ...rows].join('\n'); }

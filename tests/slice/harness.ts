@@ -13,6 +13,7 @@ export const SLICE_INPUT = JSON.stringify({ schemaVersion: 1, kind: 'message', t
 // The durable boundaries each profile reaches come from the ASSEMBLY, which is the
 // single source: `boundary()` refuses an undeclared name, and the control executions
 // below assert the converse. Nothing here restates a boundary name.
+export const FULL_BOUNDARIES: readonly string[] = PROFILE_BOUNDARIES['full']!;
 export const REPLY_BOUNDARIES: readonly string[] = PROFILE_BOUNDARIES['reply']!;
 export const JUDGMENT_BOUNDARIES: readonly string[] = PROFILE_BOUNDARIES['judgment']!;
 
@@ -34,7 +35,7 @@ const jsonl = (file: string): { boundary: string }[] =>
 export async function runExecution(options: { profile?: string; adapter?: string; cuts?: readonly string[]; maxBoots?: number } = {}): Promise<Execution> {
   const home = mkdtempSync(join(tmpdir(), 'p11-slice-'));
   const cuts = options.cuts ?? [];
-  const encoded = JSON.stringify({ profile: options.profile ?? 'reply', adapter: options.adapter ?? 'telegram-slice', cuts });
+  const encoded = JSON.stringify({ profile: options.profile ?? 'full', adapter: options.adapter ?? 'telegram-slice', cuts });
   let boots = 0, report: SliceReport | undefined, stderr = '';
   for (let attempt = 0; attempt < (options.maxBoots ?? 30); attempt++) {
     if (attempt > 0) await new Promise<void>(done => setImmediate(done));

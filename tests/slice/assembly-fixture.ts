@@ -33,7 +33,7 @@ export interface SliceAssembly {
   readonly operationDefinition: Record<string, unknown>;
 }
 
-export { DECLARED_BOUNDARIES, PROFILE_BOUNDARIES, SLICE_BOUNDARIES, UNREACHED_BOUNDARIES } from './boundaries.js';
+export { DECLARED_BOUNDARIES, PROFILE_BOUNDARIES, RECOVERY_BOUNDARIES, SLICE_BOUNDARIES, UNREACHED_BOUNDARIES } from './boundaries.js';
 export const PEER_STANDIN_ID = peerId as string;
 export const homes: string[] = [];
 

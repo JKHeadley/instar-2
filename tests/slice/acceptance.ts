@@ -11,6 +11,19 @@ export interface RebuildRow {
 export interface ObligationRow { readonly operation: string; readonly state: string; readonly owner: string; readonly blocker: string; readonly exposure: string }
 export interface EvidenceRow { readonly operation: string; readonly stage: string; readonly decisive: string; readonly value: string }
 export interface ApplicationRow { readonly operation: string; readonly digest: string; readonly semanticMessage: string; readonly messageId: string }
+/** Six's own accounting for one operation, as six wrote it. Eleven never computes it. */
+export interface SixAccountingRow { readonly exposure: number; readonly released: number;
+  readonly unresolved: number; readonly actualCharge: number }
+/**
+ * One six-owned operation of this run with its section-7 ROLE. The single chain needs
+ * TWO of them — part seven's model call and part eight's outbound reply — so the
+ * ceiling below is per ROLE rather than a flat count.
+ */
+export interface SixOperationRow {
+  readonly operation: string; readonly role: string; readonly run: string;
+  readonly state: string; readonly charge: number;
+  readonly application: SixAccountingRow | null; readonly resolved: boolean;
+}
 export interface Capability { readonly status: string; readonly source?: string; readonly predicate?: string; readonly observationBudget?: number }
 export interface SliceReport {
   readonly boot: number; readonly profile: string; readonly adapter: string;
@@ -37,6 +50,7 @@ export interface SliceReport {
   readonly charges: readonly { readonly operation: string; readonly charge: number }[];
   readonly serviceInbound: number;
   readonly operations: readonly string[]; readonly semanticKeys: readonly string[]; readonly routes: readonly string[];
+  readonly sixOperations: readonly SixOperationRow[];
   readonly adapterCapabilities: Readonly<Record<string, Capability>>;
   readonly declaredStage: string;
   readonly rebuilds: readonly RebuildRow[];
@@ -54,7 +68,16 @@ export const ALLOWED_OBLIGATION_STATES: readonly string[] = [
   'dispatch-uncertain', 'settled-happened', 'settled-did-not-happen', 'settled-uncertain',
   'owned-uncertain', 'owned-unapplied-unsettled', 'owned-pending-unadmitted', 'owned-pending-no-answer',
   'refused-before-preparation',
+  // Six's settlement application: the operation is RESOLVED and its unused credit released.
+  'applied-resolved', 'applied-unresolved',
+  // Six's conditional close of a prepared operation whose reserving fence is gone.
+  'closed-unexecuted',
+  // A dispatched operation no published seam can resolve, and the recorded attempt.
+  'owned-unresolved-model', 'owned-pending-unresolvable',
 ];
+
+/** The section-7 roles a six-owned operation of this run may hold. */
+export const SIX_OPERATION_ROLES: readonly string[] = ['model-judgment', 'outbound-reply'];
 
 export interface Bounds {
   readonly maxFacts: number; readonly maxBytes: number; readonly maxBoots: number;
@@ -73,11 +96,22 @@ export const DECLARED_BOUNDS: Bounds = { maxFacts: 400, maxBytes: 4_000_000, max
 
 /** States that mean the obligation is still open and must still carry its exposure. */
 export const OPEN_OBLIGATION_STATES: readonly string[] = ALLOWED_OBLIGATION_STATES
-  .filter(state => state.startsWith('owned-') || state === 'dispatch-uncertain');
+  .filter(state => state.startsWith('owned-') || state === 'dispatch-uncertain'
+    // Six applied a settlement that did NOT resolve the operation: the charge is
+    // still unknown or delayed execution is not excluded, so exposure stays held.
+    || state === 'applied-unresolved');
 /** An obligation naming one of these carries no charge, so it retains no exposure. */
 const CHARGE_FREE_PREFIXES = ['grounding:'];
 
 const single = (values: readonly string[] | undefined) => !values || values.length <= 1;
+
+/**
+ * A six-owned operation is ACCOUNTED FOR when six itself resolved it — an applied
+ * settlement or a conditional close — or when an obligation names it and says who
+ * owns it. An operation in neither state is a live reservation nobody claims.
+ */
+const unaccounted = (report: SliceReport): readonly SixOperationRow[] => report.sixOperations.filter(op =>
+  !op.resolved && !report.obligations.some(o => o.operation === op.operation || o.operation.endsWith(`:${op.operation}`)));
 
 /** Checks that hold WITHIN one execution. Returns the violations, empty when it passes. */
 export function withinExecution(report: SliceReport, expectedInput: string, bounds: Bounds = DECLARED_BOUNDS): string[] {
@@ -96,10 +130,48 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
   for (const key of ['logicalId', 'run', 'request', 'operation', 'judgmentRequest', 'judgmentResolution', 'logicalKey', 'inputDigest', 'digest', 'semanticMessage'])
     if (!single(report.identityTrail[key])) bad.push(`logical identity ${key} changed through takeover: ${JSON.stringify(report.identityTrail[key])}`);
 
-  // no action outside its floor; at most one semantic key, provider route and operation
-  if (report.operations.length > 1) bad.push('more than one six-owned operation for this run');
+  // no action outside its floor; at most one semantic key and one provider route
   if (report.semanticKeys.length > 1) bad.push('more than one semantic message key');
   if (report.routes.length > 1) bad.push('more than one external route');
+
+  // ---------------------------------------------------------- six-owned operations
+  // docs/15 section 7's chain needs TWO six-owned operations in ONE run — part
+  // seven's model call and part eight's reply — so the ceiling is per ROLE, not a
+  // flat count. Per role it is TIGHTER than the flat ceiling it replaces: a second
+  // reply operation, a second model operation, an operation with no declared role,
+  // and an operation belonging to another run are each refused by name.
+  if (report.sixOperations.length !== report.operations.length)
+    bad.push('the six-operation table disagrees with the recorded operation identities');
+  const byRole = new Map<string, number>();
+  for (const op of report.sixOperations) {
+    if (!SIX_OPERATION_ROLES.includes(op.role)) bad.push(`six-owned operation with no declared section-7 role: ${op.role}`);
+    byRole.set(op.role, (byRole.get(op.role) ?? 0) + 1);
+    if (report.run && op.run !== report.run.id) bad.push(`six-owned operation ${op.role} belongs to another run`);
+    // Six's own accounting, never recomputed here: a released credit must be exactly
+    // the part of the reservation the settled exposure did not consume.
+    if (op.application) {
+      const { exposure, released, unresolved, actualCharge } = op.application;
+      if (![0, 1].includes(unresolved)) bad.push(`six accounting for ${op.role} has a non-boolean unresolved flag`);
+      if (exposure < 0 || released < 0) bad.push(`six accounting for ${op.role} is negative`);
+      if (released !== Math.max(0, op.charge - exposure)) bad.push(`released credit for ${op.role} does not match its reservation`);
+      if (unresolved === 0 && actualCharge < 0) bad.push(`a resolved operation for ${op.role} carries an unknown actual charge`);
+      if (unresolved === 1 && released > 0) bad.push(`an unresolved operation for ${op.role} released credit`);
+    }
+    if (op.state === 'closed') {
+      if (op.application) bad.push('a conditionally closed operation also carries a settlement application');
+      if (report.externalApplications.some(a => a.operation === op.operation))
+        bad.push('a conditionally closed operation has an external application: it was dispatched after all');
+      // A close exists to RELEASE reserved credit, so the operation's latest
+      // obligation must show none retained — for the model operation as well as the
+      // reply, which the outbound-only exposure check below cannot see.
+      const last = [...report.obligations].reverse().find(o => o.operation === op.operation);
+      if (last && Number(last.exposure) !== 0) bad.push('a conditionally closed operation still retains exposure');
+    }
+  }
+  // EVERY six operation is accounted for: resolved by six, or named by an
+  // obligation that says who owns it and what exposure it still holds.
+  for (const op of unaccounted(report)) bad.push(`six-owned operation ${op.role} is neither resolved nor named by any obligation`);
+  for (const [role, count] of byRole) if (count > 1) bad.push(`${count} six-owned operations for the single ${role} role`);
 
   // at most one external application per semantic outbound identity
   const bySemantic = new Map<string, number>();
@@ -127,6 +199,24 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
     bad.push('the chain rendered no attributable reply and recorded no owned-pending reason');
   if (report.settlement && !report.deliveryEvidence.length)
     bad.push('a settlement with no independent delivery evidence behind it');
+  // docs/10 section 4: eight owns effect settlement, six ALONE applies it. A
+  // settlement that six never applied leaves the operation unresolved and its
+  // credit reserved, so the execution must say why rather than look finished.
+  if (report.settlement && report.outbound?.operation) {
+    const op = report.sixOperations.find(row => row.operation === report.outbound!.operation);
+    if (op && !op.application && !report.obligations.some(o => o.operation === op.operation && OPEN_OBLIGATION_STATES.includes(o.state)))
+      bad.push('a settlement six never applied, with no owned obligation saying why');
+  }
+  // The single chain's own floor: a run that got a model answer and rendered a reply
+  // from it, yet has no admitted outbound operation, must name the operation that
+  // blocked it. Otherwise "the reply was never sent" is indistinguishable from
+  // "nothing tried to send it".
+  if (report.judgment.resolution && report.reply && !report.outbound?.operation) {
+    const model = report.sixOperations.find(row => row.role === 'model-judgment');
+    if (model && !model.resolved && !report.obligations.some(o => o.operation === model.operation
+      || o.operation.endsWith(`:${model.operation}`)))
+      bad.push('an unresolved model operation blocked the reply and no obligation names it');
+  }
 
   // every obligation is terminal or owned-pending, owned, and well formed
   for (const row of report.obligations) {
@@ -159,8 +249,14 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
   for (const row of report.obligations) latest.set(row.operation, row);
   if (report.outbound && report.outbound.charge !== null) {
     const row = latest.get(report.outbound.operation ?? '');
+    // A conditionally CLOSED operation is the one case where releasing exposure
+    // without a settlement is correct: six proved from the committed prefix that no
+    // dispatch-claim exists, so there is no charge to retain. The exemption is
+    // narrow — it reads six's own terminal state, not eleven's obligation label —
+    // and the closed-operation checks above still forbid an external application.
+    const closed = report.sixOperations.some(op => op.operation === report.outbound!.operation && op.state === 'closed');
     if (!report.settlement) {
-      if (row && Number(row.exposure) < report.outbound.charge) bad.push('unsettled operation released exposure');
+      if (row && !closed && Number(row.exposure) < report.outbound.charge) bad.push('unsettled operation released exposure');
     } else if (report.settlement.finalCharge === null && report.settlement.retainedExposure < report.outbound.charge)
       bad.push('unknown final charge did not retain maximum exposure');
   }
@@ -249,6 +345,9 @@ export function acrossExecutions(control: SliceReport, cut: SliceReport): string
     // The same progress floor on BOTH sides: neither execution may be empty.
     if (!report.settlement && !report.obligations.length)
       bad.push(`${name} execution recorded no settlement and no owned obligation`);
+    // ...and neither may hold a six-owned operation nobody resolved or owns.
+    for (const op of unaccounted(report))
+      bad.push(`${name} execution holds a ${op.role} operation that is neither resolved nor owned`);
   }
   // A cut BEFORE the reply legitimately has no outbound where the control has one, and
   // the judgment profile is REQUIRED to render no reply without a recorded answer — so

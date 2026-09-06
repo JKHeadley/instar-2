@@ -6,8 +6,13 @@ import { afterAll, afterEach, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { acrossExecutions, adjacentPairs, withinExecution } from '../slice/acceptance.js';
 import type { SliceReport } from '../slice/acceptance.js';
-import { JUDGMENT_BOUNDARIES, REPLY_BOUNDARIES, SLICE_INPUT, discard, runExecution } from '../slice/harness.js';
-import { SCHEDULE_HEADER, renderScheduleRecord, scheduleRow } from '../slice/boundaries.js';
+import { SLICE_INPUT, discard, runExecution } from '../slice/harness.js';
+import { PROFILE_BOUNDARIES, RECOVERY_BOUNDARIES, SCHEDULE_HEADER, renderScheduleRecord, scheduleRow } from '../slice/boundaries.js';
+
+// The schedule covers EVERY declared profile, driven from the assembly's own
+// enumeration rather than a list restated here, so a new profile cannot be added
+// without its adjacent pairs being cut.
+const PROFILES = Object.entries(PROFILE_BOUNDARIES);
 
 // The pinned outcome table. The schedule is deterministic, so every outcome column —
 // boots, which cut fired, external applications, terminal disposition — is asserted
@@ -29,6 +34,8 @@ interface ScheduleRow { profile: string; pair: readonly [string, string]; boots:
   fired: readonly string[]; neverReached: readonly string[]; applications: number; settlement: string }
 const schedule: ScheduleRow[] = [];
 const rows: string[] = [];
+/** Boundaries reached by SOME execution of the schedule without ever being a cut. */
+const reachedRecovery: string[] = [];
 const controls: Record<string, SliceReport> = {};
 
 async function control(profile: string): Promise<SliceReport> {
@@ -49,6 +56,8 @@ async function runPair(profile: string, pair: readonly [string, string]): Promis
   // The whole outcome row is pinned, not just the fired cuts: a regression in which
   // recovery stopped driving the chain would change `boots`, the application count or
   // the terminal disposition, and this comparison is what notices.
+  for (const boundary of Object.keys(RECOVERY_BOUNDARIES))
+    if (execution.report.boundariesReached.includes(boundary) && !reachedRecovery.includes(boundary)) reachedRecovery.push(boundary);
   const rendered = scheduleRow(profile, pair, execution.boots, execution.firedCuts, execution.report);
   expect(rendered).toBe(expectedRow(profile, pair));
   rows.push(rendered);
@@ -57,18 +66,25 @@ async function runPair(profile: string, pair: readonly [string, string]): Promis
     settlement: execution.report.settlement?.outcome ?? 'none' });
 }
 
-for (const [profile, boundaries] of [['reply', REPLY_BOUNDARIES], ['judgment', JUDGMENT_BOUNDARIES]] as const)
+for (const [profile, boundaries] of PROFILES)
   for (const pair of adjacentPairs(boundaries))
     it(`P11-NF-44 kill schedule ${profile}: cut after ${pair[0]} then after ${pair[1]}`, () => runPair(profile, pair), 240000);
 
 it('P11-NF-44 P11-NF-45 the recorded schedule covers every adjacent pair and skips none', () => {
-  const expected = [...adjacentPairs(REPLY_BOUNDARIES).map(p => `reply:${p.join('+')}`),
-    ...adjacentPairs(JUDGMENT_BOUNDARIES).map(p => `judgment:${p.join('+')}`)];
+  const expected = PROFILES.flatMap(([profile, boundaries]) =>
+    adjacentPairs(boundaries).map(p => `${profile}:${p.join('+')}`));
   expect(schedule.map(row => `${row.profile}:${row.pair.join('+')}`)).toEqual(expected);
   // Every boundary the design enumerates was cut at least once by the schedule.
   const cut = new Set(schedule.flatMap(row => row.fired));
-  for (const boundary of REPLY_BOUNDARIES) expect(cut, boundary).toContain(boundary);
-  for (const boundary of JUDGMENT_BOUNDARIES) expect(cut, boundary).toContain(boundary);
+  for (const [profile, boundaries] of PROFILES)
+    for (const boundary of boundaries) expect(cut, `${profile} ${boundary}`).toContain(boundary);
+  // A boundary reached ONLY on a recovery path is never cut — no control execution
+  // fires it — but the schedule must still REACH it, or the conditional close would
+  // be declared and never exercised.
+  for (const boundary of Object.keys(RECOVERY_BOUNDARIES)) {
+    expect(cut, boundary).not.toContain(boundary);
+    expect(reachedRecovery, boundary).toContain(boundary);
+  }
   // Never more than one external application per execution, in any cut position.
   for (const row of schedule) expect(row.applications, `${row.profile} ${row.pair.join('+')}`).toBeLessThanOrEqual(1);
   // Unreachable second cuts are RECORDED, never silently dropped.
@@ -77,6 +93,18 @@ it('P11-NF-44 P11-NF-45 the recorded schedule covers every adjacent pair and ski
     expect(row.fired).toEqual([row.pair[0]]);
   }
   expect(schedule.every(row => row.boots >= 2)).toBe(true);
+  // `full` and `judgment` declare the SAME boundary list, so the record must show
+  // where they diverge in behaviour — otherwise the single chain would be an
+  // unasserted relabelling of its own reduced control. The divergence is the
+  // conditional close of a model operation the cut left prepared and unclaimed.
+  const rowFor = (profile: string, pair: string) => rows.find(r => r.startsWith(`| ${profile} | \`${pair}\``))!;
+  const closedPair = 'judgment-reservation';
+  expect(rowFor('full', closedPair)).toContain('model-judgment:closed/resolved');
+  expect(rowFor('judgment', closedPair)).toContain('model-judgment:prepared');
+  expect(rowFor('full', closedPair)).not.toBe(rowFor('judgment', closedPair));
+  // ...and the reply profile's record shows six's settlement application resolving
+  // the operation, which no earlier record could distinguish from an unapplied one.
+  expect(rowFor('reply', 'settlement')).toContain('outbound-reply:consumed/resolved');
   // The record the DONE note publishes IS this run's record, byte for byte.
   expect(renderScheduleRecord(rows)).toBe(EXPECTED);
   expect(EXPECTED.startsWith(SCHEDULE_HEADER)).toBe(true);
