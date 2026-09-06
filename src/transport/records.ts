@@ -181,11 +181,15 @@ export function registerTransportBodies(host: TransportHost, c: BoundaryContext)
           if (ctx.mode === 'origin') { live(host); checkFence(past, input as unknown as FenceToken, host, host.monotonic()); }
         }
         else if (recordNames.includes(name)) {
+          // The independently configured one-voter identity is invariant across
+          // origin, replication and replay. Process incarnations may change;
+          // a different signed actor/machine cannot speak for this authority.
+          ensure(ctx.origin.machine === host.machine && ctx.origin.principal.id === host.principal.id
+            && ctx.origin.principal.kind === host.principal.kind, 'issuer is not this authority');
           const past = rows(causalCone(ctx.origin, ctx.facts.facts), host.domain);
           validateTransition(v, past, host);
           if (ctx.mode === 'origin') {
             live(host);
-            ensure(ctx.origin.machine === host.machine && ctx.origin.principal.id === host.principal.id, 'issuer is not this authority');
             const now = host.monotonic();
             ensure(v.authority === host.authorityIncarnation && v.tick <= now
               && !past.some(p => p.record.authority === v.authority && p.record.tick > v.tick), 'untrusted authority clock or incarnation');
