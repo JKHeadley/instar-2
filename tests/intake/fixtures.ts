@@ -5,6 +5,8 @@ import { authorAndAppend, createFactStore, hashBytes } from '../../src/facts/ind
 import type { CapturedContent, FactContext, FactEnvelope, SegmentStoragePort } from '../../src/facts/index.js';
 import { createIntakePort, intakeFactSchemas } from '../../src/intake/index.js';
 import type { InboundRoute, IntakeDependencies, IntakeAdapterPort } from '../../src/intake/index.js';
+import { generateRegister, generationOf, decodeGenerationRecord, loadRegister } from '../../src/register/index.js';
+import type { FactReference, SpineReadPort } from '../../src/register/index.js';
 import { factsFixture, privateKey, json, value } from '../facts/fixtures.js';
 import { setup } from '../register/fixtures.js';
 export { value, json };
@@ -19,7 +21,8 @@ export function refused<T>(result: Result<T>, detail?: string) {
 }
 export function intakeFixture() {
   const f = factsFixture(), r = setup();
-  Object.assign(r.context, { references: [...r.context.references ?? [], { provider: 'fixture', id: 'check', kind: 'captured-bytes' }] });
+  Object.assign(r.context, { references: [...r.context.references ?? [], { provider: 'fixture', id: 'check', kind: 'captured-bytes' },
+    { provider: 'fixture', id: 'P4-NF-06' }, ...['readProjection', 'authorAndAppend', 'decode:Provenance', 'decode:VerifiedPrincipal'].map(id => ({ provider: 'decoder', id }))] });
   const system = f.principal('intake-observer', 'system');
   const trace: string[] = [], frames: unknown[] = [];
   const captureIndex: Record<string, CapturedContent> = {};
@@ -37,8 +40,30 @@ export function intakeFixture() {
   const parser = r.declaration('host', 'parsers', { fixture: 'check', authenticationClass: [{ stimulusType: 'message', class: 'channel-attested' }],
     eventIdAuthority: { mintedBy: 'provider', uniquenessScope: 'channel-and-sender', replayWindow: 1000,
       fallbackFingerprint: { policy: 'none', basis: 'provider id required' } }, ackPolicy: 'bound-only' }, { profile: r.profile });
-  const registerInput = r.input([...declarations, parser]);
-  const governance = { register: r.build([...declarations, parser], { }), context: r.context };
+  // Explicit test-only approved extract and injected spine verifier. Never a
+  // production approval or a cast from generated replay into runtime authority.
+  const governanceChecks: string[] = [];
+  function govern(declared: readonly object[] = [...declarations, parser], approved = true) {
+    const contract = declared.find(d => (d as { id: string }).id === 'intake.contract');
+    const approval = { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:intake-contract-approval' } as const;
+    const rows = approved && contract ? [{ id: 'intake.contract', version: 'intake-contract:v1', status: 'live', since: 'commit:1',
+      supersedes: [], approvedIn: approval, landedIn: 'commit:1', base: 'commit:1', contentHash: value(canonical(contract)).hash }] : [];
+    const input = r.input(declared, { extract: { ...r.extract, rows } });
+    const candidate = value(generateRegister(input, r.context));
+    const generation = value(generationOf(candidate, r.context));
+    const record = value(decodeGenerationRecord({ type: 'GenerationRecord', schemaVersion: 1, generation, at: r.f.now }, r.context));
+    const spine: SpineReadPort = { owner: 'part-two',
+      verifyExtract(extract) { governanceChecks.push('extract');
+        if (value(canonical(extract)).bytes !== value(canonical(candidate.extract)).bytes) throw new Error('fixture extract mismatch');
+        return f.success<FactReference>(approval); },
+      enteringForce(supplied) { governanceChecks.push('force');
+        if (supplied.id !== generation.id) throw new Error('fixture generation mismatch');
+        return f.success(record); },
+      isCurrent(vector, now) { governanceChecks.push('current');
+        return f.success(vector.id === candidate.extract.vector.id && now.value === r.f.now.value); } };
+    return { input, governance: { register: value(loadRegister(candidate, generation, r.context, spine, r.f.now)), context: r.context } };
+  }
+  const { input: registerInput, governance } = govern();
   const auth = f.proof({ id: 'alice', kind: 'person' }, { id: 'alice', kind: 'person' }, 'identity', true);
   function syncCaptures() {
     for (const [reference, bytes] of Object.entries(f.captures)) captureIndex[reference] = { bytes, hash: hashBytes(bytes), status: 'available', byteLength: Buffer.byteLength(bytes) };
@@ -72,5 +97,5 @@ export function intakeFixture() {
       at: json(f.now), body, required: [root.id] }, context, createFactStore(context, storage), privateKey)).fact;
   }
   const facts = () => value(createFactStore(context, storage).read());
-  return { f, r, deps, context, storage, frames, trace, port, bind, facts, syncCaptures, registerInput, setTime: (n: number) => { instant = n; } };
+  return { f, r, deps, context, storage, frames, trace, port, bind, facts, syncCaptures, registerInput, govern, governanceChecks, setTime: (n: number) => { instant = n; } };
 }

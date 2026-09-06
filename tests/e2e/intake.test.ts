@@ -9,7 +9,7 @@ import { createFactStore } from '../../src/facts/index.js';
 import type { InboundRoute } from '../../src/intake/index.js';
 import { privateKey } from '../facts/fixtures.js';
 
-it('P4-NF-01 P4-NF-03 P4-NF-04 P4-NF-11 P4-NF-14 public boot survives process death at each durable intake boundary', () => {
+it('P4-NF-01 P4-NF-03 P4-NF-04 P4-NF-06 P4-NF-11 P4-NF-14 public boot survives process death at each durable intake boundary', () => {
   const f = intakeFixture(); f.bind();
   const base = { frames: f.frames, context: f.context, observer: f.deps.author.principal, privateKey,
     registerContext: f.r.context, registerInput: f.registerInput,
@@ -26,6 +26,7 @@ it('P4-NF-01 P4-NF-03 P4-NF-04 P4-NF-11 P4-NF-14 public boot survives process de
       const resumed = cut === 'intake-receipt' ? JSON.parse(execFileSync(process.execPath, ['scripts/test-intake-restart.mjs'], {
         input: JSON.stringify({ ...base, directory, route: undefined, raw: undefined, recover: true, at: 500 }), encoding: 'utf8' })) : run(raw);
       expect(resumed.rebuilt).toBe(true); expect(resumed.taint).toEqual([]);
+      expect(resumed.registerChecks).toEqual(['extract', 'force', 'current']);
       expect(resumed.contextLivePrincipals).toEqual(['intake-observer']);
       if (cut === 'intake-stop') {
         expect(resumed.outcome).toBe('stopped'); expect(resumed.stops).toHaveLength(1);
@@ -66,3 +67,23 @@ it('P4-NF-02 P4-NF-03 P4-NF-10 P4-NF-14 public fresh-process boot keeps requeste
     expect(brake.kinds.filter((k: string) => k==='intake-receipt')).toHaveLength(5);
   } finally { rmSync(directory,{ recursive: true,force: true }); }
 },30000);
+
+it('P4-NF-06 P4-NF-01 R7 fresh-process pending policy preserves input and drains only through approved runtime governance', () => {
+  const f = intakeFixture(); f.bind();
+  const directory = mkdtempSync(join(tmpdir(), 'instar-intake-policy-'));
+  const base = { frames: f.frames, context: f.context, observer: f.deps.author.principal, privateKey, directory,
+    registerContext: f.r.context, registerInput: f.registerInput,
+    evidence: value(f.deps.adapter.authenticate(message(), route, f.f.now)), route, raw: message(), at: 100 };
+  const run = (seed: object) => JSON.parse(execFileSync(process.execPath, ['scripts/test-intake-restart.mjs'], { input: JSON.stringify(seed), encoding: 'utf8' }));
+  try {
+    const pending = run({ ...base, registerInput: { ...base.registerInput, extract: { ...f.r.extract, rows: [] } } });
+    expect(pending.registerChecks).toEqual(['extract', 'force', 'current']);
+    expect(pending.outcome).toMatch(/^Refused:.*preserved hold/);
+    expect(pending.kinds).toEqual(expect.arrayContaining(['intake-receipt', 'intake-held']));
+    expect(pending.admitted).toHaveLength(0);
+    const drained = run({ ...base, recover: true, raw: undefined, route: undefined, at: 500 });
+    expect(drained.registerChecks).toEqual(['extract', 'force', 'current']);
+    expect(drained.outcome).toBe('admitted'); expect(drained.admitted).toHaveLength(1);
+    expect(drained.arrivals).toEqual([{ at: 100, channel: route.channel, sender: route.sender, eventId: route.eventId }]);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+}, 30000);

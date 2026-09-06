@@ -1,13 +1,13 @@
 // docs/08: preservation -> dedup -> authentication -> resolution -> requester admission.
 // No grant/Authorization/Directive producer, model call, session launch or effect lives here.
 import { canonical,decode,decodeMeasurement,historicalGrantLiveness,scopeIncludes } from '../index.js';
-import type { BoundaryContext,Clock,Directive,FactEnvelopeReference,Json,Result,VerifiedPrincipal } from '../index.js';
+import type { BoundaryContext,Clock,Directive,FactEnvelopeReference,Json,Provenance,Result,VerifiedPrincipal } from '../index.js';
 import { authorAndAppend,causalCone,causalStanding,createFactStore,decodeHistoricalBody,hashBytes,prepareSnapshot } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactStatus } from '../facts/index.js';
-import { constructGoverned } from '../register/index.js';
+import { constructGoverned,readEnforcedRecord,readRegisterEntry } from '../register/index.js';
 import { foldProjection,readProjection } from '../projections/index.js';
 import { boundary,IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
-import type { InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort } from './contracts.js';
+import type { InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort,SenderEvidence } from './contracts.js';
 import { intakeArrival,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,intakeWorkRegistration } from './records.js';
 
 const reference=(f: FactEnvelope): FactEnvelopeReference => Object.freeze({ owner: 'part-two',name: 'FactEnvelope',id: f.id });
@@ -60,6 +60,39 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     let busy=false;
     const identity=(f: FactEnvelope) => take(canonical([object(f.body).logicalId,object(f.body).rawHash])).bytes;
 
+    // Runtime record reads and actual owner calls are colocated for P3's source
+    // proof. All gates run after preservation; maintenance/receipt append is not
+    // ordinary work admission and must remain available to retain refusals/stop.
+    function authenticateSender(raw: string,route: InboundRoute,at: Clock,preserved: string) {
+      const g={ ...deps.governance.context,preserved };
+      take(constructGoverned('blocking sites','intake.authentication',deps.governance.register,g));
+      take(constructGoverned('governed documents','intake.contract',deps.governance.register,g));
+      take(readEnforcedRecord('intake.authentication','intake.contract','decode:Provenance',deps.governance.register,g));
+      const e=take(authenticate(raw,route,at));
+      requireIntake(e.channel===route.channel&&e.sender===route.sender&&e.identityEpoch===route.identityEpoch,'P4-NF-02: evidence does not bind transport route','standing');
+      const provenance=take(decode('Provenance',e.provenance,context(preserved).decode));
+      const declarations=contract.authenticationClass;
+      requireIntake(Array.isArray(declarations)&&declarations.some(d => object(d).stimulusType==='message'&&object(d).class===provenance.class),'P4-NF-02: adapter authentication class overclaim','standing');
+      requireIntake(provenance.adapter===adapterId,'P4-NF-02: authentication adapter mismatch','standing');
+      return { e,provenance };
+    }
+    function resolvePrincipal(e: SenderEvidence,provenance: Provenance,preserved: string): VerifiedPrincipal {
+      const g={ ...deps.governance.context,preserved };
+      take(constructGoverned('blocking sites','intake.resolution',deps.governance.register,g));
+      take(readEnforcedRecord('intake.resolution','intake.contract','decode:VerifiedPrincipal',deps.governance.register,g));
+      requireIntake(e.principalKind==='person','P4-NF-09: system/agent stimuli are out of this message slice; locality grants nothing','standing');
+      return take(decode('VerifiedPrincipal',{ type: 'VerifiedPrincipal',schemaVersion: 1,id: e.principalId,kind: e.principalKind },
+        { ...context(preserved).decode,provenance }));
+    }
+    function stopGate(preserved: string): void {
+      const g={ ...deps.governance.context,preserved };
+      take(constructGoverned('blocking sites','intake.stop',deps.governance.register,g));
+      const gate=take(readRegisterEntry('intake.stop',deps.governance.register,g)).declaration;
+      requireIntake(gate.status==='live'&&gate.requiredFacts.authority==='block'
+        &&gate.requiredFacts.decidesAlone==='ruled-three'&&gate.requiredFacts.failDirection==='open',
+        'P4-NF-06/14: stop requires its live ruled-three, safety-open declaration','integrity');
+    }
+
     function context(preserved: string,principal?: VerifiedPrincipal): FactContext {
       const c=deps.context();
       return {
@@ -74,6 +107,11 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       return [...new Map([...c.facts,...take(createFactStore(c,deps.storage).read())].map(f => [f.id,f])).values()];
     }
     function append(kind: string,body: Json,at: Clock,preserved: string,required: readonly string[]=[],principal?: VerifiedPrincipal,directives?: readonly Directive[]): FactEnvelope {
+      if(kind==='intake-admitted') {
+        const g={ ...deps.governance.context,preserved };
+        take(constructGoverned('blocking sites','intake.admission',deps.governance.register,g));
+        take(readEnforcedRecord('intake.admission','intake.contract','authorAndAppend',deps.governance.register,g));
+      }
       const base=context(preserved,principal);
       const c=directives? { ...base,decode: { ...base.decode,directives } }:base;
       const receipt=take(authorAndAppend({
@@ -88,6 +126,9 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       return take(prepareSnapshot(facts,{ ...c,facts })).entries;
     }
     function checkDedup(at: Clock,preserved: string): void {
+      const g={ ...deps.governance.context,preserved };
+      take(constructGoverned('blocking sites','intake.dedup',deps.governance.register,g));
+      take(readEnforcedRecord('intake.dedup','intake.contract','readProjection',deps.governance.register,g));
       const c=context(preserved),facts=read(preserved);
       const definition=intakeDedupDefinition([...new Set(c.schemas.map(s => s.kind))],deps.dedupStalenessBound);
       const snapshot=take(prepareSnapshot(facts,{ ...c,facts }));
@@ -162,15 +203,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             }
             let principal: VerifiedPrincipal;
             try {
-              const e=take(authenticate(raw,{ channel,sender,identityEpoch,eventId: route.eventId },at));
-              requireIntake(e.channel===channel&&e.sender===sender&&e.identityEpoch===identityEpoch,'P4-NF-02: evidence does not bind transport route','standing');
-              const provenance=take(decode('Provenance',e.provenance,context(preserved).decode));
-              const declarations=contract.authenticationClass;
-              requireIntake(Array.isArray(declarations)&&declarations.some(d => object(d).stimulusType==='message'&&object(d).class===provenance.class),'P4-NF-02: adapter authentication class overclaim','standing');
-              requireIntake(provenance.adapter===adapterId,'P4-NF-02: authentication adapter mismatch','standing');
-              requireIntake(e.principalKind==='person','P4-NF-09: system/agent stimuli are out of this message slice; locality grants nothing','standing');
-              principal=take(decode('VerifiedPrincipal',{ type: 'VerifiedPrincipal',schemaVersion: 1,id: e.principalId,kind: e.principalKind },
-                { ...context(preserved).decode,provenance }));
+              const { e,provenance }=authenticateSender(raw,{ channel,sender,identityEpoch,eventId: route.eventId },at,preserved);
+              principal=resolvePrincipal(e,provenance,preserved);
             } catch { return hold('unresolved-sender',common,at,preserved); }
             const rows=statuses(preserved);
             const historicalGrants: NonNullable<FactContext['historicalGrants']>[number][]=[];
@@ -208,6 +242,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             try { classification=classifySlicePayload(parse(raw)); }
             catch { return hold('needs-judgment',common,at,preserved); }
             if(classification.kind==='stop') {
+              stopGate(preserved);
               if(stopBinding) {
                 const reach=take(decode('Scope',object(stopBinding.body).scope,context(preserved).decode));
                 const verifiedPrior=rows.find(r => r.fact.id===prior?.id&&r.fact.kind==='intake-stop'&&!r.taint.length&&!r.conflicts.length);

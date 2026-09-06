@@ -17,7 +17,9 @@ through the owning parts' public entry points.
    stable logical principal shared by the participating intake replicas; machine signing
    identities remain distinct. A storage receipt must follow fsync-equivalent durability,
    not an in-memory write. No capture deletion interface is introduced.
-3. Supply the generated part-three register and construction context. The factory requires
+3. Supply P3's **VerifiedRegister**, obtained through `loadRegister` with the spine's
+   extract, entering-force and currency verification, plus its construction context.
+   Generated replay JSON or a cast is not runtime authority. The factory requires
    its `intake-slice` feature and the adapter's live `parsers` declaration. That declaration
    supplies the authentication classes and event-id policy. Slice messages require stable,
    provider-minted event ids and no hash fallback. Provider metadata is separate from prose.
@@ -28,6 +30,43 @@ through the owning parts' public entry points.
 5. Supply a named work owner and positive finite hold age/active-slot bounds. The port
    returns requester-level Intent work blocked on `run-admission`; part five creates and
    owns the actual Run. No Run, Lease, Authorization or effect type is redefined here.
+
+### Governed consumers
+
+The adjacent sidecar declares `intake.contract` and all five executing blocking
+sites. Dedup, authentication, resolution and admission call P3's pair-aware
+`readEnforcedRecord` before their actual owner consumer in the same function:
+
+| Site | Enforced contract consumer |
+| --- | --- |
+| intake.dedup | P2 store read → snapshot → fold → `readProjection`, with the same `intakeDedupDefinition` |
+| intake.authentication | P1 `decode('Provenance')` against governed transport keys and captures |
+| intake.resolution | P1 `decode('VerifiedPrincipal')`; existing binding/historical-standing resolution stays unchanged |
+| intake.admission | P2 `authorAndAppend` using the real installed `IntakeWork` owner decoder and causal ladder |
+| intake.stop | Ruled-three, safety-open exact stop; P2 append still runs the installed `IntakeStop` owner decoder |
+
+The four governed-state sites declare separate directions for retained delivery
+(open: receipt/capture/hold survives) and standing/work admission (closed). They
+never turn inability to decide into lost input or fabricated permission. Ordinary
+admission guards do not run on maintenance receipts, held-input records or stops.
+An unavailable dedup/admission gate therefore does not strand the authenticated
+brake. Missing authentication/resolution authority produces a retained hold, not
+an unauthenticated halt. Stop requires its live ruled-three/open declaration.
+
+`register-source/owner-references/part-four.json` pins the actual public modules,
+implementation artifacts, governed document and P4-NF-06 assertions through P3's
+strict resolver. `node scripts/pin-intake-owner-references.mjs` refreshes those
+derived pins after artifact edits; then commit sources and regenerate P3 output
+from that exact commit. The source checker separately proves calls/registration
+flow; no caller-written `reads`/`invokes` list is runtime evidence. Dynamic calls
+remain the owner's declared bounded-static-proof residual.
+
+Replay lists missing entering-force/approval and writer/executor separation
+prerequisites; it remains shape-only, never a production activation waiver.
+The tests use an explicitly test-only approved extract and injected spine provider
+through `loadRegister`, including a fresh loader witness on every process boot.
+Production assembly must supply real spine verification and approved policy history;
+these fixtures supply neither production approval nor a live adapter probe.
 
 The transport adapter implements `authenticate(raw, route, at)` and `parse(raw)`. The former
 returns P1 provenance evidence and authenticated channel/sender/identity-epoch metadata that

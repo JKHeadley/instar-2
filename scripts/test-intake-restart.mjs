@@ -5,7 +5,7 @@ import { sign } from 'node:crypto';
 import { join } from 'node:path';
 import { consumeResult, decode, decodeMeasurement, defineDecoder } from '@instar/constitutional-types';
 import { createFactStore, hashBytes, prepareSnapshot } from '@instar/constitutional-types/facts';
-import { generateRegister, decodeShape } from '@instar/constitutional-types/register';
+import { generateRegister, decodeShape, generationOf, decodeGenerationRecord, loadRegister } from '@instar/constitutional-types/register';
 import { createIntakePort, intakeDedupDefinition, intakeWorkRegistration, intakeStopRegistration } from '@instar/constitutional-types/intake';
 import { checkpoint, foldProjection } from '@instar/constitutional-types/projections';
 
@@ -41,7 +41,7 @@ context.schemas = context.schemas.map(s => ({ ...s, scope: take(decode('Scope', 
 const regContext = seed.registerContext;
 regContext.provenance = restoreProvenance(regContext.provenance, regContext.types);
 regContext.shape = take(decodeShape(regContext.shape, regContext));
-const register = take(generateRegister(seed.registerInput, regContext));
+const candidateRegister = take(generateRegister(seed.registerInput, regContext));
 const b = { site: 'intake.admit', preserved: 'isolated:intake', register: context.decode.register };
 context.ownedBodies = [take(intakeWorkRegistration(b, observer.id)), take(intakeStopRegistration(b, observer.id))];
 function success(value) {
@@ -59,6 +59,21 @@ const storage = { owner: 'part-ten', read: () => readFileSync(segmentPath, 'utf8
     return success({ kind: 'local-durable' });
   } };
 const now = take(decodeMeasurement('clock', { ...context.genesis.clock, value: seed.at, at: seed.at }, context.decode));
+// Serialized JSON cannot retain loadRegister's private witness. Re-run all three
+// checks through an explicit test-only P2 provider at every fresh-process boot.
+const registerChecks = [];
+const registerGeneration = take(generationOf(candidateRegister, regContext));
+const enteringForce = take(decodeGenerationRecord({ type: 'GenerationRecord', schemaVersion: 1, generation: registerGeneration, at: now }, regContext));
+const register = take(loadRegister(candidateRegister, registerGeneration, regContext, {
+  owner: 'part-two',
+  verifyExtract(extract) { registerChecks.push('extract');
+    if (JSON.stringify(extract) !== JSON.stringify(candidateRegister.extract)) throw new Error('fixture extract mismatch');
+    return success({ owner: 'part-two', name: 'FactEnvelope', id: 'fixture:intake-extract' }); },
+  enteringForce(generation) { registerChecks.push('force');
+    if (generation.id !== registerGeneration.id) throw new Error('fixture generation mismatch');
+    return success(enteringForce); },
+  isCurrent(vector, at) { registerChecks.push('current'); return success(vector.id === candidateRegister.extract.vector.id && at.value === seed.at); },
+}, now));
 const generation = () => ({ reference: context.decode.register.generation, kinds: [...new Set(context.schemas.map(s => s.kind))],
   lineages: Object.fromEntries([...new Set(['machine-a', ...storage.read().map(f => f.machine)])].map(machine =>
     [machine, { head: storage.read().filter(f => f.machine === machine).at(-1)?.segment ?? null, observedAt: seed.at, closed: false }])) });
@@ -82,7 +97,7 @@ const snapshot = take(prepareSnapshot(facts, { ...context, facts }));
 const definition = intakeDedupDefinition(generation().kinds, 1000);
 const first = checkpoint(take(foldProjection(definition, snapshot, generation(), b)));
 const rebuilt = checkpoint(take(foldProjection(definition, snapshot, generation(), b)));
-console.log(JSON.stringify({ outcome, kinds: facts.map(f => f.kind), admitted: facts.filter(f => f.kind === 'intake-admitted').map(f => f.body.logicalId),
+console.log(JSON.stringify({ outcome, registerChecks, kinds: facts.map(f => f.kind), admitted: facts.filter(f => f.kind === 'intake-admitted').map(f => f.body.logicalId),
   arrivals: facts.filter(f => f.kind === 'intake-admitted').map(f => ({ at: f.body.intent.receivedAt.value, channel: f.body.channel, sender: f.body.sender, eventId: f.body.eventId })),
   stops: facts.filter(f => f.kind === 'intake-stop').map(f => f.id), hash: first.hash, rebuilt: first.hash === rebuilt.hash,
   taint: first.view.taint, contextLivePrincipals: context.decode.principals.map(p => p.id) }));

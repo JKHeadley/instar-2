@@ -1,6 +1,6 @@
 import type { CaptureInput,Clock,FactEnvelopeReference,Intent,Provenance,ProvenanceInput,Result,Scope,VerifiedPrincipal } from '../index.js';
 import type { FactContext,SegmentStoragePort } from '../facts/index.js';
-import type { GeneratedRegister,RegisterContext } from '../register/index.js';
+import type { VerifiedRegister,RegisterContext } from '../register/index.js';
 import type { ProjectionGeneration } from '../projections/index.js';
 
 // The adapter supplies transport metadata, never fields extracted from message prose.
@@ -34,7 +34,9 @@ export interface IntakeDependencies {
   readonly context: () => FactContext;
   readonly author: { readonly machine: string; readonly principal: VerifiedPrincipal; readonly provenance: Provenance; readonly privateKey: string };
   readonly clock: () => Clock;
-  readonly governance: { readonly register: GeneratedRegister; readonly context: RegisterContext };
+  // Supplied by loadRegister after extract, entering-force and currency checks.
+  // A source replay or a structural cast cannot substitute for its runtime witness.
+  readonly governance: { readonly register: VerifiedRegister; readonly context: RegisterContext };
   readonly scope: Scope;
   readonly workOwner: string;
   readonly holdMaxAge: number;

@@ -15,7 +15,7 @@ it('P4-NF-02 an attested adapter cannot claim verified, change route evidence or
     refused(value(createIntakePort({ ...f.deps, adapter })).receive(message(), { ...route, eventId: JSON.stringify(changes) }), 'unresolved-sender');
   }
   const entry = f.deps.governance.register.entries.find(e => e.declaration.id === 'host')!;
-  const register = f.r.build([JSON.parse(readFileSync('src/intake/port.declarations.json', 'utf8'))[0],
+  const { governance: { register } } = f.govern([...JSON.parse(readFileSync('src/intake/port.declarations.json', 'utf8')),
     f.r.declaration('host', 'parsers', { ...entry.declaration.requiredFacts, authenticationClass: [{ stimulusType: 'message', class: 'verified' }] }, { profile: f.r.profile })]);
   refused(value(createIntakePort({ ...f.deps, governance: { ...f.deps.governance, register } })).receive(message(), route), 'unresolved-sender');
 });
