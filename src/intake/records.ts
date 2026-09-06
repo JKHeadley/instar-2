@@ -1,7 +1,7 @@
 import type { BoundaryContext,Json,Scope } from '../index.js';
 import { causalCone,causalStanding,registerOwnedBody } from '../facts/index.js';
 import { canonical,decode,historicalGrantLiveness,scopeIncludes } from '../index.js';
-import type { FactSchema,OwnedBodyRegistration } from '../facts/index.js';
+import type { FactEnvelope,FactSchema,OwnedBodyRegistration } from '../facts/index.js';
 import type { Result } from '../index.js';
 import { object,requireIntake,same,take,text } from './boundary.js';
 import type { ProjectionDefinition } from '../projections/index.js';
@@ -13,9 +13,25 @@ export const intakeKinds=Object.freeze(['intake-receipt','intake-resolved','inta
 export function intakeScopesOverlap(a: Scope,b: Scope): boolean {
   return a.kind==='organization'||b.kind==='organization'||a.kind!==b.kind||a.members.some(m => b.members.includes(m));
 }
-export function intakeArrivalId(adapter: Json,ingress: Json,fallback: string): string {
-  const r=object(ingress);
-  return take(canonical([adapter,r.channel,r.sender,r.identityEpoch,r.eventId??fallback])).hash;
+// A signed retained observation is not automatically an arrival commitment. P2
+// authenticates the envelope; this consumer applies the independent recorder policy.
+// It is deliberately total over retained bodies: invalid observations stay inert.
+export function intakeArrival(fact: FactEnvelope,observerId: string) {
+  try {
+    if(fact.kind!=='intake-receipt'||fact.principal.id!==observerId||fact.principal.kind!=='system'
+      ||fact.provenance.class!=='verified'||fact.principal.provenance.class!=='verified') return undefined;
+    const body=object(fact.body),route=object(JSON.parse(text(body.ingress,'ingress')) as Json);
+    const valid=(v: Json|undefined): v is string => typeof v==='string'&&v.length>0&&v.length<=1024;
+    if(!valid(body.adapter)||!valid(route.channel)||!valid(route.sender)||!valid(route.identityEpoch)||!valid(route.eventId)
+      ||!Object.keys(route).every(k => ['channel','sender','identityEpoch','eventId'].includes(k))
+      ||typeof body.rawHash!=='string'||!/^sha256:[a-f0-9]{64}$/.test(body.rawHash)
+      ||object(body.capture!).hash!==body.rawHash) return undefined;
+    return {
+      logicalId: take(canonical([body.adapter,route.channel,route.sender,route.identityEpoch,route.eventId])).hash,
+      adapter: body.adapter,rawHash: body.rawHash,
+      route: { channel: route.channel,sender: route.sender,identityEpoch: route.identityEpoch,eventId: route.eventId }
+    };
+  } catch { return undefined; }
 }
 
 // Binding writes require the existing P2 operator/conferring ladder. Intake never authors one.
@@ -81,11 +97,12 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
         requireIntake(intent.id===body.logicalId&&intent.raw===body.rawHash&&object(receipt.body).rawHash===body.rawHash,
           'P4-NF-01/12: work changed its preserved input identity');
         const cone=causalCone(c.origin,c.facts.facts);
-        const ingress=object(JSON.parse(text(object(receipt.body).ingress,'receipt ingress')) as Json);
-        requireIntake(intakeArrivalId(object(receipt.body).adapter!,ingress,receipt.id)===body.logicalId,
+        const arrival=intakeArrival(receipt,observerId);
+        requireIntake(arrival,'P4-NF-02/03: receipt is not an eligible observer arrival');
+        requireIntake(arrival.logicalId===body.logicalId&&arrival.adapter===body.adapter&&intent.via===arrival.adapter,
           'P4-NF-01/03: work changed receipt route/event identity');
-        for(const key of ['channel','sender','identityEpoch','eventId']) requireIntake(same(ingress[key],body[key]),'P4-NF-01: work changed ingress');
-        const arrivals=cone.filter(f => f.kind==='intake-receipt'&&intakeArrivalId(object(f.body).adapter!,JSON.parse(text(object(f.body).ingress,'ingress')) as Json,f.id)===body.logicalId);
+        for(const key of ['channel','sender','identityEpoch','eventId'] as const) requireIntake(same(arrival.route[key],body[key]),'P4-NF-01: work changed ingress');
+        const arrivals=cone.filter(f => intakeArrival(f,observerId)?.logicalId===body.logicalId);
         const first=arrivals[0]??receipt;
         requireIntake(object(first.body).rawHash===body.rawHash,'P4-NF-03/08: arrival hash commitment changed');
         requireIntake(same(intent.receivedAt,first.at),'P4-NF-10: work changed original arrival clock');
@@ -127,6 +144,11 @@ export function intakeStopRegistration(context: BoundaryContext,observerId: stri
         const binding=cone.find(f => f.id===body.binding&&f.kind==='conversation-binding');
         const receipt=cone.find(f => f.id===body.receipt&&f.kind==='intake-receipt');
         requireIntake(binding&&receipt&&object(receipt.body).rawHash===body.rawHash,'P4-NF-01/14: stop lacks bound durable receipt');
+        const arrival=intakeArrival(receipt,observerId);
+        requireIntake(arrival&&arrival.logicalId===body.logicalId&&arrival.adapter===body.adapter,
+          'P4-NF-02/14: stop requires an eligible observer arrival');
+        for(const key of ['channel','sender','identityEpoch','eventId'] as const)
+          requireIntake(same(arrival.route[key],body[key]),'P4-NF-02/14: stop changed receipt ingress');
         requireIntake(binding.provenance.class==='verified','P4-NF-14: binding act is not verified');
         const b=object(binding.body);
         for(const key of ['adapter','channel','sender','identityEpoch','principalId','scope'])

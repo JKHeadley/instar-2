@@ -60,7 +60,8 @@ const storage = { owner: 'part-ten', read: () => readFileSync(segmentPath, 'utf8
   } };
 const now = take(decodeMeasurement('clock', { ...context.genesis.clock, value: seed.at, at: seed.at }, context.decode));
 const generation = () => ({ reference: context.decode.register.generation, kinds: [...new Set(context.schemas.map(s => s.kind))],
-  lineages: { 'machine-a': { head: storage.read().at(-1)?.segment ?? null, observedAt: seed.at, closed: false } } });
+  lineages: Object.fromEntries([...new Set(['machine-a', ...storage.read().map(f => f.machine)])].map(machine =>
+    [machine, { head: storage.read().filter(f => f.machine === machine).at(-1)?.segment ?? null, observedAt: seed.at, closed: false }])) });
 const port = take(createIntakePort({
   adapter: { id: 'host', authenticate: (_raw, route) => success({ ...seed.evidence, channel: route.channel, sender: route.sender, identityEpoch: route.identityEpoch }), parse: raw => JSON.parse(raw) },
   capture: { owner: 'part-ten', preserve(raw) {

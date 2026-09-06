@@ -65,13 +65,24 @@ has an acknowledged transport event.
 The logical identity hashes adapter, authenticated channel, sender, identity epoch and
 provider event id. The epoch prevents recycled platform identities inheriting an old key.
 Each redelivery still has its own durable receipt. An equal-hash completed admission appends
-an `intake-collapse` referencing the original. The first receipt commits the hash, including
+an `intake-collapse` referencing the original. The first eligible observer receipt commits the hash, including
 before authentication or holding. A changed hash appends an `intake-mismatch`
 attack signal and refuses. A duplicate returns a reference, never a fresh executable Intent.
 Native provider ids are retained as `lastInboundId` and on the durable receipt/resolution/work
 facts. A final same-ledger recheck collapses interleaving ports; the P4 owner decoder also
 rejects a second admission in the same causal history. Partitioned concurrent admissions
 remain the P2 singleton Conflict case, not a claimed distributed lock.
+
+Only an **eligible observer receipt** establishes that first hash/clock commitment. P2
+authenticates the envelope; P4 independently requires the configured verified system observer,
+a bounded complete provider route, and matching capture/hash metadata. One total consumer
+applies this policy in receive, recovery, work admission and stop validation. Malformed routes
+(including invalid JSON ingress) and other principals' signed observations remain retained,
+but are inert for arrival indexing. They cannot preempt a sender's event, become observer
+arrivals through recovery, or poison unrelated admission/stop scans. Eligibility is derived
+from authenticated envelope identity and independent configuration, never a self-asserted
+body flag. Genuine observer receipts received through P2 replication remain eligible; the
+replication provider supplies their observed causal frontier and projection currency.
 
 Authentication uses P1's actual Provenance and VerifiedPrincipal decoders. Unresolved
 identity becomes P1 UnresolvedInput in an observer-authored `intake-held` fact; the result

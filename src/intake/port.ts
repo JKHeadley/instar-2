@@ -8,7 +8,7 @@ import { constructGoverned } from '../register/index.js';
 import { foldProjection,readProjection } from '../projections/index.js';
 import { boundary,IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
 import type { InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort } from './contracts.js';
-import { intakeArrivalId,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,intakeWorkRegistration } from './records.js';
+import { intakeArrival,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,intakeWorkRegistration } from './records.js';
 
 const reference=(f: FactEnvelope): FactEnvelopeReference => Object.freeze({ owner: 'part-two',name: 'FactEnvelope',id: f.id });
 type Classified={ kind: 'conversation'; ask: string; flags: readonly 'cannot-decide'[] }|{ kind: 'stop' }|{ kind: 'needs-judgment' };
@@ -131,6 +131,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
           requireIntake(captured.hash===hashBytes(raw),'P4-NF-01: capture hash differs from received bytes','integrity');
           const receipt=append('intake-receipt',{ capture: json(captured),rawHash: captured.hash,adapter: adapterId,
             ingress: take(canonical(routeInput)).bytes },at,preserved);
+          preserved=receipt.id;
           return take(boundary<IntakeDisposition>('IntakePreserved',{ ...b,preserved: receipt.id },() => {
             requireIntake(!busy,'P4-NF-01: overlapping arrival durably queued; recover its receipt','integrity');
             busy=true;
@@ -144,7 +145,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               eventId: typeof route.eventId==='string'&&route.eventId.length? route.eventId:'missing'
             };
             if(typeof route.eventId!=='string'||route.eventId.length===0) hold('missing-provider-event-id',common,at,preserved);
-            const arrivals=read(preserved).filter(f => f.kind==='intake-receipt'&&intakeArrivalId(object(f.body).adapter!,JSON.parse(text(object(f.body).ingress,'ingress')) as Json,f.id)===logicalId);
+            requireIntake(intakeArrival(receipt,author.principal.id),'P4-NF-10/24: preserved receipt has an invalid arrival identity');
+            const arrivals=read(preserved).filter(f => intakeArrival(f,author.principal.id)?.logicalId===logicalId);
             const original=arrivals[0]!;
             const prior=read(preserved).find(f => ['intake-admitted','intake-stop','intake-stop-signal'].includes(f.kind)&&object(f.body).logicalId===logicalId);
             if(object(original.body).rawHash!==captured.hash) {
@@ -284,10 +286,11 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       receive,recover: (receiptId: string) => boundary('IntakeRecovery',{ ...b,preserved: receiptId },() => {
         const receipt=read(receiptId).find(f => f.id===receiptId&&f.kind==='intake-receipt'&&object(f.body).adapter===adapterId);
         requireIntake(receipt,'P4-NF-01: unknown durable intake receipt');
+        const arrival=intakeArrival(receipt,author.principal.id);
+        requireIntake(arrival,'P4-NF-02/10: preserved observation is not an eligible observer arrival');
         const body=object(receipt.body),capture=context(receiptId).captures[text(object(body.capture!).reference,'capture')];
         requireIntake(capture?.status==='available'&&typeof capture.bytes==='string'&&hashBytes(capture.bytes)===body.rawHash,'P4-NF-01: recovery capture unavailable','integrity');
-        const route=object(JSON.parse(text(body.ingress,'ingress')) as Json);
-        return take(receive(capture.bytes,{ channel: text(route.channel,'channel'),sender: text(route.sender,'sender'),identityEpoch: text(route.identityEpoch,'epoch'),eventId: route.eventId===null? null:text(route.eventId,'event id') }));
+        return take(receive(capture.bytes,arrival.route));
       }),expireHolds: () => boundary('IntakeExpiry',b,
         () => expire(take(decodeMeasurement('clock',deps.clock(),initial.decode)),initial.preserved))
     });
