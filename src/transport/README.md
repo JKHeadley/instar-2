@@ -19,7 +19,8 @@ Composition order:
    its executor. Only Success permits that invocation. The handle is never a JSON
    token, and is burned before its durable consumption acknowledgement.
 5. Recovery locates the same unresolved reservation and invokes ONLY eight's
-   read-only `ObservationPort`. An observation reference is not a settlement or
+   read-only `ObservationPort`, returning eight's `OperationObservation` reference.
+   An observation reference is not a settlement or
    run completion. Weak absence, a fresh key, or restart cannot enable another send.
 
 The exact P1 imports are in `contracts.ts` and `records.ts`; P2 owns envelope,
@@ -44,8 +45,19 @@ Bounds and honesty:
 - Rebuild is bounded to 4096 domain records; P2 verifies the signed prefix. This
   slice does not claim incremental fleet-scale loop scanning or bounded P2 replay.
 - Clock regression and stale ownership fail at admission without a loss notice.
-  Authority restart invalidates old lease timers. Recovery may spend one remaining
-  observation credit and records stopped-at-bound when the old duration is suspect.
+  Signed principal/machine policy is checked on origin, replication and historical
+  replay, including transport predecessors. Legitimate old incarnations remain readable.
+- An exhausted ordinary duration starts no observation and spends no credit. Zero
+  duration means zero starts. Authority restart invalidates old lease timers; only
+  a nonactive episode with positive duration/remaining credit may enter the explicit
+  `restoring` one-shot observation state, whose completion stops the episode.
+- Ordinary observation first commits `running`; its matching `RecoveryRecord`
+  releases the active reservation and folds the loop to waiting. Neither a due
+  timestamp nor another API instance permits overlap. A returned refusal/throw is
+  recorded as a completed attempt before being propagated, preserving its next wake.
+  A killed observer or missing durable completion stays active even after takeover;
+  the host must establish completion/quiescence before any new observation. This
+  slice supplies no automatic quiescence override. The obligation and count remain.
 - Charges are integer host-declared capacity units (not an invented money type).
   Uncertain charges are retained permanently in this slice. No P8 settlement
   consumption/release implementation exists yet, and no retry is enabled by that gap.
@@ -64,5 +76,6 @@ Bounds and honesty:
 Tests under `tests/transport`, `tests/integration/transport.test.ts` and
 `tests/e2e/transport.test.ts` execute real P2 admission and fsync-backed storage.
 The E2E child imports emitted public transport code and is SIGKILLed after claim,
-after consumption, or after the fixture effect. Its eight doorway is explicitly a
+after consumption, after the fixture effect, or inside the active observer. The
+last cut proves fail-closed active retention with zero replacement calls. Its eight doorway is explicitly a
 test stand-in, not the sibling's eventual implementation or an actual Telegram send.

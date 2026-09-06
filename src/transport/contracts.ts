@@ -38,7 +38,7 @@ export interface LoopPolicy extends Owned {
 export interface LoopRecord extends Row, Owned {
   readonly type: 'LoopRecord'; readonly run: string; readonly episode: string;
   readonly policy: LoopPolicy; readonly attempts: number; readonly started: number;
-  readonly nextWake: number; readonly state: 'scheduled' | 'waiting' | 'stopped';
+  readonly nextWake: number; readonly state: 'scheduled' | 'running' | 'restoring' | 'waiting' | 'stopped';
   readonly pending: string;
 }
 export interface RecoveryRecord extends Row, Owned {
@@ -78,7 +78,7 @@ export interface DispatchClaim extends Owned { readonly operation: string; reado
 export interface ObservationPort {
   readonly owner: 'part-eight';
   // No invoke, settle, resend, or create-if-missing capability in the recovery port.
-  observe(operation: string): Result<OwnedReference<'part-eight', 'EffectObservation'>>;
+  observe(operation: string): Result<OwnedReference<'part-eight', 'OperationObservation'>>;
 }
 export interface TransportAuthority {
   inspect(): Result<readonly TransportFact[]>;

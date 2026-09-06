@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { decodeEnvelope, decodeHistoricalBody } from '../../src/facts/index.js';
+import type { Lease } from '../../src/transport/index.js';
 import { transportFixture, value, refused } from './fixture.js';
 
 it('P6-NF-05 P6-NF-06 R1 genuine foreign signatures cannot renew authority through replication or replay', () => {
@@ -33,6 +34,8 @@ it('P6-NF-05 P6-NF-06 R1 genuine foreign signatures cannot renew authority throu
     const receiver = transportFixture();
     value(receiver.store.append(first.fact, { peer: 'machine-a' }));
     value(receiver.storage.append(value(canonical(wire)).bytes, first.fact.contentHash));
+    refused(receiver.spine.append({ ...first.record, operation: 'renew', term: 100, expires: 200,
+      command: 'launder-foreign-parent', predecessor: frame.id } as Lease, [frame.id]), 'issuer is not this authority');
     const restored = transportFixture(receiver.directory);
     refused(restored.api.inspect());
     refused(restored.api.acquire('must-not-enable', '', 500));

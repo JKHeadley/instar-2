@@ -5,8 +5,8 @@ import { expect, it } from 'vitest';
 import { privateKey } from '../facts/fixtures.js';
 import { transportFixture } from '../transport/fixture.js';
 
-it('P6-NF-11 P6-NF-30 P6-NF-34 P6-NF-36 P6-NF-38 fresh-process kill after claim/consume/send recovers only by observing the same operation', async () => {
-  for (const cut of ['claim', 'consume', 'send']) {
+it('P6-NF-11 P6-NF-20 P6-NF-30 P6-NF-34 P6-NF-36 P6-NF-38 fresh-process kill after claim/consume/send/active-observation preserves safe recovery', async () => {
+  for (const cut of ['claim', 'consume', 'send', 'observation']) {
     const f = transportFixture();
     const identity = f.proof({ id: 'alice', kind: 'person' }, { id: 'alice', kind: 'person' }, 'identity');
     const grantProof = f.proof(f.g.source.authenticated.payload as object, { id: 'alice', kind: 'person' }, 'intent-approval');
@@ -28,8 +28,16 @@ it('P6-NF-11 P6-NF-30 P6-NF-34 P6-NF-36 P6-NF-38 fresh-process kill after claim/
       expect(ready.ready).toBe(true);
       const exited = new Promise(resolveExit => child.once('exit', resolveExit));
       child.kill('SIGKILL'); await exited;
-      const resumed = spawnSync(process.execPath, [...args, 'recover'], { encoding: 'utf8', timeout: 15000 });
+      const resumed = spawnSync(process.execPath, [...args, 'recover', cut], { encoding: 'utf8', timeout: 15000 });
       expect(resumed.status, resumed.stderr).toBe(0);
+      if (cut === 'observation') {
+        const blocked = JSON.parse(resumed.stdout) as { detail: string; calls: number; records: { type: string; state?: string; attempts?: number }[] };
+        expect(blocked.detail).toContain('already active'); expect(blocked.calls).toBe(0);
+        expect(blocked.records.filter(r => r.type === 'LoopRecord').at(-1)).toMatchObject({ state: 'running', attempts: 1 });
+        expect(readFileSync(join(f.directory, 'observations.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1);
+        expect(existsSync(join(f.directory, 'external-effects.jsonl'))).toBe(false);
+        continue;
+      }
       const outcome = JSON.parse(resumed.stdout) as { recovery: { operation: string; disposition: string }; replayRefused: boolean; records: { type: string; operation?: string; charge?: number }[] };
       expect(outcome.recovery.operation).toBe(ready.operation); expect(outcome.replayRefused).toBe(true);
       expect(outcome.recovery.disposition).toBe('stopped-at-bound'); // restored authority clock is conservatively suspect

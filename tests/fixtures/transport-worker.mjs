@@ -1,4 +1,4 @@
-import { appendFileSync, closeSync, fsyncSync, openSync, readFileSync } from 'node:fs';
+import { appendFileSync, closeSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { consumeResult } from '../../dist/index.js';
 import { decodeLoopPolicy, telegramReferenceAdapter } from '../../dist/transport/index.js';
@@ -13,7 +13,7 @@ const journal = (name, value) => {
   const fd = openSync(join(directory, name), 'a', 0o600);
   try { appendFileSync(fd, JSON.stringify(value) + '\n'); fsyncSync(fd); } finally { closeSync(fd); }
 };
-const now = mode === 'start' ? 100 : 120;
+let now = mode === 'start' ? 100 : 120;
 const slice = createTransportSlice(seed, directory, { incarnation: mode === 'start' ? 'worker:1' : 'worker:2',
   authorityIncarnation: mode === 'start' ? 'authority:1' : 'authority:2', monotonic: () => now });
 const { api, result } = slice;
@@ -28,7 +28,15 @@ if (mode === 'start') {
     request: { owner: 'part-eight', name: 'EffectRequest', id: 'effect:1' }, attempt: 'attempt:1',
     payloadDigest: `sha256:${'a'.repeat(64)}`, charge: 20, run, semanticMessage: 'five:semantic-message', durability: 'local-durable', replicas: 0 }));
   const claim = take(api.claim('claim', token, reservation.operation));
-  if (cut !== 'claim') {
+  if (cut === 'observation') {
+    now = 110;
+    take(api.recover('active-observation', token, reservation.operation, { owner: 'part-eight', observe: operation => result(() => {
+      journal('observations.jsonl', { operation, method: 'active-read-only-lookup' });
+      writeSync(1, JSON.stringify({ ready: true, cut, operation }) + '\n');
+      process.kill(process.pid, 'SIGSTOP'); // Parent kills this real on-stack observer.
+      throw new Error('test observer must not resume');
+    }) }));
+  } else if (cut !== 'claim') {
     const doorway = { owner: 'part-eight', send: input => result(() => {
       take(api.consume(input.claim, input.fence));
       if (cut === 'send') journal('external-effects.jsonl', { operation: input.reservation.operation, message: input.message });
@@ -41,10 +49,19 @@ if (mode === 'start') {
 } else {
   const token = take(api.acquire('takeover', head(), 500));
   const unresolved = take(api.inspect()).map(r => r.record).filter(r => r.type === 'AdmissionReservation').at(-1);
+  if (cut === 'observation') {
+    let calls = 0;
+    const result = api.recover('must-not-overlap', token, unresolved.operation, { owner: 'part-eight', observe: () => {
+      calls++; throw new Error('must retain active uncertainty');
+    } });
+    const detail = consumeResult(result, { Success: () => '', Refused: r => r.detail });
+    out({ detail, calls, records: take(api.inspect()).map(r => r.record) });
+    process.exit(0);
+  }
   const recovery = take(api.recover('recover', token, unresolved.operation, { owner: 'part-eight',
     observe: operation => result(() => {
       journal('observations.jsonl', { operation, method: 'read-only-lookup' });
-      return { owner: 'part-eight', name: 'EffectObservation', id: `unknown:${operation}` };
+      return { owner: 'part-eight', name: 'OperationObservation', id: `unknown:${operation}` };
     }),
   }));
   const replay = api.claim('repeat', token, unresolved.operation);

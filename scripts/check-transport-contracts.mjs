@@ -9,20 +9,20 @@ export const transportDispositions = [
   ['02', 'partial', 'Six slice schemas, private claim construction, foreign ownership and static core scan; Threadline records omitted.'],
   ['03', 'partial', 'One-voter conditional predecessor and durable compare-head; quorum safety outside slice.'],
   ['04', 'partial', 'Durable epoch restore; membership changes and quorum tolerance outside slice.'],
-  ['05', 'partial', 'Current scoped standing and fence checks at API and P2 append; production principal channel binding is injected.'],
+  ['05', 'partial', 'Scoped standing/fence and signed issuer checks at origin, replication and replay; production principal channel binding is injected.'],
   ['06', 'partial', 'Signed status-bearing fact rebuild; no fleet checkpoint implementation.'],
   ['07', 'partial', 'Current host policy/stop/generation and preserved refusal; production governed-port activation remains dark.'],
   ['08', 'partial', 'Renew/release dedup, old owner refusal, no run completion.'],
   ['09', 'partial', 'Real claim consumption and fixture eight doorway; production eight integration pending.'],
   ['10', 'partial', 'Monotonic expiry/regression and restored timer refusal; quorum timing outside slice.'],
-  ['11', 'partial', 'Three real SIGKILL cuts and storage failure; not every possible instruction boundary.'],
+  ['11', 'partial', 'Four real SIGKILL cuts including active observation, plus storage failure; not every possible instruction boundary.'],
   ['12', 'partial', 'Local receipt cannot satisfy replicated effect demand; no replica provider shipped here.'],
   ['13', 'partial', 'Uncertain run/request/message cannot get new attempt; full target-quiescence settlement outside slice.'],
   ['14', 'partial', 'Read-only observation never settles effect or closes run.'],
   ['15', 'partial', 'Durable recovery wake before reservation; five-owned escalation evidence integration pending.'],
   ['16', 'partial', 'Static timer/dynamic import/foreign-type scan in owned core; no whole-fleet library audit.'],
-  ['17', 'partial', 'Finite/zero/min-delay/closed policies; breaker only explicit closed stub.'],
-  ['18', 'partial', 'Durable attempt counters and no episode reset; half-open breaker outside slice.'],
+  ['17', 'partial', 'Finite/zero/duration/min-delay/closed admission with measured call-count controls; breaker only explicit closed stub.'],
+  ['18', 'partial', 'Durable attempt and active reservations, no overlap or episode reset; half-open breaker outside slice.'],
   ['19', 'partial', 'One finite budget with retained uncertainty; nested and independent minimal-plane capacity outside slice.'],
   ['20', 'partial', 'Durable level wake, competing scheduler refusal, restart resume; one domain.'],
   ['21', 'partial', 'Stopped is not closed and capacity never creates business Outcome.'],
@@ -39,7 +39,7 @@ export const transportDispositions = [
   ['32', 'out-of-scope', 'Quorum and independent repair capacity excluded.'],
   ['33', 'out-of-scope', 'Fleet fairness and incremental scans not implemented; the slice has a finite replay ceiling, not fleet-scale proof.'],
   ['34', 'partial', 'Fresh-process handoff and stale owner refusal; no multi-machine quorum claim.'],
-  ['35', 'partial', 'Actual P2 public wiring and generic five/eight ports; eventual sibling composition not yet available.'],
+  ['35', 'partial', 'Actual P2 wiring and approved eight OperationObservation reference with compiler/runtime controls; eventual sibling composition not yet available.'],
   ['36', 'partial', 'Three test tiers and real process kills; feature dark, no live Telegram, supervisor or production probes.'],
   ['37', 'partial', 'Every design check has explicit disposition; declarations carry no invented held rule edges.'],
   ['38', 'partial', 'Claim/consume/send kills and bounded observation; no whole-session watchdog or all stall classes.'],
@@ -62,7 +62,7 @@ export function checkTransportCoverage(report, dispositions = transportDispositi
 
 export function inspectTransportCore(sources) {
   const issues = [];
-  const foreign = new Set(['Run', 'Step', 'AgentTransportEnvelope', 'DeliveryEvidence', 'EffectRequest', 'EffectSettlement', 'EffectObservation', 'OperationDefinition', 'Outcome', 'Result']);
+  const foreign = new Set(['Run', 'Step', 'AgentTransportEnvelope', 'DeliveryEvidence', 'EffectRequest', 'EffectSettlement', 'OperationObservation', 'EffectObservation', 'OperationDefinition', 'Outcome', 'Result']);
   for (const [path, source] of Object.entries(sources)) {
     const ast = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
     function visit(n) {

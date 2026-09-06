@@ -4,7 +4,7 @@ import type { FactStorePort } from '../facts/index.js';
 import type { AdmissionReservation, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord,
   TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import { checkFence, fenceFor, kindFor, latestLease, latestLoop, live, policyCheck, reservations, rows, validateTransition } from './records.js';
+import { checkFence, fenceFor, kindFor, latestLease, latestLoop, live, loopActive, observationAdmission, policyCheck, reservations, rows, validateTransition } from './records.js';
 
 export function createTransportSpine(host: TransportHost, author: FactAuthor, store: FactStorePort): TransportSpine {
   return Object.freeze({ store, append: (record: TransportRecord, required: readonly string[]) => authorAndAppend({
@@ -117,23 +117,32 @@ export function createTransportAuthority(host: TransportHost, spine: TransportSp
       const op = reservations(all).find(p => p.operation === operation);
       ensure(op && op.state !== 'prepared', 'unresolved claim not found');
       const loop = latestLoop(all, op.run); ensure(loop && loop.state !== 'stopped', 'recovery loop stopped or missing');
+      ensure(!loopActive(all, loop), 'observation already active; durable completion required');
       const m = meta(all, `${command}:wake`);
       ensure(loop.authority !== m.authority || m.tick >= loop.nextWake, 'wake not due');
-      const hasCredit = loop.attempts < loop.policy.maxAttempts;
-      const stop = !hasCredit || loop.authority !== m.authority || m.tick - loop.started >= loop.policy.maxDuration;
-      const w = write(all, { ...loop, ...m, attempts: loop.attempts + (hasCredit ? 1 : 0),
-        nextWake: m.tick + loop.policy.minDelay, state: stop ? 'stopped' : 'waiting', pending: operation });
+      const admission = observationAdmission(loop, m.tick, m.authority);
+      const w = write(all, { ...loop, ...m, attempts: loop.attempts + (admission === 'none' ? 0 : 1),
+        nextWake: m.tick + loop.policy.minDelay, state: admission === 'none' ? 'stopped' : admission === 'restored' ? 'restoring' : 'running', pending: operation });
       all = w.all;
-      // The wake is durably consumed before calling the read-only observer. A kill
-      // leaves the same operation and next wake; an observation never closes a run.
+      // The active reservation excludes re-entry across every issuer sharing the
+      // spine. Only a matching durable result releases it. A missing durable
+      // result retains active uncertainty; a new incarnation is not quiescence.
       let observation = '';
-      if (hasCredit) {
-        const ref = take(observer.observe(operation));
-        ensure(ref.owner === 'part-eight' && ref.name === 'EffectObservation' && ref.id.length > 0, 'observation reference owner');
-        observation = ref.id;
+      let failed = false; let failure: unknown;
+      if (admission !== 'none') {
+        try {
+          const ref = take(observer.observe(operation));
+          ensure(ref.owner === 'part-eight' && ref.name === 'OperationObservation' && ref.id.length > 0, 'observation reference owner');
+          observation = ref.id;
+        } catch (error) { failed = true; failure = error; }
       }
-      return write(all, { ...meta(all, command), type: 'RecoveryRecord', operation, episode: loop.episode,
-        observation, disposition: stop ? 'stopped-at-bound' : 'waiting' } as RecoveryRecord).record;
+      // Other permitted fact writes may have occurred while observe was on-stack.
+      // Keep its returned evidence; revalidate the exact wake against the fresh head.
+      all = read(); fence(all, token);
+      const result = write(all, { ...meta(all, command), type: 'RecoveryRecord', operation, episode: loop.episode,
+        observation, disposition: admission === 'ordinary' ? 'waiting' : 'stopped-at-bound' } as RecoveryRecord).record;
+      if (failed) throw failure;
+      return result;
     }),
   } satisfies TransportAuthority);
 }

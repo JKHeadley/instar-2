@@ -12,7 +12,7 @@ it('P6-NF-14 P6-NF-15 P6-NF-20 P6-NF-21 durable level wake observes uncertainty 
   let observations = 0;
   const observer = { owner: 'part-eight' as const, observe: (operation: string) => f.result(() => {
     expect(operation).toBe(reservation.operation); observations++;
-    return { owner: 'part-eight' as const, name: 'EffectObservation' as const, id: 'inconclusive:original-operation' };
+    return { owner: 'part-eight' as const, name: 'OperationObservation' as const, id: 'inconclusive:original-operation' };
   }) };
   refused(f.api.recover('early', token, reservation.operation, observer), 'not due'); expect(observations).toBe(0);
   f.advance(10); const recovered = value(f.api.recover('recover', token, reservation.operation, observer));
@@ -22,7 +22,8 @@ it('P6-NF-14 P6-NF-15 P6-NF-20 P6-NF-21 durable level wake observes uncertainty 
   const next = value(restarted.api.recover('resume', token, reservation.operation, observer));
   expect(next.episode).toBe(recovered.episode); expect(observations).toBe(2);
   const records = value(restarted.api.inspect()).map(r => r.record);
-  expect(records.filter(r => r.type === 'LoopRecord').at(-1)).toMatchObject({ attempts: 2, state: 'waiting' });
+  expect(records.filter(r => r.type === 'LoopRecord').at(-1)).toMatchObject({ attempts: 2, state: 'running' });
+  expect(records.filter(r => r.type === 'RecoveryRecord').at(-1)).toMatchObject({ disposition: 'waiting' });
   expect(records.filter(r => r.type === 'AdmissionReservation').at(-1)).toMatchObject({ charge: 20, state: 'dispatch-claimed' });
   expect(records.some(r => 'outcome' in r || 'completed' in r || 'settlement' in r)).toBe(false);
   refused(restarted.api.reserve(restarted.input(token, { command: 'new-attempt', attempt: 'attempt:2' })), 'unresolved');
@@ -36,7 +37,7 @@ it('P6-NF-17 P6-NF-18 P6-NF-19 finite observation credit, zero means zero, and r
     const reservation = value(f.api.reserve(f.input(token))); value(f.api.claim('claim', token, reservation.operation));
     let calls = 0;
     const observer = { owner: 'part-eight' as const, observe: () => f.result(() => {
-      calls++; return { owner: 'part-eight' as const, name: 'EffectObservation' as const, id: 'unknown' };
+      calls++; return { owner: 'part-eight' as const, name: 'OperationObservation' as const, id: 'unknown' };
     }) };
     f.advance(10); value(f.api.recover('one', token, reservation.operation, observer));
     if (limit) { f.advance(10); expect(value(f.api.recover('two', token, reservation.operation, observer)).disposition).toBe('stopped-at-bound'); }
@@ -56,7 +57,7 @@ it('P6-NF-11 P6-NF-20 observation failure consumes credit durably and preserves 
   }), 'observation unavailable');
   const restarted = transportFixture(f.directory); restarted.advance(20);
   value(restarted.api.recover('retry-observation-not-effect', token, reservation.operation, {
-    owner: 'part-eight', observe: () => restarted.result(() => ({ owner: 'part-eight' as const, name: 'EffectObservation' as const, id: 'still-uncertain' })),
+    owner: 'part-eight', observe: () => restarted.result(() => ({ owner: 'part-eight' as const, name: 'OperationObservation' as const, id: 'still-uncertain' })),
   }));
   expect(value(restarted.api.inspect()).map(r => r.record).filter(r => r.type === 'LoopRecord').at(-1)).toMatchObject({ attempts: 2 });
 });

@@ -54,7 +54,26 @@ export function latestLease(all: readonly TransportFact[]): TransportFact & { re
   return all.filter((v): v is TransportFact & { record: Lease } => v.record.type === 'Lease').at(-1);
 }
 export function latestLoop(all: readonly TransportFact[], run: string): LoopRecord | undefined {
-  return all.map(v => v.record).filter((v): v is LoopRecord => v.type === 'LoopRecord' && v.run === run).at(-1);
+  let loop: LoopRecord | undefined;
+  for (const { record: r } of all) {
+    if (r.type === 'LoopRecord' && r.run === run) loop = r;
+    // A matching durable result is the completion/release of an active wake,
+    // not the passage of time or the creation of another API object.
+    if (r.type === 'RecoveryRecord' && loop && loop.command === `${r.command}:wake`)
+      loop = freeze({ ...loop, state: r.disposition === 'waiting' ? 'waiting' : 'stopped' });
+  }
+  return loop;
+}
+export function loopActive(all: readonly TransportFact[], loop: LoopRecord): boolean {
+  return ['running', 'restoring', 'waiting'].includes(loop.state)
+    && !all.some(({ record: r }) => r.type === 'RecoveryRecord' && loop.command === `${r.command}:wake`);
+}
+export function observationAdmission(loop: LoopRecord, tick: number, authority: string): 'ordinary' | 'restored' | 'none' {
+  if (loop.attempts >= loop.policy.maxAttempts || loop.policy.maxDuration === 0) return 'none';
+  // Separate, one-shot read-only allowance when the old duration clock is
+  // suspect. Its committed state is restoring and its result stops the loop.
+  if (authority !== loop.authority) return 'restored';
+  return tick - loop.started < loop.policy.maxDuration ? 'ordinary' : 'none';
 }
 export function reservations(all: readonly TransportFact[]): AdmissionReservation[] {
   const ops = new Map<string, AdmissionReservation>();
@@ -143,7 +162,7 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
     } else if (r.type === 'LoopRecord') {
       policyCheck(r.policy);
       ensure(r.run.length > 0 && r.episode === `loop:${encoded([r.domain, r.run]).hash}`, 'stable loop episode');
-      ensure(['scheduled', 'waiting', 'stopped'].includes(r.state) && r.attempts >= 0 && r.attempts <= r.policy.maxAttempts, 'loop state or count');
+      ensure(['scheduled', 'running', 'restoring', 'waiting', 'stopped'].includes(r.state) && r.attempts >= 0 && r.attempts <= r.policy.maxAttempts, 'loop state or count');
       const prior = latestLoop(all, r.run);
       if (!prior) {
         ensure(!all.some(p => p.record.type === 'LoopRecord'), 'slice supports one run only');
@@ -151,10 +170,13 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       }
       else {
         ensure(prior.state !== 'stopped', 'stopped is terminal, not closed or restartable');
+        ensure(!loopActive(all, prior), 'observation already active; durable completion required');
         ensure(encoded(r.policy).bytes === encoded(prior.policy).bytes && r.started === prior.started && r.episode === prior.episode, 'loop bounds cannot reset');
-        ensure(r.attempts === prior.attempts + (prior.attempts < r.policy.maxAttempts ? 1 : 0), 'loop attempts cannot reset or skip');
+        const admission = observationAdmission(prior, r.tick, r.authority);
+        ensure(r.attempts === prior.attempts + (admission === 'none' ? 0 : 1), 'loop attempts cannot reset or skip');
         ensure(r.authority !== prior.authority || r.tick >= prior.nextWake, 'wake not due');
-        if (r.state === 'waiting') ensure(r.attempts <= r.policy.maxAttempts && r.authority === prior.authority && r.tick - r.started < r.policy.maxDuration, 'loop duration exhausted or restored clock uncertain');
+        ensure(admission === 'none' ? r.state === 'stopped' : admission === 'restored' ? r.state === 'restoring'
+          : r.state === 'running' || r.state === 'waiting', 'loop duration/attempt admission mismatch');
       }
       ensure(r.nextWake >= r.tick + r.policy.minDelay, 'minimum wake delay');
     } else {
@@ -162,7 +184,10 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       ensure(op && op.state !== 'prepared', 'recovery must name an unresolved claim');
       const loop = latestLoop(all, op.run);
       ensure(loop && loop.pending === op.operation && r.episode === loop.episode, 'owned recovery episode required');
-      ensure((r.disposition === 'waiting' && loop.state === 'waiting') || (r.disposition === 'stopped-at-bound' && loop.state === 'stopped'), 'recovery disposition is not effect settlement');
+      ensure(loop.command === `${r.command}:wake`, 'result must complete its exact active wake');
+      ensure((r.disposition === 'waiting' && ['running', 'waiting'].includes(loop.state))
+        || (r.disposition === 'stopped-at-bound' && ['restoring', 'stopped'].includes(loop.state)), 'recovery disposition is not effect settlement');
+      if (loop.state === 'stopped') ensure(r.observation === '', 'stopped admission cannot start an observation');
     }
   }
 }
@@ -187,6 +212,8 @@ export function registerTransportBodies(host: TransportHost, c: BoundaryContext)
           ensure(ctx.origin.machine === host.machine && ctx.origin.principal.id === host.principal.id
             && ctx.origin.principal.kind === host.principal.kind, 'issuer is not this authority');
           const past = rows(causalCone(ctx.origin, ctx.facts.facts), host.domain);
+          ensure(past.every(({ fact }) => fact.machine === host.machine && fact.principal.id === host.principal.id
+            && fact.principal.kind === host.principal.kind), 'predecessor issuer is not this authority');
           validateTransition(v, past, host);
           if (ctx.mode === 'origin') {
             live(host);
