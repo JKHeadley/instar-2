@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { decode, defineDecoder } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
-import { generateRegister, generationOf, decodeGenerationRecord, loadRegister, buildRuleGraph, resolveTerms, renderRegister, planLandingCompletion } from '../../src/register/index.js';
+import { generateRegister, generationOf, decodeGenerationRecord, loadRegister, readRegisterEntry, checkGovernedState, buildRuleGraph, resolveTerms, renderRegister, planLandingCompletion } from '../../src/register/index.js';
 import type { FactReference, RegisterContext, SpineReadPort } from '../../src/register/index.js';
 import { setup, json, value, detail, hash } from '../register/fixtures.js';
 
@@ -45,6 +45,29 @@ describe('register integration with constitutional types and explicit spine port
     const payload = { id: 'revoke:landing', grantId: 'genesis:landing', by: s.f.alice, at: s.f.now, reason: 'withdrawn' }; const proof = s.f.proof(payload);
     const revoked = value(decode('Revocation', json('Revocation', { ...payload, source: proof.p }), { ...s.f.ctx, provenance: proof.p }));
     expect(detail(planLandingCompletion(before, extract, { ...standing, revocations: [revoked] }, spine, s.context))).toContain('revoked');
+  });
+  it('P3-P5 rungraph.contract retains approved history through the verified runtime consumer', () => {
+    const s = setup(); const context = { ...s.context, references: [...s.context.references!, { provider: 'decoder' as const, id: 'decodeRun' }] };
+    const contract = s.declaration('rungraph.contract', 'governed documents', { location: 'docs/09-the-run-graph.md', changelog: 'git-history:docs/09-the-run-graph.md' });
+    const holder = s.holder([]); const gate = { ...holder, requiredFacts: { ...holder.requiredFacts, decidesAlone: 'governed-state', enforces: { record: 'rungraph.contract', decoder: 'decodeRun' } } };
+    const observations = [{ site: 'holder', record: 'rungraph.contract', decoder: 'decodeRun', reads: ['rungraph.contract'], invokes: ['decodeRun'] }];
+    const row = { id: 'rungraph.contract', version: 'contract:v1', status: 'live', since: 'commit:1', supersedes: [],
+      approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:verified-approval' }, landedIn: 'commit:1', base: 'commit:1', contentHash: hash(contract) };
+    for (const approved of [false, true]) {
+      const candidate = value(generateRegister(s.input([contract, gate], { extract: { ...s.extract, rows: approved ? [row] : [] } }), context));
+      const generation = value(generationOf(candidate, context));
+      const record = value(decodeGenerationRecord(json('GenerationRecord', { generation, at: s.f.now }), context));
+      const spine: SpineReadPort = { owner: 'part-two', verifyExtract: () => reply({ owner: 'part-two', name: 'FactEnvelope', id: 'fixture:extract' } as FactReference, context),
+        enteringForce: () => reply(record, context), isCurrent: () => reply(true, context) };
+      // A shape-only cast cannot impersonate loadRegister, regardless of rows.
+      expect(detail(readRegisterEntry('rungraph.contract', candidate as Parameters<typeof readRegisterEntry>[1], context))).toContain('must use loadRegister');
+      const loaded = value(loadRegister(candidate, generation, context, spine, s.f.now));
+      if (approved) {
+        expect(value(readRegisterEntry('rungraph.contract', loaded, context)).approvedIn).toEqual(row.approvedIn);
+        expect(value(checkGovernedState(observations, loaded, context))).toBe(true);
+        expect(detail(checkGovernedState([{ ...observations[0]!, invokes: [] }], loaded, context))).toContain('invoke named decoder');
+      } else expect(detail(checkGovernedState(observations, loaded, context))).toContain('lacks approved history');
+    }
   });
   it.skip('P3-NF-21 P3-NF-23 SKIPPED: production spine admission, signed vector verification and replica initialization require the part-two adapter, absent on this lane base', () => {});
 });
