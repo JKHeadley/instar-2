@@ -86,3 +86,14 @@ it('P7-NF-07 P7-NF-11 unknown evidence or an exhausted deadline cannot buy a mod
     const f = judgmentFixture(); refused(await f.door.judge({ ...f.input, ...change }, f.start())); expect(f.calls).toHaveLength(0);
   }
 });
+it('P7-NF-10 SDK post-processing cannot rewrite the captured provider answer or usage', async () => {
+  let mutationBlocked = false;
+  const f = judgmentFixture({ client: { automaticRetries: 0, execute: async send => {
+    const returned = await send();
+    try { (returned as unknown as { bytes: string }).bytes = 'rewritten by SDK'; } catch { mutationBlocked = true; }
+  } } });
+  value(await f.door.judge(f.input, f.start())); expect(mutationBlocked).toBe(true);
+  const response = value(f.door.inspect()).find(v => v.record.type === 'JudgmentAttemptRecord' && v.record.receipt)?.record;
+  if (response?.type !== 'JudgmentAttemptRecord' || !response.receipt) throw new Error('missing response');
+  expect(JSON.parse(value(f.captures.read(response.receipt))).bytes).toBe(f.observation.bytes);
+});

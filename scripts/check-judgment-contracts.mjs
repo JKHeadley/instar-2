@@ -66,7 +66,7 @@ export function checkJudgmentCoverage(report, dispositions = judgmentDisposition
       .map(t => ({ file: file.name, title: t.fullName, status: t.status })));
     const live = tests.filter(t => t.title.includes('LIVE-PROVIDER slice fixture requires separately authorized real provider, eight executor and activation evidence'));
     const scoped = tests.filter(t => !live.includes(t));
-    if (live.some(t => t.status !== 'pending')) throw new Error('live-provider disposition changed without updating activation scope');
+    if (live.some(t => t.status !== 'skipped')) throw new Error('live-provider disposition changed without updating activation scope');
     if (row.status === 'partial' && (!scoped.length || scoped.some(t => t.status !== 'passed'))) throw new Error(`no executed passing slice fixture: ${row.id}`);
     return { ...row, tests: scoped, explicitlySkipped: live };
   });

@@ -47,7 +47,11 @@ export function createModelAdapter(d: ModelDescription, client: ModelClient, inv
               started = true; return reservation;
             });
             const reservation = take(admission);
-            try { observed = await invoke(exchange.bytes, reservation.operation); }
+            try {
+              // Snapshot at the transport return, before the SDK sees the object.
+              // An SDK cannot rewrite captured bytes or usage after the fact.
+              observed = freeze(JSON.parse(encoded(await invoke(exchange.bytes, reservation.operation)).bytes) as ProviderObservation);
+            }
             catch { observed = { state: 'uncertain', bytes: null, providerOperation: null,
               usage: { inputTokens: null, outputTokens: null, charge: null, source: 'invocation threw; liability unknown' }, retryBlocked: false }; }
             return observed;
