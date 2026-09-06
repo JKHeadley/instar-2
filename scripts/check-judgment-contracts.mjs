@@ -16,7 +16,7 @@ const partial = {
   11: 'Real six reservation/claim and current-fence use; five actual-start grounding is not implemented here.',
   12: 'Real six liability retained and unreserved calls refused; production disclosure admission remains eight/ten.',
   14: 'Real process kills after consumed handoff and provider; no receipt means no answer or repeated invocation; no provider lookup/settlement.',
-  15: 'Real process kills after response/resolution; local recording recovery makes zero calls. Five acceptance remains separate.',
+  15: 'Real process kills after response/resolution and inside capture locking; receipt-only recovery makes zero calls. Five acceptance remains separate.',
   16: 'Late response remains recorded after stop/expiry; no usable answer. Full run terminal semantics remain five.',
   17: 'One question/attempt, immutable owner identities, concurrent duplicate refusal and terminal exclusion; no distributed multi-question projection.',
   19: 'Stop/expiry refuse use while retaining observed answer; no directive completion or owned intake wait closure.',
@@ -25,12 +25,12 @@ const partial = {
   28: 'Valid provider tokens/charge survive over-cap or invalid output with explicit limitations; unknown stays null. No normalized hold metrics or settlement ledger.',
   30: 'Known rejection and uncertainty never permit hidden SDK retry; six alone retains reservation, no settlement/release implemented.',
   31: 'Finite input/output/capture storage and one invocation per question; no production latency/queue/token pricing measurements.',
-  34: 'Local capture reread defeats cached availability; no remote full-case reconstruction.',
+  34: 'Local capture reread and constructor survive dead/ambiguous writer locks; no remote full-case reconstruction.',
   39: 'Stop/lost lease prevent answer use; observer-only local recording does not accept into five.',
   41: 'Real compiled reference assembly, durable files and deterministic fake provider. Explicit LIVE-PROVIDER test remains skipped, no activation claim.',
   43: 'Content-addressed local-only capture port rejects remote/path references; host OS administrator isolation remains ten.',
   45: 'No deletion or routine retention timer; missing evidence refuses use. Lawful tombstones/assessment pins/retention reconciliation outside slice.',
-  52: 'Four real SIGKILL cuts and duplicate/stop cases; reordered multi-machine replication and five/eight final integration not claimed.',
+  52: 'Four doorway and two capture-lock SIGKILL cuts, live-writer/reaper races and duplicate/stop cases; multi-machine replication and five/eight integration not claimed.',
 };
 const out = {
   6: 'Per-consumer defaults and measured routing beyond the single informational request are excluded.',

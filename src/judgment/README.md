@@ -66,6 +66,19 @@ but cannot silently free it or destroy prior evidence. A real post-admission dis
 failure can still prevent a receipt; that always prevents answer use. This is the
 ten-labelled reference custody port, not a production storage/isolation guarantee.
 
+Opening and verifying existing captures never takes a writer lock. Policy setup
+is lazy under write admission, not a prerequisite for receipt-only recovery.
+Writers fsync a unique lock-owner record (local host, PID, nonce); another writer
+may reclaim it only when the local OS reports that PID absent (`ESRCH`). A live
+or reused PID, foreign host, permission uncertainty, partial/legacy owner record
+or empty lock is not evidence of death. Those cases retain write exclusion while
+reads and `resumeRecording` remain available. Empty locks left by a kill before
+owner publication or during reclamation need independently established quiescence
+before future writes; no timeout guesses or automatic removal are exposed.
+Competing reapers must win deletion of the exact unique dead-owner marker before
+removing its empty directory, so a losing reaper cannot erase a replacement lock.
+This recovery removes lock metadata only, never capture bytes or capacity slots.
+
 `resumeRecording(request)` only completes local accounting/decode/resolution from
 an existing real receipt, even under a new process incarnation. It returns a fact
 reference, not a usable answer. Missing receipt fails closed and preserves six's
@@ -81,8 +94,10 @@ multi-machine question arbitration or independent protection. No retention timer
 deletes evidence and no successful answer releases a pin. The local port has no
 network fetch or delete operation; host administrator isolation is not claimed.
 
-Tests cover actual owner ports, hostile SDKs, byte/storage faults and four real
-SIGKILL cuts. The explicitly skipped LIVE-PROVIDER fixture is not counted as passing.
+Tests cover actual owner ports, hostile SDKs, byte/storage faults, four doorway
+SIGKILL cuts and two capture-lock crash cuts (before and after owner publication),
+including a stopped live writer and competing stale-reaper/replacement race.
+The explicitly skipped LIVE-PROVIDER fixture is not counted as passing.
 Real fsync-backed semantic cases are split and have 30-second harness budgets;
 the four-cut process fixture has a 60-second budget. These repair measured Linux
 CI default-five-second timeouts without changing policy clocks or dropping cases.
