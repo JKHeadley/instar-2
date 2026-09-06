@@ -56,10 +56,21 @@ if (mode === 'start') {
   }
   refused(api.settle(fence, seed.settlement), 'live eight-owned');
   const s = seed.settlement;
+  // Explicit restart-only nine stand-in: its decoded view is immutable and has
+  // no mutation path. The synchronous guard checks the exact operation binding;
+  // neither serialized settlement JSON nor this fixture is production authority.
+  const current = Object.freeze({ outcome: value(decode('Outcome', s.outcome, f.ctx.decode)), finalCharge: s.finalCharge,
+    delayedExecutionExcluded: s.delayedExecutionExcluded, required: Object.freeze([s.acceptance]) });
+  const readCurrent = (ref, input) => {
+    assert.equal(ref.id, s.acceptance);
+    assert.equal(input.request.id, s.request); assert.equal(input.request.digest, s.digest);
+    assert.equal(input.reservation.operation, s.operation); assert.equal(input.claim, s.claim);
+    return current;
+  };
   const assessment = { owner: 'part-nine',
     assess: () => f.success({ owner: 'part-nine', name: 'VerificationAssessment', id: s.acceptance }),
-    read: () => f.success({ outcome: value(decode('Outcome', s.outcome, f.ctx.decode)), finalCharge: s.finalCharge,
-      delayedExecutionExcluded: s.delayedExecutionExcluded, required: [s.acceptance] }) };
+    read: (ref, input) => f.success(readCurrent(ref, input)),
+    consumeCurrent: (ref, input, consume) => f.success(consume(readCurrent(ref, input))) };
   const producer = effects.createEffectDoorway({ ...f.composition, transport: api, durability: replicas.durability, custody: custody.custody, assessment,
     spine: effects.createEffectSpine(f.host, { context: ctx, privateKey: factFixtures.privateKey }, store) });
   const issued = value(producer.settle(s.operation));

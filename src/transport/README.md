@@ -124,14 +124,17 @@ after consumption, after the fixture effect, or inside the active observer. The
 last cut proves fail-closed active retention with zero replacement calls. Its eight doorway is explicitly a
 test stand-in, not the sibling's eventual implementation or an actual Telegram send.
 
-The settlement integration and SIGKILL lifecycle tests import eight's ACTUAL public
-exports and fixture from pushed commit `6a9cb2186df841949815327ddd8ba1ce71d1832b`,
-using git objects and this branch's emitted P1/P2/P6 packages. They require a full
+The settlement integration and SIGKILL lifecycle tests import eight's ACTUAL merged
+public exports alongside this branch's emitted P1/P2/P6 packages. Real fixture
+sources are pinned to main's eight squash `36fd9e675ada432495746a829ea3bb1739bfcab4`
+using git objects. They require a full
 history checkout, fail when the pinned input is absent, and never copy eight's
 source into this package. Nine's independent assessor remains an explicit fixture
 stand-in and the replica is a second local directory, not an independent failure
 domain. The current producer includes its physical receipt-custody checks and uses
-nine's approved VerificationAssessment reference. Tests drop the peer precisely at
+nine's approved VerificationAssessment reference and synchronous current-assessment
+guard. Tests verify that the actual six accounting append runs inside that guard
+and reentrant assessment withdrawal refuses. Tests drop the peer precisely at
 accounting append, reopen origin, attempt weaker-budget use through both public six
 and raw P2 admission, and resume exact proof with one application. Three real
 SIGKILL cuts cover held, replicated release, and local-only accounting before ACK.

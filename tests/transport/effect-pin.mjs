@@ -1,10 +1,10 @@
-// Actual eight producer and fixtures from the routed, pushed checkpoint. No
-// copied implementation and no dependency on a sibling's mutable working files.
+// Actual merged eight producer from local dist; real fixture sources pinned to
+// its main squash. No copied implementation or mutable sibling working files.
 import { execFileSync } from 'node:child_process';
 import { resolve, posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
-export const effectCommit = '6a9cb2186df841949815327ddd8ba1ce71d1832b';
+export const effectCommit = '36fd9e675ada432495746a829ea3bb1739bfcab4';
 const source = path => execFileSync('git', ['show', `${effectCommit}:${path}`], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
 const data = code => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
 const local = path => pathToFileURL(resolve(path)).href;
@@ -16,7 +16,7 @@ export function registerTransportBodies(host,c){return six.registerTransportBodi
 export function createTransportAuthority(...args){const api=six.createTransportAuthority(...args);bindings.set(api,args);return api;}`);
 export const { bindings } = await import(shim);
 const shared = new Map(['src/index.ts', 'src/facts/index.ts', 'src/register/index.ts', 'src/projections/index.ts',
-  'src/facts/boundary.ts'].map(path => [path, local(path.replace(/^src\//, 'dist/').replace(/\.ts$/, '.js'))]));
+  'src/facts/boundary.ts', 'src/effects/index.ts'].map(path => [path, local(path.replace(/^src\//, 'dist/').replace(/\.ts$/, '.js'))]));
 shared.set('src/transport/index.ts', shim);
 shared.set('scripts/transport-file-storage.mjs', local('scripts/transport-file-storage.mjs'));
 shared.set('dist/index.js', local('dist/index.js'));

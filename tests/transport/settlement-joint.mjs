@@ -16,8 +16,7 @@ export function joint() {
   const original = f.composition.assessment;
   // Still the real eight producer, with an explicitly test-only independent nine
   // assessor. The adapter supplies neither this verdict nor the quiescence proof.
-  const assessment = { ...original, read(ref, input) {
-    const proof = value(original.read(ref, input));
+  const view = (proof, input) => {
     let outcome = proof.outcome;
     if (negative) {
       const id = 'independent-non-occurrence';
@@ -26,8 +25,12 @@ export function joint() {
         strength: 'proof', freshFor: 100 }), f.ctx.decode)));
       outcome = value(decode('Outcome', { type: 'Outcome', schemaVersion: 1, kind: 'did-not-happen', evidence: [id] }, f.ctx.decode));
     }
-    return f.success({ ...proof, outcome, delayedExecutionExcluded: excluded });
-  } };
+    return Object.freeze({ ...proof, outcome, delayedExecutionExcluded: excluded });
+  };
+  const assessment = { ...original,
+    read: (ref, input) => f.success(view(value(original.read(ref, input)), input)),
+    consumeCurrent: (ref, input, consume) => original.consumeCurrent(ref, input, proof => consume(view(proof, input))),
+  };
   const producer = effects.createEffectDoorway({ ...f.composition, assessment });
   const settlement = () => value(producer.settle(reservation.operation));
   const applications = () => value(api.inspect()).filter(v => v.record.type === 'SettlementApplication');
@@ -36,7 +39,8 @@ export function joint() {
     payloadDigest: reservation.digest, charge, run: f.run, semanticMessage: 'fresh-semantic-key',
     durability: 'replicated', replicas: 1, ...overrides });
   return { f, host, spine, c, api, producer, reservation, settlement, applications, fresh,
-    quiescent: () => { excluded = true; }, negative: () => { negative = true; excluded = true; } };
+    quiescent: () => { assert.equal(f.assessmentGuardActive(), false); excluded = true; },
+    negative: () => { assert.equal(f.assessmentGuardActive(), false); negative = true; excluded = true; } };
 }
 
 export function integration() {
@@ -69,6 +73,8 @@ export function integration() {
   j.quiescent(); const s3 = settlement();
   let candidate;
   const capture = createTransportAuthority(j.host, { ...j.spine, append(r) {
+    assert.equal(f.assessmentGuardActive(), true);
+    assert.throws(() => f.withdrawAssessment(), /held by synchronous consumer/);
     candidate = r; throw Error('injected pre-append failure');
   } }, j.c, effects.consumeEffectSettlement);
   refused(capture.settle(f.fence, s3), 'pre-append failure');
@@ -77,6 +83,7 @@ export function integration() {
   refused(j.spine.append({ ...candidate, exposure: 0, released: 20 }, [candidate.predecessor, candidate.settlementFact]), 'accounting differs');
   refused(j.spine.append(candidate, [candidate.predecessor, candidate.settlementFact]), 'live eight settlement');
   const lostAck = createTransportAuthority(j.host, { ...j.spine, append(r, required) {
+    assert.equal(f.assessmentGuardActive(), true);
     value(j.spine.append(r, required)); throw Error('injected lost acknowledgement');
   } }, j.c, effects.consumeEffectSettlement);
   refused(lostAck.settle(f.fence, s3), 'lost acknowledgement');
