@@ -82,6 +82,7 @@ describe('repair workflow composition', () => {
       landedIn: 'commit:old', base: 'base:old', contentHash: hash(s.declaration()) };
     const governed = s.build([s.declaration(), guarded], { extract: { ...s.extract, rows: [row] } });
     const observed = { ...checks, observations: [{ site: 'holder', record: 'store', decoder: 'decode:Profile', reads: ['store'], invokes: ['decode:Profile'] }] };
+    expect(detail(runRegisterChecks(s.build([s.declaration(), guarded]), { ...observed, mode: 'replay' }, s.context))).toContain('lacks approved history');
     expect(detail(runRegisterChecks(governed, observed, s.context))).toContain('standing evidence');
     const machine = s.f.principal('executor', 'system');
     const separated = { ...observed, separations: [{ site: 'holder', record: 'store', execution: { principal: machine, grants: s.f.grants, revocations: [], scope: s.f.scope, now: s.f.now },

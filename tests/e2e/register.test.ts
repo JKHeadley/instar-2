@@ -9,6 +9,7 @@ import { defineDecoder, decode } from '../../src/index.js';
 import { generationOf, decodeGenerationRecord } from '../../src/register/index.js';
 import type { FactReference, RegisterContext } from '../../src/register/index.js';
 import { setup, value, json, hash } from '../register/fixtures.js';
+import { installOwnerFixture } from '../register/owner-fixture.js';
 // Emitted runtime is available when tests execute (after build), but a fresh
 // checkout must be typecheckable before dist exists.
 const emittedModule = '../../dist/index.js';
@@ -18,21 +19,40 @@ describe('compiled register build adapter lifecycle', () => {
   it('P3-NF-21 P3-NF-22 P3-NF-23 P3-NF-24 P3-NF-26 P3-NF-27 R1 normal extract and completion workflows invoke the provider and full graph ladder', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-normal-e2e-'));
     try {
-      for (const path of ['docs', 'src', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
+      installOwnerFixture(root);
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       git('init'); git('add', '.'); git('commit', '-qm', 'fixture bootstrap');
       const initial = git('rev-parse', 'HEAD').trim();
-      const conversion = build(root, initial, { mode: 'replay', now: 100 }).conversion;
+      const replay = build(root, initial, { mode: 'replay', now: 100 });
+      const conversion = replay.conversion;
+      expect(replay.authorityPrerequisites).toHaveLength(5);
+      expect(replay.register.entries.find(e => e.declaration.id === 'rungraph.contract')!.approvedIn).toEqual({ state: 'pending-landing' });
       for (const source of conversion.sources) if (source.declaration.requiredFacts.number) Object.assign(source.declaration.requiredFacts, { deadline: 1000, owner: 'fixture-operator', overdueAction: 'surface' });
       const s = setup(); const parent = s.build(); const generation = value(generationOf(parent, s.context));
+      Object.assign(s.f.ctx.register, { entries: [...new Set([...s.f.ctx.register.entries, ...replay.register.entries.map(e => e.declaration.id)])] });
       const record = value(decodeGenerationRecord(json('GenerationRecord', { generation, at: s.f.now }), s.context));
       const reply = <T,>(payload: T) => value(defineDecoder<T, RegisterContext>({ name: 'NormalWorkflowFixture', owner: 'test-only', currentVersion: 1,
         versions: { 1: { validate: input => ({ ok: true, value: input }) } }, migrations: {}, decodeCurrent: () => ({ ok: true, value: payload }) }, s.context.preserved))
         .decode(json('NormalWorkflowFixture', {}), s.context);
       const calls: string[] = [];
+      const compiledTypes = emittedDecode as unknown as typeof decode;
+      const principal = (id: string, kind: 'person' | 'system') => {
+        const proof = s.f.proof({ id, kind }, { id, kind }, 'identity');
+        return value(compiledTypes('VerifiedPrincipal', json('VerifiedPrincipal', { id, kind }),
+          { ...s.f.ctx, provenance: value(compiledTypes('Provenance', proof.input, s.f.ctx)) }));
+      };
+      const executor = principal('fixture-executor', 'system'); const writer = principal('alice', 'person');
+      const ownerSeparations = replay.authorityPrerequisites.map(({ site, record }) => ({ site, record,
+        execution: { principal: executor, grants: s.f.grants, revocations: [], scope: s.f.scope, now: s.f.now }, writer, scope: s.f.scope, action: 'work' }));
+      const ownerRows = replay.register.entries.filter(e => e.declaration.kind === 'governed documents').map(({ declaration }) => {
+        const { declaredBy: _site, ...authored } = declaration;
+        return { id: declaration.id, version: 'fixture-approved:' + declaration.id, status: 'live', since: initial, supersedes: [],
+          approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:document-approval' }, landedIn: initial, base: initial, contentHash: hash(authored) };
+      });
       const provider = { owner: 'part-two' as const, verifyExtract: (e: typeof parent.extract) => { calls.push('extract:' + e.vector.id); return reply({ owner: 'part-two', name: 'FactEnvelope', id: 'verified:fixture' } as FactReference); },
         enteringForce: () => { calls.push('force'); return reply(record); }, isCurrent: () => { calls.push('current'); return reply(true); },
-        verifyShapeChange: () => { throw new Error('unchanged parent shape must not ask for approval'); } };
+        verifyShapeChange: () => { throw new Error('unchanged parent shape must not ask for approval'); }, types: s.f.ctx, separations: ownerSeparations };
       expect(() => build(root, initial, { mode: 'bootstrap', now: 100 })).toThrow('phase verification');
       expect(() => build(root, initial, { mode: 'bootstrap', provider, now: 100 })).toThrow('phase verification');
       let phase: 'converted-unanchored' | 'anchored' = 'converted-unanchored';
@@ -40,7 +60,8 @@ describe('compiled register build adapter lifecycle', () => {
         calls.push('bootstrap:' + binding.commit);
         return reply({ phase, binding, fact: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: 'fixture:conversion-approval' } });
       } };
-      expect(build(root, initial, { mode: 'bootstrap', provider: bootstrapProvider, now: 100 }).register.entries.length).toBeGreaterThan(115);
+      // Conversion-phase approval is not approval of the later owner's contract.
+      expect(() => build(root, initial, { mode: 'bootstrap', provider: bootstrapProvider, now: 100 })).toThrow('lacks approved history');
       expect(calls).toContain('bootstrap:' + initial);
       phase = 'anchored';
       expect(() => build(root, initial, { mode: 'bootstrap', provider: bootstrapProvider, now: 100 })).toThrow('already anchored');
@@ -49,13 +70,16 @@ describe('compiled register build adapter lifecycle', () => {
         verifyBootstrap: binding => bootstrapProvider.verifyBootstrap({ ...binding, checkedAt: 100 }) } })).toThrow('stale/mismatched');
       expect(() => build(root, initial, { mode: 'replay', provider: bootstrapProvider, now: 100 })).toThrow('offline shape verdict');
       const workflow = { mode: 'normal', branch: 'fixture', conversion, parent: { register: parent, generation },
-        extract: { ...s.extract, vector: { owner: 'part-two', name: 'FactPositionVector', id: 'fixture:mirrored' } },
+        extract: { ...s.extract, rows: ownerRows, vector: { owner: 'part-two', name: 'FactPositionVector', id: 'fixture:mirrored' } },
         runs: [], catalog: { fixtures: [], probes: [], sentinels: [], semanticReviews: [] }, landedParts: [], references: [],
         claims: s.context.shape.kinds.map(k => ({ kind: k.name, complete: false })) };
       const commit = () => { writeFileSync(join(root, 'register-source/normal.json'), JSON.stringify(workflow)); git('add', '.'); git('commit', '-qm', 'fixture normal source'); return git('rev-parse', 'HEAD').trim(); };
       const revision = commit();
       expect(() => build(root, revision, { mode: 'normal', workflow, now: 100 })).toThrow('provider');
       const result = build(root, revision, { mode: 'normal', workflow, provider, now: 100 });
+      expect(() => build(root, revision, { mode: 'normal', workflow, provider: { ...provider, separations: [] }, now: 100 })).toThrow('standing evidence');
+      expect(result.authorityPrerequisites).toEqual([]);
+      expect(result.register.entries.find(e => e.declaration.id === 'rungraph.contract')!.approvedIn).toEqual(ownerRows[0]!.approvedIn);
       expect(result.graph.prerequisites).toEqual([]); expect(result.graph.loops).toHaveLength(115);
       expect(result.register.extract.vector.id).toBe('fixture:mirrored');
       expect(calls).toContain('extract:fixture:mirrored'); expect(calls).toContain('force'); expect(calls).toContain('current');
@@ -75,7 +99,7 @@ describe('compiled register build adapter lifecycle', () => {
       s.f.grant({ id: 'landing:grant', grantee: machine, standing: 'delegate', actions, expiresAt: 1000 });
       const completedExtract = { ...workflow.extract, rows: result.register.entries.map(({ declaration }) => {
         const { declaredBy: _site, ...authored } = declaration;
-        return { id: declaration.id, version: 'v:' + declaration.id, status: 'live', since: revision, supersedes: [],
+        return ownerRows.find(r => r.id === declaration.id) ?? { id: declaration.id, version: 'v:' + declaration.id, status: 'live', since: revision, supersedes: [],
           approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:approval' }, landedIn: revision, base: revision, contentHash: hash(authored) };
       }) };
       const completion = { ...workflow, mode: 'completion', pending: result.register, extract: completedExtract };
@@ -89,13 +113,13 @@ describe('compiled register build adapter lifecycle', () => {
       const guarded = { ...s.holder([]), requiredFacts: { ...s.holder([]).requiredFacts, decidesAlone: 'governed-state', enforces: { record: 'store', decoder: 'decode:Profile' } } };
       const governed = { ...workflow, references: [{ provider: 'fixture', id: 'check' }, { provider: 'decoder', id: 'decode:Profile' }],
         catalog: { ...workflow.catalog, fixtures: [{ id: 'check', stage: 'build', artifact: { path: 'src/register/workflow.ts', hash: hash(readFileSync(join(root, 'src/register/workflow.ts'), 'utf8')) } }] },
-        extract: { ...workflow.extract, rows: [{ id: 'store', version: 'v1', status: 'live', since: initial, supersedes: [], approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:approval' },
+        extract: { ...workflow.extract, rows: [...ownerRows, { id: 'store', version: 'v1', status: 'live', since: initial, supersedes: [], approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:approval' },
           landedIn: initial, base: initial, contentHash: hash(s.declaration()) }] } };
       writeFileSync(join(root, 'src/guard.declarations.json'), JSON.stringify([s.declaration(), guarded]));
       const writerProof = s.f.proof({ id: 'alice', kind: 'person' }, { id: 'alice', kind: 'person' }, 'identity');
       const compiledWriter = value(compiledDecode('VerifiedPrincipal', json('VerifiedPrincipal', { id: 'alice', kind: 'person' }),
         { ...s.f.ctx, provenance: value(compiledDecode('Provenance', writerProof.input, s.f.ctx)) }));
-      const separated = { ...provider, types: s.f.ctx, separations: [{ site: 'holder', record: 'store',
+      const separated = { ...provider, types: s.f.ctx, separations: [...ownerSeparations, { site: 'holder', record: 'store',
         execution: { principal: compiledMachine, grants: s.f.grants, revocations: [], scope: s.f.scope, now: s.f.now }, writer: compiledWriter, scope: s.f.scope, action: 'work' }] };
       const reads = "readRegisterEntry('store', register, context); decode('Profile', raw, context);";
       const imports = "import { constructGoverned, readRegisterEntry } from '@instar/constitutional-types/register'; import { decode } from '@instar/constitutional-types';";
@@ -116,7 +140,7 @@ describe('compiled register build adapter lifecycle', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-repair-e2e-'));
     const script = resolve('scripts/build-register.mjs');
     try {
-      for (const path of ['docs', 'src', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       git('init');
       const commit = () => { git('add', '.'); git('commit', '-qm', 'fixture source'); return git('rev-parse', 'HEAD').trim(); };
@@ -190,6 +214,37 @@ describe('compiled register build adapter lifecycle', () => {
   // Measured 63.4s on GitHub x64 (~24s locally): this real compiled-CLI,
   // multi-invocation refusal test needs slow-runner headroom, not a runtime-latency assertion.
   }, 120_000);
+  it('P3-P5 shipped CLI defaults resolve committed owner bindings, but never spoofed calls or stale artifacts', () => {
+    const root = mkdtempSync(join(tmpdir(), 'instar-owner-cli-'));
+    try {
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
+      installOwnerFixture(root);
+      const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+      git('init');
+      const commit = () => { git('add', '.'); git('commit', '-qm', 'owner CLI source'); return git('rev-parse', 'HEAD'); };
+      const script = resolve('scripts/build-register.mjs');
+      const run = (revision: string) => spawnSync(process.execPath, [script, '--replay', '--now', '100', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
+      const revision = commit(); const good = run(revision);
+      expect(good.status, good.stderr).toBe(0);
+      const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
+      expect(source.authority).toBe('shape-only'); expect(source.authorityPrerequisites).toHaveLength(5);
+      const declared = JSON.parse(readFileSync(join(root, 'out/register.json'), 'utf8'));
+      expect(declared.entries.find((e: { declaration: { id: string } }) => e.declaration.id === 'rungraph-core').declaration).toMatchObject({ status: 'dark', profile: { reach: 'user', consequence: 'control', reversibility: 'costly', surface: 'chat' } });
+      const path = join(root, 'src/rungraph/rungraph.ts'); const original = readFileSync(path, 'utf8');
+      // Preserve the real import and the same-name local call, but remove the
+      // actual owner invocation. An identifier-only scanner would accept this.
+      const spoof = original.replace(/decodeRun\(([^;]+)\);/, '((decodeRun) => decodeRun($1))((v) => v);');
+      expect(spoof).not.toBe(original); writeFileSync(path, spoof);
+      const wrongCall = run(commit()); expect(wrongCall.status).not.toBe(0); expect(wrongCall.stderr).toContain('does not read');
+      writeFileSync(path, original);
+      const manifestPath = join(root, 'register-source/owner-references.json'); const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      manifest.decoders[0].artifact.hash = hash('not the committed owner source'); writeFileSync(manifestPath, JSON.stringify(manifest));
+      const stale = run(commit()); expect(stale.status).not.toBe(0); expect(stale.stderr).toContain('artifact hash differs');
+      // Pin validation includes CI artifacts, not just production .ts files.
+      const testPath = join(root, 'tests/rungraph/governance.test.ts'); writeFileSync(testPath, readFileSync(testPath, 'utf8') + '\n// ambient edit\n');
+      const ambient = run(revision); expect(ambient.status).not.toBe(0); expect(ambient.stderr).toContain('source pin trails');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 60_000);
   it('P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-e2e-'));
     try {
