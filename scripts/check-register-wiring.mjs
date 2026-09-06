@@ -68,7 +68,8 @@ export function inspectSource(path, source, sources = {}, program = sourceProgra
     const variable = symbol?.declarations?.find(ts.isVariableDeclaration);
     if (variable?.initializer && (ts.isIdentifier(variable.initializer) || ts.isPropertyAccessExpression(variable.initializer))) {
       const target = identity(variable.initializer, depth + 1);
-      return target?.startsWith('owner:') && !(variable.parent.flags & ts.NodeFlags.Const) ? undefined : target;
+      return target?.startsWith('owner:') && (!(variable.parent.flags & ts.NodeFlags.Const)
+        || ts.isPropertyAccessExpression(node) && !immutableNamespace(node.expression)) ? undefined : target;
     }
     return undefined;
   }

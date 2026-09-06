@@ -75,9 +75,12 @@ export function computed(key: string) { owner[key](x); }`,
   it('R1 proves the receiver binding, not a retained owner member type', () => {
     const client = `import * as owner from './rungraph/index.js';
 import { decodeRun as direct } from './rungraph/index.js';
+import * as aliases from './alias.js';
 export function immutable(input: unknown) { const ns = owner; const next = ns; return next.decodeRun(input); }
 export function imported(input: unknown) { return direct(input); }
 export function extracted(input: unknown) { const ns = owner; const fn = ns.decodeRun; return fn(input); }
+export function immutableMember(input: unknown) { const ns = aliases; return ns.call(input); }
+export function mutableMember(input: unknown) { let ns = aliases; ns = { ...aliases, call: (_v: unknown) => 'impostor' }; const next = ns; return next.call(input); }
 export function reassigned(input: unknown) { let ns = owner; ns = { ...owner, decodeRun: (_v: unknown) => 'impostor' }; return ns.decodeRun(input); }
 export function parameter(input: unknown, ns: typeof owner) { return ns.decodeRun(input); }
 export function defaultParameter(input: unknown, ns: typeof owner = owner) { return ns.decodeRun(input); }
@@ -85,7 +88,8 @@ export function mutableAlias(input: unknown) { let ns = owner; ns = { ...owner, 
 export function extractedMutable(input: unknown) { let ns = owner; ns = { ...owner, decodeRun: (_v: unknown) => 'impostor' }; const fn = ns.decodeRun; return fn(input); }
 export function copied(input: unknown) { const ns = { ...owner, decodeRun: (_v: unknown) => 'impostor' }; return ns.decodeRun(input); }`;
     const sources = { 'src/rungraph/records.ts': 'export const decodeRun = (v: unknown) => v;',
-      'src/rungraph/index.ts': "export { decodeRun } from './records.js';", 'src/client.ts': client };
+      'src/rungraph/index.ts': "export { decodeRun } from './records.js';", 'src/client.ts': client,
+      'src/alias.ts': "import * as owner from './rungraph/index.js'; export const call = owner.decodeRun;" };
     const bindings = [{ id: 'decodeRun', module: { path: 'src/rungraph/index.ts', hash: hash(sources['src/rungraph/index.ts']) },
       artifact: { path: 'src/rungraph/records.ts', hash: hash(sources['src/rungraph/records.ts']) } }];
     const scopes = scanSources(sources, bindings).reports[2]!.scopes;
@@ -95,12 +99,12 @@ export function copied(input: unknown) { const ns = { ...owner, decodeRun: (_v: 
     const exported: Record<string, (input: unknown, ns?: typeof real) => string> = {};
     // Execute the exact scanned TypeScript as well: negative evidence must agree
     // with zero owner calls, not merely with the expected scanner report shape.
-    new Function('require', 'exports', ts.transpileModule(client, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(() => real, exported);
-    for (const name of ['immutable', 'imported', 'extracted']) {
+    new Function('require', 'exports', ts.transpileModule(client, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)((path: string) => path === './alias.js' ? { call: real.decodeRun } : real, exported);
+    for (const name of ['immutable', 'imported', 'extracted', 'immutableMember']) {
       calls = 0; expect(exported[name]!('input')).toBe('real'); expect(calls).toBe(1);
       expect(scopes[name]?.invokes).toEqual(['decodeRun']);
     }
-    for (const name of ['reassigned', 'parameter', 'defaultParameter', 'mutableAlias', 'extractedMutable', 'copied']) {
+    for (const name of ['reassigned', 'parameter', 'defaultParameter', 'mutableAlias', 'extractedMutable', 'copied', 'mutableMember']) {
       calls = 0; expect(exported[name]!('input', fake)).toBe('impostor'); expect(calls).toBe(0);
       expect(scopes[name]?.invokes).toEqual([]);
     }
