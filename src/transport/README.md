@@ -22,6 +22,35 @@ Composition order:
    read-only `ObservationPort`, returning eight's `OperationObservation` reference.
    An observation reference is not a settlement or
    run completion. Weak absence, a fresh key, or restart cannot enable another send.
+6. Bind eight's public `consumeEffectSettlement` as the optional fourth argument
+   to `createTransportAuthority(host, spine, boundary, consumeEffectSettlement)`.
+   Pass the actual `EffectDoorway.settle(operation)` issuance to
+   `authority.settle(fence, settlement)`. The generic parameter preserves eight's
+   branded input type; `SettlementAccountingInput` states consumption requirements,
+   not a competing settlement type or decoder. This is a trusted assembly dependency,
+   like the store/clock, never a callback selected by an untrusted request. Omitting
+   it refuses all settlement applications and keeps reservations held.
+
+Settlement consumption rechecks eight's independent assessment and exact durability
+before reading six's fresh status-bearing prefix. A `SettlementApplication` binds
+the exact operation/request/reservation-fact/claim-fact/digest and settlement fact
+hash, with that fact in its causal closure. The private on-stack admission ticket
+is required inside P2's origin boundary; raw authoring cannot mint a credit release.
+Replay checks the signed evidence binding and arithmetic, never reconstructs a live
+eight issuance. Eight's wire charge is decimal text or `unknown`; six only matches
+that referenced field and imports P1's Outcome consumer, not an eight decoder.
+
+Applications deduplicate by settlement identity, with exact changed-byte refusal;
+successor settlements for an operation conditionally replace its accounting view.
+`released` is cumulative unused credit, not an additive payment. Budget admission
+uses the latest exposure once per operation. A lost ACK or duplicate cannot release
+twice. Unknown occurrence, unknown charge, or possible delayed execution holds at
+least the original maximum. A known charge above that maximum records a cap
+violation and blocks spending beyond the domain cap. Only decisive known-charge,
+quiescent settlement releases unused credit. Eight's reply producer has
+`retryEligible: false`: no new attempt of the same request/semantic message is
+enabled, even after proven non-occurrence. Distinct work in the same run may use
+the remaining budget only after the original is fully reconciled.
 
 The exact P1 imports are in `contracts.ts` and `records.ts`; P2 owns envelope,
 schema registration, signature verification, status snapshots and durable receipts.
@@ -59,8 +88,8 @@ Bounds and honesty:
   the host must establish completion/quiescence before any new observation. This
   slice supplies no automatic quiescence override. The obligation and count remain.
 - Charges are integer host-declared capacity units (not an invented money type).
-  Uncertain charges are retained permanently in this slice. No P8 settlement
-  consumption/release implementation exists yet, and no retry is enabled by that gap.
+  Uncertain charges remain held until sufficient eight-owned settlement arrives;
+  there is no automatic retry, prepared-operation cancellation or new spend ledger.
 - Recovery observers are synchronous, read-only host ports. The policy timeout is
   declared but host process supervision must bound a wedged observer. There is no
   asynchronous timeout supervisor in this package; process-kill tests prove recovery
@@ -79,3 +108,11 @@ The E2E child imports emitted public transport code and is SIGKILLed after claim
 after consumption, after the fixture effect, or inside the active observer. The
 last cut proves fail-closed active retention with zero replacement calls. Its eight doorway is explicitly a
 test stand-in, not the sibling's eventual implementation or an actual Telegram send.
+
+The settlement integration and SIGKILL lifecycle tests import eight's ACTUAL public
+exports and fixture from pushed commit `4048b2d2799112df4ab8809b7462e8b801f527c5`,
+using git objects and this branch's emitted P1/P2/P6 packages. They require a full
+history checkout, fail when the pinned input is absent, and never copy eight's
+source into this package. Nine's independent assessor remains an explicit fixture
+stand-in and the replica is a second local directory, not an independent failure
+domain. This seam does not activate production effects or establish nine's bar.

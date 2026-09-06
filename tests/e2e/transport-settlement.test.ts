@@ -1,0 +1,28 @@
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { expect, it } from 'vitest';
+
+it('P6-NF-11 P6-NF-14 P6-NF-19 P6-NF-34 P6-NF-36 P6-NF-39 SIGKILL after settlement commit before ACK rebuilds one application and exact spend bound', async () => {
+  for (const cut of ['held', 'released']) {
+    const seed = join(mkdtempSync(join(tmpdir(), 'p6-settlement-kill-')), 'seed.json');
+    const child = spawn(process.execPath, ['tests/transport/settlement-worker.mjs', 'start', seed, cut], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', data => { stderr += String(data); });
+    try {
+      const ready = await new Promise<{ ready: boolean }>((resolve, reject) => {
+        let stdout = '';
+        child.stdout.on('data', data => { stdout += String(data); if (stdout.includes('\n')) resolve(JSON.parse(stdout.trim())); });
+        child.once('exit', code => reject(Error(`settlement worker exited ${code}: ${stderr}`)));
+      });
+      expect(ready.ready).toBe(true);
+      const exited = new Promise(resolve => child.once('exit', resolve)); child.kill('SIGKILL'); await exited;
+      const restored = spawnSync(process.execPath, ['tests/transport/settlement-worker.mjs', 'restore', seed], { encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024 });
+      expect(restored.status, restored.stderr).toBe(0);
+      expect(JSON.parse(restored.stdout)).toEqual({ applications: 1, exposure: cut === 'held' ? 20 : 7, released: cut === 'held' ? 0 : 13, calls: 0 });
+    } finally { child.kill('SIGKILL'); }
+  }
+  // Two real compiled-owner SIGKILL/restart cycles with replicated signed history;
+  // not a claim about production recovery latency.
+}, 150000);

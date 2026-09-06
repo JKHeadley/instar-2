@@ -2,9 +2,10 @@ import type { BoundaryContext, Result } from '../index.js';
 import { authorAndAppend } from '../facts/index.js';
 import type { FactStorePort } from '../facts/index.js';
 import type { AdmissionReservation, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord,
-  TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
+  SettlementApplication, SettlementConsumer, TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { checkFence, fenceFor, kindFor, latestLease, latestLoop, live, loopActive, observationAdmission, policyCheck, reservations, rows, validateTransition } from './records.js';
+import { accounting, checkApplicationEvidence, settlementMatches, withApplication } from './settlement.js';
 
 export function createTransportSpine(host: TransportHost, author: FactAuthor, store: FactStorePort): TransportSpine {
   return Object.freeze({ store, append: (record: TransportRecord, required: readonly string[]) => authorAndAppend({
@@ -14,7 +15,7 @@ export function createTransportSpine(host: TransportHost, author: FactAuthor, st
   }, author.context, store, author.privateKey) });
 }
 
-export function createTransportAuthority(host: TransportHost, spine: TransportSpine, c: BoundaryContext): TransportAuthority {
+export function createTransportAuthority<S = never>(host: TransportHost, spine: TransportSpine, c: BoundaryContext, settlementConsumer?: SettlementConsumer<S>): TransportAuthority<S> {
   // A capability is minted only by this live issuer. JSON/restart never recreates it.
   const claims = new WeakMap<object, { operation: string; used: boolean }>();
   let lastTick = -1;
@@ -34,7 +35,9 @@ export function createTransportAuthority(host: TransportHost, spine: TransportSp
     command, predecessor: all.at(-1)?.fact.id ?? '', authority: host.authorityIncarnation, tick: tick() });
   const write = <T extends TransportRecord>(all: readonly TransportFact[], r: T): { record: T; all: readonly TransportFact[] } => {
     validateTransition(r, all, host);
-    const receipt = take(spine.append(r, r.predecessor ? [r.predecessor] : []));
+    const required = r.predecessor ? [r.predecessor] : [];
+    if (r.type === 'SettlementApplication') required.push(r.settlementFact);
+    const receipt = take(spine.append(r, [...new Set(required)]));
     ensure(!receipt.taint.length, 'append was provisional or contested');
     ensure(receipt.fact.kind === kindFor(r.type) && encoded(receipt.fact.body).bytes === encoded({ record: r }).bytes, 'append returned different record');
     if (r.type === 'AdmissionReservation' && r.durability === 'replicated')
@@ -57,6 +60,30 @@ export function createTransportAuthority(host: TransportHost, spine: TransportSp
   });
   return Object.freeze({
     inspect: () => boundary('TransportInspect', null, c, read),
+    settle: (token, settlement) => checked('SettlementApply', { token }, () => {
+      ensure(settlementConsumer, 'eight settlement consumer is not installed');
+      return take(settlementConsumer(settlement, c, s => {
+        // Eight may have persisted assessment/settlement facts during consumption.
+        // Read the fresh status-bearing prefix only AFTER that owner recheck.
+        const snapshot = take(spine.store.readForProjection());
+        ensure(snapshot.entries.every(e => !e.taint.length && !e.conflicts.length), 'tainted settlement prefix');
+        const facts = snapshot.entries.map(e => e.fact), all = read(); fence(all, token);
+        const op = reservations(all).find(p => p.operation === s.operation);
+        ensure(op, 'settlement operation absent');
+        const sf = facts.find(f => settlementMatches(s, f));
+        ensure(sf, 'owner-issued settlement missing from local fact prefix');
+        const fields = { operation: s.operation, request: s.request, reservation: s.reservation, claim: s.claim,
+          digest: s.digest, settlement: s.id, settlementFact: sf.id, settlementHash: sf.contentHash, ...accounting(s, op) };
+        const prior = all.find(v => v.record.type === 'SettlementApplication' && v.record.settlement === s.id)?.record;
+        if (prior) {
+          ensure(prior.type === 'SettlementApplication' && Object.entries(fields).every(([k, v]) => prior[k as keyof SettlementApplication] === v), 'settlement identity reused with changed application');
+          return prior;
+        }
+        const r = { ...meta(all, `settle:${encoded([s.operation, s.id]).hash}`), type: 'SettlementApplication', ...fields } as SettlementApplication;
+        checkApplicationEvidence(r, facts, all);
+        return withApplication(host, r, () => write(all, r).record);
+      }));
+    }),
     acquire: (command, expected, term) => checked('LeaseAcquire', { command, expected, term }, () => {
       const all = read(), previous = duplicateLease(all, command);
       if (previous) { ensure(previous.operation === 'acquire' && previous.predecessor === expected && previous.incarnation === host.incarnation && previous.term === term, 'acquire command changed'); return fenceFor(all, previous); }
@@ -144,5 +171,5 @@ export function createTransportAuthority(host: TransportHost, spine: TransportSp
       if (failed) throw failure;
       return result;
     }),
-  } satisfies TransportAuthority);
+  } satisfies TransportAuthority<S>);
 }

@@ -4,6 +4,7 @@ import { causalCone, registerOwnedBody } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, TransportFact, TransportHost, TransportRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
+import { checkApplicationEvidence, latestApplication, requireApplication } from './settlement.js';
 
 const txt = { kind: 'text', maxLength: 256 } as const;
 const int = { kind: 'integer' } as const;
@@ -17,8 +18,10 @@ export const transportShapes: Readonly<Record<string, OwnedShape>> = freeze({
   AdmissionReservation: { kind: 'object', fields: { ...row, operation: txt, request: txt, attempt: txt, digest: txt, run: txt, semanticMessage: txt, deliveryAttempt: txt, fence, charge: int, state: txt, executor: txt, durability: txt, replicas: int } },
   LoopRecord: { kind: 'object', fields: { ...row, run: txt, episode: txt, policy, attempts: int, started: int, nextWake: int, state: txt, pending: txt } },
   RecoveryRecord: { kind: 'object', fields: { ...row, operation: txt, episode: txt, observation: txt, disposition: txt } },
+  SettlementApplication: { kind: 'object', fields: { ...row, operation: txt, request: txt, reservation: txt, claim: txt, digest: txt,
+    settlement: txt, settlementFact: txt, settlementHash: txt, actualCharge: int, exposure: int, released: int, unresolved: int, capViolation: int, retryEligible: int } },
 });
-const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord'];
+const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'SettlementApplication'];
 export const kindFor = (name: string) => `transport-${name}`;
 export function transportSchemas(host: TransportHost): readonly FactSchema[] {
   return recordNames.map(name => ({ kind: kindFor(name), version: 1,
@@ -150,8 +153,9 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       const prior = reservations(all).find(p => p.operation === r.operation);
       if (!prior) {
         ensure(r.state === 'prepared' && r.executor === '', 'reservation must precede claim');
-        ensure(!reservations(all).some(p => p.request === r.request || p.run === r.run || p.semanticMessage === r.semanticMessage), 'unresolved execution or charge prohibits a new attempt');
-        ensure(reservations(all).reduce((n, p) => n + p.charge, r.charge) <= host.budget, 'spend bound exhausted');
+        ensure(!reservations(all).some(p => p.request === r.request || p.semanticMessage === r.semanticMessage
+          || p.run === r.run && latestApplication(all, p.operation)?.unresolved !== 0), 'unresolved execution or charge prohibits a new attempt');
+        ensure(reservations(all).reduce((n, p) => n + (latestApplication(all, p.operation)?.exposure ?? p.charge), r.charge) <= host.budget, 'spend bound exhausted');
         const loop = latestLoop(all, r.run); ensure(loop && loop.state !== 'stopped', 'durable recovery wake required before reservation');
       } else {
         const immutable = (v: AdmissionReservation) => ({ ...v, command: '', predecessor: '', tick: 0, authority: '', state: '', executor: '' });
@@ -179,6 +183,15 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
           : r.state === 'running' || r.state === 'waiting', 'loop duration/attempt admission mismatch');
       }
       ensure(r.nextWake >= r.tick + r.policy.minDelay, 'minimum wake delay');
+    } else if (r.type === 'SettlementApplication') {
+      const op = reservations(all).find(p => p.operation === r.operation);
+      ensure(op && op.state !== 'prepared', 'application requires dispatched reservation');
+      ensure(!all.some(v => v.record.type === 'SettlementApplication' && v.record.settlement === r.settlement), 'settlement already applied');
+      const prior = latestApplication(all, r.operation);
+      ensure(!prior || prior.actualCharge === -1 || prior.actualCharge === r.actualCharge, 'settled charge changed');
+      ensure(!prior || prior.unresolved === 1 || r.unresolved === 0, 'resolved accounting cannot regress');
+      ensure(r.actualCharge >= -1 && r.exposure >= 0 && r.released >= 0 && [0, 1].includes(r.unresolved)
+        && [0, 1].includes(r.capViolation) && r.retryEligible === 0, 'invalid application accounting');
     } else {
       const op = reservations(all).find(v => v.operation === r.operation);
       ensure(op && op.state !== 'prepared', 'recovery must name an unresolved claim');
@@ -215,6 +228,10 @@ export function registerTransportBodies(host: TransportHost, c: BoundaryContext)
           ensure(past.every(({ fact }) => fact.machine === host.machine && fact.principal.id === host.principal.id
             && fact.principal.kind === host.principal.kind), 'predecessor issuer is not this authority');
           validateTransition(v, past, host);
+          if (v.type === 'SettlementApplication') {
+            checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past);
+            if (ctx.mode === 'origin') requireApplication(host, v);
+          }
           if (ctx.mode === 'origin') {
             live(host);
             const now = host.monotonic();
