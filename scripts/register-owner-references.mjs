@@ -34,7 +34,7 @@ export function loadOwnerReferences(root, input) {
   const raw = input.sources[manifestPath]; if (raw === undefined) continue;
   const manifest = JSON.parse(raw);
   exact(manifest, ['schemaVersion', 'owner', 'fixtures', 'probes', 'decoders', 'documents']);
-  if (manifest.schemaVersion !== 1 || !Object.hasOwn(contracts, manifest.owner)) throw new Error('unknown reference owner/version');
+  if (manifest.schemaVersion !== 1 || typeof manifest.owner !== 'string' || !Object.hasOwn(contracts, manifest.owner)) throw new Error('unknown reference owner/version');
   if (manifestPath !== ownerManifestPath && manifestPath !== `register-source/owner-references/${manifest.owner}.json`)
     throw new Error('owner manifest path disagrees with declared owner');
   if (seen.has(manifest.owner)) throw new Error('duplicate owner manifest'); seen.add(manifest.owner);
@@ -47,7 +47,10 @@ export function loadOwnerReferences(root, input) {
     if (hash(content) !== a.hash) throw new Error('reference artifact hash differs: ' + path);
     result.artifacts[path] = content;
   };
-  const unique = (rows, name) => { if (new Set(rows.map(r => r.id)).size !== rows.length) throw new Error('duplicate owner ' + name); };
+  const unique = (rows, name) => {
+    if (rows.some(r => !r || typeof r.id !== 'string' || !r.id)) throw new Error('owner reference id must be a nonempty string');
+    if (new Set(rows.map(r => r.id)).size !== rows.length) throw new Error('duplicate owner ' + name);
+  };
   for (const kind of ['fixture', 'probe']) {
     const rows = manifest[kind + 's']; unique(rows, kind);
     for (const row of rows) {

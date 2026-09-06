@@ -30,6 +30,10 @@ describe('P4 owner source consumption', () => {
    for (const mutate of [
     (m: typeof original) => { m.owner = 'part-five'; },
     (m: typeof original) => { m.owner = 'part-seven'; },
+    (m: typeof original) => { m.owner = ['part-four']; },
+    (m: typeof original) => { m.fixtures[0].id = ['P4-NF-06']; },
+    (m: typeof original) => { m.decoders[0].id = ['intakeDedupDefinition']; },
+    (m: typeof original) => { m.documents[0].id = ['intake.contract']; },
     (m: typeof original) => { m.claims = []; },
     (m: typeof original) => { m.documents[0].id = 'rungraph.contract'; },
     (m: typeof original) => { m.decoders = m.decoders.filter((d: { id: string }) => d.id !== 'intakeWorkRegistration'); },
