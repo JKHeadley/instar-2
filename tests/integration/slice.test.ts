@@ -339,3 +339,46 @@ it('P11-NF-41 P11-NF-48 an operation six RESOLVED stops blocking its run, while 
   expect(detail((blocked.transport as unknown as { reserve: (i: unknown) => unknown }).reserve(control(blocked))))
     .toContain('unresolved execution or charge prohibits a new attempt');
 }, 240000);
+
+it('P11-NF-41 P11-NF-48 a REPLACEMENT process reconsumes preserved settlement authority before it can fund new admission', async () => {
+  // astra R1: a durable SettlementApplication fact is HISTORY, not live accounting
+  // authority. Recovery guarded on the fact's existence, so a replacement process
+  // neither reconsumed the authority nor restored the applied obligation, yet the
+  // report advertised the operation resolved. A new same-run reservation then refuses
+  // — six correctly fails closed — until the settlement is reconsumed through eight.
+  const control = (a: { liveFence: () => unknown; factOfKind: (kind: string) => { body: Record<string, never> } | undefined }, id: string) => ({
+    command: `slice-reconsume-reserve-${id}`, fence: a.liveFence(),
+    request: { owner: 'part-eight', name: 'EffectRequest', id: `slice-reconsume-request:${id}` },
+    attempt: `slice-reconsume-attempt:${id}`, payloadDigest: `sha256:${'a'.repeat(64)}`, charge: 1,
+    run: { owner: 'part-five', name: 'Run', id: (a.factOfKind('run-opening')!.body as unknown as { run: string }).run },
+    semanticMessage: `slice-reconsume-semantic:${id}`, durability: 'local-durable' as const, replicas: 0,
+  });
+  const isApplication = (v: { record: unknown }) => (v.record as { type: string }).type === 'SettlementApplication';
+  // First process: settle and apply. The once-only application row is now durable.
+  const first = sliceAssembly({ profile: 'reply' });
+  await first.drive();
+  const home = first.home;
+  expect(first.transportFacts().filter(isApplication)).toHaveLength(1);
+  // A REPLACEMENT process on the same durable home: it holds the preserved
+  // application row but no live authority yet. Its drive() must reconsume through
+  // eight and six — the once-only identity is preserved (still ONE application) —
+  // and (re)write the applied-resolved obligation.
+  const replacement = sliceAssembly({ profile: 'reply' }, home);
+  expect(replacement.transportFacts().filter(isApplication)).toHaveLength(1);
+  const report = await replacement.drive() as { obligations: { operation: string; state: string; exposure: string }[];
+    steps: { step: string; state: string }[]; sixOperations: { role: string; resolved: boolean }[] };
+  // Reconsumption regained live authority: a new same-run reservation is ADMITTED.
+  expect(detail((replacement.transport as unknown as { reserve: (i: unknown) => unknown }).reserve(control(replacement, 'after')))).toBeNull();
+  // The once-only application identity is preserved: still exactly one, not a second.
+  expect(replacement.transportFacts().filter(isApplication)).toHaveLength(1);
+  // The derived obligation the guard used to skip is present, and six's op is resolved.
+  expect(report.obligations.some(o => o.state === 'applied-resolved')).toBe(true);
+  expect(report.sixOperations.find(o => o.role === 'outbound-reply')!.resolved).toBe(true);
+  expect(report.steps.some(s => s.step === 'settlement-application' && s.state === 'reconsumed')).toBe(true);
+  // Refusal neighbour: an operation six has NOT resolved cannot qualify a new attempt,
+  // so recovery may never advertise resolution by preserving a row it cannot reconsume.
+  const unresolved = sliceAssembly({ profile: 'full' });
+  await unresolved.drive();
+  expect(detail((unresolved.transport as unknown as { reserve: (i: unknown) => unknown }).reserve(control(unresolved, 'blocked'))))
+    .toContain('unresolved execution or charge prohibits a new attempt');
+}, 240000);

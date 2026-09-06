@@ -153,6 +153,13 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
   // and an operation belonging to another run are each refused by name.
   if (report.sixOperations.length !== report.operations.length)
     bad.push('the six-operation table disagrees with the recorded operation identities');
+  // Exact IDENTITY-SET agreement, not just a matching count (astra R4): a length
+  // check accepts a table whose one identity is foreign to the recorded operations.
+  const tableIds = new Set(report.sixOperations.map(op => op.operation));
+  if (tableIds.size !== report.sixOperations.length) bad.push('the six-operation table lists an operation identity twice');
+  const recordedIds = new Set(report.operations);
+  for (const id of recordedIds) if (!tableIds.has(id)) bad.push(`recorded operation ${id} has no six-operation row`);
+  for (const id of tableIds) if (!recordedIds.has(id)) bad.push(`six-operation ${id} is not among the recorded operation identities`);
   const byRole = new Map<string, number>();
   for (const op of report.sixOperations) {
     if (!SIX_OPERATION_ROLES.includes(op.role)) bad.push(`six-owned operation with no declared section-7 role: ${op.role}`);
@@ -172,6 +179,11 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
       if (exposure < 0 || released < 0) bad.push(`six accounting for ${op.role} is negative`);
       if (released !== Math.max(0, op.charge - exposure)) bad.push(`released credit for ${op.role} does not match its reservation`);
       if (unresolved === 0 && actualCharge < 0) bad.push(`a resolved operation for ${op.role} carries an unknown actual charge`);
+      // A resolved operation's actual charge is what the reservation did NOT release
+      // (astra R3): the figure six carries must agree with its own released credit,
+      // not float free of it.
+      if (unresolved === 0 && actualCharge >= 0 && actualCharge !== op.charge - released)
+        bad.push(`the actual charge for ${op.role} disagrees with its released credit`);
       if (unresolved === 1 && released > 0) bad.push(`an unresolved operation for ${op.role} released credit`);
     }
     if (op.state === 'closed') {
@@ -190,12 +202,36 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
   for (const op of unaccounted(report)) bad.push(`six-owned operation ${op.role} is neither resolved nor named by any obligation`);
   for (const [role, count] of byRole) if (count > 1) bad.push(`${count} six-owned operations for the single ${role} role`);
 
+  // Per-operation exposure reconciliation for BOTH roles (astra R3): the credit a
+  // six operation still holds is decided by SIX's own record, never by the latest
+  // obligation's convenient label. A close released everything (0); an application
+  // retains six's own figure; an operation neither closed nor applied is still fully
+  // reserved (its whole charge). The latest DIRECT obligation naming it must match,
+  // so a partial figure or a relabel to a state outside the open set cannot
+  // understate the reserved credit. This never widens the open set — it reconciles
+  // the number against six regardless of the label.
+  for (const op of report.sixOperations) {
+    const last = [...report.obligations].reverse().find(o => o.operation === op.operation);
+    if (!last) continue;
+    const required = op.state === 'closed' ? 0 : op.application ? op.application.exposure : op.charge;
+    if (Number(last.exposure) !== required)
+      bad.push(`the retained exposure for ${op.role} (${last.exposure}) disagrees with six's record (${required})`);
+  }
+
   // at most one external application per semantic outbound identity
   const bySemantic = new Map<string, number>();
   for (const row of report.externalApplications) bySemantic.set(row.semanticMessage, (bySemantic.get(row.semanticMessage) ?? 0) + 1);
   for (const [key, count] of bySemantic) if (count > 1) bad.push(`${count} external applications for semantic identity ${key}`);
   const byOperation = new Set(report.externalApplications.map(r => r.operation));
   if (byOperation.size !== report.externalApplications.length) bad.push('two applications share one operation identity');
+  // An external application that COMPLETES the outbound operation must carry that
+  // operation's own payload digest and semantic identity (astra R4): binding by
+  // operation alone let a foreign digest or semantic message ride an accepted row.
+  for (const a of report.externalApplications) {
+    if (!report.outbound || a.operation !== report.outbound.operation) continue;
+    if (a.digest !== report.outbound.digest) bad.push('an external application digest disagrees with the outbound payload');
+    if (a.semanticMessage !== report.outbound.semanticMessage) bad.push('an external application semantic identity disagrees with the outbound message');
+  }
 
   // ---------------------------------------------------------------- progress floor
   // Without a LOWER bound the predicate cannot tell an honestly owned-pending
@@ -305,6 +341,23 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
   }
   if (report.settlement && report.settlement.outcome === 'uncertain' && report.settlement.finalCharge !== null)
     bad.push('an uncertain settlement cannot name a final charge');
+  // A KNOWN final charge is exactly what the settlement retains — the rest is
+  // released (astra R3): a known charge with a different retained exposure is a
+  // contradiction the earlier max-retention check (which only fires for an UNKNOWN
+  // charge) could not see.
+  if (report.settlement && report.settlement.finalCharge !== null
+    && report.settlement.retainedExposure !== Number(report.settlement.finalCharge))
+    bad.push('a known-charge settlement retained exposure other than its final charge');
+  // The settlement's OUTCOME must not contradict the independent journal for its own
+  // outbound operation (astra R5): a nonempty unrelated evidence array is not proof,
+  // and a claim of non-occurrence beside a recorded application is a contradiction.
+  if (report.settlement && report.outbound?.operation) {
+    const applied = report.externalApplications.some(a => a.operation === report.outbound!.operation);
+    if (report.settlement.outcome === 'happened' && !applied)
+      bad.push('the settlement claims the effect happened but the journal records no application');
+    if (report.settlement.outcome === 'did-not-happen' && applied)
+      bad.push('the settlement claims non-occurrence while the journal records an application');
+  }
 
   // delivery proved only to the declared stage; a supported final charge only when decisive
   if (report.settlement && report.settlement.delayedExecutionExcluded
@@ -333,6 +386,10 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
   // presenting it as an independent quantity.
   if (a.notifications !== report.externalApplications.length)
     bad.push('the notification count disagrees with the external application count it aliases');
+  // `money` is the sum of the charge journal, not an independent figure (astra R5):
+  // reconcile it against the charges the report carries rather than checking a bound.
+  if (a.money !== report.charges.reduce((sum, c) => sum + c.charge, 0))
+    bad.push('the recorded money disagrees with the charge journal it sums');
   if (a.facts > bounds.maxFacts) bad.push('fact count beyond the declared bound');
   if (a.bytes > bounds.maxBytes) bad.push('durable bytes beyond the declared bound');
   if (a.boots > bounds.maxBoots) bad.push('boot count beyond the declared bound');

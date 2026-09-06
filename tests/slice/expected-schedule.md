@@ -49,3 +49,5 @@
 | judgment | `rebuild:minimal.run-view` | `rebuild:minimal.outbound-obligation` | 3 | rebuild:minimal.run-view, rebuild:minimal.outbound-obligation | 0 | model-judgment:consumed | no settlement; owned-pending-unadmitted, owned-unresolved-model |
 | judgment | `rebuild:minimal.outbound-obligation` | `rebuild:minimal.authority-queue` | 3 | rebuild:minimal.outbound-obligation, rebuild:minimal.authority-queue | 0 | model-judgment:consumed | no settlement; owned-pending-unadmitted, owned-unresolved-model |
 | judgment | `rebuild:minimal.authority-queue` | `rebuild:minimal.guard-repair` | 3 | rebuild:minimal.authority-queue, rebuild:minimal.guard-repair | 0 | model-judgment:consumed | no settlement; owned-pending-unadmitted, owned-unresolved-model |
+| full | `judgment-reservation` | `operation-close` | 3 | judgment-reservation, operation-close | 0 | model-judgment:closed/resolved | no settlement; owned-pending-unadmitted, owned-unresolved-model, owned-pending-no-answer |
+| reply | `outbound-reservation` | `operation-close` | 3 | outbound-reservation, operation-close | 0 | outbound-reply:closed/resolved | no settlement; owned-pending-unadmitted |

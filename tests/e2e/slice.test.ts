@@ -288,3 +288,50 @@ it('P11-NF-48 on REAL history, a terminal obligation label relabelled over six\'
   expect(withinExecution(resolvedClaim, SLICE_INPUT)
     .some(v => v.includes('applied-resolved names an operation six recorded no resolved application for'))).toBe(true);
 }, 240000);
+
+it('P11-NF-44 P11-NF-48 a real SIGKILL AT settlement-application restores the applied-resolved obligation on recovery', async () => {
+  // astra R1: the cut writes the once-only application row, then dies before the
+  // derived obligation. Recovery guarded on the fact, so it neither reconsumed the
+  // authority nor restored the obligation. The completed report must now carry the
+  // applied-resolved obligation and a resolved operation, reconstructed on recovery.
+  const cut = await execute({ profile: 'reply', cuts: ['settlement-application'] });
+  expect(cut.firedCuts).toEqual(['settlement-application']);
+  expect(cut.boots).toBe(2);
+  expect(withinExecution(cut.report, SLICE_INPUT)).toEqual([]);
+  const op = cut.report.sixOperations.find(o => o.role === 'outbound-reply')!;
+  expect(op.resolved).toBe(true);
+  expect(op.application).toEqual({ exposure: 3, released: 17, unresolved: 0, actualCharge: 3 });
+  // The obligation the interrupted boot skipped is present, reconstructed on recovery.
+  const applied = cut.report.obligations.filter(o => o.state === 'applied-resolved');
+  expect(applied).toHaveLength(1);
+  expect(Number(applied[0]!.exposure)).toBe(3);
+  // The once-only application row survived as exactly one; recovery reconsumed it.
+  expect(cut.report.externalApplications).toHaveLength(1);
+  expect(cut.report.steps.some(s => s.step === 'settlement-application'
+    && (s.state === 'reconsumed-and-restored' || s.state === 'applied'))).toBe(true);
+}, 240000);
+
+it('P11-NF-44 P11-NF-48 a real SIGKILL AT operation-close is reconstructed with released credit, in both profiles', async () => {
+  // astra R2: operation-close is genuinely cuttable — the first cut creates the
+  // dead-fence, the second cuts AT the close, interrupting the terminal obligation.
+  // Recovery reconstructs it from six's already-closed record at exposure 0, never
+  // recovering, settling, or reclosing. Both profiles' reports must pass the predicate.
+  const reply = await execute({ profile: 'reply', cuts: ['outbound-reservation', 'operation-close'] });
+  expect(reply.firedCuts).toEqual(['outbound-reservation', 'operation-close']);
+  expect(withinExecution(reply.report, SLICE_INPUT)).toEqual([]);
+  const replyOp = reply.report.sixOperations.find(o => o.role === 'outbound-reply')!;
+  expect([replyOp.state, replyOp.resolved]).toEqual(['closed', true]);
+  const replyClosed = [...reply.report.obligations].reverse().find(o => o.operation === replyOp.operation)!;
+  expect([replyClosed.state, Number(replyClosed.exposure)]).toEqual(['closed-unexecuted', 0]);
+  expect(reply.report.externalApplications).toEqual([]);
+
+  const full = await execute({ profile: 'full', cuts: ['judgment-reservation', 'operation-close'] });
+  expect(full.firedCuts).toEqual(['judgment-reservation', 'operation-close']);
+  expect(withinExecution(full.report, SLICE_INPUT)).toEqual([]);
+  const modelOp = full.report.sixOperations.find(o => o.role === 'model-judgment')!;
+  expect([modelOp.state, modelOp.resolved]).toEqual(['closed', true]);
+  const modelClosed = [...full.report.obligations].reverse().find(o => o.operation === modelOp.operation)!;
+  expect([modelClosed.state, Number(modelClosed.exposure)]).toEqual(['closed-unexecuted', 0]);
+  // Neither reconstruction dispatched, settled, or reclosed: no external application.
+  expect(full.report.externalApplications).toEqual([]);
+}, 300000);

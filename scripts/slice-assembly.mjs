@@ -131,16 +131,31 @@ export const SLICE_BOUNDARIES = Object.freeze([...new Set(Object.values(PROFILE_
 export const UNREACHED_BOUNDARIES = Object.freeze({ grounding: 'part-five refuses grounding for an intake-opened run; slice-five-gap.md' });
 
 /**
- * Declared, and reached ONLY on a recovery path, so no control execution fires them.
- * `operation-close` is six's conditional close of a prepared operation whose reserving
- * fence died with its worker. It is reachable only after a cut that leaves a
- * reservation prepared and unclaimed — the `outbound-reservation` cut in the reply
- * profile and the `judgment-reservation` cut in the single chain. The kill schedule
- * reaches it, and the suite asserts that it is reached and never itself cut.
+ * Declared, and reached ONLY on a recovery path, so no CONTROL execution (a single
+ * adjacent-pair cut) fires them. `operation-close` is six's conditional close of a
+ * prepared operation whose reserving fence died with its worker. It is reachable only
+ * after a cut that leaves a reservation prepared and unclaimed — the
+ * `outbound-reservation` cut in the reply profile and the `judgment-reservation` cut in
+ * the single chain. A recovery-only boundary is still CUTTABLE as the SECOND cut of a
+ * dedicated recovery pair (see `RECOVERY_CUT_PAIRS`); the schedule cuts it there and the
+ * suite asserts the recovery reconstructs the terminal obligation with released credit.
  */
 export const RECOVERY_BOUNDARIES = Object.freeze({
   'operation-close': 'six conditionally closes a prepared operation whose reserving fence is gone; reached only '
     + 'after a cut that leaves a reservation unclaimed (outbound-reservation, or judgment-reservation in the single chain)',
+});
+
+/**
+ * The recovery-triggered cut pairs: a first cut that creates the dead-fence
+ * condition, then a cut AT the recovery boundary it makes reachable. A recovery-only
+ * boundary is not uncuttable — calling it recovery-only only means no control pair
+ * reaches it. These pairs put the recovery path itself under the SIGKILL discipline,
+ * so a cut that interrupts the terminal obligation write must be reconstructed on the
+ * next boot rather than left retaining the released credit. (astra R2)
+ */
+export const RECOVERY_CUT_PAIRS = Object.freeze({
+  full: Object.freeze([Object.freeze(['judgment-reservation', 'operation-close'])]),
+  reply: Object.freeze([Object.freeze(['outbound-reservation', 'operation-close'])]),
 });
 
 /** Every name `boundary()` may use. */
@@ -896,6 +911,26 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     .filter(v => v.record.type === 'SettlementApplication' && v.record.operation === operation).at(-1);
   const obligationNames = operation => factsOfKind('slice-obligation')
     .some(f => f.body.operation === operation || f.body.operation.endsWith(`:${operation}`));
+  const hasAppliedObligation = operation => factsOfKind('slice-obligation')
+    .some(f => f.body.operation === operation && ['applied-resolved', 'applied-unresolved'].includes(f.body.state));
+  const hasClosedObligation = operation => factsOfKind('slice-obligation')
+    .some(f => f.body.operation === operation && f.body.state === 'closed-unexecuted');
+
+  /**
+   * Six already recorded a conditional close, but a cut AT the operation-close
+   * boundary interrupted the terminal obligation write. Reconstruct it from six's
+   * OWN already-closed record — never dispatch, settle or reclose the operation —
+   * so the released credit is not left masked by a stale open obligation from an
+   * earlier boot. Level-triggered: it runs only while the terminal row is missing.
+   * (astra R2)
+   */
+  function reconcileClosed(operation, semanticMessage) {
+    if (hasClosedObligation(operation)) return;
+    obligation({ operation, semanticMessage, state: 'closed-unexecuted', owner: 'part-six', exposure: 0,
+      detail: 'recovery reconstructed the terminal obligation from six\'s already-closed record: the committed '
+        + 'prefix proves the operation is closed with its reserved credit released; no dispatch, settlement or reclose was performed' });
+    record('close', 'reconciled', { operation });
+  }
 
   /**
    * An unresolved six operation retains its reserved exposure and blocks this run's
@@ -916,16 +951,23 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
    * Apply an AUTHENTIC eight-issued settlement through six's public seam, so the
    * operation becomes RESOLVED and stops blocking its run. Six re-enters eight's
    * `consumeEffectSettlement` itself; nothing here forges or copies a settlement.
+   *
+   * A durable SettlementApplication fact is HISTORY, not live accounting authority:
+   * a replacement process must RECONSUME current eight authority through six before
+   * the once-only application can fund new admission (src/transport/settlement.ts).
+   * So this always re-enters eight's producer and six's settle — idempotent on the
+   * once-only application identity, verified 1→1 — and fires the durable boundary
+   * only the FIRST time the application row is written. (astra R1)
    */
   function applySettlement(operation) {
-    const already = applicationFor(operation);
-    if (already) return { ok: true, value: already.record, already: true };
+    const firstApplication = !applicationFor(operation);
     const issued = settled(effects.settle(operation));
     if (!issued.ok) return issued;
     const applied = settled(transport.settle(liveFence(), issued.value));
-    if (applied.ok) boundary('settlement-application', { operation, released: applied.value.released,
+    if (!applied.ok) return applied;
+    if (firstApplication) boundary('settlement-application', { operation, released: applied.value.released,
       exposure: applied.value.exposure, unresolved: applied.value.unresolved });
-    return applied;
+    return { ok: true, value: applied.value, reconsumed: !firstApplication };
   }
 
   /**
@@ -942,6 +984,10 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   function resolveModelOperation() {
     const row = modelOperation();
     if (!row) return;
+    // A model operation six already CLOSED (a cut at operation-close interrupted the
+    // terminal write on an earlier boot) is reconstructed from six's record, never
+    // reclosed — reclosing refuses and would leave the stale open obligation. (astra R2)
+    if (row.record.state === 'closed') { reconcileClosed(row.operation, row.record.semanticMessage); return; }
     if (applicationFor(row.operation)) { record('resolve', 'already-resolved'); return; }
     if (factsOfKind('slice-obligation').some(f => f.body.operation === `resolve:${row.operation}`)) {
       record('resolve', 'held', { detail: 'recorded owned-pending; not re-attempted' }); return;
@@ -1057,6 +1103,12 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     if (!reservation) { record('outbound', 'blocked-at-six', { detail: 'no six-owned reservation for the prepared request' }); return; }
     const operation = reservation.record.operation;
 
+    // An operation six already CLOSED (a cut at operation-close on an earlier boot
+    // interrupted the terminal obligation write) is reconstructed from six's record
+    // and never recovered, settled or reclosed — otherwise recovery leaves a stale
+    // open obligation retaining the very credit the close released. (astra R2)
+    if (reservation.record.state === 'closed') { reconcileClosed(operation, record8.semanticMessage); return; }
+
     // ---- dispatch, or RECOVER an already-claimed operation ------------------
     const stages = () => factsOfKind('effect-OperationObservation').map(f => f.body.record.stage);
     const resolvedStage = () => stages().some(v => ['response', 'unknown', 'lookup'].includes(v));
@@ -1107,22 +1159,33 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
       }
     }
 
-    // ---- six APPLIES the settlement: the operation becomes RESOLVED ---------
-    // Level-triggered and independent of which boot wrote the settlement fact: a
-    // replacement re-enters eight's own producer for the same operation, which
-    // returns its existing settlement, and applies THAT through six.
-    if (factOfKind('effect-EffectSettlement') && !applicationFor(operation)) {
+    // ---- six APPLIES the settlement, and RECONSUMES it on every recovery ----
+    // docs/10 §4 + src/transport/settlement.ts: the application is once-only, but a
+    // replacement process must reconsume live eight authority before the preserved
+    // application can fund a new admission — a durable row is history, not authority.
+    // So this reconsumes on EVERY boot a settlement exists (idempotent), and (re)writes
+    // the derived obligation a cut at the settlement-application boundary skipped. The
+    // guard is now the OBLIGATION, not the application fact: a cut writes the row before
+    // the boundary fires, so guarding on the fact left recovery neither reconsuming nor
+    // restoring the obligation. (astra R1)
+    if (factOfKind('effect-EffectSettlement')) {
       const applied = applySettlement(operation);
-      record('settlement-application', applied.ok ? 'applied' : 'refused', applied.ok
-        ? { released: applied.value.released, exposure: applied.value.exposure, unresolved: applied.value.unresolved }
-        : { detail: applied.detail });
-      if (applied.ok) obligation({ operation, semanticMessage: record8.semanticMessage,
-        state: applied.value.unresolved === 0 ? 'applied-resolved' : 'applied-unresolved', owner: 'part-six',
-        exposure: applied.value.exposure,
-        detail: `released=${applied.value.released}; actualCharge=${applied.value.actualCharge}` });
-      else obligation({ operation, semanticMessage: record8.semanticMessage, state: 'owned-unapplied-unsettled',
-        blocker: 'part-six', owner: 'part-eight', exposure: operationDefinition.maxCharge,
-        detail: String(applied.detail).slice(0, 3000) });
+      if (applied.ok) {
+        if (!hasAppliedObligation(operation)) {
+          obligation({ operation, semanticMessage: record8.semanticMessage,
+            state: applied.value.unresolved === 0 ? 'applied-resolved' : 'applied-unresolved', owner: 'part-six',
+            exposure: applied.value.exposure,
+            detail: `released=${applied.value.released}; actualCharge=${applied.value.actualCharge}` });
+          record('settlement-application', applied.reconsumed ? 'reconsumed-and-restored' : 'applied',
+            { released: applied.value.released, exposure: applied.value.exposure, unresolved: applied.value.unresolved });
+        } else if (applied.reconsumed) record('settlement-application', 'reconsumed',
+          { released: applied.value.released, exposure: applied.value.exposure, unresolved: applied.value.unresolved });
+      } else if (!factsOfKind('slice-obligation').some(f => f.body.operation === operation && f.body.state === 'owned-unapplied-unsettled')) {
+        obligation({ operation, semanticMessage: record8.semanticMessage, state: 'owned-unapplied-unsettled',
+          blocker: 'part-six', owner: 'part-eight', exposure: operationDefinition.maxCharge,
+          detail: String(applied.detail).slice(0, 3000) });
+        record('settlement-application', 'refused', { detail: applied.detail });
+      }
     }
   }
 

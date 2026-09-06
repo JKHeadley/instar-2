@@ -75,8 +75,11 @@ it('P11-NF-45 separate executions are compared semantically and are never forced
 });
 
 it('P11-NF-48 an ownerless or unknown obligation state fails; owned-pending states pass', () => {
-  expect(withinExecution(report({ obligations: [{ operation: OPERATION, state: 'owned-uncertain', owner: 'part-eight', blocker: 'adapter-evidence', exposure: '20' }],
-    settlement: null }), SLICE_INPUT)).toEqual([]);
+  // An unresolved operation whose whole reservation is still retained: six's record
+  // (no application, not closed) and the owned-uncertain obligation agree at 20.
+  expect(withinExecution(report({ sixOperations: [outboundOp({ resolved: false, state: 'dispatch-uncertain', application: null })],
+    obligations: [{ operation: OPERATION, state: 'owned-uncertain', owner: 'part-eight', blocker: 'adapter-evidence', exposure: '20' }],
+    settlement: null, externalApplications: [], deliveryEvidence: [], charges: [], accounting: { ...report().accounting, notifications: 0, money: 0 } }), SLICE_INPUT)).toEqual([]);
   const bad = withinExecution(report({ obligations: [{ operation: OPERATION, state: 'quietly-dropped', owner: '', blocker: 'none', exposure: '0' }] }), SLICE_INPUT);
   expect(bad.some(v => v.includes('outside the allowed set'))).toBe(true);
   expect(bad.some(v => v.includes('ownerless obligation'))).toBe(true);
@@ -180,7 +183,7 @@ it('P11-NF-48 the progress floor refuses an execution that recorded nothing at a
   const pending = report({ settlement: null, reply: null, outbound: null, deliveryEvidence: [],
     externalApplications: [], charges: [], operations: [], sixOperations: [], semanticKeys: [], routes: [],
     obligations: [{ operation: 'pending:sm:1', state: 'owned-pending-no-answer', owner: 'part-seven', blocker: 'part-seven', exposure: '20' }],
-    accounting: { ...report().accounting, notifications: 0 } });
+    accounting: { ...report().accounting, notifications: 0, money: 0 } });
   expect(withinExecution(pending, SLICE_INPUT)).toEqual([]);
   const empty = withinExecution({ ...pending, obligations: [] }, SLICE_INPUT);
   expect(empty.some(v => v.includes('recorded neither progress nor a reason for its absence'))).toBe(true);
@@ -193,7 +196,7 @@ it('P11-NF-48 an open obligation may not release the exposure it is holding', ()
   expect(withinExecution(open, SLICE_INPUT).some(v => v.includes('released its exposure'))).toBe(true);
   // A grounding obligation carries no charge, so zero exposure is correct there.
   const grounding = report({ settlement: null, reply: null, outbound: null, deliveryEvidence: [], externalApplications: [],
-    charges: [], operations: [], sixOperations: [], semanticKeys: [], routes: [], accounting: { ...report().accounting, notifications: 0 },
+    charges: [], operations: [], sixOperations: [], semanticKeys: [], routes: [], accounting: { ...report().accounting, notifications: 0, money: 0 },
     obligations: [{ operation: 'grounding:run:1', state: 'owned-pending-unadmitted', owner: 'part-five', blocker: 'part-five', exposure: '0' }] });
   expect(withinExecution(grounding, SLICE_INPUT)).toEqual([]);
   expect(OPEN_OBLIGATION_STATES).toContain('owned-uncertain');
@@ -214,7 +217,7 @@ it('P11-NF-48 an admitted outbound operation must carry an obligation, and a blo
     { operation: 'operation:sha256:other', state: 'settled-happened', owner: 'part-eight', blocker: 'none', exposure: '3' }] }), SLICE_INPUT)
     .some(v => v.includes('admitted outbound operation with no recorded obligation'))).toBe(true);
   const blocked = report({ settlement: null, deliveryEvidence: [], externalApplications: [], charges: [],
-    operations: [], sixOperations: [], semanticKeys: [], routes: [], accounting: { ...report().accounting, notifications: 0 },
+    operations: [], sixOperations: [], semanticKeys: [], routes: [], accounting: { ...report().accounting, notifications: 0, money: 0 },
     outbound: { request: 'request:1', digest: DIGEST, semanticMessage: 'sm:1', operation: null, charge: null, observations: [] },
     obligations: [{ operation: 'unreserved:request:1', state: 'owned-pending-unadmitted', owner: 'part-six', blocker: 'part-six', exposure: '20' }] });
   expect(withinExecution(blocked, SLICE_INPUT)).toEqual([]);
@@ -463,4 +466,72 @@ it('P11-NF-48 the resolved flag is refused when it contradicts the state and app
     application: { exposure: 20, released: 0, unresolved: 1, actualCharge: -1 } })],
   obligations: [{ operation: OPERATION, state: 'applied-unresolved', owner: 'part-six', blocker: 'none', exposure: '20' }] }), SLICE_INPUT)).toEqual([]);
   expect(withinExecution(model(), SLICE_INPUT)).toEqual([]);
+});
+
+// astra R3: exposure and accounting agreement were enforced for the outbound role and
+// the latest label only, so a partial figure, a relabel to a state outside the open
+// set, or a settlement/application number floating free of six's record all passed.
+// The reconciliation reads SIX's own record for BOTH roles, never the label.
+it('P11-NF-48 per-operation exposure is reconciled against six for both roles, not read off a convenient label', () => {
+  // The real shapes still pass, as the anchor for every refusal below.
+  expect(withinExecution(report(), SLICE_INPUT)).toEqual([]);
+  expect(withinExecution(model(), SLICE_INPUT)).toEqual([]);
+  // model-partial-exposure: the model op is consumed/unresolved with charge 20 and no
+  // application, so its whole reservation is retained; a partial figure understates it.
+  expect(withinExecution(relabel('owned-unresolved-model', '1'), SLICE_INPUT)
+    .some(v => v.includes('the retained exposure for model-judgment (1) disagrees with six\'s record (20)'))).toBe(true);
+  // model-prepared-zero-exposure: a relabel to `prepared` (outside the open set) used
+  // to escape the open-obligation exposure rule; the reconciliation catches it anyway.
+  expect(withinExecution(relabel('prepared', '0'), SLICE_INPUT)
+    .some(v => v.includes('the retained exposure for model-judgment (0) disagrees with six\'s record (20)'))).toBe(true);
+  // applied-obligation-zero: a resolved application retains six's OWN figure (3), so
+  // the derived obligation may not drop below it.
+  expect(withinExecution(report({ obligations: [{ operation: OPERATION, state: 'applied-resolved', owner: 'part-six', blocker: 'none', exposure: '0' }] }), SLICE_INPUT)
+    .some(v => v.includes('the retained exposure for outbound-reply (0) disagrees with six\'s record (3)'))).toBe(true);
+});
+
+it('P11-NF-48 six\'s settlement accounting is reconciled: actual charge, known-charge retention, and the money journal', () => {
+  // application-actual-charge-mismatch: the actual charge must equal what was NOT
+  // released (20 − 17 = 3); 19 floats free of six's own released credit.
+  expect(withinExecution(report({ sixOperations: [outboundOp({
+    application: { exposure: 3, released: 17, unresolved: 0, actualCharge: 19 } })] }), SLICE_INPUT)
+    .some(v => v.includes('the actual charge for outbound-reply disagrees with its released credit'))).toBe(true);
+  // settlement-known-charge-zero-exposure: a KNOWN final charge is exactly what is
+  // retained; the earlier max-retention rule only fired for an unknown charge.
+  expect(withinExecution(report({ settlement: { outcome: 'happened', finalCharge: '3', retainedExposure: 0, delayedExecutionExcluded: true } }), SLICE_INPUT)
+    .some(v => v.includes('a known-charge settlement retained exposure other than its final charge'))).toBe(true);
+  // accounting-money-zero: money is the sum of the charge journal, not a free figure.
+  expect(withinExecution(report({ accounting: { ...report().accounting, money: 0 } }), SLICE_INPUT)
+    .some(v => v.includes('the recorded money disagrees with the charge journal it sums'))).toBe(true);
+});
+
+it('P11-NF-45 P11-NF-48 identity-set agreement and payload binding are exact, not counted', () => {
+  // table-foreign-identity: a length check accepted a table whose one identity is
+  // foreign to the recorded operations; the set check refuses it both ways.
+  const foreign = withinExecution(report({ operations: ['operation:foreign'] }), SLICE_INPUT);
+  expect(foreign.some(v => v.includes('recorded operation operation:foreign has no six-operation row'))).toBe(true);
+  expect(foreign.some(v => v.includes('is not among the recorded operation identities'))).toBe(true);
+  // external-payload-digest-mismatch and external-semantic-mismatch: an external
+  // application that COMPLETES the outbound operation must carry that operation's own
+  // payload digest and semantic identity.
+  expect(withinExecution(report({ externalApplications: [{ operation: OPERATION, digest: `sha256:${'f'.repeat(64)}`, semanticMessage: 'sm:1', messageId: 'service-message:1' }] }), SLICE_INPUT)
+    .some(v => v.includes('an external application digest disagrees with the outbound payload'))).toBe(true);
+  expect(withinExecution(report({ externalApplications: [{ operation: OPERATION, digest: DIGEST, semanticMessage: 'foreign-semantic', messageId: 'service-message:1' }] }), SLICE_INPUT)
+    .some(v => v.includes('an external application semantic identity disagrees with the outbound message'))).toBe(true);
+});
+
+it('P11-NF-48 a settlement outcome that contradicts its own journal is refused, and the legitimate neighbours pass', () => {
+  // false-settlement-outcome: a claim of non-occurrence beside a recorded application
+  // is a contradiction; a nonempty unrelated evidence array is not proof.
+  expect(withinExecution(report({ settlement: { outcome: 'did-not-happen', finalCharge: '3', retainedExposure: 3, delayedExecutionExcluded: true } }), SLICE_INPUT)
+    .some(v => v.includes('the settlement claims non-occurrence while the journal records an application'))).toBe(true);
+  // The inverse: an occurrence claim with no application in the journal.
+  expect(withinExecution(report({ externalApplications: [], deliveryEvidence: [], accounting: { ...report().accounting, notifications: 0, money: 0 }, charges: [] }), SLICE_INPUT)
+    .some(v => v.includes('the settlement claims the effect happened but the journal records no application'))).toBe(true);
+  // The genuine decisive non-occurrence neighbour (no application) still passes.
+  expect(withinExecution(report({ settlement: { outcome: 'did-not-happen', finalCharge: null, retainedExposure: 20, delayedExecutionExcluded: true },
+    externalApplications: [], charges: [], accounting: { ...report().accounting, notifications: 0, money: 0 },
+    deliveryEvidence: [{ operation: OPERATION, stage: 'service-applied', decisive: 'decisive', value: 'did-not-happen' }],
+    sixOperations: [outboundOp({ state: 'dispatch-claimed', resolved: false, application: { exposure: 20, released: 0, unresolved: 1, actualCharge: -1 } })],
+    obligations: [{ operation: OPERATION, state: 'applied-unresolved', owner: 'part-six', blocker: 'none', exposure: '20' }] }), SLICE_INPUT)).toEqual([]);
 });

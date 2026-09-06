@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PROFILE_BOUNDARIES } from './slice-assembly.mjs';
+import { PROFILE_BOUNDARIES, RECOVERY_CUT_PAIRS } from './slice-assembly.mjs';
 
 export const SCHEDULE_HEADER = [
   '| Profile | Cut after | then after | Boots | Cuts that fired | External applications | Six operations | Terminal disposition |',
@@ -62,6 +62,13 @@ if (process.argv[1] && process.argv[1].endsWith('slice-schedule-record.mjs')) {
   const rows = [];
   for (const [profile, boundaries] of Object.entries(PROFILE_BOUNDARIES))
     for (const pair of adjacentPairs(boundaries)) {
+      const { boots, fired, report } = execute(profile, pair);
+      rows.push(scheduleRow(profile, pair, boots, fired, report));
+    }
+  // The recovery-triggered cut pairs, cut AT the recovery boundary, appended in the
+  // same order the acceptance suite runs them so the rendered record is byte-identical.
+  for (const [profile, pairs] of Object.entries(RECOVERY_CUT_PAIRS))
+    for (const pair of pairs) {
       const { boots, fired, report } = execute(profile, pair);
       rows.push(scheduleRow(profile, pair, boots, fired, report));
     }
