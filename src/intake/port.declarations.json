@@ -1,0 +1,8 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "intake-slice", "kind": "features", "status": "live",
+    "requiredFacts": { "metrics": ["intake.preserved", "intake.admitted", "intake.held", "intake.hold-age", "intake.mismatch", "intake.stop"] },
+    "profile": { "type": "Profile", "schemaVersion": 1, "consequence": "control", "reversibility": "reversible", "reach": "internal", "surface": "none", "repeats": { "kind": "no" } },
+    "standards": [14, 28, 42, 46, 83, 103], "holds": []
+  }
+]
