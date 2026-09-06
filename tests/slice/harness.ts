@@ -6,18 +6,15 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SliceReport } from './acceptance.js';
+import { PROFILE_BOUNDARIES } from './boundaries.js';
 
 export const SLICE_INPUT = JSON.stringify({ schemaVersion: 1, kind: 'message', text: 'Please classify and acknowledge this request.' });
 
-/** The durable boundaries each profile can reach, in executed order. */
-export const REPLY_BOUNDARIES: readonly string[] = ['preservation', 'authentication', 'standing', 'run-creation',
-  'outbound-preparation', 'outbound-reservation', 'outbound-claim', 'outbound-consume', 'external-send',
-  'delivery-evidence', 'settlement', 'rebuild:minimal.intake-ledger', 'rebuild:minimal.principal-binding',
-  'rebuild:minimal.run-view', 'rebuild:minimal.outbound-obligation', 'rebuild:minimal.authority-queue', 'rebuild:minimal.guard-repair'];
-export const JUDGMENT_BOUNDARIES: readonly string[] = ['preservation', 'authentication', 'standing', 'run-creation',
-  'judgment-request', 'judgment-reservation', 'judgment-claim', 'judgment-dispatch', 'model-invocation',
-  'judgment-resolution', 'outbound-preparation', 'rebuild:minimal.intake-ledger', 'rebuild:minimal.principal-binding',
-  'rebuild:minimal.run-view', 'rebuild:minimal.outbound-obligation', 'rebuild:minimal.authority-queue', 'rebuild:minimal.guard-repair'];
+// The durable boundaries each profile reaches come from the ASSEMBLY, which is the
+// single source: `boundary()` refuses an undeclared name, and the control executions
+// below assert the converse. Nothing here restates a boundary name.
+export const REPLY_BOUNDARIES: readonly string[] = PROFILE_BOUNDARIES['reply']!;
+export const JUDGMENT_BOUNDARIES: readonly string[] = PROFILE_BOUNDARIES['judgment']!;
 
 export interface Execution {
   readonly home: string; readonly boots: number; readonly report: SliceReport;

@@ -1,5 +1,5 @@
 {
-  "note": "Part-eleven slice adapter evidence contracts. Both rows are Telegram-SHAPED test doubles with an independently readable service journal. Neither is a live Telegram credential, service byte, human delivery or consumption claim. The positive row exists because docs/15 section 7 requires a positive slice whose adapter CAN prove application, decisive non-occurrence, a declared finite quiescence observation and an observable final charge; the opaque row is its required uncertainty neighbour.",
+  "note": "Part-eleven slice adapter evidence contracts. Both rows are Telegram-SHAPED test doubles with an independently readable service journal. Neither is a live Telegram credential, service byte, human delivery or consumption claim. The positive row exists because docs/15 section 7 requires a positive slice whose adapter CAN prove application, decisive non-occurrence, a declared finite quiescence observation and an observable final charge; the opaque row is its required uncertainty neighbour. Every SUPPORTED capability declares the exact executed test that exercises it in `conformance`, as '<file>::<substring of the test title>'; scripts/check-p11-contract-map.mjs refuses a capability whose named test did not pass in the actual run. `applicationAndDeliveryStage.stage` is the ONLY source of the stage any evidence may claim: the assembly reads it from here and never names a stage itself.",
   "adapters": {
     "telegram-slice": {
       "id": "telegram-slice-evidence",
@@ -35,7 +35,7 @@
           "subjectBinding": "operation/claim/account/conversation/digest",
           "horizon": "every application ever performed by this service instance",
           "observationBudget": 3,
-          "conformance": "tests/e2e/slice.test.ts",
+          "conformance": "tests/e2e/slice.test.ts::a cut execution keeps stable logical identities",
           "limit": "test double; authoritative only over its own journal, never over live Telegram"
         },
         "applicationAndDeliveryStage": {
@@ -45,8 +45,9 @@
           "subjectBinding": "operation/claim/account/conversation/digest",
           "horizon": "exact service invocation",
           "observationBudget": 3,
-          "conformance": "tests/e2e/slice.test.ts",
-          "limit": "declared stage is service-applied; no stronger stage may be claimed from it"
+          "conformance": "tests/e2e/slice.test.ts::the uninterrupted control execution runs the chain",
+          "limit": "declared stage is service-applied; no stronger stage may be claimed from it",
+          "stage": "service-applied"
         },
         "decisiveNonOccurrence": {
           "status": "supported",
@@ -55,7 +56,7 @@
           "subjectBinding": "operation identity",
           "horizon": "complete journal history",
           "observationBudget": 3,
-          "conformance": "tests/e2e/slice.test.ts",
+          "conformance": "tests/e2e/slice.test.ts::the SAME cut on an adapter that CAN prove decisive non-occurrence",
           "limit": "decisive only because this fixture service has exactly one durable writer"
         },
         "exclusionOfDelayedExecution": {
@@ -65,7 +66,7 @@
           "subjectBinding": "operation identity",
           "horizon": "quiescenceTicks after the last recorded intake of the operation",
           "observationBudget": 1,
-          "conformance": "tests/e2e/slice.test.ts",
+          "conformance": "tests/e2e/slice.test.ts::the SAME cut on an adapter that CAN prove decisive non-occurrence",
           "limit": "single-writer fixture; a real distributed destination needs destination fencing"
         },
         "finalCharge": {
@@ -75,7 +76,7 @@
           "subjectBinding": "operation identity",
           "horizon": "at application time",
           "observationBudget": 1,
-          "conformance": "tests/e2e/slice.test.ts",
+          "conformance": "tests/e2e/slice.test.ts::the uninterrupted control execution runs the chain",
           "limit": "fixture units; NOT actual money or Telegram billing"
         },
         "prerequisiteDurability": {
@@ -85,7 +86,7 @@
           "subjectBinding": "each required fact id and contentHash",
           "horizon": "acknowledged prefix",
           "observationBudget": 1,
-          "conformance": "tests/e2e/slice.test.ts",
+          "conformance": "tests/integration/slice.test.ts::the public boot path supplies real persistence",
           "limit": "the second directory ANNOUNCES itself as a peer STAND-IN; shared disk loss is not covered"
         }
       }
@@ -117,7 +118,10 @@
       "hiddenRetries": 0,
       "productionActivation": "dark",
       "capabilities": {
-        "stableOperationAndReceiptLookup": { "status": "unsupported", "reason": "read-only query returns unknown; no authoritative receipt lookup is claimed" },
+        "stableOperationAndReceiptLookup": {
+          "status": "unsupported",
+          "reason": "read-only query returns unknown; no authoritative receipt lookup is claimed"
+        },
         "applicationAndDeliveryStage": {
           "status": "supported",
           "source": "service journal row read by an independent witness reader",
@@ -125,12 +129,22 @@
           "subjectBinding": "operation/claim/account/conversation/digest",
           "horizon": "exact service invocation",
           "observationBudget": 3,
-          "conformance": "tests/e2e/slice.test.ts",
-          "limit": "positive application is observable; its ABSENCE proves nothing on this adapter"
+          "conformance": "tests/integration/slice.test.ts::an opaque adapter still evidences a real application at its declared stage",
+          "limit": "positive application is observable; its ABSENCE proves nothing on this adapter",
+          "stage": "service-applied"
         },
-        "decisiveNonOccurrence": { "status": "unsupported", "reason": "no authoritative complete negative history" },
-        "exclusionOfDelayedExecution": { "status": "unsupported", "reason": "no destination fence and no quiescence evidence" },
-        "finalCharge": { "status": "unsupported", "reason": "no observable settled charge" },
+        "decisiveNonOccurrence": {
+          "status": "unsupported",
+          "reason": "no authoritative complete negative history"
+        },
+        "exclusionOfDelayedExecution": {
+          "status": "unsupported",
+          "reason": "no destination fence and no quiescence evidence"
+        },
+        "finalCharge": {
+          "status": "unsupported",
+          "reason": "no observable settled charge"
+        },
         "prerequisiteDurability": {
           "status": "supported",
           "source": "part-two exact append receipts after fsync in two local directories",
@@ -138,7 +152,97 @@
           "subjectBinding": "each required fact id and contentHash",
           "horizon": "acknowledged prefix",
           "observationBudget": 1,
-          "conformance": "tests/e2e/slice.test.ts",
+          "conformance": "tests/integration/slice.test.ts::an opaque adapter still evidences a real application at its declared stage",
+          "limit": "the second directory ANNOUNCES itself as a peer STAND-IN; shared disk loss is not covered"
+        }
+      }
+    },
+    "telegram-stage-probe": {
+      "id": "telegram-stage-probe-evidence",
+      "schemaVersion": 1,
+      "contractVersion": "1",
+      "adapter": "telegram-stage-probe",
+      "artifact": "scripts/slice-service.mjs",
+      "parser": "telegram-shaped-slice-response",
+      "stimulusClass": "bot/workspace conversation, inbound and outbound",
+      "authenticationMethod": "unsupported for production: deterministic fixture signature over the service journal row, not a Telegram-origin signature",
+      "keyCredentialBinding": "fixture account bot:slice; no credential or production endpoint",
+      "senderNamespace": "fixture conversation sender",
+      "conversationNamespace": "fixture chat:slice",
+      "stabilityReuse": "fixed account and conversation for this test artifact only",
+      "forwardingImpersonation": "forwarded author labels confer no identity",
+      "churnDetector": "exact account, conversation and identity-epoch mismatch refuses before invoke",
+      "revocationResponse": "current standing and stop are rechecked at the final handoff",
+      "eventIdAuthority": "service-minted monotone event id; authoritative WITHIN this fixture service only",
+      "replayRetention": "permanent append-only service journal; no resubmission path",
+      "fallbackPolicy": "none",
+      "ackPolicy": "never",
+      "disclosureScope": "fixture bot:slice/chat:slice only",
+      "idempotentSubmission": "supported: the service refuses a second application for an operation key already present in its journal",
+      "destinationFencing": "supported: the service refuses an application whose fence epoch is below its recorded maximum",
+      "targetCondition": "supported: exact account/conversation/digest",
+      "hiddenRetries": 0,
+      "productionActivation": "dark",
+      "capabilities": {
+        "stableOperationAndReceiptLookup": {
+          "status": "supported",
+          "source": "append-only service journal keyed by the six-owned operation identity",
+          "predicate": "the journal is the complete authoritative application history of this service",
+          "subjectBinding": "operation/claim/account/conversation/digest",
+          "horizon": "every application ever performed by this service instance",
+          "observationBudget": 3,
+          "conformance": "tests/integration/slice.test.ts::the declared delivery stage is READ from the adapter contract",
+          "limit": "test double; authoritative only over its own journal, never over live Telegram"
+        },
+        "applicationAndDeliveryStage": {
+          "status": "supported",
+          "source": "service journal row read by an independent witness reader, not by the adapter object",
+          "predicate": "service application only; NOT human delivery, reading or consumption",
+          "subjectBinding": "operation/claim/account/conversation/digest",
+          "horizon": "exact service invocation",
+          "observationBudget": 3,
+          "conformance": "tests/integration/slice.test.ts::the declared delivery stage is READ from the adapter contract",
+          "limit": "declared stage is service-accepted; this row exists ONLY so the suite can prove the assembly reads the stage from this contract instead of naming one itself",
+          "stage": "service-accepted"
+        },
+        "decisiveNonOccurrence": {
+          "status": "supported",
+          "source": "absence from the complete append-only journal after the declared quiescence window",
+          "predicate": "no application for this operation key exists and none can begin",
+          "subjectBinding": "operation identity",
+          "horizon": "complete journal history",
+          "observationBudget": 3,
+          "conformance": "tests/integration/slice.test.ts::the declared delivery stage is READ from the adapter contract",
+          "limit": "decisive only because this fixture service has exactly one durable writer"
+        },
+        "exclusionOfDelayedExecution": {
+          "status": "supported",
+          "source": "declared finite quiescence window measured on the service's own monotone tick",
+          "predicate": "no in-flight application for this operation can still execute",
+          "subjectBinding": "operation identity",
+          "horizon": "quiescenceTicks after the last recorded intake of the operation",
+          "observationBudget": 1,
+          "conformance": "tests/integration/slice.test.ts::the declared delivery stage is READ from the adapter contract",
+          "limit": "single-writer fixture; a real distributed destination needs destination fencing"
+        },
+        "finalCharge": {
+          "status": "supported",
+          "source": "service charge ledger row written with the application",
+          "predicate": "final settled charge in fixture minor units",
+          "subjectBinding": "operation identity",
+          "horizon": "at application time",
+          "observationBudget": 1,
+          "conformance": "tests/integration/slice.test.ts::the declared delivery stage is READ from the adapter contract",
+          "limit": "fixture units; NOT actual money or Telegram billing"
+        },
+        "prerequisiteDurability": {
+          "status": "supported",
+          "source": "part-two exact append receipts after fsync in two local directories",
+          "predicate": "replicated(1) fixture copy",
+          "subjectBinding": "each required fact id and contentHash",
+          "horizon": "acknowledged prefix",
+          "observationBudget": 1,
+          "conformance": "tests/integration/slice.test.ts::the declared delivery stage is READ from the adapter contract",
           "limit": "the second directory ANNOUNCES itself as a peer STAND-IN; shared disk loss is not covered"
         }
       }

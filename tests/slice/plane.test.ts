@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { minimalPlaneProjectionIds, minimalPlaneProjections } from './plane-fixture.js';
+import { NESTED_RECORD_REASON, RUN_KIND_REASON, minimalPlaneProjectionIds, minimalPlaneProjections } from './plane-fixture.js';
 
 const KINDS = ['intake-receipt', 'intake-resolved', 'intake-admitted', 'intake-held', 'intake-expired', 'intake-collapse',
   'intake-mismatch', 'intake-stop', 'intake-stop-signal', 'conversation-binding', 'genesis-grant', 'slice-context-evidence',
@@ -27,6 +27,26 @@ it('P11-NF-26 no minimal-plane projection is authority-answering', () => {
     expect(projection.class).toBe('informational');
     expect(projection.retention).toBe('all-identities');
     expect(Number.isFinite(projection.stalenessBound) && projection.stalenessBound > 0).toBe(true);
+  }
+});
+
+it('P11-NF-25 the nested-record reason is applied ONLY to kinds it is true of', () => {
+  for (const projection of minimalPlaneProjections(KINDS)) {
+    for (const [kind, decision] of Object.entries(projection.decisions)) {
+      if (decision.kind !== 'ignores') continue;
+      // Parts six, seven and eight bury their identity under `record`, so the fold
+      // language genuinely cannot key on them.
+      if (/^(transport|judgment|effect)-/.test(kind)) { expect(decision.reason, kind).toBe(NESTED_RECORD_REASON); continue; }
+      // Part five's bodies are `{ run, record }`: `run` IS foldable, so claiming the
+      // fold language cannot reach them would be untrue. They carry the projection's
+      // own declared-source note plus that correction instead.
+      if (['run-opening', 'run-transition', 'session-grounding'].includes(kind)) {
+        expect(decision.reason, kind).not.toContain('addresses only top-level body fields');
+        expect(decision.reason, kind).toContain(RUN_KIND_REASON);
+        continue;
+      }
+      expect(decision.reason, kind).not.toBe(NESTED_RECORD_REASON);
+    }
   }
 });
 

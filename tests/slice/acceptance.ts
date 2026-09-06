@@ -42,7 +42,9 @@ export interface SliceReport {
   readonly rebuilds: readonly RebuildRow[];
   readonly accounting: { readonly facts: number; readonly bytes: number; readonly boots: number; readonly attempts: number;
     readonly notifications: number; readonly tokens: null | Readonly<Record<string, number | null>>;
-    readonly money: number; readonly peakRssBytes: number };
+    readonly money: number; readonly peakRssBytes: number; readonly peakRssSamples: number;
+    readonly durationMs: number; readonly measuredBoots: number;
+    readonly perBootDurationMs: readonly { readonly boot: number; readonly durationMs: number | null; readonly bounded: boolean }[] };
 }
 
 /** Terminal or OWNED-PENDING dispositions. Nothing else may appear in a passing run. */
@@ -57,10 +59,23 @@ export const ALLOWED_OBLIGATION_STATES: readonly string[] = [
 export interface Bounds {
   readonly maxFacts: number; readonly maxBytes: number; readonly maxBoots: number;
   readonly maxAttempts: number; readonly maxNotifications: number; readonly maxMoney: number;
-  readonly maxRssBytes: number; readonly maxTokens: number;
+  readonly maxRssBytes: number; readonly maxTokens: number; readonly maxDurationMs: number;
 }
+/**
+ * DECLARED finite bounds, not measured targets. docs/15 section 7 asks that the
+ * recorded quantities fall inside declared finite bounds; it forbids presenting a
+ * configured number as a measurement. These are deliberately generous so a slower
+ * machine cannot turn a finiteness check into a performance assertion.
+ */
 export const DECLARED_BOUNDS: Bounds = { maxFacts: 400, maxBytes: 4_000_000, maxBoots: 40,
-  maxAttempts: 8, maxNotifications: 1, maxMoney: 64, maxRssBytes: 2_000_000_000, maxTokens: 4096 };
+  maxAttempts: 8, maxNotifications: 1, maxMoney: 64, maxRssBytes: 2_000_000_000, maxTokens: 4096,
+  maxDurationMs: 600_000 };
+
+/** States that mean the obligation is still open and must still carry its exposure. */
+export const OPEN_OBLIGATION_STATES: readonly string[] = ALLOWED_OBLIGATION_STATES
+  .filter(state => state.startsWith('owned-') || state === 'dispatch-uncertain');
+/** An obligation naming one of these carries no charge, so it retains no exposure. */
+const CHARGE_FREE_PREFIXES = ['grounding:'];
 
 const single = (values: readonly string[] | undefined) => !values || values.length <= 1;
 
@@ -93,10 +108,37 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
   const byOperation = new Set(report.externalApplications.map(r => r.operation));
   if (byOperation.size !== report.externalApplications.length) bad.push('two applications share one operation identity');
 
-  // every obligation is terminal or owned-pending, and owned
+  // ---------------------------------------------------------------- progress floor
+  // Without a LOWER bound the predicate cannot tell an honestly owned-pending
+  // execution from one that silently did nothing: every other check below is
+  // conditional on the thing it checks being present, so an empty report passes
+  // them all. Both branches of docs/15 section 7 require something OWNED to exist —
+  // the positive slice demands "one attributable outbound operation" and "no open
+  // ownerless obligation", the uncertainty neighbour demands that "the same logical
+  // operation remains owned and uncertain, its maximum ... exposure remains reserved".
+  if (!report.settlement && !report.obligations.length)
+    bad.push('no settlement and no owned obligation: the execution recorded neither progress nor a reason for its absence');
+  if (report.outbound?.operation && !report.obligations.some(o => o.operation === report.outbound!.operation))
+    bad.push('an admitted outbound operation with no recorded obligation');
+  if (report.outbound && report.outbound.operation === null
+    && !report.obligations.some(o => o.state.startsWith('owned-pending') || o.state === 'refused-before-preparation'))
+    bad.push('an outbound operation six never admitted, with no owned-pending obligation naming the blocker');
+  if (report.run && !report.reply && !report.obligations.some(o => o.state.startsWith('owned-pending')))
+    bad.push('the chain rendered no attributable reply and recorded no owned-pending reason');
+  if (report.settlement && !report.deliveryEvidence.length)
+    bad.push('a settlement with no independent delivery evidence behind it');
+
+  // every obligation is terminal or owned-pending, owned, and well formed
   for (const row of report.obligations) {
     if (!ALLOWED_OBLIGATION_STATES.includes(row.state)) bad.push(`obligation state outside the allowed set: ${row.state}`);
     if (!row.owner) bad.push(`ownerless obligation for ${row.operation}`);
+    if (!row.operation) bad.push('obligation without an operation identity');
+    if (!row.blocker) bad.push(`obligation for ${row.operation} names no blocker, not even 'none'`);
+    const exposure = Number(row.exposure);
+    if (!Number.isFinite(exposure) || exposure < 0) bad.push(`obligation for ${row.operation} has no finite exposure`);
+    // An OPEN obligation over a charge-bearing operation must still hold a reservation.
+    if (OPEN_OBLIGATION_STATES.includes(row.state) && !CHARGE_FREE_PREFIXES.some(p => row.operation.startsWith(p)) && exposure <= 0)
+      bad.push(`open obligation ${row.state} for ${row.operation} released its exposure`);
   }
 
   // evidence truthful to its source and stage
@@ -141,6 +183,17 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
 
   // recorded accounting inside declared finite bounds
   const a = report.accounting;
+  if (a.durationMs > bounds.maxDurationMs) bad.push('recorded duration beyond the declared bound');
+  if (!Number.isSafeInteger(a.durationMs) || a.durationMs < 0) bad.push('accounting durationMs is missing');
+  if (a.perBootDurationMs.length !== a.boots) bad.push('a boot of this execution has no recorded duration row');
+  if (a.measuredBoots < 1) bad.push('no boot of this execution recorded a completed duration');
+  // The RSS figure must be a real high-water mark over samples, not one instant.
+  if (a.peakRssSamples < a.boots) bad.push('fewer memory samples than boots: peak memory is not measured across the execution');
+  // `notifications` is the external application count under another name; the reply
+  // IS this slice's only user-visible notification. Assert the alias rather than
+  // presenting it as an independent quantity.
+  if (a.notifications !== report.externalApplications.length)
+    bad.push('the notification count disagrees with the external application count it aliases');
   if (a.facts > bounds.maxFacts) bad.push('fact count beyond the declared bound');
   if (a.bytes > bounds.maxBytes) bad.push('durable bytes beyond the declared bound');
   if (a.boots > bounds.maxBoots) bad.push('boot count beyond the declared bound');
@@ -150,8 +203,11 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
   if (a.peakRssBytes > bounds.maxRssBytes) bad.push('peak memory beyond the declared bound');
   if (a.tokens) { const total = (a.tokens.inputTokens ?? 0) + (a.tokens.outputTokens ?? 0);
     if (total > bounds.maxTokens) bad.push('token count beyond the declared bound'); }
-  for (const key of ['facts', 'bytes', 'boots', 'attempts', 'notifications', 'money', 'peakRssBytes'] as const)
+  for (const key of ['facts', 'bytes', 'boots', 'attempts', 'notifications', 'money', 'peakRssBytes', 'peakRssSamples'] as const)
     if (!Number.isFinite(a[key])) bad.push(`accounting ${key} is missing`);
+  // Tokens are required exactly when a judgment resolved, and absent otherwise.
+  if (report.judgment.resolution && !a.tokens) bad.push('a resolved judgment recorded no token usage');
+  if (!report.judgment.request && a.tokens) bad.push('token usage recorded without a judgment');
   return bad;
 }
 
@@ -185,11 +241,22 @@ export function acrossExecutions(control: SliceReport, cut: SliceReport): string
     bad.push('six-owned operation identity differs across executions');
   if (control.outbound && cut.outbound && control.outbound.semanticMessage !== cut.outbound.semanticMessage)
     bad.push('semantic message identity differs across executions');
-  for (const report of [control, cut]) {
+  for (const [name, report] of [['control', control], ['cut', cut]] as const) {
     const perSemantic = new Map<string, number>();
     for (const row of report.externalApplications) perSemantic.set(row.semanticMessage, (perSemantic.get(row.semanticMessage) ?? 0) + 1);
     for (const [, count] of perSemantic) if (count > 1) bad.push('more than one external application for a semantic identity');
     for (const row of report.obligations) if (!ALLOWED_OBLIGATION_STATES.includes(row.state)) bad.push(`disallowed obligation ${row.state}`);
+    // The same progress floor on BOTH sides: neither execution may be empty.
+    if (!report.settlement && !report.obligations.length)
+      bad.push(`${name} execution recorded no settlement and no owned obligation`);
+  }
+  // A cut BEFORE the reply legitimately has no outbound where the control has one, and
+  // the judgment profile is REQUIRED to render no reply without a recorded answer — so
+  // this never demands outbound parity. What it demands is that the execution which
+  // stopped earlier says WHY, in an owned-pending obligation.
+  for (const [name, earlier, later] of [['cut', cut, control], ['control', control, cut]] as const) {
+    if (later.outbound && !earlier.outbound && !earlier.obligations.some(o => o.state.startsWith('owned-pending')))
+      bad.push(`the ${name} execution has no outbound operation and no owned-pending obligation explaining its absence`);
   }
   // Reply CONTENT need not match; identity, disposition and uniqueness must.
   return bad;

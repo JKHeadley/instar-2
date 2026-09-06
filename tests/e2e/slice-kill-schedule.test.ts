@@ -3,9 +3,23 @@
 // assembly's public boot path. One test per pair keeps every fixture short enough
 // for the runner's task-update IPC to flush between them.
 import { afterAll, afterEach, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { acrossExecutions, adjacentPairs, withinExecution } from '../slice/acceptance.js';
 import type { SliceReport } from '../slice/acceptance.js';
 import { JUDGMENT_BOUNDARIES, REPLY_BOUNDARIES, SLICE_INPUT, discard, runExecution } from '../slice/harness.js';
+import { SCHEDULE_HEADER, renderScheduleRecord, scheduleRow } from '../slice/boundaries.js';
+
+// The pinned outcome table. The schedule is deterministic, so every outcome column —
+// boots, which cut fired, external applications, terminal disposition — is asserted
+// here rather than narrated in a note. `node scripts/slice-schedule-record.mjs`
+// regenerates it with the SAME row formatter this test uses.
+const EXPECTED = readFileSync('tests/slice/expected-schedule.md', 'utf8').trim();
+const expectedRow = (profile: string, pair: readonly [string, string]): string => {
+  const prefix = `| ${profile} | \`${pair[0]}\` | \`${pair[1]}\` |`;
+  const line = EXPECTED.split('\n').find(row => row.startsWith(prefix));
+  if (!line) throw new Error(`the pinned schedule has no row for ${profile} ${pair.join('+')}`);
+  return line;
+};
 
 const homes: string[] = [];
 afterAll(() => discard(...homes));
@@ -14,6 +28,7 @@ afterEach(async () => { await new Promise<void>(done => setImmediate(done)); });
 interface ScheduleRow { profile: string; pair: readonly [string, string]; boots: number;
   fired: readonly string[]; neverReached: readonly string[]; applications: number; settlement: string }
 const schedule: ScheduleRow[] = [];
+const rows: string[] = [];
 const controls: Record<string, SliceReport> = {};
 
 async function control(profile: string): Promise<SliceReport> {
@@ -31,6 +46,12 @@ async function runPair(profile: string, pair: readonly [string, string]): Promis
   expect(execution.boots).toBe(execution.firedCuts.length + 1);
   expect(withinExecution(execution.report, SLICE_INPUT)).toEqual([]);
   expect(acrossExecutions(await control(profile), execution.report)).toEqual([]);
+  // The whole outcome row is pinned, not just the fired cuts: a regression in which
+  // recovery stopped driving the chain would change `boots`, the application count or
+  // the terminal disposition, and this comparison is what notices.
+  const rendered = scheduleRow(profile, pair, execution.boots, execution.firedCuts, execution.report);
+  expect(rendered).toBe(expectedRow(profile, pair));
+  rows.push(rendered);
   schedule.push({ profile, pair, boots: execution.boots, fired: execution.firedCuts,
     neverReached: execution.neverReached, applications: execution.report.externalApplications.length,
     settlement: execution.report.settlement?.outcome ?? 'none' });
@@ -56,4 +77,7 @@ it('P11-NF-44 P11-NF-45 the recorded schedule covers every adjacent pair and ski
     expect(row.fired).toEqual([row.pair[0]]);
   }
   expect(schedule.every(row => row.boots >= 2)).toBe(true);
+  // The record the DONE note publishes IS this run's record, byte for byte.
+  expect(renderScheduleRecord(rows)).toBe(EXPECTED);
+  expect(EXPECTED.startsWith(SCHEDULE_HEADER)).toBe(true);
 });

@@ -15,6 +15,12 @@
 // a state its owner never recorded.
 
 const NESTED = 'Owner record identity lives under `record`; part two\'s fold language addresses only top-level body fields.';
+// Part five's fact bodies are `{ run, record }`, so their top-level `run` IS foldable.
+// Excluding them is a DECLARED-SOURCE decision, not a fold-language limitation, and
+// saying otherwise would put an untrue reason in a file whose whole purpose is that
+// every ignore carries a true one.
+const FOLDABLE_BUT_NOT_A_SOURCE = 'Its top-level `run` field IS foldable; the exclusion is by declared source, not by the fold language.';
+const RUN_KINDS = ['run-opening', 'run-transition', 'session-grounding'];
 const ignore = reason => ({ kind: 'ignores', reason });
 const fold = (merge, identity, value) => ({ kind: 'folds', merge, identity, value });
 
@@ -24,7 +30,8 @@ function definition(id, stalenessBound, kinds, decisions, note) {
   return { id, class: 'informational', stalenessBound, retention: 'all-identities', decisions: complete };
 }
 function defaultReason(kind, note) {
-  if (/^(transport|judgment|effect)-/.test(kind) || ['run-opening', 'run-transition', 'session-grounding'].includes(kind)) return NESTED;
+  if (RUN_KINDS.includes(kind)) return `${note} ${FOLDABLE_BUT_NOT_A_SOURCE}`;
+  if (/^(transport|judgment|effect)-/.test(kind)) return NESTED;
   return note;
 }
 
@@ -78,5 +85,7 @@ export function minimalPlaneProjections(kinds, stalenessBound = 100000) {
   ]);
 }
 
+export const NESTED_RECORD_REASON = NESTED;
+export const RUN_KIND_REASON = FOLDABLE_BUT_NOT_A_SOURCE;
 export const minimalPlaneProjectionIds = Object.freeze(['minimal.intake-ledger', 'minimal.principal-binding',
   'minimal.run-view', 'minimal.outbound-obligation', 'minimal.authority-queue', 'minimal.guard-repair']);

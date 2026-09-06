@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { ALLOWED_OBLIGATION_STATES, DECLARED_BOUNDS, acrossExecutions, adjacentPairs, withinExecution } from './acceptance.js';
+import { ALLOWED_OBLIGATION_STATES, DECLARED_BOUNDS, OPEN_OBLIGATION_STATES, acrossExecutions, adjacentPairs, withinExecution } from './acceptance.js';
 import type { SliceReport } from './acceptance.js';
 import { JUDGMENT_BOUNDARIES, REPLY_BOUNDARIES, SLICE_INPUT } from './harness.js';
 import { minimalPlaneProjectionIds } from './plane-fixture.js';
@@ -29,7 +29,9 @@ function report(overrides: Partial<SliceReport> = {}): SliceReport {
     declaredStage: 'service-applied',
     rebuilds: minimalPlaneProjectionIds.map(id => ({ projection: id, hash: `sha256:${id}`, resumedHash: `sha256:${id}`,
       equal: 'equal', folded: 0, resumedFrom: null, values: {}, conflicts: [], taint: [] })),
-    accounting: { facts: 30, bytes: 90000, boots: 2, attempts: 3, notifications: 1, tokens: null, money: 3, peakRssBytes: 250_000_000 },
+    accounting: { facts: 30, bytes: 90000, boots: 2, attempts: 3, notifications: 1, tokens: null, money: 3,
+      peakRssBytes: 250_000_000, peakRssSamples: 24, durationMs: 21_000, measuredBoots: 1,
+      perBootDurationMs: [{ boot: 1, durationMs: 9000, bounded: true }, { boot: 2, durationMs: 12_000, bounded: false }] },
   };
   return { ...base, ...overrides };
 }
@@ -111,12 +113,11 @@ it('P11-NF-45 a duplicated external application for one semantic identity fails'
 
 it('P11-NF-50 accounting outside a declared finite bound fails, and a complete sample passes', () => {
   expect(withinExecution(report(), SLICE_INPUT)).toEqual([]);
-  const over = withinExecution(report({ accounting: { facts: 30, bytes: 90000, boots: 2, attempts: 3,
-    notifications: 4, tokens: { inputTokens: 17, outputTokens: 11 }, money: 3, peakRssBytes: 250_000_000 } }), SLICE_INPUT);
+  const base = report().accounting;
+  const over = withinExecution(report({ accounting: { ...base, notifications: 4 } }), SLICE_INPUT);
   expect(over.some(v => v.includes('notification count beyond the declared bound'))).toBe(true);
   expect(DECLARED_BOUNDS.maxNotifications).toBe(1);
-  const missing = withinExecution(report({ accounting: { facts: Number.NaN, bytes: 1, boots: 1, attempts: 1,
-    notifications: 0, tokens: null, money: 0, peakRssBytes: 1 } }), SLICE_INPUT);
+  const missing = withinExecution(report({ accounting: { ...base, facts: Number.NaN } }), SLICE_INPUT);
   expect(missing.some(v => v.includes('accounting facts is missing'))).toBe(true);
 });
 
@@ -131,4 +132,97 @@ it('P11-NF-44 the schedule enumerates every adjacent pair of the declared bounda
 it('P11-NF-45 an execution that lost its accepted input fails the predicate', () => {
   const lost = withinExecution(report({ preservedInput: { capture: 'sha256:input', bytes: null } }), SLICE_INPUT);
   expect(lost.some(v => v.includes('accepted input was not preserved'))).toBe(true);
+});
+
+it('P11-NF-50 duration and memory are recorded across the whole execution, not one instant', () => {
+  const base = report().accounting;
+  expect(withinExecution(report(), SLICE_INPUT)).toEqual([]);
+  // Duration must exist, be finite and sit inside its DECLARED bound.
+  expect(withinExecution(report({ accounting: { ...base, durationMs: DECLARED_BOUNDS.maxDurationMs + 1 } }), SLICE_INPUT)
+    .some(v => v.includes('recorded duration beyond the declared bound'))).toBe(true);
+  expect(withinExecution(report({ accounting: { ...base, durationMs: Number.NaN } }), SLICE_INPUT)
+    .some(v => v.includes('durationMs is missing'))).toBe(true);
+  // Every boot of the execution must carry a duration row, killed boots included.
+  expect(withinExecution(report({ accounting: { ...base, perBootDurationMs: base.perBootDurationMs.slice(1) } }), SLICE_INPUT)
+    .some(v => v.includes('has no recorded duration row'))).toBe(true);
+  expect(withinExecution(report({ accounting: { ...base, measuredBoots: 0 } }), SLICE_INPUT)
+    .some(v => v.includes('no boot of this execution recorded a completed duration'))).toBe(true);
+  // A single end-of-run RSS reading is NOT a high-water mark across boots.
+  expect(withinExecution(report({ accounting: { ...base, peakRssSamples: 1 } }), SLICE_INPUT)
+    .some(v => v.includes('peak memory is not measured across the execution'))).toBe(true);
+  // `notifications` is an alias for the application count and must agree with it.
+  expect(withinExecution(report({ accounting: { ...base, notifications: 0 } }), SLICE_INPUT)
+    .some(v => v.includes('aliases'))).toBe(true);
+});
+
+it('P11-NF-50 token usage is required exactly when a judgment resolved', () => {
+  const judged = { request: 'q:1', logicalKey: 'k', resolution: 'r:1', disposition: 'decided', capture: 'c', meter: 'm' };
+  const tokens = { inputTokens: 17, outputTokens: 11 };
+  const base = report().accounting;
+  expect(withinExecution(report({ judgment: judged, accounting: { ...base, tokens } }), SLICE_INPUT)).toEqual([]);
+  expect(withinExecution(report({ judgment: judged }), SLICE_INPUT)
+    .some(v => v.includes('resolved judgment recorded no token usage'))).toBe(true);
+  expect(withinExecution(report({ accounting: { ...base, tokens } }), SLICE_INPUT)
+    .some(v => v.includes('token usage recorded without a judgment'))).toBe(true);
+});
+
+it('P11-NF-48 the progress floor refuses an execution that recorded nothing at all', () => {
+  // The exact shape the desk demonstrated with two REAL executions: strip the owned
+  // obligations from an honestly owned-pending report and it must stop passing.
+  const pending = report({ settlement: null, reply: null, outbound: null, deliveryEvidence: [],
+    externalApplications: [], charges: [], operations: [], semanticKeys: [], routes: [],
+    obligations: [{ operation: 'pending:sm:1', state: 'owned-pending-no-answer', owner: 'part-seven', blocker: 'part-seven', exposure: '20' }],
+    accounting: { ...report().accounting, notifications: 0 } });
+  expect(withinExecution(pending, SLICE_INPUT)).toEqual([]);
+  const empty = withinExecution({ ...pending, obligations: [] }, SLICE_INPUT);
+  expect(empty.some(v => v.includes('recorded neither progress nor a reason for its absence'))).toBe(true);
+  expect(empty.some(v => v.includes('rendered no attributable reply and recorded no owned-pending reason'))).toBe(true);
+});
+
+it('P11-NF-48 an open obligation may not release the exposure it is holding', () => {
+  const open = report({ settlement: null,
+    obligations: [{ operation: OPERATION, state: 'owned-uncertain', owner: 'part-eight', blocker: 'adapter-evidence', exposure: '0' }] });
+  expect(withinExecution(open, SLICE_INPUT).some(v => v.includes('released its exposure'))).toBe(true);
+  // A grounding obligation carries no charge, so zero exposure is correct there.
+  const grounding = report({ settlement: null, reply: null, outbound: null, deliveryEvidence: [], externalApplications: [],
+    charges: [], operations: [], semanticKeys: [], routes: [], accounting: { ...report().accounting, notifications: 0 },
+    obligations: [{ operation: 'grounding:run:1', state: 'owned-pending-unadmitted', owner: 'part-five', blocker: 'part-five', exposure: '0' }] });
+  expect(withinExecution(grounding, SLICE_INPUT)).toEqual([]);
+  expect(OPEN_OBLIGATION_STATES).toContain('owned-uncertain');
+  expect(OPEN_OBLIGATION_STATES).not.toContain('settled-happened');
+});
+
+it('P11-NF-48 an ill-formed obligation is refused even when its state is allowed', () => {
+  const broken = withinExecution(report({ obligations: [
+    { operation: OPERATION, state: 'settled-happened', owner: 'part-eight', blocker: '', exposure: '3' }] }), SLICE_INPUT);
+  expect(broken.some(v => v.includes("names no blocker"))).toBe(true);
+  const noExposure = withinExecution(report({ obligations: [
+    { operation: OPERATION, state: 'settled-happened', owner: 'part-eight', blocker: 'none', exposure: 'many' }] }), SLICE_INPUT);
+  expect(noExposure.some(v => v.includes('no finite exposure'))).toBe(true);
+});
+
+it('P11-NF-48 an admitted outbound operation must carry an obligation, and a blocked one must name its blocker', () => {
+  expect(withinExecution(report({ obligations: [
+    { operation: 'operation:sha256:other', state: 'settled-happened', owner: 'part-eight', blocker: 'none', exposure: '3' }] }), SLICE_INPUT)
+    .some(v => v.includes('admitted outbound operation with no recorded obligation'))).toBe(true);
+  const blocked = report({ settlement: null, deliveryEvidence: [], externalApplications: [], charges: [],
+    operations: [], semanticKeys: [], routes: [], accounting: { ...report().accounting, notifications: 0 },
+    outbound: { request: 'request:1', digest: DIGEST, semanticMessage: 'sm:1', operation: null, charge: null, observations: [] },
+    obligations: [{ operation: 'unreserved:request:1', state: 'owned-pending-unadmitted', owner: 'part-six', blocker: 'part-six', exposure: '20' }] });
+  expect(withinExecution(blocked, SLICE_INPUT)).toEqual([]);
+  expect(withinExecution({ ...blocked, obligations: [] }, SLICE_INPUT)
+    .some(v => v.includes('six never admitted, with no owned-pending obligation'))).toBe(true);
+});
+
+it('P11-NF-45 the across-execution floor refuses an empty side without demanding outbound parity', () => {
+  const control = report();
+  // A cut that legitimately never reached a reply: NO outbound, but an owned reason.
+  const earlyCut = report({ settlement: null, reply: null, outbound: null, deliveryEvidence: [], externalApplications: [],
+    charges: [], operations: [], semanticKeys: [], routes: [], accounting: { ...report().accounting, notifications: 0 },
+    obligations: [{ operation: 'pending:sm:1', state: 'owned-pending-no-answer', owner: 'part-seven', blocker: 'part-seven', exposure: '20' }] });
+  expect(acrossExecutions(control, earlyCut)).toEqual([]);      // outbound parity is NOT demanded
+  const silent = { ...earlyCut, obligations: [] };
+  const violations = acrossExecutions(control, silent);
+  expect(violations.some(v => v.includes('cut execution recorded no settlement and no owned obligation'))).toBe(true);
+  expect(violations.some(v => v.includes('no owned-pending obligation explaining its absence'))).toBe(true);
 });

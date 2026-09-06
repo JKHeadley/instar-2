@@ -48,7 +48,8 @@ export function createSliceService(home, options) {
   const intents = join(directory, 'intents.jsonl');
   const observations = join(directory, 'observations.jsonl');
   const inbound = join(directory, 'inbound.jsonl');
-  const decisive = options.adapter === 'telegram-slice';
+  // Evidence completeness follows the DECLARED contract, never the adapter's name.
+  const decisive = options.decisive !== false;
   const quiescenceTicks = options.quiescenceTicks ?? 2;
   const hooks = options.hooks ?? {};
   const journal = () => readServiceJournal(home);

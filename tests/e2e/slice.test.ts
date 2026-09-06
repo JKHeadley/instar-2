@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { acrossExecutions, withinExecution } from '../slice/acceptance.js';
 import { REPLY_BOUNDARIES, SLICE_INPUT, discard, rebuildInFreshProcess, runExecution } from '../slice/harness.js';
+import { PROFILE_BOUNDARIES } from '../slice/boundaries.js';
 
 const homes: string[] = [];
 afterAll(() => discard(...homes));
@@ -121,10 +122,55 @@ it('P11-NF-44 a cut inside the model exchange leaves the question owned and pend
   expect(withinExecution(cut.report, SLICE_INPUT)).toEqual([]);
 }, 240000);
 
+it('P11-NF-45 P11-NF-48 the progress floor separates an honestly owned-pending execution from one that recorded nothing', async () => {
+  // Two REAL executions, the shape the desk demonstrated: a judgment control that
+  // rendered a reply and prepared an outbound, and a cut before the model answer that
+  // legitimately did neither.
+  const control = await execute({ profile: 'judgment' });
+  const cut = await execute({ profile: 'judgment', cuts: ['model-invocation'] });
+  expect(cut.report.reply).toBeNull();
+  expect(cut.report.outbound).toBeNull();
+  expect(control.report.reply).not.toBeNull();
+  expect(control.report.outbound).not.toBeNull();
+  // As they really are, both predicates pass: the cut says WHY it stopped.
+  expect(withinExecution(cut.report, SLICE_INPUT)).toEqual([]);
+  expect(acrossExecutions(control.report, cut.report)).toEqual([]);
+  expect(cut.report.obligations.some(o => o.state === 'owned-pending-no-answer')).toBe(true);
+  // Strip the owned obligations from that same real report — the ONLY thing that
+  // separated "part seven correctly refused to re-ask" from "the chain silently
+  // stopped and recorded nothing" — and both predicates must now refuse.
+  const silent = { ...cut.report, obligations: [] };
+  const within = withinExecution(silent, SLICE_INPUT);
+  expect(within.some(v => v.includes('recorded neither progress nor a reason for its absence'))).toBe(true);
+  expect(within.some(v => v.includes('rendered no attributable reply and recorded no owned-pending reason'))).toBe(true);
+  const across = acrossExecutions(control.report, silent);
+  expect(across.some(v => v.includes('cut execution recorded no settlement and no owned obligation'))).toBe(true);
+  expect(across.some(v => v.includes('no owned-pending obligation explaining its absence'))).toBe(true);
+}, 240000);
+
+it('P11-NF-50 duration and peak memory are measured across every boot, killed boots included', async () => {
+  const cut = await execute({ profile: 'reply', cuts: ['external-send', 'delivery-evidence'] });
+  const a = cut.report.accounting;
+  expect(a.boots).toBe(3);
+  // Every boot has a duration row; the two killed boots are bounded by the next start.
+  expect(a.perBootDurationMs).toHaveLength(3);
+  expect(a.perBootDurationMs.filter(r => r.bounded)).toHaveLength(2);
+  expect(a.perBootDurationMs.every(r => Number.isSafeInteger(r.durationMs) && r.durationMs! >= 0)).toBe(true);
+  expect(a.measuredBoots).toBeGreaterThanOrEqual(1);
+  expect(a.durationMs).toBeGreaterThanOrEqual(Math.max(...a.perBootDurationMs.map(r => r.durationMs ?? 0)));
+  // The RSS figure is a high-water mark over many samples, not one instant in the
+  // last process: killed boots contributed samples before they died.
+  expect(a.peakRssSamples).toBeGreaterThan(a.boots);
+  expect(a.peakRssBytes).toBeGreaterThan(0);
+  expect(withinExecution(cut.report, SLICE_INPUT)).toEqual([]);
+}, 240000);
+
 it('P11-NF-44 the enumerated boundary list matches what the control execution actually reaches', async () => {
   const control = await execute({ profile: 'reply' });
   expect(control.report.boundariesReached).toEqual([...REPLY_BOUNDARIES]);
   expect(control.report.cutsFired).toEqual([]);
+  // REPLY_BOUNDARIES is the assembly's own list, not a copy kept beside it.
+  expect(REPLY_BOUNDARIES).toBe(PROFILE_BOUNDARIES['reply']);
 }, 180000);
 
 it('P11-NF-49 the fixture never reaches into the assembly: the worker only calls the public boot path', async () => {

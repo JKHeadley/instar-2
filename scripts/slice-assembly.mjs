@@ -31,7 +31,7 @@ import { createEffectReplicaStorage } from './effect-replica-storage.mjs';
 import { createEffectFileCaptures } from './effect-file-captures.mjs';
 import { createJudgmentCaptures } from './judgment-captures.mjs';
 import { createSliceService, readServiceJournal } from './slice-service.mjs';
-import { minimalPlaneProjections } from './slice-projections.mjs';
+import { minimalPlaneProjectionIds, minimalPlaneProjections } from './slice-projections.mjs';
 
 export { readServiceJournal };
 /** The durability peer ANNOUNCES itself, per part eight's slice rule. */
@@ -90,15 +90,35 @@ export function sliceConfig(overrides = {}) {
   });
 }
 
-/** Every durable boundary the design enumerates, in executed order. */
-export const SLICE_BOUNDARIES = Object.freeze([
-  'preservation', 'authentication', 'standing',
-  'run-creation', 'grounding',
-  'judgment-request', 'judgment-reservation', 'judgment-dispatch', 'judgment-resolution',
-  'outbound-preparation', 'outbound-claim', 'external-send', 'delivery-evidence', 'settlement',
-  'rebuild:minimal.intake-ledger', 'rebuild:minimal.principal-binding', 'rebuild:minimal.run-view',
-  'rebuild:minimal.outbound-obligation', 'rebuild:minimal.authority-queue', 'rebuild:minimal.guard-repair',
-]);
+// ------------------------------------------------------------- the boundaries
+// ONE source. `boundary()` refuses a name that is not declared here, so a fired
+// boundary can never be missing from the enumeration; the control executions in
+// the suite assert the converse, that every declared name in a profile is fired.
+const REBUILD_BOUNDARIES = minimalPlaneProjectionIds.map(id => `rebuild:${id}`);
+
+/** What each profile ACTUALLY fires, in executed order. */
+export const PROFILE_BOUNDARIES = Object.freeze({
+  reply: Object.freeze(['preservation', 'authentication', 'standing', 'run-creation',
+    'outbound-preparation', 'outbound-reservation', 'outbound-claim', 'outbound-consume',
+    'external-send', 'delivery-evidence', 'settlement', ...REBUILD_BOUNDARIES]),
+  judgment: Object.freeze(['preservation', 'authentication', 'standing', 'run-creation',
+    'judgment-request', 'judgment-reservation', 'judgment-claim', 'judgment-dispatch',
+    'model-invocation', 'judgment-resolution', 'outbound-preparation', ...REBUILD_BOUNDARIES]),
+});
+
+/** The union of what is actually fired. This is NOT an idealized design list. */
+export const SLICE_BOUNDARIES = Object.freeze([...new Set(Object.values(PROFILE_BOUNDARIES).flat())]);
+
+/**
+ * Declared but never reached on this base, with the reason. `grounding` is the
+ * only one: part five refuses an intake-opened run's actual-start grounding, so
+ * the assembly records an owned-pending obligation instead of a grounding fact.
+ * See `.instar/lanes/slice-five-gap.md`.
+ */
+export const UNREACHED_BOUNDARIES = Object.freeze({ grounding: 'part-five refuses grounding for an intake-opened run; slice-five-gap.md' });
+
+/** Every name `boundary()` may use. */
+export const DECLARED_BOUNDARIES = Object.freeze([...SLICE_BOUNDARIES, ...Object.keys(UNREACHED_BOUNDARIES)]);
 
 // ------------------------------------------------------------ the boot path
 /**
@@ -118,8 +138,11 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   };
   for (const d of [paths.facts, paths.peer, paths.intake, paths.judgment, paths.checkpoints]) mkdirSync(d, { recursive: true });
 
-  const bootIndex = readLines(paths.boots).length + 1;
-  appendLine(paths.boots, home, { boot: bootIndex, pid: process.pid, profile: config.profile, adapter: config.adapter });
+  const bootStartedAt = Date.now();
+  const priorBoots = readLines(paths.boots);
+  const bootIndex = priorBoots.filter(r => r.event === 'start').length + 1;
+  appendLine(paths.boots, home, { event: 'start', boot: bootIndex, pid: process.pid, wallMs: bootStartedAt,
+    rss: process.memoryUsage().rss, profile: config.profile, adapter: config.adapter });
   const incarnation = `worker:${bootIndex}`, authorityIncarnation = `authority:${bootIndex}`;
   if (!existsSync(paths.placement)) appendLine(paths.placement, home, { worker: `slice-worker:${config.machine}`, harness: 'slice-harness:1' });
 
@@ -128,7 +151,11 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   /** A durable boundary completed. Record it; if it is cut, record then SIGKILL. */
   const alreadyCut = new Set(readLines(paths.cuts).map(r => r.boundary));
   const boundary = (name, extra = {}) => {
-    appendLine(paths.steps, home, { boot: bootIndex, boundary: name, ...extra });
+    if (!DECLARED_BOUNDARIES.includes(name)) throw new Error(`undeclared durable boundary: ${name}`);
+    // Every boundary is also an RSS sample. The row is fsynced BEFORE any cut, so
+    // a killed boot still contributes its samples to the execution's high-water mark.
+    appendLine(paths.steps, home, { boot: bootIndex, boundary: name, rss: process.memoryUsage().rss,
+      atMs: Date.now() - bootStartedAt, ...extra });
     if (!requested.has(name) || alreadyCut.has(name)) return;
     appendLine(paths.cuts, home, { boot: bootIndex, boundary: name });
     process.kill(process.pid, 'SIGKILL');
@@ -143,7 +170,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   const recordSubjects = {};
   const baseEntries = ['types.decode', 'host', 'probe', 'machine-a', 'machine-b', 'project-a', 'project-b', 'repo',
     'chat-a', 'intent:1', 'approval:1', 'bound', 'vault', 'judgment', 'model', 'route', 'rule:94',
-    'facts.admit', 'intake.admit', 'intake-slice', 'reply', 'telegram-slice', 'telegram-opaque', 'slice-witness'];
+    'facts.admit', 'intake.admit', 'intake-slice', 'reply', 'telegram-slice', 'telegram-opaque', 'telegram-stage-probe', 'slice-witness'];
   const registerShape = {
     generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'generation:1' },
     entries: baseEntries, producers: ['probe', 'host', 'slice-witness'],
@@ -154,7 +181,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     sites: { 'types.decode': 'closed', delivery: 'open', 'facts.admit': 'closed', 'intake.admit': 'closed' },
     keys: { host: { algorithm: 'ed25519', publicKey: PUBLIC_KEY, owner: 'machine-a',
       methods: ['signed-envelope', 'github-review', 'github-merge', 'fact-envelope'],
-      adapters: ['host', 'telegram-slice', 'telegram-opaque'] } },
+      adapters: ['host', 'telegram-slice', 'telegram-opaque', 'telegram-stage-probe'] } },
     allowRedelegation: false,
     conflictStanding: { ordinary: 'delegate', authority: 'operator' },
   };
@@ -292,14 +319,36 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   // The judgment custody root sits beside the segment file so its own boot-time
   // metadata reconstruction reads this plane's facts.
   const judgmentCustody = createJudgmentCaptures(paths.facts, captureIndex, result, 1048576, captures);
+  // Durable custody is content-addressed, so its integrity is checkable at boot.
+  // A tampered capture refuses HERE, naming the capture and the failure class,
+  // rather than surfacing later as an unrelated appender-wiring complaint.
   for (const name of readdirSync(paths.intake)) {
     if (!/^[a-f0-9]{64}$/.test(name)) continue;
     const bytes = readFileSync(join(paths.intake, name), 'utf8'), hash = `sha256:${name}`;
+    if (hashBytes(bytes) !== hash) throw new Error(`integrity: durable intake capture ${hash} no longer matches its content hash`);
     indexCapture(hash, bytes); captures[hash] = bytes;
   }
 
+// --------------------------------------------------- the declared adapter contract
+  const sliceContracts = JSON.parse(readFileSync('scripts/slice-contracts.json', 'utf8'));
+  const adapterContract = () => {
+    const contract = sliceContracts.adapters[config.adapter];
+    if (!contract) throw new Error(`no declared evidence contract for adapter ${config.adapter}`);
+    return contract;
+  };
+  // The stage any evidence may claim is READ from the adapter's declared contract.
+  // Nothing in this file names a stage; the contract is the ceiling.
+  const declaredStage = () => {
+    const declared = adapterContract().capabilities.applicationAndDeliveryStage;
+    if (declared.status !== 'supported' || !declared.stage) throw new Error('the adapter declares no observable delivery stage');
+    return declared.stage;
+  };
+
   const service = createSliceService(home, { adapter: config.adapter, quiescenceTicks: config.quiescenceTicks,
-    charge: config.serviceCharge, hooks: { afterApply: row => boundary('external-send', { operation: row.operation, messageId: row.messageId }) } });
+    charge: config.serviceCharge,
+    // Evidence completeness follows the DECLARED contract, never the adapter's name.
+    decisive: adapterContract().capabilities.decisiveNonOccurrence.status === 'supported',
+    hooks: { afterApply: row => boundary('external-send', { operation: row.operation, messageId: row.messageId }) } });
 
   // ------------------------------------------------------------------- hosts
   const transportHost = { domain: config.domain, machine: config.machine, incarnation, authorityIncarnation,
@@ -441,8 +490,6 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   const transportFacts = memo(() => take(transport.inspect()));
   const currentFenceEpoch = () => { const l = transportFacts().filter(v => v.record.type === 'Lease').at(-1); return l ? l.record.epoch : 0; };
 
-  const sliceContracts = JSON.parse(readFileSync('scripts/slice-contracts.json', 'utf8'));
-  const adapterContract = () => sliceContracts.adapters[config.adapter];
   const operationAdapter = { owner: 'part-ten', id: config.adapter,
     describe: () => ({ contract: `${config.adapter}-evidence:1`, account: config.account, conversation: config.conversation,
       maxCharge: config.maxCharge, timeout: operationDefinition.timeout, hiddenRetries: 0 }),
@@ -953,8 +1000,9 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
       record('delivery-evidence', 'uncertain', { lookup });
       return;
     }
+    const stage = declaredStage();
     const witnessBytes = JSON.stringify({ operation, applied: applied ?? null, lookup, quiescence, observations,
-      finalCharge: service.finalCharge(operation), stage: 'service-applied' });
+      finalCharge: service.finalCharge(operation), stage });
     // The witness reading is preserved in durable custody, so a later boot can
     // still resolve the evidence it produced.
     const witnessCapture = take(custody.capture(witnessBytes));
@@ -965,9 +1013,9 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     const decoded = take(decode('Evidence', evidenceInput, decodeContext));
     if (!evidence.some(e => e.id === decoded.id)) evidence.push(decoded);
     const outcome = take(decode('Outcome', { type: 'Outcome', schemaVersion: 1, kind, evidence: [decoded.id] }, decodeContext));
-    append('slice-delivery-evidence', { operation, stage: 'service-applied', decisive, evidence: decoded, outcome }, [], bob, bob.provenance);
+    append('slice-delivery-evidence', { operation, stage, decisive, evidence: decoded, outcome }, [], bob, bob.provenance);
     boundary('delivery-evidence', { operation, kind, decisive });
-    record('delivery-evidence', kind, { decisive, stage: 'service-applied' });
+    record('delivery-evidence', kind, { decisive, stage });
   }
 
   function buildRun(admittedFact) {
@@ -1020,6 +1068,48 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
       values: JSON.parse(bytesOf(genesis.view.values)), conflicts: genesis.view.conflicts.map(c => c.kind), taint: [...genesis.view.taint] };
   }
 
+  /**
+   * The recorded accounting docs/15 section 7 names by name. Duration and memory are
+   * MEASURED across every boot of this execution, including boots that were killed:
+   * each boot writes a durable start row, every durable boundary writes an RSS
+   * sample, and each surviving boot writes an end row. `notifications` is stated
+   * plainly for what it is — the external application count under another name,
+   * because the reply IS this slice's only user-visible notification.
+   */
+  function accounting(all, journal) {
+    const endedAt = Date.now();
+    appendLine(paths.boots, home, { event: 'end', boot: bootIndex, wallMs: endedAt,
+      rss: process.memoryUsage().rss, durationMs: endedAt - bootStartedAt });
+    const bootRows = readLines(paths.boots), stepRows = readLines(paths.steps);
+    const starts = bootRows.filter(r => r.event === 'start');
+    const samples = [...bootRows, ...stepRows].map(r => r.rss).filter(v => Number.isSafeInteger(v));
+    // A killed boot writes no end row; its duration is bounded by the next boot's
+    // start, which is why the per-boot list carries an explicit `bounded` flag.
+    const perBoot = starts.map((start, index) => {
+      const end = bootRows.find(r => r.event === 'end' && r.boot === start.boot);
+      const next = starts[index + 1];
+      if (end) return { boot: start.boot, durationMs: end.durationMs, bounded: false };
+      return { boot: start.boot, durationMs: next ? next.wallMs - start.wallMs : null, bounded: true };
+    });
+    const known = perBoot.map(r => r.durationMs).filter(v => Number.isSafeInteger(v));
+    return {
+      facts: all.length, bytes: Buffer.byteLength(readFileSync(join(paths.facts, 'facts.json'), 'utf8')),
+      boots: starts.length, attempts: transportFacts().filter(v => v.record.type === 'AdmissionReservation').length,
+      notifications: journal.applications.length,
+      tokens: (() => { const a = factsOfKind('judgment-JudgmentAttemptRecord').find(f => f.body.record.phase === 'response-observed');
+        if (!a) return null; const bytes = factContext.captures[a.body.record.receipt.reference]?.bytes;
+        return bytes ? JSON.parse(bytes).usage : null; })(),
+      money: journal.charges.reduce((n, c) => n + c.charge, 0),
+      // Wall duration of the WHOLE execution, first boot start to this boot end.
+      durationMs: endedAt - starts[0].wallMs,
+      perBootDurationMs: perBoot, measuredBoots: known.length,
+      // The maximum RSS observed at any durable boundary of any boot, killed boots
+      // included. It is a real high-water mark, not one instant in the last process.
+      peakRssBytes: Math.max(...samples),
+      peakRssSamples: samples.length,
+    };
+  }
+
   function report(rebuilds = []) {
     const all = facts();
     const journal = readServiceJournal(home);
@@ -1043,7 +1133,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
       semanticKeys: [...new Set(transportFacts().filter(v => v.record.type === 'AdmissionReservation').map(v => v.record.semanticMessage))],
       routes: [...new Set(factsOfKind('effect-OperationObservation').map(f => `${f.body.record.account}/${f.body.record.conversation}`))],
       adapterCapabilities: adapterContract().capabilities,
-      declaredStage: 'service-applied',
+      declaredStage: declaredStage(),
       boundariesReached: reached().map(r => r.boundary), cutsFired: cutsFired(),
       intake: (() => { const f = factOfKind('intake-admitted'); return f ? { logicalId: f.body.logicalId, rawHash: f.body.rawHash,
         receipt: f.body.receipt, boundOperator: f.body.binding !== 'none', arrivalAt: f.body.intent.receivedAt.value } : null; })(),
@@ -1079,16 +1169,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
       serviceIntents: journal.intents.length, charges: journal.charges,
       serviceInbound: journal.inbound.length,
       rebuilds,
-      accounting: {
-        facts: all.length, bytes: Buffer.byteLength(readFileSync(join(paths.facts, 'facts.json'), 'utf8')),
-        boots: readLines(paths.boots).length, attempts: transportFacts().filter(v => v.record.type === 'AdmissionReservation').length,
-        notifications: journal.applications.length,
-        tokens: (() => { const a = factsOfKind('judgment-JudgmentAttemptRecord').find(f => f.body.record.phase === 'response-observed');
-          if (!a) return null; const bytes = factContext.captures[a.body.record.receipt.reference]?.bytes;
-          return bytes ? JSON.parse(bytes).usage : null; })(),
-        money: journal.charges.reduce((n, c) => n + c.charge, 0),
-        peakRssBytes: process.memoryUsage().rss,
-      },
+      accounting: accounting(all, journal),
     };
   }
 
@@ -1099,7 +1180,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     store, peerStore, replicas, custody, judgmentCustody, service, captureIndex,
     intake, transport, transportFacts, judgment, effects, runGraph, assessor, model,
     facts, factsOfKind, factOfKind, factRef, append, kinds, generation, now, tick, result,
-    adapterContract, install, restoreGrants, restoreEvidence, liveFence, currentFenceEpoch, boundary, reached, cutsFired,
+    adapterContract, declaredStage, install, restoreGrants, restoreEvidence, liveFence, currentFenceEpoch, boundary, reached, cutsFired,
     drive, report, buildRun, rebuildAll, rebuildOne, obligation,
     minimalProjections: () => minimalPlaneProjections(kinds()),
     snapshot: () => { const all = facts(); return take(prepareSnapshot(all, { ...factContext, facts: all })); },

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error the reference assembly is JavaScript, outside pure core compilation.
-import { PEER_STANDIN_ID as peerId, SLICE_BOUNDARIES as boundaries, bootSliceAssembly, sliceConfig } from '../../scripts/slice-assembly.mjs';
+import { PEER_STANDIN_ID as peerId, bootSliceAssembly, sliceConfig } from '../../scripts/slice-assembly.mjs';
 
 export interface SliceAssembly {
   readonly home: string; readonly bootIndex: number; readonly incarnation: string;
@@ -24,14 +24,16 @@ export interface SliceAssembly {
   readonly factsOfKind: (kind: string) => readonly { id: string; kind: string; body: Record<string, never> }[];
   readonly factOfKind: (kind: string) => { id: string; kind: string; body: Record<string, never> } | undefined;
   readonly kinds: () => readonly string[];
-  readonly adapterContract: () => { capabilities: Record<string, { status: string }> };
+  readonly adapterContract: () => { capabilities: Record<string, { status: string; stage?: string }> };
+  readonly declaredStage: () => string;
+  readonly boundary: (name: string, extra?: Record<string, unknown>) => void;
   readonly liveFence: () => unknown;
   readonly rebuildAll: () => readonly { projection: string; equal: string; hash: string }[];
   readonly transportFacts: () => readonly { fact: { id: string }; record: Record<string, never> }[];
   readonly operationDefinition: Record<string, unknown>;
 }
 
-export const SLICE_BOUNDARIES = boundaries as readonly string[];
+export { DECLARED_BOUNDARIES, PROFILE_BOUNDARIES, SLICE_BOUNDARIES, UNREACHED_BOUNDARIES } from './boundaries.js';
 export const PEER_STANDIN_ID = peerId as string;
 export const homes: string[] = [];
 

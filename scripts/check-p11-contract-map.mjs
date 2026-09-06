@@ -18,8 +18,8 @@ const executed = {
   47: 'Delivery is proved only to the adapter\'s declared stage; a decisive and an opaque adapter are exercised as required neighbours.',
   48: 'No open ownerless obligation; uncertain and blocked obligations stay owned and pending with maximum exposure retained, and every rebuild reproduces that state.',
   49: 'Every required port is real and delegates: the assessment port refuses without independent evidence and the capture port really preserves bytes.',
-  50: 'Duration-free but complete accounting: facts, bytes, boots, attempts, notifications, tokens, money and peak memory inside declared finite bounds.',
-  53: 'The declared adapter contracts name conformance fixtures that exist and are executed by this suite.',
+  50: 'Complete recorded accounting: measured duration and a cross-boot high-water RSS, plus facts, bytes, boots, attempts, notifications, tokens and money, all inside DECLARED finite bounds (declared, never presented as measured targets).',
+  53: 'Every SUPPORTED capability of every declared adapter names one specific test, and this checker refuses unless that exact test PASSED in the actual run.',
 };
 const scoped = {
   51: 'Declared skip: a live model provider, live platform credentials and an independent live delivery witness are not built on this base.',
@@ -81,10 +81,38 @@ export function checkP11Coverage(report, dispositions = p11Dispositions()) {
   });
 }
 
+/**
+ * Each SUPPORTED capability of each declared adapter names one specific executed test
+ * as `<file>::<substring of its title>`. Naming a whole file would let a capability
+ * inherit execution from unrelated tests, so this binds the capability to the test.
+ */
+export function checkCapabilityConformance(report, contracts = JSON.parse(readFileSync('scripts/slice-contracts.json', 'utf8'))) {
+  const rows = [];
+  for (const [adapter, contract] of Object.entries(contracts.adapters)) {
+    for (const [name, capability] of Object.entries(contract.capabilities)) {
+      if (capability.status !== 'supported') continue;
+      const reference = capability.conformance;
+      if (typeof reference !== 'string' || !reference.includes('::'))
+        throw new Error(`${adapter}.${name}: a supported capability must name '<file>::<test title substring>'`);
+      const [file, title] = [reference.slice(0, reference.indexOf('::')), reference.slice(reference.indexOf('::') + 2)];
+      if (!title.trim()) throw new Error(`${adapter}.${name}: conformance names no test`);
+      const suite = report.testResults.find(f => relative(process.cwd(), f.name) === file);
+      if (!suite) throw new Error(`${adapter}.${name}: conformance names a file this run did not execute: ${file}`);
+      const passing = suite.assertionResults.filter(t => t.fullName.includes(title) && t.status === 'passed');
+      if (!passing.length) throw new Error(`${adapter}.${name}: no PASSING test in ${file} whose title contains '${title}'`);
+      rows.push({ adapter, capability: name, file, title, passing: passing.length });
+    }
+  }
+  if (!rows.length) throw new Error('no supported capability declared a conformance fixture');
+  return rows;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const rows = checkP11Coverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   console.log('| Check | Status | Executed test files |'); console.log('|---|---|---|');
   for (const row of rows) console.log(`| ${row.id} | ${row.status} | ${[...new Set(row.tests.map(t => t.file))].join('; ') || '—'} |`);
+  const conformance = checkCapabilityConformance(JSON.parse(readFileSync('.test-results.json', 'utf8')));
+  console.log(`${conformance.length} supported adapter capabilities each bound to a specific PASSING test.`);
   const executedRows = rows.filter(r => r.status === 'executed');
   console.log(`${rows.length} P11 checks mapped; ${executedRows.length} executed by this lane, `
     + `${rows.filter(r => r.status === 'declared-skip').length} declared skips, `
