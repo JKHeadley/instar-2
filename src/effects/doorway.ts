@@ -190,7 +190,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
         .map(v => v.record as OperationObservation);
       const input = { request: q, reservation: op.reservation, claim: op.claim.id, observations, bar: q.verificationBar };
       const acceptance = take(assessment.assess(input));
-      ensure(acceptance.owner === 'part-nine' && acceptance.name === 'EvidenceAcceptance' && acceptance.id.length > 0, 'wrong acceptance owner');
+      ensure(acceptance.owner === 'part-nine' && acceptance.name === 'VerificationAssessment' && acceptance.id.length > 0, 'wrong acceptance owner');
       const proof = take(assessment.read(acceptance, input));
       const outcome = take(decode('Outcome', proof.outcome, host.current().decode));
       const state = consumeOutcome(outcome, { happened: () => 'happened', 'did-not-happen': () => 'did-not-happen', uncertain: () => 'uncertain' });

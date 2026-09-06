@@ -1,5 +1,6 @@
 import type { EffectRequest, EffectSettlement, OperationDefinition, OutboundMessage } from '../../src/effects/index.js';
 import type { DispatchClaim } from '../../src/transport/index.js';
+import type { OwnedReference } from '../../src/index.js';
 declare const request: EffectRequest;
 declare const definition: OperationDefinition;
 declare const message: OutboundMessage;
@@ -12,4 +13,6 @@ const fake: EffectRequest = { type: 'EffectRequest', schemaVersion: 1, id: 'fake
 const wrong: OutboundMessage = definition;
 // @ts-expect-error Settlement does not confer a new request or live authority.
 const replay: EffectRequest = settlement;
-void [message, claim, fake, wrong, replay];
+// @ts-expect-error Nine's approved name is VerificationAssessment, not a consumer-invented alias.
+const invented: OwnedReference<'part-nine', 'VerificationAssessment'> = { owner: 'part-nine', name: 'EvidenceAcceptance', id: 'fake' };
+void [message, claim, fake, wrong, replay, invented];

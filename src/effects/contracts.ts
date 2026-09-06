@@ -81,8 +81,8 @@ export interface EffectAssessmentPort {
   readonly owner: 'part-nine';
   assess(input: { readonly request: EffectRequest; readonly reservation: AdmissionReservation;
     readonly claim: string; readonly observations: readonly OperationObservation[];
-    readonly bar: string }): Result<OwnedReference<'part-nine', 'EvidenceAcceptance'>>;
-  read(acceptance: OwnedReference<'part-nine', 'EvidenceAcceptance'>, input: {
+    readonly bar: string }): Result<OwnedReference<'part-nine', 'VerificationAssessment'>>;
+  read(acceptance: OwnedReference<'part-nine', 'VerificationAssessment'>, input: {
     readonly request: EffectRequest; readonly reservation: AdmissionReservation; readonly claim: string;
     readonly observations: readonly OperationObservation[]; readonly bar: string;
   }): Result<{ readonly outcome: Outcome; readonly finalCharge: number | null;

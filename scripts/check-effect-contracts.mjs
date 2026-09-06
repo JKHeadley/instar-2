@@ -44,7 +44,7 @@ export function inspectEffects(sources) {
   const failures = [];
   for (const [path, source] of Object.entries(sources)) {
     if (/from ['"]\.\.\/(?:transport|facts|register)\/(?!index\.js)/.test(source)) failures.push(`${path}: private sibling import`);
-    if (/\b(?:interface|type|class)\s+(?:Outcome|Result|AdmissionReservation|DispatchClaim|Run|EvidenceAcceptance)\b/.test(source)) failures.push(`${path}: foreign owner`);
+    if (/\b(?:interface|type|class)\s+(?:Outcome|Result|AdmissionReservation|DispatchClaim|Run|VerificationAssessment|EvidenceAcceptance)\b/.test(source)) failures.push(`${path}: foreign owner`);
     if (/\b(?:fetch|setTimeout|setInterval)\s*\(/.test(source)) failures.push(`${path}: ambient execution`);
   }
   return failures;

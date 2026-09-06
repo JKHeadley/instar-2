@@ -85,7 +85,7 @@ export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), in
         claim: { subject: input.reservation.operation, predicate: input.request.digest, value: assessmentState },
         strength: 'observation', observedAt: f.clock(now), freshFor: 100 }), decodeContext)));
       assessmentEvidence = evidenceId;
-      return f.success({ owner: 'part-nine', name: 'EvidenceAcceptance', id: acceptanceId }); },
+      return f.success({ owner: 'part-nine', name: 'VerificationAssessment', id: acceptanceId }); },
     read: (ref, input) => {
       if (ref.id !== acceptanceId || !input.observations.length) throw new Error('assessment binding');
       return f.success({ outcome: value(decode('Outcome', { type: 'Outcome', schemaVersion: 1, kind: assessmentState, evidence: [assessmentEvidence] }, decodeContext)),

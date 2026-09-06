@@ -73,3 +73,12 @@ it('P8-NF-20 P8-NF-24 P8-NF-35 P8-NF-37 read-only lookup needs one durable six w
   expect(f.queries()).toBe(1); expect(f.calls()).toBe(1);
   refused(f.api.observe(o.operation), 'already completed'); expect(f.queries()).toBe(1);
 }, 15000);
+
+it('P8-NF-01 P8-NF-19 nine reference must use its approved VerificationAssessment name', () => {
+  const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
+  const wrong = createEffectDoorway({ ...f.composition, assessment: { ...f.composition.assessment!, assess: () => f.success({
+    owner: 'part-nine', name: 'EvidenceAcceptance' as 'VerificationAssessment', id: 'invented-alias',
+  }) } });
+  refused(wrong.settle(o.operation), 'wrong acceptance owner');
+  expect(value(f.api.settle(o.operation)).acceptance.length).toBeGreaterThan(0);
+}, 15000);
