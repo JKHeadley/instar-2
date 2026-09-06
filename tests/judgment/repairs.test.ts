@@ -1,11 +1,17 @@
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { hostname } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import type { JudgmentAttemptRecord, ProviderObservation } from '../../src/judgment/index.js';
+import type { JudgmentAttemptRecord, JudgmentCapturePort, ProviderObservation } from '../../src/judgment/index.js';
 import { receiptByteBound } from '../../src/judgment/model-adapter.js';
 import { createJudgmentDoorway } from '../../src/judgment/index.js';
 import { judgmentFixture, refused, value } from './fixture.js';
+// @ts-expect-error Reference host adapter outside pure core.
+import { createJudgmentCaptures } from '../../scripts/judgment-captures.mjs';
 
 const receipt = (f: ReturnType<typeof judgmentFixture>) => {
   const response = value(f.door.inspect()).find(v => v.record.type === 'JudgmentAttemptRecord' && v.record.receipt)?.record;
@@ -22,6 +28,19 @@ function inputSize(f: ReturnType<typeof judgmentFixture>) {
 }
 
 describe('P7 desk reproductions over real capture/spine/claim ports', { timeout: 30_000 }, () => {
+  it.each(['live', 'foreign', 'malformed'])('P7-NF-22 P7-NF-34 N1 %s lock blocks writes but not verified capture reads', kind => {
+    const f = judgmentFixture({ capacity: 8 }); const token = value(f.captures.reserve(8));
+    const cap = value(f.captures.putReserved(token, 'receipt'));
+    const slots = join(f.directory, 'captures/capacity');
+    const before = Object.fromEntries(readdirSync(slots).map(name => [name, readFileSync(join(slots, name), 'utf8')]));
+    const lock = join(f.directory, 'captures/capture.lock'); mkdirSync(lock);
+    const owner = { id: randomUUID(), pid: process.pid, host: kind === 'foreign' ? 'not-this-host:' + hostname() : hostname() };
+    writeFileSync(join(lock, `owner-${owner.id}.json`), kind === 'malformed' ? '{' : JSON.stringify(owner));
+    const reopened: JudgmentCapturePort = createJudgmentCaptures(f.directory, {}, f.result, 8);
+    expect(value(reopened.read(cap))).toBe('receipt'); refused(reopened.reserve(1)); refused(reopened.put('x', 1));
+    expect(readdirSync(lock)).toEqual([`owner-${owner.id}.json`]);
+    expect(Object.fromEntries(readdirSync(slots).map(name => [name, readFileSync(join(slots, name), 'utf8')]))).toEqual(before);
+  });
   it.each(['transport throw', 'unserializable return', 'normal return'])('P7-NF-10 P7-NF-14 P7-NF-28 R1 freezes %s before SDK edits', async cut => {
     const base = judgmentFixture(); let blocked = 0;
     const cyclic: Record<string, unknown> = { ...base.observation }; cyclic.cycle = cyclic;

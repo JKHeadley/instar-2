@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { hostname } from 'node:os';
 
 // Local capture custody, not a second judgment journal. No raw network reads,
 // deletion, timeout retention or automatic pin release. Files are content-addressed.
@@ -9,20 +10,48 @@ export function createJudgmentCaptures(directory, metadata, result, capacity = 1
   const slots = join(root, 'capacity'); mkdirSync(slots, { recursive: true });
   const issued = new WeakSet();
   const syncDir = dir => { const fd = openSync(dir, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } };
-  const locked = run => { const lock = join(root, 'capture.lock'); mkdirSync(lock); try { return run(); } finally { rmdirSync(lock); } };
+  const lock = join(root, 'capture.lock');
+  const reapDeadOwner = () => {
+    const names = readdirSync(lock);
+    // Empty/partial/legacy/foreign locks are ambiguous, not proof of quiescence.
+    // They block writes, never opening or reading existing receipts below.
+    if (names.length !== 1 || !/^owner-[a-f0-9-]{36}\.json$/.test(names[0])) throw new Error('capture writer owner unknown');
+    const marker = join(lock, names[0]), owner = JSON.parse(readFileSync(marker, 'utf8'));
+    if (owner.host !== hostname() || !Number.isSafeInteger(owner.pid) || owner.pid <= 0 || names[0] !== `owner-${owner.id}.json`)
+      throw new Error('capture writer owner unknown');
+    try { process.kill(owner.pid, 0); throw new Error('capture writer still live'); }
+    catch (error) { if (error.code !== 'ESRCH') throw error; }
+    // Only the remover of this UNIQUE owner's marker may remove the now-empty
+    // directory. A competing reaper loses at unlink (ENOENT) and cannot remove a
+    // replacement owner's lock. No age timeout or blind recursive deletion.
+    unlinkSync(marker); rmdirSync(lock); syncDir(root);
+  };
+  const locked = run => {
+    try { mkdirSync(lock); }
+    catch (error) { if (error.code !== 'EEXIST') throw error; reapDeadOwner(); mkdirSync(lock); }
+    const owner = { id: randomUUID(), pid: process.pid, host: hostname() }, marker = join(lock, `owner-${owner.id}.json`);
+    try {
+      const fd = openSync(marker, 'wx', 0o600);
+      try { writeFileSync(fd, JSON.stringify(owner)); fsyncSync(fd); } finally { closeSync(fd); }
+      syncDir(lock); syncDir(root);
+      ensurePolicy(); return run();
+    } finally { if (existsSync(marker)) unlinkSync(marker); rmdirSync(lock); }
+  };
   const writeRecord = (file, record) => {
     const temporary = join(slots, `${randomUUID()}.pending`), fd = openSync(temporary, 'wx', 0o600);
     try { writeFileSync(fd, JSON.stringify(record)); fsyncSync(fd); } finally { closeSync(fd); }
     renameSync(temporary, file); syncDir(slots);
   };
-  // Every writer of this custody directory shares one durable capacity ceiling.
-  locked(() => {
-    if (!Number.isSafeInteger(capacity) || capacity < 0) throw new Error('finite capture capacity required');
+  if (!Number.isSafeInteger(capacity) || capacity < 0) throw new Error('finite capture capacity required');
+  // Policy initialization belongs to exclusive WRITE admission. Reopening the
+  // read capability must not acquire a writer lock, including after SIGKILL in
+  // mkdir before an owner could be recorded, or during stale-lock reclamation.
+  const ensurePolicy = () => {
     const policy = join(slots, 'policy.json');
     if (!existsSync(policy)) writeRecord(policy, { capacity });
     if (JSON.parse(readFileSync(policy, 'utf8')).capacity !== capacity) throw new Error('capture capacity policy differs');
     syncDir(root); syncDir(directory);
-  });
+  };
   const hash = bytes => `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`;
   const path = cap => {
     if (!/^sha256:[a-f0-9]{64}$/.test(cap.hash) || cap.reference !== `judgment-capture:${cap.hash}`) throw new Error('invalid local capture reference');

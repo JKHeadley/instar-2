@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
@@ -45,3 +45,65 @@ it('P7-NF-14 P7-NF-15 P7-NF-52 real SIGKILL after handoff/provider/receipt/resol
   }
 }, 60_000); // Four bounded fresh-process cuts, each resumed child capped at 15s.
 it.skip('P7-NF-41 LIVE-PROVIDER slice fixture requires separately authorized real provider, eight executor and activation evidence', () => {});
+it.each(['capture-empty', 'capture-owner'])('P7-NF-15 P7-NF-22 P7-NF-34 P7-NF-52 N1 real SIGKILL at %s preserves receipt-only reopening and writer exclusion', async cut => {
+  const b = boot();
+  const children: ReturnType<typeof spawn>[] = [];
+  const paused = async (mode: string, phase: string) => {
+    const child = spawn(process.execPath, [...b.args, mode, phase], { stdio: ['ignore', 'pipe', 'pipe'] }); children.push(child);
+    let errors = ''; child.stderr!.on('data', data => { errors += String(data); });
+    const ready = await new Promise((done, reject) => {
+      const timer = setTimeout(() => reject(new Error('lock worker readiness timeout: ' + errors)), 10000);
+      let output = '', settled = false; child.stdout!.on('data', data => { if (settled) return; output += String(data); if (output.includes('\n')) { settled = true; clearTimeout(timer); done(JSON.parse(output.trim())); } });
+      child.once('exit', code => { clearTimeout(timer); reject(new Error(`lock worker ${code}: ${errors}`)); });
+    });
+    expect(ready).toEqual({ ready: true, phase }); return child;
+  };
+  const kill = async (child: ReturnType<typeof spawn>) => {
+    const exit = new Promise(done => child.once('exit', (_code, signal) => done(signal)));
+    child.kill('SIGKILL'); expect(await exit).toBe('SIGKILL');
+  };
+  const run = (mode: string) => {
+    const result = spawnSync(process.execPath, [...b.args, mode, 'none'], { encoding: 'utf8', timeout: 15000 });
+    expect(result.status, result.stderr).toBe(0); return JSON.parse(result.stdout);
+  };
+  const commitments = () => Object.fromEntries(readdirSync(join(b.directory, 'captures/capacity')).sort()
+    .map(name => [name, readFileSync(join(b.directory, 'captures/capacity', name), 'utf8')]));
+  try {
+    // Leave an intact real response but no accounting/decode/resolution yet.
+    await kill(await paused('start', 'response'));
+    const before = commitments();
+    const writer = await paused('capture-lock', cut);
+    const markerNames = readdirSync(join(b.directory, 'captures/capture.lock'));
+    expect(markerNames).toHaveLength(cut === 'capture-owner' ? 1 : 0);
+    if (cut === 'capture-owner') expect(JSON.parse(readFileSync(join(b.directory, 'captures/capture.lock', markerNames[0]!), 'utf8')).pid).toBe(writer.pid);
+    // A stopped but live writer cannot be stolen. A fresh compiled composition
+    // can nevertheless open/read the receipt, with no capacity mutation.
+    const live = run('capture-probe'); expect(live.write.ok).toBe(false);
+    expect(live.write.detail).toContain(cut === 'capture-owner' ? 'still live' : 'owner unknown');
+    expect(commitments()).toEqual(before);
+    await kill(writer);
+    if (cut === 'capture-owner') {
+      // Freeze one stale reaper after its liveness check but before unlink. A
+      // competitor reclaims the dead marker and becomes a NEW live owner. The
+      // old reaper must lose without removing that replacement directory.
+      const reaper = await paused('capture-reaper', 'capture-reaper');
+      const replacement = await paused('capture-lock', 'capture-owner');
+      const replacementNames = readdirSync(join(b.directory, 'captures/capture.lock'));
+      let output = ''; reaper.stdout!.on('data', data => { output += String(data); });
+      const exited = new Promise(done => reaper.once('exit', done)); reaper.kill('SIGCONT'); expect(await exited).toBe(0);
+      expect(JSON.parse(output)).toMatchObject({ ok: false, detail: expect.stringContaining('ENOENT') });
+      expect(readdirSync(join(b.directory, 'captures/capture.lock'))).toEqual(replacementNames);
+      expect(run('capture-probe').write.detail).toContain('still live');
+      expect(commitments()).toEqual(before);
+      await kill(replacement);
+    }
+    expect(run('resume').recorded).toBe(true);
+    expect(commitments()).toEqual(before); // Recovery never releases held bytes.
+    const reopened = run('capture-probe'); expect(reopened.bytes).toBe(live.bytes);
+    expect(reopened.write.ok).toBe(cut === 'capture-owner'); // ESRCH reclaims only a known dead writer.
+    if (cut === 'capture-empty') expect(reopened.write.detail).toContain('owner unknown');
+    expect(readFileSync(join(b.directory, 'provider-invocations.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1);
+    const facts = JSON.parse(readFileSync(join(b.directory, 'facts.json'), 'utf8')) as { body: { record?: { type: string; state?: string; charge?: number } } }[];
+    expect(facts.map(f => f.body.record).filter(r => r?.type === 'AdmissionReservation').at(-1)).toMatchObject({ state: 'consumed', charge: 20 });
+  } finally { for (const child of children) child.kill('SIGKILL'); }
+}, 30_000);
