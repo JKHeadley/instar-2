@@ -5,8 +5,8 @@ and six's merged reservation/claim implementation. Its returned `RecordedAnswer`
 not five's run acceptance and never business-effect permission.
 
 `judge(question, fence)` records one question and five immutable attempt phases,
-then one resolution. Exact provider-formatted input bytes and actual response/usage
-bytes are retained locally. Shared facts contain bounded metadata and captured
+then one resolution. Exact provider-formatted input and admitted response bytes,
+plus bounded actual-usage observations, are retained locally. Shared facts contain bounded metadata and captured
 references, P1 observation Evidence, uncertain Outcome, Result and decoded Decision.
 Reason/conclusion use P1's separate claims; the output cannot widen the host floor.
 The accounting phase observes the provider receipt. Unknown charge remains null;
@@ -19,7 +19,12 @@ The host supplies five's stable semantic-message reference and eight's EffectReq
 reference. The reference fixture substitutes explicit foreign references, not owner
 implementations. Six alone derives operation identity. Its existing reserve call
 creates mapping and reservation together, so the prepared attempt explicitly omits
-operation/reservation, then dispatch-observed durably links the actual six fact.
+operation/reservation. Dispatch-observed durably links six's **consumed-claim**
+fact inside the guarded callback, after consumption and before provider invocation.
+A prepared reservation or issued-but-unused claim is not a handoff. SDK no-call
+and claim refusal leave no dispatch observation. An interrupted handoff append
+retains consumed exposure and prevents invocation/retry. A handoff phase is still
+not a claim that the provider received bytes or returned an answer.
 No duplicated operation-ID derivation or fabricated future provider ID exists.
 
 `createModelAdapter` implements ten's describe/prepare/exchange contract for an
@@ -31,6 +36,13 @@ provider transport. This reference boundary plays the narrow executor role; it i
 not a shipped eight-owned effect admission/settlement implementation or credential
 isolation proof. A real provider is deliberately not wired into the reference host.
 
+Every observation is copied and deeply frozen **before the SDK sees it**, including
+thrown transport errors and malformed/unserializable returns. Invalid observations
+are not usable answers, but independently valid usage and provider-operation fields
+survive in a bounded receipt. Oversized bytes are omitted with an explicit
+`response-byte-limit` and observed byte-count lower bound; unknown fields remain
+null, never invented zero. Valid bytes, including JSON whitespace, remain exact.
+
 `scripts/judgment-slice.mjs` composes the real compiled ports. Local files use file
 and directory fsync. Capture capacity is finite (the synthetic fixture chooses
 1 MiB), the input/output byte bounds are 16 KiB each, maximum reserved charge is
@@ -38,6 +50,21 @@ and directory fsync. Capture capacity is finite (the synthetic fixture chooses
 configuration numbers, not observed deployment promises. The reference context
 refresh consumes P2's verified status-bearing Evidence; raw signed bytes alone do
 not become live evidence. Caller question fields never select the configuration.
+
+Before six reserves spend, the capture owner reserves the complete finite encoded
+receipt budget: `6 * maxOutputBytes + 8192` (106496 bytes for the fixture). Sixfold
+expansion bounds JSON escaping; the fixed remainder covers all closed/bounded
+metadata fields. Input fitting without this output capacity refuses before any
+spend reservation or invocation. This intentionally reserves worst-case storage,
+not the expected small answer, and is independent of six's money accounting.
+
+Capacity commitments share the capture directory's durable policy and file lock.
+Other writers, including a new process, cannot spend a held slot. The exact capture
+hash is bound before writing and the full slot stays held afterward; no release
+API exists. Crashes or abandoned attempts may conservatively strand capacity,
+but cannot silently free it or destroy prior evidence. A real post-admission disk
+failure can still prevent a receipt; that always prevents answer use. This is the
+ten-labelled reference custody port, not a production storage/isolation guarantee.
 
 `resumeRecording(request)` only completes local accounting/decode/resolution from
 an existing real receipt, even under a new process incarnation. It returns a fact
@@ -54,8 +81,11 @@ multi-machine question arbitration or independent protection. No retention timer
 deletes evidence and no successful answer releases a pin. The local port has no
 network fetch or delete operation; host administrator isolation is not claimed.
 
-Tests cover actual owner ports, hostile SDKs, byte/storage faults and three real
+Tests cover actual owner ports, hostile SDKs, byte/storage faults and four real
 SIGKILL cuts. The explicitly skipped LIVE-PROVIDER fixture is not counted as passing.
+Real fsync-backed semantic cases are split and have 30-second harness budgets;
+the four-cut process fixture has a 60-second budget. These repair measured Linux
+CI default-five-second timeouts without changing policy clocks or dropping cases.
 `scripts/check-judgment-contracts.mjs` maps every one of the 53 design checks to
 executed partial coverage or an explicit out-of-scope reason. None is declared held
 by this implementation alone. Protected-artifact sidecars do not activate a feature.
