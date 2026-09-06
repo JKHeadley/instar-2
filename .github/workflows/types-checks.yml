@@ -5,7 +5,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm]
+        include:
+          - os: ubuntu-latest
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -17,10 +21,25 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:all
+      - run: node -e "if (process.arch !== '${{ matrix.arch }}') process.exit(1)"
+      - run: node scripts/p2-determinism.mjs p2-output.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p2-${{ matrix.arch }}
+          path: p2-output.json
       - uses: actions/upload-artifact@v4
         with:
           name: register-${{ matrix.os }}
           path: generated/register.json
+  cross-architecture:
+    needs: contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: p2-*
+          path: outputs
+      - run: cmp outputs/p2-x64/p2-output.json outputs/p2-arm64/p2-output.json
   register-determinism:
     needs: contract
     runs-on: ubuntu-latest
@@ -31,3 +50,12 @@ jobs:
           path: register-artifacts
       - name: P3-NF-07 compare independently verified architecture outputs
         run: cmp register-artifacts/register-ubuntu-latest/register.json register-artifacts/register-ubuntu-24.04-arm/register.json
+  p3-body-seam:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci && npm run build
+      - run: node scripts/test-p3-body-seam.mjs .
