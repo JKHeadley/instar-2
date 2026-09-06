@@ -46,7 +46,11 @@ reservation, one-use claim, exposure and bounded observation wakes.
    contradictory final knowledge/charge refuses rather than overwriting history.
    Unknown occurrence/charge retains maximum exposure. This slice enables no retry.
 7. `consumeEffectSettlement` accepts only a genuine owner-issued result, reruns
-   evidence/durability checks, and rejects copied JSON/history. It does **not**
+   evidence/durability checks, and rejects copied JSON/history. Assessment inputs
+   and P1 evidence freshness are rechecked after each durability wait, including
+   the final wait immediately before issuance or consequential consumption.
+   Changed assessment, evidence, reservation or observations refuse that attempt;
+   an already durable historical settlement is not erased. It does **not**
    change credits. Six's conditional settlement/accounting extension is a routed
    dependency; until it lands no credits are released and no run completion is
    claimed from this record alone.

@@ -2,6 +2,7 @@ import { afterEach, expect, it } from 'vitest';
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { authorAndAppend } from '../../src/facts/index.js';
+import { consumeOutcome, decode, readEvidence } from '../../src/index.js';
 import { consumeEffectSettlement, createEffectDoorway } from '../../src/effects/index.js';
 import { effectFixture, value, refused } from '../effects/fixture.js';
 import { json, privateKey } from '../facts/fixtures.js';
@@ -42,6 +43,89 @@ it('P8-NF-25 P8-NF-27 approved local custody does not silently require or infer 
   const s = value(f.api.settle(o.operation));
   expect(value(consumeEffectSettlement(s, f.host.boundary, current => current.id))).toBe(s.id);
 }, 30000);
+
+for (const wait of [1, 2]) for (const at of [199, 200, 201]) {
+  it(`P8-NF-19 P8-NF-21 P8-NF-23 consumption checks evidence at ${at} after durability wait ${wait}`, () => {
+    const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
+    f.assess('happened', 0);
+    let armed = false, waits = 0, consumers = 0;
+    const api = createEffectDoorway({ ...f.composition, durability: { owner: 'part-ten', ensure: facts => {
+      const result = f.composition.durability.ensure(facts);
+      if (armed && ++waits === wait) f.time(at);
+      return result;
+    } } });
+    const s = value(api.settle(o.operation)); armed = true;
+    const result = consumeEffectSettlement(s, f.host.boundary, current => { consumers++; return current.id; });
+    const ids = consumeOutcome(s.outcome, { happened: e => e, 'did-not-happen': e => e, uncertain: e => e });
+    const evidence = value(decode('Evidence', f.evidence.find(e => e.id === ids[0]), f.host.current().decode));
+    const independentRead = readEvidence(evidence, f.host.current().clock, f.host.boundary.preserved);
+    expect(waits).toBe(wait === 1 && at > 200 ? 1 : 2);
+    if (at <= 200) {
+      expect(value(result)).toBe(s.id); value(independentRead); expect(consumers).toBe(1);
+    } else {
+      refused(result, 'expired'); refused(independentRead, 'expired'); expect(consumers).toBe(0);
+    }
+    expect(value(f.api.inspect()).filter(r => r.record.type === 'EffectSettlement')).toHaveLength(1);
+    expect(value(f.transport.inspect()).filter(r => r.record.type === 'AdmissionReservation').at(-1)!.record)
+      .toMatchObject({ state: 'consumed', charge: 20 });
+    expect(f.calls()).toBe(1);
+  }, 30000);
+}
+
+for (const wait of [1, 2]) {
+  it(`P8-NF-21 P8-NF-23 new issuance refuses expiry during durability wait ${wait} without losing history`, () => {
+    const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
+    f.assess('happened', 0); let waits = 0;
+    const api = createEffectDoorway({ ...f.composition, durability: { owner: 'part-ten', ensure: facts => {
+      const result = f.composition.durability.ensure(facts);
+      if (++waits === wait) f.time(250);
+      return result;
+    } } });
+    refused(api.settle(o.operation), 'expired');
+    expect(value(f.api.inspect()).filter(r => r.record.type === 'EffectSettlement')).toHaveLength(wait === 1 ? 0 : 1);
+    expect(f.calls()).toBe(1);
+  }, 30000);
+  it(`P8-NF-23 P8-NF-27 new issuance refuses peer receipt loss during durability wait ${wait}`, () => {
+    const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
+    f.assess('happened', 0); let waits = 0;
+    const path = join(f.directory, 'peer-captures', `${o.capture.hash.slice(7)}.capture`);
+    const api = createEffectDoorway({ ...f.composition, durability: { owner: 'part-ten', ensure: facts => {
+      const result = f.composition.durability.ensure(facts);
+      if (++waits === wait) renameSync(path, `${path}.withheld`);
+      return result;
+    } } });
+    refused(api.settle(o.operation), 'custody');
+    expect(value(f.api.inspect()).filter(r => r.record.type === 'EffectSettlement')).toHaveLength(wait === 1 ? 0 : 1);
+    renameSync(`${path}.withheld`, path);
+    const s = value(f.api.settle(o.operation));
+    expect(value(consumeEffectSettlement(s, f.host.boundary, current => current.id))).toBe(s.id);
+    expect(f.calls()).toBe(1);
+  }, 30000);
+}
+
+for (const change of ['assessment', 'evidence', 'custody']) {
+  it(`P8-NF-19 P8-NF-23 P8-NF-27 final consumer wait invalidates changed ${change}`, () => {
+    const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
+    f.assess('happened', 0); let armed = false, waits = 0, consumers = 0;
+    const api = createEffectDoorway({ ...f.composition, durability: { owner: 'part-ten', ensure: facts => {
+      const result = f.composition.durability.ensure(facts);
+      if (armed && ++waits === 2) {
+        if (change === 'assessment') f.assess('happened', 1);
+        else if (change === 'evidence') {
+          const i = f.evidence.findIndex(e => e.id.startsWith('assessment:'));
+          f.evidence[i] = value(decode('Evidence', { ...f.evidence[i], freshFor: 150 }, f.host.current().decode));
+        } else {
+          const path = join(f.directory, 'peer-captures', `${o.capture.hash.slice(7)}.capture`);
+          renameSync(path, `${path}.withheld`);
+        }
+      }
+      return result;
+    } } });
+    const s = value(api.settle(o.operation)); armed = true;
+    refused(consumeEffectSettlement(s, f.host.boundary, () => { consumers++; }), change === 'custody' ? 'custody' : `${change} changed`);
+    expect(consumers).toBe(0); expect(waits).toBe(2); expect(f.calls()).toBe(1);
+  }, 30000);
+}
 
 for (const missing of ['note', 'effect-OperationDefinition', 'effect-EffectRequest', 'effect-EffectValidation', 'transport-AdmissionReservation']) {
   it(`P8-NF-25 P8-NF-26 exact closure matrix refuses missing ${missing} peer acknowledgement`, () => {

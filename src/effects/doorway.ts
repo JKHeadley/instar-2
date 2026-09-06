@@ -195,25 +195,37 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       const outcome = take(decode('Outcome', proof.outcome, host.current().decode));
       const state = consumeOutcome(outcome, { happened: () => 'happened', 'did-not-happen': () => 'did-not-happen', uncertain: () => 'uncertain' });
       const evidenceIds = consumeOutcome(outcome, { happened: e => e, 'did-not-happen': e => e, uncertain: e => e });
-      for (const id of evidenceIds) {
-        const source = host.current().decode.evidence?.find(e => e.id === id);
-        ensure(source, 'accepted evidence is absent');
-        const e = take(decode('Evidence', source, host.current().decode));
-        const claim = take(readEvidence(e, host.current().clock, host.boundary.preserved));
-        ensure(claim.subject === op.reservation.operation && claim.predicate === q.digest
-          && claim.value === state, 'accepted evidence has different operation/digest/predicate');
-        ensure(state === 'uncertain' || e.strength === 'proof' || e.strength === 'observation', 'inference cannot settle an external effect');
-      }
+      const checkEvidence = () => {
+        const current = host.current();
+        return encoded(evidenceIds.map(id => {
+          const source = current.decode.evidence?.find(e => e.id === id);
+          ensure(source, 'accepted evidence is absent');
+          const e = take(decode('Evidence', source, current.decode));
+          const claim = take(readEvidence(e, current.clock, host.boundary.preserved));
+          ensure(claim.subject === op.reservation.operation && claim.predicate === q.digest
+            && claim.value === state, 'accepted evidence has different operation/digest/predicate');
+          ensure(state === 'uncertain' || e.strength === 'proof' || e.strength === 'observation', 'inference cannot settle an external effect');
+          return source;
+        })).bytes;
+      };
+      const evidencePin = checkEvidence(), proofPin = encoded(proof).bytes;
       ensure(evidenceIds.length > 0, 'settlement has no evidence');
       ensure(proof.finalCharge === null || Number.isSafeInteger(proof.finalCharge) && proof.finalCharge >= 0, 'invalid final charge');
       const required = [...new Set([...q.closure, op.fact.id, op.claim.id, acceptance.id, ...proof.required,
         ...observations.map(o => find(o.id, 'OperationObservation').fact.id)])];
-      const currentCustody = () => {
+      const revalidate = () => {
+        // Assessment and custody may wait too. Read them BEFORE the final P1
+        // clock check; changed inputs refuse instead of blessing an old comparison.
+        ensure(encoded(take(assessment.read(acceptance, input))).bytes === proofPin, 'assessment changed during settlement wait');
         ensure(custody?.owner === 'part-ten', 'current physical custody port unavailable');
         take(custody.verify(observations.map(o => o.capture), d));
+        ensure(encoded(operation(id).reservation).bytes === encoded(op.reservation).bytes, 'reservation changed during settlement wait');
+        const currentObservations = rows(snapshot()).filter(v => v.record.type === 'OperationObservation' && v.record.operation === id).map(v => v.record);
+        ensure(encoded(currentObservations).bytes === encoded(observations).bytes, 'observations changed during settlement wait');
+        ensure(checkEvidence() === evidencePin, 'evidence changed during settlement wait');
       };
       demand(d, factsFor(required));
-      currentCustody();
+      revalidate();
       const fields = { request: q.id, operation: id, claim: op.claim.id, reservation: op.fact.id, digest: q.digest,
         acceptance: acceptance.id, observations: observations.map(o => o.id), outcome,
         finalCharge: proof.finalCharge, delayedExecutionExcluded: proof.delayedExecutionExcluded,
@@ -222,7 +234,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       if (prior) {
         ensure(prior.record.type === 'EffectSettlement', 'settlement type mismatch');
         if (encoded({ ...prior.record, id: '' }).bytes === encoded({ type: 'EffectSettlement', schemaVersion: 1, id: '', ...fields }).bytes) {
-          demand(d, [prior.fact]); currentCustody(); return issuedSettlement(prior.record, () => api.settle(id));
+          demand(d, [prior.fact]); revalidate(); return issuedSettlement(prior.record, () => api.settle(id));
         }
         const previous = consumeOutcome(prior.record.outcome, { happened: () => 'happened', 'did-not-happen': () => 'did-not-happen', uncertain: () => 'uncertain' });
         ensure(previous === 'uncertain' || previous === state, 'settlement disagreement requires reassessment, not overwrite');
@@ -231,7 +243,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       }
       const candidate = { type: 'EffectSettlement', schemaVersion: 1, id: `settlement:${encoded(fields).hash}`, ...fields } as unknown as EffectSettlement;
       const settlement = withSettlement(host, candidate, () => persist(candidate, required));
-      demand(d, [find(settlement.id, 'EffectSettlement').fact]); currentCustody(); return issuedSettlement(settlement, () => api.settle(id));
+      demand(d, [find(settlement.id, 'EffectSettlement').fact]); revalidate(); return issuedSettlement(settlement, () => api.settle(id));
     }),
   };
   return Object.freeze(api);

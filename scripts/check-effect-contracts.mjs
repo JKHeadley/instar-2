@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const exercised = new Set(['01','02','03','04','05','06','08','09','10','13','14','15','16','17','18','19','20','21','22','23','24','25','26','31','35','37','38','39','40','42','46','49']);
+const exercised = new Set(['01','02','03','04','05','06','08','09','10','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','30','31','35','37','38','39','40','42','46','49']);
 const excluded = {
   '07': 'Free-form commands and partial batch modes are outside the one-reply slice.',
   '32': 'Target-conditional mutation is explicitly deferred per PR 23.',
@@ -14,10 +14,10 @@ const excluded = {
 const gaps = {
   '11': 'P10 credential confinement/maintenance isolation not implemented by this fixture.',
   '12': 'Full paid-supervision primitive composition is not available on this base.',
-  '27': 'Response captures use two fsync directories; full origin-loss/custody policy matrix is not implemented.',
+  '27': 'Current two-directory receipt loss/corruption/restoration is exercised; full origin-loss/custody policy matrix is not implemented.',
   '28': 'P4 stop owner is not merged on this base; fixture tests final local stop only.',
   '29': 'Transitive provisional/reconciliation dispatch matrix is not implemented; P2-NF-73 remains explicitly skipped.',
-  '30': 'P2 status snapshot is consumed; complete evidence withdrawal/reconciliation integration remains unbuilt.',
+  '30': 'Physical capture loss taints P2 reads and inhibits settlement; complete evidence withdrawal/reconciliation integration remains unbuilt.',
   '34': 'Late receipt recording exists but separately scoped production observer standing is not implemented.',
   '41': 'Advisory P7 style/coalescing and attention-cap consumer are not composed here.',
   '44': 'Production credential custody and identity isolation are absent; fixture uses no secrets or actual destination.',
