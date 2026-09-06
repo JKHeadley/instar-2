@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { decodeRunGraphRegistration } from '../../src/rungraph/index.js';
 import { setup as registerFixture } from '../register/fixtures.js';
+import { governanceFixture } from './governance-fixture.js';
 import { setup, value, refused } from './fixtures.js';
 
 // These rows must be present in actual Vitest output, not a prose coverage claim.
@@ -62,9 +63,24 @@ it('P5-NF-01 P5-NF-48 one owner inventory and every public seam have six-field c
 });
 it('P5-NF-54 P3 validates the actual colocated feature declaration; wrong profiles refuse', () => {
   const registration = JSON.parse(readFileSync('src/rungraph/rungraph.declarations.json', 'utf8'))[0];
-  const f = registerFixture(), context = { ...f.context, source: { path: 'src/rungraph/rungraph.declarations.json', symbol: 'rungraph-core' } };
+  const f = registerFixture(), register = { ...f.context.types.register, entries: [...f.context.register.entries, 'rungraph.bound'] };
+  const context = { ...f.context, register, types: { ...f.context.types, register }, references: [...f.context.references!, { provider: 'fixture', id: 'P5-NF-54' }],
+    source: { path: 'src/rungraph/rungraph.declarations.json', symbol: 'rungraph-core' } };
   expect(value(decodeRunGraphRegistration(registration, context)).id).toBe('rungraph-core');
-  refused(decodeRunGraphRegistration({ ...registration, profile: { ...registration.profile, consequence: 'none' } }, context), 'understates');
+  expect(registration.status).toBe('dark');
+  expect(registration.requiredFacts.liveProof).toBeUndefined();
+  for (const profile of [{ consequence: 'none' }, { reversibility: 'reversible' }, { reach: 'internal' },
+    { surface: 'none' }, { repeats: { kind: 'no' } }])
+    refused(decodeRunGraphRegistration({ ...registration, profile: { ...registration.profile, ...profile } }, context), 'understates');
+  for (const status of ['live', 'soaking'])
+    refused(decodeRunGraphRegistration({ ...registration, status }, context), 'liveProof');
+  refused(decodeRunGraphRegistration({ ...registration, requiredFacts: { metrics: registration.requiredFacts.metrics } }, context), 'object');
+  expect(registration.requiredFacts.gate).toEqual({ test: 'P5-NF-54', deadline: Date.parse('2026-10-05T00:00:00Z') });
+  // Resolution belongs to the real P3 generation path, not the shape decoder.
+  const run = setup();
+  expect(() => governanceFixture(run.c, declarations => declarations.map(d => d.id === 'rungraph-core'
+    ? { ...d, requiredFacts: { ...d.requiredFacts, liveProof: 'unavailable:production' } } : d)))
+    .toThrow('unresolved rungraph-core.liveProof');
 });
 it('P5-NF-55 scoped live-core workload measures fold latency, retained facts, pending and conflicts', () => {
   const f = setup(), ready = value(f.graph.open(f.run)), g = value(f.graph.ground(f.id, 'w', 'h', 'start', f.lease));

@@ -10,7 +10,10 @@ export function decodeRunGraphRegistration(input: unknown, context: RegisterCont
   return boundary('RunGraphRegistration', input, context, safe => {
     const declaration = take(decodeDeclaration(safe, context));
     need(declaration.id === 'rungraph-core' && declaration.kind === 'features', 'wrong feature registration');
-    need(declaration.profile?.consequence === 'control' && declaration.profile.reach === 'internal', 'run graph profile understates control');
+    const p = declaration.profile;
+    need(p?.consequence === 'control' && p.reversibility === 'costly' && p.reach === 'user'
+      && p.surface === 'chat' && p.repeats.kind === 'bounded' && p.repeats.by === 'rungraph.bound',
+    'run graph profile understates bounded user-facing control');
     return declaration;
   });
 }
