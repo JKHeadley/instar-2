@@ -16,7 +16,8 @@ export function conditionalClose() {
     request: { owner: 'part-eight', name: 'EffectRequest', id: `${id}-request` }, semanticMessage: `${id}-semantic`, ...overrides });
 
   // (b) negative half: an UNRESOLVED first operation blocks its run, as today.
-  refused(other(50, 'second'), 'unresolved');
+  // The exact detail is the one the part-eleven slice reports at `outbound-prepare`.
+  refused(other(50, 'second'), 'unresolved execution or charge prohibits a new attempt');
   f.assess('happened', 7); j.quiescent();
   const applied = value(api.settle(f.fence, j.settlement()));
   assert.equal(applied.exposure, 7); assert.equal(applied.released, 13); assert.equal(applied.unresolved, 0); // (a)
@@ -32,7 +33,7 @@ export function conditionalClose() {
   const takeover = value(api.acquire('takeover', head, 500));
   assert.notEqual(takeover.epoch, f.fence.epoch);
   refused(api.claim('claim-after-takeover', takeover, second.operation), 'stale fence at durable boundary');
-  refused(other(44, 'third', { fence: takeover }), 'unresolved'); // The run is wedged.
+  refused(other(44, 'third', { fence: takeover }), 'unresolved execution or charge prohibits a new attempt'); // Wedged.
   refused(api.close('close-under-dead-fence', f.fence, second.operation), 'stale or uncommitted fence');
   refused(api.close('close-unknown', takeover, 'operation:absent'), 'prepared, never-claimed');
   refused(api.close('close-dispatched', takeover, reservation.operation), 'prepared, never-claimed');

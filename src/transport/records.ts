@@ -165,7 +165,7 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
           : origin ? admissionAccounting(all, p, host)
           : latestApplication(all, p.operation) ?? { exposure: p.charge, unresolved: 1 }]));
         ensure(!reservations(all).some(p => p.request === r.request || p.semanticMessage === r.semanticMessage
-          || p.run === r.run && states.get(p.operation)!.unresolved !== 0), 'unresolved execution, charge or accounting durability prohibits a new attempt');
+          || p.run === r.run && states.get(p.operation)!.unresolved !== 0), 'unresolved execution or charge prohibits a new attempt; unproven accounting durability is unresolved');
         ensure(reservations(all).reduce((n, p) => n + states.get(p.operation)!.exposure, r.charge) <= host.budget, 'spend bound exhausted');
         const loop = latestLoop(all, r.run); ensure(loop && loop.state !== 'stopped', 'durable recovery wake required before reservation');
       } else {
