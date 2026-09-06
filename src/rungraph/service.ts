@@ -70,8 +70,8 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
     };
     return freeze({
       read: (run: string) => boundary('ReadRun', run, d.context, () => read(run)),
-      open: (input: unknown) => preserveRunInput(input, context(), d.governance, captured => boundary('OpenRun', input, captured, safe => {
-        const run = take(runAdmission(safe, captured, d.governance));
+      open: (input: unknown) => preserveRunInput(input, d.context, d.governance, captured => boundary('OpenRun', input, captured, safe => {
+        const run = take(runAdmission(safe, { ...context(), preserved: captured.preserved }, d.governance));
         const existing = take(d.store.read()).find(f => f.kind === runKinds.Run && object(f.body).run === run.id);
         if (existing) { need(same(readRecordFact(existing), run), 'immutable run opening changed'); return read(run.id); }
         once(write => d.admission.create(run.opening, run.id, write), () => {
@@ -101,10 +101,11 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
           return append(grounding, [parent.id]);
         }); return receipt.fact;
       }),
-      transition: (input: unknown) => preserveRunInput(input, context(), d.governance, captured => boundary('TransitionRun', input, captured, safe => {
-        const t = take(object(safe).kind === 'stop' ? stopAdmission(safe, captured, d.governance) : transitionAdmission(safe, captured, d.governance));
-        if (t.step) take(stepAdmission(t.step, captured, d.governance));
-        if (t.exit) take(exitAdmission(t.exit, captured, d.governance));
+      transition: (input: unknown) => preserveRunInput(input, d.context, d.governance, captured => boundary('TransitionRun', input, captured, safe => {
+        const admissionContext = { ...context(), preserved: captured.preserved };
+        const t = take(object(safe).kind === 'stop' ? stopAdmission(safe, admissionContext, d.governance) : transitionAdmission(safe, admissionContext, d.governance));
+        if (t.step) take(stepAdmission(t.step, admissionContext, d.governance));
+        if (t.exit) take(exitAdmission(t.exit, admissionContext, d.governance));
         const existing = take(d.store.read()).find(f => f.kind === runKinds.RunTransition && object(readRecordFact(f)).id === t.id);
         if (existing) { need(same(readRecordFact(existing), t), 'immutable transition identity changed'); return read(t.run); }
         const view = read(t.run); need(view.conflicts.length === 0, 'conflicted head inhibits admission');

@@ -47,3 +47,11 @@ it('P5-NF-54 R7 refusal retains the exact captured input and capture failure can
   refused(unpreserved.open(f.run), 'not durably captured');
   expect(value(f.store.read()).filter(f => f.kind === 'run-opening')).toHaveLength(0);
 });
+it('P5-NF-54 preservation precedes a failing fact-context read and the public API still returns Result', () => {
+  const f = setup(), graph = value(createRunGraph({ ...f.deps, store: { ...f.store, read: () => { throw Error('fixture reader unavailable'); } } }));
+  for (const action of [() => graph.open(f.run), () => graph.transition({ id: 'pending-input' })]) {
+    const refusal = consumeResult(action(), { Success: () => { throw Error('expected refusal'); }, Refused: r => r });
+    expect(refusal.detail).toContain('fixture reader unavailable');
+    expect(f.ctx.captures[refusal.preserved]?.status).toBe('available');
+  }
+});
