@@ -211,7 +211,11 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
   // understate the reserved credit. This never widens the open set — it reconciles
   // the number against six regardless of the label.
   for (const op of report.sixOperations) {
-    const last = [...report.obligations].reverse().find(o => o.operation === op.operation);
+    // The SAME canonical association ownership uses (`unaccounted`): a direct id OR a
+    // `<prefix>:<operation>` alias such as `resolve:<operation>` (astra C2 — the alias
+    // escaped an exact-direct-only check, so an unresolved 20-unit operation could
+    // retain 1 through its alias undetected).
+    const last = [...report.obligations].reverse().find(o => o.operation === op.operation || o.operation.endsWith(`:${op.operation}`));
     if (!last) continue;
     const required = op.state === 'closed' ? 0 : op.application ? op.application.exposure : op.charge;
     if (Number(last.exposure) !== required)
@@ -357,6 +361,27 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
       bad.push('the settlement claims the effect happened but the journal records no application');
     if (report.settlement.outcome === 'did-not-happen' && applied)
       bad.push('the settlement claims non-occurrence while the journal records an application');
+  }
+  // The actual charge is stated four times in one report — eight's settlement
+  // (finalCharge), six's application (actualCharge), the adapter charge journal
+  // (charges[]), and money — and the pairwise binds above still let the two pairs
+  // disagree with each other (Claude R6, the axis astra R3 named). A charge journal
+  // row may only name a six-owned operation, and when eight settles a KNOWN charge for
+  // an operation six RESOLVED, all three of eight's figure, six's applied figure, and
+  // the journal for that operation must be the SAME number.
+  for (const row of report.charges)
+    if (!report.sixOperations.some(op => op.operation === row.operation))
+      bad.push(`a charge journal row names ${row.operation}, which is not a six-owned operation`);
+  if (report.settlement && report.settlement.finalCharge !== null && report.outbound?.operation) {
+    const op = report.sixOperations.find(row => row.operation === report.outbound!.operation);
+    if (op && op.application && op.application.unresolved === 0) {
+      const finalCharge = Number(report.settlement.finalCharge);
+      if (finalCharge !== op.application.actualCharge)
+        bad.push('the settlement final charge disagrees with six\'s applied actual charge');
+      const journalled = report.charges.filter(c => c.operation === op.operation).reduce((sum, c) => sum + c.charge, 0);
+      if (journalled !== finalCharge)
+        bad.push('the settlement final charge disagrees with the charge journal for its operation');
+    }
   }
 
   // delivery proved only to the declared stage; a supported final charge only when decisive

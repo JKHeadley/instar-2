@@ -287,7 +287,19 @@ it('P11-NF-48 on REAL history, a terminal obligation label relabelled over six\'
     o.state === 'applied-unresolved' ? { ...o, state: 'applied-resolved', exposure: '0' } : o) };
   expect(withinExecution(resolvedClaim, SLICE_INPUT)
     .some(v => v.includes('applied-resolved names an operation six recorded no resolved application for'))).toBe(true);
-}, 240000);
+
+  // The G6 shape (Claude R6), on real history: a fully settled reply whose eight
+  // settlement figure is bumped while six's applied actual charge stays what six
+  // recorded. finalCharge then disagrees with six's application, and is refused.
+  const settled = await execute({ profile: 'reply' });
+  expect(withinExecution(settled.report, SLICE_INPUT)).toEqual([]);
+  const settledOp = settled.report.sixOperations.find(o => o.role === 'outbound-reply')!;
+  expect(settledOp.application?.unresolved).toBe(0);
+  const g6 = { ...settled.report, settlement: { ...settled.report.settlement!,
+    finalCharge: String(settledOp.application!.actualCharge + 16), retainedExposure: settledOp.application!.actualCharge + 16 } };
+  expect(withinExecution(g6, SLICE_INPUT)
+    .some(v => v.includes('the settlement final charge disagrees with six\'s applied actual charge'))).toBe(true);
+}, 300000);
 
 it('P11-NF-44 P11-NF-48 a real SIGKILL AT settlement-application restores the applied-resolved obligation on recovery', async () => {
   // astra R1: the cut writes the once-only application row, then dies before the

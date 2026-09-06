@@ -1,17 +1,20 @@
 // The kill schedule is driven from the assembly's own PROFILE_BOUNDARIES and
-// RECOVERY_CUT_PAIRS. It is split into one test FILE per profile so each vitest
-// worker's task-update RPC channel carries a bounded chunk of the heavy, restart-
-// spawning executions — a whole-schedule file starved that channel on slower CI
-// runners ("Timeout calling onTaskUpdate") even with the async child spawn. Each
-// per-profile file asserts every one of its rows byte-equals the pinned record and
-// satisfies every per-row invariant; the separate completeness file asserts the
-// pinned table itself is complete and well-formed. No assertion is dropped.
+// RECOVERY_CUT_PAIRS, split into one test FILE per profile. The heavy restart-spawning
+// EXECUTIONS run in the pre-step (scripts/run-kill-schedule.mjs), in the main process
+// before any worker exists, so the CPU-heavy children never starve the vitest main
+// process past its fixed 60s worker-RPC deadline (astra C4). Each test here LOADS its
+// pair's artifact and runs the SAME per-row assertions the in-worker version ran; if an
+// artifact is absent (a standalone run without the pre-step) it falls back to a live
+// execution, so no assertion is lost and nothing depends on the pre-step for
+// correctness. One live pair per profile is executed in-worker as a smoke check.
 import { afterAll, afterEach, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { acrossExecutions, adjacentPairs, withinExecution } from '../slice/acceptance.js';
 import type { SliceReport } from '../slice/acceptance.js';
 import { SLICE_INPUT, discard, runExecution } from '../slice/harness.js';
 import { PROFILE_BOUNDARIES, RECOVERY_BOUNDARIES, RECOVERY_CUT_PAIRS, scheduleRow } from '../slice/boundaries.js';
+import { loadControl, loadPair } from '../slice/kill-schedule-artifacts.js';
+import type { ScheduleArtifact } from '../slice/kill-schedule-artifacts.js';
 
 const EXPECTED = readFileSync('tests/slice/expected-schedule.md', 'utf8').trim();
 export const expectedRow = (profile: string, pair: readonly [string, string]): string => {
@@ -21,16 +24,7 @@ export const expectedRow = (profile: string, pair: readonly [string, string]): s
   return line;
 };
 
-/** The full ordered cut list for a profile: its adjacent control pairs, then its recovery pairs. */
-export function profilePairs(profile: string): readonly (readonly [string, string])[] {
-  return [...adjacentPairs(PROFILE_BOUNDARIES[profile]!), ...(RECOVERY_CUT_PAIRS[profile] ?? [])];
-}
-
-/**
- * Declare the kill-schedule tests for ONE profile. Each pair is a real restart-driven
- * execution asserted against the pinned row and every per-row invariant the whole-file
- * completeness check used to make over the live rows.
- */
+/** Declare the kill-schedule tests for ONE profile. */
 export function registerProfileSchedule(profile: string): void {
   const homes: string[] = [];
   afterAll(() => discard(...homes));
@@ -40,47 +34,57 @@ export function registerProfileSchedule(profile: string): void {
   const recoveryPairs = RECOVERY_CUT_PAIRS[profile] ?? [];
   const reachedRecoveryHere = new Set<string>();
 
-  let controlReport: SliceReport | undefined;
+  let liveControl: SliceReport | undefined;
   const control = async (): Promise<SliceReport> => {
-    if (!controlReport) { const run = await runExecution({ profile }); homes.push(run.home); controlReport = run.report; }
-    return controlReport;
+    const artifact = loadControl(profile);
+    if (artifact) return artifact;
+    if (!liveControl) { const run = await runExecution({ profile }); homes.push(run.home); liveControl = run.report; }
+    return liveControl;
   };
 
-  const runPair = async (pair: readonly [string, string]): Promise<void> => {
-    const execution = await runExecution({ profile, cuts: pair, maxBoots: 12 });
-    homes.push(execution.home);
-    // The first cut of every pair is reachable by construction; the second may be
-    // unreachable BECAUSE of the first, and the schedule records that honestly.
+  // An artifact from the pre-step, or a LIVE execution when the pre-step did not run.
+  const getExecution = async (pair: readonly [string, string]): Promise<ScheduleArtifact> => {
+    const artifact = loadPair(profile, pair);
+    if (artifact) return artifact;
+    const run = await runExecution({ profile, cuts: pair, maxBoots: 12 });
+    homes.push(run.home);
+    return { report: run.report, firedCuts: run.firedCuts, boots: run.boots, neverReached: run.neverReached };
+  };
+
+  // Every per-row assertion the in-worker schedule made, operating on an execution
+  // (artifact or live) — unchanged in substance.
+  const assertPair = async (pair: readonly [string, string], execution: ScheduleArtifact): Promise<void> => {
     expect(execution.firedCuts[0]).toBe(pair[0]);
     expect(execution.firedCuts.every(cut => pair.includes(cut))).toBe(true);
     expect(execution.boots).toBe(execution.firedCuts.length + 1);
     expect(execution.boots).toBeGreaterThanOrEqual(2);
     expect(withinExecution(execution.report, SLICE_INPUT)).toEqual([]);
     expect(acrossExecutions(await control(), execution.report)).toEqual([]);
-    // Never more than one external application per execution, in any cut position.
     expect(execution.report.externalApplications.length, `${profile} ${pair.join('+')}`).toBeLessThanOrEqual(1);
-    // An unreachable second cut is RECORDED, never silently dropped.
     if (execution.neverReached.length) {
       expect(execution.neverReached).toEqual([pair[1]]);
       expect(execution.firedCuts).toEqual([pair[0]]);
     }
-    // The whole outcome row is pinned, not just the fired cuts: a regression in which
-    // recovery stopped driving the chain would change boots, the application count or
-    // the terminal disposition, and this byte comparison is what notices.
     const rendered = scheduleRow(profile, pair, execution.boots, execution.firedCuts, execution.report);
     expect(rendered).toBe(expectedRow(profile, pair));
-    // A recovery-only boundary that this pair REACHED (whether or not it was the cut).
     for (const boundary of Object.keys(RECOVERY_BOUNDARIES))
       if (execution.report.boundariesReached.includes(boundary)) reachedRecoveryHere.add(boundary);
   };
 
   for (const pair of controlPairs)
-    it(`P11-NF-44 kill schedule ${profile}: cut after ${pair[0]} then after ${pair[1]}`, () => runPair(pair), 240000);
+    it(`P11-NF-44 kill schedule ${profile}: cut after ${pair[0]} then after ${pair[1]}`, async () => assertPair(pair, await getExecution(pair)), 240000);
   for (const pair of recoveryPairs)
-    it(`P11-NF-44 kill schedule ${profile} (recovery): cut after ${pair[0]} then after ${pair[1]}`, () => runPair(pair), 240000);
+    it(`P11-NF-44 kill schedule ${profile} (recovery): cut after ${pair[0]} then after ${pair[1]}`, async () => assertPair(pair, await getExecution(pair)), 240000);
 
-  // Per-profile closure: every control boundary of THIS profile was cut at least once,
-  // and any recovery boundary this profile cuts was reached before it was cut.
+  // Smoke: one pair per profile is executed LIVE in-worker (never from an artifact), so
+  // the real restart-driven path stays exercised inside vitest, not only in the pre-step.
+  const smoke = controlPairs[0]!;
+  it(`P11-NF-44 kill schedule ${profile} smoke: a LIVE cut after ${smoke[0]} then after ${smoke[1]}`, async () => {
+    const run = await runExecution({ profile, cuts: smoke, maxBoots: 12 });
+    homes.push(run.home);
+    await assertPair(smoke, { report: run.report, firedCuts: run.firedCuts, boots: run.boots, neverReached: run.neverReached });
+  }, 240000);
+
   it(`P11-NF-44 the ${profile} schedule cuts every one of its control boundaries and reaches what it recovers`, () => {
     const cut = new Set([...controlPairs, ...recoveryPairs].flatMap(p => [...p]));
     for (const boundary of PROFILE_BOUNDARIES[profile]!) expect(cut, `${profile} ${boundary}`).toContain(boundary);

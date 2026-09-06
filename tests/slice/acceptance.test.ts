@@ -535,3 +535,36 @@ it('P11-NF-48 a settlement outcome that contradicts its own journal is refused, 
     sixOperations: [outboundOp({ state: 'dispatch-claimed', resolved: false, application: { exposure: 20, released: 0, unresolved: 1, actualCharge: -1 } })],
     obligations: [{ operation: OPERATION, state: 'applied-unresolved', owner: 'part-six', blocker: 'none', exposure: '20' }] }), SLICE_INPUT)).toEqual([]);
 });
+
+// Claude R6: the actual charge is stated four times (eight's settlement finalCharge,
+// six's application actualCharge, the charge journal, and money), and only two pairs
+// were bound. When six RESOLVED a known-charge settlement, all three of eight's, six's,
+// and the journal's figure must agree, and every charge row must name a six operation.
+it('P11-NF-48 the settlement final charge is reconciled with six\'s application and the charge journal', () => {
+  // G6 — the relation astra R3 named: eight settled at 19 while six applied 3, and the
+  // obligation ledger agrees with six. finalCharge disagrees with actualCharge.
+  expect(withinExecution(report({ settlement: { outcome: 'happened', finalCharge: '19', retainedExposure: 19, delayedExecutionExcluded: true } }), SLICE_INPUT)
+    .some(v => v.includes('the settlement final charge disagrees with six\'s applied actual charge'))).toBe(true);
+  // G3 — a charge journal of 19 (money matched to it) beside a settlement/application of 3.
+  expect(withinExecution(report({ charges: [{ operation: OPERATION, charge: 19 }], accounting: { ...report().accounting, money: 19 } }), SLICE_INPUT)
+    .some(v => v.includes('the settlement final charge disagrees with the charge journal for its operation'))).toBe(true);
+  // G4 — an EMPTY journal (money matched to it) beside a known-charge settlement of 3.
+  expect(withinExecution(report({ charges: [], accounting: { ...report().accounting, money: 0 } }), SLICE_INPUT)
+    .some(v => v.includes('the settlement final charge disagrees with the charge journal for its operation'))).toBe(true);
+  // G5 — a charge row naming an operation nobody admitted.
+  expect(withinExecution(report({ charges: [{ operation: 'operation:ghost', charge: 3 }] }), SLICE_INPUT)
+    .some(v => v.includes('a charge journal row names operation:ghost, which is not a six-owned operation'))).toBe(true);
+  // The three real neighbours are unchanged: the resolved reply control; a claim-cut
+  // reply with an UNKNOWN charge (finalCharge null, no journal row); and a closed row
+  // with no settlement and no journal.
+  expect(withinExecution(report(), SLICE_INPUT)).toEqual([]);
+  expect(withinExecution(report({ settlement: { outcome: 'did-not-happen', finalCharge: null, retainedExposure: 20, delayedExecutionExcluded: true },
+    externalApplications: [], charges: [], accounting: { ...report().accounting, notifications: 0, money: 0 },
+    deliveryEvidence: [{ operation: OPERATION, stage: 'service-applied', decisive: 'decisive', value: 'did-not-happen' }],
+    sixOperations: [outboundOp({ state: 'dispatch-claimed', resolved: false, application: { exposure: 20, released: 0, unresolved: 1, actualCharge: -1 } })],
+    obligations: [{ operation: OPERATION, state: 'applied-unresolved', owner: 'part-six', blocker: 'none', exposure: '20' }] }), SLICE_INPUT)).toEqual([]);
+  expect(withinExecution(report({ settlement: null, deliveryEvidence: [], externalApplications: [], charges: [],
+    accounting: { ...report().accounting, notifications: 0, money: 0 },
+    sixOperations: [outboundOp({ state: 'closed', application: null, resolved: true })],
+    obligations: [{ operation: OPERATION, state: 'closed-unexecuted', owner: 'part-six', blocker: 'none', exposure: '0' }] }), SLICE_INPUT)).toEqual([]);
+});

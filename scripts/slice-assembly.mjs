@@ -911,8 +911,14 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     .filter(v => v.record.type === 'SettlementApplication' && v.record.operation === operation).at(-1);
   const obligationNames = operation => factsOfKind('slice-obligation')
     .some(f => f.body.operation === operation || f.body.operation.endsWith(`:${operation}`));
-  const hasAppliedObligation = operation => factsOfKind('slice-obligation')
-    .some(f => f.body.operation === operation && ['applied-resolved', 'applied-unresolved'].includes(f.body.state));
+  // The LATEST obligation directly naming an operation — the current one, since the
+  // ledger is append-only. Recovery must reconcile against THIS, not against whether
+  // any historical row of a kind ever existed (astra C1: a `.some()` over all history
+  // let a superseded refusal keep the exposure current after a verified recovery).
+  const latestObligation = operation => {
+    const rows = factsOfKind('slice-obligation').filter(f => f.body.operation === operation);
+    return rows.length ? rows[rows.length - 1].body : null;
+  };
   const hasClosedObligation = operation => factsOfKind('slice-obligation')
     .some(f => f.body.operation === operation && f.body.state === 'closed-unexecuted');
 
@@ -1170,17 +1176,25 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     // restoring the obligation. (astra R1)
     if (factOfKind('effect-EffectSettlement')) {
       const applied = applySettlement(operation);
+      // Reconcile against the CURRENT (latest) obligation, and append a superseding
+      // row only when the current one differs from what this boot's outcome requires —
+      // so a verified recovery corrects a stale refusal, a temporary loss supersedes a
+      // stale applied row, and a steady state writes nothing (astra C1).
+      const current = latestObligation(operation);
+      const matches = (state, exposure) => current && current.state === state && Number(current.exposure) === exposure;
       if (applied.ok) {
-        if (!hasAppliedObligation(operation)) {
-          obligation({ operation, semanticMessage: record8.semanticMessage,
-            state: applied.value.unresolved === 0 ? 'applied-resolved' : 'applied-unresolved', owner: 'part-six',
+        const state = applied.value.unresolved === 0 ? 'applied-resolved' : 'applied-unresolved';
+        if (!matches(state, applied.value.exposure)) {
+          obligation({ operation, semanticMessage: record8.semanticMessage, state, owner: 'part-six',
             exposure: applied.value.exposure,
             detail: `released=${applied.value.released}; actualCharge=${applied.value.actualCharge}` });
           record('settlement-application', applied.reconsumed ? 'reconsumed-and-restored' : 'applied',
             { released: applied.value.released, exposure: applied.value.exposure, unresolved: applied.value.unresolved });
         } else if (applied.reconsumed) record('settlement-application', 'reconsumed',
           { released: applied.value.released, exposure: applied.value.exposure, unresolved: applied.value.unresolved });
-      } else if (!factsOfKind('slice-obligation').some(f => f.body.operation === operation && f.body.state === 'owned-unapplied-unsettled')) {
+      } else if (!matches('owned-unapplied-unsettled', operationDefinition.maxCharge)) {
+        // Authority is temporarily unavailable: retaining maximum exposure is correct,
+        // and it supersedes even a prior applied row until authority returns.
         obligation({ operation, semanticMessage: record8.semanticMessage, state: 'owned-unapplied-unsettled',
           blocker: 'part-six', owner: 'part-eight', exposure: operationDefinition.maxCharge,
           detail: String(applied.detail).slice(0, 3000) });

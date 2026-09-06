@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { consumeResult } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
 import { DECLARED_BOUNDARIES, PEER_STANDIN_ID, PROFILE_BOUNDARIES, RECOVERY_BOUNDARIES, SLICE_BOUNDARIES, UNREACHED_BOUNDARIES, cleanup, sliceAssembly } from '../slice/assembly-fixture.js';
+import { withinExecution } from '../slice/acceptance.js';
+import { SLICE_INPUT } from '../slice/harness.js';
 
 afterAll(cleanup);
 // Yield between heavy fixtures so the runner's task-update IPC can flush.
@@ -382,3 +384,45 @@ it('P11-NF-41 P11-NF-48 a REPLACEMENT process reconsumes preserved settlement au
   expect(detail((unresolved.transport as unknown as { reserve: (i: unknown) => unknown }).reserve(control(unresolved, 'blocked'))))
     .toContain('unresolved execution or charge prohibits a new attempt');
 }, 240000);
+
+it('P11-NF-48 a temporary authority loss then restoration supersedes the refusal, not leaves it current', async () => {
+  // astra C1: reconciling against ANY historical applied obligation with .some() left a
+  // superseding refusal current after a verified recovery. The fix reconciles against
+  // the LATEST obligation and this boot's outcome, appending a superseding row when it
+  // differs — so a restored authority corrects the refusal instead of staying stale.
+  const isApplication = (v: { record: unknown }) => (v.record as { type: string }).type === 'SettlementApplication';
+  const latestFor = (obs: { operation: string; state: string; exposure: string }[], op: string) =>
+    [...obs].reverse().find(o => o.operation === op)!;
+  const first = sliceAssembly({ profile: 'reply' });
+  await first.drive();
+  const home = first.home;
+  const opId = first.transportFacts().filter(isApplication)[0]!.record as unknown as { operation: string };
+  const operation = opId.operation;
+
+  // Temporary loss: replication is unavailable, so reconsumption refuses and the
+  // assembly retains maximum exposure — appropriate while authority is unavailable.
+  const loss = sliceAssembly({ profile: 'reply' }, home);
+  (loss as unknown as { replicas: { enable: (v: boolean) => void } }).replicas.enable(false);
+  const lossReport = await loss.drive() as { obligations: { operation: string; state: string; exposure: string }[] };
+  expect(latestFor(lossReport.obligations, operation).state).toBe('owned-unapplied-unsettled');
+  expect(Number(latestFor(lossReport.obligations, operation).exposure)).toBe(20);
+  expect(loss.transportFacts().filter(isApplication)).toHaveLength(1);
+
+  // Restoration: authority returns, reconsumption succeeds, and a SUPERSEDING
+  // applied-resolved obligation replaces the refusal as the current row.
+  const restored = sliceAssembly({ profile: 'reply' }, home);
+  const restoredReport = await restored.drive() as { obligations: { operation: string; state: string; exposure: string }[] };
+  expect(latestFor(restoredReport.obligations, operation).state).toBe('applied-resolved');
+  expect(Number(latestFor(restoredReport.obligations, operation).exposure)).toBe(3);
+  expect(withinExecution(restoredReport as unknown as Parameters<typeof withinExecution>[0], SLICE_INPUT)).toEqual([]);
+  expect(restored.transportFacts().filter(isApplication)).toHaveLength(1);
+
+  // And a further replacement is stable: it stays applied-resolved and passes, and
+  // does not churn a new obligation on top of the already-correct current one.
+  const again = sliceAssembly({ profile: 'reply' }, home);
+  const againReport = await again.drive() as { obligations: { operation: string; state: string; exposure: string }[] };
+  expect(latestFor(againReport.obligations, operation).state).toBe('applied-resolved');
+  expect(withinExecution(againReport as unknown as Parameters<typeof withinExecution>[0], SLICE_INPUT)).toEqual([]);
+  const appliedRows = againReport.obligations.filter(o => o.operation === operation && o.state === 'applied-resolved');
+  expect(appliedRows.length).toBeLessThanOrEqual(2); // one restored + at most one steady; never per-boot churn
+}, 300000);
