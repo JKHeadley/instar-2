@@ -46,7 +46,10 @@ it('P5-NF-17 exact fresh exit test is mandatory; worker exit, lower bar, missing
   expect(completed.state).toBe('completed');
   refused(f.graph.ground(f.id, 'worker-after-completion', 'h', 'start', f.lease), 'terminal');
   refused(f.graph.transition({ ...transition, id: 'reopen', expected: completed.head, from: 'completed' }), 'state pair');
-});
+// x64 CI measured 5.809s for this multi-invocation signed-history/exit matrix
+// (run 34003580189). Budget the integration fixture, not runtime latency; the
+// independent P5-NF-55 fold-latency assertion and global timeout stay unchanged.
+}, 15_000);
 it('P5-NF-15 P5-NF-60 an owner settlement disagreement cannot be hidden during replay', () => {
   const f = fixture(); value(f.graph.transition(f.observed));
   const wrong = value(createRunGraph({ ...f.deps, settlement: { owner: 'part-eight', read: record => f.success({ record, outcome: f.outcome, claimClosed: false, chargeSettled: false }) } }));
