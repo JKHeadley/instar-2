@@ -1,7 +1,7 @@
 // Spawns slice executions through the assembly's PUBLIC boot path only.
 // Every restart is a fresh `node scripts/slice-worker.mjs`; nothing here reaches
 // into the assembly, and there is no test-only recovery helper.
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,22 +27,33 @@ const jsonl = (file: string): { boundary: string }[] =>
   existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l) as { boundary: string }) : [];
 
 /**
- * Runs one execution to completion, restarting after every SIGKILL cut.
- *
- * Each boot is a blocking `spawnSync`, so the loop yields between boots: that keeps a
- * long execution from starving the runner's task-update IPC on a slow machine.
+ * One child process, awaited WITHOUT blocking the runner's event loop. A blocking
+ * `spawnSync` here starved the vitest worker's `onTaskUpdate` RPC once the 49-pair
+ * kill schedule doubled the e2e wall time — the same failure the
+ * transport-settlement fixture hit and fixed the same way (async child, worker kept
+ * responsive; no reporting/global timeout raised, no assertion weakened).
  */
+const spawnBoot = (args: readonly string[]): Promise<{ status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }> =>
+  new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '', stderr = '';
+    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (status, signal) => resolve({ status, signal, stdout, stderr }));
+  });
+
+/** Runs one execution to completion, restarting after every SIGKILL cut. */
 export async function runExecution(options: { profile?: string; adapter?: string; cuts?: readonly string[]; maxBoots?: number } = {}): Promise<Execution> {
   const home = mkdtempSync(join(tmpdir(), 'p11-slice-'));
   const cuts = options.cuts ?? [];
   const encoded = JSON.stringify({ profile: options.profile ?? 'full', adapter: options.adapter ?? 'telegram-slice', cuts });
   let boots = 0, report: SliceReport | undefined, stderr = '';
   for (let attempt = 0; attempt < (options.maxBoots ?? 30); attempt++) {
-    if (attempt > 0) await new Promise<void>(done => setImmediate(done));
     boots++;
-    const run = spawnSync(process.execPath, ['scripts/slice-worker.mjs', home, encoded],
-      { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    stderr = run.stderr ?? '';
+    const run = await spawnBoot(['scripts/slice-worker.mjs', home, encoded]);
+    stderr = run.stderr;
     if (run.status === 0) { report = JSON.parse(run.stdout.trim().split('\n').pop()!) as SliceReport; break; }
     if (run.signal !== 'SIGKILL') throw new Error(`slice worker failed: status=${run.status} signal=${run.signal}\n${stderr}`);
   }
@@ -53,9 +64,8 @@ export async function runExecution(options: { profile?: string; adapter?: string
 }
 
 /** An independent fresh-process rebuild of every projection from the durable facts. */
-export function rebuildInFreshProcess(home: string, profile = 'reply'): SliceReport['rebuilds'] {
-  const run = spawnSync(process.execPath, ['scripts/slice-rebuild.mjs', home, JSON.stringify({ profile })],
-    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+export async function rebuildInFreshProcess(home: string, profile = 'reply'): Promise<SliceReport['rebuilds']> {
+  const run = await spawnBoot(['scripts/slice-rebuild.mjs', home, JSON.stringify({ profile })]);
   if (run.status !== 0) throw new Error(`rebuild process failed: ${run.stderr}`);
   return JSON.parse(run.stdout.trim().split('\n').pop()!) as SliceReport['rebuilds'];
 }

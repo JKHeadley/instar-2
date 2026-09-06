@@ -79,6 +79,17 @@ export const ALLOWED_OBLIGATION_STATES: readonly string[] = [
 /** The section-7 roles a six-owned operation of this run may hold. */
 export const SIX_OPERATION_ROLES: readonly string[] = ['model-judgment', 'outbound-reply'];
 
+/**
+ * Obligation labels that ASSERT something about six's own record for an operation,
+ * and are therefore outside `OPEN_OBLIGATION_STATES` — they claim the exposure was
+ * released or settled by six rather than still held. Each one is reconciled against
+ * `sixOperations` below; a label alone may never release exposure six never released.
+ */
+export const SIX_RECORD_OBLIGATION_STATES: readonly string[] = ['closed-unexecuted', 'applied-resolved', 'applied-unresolved'];
+
+/** Obligation identities that name a six-owned operation directly. */
+const SIX_OPERATION_PREFIX = 'operation:';
+
 export interface Bounds {
   readonly maxFacts: number; readonly maxBytes: number; readonly maxBoots: number;
   readonly maxAttempts: number; readonly maxNotifications: number; readonly maxMoney: number;
@@ -216,6 +227,32 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
     if (model && !model.resolved && !report.obligations.some(o => o.operation === model.operation
       || o.operation.endsWith(`:${model.operation}`)))
       bad.push('an unresolved model operation blocked the reply and no obligation names it');
+  }
+
+  // ------------------------------------- terminal obligation labels vs six's record
+  // Exposure retention is otherwise decided by the obligation's own state string, so
+  // a terminal LABEL could claim credit six never released. Every label that asserts
+  // something about six's record, and every obligation that names a six operation
+  // identity, is reconciled against `sixOperations` for that exact operation.
+  //
+  // This is deliberately NOT repaired by widening OPEN_OBLIGATION_STATES: the closed
+  // and applied rows the kill schedule pins are legitimately terminal and legitimately
+  // hold no exposure. What was missing is the cross-check, not the openness.
+  const sixByOperation = new Map(report.sixOperations.map(op => [op.operation, op]));
+  for (const row of report.obligations) {
+    const asserts = SIX_RECORD_OBLIGATION_STATES.includes(row.state);
+    if (!asserts && !row.operation.startsWith(SIX_OPERATION_PREFIX)) continue;
+    const op = sixByOperation.get(row.operation);
+    if (!op) {
+      bad.push(`obligation ${row.state} names ${row.operation}, for which six has no operation row`);
+      continue;
+    }
+    if (row.state === 'closed-unexecuted' && op.state !== 'closed')
+      bad.push(`obligation closed-unexecuted names an operation six records as ${op.state}`);
+    if (row.state === 'applied-resolved' && !(op.application && op.application.unresolved === 0))
+      bad.push('obligation applied-resolved names an operation six recorded no resolved application for');
+    if (row.state === 'applied-unresolved' && !(op.application && op.application.unresolved === 1))
+      bad.push('obligation applied-unresolved names an operation six recorded no unresolved application for');
   }
 
   // every obligation is terminal or owned-pending, owned, and well formed

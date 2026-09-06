@@ -32,7 +32,7 @@ it('P11-NF-43 P11-NF-49 P11-NF-50 the uninterrupted control execution runs the c
 
 it('P11-NF-45 within one execution the genesis, checkpoint and fresh-process rebuilds are byte-equal at one pinned vector', async () => {
   const control = await execute({ profile: 'reply' });
-  const independent = rebuildInFreshProcess(control.home);
+  const independent = await rebuildInFreshProcess(control.home);
   expect(independent).toHaveLength(control.report.rebuilds.length);
   for (const row of control.report.rebuilds) {
     const other = independent.find(r => r.projection === row.projection);
@@ -242,4 +242,38 @@ it('P11-NF-44 P11-NF-48 a crash between the reservation and its claim is CLOSED,
   const outbound = cut.report.rebuilds.find(r => r.projection === 'minimal.outbound-obligation')!;
   expect(JSON.stringify(outbound.values)).toContain('closed-unexecuted');
   expect(outbound.equal).toBe('equal');
+}, 240000);
+
+it('P11-NF-48 on REAL history, a terminal obligation label relabelled over six\'s record is refused', async () => {
+  // The desk's R1 reproduction shape, driven on real executions rather than
+  // synthesized ones: change NOTHING except the obligation's label and exposure.
+  const judgment = await execute({ profile: 'judgment' });
+  expect(withinExecution(judgment.report, SLICE_INPUT)).toEqual([]);
+  const model = judgment.report.sixOperations.find(o => o.role === 'model-judgment')!;
+  // Six's own record: the operation was consumed and is unresolved.
+  expect([model.state, model.resolved]).toEqual(['consumed', false]);
+  const laundered = { ...judgment.report, obligations: judgment.report.obligations.map(o =>
+    o.operation === model.operation ? { ...o, state: 'closed-unexecuted', exposure: '0' } : o) };
+  expect(withinExecution(laundered, SLICE_INPUT)
+    .some(v => v.includes('obligation closed-unexecuted names an operation six records as consumed'))).toBe(true);
+
+  // The same class on a settlement-bearing execution: a cut after the dispatch-claim
+  // leaves six holding an APPLIED but unresolved operation with its exposure retained.
+  const cut = await execute({ profile: 'reply', cuts: ['outbound-claim'] });
+  expect(withinExecution(cut.report, SLICE_INPUT)).toEqual([]);
+  const outbound = cut.report.sixOperations.find(o => o.role === 'outbound-reply')!;
+  expect(outbound.resolved).toBe(false);
+  expect(outbound.application?.unresolved).toBe(1);
+  const applied = cut.report.obligations.filter(o => o.state === 'applied-unresolved');
+  expect(applied).toHaveLength(1);
+  expect(Number(applied[0]!.exposure)).toBe(20);
+  const relabelled = { ...cut.report, obligations: cut.report.obligations.map(o =>
+    o.state === 'applied-unresolved' ? { ...o, state: 'closed-unexecuted', exposure: '0' } : o) };
+  expect(withinExecution(relabelled, SLICE_INPUT)
+    .some(v => v.includes(`obligation closed-unexecuted names an operation six records as ${outbound.state}`))).toBe(true);
+  // ...and claiming six RESOLVED it is refused just as squarely.
+  const resolvedClaim = { ...cut.report, obligations: cut.report.obligations.map(o =>
+    o.state === 'applied-unresolved' ? { ...o, state: 'applied-resolved', exposure: '0' } : o) };
+  expect(withinExecution(resolvedClaim, SLICE_INPUT)
+    .some(v => v.includes('applied-resolved names an operation six recorded no resolved application for'))).toBe(true);
 }, 240000);

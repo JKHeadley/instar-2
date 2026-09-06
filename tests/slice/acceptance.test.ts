@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { ALLOWED_OBLIGATION_STATES, DECLARED_BOUNDS, OPEN_OBLIGATION_STATES, acrossExecutions, adjacentPairs, withinExecution } from './acceptance.js';
+import { ALLOWED_OBLIGATION_STATES, DECLARED_BOUNDS, OPEN_OBLIGATION_STATES, SIX_RECORD_OBLIGATION_STATES, acrossExecutions, adjacentPairs, withinExecution } from './acceptance.js';
 import type { SliceReport } from './acceptance.js';
 import { JUDGMENT_BOUNDARIES, REPLY_BOUNDARIES, SLICE_INPUT } from './harness.js';
 import { minimalPlaneProjectionIds } from './plane-fixture.js';
@@ -345,4 +345,80 @@ it('P11-NF-45 P11-NF-48 the across-execution floor also refuses a six operation 
   // The same report WITH the operation owned passes on both sides.
   expect(acrossExecutions(control, { ...orphaned, obligations: [...orphaned.obligations,
     { operation: OPERATION, state: 'owned-unapplied-unsettled', owner: 'part-eight', blocker: 'part-six', exposure: '20' }] })).toEqual([]);
+});
+
+// R1 (desk `bbc2bfa`): exposure retention was decided entirely by an obligation's own
+// state string, so relabelling a still-open obligation to one of the terminal labels
+// this lane introduced released credit six never released. The reproduction shapes
+// below are the desk's, driven against the predicate rather than narrated.
+const model = (overrides = {}) => report({ profile: 'judgment', settlement: null, deliveryEvidence: [],
+  externalApplications: [], charges: [],
+  judgment: { request: 'q:1', logicalKey: 'lk:1', resolution: 'r:1', disposition: 'decided', capture: 'c:1', meter: 'm:1' },
+  accounting: { ...report().accounting, notifications: 0, money: 0, tokens: { inputTokens: 17, outputTokens: 11 } },
+  outbound: { request: 'request:1', digest: DIGEST, semanticMessage: 'sm:1', operation: null, charge: null, observations: [] },
+  operations: [MODEL], sixOperations: [modelOp()],
+  obligations: [{ operation: MODEL, state: 'owned-unresolved-model', owner: 'part-seven', blocker: 'part-six', exposure: '20' },
+    { operation: 'unreserved:request:1', state: 'owned-pending-unadmitted', owner: 'part-six', blocker: 'part-six', exposure: '20' }],
+  ...overrides });
+const relabel = (state: string, exposure: string) => model({ obligations: [
+  { operation: MODEL, state, owner: 'part-seven', blocker: 'part-six', exposure },
+  { operation: 'unreserved:request:1', state: 'owned-pending-unadmitted', owner: 'part-six', blocker: 'part-six', exposure: '20' }] });
+
+it('P11-NF-48 a terminal obligation LABEL cannot release exposure six never released', () => {
+  // Six's own record for this operation: consumed, unresolved, 20 units reserved.
+  expect(withinExecution(model(), SLICE_INPUT)).toEqual([]);
+  // The rule that already worked: an OPEN obligation may not drop its exposure...
+  expect(withinExecution(relabel('owned-unresolved-model', '0'), SLICE_INPUT)
+    .some(v => v.includes('released its exposure'))).toBe(true);
+  // ...and the relabels that used to evade it, each now refused by name.
+  for (const [state, exposure] of [['closed-unexecuted', '0'], ['closed-unexecuted', '20']] as const)
+    expect(withinExecution(relabel(state, exposure), SLICE_INPUT)
+      .some(v => v.includes('obligation closed-unexecuted names an operation six records as consumed')),
+    `${state}/${exposure}`).toBe(true);
+  expect(withinExecution(relabel('applied-resolved', '0'), SLICE_INPUT)
+    .some(v => v.includes('applied-resolved names an operation six recorded no resolved application for'))).toBe(true);
+  expect(withinExecution(relabel('applied-unresolved', '20'), SLICE_INPUT)
+    .some(v => v.includes('applied-unresolved names an operation six recorded no unresolved application for'))).toBe(true);
+  // A terminal label for an operation six has no row for at all — the ghost.
+  const ghost = model({ obligations: [...model().obligations,
+    { operation: 'operation:sha256:ghost', state: 'closed-unexecuted', owner: 'part-six', blocker: 'none', exposure: '0' }] });
+  expect(withinExecution(ghost, SLICE_INPUT)
+    .some(v => v.includes('names operation:sha256:ghost, for which six has no operation row'))).toBe(true);
+  // ...and so is any obligation naming a six operation identity that is absent.
+  const absent = model({ obligations: [...model().obligations,
+    { operation: 'operation:sha256:ghost', state: 'dispatch-uncertain', owner: 'part-eight', blocker: 'none', exposure: '20' }] });
+  expect(withinExecution(absent, SLICE_INPUT)
+    .some(v => v.includes('for which six has no operation row'))).toBe(true);
+});
+
+it('P11-NF-48 the LEGITIMATE terminal rows still pass, and the repair is not a widening of the open set', () => {
+  // A conditionally closed operation, agreeing with six's record: accepted.
+  const closed = report({ settlement: null, deliveryEvidence: [], externalApplications: [], charges: [],
+    accounting: { ...report().accounting, notifications: 0, money: 0 },
+    sixOperations: [outboundOp({ state: 'closed', application: null, resolved: true })],
+    obligations: [{ operation: OPERATION, state: 'closed-unexecuted', owner: 'part-six', blocker: 'none', exposure: '0' }] });
+  expect(withinExecution(closed, SLICE_INPUT)).toEqual([]);
+  // An applied-and-resolved operation, agreeing with six's accounting: accepted.
+  expect(withinExecution(report(), SLICE_INPUT)).toEqual([]);
+  // An applied-but-UNRESOLVED operation, agreeing with six's accounting: accepted,
+  // and still OPEN, so it must keep its exposure. This is the shape a cut after the
+  // dispatch-claim really produces.
+  const unresolvedApplication = report({ settlement: { outcome: 'did-not-happen', finalCharge: null,
+    retainedExposure: 20, delayedExecutionExcluded: true }, externalApplications: [], charges: [],
+  accounting: { ...report().accounting, notifications: 0, money: 0 },
+  deliveryEvidence: [{ operation: OPERATION, stage: 'service-applied', decisive: 'decisive', value: 'did-not-happen' }],
+  sixOperations: [outboundOp({ state: 'dispatch-claimed', resolved: false,
+    application: { exposure: 20, released: 0, unresolved: 1, actualCharge: -1 } })],
+  obligations: [{ operation: OPERATION, state: 'applied-unresolved', owner: 'part-six', blocker: 'none', exposure: '20' }] });
+  expect(withinExecution(unresolvedApplication, SLICE_INPUT)).toEqual([]);
+  // The desk's third reproduction: relabelling THAT row to a closed terminal, which
+  // used to silence both the exposure rule and the unapplied-settlement rule.
+  expect(withinExecution({ ...unresolvedApplication, obligations: [{ operation: OPERATION,
+    state: 'closed-unexecuted', owner: 'part-six', blocker: 'none', exposure: '0' }] }, SLICE_INPUT)
+    .some(v => v.includes('obligation closed-unexecuted names an operation six records as dispatch-claimed'))).toBe(true);
+  // The repair is a reconciliation, NOT a widening: these labels are terminal and
+  // must stay outside the open set, or the legitimate rows above would fail.
+  for (const state of SIX_RECORD_OBLIGATION_STATES.filter(s => s !== 'applied-unresolved'))
+    expect(OPEN_OBLIGATION_STATES, state).not.toContain(state);
+  expect(SIX_RECORD_OBLIGATION_STATES).toEqual(['closed-unexecuted', 'applied-resolved', 'applied-unresolved']);
 });
