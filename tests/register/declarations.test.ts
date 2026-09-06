@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { deriveProfile } from '../../src/index.js';
 import { decodeDeclaration, decodeReference, decodeShape, implementedInvariants, invariantCoverage } from '../../src/register/index.js';
 import { setup, detail, value, shapeInput } from './fixtures.js';
 
@@ -36,6 +37,21 @@ describe('declaration boundary', () => {
   it('P3-NF-30 runtime-only family input refuses, closed commit/extract source decodes', () => {
     const s = setup(); expect(detail(decodeDeclaration({ ...s.declaration(), family: { source: 'live-processes', mode: 'runtime' } }, s.context))).toContain('P3-NF-30');
     expect(value(decodeDeclaration({ ...s.declaration(), family: { source: 'tree-members', mode: 'commit-extract' } }, s.context)).family?.source).toBe('tree-members');
+  });
+  it('P3-P5 dark unavailable proof keeps the worst profile; live/soaking require actual proof', () => {
+    const s = setup();
+    const feature = s.declaration('feature', 'features', { metrics: ['latency'], gate: { test: 'check', deadline: 1000 } },
+      { profile: s.f.profileInput({ consequence: 'control', reversibility: 'costly', reach: 'user', surface: 'chat' }), status: 'dark' });
+    const decoded = value(decodeDeclaration(feature, s.context));
+    expect(decoded.profile).toMatchObject({ consequence: 'control', reversibility: 'costly', reach: 'user', surface: 'chat' });
+    expect(value(deriveProfile(decoded.profile!, { owner: 'part-three', derivedFrom: s.context.shape.derivedFrom }, s.context.preserved)))
+      .toMatchObject({ userFacing: true, significant: true, critical: true });
+    expect(decoded.requiredFacts).not.toHaveProperty('liveProof');
+    for (const status of ['live', 'soaking']) expect(detail(decodeDeclaration({ ...feature, status }, s.context))).toContain('liveProof');
+    expect(detail(decodeDeclaration({ ...feature, requiredFacts: { metrics: ['latency'] } }, s.context))).toContain('object');
+    // Even while dark, a provided string is a real external record reference,
+    // not an unavailable sentinel. Generation must resolve it.
+    expect(() => s.build([s.bound, { ...feature, requiredFacts: { ...feature.requiredFacts, liveProof: 'unavailable:production' } }])).toThrow('unresolved feature.liveProof');
   });
   it('hostile unknown input never throws and cannot invoke accessors', () => {
     const s = setup(); const cyclic: unknown[] = []; cyclic.push(cyclic); let reads = 0;
