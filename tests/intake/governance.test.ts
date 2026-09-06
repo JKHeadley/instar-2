@@ -135,7 +135,7 @@ it('P4-NF-06 R7 actual source chain proves each enforced decoder, not a caller-a
   const report = scanned.reports[Object.keys(files).indexOf('src/intake/port.ts')]!;
   expect(report.scopes.append!.invokes).toEqual(expect.arrayContaining(['authorAndAppend', 'intakeWorkRegistration', 'intakeStopRegistration']));
   expect(report.scopes.checkDedup!.invokes).toEqual(expect.arrayContaining(['readProjection', 'intakeDedupDefinition']));
-});
+}, 30_000); // Seven full source-graph scans; compiler budget, not an intake latency bound.
 
 it('P4-NF-06 R7 owner manifest pins the actual public implementations, contract and inspection assertions', () => {
   const manifest = JSON.parse(readFileSync('register-source/owner-references/part-four.json', 'utf8')) as {
