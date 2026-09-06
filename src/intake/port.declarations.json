@@ -1,0 +1,303 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "intake-slice",
+    "kind": "features",
+    "status": "live",
+    "requiredFacts": {
+      "metrics": [
+        "intake.preserved",
+        "intake.admitted",
+        "intake.held",
+        "intake.hold-age",
+        "intake.mismatch",
+        "intake.stop"
+      ]
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      14,
+      28,
+      42,
+      46,
+      83,
+      103
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "intake.contract",
+    "kind": "governed documents",
+    "status": "live",
+    "requiredFacts": {
+      "location": "docs/08-the-intake.md",
+      "changelog": "git-history:docs/08-the-intake.md"
+    },
+    "standards": [],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "intake.dedup",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "inspectedBy": "P4-NF-06",
+      "rungs": [
+        {
+          "decidesAlone": "governed-state",
+          "criticality": "Retained delivery: every arrival remains captured and receipted or held; no uncertain signal discards it",
+          "failDirection": "open",
+          "preservesInput": "part-two:intake-receipt + part-ten:capture + part-four:intake-held",
+          "enforces": {
+            "record": "intake.contract",
+            "decoder": "readProjection"
+          }
+        },
+        {
+          "decidesAlone": "governed-state",
+          "criticality": "Standing and work admission: exact recorded dedup contract must pass; preserved input never grants authority",
+          "failDirection": "closed",
+          "preservesInput": "part-two:intake-receipt + part-ten:capture + part-four:intake-held",
+          "enforces": {
+            "record": "intake.contract",
+            "decoder": "readProjection"
+          }
+        }
+      ]
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      14,
+      28,
+      42,
+      66,
+      95,
+      103
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "intake.authentication",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "inspectedBy": "P4-NF-06",
+      "rungs": [
+        {
+          "decidesAlone": "governed-state",
+          "criticality": "Retained delivery: every arrival remains captured and receipted or held; no uncertain signal discards it",
+          "failDirection": "open",
+          "preservesInput": "part-two:intake-receipt + part-ten:capture + part-four:intake-held",
+          "enforces": {
+            "record": "intake.contract",
+            "decoder": "decode:Provenance"
+          }
+        },
+        {
+          "decidesAlone": "governed-state",
+          "criticality": "Standing and work admission: exact recorded authentication contract must pass; preserved input never grants authority",
+          "failDirection": "closed",
+          "preservesInput": "part-two:intake-receipt + part-ten:capture + part-four:intake-held",
+          "enforces": {
+            "record": "intake.contract",
+            "decoder": "decode:Provenance"
+          }
+        }
+      ]
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      14,
+      28,
+      42,
+      66,
+      95,
+      103
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "intake.resolution",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "inspectedBy": "P4-NF-06",
+      "rungs": [
+        {
+          "decidesAlone": "governed-state",
+          "criticality": "Retained delivery: every arrival remains captured and receipted or held; no uncertain signal discards it",
+          "failDirection": "open",
+          "preservesInput": "part-two:intake-receipt + part-ten:capture + part-four:intake-held",
+          "enforces": {
+            "record": "intake.contract",
+            "decoder": "decode:VerifiedPrincipal"
+          }
+        },
+        {
+          "decidesAlone": "governed-state",
+          "criticality": "Standing and work admission: exact recorded resolution contract must pass; preserved input never grants authority",
+          "failDirection": "closed",
+          "preservesInput": "part-two:intake-receipt + part-ten:capture + part-four:intake-held",
+          "enforces": {
+            "record": "intake.contract",
+            "decoder": "decode:VerifiedPrincipal"
+          }
+        }
+      ]
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      14,
+      28,
+      42,
+      66,
+      95,
+      103
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "intake.admission",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "inspectedBy": "P4-NF-06",
+      "rungs": [
+        {
+          "decidesAlone": "governed-state",
+          "criticality": "Retained delivery: every arrival remains captured and receipted or held; no uncertain signal discards it",
+          "failDirection": "open",
+          "preservesInput": "part-two:intake-receipt + part-ten:capture + part-four:intake-held",
+          "enforces": {
+            "record": "intake.contract",
+            "decoder": "authorAndAppend"
+          }
+        },
+        {
+          "decidesAlone": "governed-state",
+          "criticality": "Standing and work admission: exact recorded admission contract must pass; preserved input never grants authority",
+          "failDirection": "closed",
+          "preservesInput": "part-two:intake-receipt + part-ten:capture + part-four:intake-held",
+          "enforces": {
+            "record": "intake.contract",
+            "decoder": "authorAndAppend"
+          }
+        }
+      ]
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      14,
+      28,
+      42,
+      66,
+      95,
+      103
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "intake.stop",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "criticality": "Exact authenticated bound-operator stop before ordinary work; no requester halt",
+      "failDirection": "open",
+      "preservesInput": "part-two:intake-receipt + local-durable intake-stop or intake-stop-signal",
+      "inspectedBy": "P4-NF-06"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      14,
+      28,
+      42,
+      66,
+      95
+    ],
+    "holds": []
+  }
+]
