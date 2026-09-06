@@ -65,6 +65,13 @@ export interface EffectDurabilityPort {
   readonly owner: 'part-ten';
   ensure(facts: readonly FactEnvelope[]): Result<readonly AppendReceipt[]>;
 }
+// Current physical custody, separate from durability of the referring facts.
+// The assembly binds the declared loss model to authenticated custody endpoints.
+export interface EffectCustodyPort {
+  readonly owner: 'part-ten';
+  verify(captures: readonly OperationObservation['capture'][],
+    policy: Pick<OperationDefinition, 'durability' | 'replicas' | 'lossModel'>): Result<void>;
+}
 export interface OperationAdapterPort {
   readonly owner: 'part-ten'; readonly id: string;
   describe(): Readonly<{ readonly contract: string; readonly account: string; readonly conversation: string;
@@ -102,6 +109,7 @@ export interface EffectDoorway {
 export interface EffectComposition {
   readonly host: EffectHost; readonly spine: EffectSpine; readonly transport: TransportAuthority;
   readonly durability: EffectDurabilityPort; readonly adapter: OperationAdapterPort;
+  readonly custody: EffectCustodyPort;
   readonly assessment: EffectAssessmentPort | null;
 }
 export interface EffectAuthor { readonly context: FactContext; readonly privateKey: string }

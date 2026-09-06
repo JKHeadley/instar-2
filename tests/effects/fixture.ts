@@ -29,7 +29,6 @@ export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), in
   let authority: string[] = [], versions: GovernedVersion[] = [];
   const result = <T>(run: () => T) => f.success(run());
   const custody = createEffectFileCaptures([join(directory, 'origin-captures'), join(directory, 'peer-captures')], result);
-  const captures: Record<string, CapturedContent> = custody.captures;
   const host: EffectHost = { machine: 'machine-a', incarnation, principal: f.bob, scope: f.scope, boundary,
     current: () => ({ decode: decodeContext, clock: f.clock(now), stopped, versions, authority }),
     capture: custody.capture,
@@ -37,7 +36,7 @@ export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), in
   const transportHost: TransportHost = { domain: 'conversation:1', machine: host.machine, incarnation,
     authorityIncarnation: 'authority:1', principal: host.principal, scope: host.scope, maxLeaseTerm: 1000, budget: 100,
     monotonic: () => now, current: () => ({ decode: decodeContext, clock: f.clock(now), generation: register.generation, stopped }) };
-  const ctx: FactContext = { ...f.ctx, decode: decodeContext, captures,
+  const ctx: FactContext = { ...f.ctx, decode: decodeContext, get captures(): Record<string, CapturedContent> { return custody.captures; },
     schemas: [f.schema, ...transportSchemas(transportHost), ...effectSchemas(host)],
     ownedBodies: [...value(registerTransportBodies(transportHost, boundary)), ...value(registerEffectBodies(host))] };
   const peer = createFactStore(ctx, createTransportFileStorage(join(directory, 'peer'), result));
@@ -92,7 +91,7 @@ export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), in
         finalCharge, delayedExecutionExcluded: false, required: [acceptanceId] });
     },
   };
-  const composition: EffectComposition = { host, spine, transport, durability: replicas.durability, adapter, assessment: assessor };
+  const composition: EffectComposition = { host, spine, transport, durability: replicas.durability, custody: custody.custody, adapter, assessment: assessor };
   const api = createEffectDoorway(composition);
   const message = value(decodeOutboundMessage({ type: 'OutboundMessage', schemaVersion: 1, id: 'message:1', semanticMessage: 'five-semantic-message:1',
     run: run.id, speaker: f.bob.id, account: definition.account, conversation: definition.conversation,

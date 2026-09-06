@@ -62,6 +62,12 @@ billing proof. A fixture response proves no human delivery/consumption.
 second fsync-backed local **directory standing in for an authenticated peer**.
 It is not independent media: simultaneous disk loss is uncovered. Captures are
 fsynced into two fixture custody directories. No raw production credential exists.
+The assembly must supply `EffectCustodyPort` separately from fact durability.
+Before issuing or consuming settlement it reopens and hashes every referenced
+operation capture at the locations demanded by the approved policy. P2 receives
+fresh plain-data capture statuses on every read, including loss and restoration;
+a cached receipt or replicated referring fact is not current custody. This fixture
+supports only its explicitly declared two-directory loss model.
 
 Tests exercise unit boundaries, full-port integration and emitted-code fresh
 processes. The E2E fixture is SIGKILLed before send, after send/before observation,

@@ -10,7 +10,7 @@ import { definitionCheck, live, rows, wire } from './records.js';
 import { issuedSettlement, withSettlement } from './settlement-authority.js';
 
 export function createEffectDoorway(composition: EffectComposition): EffectDoorway {
-  const { host, spine, transport, durability, adapter, assessment } = composition;
+  const { host, spine, transport, durability, custody, adapter, assessment } = composition;
   const checked = <T>(name: string, input: unknown, fn: () => T): Result<T> => boundary(name, input, host.boundary, fn);
   const snapshot = () => {
     const s = take(spine.store.readForProjection());
@@ -208,7 +208,12 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       ensure(proof.finalCharge === null || Number.isSafeInteger(proof.finalCharge) && proof.finalCharge >= 0, 'invalid final charge');
       const required = [...new Set([...q.closure, op.fact.id, op.claim.id, acceptance.id, ...proof.required,
         ...observations.map(o => find(o.id, 'OperationObservation').fact.id)])];
+      const currentCustody = () => {
+        ensure(custody?.owner === 'part-ten', 'current physical custody port unavailable');
+        take(custody.verify(observations.map(o => o.capture), d));
+      };
       demand(d, factsFor(required));
+      currentCustody();
       const fields = { request: q.id, operation: id, claim: op.claim.id, reservation: op.fact.id, digest: q.digest,
         acceptance: acceptance.id, observations: observations.map(o => o.id), outcome,
         finalCharge: proof.finalCharge, delayedExecutionExcluded: proof.delayedExecutionExcluded,
@@ -217,7 +222,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       if (prior) {
         ensure(prior.record.type === 'EffectSettlement', 'settlement type mismatch');
         if (encoded({ ...prior.record, id: '' }).bytes === encoded({ type: 'EffectSettlement', schemaVersion: 1, id: '', ...fields }).bytes) {
-          demand(d, [prior.fact]); return issuedSettlement(prior.record, () => api.settle(id));
+          demand(d, [prior.fact]); currentCustody(); return issuedSettlement(prior.record, () => api.settle(id));
         }
         const previous = consumeOutcome(prior.record.outcome, { happened: () => 'happened', 'did-not-happen': () => 'did-not-happen', uncertain: () => 'uncertain' });
         ensure(previous === 'uncertain' || previous === state, 'settlement disagreement requires reassessment, not overwrite');
@@ -226,7 +231,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       }
       const candidate = { type: 'EffectSettlement', schemaVersion: 1, id: `settlement:${encoded(fields).hash}`, ...fields } as unknown as EffectSettlement;
       const settlement = withSettlement(host, candidate, () => persist(candidate, required));
-      demand(d, [find(settlement.id, 'EffectSettlement').fact]); return issuedSettlement(settlement, () => api.settle(id));
+      demand(d, [find(settlement.id, 'EffectSettlement').fact]); currentCustody(); return issuedSettlement(settlement, () => api.settle(id));
     }),
   };
   return Object.freeze(api);

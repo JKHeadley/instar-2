@@ -47,14 +47,14 @@ export function createEffectSlice(seed, directory, runtime) {
     schemas: [seed.noteSchema, ...transportSchemas(th), ...effectSchemas(host)],
     ownedBodies: [...take(registerTransportBodies(th, boundary)), ...take(registerEffectBodies(host))],
     keys: seed.keys, facts: [], grants: [], revocations: [], genesis: { ...seed.genesis, clock }, timeAnchors: [],
-    captures: custody.captures, folded: {} };
+    get captures() { return custody.captures; }, folded: {} };
   const peer = createFactStore(context, createTransportFileStorage(join(directory, 'peer'), result));
   const copies = createEffectReplicaStorage(join(directory, 'origin'), { id: 'fixture-peer-directory', store: peer }, result);
   const store = createFactStore(context, copies.storage), author = { context, privateKey: seed.privateKey };
   const transport = createTransportAuthority(th, createTransportSpine(th, author, store), boundary);
   const spine = createEffectSpine(host, author, store);
   const adapter = runtime.adapter(result);
-  const api = createEffectDoorway({ host, spine, transport, durability: copies.durability, adapter, assessment: null });
+  const api = createEffectDoorway({ host, spine, transport, durability: copies.durability, custody: custody.custody, adapter, assessment: null });
   const initialize = () => {
     const pending = take(authorAndAppend({ kind: 'note', schemaVersion: 1, machine: seed.machine, principal,
       provenance: principal.provenance, at: clock, body: { identity: 'five-owned pending/source STAND-IN', amount: '0' }, required: [] }, context, store, seed.privateKey)).fact;

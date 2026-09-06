@@ -1,4 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { authorAndAppend } from '../../src/facts/index.js';
 import { consumeEffectSettlement, createEffectDoorway } from '../../src/effects/index.js';
 import { effectFixture, value, refused } from '../effects/fixture.js';
@@ -7,6 +9,39 @@ import { json, privateKey } from '../facts/fixtures.js';
 // Let the runner flush IPC between synchronous signed-prefix workloads.
 // This does not yield inside any tested atomic/reentrant handoff.
 afterEach(async () => { await new Promise<void>(done => setImmediate(done)); });
+
+for (const loss of ['both-missing', 'peer-missing', 'peer-corrupt'] as const) {
+  it(`P8-NF-23 P8-NF-25 P8-NF-27 P8-NF-30 P8-NF-39 current physical custody refuses ${loss} and permits restoration`, () => {
+    const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
+    f.assess('happened', 0);
+    const s = value(f.api.settle(o.operation)); let consumers = 0;
+    const paths = (loss === 'both-missing' ? ['origin-captures', 'peer-captures'] : ['peer-captures'])
+      .map(dir => join(f.directory, dir, `${o.capture.hash.slice(7)}.capture`));
+    const originals = paths.map(path => readFileSync(path, 'utf8'));
+    paths.forEach(path => loss === 'peer-corrupt' ? writeFileSync(path, 'changed receipt') : renameSync(path, `${path}.withheld`));
+    refused(consumeEffectSettlement(s, f.host.boundary, () => { consumers++; }));
+    refused(f.api.settle(o.operation)); expect(consumers).toBe(0); expect(f.calls()).toBe(1);
+    if (loss === 'both-missing') {
+      expect(f.ctx.captures[o.capture.reference]!.status).toBe('missing');
+      expect(value(f.store.readForProjection()).entries.some(e => e.taint.includes('evidence-unavailable'))).toBe(true);
+    }
+    paths.forEach((path, i) => loss === 'peer-corrupt' ? writeFileSync(path, originals[i]!) : renameSync(`${path}.withheld`, path));
+    expect(value(consumeEffectSettlement(s, f.host.boundary, current => { consumers++; return current.id; }))).toBe(s.id);
+    expect(consumers).toBe(1);
+    expect(value(f.api.inspect()).filter(r => r.record.type === 'EffectSettlement')).toHaveLength(1);
+    const latest = value(f.transport.inspect()).filter(r => r.record.type === 'AdmissionReservation').at(-1)!.record;
+    expect(latest).toMatchObject({ state: 'consumed', charge: 20 });
+  }, 30000);
+}
+
+it('P8-NF-25 P8-NF-27 approved local custody does not silently require or infer a peer policy', () => {
+  const f = effectFixture(undefined, undefined, { durability: 'local-durable', replicas: 0 });
+  const q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
+  const peer = join(f.directory, 'peer-captures', `${o.capture.hash.slice(7)}.capture`);
+  renameSync(peer, `${peer}.withheld`);
+  const s = value(f.api.settle(o.operation));
+  expect(value(consumeEffectSettlement(s, f.host.boundary, current => current.id))).toBe(s.id);
+}, 30000);
 
 for (const missing of ['note', 'effect-OperationDefinition', 'effect-EffectRequest', 'effect-EffectValidation', 'transport-AdmissionReservation']) {
   it(`P8-NF-25 P8-NF-26 exact closure matrix refuses missing ${missing} peer acknowledgement`, () => {
