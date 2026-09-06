@@ -52,7 +52,8 @@ describe('P4 owner source consumption', () => {
  it('accepts P4 and P5 independently and together without accepting another owner or an unpinned dependency', () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-owner-'));
   try {
-   for (const p of ['src', 'docs', 'register-source']) cpSync(p, join(root, p), { recursive: true });
+   // A merged P5 manifest pins its real test artifacts as well as source/docs.
+   for (const p of ['src', 'docs', 'register-source', 'tests']) cpSync(p, join(root, p), { recursive: true });
    installOwnerFixture(root); installIntakeOwnerFixture(root);
    const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8' }).trim();
    git('init', '-q'); git('add', '.'); git('commit', '-qm', 'owners');
