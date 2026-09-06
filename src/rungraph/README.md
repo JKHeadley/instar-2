@@ -69,6 +69,18 @@ producer, subject, `exit:<check>:<version>` predicate and acceptance hash. Ten's
 consumption fact binds worker, harness, canonical JSON `hashes` and `classes`.
 These are requirements on owner adapters, not substitute owner implementations.
 
+`resolveIntakeOwner` consumes P4's actual `intake-admitted` fact through its
+installed `IntakeWork` decoder. `RunDecodeContext.intakeOwners` is trusted,
+installation-pinned resolution from the opaque work-owner key to a P1-verified
+agent/system principal reference. It does not mint authority from message text.
+The original fact remains both the Run's cause and its Intent source; the owner
+may refer to a separate installation identity record. The owner mapping must be
+available when admitting and rebuilding the Run. The actual-output test loads
+P4's unmodified exports and fixtures at `28c84e0` from pinned git objects, with
+shared P1/P2/P3 public packages. Missing pinned source is a failure, not a skip;
+full-history CI checkouts provide the reachable P4 commit. No copied P4 schema
+or replacement stimulus is involved.
+
 ## Built scope and explicit residuals
 
 Designed, not yet built: delegation contracts; fan-out/collection; exhaustion
