@@ -8,6 +8,10 @@ import { fixture, value, clone } from '../fixtures.js';
 export { value, clone };
 export const json = <F extends object>(type: string, fields: F) => ({ type, schemaVersion: 1, ...fields });
 export const shapeInput = () => JSON.parse(readFileSync('register-source/bootstrap-shape.json', 'utf8')) as Record<string, unknown>;
+// Closed-graph scanner tests supply their core dependencies explicitly, just as
+// readCommit supplies the full committed src graph in the shipped composition.
+export const wiringSources = () => Object.fromEntries(['src/index.ts', 'src/decode/decode.ts',
+  'src/register/index.ts', 'src/register/governance.ts'].map(path => [path, readFileSync(path, 'utf8')]));
 export function setup() {
   const f = fixture(); const shape = value(decodeShape(shapeInput(), { site: 'types.decode', preserved: f.ctx.preserved, register: f.ctx.register }));
   const proof = f.proof({ commit: 'commit:1' });

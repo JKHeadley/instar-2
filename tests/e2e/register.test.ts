@@ -236,6 +236,21 @@ describe('compiled register build adapter lifecycle', () => {
       const spoof = original.replace(/decodeRun\(([^;]+)\);/, '((decodeRun) => decodeRun($1))((v) => v);');
       expect(spoof).not.toBe(original); writeFileSync(path, spoof);
       const wrongCall = run(commit()); expect(wrongCall.status).not.toBe(0); expect(wrongCall.stderr).toContain('does not read');
+      // R1: retain the real construction/read and every valid owner artifact pin.
+      // Only the decoder receiver changes. Immutable namespace chains work;
+      // a reassigned receiver and a const alias of that receiver do not.
+      for (const [receiver, accepted] of [
+        ['const ns = owner; const next = ns; next.decodeRun($1);', true],
+        ["let ns = owner; ns = { ...owner, decodeRun: (_v: unknown) => 'impostor' }; ns.decodeRun($1);", false],
+        ["let ns = owner; ns = { ...owner, decodeRun: (_v: unknown) => 'impostor' }; const next = ns; next.decodeRun($1);", false],
+      ] as const) {
+        const body = original.replace(/decodeRun\(([^;]+)\);/, receiver);
+        expect(body).not.toBe(original);
+        writeFileSync(path, "import * as owner from './index.js';\n" + body);
+        const result = run(commit());
+        if (accepted) expect(result.status, result.stderr).toBe(0);
+        else { expect(result.status).not.toBe(0); expect(result.stderr).toContain('does not read enforced record and invoke named decoder'); }
+      }
       writeFileSync(path, original);
       const manifestPath = join(root, 'register-source/owner-references.json'); const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
       manifest.decoders[0].artifact.hash = hash('not the committed owner source'); writeFileSync(manifestPath, JSON.stringify(manifest));
@@ -244,6 +259,51 @@ describe('compiled register build adapter lifecycle', () => {
       const testPath = join(root, 'tests/rungraph/governance.test.ts'); writeFileSync(testPath, readFileSync(testPath, 'utf8') + '\n// ambient edit\n');
       const ambient = run(revision); expect(ambient.status).not.toBe(0); expect(ambient.stderr).toContain('source pin trails');
     } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 60_000);
+  it('P3-P5 R2 same pinned commit refuses with and without an ambient bridge, and resolves a committed bridge', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'instar-owner-graph-cli-'));
+    const root = join(directory, 'working'); const clean = join(directory, 'clean'); const committed = join(directory, 'committed');
+    try {
+      const inputs = ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json'];
+      for (const path of inputs) cpSync(path, join(root, path), { recursive: true });
+      installOwnerFixture(root);
+      const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+      const indexPath = join(root, 'src/rungraph/index.ts');
+      const index = readFileSync(indexPath, 'utf8');
+      const viaBridge = index.replaceAll("'./records.js'", "'./owner-bridge.js'");
+      expect(viaBridge).not.toBe(index); writeFileSync(indexPath, viaBridge);
+      const manifestPath = join(root, 'register-source/owner-references.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      for (const decoder of manifest.decoders) decoder.module.hash = hash(viaBridge);
+      writeFileSync(manifestPath, JSON.stringify(manifest));
+      git(root, 'init'); git(root, 'add', ...inputs); git(root, 'commit', '-qm', 'pinned public index, absent bridge');
+      const revision = git(root, 'rev-parse', 'HEAD');
+      git(directory, 'clone', '--quiet', '--no-hardlinks', root, clean);
+      expect(git(clean, 'rev-parse', 'HEAD')).toBe(revision);
+      writeFileSync(join(root, 'src/rungraph/owner-bridge.ts'), "export * from './records.js';");
+      expect(git(root, 'ls-tree', '-r', '--name-only', revision)).not.toContain('owner-bridge.ts');
+      expect(git(root, 'status', '--porcelain')).toContain('?? src/rungraph/owner-bridge.ts');
+      const script = resolve('scripts/build-register.mjs');
+      const run = (cwd: string, pin: string) => spawnSync(process.execPath, [script, '--replay', '--now', '100', '--commit', pin, '--out', join(cwd, 'out')], { cwd, encoding: 'utf8' });
+      for (const cwd of [root, clean]) {
+        const result = run(cwd, revision);
+        expect(result.status).not.toBe(0); expect(result.stderr).toContain('unresolved public owner decoder export decodeRun');
+      }
+      git(root, 'add', 'src/rungraph/owner-bridge.ts'); git(root, 'commit', '-qm', 'include bridge in committed source graph');
+      const pinned = git(root, 'rev-parse', 'HEAD');
+      git(directory, 'clone', '--quiet', '--no-hardlinks', root, committed);
+      expect(git(committed, 'rev-parse', 'HEAD')).toBe(pinned);
+      for (const cwd of [root, committed]) { const result = run(cwd, pinned); expect(result.status, result.stderr).toBe(0); }
+      for (const path of ['register.json', 'source.json'])
+        expect(readFileSync(join(root, 'out', path), 'utf8')).toBe(readFileSync(join(committed, 'out', path), 'utf8'));
+      // The separately shipped wiring command also scans the pin, never an
+      // expanded live-file graph. Its valid control must work before perturbing it.
+      cpSync(join(root, 'out'), join(root, 'generated'), { recursive: true });
+      const wiring = () => spawnSync(process.execPath, [resolve('scripts/check-register-wiring.mjs')], { cwd: root, encoding: 'utf8' });
+      const checked = wiring(); expect(checked.status, checked.stderr).toBe(0);
+      writeFileSync(join(root, 'src/rungraph/ambient.ts'), "export * from './records.js';");
+      const untracked = wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   }, 60_000);
   it('P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-e2e-'));
