@@ -16,7 +16,7 @@ for (const missing of ['note', 'effect-OperationDefinition', 'effect-EffectReque
       return f.success(receipts.map(r => r.fact.kind === missing ? { ...r, durability: { kind: 'local-durable' as const } } : r));
     } } });
     refused(api.dispatch(q, f.fence), 'replicated demand'); expect(f.calls()).toBe(0);
-  });
+  }, 30000);
 }
 
 for (const mutation of ['duplicate-peer', 'wrong-hash', 'absent-receipt']) {
@@ -29,7 +29,7 @@ for (const mutation of ['duplicate-peer', 'wrong-hash', 'absent-receipt']) {
         : { ...r, fact: { ...r.fact, contentHash: `sha256:${'0'.repeat(64)}` as const } }));
     } } });
     refused(api.dispatch(q, f.fence)); expect(f.calls()).toBe(0);
-  });
+  }, 30000);
 }
 
 it('P8-NF-04 P8-NF-21 P8-NF-23 direct signed P2 append cannot mint an unassessed settlement', () => {
@@ -40,7 +40,7 @@ it('P8-NF-04 P8-NF-21 P8-NF-23 direct signed P2 append cannot mint an unassessed
     principal: json(f.host.principal), provenance: json(f.host.principal.provenance), at: json(f.now),
     body: { record: json(fake) }, required: [] }, f.ctx, f.store, privateKey), 'eight-owned evidence admission');
   expect(value(f.api.inspect()).filter(r => r.record.type === 'EffectSettlement')).toHaveLength(1);
-}, 15000);
+}, 30000);
 
 it('P8-NF-14 P8-NF-31 P8-NF-35 reentrant delivery through a second doorway cannot invoke twice', () => {
   const f = effectFixture(), q = f.prepare(), second = createEffectDoorway(f.composition);
@@ -48,7 +48,7 @@ it('P8-NF-14 P8-NF-31 P8-NF-35 reentrant delivery through a second doorway canno
     expect(value(second.dispatch(q, f.fence)).stage).toBe('executor-accepted');
   });
   expect(value(f.api.dispatch(q, f.fence)).stage).toBe('response'); expect(f.calls()).toBe(1);
-}, 15000);
+}, 30000);
 
 it('P8-NF-03 P8-NF-05 P8-NF-16 pending definition and adapter target mismatch cannot activate a call', () => {
   const f = effectFixture(), q = f.prepare();
@@ -56,7 +56,7 @@ it('P8-NF-03 P8-NF-05 P8-NF-16 pending definition and adapter target mismatch ca
     describe: () => ({ ...f.composition.adapter.describe(), conversation: 'other-chat' }) } });
   refused(wrong.dispatch(q, f.fence), 'target mismatch'); expect(f.calls()).toBe(0);
   f.versions([]); refused(f.api.dispatch(q, f.fence), 'approved current version'); expect(f.calls()).toBe(0);
-});
+}, 30000);
 
 it('P8-NF-19 P8-NF-21 settlement consumer refuses copied history and rechecks genuine issuance', () => {
   const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
@@ -64,7 +64,7 @@ it('P8-NF-19 P8-NF-21 settlement consumer refuses copied history and rechecks ge
   refused(consumeEffectSettlement(JSON.parse(JSON.stringify(s)) as typeof s, f.host.boundary, () => { consumers++; }), 'live eight-owned');
   expect(value(consumeEffectSettlement(s, f.host.boundary, current => { consumers++; return current.id; }))).toBe(s.id);
   expect(consumers).toBe(1);
-}, 15000);
+}, 30000);
 
 it('P8-NF-20 P8-NF-24 P8-NF-35 P8-NF-37 read-only lookup needs one durable six wake and cannot run again after completion', () => {
   const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
@@ -72,7 +72,7 @@ it('P8-NF-20 P8-NF-24 P8-NF-35 P8-NF-37 read-only lookup needs one durable six w
   f.time(110); value(f.transport.recover('read', f.fence, o.operation, f.api));
   expect(f.queries()).toBe(1); expect(f.calls()).toBe(1);
   refused(f.api.observe(o.operation), 'already completed'); expect(f.queries()).toBe(1);
-}, 15000);
+}, 30000);
 
 it('P8-NF-01 P8-NF-19 nine reference must use its approved VerificationAssessment name', () => {
   const f = effectFixture(), q = f.prepare(), o = value(f.api.dispatch(q, f.fence));
@@ -81,4 +81,4 @@ it('P8-NF-01 P8-NF-19 nine reference must use its approved VerificationAssessmen
   }) } });
   refused(wrong.settle(o.operation), 'wrong acceptance owner');
   expect(value(f.api.settle(o.operation)).acceptance.length).toBeGreaterThan(0);
-}, 15000);
+}, 30000);

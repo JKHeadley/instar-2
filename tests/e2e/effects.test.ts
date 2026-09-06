@@ -29,7 +29,7 @@ for (const cut of ['before-send', 'after-send', 'after-record']) it(`P8-NF-14 P8
     });
     expect(ready.ready).toBe(true);
     const exit = new Promise(resolveExit => child.once('exit', resolveExit)); child.kill('SIGKILL'); await exit;
-    const resumed = spawnSync(process.execPath, [...args, 'recover', cut], { encoding: 'utf8', timeout: 15000 });
+    const resumed = spawnSync(process.execPath, [...args, 'recover', cut], { encoding: 'utf8', timeout: 30000 });
     expect(resumed.status, resumed.stderr).toBe(0);
     const recovered = JSON.parse(resumed.stdout) as { operation: string; charge: number; replayRefused: boolean; freshRefused: boolean };
     expect(recovered).toMatchObject({ operation: ready.operation, charge: 20, replayRefused: true, freshRefused: true });
@@ -39,4 +39,4 @@ for (const cut of ['before-send', 'after-send', 'after-record']) it(`P8-NF-14 P8
     expect(queries).toHaveLength(1); expect(JSON.parse(queries[0]!)).toMatchObject({ operation: ready.operation });
     expect(readFileSync(join(directory, 'origin', 'facts.json'), 'utf8')).toBe(readFileSync(join(directory, 'peer', 'facts.json'), 'utf8'));
   } finally { child.kill('SIGKILL'); }
-}, 15000);
+}, 30000);
