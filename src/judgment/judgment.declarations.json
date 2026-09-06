@@ -1,0 +1,12 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "judgment-doorway-source", "kind": "protected artifacts", "status": "live",
+    "requiredFacts": { "pattern": "src/judgment/**", "why": "One-use model invocation and receipt-before-use gates must not be weakened by request content; independent enforcement belongs to nine/eleven.", "surface": "repository review approval" },
+    "standards": [82], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "judgment-reference-host", "kind": "protected artifacts", "status": "live",
+    "requiredFacts": { "pattern": "scripts/judgment-*.mjs", "why": "Reference host supplies durable local captured bytes and verified evidence folds; it is not candidate policy or production activation.", "surface": "repository review approval" },
+    "standards": [82], "holds": []
+  }
+]
