@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/governance.test.ts",
-        "hash": "sha256:174144c8013c5b55c5089f3132eb7fe66a12853c394f7304dd54e932893e420b"
+        "hash": "sha256:a99326ab8f26c900e6f694c79c1581f41dba1afa9f60e7fe7ac5cb5b6865c419"
       }
     }
   ],
