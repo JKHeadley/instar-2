@@ -1,7 +1,33 @@
 {
-  "commit": "58ffb433b239b40a1352e3510694e46a5085a63f",
-  "generation": "sha256:fced59866b21af599fba1697ca90627c47c09dcb7ed45fbd0e222924f323b632",
+  "commit": "521a200253dae99f80fe945766c8a195dc0ed3a6",
+  "generation": "sha256:234fc9efef7bb80819010b9af891fa67952aa5ce75296a36d1be624bfe2cbd92",
   "authority": "shape-only",
   "mode": "replay",
-  "authorityPrerequisites": []
+  "authorityPrerequisites": [
+    {
+      "site": "rungraph.admit",
+      "record": "rungraph.contract",
+      "required": "verified enforced-record approval history and live writer/executor separation before entering force; replay is not runtime authority"
+    },
+    {
+      "site": "rungraph.exit",
+      "record": "rungraph.contract",
+      "required": "verified enforced-record approval history and live writer/executor separation before entering force; replay is not runtime authority"
+    },
+    {
+      "site": "rungraph.grounding",
+      "record": "rungraph.contract",
+      "required": "verified enforced-record approval history and live writer/executor separation before entering force; replay is not runtime authority"
+    },
+    {
+      "site": "rungraph.step",
+      "record": "rungraph.contract",
+      "required": "verified enforced-record approval history and live writer/executor separation before entering force; replay is not runtime authority"
+    },
+    {
+      "site": "rungraph.transition",
+      "record": "rungraph.contract",
+      "required": "verified enforced-record approval history and live writer/executor separation before entering force; replay is not runtime authority"
+    }
+  ]
 }
