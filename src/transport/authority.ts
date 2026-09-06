@@ -1,10 +1,12 @@
 import type { BoundaryContext, Result } from '../index.js';
 import { authorAndAppend } from '../facts/index.js';
 import type { FactStorePort } from '../facts/index.js';
-import type { AdmissionReservation, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord,
-  TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
+import type { AdmissionReservation, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord, SettlementAccountingInput,
+  SettlementApplication, SettlementConsumer, TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { checkFence, fenceFor, kindFor, latestLease, latestLoop, live, loopActive, observationAdmission, policyCheck, reservations, rows, validateTransition } from './records.js';
+import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
+  requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication, withSettlementAttempt } from './settlement.js';
 
 export function createTransportSpine(host: TransportHost, author: FactAuthor, store: FactStorePort): TransportSpine {
   return Object.freeze({ store, append: (record: TransportRecord, required: readonly string[]) => authorAndAppend({
@@ -14,7 +16,7 @@ export function createTransportSpine(host: TransportHost, author: FactAuthor, st
   }, author.context, store, author.privateKey) });
 }
 
-export function createTransportAuthority(host: TransportHost, spine: TransportSpine, c: BoundaryContext): TransportAuthority {
+export function createTransportAuthority<S = never>(host: TransportHost, spine: TransportSpine, c: BoundaryContext, settlementConsumer?: SettlementConsumer<S>): TransportAuthority<S> {
   // A capability is minted only by this live issuer. JSON/restart never recreates it.
   const claims = new WeakMap<object, { operation: string; used: boolean }>();
   let lastTick = -1;
@@ -33,12 +35,15 @@ export function createTransportAuthority(host: TransportHost, spine: TransportSp
   const meta = (all: readonly TransportFact[], command: string) => ({ schemaVersion: 1 as const, domain: host.domain,
     command, predecessor: all.at(-1)?.fact.id ?? '', authority: host.authorityIncarnation, tick: tick() });
   const write = <T extends TransportRecord>(all: readonly TransportFact[], r: T): { record: T; all: readonly TransportFact[] } => {
-    validateTransition(r, all, host);
-    const receipt = take(spine.append(r, r.predecessor ? [r.predecessor] : []));
+    validateTransition(r, all, host, true);
+    const required = r.predecessor ? [r.predecessor] : [];
+    if (r.type === 'SettlementApplication') required.push(r.settlementFact);
+    const receipt = take(spine.append(r, [...new Set(required)]));
     ensure(!receipt.taint.length, 'append was provisional or contested');
     ensure(receipt.fact.kind === kindFor(r.type) && encoded(receipt.fact.body).bytes === encoded({ record: r }).bytes, 'append returned different record');
     if (r.type === 'AdmissionReservation' && r.durability === 'replicated')
       ensure(receipt.durability.kind === 'replicated' && receipt.durability.n >= r.replicas, 'effect requires stronger durability than lease');
+    if (r.type === 'SettlementApplication') checkAccountingReceipt(receipt.fact, receipt, reservations(all).find(p => p.operation === r.operation)!);
     const result = freeze(r); return { record: result, all: [...all, { record: result, fact: receipt.fact }] };
   };
   const fence = (all: readonly TransportFact[], token: FenceToken) => checkFence(all, token, host, tick());
@@ -55,8 +60,85 @@ export function createTransportAuthority(host: TransportHost, spine: TransportSp
     const old = fence(all, token), m = meta(all, command);
     return write(all, { ...old, ...m, operation, term: term ?? 0, state: name === 'LeaseRelease' ? 'released' : 'held', expires: term === undefined ? old.expires : m.tick + term }).record;
   });
+  // Conditional preparation of ONE accounting row for an authenticated settlement
+  // view. Everything here may wait; nothing here releases credit. The returned
+  // prefix is checked, so the final guarded callback needs no further storage.
+  const prepareApplication = (s: SettlementAccountingInput, token: FenceToken) => {
+    const snapshot = take(spine.store.readForProjection());
+    ensure(snapshot.entries.every(e => !e.taint.length && !e.conflicts.length), 'tainted settlement prefix');
+    const facts = snapshot.entries.map(e => e.fact), all = read(); fence(all, token);
+    const op = reservations(all).find(p => p.operation === s.operation);
+    ensure(op, 'settlement operation absent');
+    const sf = facts.find(f => settlementMatches(s, f));
+    ensure(sf, 'owner-issued settlement missing from local fact prefix');
+    const fields = { operation: s.operation, request: s.request, reservation: s.reservation, claim: s.claim,
+      digest: s.digest, settlement: s.id, settlementFact: sf.id, settlementHash: sf.contentHash, ...accounting(s, op) };
+    const prior = all.find(v => v.record.type === 'SettlementApplication' && v.record.settlement === s.id)?.record;
+    let record: SettlementApplication;
+    if (prior) {
+      ensure(prior.type === 'SettlementApplication' && Object.entries(fields).every(([k, v]) => prior[k as keyof SettlementApplication] === v), 'settlement identity reused with changed application');
+      requireAccountingDurability(all.find(v => v.record === prior)!, op, host);
+      record = prior;
+    } else {
+      const r = { ...meta(all, `settle:${encoded([s.operation, s.id]).hash}`), type: 'SettlementApplication', ...fields } as SettlementApplication;
+      checkApplicationEvidence(r, facts, all);
+      record = withApplication(host, r, settlementConsumer, () => write(all, r).record);
+    }
+    // Capture a fresh checked prefix after the LAST six storage wait. The owner
+    // decoder's local revision detects any later raw, API or replicated six
+    // candidate without rereading physical storage inside nine's guard.
+    const current = read(); fence(current, token);
+    const row = current.find(v => v.record.type === 'SettlementApplication' && v.record.settlement === s.id);
+    ensure(row && encoded(row.record).bytes === encoded(record).bytes, 'prepared accounting changed');
+    return { row, all: current, record, input: encoded(s).bytes, revision: accountingRevision(host) };
+  };
   return Object.freeze({
     inspect: () => boundary('TransportInspect', null, c, read),
+    settle: (token, settlement) => checked('SettlementApply', { token }, () => {
+      ensure(settlementConsumer, 'eight settlement consumer is not installed');
+      requireSettlementConsumer(host, settlementConsumer);
+      return withSettlementAttempt(host, () => {
+        // Eight's consumption seam is entered TWICE for one settlement.
+        //
+        // Pass one obtains an authenticated CURRENT preparation view. Its callback
+        // runs inside the owner's non-waiting guard, so it only copies bounded
+        // in-memory bytes: no store read, append, custody, clock or authority use.
+        let operation: string | undefined;
+        const input = take(settlementConsumer(settlement, c, s => {
+          ensure(operation === undefined, 'settlement preparation called twice');
+          operation = s.operation; return s;
+        }));
+        try {
+          // Between the passes, OUTSIDE any owner guard, six performs every step
+          // that may wait: P2 projection reads, the conditional accounting append
+          // and the original operation's custody-durability proof.
+          invalidateAccounting(host, input.operation);
+          const prepared = prepareApplication(input, token);
+          // Pass two is the consequential decision. Eight rechecks its assessment,
+          // evidence, custody and durability after all six waits, then calls this
+          // back inside nine's current-assessment guard. NO store read, append,
+          // fsync, replication or deferred authority use may run here.
+          return take(settlementConsumer(settlement, c, s => {
+            ensure(operation === s.operation, 'settlement finalization names another operation');
+            ensure(encoded(s).bytes === prepared.input, 'prepared settlement changed');
+            ensure(accountingRevision(host) === prepared.revision, 'accounting prefix changed during owner wait');
+            live(host); fence(prepared.all, token);
+            qualifyAccounting(host, prepared.row);
+            return prepared.record;
+          }));
+        } catch (error) { invalidateAccounting(host, input.operation); throw error; }
+      });
+    }),
+    close: (command, token, operation) => checked('OperationClose', { command, token, operation }, () => {
+      const all = read(); fence(all, token);
+      const old = reservations(all).find(p => p.operation === operation);
+      ensure(old?.state === 'prepared', 'close requires a prepared, never-claimed operation');
+      // A live capability is minted only after its durable dispatch-claimed row,
+      // so the committed prefix is the proof; no in-memory handle can outrun it.
+      ensure(!all.some(v => v.record.type === 'AdmissionReservation' && v.record.operation === operation
+        && v.record.state !== 'prepared'), 'close requires proof no dispatch-claim exists');
+      return write(all, { ...old, ...meta(all, command), state: 'closed' }).record;
+    }),
     acquire: (command, expected, term) => checked('LeaseAcquire', { command, expected, term }, () => {
       const all = read(), previous = duplicateLease(all, command);
       if (previous) { ensure(previous.operation === 'acquire' && previous.predecessor === expected && previous.incarnation === host.incarnation && previous.term === term, 'acquire command changed'); return fenceFor(all, previous); }
@@ -144,5 +226,5 @@ export function createTransportAuthority(host: TransportHost, spine: TransportSp
       if (failed) throw failure;
       return result;
     }),
-  } satisfies TransportAuthority);
+  } satisfies TransportAuthority<S>);
 }

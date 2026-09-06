@@ -2,8 +2,9 @@ import { decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../inde
 import type { BoundaryContext, Json, Result } from '../index.js';
 import { causalCone, registerOwnedBody } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
-import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, TransportFact, TransportHost, TransportRecord } from './contracts.js';
+import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, SettlementConsumer, TransportFact, TransportHost, TransportRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
+import { admissionAccounting, bindSettlementConsumer, checkApplicationEvidence, latestApplication, noteAccountingCandidate, requireApplication } from './settlement.js';
 
 const txt = { kind: 'text', maxLength: 256 } as const;
 const int = { kind: 'integer' } as const;
@@ -17,8 +18,10 @@ export const transportShapes: Readonly<Record<string, OwnedShape>> = freeze({
   AdmissionReservation: { kind: 'object', fields: { ...row, operation: txt, request: txt, attempt: txt, digest: txt, run: txt, semanticMessage: txt, deliveryAttempt: txt, fence, charge: int, state: txt, executor: txt, durability: txt, replicas: int } },
   LoopRecord: { kind: 'object', fields: { ...row, run: txt, episode: txt, policy, attempts: int, started: int, nextWake: int, state: txt, pending: txt } },
   RecoveryRecord: { kind: 'object', fields: { ...row, operation: txt, episode: txt, observation: txt, disposition: txt } },
+  SettlementApplication: { kind: 'object', fields: { ...row, operation: txt, request: txt, reservation: txt, claim: txt, digest: txt,
+    settlement: txt, settlementFact: txt, settlementHash: txt, actualCharge: int, exposure: int, released: int, unresolved: int, capViolation: int, retryEligible: int } },
 });
-const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord'];
+const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'SettlementApplication'];
 export const kindFor = (name: string) => `transport-${name}`;
 export function transportSchemas(host: TransportHost): readonly FactSchema[] {
   return recordNames.map(name => ({ kind: kindFor(name), version: 1,
@@ -114,7 +117,7 @@ export function live(host: TransportHost): void {
 // The owner validator runs INSIDE P2's append boundary, after signed-chain checks and
 // before its compare-head durable append. A caller bypassing the authority API cannot
 // rebase a stale transition on a newer envelope head.
-export function validateTransition(r: TransportRecord, all: readonly TransportFact[], host: TransportHost): void {
+export function validateTransition(r: TransportRecord, all: readonly TransportFact[], host: TransportHost, origin = false): void {
   ensure(r.domain === host.domain && r.schemaVersion === 1 && r.command.length > 0 && r.tick >= 0, 'record domain or identity');
   ensure(r.predecessor === (all.at(-1)?.fact.id ?? ''), 'conditional predecessor changed');
   ensure(!all.some(v => v.record.command === r.command), 'command already committed');
@@ -142,7 +145,9 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
   } else {
     const lease = active();
     if (r.type === 'AdmissionReservation') {
-      ensure(encoded(r.fence).bytes === encoded(fenceFor(all, lease)).bytes, 'stale fence at durable boundary');
+      // A conditional close exists BECAUSE the reserving fence is gone; it keeps
+      // the immutable original fence and is still written under the live lease.
+      ensure(r.state === 'closed' || encoded(r.fence).bytes === encoded(fenceFor(all, lease)).bytes, 'stale fence at durable boundary');
       ensure(r.charge >= 0 && r.request.length > 0 && r.attempt.length > 0 && /^sha256:[a-f0-9]{64}$/.test(r.digest), 'reservation identity or demand');
       ensure(r.operation === `operation:${encoded([r.domain, r.request, r.attempt]).hash}`, 'operation mapping must be injective');
       ensure(r.deliveryAttempt === `delivery:${encoded([r.operation, r.semanticMessage]).hash}`, 'delivery attempt identity changed');
@@ -150,14 +155,32 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       const prior = reservations(all).find(p => p.operation === r.operation);
       if (!prior) {
         ensure(r.state === 'prepared' && r.executor === '', 'reservation must precede claim');
-        ensure(!reservations(all).some(p => p.request === r.request || p.run === r.run || p.semanticMessage === r.semanticMessage), 'unresolved execution or charge prohibits a new attempt');
-        ensure(reservations(all).reduce((n, p) => n + p.charge, r.charge) <= host.budget, 'spend bound exhausted');
+        // Inhibition is sticky until an owned governed reconciliation exists.
+        // Different request/attempt/semantic keys cannot erase a same-run breach.
+        ensure(!reservations(all).some(p => p.run === r.run && all.some(v => v.record.type === 'SettlementApplication'
+          && v.record.operation === p.operation && v.record.capViolation === 1)), 'cap violation inhibits affected admission');
+        // A closed operation is proven never dispatch-claimed: zero exposure and
+        // resolved. Every other state still needs qualified accounting evidence.
+        const states = new Map(reservations(all).map(p => [p.operation, p.state === 'closed' ? { exposure: 0, unresolved: 0 }
+          : origin ? admissionAccounting(all, p, host)
+          : latestApplication(all, p.operation) ?? { exposure: p.charge, unresolved: 1 }]));
+        ensure(!reservations(all).some(p => p.request === r.request || p.semanticMessage === r.semanticMessage
+          || p.run === r.run && states.get(p.operation)!.unresolved !== 0), 'unresolved execution or charge prohibits a new attempt; unproven accounting durability is unresolved');
+        ensure(reservations(all).reduce((n, p) => n + states.get(p.operation)!.exposure, r.charge) <= host.budget, 'spend bound exhausted');
         const loop = latestLoop(all, r.run); ensure(loop && loop.state !== 'stopped', 'durable recovery wake required before reservation');
       } else {
         const immutable = (v: AdmissionReservation) => ({ ...v, command: '', predecessor: '', tick: 0, authority: '', state: '', executor: '' });
         ensure(encoded(immutable(r)).bytes === encoded(immutable(prior)).bytes, 'immutable operation mapping changed');
-        ensure((prior.state === 'prepared' && r.state === 'dispatch-claimed') || (prior.state === 'dispatch-claimed' && r.state === 'consumed'), 'claim is one-use');
-        ensure(r.executor === lease.incarnation && (prior.executor === '' || prior.executor === r.executor), 'executor binding mismatch');
+        if (r.state === 'closed') {
+          // Proof, not assumption: no row for this operation ever left 'prepared'
+          // anywhere in the committed prefix. A close is terminal and unexecuted.
+          ensure(prior.state === 'prepared' && !all.some(v => v.record.type === 'AdmissionReservation'
+            && v.record.operation === r.operation && v.record.state !== 'prepared'), 'close requires proof no dispatch-claim exists');
+          ensure(r.executor === '', 'a closed operation has no executor');
+        } else {
+          ensure((prior.state === 'prepared' && r.state === 'dispatch-claimed') || (prior.state === 'dispatch-claimed' && r.state === 'consumed'), 'claim is one-use');
+          ensure(r.executor === lease.incarnation && (prior.executor === '' || prior.executor === r.executor), 'executor binding mismatch');
+        }
       }
     } else if (r.type === 'LoopRecord') {
       policyCheck(r.policy);
@@ -179,6 +202,15 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
           : r.state === 'running' || r.state === 'waiting', 'loop duration/attempt admission mismatch');
       }
       ensure(r.nextWake >= r.tick + r.policy.minDelay, 'minimum wake delay');
+    } else if (r.type === 'SettlementApplication') {
+      const op = reservations(all).find(p => p.operation === r.operation);
+      ensure(op && (op.state === 'dispatch-claimed' || op.state === 'consumed'), 'application requires dispatched reservation');
+      ensure(!all.some(v => v.record.type === 'SettlementApplication' && v.record.settlement === r.settlement), 'settlement already applied');
+      const prior = latestApplication(all, r.operation);
+      ensure(!prior || prior.actualCharge === -1 || prior.actualCharge === r.actualCharge, 'settled charge changed');
+      ensure(!prior || prior.unresolved === 1 || r.unresolved === 0, 'resolved accounting cannot regress');
+      ensure(r.actualCharge >= -1 && r.exposure >= 0 && r.released >= 0 && [0, 1].includes(r.unresolved)
+        && [0, 1].includes(r.capViolation) && r.retryEligible === 0, 'invalid application accounting');
     } else {
       const op = reservations(all).find(v => v.operation === r.operation);
       ensure(op && op.state !== 'prepared', 'recovery must name an unresolved claim');
@@ -191,8 +223,9 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
     }
   }
 }
-export function registerTransportBodies(host: TransportHost, c: BoundaryContext): Result<readonly OwnedBodyRegistration[]> {
-  return boundary('TransportRegistrations', null, c, () => Object.entries(transportShapes).map(([name, shape]) => take(registerOwnedBody({
+export function registerTransportBodies<S = never>(host: TransportHost, c: BoundaryContext, settlementConsumer?: SettlementConsumer<S>): Result<readonly OwnedBodyRegistration[]> {
+  return boundary('TransportRegistrations', null, c, () => {
+    const registrations = Object.entries(transportShapes).map(([name, shape]) => take(registerOwnedBody({
     name, owner: 'part-six', currentVersion: 1, versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
     decodeCurrent: (input, ctx) => {
       try {
@@ -214,7 +247,21 @@ export function registerTransportBodies(host: TransportHost, c: BoundaryContext)
           const past = rows(causalCone(ctx.origin, ctx.facts.facts), host.domain);
           ensure(past.every(({ fact }) => fact.machine === host.machine && fact.principal.id === host.principal.id
             && fact.principal.kind === host.principal.kind), 'predecessor issuer is not this authority');
-          validateTransition(v, past, host);
+          // P2 also live-decodes preserved facts for projection reconstruction.
+          // Such a fact is already in its verified input set; it is NOT a new
+          // append. Only a new origin candidate may perform current custody I/O.
+          // Raw P2 origin append still lacks this fact and therefore checks R1.
+          const candidate = !ctx.facts.facts.some(f => f.id === ctx.origin.id);
+          // Any NEW six candidate, origin or replicated, invalidates an in-memory
+          // prepared prefix. Historical/projection reads are pure and do not.
+          // Even a subsequently refused candidate conservatively invalidates it.
+          if (candidate) noteAccountingCandidate(host);
+          const admitting = ctx.mode === 'origin' && candidate;
+          validateTransition(v, past, host, admitting);
+          if (v.type === 'SettlementApplication') {
+            checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past);
+            if (ctx.mode === 'origin') requireApplication(host, v, settlementConsumer);
+          }
           if (ctx.mode === 'origin') {
             live(host);
             const now = host.monotonic();
@@ -232,5 +279,7 @@ export function registerTransportBodies(host: TransportHost, c: BoundaryContext)
         return { ok: true, value: freeze(input) };
       } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'transport record refused' }; }
     },
-  }, shape, c))));
+    }, shape, c)));
+    bindSettlementConsumer(host, settlementConsumer); return registrations;
+  });
 }
