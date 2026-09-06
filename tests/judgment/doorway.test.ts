@@ -4,7 +4,10 @@ import { createJudgmentDoorway, createModelAdapter } from '../../src/judgment/in
 import type { ProviderObservation } from '../../src/judgment/index.js';
 import { judgmentFixture, refused, value } from './fixture.js';
 
-describe('judgment slice real P1/P2/P6 composition', () => {
+// Real fsync-backed multi-owner fixtures exceeded Vitest's 5s default on both
+// Linux architectures (CI 34007043408). This is bounded harness headroom, not a
+// production deadline change; policy-clock boundary assertions remain intact.
+describe('judgment slice real P1/P2/P6 composition', { timeout: 30_000 }, () => {
   it('P7-NF-10 P7-NF-11 P7-NF-12 P7-NF-17 P7-NF-28 records exact question/context/response/meter before exposing one answer', async () => {
     const f = judgmentFixture(), token = f.start();
     const answer = value(await f.door.judge(f.input, token));
@@ -19,24 +22,26 @@ describe('judgment slice real P1/P2/P6 composition', () => {
     const reservations = value(f.six.inspect()).filter(r => r.record.type === 'AdmissionReservation');
     expect(reservations.map(r => r.record.type === 'AdmissionReservation' && [r.record.state, r.record.charge])).toEqual([
       ['prepared', 20], ['dispatch-claimed', 20], ['consumed', 20] ]);
+    const dispatch = facts.find(v => v.record.type === 'JudgmentAttemptRecord' && v.record.phase === 'dispatch-observed')!;
+    expect(dispatch.record).toMatchObject({ reservation: reservations[2]!.fact.id });
+    expect(dispatch.fact.segment.position).toBeGreaterThan(reservations[2]!.fact.segment.position);
+    const returned = facts.find(v => v.record.type === 'JudgmentAttemptRecord' && v.record.phase === 'response-observed')!;
+    expect(dispatch.fact.segment.position).toBeLessThan(returned.fact.segment.position);
     expect(value(await f.door.judge(f.input, token)).resolution).toEqual(answer.resolution); expect(f.calls).toHaveLength(1);
     expect(consumeResult(value(f.store.readForProjection()).entries.length ? f.door.readAnswer(f.input.id, token) : f.result(() => answer), { Success: () => true, Refused: () => false })).toBe(true);
   });
-  it('P7-NF-02 P7-NF-05 P7-NF-07 P7-NF-08 refuses an invented answer/floor/reason without turning it into permission', async () => {
-    for (const mutate of [
-      (v: Record<string, unknown>) => { delete v.reason; },
-      (v: Record<string, unknown>) => { v.approval = true; },
-      (v: Record<string, unknown>) => { v.floor = { allowed: { type: 'ActionFloor', schemaVersion: 1, actions: ['other'], default: 'other' }, chosen: 'other' }; },
-    ]) {
+  it.each([
+      ['missing reason', (v: Record<string, unknown>) => { delete v.reason; }],
+      ['invented approval', (v: Record<string, unknown>) => { v.approval = true; }],
+      ['widened floor', (v: Record<string, unknown>) => { v.floor = { allowed: { type: 'ActionFloor', schemaVersion: 1, actions: ['other'], default: 'other' }, chosen: 'other' }; }],
+    ] as const)('P7-NF-02 P7-NF-05 P7-NF-07 P7-NF-08 refuses %s without turning it into permission', async (_name, mutate) => {
       const f = judgmentFixture(); const raw = JSON.parse(f.observation.bytes!) as Record<string, unknown>; mutate(raw);
       const bad = judgmentFixture({ observation: { ...f.observation, bytes: JSON.stringify(raw) } });
       refused(await bad.door.judge(bad.input, bad.start()));
       expect(value(bad.door.inspect()).at(-1)?.record).toMatchObject({ type: 'JudgmentResolution', disposition: 'refused' });
       expect(bad.calls).toHaveLength(1);
-    }
   });
-  it('P7-NF-09 P7-NF-30 a retrying SDK gets zero second invocations after BOTH known rejection and uncertainty', async () => {
-    for (const state of ['rejected', 'uncertain'] as const) {
+  it.each(['rejected', 'uncertain'] as const)('P7-NF-09 P7-NF-30 a retrying SDK gets zero second invocations after %s', async state => {
       let retries = 0;
       const observation: ProviderObservation = { state, bytes: null, providerOperation: null,
         usage: { inputTokens: null, outputTokens: null, charge: null, source: 'unknown; retained maximum reservation' }, retryBlocked: false };
@@ -48,7 +53,6 @@ describe('judgment slice real P1/P2/P6 composition', () => {
       if (row?.type !== 'JudgmentAttemptRecord' || !row.receipt) throw new Error('missing receipt');
       expect(JSON.parse(value(f.captures.read(row.receipt)))).toMatchObject({ retryBlocked: true, state, usage: { charge: null } });
       expect(value(f.six.inspect()).at(-1)?.record).toMatchObject({ type: 'AdmissionReservation', state: 'consumed', charge: 20 });
-    }
   });
   it('P7-NF-09 rejects a client whose automatic retries cannot be disabled; no-call SDK cannot fake a receipt', async () => {
     const f = judgmentFixture();
@@ -76,12 +80,10 @@ describe('judgment slice real P1/P2/P6 composition', () => {
     const token = f.start(); refused(await f.door.judge(f.input, token), 'accounting append fault'); fail = false;
     expect(value(await createJudgmentDoorway(f.ports).judge(f.input, token)).decision.floor?.chosen).toBe('work'); expect(f.calls).toHaveLength(1);
   });
-  it('P7-NF-16 P7-NF-19 stop and expiry retain late observations but never release a usable answer', async () => {
-    for (const stop of [true, false]) {
+  it.each([true, false])('P7-NF-16 P7-NF-19 stop=%s and expiry retain late observations but never release a usable answer', async stop => {
       const f = judgmentFixture({ invoke: async () => { if (stop) f.stop(); else f.time(500); return f.observation; } });
       refused(await f.door.judge(f.input, f.start()), stop ? 'stop' : 'deadline');
       expect(value(f.door.inspect()).at(-1)?.record.type).toBe('JudgmentResolution'); expect(f.calls).toHaveLength(1);
-    }
   });
   it('P7-NF-17 changed input under one question refuses and overlapping calls cannot double dispatch', async () => {
     let finish!: () => void;

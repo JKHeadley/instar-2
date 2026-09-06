@@ -23,6 +23,7 @@ const runtime = { incarnation: mode === 'resume' ? 'worker:2' : 'worker:1', auth
     const result = base.append(bytes, head);
     consumeResult(result, { Success: () => {
       const row = JSON.parse(bytes).body?.record;
+      if (row?.phase === 'dispatch-observed') stopAt('dispatch');
       if (row?.phase === 'response-observed') stopAt('response');
       if (row?.type === 'JudgmentResolution') stopAt('resolution');
     }, Refused: () => {} }); return result;

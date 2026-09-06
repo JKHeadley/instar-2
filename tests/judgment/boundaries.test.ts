@@ -1,6 +1,6 @@
 import { renameSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { authorAndAppend } from '../../src/facts/index.js';
 import { json, privateKey } from '../facts/fixtures.js';
@@ -8,6 +8,9 @@ import type { DispatchClaim } from '../../src/transport/index.js';
 import type { JudgmentResolution, ProviderObservation } from '../../src/judgment/index.js';
 import { judgmentFixture, refused, value } from './fixture.js';
 
+// Disk-backed fixture work, not runtime latency. Both architecture runners
+// exceeded the default 5s; each isolated semantic case retains a finite limit.
+describe('judgment durable boundary fixtures', { timeout: 30_000 }, () => {
 it('P7-NF-22 P7-NF-31 zero capture capacity and input boundary-plus-one prevent any invocation', async () => {
   const empty = judgmentFixture({ capacity: 0 }); refused(await empty.door.judge(empty.input, empty.start()), 'capacity exhausted'); expect(empty.calls).toHaveLength(0);
   const full = judgmentFixture(); refused(await full.door.judge({ ...full.input, question: 'x'.repeat(full.host.description.maxInputBytes + 1) }, full.start()), 'submitted byte bound');
@@ -17,7 +20,7 @@ it('P7-NF-22 P7-NF-31 zero capture capacity and input boundary-plus-one prevent 
 it('P7-NF-11 P7-NF-12 unreserved/cloned claims cannot enter the provider boundary', async () => {
   const f = judgmentFixture(), token = f.start(), bytes = value(f.model.prepare({ question: 'unreserved' }));
   const claim = { operation: 'invented', attempt: 'attempt:1', digest: value(canonical(bytes)).hash, executor: 'worker:1' } as DispatchClaim;
-  refused(await f.model.exchange({ claim, fence: token, bytes, deadline: 400, incarnation: 'worker:1' }), 'no admitted provider observation');
+  refused(await f.model.exchange({ claim, fence: token, bytes, deadline: 400, incarnation: 'worker:1', recordDispatch: () => f.result(() => {}) }), 'no admitted provider observation');
   expect(f.calls).toHaveLength(0);
   value(await f.door.judge(f.input, token)); expect(f.calls).toHaveLength(1);
 });
@@ -40,8 +43,7 @@ it('P7-NF-02 P7-NF-17 direct P2 append cannot skip phases, replace an answer or 
   } });
   value(await early.door.judge(early.input, early.start()));
 });
-it('P7-NF-04 P7-NF-25 P7-NF-39 a cached result is not usable after generation, standing, stop or lease changes', async () => {
-  for (const cut of ['generation', 'standing', 'stop', 'lease']) {
+it.each(['generation', 'standing', 'stop', 'lease'])('P7-NF-04 P7-NF-25 P7-NF-39 a cached result is not usable after %s changes', async cut => {
     const f = judgmentFixture(), token = f.start(); const q = { ...f.input, deadline: 1000 };
     value(await f.door.judge(q, token));
     if (cut === 'generation') f.generation('generation:2');
@@ -49,7 +51,6 @@ it('P7-NF-04 P7-NF-25 P7-NF-39 a cached result is not usable after generation, s
     if (cut === 'stop') f.stop();
     if (cut === 'lease') f.time(601);
     refused(f.door.readAnswer(q.id, token)); expect(f.calls).toHaveLength(1);
-  }
 });
 it('P7-NF-34 P7-NF-43 P7-NF-45 missing local capture cannot be replaced by cached metadata or remote bytes', async () => {
   const f = judgmentFixture(), token = f.start(); value(await f.door.judge(f.input, token));
@@ -96,4 +97,5 @@ it('P7-NF-10 SDK post-processing cannot rewrite the captured provider answer or 
   const response = value(f.door.inspect()).find(v => v.record.type === 'JudgmentAttemptRecord' && v.record.receipt)?.record;
   if (response?.type !== 'JudgmentAttemptRecord' || !response.receipt) throw new Error('missing response');
   expect(JSON.parse(value(f.captures.read(response.receipt))).bytes).toBe(f.observation.bytes);
+});
 });

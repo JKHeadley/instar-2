@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
@@ -22,9 +22,9 @@ it('P7-NF-41 reference production initialization invokes real P1/P2/P6 ports wit
   const b = boot(), run = spawnSync(process.execPath, [...b.args, 'complete', 'none'], { encoding: 'utf8', timeout: 15000 });
   expect(run.status, run.stderr).toBe(0); expect(JSON.parse(run.stdout)).toMatchObject({ recorded: true, answer: { decision: { floor: { chosen: 'work' } } } });
   expect(readFileSync(join(b.directory, 'provider-invocations.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1);
-});
-it('P7-NF-14 P7-NF-15 P7-NF-52 real SIGKILL after provider/receipt/resolution never reconstructs a missing answer by another call', async () => {
-  for (const cut of ['provider', 'response', 'resolution']) {
+}, 30_000); // Real compiled initialization with fsync; not a model latency SLO.
+it('P7-NF-14 P7-NF-15 P7-NF-52 real SIGKILL after handoff/provider/receipt/resolution never reconstructs a missing answer by another call', async () => {
+  for (const cut of ['dispatch', 'provider', 'response', 'resolution']) {
     const b = boot(), child = spawn(process.execPath, [...b.args, 'start', cut], { stdio: ['ignore', 'pipe', 'pipe'] });
     let errors = ''; child.stderr.on('data', data => { errors += String(data); });
     try {
@@ -36,11 +36,12 @@ it('P7-NF-14 P7-NF-15 P7-NF-52 real SIGKILL after provider/receipt/resolution ne
       const exited = new Promise(done => child.once('exit', done)); child.kill('SIGKILL'); await exited;
       const resumed = spawnSync(process.execPath, [...b.args, 'resume', cut], { encoding: 'utf8', timeout: 15000 });
       expect(resumed.status, resumed.stderr).toBe(0); const result = JSON.parse(resumed.stdout) as { recorded: boolean; detail?: string };
-      expect(result.recorded).toBe(cut !== 'provider'); if (cut === 'provider') expect(result.detail).toContain('receipt missing');
-      expect(readFileSync(join(b.directory, 'provider-invocations.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1);
+      expect(result.recorded).toBe(!['dispatch', 'provider'].includes(cut)); if (['dispatch', 'provider'].includes(cut)) expect(result.detail).toContain('receipt missing');
+      const calls = join(b.directory, 'provider-invocations.jsonl');
+      expect(existsSync(calls) ? readFileSync(calls, 'utf8').trim().split('\n').length : 0).toBe(cut === 'dispatch' ? 0 : 1);
       const facts = JSON.parse(readFileSync(join(b.directory, 'facts.json'), 'utf8')) as { body: { record?: { type: string; state?: string; charge?: number } } }[];
       expect(facts.map(f => f.body.record).filter(r => r?.type === 'AdmissionReservation').at(-1)).toMatchObject({ state: 'consumed', charge: 20 });
     } finally { child.kill('SIGKILL'); }
   }
-}, 30000);
+}, 60_000); // Four bounded fresh-process cuts, each resumed child capped at 15s.
 it.skip('P7-NF-41 LIVE-PROVIDER slice fixture requires separately authorized real provider, eight executor and activation evidence', () => {});

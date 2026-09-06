@@ -5,6 +5,8 @@ import type { DispatchClaim, FenceToken, TransportAuthority, TransportHost } fro
 declare const owned: unique symbol;
 interface Owned { readonly [owned]: 'part-seven' }
 export interface Capture { readonly reference: string; readonly hash: Hash }
+declare const capacityOwned: unique symbol;
+export interface CaptureCapacity { readonly [capacityOwned]: 'part-ten'; readonly id: string; readonly maxBytes: number }
 interface Row { readonly schemaVersion: 1; readonly id: string; readonly request: string; readonly predecessor: string }
 export interface JudgmentRequest extends Row, Owned {
   readonly type: 'JudgmentRequest'; readonly logicalKey: string; readonly inputDigest: string;
@@ -31,6 +33,8 @@ export interface JudgmentFact { readonly fact: FactEnvelope; readonly record: Ju
 // Concrete custody belongs to ten. No delete, network fetch or release-pin capability.
 export interface JudgmentCapturePort {
   readonly owner: 'part-ten';
+  reserve(maxBytes: number): Result<CaptureCapacity>;
+  putReserved(capacity: CaptureCapacity, bytes: string): Result<Capture>;
   put(bytes: string, maxBytes: number): Result<Capture>;
   read(capture: Capture): Result<string>;
 }
@@ -46,10 +50,16 @@ export interface ProviderObservation {
   readonly providerOperation: string | null;
   readonly usage: { readonly inputTokens: number | null; readonly outputTokens: number | null; readonly charge: number | null; readonly source: string };
   readonly retryBlocked: boolean;
+  // Adapter-owned evidence of received-but-unusable output. This never grants
+  // answer eligibility; independently valid usage survives capture limitations.
+  readonly limitation?: { readonly kind: 'transport-threw' | 'invalid-provider-observation' | 'response-byte-limit'; readonly observedBytesAtLeast: number | null };
 }
 export interface ModelExchange {
   readonly claim: DispatchClaim; readonly fence: FenceToken; readonly bytes: string;
   readonly deadline: number; readonly incarnation: string;
+  // Guarded executor handoff: called only after consuming six's actual claim,
+  // before invoking the provider. Failure prevents invocation, retaining exposure.
+  readonly recordDispatch: () => Result<void>;
 }
 export interface ModelAdapterPort {
   readonly owner: 'part-ten';

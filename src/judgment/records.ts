@@ -37,7 +37,7 @@ export function phaseIn(all: readonly JudgmentFact[], phase: JudgmentAttemptReco
 }
 export function decisionFrom(observation: ProviderObservation, request: JudgmentRequest, host: JudgmentHost, c: BoundaryContext): Result<Decision> {
   return boundary('JudgmentAnswerDecode', observation, c, () => {
-    ensure(observation.state === 'complete' && observation.bytes !== null, `provider ${observation.state}: no usable answer`);
+    ensure(observation.state === 'complete' && observation.bytes !== null && !observation.limitation, `provider ${observation.state}: no usable answer`);
     ensure(observation.usage.charge === null || observation.usage.charge <= request.maxCharge, 'observed liability exceeds reservation');
     const decision = take(decode('Decision', JSON.parse(observation.bytes) as unknown, host.transport.current().decode));
     ensure(decision.floor && 'judgment' in decision.by, 'model answer requires floor and model attribution');
@@ -117,9 +117,9 @@ function validate(r: JudgmentRecord, ctx: OwnedBodyContext, host: JudgmentHost, 
       ensure(r.operation && r.reservation, 'phase requires six operation/reservation');
       const reservation = causalCone(ctx.origin, ctx.facts.facts).find(f => f.id === r.reservation);
       const op = (reservation?.body as { record?: AdmissionReservation } | undefined)?.record;
-      ensure(reservation?.kind === 'transport-AdmissionReservation' && op?.operation === r.operation && op.attempt === r.attempt
+      ensure(reservation?.kind === 'transport-AdmissionReservation' && op?.state === 'consumed' && op.operation === r.operation && op.attempt === r.attempt
         && op.request === request.effectRequest && op.semanticMessage === request.semanticMessage && op.digest === request.inputDigest && op.charge === request.maxCharge && op.run === request.run,
-      'phase lacks exact six reservation');
+      'phase lacks exact consumed six claim');
       const first = phaseIn(all, 'dispatch-observed');
       if (first) ensure(r.operation === first.record.operation && r.reservation === first.record.reservation, 'attempt remapped operation');
       if (r.phase === 'response-observed') {

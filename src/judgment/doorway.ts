@@ -4,6 +4,7 @@ import type { FenceToken } from '../transport/index.js';
 import type { JudgmentAttemptRecord, JudgmentDoorway, JudgmentFact, JudgmentPorts, JudgmentRecord, JudgmentRequest, JudgmentResolution, ProviderObservation, QuestionInput, RecordedAnswer } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { decisionFrom, phaseIn, providerEvidence, requestIn, rows, unsettledOutcome } from './records.js';
+import { receiptByteBound } from './model-adapter.js';
 
 export function createJudgmentDoorway(p: JudgmentPorts): JudgmentDoorway {
   const c = p.boundary;
@@ -120,30 +121,40 @@ export function createJudgmentDoorway(p: JudgmentPorts): JudgmentDoorway {
       }
       const admission = checked('JudgmentDispatch', () => {
         ensure(!phaseIn(read(), 'dispatch-observed'), 'unresolved dispatch: missing receipt cannot trigger another invocation');
+        ensure(!take(p.authority.inspect()).some(v => v.record.type === 'AdmissionReservation'
+          && v.record.request === request.effectRequest && v.record.attempt === `attempt:${request.id}:1` && v.record.state !== 'prepared'),
+        'unresolved dispatch claim: missing receipt cannot trigger another invocation');
         phase(request, 'prepared');
         current(request, fence, 'dispatch');
+        // Custody commits the complete worst-case encoded receipt budget before
+        // six admits spend. Other writers and process restart cannot free it.
+        const receiptCapacity = take(p.captures.reserve(receiptByteBound(p.host.description)));
         const reservation = take(p.authority.reserve({ command: `judgment:${request.id}:reserve`, fence,
           request: { owner: 'part-eight', name: 'EffectRequest', id: request.effectRequest }, attempt: `attempt:${request.id}:1`,
           payloadDigest: request.inputDigest, charge: request.maxCharge, run: { owner: 'part-five', name: 'Run', id: request.run },
           semanticMessage: request.semanticMessage, durability: 'local-durable', replicas: 0 }));
-        const sixFact = take(p.authority.inspect()).find(v => v.record.type === 'AdmissionReservation' && v.record.operation === reservation.operation)?.fact;
-        ensure(sixFact, 'six reservation fact missing');
-        phase(request, 'dispatch-observed', reservation.operation, sixFact.id);
         const claim = take(p.authority.claim(`judgment:${request.id}:claim`, fence, reservation.operation));
-        return { claim, reservation, sixFact };
+        return { claim, reservation, receiptCapacity };
       });
       const admitted = consumeResult(admission, { Success: v => v, Refused: () => undefined });
       if (!admitted) return consumeResult(admission, { Success: () => checked('ImpossibleAdmission', () => { throw new Error('unreachable'); }), Refused: r => r });
       let returned: Result<ProviderObservation>;
-      try { returned = await p.model.exchange({ claim: admitted.claim, fence, bytes: captured(request), deadline: request.deadline, incarnation: request.incarnation }); }
+      try { returned = await p.model.exchange({ claim: admitted.claim, fence, bytes: captured(request), deadline: request.deadline, incarnation: request.incarnation,
+        recordDispatch: () => checked('JudgmentExecutorHandoff', () => {
+          const consumed = take(p.authority.inspect()).find(v => v.record.type === 'AdmissionReservation'
+            && v.record.operation === admitted.reservation.operation && v.record.state === 'consumed');
+          ensure(consumed, 'six durable claim consumption missing');
+          phase(request, 'dispatch-observed', admitted.reservation.operation, consumed.fact.id);
+        }) }); }
       catch { return checked('MissingProviderObservation', () => { throw new Error('adapter threw: original liability retained; answer unavailable'); }); }
       const recording = checked('JudgmentRecordReceipt', () => {
         const observation = take(returned);
         // Receipt includes actual response bytes AND observational usage. It is not
         // a settlement; even known rejection leaves six's exposure reserved.
-        const receipt = take(p.captures.put(encoded(observation).bytes, request.maxOutputBytes + 2048));
+        const receipt = take(p.captures.putReserved(admitted.receiptCapacity, encoded(observation).bytes));
         const evidence = providerEvidence(receipt, encoded(observation).bytes, admitted.reservation.operation, p.host.transport.current().clock, p.host);
-        phase(request, 'response-observed', admitted.reservation.operation, admitted.sixFact.id, receipt, { evidence });
+        const dispatch = phaseIn(read(), 'dispatch-observed'); ensure(dispatch?.record.reservation, 'provider observation lacks recorded executor handoff');
+        phase(request, 'response-observed', admitted.reservation.operation, dispatch.record.reservation, receipt, { evidence });
         return take(recordAnswer(request));
       });
       return consumeResult(recording, { Success: () => readAnswer(request.id, fence), Refused: r => r });
