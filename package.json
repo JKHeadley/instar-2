@@ -7,14 +7,15 @@
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
     "./facts": { "types": "./dist/facts/index.d.ts", "default": "./dist/facts/index.js" },
     "./projections": { "types": "./dist/projections/index.d.ts", "default": "./dist/projections/index.js" },
-    "./register": { "types": "./dist/register/index.d.ts", "default": "./dist/register/index.js" }
+    "./register": { "types": "./dist/register/index.d.ts", "default": "./dist/register/index.js" },
+    "./transport": { "types": "./dist/transport/index.d.ts", "default": "./dist/transport/index.js" }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "pretest": "npm run build",
-    "test:all": "npm run typecheck && npm run build && vitest run --reporter=default --reporter=json --outputFile=.test-results.json && npm run lint && node scripts/check-contract-map.mjs && node scripts/check-p2-contract-map.mjs && node scripts/check-register-contract-map.mjs && npm run register:check",
+    "test:all": "npm run typecheck && npm run build && vitest run --reporter=default --reporter=json --outputFile=.test-results.json && npm run lint && node scripts/check-contract-map.mjs && node scripts/check-p2-contract-map.mjs && node scripts/check-register-contract-map.mjs && node scripts/check-transport-contracts.mjs && npm run register:check",
     "lint": "node scripts/check-architecture.mjs && node scripts/check-register-wiring.mjs",
     "register:generate": "npm run build && node scripts/build-register.mjs",
     "register:check": "node scripts/build-register.mjs --check"
