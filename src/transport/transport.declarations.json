@@ -1,0 +1,12 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "transport-authority-source", "kind": "protected artifacts", "status": "live",
+    "requiredFacts": { "pattern": "src/transport/**", "why": "Fence, claim and observation authority must not be relaxed by its caller; external enforcement remains parts nine/eleven.", "surface": "repository review approval" },
+    "standards": [82], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "transport-reference-host", "kind": "protected artifacts", "status": "live",
+    "requiredFacts": { "pattern": "scripts/transport-*.mjs", "why": "Reference host supplies verified configuration, durable signed storage and clocks, not candidate-controlled authority.", "surface": "repository review approval" },
+    "standards": [82], "holds": []
+  }
+]
