@@ -142,6 +142,10 @@ or `const store = createFactStore(c, storage); store.append(input)` with an actu
 `intakeWorkRegistration` result in `c.ownedBodies`. Immutable local context helpers,
 known spreads and conditional branches are supported only when every alternative
 retains the registration. Constructing an unused registration does not count.
+Helper return expansion requires a unique local function declaration whose binding
+has no visible assignment, including destructuring and loop assignment. Replaced
+read/context helpers lose credit even though their original bodies remain in the
+source. Member, external and dynamic helper calls are outside this supported form.
 `intakeStopRegistration` receives credit only when present in that admitted registry;
 it does not independently authorize a governed-state stop gate. Stop remains ruled-three.
 Fact-store/definition aliases must be const; observed property writes and mutating

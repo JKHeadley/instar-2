@@ -95,14 +95,30 @@ export function inspectSource(path, source, sources = {}, program = sourceProgra
   const mutated = new Set();
   function mutationRoot(node, depth = 0) {
     if (!node || depth > 16) return undefined;
+    if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isNonNullExpression(node)) return mutationRoot(node.expression, depth + 1);
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) return mutationRoot(node.expression, depth + 1);
     if (!ts.isIdentifier(node)) return undefined;
     const symbol = symbolOf(node), d = symbol?.declarations?.find(ts.isVariableDeclaration);
     return d?.initializer && ts.isIdentifier(d.initializer) ? mutationRoot(d.initializer, depth + 1) : symbol;
   }
+  function markAssigned(node) {
+    if (ts.isParenthesizedExpression(node)) return markAssigned(node.expression);
+    if (ts.isArrayLiteralExpression(node)) { for (const e of node.elements) markAssigned(ts.isSpreadElement(e) ? e.expression : e); return; }
+    if (ts.isObjectLiteralExpression(node)) {
+      for (const p of node.properties) {
+        if (ts.isShorthandPropertyAssignment(p)) mutated.add(checker.getShorthandAssignmentValueSymbol(p));
+        else if (ts.isPropertyAssignment(p)) markAssigned(p.initializer);
+        else if (ts.isSpreadAssignment(p)) markAssigned(p.expression);
+      }
+      return;
+    }
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) return markAssigned(node.left);
+    mutated.add(mutationRoot(node));
+  }
   function collectMutations(node) {
     if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment)
-      mutated.add(mutationRoot(node.left));
+      markAssigned(node.left);
+    if ((ts.isForOfStatement(node) || ts.isForInStatement(node)) && !ts.isVariableDeclarationList(node.initializer)) markAssigned(node.initializer);
     if (ts.isDeleteExpression(node) || ts.isPostfixUnaryExpression(node) || ts.isPrefixUnaryExpression(node)) mutated.add(mutationRoot(node.operand ?? node.expression));
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
       && ['push', 'pop', 'shift', 'unshift', 'splice', 'fill', 'copyWithin', 'sort', 'reverse'].includes(node.expression.name.text)) mutated.add(mutationRoot(node.expression.expression));
@@ -120,7 +136,14 @@ export function inspectSource(path, source, sources = {}, program = sourceProgra
     return node;
   }
   function returned(call) {
-    const d = ts.isCallExpression(call) && symbolOf(call.expression)?.declarations?.find(ts.isFunctionDeclaration);
+    // Expand only a uniquely resolved, unmodified LOCAL helper binding. A
+    // retained function declaration/member type is not proof of the called body.
+    // External/member/dynamic helpers remain outside this bounded source form.
+    if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression)) return [];
+    const symbol = symbolOf(call.expression);
+    if (!symbol || mutated.has(symbol)) return [];
+    const declarations = symbol.declarations?.filter(ts.isFunctionDeclaration) ?? [];
+    const d = declarations.length === 1 && declarations[0].getSourceFile() === file ? declarations[0] : undefined;
     const values = [];
     if (d?.body) {
       const visit = n => { if (ts.isReturnStatement(n)) { if (n.expression) values.push(n.expression); return; }

@@ -3,6 +3,7 @@ import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import ts from 'typescript';
 import { scanSources, checkWiring } from '../../scripts/check-register-wiring.mjs';
 import { loadOwnerReferences } from '../../scripts/register-owner-references.mjs';
 import { installOwnerFixture } from './owner-fixture.js';
@@ -12,6 +13,42 @@ const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }
 const sources = () => ({ ...Object.fromEntries(walk('src').map(p => [p, readFileSync(p, 'utf8')])),
  'src/intake/index.ts': "export * from './records.js';", 'src/intake/records.ts': intakeRecords, 'src/intake/port.ts': intakePort });
 describe('P4 owner source consumption', () => {
+ it.each(['dedup', 'admission', 'receiver'])('R1 executable %s helper replacement removes real input flow and source credit', scope => {
+  for (const replacementForm of ['unchanged', 'direct', 'array', 'object', 'loop']) {
+   const replaced = replacementForm !== 'unchanged';
+   const input = sources();
+   const name = scope === 'dedup' ? 'read' : 'context';
+   const body = scope === 'dedup' ? '() => []' : '() => ({ ...base, ownedBodies: [] })';
+   const helper = replacementForm === 'array' ? `[${name}] = [${body}];`
+    : replacementForm === 'object' ? `({ ${name} } = { ${name}: ${body} });`
+    : replacementForm === 'loop' ? `for (${name} of [${body}]) {}` : `${name} = ${body};`;
+   const code = replaced ? intakePort.replace(`export function ${scope}()`, `${helper}\nexport function ${scope}()`) : intakePort;
+   input['src/intake/port.ts'] = code;
+   let reads = 0, registrations = 0; let admitted: unknown[] = [], snapshotFacts: unknown[] = [];
+   const exports: Record<string, () => void> = {};
+   // Execute exactly the scanned source. Instrumented ports measure input flow;
+   // this does not assert that P2 accepts an unregistered fact.
+   const require = (path: string) => path === '../register/index.js' ? { constructGoverned() {}, readEnforcedRecord() {} }
+    : path === '../index.js' ? { decode() {} }
+    : path === './index.js' ? { intakeDedupDefinition: () => ({}), intakeWorkRegistration: () => { registrations++; return { owner: 'part-four' }; } }
+    : path === '../facts/index.js' ? {
+      createFactStore: (c: { ownedBodies: unknown[] }) => ({ read: () => { reads++; return [{ id: 'real' }]; }, append: () => { admitted = c.ownedBodies; } }),
+      prepareSnapshot: (facts: unknown[]) => { snapshotFacts = facts; return facts; }, authorAndAppend: (_x: unknown, c: { ownedBodies: unknown[] }) => { admitted = c.ownedBodies; },
+     } : { foldProjection: (_d: unknown, facts: unknown[]) => facts, readProjection: (v: unknown) => v };
+   new Function('require', 'exports', 'base', 'storage', 'register', 'ctx', 'input', 'key', 'now',
+    ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(require, exports, {}, null, {}, {}, {}, null, 100);
+   exports[scope]!();
+   if (scope === 'dedup') { expect(reads).toBe(replaced ? 0 : 1); expect(snapshotFacts).toEqual(replaced ? [] : [{ id: 'real' }]); }
+   else { expect(registrations).toBe(replaced ? 0 : 1); expect(admitted).toEqual(replaced ? [] : [{ owner: 'part-four' }]); }
+   const decoder = scope === 'dedup' ? 'readProjection' : scope === 'admission' ? 'authorAndAppend' : 'createFactStore.append';
+   const scanned = scanSources(input), observed = scanned.reports[Object.keys(input).indexOf('src/intake/port.ts')]!.scopes[scope];
+   expect(observed?.invokes).toEqual(replaced ? [] : [decoder, scope === 'dedup' ? 'intakeDedupDefinition' : 'intakeWorkRegistration']);
+   const declaration = { id: 'intake.' + scope, kind: 'blocking sites', declaredBy: { path: 'src/intake/port.ts', symbol: scope },
+    requiredFacts: { decidesAlone: 'governed-state', criticality: 'standing', failDirection: 'closed', preservesInput: 'receipt', enforces: { record: 'intake.contract', decoder } } };
+   const issues = checkWiring({ entries: [{ declaration }] }, input, scanned).issues.filter(i => i.startsWith('P3-NF-26'));
+   expect(issues.length).toBe(replaced ? 1 : 0);
+  }
+ }, 30_000);
  it('accepts P4 and P5 independently and together without accepting another owner or an unpinned dependency', () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-owner-'));
   try {

@@ -241,6 +241,8 @@ describe('compiled register build adapter lifecycle', () => {
         ["'intake.contract', 'readProjection'", "'intake.contract', 'authorAndAppend'"],
         ['prepareSnapshot(read(), ctx)', 'prepareSnapshot([], ctx)'],
         ['ownedBodies: [work]', 'ownedBodies: []'],
+        ['export function dedup()', 'read = () => [];\nexport function dedup()'],
+        ['export function admission()', 'context = () => ({ ...base, ownedBodies: [] });\nexport function admission()'],
       ]) {
         writeFileSync(path, original.replace(from!, to!)); const bad = run();
         expect(bad.status).not.toBe(0); expect(bad.stderr).toContain('P3-NF-26');
