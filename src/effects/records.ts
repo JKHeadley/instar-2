@@ -101,7 +101,7 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     ensure(r.id === `request:${encoded([m.account, m.conversation, m.semanticMessage]).hash}`, 'stable semantic identity required');
     ensure(r.digest === encoded(m).hash && r.semanticMessage === m.semanticMessage && r.run === m.run, 'request/message binding');
     ensure(m.account === d.account && m.conversation === d.conversation && m.speaker === d.speaker
-      && encoded(m.text).bytes.length <= d.maxBytes, 'actual target/payload exceeds operation');
+      && new TextEncoder().encode(encoded(m).bytes).length <= d.maxBytes, 'actual target/payload exceeds operation');
     ensure(r.attempt.length > 0 && r.verificationOwner.length > 0 && r.verificationBar === d.verificationBar, 'verification obligation required');
     ensure(r.closure.includes(r.pending) && r.closure.includes(r.obligation)
       && r.closure.every(id => past.some(f => f.id === id)), 'missing prerequisite closure');
@@ -112,7 +112,7 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     const q = find(r.request, 'EffectRequest'), d = find(q.definition, 'OperationDefinition');
     ensure(r.digest === q.digest && r.definition === d.id && r.generation === d.generation
       && ['reservation', 'dispatch'].includes(r.phase) && r.authority.length > 0, 'validation binding');
-    if (origin) { definitionCheck(d, host); ensure(r.expires > host.current().clock.value, 'validation expired'); }
+    if (origin) { definitionCheck(d, host); ensure(r.expires === host.current().clock.value + d.timeout, 'validation expiry differs from bounded current clock'); }
   } else {
     const q = find(r.request, 'EffectRequest'), m = find(q.message, 'OutboundMessage');
     const reservations = past.filter(f => f.kind === 'transport-AdmissionReservation');

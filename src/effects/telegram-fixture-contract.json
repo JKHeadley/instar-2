@@ -1,0 +1,29 @@
+{
+  "id": "telegram-reply-fixture-evidence", "schemaVersion": 1, "contractVersion": "1",
+  "adapter": "telegram-fixture", "artifact": "tests/effects/fixture.ts", "parser": "telegram-shaped-fixture-response",
+  "stimulusClass": "bot/workspace outbound response",
+  "originalAuthenticatedByteFields": [],
+  "authenticationMethod": "unsupported: synthetic fixture bytes, not a Telegram-origin signature",
+  "keyCredentialBinding": "fixture account bot:fixture; no credential or production endpoint",
+  "senderNamespace": "fixture speaker principal", "conversationNamespace": "fixture chat:fixture",
+  "stabilityReuse": "fixed account and conversation for this test artifact only",
+  "forwardingImpersonation": "forwarded author labels confer no identity",
+  "churnDetector": "exact account and conversation mismatch refuses before invoke",
+  "revocationResponse": "current standing and stop checked at final handoff",
+  "eventIdAuthority": "synthetic message_id counter is NOT service-origin identity",
+  "replayRetention": "permanent P2 operation and semantic message records; no resubmission",
+  "fallbackPolicy": "none", "ackPolicy": "never",
+  "disclosureScope": "fixture bot:fixture/chat:fixture only",
+  "fixtures": ["tests/effects/doorway.test.ts", "tests/integration/effects.test.ts", "tests/e2e/effects.test.ts"],
+  "probes": [],
+  "capabilities": {
+    "stableOperationAndReceiptLookup": { "status": "unsupported", "reason": "read-only fixture query returns unknown; no authoritative Telegram lookup claimed" },
+    "applicationAndDeliveryStage": { "status": "supported", "source": "synthetic fixture response and independently read fixture service journal", "predicate": "fixture application only, not human delivery or consumption", "subjectBinding": "operation/claim/account/conversation/digest", "horizon": "exact fixture invocation", "observationBudget": 3, "conformance": "tests/e2e/effects.test.ts", "limit": "test double, no live Telegram proof" },
+    "decisiveNonOccurrence": { "status": "unsupported", "reason": "no authoritative complete negative history" },
+    "exclusionOfDelayedExecution": { "status": "unsupported", "reason": "no destination fence or complete quiescence evidence" },
+    "finalCharge": { "status": "unsupported", "reason": "fixture capacity units and synthetic assessment do not establish actual Telegram billing" },
+    "prerequisiteDurability": { "status": "supported", "source": "P2 exact append receipts after fsync in two local directories", "predicate": "replicated(1) fixture copy", "subjectBinding": "each required fact id and contentHash", "horizon": "acknowledged prefix", "observationBudget": 1, "conformance": "tests/effects/doorway.test.ts", "limit": "second directory stands in for an authenticated peer; shared disk loss is uncovered" }
+  },
+  "idempotentSubmission": "unsupported", "destinationFencing": "unsupported", "targetCondition": "unsupported",
+  "hiddenRetries": 0, "productionActivation": "dark"
+}
