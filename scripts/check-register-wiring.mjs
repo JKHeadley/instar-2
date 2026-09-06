@@ -8,22 +8,24 @@ import { loadOwnerReferences } from './register-owner-references.mjs';
 // Scope of proof: statically imported core ports with literal kind/id arguments.
 // Computed ids and dynamic construction remain an explicit residual, not complete coverage.
 function sourceProgram(sources) {
-  const config = ts.readConfigFile('tsconfig.json', ts.sys.readFile).config;
-  // Symbol ownership needs the import graph, not ambient DOM/Node/test libraries.
-  const options = { ...ts.parseJsonConfigFileContent(config, ts.sys, process.cwd()).options, noLib: true, types: [] };
-  // Resolve the owner's public package to this committed source graph, never a
-  // possibly stale ambient dist declaration with the same export spelling.
-  if (Object.hasOwn(sources, 'src/rungraph/index.ts')) options.paths = { ...options.paths,
-    '@instar/constitutional-types/rungraph': [resolve('src/rungraph/index.ts')] };
+  // This is a closed source proof, not the worktree's build configuration. Every
+  // import/re-export link must come from the supplied graph, including .d.ts.
+  // Neither ambient tsconfig/package metadata nor dist/helpers may finish it.
+  const options = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext, noLib: true, types: [],
+    paths: Object.fromEntries(['', '/register', '/rungraph'].map(part =>
+      ['@instar/constitutional-types' + part, [resolve('src' + part + '/index.ts')]])) };
   const host = ts.createCompilerHost(options);
-  const originals = host.getSourceFile.bind(host);
   const files = new Map(Object.entries(sources).map(([p, s]) => [resolve(p), s]));
-  host.fileExists = p => files.has(resolve(p)) || ts.sys.fileExists(p);
-  host.directoryExists = p => [...files.keys()].some(f => f.startsWith(resolve(p) + '/')) || ts.sys.directoryExists(p);
-  host.readFile = p => files.get(resolve(p)) ?? ts.sys.readFile(p);
-  host.getSourceFile = (p, language, ...rest) => files.has(resolve(p))
-    ? ts.createSourceFile(p, files.get(resolve(p)), language, true) : originals(p, language, ...rest);
-  return ts.createProgram([...files.keys()], options, host);
+  host.fileExists = p => files.has(resolve(p));
+  host.directoryExists = p => [...files.keys()].some(f => f.startsWith(resolve(p) + '/'));
+  host.readFile = p => files.get(resolve(p));
+  host.realpath = p => resolve(p);
+  host.getSourceFile = (p, language) => files.has(resolve(p))
+    ? ts.createSourceFile(p, files.get(resolve(p)), language, true) : undefined;
+  const program = ts.createProgram([...files.keys()], options, host);
+  program.resolveSourceModule = (specifier, from) => ts.resolveModuleName(specifier, from, options, host).resolvedModule?.resolvedFileName;
+  return program;
 }
 function ownerSymbols(program, sources, bindings) {
   const checker = program.getTypeChecker(); const symbols = new Map();
@@ -46,22 +48,33 @@ export function inspectSource(path, source, sources = {}, program = sourceProgra
   const file = program.getSourceFile(resolve(path));
   const checker = program.getTypeChecker();
   const core = new Set(['src/register/governance.ts', 'dist/register/governance.d.ts', 'src/decode/decode.ts', 'dist/decode/decode.d.ts'].map(p => resolve(p)));
+  function immutableNamespace(node, depth = 0) {
+    if (depth > 12 || !ts.isIdentifier(node)) return false;
+    // Inspect the binding before following TypeScript's alias symbol. A member
+    // signature alone survives parameter substitution and receiver reassignment.
+    const declarations = checker.getSymbolAtLocation(node)?.declarations ?? [];
+    if (declarations.some(ts.isNamespaceImport)) return true;
+    const variable = declarations.find(ts.isVariableDeclaration);
+    return !!(variable?.initializer && variable.parent.flags & ts.NodeFlags.Const
+      && immutableNamespace(variable.initializer, depth + 1));
+  }
   function identity(node, depth = 0) {
     if (depth > 12) return undefined;
-    let symbol = checker.getSymbolAtLocation(node);
+    let symbol = checker.getSymbolAtLocation(ts.isPropertyAccessExpression(node) ? node.name : node);
     if (symbol?.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
-    if (owners.has(symbol)) return 'owner:' + owners.get(symbol);
+    if (owners.has(symbol)) return !ts.isPropertyAccessExpression(node) || immutableNamespace(node.expression)
+      ? 'owner:' + owners.get(symbol) : undefined;
     if (symbol?.declarations?.some(d => core.has(resolve(d.getSourceFile().fileName)))) return symbol.name;
     const variable = symbol?.declarations?.find(ts.isVariableDeclaration);
     if (variable?.initializer && (ts.isIdentifier(variable.initializer) || ts.isPropertyAccessExpression(variable.initializer))) {
-      const target = identity(ts.isPropertyAccessExpression(variable.initializer) ? variable.initializer.name : variable.initializer, depth + 1);
+      const target = identity(variable.initializer, depth + 1);
       return target?.startsWith('owner:') && !(variable.parent.flags & ts.NodeFlags.Const) ? undefined : target;
     }
     return undefined;
   }
   const imported = new Map(); const namespaces = new Set(); const constructs = []; const reads = []; const invokes = []; const residual = []; const scopes = {};
   for (const node of file.statements) if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-    const resolved = ts.resolveModuleName(node.moduleSpecifier.text, resolve(path), { moduleResolution: ts.ModuleResolutionKind.NodeNext }, ts.sys).resolvedModule?.resolvedFileName;
+    const resolved = program.resolveSourceModule(node.moduleSpecifier.text, resolve(path));
     if (![resolve('src/index.ts'), resolve('src/register/index.ts'), resolve('src/register/governance.ts'), resolve('dist/index.d.ts'), resolve('dist/register/index.d.ts')].includes(resolved)
       && !['@instar/constitutional-types', '@instar/constitutional-types/register'].includes(node.moduleSpecifier.text)) {
       if (!resolved && node.importClause?.getText(file).match(/constructGoverned|readRegisterEntry|decode/))
@@ -76,7 +89,7 @@ export function inspectSource(path, source, sources = {}, program = sourceProgra
     if (ts.isCallExpression(node)) {
       if (node.expression.kind === ts.SyntaxKind.ImportKeyword) residual.push({ path, reason: 'dynamic import is outside static port proof' });
       if (ts.isElementAccessExpression(node.expression)) residual.push({ path, reason: 'computed invocation is outside static port proof' });
-      const name = identity(ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression)
+      const name = identity(node.expression)
         ?? (ts.isIdentifier(node.expression) ? imported.get(node.expression.text)
         : ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression) && namespaces.has(node.expression.expression.text) ? node.expression.name.text : undefined);
       const literal = n => n && ts.isStringLiteralLike(n) ? n.text : undefined;
@@ -133,7 +146,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   for (const [path, content] of Object.entries({ ...owner.artifacts,
     ...Object.fromEntries(Object.entries(input.sources).filter(([p]) => p === 'register-source/owner-references.json')) }))
     if (readFileSync(path, 'utf8') !== content) throw new Error('owner reference source pin trails ' + path);
-  const sourceFiles = Object.fromEntries(walk('src').map(p => [p, readFileSync(p, 'utf8')]));
+  const livePaths = walk('src').sort();
+  if (JSON.stringify(livePaths) !== JSON.stringify(Object.keys(input.code).sort()))
+    throw new Error('source wiring roster differs from committed graph; commit source changes and regenerate');
+  for (const path of livePaths) if (readFileSync(path, 'utf8') !== input.code[path])
+    throw new Error('source wiring pin trails ' + path);
+  const sourceFiles = input.code;
   const result = checkWiring(register, sourceFiles, scanSources(sourceFiles, owner.decoders));
   if (result.issues.length) { console.error(result.issues.join('\n')); process.exitCode = 1; }
   else console.log(JSON.stringify({ ...result, completeEnumeration: false, boundary: 'static port calls; reflection, computed ids and plugin construction remain residual' }));

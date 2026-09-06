@@ -48,6 +48,20 @@ and immutable aliases of that symbol. A same-name local function, wrong-source
 re-export, mutable alias or computed call does not prove invocation. Record read
 and actual decoder invocation must remain in the gate's own function scope.
 Reflection/computed calls remain reported residuals, not complete enumeration.
+Member calls additionally require an immutable namespace-import receiver or a
+chain of const aliases to it. Namespace parameters, object copies, let/var
+receivers and function aliases extracted from those receivers cannot establish
+owner invocation from their static member type. Unsupported forms fail a gate's
+required invocation check; this is not a general data-flow/execution proof.
+
+The complete import/export proof uses only the supplied source map, with fixed
+source aliases for the core, register and rungraph public packages. The committed
+build supplies `src/**/*.ts` (including `.d.ts`); every intermediary must belong
+to that graph. Ambient tsconfig/package metadata, dist files, untracked helpers
+and outside-src intermediaries cannot fill a missing link. A direct scanner
+caller must likewise supply all dependencies explicitly; it has no filesystem
+fallback. Committing a bridge under src makes it part of the proof without
+requiring P3 to take ownership of that P5 module.
 
 ## Dark unavailable production proof
 
