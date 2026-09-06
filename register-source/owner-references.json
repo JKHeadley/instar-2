@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "owner": "part-five",
+  "fixtures": [
+    {
+      "id": "P5-NF-54",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/rungraph/governance.test.ts",
+        "hash": "sha256:99265c7a0aa3af6c25ab78a3f30508b52c8af19061efa8d2c8c177339f889473"
+      }
+    }
+  ],
+  "probes": [
+    {
+      "id": "P5-NF-55",
+      "cadence": 1000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/rungraph/scope.test.ts",
+        "hash": "sha256:7151af0e423d73a6eb1bb32ed697e7dda6579c11d38f9dc755b37d0e7d28ecd1"
+      }
+    }
+  ],
+  "decoders": [
+    {
+      "id": "decodeRun",
+      "module": {
+        "path": "src/rungraph/index.ts",
+        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+      },
+      "artifact": {
+        "path": "src/rungraph/records.ts",
+        "hash": "sha256:3dbdf54cf760fa696832ebc327485f4eeca919425822ef3eeb582d3a4be448c0"
+      }
+    },
+    {
+      "id": "decodeRunStep",
+      "module": {
+        "path": "src/rungraph/index.ts",
+        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+      },
+      "artifact": {
+        "path": "src/rungraph/records.ts",
+        "hash": "sha256:3dbdf54cf760fa696832ebc327485f4eeca919425822ef3eeb582d3a4be448c0"
+      }
+    },
+    {
+      "id": "decodeRunTransition",
+      "module": {
+        "path": "src/rungraph/index.ts",
+        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+      },
+      "artifact": {
+        "path": "src/rungraph/records.ts",
+        "hash": "sha256:3dbdf54cf760fa696832ebc327485f4eeca919425822ef3eeb582d3a4be448c0"
+      }
+    },
+    {
+      "id": "decodeRunExit",
+      "module": {
+        "path": "src/rungraph/index.ts",
+        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+      },
+      "artifact": {
+        "path": "src/rungraph/records.ts",
+        "hash": "sha256:3dbdf54cf760fa696832ebc327485f4eeca919425822ef3eeb582d3a4be448c0"
+      }
+    },
+    {
+      "id": "decodeSessionGrounding",
+      "module": {
+        "path": "src/rungraph/index.ts",
+        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+      },
+      "artifact": {
+        "path": "src/rungraph/records.ts",
+        "hash": "sha256:3dbdf54cf760fa696832ebc327485f4eeca919425822ef3eeb582d3a4be448c0"
+      }
+    }
+  ],
+  "documents": [
+    {
+      "id": "rungraph.contract",
+      "artifact": {
+        "path": "docs/09-the-run-graph.md",
+        "hash": "sha256:2d6c42c451a6fbb65718c6cff10e1ca8b33d49480d6d195c9c95950aea338f82"
+      }
+    }
+  ]
+}

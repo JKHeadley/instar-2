@@ -7,4 +7,6 @@ export function build(root: string, commit: string, options: {
   mode: 'bootstrap' | 'replay' | 'normal' | 'completion'; workflow?: Record<string, unknown>; now?: number;
   provider?: SpineReadPort & ShapeApprovalPort & { types?: DecodeContext; separations?: WorkflowChecks['separations']; landingStanding?: StandingContext;
     verifyBootstrap?: (binding: BootstrapBinding) => Result<BootstrapVerification> };
-}): { register: GeneratedRegister; generation: RegisterGeneration; graph: RuleGraph; conversion: { documents: Record<string, string>; sources: { path: string; symbol: string; declaration: { requiredFacts: Record<string, unknown> } }[] }; metrics: { prerequisites: number } };
+}): { register: GeneratedRegister; generation: RegisterGeneration; graph: RuleGraph;
+  authorityPrerequisites: { site: string; record: string; required: string }[];
+  conversion: { documents: Record<string, string>; sources: { path: string; symbol: string; declaration: { requiredFacts: Record<string, unknown> } }[] }; metrics: { prerequisites: number } };

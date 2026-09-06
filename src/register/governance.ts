@@ -53,11 +53,25 @@ export interface GovernedStateObservation {
 }
 export function checkGovernedState(observations: readonly GovernedStateObservation[], register: GeneratedRegister, context: RegisterContext) {
   return checked('GovernedStateWiring', observations, context, () => {
+    take(checkGovernedStateSources(observations, register, context));
+    for (const { declaration: d } of register.entries.filter(e => e.declaration.kind === 'blocking sites')) {
+      for (const rung of boundaryRungs(d.requiredFacts)) if (rung.decidesAlone === 'governed-state') {
+        const record = text(object(rung.enforces!).record, 'enforced record');
+        requireThat(register.entries.some(e => e.declaration.id === record && !('state' in e.approvedIn)), `P3-NF-26: enforced record ${record} lacks approved history`);
+      }
+    }
+    return true;
+  });
+}
+// Offline source replay proves calls and references, never approval or standing.
+// The runtime check above always adds the approved-history requirement.
+export function checkGovernedStateSources(observations: readonly GovernedStateObservation[], register: GeneratedRegister, context: RegisterContext) {
+  return checked('GovernedStateSourceWiring', observations, context, () => {
     for (const { declaration: d } of register.entries.filter(e => e.declaration.kind === 'blocking sites')) {
       const rungs = boundaryRungs(d.requiredFacts);
       for (const rung of rungs) if (rung.decidesAlone === 'governed-state') {
         const enforced = object(rung.enforces!); const record = text(enforced.record, 'enforced record'); const decoder = text(enforced.decoder, 'decoder');
-        requireThat(register.entries.some(e => e.declaration.id === record && !('state' in e.approvedIn)), `P3-NF-26: enforced record ${record} lacks approved history`);
+        requireThat(register.entries.some(e => e.declaration.id === record && e.declaration.status !== 'retired'), `P3-NF-26: enforced record ${record} missing or retired`);
         const observed = observations.find(o => o.site === d.id && o.record === record && o.decoder === decoder);
         requireThat(observed?.reads.includes(record) && observed.invokes.includes(decoder), `P3-NF-26: ${d.id} does not read record and invoke named decoder`);
       }

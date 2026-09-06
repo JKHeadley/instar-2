@@ -7,6 +7,7 @@ import { generateRegister, generationOf, renderRegister, invariantCoverage, impl
   decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion } from '../dist/register/index.js';
 import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, value, bytes } from './register-source.mjs';
 import { checkWiring, scanSources } from './check-register-wiring.mjs';
+import { loadOwnerReferences, mergeOwnerReferences } from './register-owner-references.mjs';
 
 const hash = input => value(canonical(input)).hash;
 const corpus = sources => Object.fromEntries(Object.entries(sources).filter(([p]) => p.startsWith('docs/')).map(([p, text]) => [p, hash(text)]));
@@ -15,11 +16,12 @@ const emptyCatalog = { fixtures: [], probes: [], sentinels: [], semanticReviews:
 // 52772ae. The candidate's anchor is evidence to compare, never authority. An
 // amendment to this pin is a protected-toolchain change, not a shape-data edit.
 const approvedConversion = 'sha256:3987aa9d4cca99796f1b19decaf2c3235235ef28bbd63ab763e4c66f88471015';
-function resolveBuildReferences(root, input, workflow, provider, shape) {
+function resolveBuildReferences(root, input, workflow, provider, shape, owner) {
   return (workflow.references ?? []).map(reference => {
     if (reference.provider === 'decoder') {
       if (!(reference.id.startsWith('decode:') && Object.hasOwn(schemas, reference.id.slice(7)))
-        && !shape.factSchemas.some(r => r.decoder === reference.id)) throw new Error('unresolved decoder ' + reference.id);
+        && !shape.factSchemas.some(r => r.decoder === reference.id)
+        && !owner.decoders.some(r => r.id === reference.id)) throw new Error('unresolved decoder ' + reference.id);
     } else if (reference.provider === 'fixture' || reference.provider === 'probe') {
       const catalog = reference.provider === 'fixture' ? workflow.catalog?.fixtures : workflow.catalog?.probes;
       const entry = catalog?.find(e => e.id === reference.id);
@@ -41,11 +43,16 @@ export function build(root, commit, options = {}) {
   if (!['bootstrap', 'replay', 'normal', 'completion'].includes(mode)) throw new Error('Explicit --replay, --bootstrap or --workflow is required; bootstrap is not the normal build');
   const converting = mode === 'bootstrap' || mode === 'replay';
   const nowValue = options.now ?? Date.now();
-  const workflow = options.workflow ?? {};
+  let workflow = options.workflow ?? {};
   if (Object.keys(workflow).length && !Object.entries(input.sources).some(([p, content]) => {
     if (!p.startsWith('register-source/') || !p.endsWith('.json')) return false;
     try { return bytes(JSON.parse(content)) === bytes(workflow); } catch { return false; }
   })) throw new Error('workflow/check inputs must match committed source bytes');
+  const owner = loadOwnerReferences(root, input);
+  // Check explicit workflow presence before adding committed defaults.
+  if (!converting) for (const field of ['catalog', 'references'])
+    if (!Object.hasOwn(workflow, field)) throw new Error(`normal workflow missing explicit ${field}`);
+  workflow = mergeOwnerReferences(workflow, owner);
   const anchor = JSON.parse(input.sources['register-source/bootstrap-anchor.json'] ?? 'null');
   let sources;
   if (converting) {
@@ -78,9 +85,18 @@ export function build(root, commit, options = {}) {
       throw new Error(`P3-NF-23: committed conversion omits/duplicates authoritative rule ${n}`);
   }
   const conversion = { documents: corpus(input.sources), sources: sources.filter(s => !s.path.endsWith('.declarations.json')) };
-  const scanned = scanSources(input.code);
+  for (const binding of owner.documents) {
+    const declared = sources.filter(s => s.declaration.id === binding.id);
+    if (declared.length !== 1 || declared[0].declaration.kind !== 'governed documents'
+      || declared[0].path !== 'src/rungraph/rungraph.declarations.json'
+      || declared[0].declaration.requiredFacts.location !== binding.artifact.path)
+      throw new Error('governed document binding does not match declaration ' + binding.id);
+  }
+  if (sources.some(s => s.declaration.id === 'rungraph.contract') && !owner.documents.some(d => d.id === 'rungraph.contract'))
+    throw new Error('rungraph.contract requires committed governed document binding');
+  const scanned = scanSources(input.code, owner.decoders);
   sources = bindColocatedDeclarations(sources, scanned.constructs);
-  const context = { ...buildContext(shapeInput, sources, commit, nowValue), references: resolveBuildReferences(root, input, workflow, options.provider, shapeInput),
+  const context = { ...buildContext(shapeInput, sources, commit, nowValue), references: resolveBuildReferences(root, input, workflow, options.provider, shapeInput, owner),
     ...(options.provider?.types ? { authorityTypes: options.provider.types } : {}) };
   const now = value(decodeMeasurement('clock', { type: 'Measurement', schemaVersion: 1, subject: { kind: 'clock', instance: 'build-machine' },
     value: nowValue, unit: 'unix-ms', at: nowValue, by: 'register.generator' }, context.types));
@@ -121,7 +137,7 @@ export function build(root, commit, options = {}) {
     const report = wiring.reports[Object.keys(input.code).indexOf(d.declaredBy.path)]?.scopes[d.declaredBy.symbol];
     return rungs.filter(r => r.decidesAlone === 'governed-state').map(r => ({ site: d.id, record: r.enforces.record, decoder: r.enforces.decoder, reads: report?.reads ?? [], invokes: report?.invokes ?? [] }));
   });
-  const checks = { mode: converting ? 'bootstrap' : 'normal', branch: workflow.branch ?? 'bootstrap',
+  const checks = { mode: mode === 'replay' ? 'replay' : converting ? 'bootstrap' : 'normal', branch: workflow.branch ?? 'bootstrap',
     runs: (workflow.runs ?? []).map(r => value(decodeCheckRun(r, context))), catalog: workflow.catalog ?? emptyCatalog, landedParts: workflow.landedParts ?? [], now,
     constructs: wiring.constructs, observations, separations: options.provider?.separations ?? [],
     boundaries: context.shape.kinds.map(k => ({ kind: k.name, language: 'TypeScript imported core ports',
@@ -132,7 +148,8 @@ export function build(root, commit, options = {}) {
   const checked = value(runRegisterChecks(register, checks, context));
   const generation = value(generationOf(register, context));
   const outputs = value(renderRegister(register, generation, checked.terms, checked.graph, context));
-  return { input, register, generation, outputs, completion, conversion, graph: checked.graph, metrics: {
+  return { input, register, generation, outputs, completion, conversion, graph: checked.graph,
+    authorityPrerequisites: checked.authorityPrerequisites, ownerArtifacts: owner.artifacts, metrics: {
     entries: register.entries.length, rules: checked.graph.rules.length, terms: register.entries.filter(e => e.declaration.kind === 'terms').length,
     warnings: checked.terms.warnings.length, prerequisites: checked.graph.prerequisites.length } };
 }
@@ -156,13 +173,14 @@ export async function run(args, root = process.cwd()) {
   const live = tracked.filter(p => Object.hasOwn(result.input.sources, p) || p.startsWith('docs/rules/') && p.endsWith('.md')
     || p.endsWith('.declarations.json') || p.startsWith('register-source/') && p.endsWith('.json')).sort();
   if (bytes(live) !== bytes(Object.keys(result.input.sources).sort())) throw new Error('P3-NF-23: source roster changed; regenerate from a new source commit');
-  for (const [path, content] of Object.entries({ ...result.input.sources, ...result.input.code })) if (readFileSync(resolve(root, path), 'utf8').replaceAll('\r\n', '\n') !== content)
+  for (const [path, content] of Object.entries({ ...result.input.sources, ...result.input.code, ...result.ownerArtifacts })) if (readFileSync(resolve(root, path), 'utf8').replaceAll('\r\n', '\n') !== content)
     throw new Error(`P3-NF-01: source pin trails ${path}; commit source changes and regenerate`);
   const files = { 'register.json': result.outputs.register, 'rules.md': result.outputs.ruleBook, 'glossary.md': result.outputs.glossary,
     'capabilities.md': result.outputs.capabilities, 'coverage.md': result.outputs.coverage, 'shape.json': bytes(result.register.shape) + '\n',
     'fact-schemas.json': bytes(result.register.shape.factSchemas) + '\n', 'conversion.json': bytes(result.conversion) + '\n',
     ...(result.completion ? { 'completion.json': bytes(result.completion) + '\n' } : {}),
-    'source.json': JSON.stringify({ commit, generation: result.generation.id, authority: 'shape-only', mode, ...(workflowPath ? { workflow: workflowPath } : {}) }, null, 2) + '\n' };
+    'source.json': JSON.stringify({ commit, generation: result.generation.id, authority: 'shape-only', mode,
+      authorityPrerequisites: result.authorityPrerequisites, ...(workflowPath ? { workflow: workflowPath } : {}) }, null, 2) + '\n' };
   if (!check) mkdirSync(output, { recursive: true });
   for (const [name, text] of Object.entries(files)) {
     const path = resolve(output, name);
