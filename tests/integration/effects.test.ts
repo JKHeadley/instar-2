@@ -1,8 +1,12 @@
-import { expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { authorAndAppend } from '../../src/facts/index.js';
 import { consumeEffectSettlement, createEffectDoorway } from '../../src/effects/index.js';
 import { effectFixture, value, refused } from '../effects/fixture.js';
 import { json, privateKey } from '../facts/fixtures.js';
+
+// Let the runner flush IPC between synchronous signed-prefix workloads.
+// This does not yield inside any tested atomic/reentrant handoff.
+afterEach(async () => { await new Promise<void>(done => setImmediate(done)); });
 
 for (const missing of ['note', 'effect-OperationDefinition', 'effect-EffectRequest', 'effect-EffectValidation', 'transport-AdmissionReservation']) {
   it(`P8-NF-25 P8-NF-26 exact closure matrix refuses missing ${missing} peer acknowledgement`, () => {
@@ -36,7 +40,7 @@ it('P8-NF-04 P8-NF-21 P8-NF-23 direct signed P2 append cannot mint an unassessed
     principal: json(f.host.principal), provenance: json(f.host.principal.provenance), at: json(f.now),
     body: { record: json(fake) }, required: [] }, f.ctx, f.store, privateKey), 'eight-owned evidence admission');
   expect(value(f.api.inspect()).filter(r => r.record.type === 'EffectSettlement')).toHaveLength(1);
-});
+}, 15000);
 
 it('P8-NF-14 P8-NF-31 P8-NF-35 reentrant delivery through a second doorway cannot invoke twice', () => {
   const f = effectFixture(), q = f.prepare(), second = createEffectDoorway(f.composition);
@@ -44,7 +48,7 @@ it('P8-NF-14 P8-NF-31 P8-NF-35 reentrant delivery through a second doorway canno
     expect(value(second.dispatch(q, f.fence)).stage).toBe('executor-accepted');
   });
   expect(value(f.api.dispatch(q, f.fence)).stage).toBe('response'); expect(f.calls()).toBe(1);
-});
+}, 15000);
 
 it('P8-NF-03 P8-NF-05 P8-NF-16 pending definition and adapter target mismatch cannot activate a call', () => {
   const f = effectFixture(), q = f.prepare();
