@@ -3,9 +3,19 @@
 This package implements the single-root slice of `docs/09-the-run-graph.md` §§1–3,
 8 and 10–13. `createRunGraph` is the production core constructor. It has no timer,
 provider call, transport branch, ambient clock, or storage implementation. The
-feature declaration describes the callable internal core, not a deployed agent.
-Calls do not repeat internally; six owns repeated scheduling, reservations and
-dispatch. No exactly-once external-effect claim is made.
+feature declaration retains the full worst-case control/costly/user/chat profile,
+bounded by `rungraph.bound`, while production activation remains dark. Its gate
+is P5-NF-54 with a 2026-10-05 UTC ceiling; unavailable production live proof is
+omitted, never replaced by a weaker profile. Six owns repeated scheduling,
+reservations and dispatch. No exactly-once external-effect claim is made.
+
+`register-source/owner-references.json` pins the actual decoder exports, build
+fixture, CI workload probe and governed design using P1 canonical source hashes.
+P3 resolves these references and verifies the gates' actual source calls. Replay
+reports missing contract approval/standing as prerequisites; it is shape-only,
+not an entering-force generation. Runtime installation still requires the real
+P2/P3 verified register and contract history. The probe's 1000ms cadence describes
+the declared CI workload bound, not deployed scheduling or supervision.
 
 ## Owned records and ordering
 
