@@ -32,7 +32,9 @@ function boot() {
     clock: f.now, site: f.c.site,
     domain: f.host.transport.domain, machine: f.host.transport.machine, budget: 100, maxLeaseTerm: 1000,
     keys: f.ctx.keys, genesis: f.ctx.genesis, privateKey, evidence: f.evidence, point: f.host.point, floor: f.floor, description: f.host.description,
-    question: f.input, observation: f.observation, policy: f.policy, captureCapacity: 1048576,
+    // Exactly ONE receipt budget (106496) of headroom: the SIGKILL matrix below
+    // also proves recovery reuses the question-bound capacity commitment (R2).
+    question: f.input, observation: f.observation, policy: f.policy, captureCapacity: 120000,
     effects: { definition: f.definition,
       approval,
       version: { id: f.definition.version, subject: f.definition.feature, supersedes: [], landedIn: null },

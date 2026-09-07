@@ -47,7 +47,10 @@ export function dispatchMessage(request: JudgmentRequest, source: string, host: 
   return freeze({ type: 'OutboundMessage', schemaVersion: 1, id: `judgment-dispatch:${request.id}`,
     semanticMessage: request.semanticMessage, run: request.run, speaker: host.transport.principal.id,
     account: request.account, conversation: request.conversation,
-    text: encoded({ submitted: request.submitted, digest: request.inputDigest }).bytes,
+    // The text also carries the question DEADLINE, digest-bound through six's
+    // reservation and eight's request, so the registered adapter re-enforces the
+    // invocation constraint at the provider boundary itself (R1).
+    text: encoded({ submitted: request.submitted, digest: request.inputDigest, deadline: request.deadline }).bytes,
     purpose: 'ordinary-reply', sourceResult: source });
 }
 export function decisionFrom(observation: ProviderObservation, request: JudgmentRequest, host: JudgmentHost, c: BoundaryContext): Result<Decision> {

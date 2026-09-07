@@ -38,7 +38,10 @@ export interface JudgmentFact { readonly fact: FactEnvelope; readonly record: Ju
 // Concrete custody belongs to ten. No delete, network fetch or release-pin capability.
 export interface JudgmentCapturePort {
   readonly owner: 'part-ten';
-  reserve(maxBytes: number): Result<CaptureCapacity>;
+  // With a key, the durable capacity commitment is BOUND to that key and the
+  // call is idempotent: a recovered process re-derives the SAME committed slot
+  // (same budget) instead of demanding a second one. Never releases capacity.
+  reserve(maxBytes: number, key?: string): Result<CaptureCapacity>;
   putReserved(capacity: CaptureCapacity, bytes: string): Result<Capture>;
   put(bytes: string, maxBytes: number): Result<Capture>;
   read(capture: Capture): Result<string>;
@@ -85,10 +88,6 @@ export interface DispatchMessage {
   readonly purpose: 'ordinary-reply'; readonly sourceResult: string;
 }
 export interface AdoptedDispatch { readonly request: string; readonly digest: string }
-export interface DispatchObservation {
-  readonly operation: string; readonly stage: 'executor-accepted' | 'response' | 'unknown' | 'observer-accepted' | 'lookup';
-  readonly bytes: string;
-}
 export interface EffectDispatchPort {
   readonly owner: 'part-eight';
   describe(): { readonly definition: string; readonly account: string; readonly conversation: string;
@@ -99,8 +98,13 @@ export interface EffectDispatchPort {
   adopt(input: { readonly definition: string; readonly message: DispatchMessage; readonly run: RunReference;
     readonly pending: string; readonly attempt: string; readonly verificationOwner: string;
     readonly obligation: string; readonly closure: readonly string[] }): Result<AdoptedDispatch>;
-  dispatch(adopted: AdoptedDispatch, fence: FenceToken): Result<DispatchObservation>;
-  observations(operation: string): Result<readonly DispatchObservation[]>;
+  // A COMMAND channel only. The port's return value is never evidence: seven
+  // reads eight's durable terminal observation from the SHARED verified history
+  // and re-reads its bytes through content-addressed capture custody, so a
+  // conforming-but-fake or substituting port cannot mint provider evidence.
+  // The composition must persist eight's observation captures through custody
+  // seven's capture port can read — enforced fail-closed, not trusted.
+  dispatch(adopted: AdoptedDispatch, fence: FenceToken): Result<{ readonly operation: string }>;
 }
 export interface JudgmentHost {
   readonly transport: TransportHost; readonly point: string; readonly floor: ActionFloor;

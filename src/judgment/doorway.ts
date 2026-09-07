@@ -40,6 +40,20 @@ export function createJudgmentDoorway(p: JudgmentPorts): JudgmentDoorway {
     const bytes = take(p.captures.read(request.submitted));
     ensure(encoded(bytes).hash === request.inputDigest, 'submitted capture no longer matches reserved bytes'); return bytes;
   };
+  // Eight's durable terminal observation for an operation, read from the SAME
+  // verified history this doorway records on (the kind is eight's registered
+  // public fact schema). The bytes are re-read through content-addressed capture
+  // custody, which verifies the signed hash — so a substituted or fabricated
+  // port return value can never become provider evidence (R3).
+  const effectObservation = (operation: string): { stage: string; bytes: string } | undefined => {
+    const snapshot = take(p.spine.store.readForProjection());
+    ensure(snapshot.entries.every(e => e.taint.length === 0 && e.conflicts.length === 0), 'effect observation prefix tainted or conflicted');
+    const terminal = snapshot.entries.map(e => e.fact).filter(f => f.kind === 'effect-OperationObservation')
+      .map(fact => (fact.body as { record: { operation: string; stage: string; capture: { reference: string; hash: string } } }).record)
+      .filter(r => r.operation === operation && (r.stage === 'response' || r.stage === 'unknown')).at(-1);
+    if (!terminal) return undefined;
+    return { stage: terminal.stage, bytes: take(p.captures.read({ reference: terminal.capture.reference, hash: terminal.capture.hash } as Parameters<typeof p.captures.read>[0])) };
+  };
   const meta = (request: string, id: string) => ({ schemaVersion: 1 as const, id, request, predecessor: read().at(-1)?.fact.id ?? '' });
   const phase = (request: JudgmentRequest, name: JudgmentAttemptRecord['phase'], operation?: string, reservation?: string,
     receipt?: JudgmentAttemptRecord['receipt'], attachments?: Readonly<Record<string, unknown>>) => {
@@ -136,6 +150,10 @@ export function createJudgmentDoorway(p: JudgmentPorts): JudgmentDoorway {
         // without a second provider invocation (docs/11 retries rule).
         const eight = p.effects;
         const recording = checked('JudgmentAdoptedDispatch', () => {
+          // The port is a COMMAND channel to eight, never an evidence source; the
+          // owner tag is a cheap coherence check, not authentication (R3 belt —
+          // the load-bearing binding is the durable-history read below).
+          ensure(eight.owner === 'part-eight', 'effect dispatch port owner mismatch');
           const d = eight.describe();
           ensure(request.account === d.account && request.conversation === d.conversation && request.maxCharge === d.maxCharge,
             'registered operation differs from the admitted question addressing');
@@ -145,19 +163,12 @@ export function createJudgmentDoorway(p: JudgmentPorts): JudgmentDoorway {
           const reservationRows = () => take(p.authority.inspect()).filter(v => v.record.type === 'AdmissionReservation'
             && v.record.request === request.effectRequest && v.record.attempt === `attempt:${request.id}:1`);
           // Custody commits the complete worst-case encoded receipt budget before
-          // six admits spend (and before any recovery re-record). Other writers
-          // and process restart cannot free it.
-          const receiptCapacity = take(p.captures.reserve(receiptByteBound(p.host.description)));
-          let observed: import('./contracts.js').DispatchObservation;
+          // six admits spend — bound durably to THIS question, so a recovered
+          // attempt re-derives the SAME committed slot instead of demanding a
+          // second full budget (R2). Never released; restart cannot free it.
+          const receiptCapacity = take(p.captures.reserve(receiptByteBound(p.host.description), `receipt:${request.id}`));
           const claimed = reservationRows().find(v => (v.record as AdmissionReservation).state !== 'prepared');
-          if (claimed) {
-            // An invocation may already have started; only eight's DURABLE terminal
-            // observation can carry this forward — never another invocation.
-            const terminal = take(eight.observations((claimed.record as AdmissionReservation).operation))
-              .filter(o => o.stage === 'response' || o.stage === 'unknown').at(-1);
-            ensure(terminal, 'unresolved dispatch claim: missing receipt cannot trigger another invocation');
-            observed = terminal;
-          } else {
+          if (!claimed) {
             phase(request, 'prepared');
             current(request, fence, 'dispatch');
             // Six admits and durably reserves the exact operation eight will
@@ -182,21 +193,32 @@ export function createJudgmentDoorway(p: JudgmentPorts): JudgmentDoorway {
               obligation: wake.fact.id, closure: [] }));
             ensure(adopted.request === request.effectRequest && adopted.digest === encoded(message).hash,
               'eight adopted a different request than the one shown');
-            observed = take(eight.dispatch(adopted, fence));
+            // The question deadline gates the ACTUAL invocation, after every
+            // intervening reserve/adopt wait (R1): refuse BEFORE eight claims, so
+            // the reservation stays prepared and recoverable. The same deadline
+            // rides the digest-bound dispatch message, so the registered adapter
+            // re-enforces it at the provider boundary itself.
+            ensure(p.host.transport.monotonic() < request.deadline, 'judgment deadline exhausted');
+            take(eight.dispatch(adopted, fence));
           }
           const consumed = take(p.authority.inspect()).find(v => v.record.type === 'AdmissionReservation'
             && v.record.request === request.effectRequest && v.record.state === 'consumed');
-          ensure(consumed, 'six durable claim consumption missing');
+          // A claim whose invocation may have started (or a port that consumed the
+          // claim without a durable eight record) can never trigger another
+          // invocation nor mint evidence: only eight's DURABLE terminal
+          // observation on the shared verified history carries this forward (R3).
+          ensure(consumed, 'unresolved dispatch claim: missing receipt cannot trigger another invocation');
           const operation = (consumed.record as AdmissionReservation).operation;
-          ensure(observed.operation === operation, 'eight observation names another operation');
+          const terminal = effectObservation(operation);
+          ensure(terminal, 'unresolved dispatch claim: missing receipt cannot trigger another invocation');
           phase(request, 'dispatch-observed', operation, consumed.fact.id);
-          // The receipt records eight's observed service response as seven's
-          // provider observation: actual response bytes AND observational usage.
-          // It is not a settlement — six's exposure stays reserved until eight's
-          // own evidence-checked settlement is applied through six's settle().
+          // The receipt records eight's durably observed service response as
+          // seven's provider observation: actual response bytes AND observational
+          // usage. It is not a settlement — six's exposure stays reserved until
+          // eight's own evidence-checked settlement is applied through six's settle().
           const observation = (() => {
-            if (observed.stage !== 'response') return uncertainObservation('eight recorded no conclusive service response');
-            let raw: unknown; try { raw = JSON.parse(observed.bytes); } catch { raw = undefined; }
+            if (terminal.stage !== 'response') return uncertainObservation('eight recorded no conclusive service response');
+            let raw: unknown; try { raw = JSON.parse(terminal.bytes); } catch { raw = undefined; }
             return snapshotObservation(raw, p.host.description);
           })();
           const receipt = take(p.captures.putReserved(receiptCapacity, encoded(observation).bytes));

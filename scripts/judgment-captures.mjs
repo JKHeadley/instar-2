@@ -103,8 +103,24 @@ export function createJudgmentCaptures(directory, metadata, result, capacity = 1
     }
   }
   return Object.freeze({ owner: 'part-ten', read: cap => result(() => read(cap)),
-    reserve: maxBytes => result(() => locked(() => {
+    reserve: (maxBytes, key) => result(() => locked(() => {
       if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('positive finite receipt capacity required');
+      // A KEYED commitment is bound durably to its key and idempotent: a
+      // recovered process re-derives the SAME committed slot (same budget)
+      // instead of demanding a second one. Capacity is never released.
+      if (key !== undefined) {
+        if (typeof key !== 'string' || !key.length || key.length > 256) throw new Error('bounded capacity key required');
+        const id = `receipt-${createHash('sha256').update(key, 'utf8').digest('hex').slice(0, 32)}`;
+        const file = join(slots, `${id}.json`);
+        if (existsSync(file)) {
+          const slot = JSON.parse(readFileSync(file, 'utf8'));
+          if (slot.id !== id || slot.key !== key || slot.maxBytes !== maxBytes) throw new Error('capacity key already bound to a different budget');
+          const token = Object.freeze({ id, maxBytes }); issued.add(token); return token;
+        }
+        if (used() + maxBytes > capacity) throw new Error('capture capacity exhausted; receipt capacity must precede invocation');
+        const token = Object.freeze({ id, maxBytes });
+        writeRecord(file, { id, key, maxBytes, hash: null }); issued.add(token); return token;
+      }
       if (used() + maxBytes > capacity) throw new Error('capture capacity exhausted; receipt capacity must precede invocation');
       const token = Object.freeze({ id: randomUUID(), maxBytes });
       writeRecord(join(slots, `${token.id}.json`), { ...token, hash: null }); issued.add(token); return token;

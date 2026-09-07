@@ -100,7 +100,14 @@ export function createJudgmentSlice(seed, directory, runtime) {
       describe: () => ({ contract: 'judgment-model-contract:1', account: seed.effects.definition.account,
         conversation: seed.effects.definition.conversation, maxCharge: seed.effects.definition.maxCharge,
         timeout: seed.effects.definition.timeout, hiddenRetries: 0 }),
-      invoke: input => result(() => { runtime.effectsInvoke?.(input); return JSON.stringify(seed.observation); }),
+      // The registered adapter enforces the digest-bound question deadline at the
+      // provider boundary itself (R1's second layer): late invocation refused
+      // BEFORE any provider call or invocation journal entry.
+      invoke: input => result(() => {
+        const payload = JSON.parse(input.message.text);
+        if (typeof payload.deadline === 'number' && runtime.monotonic() >= payload.deadline) throw new Error('judgment deadline exhausted at provider invocation');
+        runtime.effectsInvoke?.(input); return JSON.stringify(seed.observation);
+      }),
       observe: () => result(() => JSON.stringify({ status: 'unknown', reason: 'model fixture has no decisive negative lookup' })) };
     const assessment = runtime.assessment ?? { state: 'happened', charge: 3, excluded: true };
     let acceptanceId = '', assessmentEvidence = '';
@@ -123,7 +130,6 @@ export function createJudgmentSlice(seed, directory, runtime) {
       consumeCurrent: (ref, input, consume) => result(() => consume(view(ref, input))) };
     effectDoorway = createEffectDoorway({ host: effectHost, spine: effectSpine, transport: six, durability, adapter, custody, assessment: assessor });
     if (!take(store.read()).some(f => f.kind === 'effect-OperationDefinition')) take(installOperationDefinition(seed.effects.definition, effectHost, effectSpine));
-    const observationView = o => ({ operation: o.operation, stage: o.stage, bytes: metadata[o.capture.reference]?.bytes ?? '' });
     const doorwayRef = () => effectDoorway;
     const port = { owner: 'part-eight',
       describe: () => ({ definition: seed.effects.definition.id, account: seed.effects.definition.account,
@@ -134,9 +140,7 @@ export function createJudgmentSlice(seed, directory, runtime) {
       adopt: input => result(() => { const message = take(decodeOutboundMessage(input.message, effectHost));
         const q = take(doorwayRef().adopt({ ...input, message })); return { request: q.id, digest: q.digest }; }),
       dispatch: (adopted, fence) => result(() => { const row = take(doorwayRef().inspect()).find(v => v.record.type === 'EffectRequest' && v.record.id === adopted.request);
-        if (!row) throw new Error('adopted effect request missing'); return observationView(take(doorwayRef().dispatch(row.record, fence))); }),
-      observations: operation => result(() => take(doorwayRef().inspect())
-        .filter(v => v.record.type === 'OperationObservation' && v.record.operation === operation).map(v => observationView(v.record))) };
+        if (!row) throw new Error('adopted effect request missing'); return { operation: take(doorwayRef().dispatch(row.record, fence)).operation }; }) };
     effects = runtime.wrapEffects?.(port) ?? port;
   }
   const doorway = createJudgmentDoorway({ host, authority: six, spine, captures, model, boundary: c, ...(effects ? { effects } : {}) });
