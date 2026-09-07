@@ -41,8 +41,10 @@ export interface ProjectedView extends ViewIdentity {
   readonly retractions: readonly string[]; readonly corrections: readonly { readonly original: string; readonly replacement: string }[];
 }
 const classes: readonly string[] = ['additive', 'set-union', 'max', 'min', 'exclusive-singleton', 'cap-checked aggregate'];
+const EXACT = /^-?(0|[1-9][0-9]*)$/;
+function isExact(v: Json | undefined): boolean { return typeof v === 'string' && EXACT.test(v); }
 function exact(v: Json | undefined): bigint {
-  requireFact(typeof v === 'string' && /^-?(0|[1-9][0-9]*)$/.test(v), 'quantity must use exact integer minor units'); return BigInt(v);
+  requireFact(isExact(v), 'quantity must use exact integer minor units'); return BigInt(v as string);
 }
 // A bounded, data-only path selector for a fold decision's identity/value. Dot-separated
 // static segments only (no wildcards, indices, callbacks, or dynamic evaluation), bounded
@@ -51,13 +53,22 @@ function exact(v: Json | undefined): bigint {
 // path resolving to a missing or wrong-typed value is the same poison-fact refusal as a
 // missing top-level field — the caller's requireFact on the resolved value carries it.
 const MAX_PATH_DEPTH = 3;
-function validSelector(selector: string): boolean {
+// The selector must be a PRIMITIVE string before any method is invoked on it: a Proxy or
+// coercing object whose own `split` is a callback would otherwise execute dynamic behaviour
+// and could return one segment list for validation and another for resolution. `selection`
+// establishes the primitive string first, derives primitive-string segments via the native
+// split, and re-checks the bound — the identical, deterministic derivation used at both
+// validation and resolution, so no selector can present two segment lists.
+function selection(selector: string): readonly string[] {
+  requireFact(typeof selector === 'string', 'fold selector must be a primitive string');
   const segments = selector.split('.');
-  return segments.length >= 1 && segments.length <= MAX_PATH_DEPTH && segments.every(s => s.length > 0);
+  requireFact(segments.length >= 1 && segments.length <= MAX_PATH_DEPTH
+    && segments.every(s => typeof s === 'string' && s.length > 0), 'fold path must be 1 to 3 non-empty static segments');
+  return segments;
 }
 function resolveField(body: Record<string, Json>, selector: string): Json | undefined {
   let cursor: Json | undefined = body;
-  for (const segment of selector.split('.')) {
+  for (const segment of selection(selector)) {
     if (cursor === null || typeof cursor !== 'object' || Array.isArray(cursor)) return undefined;
     cursor = (cursor as Record<string, Json>)[segment];
   }
@@ -74,8 +85,11 @@ function validate(def: ProjectionDefinition, generation: ProjectionGeneration): 
     if (d.kind === 'ignores') requireFact(d.reason.trim().length > 0, 'ignore requires reason');
     else {
       requireFact(d.kind === 'folds' && classes.includes(d.merge), 'missing merge class');
+      // Establish primitive-string selectors BEFORE touching `.length`/`.split`, so a
+      // Proxy/coercing selector is refused without executing any of its callbacks.
+      requireFact(typeof d.identity === 'string' && typeof d.value === 'string', 'fold selector must be a primitive string');
       requireFact(d.identity.length > 0 && d.value.length > 0, 'fold must declare field access');
-      requireFact(validSelector(d.identity) && validSelector(d.value), 'fold path must be 1 to 3 non-empty static segments');
+      selection(d.identity); selection(d.value);
       if (d.merge === 'cap-checked aggregate') exact(d.cap);
     }
   }
@@ -281,7 +295,14 @@ export function rebuildProjection(def: ProjectionDefinition, snapshot: FactSnaps
     for (const row of suffix) {
       const d = def.decisions[row.fact.kind]; requireFact(d, 'undeclared resume kind'); if (d.kind === 'ignores') continue;
       const b = object(row.body), identity = resolveField(b, d.identity), resolved = resolveField(b, d.value);
-      requireFact(typeof identity === 'string' && resolved !== undefined, 'resume poison field');
+      const numeric = d.merge === 'additive' || d.merge === 'max' || d.merge === 'min' || d.merge === 'cap-checked aggregate';
+      // Resume must apply genesis's poison semantics EXACTLY. A malformed fold field — a
+      // non-string or empty identity, a missing value, or a non-integer value for a numeric
+      // merge — is a poison fact that genesis quarantines (keeping the good rows) and refuses
+      // as authority. The incremental path cannot express per-row quarantine, so it falls
+      // back to the full genesis fold when affordable — which records the poison and yields
+      // the byte-identical view — and otherwise refuses the whole rebuild, consistently.
+      if (!(typeof identity === 'string' && identity.length > 0 && resolved !== undefined) || (numeric && !isExact(resolved))) { fallback = true; break; }
       const key = `${row.fact.kind}:${identity}`, old = values[key], value = resolved;
       if (d.merge === 'set-union') values[key] = [...new Map([...(Array.isArray(old) ? old : []), value].map(v => [encoding(v).bytes, v])).entries()].sort(([a], [b]) => a < b ? -1 : 1).map(([, v]) => v);
       else if (d.merge === 'exclusive-singleton') { fallback = true; break; }

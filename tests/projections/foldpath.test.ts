@@ -1,10 +1,10 @@
 import { expect, it } from 'vitest';
-import { checkpoint, foldProjection, readProjection, rebuildProjection, verifyRebuild } from '../../src/projections/index.js';
+import { checkpoint, foldProjection, readProjection, rebuildProjection, restoreCheckpoint, signCheckpoint, verifyRebuild } from '../../src/projections/index.js';
 import type { ProjectionDefinition, ProjectionGeneration } from '../../src/projections/index.js';
 import type { Json } from '../../src/index.js';
 import type { FactEnvelope, OwnedShape } from '../../src/facts/index.js';
 import { prepareSnapshot, registerOwnedBody } from '../../src/facts/index.js';
-import { factsFixture, value, refused, point } from '../facts/fixtures.js';
+import { factsFixture, value, refused, point, privateKey, publicKey } from '../facts/fixtures.js';
 
 // The bounded, data-only path selector (slice-two-gap.md, Option 1). Parts five/six/seven/
 // eight place their record under a single `record` field, so a fold could not key on an
@@ -123,4 +123,78 @@ it('P2-NF-57 P2-NF-58 single-segment paths are the top-level degenerate; pathed 
   // The incremental resume is byte-identical to a genesis fold at the same vector.
   const genesis = checkpoint(value(f.fold([a, b], def, gen)));
   expect(value(verifyRebuild(genesis, checkpoint(rebuilt.view), f.c))).toBe('equal');
+});
+
+// --- REPAIR1 (astra R1): a Proxy/coercing selector cannot execute callbacks or evade the bound ---
+it('P2-NF-49 P2-NF-50 a Proxy/coercing selector is refused without invoking split or coercing a segment (identity and value)', () => {
+  const f = pathFixture();
+  const a = f.rec({ operation: 'one', amount: '20' });
+  const g = f.gen({ 'machine-a': a });
+  for (const role of ['identity', 'value'] as const) {
+    for (const mode of ['strings', 'coercing-segments', 'depth-switch'] as const) {
+      let splits = 0, coercions = 0;
+      // A selector whose `split` is a callback that can return coercing objects, or two
+      // segments for validation and four for resolution — the validate-two/resolve-four
+      // neighbour. Establishing a primitive string first refuses it before any of this runs.
+      const selector = new Proxy({ length: 1 }, { get(t, key, r) {
+        if (key === 'split') return () => { splits++;
+          const segs = mode === 'depth-switch' && splits > 1 ? ['record', 'inner', 'extra', 'leaf'] : ['record', role === 'identity' ? 'operation' : 'amount'];
+          return mode === 'coercing-segments' ? segs.map(name => ({ length: 1, [Symbol.toPrimitive]() { coercions++; return name; } })) : segs;
+        };
+        return Reflect.get(t, key, r);
+      } }) as unknown as string;
+      const decision = role === 'identity'
+        ? { kind: 'folds' as const, identity: selector, value: 'record.amount', merge: 'additive' as const }
+        : { kind: 'folds' as const, identity: 'record.operation', value: selector, merge: 'additive' as const };
+      refused(f.fold([a], f.def(decision), g), 'primitive string');
+      expect(splits).toBe(0); expect(coercions).toBe(0);
+    }
+  }
+});
+
+// --- REPAIR1 (astra R2): pathed checkpoint resume applies genesis poison semantics exactly ---
+it('P2-NF-48 P2-NF-57 P2-NF-58 pathed resume quarantines a poison suffix like genesis, byte-equal, incl. signed restore', () => {
+  const f = pathFixture();
+  const def = f.def({ kind: 'folds', identity: 'record.operation', value: 'record.amount', merge: 'additive' });
+  const authority = { ...def, class: 'authority-answering' as const };
+  for (const bad of [{ operation: '', amount: '3' }, { amount: '3' }, { operation: 'one' }, { operation: 'one', amount: 'NaN' }]) {
+    const a = f.rec({ operation: 'one', amount: '20' }, { at: f.clock(90) });
+    const b = f.rec(bad, { at: f.clock(110), segment: { machine: 'machine-a', epoch: 0, position: 1 },
+      prevInSegment: a.contentHash, predecessors: { inSegment: a.id, frontier: {}, required: [] } });
+    const g = f.gen({ 'machine-a': b });
+    const genesis = value(f.fold([a, b], def, g));
+    const cp = checkpoint(value(f.fold([a], def, g)));
+    // Genesis keeps the good prefix row and records poison for the suffix; an authority read
+    // refuses. Resume (budget 2 for two rows) must reproduce that view byte-for-byte.
+    expect(genesis.values).toEqual({ 'owner-record:one': '20' });
+    expect(genesis.conflicts[0]?.kind).toBe('poison-fact');
+    refused(readProjection(genesis, authority, f.now, f.c));
+    const resumed = value(rebuildProjection(def, f.snapshot([a, b]), g, f.c, [cp], 2));
+    expect(value(verifyRebuild(checkpoint(genesis), checkpoint(resumed.view), f.c))).toBe('equal');
+    refused(readProjection(resumed.view, authority, f.now, f.c));
+    // The same holds through the public signed-checkpoint restore seam.
+    const cert = signCheckpoint(cp, 'p2-cache', privateKey);
+    const restored = value(restoreCheckpoint(JSON.parse(JSON.stringify(cert)), f.snapshot([a, b]), f.c, [{ id: 'p2-cache', publicKey }]));
+    const restoredResume = value(rebuildProjection(def, f.snapshot([a, b]), g, f.c, [restored], 2));
+    expect(value(verifyRebuild(checkpoint(genesis), checkpoint(restoredResume.view), f.c))).toBe('equal');
+    refused(readProjection(restoredResume.view, authority, f.now, f.c));
+  }
+});
+
+// --- REPAIR1 (astra R2, shared path): the same resume fix covers the pre-existing TOP-LEVEL
+// single-segment defect that also reproduces on main. ---
+it('P2-NF-48 P2-NF-58 the shared resume path also quarantines a top-level single-segment poison suffix, byte-equal', () => {
+  const f = pathFixture();
+  const noteDef = { id: 'n', class: 'informational', stalenessBound: 100, retention: 'all-identities',
+    decisions: { note: { kind: 'folds', identity: 'identity', value: 'amount', merge: 'additive' } } } as unknown as ProjectionDefinition;
+  const a = f.fact({ body: { identity: 'one', amount: '20' }, at: f.clock(90) }, f.ctx);
+  const b = f.fact({ body: { identity: '', amount: '3' }, at: f.clock(110), segment: { machine: 'machine-a', epoch: 0, position: 1 },
+    prevInSegment: a.contentHash, predecessors: { inSegment: a.id, frontier: {}, required: [] } }, f.ctx);
+  const g = { reference: f.ctx.decode.register.generation, kinds: ['note'], lineages: { 'machine-a': { head: point(b), observedAt: 100, closed: false } } };
+  const genesis = value(foldProjection(noteDef, f.snapshot([a, b]), g, f.c));
+  const cp = checkpoint(value(foldProjection(noteDef, f.snapshot([a]), g, f.c)));
+  const resumed = value(rebuildProjection(noteDef, f.snapshot([a, b]), g, f.c, [cp], 2));
+  expect(genesis.values).toEqual({ 'note:one': '20' }); expect(genesis.conflicts[0]?.kind).toBe('poison-fact');
+  expect(resumed.view.conflicts[0]?.kind).toBe('poison-fact');
+  expect(value(verifyRebuild(checkpoint(genesis), checkpoint(resumed.view), f.c))).toBe('equal');
 });
