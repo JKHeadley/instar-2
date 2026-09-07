@@ -3,7 +3,7 @@ import type { BoundaryContext, Clock, Decision, Json, Result } from '../index.js
 import { authorAndAppend, causalCone, registerOwnedBody } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, FactStorePort, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import type { AdmissionReservation } from '../transport/index.js';
-import type { Capture, JudgmentAttemptRecord, JudgmentAuthor, JudgmentFact, JudgmentHost, JudgmentRecord, JudgmentRequest, JudgmentSpine, ProviderObservation } from './contracts.js';
+import type { Capture, DispatchMessage, JudgmentAttemptRecord, JudgmentAuthor, JudgmentFact, JudgmentHost, JudgmentRecord, JudgmentRequest, JudgmentSpine, ProviderObservation } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { observationCheck } from './model-adapter.js';
 
@@ -12,7 +12,8 @@ const row = { type: txt, schemaVersion: int, id: txt, request: txt, predecessor:
 export const judgmentShapes: Readonly<Record<string, OwnedShape>> = freeze({
   JudgmentRequest: { kind: 'object', fields: { ...row, logicalKey: txt, inputDigest: txt, run: txt, step: txt, ordinal: int, semanticMessage: txt, effectRequest: txt,
     point: txt, consumer: txt, generation: txt, incarnation: txt, deadline: int, question: capture, context: capture, submitted: capture,
-    route: txt, evidence: { kind: 'array', maxLength: 64, items: txt }, maxInputBytes: int, maxOutputBytes: int, maxCharge: int } },
+    route: txt, evidence: { kind: 'array', maxLength: 64, items: txt }, maxInputBytes: int, maxOutputBytes: int, maxCharge: int,
+    account: txt, conversation: txt }, optional: ['account', 'conversation'] },
   JudgmentAttemptRecord: { kind: 'object', fields: { ...row, attempt: txt, phase: txt, operation: txt, reservation: txt, receipt: capture }, optional: ['operation', 'reservation', 'receipt'] },
   JudgmentResolution: { kind: 'object', fields: { ...row, attempt: txt, disposition: txt, response: txt, accounting: txt, decoded: txt } },
 });
@@ -34,6 +35,20 @@ export function requestIn(all: readonly JudgmentFact[]): JudgmentRequest | undef
 }
 export function phaseIn(all: readonly JudgmentFact[], phase: JudgmentAttemptRecord['phase']): JudgmentFact & { record: JudgmentAttemptRecord } | undefined {
   return all.find((v): v is JudgmentFact & { record: JudgmentAttemptRecord } => v.record.type === 'JudgmentAttemptRecord' && v.record.phase === phase);
+}
+/** The exact outbound record eight dispatches for an admitted-through-eight
+ * question (docs/11 step 6). Deterministic from the durable request + the
+ * question fact identity, so the owner validator recomputes it unconditionally:
+ * six's reservation digest MUST be this record's hash. The text carries the
+ * submitted-input CAPTURE (reference + digest), never the raw prompt bytes —
+ * the registered adapter resolves the content-addressed payload. */
+export function dispatchMessage(request: JudgmentRequest, source: string, host: JudgmentHost): DispatchMessage {
+  ensure(request.account !== undefined && request.conversation !== undefined, 'admitted-dispatch addressing required');
+  return freeze({ type: 'OutboundMessage', schemaVersion: 1, id: `judgment-dispatch:${request.id}`,
+    semanticMessage: request.semanticMessage, run: request.run, speaker: host.transport.principal.id,
+    account: request.account, conversation: request.conversation,
+    text: encoded({ submitted: request.submitted, digest: request.inputDigest }).bytes,
+    purpose: 'ordinary-reply', sourceResult: source });
 }
 export function decisionFrom(observation: ProviderObservation, request: JudgmentRequest, host: JudgmentHost, c: BoundaryContext): Result<Decision> {
   return boundary('JudgmentAnswerDecode', observation, c, () => {
@@ -92,6 +107,9 @@ function validate(r: JudgmentRecord, ctx: OwnedBodyContext, host: JudgmentHost, 
     ensure(r.maxCharge === host.description.maxCharge && r.maxInputBytes === host.description.maxInputBytes
       && r.maxOutputBytes === host.description.maxOutputBytes, 'caller changed registered bounds');
     ensure(r.deadline >= 0 && r.evidence.length === new Set(r.evidence).size, 'invalid deadline/evidence');
+    ensure((r.account === undefined) === (r.conversation === undefined), 'admitted-dispatch addressing must be complete');
+    if (r.account !== undefined) ensure(r.effectRequest === `request:${encoded([r.account, r.conversation, r.semanticMessage]).hash}`,
+      'admitted-dispatch identity must derive from the registered addressing');
     if (ctx.mode === 'origin') ensure(r.generation === host.transport.current().generation.id && r.incarnation === host.transport.incarnation, 'stale request generation/incarnation');
     const submitted = bytes(r.submitted), question = bytes(r.question), context = bytes(r.context);
     if (submitted !== undefined && question !== undefined && context !== undefined) {
@@ -117,8 +135,13 @@ function validate(r: JudgmentRecord, ctx: OwnedBodyContext, host: JudgmentHost, 
       ensure(r.operation && r.reservation, 'phase requires six operation/reservation');
       const reservation = causalCone(ctx.origin, ctx.facts.facts).find(f => f.id === r.reservation);
       const op = (reservation?.body as { record?: AdmissionReservation } | undefined)?.record;
+      // Through-eight admission (account present): six reserved the dispatch
+      // MESSAGE eight adopts, so the claimed digest is that record's hash.
+      // Direct-model admission: the claimed digest is the submitted-input digest.
+      const requestFact = all.find(v => v.record.type === 'JudgmentRequest'); ensure(requestFact, 'missing owning question fact');
+      const claimedDigest = request.account !== undefined ? encoded(dispatchMessage(request, requestFact.fact.id, host)).hash : request.inputDigest;
       ensure(reservation?.kind === 'transport-AdmissionReservation' && op?.state === 'consumed' && op.operation === r.operation && op.attempt === r.attempt
-        && op.request === request.effectRequest && op.semanticMessage === request.semanticMessage && op.digest === request.inputDigest && op.charge === request.maxCharge && op.run === request.run,
+        && op.request === request.effectRequest && op.semanticMessage === request.semanticMessage && op.digest === claimedDigest && op.charge === request.maxCharge && op.run === request.run,
       'phase lacks exact consumed six claim');
       const first = phaseIn(all, 'dispatch-observed');
       if (first) ensure(r.operation === first.record.operation && r.reservation === first.record.reservation, 'attempt remapped operation');

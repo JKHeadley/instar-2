@@ -96,6 +96,11 @@ export function createJudgmentCaptures(directory, metadata, result, capacity = 1
     if (String(fact.kind).startsWith('judgment-')) for (const key of ['question', 'context', 'submitted', 'receipt']) {
       if (row?.[key]) { try { read(row[key]); } catch { /* Historical status stays missing; authoritative use refuses. */ } }
     }
+    // The through-eight composition persists eight's observation captures through
+    // this same port; reconstruct them from the signed references identically.
+    if (String(fact.kind).startsWith('effect-') && row?.capture) {
+      try { read(row.capture); } catch { /* Historical status stays missing; authoritative use refuses. */ }
+    }
   }
   return Object.freeze({ owner: 'part-ten', read: cap => result(() => read(cap)),
     reserve: maxBytes => result(() => locked(() => {

@@ -17,6 +17,11 @@ export interface JudgmentRequest extends Row, Owned {
   readonly question: Capture; readonly context: Capture; readonly submitted: Capture;
   readonly route: string; readonly evidence: readonly string[];
   readonly maxInputBytes: number; readonly maxOutputBytes: number; readonly maxCharge: number;
+  // Present exactly when the question was admitted for dispatch THROUGH EIGHT
+  // (docs/11 step 6): the registered operation's addressing, from which the
+  // effectRequest identity derives as request:hash([account, conversation,
+  // semanticMessage]). Absent on the pre-adoption direct-model composition.
+  readonly account?: string; readonly conversation?: string;
 }
 export interface JudgmentAttemptRecord extends Row, Owned {
   readonly type: 'JudgmentAttemptRecord'; readonly attempt: string;
@@ -67,6 +72,36 @@ export interface ModelAdapterPort {
   prepare(input: unknown): Result<string>;
   exchange(input: ModelExchange): Promise<Result<ProviderObservation>>;
 }
+// Consumer requirements for EIGHT's admitted-dispatch doorway (docs/11 step 6:
+// "Dispatch through part eight's effect boundary to the model adapter against
+// that reservation"). Seven prepares the bounded call and reserves via six with
+// the exact shape eight's adopt requires; the realization binds eight's REAL
+// EffectDoorway over the SAME transport authority (adopt -> dispatch -> the
+// registered adapter). Eight owns settlement; nothing here settles or releases.
+export interface DispatchMessage {
+  readonly type: 'OutboundMessage'; readonly schemaVersion: 1; readonly id: string;
+  readonly semanticMessage: string; readonly run: string; readonly speaker: string;
+  readonly account: string; readonly conversation: string; readonly text: string;
+  readonly purpose: 'ordinary-reply'; readonly sourceResult: string;
+}
+export interface AdoptedDispatch { readonly request: string; readonly digest: string }
+export interface DispatchObservation {
+  readonly operation: string; readonly stage: 'executor-accepted' | 'response' | 'unknown' | 'observer-accepted' | 'lookup';
+  readonly bytes: string;
+}
+export interface EffectDispatchPort {
+  readonly owner: 'part-eight';
+  describe(): { readonly definition: string; readonly account: string; readonly conversation: string;
+    readonly maxCharge: number; readonly durability: 'replicated' | 'local-durable'; readonly replicas: number };
+  // The persisted adopted request, refusing when eight holds none (recovery reads
+  // this FIRST: a replacement process re-dispatches the persisted request, never re-adopts).
+  adopted(request: string): Result<AdoptedDispatch>;
+  adopt(input: { readonly definition: string; readonly message: DispatchMessage; readonly run: RunReference;
+    readonly pending: string; readonly attempt: string; readonly verificationOwner: string;
+    readonly obligation: string; readonly closure: readonly string[] }): Result<AdoptedDispatch>;
+  dispatch(adopted: AdoptedDispatch, fence: FenceToken): Result<DispatchObservation>;
+  observations(operation: string): Result<readonly DispatchObservation[]>;
+}
 export interface JudgmentHost {
   readonly transport: TransportHost; readonly point: string; readonly floor: ActionFloor;
   readonly description: ModelDescription;
@@ -82,6 +117,10 @@ export interface JudgmentPorts {
   readonly host: JudgmentHost; readonly authority: TransportAuthority;
   readonly spine: JudgmentSpine; readonly captures: JudgmentCapturePort;
   readonly model: ModelAdapterPort; readonly boundary: BoundaryContext;
+  // When bound, the model dispatch routes THROUGH EIGHT (docs/11 step 6) and the
+  // operation becomes settleable through eight's evidence-checked path. Absent =
+  // the pre-adoption direct-model composition, byte-identical to before.
+  readonly effects?: EffectDispatchPort;
 }
 export interface QuestionInput {
   readonly id: string; readonly run: RunReference; readonly step: string; readonly ordinal: number;

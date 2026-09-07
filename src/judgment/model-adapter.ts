@@ -30,7 +30,7 @@ export function receiptByteBound(d: ModelDescription): number {
   const bound = 6 * d.maxOutputBytes + 8192;
   ensure(Number.isSafeInteger(bound) && bound >= 8192, 'finite encoded receipt bound required'); return bound;
 }
-function snapshotObservation(raw: unknown, d: ModelDescription): ProviderObservation {
+export function snapshotObservation(raw: unknown, d: ModelDescription): ProviderObservation {
   // Read data descriptors, never invoke SDK/provider getters. Copy only bounded
   // fields; malformed/oversized objects still retain independently valid usage.
   const data = (v: unknown, key: string): unknown => {
@@ -67,9 +67,10 @@ function snapshotObservation(raw: unknown, d: ModelDescription): ProviderObserva
   // Canonical copy also divorces the recorder from provider/SDK-owned objects.
   return freeze(JSON.parse(encoded(observation).bytes) as ProviderObservation);
 }
-const thrownObservation = (): ProviderObservation => freeze({ state: 'uncertain', bytes: null, providerOperation: null,
-  usage: { inputTokens: null, outputTokens: null, charge: null, source: 'invocation threw; liability unknown' }, retryBlocked: false,
+export const uncertainObservation = (source: string): ProviderObservation => freeze({ state: 'uncertain', bytes: null, providerOperation: null,
+  usage: { inputTokens: null, outputTokens: null, charge: null, source }, retryBlocked: false,
   limitation: { kind: 'transport-threw', observedBytesAtLeast: null } });
+const thrownObservation = (): ProviderObservation => uncertainObservation('invocation threw; liability unknown');
 export function createModelAdapter(d: ModelDescription, client: ModelClient, invoke: (bytes: string, operation: string) => Promise<ProviderObservation>,
   authority: TransportAuthority, host: TransportHost, c: BoundaryContext): Result<ModelAdapterPort> {
   return boundary('ModelAdapterConstruction', d, c, () => {

@@ -2,9 +2,10 @@ import { consumeResult, decode, readEvidence } from '../index.js';
 import type { Decision, Result } from '../index.js';
 import type { FenceToken } from '../transport/index.js';
 import type { JudgmentAttemptRecord, JudgmentDoorway, JudgmentFact, JudgmentPorts, JudgmentRecord, JudgmentRequest, JudgmentResolution, ProviderObservation, QuestionInput, RecordedAnswer } from './contracts.js';
+import type { AdmissionReservation } from '../transport/index.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
-import { decisionFrom, phaseIn, providerEvidence, requestIn, rows, unsettledOutcome } from './records.js';
-import { receiptByteBound } from './model-adapter.js';
+import { decisionFrom, dispatchMessage, phaseIn, providerEvidence, requestIn, rows, unsettledOutcome } from './records.js';
+import { receiptByteBound, snapshotObservation, uncertainObservation } from './model-adapter.js';
 
 export function createJudgmentDoorway(p: JudgmentPorts): JudgmentDoorway {
   const c = p.boundary;
@@ -99,13 +100,22 @@ export function createJudgmentDoorway(p: JudgmentPorts): JudgmentDoorway {
           && request.inputDigest === digest && request.semanticMessage === q.semanticMessage && request.effectRequest === q.effectRequest.id, 'logical question collision: request identity/input changed');
         else {
           ensure(q.deadline > p.host.transport.monotonic(), 'judgment deadline exhausted');
+          if (p.effects) {
+            // Through-eight admission (docs/11 step 6): the effect-request identity
+            // is DERIVED from the registered operation's addressing, never caller-chosen.
+            const d = p.effects.describe();
+            ensure(d.maxCharge === p.host.description.maxCharge, 'registered operation liability differs from judgment bounds');
+            ensure(q.effectRequest.id === `request:${encoded([d.account, d.conversation, q.semanticMessage]).hash}`,
+              'question effect-request identity is not the admitted-dispatch derivation');
+          }
           const cap = (s: string) => take(p.captures.put(s, p.host.description.maxInputBytes));
           request = { ...meta(q.id, q.id), type: 'JudgmentRequest', logicalKey: encoded([q.run.id, q.step, q.ordinal]).hash,
             inputDigest: digest, run: q.run.id, step: q.step, ordinal: q.ordinal, semanticMessage: q.semanticMessage, effectRequest: q.effectRequest.id, point: p.host.point, consumer: 'advisory',
             generation: now.generation.id, incarnation: p.host.transport.incarnation, deadline: q.deadline,
             question: cap(q.question), context: cap(q.context), submitted: cap(submitted), route: p.host.description.route,
             evidence: q.evidence, maxInputBytes: p.host.description.maxInputBytes, maxOutputBytes: p.host.description.maxOutputBytes,
-            maxCharge: p.host.description.maxCharge } as unknown as JudgmentRequest;
+            maxCharge: p.host.description.maxCharge,
+            ...(p.effects ? { account: p.effects.describe().account, conversation: p.effects.describe().conversation } : {}) } as unknown as JudgmentRequest;
           save(request);
         }
         current(request, fence, 'prepare'); captured(request);
@@ -118,6 +128,83 @@ export function createJudgmentDoorway(p: JudgmentPorts): JudgmentDoorway {
       if (prepared.hasResponse) {
         const recorded = checked('JudgmentResumeRecording', () => take(recordAnswer(request)));
         return consumeResult(recorded, { Success: () => readAnswer(request.id, fence), Refused: r => r });
+      }
+      if (p.effects) {
+        // docs/11 step 6: dispatch through part eight's effect boundary to the
+        // registered model adapter against six's reservation. Level-triggered so a
+        // crash between any two durable steps resumes through the public seams
+        // without a second provider invocation (docs/11 retries rule).
+        const eight = p.effects;
+        const recording = checked('JudgmentAdoptedDispatch', () => {
+          const d = eight.describe();
+          ensure(request.account === d.account && request.conversation === d.conversation && request.maxCharge === d.maxCharge,
+            'registered operation differs from the admitted question addressing');
+          const requestFact = read().find(v => v.record.type === 'JudgmentRequest');
+          ensure(requestFact, 'missing durable question');
+          const message = dispatchMessage(request, requestFact.fact.id, p.host);
+          const reservationRows = () => take(p.authority.inspect()).filter(v => v.record.type === 'AdmissionReservation'
+            && v.record.request === request.effectRequest && v.record.attempt === `attempt:${request.id}:1`);
+          // Custody commits the complete worst-case encoded receipt budget before
+          // six admits spend (and before any recovery re-record). Other writers
+          // and process restart cannot free it.
+          const receiptCapacity = take(p.captures.reserve(receiptByteBound(p.host.description)));
+          let observed: import('./contracts.js').DispatchObservation;
+          const claimed = reservationRows().find(v => (v.record as AdmissionReservation).state !== 'prepared');
+          if (claimed) {
+            // An invocation may already have started; only eight's DURABLE terminal
+            // observation can carry this forward — never another invocation.
+            const terminal = take(eight.observations((claimed.record as AdmissionReservation).operation))
+              .filter(o => o.stage === 'response' || o.stage === 'unknown').at(-1);
+            ensure(terminal, 'unresolved dispatch claim: missing receipt cannot trigger another invocation');
+            observed = terminal;
+          } else {
+            phase(request, 'prepared');
+            current(request, fence, 'dispatch');
+            // Six admits and durably reserves the exact operation eight will
+            // dispatch (docs/11 step 5), shaped for eight's adopt contract: the
+            // derived request id, the dispatch MESSAGE digest, and the registered
+            // definition's charge/durability/replicas. reserve() is idempotent
+            // over an identical mapping, so a resumed process re-enters safely.
+            take(p.authority.reserve({ command: `judgment:${request.id}:reserve`, fence,
+              request: { owner: 'part-eight', name: 'EffectRequest', id: request.effectRequest }, attempt: `attempt:${request.id}:1`,
+              payloadDigest: encoded(message).hash, charge: d.maxCharge, run: { owner: 'part-five', name: 'Run', id: request.run },
+              semanticMessage: request.semanticMessage, durability: d.durability, replicas: d.replicas }));
+            // Recovery reads the persisted adopted request first: eight refuses a
+            // repeated adoption by name, and re-adopting is never the resume path.
+            // The obligation is six's own verification wake for this run — eight
+            // requires the durable LoopRecord, the same wake its recovery rides.
+            const wake = take(p.authority.inspect()).filter(v => v.record.type === 'LoopRecord' && v.record.run === request.run).at(-1);
+            ensure(wake, 'six-owned verification wake missing for the judgment run');
+            const prior = consumeResult(eight.adopted(request.effectRequest), { Success: v => v, Refused: () => undefined });
+            const adopted = prior ?? take(eight.adopt({ definition: d.definition, message,
+              run: { owner: 'part-five', name: 'Run', id: request.run }, pending: requestFact.fact.id,
+              attempt: `attempt:${request.id}:1`, verificationOwner: 'part-seven',
+              obligation: wake.fact.id, closure: [] }));
+            ensure(adopted.request === request.effectRequest && adopted.digest === encoded(message).hash,
+              'eight adopted a different request than the one shown');
+            observed = take(eight.dispatch(adopted, fence));
+          }
+          const consumed = take(p.authority.inspect()).find(v => v.record.type === 'AdmissionReservation'
+            && v.record.request === request.effectRequest && v.record.state === 'consumed');
+          ensure(consumed, 'six durable claim consumption missing');
+          const operation = (consumed.record as AdmissionReservation).operation;
+          ensure(observed.operation === operation, 'eight observation names another operation');
+          phase(request, 'dispatch-observed', operation, consumed.fact.id);
+          // The receipt records eight's observed service response as seven's
+          // provider observation: actual response bytes AND observational usage.
+          // It is not a settlement — six's exposure stays reserved until eight's
+          // own evidence-checked settlement is applied through six's settle().
+          const observation = (() => {
+            if (observed.stage !== 'response') return uncertainObservation('eight recorded no conclusive service response');
+            let raw: unknown; try { raw = JSON.parse(observed.bytes); } catch { raw = undefined; }
+            return snapshotObservation(raw, p.host.description);
+          })();
+          const receipt = take(p.captures.putReserved(receiptCapacity, encoded(observation).bytes));
+          const evidence = providerEvidence(receipt, encoded(observation).bytes, operation, p.host.transport.current().clock, p.host);
+          phase(request, 'response-observed', operation, consumed.fact.id, receipt, { evidence });
+          return take(recordAnswer(request));
+        });
+        return consumeResult(recording, { Success: () => readAnswer(request.id, fence), Refused: r => r });
       }
       const admission = checked('JudgmentDispatch', () => {
         ensure(!phaseIn(read(), 'dispatch-observed'), 'unresolved dispatch: missing receipt cannot trigger another invocation');
