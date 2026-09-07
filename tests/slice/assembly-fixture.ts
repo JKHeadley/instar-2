@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error the reference assembly is JavaScript, outside pure core compilation.
@@ -33,7 +34,7 @@ export interface SliceAssembly {
   readonly operationDefinition: Record<string, unknown>;
 }
 
-export { DECLARED_BOUNDARIES, PROFILE_BOUNDARIES, SLICE_BOUNDARIES, UNREACHED_BOUNDARIES } from './boundaries.js';
+export { DECLARED_BOUNDARIES, PROFILE_BOUNDARIES, RECOVERY_BOUNDARIES, SLICE_BOUNDARIES, UNREACHED_BOUNDARIES } from './boundaries.js';
 export const PEER_STANDIN_ID = peerId as string;
 export const homes: string[] = [];
 
@@ -41,4 +42,13 @@ export function sliceAssembly(overrides: Record<string, unknown> = {}, home = mk
   homes.push(home);
   return bootSliceAssembly(home, sliceConfig(overrides)) as SliceAssembly;
 }
-export function cleanup(): void { for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true }); }
+// ASYNC teardown on the threadpool so the worker's event loop stays free during cleanup
+// (REPAIR6: a synchronous rmSync of many home trees at afterAll blocked the loop long
+// enough to miss the file's final onTaskUpdate RPC on a slow runner). `force: true`
+// ignores a missing path, but a REAL removal failure is PROPAGATED after every deletion
+// settles rather than swallowed (astra D2); homes are de-duplicated.
+export async function cleanup(): Promise<void> {
+  const results = await Promise.allSettled([...new Set(homes.splice(0))].map(home => rm(home, { recursive: true, force: true })));
+  const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (failures.length) throw new Error(`cleanup failed to remove ${failures.length} home(s): ${failures.map(f => String(f.reason)).join('; ')}`);
+}

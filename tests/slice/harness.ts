@@ -1,18 +1,20 @@
 // Spawns slice executions through the assembly's PUBLIC boot path only.
 // Every restart is a fresh `node scripts/slice-worker.mjs`; nothing here reaches
-// into the assembly, and there is no test-only recovery helper.
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+// into the assembly, and there is no test-only recovery helper. The execution core is
+// the SHARED implementation the kill-schedule pre-step also uses, so the harness and the
+// pre-step can never drift (astra advisory).
+import { rm } from 'node:fs/promises';
 import type { SliceReport } from './acceptance.js';
 import { PROFILE_BOUNDARIES } from './boundaries.js';
+// @ts-expect-error the shared execution helper is JavaScript, outside pure core compilation.
+import { runSliceExecution, spawnBoot } from '../../scripts/slice-execution.mjs';
 
 export const SLICE_INPUT = JSON.stringify({ schemaVersion: 1, kind: 'message', text: 'Please classify and acknowledge this request.' });
 
 // The durable boundaries each profile reaches come from the ASSEMBLY, which is the
 // single source: `boundary()` refuses an undeclared name, and the control executions
 // below assert the converse. Nothing here restates a boundary name.
+export const FULL_BOUNDARIES: readonly string[] = PROFILE_BOUNDARIES['full']!;
 export const REPLY_BOUNDARIES: readonly string[] = PROFILE_BOUNDARIES['reply']!;
 export const JUDGMENT_BOUNDARIES: readonly string[] = PROFILE_BOUNDARIES['judgment']!;
 
@@ -22,43 +24,37 @@ export interface Execution {
   readonly neverReached: readonly string[]; readonly stderr: string;
 }
 
-const jsonl = (file: string): { boundary: string }[] =>
-  existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l) as { boundary: string }) : [];
+interface RawExecution {
+  home: string; boots: number; report: SliceReport;
+  firedCuts: string[]; neverReached: string[]; stderr: string;
+}
 
-/**
- * Runs one execution to completion, restarting after every SIGKILL cut.
- *
- * Each boot is a blocking `spawnSync`, so the loop yields between boots: that keeps a
- * long execution from starving the runner's task-update IPC on a slow machine.
- */
+/** Runs one execution to completion, restarting after every SIGKILL cut. */
 export async function runExecution(options: { profile?: string; adapter?: string; cuts?: readonly string[]; maxBoots?: number } = {}): Promise<Execution> {
-  const home = mkdtempSync(join(tmpdir(), 'p11-slice-'));
   const cuts = options.cuts ?? [];
-  const encoded = JSON.stringify({ profile: options.profile ?? 'reply', adapter: options.adapter ?? 'telegram-slice', cuts });
-  let boots = 0, report: SliceReport | undefined, stderr = '';
-  for (let attempt = 0; attempt < (options.maxBoots ?? 30); attempt++) {
-    if (attempt > 0) await new Promise<void>(done => setImmediate(done));
-    boots++;
-    const run = spawnSync(process.execPath, ['scripts/slice-worker.mjs', home, encoded],
-      { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    stderr = run.stderr ?? '';
-    if (run.status === 0) { report = JSON.parse(run.stdout.trim().split('\n').pop()!) as SliceReport; break; }
-    if (run.signal !== 'SIGKILL') throw new Error(`slice worker failed: status=${run.status} signal=${run.signal}\n${stderr}`);
-  }
-  if (!report) throw new Error(`slice execution never completed after ${boots} boots\n${stderr}`);
-  const fired = jsonl(join(home, 'cuts.jsonl')).map(row => row.boundary);
-  return { home, boots, report, firedCuts: fired, requestedCuts: cuts, stderr,
-    neverReached: cuts.filter(cut => !fired.includes(cut)) };
+  const run = await (runSliceExecution as (o: unknown) => Promise<RawExecution>)({
+    profile: options.profile ?? 'full', adapter: options.adapter ?? 'telegram-slice', cuts, maxBoots: options.maxBoots ?? 30 });
+  return { home: run.home, boots: run.boots, report: run.report, firedCuts: run.firedCuts,
+    requestedCuts: cuts, neverReached: run.neverReached, stderr: run.stderr };
 }
 
 /** An independent fresh-process rebuild of every projection from the durable facts. */
-export function rebuildInFreshProcess(home: string, profile = 'reply'): SliceReport['rebuilds'] {
-  const run = spawnSync(process.execPath, ['scripts/slice-rebuild.mjs', home, JSON.stringify({ profile })],
-    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+export async function rebuildInFreshProcess(home: string, profile = 'reply'): Promise<SliceReport['rebuilds']> {
+  const run = await (spawnBoot as (a: readonly string[]) => Promise<{ status: number | null; stdout: string; stderr: string }>)(
+    ['scripts/slice-rebuild.mjs', home, JSON.stringify({ profile })]);
   if (run.status !== 0) throw new Error(`rebuild process failed: ${run.stderr}`);
   return JSON.parse(run.stdout.trim().split('\n').pop()!) as SliceReport['rebuilds'];
 }
 
-export function discard(...homes: readonly string[]): void {
-  for (const home of homes) rmSync(home, { recursive: true, force: true });
+// ASYNC teardown: run the durable-home deletions on libuv's threadpool, awaited, so the
+// worker's event loop stays FREE during cleanup (a synchronous rmSync of many large home
+// trees at afterAll blocked the loop long enough to miss the file's final onTaskUpdate RPC
+// on a slow runner — REPAIR6). `force: true` already ignores a missing path, but a REAL
+// removal failure (EACCES/EPERM) is PROPAGATED after every deletion settles rather than
+// swallowed, so a teardown that leaves state behind fails loudly (astra D2). Homes are
+// de-duplicated so a repeated path is removed once.
+export async function discard(...homes: readonly string[]): Promise<void> {
+  const results = await Promise.allSettled([...new Set(homes)].map(home => rm(home, { recursive: true, force: true })));
+  const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (failures.length) throw new Error(`cleanup failed to remove ${failures.length} home(s): ${failures.map(f => String(f.reason)).join('; ')}`);
 }
