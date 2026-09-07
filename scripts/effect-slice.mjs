@@ -1,6 +1,6 @@
 import { join } from 'node:path';
-import { consumeResult, decode, decodeMeasurement, defineDecoder, deriveThrough } from '../dist/index.js';
-import { createFactStore, authorAndAppend } from '../dist/facts/index.js';
+import { canonical, consumeResult, decode, decodeMeasurement, defineDecoder, deriveThrough } from '../dist/index.js';
+import { createFactStore, authorAndAppend, hashBytes } from '../dist/facts/index.js';
 import { createTransportAuthority, createTransportSpine, transportSchemas, registerTransportBodies, decodeLoopPolicy } from '../dist/transport/index.js';
 import { createEffectDoorway, createEffectSpine, effectSchemas, registerEffectBodies, installOperationDefinition, decodeOutboundMessage } from '../dist/effects/index.js';
 import { createTransportFileStorage } from './transport-file-storage.mjs';
@@ -54,7 +54,32 @@ export function createEffectSlice(seed, directory, runtime) {
   const transport = createTransportAuthority(th, createTransportSpine(th, author, store), boundary);
   const spine = createEffectSpine(host, author, store);
   const adapter = runtime.adapter(result);
-  const api = createEffectDoorway({ host, spine, transport, durability: copies.durability, custody: custody.custody, adapter, assessment: null });
+  // Optional nine assessment STAND-IN (present only for the admitted-dispatch settlement
+  // path). It records a note and evidence keyed on the operation/state, exactly like the
+  // in-process fixture stand-in; production composition supplies nine's real port. Absent
+  // by default, so the existing recover-by-observe workers are unchanged (assessment: null).
+  let acceptanceId = '';
+  const assessmentView = (input, state, charge) => Object.freeze({
+    outcome: take(decode('Outcome', { type: 'Outcome', schemaVersion: 1, kind: state, evidence: [`assessment:${input.reservation.operation}:${state}`] }, c)),
+    finalCharge: charge, delayedExecutionExcluded: false, required: Object.freeze([acceptanceId]) });
+  const assessment = runtime.assessment ? {
+    owner: 'part-nine',
+    assess: input => result(() => {
+      acceptanceId ||= take(authorAndAppend({ kind: 'note', schemaVersion: 1, machine: seed.machine, principal,
+        provenance: principal.provenance, at: clock, body: { identity: 'nine assessment STAND-IN', amount: '0' }, required: [] }, context, store, seed.privateKey)).fact.id;
+      const state = runtime.assessment.state, evidenceId = `assessment:${input.reservation.operation}:${state}`;
+      // The decode context's captures are raw byte strings; add the evidence bytes so the
+      // Evidence decode (and settle's re-check) can verify the capture in this process.
+      const evidenceBytes = `evidence:${evidenceId}`, evidenceRef = `capture:${evidenceId}`;
+      c.captures[evidenceRef] = evidenceBytes;
+      if (!c.evidence.some(e => e.id === evidenceId)) c.evidence.push(take(decode('Evidence', { type: 'Evidence', schemaVersion: 1, id: evidenceId,
+        claim: { subject: input.reservation.operation, predicate: input.request.digest, value: state }, source: 'probe',
+        observedAt: clock, freshFor: 100, strength: 'observation', capture: { reference: evidenceRef, hash: hashBytes(evidenceBytes) } }, c)));
+      return { owner: 'part-nine', name: 'VerificationAssessment', id: acceptanceId }; }),
+    read: (_acceptance, input) => result(() => assessmentView(input, runtime.assessment.state, runtime.assessment.charge)),
+    consumeCurrent: (_a, input, consume) => result(() => consume(assessmentView(input, runtime.assessment.state, runtime.assessment.charge))),
+  } : null;
+  const api = createEffectDoorway({ host, spine, transport, durability: copies.durability, custody: custody.custody, adapter, assessment });
   const initialize = () => {
     const pending = take(authorAndAppend({ kind: 'note', schemaVersion: 1, machine: seed.machine, principal,
       provenance: principal.provenance, at: clock, body: { identity: 'five-owned pending/source STAND-IN', amount: '0' }, required: [] }, context, store, seed.privateKey)).fact;
@@ -71,5 +96,30 @@ export function createEffectSlice(seed, directory, runtime) {
       attempt: 'attempt:1', verificationOwner: 'reply-verifier', obligation, closure: [], fence }));
     return { request, fence };
   };
-  return { api, transport, store, peer, host, result, initialize };
+  // The admitted-dispatch seam: six reserves the operation EXTERNALLY (a caller's
+  // admission), then eight adopts it — recording its own EffectRequest without a second
+  // reservation. `dispatch`/`settle` then apply unchanged.
+  const initializeAdmitted = () => {
+    const pending = take(authorAndAppend({ kind: 'note', schemaVersion: 1, machine: seed.machine, principal,
+      provenance: principal.provenance, at: clock, body: { identity: 'five-owned pending/source STAND-IN', amount: '0' }, required: [] }, context, store, seed.privateKey)).fact;
+    if (pending.id !== seed.pendingId) throw new Error('pinned pending reference changed');
+    take(installOperationDefinition(seed.definition, host, spine));
+    const fence = take(transport.acquire('acquire', '', 500));
+    const run = { owner: 'part-five', name: 'Run', id: 'run:1' };
+    const policy = take(decodeLoopPolicy({ type: 'LoopPolicy', schemaVersion: 1, id: 'observation-policy', maxAttempts: 3,
+      minDelay: 10, maxDuration: 1000, timeout: 10, concurrency: 1, failDirection: 'closed', breaker: 'stub-closed' }, boundary));
+    take(transport.schedule('schedule', fence, run, policy));
+    const obligation = take(transport.inspect()).at(-1).fact.id;
+    const message = take(decodeOutboundMessage(seed.message, host));
+    const requestId = `request:${take(canonical([message.account, message.conversation, message.semanticMessage])).hash}`;
+    // The CALLER's external admission (six reserves at seven's request in production).
+    take(transport.reserve({ command: 'external-admit', fence,
+      request: { owner: 'part-eight', name: 'EffectRequest', id: requestId }, attempt: 'attempt:1',
+      payloadDigest: take(canonical(message)).hash, charge: seed.definition.maxCharge, run,
+      semanticMessage: message.semanticMessage, durability: seed.definition.durability, replicas: seed.definition.replicas }));
+    const request = take(api.adopt({ definition: seed.definition.id, message, run, pending: pending.id,
+      attempt: 'attempt:1', verificationOwner: 'reply-verifier', obligation, closure: [] }));
+    return { request, fence };
+  };
+  return { api, transport, store, peer, host, result, initialize, initializeAdmitted };
 }

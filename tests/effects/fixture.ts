@@ -109,8 +109,19 @@ export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), in
     text: 'Here is the requested result.', purpose: 'ordinary-reply', sourceResult: pending.id }, host));
   const prepare = () => value(api.prepare({ definition: d.id, message, run, pending: pending.id,
     attempt: 'attempt:1', verificationOwner: 'reply-verifier', obligation, closure: [], fence }));
+  // The EXTERNAL admission: six reserves the operation directly, at a caller's request,
+  // using eight's derived request id (docs/11 step 5). `adopt` records eight's request
+  // against it without a second reservation; `dispatch`/`settle` then apply unchanged.
+  const requestId = `request:${value(canonical([message.account, message.conversation, message.semanticMessage])).hash}`;
+  const messageDigest = value(canonical(message)).hash;
+  const externalAdmission = (overrides: Record<string, unknown> = {}) => value(transport.reserve({ command: 'external-admit', fence,
+    request: { owner: 'part-eight', name: 'EffectRequest', id: requestId }, attempt: 'attempt:1', payloadDigest: messageDigest,
+    charge: definition.maxCharge, run, semanticMessage: message.semanticMessage,
+    durability: definition.durability as 'local-durable' | 'replicated', replicas: definition.replicas as number, ...overrides }));
+  const adopt = () => value(api.adopt({ definition: d.id, message, run, pending: pending.id,
+    attempt: 'attempt:1', verificationOwner: 'reply-verifier', obligation, closure: [] }));
   return { ...f, directory, host, ctx, store, peer, spine, transport, replicas, api, composition, note,
-    d, definition, message, pending, run, obligation, fence, prepare,
+    d, definition, message, pending, run, obligation, fence, prepare, requestId, messageDigest, externalAdmission, adopt,
     calls: () => calls, queries: () => queries, onInvoke: (fn: () => void) => { invoke = fn; },
     stop: () => { stopped = true; }, time: (v: number) => { now = v; },
     assess: (state: typeof assessmentState, charge: number | null, excluded = false) => {

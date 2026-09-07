@@ -89,6 +89,15 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
   };
   const priorObservation = (op: string) => rows(snapshot()).filter(v => v.record.type === 'OperationObservation'
     && v.record.operation === op).at(-1)?.record as OperationObservation | undefined;
+  // The complete admission-to-definition-and-request equality adoption requires: the
+  // exact seven fields prepare would have reserved with. Enforced at BOTH adoption
+  // (before any persist) and dispatch/handoff (the unavoidable invocation boundary),
+  // so a mismatched or unadopted admission can never authorize a call even if a
+  // request was left persisted by an earlier refused or partial adoption.
+  const admissionMatches = (r: AdmissionReservation, q: { digest: string; attempt: string; run: string; semanticMessage: string }, d: OperationDefinition): boolean =>
+    r.digest === q.digest && r.attempt === q.attempt && r.charge === d.maxCharge
+    && r.run === q.run && r.semanticMessage === q.semanticMessage
+    && r.durability === d.durability && r.replicas === d.replicas;
   // Synchronous consume-before-call excludes on-stack reentry. P6's live capability
   // additionally excludes another instance and any reconstructed/restarted handle.
   const active = new Set<string>();
@@ -117,9 +126,50 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
         durability: d.record.durability, replicas: d.record.replicas }));
       return q;
     }),
+    // Dispatch-against-provided-admission: an operation six ADMITTED AND RESERVED at a
+    // caller's request (docs/11 step 5). Eight records its own EffectRequest for that
+    // admission — so `settle`'s find(reservation.request, 'EffectRequest') resolves —
+    // but NEVER mints a second six reservation: the reserve() call above is replaced by
+    // verifying the caller's admission exists and is exactly the one it shows. Every
+    // other rule (validation, durability demand, actual re-check) is prepare's, so the
+    // reused `dispatch`/`handoff`/`settle` path is byte-identical.
+    adopt: input => checked('EffectAdopt', input, () => {
+      live(host); ensure(input.run.owner === 'part-five' && input.run.name === 'Run' && input.run.id === input.message.run, 'run owner mismatch');
+      const d = find(input.definition, 'OperationDefinition'); definitionCheck(d.record, host);
+      // Validate the CALLER's admission BEFORE persisting anything, so a refused
+      // adoption leaves no dispatchable EffectRequest behind (R1). The request identity
+      // and digest derive from the caller's message alone; no persist is needed to match.
+      const requestId = `request:${encoded([input.message.account, input.message.conversation, input.message.semanticMessage]).hash}`;
+      // A repeated adoption of an admission eight already recorded its request for
+      // refuses by name (R2); a replacement process recovers by dispatching the
+      // persisted request directly, never by re-adopting.
+      ensure(!rows(snapshot()).some(v => v.record.type === 'EffectRequest' && v.record.id === requestId), 'admission already adopted');
+      const admission = take(transport.inspect()).filter(a => a.record.type === 'AdmissionReservation' && a.record.request === requestId).at(-1);
+      ensure(admission?.record.type === 'AdmissionReservation', 'no external admission exists for this request');
+      const shown = { digest: encoded(input.message).hash, attempt: input.attempt, run: input.message.run, semanticMessage: input.message.semanticMessage };
+      ensure(admissionMatches(admission.record, shown, d.record), 'external admission does not match the caller-shown dispatch');
+      // Match confirmed. NOW record eight's own EffectRequest against the caller's
+      // admission — never a second six reservation. dispatch/handoff/settle apply unchanged.
+      const m = persist(input.message, [input.message.sourceResult]);
+      const closure = [...new Set([...input.closure, input.pending, input.obligation, d.fact.id,
+        find(m.id, 'OutboundMessage').fact.id, ...host.current().authority])];
+      const q = persist({ type: 'EffectRequest', schemaVersion: 1,
+        id: requestId, definition: d.record.id,
+        message: m.id, semanticMessage: m.semanticMessage, run: m.run, pending: input.pending, attempt: input.attempt,
+        digest: encoded(m).hash, verificationOwner: input.verificationOwner, verificationBar: d.record.verificationBar,
+        obligation: input.obligation, closure } as unknown as EffectRequest, closure);
+      const v = validation(q, 'reservation');
+      demand(d.record, factsFor([...q.closure, find(q.id, 'EffectRequest').fact.id, find(v.id, 'EffectValidation').fact.id]));
+      actual(q);
+      return q;
+    }),
     dispatch: (q, fence) => checked('EffectDispatch', q.id, () => {
       const prior = take(transport.inspect()).filter(v => v.record.type === 'AdmissionReservation' && v.record.request === q.id).at(-1);
       ensure(prior?.record.type === 'AdmissionReservation', 'request is not reserved');
+      // The reservation must COMPLETELY match the dispatched request's definition and
+      // identity — the same equality adoption required. A mismatched or unadopted
+      // admission (e.g. one left dispatchable by a refused adoption) can never dispatch.
+      ensure(admissionMatches(prior.record, q, find(q.definition, 'OperationDefinition').record), 'reservation does not match the dispatched request');
       if (prior.record.state !== 'prepared') {
         const observation = priorObservation(prior.record.operation);
         ensure(observation, 'claimed operation is uncertain; observe only'); return observation;
@@ -135,6 +185,10 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       ensure(op.reservation.request === q.id && supplied.operation === op.reservation.operation
         && supplied.digest === q.digest && claim.digest === q.digest && claim.attempt === q.attempt
         && claim.executor === host.incarnation, 'claim request or incarnation mismatch');
+      // The unavoidable invocation boundary: the reservation must completely match the
+      // request's definition and identity before any adapter call, so a mismatched or
+      // unadopted admission can never authorize an invocation even by a direct handoff.
+      ensure(admissionMatches(op.reservation, q, d.record), 'reservation does not match the dispatched request');
       const v = rows(snapshot()).filter(v => v.record.type === 'EffectValidation' && v.record.request === q.id && v.record.phase === 'dispatch').at(-1);
       ensure(v?.record.type === 'EffectValidation' && v.record.expires > host.current().clock.value
         && encoded(v.record.authority).bytes === encoded(host.current().authority).bytes, 'current dispatch validation required');
