@@ -44,6 +44,25 @@ const classes: readonly string[] = ['additive', 'set-union', 'max', 'min', 'excl
 function exact(v: Json | undefined): bigint {
   requireFact(typeof v === 'string' && /^-?(0|[1-9][0-9]*)$/.test(v), 'quantity must use exact integer minor units'); return BigInt(v);
 }
+// A bounded, data-only path selector for a fold decision's identity/value. Dot-separated
+// static segments only (no wildcards, indices, callbacks, or dynamic evaluation), bounded
+// to a small fixed depth. A single segment is the degenerate top-level field and resolves
+// byte-identically to body[selector]. Each descent step must land on a plain object; a
+// path resolving to a missing or wrong-typed value is the same poison-fact refusal as a
+// missing top-level field — the caller's requireFact on the resolved value carries it.
+const MAX_PATH_DEPTH = 3;
+function validSelector(selector: string): boolean {
+  const segments = selector.split('.');
+  return segments.length >= 1 && segments.length <= MAX_PATH_DEPTH && segments.every(s => s.length > 0);
+}
+function resolveField(body: Record<string, Json>, selector: string): Json | undefined {
+  let cursor: Json | undefined = body;
+  for (const segment of selector.split('.')) {
+    if (cursor === null || typeof cursor !== 'object' || Array.isArray(cursor)) return undefined;
+    cursor = (cursor as Record<string, Json>)[segment];
+  }
+  return cursor;
+}
 function validate(def: ProjectionDefinition, generation: ProjectionGeneration): void {
   // canonical rejects functions/accessors anywhere in definition before the fold starts.
   encoding(def); encoding(generation);
@@ -56,6 +75,7 @@ function validate(def: ProjectionDefinition, generation: ProjectionGeneration): 
     else {
       requireFact(d.kind === 'folds' && classes.includes(d.merge), 'missing merge class');
       requireFact(d.identity.length > 0 && d.value.length > 0, 'fold must declare field access');
+      requireFact(validSelector(d.identity) && validSelector(d.value), 'fold path must be 1 to 3 non-empty static segments');
       if (d.merge === 'cap-checked aggregate') exact(d.cap);
     }
   }
@@ -120,9 +140,9 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
       const decision = def.decisions[fact.kind]; requireFact(decision, 'projection received undeclared kind');
       if (decision.kind === 'ignores' || excluded.has(fact.id) || isRetracted(fact.id)) continue;
       try {
-        const body = object(dedup.get(fact.id)!.body), identity = body[decision.identity];
-        requireFact(typeof identity === 'string' && identity.length > 0 && body[decision.value] !== undefined, 'poison fact: missing fold field');
-        if (['additive', 'max', 'min', 'cap-checked aggregate'].includes(decision.merge)) exact(body[decision.value]);
+        const body = object(dedup.get(fact.id)!.body), identity = resolveField(body, decision.identity), value = resolveField(body, decision.value);
+        requireFact(typeof identity === 'string' && identity.length > 0 && value !== undefined, 'poison fact: missing fold field');
+        if (['additive', 'max', 'min', 'cap-checked aggregate'].includes(decision.merge)) exact(value);
         const key = `${fact.kind}:${identity}`;
         const group = groups.get(key) ?? { decision, rows: [] }; group.rows.push(fact); groups.set(key, group);
       } catch (error) {
@@ -132,12 +152,12 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
     const values: Record<string, Json> = {};
     for (const [key, group] of [...groups].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
       const d = group.decision, members = group.rows;
-      const data = members.map(f => object(dedup.get(f.id)!.body)[d.value]!);
+      const data = members.map(f => resolveField(object(dedup.get(f.id)!.body), d.value)!);
       if (d.merge === 'exclusive-singleton') {
         const heads = members.filter(a => !members.some(b => a.id !== b.id && causalCone(b, facts).some(f => f.id === a.id)));
         if (heads.some((a, i) => heads.slice(i + 1).some(b => concurrent(a, b, facts)))) {
           conflicts.push({ key: `exclusive:${key}`, kind: 'immutable-disagreement', facts: heads.map(f => f.id).sort(), detail: 'concurrent singleton writers; no presentation winner' }); taint.add('contested');
-        } else if (heads[0]) values[key] = object(dedup.get(heads[0].id)!.body)[d.value]!;
+        } else if (heads[0]) values[key] = resolveField(object(dedup.get(heads[0].id)!.body), d.value)!;
       } else if (d.merge === 'set-union') values[key] = [...new Map(data.map(v => [encoding(v).bytes, v])).entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, v]) => v);
       else {
         const numbers = data.map(exact);
@@ -260,8 +280,9 @@ export function rebuildProjection(def: ProjectionDefinition, snapshot: FactSnaps
     let fallback = false;
     for (const row of suffix) {
       const d = def.decisions[row.fact.kind]; requireFact(d, 'undeclared resume kind'); if (d.kind === 'ignores') continue;
-      const b = object(row.body), identity = b[d.identity]; requireFact(typeof identity === 'string' && b[d.value] !== undefined, 'resume poison field');
-      const key = `${row.fact.kind}:${identity}`, old = values[key], value = b[d.value]!;
+      const b = object(row.body), identity = resolveField(b, d.identity), resolved = resolveField(b, d.value);
+      requireFact(typeof identity === 'string' && resolved !== undefined, 'resume poison field');
+      const key = `${row.fact.kind}:${identity}`, old = values[key], value = resolved;
       if (d.merge === 'set-union') values[key] = [...new Map([...(Array.isArray(old) ? old : []), value].map(v => [encoding(v).bytes, v])).entries()].sort(([a], [b]) => a < b ? -1 : 1).map(([, v]) => v);
       else if (d.merge === 'exclusive-singleton') { fallback = true; break; }
       else {
