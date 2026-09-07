@@ -74,19 +74,20 @@ function resolveField(body: Record<string, Json>, selector: string): Json | unde
   }
   return cursor;
 }
-// Validate against, and RETURN, an inert canonical SNAPSHOT of the definition — never the
-// caller's live object. Canonical encoding rejects functions/accessors and captures the
-// declared data representation once; parsing it back yields plain primitives, so a Proxy
-// on `decisions` cannot present one selector to validation and a different one to the fold.
-// The same snapshot is threaded through folding, resume, and the produced view's definition;
-// the caller object is never read again after this canonical capture.
-function validate(def: ProjectionDefinition, generation: ProjectionGeneration): ProjectionDefinition {
-  encoding(generation);
+// Validate against, and RETURN, inert canonical SNAPSHOTS of BOTH fold inputs — never the
+// caller's live objects. Canonical encoding rejects functions/accessors and captures each
+// declared data representation once; parsing it back yields plain primitives, so a Proxy on
+// `decisions` (one selector to validation, another to the fold) or on `generation` (kinds/
+// lineages/reference drifting between the length check, the validation loop, and the fold)
+// cannot make validation and folding disagree. Both snapshots are threaded through folding,
+// resume, and the produced view; neither caller object is read again after this capture.
+function validate(def: ProjectionDefinition, generation: ProjectionGeneration): { definition: ProjectionDefinition; generation: ProjectionGeneration } {
   const definition = frozen(JSON.parse(encoding(def).bytes) as ProjectionDefinition);
-  requireFact(generation.reference.owner === 'part-three' && generation.reference.name === 'RegisterGeneration', 'register generation must come from part three');
+  const gen = frozen(JSON.parse(encoding(generation).bytes) as ProjectionGeneration);
+  requireFact(gen.reference.owner === 'part-three' && gen.reference.name === 'RegisterGeneration', 'register generation must come from part three');
   requireFact(definition.id.length > 0 && Number.isFinite(definition.stalenessBound) && definition.stalenessBound > 0 && definition.retention === 'all-identities', 'projection needs identity, bound, and retention declaration');
-  requireFact(Object.keys(definition.decisions).length === generation.kinds.length, 'undeclared input or absent folds/ignores decision');
-  for (const kind of generation.kinds) {
+  requireFact(Object.keys(definition.decisions).length === gen.kinds.length, 'undeclared input or absent folds/ignores decision');
+  for (const kind of gen.kinds) {
     const d = definition.decisions[kind]; requireFact(d, `missing input decision: ${kind}`);
     if (d.kind === 'ignores') requireFact(d.reason.trim().length > 0, 'ignore requires reason');
     else {
@@ -99,7 +100,7 @@ function validate(def: ProjectionDefinition, generation: ProjectionGeneration): 
       if (d.merge === 'cap-checked aggregate') exact(d.cap);
     }
   }
-  return definition;
+  return { definition, generation: gen };
 }
 function concurrent(a: FactEnvelope, b: FactEnvelope, facts: readonly FactEnvelope[]): boolean {
   return !causalCone(a, facts).some(f => f.id === b.id) && !causalCone(b, facts).some(f => f.id === a.id);
@@ -108,7 +109,7 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
   return boundary('ProjectionFold', null, context, () => {
     requireFact(snapshotCurrent(input), 'fold requires current admitted status snapshot', 'integrity');
     const inputs = input.entries;
-    const definition = validate(def, generation);
+    const { definition, generation: gen } = validate(def, generation);
     const dedup = new Map<string, FactStatus>();
     const conflicts: ConflictClass[] = [], taint = new Set<AuthorityTaint>();
     for (const input of inputs) {
@@ -133,7 +134,7 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
     }
     for (const fact of facts) causalCone(fact, facts);
     for (const fact of facts) {
-      requireFact(Object.hasOwn(generation.lineages, fact.machine), 'fact from unknown lineage');
+      requireFact(Object.hasOwn(gen.lineages, fact.machine), 'fact from unknown lineage');
       const prev = foldedThrough[fact.machine]; if (!prev || comparePosition(fact.segment, prev) > 0) foldedThrough[fact.machine] = { epoch: fact.segment.epoch, position: fact.segment.position };
     }
     const byId = new Map(facts.map(f => [f.id, f]));
@@ -191,9 +192,9 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
     }
     // A dangling correction is not an ordinary occurrence.
     for (const fact of facts) { const target = object(fact.body).corrects; if (typeof target === 'string') requireFact(byId.has(target), 'correction target missing'); }
-    const view = { projection: definition.id, generation: generation.reference.id, policy: { class: definition.class, stalenessBound: definition.stalenessBound }, values,
+    const view = { projection: definition.id, generation: gen.reference.id, policy: { class: definition.class, stalenessBound: definition.stalenessBound }, values,
       conflicts: [...new Map(conflicts.map(c => [c.key, c])).values()].sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0), taint: [...taint].sort(), foldedThrough,
-      knownLineages: generation.lineages, retractions: retractions.map(f => f.id).sort(), corrections: corrections.sort((a, b) => a.original < b.original ? -1 : 1) } as unknown as ProjectedView;
+      knownLineages: gen.lineages, retractions: retractions.map(f => f.id).sort(), corrections: corrections.sort((a, b) => a.original < b.original ? -1 : 1) } as unknown as ProjectedView;
     producedViews.add(view); sources.set(view, input); definitions.set(view, definition); return view;
   });
 }
@@ -267,11 +268,11 @@ export function rebuildProjection(def: ProjectionDefinition, snapshot: FactSnaps
   checkpoints: readonly Checkpoint[] = [], budget = Number.MAX_SAFE_INTEGER): Result<RebuildReceipt> {
   return boundary('BoundedProjectionRebuild', null, context, () => {
     requireFact(snapshotCurrent(snapshot), 'rebuild requires admitted snapshot');
-    const definition = validate(def, generation);
+    const { definition, generation: gen } = validate(def, generation);
     const entries = [...new Map(snapshot.entries.map(e => [e.fact.id, e])).values()];
     const ordered = [...entries].sort((a, b) => foldKey(a.fact) < foldKey(b.fact) ? -1 : 1);
     const candidates = checkpoints.filter(cp => producedViews.has(cp.view) && encoding(cp.view).hash === cp.hash
-      && encoding(definitions.get(cp.view)).bytes === encoding(definition).bytes && cp.view.generation === generation.reference.id)
+      && encoding(definitions.get(cp.view)).bytes === encoding(definition).bytes && cp.view.generation === gen.reference.id)
       .map(cp => ({ cp, prefix: restoredPrefixes.get(cp.view) ?? sources.get(cp.view)!.entries }))
       .filter(({ cp, prefix }) => cp.view.conflicts.length === 0 && cp.view.taint.length === 0 && prefix.every(p => entries.some(e => e.fact.id === p.fact.id && encoding(e).hash === encoding(p).hash)))
       .filter(({ prefix }) => {
@@ -282,11 +283,11 @@ export function rebuildProjection(def: ProjectionDefinition, snapshot: FactSnaps
     const chosen = candidates[0];
     const ids = new Set(chosen?.prefix.map(e => e.fact.id) ?? []), suffix = ordered.filter(e => !ids.has(e.fact.id));
     requireFact(suffix.length <= budget, 'rebuild budget exhausted', 'budget-exhausted');
-    if (!chosen) return { view: take(foldProjection(definition, snapshot, generation, context)), folded: entries.length, resumedFrom: null };
+    if (!chosen) return { view: take(foldProjection(definition, snapshot, gen, context)), folded: entries.length, resumedFrom: null };
     // Completeness remains mandatory on resume; a certified prefix replaces folding,
     // never the causal/vector proof. Any non-incremental repair uses an earlier checkpoint.
     const facts = entries.map(e => e.fact);
-    for (const f of facts) { requireFact(Object.hasOwn(generation.lineages, f.machine), 'fact from unknown lineage'); causalCone(f, facts); }
+    for (const f of facts) { requireFact(Object.hasOwn(gen.lineages, f.machine), 'fact from unknown lineage'); causalCone(f, facts); }
     for (const machine of new Set(facts.map(f => f.machine))) {
       const line = facts.filter(f => f.machine === machine).sort((a, b) => comparePosition(a.segment, b.segment));
       requireFact(line[0]!.segment.epoch === 0 && line[0]!.segment.position === 0, 'incomplete resume prefix');
@@ -320,10 +321,10 @@ export function rebuildProjection(def: ProjectionDefinition, snapshot: FactSnaps
         if (d.merge === 'cap-checked aggregate' && exact(values[key]) > exact(d.cap)) { fallback = true; break; }
       }
     }
-    if (fallback) { requireFact(entries.length <= budget, 'rebuild budget exhausted', 'budget-exhausted'); return { view: take(foldProjection(definition, snapshot, generation, context)), folded: entries.length, resumedFrom: null }; }
+    if (fallback) { requireFact(entries.length <= budget, 'rebuild budget exhausted', 'budget-exhausted'); return { view: take(foldProjection(definition, snapshot, gen, context)), folded: entries.length, resumedFrom: null }; }
     const vector: Record<string, LineagePosition> = {};
     for (const e of entries) { const prev = vector[e.fact.machine]; if (!prev || comparePosition(prev, e.fact.segment) < 0) vector[e.fact.machine] = { epoch: e.fact.segment.epoch, position: e.fact.segment.position }; }
-    const view = { ...chosen.cp.view, values, conflicts, foldedThrough: vector, knownLineages: generation.lineages } as unknown as ProjectedView;
+    const view = { ...chosen.cp.view, values, conflicts, foldedThrough: vector, knownLineages: gen.lineages } as unknown as ProjectedView;
     producedViews.add(view); sources.set(view, snapshot); definitions.set(view, definition);
     return { view, folded: suffix.length, resumedFrom: chosen.cp.vector };
   });

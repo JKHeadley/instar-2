@@ -265,3 +265,45 @@ it('P2-NF-48 P2-NF-58 the shared resume path also quarantines a top-level single
   expect(resumed.view.conflicts[0]?.kind).toBe('poison-fact');
   expect(value(verifyRebuild(checkpoint(genesis), checkpoint(resumed.view), f.c))).toBe('equal');
 });
+
+// --- REPAIR3 (Claude desk R1"): `generation` is snapshotted like the definition, so a
+// Proxy on it cannot skip decision validation or drift the staleness inputs / generation id. ---
+it('P2-NF-49 P2-NF-74 a generation Proxy that empties kinds after validation cannot skip decision validation', () => {
+  const f = pathFixture();
+  const a = f.rec({ operation: 'one', amount: '20' });
+  const plainGen = f.gen({ 'machine-a': a });
+  const bogus = f.def({ kind: 'folds', identity: 'record.operation', value: 'record.amount', merge: 'bogus-class' });
+  // A plain generation already refuses the illegal merge class...
+  refused(foldProjection(bogus, f.snapshot([a]), plainGen, f.c), 'merge class');
+  // ...and a kinds-drift that empties the validation loop after the length check cannot
+  // sneak it through: validation reads the canonical snapshot, and the caller's kinds is
+  // never read after the canonical capture (the trap never executes).
+  let gets = 0;
+  const driftGen = new Proxy(plainGen, { get(t, k, r) { if (k === 'kinds') { gets++; return gets > 1 ? [] : ['owner-record']; } return Reflect.get(t, k, r); } }) as unknown as ProjectionGeneration;
+  refused(foldProjection(bogus, f.snapshot([a]), driftGen, f.c), 'merge class');
+  expect(gets).toBe(0);
+});
+
+it('P2-NF-49 P2-NF-54 P2-NF-58 a generation Proxy drifting lineages or reference cannot change the produced view', () => {
+  const f = pathFixture();
+  const a = f.rec({ operation: 'one', amount: '20' });
+  const plainGen = f.gen({ 'machine-a': a });
+  const good = f.def({ kind: 'folds', identity: 'record.operation', value: 'record.amount', merge: 'additive' });
+  const plain = value(foldProjection(good, f.snapshot([a]), plainGen, f.c));
+  // lineages drift to a fresh-looking observedAt: the view carries the canonical observedAt,
+  // is byte-equal to the plain-generation fold, and the trap never executes.
+  let lineageGets = 0;
+  const fresh = { 'machine-a': { head: point(a), observedAt: 1000000, closed: false } };
+  const genL = new Proxy(plainGen, { get(t, k, r) { if (k === 'lineages') { lineageGets++; return lineageGets > 1 ? fresh : Reflect.get(t, k, r); } return Reflect.get(t, k, r); } }) as unknown as ProjectionGeneration;
+  const drifted = value(foldProjection(good, f.snapshot([a]), genL, f.c));
+  expect(lineageGets).toBe(0);
+  expect(drifted.knownLineages['machine-a']!.observedAt).toBe(100);
+  expect(value(verifyRebuild(checkpoint(plain), checkpoint(drifted), f.c))).toBe('equal');
+  // reference drift: the view's generation id is the canonical one, not the drifted value.
+  let refGets = 0;
+  const genR = new Proxy(plainGen, { get(t, k, r) { if (k === 'reference') { refGets++; return refGets > 1 ? { ...(Reflect.get(t, k, r) as object), id: 'generation:other' } : Reflect.get(t, k, r); } return Reflect.get(t, k, r); } }) as unknown as ProjectionGeneration;
+  const vr = value(foldProjection(good, f.snapshot([a]), genR, f.c));
+  expect(refGets).toBe(0);
+  expect(vr.generation).toBe(plainGen.reference.id);
+  expect(value(verifyRebuild(checkpoint(plain), checkpoint(vr), f.c))).toBe('equal');
+});
