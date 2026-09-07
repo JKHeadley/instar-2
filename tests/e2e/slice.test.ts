@@ -206,15 +206,17 @@ it('P11-NF-43 P11-NF-46 P11-NF-48 the single-chain profile runs section 7 in ONE
   // durable run is opened, one bounded model judgment is made through the doorway,
   // and the reply is rendered FROM that recorded resolution.
   expect(full.report.intake?.boundOperator).toBe(true);
+  expect(full.report.grounding).toBe('grounded');
+  expect(full.report.obligations.some(o => o.operation.startsWith('grounding:'))).toBe(false);
   expect(full.report.judgment.disposition).toBe('decided');
   expect(full.report.reply?.basis).toBe('judgment-resolution');
-  // Then the resolution step runs, and refuses. Both owned obligations retain their
-  // exposure, and no external application happened.
+  // Then the resolution step runs, and refuses. The genuine unresolved obligations
+  // retain their exposure, and no external application happened.
   expect(full.report.steps.find(s => s.step === 'resolve')?.state).toBe('refused');
   const model = full.report.sixOperations.find(o => o.role === 'model-judgment')!;
   expect(model.resolved).toBe(false);
   expect(full.report.obligations.filter(o => o.state.startsWith('owned-')).map(o => Number(o.exposure)))
-    .toEqual([0, 20, 20, 20]);
+    .toEqual([20, 20, 20]);
   expect(full.report.externalApplications).toEqual([]);
   expect(full.report.rebuilds.map(r => r.equal)).toEqual(Array(6).fill('equal'));
 }, 180000);
