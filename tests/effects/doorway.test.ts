@@ -1,7 +1,8 @@
 import { afterEach, expect, it } from 'vitest';
 import { consumeOutcome } from '../../src/index.js';
-import { createEffectDoorway, decodeOutboundMessage } from '../../src/effects/index.js';
+import { consumeEffectSettlement, createEffectDoorway, decodeOutboundMessage } from '../../src/effects/index.js';
 import { effectFixture, value, refused } from './fixture.js';
+import type { AdmissionReservation } from '../../src/transport/index.js';
 
 // Real fsync/signature/rebuild scenarios, not the operation's logical deadline.
 // CI measured 5.6–10.7 seconds for these complete multi-stage fixtures. Allow
@@ -80,3 +81,121 @@ it('P8-NF-46 exact zero byte and charge bounds cannot become defaults', () => {
   const f = effectFixture(undefined, 'executor:1', { maxCharge: 0 });
   expect(() => f.prepare()).toThrow('adapter mode'); expect(f.calls()).toBe(0);
 });
+
+// --- Dispatch-against-provided-admission (the new eight seam) ---
+// An operation ADMITTED AND RESERVED EXTERNALLY (by six, at a caller's request) is
+// dispatched through eight's boundary and settled through eight's evidence-checked path,
+// producing the authentic EffectSettlement six's settle() consumes. Every settlement,
+// durability, custody and once-only rule is prepare's, reused byte-identically.
+const adoptInput = (f: ReturnType<typeof effectFixture>, over: Record<string, unknown> = {}) => ({ definition: f.d.id,
+  message: f.message, run: f.run, pending: f.pending.id, attempt: 'attempt:1',
+  verificationOwner: 'reply-verifier', obligation: f.obligation, closure: [], ...over });
+const admissions = (f: ReturnType<typeof effectFixture>): AdmissionReservation[] => value(f.transport.inspect()).filter(v => v.record.type === 'AdmissionReservation').map(v => v.record as AdmissionReservation);
+const distinctOps = (f: ReturnType<typeof effectFixture>): number => new Set(admissions(f).map(r => r.operation)).size;
+
+it('P8-NF-13 P8-NF-14 P8-NF-21 P8-NF-24 an externally admitted operation is dispatched and settled without a second six reservation', () => {
+  const f = effectFixture();
+  f.externalAdmission();
+  expect(admissions(f)).toHaveLength(1);
+  expect(admissions(f)[0]!.state).toBe('prepared');
+  const q = f.adopt();
+  expect(q.id).toBe(f.requestId); expect(q.digest).toBe(f.messageDigest);
+  // adopt recorded eight's EffectRequest against the caller's admission and minted NO
+  // second six reservation — still exactly one, the caller's.
+  expect(admissions(f)).toHaveLength(1);
+  expect(value(f.api.inspect()).some(v => v.record.type === 'EffectRequest' && v.record.id === q.id)).toBe(true);
+  // Dispatch against the caller's admission invokes the adapter exactly once.
+  const o = value(f.api.dispatch(q, f.fence)); expect(f.calls()).toBe(1); expect(o.stage).toBe('response');
+  // Six's state transitions are separate append-only facts; there is still exactly ONE
+  // operation (the caller's), now consumed — no second reservation was ever minted.
+  expect(distinctOps(f)).toBe(1); expect(admissions(f).at(-1)!.state).toBe('consumed');
+  // Settle through eight's existing evidence-checked path produces the authentic settlement.
+  f.assess('happened', 3);
+  const settlement = value(f.api.settle(o.operation));
+  expect([settlement.operation, settlement.finalCharge, settlement.retryEligible]).toEqual([o.operation, 3, false]);
+  // It is a genuine, LIVE eight issuance six's consumer accepts...
+  expect(value(consumeEffectSettlement(settlement, f.host.boundary, s => s.id))).toBe(settlement.id);
+  // ...and a copied JSON of it is refused as non-live, unchanged from the existing path.
+  refused(consumeEffectSettlement(JSON.parse(JSON.stringify(settlement)), f.host.boundary, s => s), 'live');
+}, 30000);
+
+it('P8-NF-13 P8-NF-14 the admitted-dispatch seam refuses by name a missing or non-matching admission', () => {
+  // No external admission exists at all.
+  const a = effectFixture();
+  refused(a.api.adopt(adoptInput(a)), 'no external admission');
+  // An admission whose charge is not the caller-shown definition charge.
+  const b = effectFixture(); b.externalAdmission({ charge: 7 });
+  refused(b.api.adopt(adoptInput(b)), 'does not match the caller-shown');
+  // An admission whose payload digest is not the message digest.
+  const c = effectFixture(); c.externalAdmission({ payloadDigest: `sha256:${'e'.repeat(64)}` });
+  refused(c.api.adopt(adoptInput(c)), 'does not match the caller-shown');
+  // A caller whose run disagrees with its own message is caught up front.
+  const e = effectFixture(); e.externalAdmission();
+  refused(e.api.adopt(adoptInput(e, { run: { ...e.run, id: 'run:other' } })), 'run owner mismatch');
+  // A caller whose message+run are self-consistent (run:other) but disagree with the
+  // admission's run (run:1) is refused at the admission comparison — before any persist —
+  // by name. (The request id omits the run, so the admission is still found by id.)
+  const g = effectFixture(); g.externalAdmission();
+  const otherRun = value(decodeOutboundMessage({ ...g.message, run: 'run:other' }, g.host));
+  refused(g.api.adopt(adoptInput(g, { message: otherRun, run: { ...g.run, id: 'run:other' } })), 'does not match the caller-shown');
+  expect(value(g.api.inspect()).some(v => v.record.type === 'EffectRequest')).toBe(false);
+}, 30000);
+
+it('P8-NF-14 P8-NF-21 P8-NF-24 a settlement for an undispatched admission refuses, and a second dispatch adds no effect', () => {
+  const f = effectFixture(); f.externalAdmission(); const q = f.adopt();
+  f.assess('happened', 3);
+  // Undispatched: the admission exists and is adopted, but eight never claimed it.
+  refused(f.api.settle(admissions(f).at(-1)!.operation), 'no claim');
+  const o = value(f.api.dispatch(q, f.fence)); expect(f.calls()).toBe(1);
+  // A second dispatch of the same admission re-derives the same observation and never
+  // invokes the adapter again — no second effect, no second reservation.
+  expect(value(f.api.dispatch(q, f.fence)).id).toBe(o.id); expect(f.calls()).toBe(1);
+  expect(distinctOps(f)).toBe(1);
+}, 30000);
+
+it('P8-NF-25 P8-NF-26 the durability demand applies equally to the adopted-dispatch path', () => {
+  const f = effectFixture(); f.externalAdmission();
+  // The peer is lost AFTER the admission. adopt demands the same replicated durability
+  // prepare does; an unmet peer refuses BEFORE any dispatch, exactly as prepare's path.
+  f.replicas.enable(false);
+  expect(() => f.adopt()).toThrow('replicated demand');
+  expect(f.calls()).toBe(0);
+}, 30000);
+
+// --- REPAIR1: no dispatchable state survives a refused adoption (astra R1) ---
+// A mismatched admission is validated BEFORE eight persists any EffectRequest, and the
+// dispatch/handoff boundary independently enforces the complete admission-equality, so a
+// mismatched or unadopted admission can never authorize an invocation by either route.
+it('P8-NF-13 P8-NF-14 P8-NF-24 a refused adoption leaves no dispatchable request and dispatch refuses a mismatched admission', () => {
+  // Astra's exact laundering shape: reserve charge 0 against a definition requiring 20.
+  const f = effectFixture();
+  f.externalAdmission({ charge: 0 });
+  refused(f.api.adopt(adoptInput(f)), 'does not match the caller-shown');
+  // The refused adoption persisted NO EffectRequest — a reconstructed doorway finds none,
+  // so there is nothing to launder into a dispatch (validate-before-persist).
+  const reconstructed = createEffectDoorway(f.composition);
+  expect(value(reconstructed.inspect()).some(v => v.record.type === 'EffectRequest')).toBe(false);
+  // Defense in depth: even a hand-built request for that mismatched admission is refused
+  // AT DISPATCH — the reservation's charge (0) does not match the definition's (20) — and
+  // the adapter is never invoked. This closes the dispatch-side hole regardless of persist.
+  const forged = { type: 'EffectRequest', schemaVersion: 1, id: f.requestId, definition: f.d.id,
+    message: f.message.id, semanticMessage: f.message.semanticMessage, run: f.run.id, pending: f.pending.id,
+    attempt: 'attempt:1', digest: f.messageDigest, verificationOwner: 'reply-verifier',
+    verificationBar: f.definition.verificationBar, obligation: f.obligation, closure: [] } as unknown as ReturnType<typeof f.prepare>;
+  refused(reconstructed.dispatch(forged, f.fence), 'reservation does not match the dispatched request');
+  expect(f.calls()).toBe(0);
+  // Two-sided positive: a MATCHING admission adopts, dispatches exactly once, and responds.
+  const g = effectFixture(); g.externalAdmission(); const q = g.adopt();
+  expect(value(g.api.dispatch(q, g.fence)).stage).toBe('response'); expect(g.calls()).toBe(1);
+}, 30000);
+
+// --- REPAIR1: a repeated adoption refuses by name (astra R2) ---
+it('P8-NF-13 P8-NF-14 a repeated adoption of the same admission refuses by name and the first stays dispatchable', () => {
+  const f = effectFixture(); f.externalAdmission();
+  const q = f.adopt(); expect(q.id).toBe(f.requestId);        // first adoption succeeds
+  refused(f.api.adopt(adoptInput(f)), 'already adopted');     // the repeat refuses by name
+  // The refusal minted nothing (still the caller's one admission) and left the legitimate
+  // operation dispatchable — recovery is by dispatching the persisted request, not re-adopting.
+  expect(admissions(f)).toHaveLength(1);
+  expect(value(f.api.dispatch(q, f.fence)).stage).toBe('response'); expect(f.calls()).toBe(1);
+}, 30000);

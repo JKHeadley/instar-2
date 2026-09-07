@@ -3,7 +3,9 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { consumeResult } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
-import { DECLARED_BOUNDARIES, PEER_STANDIN_ID, PROFILE_BOUNDARIES, SLICE_BOUNDARIES, UNREACHED_BOUNDARIES, cleanup, sliceAssembly } from '../slice/assembly-fixture.js';
+import { DECLARED_BOUNDARIES, PEER_STANDIN_ID, PROFILE_BOUNDARIES, RECOVERY_BOUNDARIES, SLICE_BOUNDARIES, UNREACHED_BOUNDARIES, cleanup, sliceAssembly } from '../slice/assembly-fixture.js';
+import { withinExecution } from '../slice/acceptance.js';
+import { SLICE_INPUT } from '../slice/harness.js';
 
 afterAll(cleanup);
 // Yield between heavy fixtures so the runner's task-update IPC can flush.
@@ -12,7 +14,7 @@ const detail = (r: unknown) => consumeResult(r as Result<unknown>, { Success: ()
 const ok = (r: unknown) => consumeResult(r as Result<unknown>, { Success: v => v, Refused: x => { throw new Error(`${x.reason}: ${x.detail}`); } });
 
 it('P11-NF-43 P11-NF-49 the public boot path supplies real persistence, intake, run, lease, judgment and effect ports with non-null wiring evidence', async () => {
-  const a = sliceAssembly();
+  const a = sliceAssembly({ profile: 'reply' });
   expect(a.registerChecks).toEqual(['extract', 'force', 'current']);
   // Owner identity of every consumer-required port, and a real durable segment.
   expect(a.effects.owner).toBe('part-eight');
@@ -35,7 +37,7 @@ it('P11-NF-43 P11-NF-49 the public boot path supplies real persistence, intake, 
 }, 120000);
 
 it('P11-NF-49 the independent assessment port is consulted, not a no-op: settlement refuses without its evidence', async () => {
-  const a = sliceAssembly();
+  const a = sliceAssembly({ profile: 'reply' });
   a.install();
   // Settling an operation that has no independently witnessed delivery evidence
   // must refuse through part nine's port, never default to success.
@@ -67,12 +69,12 @@ it('P11-NF-46 the recorded judgment carries complete capture and meter reference
 }, 120000);
 
 it('P11-NF-47 the adapter contract is the ceiling on what any evidence may claim', async () => {
-  const strong = sliceAssembly();
+  const strong = sliceAssembly({ profile: 'reply' });
   const status = (a: { adapterContract: () => { capabilities: Record<string, { status: string }> } }, key: string) =>
     a.adapterContract().capabilities[key]?.status;
   expect(status(strong, 'decisiveNonOccurrence')).toBe('supported');
   expect(status(strong, 'applicationAndDeliveryStage')).toBe('supported');
-  const opaque = sliceAssembly({ adapter: 'telegram-opaque' });
+  const opaque = sliceAssembly({ profile: 'reply', adapter: 'telegram-opaque' });
   expect(status(opaque, 'decisiveNonOccurrence')).toBe('unsupported');
   expect(status(opaque, 'exclusionOfDelayedExecution')).toBe('unsupported');
   expect(status(opaque, 'finalCharge')).toBe('unsupported');
@@ -88,20 +90,27 @@ it('P11-NF-44 the boundary enumeration has one source and is exactly what the as
   // The union is DERIVED from the per-profile lists, never maintained beside them.
   expect(SLICE_BOUNDARIES).toEqual([...new Set(Object.values(PROFILE_BOUNDARIES).flat())]);
   expect(new Set(SLICE_BOUNDARIES).size).toBe(SLICE_BOUNDARIES.length);
-  // Declared = fired ∪ honestly-unreached, and the only unreached one carries its reason.
-  expect([...DECLARED_BOUNDARIES].sort()).toEqual([...SLICE_BOUNDARIES, ...Object.keys(UNREACHED_BOUNDARIES)].sort());
+  // Declared = fired ∪ honestly-unreached ∪ recovery-only, and each of the last two
+  // carries its own reason. Nothing is declared without saying why it is not fired.
+  expect([...DECLARED_BOUNDARIES].sort()).toEqual([...SLICE_BOUNDARIES,
+    ...Object.keys(UNREACHED_BOUNDARIES), ...Object.keys(RECOVERY_BOUNDARIES)].sort());
   expect(Object.keys(UNREACHED_BOUNDARIES)).toEqual(['grounding']);
   expect(UNREACHED_BOUNDARIES['grounding']).toContain('slice-five-gap.md');
   expect(SLICE_BOUNDARIES).not.toContain('grounding');
+  // The conditional close is declared but reached only on a recovery path, so no
+  // profile's control list may contain it.
+  expect(Object.keys(RECOVERY_BOUNDARIES)).toEqual(['operation-close']);
+  expect(RECOVERY_BOUNDARIES['operation-close']).toContain('outbound-reservation');
+  expect(SLICE_BOUNDARIES).not.toContain('operation-close');
   // A control execution of a profile fires EXACTLY that profile's declared list, in order.
-  const a = sliceAssembly();
+  const a = sliceAssembly({ profile: 'reply' });
   const report = await a.drive() as { boundariesReached: string[]; cutsFired: unknown[] };
   expect(report.boundariesReached).toEqual([...PROFILE_BOUNDARIES['reply']!]);
   expect(report.cutsFired).toEqual([]);
 }, 120000);
 
 it('P11-NF-44 a boundary the enumeration does not declare is refused, so the list cannot drift below what fires', () => {
-  const a = sliceAssembly();
+  const a = sliceAssembly({ profile: 'reply' });
   expect(() => a.boundary('a-boundary-nobody-declared')).toThrow(/undeclared durable boundary/);
   // ...and a declared one is accepted, so the guard is not simply refusing everything.
   expect(() => a.boundary('preservation')).not.toThrow();
@@ -127,7 +136,7 @@ it('P11-NF-41 the six seam refuses a second operation for one run, and the refus
 }, 120000);
 
 it('P11-NF-41 the five grounding seam refuses because the admitted stimulus carries no capture field', async () => {
-  const a = sliceAssembly();
+  const a = sliceAssembly({ profile: 'reply' });
   const report = await a.drive() as { steps: { step: string; state: string; detail?: string | null }[]; grounding: string };
   const grounding = report.steps.find(s => s.step === 'grounding');
   expect(grounding?.state).toBe('refused');
@@ -136,7 +145,7 @@ it('P11-NF-41 the five grounding seam refuses because the admitted stimulus carr
 }, 120000);
 
 it('P11-NF-26 every minimal-plane projection rebuilds from facts alone with equal canonical bytes', async () => {
-  const a = sliceAssembly();
+  const a = sliceAssembly({ profile: 'reply' });
   await a.drive();
   const rows = a.rebuildAll();
   expect(rows).toHaveLength(6);
@@ -155,7 +164,7 @@ it('P11-NF-47 the declared delivery stage is READ from the adapter contract, not
   // stage of its own, the evidence below would carry that name instead of this one.
   expect(declared).toBe('service-accepted');
   expect(contract.adapters['telegram-slice']!.capabilities['applicationAndDeliveryStage']!.stage).toBe('service-applied');
-  const a = sliceAssembly({ adapter: 'telegram-stage-probe' });
+  const a = sliceAssembly({ profile: 'reply', adapter: 'telegram-stage-probe' });
   expect(a.declaredStage()).toBe(declared);
   const report = await a.drive() as { declaredStage: string; deliveryEvidence: { stage: string }[]; settlement: unknown };
   expect(report.declaredStage).toBe(declared);
@@ -186,7 +195,7 @@ it('P11-NF-53 every supported capability names one specific test, and the checke
 });
 
 it('P11-NF-49 a tampered durable capture refuses at boot with an integrity failure that names the capture', async () => {
-  const a = sliceAssembly();
+  const a = sliceAssembly({ profile: 'reply' });
   await a.drive();
   const receipt = a.factOfKind('intake-receipt')!;
   const reference = (receipt.body as unknown as { capture: { reference: string } }).capture.reference;
@@ -199,16 +208,16 @@ it('P11-NF-49 a tampered durable capture refuses at boot with an integrity failu
   expect(tampered.length).toBe(original.length);
   writeFileSync(file, tampered);
   let refusal = '';
-  try { sliceAssembly({}, a.home); } catch (error) { refusal = String((error as Error).message); }
+  try { sliceAssembly({ profile: 'reply' }, a.home); } catch (error) { refusal = String((error as Error).message); }
   expect(refusal).toContain('integrity');
   expect(refusal).toContain(reference);
   writeFileSync(file, original);
   // The untampered home boots again, so the refusal was the tampering and nothing else.
-  expect(() => sliceAssembly({}, a.home)).not.toThrow();
+  expect(() => sliceAssembly({ profile: 'reply' }, a.home)).not.toThrow();
 }, 120000);
 
 it('P11-NF-45 a durably prepared outbound payload is immutable: a conflicting replacement refuses', async () => {
-  const a = sliceAssembly();
+  const a = sliceAssembly({ profile: 'reply' });
   await a.drive();
   const source = a.factOfKind('slice-reply-source')!;
   const opening = a.factOfKind('run-opening')!;
@@ -229,7 +238,7 @@ it('P11-NF-45 a durably prepared outbound payload is immutable: a conflicting re
 }, 120000);
 
 it('P11-NF-47 an opaque adapter still evidences a real application at its declared stage', async () => {
-  const a = sliceAssembly({ adapter: 'telegram-opaque' });
+  const a = sliceAssembly({ profile: 'reply', adapter: 'telegram-opaque' });
   const report = await a.drive() as { declaredStage: string; deliveryEvidence: { stage: string; value: string; decisive: string }[];
     settlement: { outcome: string } | null; externalApplications: unknown[] };
   // The opaque adapter CAN observe its own application; what it cannot do is prove
@@ -243,7 +252,7 @@ it('P11-NF-47 an opaque adapter still evidences a real application at its declar
 }, 120000);
 
 it('P11-NF-49 the intake capture port really preserves bytes before any admission fact exists', () => {
-  const a = sliceAssembly();
+  const a = sliceAssembly({ profile: 'reply' });
   a.install();
   const raw = JSON.stringify({ schemaVersion: 1, kind: 'message', text: 'Please classify and acknowledge this request.' });
   ok(a.intake.receive(raw, { channel: 'chat-a', sender: 'platform-alice', identityEpoch: 'account-1', eventId: 'event-1' }));
@@ -252,3 +261,195 @@ it('P11-NF-49 the intake capture port really preserves bytes before any admissio
   expect(existsSync(join(a.home, 'intake-captures', reference.slice(7)))).toBe(true);
   expect(readFileSync(join(a.home, 'intake-captures', reference.slice(7)), 'utf8')).toBe(raw);
 }, 120000);
+
+
+it('P11-NF-41 P11-NF-48 six APPLIES the eight settlement, so the outbound operation is resolved and its unused credit released', async () => {
+  const a = sliceAssembly({ profile: 'reply' });
+  const report = await a.drive() as { sixOperations: { operation: string; role: string; state: string; charge: number;
+    resolved: boolean; application: { exposure: number; released: number; unresolved: number; actualCharge: number } | null }[];
+    obligations: { operation: string; state: string; owner: string; exposure: string }[];
+    boundariesReached: string[]; steps: { step: string; state: string }[] };
+  const op = report.sixOperations.find(row => row.role === 'outbound-reply')!;
+  expect(op.state).toBe('consumed');
+  // Six's OWN accounting row, written through its public settle seam, not eleven's arithmetic.
+  expect(op.application).toEqual({ exposure: 3, released: 17, unresolved: 0, actualCharge: 3 });
+  expect(op.resolved).toBe(true);
+  expect(report.boundariesReached).toContain('settlement-application');
+  expect(report.steps.find(s => s.step === 'settlement-application')?.state).toBe('applied');
+  // The durable six fact exists exactly once and names the same operation.
+  const applications = a.transportFacts().filter(v => (v.record as unknown as { type: string }).type === 'SettlementApplication');
+  expect(applications).toHaveLength(1);
+  expect((applications[0]!.record as unknown as { operation: string }).operation).toBe(op.operation);
+  const applied = report.obligations.find(o => o.state === 'applied-resolved')!;
+  expect(applied.owner).toBe('part-six');
+  expect(Number(applied.exposure)).toBe(3);
+}, 120000);
+
+it('P11-NF-41 the single chain enters BOTH published resolution seams for the model operation and records their exact refusals', async () => {
+  const a = sliceAssembly({ profile: 'full' });
+  const report = await a.drive() as { steps: { step: string; state: string; detail?: string | null; close?: string }[];
+    sixOperations: { role: string; state: string; resolved: boolean }[];
+    obligations: { operation: string; state: string; owner: string; blocker: string; exposure: string }[] };
+  const resolve = report.steps.find(s => s.step === 'resolve')!;
+  expect(resolve.state).toBe('refused');
+  // Eight will not mint a settlement for an operation that is not one of its own
+  // requests, and six will not close an operation that was dispatched.
+  expect(resolve.detail).toContain('missing recorded EffectRequest');
+  expect(resolve.close).toContain('close requires a prepared, never-claimed operation');
+  const model = report.sixOperations.find(row => row.role === 'model-judgment')!;
+  expect(model.state).toBe('consumed');
+  expect(model.resolved).toBe(false);
+  // Both the unresolvable operation and the attempted resolution stay OWNED with
+  // their exposure retained; nothing is quietly dropped.
+  const unresolved = report.obligations.find(o => o.state === 'owned-unresolved-model')!;
+  expect(Number(unresolved.exposure)).toBe(20);
+  const attempted = report.obligations.find(o => o.state === 'owned-pending-unresolvable')!;
+  expect(attempted.owner).toBe('part-seven');
+  expect(attempted.operation.startsWith('resolve:')).toBe(true);
+  // ...and the reply is still blocked at six, for the reason six states.
+  expect(report.steps.find(s => s.step === 'outbound')?.state).toBe('blocked-at-six');
+}, 180000);
+
+it('P11-NF-44 the single-chain profile fires exactly its own declared boundary list, which equals the judgment control\'s', async () => {
+  const a = sliceAssembly({ profile: 'full' });
+  const report = await a.drive() as { boundariesReached: string[] };
+  expect(report.boundariesReached).toEqual([...PROFILE_BOUNDARIES['full']!]);
+  // The equality is the finding, not an oversight: the single chain stops exactly
+  // where the reduced control stops, because no seam resolves the model operation.
+  expect([...PROFILE_BOUNDARIES['full']!]).toEqual([...PROFILE_BOUNDARIES['judgment']!]);
+}, 180000);
+
+// The load-bearing rule for the single chain, exercised in BOTH directions through six's
+// PUBLIC reserve seam on this assembly's own durable state. The control reservation is a
+// probe taken AFTER each execution's report; it is not part of the chain and no predicate
+// reads it. Split into one drive per test so neither approaches the 60s RPC deadline on a
+// slow arm64 runner (REPAIR6).
+const controlReserve = (a: { liveFence: () => unknown; factOfKind: (kind: string) => { body: Record<string, never> } | undefined }) => ({
+  command: 'slice-control-reserve', fence: a.liveFence(),
+  request: { owner: 'part-eight', name: 'EffectRequest', id: 'slice-control-request:1' },
+  attempt: 'slice-control-attempt:1', payloadDigest: `sha256:${'a'.repeat(64)}`, charge: 1,
+  run: { owner: 'part-five', name: 'Run', id: (a.factOfKind('run-opening')!.body as unknown as { run: string }).run },
+  semanticMessage: 'slice-control-semantic:1', durability: 'local-durable' as const, replicas: 0,
+});
+const reserve = (a: unknown, input: unknown) => detail((a as { transport: { reserve: (i: unknown) => unknown } }).transport.reserve(input));
+
+it('P11-NF-41 P11-NF-48 an operation six RESOLVED stops blocking its run: a new same-run attempt is admitted', async () => {
+  const resolved = sliceAssembly({ profile: 'reply' });
+  await resolved.drive();
+  expect(reserve(resolved, controlReserve(resolved))).toBeNull();
+}, 180000);
+
+it('P11-NF-41 P11-NF-48 an UNRESOLVED model operation keeps blocking its run: the same attempt is refused', async () => {
+  const blocked = sliceAssembly({ profile: 'full' });
+  await blocked.drive();
+  expect(reserve(blocked, controlReserve(blocked))).toContain('unresolved execution or charge prohibits a new attempt');
+}, 180000);
+
+it('P11-NF-41 P11-NF-48 a REPLACEMENT process reconsumes preserved settlement authority before it can fund new admission', async () => {
+  // astra R1: a durable SettlementApplication fact is HISTORY, not live accounting
+  // authority. Recovery guarded on the fact's existence, so a replacement process
+  // neither reconsumed the authority nor restored the applied obligation, yet the
+  // report advertised the operation resolved. A new same-run reservation then refuses
+  // — six correctly fails closed — until the settlement is reconsumed through eight.
+  const control = (a: { liveFence: () => unknown; factOfKind: (kind: string) => { body: Record<string, never> } | undefined }, id: string) => ({
+    command: `slice-reconsume-reserve-${id}`, fence: a.liveFence(),
+    request: { owner: 'part-eight', name: 'EffectRequest', id: `slice-reconsume-request:${id}` },
+    attempt: `slice-reconsume-attempt:${id}`, payloadDigest: `sha256:${'a'.repeat(64)}`, charge: 1,
+    run: { owner: 'part-five', name: 'Run', id: (a.factOfKind('run-opening')!.body as unknown as { run: string }).run },
+    semanticMessage: `slice-reconsume-semantic:${id}`, durability: 'local-durable' as const, replicas: 0,
+  });
+  const isApplication = (v: { record: unknown }) => (v.record as { type: string }).type === 'SettlementApplication';
+  // First process: settle and apply. The once-only application row is now durable.
+  const first = sliceAssembly({ profile: 'reply' });
+  await first.drive();
+  const home = first.home;
+  expect(first.transportFacts().filter(isApplication)).toHaveLength(1);
+  // A REPLACEMENT process on the same durable home: it holds the preserved
+  // application row but no live authority yet. Its drive() must reconsume through
+  // eight and six — the once-only identity is preserved (still ONE application) —
+  // and (re)write the applied-resolved obligation.
+  const replacement = sliceAssembly({ profile: 'reply' }, home);
+  expect(replacement.transportFacts().filter(isApplication)).toHaveLength(1);
+  const report = await replacement.drive() as { obligations: { operation: string; state: string; exposure: string }[];
+    steps: { step: string; state: string }[]; sixOperations: { role: string; resolved: boolean }[] };
+  // Reconsumption regained live authority: a new same-run reservation is ADMITTED.
+  expect(detail((replacement.transport as unknown as { reserve: (i: unknown) => unknown }).reserve(control(replacement, 'after')))).toBeNull();
+  // The once-only application identity is preserved: still exactly one, not a second.
+  expect(replacement.transportFacts().filter(isApplication)).toHaveLength(1);
+  // The derived obligation the guard used to skip is present, and six's op is resolved.
+  expect(report.obligations.some(o => o.state === 'applied-resolved')).toBe(true);
+  expect(report.sixOperations.find(o => o.role === 'outbound-reply')!.resolved).toBe(true);
+  expect(report.steps.some(s => s.step === 'settlement-application' && s.state === 'reconsumed')).toBe(true);
+  // The refusal neighbour — an operation six has NOT resolved cannot qualify a new
+  // attempt — is the separate "UNRESOLVED model operation keeps blocking" test above,
+  // so it is not re-driven here (REPAIR6: one fewer execution keeps this test short).
+}, 200000);
+
+it('P11-NF-48 a temporary authority loss then restoration supersedes the refusal, not leaves it current', async () => {
+  // astra C1: reconciling against ANY historical applied obligation with .some() left a
+  // superseding refusal current after a verified recovery. The fix reconciles against
+  // the LATEST obligation and this boot's outcome, appending a superseding row when it
+  // differs — so a restored authority corrects the refusal instead of staying stale.
+  const isApplication = (v: { record: unknown }) => (v.record as { type: string }).type === 'SettlementApplication';
+  const latestFor = (obs: { operation: string; state: string; exposure: string }[], op: string) =>
+    [...obs].reverse().find(o => o.operation === op)!;
+  const first = sliceAssembly({ profile: 'reply' });
+  await first.drive();
+  const home = first.home;
+  const opId = first.transportFacts().filter(isApplication)[0]!.record as unknown as { operation: string };
+  const operation = opId.operation;
+
+  // Temporary loss: replication is unavailable, so reconsumption refuses and the
+  // assembly retains maximum exposure — appropriate while authority is unavailable.
+  const loss = sliceAssembly({ profile: 'reply' }, home);
+  (loss as unknown as { replicas: { enable: (v: boolean) => void } }).replicas.enable(false);
+  const lossReport = await loss.drive() as { obligations: { operation: string; state: string; exposure: string }[] };
+  expect(latestFor(lossReport.obligations, operation).state).toBe('owned-unapplied-unsettled');
+  expect(Number(latestFor(lossReport.obligations, operation).exposure)).toBe(20);
+  expect(loss.transportFacts().filter(isApplication)).toHaveLength(1);
+
+  // Restoration: authority returns, reconsumption succeeds, and a SUPERSEDING
+  // applied-resolved obligation replaces the refusal as the current row.
+  const restored = sliceAssembly({ profile: 'reply' }, home);
+  const restoredReport = await restored.drive() as { obligations: { operation: string; state: string; exposure: string }[] };
+  expect(latestFor(restoredReport.obligations, operation).state).toBe('applied-resolved');
+  expect(Number(latestFor(restoredReport.obligations, operation).exposure)).toBe(3);
+  expect(withinExecution(restoredReport as unknown as Parameters<typeof withinExecution>[0], SLICE_INPUT)).toEqual([]);
+  expect(restored.transportFacts().filter(isApplication)).toHaveLength(1);
+  // The append-only ledger now holds exactly TWO applied-resolved rows for the
+  // operation — the first boot's, and the ONE superseding row the restoration wrote
+  // over the loss's refusal — proving the restoration appended a single superseding
+  // obligation, not a stale-left refusal. (No-per-boot-CHURN across a further boot is
+  // the dedicated stability test below, kept separate so neither test's wall time
+  // approaches the arm64 RPC deadline — REPAIR6/REPAIR7 D1.)
+  expect(restoredReport.obligations.filter(o => o.operation === operation && o.state === 'applied-resolved')).toHaveLength(2);
+}, 200000);
+
+it('P11-NF-48 a further boot over an already-applied-resolved operation appends no new obligation (no per-boot churn)', async () => {
+  // astra D1 (the restored fourth-boot no-churn regression, as its own committed and
+  // automatically-executed test): once six's operation is already applied-resolved and
+  // the derived obligation matches, a further replacement boot must reconsume WITHOUT
+  // appending another applied row — otherwise the reconcile-against-latest guard would
+  // churn a new obligation every boot. Exercised on the same guard the loss→restoration
+  // lifecycle exercises (`matches()` → no-op), in two bounded drives.
+  const isApplication = (v: { record: unknown }) => (v.record as { type: string }).type === 'SettlementApplication';
+  const appliedRows = (obs: { operation: string; state: string }[], op: string) =>
+    obs.filter(o => o.operation === op && o.state === 'applied-resolved');
+  const first = sliceAssembly({ profile: 'reply' });
+  const firstReport = await first.drive() as { obligations: { operation: string; state: string; exposure: string }[] };
+  const home = first.home;
+  const operation = (first.transportFacts().filter(isApplication)[0]!.record as unknown as { operation: string }).operation;
+  expect(appliedRows(firstReport.obligations, operation)).toHaveLength(1);
+
+  // A further boot: the state is ALREADY applied-resolved, so this reconsumes and
+  // appends nothing. The applied-resolved count stays 1, the latest stays
+  // applied-resolved, and the report still passes acceptance.
+  const again = sliceAssembly({ profile: 'reply' }, home);
+  const againReport = await again.drive() as { obligations: { operation: string; state: string; exposure: string }[];
+    steps: { step: string; state: string }[] };
+  expect(appliedRows(againReport.obligations, operation)).toHaveLength(1);
+  expect([...againReport.obligations].reverse().find(o => o.operation === operation)!.state).toBe('applied-resolved');
+  expect(again.transportFacts().filter(isApplication)).toHaveLength(1);
+  expect(againReport.steps.some(s => s.step === 'settlement-application' && s.state === 'reconsumed')).toBe(true);
+  expect(withinExecution(againReport as unknown as Parameters<typeof withinExecution>[0], SLICE_INPUT)).toEqual([]);
+}, 180000);

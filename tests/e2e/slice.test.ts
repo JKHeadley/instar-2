@@ -2,7 +2,7 @@ import { afterAll, afterEach, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { acrossExecutions, withinExecution } from '../slice/acceptance.js';
-import { REPLY_BOUNDARIES, SLICE_INPUT, discard, rebuildInFreshProcess, runExecution } from '../slice/harness.js';
+import { FULL_BOUNDARIES, REPLY_BOUNDARIES, SLICE_INPUT, discard, rebuildInFreshProcess, runExecution } from '../slice/harness.js';
 import { PROFILE_BOUNDARIES } from '../slice/boundaries.js';
 
 const homes: string[] = [];
@@ -32,7 +32,7 @@ it('P11-NF-43 P11-NF-49 P11-NF-50 the uninterrupted control execution runs the c
 
 it('P11-NF-45 within one execution the genesis, checkpoint and fresh-process rebuilds are byte-equal at one pinned vector', async () => {
   const control = await execute({ profile: 'reply' });
-  const independent = rebuildInFreshProcess(control.home);
+  const independent = await rebuildInFreshProcess(control.home);
   expect(independent).toHaveLength(control.report.rebuilds.length);
   for (const row of control.report.rebuilds) {
     const other = independent.find(r => r.projection === row.projection);
@@ -102,8 +102,15 @@ it('P11-NF-43 P11-NF-46 the judgment profile makes one bounded model judgment an
   expect(judgment.report.judgment.meter).toBeTruthy();
   expect(judgment.report.reply?.basis).toBe('judgment-resolution');
   // The blocked outbound obligation is owned and pending, never silently dropped.
-  const blocked = judgment.report.obligations.find(o => o.blocker === 'part-six');
+  const blocked = judgment.report.obligations.find(o => o.operation.startsWith('unreserved:'));
+  expect(blocked?.blocker).toBe('part-six');
   expect(blocked?.state).toBe('owned-pending-unadmitted');
+  // ...and so is the model operation whose unresolved exposure is what blocks it.
+  const model = judgment.report.obligations.find(o => o.state === 'owned-unresolved-model')!;
+  expect(model.owner).toBe('part-seven');
+  expect(Number(model.exposure)).toBe(20);
+  // The reduced control does NOT attempt the resolution; that is the single chain's step.
+  expect(judgment.report.steps.some(s => s.step === 'resolve')).toBe(false);
   expect(judgment.report.externalApplications).toEqual([]);
   expect(judgment.report.rebuilds.map(r => r.equal)).toEqual(Array(6).fill('equal'));
 }, 180000);
@@ -189,3 +196,156 @@ it.skip('P11-NF-51 out of slice scope: a live model provider, live platform cred
 it.skip('P11-NF-52 out of slice scope: the objective dashboard and mobile-completion floor belongs to the operator surface, which this brief does not build', () => {
   expect(true).toBe(true);
 });
+
+it('P11-NF-43 P11-NF-46 P11-NF-48 the single-chain profile runs section 7 in ONE execution and stops at the seam that has no resolution', async () => {
+  const full = await execute({ profile: 'full' });
+  expect(full.boots).toBe(1);
+  expect(withinExecution(full.report, SLICE_INPUT)).toEqual([]);
+  expect(full.report.boundariesReached).toEqual([...FULL_BOUNDARIES]);
+  // Section 7's order, in ONE profile: the message is preserved and admitted, one
+  // durable run is opened, one bounded model judgment is made through the doorway,
+  // and the reply is rendered FROM that recorded resolution.
+  expect(full.report.intake?.boundOperator).toBe(true);
+  expect(full.report.judgment.disposition).toBe('decided');
+  expect(full.report.reply?.basis).toBe('judgment-resolution');
+  // Then the resolution step runs, and refuses. Both owned obligations retain their
+  // exposure, and no external application happened.
+  expect(full.report.steps.find(s => s.step === 'resolve')?.state).toBe('refused');
+  const model = full.report.sixOperations.find(o => o.role === 'model-judgment')!;
+  expect(model.resolved).toBe(false);
+  expect(full.report.obligations.filter(o => o.state.startsWith('owned-')).map(o => Number(o.exposure)))
+    .toEqual([0, 20, 20, 20]);
+  expect(full.report.externalApplications).toEqual([]);
+  expect(full.report.rebuilds.map(r => r.equal)).toEqual(Array(6).fill('equal'));
+}, 180000);
+
+it('P11-NF-44 P11-NF-48 a crash between the reservation and its claim is CLOSED, not left wedged: the credit is released', async () => {
+  // The dead-fence case. The replacement holds a new lease, so the prepared
+  // operation can never be claimed and never settled. Six's conditional close
+  // proves from the committed prefix that no dispatch-claim exists.
+  const cut = await execute({ profile: 'reply', cuts: ['outbound-reservation'] });
+  expect(cut.firedCuts).toEqual(['outbound-reservation']);
+  expect(cut.report.steps.find(s => s.step === 'dispatch')?.state).toBe('refused');
+  expect(cut.report.steps.find(s => s.step === 'close')?.state).toBe('closed');
+  expect(cut.report.boundariesReached).toContain('operation-close');
+  const operation = cut.report.sixOperations[0]!;
+  expect(operation.state).toBe('closed');
+  expect(operation.resolved).toBe(true);
+  expect(operation.application).toBeNull();
+  // Terminal and unexecuted: the credit is released and no external application exists.
+  const closed = cut.report.obligations.find(o => o.state === 'closed-unexecuted')!;
+  expect(Number(closed.exposure)).toBe(0);
+  expect(cut.report.externalApplications).toEqual([]);
+  expect(cut.report.settlement).toBeNull();
+  expect(withinExecution(cut.report, SLICE_INPUT)).toEqual([]);
+  // The rebuilt projection reproduces the closed state from facts alone.
+  const outbound = cut.report.rebuilds.find(r => r.projection === 'minimal.outbound-obligation')!;
+  expect(JSON.stringify(outbound.values)).toContain('closed-unexecuted');
+  expect(outbound.equal).toBe('equal');
+}, 240000);
+
+// The desk's on-REAL-history reproductions, split into one execution per test so no
+// single test's wall time approaches the 60s worker-RPC deadline on a slow arm64 runner
+// (REPAIR6). Each drives its own real execution and mutates only the named field.
+it('P11-NF-48 on REAL history a terminal label relabelled over six\'s model record is refused (R1/R2)', async () => {
+  const judgment = await execute({ profile: 'judgment' });
+  expect(withinExecution(judgment.report, SLICE_INPUT)).toEqual([]);
+  const model = judgment.report.sixOperations.find(o => o.role === 'model-judgment')!;
+  // Six's own record: the operation was consumed and is unresolved.
+  expect([model.state, model.resolved]).toEqual(['consumed', false]);
+  // R1: change NOTHING except the obligation's label and exposure.
+  const laundered = { ...judgment.report, obligations: judgment.report.obligations.map(o =>
+    o.operation === model.operation ? { ...o, state: 'closed-unexecuted', exposure: '0' } : o) };
+  expect(withinExecution(laundered, SLICE_INPUT)
+    .some(v => v.includes('obligation closed-unexecuted names an operation six records as consumed'))).toBe(true);
+  // R2 (M1): flip ONLY the row's resolved summary and drop the obligation naming it.
+  const m1 = { ...judgment.report,
+    sixOperations: judgment.report.sixOperations.map(o =>
+      o.operation === model.operation ? { ...o, resolved: true } : o),
+    obligations: judgment.report.obligations.filter(o =>
+      o.operation !== model.operation && !o.operation.endsWith(`:${model.operation}`)) };
+  expect(withinExecution(m1, SLICE_INPUT)
+    .some(v => v.includes('the resolved flag for model-judgment contradicts six\'s own state and application'))).toBe(true);
+}, 180000);
+
+it('P11-NF-48 on REAL history a terminal label relabelled over an applied-unresolved reply is refused (R1/R2)', async () => {
+  // A cut after the dispatch-claim leaves six holding an APPLIED but unresolved
+  // operation with its exposure retained.
+  const cut = await execute({ profile: 'reply', cuts: ['outbound-claim'] });
+  expect(withinExecution(cut.report, SLICE_INPUT)).toEqual([]);
+  const outbound = cut.report.sixOperations.find(o => o.role === 'outbound-reply')!;
+  expect(outbound.resolved).toBe(false);
+  expect(outbound.application?.unresolved).toBe(1);
+  const applied = cut.report.obligations.filter(o => o.state === 'applied-unresolved');
+  expect(applied).toHaveLength(1);
+  expect(Number(applied[0]!.exposure)).toBe(20);
+  const relabelled = { ...cut.report, obligations: cut.report.obligations.map(o =>
+    o.state === 'applied-unresolved' ? { ...o, state: 'closed-unexecuted', exposure: '0' } : o) };
+  expect(withinExecution(relabelled, SLICE_INPUT)
+    .some(v => v.includes(`obligation closed-unexecuted names an operation six records as ${outbound.state}`))).toBe(true);
+  // ...and claiming six RESOLVED it is refused just as squarely.
+  const resolvedClaim = { ...cut.report, obligations: cut.report.obligations.map(o =>
+    o.state === 'applied-unresolved' ? { ...o, state: 'applied-resolved', exposure: '0' } : o) };
+  expect(withinExecution(resolvedClaim, SLICE_INPUT)
+    .some(v => v.includes('applied-resolved names an operation six recorded no resolved application for'))).toBe(true);
+}, 180000);
+
+it('P11-NF-48 on REAL history a settlement final charge bumped past six\'s applied actual charge is refused (R6/G6)', async () => {
+  // A fully settled reply whose eight settlement figure is bumped while six's applied
+  // actual charge stays what six recorded. finalCharge then disagrees with six.
+  const settled = await execute({ profile: 'reply' });
+  expect(withinExecution(settled.report, SLICE_INPUT)).toEqual([]);
+  const settledOp = settled.report.sixOperations.find(o => o.role === 'outbound-reply')!;
+  expect(settledOp.application?.unresolved).toBe(0);
+  const g6 = { ...settled.report, settlement: { ...settled.report.settlement!,
+    finalCharge: String(settledOp.application!.actualCharge + 16), retainedExposure: settledOp.application!.actualCharge + 16 } };
+  expect(withinExecution(g6, SLICE_INPUT)
+    .some(v => v.includes('the settlement final charge disagrees with six\'s applied actual charge'))).toBe(true);
+}, 180000);
+
+it('P11-NF-44 P11-NF-48 a real SIGKILL AT settlement-application restores the applied-resolved obligation on recovery', async () => {
+  // astra R1: the cut writes the once-only application row, then dies before the
+  // derived obligation. Recovery guarded on the fact, so it neither reconsumed the
+  // authority nor restored the obligation. The completed report must now carry the
+  // applied-resolved obligation and a resolved operation, reconstructed on recovery.
+  const cut = await execute({ profile: 'reply', cuts: ['settlement-application'] });
+  expect(cut.firedCuts).toEqual(['settlement-application']);
+  expect(cut.boots).toBe(2);
+  expect(withinExecution(cut.report, SLICE_INPUT)).toEqual([]);
+  const op = cut.report.sixOperations.find(o => o.role === 'outbound-reply')!;
+  expect(op.resolved).toBe(true);
+  expect(op.application).toEqual({ exposure: 3, released: 17, unresolved: 0, actualCharge: 3 });
+  // The obligation the interrupted boot skipped is present, reconstructed on recovery.
+  const applied = cut.report.obligations.filter(o => o.state === 'applied-resolved');
+  expect(applied).toHaveLength(1);
+  expect(Number(applied[0]!.exposure)).toBe(3);
+  // The once-only application row survived as exactly one; recovery reconsumed it.
+  expect(cut.report.externalApplications).toHaveLength(1);
+  expect(cut.report.steps.some(s => s.step === 'settlement-application'
+    && (s.state === 'reconsumed-and-restored' || s.state === 'applied'))).toBe(true);
+}, 240000);
+
+it('P11-NF-44 P11-NF-48 a real SIGKILL AT operation-close is reconstructed with released credit, in both profiles', async () => {
+  // astra R2: operation-close is genuinely cuttable — the first cut creates the
+  // dead-fence, the second cuts AT the close, interrupting the terminal obligation.
+  // Recovery reconstructs it from six's already-closed record at exposure 0, never
+  // recovering, settling, or reclosing. Both profiles' reports must pass the predicate.
+  const reply = await execute({ profile: 'reply', cuts: ['outbound-reservation', 'operation-close'] });
+  expect(reply.firedCuts).toEqual(['outbound-reservation', 'operation-close']);
+  expect(withinExecution(reply.report, SLICE_INPUT)).toEqual([]);
+  const replyOp = reply.report.sixOperations.find(o => o.role === 'outbound-reply')!;
+  expect([replyOp.state, replyOp.resolved]).toEqual(['closed', true]);
+  const replyClosed = [...reply.report.obligations].reverse().find(o => o.operation === replyOp.operation)!;
+  expect([replyClosed.state, Number(replyClosed.exposure)]).toEqual(['closed-unexecuted', 0]);
+  expect(reply.report.externalApplications).toEqual([]);
+
+  const full = await execute({ profile: 'full', cuts: ['judgment-reservation', 'operation-close'] });
+  expect(full.firedCuts).toEqual(['judgment-reservation', 'operation-close']);
+  expect(withinExecution(full.report, SLICE_INPUT)).toEqual([]);
+  const modelOp = full.report.sixOperations.find(o => o.role === 'model-judgment')!;
+  expect([modelOp.state, modelOp.resolved]).toEqual(['closed', true]);
+  const modelClosed = [...full.report.obligations].reverse().find(o => o.operation === modelOp.operation)!;
+  expect([modelClosed.state, Number(modelClosed.exposure)]).toEqual(['closed-unexecuted', 0]);
+  // Neither reconstruction dispatched, settled, or reclosed: no external application.
+  expect(full.report.externalApplications).toEqual([]);
+}, 300000);
