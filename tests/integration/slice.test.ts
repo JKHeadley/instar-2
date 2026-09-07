@@ -319,28 +319,31 @@ it('P11-NF-44 the single-chain profile fires exactly its own declared boundary l
   expect([...PROFILE_BOUNDARIES['full']!]).toEqual([...PROFILE_BOUNDARIES['judgment']!]);
 }, 180000);
 
-it('P11-NF-41 P11-NF-48 an operation six RESOLVED stops blocking its run, while an unresolved one keeps blocking it', async () => {
-  // The load-bearing rule for the single chain, exercised in BOTH directions through
-  // six's PUBLIC reserve seam on this assembly's own durable state. The control
-  // reservation below is a probe taken AFTER each execution's report; it is not part
-  // of the chain and no predicate reads it.
-  const control = (a: { liveFence: () => unknown; factOfKind: (kind: string) => { body: Record<string, never> } | undefined }) => ({
-    command: 'slice-control-reserve', fence: a.liveFence(),
-    request: { owner: 'part-eight', name: 'EffectRequest', id: 'slice-control-request:1' },
-    attempt: 'slice-control-attempt:1', payloadDigest: `sha256:${'a'.repeat(64)}`, charge: 1,
-    run: { owner: 'part-five', name: 'Run', id: (a.factOfKind('run-opening')!.body as unknown as { run: string }).run },
-    semanticMessage: 'slice-control-semantic:1', durability: 'local-durable' as const, replicas: 0,
-  });
-  // Resolved by six's settlement application: a new attempt for the same run is ADMITTED.
+// The load-bearing rule for the single chain, exercised in BOTH directions through six's
+// PUBLIC reserve seam on this assembly's own durable state. The control reservation is a
+// probe taken AFTER each execution's report; it is not part of the chain and no predicate
+// reads it. Split into one drive per test so neither approaches the 60s RPC deadline on a
+// slow arm64 runner (REPAIR6).
+const controlReserve = (a: { liveFence: () => unknown; factOfKind: (kind: string) => { body: Record<string, never> } | undefined }) => ({
+  command: 'slice-control-reserve', fence: a.liveFence(),
+  request: { owner: 'part-eight', name: 'EffectRequest', id: 'slice-control-request:1' },
+  attempt: 'slice-control-attempt:1', payloadDigest: `sha256:${'a'.repeat(64)}`, charge: 1,
+  run: { owner: 'part-five', name: 'Run', id: (a.factOfKind('run-opening')!.body as unknown as { run: string }).run },
+  semanticMessage: 'slice-control-semantic:1', durability: 'local-durable' as const, replicas: 0,
+});
+const reserve = (a: unknown, input: unknown) => detail((a as { transport: { reserve: (i: unknown) => unknown } }).transport.reserve(input));
+
+it('P11-NF-41 P11-NF-48 an operation six RESOLVED stops blocking its run: a new same-run attempt is admitted', async () => {
   const resolved = sliceAssembly({ profile: 'reply' });
   await resolved.drive();
-  expect(detail((resolved.transport as unknown as { reserve: (i: unknown) => unknown }).reserve(control(resolved)))).toBeNull();
-  // Unresolved model operation: the SAME reservation is refused, with six's own words.
+  expect(reserve(resolved, controlReserve(resolved))).toBeNull();
+}, 180000);
+
+it('P11-NF-41 P11-NF-48 an UNRESOLVED model operation keeps blocking its run: the same attempt is refused', async () => {
   const blocked = sliceAssembly({ profile: 'full' });
   await blocked.drive();
-  expect(detail((blocked.transport as unknown as { reserve: (i: unknown) => unknown }).reserve(control(blocked))))
-    .toContain('unresolved execution or charge prohibits a new attempt');
-}, 240000);
+  expect(reserve(blocked, controlReserve(blocked))).toContain('unresolved execution or charge prohibits a new attempt');
+}, 180000);
 
 it('P11-NF-41 P11-NF-48 a REPLACEMENT process reconsumes preserved settlement authority before it can fund new admission', async () => {
   // astra R1: a durable SettlementApplication fact is HISTORY, not live accounting
@@ -377,13 +380,10 @@ it('P11-NF-41 P11-NF-48 a REPLACEMENT process reconsumes preserved settlement au
   expect(report.obligations.some(o => o.state === 'applied-resolved')).toBe(true);
   expect(report.sixOperations.find(o => o.role === 'outbound-reply')!.resolved).toBe(true);
   expect(report.steps.some(s => s.step === 'settlement-application' && s.state === 'reconsumed')).toBe(true);
-  // Refusal neighbour: an operation six has NOT resolved cannot qualify a new attempt,
-  // so recovery may never advertise resolution by preserving a row it cannot reconsume.
-  const unresolved = sliceAssembly({ profile: 'full' });
-  await unresolved.drive();
-  expect(detail((unresolved.transport as unknown as { reserve: (i: unknown) => unknown }).reserve(control(unresolved, 'blocked'))))
-    .toContain('unresolved execution or charge prohibits a new attempt');
-}, 240000);
+  // The refusal neighbour — an operation six has NOT resolved cannot qualify a new
+  // attempt — is the separate "UNRESOLVED model operation keeps blocking" test above,
+  // so it is not re-driven here (REPAIR6: one fewer execution keeps this test short).
+}, 200000);
 
 it('P11-NF-48 a temporary authority loss then restoration supersedes the refusal, not leaves it current', async () => {
   // astra C1: reconciling against ANY historical applied obligation with .some() left a
@@ -416,13 +416,12 @@ it('P11-NF-48 a temporary authority loss then restoration supersedes the refusal
   expect(Number(latestFor(restoredReport.obligations, operation).exposure)).toBe(3);
   expect(withinExecution(restoredReport as unknown as Parameters<typeof withinExecution>[0], SLICE_INPUT)).toEqual([]);
   expect(restored.transportFacts().filter(isApplication)).toHaveLength(1);
-
-  // And a further replacement is stable: it stays applied-resolved and passes, and
-  // does not churn a new obligation on top of the already-correct current one.
-  const again = sliceAssembly({ profile: 'reply' }, home);
-  const againReport = await again.drive() as { obligations: { operation: string; state: string; exposure: string }[] };
-  expect(latestFor(againReport.obligations, operation).state).toBe('applied-resolved');
-  expect(withinExecution(againReport as unknown as Parameters<typeof withinExecution>[0], SLICE_INPUT)).toEqual([]);
-  const appliedRows = againReport.obligations.filter(o => o.operation === operation && o.state === 'applied-resolved');
-  expect(appliedRows.length).toBeLessThanOrEqual(2); // one restored + at most one steady; never per-boot churn
-}, 300000);
+  // The append-only ledger now holds exactly TWO applied-resolved rows for the
+  // operation — the first boot's, and the ONE superseding row the restoration wrote
+  // over the loss's refusal — proving the restoration appended a single superseding
+  // obligation, not a stale-left refusal and not per-boot churn. (Stability across a
+  // FURTHER restoration is covered by the delta-validation recovery probe — "the second
+  // restoration adds no obligation" — so it is not re-driven here, keeping this
+  // lifecycle test short of the arm64 RPC deadline (REPAIR6).)
+  expect(restoredReport.obligations.filter(o => o.operation === operation && o.state === 'applied-resolved')).toHaveLength(2);
+}, 200000);

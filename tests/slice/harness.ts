@@ -3,7 +3,7 @@
 // into the assembly, and there is no test-only recovery helper. The execution core is
 // the SHARED implementation the kill-schedule pre-step also uses, so the harness and the
 // pre-step can never drift (astra advisory).
-import { rmSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import type { SliceReport } from './acceptance.js';
 import { PROFILE_BOUNDARIES } from './boundaries.js';
 // @ts-expect-error the shared execution helper is JavaScript, outside pure core compilation.
@@ -46,6 +46,12 @@ export async function rebuildInFreshProcess(home: string, profile = 'reply'): Pr
   return JSON.parse(run.stdout.trim().split('\n').pop()!) as SliceReport['rebuilds'];
 }
 
-export function discard(...homes: readonly string[]): void {
-  for (const home of homes) rmSync(home, { recursive: true, force: true });
+// ASYNC teardown: run the durable-home deletions on libuv's threadpool, awaited, so the
+// worker's event loop stays FREE during cleanup. A synchronous rmSync of many large home
+// trees at afterAll blocked the loop ~30s locally (60-90s on a slower arm64 runner) —
+// long enough that the file's final onTaskUpdate RPC could not be serviced and vitest
+// threw a worker-RPC timeout after every test had passed (REPAIR6). Deletion is a
+// best-effort cleanup, so a failure to remove a temp dir is ignored.
+export async function discard(...homes: readonly string[]): Promise<void> {
+  await Promise.all(homes.map(home => rm(home, { recursive: true, force: true }).catch(() => {})));
 }

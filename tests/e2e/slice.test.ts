@@ -244,22 +244,21 @@ it('P11-NF-44 P11-NF-48 a crash between the reservation and its claim is CLOSED,
   expect(outbound.equal).toBe('equal');
 }, 240000);
 
-it('P11-NF-48 on REAL history, a terminal obligation label relabelled over six\'s record is refused', async () => {
-  // The desk's R1 reproduction shape, driven on real executions rather than
-  // synthesized ones: change NOTHING except the obligation's label and exposure.
+// The desk's on-REAL-history reproductions, split into one execution per test so no
+// single test's wall time approaches the 60s worker-RPC deadline on a slow arm64 runner
+// (REPAIR6). Each drives its own real execution and mutates only the named field.
+it('P11-NF-48 on REAL history a terminal label relabelled over six\'s model record is refused (R1/R2)', async () => {
   const judgment = await execute({ profile: 'judgment' });
   expect(withinExecution(judgment.report, SLICE_INPUT)).toEqual([]);
   const model = judgment.report.sixOperations.find(o => o.role === 'model-judgment')!;
   // Six's own record: the operation was consumed and is unresolved.
   expect([model.state, model.resolved]).toEqual(['consumed', false]);
+  // R1: change NOTHING except the obligation's label and exposure.
   const laundered = { ...judgment.report, obligations: judgment.report.obligations.map(o =>
     o.operation === model.operation ? { ...o, state: 'closed-unexecuted', exposure: '0' } : o) };
   expect(withinExecution(laundered, SLICE_INPUT)
     .some(v => v.includes('obligation closed-unexecuted names an operation six records as consumed'))).toBe(true);
-
-  // The desk's M1 shape (R2), on the same real history: flip ONLY the row's resolved
-  // summary to true and drop the obligation naming the operation. The flag then
-  // contradicts the state and application in its own row, and is refused by name.
+  // R2 (M1): flip ONLY the row's resolved summary and drop the obligation naming it.
   const m1 = { ...judgment.report,
     sixOperations: judgment.report.sixOperations.map(o =>
       o.operation === model.operation ? { ...o, resolved: true } : o),
@@ -267,9 +266,11 @@ it('P11-NF-48 on REAL history, a terminal obligation label relabelled over six\'
       o.operation !== model.operation && !o.operation.endsWith(`:${model.operation}`)) };
   expect(withinExecution(m1, SLICE_INPUT)
     .some(v => v.includes('the resolved flag for model-judgment contradicts six\'s own state and application'))).toBe(true);
+}, 180000);
 
-  // The same class on a settlement-bearing execution: a cut after the dispatch-claim
-  // leaves six holding an APPLIED but unresolved operation with its exposure retained.
+it('P11-NF-48 on REAL history a terminal label relabelled over an applied-unresolved reply is refused (R1/R2)', async () => {
+  // A cut after the dispatch-claim leaves six holding an APPLIED but unresolved
+  // operation with its exposure retained.
   const cut = await execute({ profile: 'reply', cuts: ['outbound-claim'] });
   expect(withinExecution(cut.report, SLICE_INPUT)).toEqual([]);
   const outbound = cut.report.sixOperations.find(o => o.role === 'outbound-reply')!;
@@ -287,10 +288,11 @@ it('P11-NF-48 on REAL history, a terminal obligation label relabelled over six\'
     o.state === 'applied-unresolved' ? { ...o, state: 'applied-resolved', exposure: '0' } : o) };
   expect(withinExecution(resolvedClaim, SLICE_INPUT)
     .some(v => v.includes('applied-resolved names an operation six recorded no resolved application for'))).toBe(true);
+}, 180000);
 
-  // The G6 shape (Claude R6), on real history: a fully settled reply whose eight
-  // settlement figure is bumped while six's applied actual charge stays what six
-  // recorded. finalCharge then disagrees with six's application, and is refused.
+it('P11-NF-48 on REAL history a settlement final charge bumped past six\'s applied actual charge is refused (R6/G6)', async () => {
+  // A fully settled reply whose eight settlement figure is bumped while six's applied
+  // actual charge stays what six recorded. finalCharge then disagrees with six.
   const settled = await execute({ profile: 'reply' });
   expect(withinExecution(settled.report, SLICE_INPUT)).toEqual([]);
   const settledOp = settled.report.sixOperations.find(o => o.role === 'outbound-reply')!;
@@ -299,7 +301,7 @@ it('P11-NF-48 on REAL history, a terminal obligation label relabelled over six\'
     finalCharge: String(settledOp.application!.actualCharge + 16), retainedExposure: settledOp.application!.actualCharge + 16 } };
   expect(withinExecution(g6, SLICE_INPUT)
     .some(v => v.includes('the settlement final charge disagrees with six\'s applied actual charge'))).toBe(true);
-}, 300000);
+}, 180000);
 
 it('P11-NF-44 P11-NF-48 a real SIGKILL AT settlement-application restores the applied-resolved obligation on recovery', async () => {
   // astra R1: the cut writes the once-only application row, then dies before the

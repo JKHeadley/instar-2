@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error the reference assembly is JavaScript, outside pure core compilation.
@@ -41,4 +42,9 @@ export function sliceAssembly(overrides: Record<string, unknown> = {}, home = mk
   homes.push(home);
   return bootSliceAssembly(home, sliceConfig(overrides)) as SliceAssembly;
 }
-export function cleanup(): void { for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true }); }
+// ASYNC teardown on the threadpool so the worker's event loop stays free during cleanup
+// (REPAIR6: a synchronous rmSync of many home trees at afterAll blocked the loop long
+// enough to miss the file's final onTaskUpdate RPC on a slow runner).
+export async function cleanup(): Promise<void> {
+  await Promise.all(homes.splice(0).map(home => rm(home, { recursive: true, force: true }).catch(() => {})));
+}
