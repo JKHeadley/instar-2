@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { checkpoint, foldProjection, readProjection, rebuildProjection, restoreCheckpoint, signCheckpoint, verifyRebuild } from '../../src/projections/index.js';
 import type { ProjectionDefinition, ProjectionGeneration } from '../../src/projections/index.js';
+import { canonical } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
 import type { FactEnvelope, OwnedShape } from '../../src/facts/index.js';
 import { prepareSnapshot, registerOwnedBody } from '../../src/facts/index.js';
@@ -179,6 +180,72 @@ it('P2-NF-48 P2-NF-57 P2-NF-58 pathed resume quarantines a poison suffix like ge
     expect(value(verifyRebuild(checkpoint(genesis), checkpoint(restoredResume.view), f.c))).toBe('equal');
     refused(readProjection(restoredResume.view, authority, f.now, f.c));
   }
+});
+
+// --- REPAIR2 (both desks): the fold folds on its CANONICAL declaration, never a live
+// decision object/map that a Proxy drifts between validation and folding. ---
+// A projection whose fold matched its own canonical declaration.
+const foldsItsDeclaration = (f: ReturnType<typeof pathFixture>, drifting: ProjectionDefinition, facts: FactEnvelope[], g: ProjectionGeneration) => {
+  const normalized = JSON.parse(value(canonical(drifting)).bytes) as ProjectionDefinition;
+  const expected = value(foldProjection(normalized, f.snapshot(facts), g, f.c));
+  const actual = value(foldProjection(drifting, f.snapshot(facts), g, f.c));
+  return { expected, actual, equal: value(verifyRebuild(checkpoint(expected), checkpoint(actual), f.c)) };
+};
+
+it('P2-NF-49 P2-NF-50 a Proxy decision that drifts identity or value after validation cannot change the fold', () => {
+  const f = pathFixture();
+  const a = f.rec({ operation: 'one', amount: '20', outcome: '7' });
+  const g = f.gen({ 'machine-a': a });
+  for (const mode of ['canonical-drift', 'after-validation'] as const) {
+    for (const role of ['identity', 'value'] as const) {
+      const declared = { kind: 'folds' as const, identity: 'record.operation', value: 'record.amount', merge: 'additive' as const };
+      let reads = 0;
+      // The decision presents the declared (valid) selector to canonical/validation and a
+      // different (also valid) one, 'record.outcome', to the fold's own property access.
+      const decision = new Proxy(declared, { get(t, key, r) {
+        if (key === role) { reads++; return mode === 'canonical-drift' || reads > 3 ? 'record.outcome' : Reflect.get(t, key, r); }
+        return Reflect.get(t, key, r);
+      } }) as unknown as typeof declared;
+      const { actual, equal } = foldsItsDeclaration(f, f.def(decision), [a], g);
+      expect(equal).toBe('equal');
+      expect(actual.values).toEqual({ 'owner-record:one': '20' });
+    }
+  }
+});
+
+it('P2-NF-49 P2-NF-50 a Proxy on the decisions MAP that switches the whole decision after validation cannot change the fold', () => {
+  const f = pathFixture();
+  const a = f.rec({ operation: 'one', amount: '20', outcome: '7' });
+  const g = f.gen({ 'machine-a': a });
+  const A = { kind: 'folds' as const, identity: 'record.operation', value: 'record.amount', merge: 'additive' as const };
+  const B = { kind: 'folds' as const, identity: 'record.outcome', value: 'record.amount', merge: 'additive' as const };
+  let gets = 0;
+  const decisions = new Proxy({ 'owner-record': A }, { get(t, key, r) {
+    if (key === 'owner-record') { gets++; return gets > 3 ? B : A; }   // validate-A / resolve-B
+    return Reflect.get(t, key, r);
+  } });
+  const drifting = { id: 'p', class: 'informational', stalenessBound: 100, retention: 'all-identities', decisions } as unknown as ProjectionDefinition;
+  const { actual, equal } = foldsItsDeclaration(f, drifting, [a], g);
+  expect(equal).toBe('equal');
+  expect(actual.values).toEqual({ 'owner-record:one': '20' });
+});
+
+it('P2-NF-57 P2-NF-58 signed-checkpoint recovery under a drifting producer resumes on the plain canonical definition', () => {
+  const f = pathFixture();
+  const a = f.rec({ operation: 'one', amount: '20', outcome: '7' }, { at: f.clock(90) });
+  const b = f.rec({ operation: 'one', amount: '10' }, { at: f.clock(110),
+    segment: { machine: 'machine-a', epoch: 0, position: 1 }, prevInSegment: a.contentHash, predecessors: { inSegment: a.id, frontier: {}, required: [] } });
+  const g = f.gen({ 'machine-a': b });
+  const declared = { kind: 'folds' as const, identity: 'record.operation', value: 'record.amount', merge: 'additive' as const };
+  const drift = new Proxy(declared, { get(t, k, r) { return k === 'value' ? 'record.outcome' : Reflect.get(t, k, r); } }) as unknown as typeof declared;
+  const cp = checkpoint(value(f.fold([a], f.def(drift), g)));   // producer under a drifting value selector
+  const cert = signCheckpoint(cp, 'p2-cache', privateKey);
+  const restored = value(restoreCheckpoint(JSON.parse(JSON.stringify(cert)), f.snapshot([a, b]), f.c, [{ id: 'p2-cache', publicKey }]));
+  const resumed = value(rebuildProjection(f.def(declared), f.snapshot([a, b]), g, f.c, [restored], 1));
+  const genesis = value(f.fold([a, b], f.def(declared), g));
+  // Recovery folds the DECLARED amounts (20 + 10), not the drifted outcome.
+  expect(resumed.view.values).toEqual({ 'owner-record:one': '30' });
+  expect(value(verifyRebuild(checkpoint(genesis), checkpoint(resumed.view), f.c))).toBe('equal');
 });
 
 // --- REPAIR1 (astra R2, shared path): the same resume fix covers the pre-existing TOP-LEVEL
