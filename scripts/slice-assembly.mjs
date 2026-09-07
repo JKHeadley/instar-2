@@ -429,6 +429,8 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     // pinned in-memory context.
     { ...shared, kind: 'slice-context-evidence', fields: { evidenceId: short, evidence: { kind: 'constitutional', type: 'Evidence' } } },
     { ...shared, kind: 'slice-placement', fields: { worker: short, harness: short } },
+    { ...shared, kind: 'slice-consumption', fields: { worker: short, harness: short,
+      hashes: { kind: 'text', maxLength: 65536 }, classes: { kind: 'text', maxLength: 65536 } } },
     { ...shared, kind: 'slice-reply-source', fields: { semanticMessage: short, basis: short,
       text: { kind: 'text', maxLength: 4096 }, result: { kind: 'constitutional', type: 'Result' } } },
     { ...shared, kind: 'slice-delivery-evidence', fields: { operation: short, stage: short, decisive: short,
@@ -697,7 +699,10 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     const stimuli = all.filter(f => f.kind === 'intake-admitted').sort((a, b) => a.segment.position - b.segment.position);
     const messages = stimuli.map(f => ({ fact: factRef(f), sequence: f.segment.position,
       capture: f.body.rawHash, hash: f.body.rawHash }));
-    const consumption = append('slice-placement', { worker: request.worker, harness: request.harness }, []);
+    // Ten's consumption receipt binds what was actually delivered to the worker:
+    // the exact message capture hashes and the governed briefing classes.
+    const consumption = append('slice-consumption', { worker: request.worker, harness: request.harness,
+      hashes: JSON.stringify(messages.map(m => m.hash)), classes: JSON.stringify(groundingPolicy.briefingClasses) }, []);
     const at = now();
     return { type: 'SessionGrounding', schemaVersion: 2, id: `slice-grounding:${consumption.id}`, run: request.run.run.id,
       expected: request.run.head, worker: request.worker, harness: request.harness, reason: request.reason,
