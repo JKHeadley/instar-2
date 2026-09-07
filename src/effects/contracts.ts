@@ -111,6 +111,13 @@ export interface EffectDoorway {
   prepare(input: { readonly definition: string; readonly message: OutboundMessage; readonly run: RunReference;
     readonly pending: string; readonly attempt: string; readonly verificationOwner: string;
     readonly obligation: string; readonly closure: readonly string[]; readonly fence: FenceToken }): Result<EffectRequest>;
+  // Adopt an operation ADMITTED AND RESERVED EXTERNALLY (by six, at a caller's request):
+  // record eight's own EffectRequest against the caller's admission so the settle path
+  // finds it, WITHOUT minting a second six reservation. The admission is the caller's;
+  // dispatching against it is the new seam. `dispatch`/`settle` then apply unchanged.
+  adopt(input: { readonly definition: string; readonly message: OutboundMessage; readonly run: RunReference;
+    readonly pending: string; readonly attempt: string; readonly verificationOwner: string;
+    readonly obligation: string; readonly closure: readonly string[] }): Result<EffectRequest>;
   dispatch(request: EffectRequest, fence: FenceToken): Result<OperationObservation>;
   handoff(request: EffectRequest, reservation: AdmissionReservation, claim: DispatchClaim, fence: FenceToken): Result<OperationObservation>;
   observe(operation: string): Result<OwnedReference<'part-eight', 'OperationObservation'>>;

@@ -117,6 +117,39 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
         durability: d.record.durability, replicas: d.record.replicas }));
       return q;
     }),
+    // Dispatch-against-provided-admission: an operation six ADMITTED AND RESERVED at a
+    // caller's request (docs/11 step 5). Eight records its own EffectRequest for that
+    // admission — so `settle`'s find(reservation.request, 'EffectRequest') resolves —
+    // but NEVER mints a second six reservation: the reserve() call above is replaced by
+    // verifying the caller's admission exists and is exactly the one it shows. Every
+    // other rule (validation, durability demand, actual re-check) is prepare's, so the
+    // reused `dispatch`/`handoff`/`settle` path is byte-identical.
+    adopt: input => checked('EffectAdopt', input, () => {
+      live(host); ensure(input.run.owner === 'part-five' && input.run.name === 'Run' && input.run.id === input.message.run, 'run owner mismatch');
+      const d = find(input.definition, 'OperationDefinition'); definitionCheck(d.record, host);
+      const m = persist(input.message, [input.message.sourceResult]);
+      const closure = [...new Set([...input.closure, input.pending, input.obligation, d.fact.id,
+        find(m.id, 'OutboundMessage').fact.id, ...host.current().authority])];
+      const q = persist({ type: 'EffectRequest', schemaVersion: 1,
+        id: `request:${encoded([m.account, m.conversation, m.semanticMessage]).hash}`, definition: d.record.id,
+        message: m.id, semanticMessage: m.semanticMessage, run: m.run, pending: input.pending, attempt: input.attempt,
+        digest: encoded(m).hash, verificationOwner: input.verificationOwner, verificationBar: d.record.verificationBar,
+        obligation: input.obligation, closure } as unknown as EffectRequest, closure);
+      const v = validation(q, 'reservation');
+      demand(d.record, factsFor([...q.closure, find(q.id, 'EffectRequest').fact.id, find(v.id, 'EffectValidation').fact.id]));
+      actual(q);
+      // The admission is the CALLER's. It must exist and be exactly the admission the
+      // caller shows for this request/attempt/digest/charge/run — else refuse by name.
+      // Eight writes no reservation of its own.
+      const admission = take(transport.inspect()).filter(a => a.record.type === 'AdmissionReservation' && a.record.request === q.id).at(-1);
+      ensure(admission?.record.type === 'AdmissionReservation', 'no external admission exists for this request');
+      const r = admission.record;
+      ensure(r.digest === q.digest && r.attempt === q.attempt && r.charge === d.record.maxCharge
+        && r.run === input.run.id && r.semanticMessage === q.semanticMessage
+        && r.durability === d.record.durability && r.replicas === d.record.replicas,
+        'external admission does not match the caller-shown dispatch');
+      return q;
+    }),
     dispatch: (q, fence) => checked('EffectDispatch', q.id, () => {
       const prior = take(transport.inspect()).filter(v => v.record.type === 'AdmissionReservation' && v.record.request === q.id).at(-1);
       ensure(prior?.record.type === 'AdmissionReservation', 'request is not reserved');
