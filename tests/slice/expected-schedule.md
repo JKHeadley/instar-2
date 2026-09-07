@@ -3,7 +3,8 @@
 | full | `preservation` | `authentication` | 3 | preservation, authentication | 0 | model-judgment:consumed | no settlement; owned-pending-unadmitted, owned-unresolved-model, owned-pending-unresolvable |
 | full | `authentication` | `standing` | 3 | authentication, standing | 0 | model-judgment:consumed | no settlement; owned-pending-unadmitted, owned-unresolved-model, owned-pending-unresolvable |
 | full | `standing` | `run-creation` | 3 | standing, run-creation | 0 | model-judgment:consumed | no settlement; owned-pending-unadmitted, owned-unresolved-model, owned-pending-unresolvable |
-| full | `run-creation` | `judgment-request` | 3 | run-creation, judgment-request | 0 | none | no settlement; owned-pending-unadmitted, owned-pending-no-answer |
+| full | `run-creation` | `grounding` | 2 | run-creation | 0 | model-judgment:consumed | no settlement; owned-pending-unadmitted, owned-unresolved-model, owned-pending-unresolvable |
+| full | `grounding` | `judgment-request` | 2 | judgment-request | 0 | none | no settlement; owned-pending-unadmitted, owned-pending-no-answer |
 | full | `judgment-request` | `judgment-reservation` | 2 | judgment-request | 0 | none | no settlement; owned-pending-unadmitted, owned-pending-no-answer |
 | full | `judgment-reservation` | `judgment-claim` | 2 | judgment-reservation | 0 | model-judgment:closed/resolved | no settlement; owned-pending-unadmitted, owned-unresolved-model, owned-pending-no-answer |
 | full | `judgment-claim` | `judgment-dispatch` | 2 | judgment-claim | 0 | model-judgment:dispatch-claimed | no settlement; owned-pending-unadmitted, owned-unresolved-model, owned-pending-no-answer, owned-pending-unresolvable |
@@ -19,7 +20,8 @@
 | reply | `preservation` | `authentication` | 3 | preservation, authentication | 1 | outbound-reply:consumed/resolved | settled happened; owned-pending-unadmitted |
 | reply | `authentication` | `standing` | 3 | authentication, standing | 1 | outbound-reply:consumed/resolved | settled happened; owned-pending-unadmitted |
 | reply | `standing` | `run-creation` | 3 | standing, run-creation | 1 | outbound-reply:consumed/resolved | settled happened; owned-pending-unadmitted |
-| reply | `run-creation` | `outbound-preparation` | 3 | run-creation, outbound-preparation | 1 | outbound-reply:consumed/resolved | settled happened; owned-pending-unadmitted |
+| reply | `run-creation` | `grounding` | 2 | run-creation | 1 | outbound-reply:consumed/resolved | settled happened; owned-pending-unadmitted |
+| reply | `grounding` | `outbound-preparation` | 2 | outbound-preparation | 1 | outbound-reply:consumed/resolved | settled happened; owned-pending-unadmitted |
 | reply | `outbound-preparation` | `outbound-reservation` | 3 | outbound-preparation, outbound-reservation | 0 | outbound-reply:closed/resolved | no settlement; owned-pending-unadmitted |
 | reply | `outbound-reservation` | `outbound-claim` | 2 | outbound-reservation | 0 | outbound-reply:closed/resolved | no settlement; owned-pending-unadmitted |
 | reply | `outbound-claim` | `outbound-consume` | 2 | outbound-claim | 0 | outbound-reply:dispatch-claimed | settled did-not-happen; owned-pending-unadmitted |
@@ -36,7 +38,8 @@
 | judgment | `preservation` | `authentication` | 3 | preservation, authentication | 0 | model-judgment:consumed | no settlement; owned-pending-unadmitted, owned-unresolved-model |
 | judgment | `authentication` | `standing` | 3 | authentication, standing | 0 | model-judgment:consumed | no settlement; owned-pending-unadmitted, owned-unresolved-model |
 | judgment | `standing` | `run-creation` | 3 | standing, run-creation | 0 | model-judgment:consumed | no settlement; owned-pending-unadmitted, owned-unresolved-model |
-| judgment | `run-creation` | `judgment-request` | 3 | run-creation, judgment-request | 0 | none | no settlement; owned-pending-unadmitted, owned-pending-no-answer |
+| judgment | `run-creation` | `grounding` | 2 | run-creation | 0 | model-judgment:consumed | no settlement; owned-pending-unadmitted, owned-unresolved-model |
+| judgment | `grounding` | `judgment-request` | 2 | judgment-request | 0 | none | no settlement; owned-pending-unadmitted, owned-pending-no-answer |
 | judgment | `judgment-request` | `judgment-reservation` | 2 | judgment-request | 0 | none | no settlement; owned-pending-unadmitted, owned-pending-no-answer |
 | judgment | `judgment-reservation` | `judgment-claim` | 2 | judgment-reservation | 0 | model-judgment:prepared | no settlement; owned-pending-unadmitted, owned-unresolved-model, owned-pending-no-answer |
 | judgment | `judgment-claim` | `judgment-dispatch` | 2 | judgment-claim | 0 | model-judgment:dispatch-claimed | no settlement; owned-pending-unadmitted, owned-unresolved-model, owned-pending-no-answer |

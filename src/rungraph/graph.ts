@@ -73,6 +73,28 @@ export function validateExit(exit: RunExit, run: Run, head: string, pending: rea
   const decoded = take(decode('Result', result.view, c.types));
   need(consumeResult(decoded, { Success: () => true, Refused: () => false }), 'refused work cannot become a completed run');
 }
+/** Owner decision (slice-five-gap option 1, 2026-09-06): a stimulus whose own schema
+ * declares a capture field keeps the primary direct binding, unchanged. Only when the
+ * schema declares NO capture field may the binding be carried by EXACTLY ONE
+ * reference-policy field whose target — an admitted fact inside the stimulus fact's
+ * own causal cone — declares the capture field (for intake-admitted: its receipt).
+ * Ambiguity refuses rather than guesses; a missing/unverified target refuses. */
+function captureBindingFact(fact: FactEnvelope, c: RunDecodeContext): FactEnvelope {
+  const schema = c.facts.schemas.find(s => s.kind === fact.kind && s.version === fact.schemaVersion);
+  need(schema, 'grounding capture not bound to the signed message capture field');
+  if (Object.values(schema.fields).some(policy => policy.kind === 'capture')) return fact;
+  const bearers = Object.entries(schema.fields).filter(([, policy]) => policy.kind === 'reference').map(([field]) => {
+    const id = object(fact.body)[field];
+    const ancestor = typeof id === 'string' ? c.facts.facts.find(f => f.id === id) : undefined;
+    const ancestorSchema = ancestor && c.facts.schemas.find(s => s.kind === ancestor.kind && s.version === ancestor.schemaVersion);
+    need(ancestor && ancestorSchema, 'grounding capture ancestor missing or unverified');
+    return { ancestor, captureBearing: Object.values(ancestorSchema.fields).some(policy => policy.kind === 'capture') };
+  }).filter(candidate => candidate.captureBearing);
+  need(bearers.length <= 1, 'ambiguous grounding capture ancestors');
+  const selected = bearers[0]; need(selected, 'grounding capture not bound to the signed message capture field');
+  need(causalCone(fact, c.facts.facts).some(f => f.id === selected.ancestor.id), 'grounding capture ancestor missing or unverified');
+  return selected.ancestor;
+}
 export function validateGrounding(g: SessionGrounding, run: Run, head: string, pending: readonly RunStep[], c: RunDecodeContext): void {
   need(g.run === run.id && g.expected === head && same(g.principal, run.owner) && same(g.binding, run.resultDestination.binding), 'grounding run/head/principal/binding mismatch');
   need(same(g.directives, run.directives) && same(g.generation, run.generation), 'grounding directives or generation differ');
@@ -94,9 +116,12 @@ export function validateGrounding(g: SessionGrounding, run: Run, head: string, p
     const capture = c.facts.captures[message.capture];
     need(capture?.status === 'available' && capture.hash === message.hash && capture.bytes !== null
       && hashBytes(capture.bytes) === message.hash, 'grounding capture unavailable or changed');
-    const schema = c.facts.schemas.find(s => s.kind === fact.kind && s.version === fact.schemaVersion);
-    need(schema && Object.entries(schema.fields).some(([field, policy]) => policy.kind === 'capture'
-      && same(object(fact.body)[field], { reference: message.capture, hash: message.hash })), 'grounding capture not bound to the signed message capture field');
+    const carrier = captureBindingFact(fact, c);
+    const carrierSchema = c.facts.schemas.find(s => s.kind === carrier.kind && s.version === carrier.schemaVersion);
+    need(carrierSchema && Object.entries(carrierSchema.fields).some(([field, policy]) => policy.kind === 'capture'
+      && same(object(carrier.body)[field], { reference: message.capture, hash: message.hash })),
+      carrier.id === fact.id ? 'grounding capture not bound to the signed message capture field'
+        : 'grounding capture not bound by the capture-bearing stimulus ancestor');
   }
   need(g.knownLineages.length === Object.keys(g.frontier).length && g.knownLineages.every(k => Object.hasOwn(g.frontier, k)), 'grounding lineage coverage differs');
   const latest = history.at(-1); need(latest && latest.id === g.lastInbound.id, 'grounding last inbound differs');

@@ -13,12 +13,19 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
   admissions: Set<string>; witness: (id: string) => void; worker: string; harness: string; lease: string;
   message: string;
   afterIntake?: () => void;
+}, stimulus?: {
+  fields: FactSchema['fields'];
+  extra?: Readonly<Record<string, FactSchema['fields']>>;
+  body: (tools: { append: (kind: string, body: Json, required?: readonly string[]) => { fact: FactEnvelope };
+    intent: unknown; owner: unknown; hash: string }) => Json;
 }) {
   const f = factsFixture(); let now = f.now, liveLease = 'lease:1'; const wire: unknown[] = [];
   const types = { ...f.ctx.decode, provenance: f.bob.provenance,
     register: { ...f.ctx.decode.register, subjects: { ...f.ctx.decode.register.subjects, 'elapsed-time': ['ms'], 'run-work': ['steps'] } } };
   const schemas: FactSchema[] = [
-    { ...f.schema, kind: 'stimulus', fields: { intent: { kind: 'constitutional', type: 'Intent' }, owner: { kind: 'constitutional', type: 'VerifiedPrincipal' }, capture: { kind: 'capture' } } },
+    { ...f.schema, kind: 'stimulus', fields: stimulus?.fields
+      ?? { intent: { kind: 'constitutional', type: 'Intent' }, owner: { kind: 'constitutional', type: 'VerifiedPrincipal' }, capture: { kind: 'capture' } } },
+    ...Object.entries(stimulus?.extra ?? {}).map(([kind, fields]): FactSchema => ({ ...f.schema, kind, fields })),
     { ...f.schema, kind: 'consumption', fields: { worker: { kind: 'text', maxLength: 80 }, harness: { kind: 'text', maxLength: 80 }, hashes: { kind: 'text', maxLength: 65536 }, classes: { kind: 'text', maxLength: 65536 } } },
     { ...f.schema, kind: 'outcome-record', fields: { evidence: { kind: 'constitutional', type: 'Evidence' }, outcome: { kind: 'constitutional', type: 'Outcome' } } },
     { ...f.schema, kind: 'evidence-record', fields: { evidence: { kind: 'constitutional', type: 'Evidence' } } },
@@ -43,7 +50,8 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
   // Restart harness reconstructs from the durable cause plus installation policy,
   // never from a Run supplied by its dead caller. Existing input is not reauthored.
   const opening = value(store.read()).find(f => f.kind === 'stimulus')
-    ?? append('stimulus', json({ intent, owner: f.bob, capture: { reference: 'message:1', hash } })).fact;
+    ?? (stimulus ? append('stimulus', stimulus.body({ append, intent, owner: f.bob, hash })).fact
+      : append('stimulus', json({ intent, owner: f.bob, capture: { reference: 'message:1', hash } })).fact);
   recovery?.afterIntake?.();
   const owner = { type: 'VerifiedPrincipal' as const, id: 'bob', fact: ref(opening), field: 'owner' };
   const id = runIdFor(ref(opening)), binding = { owner: 'part-four', name: 'ConversationBinding', id: 'binding:1' } as const;
