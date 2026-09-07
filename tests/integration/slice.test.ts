@@ -419,9 +419,37 @@ it('P11-NF-48 a temporary authority loss then restoration supersedes the refusal
   // The append-only ledger now holds exactly TWO applied-resolved rows for the
   // operation — the first boot's, and the ONE superseding row the restoration wrote
   // over the loss's refusal — proving the restoration appended a single superseding
-  // obligation, not a stale-left refusal and not per-boot churn. (Stability across a
-  // FURTHER restoration is covered by the delta-validation recovery probe — "the second
-  // restoration adds no obligation" — so it is not re-driven here, keeping this
-  // lifecycle test short of the arm64 RPC deadline (REPAIR6).)
+  // obligation, not a stale-left refusal. (No-per-boot-CHURN across a further boot is
+  // the dedicated stability test below, kept separate so neither test's wall time
+  // approaches the arm64 RPC deadline — REPAIR6/REPAIR7 D1.)
   expect(restoredReport.obligations.filter(o => o.operation === operation && o.state === 'applied-resolved')).toHaveLength(2);
 }, 200000);
+
+it('P11-NF-48 a further boot over an already-applied-resolved operation appends no new obligation (no per-boot churn)', async () => {
+  // astra D1 (the restored fourth-boot no-churn regression, as its own committed and
+  // automatically-executed test): once six's operation is already applied-resolved and
+  // the derived obligation matches, a further replacement boot must reconsume WITHOUT
+  // appending another applied row — otherwise the reconcile-against-latest guard would
+  // churn a new obligation every boot. Exercised on the same guard the loss→restoration
+  // lifecycle exercises (`matches()` → no-op), in two bounded drives.
+  const isApplication = (v: { record: unknown }) => (v.record as { type: string }).type === 'SettlementApplication';
+  const appliedRows = (obs: { operation: string; state: string }[], op: string) =>
+    obs.filter(o => o.operation === op && o.state === 'applied-resolved');
+  const first = sliceAssembly({ profile: 'reply' });
+  const firstReport = await first.drive() as { obligations: { operation: string; state: string; exposure: string }[] };
+  const home = first.home;
+  const operation = (first.transportFacts().filter(isApplication)[0]!.record as unknown as { operation: string }).operation;
+  expect(appliedRows(firstReport.obligations, operation)).toHaveLength(1);
+
+  // A further boot: the state is ALREADY applied-resolved, so this reconsumes and
+  // appends nothing. The applied-resolved count stays 1, the latest stays
+  // applied-resolved, and the report still passes acceptance.
+  const again = sliceAssembly({ profile: 'reply' }, home);
+  const againReport = await again.drive() as { obligations: { operation: string; state: string; exposure: string }[];
+    steps: { step: string; state: string }[] };
+  expect(appliedRows(againReport.obligations, operation)).toHaveLength(1);
+  expect([...againReport.obligations].reverse().find(o => o.operation === operation)!.state).toBe('applied-resolved');
+  expect(again.transportFacts().filter(isApplication)).toHaveLength(1);
+  expect(againReport.steps.some(s => s.step === 'settlement-application' && s.state === 'reconsumed')).toBe(true);
+  expect(withinExecution(againReport as unknown as Parameters<typeof withinExecution>[0], SLICE_INPUT)).toEqual([]);
+}, 180000);

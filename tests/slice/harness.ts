@@ -47,11 +47,14 @@ export async function rebuildInFreshProcess(home: string, profile = 'reply'): Pr
 }
 
 // ASYNC teardown: run the durable-home deletions on libuv's threadpool, awaited, so the
-// worker's event loop stays FREE during cleanup. A synchronous rmSync of many large home
-// trees at afterAll blocked the loop ~30s locally (60-90s on a slower arm64 runner) —
-// long enough that the file's final onTaskUpdate RPC could not be serviced and vitest
-// threw a worker-RPC timeout after every test had passed (REPAIR6). Deletion is a
-// best-effort cleanup, so a failure to remove a temp dir is ignored.
+// worker's event loop stays FREE during cleanup (a synchronous rmSync of many large home
+// trees at afterAll blocked the loop long enough to miss the file's final onTaskUpdate RPC
+// on a slow runner — REPAIR6). `force: true` already ignores a missing path, but a REAL
+// removal failure (EACCES/EPERM) is PROPAGATED after every deletion settles rather than
+// swallowed, so a teardown that leaves state behind fails loudly (astra D2). Homes are
+// de-duplicated so a repeated path is removed once.
 export async function discard(...homes: readonly string[]): Promise<void> {
-  await Promise.all(homes.map(home => rm(home, { recursive: true, force: true }).catch(() => {})));
+  const results = await Promise.allSettled([...new Set(homes)].map(home => rm(home, { recursive: true, force: true })));
+  const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (failures.length) throw new Error(`cleanup failed to remove ${failures.length} home(s): ${failures.map(f => String(f.reason)).join('; ')}`);
 }

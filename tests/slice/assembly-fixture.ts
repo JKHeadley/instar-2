@@ -44,7 +44,11 @@ export function sliceAssembly(overrides: Record<string, unknown> = {}, home = mk
 }
 // ASYNC teardown on the threadpool so the worker's event loop stays free during cleanup
 // (REPAIR6: a synchronous rmSync of many home trees at afterAll blocked the loop long
-// enough to miss the file's final onTaskUpdate RPC on a slow runner).
+// enough to miss the file's final onTaskUpdate RPC on a slow runner). `force: true`
+// ignores a missing path, but a REAL removal failure is PROPAGATED after every deletion
+// settles rather than swallowed (astra D2); homes are de-duplicated.
 export async function cleanup(): Promise<void> {
-  await Promise.all(homes.splice(0).map(home => rm(home, { recursive: true, force: true }).catch(() => {})));
+  const results = await Promise.allSettled([...new Set(homes.splice(0))].map(home => rm(home, { recursive: true, force: true })));
+  const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (failures.length) throw new Error(`cleanup failed to remove ${failures.length} home(s): ${failures.map(f => String(f.reason)).join('; ')}`);
 }
