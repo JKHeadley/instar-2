@@ -77,9 +77,10 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
           && typeof reference.id === 'string' && reference.id.length > 0, 'run reference owner/name/id mismatch');
         const view = read(reference.id);
         need(['completed', 'unreachable', 'cancelled'].includes(view.state), 'terminal run exit absent');
-        const fact = take(d.store.read()).find(candidate => candidate.kind === runKinds.RunTransition
+        const fact = [...take(d.store.read())].reverse().find(candidate => candidate.kind === runKinds.RunTransition
           && object(readRecordFact(candidate)).id === view.head);
         need(fact, 'terminal run exit fact absent');
+        need(same(take(d.admission.verify(factRef(fact))), factRef(fact)), 'terminal run exit admission witness missing');
         const transition = take(decodeRunTransition(readRecordFact(fact), context()));
         need(transition.run === reference.id && transition.kind === 'close' && transition.to === view.state
           && transition.exit, 'terminal run exit absent');

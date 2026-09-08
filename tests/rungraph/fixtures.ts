@@ -124,7 +124,7 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
       context: ref(append('note', json({ identity: `${worker}:${harness}`, amount: '0' })).fact) }; } };
 }
 
-export function completedRun() {
+export function closingRun() {
   const f = setup(), ready = value(f.graph.open(f.run));
   const check = value(decode('Evidence', f.evidenceInput({ id: 'exit-read-check', claim: { subject: f.run.exitTest.subject,
     predicate: `exit:${f.run.exitTest.check}:${f.run.exitTest.version}`, value: f.run.exitTest.acceptance }, freshFor: 1000 }), f.ctx.decode));
@@ -140,7 +140,13 @@ export function completedRun() {
     generation: f.run.generation, at: f.now, blockedOn: { kind: 'nothing' }, nextWake: f.run.nextWake, exit };
   const closing = value(f.graph.transition(proposal));
   const terminalExit = { ...exit, id: 'exit-read-terminal', expected: closing.head };
-  const completed = value(f.graph.transition({ ...proposal, id: 'exit-read-close', expected: closing.head, kind: 'close', from: 'closing', to: 'completed', exit: terminalExit }));
+  const close = { ...proposal, id: 'exit-read-close', expected: closing.head, kind: 'close', from: 'closing', to: 'completed', exit: terminalExit };
+  return { ...f, ready, closing, terminalExit, close };
+}
+
+export function completedRun() {
+  const f = closingRun();
+  const completed = value(f.graph.transition(f.close));
   const closeFact = value(f.store.read()).at(-1)!;
-  return { ...f, ready, closing, completed, terminalExit, closeFact };
+  return { ...f, completed, closeFact };
 }
