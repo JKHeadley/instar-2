@@ -123,6 +123,9 @@ export type VerificationRecordName = VerificationRecord['type'];
 export interface VerificationDecodeContext extends BoundaryContext {}
 export interface VerificationIdentity { readonly id: string; readonly logicalKey: string; readonly canonicalHash: Hash }
 export interface VerificationFact { readonly fact: FactEnvelope; readonly record: VerificationRecord }
+export interface CurrentVerificationFact extends VerificationFact {
+  readonly taint: readonly string[]; readonly conflicts: readonly ConflictClass[];
+}
 export interface VerificationSpine {
   readonly store: FactStorePort;
   append(record: VerificationRecord, required?: readonly string[]): Result<AppendReceipt>;
@@ -152,6 +155,7 @@ export interface VerificationRuntimePort {
   readonly owner: 'part-nine';
   record<N extends VerificationRecordName>(name: N, input: unknown): Result<Extract<VerificationRecord, { type: N }>>;
   inspect(): Result<readonly VerificationFact[]>;
+  inspectCurrent(): Result<readonly CurrentVerificationFact[]>;
   due(now: Clock): Result<readonly VerificationDueItem[]>;
   posture(plan: string, now: Clock): Result<GuardPostureView>;
 }

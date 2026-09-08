@@ -1,5 +1,6 @@
 import { freeze } from './boundary.js';
 import type { Grade, RetrospectiveReviewRecord, VerificationPlan } from './contracts.js';
+import type { ReviewPopulationCase } from './review.js';
 
 export const adapterStimulusClasses = freeze([
   { id: 'conversation', authentication: 'channel-attested', limit: 'stolen platform credentials remain outside sampling proof' },
@@ -48,9 +49,19 @@ export function outcomeWindowStatus(grade: Grade, observationAt: number | null):
   return observationAt >= grade.window.start && observationAt < grade.window.end ? 'within-window' : 'late';
 }
 
-export function convergenceEligible(record: RetrospectiveReviewRecord, artifactAuthor: string): boolean {
+export function convergenceEligible(record: RetrospectiveReviewRecord, artifactAuthor: string,
+  population?: readonly ReviewPopulationCase[]): boolean {
+  const omitted = new Map(record.omitted.map(row => [row.caseId, row.reason]));
+  const exactPopulation = new Set(record.eligibleCases).size === record.eligibleCases.length
+    && new Set(record.inspected).size === record.inspected.length
+    && omitted.size === record.omitted.length
+    && record.omitted.every(row => row.reason.length > 0 && record.eligibleCases.includes(row.caseId))
+    && record.inspected.every(id => record.eligibleCases.includes(id))
+    && record.eligibleCases.every(id => record.inspected.includes(id) !== omitted.has(id))
+    && !!population && new Set(population.map(row => row.id)).size === record.eligibleCases.length
+    && record.eligibleCases.every(id => population.some(row => row.id === id));
   return record.closure === 'converged' && record.reviewer !== artifactAuthor
-    && record.independenceEvidence.length > 0 && record.layerBelow.length > 0;
+    && record.independenceEvidence.length > 0 && record.layerBelow.length > 0 && exactPopulation;
 }
 
 export function activationGaps(plan: VerificationPlan): readonly string[] {

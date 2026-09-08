@@ -40,10 +40,20 @@ it('P9-NF-31 P9-NF-32 same-subject refusal contradicts paid-success while an hon
 
 it('P9-NF-29 P9-NF-33 P9-NF-37 failed semantic review stays incomplete and convergence requires an independent reviewer', () => {
   const record = verificationInput('RetrospectiveReviewRecord');
-  expect(convergenceEligible(record, 'artifact-author')).toBe(true);
-  expect(convergenceEligible(record, record.reviewer)).toBe(false);
+  const population = [{ id: 'case:1', category: 'question' as const, fact: 'fact:1' }];
+  expect(convergenceEligible(record, 'artifact-author', population)).toBe(true);
+  expect(convergenceEligible(record, record.reviewer, population)).toBe(false);
   const incomplete = value(decodeVerificationRecord('RetrospectiveReviewRecord', { ...record, closure: 'incomplete' }, factsFixture().c));
-  expect(convergenceEligible(incomplete, 'artifact-author')).toBe(false);
+  expect(convergenceEligible(incomplete, 'artifact-author', population)).toBe(false);
+});
+
+it('R5 convergence cannot hide a population member behind duplicate unjustified omissions', () => {
+  const record = verificationInput('RetrospectiveReviewRecord');
+  const forged = { ...record, eligibleCases: ['case:1', 'case:2'], inspected: [],
+    omitted: [{ caseId: 'case:1', reason: '' }, { caseId: 'case:1', reason: '' }] } as unknown as typeof record;
+  const population = ['case:1', 'case:2'].map((id, i) => ({ id, category: 'question' as const, fact: `fact:${i}` }));
+  expect(convergenceEligible(forged, 'different-author', population)).toBe(false);
+  expect(() => value(decodeVerificationRecord('RetrospectiveReviewRecord', forged, factsFixture().c))).toThrow();
 });
 
 it('P9-NF-41 outcomes outside the original half-open observation window are late, never retroactive success', () => {

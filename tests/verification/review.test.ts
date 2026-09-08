@@ -1,10 +1,13 @@
 import { expect, it } from 'vitest';
 import { decode } from '../../src/index.js';
+import { authorAndAppend } from '../../src/facts/index.js';
+import type { FactSchema } from '../../src/facts/index.js';
 import { affectedGrades, benchmarkAccounting, feedbackCoverage, gradeSupport, reviewAccounting,
   semanticCoverage, waiverReview, decodeVerificationRecord } from '../../src/verification/index.js';
 import type { VerificationRecord, VerificationRecordName } from '../../src/verification/index.js';
-import { factsFixture, value } from '../facts/fixtures.js';
+import { factsFixture, privateKey, value } from '../facts/fixtures.js';
 import { verificationInput } from './fixture.js';
+import { verificationRuntimeFixture } from './runtime-fixture.js';
 
 const decoded = <N extends VerificationRecordName>(name: N, input: unknown): Extract<VerificationRecord, { type: N }> =>
   value(decodeVerificationRecord(name, input, factsFixture().c));
@@ -35,12 +38,29 @@ it('P9-NF-28 P9-NF-33 P9-NF-34 unlinked feedback remains missing and replies do 
 });
 
 it('P9-NF-30 P9-NF-57 semantic review is exact-generation and disagreement remains disputed', () => {
-  const adequate = verificationInput('SemanticReviewRecord');
+  const runtime = verificationRuntimeFixture();
+  const schema: FactSchema = { ...runtime.schema, kind: 'check-run-record', fields: { id: { kind: 'text', maxLength: 2048 } } };
+  (runtime.context.schemas as FactSchema[]).push(schema);
+  value(runtime.runtime.record('VerificationPlan', verificationInput('VerificationPlan')));
+  const run = value(authorAndAppend({ kind: 'check-run-record', schemaVersion: 1, machine: 'machine-a',
+    principal: JSON.parse(JSON.stringify(runtime.alice)), provenance: JSON.parse(JSON.stringify(runtime.alice.provenance)),
+    at: JSON.parse(JSON.stringify(runtime.clock(100))), body: { id: 'check-run:resolved' }, required: [] },
+  runtime.context, runtime.store, privateKey)).fact;
+  const adequate = decoded('SemanticReviewRecord', { ...verificationInput('SemanticReviewRecord'),
+    checkRuns: ['check-run:resolved'], evidencePopulation: [run.id], layerBelow: [run.id] });
+  const history = { snapshot: value(runtime.store.readForProjection()) };
   const old = decoded('SemanticReviewRecord', { ...adequate, id: 'semantic:old', generation: 'generation:old' });
-  expect(semanticCoverage([{ edge: adequate.edge, generation: adequate.generation, firstSeen: 1 }], [old])[0]).toMatchObject({ reviewed: false, verdict: 'never' });
-  expect(semanticCoverage([{ edge: adequate.edge, generation: adequate.generation, firstSeen: 1 }], [adequate])[0]).toMatchObject({ reviewed: true, verdict: 'adequate' });
+  expect(semanticCoverage([{ edge: adequate.edge, generation: adequate.generation, firstSeen: 1 }], [old], history)[0]).toMatchObject({ reviewed: false, verdict: 'never' });
+  expect(semanticCoverage([{ edge: adequate.edge, generation: adequate.generation, firstSeen: 1 }], [adequate], history)[0]).toMatchObject({ reviewed: true, verdict: 'adequate' });
   const adverse = decoded('SemanticReviewRecord', { ...adequate, id: 'semantic:adverse', verdict: 'inadequate' as const });
-  expect(semanticCoverage([{ edge: adequate.edge, generation: adequate.generation, firstSeen: 1 }], [adequate, adverse])[0]).toMatchObject({ reviewed: false, verdict: 'disputed' });
+  expect(semanticCoverage([{ edge: adequate.edge, generation: adequate.generation, firstSeen: 1 }], [adequate, adverse], history)[0]).toMatchObject({ reviewed: false, verdict: 'disputed' });
+});
+
+it('R6 semantic adequacy needs nonempty foundations and every claimed source resolved in signed current history', () => {
+  const raw = verificationInput('SemanticReviewRecord');
+  expect(() => decoded('SemanticReviewRecord', { ...raw, layerBelow: [], evidencePopulation: [], checkRuns: ['made-up'] })).toThrow();
+  expect(semanticCoverage([{ edge: raw.edge, generation: raw.generation, firstSeen: 0 }], [raw])[0])
+    .toMatchObject({ reviewed: false, verdict: 'partial' });
 });
 
 it('P9-NF-39 P9-NF-40 P9-NF-42 P9-NF-47 grades keep conclusion/reason/outcome separate and dependency changes withdraw support', () => {

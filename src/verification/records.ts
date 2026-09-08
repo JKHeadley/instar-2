@@ -80,6 +80,8 @@ function shapeCheck(value: unknown, shape: OwnedShape): void {
 }
 
 const predicates = ['occurrence', 'non-occurrence', 'quiescence', 'charge'] as const;
+const captureStatuses = ['available', 'tombstoned', 'expired', 'missing'] as const;
+const closureAssessments = ['conclusion', 'reason', 'outcome', 'process'] as const;
 function one(value: string, choices: readonly string[], field: string): void { ensure(choices.includes(value), `${field} outside closed set`); }
 function nonnegative(value: number, field: string): void { ensure(Number.isSafeInteger(value) && value >= 0, `${field} must be a nonnegative integer`); }
 function unique(values: readonly string[], field: string): void { ensure(new Set(values).size === values.length, `${field} contains duplicates`); }
@@ -106,6 +108,7 @@ function validate(record: VerificationRecord): void {
     case 'VerificationAssessment': {
       ensure(record.request && record.operation && record.attempt && record.operationDigest && record.barVersion && record.observer && record.vectorDigest, 'assessment binding incomplete');
       unique(record.knownLineages, 'known lineages'); unique(record.evidence, 'assessment evidence');
+      record.captureStatuses.forEach(item => one(item.status, captureStatuses, 'assessment capture status'));
       ensure(record.validUntil >= record.validFrom, 'assessment validity interval inverted');
       const seen = new Set<string>();
       for (const item of record.predicates) {
@@ -119,7 +122,9 @@ function validate(record: VerificationRecord): void {
     case 'ProbeRecord':
       one(record.disposition, ['passed', 'failed', 'inconclusive', 'not-run', 'cancelled'], 'probe disposition');
       one(record.captureStatus, ['available', 'tombstoned', 'expired', 'missing'], 'probe capture status');
-      ensure(record.plan && record.planVersion && record.arm && record.slot && record.attempt && record.subject && record.challengeDigest, 'probe binding incomplete');
+      ensure(record.plan && record.planVersion && record.arm && record.slot && record.attempt && record.subject && record.challengeDigest
+        && record.run && record.operation && record.comparison, 'probe binding incomplete');
+      ensure(/^sha256:[a-f0-9]{64}$/.test(record.challengeDigest), 'probe challenge digest malformed');
       nonnegative(record.startedAt, 'probe start'); nonnegative(record.completedAt, 'probe completion');
       ensure(record.disposition === 'not-run' || record.disposition === 'cancelled' || record.completedAt >= record.startedAt, 'probe completion precedes start');
       if (record.disposition === 'passed') ensure(record.witnesses.length > 0 && record.missingPhases.length === 0, 'passing probe requires complete independent witness');
@@ -128,15 +133,24 @@ function validate(record: VerificationRecord): void {
       one(record.closure, ['open', 'incomplete', 'converged'], 'review closure');
       ensure(record.plan && record.reviewer && record.populationQuery && record.vectorDigest && record.sourceGeneration, 'review binding incomplete');
       unique(record.eligibleCases, 'eligible cases'); unique(record.inspected, 'inspected cases');
-      ensure(record.inspected.every(id => record.eligibleCases.includes(id)) && record.inspected.length + record.omitted.length === record.eligibleCases.length, 'review denominator incomplete');
+      unique(record.omitted.map(item => item.caseId), 'omitted cases');
+      ensure(record.omitted.every(item => item.reason.length > 0), 'review omission requires a reason');
+      ensure(record.inspected.every(id => record.eligibleCases.includes(id))
+        && record.omitted.every(item => record.eligibleCases.includes(item.caseId))
+        && record.eligibleCases.every(id => record.inspected.includes(id) !== record.omitted.some(item => item.caseId === id))
+        && record.inspected.length + record.omitted.length === record.eligibleCases.length, 'review denominator incomplete');
       if (record.closure === 'converged') ensure(record.independenceEvidence.length > 0 && record.layerBelow.length > 0, 'convergence requires independence and layer-below evidence');
       break;
     case 'SemanticReviewRecord':
       one(record.verdict, ['adequate', 'partial', 'inadequate'], 'semantic verdict');
       ensure(record.edge && record.generation && record.ruleVersion && record.holderHash && record.fixtureHash && record.decoderHash && record.reviewer && record.decision, 'semantic review binding incomplete');
-      if (record.verdict === 'adequate') ensure(record.checkRuns.length > 0 && record.compliantCases.length > 0 && record.violatingCases.length > 0, 'adequate review must exercise both semantic neighbors');
+      unique(record.checkRuns, 'semantic check runs'); unique(record.evidencePopulation, 'semantic evidence population'); unique(record.layerBelow, 'semantic layer below');
+      if (record.verdict === 'adequate') ensure(record.checkRuns.length > 0 && record.evidencePopulation.length > 0
+        && record.layerBelow.length > 0 && record.compliantCases.length > 0 && record.violatingCases.length > 0,
+      'adequate review must resolve a foundation and exercise both semantic neighbors');
       break;
     case 'Grade':
+      record.captureStatuses.forEach(item => one(item.status, captureStatuses, 'grade capture status'));
       one(record.conclusion.assessment, ['supported', 'contradicted', 'unverifiable', 'not-applicable'], 'conclusion grade');
       one(record.statedReason.assessment, ['supported', 'contradicted', 'unverifiable', 'not-applicable'], 'reason grade');
       one(record.outcome.assessment, ['met', 'unmet', 'pending', 'unverifiable', 'not-applicable'], 'outcome grade');
@@ -149,8 +163,15 @@ function validate(record: VerificationRecord): void {
     case 'AssessmentClosure':
       ensure(record.caseId && record.sourceVectorDigest && record.requiredAssessments.length > 0 && record.reviewer && record.decision && record.releasesPin, 'closure binding incomplete');
       ensure(record.activeDisputes.length === 0, 'open dispute forbids assessment closure');
-      ensure(record.dispositions.length === record.requiredAssessments.length && record.dispositions.every(item => record.requiredAssessments.includes(item.assessment)), 'closure assessment denominator incomplete');
+      unique(record.requiredAssessments, 'required closure assessments'); unique(record.dispositions.map(item => item.assessment), 'closure dispositions');
+      ensure(record.requiredAssessments.length === closureAssessments.length
+        && closureAssessments.every(assessment => record.requiredAssessments.includes(assessment)), 'closure required assessment partition differs');
+      ensure(record.dispositions.length === record.requiredAssessments.length
+        && record.requiredAssessments.every(assessment => record.dispositions.some(item => item.assessment === assessment)), 'closure assessment denominator incomplete');
       record.dispositions.forEach(item => one(item.disposition, ['assessed', 'evidence-unavailable-with-reason'], 'closure disposition'));
+      ensure(record.dispositions.every(item => item.disposition !== 'evidence-unavailable-with-reason'
+        || item.reference.length > 0 && item.reason.length > 0), 'unavailable closure disposition requires reference and reason');
+      ensure(record.releasesPin === `assessment-pin:${record.caseId}`, 'closure may release only its own assessment pin');
       break;
     case 'FeedbackDisposition':
       one(record.disposition, ['detected', 'investigating', 'improvement-owned', 'verified-improvement', 'duplicate-linked', 'declined-with-reason'], 'feedback disposition');

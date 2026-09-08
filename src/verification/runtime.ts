@@ -1,5 +1,6 @@
 import { aggregateStrength, canonical, consumeResult, isFresh, readEvidence } from '../index.js';
 import type { Claim, Clock, DecodeContext, Evidence, Json, Result } from '../index.js';
+import type { FactContext } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { decodeVerificationAssessment } from './records.js';
 import type { GuardPosture, GuardPostureView, ProbeRecord, VerificationAssessment, VerificationDecodeContext,
@@ -11,6 +12,39 @@ function evidenceSource(evidence: Evidence): string {
 }
 function object(value: Json): Readonly<Record<string, Json>> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Readonly<Record<string, Json>> : undefined;
+}
+function captureAvailable(evidence: Evidence, decode: DecodeContext, facts: FactContext): boolean {
+  const stored = facts.captures[evidence.capture.reference];
+  if (stored) return stored.status === 'available' && stored.bytes !== null && stored.hash === evidence.capture.hash;
+  return decode.captures[evidence.capture.reference] !== undefined;
+}
+
+export interface ProbePostureResolution {
+  readonly probe: ProbeRecord; readonly sourceStatus: 'available' | 'unavailable'; readonly bound: boolean;
+}
+
+/** Resolve a reported probe pass against the current, independently decoded
+ * Evidence inventory. The record's own witness ids and pass fields are only
+ * claims until an exact fresh witness binds the real target and challenge. */
+export function probeBoundToCurrentEvidence(plan: VerificationPlan, probe: ProbeRecord, now: Clock,
+  evidence: readonly Evidence[], decode: DecodeContext, facts: FactContext, context: VerificationDecodeContext): boolean {
+  if (probe.subject !== plan.subject.governed || !probe.run || !probe.operation || !probe.comparison
+    || !/^sha256:[a-f0-9]{64}$/.test(probe.challengeDigest)) return false;
+  if (probe.disposition !== 'passed') return true;
+  return probe.witnesses.some(id => {
+    const witness = evidence.find(item => item.id === id);
+    if (!witness || evidenceSource(witness) !== plan.independence.witnessController
+      || evidenceSource(witness) === plan.independence.testedPrincipal
+      || !captureAvailable(witness, decode, facts)) return false;
+    if (take(verificationEvidenceFreshness(witness, now, context)) !== 'fresh') return false;
+    const claim = take(readEvidence(witness, now, context.preserved));
+    const value = object(claim.value);
+    return claim.subject === probe.subject && claim.predicate === 'probe-passed'
+      && value?.challengeDigest === probe.challengeDigest && value?.subjectDigest === plan.bar.subjectDigest
+      && value?.plan === probe.plan && value?.planVersion === probe.planVersion && value?.arm === probe.arm
+      && value?.slot === probe.slot && value?.attempt === probe.attempt && value?.run === probe.run
+      && value?.operation === probe.operation && value?.comparison === probe.comparison;
+  });
 }
 
 /** P9's declared interval is half-open. The P1 call is still mandatory, and the
@@ -104,22 +138,26 @@ export function deriveVerificationDue(plans: readonly VerificationPlan[], probes
   return freeze(rows.sort((a, b) => a.dueAt - b.dueAt || `${a.plan}:${a.arm}`.localeCompare(`${b.plan}:${b.arm}`)));
 }
 
-function armPosture(plan: VerificationPlan, arm: VerificationPlan['arms'][number], probes: readonly ProbeRecord[], now: Clock) {
-  const rows = probes.filter(probe => probe.plan === plan.id && probe.planVersion === plan.bar.version && probe.arm === arm.id)
-    .sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id));
-  const last = rows.at(-1), success = rows.filter(row => row.disposition === 'passed').at(-1);
-  const sourceStatus = last?.captureStatus === 'available' ? 'available' as const : last ? 'unavailable' as const : 'unknown' as const;
+function armPosture(plan: VerificationPlan, arm: VerificationPlan['arms'][number], probes: readonly ProbePostureResolution[], now: Clock) {
+  const rows = probes.filter(row => row.probe.plan === plan.id && row.probe.planVersion === plan.bar.version && row.probe.arm === arm.id)
+    .sort((a, b) => a.probe.startedAt - b.probe.startedAt || a.probe.id.localeCompare(b.probe.id));
+  const last = rows.at(-1), success = rows.filter(row => row.bound && row.sourceStatus === 'available'
+    && row.probe.disposition === 'passed' && row.probe.captureStatus === 'available').at(-1);
+  const sourceStatus = last?.sourceStatus ?? 'unknown' as const;
   let posture: GuardPosture;
   if (!arm.required) posture = 'inactive';
   else if (!last) posture = 'unknown';
-  else if (last.disposition === 'failed') posture = 'failed';
-  else if (last.disposition !== 'passed' || last.captureStatus !== 'available' || last.missingPhases.length) posture = 'unknown';
-  else if (!success || now.value < success.completedAt || now.value >= success.completedAt + plan.scheduling.freshnessWindow) posture = 'stale';
+  else if (!last.bound || last.sourceStatus !== 'available') posture = 'unknown';
+  else if (last.probe.disposition === 'failed') posture = 'failed';
+  else if (last.probe.disposition !== 'passed' || last.probe.captureStatus !== 'available' || last.probe.missingPhases.length) posture = 'unknown';
+  else if (!success || now.value < success.probe.completedAt || now.value >= success.probe.completedAt + plan.scheduling.freshnessWindow) posture = 'stale';
   else posture = 'healthy';
-  return freeze({ arm: arm.id, lastAttempt: last?.id ?? '', lastSuccess: success?.id ?? '', sourceStatus, posture });
+  return freeze({ arm: arm.id, lastAttempt: last?.probe.id ?? '', lastSuccess: success?.probe.id ?? '', sourceStatus, posture });
 }
-export function deriveGuardPosture(plan: VerificationPlan, probes: readonly ProbeRecord[], now: Clock): GuardPostureView {
-  const arms = plan.arms.map(arm => armPosture(plan, arm, probes, now));
+export function deriveGuardPosture(plan: VerificationPlan, probes: readonly ProbePostureResolution[], now: Clock,
+  currentGeneration: string, planAvailable: boolean): GuardPostureView {
+  const current = planAvailable && plan.subject.generation === currentGeneration;
+  const arms = plan.arms.map(arm => armPosture(plan, arm, current ? probes : [], now));
   let posture: GuardPosture = 'inactive';
   const required = arms.filter((_, index) => plan.arms[index]!.required);
   if (required.length) {

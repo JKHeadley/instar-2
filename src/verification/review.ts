@@ -1,5 +1,7 @@
 import type { Authorization, Json } from '../index.js';
 import type { FactEnvelope } from '../facts/index.js';
+import { snapshotCurrent } from '../facts/snapshot.js';
+import type { FactSnapshot } from '../facts/snapshot.js';
 import { freeze } from './boundary.js';
 import type { BenchmarkEvaluation, FeedbackDisposition, Grade, RetrospectiveReviewRecord,
   SemanticReviewRecord, VerificationRecord } from './contracts.js';
@@ -65,11 +67,38 @@ export interface SemanticCoverageRow {
   readonly edge: string; readonly generation: string; readonly reviewed: boolean;
   readonly verdict: 'adequate' | 'partial' | 'inadequate' | 'disputed' | 'never'; readonly records: readonly string[];
 }
-export function semanticCoverage(edges: readonly HeldEdge[], reviews: readonly SemanticReviewRecord[]): readonly SemanticCoverageRow[] {
+export interface SemanticCoverageHistory { readonly snapshot: FactSnapshot }
+function cleanHistoricalReferences(history: SemanticCoverageHistory | undefined): Readonly<{ all: ReadonlySet<string>; checkRuns: ReadonlySet<string> }> {
+  const ids = new Set<string>(), checkRuns = new Set<string>();
+  if (!history || !snapshotCurrent(history.snapshot)) return { all: ids, checkRuns };
+  for (const entry of history.snapshot.entries) {
+    if (entry.taint.length || entry.conflicts.length) continue;
+    ids.add(entry.fact.id); if (entry.fact.kind === 'check-run-record') checkRuns.add(entry.fact.id);
+    const body = entry.body && typeof entry.body === 'object' && !Array.isArray(entry.body)
+      ? entry.body as Readonly<Record<string, Json>> : undefined;
+    if (typeof body?.id === 'string') {
+      ids.add(body.id); if (entry.fact.kind === 'check-run-record') checkRuns.add(body.id);
+    }
+    const nested = body?.record && typeof body.record === 'object' && !Array.isArray(body.record)
+      ? body.record as Readonly<Record<string, Json>> : undefined;
+    if (typeof nested?.id === 'string') {
+      ids.add(nested.id); if (entry.fact.kind === 'check-run-record') checkRuns.add(nested.id);
+    }
+  }
+  return { all: ids, checkRuns };
+}
+export function semanticCoverage(edges: readonly HeldEdge[], reviews: readonly SemanticReviewRecord[],
+  history?: SemanticCoverageHistory): readonly SemanticCoverageRow[] {
+  const resolved = cleanHistoricalReferences(history);
   return freeze(edges.map(edge => {
     const exact = reviews.filter(review => review.edge === edge.edge && review.generation === edge.generation);
     const verdicts = new Set(exact.map(review => review.verdict));
-    const verdict = exact.length === 0 ? 'never' as const : verdicts.size > 1 ? 'disputed' as const : exact[0]!.verdict;
+    const adequateResolved = exact.filter(review => review.verdict === 'adequate').every(review =>
+      review.layerBelow.length > 0 && review.evidencePopulation.length > 0 && review.checkRuns.length > 0
+      && [...review.layerBelow, ...review.evidencePopulation].every(id => resolved.all.has(id))
+      && review.checkRuns.every(id => resolved.checkRuns.has(id)));
+    const verdict = exact.length === 0 ? 'never' as const : verdicts.size > 1 ? 'disputed' as const
+      : exact[0]!.verdict === 'adequate' && !adequateResolved ? 'partial' as const : exact[0]!.verdict;
     return { edge: edge.edge, generation: edge.generation, reviewed: verdict === 'adequate', verdict,
       records: exact.map(review => review.id).sort() };
   }).sort((a, b) => a.edge.localeCompare(b.edge)));

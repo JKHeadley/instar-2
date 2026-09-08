@@ -19,9 +19,11 @@ export function assessCaptureAdmission(state: CaptureAdmissionState, inputBytes:
 }
 
 export function closureReleasedPins(closure: AssessmentClosure): readonly string[] {
-  // The payload decoder has already established no dispute and a complete
-  // assessment denominator. A closure can release only its own named pin.
-  return freeze([closure.releasesPin]);
+  // Re-derive ownership at the release consumer. Historical values may have
+  // been admitted by an older decoder, so the record's nominated pin is never
+  // sufficient authority on its own.
+  const owned = `assessment-pin:${closure.caseId}`;
+  return freeze(closure.releasesPin === owned ? [owned] : []);
 }
 
 export function routineAgeRemovalAllowed(): false { return false; }

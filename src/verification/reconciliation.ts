@@ -20,7 +20,10 @@ function relatedFacts(host: VerificationHost, input: EffectAssessmentInput): rea
   }).map(fact => fact.id).sort();
 }
 function planFor(host: VerificationHost, runtime: VerificationRuntimePort, bar: string): VerificationPlan {
-  const plans = take(runtime.inspect()).map(row => row.record).filter((row): row is VerificationPlan => row.type === 'VerificationPlan');
+  const rows = take(runtime.inspectCurrent());
+  ensure(rows.every(row => row.conflicts.length === 0), 'verification history contains an immutable disagreement');
+  const plans = rows.filter(row => row.record.type === 'VerificationPlan' && row.taint.length === 0)
+    .map(row => row.record as VerificationPlan);
   const current = plans.filter(plan => plan.bar.version === bar && plan.subject.generation === host.current().generation);
   ensure(current.length === 1, 'exact current verification plan/bar missing or ambiguous');
   return current[0]!;
@@ -95,9 +98,48 @@ export function createEffectAssessmentPort(host: VerificationHost, runtime: Veri
     input: inputHash(input), generation: host.current().generation,
     evidence: evidenceFor(host, assessment.operation, assessment.operationDigest).map(item => encoded(item.evidence).hash).sort(),
     captures: currentCaptureStatuses(host, evidenceFor(host, assessment.operation, assessment.operationDigest)) }).hash;
-  const readStored = (id: string, input: EffectAssessmentInput) => {
-    const row = take(runtime.inspect()).find(item => item.fact.id === id && item.record.type === 'VerificationAssessment');
+  const bindStored = (id: string, input: EffectAssessmentInput) => {
+    const rows = take(runtime.inspectCurrent());
+    ensure(rows.every(row => row.conflicts.length === 0), 'verification history contains an immutable disagreement');
+    const row = rows.find(item => item.fact.id === id && item.record.type === 'VerificationAssessment');
     ensure(row && row.record.type === 'VerificationAssessment', 'verification assessment fact missing');
+    const assessment = row.record as VerificationAssessment;
+    ensure(row.taint.length === 0, 'verification assessment source is tainted');
+    const requests = rows.filter(item => item.record.type === 'VerificationRequest' && item.record.id === assessment.request);
+    ensure(requests.length === 1 && requests[0]!.record.type === 'VerificationRequest' && requests[0]!.taint.length === 0,
+      'verification assessment request missing, ambiguous, or tainted');
+    const request = requests[0]!.record as VerificationRequest;
+    const plans = rows.filter(item => item.record.type === 'VerificationPlan' && item.record.id === request.plan);
+    ensure(plans.length === 1 && plans[0]!.record.type === 'VerificationPlan' && plans[0]!.taint.length === 0,
+      'verification assessment plan missing, ambiguous, or tainted');
+    const plan = plans[0]!.record as VerificationPlan;
+    const currentPlan = planFor(host, runtime, input.bar);
+    ensure(plan.id === currentPlan.id && request.barVersion === plan.bar.version && assessment.barVersion === plan.bar.version
+      && request.sourceGeneration === plan.subject.generation && plan.subject.generation === host.current().generation,
+    'verification assessment plan/bar generation differs');
+    ensure(request.operation === input.reservation.operation && request.attempt === input.reservation.attempt
+      && request.operationDigest === input.request.digest && request.reservation === reservationFact(host, input)
+      && assessment.operation === request.operation && assessment.attempt === request.attempt
+      && assessment.operationDigest === request.operationDigest && assessment.predecessors.includes(requests[0]!.fact.id),
+    'verification assessment request/effect lineage differs');
+    const snapshot = host.current(); const currentEvidence = evidenceFor(host, request.operation, request.operationDigest);
+    const derived = take(deriveVerificationAssessment({ request, plan, evidence: currentEvidence.map(item => item.evidence),
+      observer: assessment.observer, vectorDigest: encoded(snapshot.facts.folded).hash,
+      knownLineages: Object.keys(snapshot.facts.folded), captureStatuses: currentCaptureStatuses(host, currentEvidence),
+      taints: [], now: snapshot.clock, predecessors: assessment.predecessors, supersedes: assessment.supersedes,
+      decode: snapshot.decode }, host.boundary));
+    ensure(assessment.vectorDigest === derived.vectorDigest
+      && encoded(assessment.knownLineages).hash === encoded(derived.knownLineages).hash
+      && encoded(assessment.captureStatuses).hash === encoded(derived.captureStatuses).hash
+      && encoded(assessment.taints).hash === encoded(derived.taints).hash
+      && encoded(assessment.evidence).hash === encoded(derived.evidence).hash
+      && encoded(assessment.missingEvidence).hash === encoded(derived.missingEvidence).hash
+      && encoded(assessment.predicates).hash === encoded(derived.predicates).hash,
+    'verification assessment does not match current derived evidence');
+    return { row: { ...row, record: assessment }, request, plan };
+  };
+  const readStored = (id: string, input: EffectAssessmentInput) => {
+    const { row } = bindStored(id, input);
     const view = viewFor(host, row.fact.id, row.record, input);
     const state = { assessment: row.record, inputHash: inputHash(input), guardHash: guardHash(row.record, input), view };
     issued.set(id, state); return state;
@@ -107,10 +149,10 @@ export function createEffectAssessmentPort(host: VerificationHost, runtime: Veri
       return boundary('AssessEffectEvidence', input, host.boundary, () => {
         ensure(guards === 0, 'assessment held by synchronous consumer');
         const plan = planFor(host, runtime, input.bar);
-        const planFact = take(runtime.inspect()).find(row => row.record.type === 'VerificationPlan' && row.record.id === plan.id)?.fact.id;
+        const planFact = take(runtime.inspectCurrent()).find(row => row.record.type === 'VerificationPlan' && row.record.id === plan.id)?.fact.id;
         ensure(planFact, 'verification plan fact missing');
         const request = take(runtime.record('VerificationRequest', requestInput(host, plan, planFact, input))) as VerificationRequest;
-        const requestFact = take(runtime.inspect()).find(row => row.record.type === 'VerificationRequest' && row.record.id === request.id)?.fact.id;
+        const requestFact = take(runtime.inspectCurrent()).find(row => row.record.type === 'VerificationRequest' && row.record.id === request.id)?.fact.id;
         ensure(requestFact, 'verification request fact missing');
         const evidence = evidenceFor(host, request.operation, request.operationDigest);
         const assessment = take(deriveVerificationAssessment({ request, plan, evidence: evidence.map(item => item.evidence), observer: host.principal.id,
@@ -118,7 +160,7 @@ export function createEffectAssessmentPort(host: VerificationHost, runtime: Veri
           captureStatuses: currentCaptureStatuses(host, evidence), taints: [], now: host.current().clock, predecessors: [requestFact],
           decode: host.current().decode }, host.boundary));
         take(runtime.record('VerificationAssessment', assessment));
-        const fact = take(runtime.inspect()).find(row => row.record.type === 'VerificationAssessment' && row.record.id === assessment.id);
+        const fact = take(runtime.inspectCurrent()).find(row => row.record.type === 'VerificationAssessment' && row.record.id === assessment.id);
         ensure(fact, 'assessment append missing');
         const view = viewFor(host, fact.fact.id, assessment, input);
         issued.set(fact.fact.id, { assessment, inputHash: inputHash(input), guardHash: guardHash(assessment, input), view });
@@ -134,6 +176,7 @@ export function createEffectAssessmentPort(host: VerificationHost, runtime: Veri
         ensure(!host.current().stopped, 'stop or cancellation inhibits assessment acceptance');
         ensure(host.current().clock.value >= state.assessment.validFrom && host.current().clock.value < state.assessment.validUntil, 'assessment expired');
         ensure(state.inputHash === inputHash(input) && state.guardHash === guardHash(state.assessment, input), 'assessment or evidence changed');
+        bindStored(reference.id, input);
         ensure(host.current().generation === planFor(host, runtime, input.bar).subject.generation, 'assessment generation is stale');
         guards++;
         try {

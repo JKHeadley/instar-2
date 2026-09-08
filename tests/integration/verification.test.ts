@@ -25,8 +25,9 @@ it('P9-NF-04 P9-NF-06 P9-NF-23 full ports assess occurrence, quiescence and char
     source: 'probe', observedAt: e.clock(100), freshFor: 100, strength: 'proof' }), e.ctx.decode)));
 
   const effectFacts = value(e.store.read());
-  const captures: Record<string, CapturedContent> = Object.fromEntries(Object.entries(e.captures).map(([reference, bytes]) => [reference,
-    { hash: hashBytes(bytes), bytes, status: 'available' as const, byteLength: Buffer.byteLength(bytes) }]));
+  const captures: Record<string, CapturedContent> = { ...e.ctx.captures,
+    ...Object.fromEntries(Object.entries(e.captures).map(([reference, bytes]) => [reference,
+      { hash: hashBytes(bytes), bytes, status: 'available' as const, byteLength: Buffer.byteLength(bytes) }])) };
   let factsContext: FactContext = { ...e.ctx, facts: effectFacts, captures };
   const host: VerificationHost = { machine: e.host.machine, principal: e.host.principal, scope: e.host.scope, boundary: e.host.boundary,
     current: () => { const verificationFacts = store ? value(store.read()) : []; const facts = { ...factsContext, facts: [...effectFacts, ...verificationFacts] };

@@ -2,6 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
+import { decode } from '../../src/index.js';
 import { createFactStore } from '../../src/facts/index.js';
 import type { FactContext } from '../../src/facts/index.js';
 import { createVerificationRuntime, createVerificationSpine, registerVerificationBodies,
@@ -13,7 +14,14 @@ import { verificationInput } from '../verification/fixture.js';
 import { createTransportFileStorage } from '../../scripts/transport-file-storage.mjs';
 
 it('P9-NF-12 P9-NF-34 P9-NF-42 P9-NF-58 P9-NF-62 lifecycle initializes real ports and rebuilds holders, grades and obligations from durable facts', () => {
-  const f = factsFixture(); let context: FactContext = f.ctx; let now = 100;
+  const f = factsFixture(); const probeInput = verificationInput('ProbeRecord'); const planInput = verificationInput('VerificationPlan');
+  const witness = value(decode('Evidence', f.evidenceInput({ id: 'evidence:witness', source: 'probe',
+    observedAt: f.clock(probeInput.completedAt), freshFor: 200,
+    claim: { subject: probeInput.subject, predicate: 'probe-passed', value: { challengeDigest: probeInput.challengeDigest,
+      subjectDigest: planInput.bar.subjectDigest, plan: probeInput.plan, planVersion: probeInput.planVersion,
+      arm: probeInput.arm, slot: probeInput.slot, attempt: probeInput.attempt, run: probeInput.run,
+      operation: probeInput.operation, comparison: probeInput.comparison } } }), f.ctx.decode));
+  let context: FactContext = { ...f.ctx, decode: { ...f.ctx.decode, evidence: [...f.ctx.decode.evidence ?? [], witness] } }; let now = 100;
   const host: VerificationHost = { machine: 'machine-a', principal: f.alice, scope: f.scope, boundary: f.c,
     current: () => ({ decode: context.decode, clock: f.clock(now), generation: context.decode.register.generation.id,
       stopped: false, facts: context, evidence: context.decode.evidence ?? [] }) };
@@ -26,9 +34,9 @@ it('P9-NF-12 P9-NF-34 P9-NF-42 P9-NF-58 P9-NF-62 lifecycle initializes real port
     const spine = createVerificationSpine(host, { context, privateKey }, store);
     return createVerificationRuntime(host, spine);
   };
-  const first = start(); const plan = value(first.record('VerificationPlan', verificationInput('VerificationPlan')));
+  const first = start(); const plan = value(first.record('VerificationPlan', planInput));
   const planFact = value(first.inspect()).find(row => row.record.type === 'VerificationPlan')!.fact.id;
-  const probe = value(first.record('ProbeRecord', { ...verificationInput('ProbeRecord'), predecessors: [planFact] }));
+  const probe = value(first.record('ProbeRecord', { ...probeInput, predecessors: [planFact] }));
   const probeFact = value(first.inspect()).find(row => row.record.type === 'ProbeRecord')!.fact.id;
   value(first.record('Grade', { ...verificationInput('Grade'), predecessors: [probeFact] }));
   const gradeFact = value(first.inspect()).find(row => row.record.type === 'Grade')!.fact.id;

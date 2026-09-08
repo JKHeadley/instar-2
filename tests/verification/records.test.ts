@@ -50,3 +50,21 @@ it('P9-NF-38 P9-NF-44 a default cannot invent a Decision and a zero benchmark de
   const evaluation = verificationInput('BenchmarkEvaluation');
   refused(decodeVerificationRecord('BenchmarkEvaluation', { ...evaluation, candidates: [], scenarios: [], executions: [], grades: [], sampleSize: 0, selection: 'route:a', complete: true }, context), 'zero denominator');
 });
+
+it('R1 closes assessment and grade capture-status unions at admission and historical decode', () => {
+  const context = factsFixture().c;
+  for (const name of ['VerificationAssessment', 'Grade'] as const) {
+    const row = verificationInput(name);
+    refused(decodeVerificationRecord(name, { ...row,
+      captureStatuses: [{ ...row.captureStatuses[0]!, status: 'banana' }] }, context), 'capture status');
+  }
+});
+
+it('R3 requires the exact assessment partition, justified unavailability, and the case-owned release pin', () => {
+  const context = factsFixture().c; const row = verificationInput('AssessmentClosure');
+  refused(decodeVerificationRecord('AssessmentClosure', { ...row,
+    dispositions: row.requiredAssessments.map(() => ({ ...row.dispositions[0]! })) }, context), 'duplicates');
+  refused(decodeVerificationRecord('AssessmentClosure', { ...row,
+    dispositions: row.dispositions.map(item => ({ ...item, disposition: 'evidence-unavailable-with-reason', reference: '', reason: '' })) }, context), 'requires reference and reason');
+  refused(decodeVerificationRecord('AssessmentClosure', { ...row, releasesPin: 'authorization-pin:another-case' }, context), 'only its own assessment pin');
+});
