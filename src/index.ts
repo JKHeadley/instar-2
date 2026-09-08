@@ -12,3 +12,7 @@ export { defineDecoder, deriveThrough } from './decode/framework.js';
 export type { Validation, BoundaryContext, VersionDecoder, DecoderDefinition, VersionedDecoder } from './decode/framework.js';
 export * from './decode/rehydrate.js';
 export * from './decode/historical.js';
+export type { AssemblyRecordName, AssemblyRecord, AssemblyManifest, AssemblyAdmission, HarnessLaunchSpec,
+  HarnessObservation, AdapterEvidenceContract, AdapterConformance, StoreCustodyPolicy, StorageAccessObservation,
+  LocalCapabilityPackage, PackageTransition, GrowthPolicy, GrowthObservation, HarnessAdapterPort,
+  PersistenceAdapterPort, AssemblyRuntimePort } from './assembly/contracts.js';
