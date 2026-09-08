@@ -33,10 +33,10 @@ bindings; it is not a register kind or persisted core schema. Earlier parts own 
 | Four — intake | authenticated intake, principal and conversation binding, authorization classification and preserved refusal |
 | Five — run graph | durable runs, steps, transitions, budgets, exit tests, progress, worker grounding, continuation and delegation edges |
 | Six — execution | leases, fences, admission reservations, `LoopPolicy`, `LoopRecord`, `RecoveryRecord` and bounded recovery ownership |
-| Seven — judgment doorway | `JudgmentRequest`, attempts, resolutions, declared floors, model provenance and later outcome review |
+| Seven — judgment doorway | `JudgmentRequest`, attempts, resolutions, declared floors, model provenance and benchmark definitions |
 | Eight — effect doorway | `OperationDefinition`, `EffectRequest`, validation, observation, settlement, `OutboundMessage` and adapter ports |
-| Nine — verification holders | `VerificationPlan`, `VerificationRequest`, `Assessment`, `ProbeRecord`, `RetrospectiveReviewRecord`, `SemanticReviewRecord`, `Grade`, `AssessmentClosure` and guard posture |
-| Ten — assembly | public adapter seams, confinement, production wiring and hostile-cut harness |
+| Nine — verification holders | `VerificationPlan`, `VerificationRequest`, `VerificationAssessment`, `ProbeRecord`, `RetrospectiveReviewRecord`, `SemanticReviewRecord`, `Grade`, `AssessmentClosure` and `GuardPostureView`; nine owns later grading and outcome review |
+| Ten — assembly | public adapter seams, confinement, production wiring and a hostile-cut harness (a test driver that stops the responsible process between adjacent durable steps and reconstructs from owned history) |
 | Eleven — operator surfaces | authenticated pull views, the minimal plane, bounded notices and operator action surfaces |
 
 **Rule — the package cannot reinterpret an earlier owner.** Rules 4, 26, 30, 42, 45, 57, 63,
@@ -59,22 +59,51 @@ executables while preserving the same plans, evidence bars and public ports.
 **Rule — every member is an ordinary part-nine plan with named arms.** Rules 5, 9, 34, 38, 39,
 43, 49, 59, 69 and 78; **checks: P14-NF-05–09/12–15/22/37/38**. Each row becomes one or more
 versioned `VerificationPlan` instances. Every arm names its exact subject, executable, schedule,
-freshness window, evidence sources, independent witness, failure action, capacity budget and
-activation state. A scheduler fire proves only that a slot became due. Worker receipt proves only
-receipt. Fresh failed execution proves that the holder ran and failed; it does not prove protection.
+freshness window, evidence sources, independent witness, failure action and capacity budget through
+the owning plan fields. Runtime activation is not an arm field; it comes from the Part Ten binding
+admission requested below. A scheduler fire proves only that a slot became due. Worker receipt
+proves only receipt. Fresh failed execution proves that the holder ran and failed; it does not prove
+protection.
 
 | Family | Registered arms | Question answered | Required independent evidence |
 |---|---|---|---|
-| Silent-stop coverage | shape check, runtime invariant, live probe, retrospective review | Does every admitted worker/run stop mode have detection, recovery ownership and a tested positive neighbor? | run/step history, exact worker-incarnation observation and later disposition |
-| Session watchdog | live probe, model sentinel, retrospective review | Is a specific worker blocked beyond its declared progress expectations, after known waits and active progress are excluded? | action-time process identity, live frame/process observation and part-seven resolution when meaning is required |
-| Helper watchdog | live probe, model sentinel | Is a delegated child missing progress, failed, or disconnected without its parent accounting for the result? | delegation edge, child run/lease history and parent result-destination state |
-| Context-wedge sentinel | parser check, live probe, model sentinel | Do repeated adapter errors establish a non-resumable conversation context rather than a one-off refusal? | real captured adapter bytes, exact session/incarnation and independent re-challenge result |
-| Compaction sentinel | runtime invariant, live probe, retrospective review | Did a compaction preserve and account for the last inbound message and re-ground the worker? | part-five grounding and continuity records, exact inbound id and worker-consumption witness |
-| Presence holder | runtime invariant, model sentinel, retrospective review | Has admitted user input lacked an attributable response or honest bounded status while work remains owned? | intake fact, outbound settlement, run progress and speaker authority re-resolved at use |
-| Promise holder | runtime invariant, live probe, retrospective review | Does an agent-owned open commitment have current progress, a valid blocker probe, or a bounded revival path? | durable run/commitment source, due obligation, probe evidence and terminal disposition |
-| Crash-loop holder | runtime invariant, retrospective review | Does one operation class repeatedly fail under a pinned population strongly enough to propose a pause? | complete attempt population, duration/outcome facts and part-seven classification |
-| Session reaper | shape check, live probe, retrospective review | Is a named worker disposable now without ending work, breaking reachability or widening exposure? | live run/lease/delegation/commitment state, measured hardware pressure and action-time identity |
-| Guard-posture tripwire | shape check, runtime invariant, live probe, retrospective review | Is every required arm actually executing and independently witnessed at its current generation? | part-nine source observations, check/probe records, assembly inventory and external freshness witness |
+| Silent-stop coverage | `build`, `runtime`, `probe`, `retrospective` | Does every admitted worker/run stop mode have detection, recovery ownership and a tested positive neighbor? | run/step history, exact worker-incarnation observation and later disposition |
+| Session watchdog | `probe`, `sentinel`, `retrospective` | Is a specific worker blocked beyond its declared progress expectations, after known waits and active progress are excluded? | action-time process identity, live frame/process observation and part-seven resolution when meaning is required |
+| Helper watchdog | `probe`, `sentinel` | Is a delegated child missing progress, failed, or disconnected without its parent accounting for the result? | delegation edge, child run/lease history and parent result-destination state |
+| Context-wedge sentinel | `build` (parser fixture), `probe`, `sentinel` | Do repeated adapter errors establish a non-resumable conversation context rather than a one-off refusal? | real captured adapter bytes, exact session/incarnation and independent re-challenge result |
+| Compaction sentinel | `runtime`, `probe`, `retrospective` | Did a compaction preserve and account for the last inbound message and re-ground the worker? | part-five grounding and continuity records, exact inbound id and worker-consumption witness |
+| Presence holder | `runtime`, `sentinel`, `retrospective` | Has admitted user input lacked an attributable response or honest bounded status while work remains owned? | intake fact, outbound settlement, run progress and speaker authority re-resolved at use |
+| Promise holder | `runtime`, `probe`, `retrospective` | Does an agent-owned open commitment have current progress, a valid blocker probe, or a bounded revival path? | durable run/commitment source, due obligation, probe evidence and terminal disposition |
+| Crash-loop holder | `runtime`, `retrospective` | Does one operation class repeatedly fail under a pinned population strongly enough to propose a pause? | complete attempt population, duration/outcome facts and part-seven classification |
+| Session reaper | `build`, `probe`, `retrospective` | Is a named worker disposable now without ending work, breaking reachability or widening exposure? | live run/lease/delegation/commitment state, measured hardware pressure and action-time identity |
+| Guard-posture tripwire | `build`, `runtime`, `probe`, `retrospective` | Is every required arm actually executing and independently witnessed at its current generation? | part-nine source observations, check/probe records, assembly inventory and external freshness witness |
+
+**Rule — enrollment and activation have an exact source projection.** Rules 5, 26, 42, 43, 45,
+49, 69, 73 and 95; **checks: P14-NF-05/09/16–23/48–50**. At one pinned part-two source
+vector, the projection selects current part-three `Declaration` records whose `kind` is `sentinels`
+or `features` and whose required facts identify this package. `Declaration.id` is the holder id;
+`Declaration.status` is `live`, `dark`, `soaking`, or `retired`; `Declaration.holds` supplies its
+rule edges; and the sentinel's `requiredFacts.freshnessProbe`, `requiredFacts.scope` (`live` or
+`retrospective`) and `requiredFacts.authority` (`signal` or `block`) retain the meanings imposed by
+part three. A sentinel with `requiredFacts.scope: live` must also name its guarded
+`requiredFacts.irreversibleMoment`. A current part-nine
+`VerificationPlan` enrolls that declaration only when `VerificationPlan.subject.holder` equals the
+`Declaration.id`, its `subject.generation` is current, and each required `arms[].id` is represented.
+Execution comes only from `ProbeRecord.plan` plus `ProbeRecord.arm`; freshness and protection come
+from the matching `GuardPostureView.plan` and its per-arm posture, never from the plan's
+`activation` test-evidence lists.
+
+The production instance population must be derived from part-ten assembly facts. The landed
+`AssemblyManifest.publicPorts` and scope-wide `AssemblyAdmission` cannot identify a holder, plan,
+arm, instance, observation/effect mode, or operation. Part fourteen therefore depends on the
+additive Part Ten holder-binding and binding-admission records requested in
+`.instar/lanes/design-sentinel-holders-seam-request-assembly.md`. A binding is
+**observation-only** only when that record says `mode: observation` and carries no part-eight
+operation; it is **effect-capable** only when `mode: effect` references a current registered
+`OperationDefinition`. Its runtime state comes from the current binding admission. A missing,
+conflicting, partial, or stale binding makes the required population incomplete and therefore
+`diverged`; no arm kind or executable name is used to guess the mode. Until that seam lands and its
+production bindings pass P14-NF-49/50, no package instance is eligible for `on-confirmed`.
 
 **Rule — signal and authority remain separate.** Rules 4, 10, 12, 38, 42, 57, 67 and 86;
 **checks: P14-NF-10–12/18/21/23/26/29**. Regexes, elapsed-time thresholds, unchanged terminal
@@ -97,7 +126,7 @@ Review sampling, omissions, independence, findings and disposition are recorded 
 
 ## 3. Fresh proof and the four-state package view
 
-**Rule — a configured holder is never presumed alive.** Rules 9, 13, 26, 39, 43, 56, 73 and 95;
+**Rule — a configured holder is never presumed alive.** Rules 9, 13, 26, 39, 43, 73 and 95;
 **checks: P14-NF-06–09/17/18**. Every enabled instance emits fresh proof of running from recorded
 execution on named hardware. The proof identifies plan generation, executable and fixture digest,
 logical slot, attempt, start/end observations, result, exact subject population, machine identity,
@@ -106,33 +135,37 @@ wrong-generation or wrong-machine result is not fresh. Freshness is evaluated wh
 source history, never refreshed by copying into a dashboard row.
 
 **Rule — the operator-facing family view uses exactly four labels without replacing part nine's
-posture.** Rules 13, 26, 33, 42, 43, 69, 73 and 95; **checks: P14-NF-16–20**. The package view is
-a deterministic projection of part nine's per-arm and per-instance posture, not a new authority or
-stored truth. Raw posture, missing arms and evidence references remain visible.
+posture.** Rules 13, 26, 33, 42, 43, 69, 73 and 95; **checks: P14-NF-16–20/54**. The package view is
+a deterministic projection of the source mapping in section 2 and part nine's raw per-arm posture,
+not a new authority or stored truth. For each declared instance the projector applies the rows below
+in order and stops at the first match. Raw posture, missing arms, binding admissions, declaration
+facts and evidence references remain visible.
 
 | Label | Derivation |
 |---|---|
-| `on-confirmed` | Current declaration requires the instance, production wiring is present, every required arm has a fresh passing result for the current generation and independent witness, and no effect arm is inhibited. |
-| `dry-run` | Required observation arms have fresh proof, while one or more declared effect arms are deliberately inhibited by governed activation policy; no prevented effect is claimed to have occurred. |
-| `off` | Current governed declaration says the instance is inactive and runtime evidence agrees. A ships-dark holder is honestly off, not healthy and not divergent. |
-| `diverged` | Any other state: required but missing, never run, stale, failed, errored, unknown, wrong generation, unwitnessed, configured/runtime disagreement, unexpected dry-run, or unexpectedly active. |
+| `diverged` — precedence 1 | The required population is empty or incomplete; sources conflict; any required arm is missing, never run, stale, failed, inconclusive, errored, unknown, wrong-generation or unwitnessed; any binding is missing or unexpectedly active/inhibited; or declaration and runtime disagree. A fresh failed observation reaches this row before any later label. |
+| `off` — precedence 2 | The current declaration `status` is `dark` or `retired`, every known binding admission is `inhibited` or `retired` for that declared reason, no execution is active, and precedence 1 did not match. Off is honest inactivity, never protection. |
+| `dry-run` — precedence 3 | The declaration is currently required (`live` or `soaking`), every required observation-only binding is active with fresh passing independently witnessed arms, at least one required effect-capable binding is deliberately `inhibited` by the current governed declaration/admission, all other required bindings are accounted for, and precedence 1 did not match. No prevented effect is claimed. Zero effect inhibitions cannot produce this label. |
+| `on-confirmed` — precedence 4 | The declaration is currently required, every required binding is active in production, every required arm has a fresh passing result for the current generation and independent witness, no effect-capable binding is inhibited, and precedence 1 did not match. |
 
-**Rule — aggregation fails toward the weakest required arm.** Rules 26, 33, 42, 43, 59, 69 and
-73; **checks: P14-NF-19–22**. One `on-confirmed` arm cannot paint its siblings green. A family is
-`on-confirmed` only when every required instance and arm is `on-confirmed`. It is `off` only when
-all current declarations say off and runtime agrees. It is `dry-run` only when all required
-observation arms pass and every inhibition is declared. Mixed, missing, stale or contradictory
-states are `diverged`. A complete count travels separately from any bounded list so truncation
-cannot resemble an all-clear.
+**Rule — family aggregation is ordered and mutually exclusive.** Rules 26, 33, 42, 43, 59, 69
+and 73; **checks: P14-NF-19–22/48/54**. First, an empty/incomplete required-instance population or
+any `diverged` instance makes the family `diverged`. Second, all instances `off` makes it `off`.
+Third, if every required instance is `dry-run` or `on-confirmed` and at least one is `dry-run`, the
+family is `dry-run`. Fourth, all required instances `on-confirmed` makes it `on-confirmed`. Every
+other mixture, including `off` mixed with an active state, is `diverged`. One green arm therefore
+cannot paint siblings green. A complete population count travels separately from any bounded list
+so truncation cannot resemble an all-clear.
 
 **Rule — load-bearing gaps are explicit owned findings.** Rules 8, 15, 43, 64, 68, 71, 73 and
 87; **checks: P14-NF-21–24**. A load-bearing gap exists when a currently required protection arm
 is not `on-confirmed`. `dry-run`, `off` and `diverged` therefore expose gaps on a critical path even
 when their state is intentional. The finding names the affected rule/outcome, instance, first
 observed source vector, current evidence, owner, safe fail direction and next due assessment.
-Activation policy may permit a bounded soak or an explicit accepted risk, but neither relabels the
-gap as protected. The pull surface shows all gaps. A push notice is an ordinary part-eight effect
-and follows section 8.
+Activation policy may permit a bounded soak—an owner- and deadline-bound observation period in
+which selected effects remain inhibited while their gap stays visible—or an explicit accepted risk,
+but neither relabels the gap as protected. The pull surface shows all gaps. A push notice is a
+part-eight effect and follows section 8.
 
 ---
 
@@ -232,7 +265,8 @@ operation; editing a jobs file directly is forbidden.
 
 **Rule — a watchdog cannot infer operator action or signal an unverified process.** Rules 13, 26,
 39, 42, 60, 68, 86 and 89; **checks: P14-NF-26–30/42/44**. Immediately before any process-directed
-request, the holder obtains fresh PID, parent, start identity, argv shape, worker incarnation and
+request, the holder obtains fresh PID, parent, start identity, argv shape (the executable plus its
+ordered arguments as observed at action time), worker incarnation and
 lease evidence. PID reuse, adapter-host selection, known bounded waits, active helpers, compiler/test
 services and current durable progress refuse the candidate. Any intervention records the true
 principal and cannot be presented as user cancellation. A pane-wide interrupt cannot substitute
@@ -248,11 +282,25 @@ recovery/reassignment record owns it. `ReapLog`-style historical occurrence rema
 the live eligibility projection.
 
 **Rule — no unbounded kill, swap, spawn, pause or notification exists.** Rules 52, 55, 60, 61, 63,
-87 and 88; **checks: P14-NF-22/24/38/39/42–47**. Every self-action class has finite per-target,
-per-conversation, per-machine and total budgets, concurrency limits, backoff, episode deduplication,
-breaker state, maximum attempts and a terminal owner. Pool-wide action requires a pool-wide bound.
-Exhaustion records a refusal and leaves an owned gap. It cannot be hidden by starting a new episode,
-machine, key or worker. Notifications share the same budget and aggregate by causal episode.
+87 and 88; **checks: P14-NF-22/24/38/39/42–47**. First, every self-action class has finite
+per-target, per-conversation, per-machine and total action budgets and concurrency limits; a
+pool-wide action has a pool-wide bound. Second, every retry uses finite backoff, maximum attempts,
+duration and breaker transitions. Third, deduplication uses a **causal episode**: the stable identity
+joining observations and actions caused by one originating failure across retries, workers and
+machines; a new local key cannot reset it. Fourth, exhaustion records a typed refusal, leaves an
+owned gap and names the terminal owner. Notifications consume their own bounded aggregate budget
+and group by the same causal episode.
+
+**Rule — breaker claims stop at the landed Part Six boundary.** Rules 26, 45, 55, 61, 69 and 95;
+**checks: P14-NF-43/47/49**. The landed `LoopPolicy` can presently enforce only `maxAttempts`,
+`minDelay`, `maxDuration`, `timeout`, `concurrency: 1`, `failDirection: closed`, and
+`breaker: stub-closed`; landed `LoopRecord` states are `scheduled`, `running`, `restoring`,
+`waiting`, and `stopped`. It has no open/half-open/closed breaker transitions, cooldown,
+failure-threshold, half-open trial budget, or pressure identity shared across targets, conversations,
+machines and the pool. Part fourteen therefore depends on the additive Part Six contract requested
+in `.instar/lanes/design-sentinel-holders-seam-request-loop-breaker.md`. Until it lands and the
+shared-pressure fixture passes, automatic repeated self-action is inhibited after the first admitted
+attempt; a holder cannot claim a breaker by keeping a private counter.
 
 ---
 
@@ -267,6 +315,21 @@ current need. The adapter returns typed occurrence evidence. Part eight settles 
 quiescence and charge separately. Part nine then assesses whether the recovery restored the named
 outcome. No holder imports process, messaging, scheduler, filesystem, git or harness mutation APIs.
 
+The landed effect contract currently requires `EffectRequest.message: string`, and its
+`OperationAdapterPort.invoke` accepts only an `OutboundMessage` whose sole purpose is
+`ordinary-reply`. It therefore cannot express process kill/spawn/close/compaction, scheduler pause,
+account swap, configuration change, filesystem/git mutation, or infrastructure action/result
+notice as typed effects. These classes must not be encoded as message text. Part fourteen depends
+explicitly on the additive Part Eight typed-payload seam requested in
+`.instar/lanes/design-sentinel-holders-seam-request-effect-doorway.md` and the corresponding Part Ten
+drivers requested in `.instar/lanes/design-sentinel-holders-seam-request-assembly.md`. Until both
+land and pass P14-NF-42/45/46/49/50, all affected effect-capable bindings remain inhibited and their
+instances can be no better than `dry-run`; only effects already representable by the landed doorway
+may execute. The sole existing path used here is an ordinary agent text reply: decode the current
+`OutboundMessage`, prepare/adopt the `EffectRequest`, invoke its registered message adapter, obtain
+the required Part Nine assessment and let Part Eight settle it. Infrastructure notices and every
+recovery mutation remain blocked rather than masquerading as that reply.
+
 **Rule — uncertainty never becomes a fresh attempt.** Rules 24, 26, 42, 46, 55, 58, 61 and 107;
 **checks: P14-NF-44–47**. After a crash or lost receipt, recovery reconstructs the original logical
 effect identity and queries the exact adapter journal. Automatic retry requires independent evidence
@@ -275,19 +338,22 @@ effect stays uncertain and its maximum exposure remains visible. A new worker, a
 expired timer, missing local log or repeated request is not non-occurrence evidence.
 
 **Rule — destructive local guards remain defense in depth.** Rules 26, 42, 49, 60, 66, 69 and 74;
-**checks: P14-NF-03/04/42/45**. A process kill, file removal, configuration change or git mutation
+**checks: P14-NF-03/04/42/45/51–53**. A process kill, file removal, configuration change or git mutation
 must first survive the core effect contract and then its adapter's target guard. The 1.x
 `SourceTreeGuard`, `SafeGitExecutor` and `SafeFsExecutor` establish the preserved requirement:
 canonicalize the raw target, refuse protected source targets on uncertainty, constrain narrow
-exceptions, and audit the exact operation. Those modules do not become alternate 2.0 doorways, and
-a local guard's refusal remains a refusal through settlement.
+exceptions to an exact operation and canonical target, and audit the requested/resolved target,
+principal, decision and result. Those modules do not become alternate 2.0 doorways, and a local
+guard's refusal remains a refusal through settlement. Crash-safe persistence evidence is owned by
+Part Ten P10-NF-28/29/33; the typed filesystem/configuration/git drivers additionally face the
+Part Fourteen cut in P14-NF-53.
 
 ---
 
 ## 9. The guard-posture tripwire and watcher independence
 
 **Rule — the watcher of watchers is registered and independently witnessed.** Rules 9, 26, 33,
-43, 56, 60, 69 and 73; **checks: P14-NF-06–09/16–24/48**. The tripwire compares current declared
+43, 60, 69 and 73; **checks: P14-NF-06–09/16–24/48**. The tripwire compares current declared
 plans, assembly inventory and fresh source execution. It detects missing enrollment, declaration/
 runtime disagreement, stale or never-run arms, failed probes, unexpected dry-run, unexpected
 activation and loss of its own observer. Its own plan is load-bearing, has an out-of-process witness,
@@ -311,18 +377,35 @@ missing local instance unless the plan explicitly declares a shared subject and 
 the incidents recorded with them. The following behaviors are requirements, not endorsements of
 their current implementation.
 
-| 1.x module | Incident-earned behavior that carries forward |
-|---|---|
-| `GuardPostureTripwire`, `guardPosture`, `guardPostureView`, `GuardPostureProbe` | The June 5, 2026 load-shed edit disabled five guards; the outage was noticed hours later and the dark context-wedge guard missed a live wedge. Guard health must come from fresh execution, enumerate load-bearing gaps and distinguish intended off from divergence. |
-| `ContextWedgeSentinel` | The May 28 thinking-block corruption and June 5 repeated policy-rejection wedge made a live-looking context permanently non-resumable. Repeated exact-context evidence, one-off-refusal exclusion, real parser fixtures and fresh grounded replacement remain. |
-| `CompactionSentinel` | Fire-and-forget recovery could fail silently; an idle killer then removed the session. Stale UUIDs false-escalated, finished sessions received recovery input, and active work was interrupted. Episode dedupe, exact context binding, kill veto, bounded recovery and continuity proof remain. |
-| `SessionWatchdog` | Legitimate waiters, adapter hosts and long-lived test services were mistaken for stuck work, while generic cancellation text blurred who acted. Known-wait exclusion, action-time process identity, direct-target discipline, bounded escalation and truthful principal attribution remain. |
-| `HelperWatchdog` | Child tool work could stall or rate-limit while the parent watchdog still saw a live top-level session. Delegation-edge coverage and signal-only child failure/stall events remain; a timer alone does not prove failure. |
-| `PresenceProxy` | User input could sit unanswered while a worker remained present, and unavailable classification once treated a stuck Codex pane as active. Intake-to-reply accounting, live corroboration, one voice and conservative uncertainty remain. |
-| `CommitmentTracker`, `PromiseBeacon` | Open promises became graveyard rows or noisy progress narration; a promise blocked on the operator could be falsely treated as agent-owned. Durable owner/blocker state, structured probes, non-terminal risk, boot caps, bounded revival and internal-by-default follow-through remain. |
-| `CrashLoopPauser` | Repeated job failure needed a stop-bleeding mechanism without pausing critical work or mutating everything. Complete attempt populations, dry-run graduation, bounded reversible pause and critical-path floors remain. |
-| `SessionReaper`, `ReapLog` | Reaping generated a 17,503-kills/day flood, and a June 26 age-limit reap was followed by a silently held revival. Protected/minimal sessions, work-outlives-worker, bounded action, revival ownership and separate live verdict versus historical occurrence remain. |
-| `SourceTreeGuard`, `SafeGitExecutor`, `SafeFsExecutor` | On April 22, 2026 a fixture targeted the real source checkout and wiped 1,893 files. Raw-target canonicalization, fail-closed protected-target checks, narrow audited exceptions and crash-safe state writes remain adapter defenses. |
+| 1.x module | What the named source does today | 2.0 requirement and disposition |
+|---|---|---|
+| `GuardPostureTripwire`, `guardPosture`, `guardPostureView`, `GuardPostureProbe` | Compares configured guard state and probe evidence through component-specific state. | Fresh source execution, complete load-bearing gaps and the off/diverged distinction remain; configuration alone never confirms health. |
+| `ContextWedgeSentinel` | Parses captured context-error signatures and proposes replacement under its component policy. | Repeated exact-context evidence, one-off-refusal exclusion, real parser fixtures and fresh part-five grounding remain. |
+| `CompactionSentinel` | Verifies recovery using JSONL size/mtime growth (`src/monitoring/CompactionSentinel.ts:410`). Claude prefers an exact session UUID but may fall back to the newest project JSONL; Codex and Gemini select the newest account/project-level transcript (`:488`). It deduplicates recent reports, defers for active work and bounds injection attempts. | P14-NF-31/33/34 require exact pre-compaction inbound accounting, current open-obligation grounding and one logical effect identity. Current activity heuristics are evidence only and do not satisfy continuity. |
+| `SessionWatchdog` | Applies exclusions and escalating process actions around a tmux-oriented session identity. | Known-wait exclusion, action-time exact descendant identity, direct-target discipline, bounded escalation and truthful principal attribution remain. |
+| `ActiveWorkSilenceSentinel` | Enumerates registered sessions independently of inbound-topic traffic and escalates when the same active-work frame remains frozen for a finite backstop (90 minutes by default); it does not itself authorize a kill. | Preserve registry-wide coverage and a finite frozen-indicator backstop, but require subject-specific progress evidence, part-seven classification when semantic, and part-eight authorization before any recovery. |
+| `SocketDisconnectSentinel` | Detects the socket-disconnected frame, sends bounded recovery nudges with backoff (four attempts by default), and verifies that the disconnect text disappears. | Preserve bounded re-challenge and verification while binding the exact worker/context and using the typed effect and loop seams; disappeared text alone is not durable recovery. |
+| `ProactiveCompactionSentinel` | Ships disabled unless explicitly enabled and dry-run by default; for autonomous Claude sessions it checks an idle state and a context threshold, then applies a cooldown before direct compaction triggering. | Preserve ships-dark/dry-run posture, idle exclusion and cooldown; compaction becomes a typed effect and success requires exact continuity rather than trigger receipt. |
+| `HelperWatchdog` | Emits signal-only helper stall/failure events while the parent session may remain live. | Delegation-edge coverage and parent result-destination accounting remain; a timer alone does not prove failure. |
+| `PresenceProxy` | Correlates unanswered messages with component-specific activity classification and bounded notices. | Intake-to-reply accounting, live corroboration, one voice and conservative uncertainty remain. |
+| `CommitmentTracker`, `PromiseBeacon` | Track open commitments, blocker/progress cadence, non-terminal `atRisk`, and active-beacon caps. | Durable owner/blocker state, structured probes, bounded revival and internal-by-default follow-through remain. |
+| `CrashLoopPauser` | Queries at most 1,000 run-history rows per job (`src/monitoring/CrashLoopPauser.ts:94`) and retains only five failure ids as evidence (`:122`); it applies fixed count rules, excludes critical/never-pause jobs and defaults to dry-run. | P14-NF-40/41 require the complete pinned eligible population, typed shedding exclusions, part-seven resolution and a reversible typed pause. The current capped query/evidence is not completeness proof. |
+| `SelfActionGovernor` | Centralizes class/target admission with observe-only defaults, caps and breaker state; pool-shared mode auto-demotes when more than one machine is registered because there is no pool-wide ceiling. | Preserve the shared chokepoint and conservative demotion. Full automatic mode waits on the Part Six shared-pressure/breaker seam and Part Eight/Ten typed effects. |
+| `ExternalHogSentinel` | Composes resource classification, protected floors and brakes but ships observation-only/dry-run; it does not kill a process. | Keep it observation-only until exact target evidence, governed thresholds, named-hardware measurements and typed process effects pass. A resource heuristic never becomes kill authority. |
+| `SessionReaper`, `ReapLog` | Candidate and occurrence state are component-specific; historical reaps can coexist with later revival. | Protected/minimal sessions, work-outlives-worker, bounded action, revival ownership and separate live eligibility versus historical occurrence remain. |
+| `SourceTreeGuard`, `SafeGitExecutor`, `SafeFsExecutor` | Canonicalize and guard destructive source/filesystem/git targets through local wrappers and audit their calls. | Raw-target canonicalization, fail-closed protected-target checks, narrow audited exceptions, refusal propagation and crash-safe mutation remain adapter defenses under the requested typed doorway/drivers. |
+
+**Rule — omitted 1.x modules receive an explicit package disposition.** Rules 30, 42, 45, 55,
+59, 61, 68 and 69; **checks: P14-NF-25–35/42–49**. `ActiveWorkSilenceSentinel` is carried into
+silent-stop/session-watchdog coverage under P14-NF-25–30; its finite frozen-frame threshold raises
+evidence for Part Seven, never kill authority. `SocketDisconnectSentinel` is delegated to Part Six
+loop ownership and the requested Part Eight/Ten typed delivery/recovery path under P14-NF-32/34/
+42–47. `ProactiveCompactionSentinel` is carried into the compaction holder under P14-NF-31–35 and
+remains dry-run until typed compaction and continuity evidence land. `SelfActionGovernor` is
+re-expressed as Part Six admission/breaker plus Part Eight settlement under P14-NF-43–47; no private
+governor is authoritative. `ExternalHogSentinel` is included only as an observation arm feeding the
+session-reaper assessment under P14-NF-27/30/32 and is excluded from automatic process action until
+P14-NF-42/49/51/52 pass.
 
 **Value — what is deliberately re-expressed.** In-memory timers, JSON snapshots, regex classifiers,
 component-specific queues, direct callbacks, direct process signals, direct job-file edits and
@@ -347,12 +430,13 @@ ends a run, and new worker identities used to escape uncertainty or budgets.
 
 | Producer → consumer | Record passed | Consumer obligation | Closure owner |
 |---|---|---|---|
-| Three → nine/package | holder declarations, rule edges, activation and required instances | enumerate plans and expose missing enrollment | three owns declaration gap; nine owns assessment |
+| Three → nine/package | current `Declaration`, `holds` and sentinel required facts | join `Declaration.id` to `VerificationPlan.subject.holder` and expose missing enrollment | three owns declaration gap; nine owns assessment |
 | Four/five → silent-stop holders | authenticated intake, run/step/progress/grounding facts | assess exact obligation and worker without changing it | five owns work completion |
 | Six → holders | lease, fence, loop, recovery and admission observations | bind evidence to current execution authority | six owns execution/recovery lifecycle |
 | Holders → seven | captured signal and allowed classification outcomes | decide within floors with complete context | seven owns semantic resolution |
 | Holders/seven → eight | registered operation plus effect request | revalidate and settle occurrence/quiescence/charge | eight owns effect settlement |
 | Eight → nine | effect observations and independent outcome evidence | assess restoration without rewriting settlement | nine owns verification assessment |
+| Ten → package/nine | requested holder binding and binding admission | derive exact required instances, arm mode and production activation without inference | ten owns assembly and binding admission; nine owns posture |
 | Nine/package → eleven | raw posture, four-label projection, gaps, evidence refs and horizons | render pull-first and preserve unknowns | eleven owns surface delivery |
 
 **Rule — four shared traces have one answer.** Rules 24, 26, 31, 33, 42, 55, 61, 63, 68 and 95;
@@ -377,20 +461,29 @@ ends a run, and new worker identities used to escape uncertainty or budgets.
 | Detection latency | inject each stop mode at every adjacent durable boundary on each supported adapter and named machine class | record worst eligible source-to-assessment latency including failures; missed/late case makes posture diverged |
 | Proof freshness | stop, delay, duplicate, reorder and clock-skew holder executions across restart and machine handover | stale/incomparable/wrong-generation proof never reads confirmed; outage remains owned |
 | Self-action settlement | burst correlated and distinct episodes beyond per-target, machine and pool limits; crash around each effect boundary | finite actions and queue bytes; no identity reset or blind retry; overflow refuses visibly |
+| Breaker pressure | drive two holders and multiple workers against one shared operation family through failure, open, cooldown, half-open and recovery | one Part Six pressure identity and breaker history governs all contenders; private counters or worker restart cannot close it |
 | Resource use | saturate sessions, helpers, probes, judgments, captures and notices at limit and limit-plus-one | declared memory/process/token/money/concurrency ceilings hold; minimal plane retains reserve |
 | Reaper safety | combine old idle workers with active runs, uncertain effects, helpers, commitments, compaction and PID reuse | only exact disposable workers become eligible; zero durable runs end from worker closure |
 | Continuity | compact and replace workers at every grounding/consumption boundary with last-message variations | exact inbound id is accounted for and same run continues; activity-only evidence fails |
 | Reconstruction | corrupt disposable snapshots and rebuild at equal source vectors on two supported architectures | equal posture/gap projection; conflicts and missing lineage remain explicit |
 | Notification | burst failures, repeated self-heals and cross-machine duplicates through real channels | action/result-only, one provenance-correct aggregate per causal episode within finite budget |
 
+**Rule — hostile-cut evidence crosses a real durability boundary.** Rules 26, 33, 34, 42 and 69;
+**checks: P14-NF-45/46/53**. A **hostile cut** is a test-controlled stop of the responsible process
+between two adjacent durable/effect steps, followed by reconstruction from owned history; it is not
+a graceful shutdown or an in-memory exception.
+
 **Rule — activation requires all three test tiers and a graduated evidence record.** Rules 34, 37,
 43, 62, 65, 70, 72, 73 and 105; **checks: P14-NF-45/48–50**. Unit tests cover decoders,
 classification floors, aggregation and budgets. Integration tests exercise public part-five through
 part-nine ports with real persistence and every effect refusal. Live lifecycle tests use production
 assembly, real adapters, named hardware, independent witnesses and the real operator channel for
-any user-facing output. Each effect-capable plan begins `off` or `dry-run` according to governed
-activation, has an owner, deadline, graduation bar, rollback operation and retrospective review.
+any user-facing output. Each effect-capable binding begins with an `inhibited` Part Ten binding
+admission and therefore projects `off` or `dry-run` according to its current declaration; it has an
+owner, deadline, graduation bar, rollback operation and retrospective review.
 No screenshot, mock, config, boot log, timer registration or document check establishes live status.
+The typed-effect, assembly-binding and breaker seam dependencies named above are activation blockers,
+not future implementation details that this part may silently emulate.
 
 ---
 
@@ -418,8 +511,8 @@ No screenshot, mock, config, boot log, timer registration or document check esta
 | P14-NF-15 | recurrence | Repeated self-heal closes as isolated success; owned root-cause obligation passes |
 | P14-NF-16 | projection | Stored four-label field becomes authority; deterministic projection from raw posture passes |
 | P14-NF-17 | fault | Corrupt/absent baseline becomes new green baseline; signed reconstruction exposes unknown/divergence |
-| P14-NF-18 | timing | Fresh failed or never-run holder reads confirmed; running proof and passing protection remain separate |
-| P14-NF-19 | aggregation | One green arm hides stale/missing sibling; weakest required arm makes family diverged |
+| P14-NF-18 | timing | Fresh failed or never-run holder reads confirmed/dry-run; the same binding with a fresh passing independently witnessed result reaches its otherwise eligible state |
+| P14-NF-19 | aggregation | One green arm hides stale/missing sibling or an off instance is mixed with an active one; complete all-on and declared on/dry-run populations reach their ordered labels |
 | P14-NF-20 | projection | Truncated anomaly list reports all-clear; full count plus bounded details passes |
 | P14-NF-21 | posture | Required dry-run/off arm is called protective; visible load-bearing gap passes |
 | P14-NF-22 | load | Gap or event emits unbounded per-item notices; bounded pull view and causal aggregate pass |
@@ -433,7 +526,7 @@ No screenshot, mock, config, boot log, timer registration or document check esta
 | P14-NF-30 | process | Stale/reused PID or pane-wide interrupt targets work; action-time exact descendant identity passes |
 | P14-NF-31 | continuity | Transcript growth/spinner/new process proves compaction recovery; grounding and last-inbound accounting pass |
 | P14-NF-32 | ownership | Recovery/reap acts without current run, lease, fence and conversation re-resolution; exact current authority passes |
-| P14-NF-33 | continuity | Finished run receives injection or active worker is interrupted on timer; exact open obligation passes |
+| P14-NF-33 | continuity | A finished run or an open obligation with current attributable progress receives injection; an open owned obligation with exact last-inbound grounding, no current progress/known wait, current lease and eligible recovery evidence receives one bounded request |
 | P14-NF-34 | dedupe | Parallel compaction triggers create multiple recoveries; one logical episode/effect identity passes |
 | P14-NF-35 | lifecycle | Worker loss/reap terminates durable run; same run gains bounded recovery or queued revival |
 | P14-NF-36 | multi-machine | Non-owner acts/speaks or remote health covers local instance; evidence-only observer and current owner pass |
@@ -450,7 +543,11 @@ No screenshot, mock, config, boot log, timer registration or document check esta
 | P14-NF-47 | lifecycle | Attempt exhaustion disappears or loops forever; typed refusal, maximum exposure and owner pass |
 | P14-NF-48 | fault/e2e | Watcher failure or empty inventory paints green; expired horizon and owned divergence pass |
 | P14-NF-49 | wiring/e2e | Required port is null/no-op/mock or bypassed; production assembly and real delegation evidence pass |
-| P14-NF-50 | evidence/e2e | Declared fixture has no actual check-run, named hardware or independent witness; no live/held claim is emitted |
+| P14-NF-50 | evidence/e2e | Declared fixture with missing check-run, named hardware or independent witness emits no live/held claim; a current production assembly actually executes unit, integration and lifecycle tiers with current digests, named hardware and independent witnesses and becomes eligible for only the corresponding held/live claim |
+| P14-NF-51 | target guard | Raw path, symlink or ancestor resolution reaches a protected target, or canonical identity is unavailable, and the adapter refuses; a separately rooted disposable target with verified canonical ancestry is allowed |
+| P14-NF-52 | target guard | Broad exception, target substitution or missing audit field is refused; one exact audited operation/target exception is allowed, and an adapter refusal is preserved unchanged through effect settlement |
+| P14-NF-53 | storage fault | Hostile cuts around typed configuration/filesystem/git write, flush, rename, observation and settlement never expose partial state or false success; old-or-new durable state reconstructs under Part Ten P10-NF-28/29/33 |
+| P14-NF-54 | projection | Fresh failed observation, zero effect inhibitions, empty required population, or mixed off/active instances take an ineligible label; paired complete inputs reach diverged, on-confirmed, diverged and the ordered family label respectively |
 
 ---
 
@@ -464,19 +561,21 @@ No screenshot, mock, config, boot log, timer registration or document check esta
 | Rule 59 and part ten — enumerated stall coverage | **Held:** the common matrix, adapter additions, real parser fixtures and positive neighbors are required by P14-NF-25–30. |
 | Part nine — fresh holder posture | **Held by consumption:** per-plan/arm/instance execution, independent witness and four-label projection are covered by P14-NF-05–24. Nine retains core posture and assessment authority. |
 | Parts five/six — durable work and recovery | **Held by the claimed split:** holders detect and assess; five retains run closure; six owns leases, loops and recovery. P14-NF-31–36 refuses worker events as work completion. |
-| Parts seven/eight — judgment and effects | **Held by delegation:** semantic classification uses seven; every recovery and message uses eight; uncertainty and refusal stay typed, P14-NF-10–12/40–47. |
+| Parts seven/eight — judgment and effects | **Partial, activation-blocking:** semantic classification uses seven. The landed eight supports ordinary replies only; typed recovery/action-result payloads and Ten drivers are requested seams. Affected bindings stay inhibited under P14-NF-10–12/40–50. |
 | Part eleven — reachability and operator output | **Held by the claimed split:** complete pull posture and bounded action/result notices P14-NF-20–24/37–39. Eleven owns rendering and the minimal plane. |
 | Rules 24/58 — recurrence and outcome review | **Held:** complete populations, reason/outcome separation and root-cause obligation P14-NF-13–15/41. Semantic accuracy remains judged, never mechanically guaranteed. |
-| 1.x destructive target guards | **Held as adapter defense:** exact target verification, refusal propagation and audit P14-NF-03/04/42/45. Part eight remains the sole effect authority. |
+| 1.x destructive target guards | **Partial, activation-blocking:** exact target verification, audited exceptions, refusal propagation and crash cuts are specified by P14-NF-51–53, but require the requested Eight/Ten typed drivers. Part eight remains the sole effect authority. |
 
 ---
 
 ## 15. Operator decisions and honest limits
 
-**Value — protection threshold question.** Should a load-bearing arm count as protected only when
-`on-confirmed`, or may a bounded `dry-run` soak count? Options: confirmed-only; time-bounded soak
-shown as an accepted gap; or accepted off state. **Recommendation:** confirmed-only for the
-protection claim, with a time-bounded soak visible as a gap until live effect evidence passes.
+**Value — accepted-gap and soak question.** Which effect classes, if any, may remain deliberately
+inhibited as visible load-bearing gaps during rollout, and for how long before graduation or
+rollback? Options: no accepted soak gaps; a single fleet duration for named classes; or governed
+per-class durations below a fleet ceiling. **Recommendation:** per-class durations below a short
+fleet ceiling, each with an owner, deadline and rollback; every such instance remains `dry-run` and
+unprotected until live evidence makes it `on-confirmed`.
 
 **Value — automatic recovery question.** Which recovery classes may graduate from signal-only to
 automatic effects? Options: none; reversible low-risk classes individually; or every registered
@@ -484,10 +583,11 @@ class after tests. **Recommendation:** graduate reversible low-risk classes one 
 hostile-cut evidence and retrospective review; keep destructive or identity-uncertain cases held
 unless their specific operation policy is approved.
 
-**Value — operator notification question.** Should presence and promise holders push routine status?
-Options: internal/pull-only; periodic aggregated status; or per-obligation status. **Recommendation:**
-internal/pull-only by default, with one bounded push only for a result or action needed after eligible
-self-heal failed.
+**Value — eligible notification-budget question.** After eligible self-heal fails, what bounded
+budget should action-needed and result-bearing pushes consume? Options: one aggregate per causal
+episode; one aggregate per episode with a fleet hourly ceiling; or disable pushes and retain only
+the complete pull view. **Recommendation:** one aggregate per episode under a fleet hourly ceiling.
+Routine status and churn remain pull-only in every option.
 
 **Value — deployment budget question.** Who chooses freshness windows, detection ceilings and
 self-action limits after the tests expose actual distributions? Options: one fleet policy; per
