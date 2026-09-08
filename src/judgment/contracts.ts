@@ -7,7 +7,8 @@ interface Owned { readonly [owned]: 'part-seven' }
 export interface Capture { readonly reference: string; readonly hash: Hash }
 declare const capacityOwned: unique symbol;
 export interface CaptureCapacity { readonly [capacityOwned]: 'part-ten'; readonly id: string; readonly maxBytes: number }
-interface Row { readonly schemaVersion: 1; readonly id: string; readonly request: string; readonly predecessor: string }
+interface FactRow { readonly schemaVersion: 1; readonly id: string; readonly predecessor: string }
+interface Row extends FactRow { readonly request: string }
 export interface JudgmentRequest extends Row, Owned {
   readonly type: 'JudgmentRequest'; readonly logicalKey: string; readonly inputDigest: string;
   readonly run: string; readonly step: string; readonly ordinal: number;
@@ -28,7 +29,93 @@ export interface JudgmentResolution extends Row, Owned {
   readonly type: 'JudgmentResolution'; readonly attempt: string;
   readonly disposition: 'decided' | 'refused'; readonly response: string; readonly accounting: string; readonly decoded: string;
 }
-export type JudgmentRecord = JudgmentRequest | JudgmentAttemptRecord | JudgmentResolution;
+export type BenchmarkProvenance = Readonly<
+  | { readonly kind: 'real'; readonly request: OwnedReference<'part-seven', 'JudgmentRequest'>; readonly generation: string; readonly vector: string }
+  | { readonly kind: 'synthetic'; readonly fixture: string; readonly productionDerived: false }
+>;
+export type BenchmarkDecisionReference = Readonly<
+  | { readonly state: 'present'; readonly id: string }
+  | { readonly state: 'absent' }
+>;
+export interface BenchmarkRecord extends FactRow, Owned {
+  readonly type: 'BenchmarkRecord';
+  readonly provenance: BenchmarkProvenance;
+  readonly request: OwnedReference<'part-seven', 'JudgmentRequest'>;
+  readonly requestDigest: Hash;
+  readonly resolution: OwnedReference<'part-seven', 'JudgmentResolution'>;
+  readonly run: string;
+  readonly step: string;
+  readonly logicalKey: string;
+  readonly recordingPrincipal: string;
+  readonly sourceGeneration: string;
+  readonly scenarioClass: string;
+  readonly inputDigest: Hash;
+  readonly compatibilityDigest: Hash;
+  readonly attempts: readonly OwnedReference<'part-seven', 'JudgmentAttemptRecord'>[];
+  readonly captureReferences: readonly Capture[];
+  readonly decision: BenchmarkDecisionReference;
+  readonly conclusionEvidence: readonly string[];
+  readonly reasonEvidence: readonly string[];
+  readonly outcomeReferences: readonly string[];
+  readonly usageReferences: readonly string[];
+}
+export interface BenchmarkScenario extends FactRow, Owned {
+  readonly type: 'BenchmarkScenario';
+  readonly version: string;
+  readonly source: OwnedReference<'part-seven', 'BenchmarkRecord'>;
+  readonly sourceGrade: OwnedReference<'part-nine', 'Grade'>;
+  readonly pinnedGeneration: string;
+  readonly pinnedVector: string;
+  readonly scenarioClass: string;
+  readonly promotionDecision: string;
+  readonly replayInput: Capture;
+  readonly originalInputHash: Hash;
+  readonly transformedInputHash: Hash;
+  readonly transformationVersion: string;
+  readonly changedSemanticFields: readonly string[];
+  readonly unavailableSemanticFields: readonly string[];
+  readonly excludedAnswerFields: readonly string[];
+  readonly excludedOutcomeFields: readonly string[];
+  readonly floorDigest: Hash;
+  readonly outputSchemaDigest: Hash;
+  readonly evaluationContract: string;
+  readonly dataScope: string;
+  readonly captureAvailability: 'available' | 'unavailable';
+}
+export interface BenchmarkCandidate {
+  readonly route: string;
+  readonly samples: number;
+}
+export interface BenchmarkScenarioVersion {
+  readonly scenario: OwnedReference<'part-seven', 'BenchmarkScenario'>;
+  readonly version: string;
+}
+export interface BenchmarkExecutionDisposition {
+  readonly scenario: OwnedReference<'part-seven', 'BenchmarkScenario'>;
+  readonly candidate: string;
+  readonly ordinal: number;
+  readonly disposition: 'completed' | 'refused' | 'cancelled' | 'missing';
+  readonly attempt?: OwnedReference<'part-seven', 'JudgmentAttemptRecord'>;
+  readonly resolution?: OwnedReference<'part-seven', 'JudgmentResolution'>;
+  readonly usage: readonly string[];
+  readonly detail?: string;
+}
+export interface BenchmarkRunRecord extends FactRow, Owned {
+  readonly type: 'BenchmarkRunRecord';
+  readonly suite: string;
+  readonly suiteVersion: string;
+  readonly scenarios: readonly BenchmarkScenarioVersion[];
+  readonly candidates: readonly BenchmarkCandidate[];
+  readonly criterionDigest: Hash;
+  readonly inputDigest: Hash;
+  readonly compatibilityDigest: Hash;
+  readonly heldOutPartition: string;
+  readonly run: RunReference;
+  readonly startedAt: number;
+  readonly stoppedAt: number;
+  readonly executions: readonly BenchmarkExecutionDisposition[];
+}
+export type JudgmentRecord = JudgmentRequest | JudgmentAttemptRecord | JudgmentResolution | BenchmarkRecord | BenchmarkScenario | BenchmarkRunRecord;
 export interface JudgmentFact { readonly fact: FactEnvelope; readonly record: JudgmentRecord }
 // Concrete custody belongs to ten. No delete, network fetch or release-pin capability.
 export interface JudgmentCapturePort {
@@ -77,6 +164,20 @@ export interface JudgmentHost {
 export interface JudgmentSpine {
   readonly store: FactStorePort;
   append(record: JudgmentRecord, attachments?: Readonly<Record<string, unknown>>): Result<AppendReceipt>;
+}
+export interface JudgmentBenchmarkReadPort {
+  readonly owner: 'part-seven';
+  readRecord(id: OwnedReference<'part-seven', 'BenchmarkRecord'>): Result<BenchmarkRecord>;
+  readScenario(id: OwnedReference<'part-seven', 'BenchmarkScenario'>): Result<BenchmarkScenario>;
+  readRun(id: OwnedReference<'part-seven', 'BenchmarkRunRecord'>): Result<BenchmarkRunRecord>;
+  readManifest(request: OwnedReference<'part-seven', 'JudgmentRequest'>): Result<Readonly<{
+    request: JudgmentRequest;
+    resolution: JudgmentResolution | null;
+    decision: Decision | null;
+    conclusionEvidence: readonly string[];
+    reasonEvidence: readonly string[];
+    captureReferences: readonly Capture[];
+  }>>;
 }
 export interface JudgmentPorts {
   readonly host: JudgmentHost; readonly authority: TransportAuthority;
