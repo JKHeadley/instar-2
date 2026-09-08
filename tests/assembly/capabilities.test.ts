@@ -5,14 +5,17 @@ import { createCustodiedPersistenceAdapter, createNativeHarnessAdapter, deriveGr
 import type { EncryptedChunk } from '../../src/assembly/index.js';
 import { factsFixture, refused, value } from '../facts/fixtures.js';
 import { assemblyInput } from './fixture.js';
+import { assemblyRuntimeFixture } from './runtime-fixture.js';
 
 it('P10-NF-17 P10-NF-18 P10-NF-20 P10-NF-21 Native receives only the eight-owned process driver and distinguishes accepted from consumed', () => {
-  const f = factsFixture(); let phase: 'input-accepted' | 'context-consumed' = 'input-accepted'; let invokes = 0;
+  const f = assemblyRuntimeFixture(); let phase: 'input-accepted' | 'context-consumed' = 'input-accepted'; let invokes = 0;
+  value(f.runtime.record('HarnessObservation', { ...assemblyInput('HarnessObservation'), id: 'model-context:capture:1' }));
   const adapter = createNativeHarnessAdapter({ id: 'native', artifact: assemblyInput('HarnessLaunchSpec').artifactDigest, platform: 'darwin-arm64', conformance: 'conformance:1',
     context: f.c, clock: () => 20, generation: () => 'generation:fixture', driver: { owner: 'part-eight',
       launch: () => { invokes++; return f.success('pid:42:start:1'); }, deliver: () => f.success('stdin:accepted'),
       observe: () => f.success({ phase, evidence: phase === 'context-consumed' ? 'model-context:capture:1' : 'stdin:accepted', detail: 'instrumented' }) } });
   const spec = assemblyInput('HarnessLaunchSpec'); expect(value(adapter.launch(spec, 'operation:launch', 'claim:launch')).phase).toBe('launched');
+  refused(adapter.deliver({ launch: spec.id, intake: 'intake:other', digest: spec.inputDigest, incarnation: spec.incarnation, operation: 'operation:deliver:wrong' }), 'identity or digest');
   expect(value(adapter.deliver({ launch: spec.id, intake: spec.input, digest: spec.inputDigest, incarnation: spec.incarnation, operation: 'operation:deliver' })).phase).toBe('input-accepted');
   expect(value(adapter.observe({ launch: spec.id, delivery: 'delivery:1', operation: 'operation:observe' })).phase).toBe('input-accepted');
   phase = 'context-consumed'; expect(value(adapter.observe({ launch: spec.id, delivery: 'delivery:1', operation: 'operation:observe:2' })).phase).toBe('context-consumed'); expect(invokes).toBe(1);
@@ -26,7 +29,20 @@ it('P10-NF-28 P10-NF-29 P10-NF-32 P10-NF-33 P10-NF-35 P10-NF-36 encrypted persis
   const bytes = '{"canonical":true}'; const receipt = value(adapter.appendExact({ bytes, bytesDigest: hashBytes(bytes), segment: policy.store, position: '0', expectedPhysicalHead: null, policy: policy.id }));
   expect(stored.get('0')!.ciphertext).not.toContain('canonical'); expect(value(adapter.readExact({ store: policy.store, positions: ['0'], maxBytes: 100, access: 'grant:read' }))).toEqual([bytes]);
   expect(value(adapter.flushEvidence(receipt))).toEqual(receipt);
+  refused(adapter.flushEvidence({ ...receipt, store: 'store:other' }), 'exact durable store');
+  stored.set('1', { ...stored.get('0')!, position: '1' });
+  refused(adapter.readExact({ store: policy.store, positions: ['1'], maxBytes: 100, access: 'grant:read' }), 'authenticated associated data');
   refused(adapter.appendExact({ bytes: 'changed', bytesDigest: hashBytes('changed'), segment: policy.store, position: '0', expectedPhysicalHead: receipt.physicalHead, policy: policy.id }), 'different bytes');
+});
+
+it('repair1 V210-V211 context-consumption resolves the exact signed run, input, and incarnation', () => {
+  const f = assemblyRuntimeFixture();
+  value(f.runtime.record('HarnessObservation', { ...assemblyInput('HarnessObservation'), id: 'model-context:other', run: 'run:other' }));
+  const adapter = createNativeHarnessAdapter({ id: 'native', artifact: assemblyInput('HarnessLaunchSpec').artifactDigest, platform: 'darwin-arm64', conformance: 'conformance:1',
+    context: f.c, clock: () => 20, generation: () => 'generation:fixture', driver: { owner: 'part-eight', launch: () => f.success('pid:42:start:1'),
+      deliver: () => f.success('accepted'), observe: () => f.success({ phase: 'context-consumed', evidence: 'model-context:other', detail: 'wrong run' }) } });
+  const spec = assemblyInput('HarnessLaunchSpec'); value(adapter.launch(spec, 'operation:launch', 'claim:launch'));
+  refused(adapter.observe({ launch: spec.id, delivery: 'delivery:1', operation: 'operation:observe' }), 'another run');
 });
 
 it('P10-NF-41 P10-NF-42 P10-NF-44 inert package staging hashes every path and dependency without executing it', () => {

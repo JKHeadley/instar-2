@@ -130,11 +130,26 @@ export type AssemblyRecord = AssemblyManifest | AssemblyAdmission | HarnessLaunc
   AdapterEvidenceContract | AdapterConformance | StoreCustodyPolicy | StorageAccessObservation |
   LocalCapabilityPackage | PackageTransition | GrowthPolicy | GrowthObservation;
 export type AssemblyRecordName = AssemblyRecord['type'];
-export interface AssemblyDecodeContext extends BoundaryContext {}
+export interface AssemblyHistoryReadPort {
+  readonly owner: 'part-ten';
+  current(): Result<readonly CurrentAssemblyFact[]>;
+  lookup(reference: string): Result<Readonly<{ fact: FactEnvelope; record?: AssemblyRecord; taint: readonly string[]; conflicts: readonly ConflictClass[]; completeness: 'complete' | 'partial' }> | null>;
+  resolve(record: AssemblyRecord): Result<AssemblyHistoryVerdict>;
+}
+export interface AssemblyDecodeContext extends BoundaryContext {
+  readonly history?: AssemblyHistoryReadPort;
+  readonly validateReferences?: boolean;
+}
 export interface AssemblyIdentity { readonly id: string; readonly logicalKey: string; readonly canonicalHash: Hash }
 export interface AssemblyFact { readonly fact: FactEnvelope; readonly record: AssemblyRecord }
 export interface CurrentAssemblyFact extends AssemblyFact { readonly taint: readonly string[]; readonly conflicts: readonly ConflictClass[] }
-export interface AssemblyHistoryVerdict { readonly admitted: boolean; readonly facts: readonly string[]; readonly conflicts: readonly ConflictClass[]; readonly missing: readonly string[] }
+export interface AssemblyHistoryVerdict {
+  readonly admitted: boolean;
+  readonly completeness: 'complete' | 'partial';
+  readonly facts: readonly string[];
+  readonly conflicts: readonly ConflictClass[];
+  readonly missing: readonly string[];
+}
 export interface AssemblySpine { readonly store: FactStorePort; append(record: AssemblyRecord, required?: readonly string[]): Result<AppendReceipt> }
 export interface AssemblyAuthor { readonly context: FactContext; readonly privateKey: string }
 export interface AssemblyHost {

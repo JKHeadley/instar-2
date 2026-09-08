@@ -26,12 +26,29 @@ export function stageLocalCapability(input: unknown, archive: readonly PackageAr
 
 export function resolveActivePackage(namespace: string, rows: readonly CurrentAssemblyFact[], context: AssemblyDecodeContext) {
   return boundary('LocalCapabilityActivationResolution', namespace, context, () => {
-    const packages = rows.filter(row => row.record.type === 'LocalCapabilityPackage' && row.record.namespace === namespace);
+    const current = context.history ? take(context.history.current()) : rows;
+    const packages = current.filter(row => row.record.type === 'LocalCapabilityPackage' && row.record.namespace === namespace);
     ensure(packages.length > 0, 'local package missing from signed history');
-    ensure(packages.every(row => row.conflicts.length === 0 && row.taint.length === 0), 'local package history is conflicted or tainted');
-    const transitions = rows.filter((row): row is CurrentAssemblyFact & { record: PackageTransition } => row.record.type === 'PackageTransition' && row.record.package === namespace && row.record.to === 'active');
-    ensure(transitions.length === 1 && transitions[0]!.conflicts.length === 0 && transitions[0]!.taint.length === 0, 'active package transition missing or ambiguous');
-    const pkg = packages.find(row => row.record.type === 'LocalCapabilityPackage' && row.record.contentDigest === transitions[0]!.record.observedArtifactDigest);
-    ensure(pkg?.record.type === 'LocalCapabilityPackage', 'active switch digest differs from immutable package'); return freeze(pkg.record);
+    const transitions = current.filter((row): row is CurrentAssemblyFact & { record: PackageTransition } => row.record.type === 'PackageTransition' && row.record.package === namespace);
+    const superseded = new Set(transitions.flatMap(row => [...row.record.predecessors, ...row.record.dependencyFacts]));
+    const heads = transitions.filter(row => !superseded.has(row.fact.id));
+    ensure(heads.length === 1 && heads[0]!.record.to === 'active' && heads[0]!.conflicts.length === 0 && heads[0]!.taint.length === 0,
+      'active package transition missing or ambiguous');
+    const transition = heads[0]!;
+    if (context.history) {
+      const transitionVerdict = take(context.history.resolve(transition.record));
+      ensure(transitionVerdict.admitted, transitionVerdict.conflicts[0]?.detail ?? `transition dependency missing: ${transitionVerdict.missing[0] ?? 'unknown'}`);
+    }
+    const matching = packages.filter((row): row is CurrentAssemblyFact & { record: LocalCapabilityPackage } =>
+      row.record.type === 'LocalCapabilityPackage' && row.record.contentDigest === transition.record.observedArtifactDigest);
+    ensure(matching.every(row => row.conflicts.length === 0 && row.taint.length === 0), 'active package is conflicted or tainted');
+    ensure(matching.length === 1, 'active switch digest differs from immutable package'); const pkg = matching[0]!;
+    if (context.history) {
+      const packageVerdict = take(context.history.resolve(pkg.record));
+      ensure(packageVerdict.admitted, packageVerdict.conflicts[0]?.detail ?? `package dependency missing: ${packageVerdict.missing[0] ?? 'unknown'}`);
+    }
+    const supportedPorts = new Set(['HarnessAdapterPort', 'ModelAdapterPort', 'PersistenceAdapterPort', 'OperationAdapterPort', 'IntakePort', 'AgentTransportPort']);
+    ensure(pkg.record.portRequirements.every(requirement => supportedPorts.has(requirement.port) && requirement.version === '1'), 'required adapter port is unavailable');
+    return freeze(pkg.record);
   });
 }

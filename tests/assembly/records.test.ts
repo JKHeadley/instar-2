@@ -1,9 +1,11 @@
 import { expect, it } from 'vitest';
 import { canonical, consumeResult } from '../../src/index.js';
-import { assemblyIdentity, assemblyShapes, compareAssemblyRecords, decodeAssemblyRecord } from '../../src/assembly/index.js';
+import { assemblyIdentity, assemblyKindFor, assemblyRecordFrom, assemblyRows, assemblyShapes, compareAssemblyRecords, decodeAssemblyRecord } from '../../src/assembly/index.js';
 import type { AssemblyRecordName } from '../../src/assembly/index.js';
 import { factsFixture } from '../facts/fixtures.js';
 import { assemblyInput, assemblyInputs } from './fixture.js';
+import { assemblyRuntimeFixture } from './runtime-fixture.js';
+import { decodeEnvelope } from '../../src/facts/index.js';
 
 const names = Object.keys(assemblyInputs) as AssemblyRecordName[];
 const value = <T>(result: import('../../src/index.js').Result<T>): T => consumeResult(result, { Success: value => value, Refused: refusal => { throw new Error(refusal.detail); } });
@@ -68,4 +70,31 @@ it('P10-NF-46 P10-NF-47 P10-NF-48 P10-NF-49 P10-NF-50 growth keeps the full deno
   const observation = assemblyInput('GrowthObservation');
   refused(decodeAssemblyRecord('GrowthObservation', { ...observation, denominator: 2 }, context), 'complete sample cannot omit');
   refused(decodeAssemblyRecord('GrowthObservation', { ...observation, completion: 'incomplete' }, context), 'retained omission');
+});
+
+it('repair1 V3-V120 decoders require substantive identifiers and resolve signed semantic references when history is available', () => {
+  const context = factsFixture().c;
+  for (const name of names) refused(decodeAssemblyRecord(name, { ...assemblyInput(name), id: ' \t ' }, context), 'substantive');
+  refused(decodeAssemblyRecord('AssemblyAdmission', { ...assemblyInput('AssemblyAdmission'), manifest: '  ' }, context), 'substantive');
+  refused(decodeAssemblyRecord('AdapterConformance', { ...assemblyInput('AdapterConformance'), stageChecks: [{ stage: 'context', checkRun: 'check:1', positive: [''], negative: ['  '] }] }, context), 'substantive');
+
+  const f = assemblyRuntimeFixture();
+  const partial = value(f.runtime.record('GrowthObservation', { ...assemblyInput('GrowthObservation'), id: 'partial', completion: 'incomplete', sampleCount: 0, timeouts: 1 }));
+  const fact = value(f.runtime.inspect()).find(row => row.record.id === partial.id)!.fact;
+  refused(decodeAssemblyRecord('AssemblyManifest', { ...assemblyInput('AssemblyManifest'), custodyPolicies: ['machine-z:0:999'] }, f.c), 'missing from signed history');
+  refused(decodeAssemblyRecord('AssemblyManifest', { ...assemblyInput('AssemblyManifest'), custodyPolicies: [fact.id] }, f.c), 'wrong signed record kind');
+  refused(decodeAssemblyRecord('AssemblyManifest', { ...assemblyInput('AssemblyManifest'), dependencyFacts: [fact.id] }, f.c), 'incomplete');
+});
+
+it('repair1 V121-V168 direct readers independently verify signed envelope kind, origin, and bytes', () => {
+  const f = assemblyRuntimeFixture(); const row = value(f.runtime.record('AssemblyManifest', assemblyInput('AssemblyManifest')));
+  const fact = value(f.runtime.inspect()).find(candidate => candidate.record.id === row.id)!.fact;
+  expect(() => assemblyRecordFrom({ ...fact, body: { record: { ...assemblyInput('AssemblyManifest'), id: 'changed' } } } as typeof fact, f.c)).toThrow(/content hash/);
+  const cross = value(decodeEnvelope(f.wire({ kind: assemblyKindFor('GrowthObservation'), body: { record: assemblyInput('AssemblyManifest') } }, f.context), f.context));
+  expect(() => assemblyRows([cross], f.c)).toThrow(/kind mismatch/);
+});
+
+it('repair1 V204 numeric measurement labels cannot override their measured threshold relation', () => {
+  const observation = assemblyInput('GrowthObservation');
+  refused(decodeAssemblyRecord('GrowthObservation', { ...observation, comparisons: [{ ...observation.comparisons[0]!, value: 50, result: 'within' }] }, factsFixture().c), 'disagrees');
 });

@@ -45,7 +45,11 @@ export function createCustodiedPersistenceAdapter(id: string, policy: StoreCusto
         return boundary('PersistenceReadExact', input, context, () => {
           ensure(input.store === policy.store && input.access, 'mediated access reference required'); ensure(Number.isSafeInteger(input.maxBytes) && input.maxBytes >= 0, 'finite read bound required');
           let total = 0; return freeze(input.positions.map(position => {
-            const chunk = chunks.read(position); ensure(chunk && chunk.store === policy.store, 'encrypted position missing');
+            const chunk = chunks.read(position); ensure(chunk && chunk.store === policy.store && chunk.position === position, 'encrypted position missing or relabeled');
+            let aad: { store?: unknown; segment?: unknown; position?: unknown; keyEpoch?: unknown; schema?: unknown };
+            try { aad = JSON.parse(chunk.associatedData) as typeof aad; } catch { throw new Error('encrypted associated data malformed'); }
+            ensure(aad.store === policy.store && aad.segment === policy.store && aad.position === position && aad.keyEpoch === chunk.keyEpoch && aad.schema === 1,
+              'encrypted position differs from authenticated associated data');
             const decipher = createDecipheriv('aes-256-gcm', keyBytes(take(keys.key(policy.wrappingKey, chunk.keyEpoch))), nonceBytes(chunk.nonce));
             decipher.setAAD(Buffer.from(chunk.associatedData)); decipher.setAuthTag(Buffer.from(chunk.tag, 'hex'));
             const bytes = Buffer.concat([decipher.update(Buffer.from(chunk.ciphertext, 'base64')), decipher.final()]).toString('utf8');
@@ -55,7 +59,9 @@ export function createCustodiedPersistenceAdapter(id: string, policy: StoreCusto
       },
       flushEvidence(receipt) { return boundary('PersistenceFlushEvidence', receipt, context, () => {
         const original = receiptByPosition.get(receipt.position); const chunk = chunks.read(receipt.position);
-        ensure(original && chunk && original.physicalHead === receipt.physicalHead && original.bytesDigest === receipt.bytesDigest, 'flush receipt not bound to exact durable bytes'); return original;
+        ensure(receipt.store === policy.store && original && original.store === receipt.store && chunk && chunk.store === receipt.store && chunk.position === receipt.position
+          && original.physicalHead === receipt.physicalHead && original.bytesDigest === receipt.bytesDigest,
+          'flush receipt not bound to exact durable store bytes'); return original;
       }); },
     };
     return Object.freeze(port);

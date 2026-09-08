@@ -6,7 +6,7 @@ export {
   decodeStoreCustodyPolicy, decodeStorageAccessObservation, decodeLocalCapabilityPackage, decodePackageTransition,
   decodeGrowthPolicy, decodeGrowthObservation, assemblyLogicalKey, assemblyIdentity, compareAssemblyRecords,
   assemblyKindFor, assemblyRecordFrom, assemblyRows, assemblySchemas, registerAssemblyBodies, createAssemblySpine,
-  safePackagePath,
+  safePackagePath, assemblyReferences, assemblyRowForReference, validateAssemblyRecordReferences,
 } from './records.js';
 export { currentAssemblyRows, resolveAssemblyHistory } from './history.js';
 export { createAssemblyRuntime } from './service.js';

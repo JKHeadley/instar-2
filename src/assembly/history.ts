@@ -1,6 +1,6 @@
 import type { ConflictClass, FactEnvelope, FactSnapshot } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
-import { assemblyIdentity, assemblyRecordFrom, assemblyRows } from './records.js';
+import { assemblyIdentity, assemblyRecordFrom, assemblyReferences, assemblyRowForReference, assemblyRows } from './records.js';
 import type { AssemblyDecodeContext, AssemblyHistoryVerdict, AssemblyRecord, AssemblySpine, CurrentAssemblyFact } from './contracts.js';
 
 function sameIdentity(left: AssemblyRecord, right: AssemblyRecord): boolean {
@@ -31,6 +31,7 @@ export function resolveAssemblyHistory(record: AssemblyRecord, spine: AssemblySp
     ensure(seed, 'assembly record absent from signed history');
     const byId = new Map(all.map(row => [row.fact.id, row])); const assemblyById = new Map(rows.map(row => [row.fact.id, row]));
     const queue = [seed.fact.id]; const visited = new Set<string>(); const missing = new Set<string>(); const conflicts: ConflictClass[] = [];
+    let completeness: AssemblyHistoryVerdict['completeness'] = 'complete';
     while (queue.length) {
       const id = queue.shift()!; if (visited.has(id)) continue; visited.add(id);
       const status = byId.get(id); if (!status) { missing.add(id); continue; }
@@ -38,12 +39,24 @@ export function resolveAssemblyHistory(record: AssemblyRecord, spine: AssemblySp
       if (status.taint.length) conflicts.push({ key: `taint:${id}`, kind: 'poison-fact', facts: [id], detail: `referenced fact is ${status.taint.join(',')}` });
       const owned = assemblyById.get(id); if (owned) {
         conflicts.push(...owned.conflicts);
-        for (const dependency of [...owned.record.predecessors, ...owned.record.dependencyFacts]) queue.push(dependency);
+        if (owned.record.type === 'GrowthObservation' && owned.record.completion === 'incomplete') completeness = 'partial';
+        for (const reference of assemblyReferences(owned.record)) {
+          const resolved = assemblyRowForReference(reference.id, rows);
+          if (resolved) {
+            if (reference.expected && resolved.record.type !== reference.expected) {
+              conflicts.push({ key: `wrong-kind:${id}:${reference.field}:${reference.id}`, kind: 'poison-fact', facts: [id, resolved.fact.id],
+                detail: `${reference.field} reference ${reference.id} resolves to ${resolved.record.type}, expected ${reference.expected}` });
+            } else queue.push(resolved.fact.id);
+          } else if (byId.has(reference.id)) queue.push(reference.id);
+          else if (reference.id === owned.record.id || /^[^:]+:\d+:\d+$/.test(reference.id)
+            || (owned.record.type === 'GrowthObservation' && reference.field === 'policy')) missing.add(reference.id);
+        }
       }
       for (const dependency of status.fact.predecessors.required) queue.push(dependency);
     }
     const unique = [...new Map(conflicts.map(item => [`${item.key}:${item.facts.join(',')}`, item])).values()];
-    return freeze({ admitted: missing.size === 0 && unique.length === 0, facts: [...visited].sort(), conflicts: unique, missing: [...missing].sort() });
+    return freeze({ admitted: missing.size === 0 && unique.length === 0 && completeness === 'complete', completeness,
+      facts: [...visited].sort(), conflicts: unique, missing: [...missing].sort() });
   });
 }
 

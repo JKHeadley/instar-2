@@ -36,7 +36,7 @@ export function createNativeHarnessAdapter(input: Readonly<{ id: string; artifac
     deliver(delivery) {
       return boundary('NativeHarnessDeliver', delivery, context, () => {
         const launched = launches.get(delivery.launch); ensure(launched && launched.spec.incarnation === delivery.incarnation, 'unknown or stale launch incarnation');
-        ensure(delivery.digest === launched.spec.inputDigest, 'delivery digest differs from admitted launch input');
+        ensure(delivery.intake === launched.spec.input && delivery.digest === launched.spec.inputDigest, 'delivery identity or digest differs from admitted launch input');
         const accepted = take(driver.deliver({ operation: delivery.operation, processIdentity: launched.processIdentity,
           intake: delivery.intake, digest: delivery.digest, incarnation: delivery.incarnation }));
         return observation(launched.spec, 'input-accepted', accepted, 'durable input accepted; consumption not yet claimed', launched.spec.dependencyFacts);
@@ -45,7 +45,15 @@ export function createNativeHarnessAdapter(input: Readonly<{ id: string; artifac
     observe(request) {
       return boundary('NativeHarnessObserve', request, context, () => {
         const launched = launches.get(request.launch); ensure(launched, 'unknown launch'); const observed = take(driver.observe({ operation: request.operation, processIdentity: launched.processIdentity }));
-        ensure(observed.phase !== 'context-consumed' || observed.evidence.startsWith('model-context:'), 'stdin or prompt echo cannot prove context consumption');
+        if (observed.phase === 'context-consumed') {
+          ensure(observed.evidence.startsWith('model-context:') && context.history, 'context consumption source is not resolvable signed history');
+          const rows = take(context.history.current()); const source = rows.find(row => row.fact.id === observed.evidence || row.record.id === observed.evidence);
+          ensure(source?.record.type === 'HarnessObservation' && source.conflicts.length === 0 && source.taint.length === 0,
+            'context consumption source is missing, unavailable, or conflicted');
+          ensure(source.record.run === launched.spec.run && source.record.input === launched.spec.input && source.record.incarnation === launched.spec.incarnation,
+            'context consumption source names another run, input, or incarnation');
+          ensure(take(context.history.resolve(source.record)).admitted, 'context consumption source history is not admitted');
+        }
         return observation(launched.spec, observed.phase, observed.evidence, observed.detail, launched.spec.dependencyFacts);
       });
     },
