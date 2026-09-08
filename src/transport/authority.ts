@@ -91,6 +91,8 @@ export function createBoundedDueScanPort(host: TransportHost, spine: TransportSp
       }
       const selected = Array.from({ length: selectedCount }, (_, offset) =>
         input.orderedKeys[(selectedFrom + offset) % input.orderedKeys.length]!);
+      // This is a per-page marker. Accumulated completion across zero-work
+      // pages is derived from the signed prefix by validateScanGeneration.
       const wrapped = selectedCount > 0 && selectedFrom + selectedCount >= input.orderedKeys.length;
       const predecessor = all.at(-1)?.fact.id ?? '';
       const record = freeze({

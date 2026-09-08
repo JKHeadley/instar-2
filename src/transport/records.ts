@@ -89,6 +89,24 @@ export function reservations(all: readonly TransportFact[]): AdmissionReservatio
 export function latestScanCursor(all: readonly TransportFact[], scan: string): (TransportFact & { readonly record: ScanCursor }) | undefined {
   return all.filter((v): v is TransportFact & { readonly record: ScanCursor } => v.record.type === 'ScanCursor' && v.record.scan === scan).at(-1);
 }
+function completedScanRound(all: readonly TransportFact[], scan: string): boolean {
+  let orderedKeysDigest: string | undefined;
+  let keyCount: number | undefined;
+  let completed = false;
+  for (const { record } of all) {
+    if (record.type !== 'ScanCursor' || record.scan !== scan) continue;
+    if (record.orderedKeysDigest !== orderedKeysDigest || record.keyCount !== keyCount) {
+      orderedKeysDigest = record.orderedKeysDigest;
+      keyCount = record.keyCount;
+      completed = record.keyCount === 0;
+    }
+    // A zero-work page does not undo a completed round for the same key
+    // identity. Positive work either completes at zero or starts/leaves a new
+    // unfinished round, so its durable cursor replaces the accumulated state.
+    if (record.selectedCount > 0) completed = record.wrapped === 1 && record.nextIndex === 0;
+  }
+  return completed;
+}
 export function validateScanGeneration(all: readonly TransportFact[], scan: string, generation: string,
   orderedKeysDigest: string, keyCount: number): void {
   const prior = latestScanCursor(all, scan);
@@ -99,9 +117,7 @@ export function validateScanGeneration(all: readonly TransportFact[], scan: stri
   if (!prior || prior.record.generation === generation) return;
   ensure(!original, 'scan generation cannot resume after supersession');
   const sameKeys = prior.record.orderedKeysDigest === orderedKeysDigest && prior.record.keyCount === keyCount;
-  const completedOrEmpty = prior.record.keyCount === 0
-    || prior.record.wrapped === 1 && prior.record.nextIndex === 0;
-  ensure(sameKeys || completedOrEmpty,
+  ensure(sameKeys || completedScanRound(all, scan),
     'scan generation change is unsupported while key remainder is unfinished');
 }
 export function fenceFor(all: readonly TransportFact[], lease: Lease): FenceToken {

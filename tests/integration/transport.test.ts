@@ -44,6 +44,32 @@ it('P6-NF-20 P6-NF-33 N2 safe signed generation history reopens and lost-ACK rep
   expect(readFileSync(join(f.directory, 'facts.json'), 'utf8')).toBe(before);
 });
 
+it.each([
+  ['zero items', { maxItems: 0, maxDuration: 100 }, false],
+  ['zero duration', { maxItems: 2, maxDuration: 0 }, false],
+  ['elapsed duration', { maxItems: 2, maxDuration: 1 }, true],
+] as const)('P6-NF-17 P6-NF-20 P6-NF-33 N3 completed round plus %s reopens and replays byte-identically', (_name, zeroBounds, elapsed) => {
+  const f = transportFixture();
+  const host = elapsed ? { ...f.host, monotonic: () => { f.advance(1); return f.host.monotonic(); } } : f.host;
+  const port = createBoundedDueScanPort(host, f.spine, f.c);
+  const request = { scan: 'verification-due', generation: 'g1', orderedKeys: ['a', 'b', 'c', 'd'] as readonly string[],
+    cursor: null, maxItems: 2, maxDuration: 100 };
+  const first = value(port.page(request));
+  const completed = value(port.page({ ...request, cursor: first.cursor }));
+  const zero = value(port.page({ ...request, cursor: completed.cursor, ...zeroBounds }));
+  expect(zero).toMatchObject({ selected: [], wrapped: false });
+  const transition = { ...request, generation: 'g2', orderedKeys: ['x', 'y'] as readonly string[], cursor: zero.cursor };
+  const admitted = value(port.page(transition));
+  expect(admitted).toMatchObject({ selected: ['x', 'y'], wrapped: true });
+  const before = readFileSync(join(f.directory, 'facts.json'), 'utf8');
+
+  const reopened = transportFixture(f.directory, 'worker:n3-reopen', 'authority:n3-reopen');
+  expect(value(reopened.store.read())).toHaveLength(4);
+  expect(value(reopened.api.inspect()).filter(entry => entry.record.type === 'ScanCursor')).toHaveLength(4);
+  expect(value(createBoundedDueScanPort(reopened.host, reopened.spine, reopened.c).page(transition))).toEqual(admitted);
+  expect(readFileSync(join(f.directory, 'facts.json'), 'utf8')).toBe(before);
+});
+
 it('P6-NF-14 P6-NF-15 P6-NF-20 P6-NF-21 durable level wake observes uncertainty without settlement or execution', () => {
   const f = transportFixture(), { token, reservation } = f.prepared();
   value(f.api.claim('claim', token, reservation.operation));

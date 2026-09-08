@@ -123,6 +123,51 @@ it('P6-NF-20 P6-NF-33 N1 safe generation transitions preserve a remainder or beg
   })))).toMatchObject({ selected: ['a'], wrapped: true });
 });
 
+it.each([
+  ['zero items', { maxItems: 0, maxDuration: 100 }, false],
+  ['zero duration', { maxItems: 2, maxDuration: 0 }, false],
+  ['elapsed duration', { maxItems: 2, maxDuration: 1 }, true],
+] as const)('P6-NF-17 P6-NF-20 P6-NF-33 N3 completed rounds survive %s pages without blessing initial zero work', (_name, zeroBounds, elapsed) => {
+  const completed = transportFixture();
+  const completedHost = elapsed ? { ...completed.host, monotonic: () => { completed.advance(1); return completed.host.monotonic(); } } : completed.host;
+  const port = createBoundedDueScanPort(completedHost, completed.spine, completed.c);
+  const request = input({ generation: 'g1', orderedKeys: ['a', 'b', 'c', 'd'] });
+  const first = value(port.page(request));
+  const round = value(port.page({ ...request, cursor: first.cursor }));
+  expect(round).toMatchObject({ selected: ['c', 'd'], wrapped: true });
+  const zero = value(port.page({ ...request, cursor: round.cursor, ...zeroBounds }));
+  expect(zero).toMatchObject({ selected: [], wrapped: false });
+  const admitted = value(port.page(input({
+    generation: 'g2', orderedKeys: ['x', 'y'], cursor: zero.cursor,
+  })));
+  expect(admitted).toMatchObject({ selected: ['x', 'y'], wrapped: true });
+  refused(port.page(input({ generation: 'g1', orderedKeys: ['a', 'b', 'c', 'd'], cursor: admitted.cursor })), 'supersession');
+
+  const initial = transportFixture();
+  const initialHost = elapsed ? { ...initial.host, monotonic: () => { initial.advance(1); return initial.host.monotonic(); } } : initial.host;
+  const initialPort = createBoundedDueScanPort(initialHost, initial.spine, initial.c);
+  const initialZero = value(initialPort.page(input({
+    generation: 'g1', orderedKeys: ['a', 'b', 'c', 'd'], ...zeroBounds,
+  })));
+  expect(initialZero).toMatchObject({ selected: [], wrapped: false });
+  refused(initialPort.page(input({
+    generation: 'g2', orderedKeys: ['x', 'y'], cursor: initialZero.cursor,
+  })), 'generation change is unsupported');
+});
+
+it('P6-NF-20 P6-NF-33 N3 positive selection after preserved completion starts a new unfinished round', () => {
+  const f = transportFixture(), port = createBoundedDueScanPort(f.host, f.spine, f.c);
+  const request = input({ generation: 'g1', orderedKeys: ['a', 'b', 'c', 'd'] });
+  const first = value(port.page(request));
+  const completed = value(port.page({ ...request, cursor: first.cursor }));
+  const zero = value(port.page({ ...request, cursor: completed.cursor, maxItems: 0 }));
+  const started = value(port.page({ ...request, cursor: zero.cursor }));
+  expect(started).toMatchObject({ selected: ['a', 'b'], wrapped: false });
+  refused(port.page(input({
+    generation: 'g2', orderedKeys: ['x', 'y'], cursor: started.cursor,
+  })), 'generation change is unsupported');
+});
+
 it('P6-NF-20 P6-NF-33 C2 durable admission refuses a signed progress reset and preserves valid replay', () => {
   const f = transportFixture(), port = createBoundedDueScanPort(f.host, f.spine, f.c);
   const request = input({ orderedKeys: ['a', 'b', 'c', 'd'] });
