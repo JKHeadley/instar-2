@@ -1,6 +1,6 @@
 import { consumeResult, decode, decodeMeasurement, defineDecoder, deriveThrough } from '../dist/index.js';
 import { createFactStore } from '../dist/facts/index.js';
-import { createTransportAuthority, createTransportSpine, registerTransportBodies, transportSchemas } from '../dist/transport/index.js';
+import { createBoundedDueScanPort, createTransportAuthority, createTransportSpine, registerTransportBodies, transportSchemas } from '../dist/transport/index.js';
 import { createTransportFileStorage } from './transport-file-storage.mjs';
 
 const take = result => consumeResult(result, { Success: v => v, Refused: r => { throw new Error(`${r.site}: ${r.detail}`); } });
@@ -39,6 +39,8 @@ export function createTransportSlice(seed, directory, runtime) {
     genesis: { ...seed.genesis, clock }, timeAnchors: [], captures: {}, folded: {} };
   const storage = createTransportFileStorage(directory, result);
   const store = createFactStore(context, storage);
-  const api = createTransportAuthority(host, createTransportSpine(host, { context, privateKey: seed.privateKey }, store), c);
-  return Object.freeze({ api, host, c, result, store });
+  const spine = createTransportSpine(host, { context, privateKey: seed.privateKey }, store);
+  const api = createTransportAuthority(host, spine, c);
+  const dueScan = createBoundedDueScanPort(host, spine, c);
+  return Object.freeze({ api, dueScan, host, c, result, store });
 }

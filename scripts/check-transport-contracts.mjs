@@ -37,7 +37,7 @@ export const transportDispositions = [
   ['30', 'partial', 'Verified prefix before recovery and stable episode; five fresh grounding is its separate owner seam.'],
   ['31', 'out-of-scope', 'Independent minimal-plane quarantine and unrelated domains excluded.'],
   ['32', 'out-of-scope', 'Quorum and independent repair capacity excluded.'],
-  ['33', 'out-of-scope', 'Fleet fairness and incremental scans not implemented; the slice has a finite replay ceiling, not fleet-scale proof.'],
+  ['33', 'partial', 'Generic ordered due selection has finite item/duration bounds, durable cursor restart, idempotent replay and absence refusal; production fleet scheduling and bounded P2 replay remain outside this slice.'],
   ['34', 'partial', 'Fresh-process handoff and stale owner refusal; no multi-machine quorum claim.'],
   ['35', 'partial', 'Actual P2 and pinned main eight producer/custody composition consumed twice per settlement with approved references and compiler/runtime controls; production nine/P10 assembly pending.'],
   ['36', 'partial', 'Three test tiers and real process kills; feature dark, no live Telegram, supervisor or production probes.'],

@@ -1,10 +1,29 @@
 import { expect, it } from 'vitest';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createTransportAuthority, createTransportSpine, decodeLoopPolicy } from '../../src/transport/index.js';
+import { createBoundedDueScanPort, createTransportAuthority, createTransportSpine, decodeLoopPolicy } from '../../src/transport/index.js';
 import { createFactStore } from '../../src/facts/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { transportFixture, value, refused } from '../transport/fixture.js';
+
+it('P6-NF-20 P6-NF-33 durable scan cursor resumes missed ordered work after restart and refuses absent neighbors', () => {
+  const f = transportFixture();
+  const firstPort = createBoundedDueScanPort(f.host, f.spine, f.c);
+  const request = { scan: 'verification-due', generation: 'due:g1', orderedKeys: ['a', 'b', 'c'] as readonly string[],
+    cursor: null, maxItems: 2, maxDuration: 100 };
+  const first = value(firstPort.page(request));
+  expect(first.selected).toEqual(['a', 'b']);
+
+  const restarted = transportFixture(f.directory, 'worker:2', 'authority:2');
+  const resumed = createBoundedDueScanPort(restarted.host, restarted.spine, restarted.c);
+  const second = value(resumed.page({ ...request, cursor: first.cursor }));
+  expect(second).toMatchObject({ selected: ['c', 'a'], wrapped: true });
+  expect(value(restarted.api.inspect()).filter(entry => entry.record.type === 'ScanCursor')).toHaveLength(2);
+
+  const before = value(restarted.api.inspect()).length;
+  refused(resumed.page({ ...request, cursor: { owner: 'part-six', name: 'ScanCursor', id: 'absent' } }), 'absent');
+  expect(value(restarted.api.inspect())).toHaveLength(before);
+});
 
 it('P6-NF-14 P6-NF-15 P6-NF-20 P6-NF-21 durable level wake observes uncertainty without settlement or execution', () => {
   const f = transportFixture(), { token, reservation } = f.prepared();
