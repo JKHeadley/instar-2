@@ -16,7 +16,7 @@ it('P9-NF-43 P9-NF-48 P9-NF-50 capacity refuses new capture work without deletin
   expect(routineAgeRemovalAllowed()).toBe(false); expect(retainedGap.status).toBe('partial');
 });
 
-it('P9-NF-43 assessment closure releases only its own pin', () => {
+it('P9-NF-43 P9-NF-49 assessment closure releases only its own pin and leaves byte custody unchanged', () => {
   const closure = verificationInput('AssessmentClosure');
   expect(closureReleasedPins(closure)).toEqual(['assessment-pin:case:1']);
   expect(closureReleasedPins(closure)).not.toContain('settlement-pin');

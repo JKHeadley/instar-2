@@ -24,7 +24,7 @@ it('P9-NF-26 review accounting rejects a success-only subset and keeps every omi
   expect(reviewAccounting(population, highlights)).toMatchObject({ complete: false });
 });
 
-it('P9-NF-28 P9-NF-34 unlinked feedback remains missing and replies do not close improvement work', () => {
+it('P9-NF-28 P9-NF-33 P9-NF-34 unlinked feedback remains missing and replies do not close improvement work', () => {
   const verified = verificationInput('FeedbackDisposition');
   const open = decoded('FeedbackDisposition', { ...verified, id: 'feedback:open', sourceIntent: 'intent:2', disposition: 'investigating' as const,
     improvementRun: '', evidence: [], nextDueAt: 200 });
@@ -43,7 +43,7 @@ it('P9-NF-30 P9-NF-57 semantic review is exact-generation and disagreement remai
   expect(semanticCoverage([{ edge: adequate.edge, generation: adequate.generation, firstSeen: 1 }], [adequate, adverse])[0]).toMatchObject({ reviewed: false, verdict: 'disputed' });
 });
 
-it('P9-NF-39 P9-NF-40 P9-NF-42 grades keep conclusion/reason/outcome separate and dependency changes withdraw support', () => {
+it('P9-NF-39 P9-NF-40 P9-NF-42 P9-NF-47 grades keep conclusion/reason/outcome separate and dependency changes withdraw support', () => {
   const grade = verificationInput('Grade');
   expect(grade.conclusion.assessment).toBe('supported'); expect(grade.statedReason.assessment).toBe('contradicted');
   expect(grade.outcome.assessment).toBe('met'); expect(gradeSupport(grade)).toEqual({ grade: grade.id, current: true, reasons: [] });

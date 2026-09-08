@@ -51,7 +51,7 @@ export const verificationShapes: Readonly<Record<VerificationRecordName, OwnedSh
     planVersion: text, grader: text, gradingDecision: text, vectorDigest: text, sourceGeneration: text, inspected: texts,
     missing: texts, captureStatuses: list(status), taints: texts, window: pair({ start: integer, end: integer }),
     conclusion: dimension, statedReason: dimension, outcome: dimension,
-    process: list(pair({ requirement: text, assessment: text, reason: text, evidence: texts })),
+    processAssessments: list(pair({ requirement: text, assessment: text, reason: text, evidence: texts })),
     completeness: pair({ assessment: text, missing: texts, conflicts: texts }), supersedes: text }),
   AssessmentClosure: pair({ ...common, caseId: text, sourceVectorDigest: text, requiredAssessments: texts,
     dispositions: list(pair({ assessment: text, disposition: text, reference: text, reason: text })), activeDisputes: texts,
@@ -141,7 +141,7 @@ function validate(record: VerificationRecord): void {
       one(record.statedReason.assessment, ['supported', 'contradicted', 'unverifiable', 'not-applicable'], 'reason grade');
       one(record.outcome.assessment, ['met', 'unmet', 'pending', 'unverifiable', 'not-applicable'], 'outcome grade');
       one(record.completeness.assessment, ['complete', 'incomplete', 'disputed'], 'completeness grade');
-      record.process.forEach(item => one(item.assessment, ['satisfied', 'violated', 'unverifiable'], 'process grade'));
+      record.processAssessments.forEach(item => one(item.assessment, ['satisfied', 'violated', 'unverifiable'], 'procedure grade'));
       ensure(record.benchmarkRecord && record.request && record.resolution && record.criterion && record.planVersion && record.grader && record.gradingDecision && record.vectorDigest && record.sourceGeneration, 'grade binding incomplete');
       ensure(record.window.end >= record.window.start, 'grade window inverted');
       ensure(record.decision.length > 0 || record.conclusion.assessment === 'not-applicable' || record.conclusion.assessment === 'unverifiable', 'absent Decision cannot receive an invented conclusion');
@@ -231,13 +231,16 @@ export function compareVerificationRecords<N extends VerificationRecordName>(nam
 export function wireVerificationRecord(record: VerificationRecord): Json { return json(record); }
 
 export const verificationKindFor = (name: VerificationRecordName): string => `verification-${name}`;
-export function verificationRecordFrom(fact: FactEnvelope): VerificationRecord {
+export function verificationRecordFrom(fact: FactEnvelope, context: VerificationDecodeContext): VerificationRecord {
   const body = fact.body as { record: Json };
-  return freeze(body.record as unknown as VerificationRecord);
+  ensure(body.record && typeof body.record === 'object' && !Array.isArray(body.record), 'verification record body missing');
+  const name = (body.record as Readonly<Record<string, Json>>).type;
+  ensure(typeof name === 'string' && Object.hasOwn(verificationShapes, name), 'unknown verification record type');
+  return take(decodeVerificationRecord(name as VerificationRecordName, body.record, context));
 }
-export function verificationRows(facts: readonly FactEnvelope[]): readonly { fact: FactEnvelope; record: VerificationRecord }[] {
+export function verificationRows(facts: readonly FactEnvelope[], context: VerificationDecodeContext): readonly { fact: FactEnvelope; record: VerificationRecord }[] {
   const kinds = new Set(Object.keys(verificationShapes).map(name => verificationKindFor(name as VerificationRecordName)));
-  return facts.filter(fact => kinds.has(fact.kind)).map(fact => ({ fact, record: verificationRecordFrom(fact) }));
+  return facts.filter(fact => kinds.has(fact.kind)).map(fact => ({ fact, record: verificationRecordFrom(fact, context) }));
 }
 export function verificationSchemas(host: VerificationHost): readonly FactSchema[] {
   return (Object.keys(verificationShapes) as VerificationRecordName[]).map(name => ({

@@ -1,0 +1,12 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "verification.contract", "kind": "governed documents", "status": "live",
+    "requiredFacts": { "location": "docs/13-the-verification-holders.md", "changelog": "git-history:docs/13-the-verification-holders.md" },
+    "standards": [], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "verification.source", "kind": "protected artifacts", "status": "live",
+    "requiredFacts": { "pattern": "src/verification/**", "why": "Verification decoders, evidence guards and protection broker checks must not be weakened by callers. Production isolation and draft dependency seams remain unproven.", "surface": "repository review approval" },
+    "standards": [82], "holds": []
+  }
+]

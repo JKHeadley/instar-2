@@ -85,7 +85,7 @@ export interface Grade extends VerificationValue<'Grade'> {
   readonly conclusion: Readonly<{ assessment: 'supported' | 'contradicted' | 'unverifiable' | 'not-applicable'; reason: string; evidence: readonly string[] }>;
   readonly statedReason: Readonly<{ assessment: 'supported' | 'contradicted' | 'unverifiable' | 'not-applicable'; reason: string; evidence: readonly string[] }>;
   readonly outcome: Readonly<{ assessment: 'met' | 'unmet' | 'pending' | 'unverifiable' | 'not-applicable'; reason: string; evidence: readonly string[] }>;
-  readonly process: readonly Readonly<{ requirement: string; assessment: 'satisfied' | 'violated' | 'unverifiable'; reason: string; evidence: readonly string[] }>[];
+  readonly processAssessments: readonly Readonly<{ requirement: string; assessment: 'satisfied' | 'violated' | 'unverifiable'; reason: string; evidence: readonly string[] }>[];
   readonly completeness: Readonly<{ assessment: 'complete' | 'incomplete' | 'disputed'; missing: readonly string[]; conflicts: readonly string[] }>;
   readonly supersedes: string;
 }

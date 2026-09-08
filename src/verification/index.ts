@@ -22,3 +22,8 @@ export { assessCaptureAdmission, closureReleasedPins, routineAgeRemovalAllowed, 
 export { createExternalProtectionBroker } from './protection.js';
 export { verificationProjectionDefinitions, mergeVerificationRecords, replicaCurrency, remoteCaptureUseAllowed } from './storage.js';
 export type { VerificationMerge, ReplicaCurrency } from './storage.js';
+export { recoverUnsettledVerificationRequests } from './traces.js';
+export type { VerificationPlanFact } from './traces.js';
+export { adapterStimulusClasses, supervisionCoverage, reviewDisclosureAllowed, reportContradictsActual,
+  outcomeWindowStatus, convergenceEligible, activationGaps } from './policy.js';
+export type { SupervisionObservation, SupervisionCoverageRow, ReportClaim } from './policy.js';

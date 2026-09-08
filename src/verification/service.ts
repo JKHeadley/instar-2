@@ -8,7 +8,7 @@ import type { GuardPostureView, VerificationDueItem, VerificationFact, Verificat
 
 export function createVerificationRuntime(host: VerificationHost, spine: VerificationSpine): VerificationRuntimePort {
   const inspect = (): Result<readonly VerificationFact[]> => boundary('VerificationInspect', null, host.boundary, () =>
-    verificationRows(take(spine.store.read())).map(row => ({ fact: row.fact, record: verificationRecordFrom(row.fact) })),
+    verificationRows(take(spine.store.read()), host.boundary).map(row => ({ fact: row.fact, record: verificationRecordFrom(row.fact, host.boundary) })),
   );
   return Object.freeze({ owner: 'part-nine' as const,
     record<N extends VerificationRecordName>(name: N, input: unknown): Result<Extract<VerificationRecord, { type: N }>> {

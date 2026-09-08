@@ -37,7 +37,7 @@ function protectionFixture(administration: 'independent' | 'agent-writable' = 'i
     effective: () => effective, installs: () => installs, moveBase: () => { base = 'base:2'; } };
 }
 
-it('P9-NF-53 P9-NF-55 an exact broker transaction is idempotent and queryable by original operation', () => {
+it('P9-NF-15 P9-NF-53 P9-NF-54 P9-NF-55 an exact verified-operator broker transaction is idempotent and queryable by original operation', () => {
   const f = protectionFixture();
   const request = { operation: 'install:1', path: f.path, base: 'base:1', proposed: f.proposed, authorization: f.authorization };
   const first = value(f.broker.install(request));
@@ -46,7 +46,7 @@ it('P9-NF-53 P9-NF-55 an exact broker transaction is idempotent and queryable by
   expect(value(f.broker.query(request.operation))).toEqual(first);
 });
 
-it('P9-NF-51 P9-NF-52 agent-writable administration is honestly unprotected and cannot install', () => {
+it('P9-NF-51 P9-NF-52 P9-NF-56 agent-writable administration is honestly unprotected and cannot install', () => {
   const f = protectionFixture('agent-writable');
   expect(value(f.broker.posture(f.path))).toBe('unprotected');
   refused(f.broker.install({ operation: 'install:1', path: f.path, base: 'base:1', proposed: f.proposed,

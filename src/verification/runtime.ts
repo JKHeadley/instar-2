@@ -1,5 +1,5 @@
 import { aggregateStrength, canonical, consumeResult, isFresh, readEvidence } from '../index.js';
-import type { Clock, DecodeContext, Evidence, Json, Result } from '../index.js';
+import type { Claim, Clock, DecodeContext, Evidence, Json, Result } from '../index.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { decodeVerificationAssessment } from './records.js';
 import type { GuardPosture, GuardPostureView, ProbeRecord, VerificationAssessment, VerificationDecodeContext,
@@ -26,23 +26,25 @@ export function verificationEvidenceFreshness(evidence: Evidence, now: Clock, co
   });
 }
 
+interface FreshEvidence { readonly evidence: Evidence; readonly claim: Claim }
 function acceptedEvidence(plan: VerificationPlan, evidence: readonly Evidence[], now: Clock, decode: DecodeContext,
-  captureStatuses: VerificationAssessment['captureStatuses'], context: VerificationDecodeContext): readonly Evidence[] {
-  const allowed = evidence.filter(item => {
+  captureStatuses: VerificationAssessment['captureStatuses'], context: VerificationDecodeContext): readonly FreshEvidence[] {
+  const allowed: FreshEvidence[] = [];
+  for (const item of evidence) {
     const source = evidenceSource(item);
-    if (!plan.bar.sources.includes(source)) return false;
-    if (strengthRank.indexOf(item.strength) > strengthRank.indexOf(plan.bar.minimumStrength)) return false;
+    if (!plan.bar.sources.includes(source)) continue;
+    if (strengthRank.indexOf(item.strength) > strengthRank.indexOf(plan.bar.minimumStrength)) continue;
     const freshness = take(verificationEvidenceFreshness(item, now, context));
-    if (freshness !== 'fresh') return false;
+    if (freshness !== 'fresh') continue;
     if (plan.bar.captureRequired && (decode.captures[item.capture.reference] === undefined
-      || captureStatuses.find(status => status.reference === item.capture.reference)?.status !== 'available')) return false;
-    return true;
-  });
-  if (allowed.length) take(aggregateStrength(allowed, decode.preserved));
+      || captureStatuses.find(status => status.reference === item.capture.reference)?.status !== 'available')) continue;
+    allowed.push({ evidence: item, claim: take(readEvidence(item, now, context.preserved)) });
+  }
+  if (allowed.length) take(aggregateStrength(allowed.map(item => item.evidence), decode.preserved));
   return allowed;
 }
 
-function predicateEvidence(predicate: VerificationPredicate, request: VerificationRequest, evidence: readonly Evidence[]): readonly Evidence[] {
+function predicateEvidence(predicate: VerificationPredicate, request: VerificationRequest, evidence: readonly FreshEvidence[]): readonly FreshEvidence[] {
   const expected: Record<VerificationPredicate, string> = {
     occurrence: 'operation-occurred', 'non-occurrence': 'operation-did-not-occur',
     quiescence: 'old-executor-quiescent', charge: 'charge-settled',
@@ -72,7 +74,7 @@ export function deriveVerificationAssessment(input: AssessmentDerivationInput, c
       let verdict: VerificationVerdict = matching.length ? 'satisfied' : 'insufficient';
       if (predicate === 'occurrence' && predicateEvidence('non-occurrence', request, usable).length) verdict = 'contradicted';
       if (predicate === 'non-occurrence' && predicateEvidence('occurrence', request, usable).length) verdict = 'contradicted';
-      return { predicate, verdict, reason: matching.length ? 'declared bar satisfied by exact subject/digest evidence' : verdict === 'contradicted' ? 'opposite exact predicate is satisfied' : 'declared evidence is missing, stale, weak, unavailable, or out of scope', evidence: matching.map(item => item.id), decision: '' };
+      return { predicate, verdict, reason: matching.length ? 'declared bar satisfied by exact subject/digest evidence' : verdict === 'contradicted' ? 'opposite exact predicate is satisfied' : 'declared evidence is missing, stale, weak, unavailable, or out of scope', evidence: matching.map(item => item.evidence.id), decision: '' };
     });
     const evidenceIds = [...new Set(rows.flatMap(row => row.evidence))].sort();
     const missing = rows.filter(row => row.verdict === 'insufficient').map(row => row.predicate);

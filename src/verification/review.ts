@@ -79,7 +79,7 @@ export interface GradeSupport {
   readonly grade: string; readonly current: boolean; readonly reasons: readonly string[];
 }
 export function gradeSupport(grade: Grade, changedEvidence: readonly string[] = []): GradeSupport {
-  const used = new Set([grade.conclusion, grade.statedReason, grade.outcome, ...grade.process].flatMap(row => row.evidence));
+  const used = new Set([grade.conclusion, grade.statedReason, grade.outcome, ...grade.processAssessments].flatMap(row => row.evidence));
   const reasons: string[] = [];
   if (grade.taints.length) reasons.push('tainted-source');
   if (grade.captureStatuses.some(row => row.status !== 'available')) reasons.push('capture-unavailable');
