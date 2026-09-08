@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
-import type { BenchmarkRecord, BenchmarkRunRecord, BenchmarkScenario, JudgmentAttemptRecord, JudgmentRequest, JudgmentResolution } from '../../src/judgment/index.js';
+import type { BenchmarkRecord, BenchmarkRunRecord, BenchmarkScenario, JudgmentAttemptRecord, JudgmentRequest, JudgmentResolution, ProviderObservation } from '../../src/judgment/index.js';
 import { createJudgmentBenchmarkReadPort } from '../../src/judgment/index.js';
 import { judgmentFixture, refused, value } from './fixture.js';
 
@@ -49,6 +49,53 @@ async function benchmarkCase() {
       usage: [response.fact.id] }],
   } as unknown as BenchmarkRunRecord;
   return { f, answer, request, resolution, attempts, response, digest, replayInput, record, scenario, run };
+}
+
+async function refusedBenchmarkCase() {
+  const observation: ProviderObservation = { state: 'rejected', bytes: null, providerOperation: 'fake-operation:1',
+    usage: { inputTokens: 11, outputTokens: 0, charge: 2, source: 'captured rejected-request billing receipt' }, retryBlocked: false };
+  const f = judgmentFixture({ observation });
+  refused(await f.door.judge(f.input, f.start()));
+  const facts = value(f.door.inspect());
+  const request = facts.find((row): row is typeof row & { record: JudgmentRequest } => row.record.type === 'JudgmentRequest')!;
+  const resolution = facts.find((row): row is typeof row & { record: JudgmentResolution } => row.record.type === 'JudgmentResolution')!;
+  const attempts = facts.filter((row): row is typeof row & { record: JudgmentAttemptRecord } => row.record.type === 'JudgmentAttemptRecord');
+  const response = attempts.find(row => row.record.phase === 'response-observed')!;
+  const digest = value(canonical({ test: 'p7-benchmark-refused-repair' })).hash;
+  const record = {
+    type: 'BenchmarkRecord', schemaVersion: 1, id: 'record:refused', predecessor: resolution.fact.id,
+    provenance: { kind: 'real', request: reference('JudgmentRequest', request.fact.id), generation: request.record.generation, vector: 'vector:1' },
+    request: reference('JudgmentRequest', request.fact.id), requestDigest: request.record.inputDigest,
+    resolution: reference('JudgmentResolution', resolution.fact.id), run: request.record.run, step: request.record.step,
+    logicalKey: request.record.logicalKey, recordingPrincipal: f.alice.id, sourceGeneration: request.record.generation,
+    scenarioClass: 'held-out', inputDigest: request.record.inputDigest, compatibilityDigest: digest,
+    attempts: attempts.map(row => reference('JudgmentAttemptRecord', row.fact.id)),
+    captureReferences: [request.record.question, request.record.context, request.record.submitted, response.record.receipt!],
+    decision: { state: 'absent' }, conclusionEvidence: [], reasonEvidence: [],
+    outcomeReferences: [response.fact.id], usageReferences: [response.fact.id],
+  } as unknown as BenchmarkRecord;
+  const recordFact = value(f.spine.append(record)).fact;
+  const scenario = {
+    type: 'BenchmarkScenario', schemaVersion: 1, id: 'scenario:refused', predecessor: recordFact.id, version: 'v1',
+    source: reference('BenchmarkRecord', recordFact.id), sourceGrade: reference('Grade', 'grade:1', 'part-nine'),
+    pinnedGeneration: request.record.generation, pinnedVector: 'vector:1', scenarioClass: 'held-out', promotionDecision: 'promotion:1',
+    replayInput: request.record.submitted, originalInputHash: request.record.submitted.hash, transformedInputHash: request.record.submitted.hash,
+    transformationVersion: 'identity-v1', changedSemanticFields: [], unavailableSemanticFields: [], excludedAnswerFields: ['answer'],
+    excludedOutcomeFields: ['outcome', 'grade'], floorDigest: digest, outputSchemaDigest: digest, evaluationContract: 'evaluation:1',
+    dataScope: 'local', captureAvailability: 'available',
+  } as unknown as BenchmarkScenario;
+  const scenarioFact = value(f.spine.append(scenario)).fact;
+  const run = {
+    type: 'BenchmarkRunRecord', schemaVersion: 1, id: 'run:refused', predecessor: scenarioFact.id, suite: 'suite', suiteVersion: 'v1',
+    scenarios: [{ scenario: reference('BenchmarkScenario', scenarioFact.id), version: 'v1' }],
+    candidates: [{ route: f.host.description.route, samples: 1 }], criterionDigest: digest,
+    inputDigest: request.record.submitted.hash, compatibilityDigest: digest, heldOutPartition: 'held-out', run: f.run,
+    startedAt: 200, stoppedAt: 201, executions: [{ scenario: reference('BenchmarkScenario', scenarioFact.id),
+      candidate: f.host.description.route, ordinal: 0, disposition: 'completed',
+      attempt: reference('JudgmentAttemptRecord', response.fact.id), resolution: reference('JudgmentResolution', resolution.fact.id),
+      usage: [response.fact.id] }],
+  } as unknown as BenchmarkRunRecord;
+  return { f, request, resolution, response, recordFact, scenario, scenarioFact, run };
 }
 
 function appendRecord(c: Awaited<ReturnType<typeof benchmarkCase>>) {
@@ -178,6 +225,61 @@ describe('P7 benchmark adversarial admission repairs', { timeout: 30_000 }, () =
     refused(c.f.spine.append({ ...run, id: 'run:prepared-usage', executions: [{ ...run.executions[0], usage: [prepared.fact.id] }] } as unknown as BenchmarkRunRecord),
       'not a response observation');
     expect(value(c.f.spine.append(run)).fact.id).toBeTruthy();
+  });
+
+  it('P7-NF-48 N5 gives one observed execution witness to at most one planned sample across dispositions and reference forms', async () => {
+    const c = await refusedBenchmarkCase();
+    expect(c.f.calls).toHaveLength(1);
+    const alias = { ...c.scenario, id: 'scenario:refused-alias', predecessor: c.scenarioFact.id } as unknown as BenchmarkScenario;
+    const aliasFact = value(c.f.spine.append(alias)).fact;
+    const scenario = reference('BenchmarkScenario', c.scenarioFact.id);
+    const aliasScenario = reference('BenchmarkScenario', aliasFact.id);
+    const run = { ...c.run, predecessor: aliasFact.id } as unknown as BenchmarkRunRecord;
+    const completed = run.executions[0]!;
+    const observed = { ...completed, disposition: 'refused' as const, detail: 'actual provider refusal; billable usage observed' };
+    const attempt = observed.attempt!;
+    const resolution = observed.resolution!;
+    const { attempt: _attempt, resolution: _resolution, ...withoutLinks } = observed;
+    const emptyEvidence = { ...withoutLinks, usage: [] };
+    const forms = {
+      full: observed,
+      attemptOnly: { ...emptyEvidence, attempt },
+      resolutionOnly: { ...emptyEvidence, resolution },
+      usageOnly: { ...emptyEvidence, usage: observed.usage },
+    };
+    const duplicate = (id: string, left: typeof observed, right: typeof observed) => ({
+      ...run, id, candidates: [{ route: c.f.host.description.route, samples: 2 }], executions: [left, { ...right, ordinal: 1 }],
+    } as unknown as BenchmarkRunRecord);
+
+    refused(c.f.spine.append(duplicate('run:n5:refused-refused', observed, observed)), 'reused one execution witness');
+    refused(c.f.spine.append(duplicate('run:n5:completed-refused', completed as typeof observed, observed)), 'reused one execution witness');
+    refused(c.f.spine.append({ ...run, id: 'run:n5:scenario-alias',
+      scenarios: [{ scenario, version: 'v1' }, { scenario: aliasScenario, version: 'v1' }],
+      executions: [observed, { ...observed, scenario: aliasScenario }],
+    } as unknown as BenchmarkRunRecord), 'reused one execution witness');
+
+    for (const [leftName, left] of Object.entries(forms)) {
+      for (const [rightName, right] of Object.entries(forms)) {
+        refused(c.f.spine.append(duplicate(`run:n5:forms:${leftName}:${rightName}`, left, right)), 'reused one execution witness');
+      }
+    }
+
+    const port = createJudgmentBenchmarkReadPort(c.f.spine, c.f.c);
+    let predecessor = aliasFact.id;
+    const admit = (record: BenchmarkRunRecord) => {
+      const fact = value(c.f.spine.append({ ...record, predecessor } as unknown as BenchmarkRunRecord)).fact;
+      value(port.readRun(reference('BenchmarkRunRecord', fact.id)));
+      predecessor = fact.id;
+    };
+    admit({ ...run, id: 'run:n5:single-full-witness', executions: [observed] } as unknown as BenchmarkRunRecord);
+    for (const disposition of ['missing', 'refused', 'cancelled'] as const) {
+      const empty = { scenario, candidate: c.f.host.description.route, ordinal: 1, disposition, usage: [], detail: 'second sample not executed' };
+      admit({ ...run, id: `run:n5:refused-empty:${disposition}`, candidates: [{ route: c.f.host.description.route, samples: 2 }],
+        executions: [observed, empty] } as unknown as BenchmarkRunRecord);
+      admit({ ...run, id: `run:n5:completed-empty:${disposition}`, candidates: [{ route: c.f.host.description.route, samples: 2 }],
+        executions: [completed, empty] } as unknown as BenchmarkRunRecord);
+    }
+    expect(c.f.calls).toHaveLength(1);
   });
 
   it('P7-NF-48 N4 validates usage and optional references for every non-completed disposition', async () => {

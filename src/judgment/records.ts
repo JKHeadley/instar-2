@@ -332,7 +332,7 @@ function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRun
   const observed = r.executions.map(e => `${e.scenario.id}:${e.candidate}:${e.ordinal}`);
   unique(observed, 'execution disposition population');
   ensure(planned.length === observed.length && planned.every(key => observed.includes(key)), 'every planned benchmark execution needs a disposition');
-  const completedWitnesses = new Set<string>();
+  const executionWitnesses = new Set<string>();
   for (const e of r.executions) {
     owned(e.scenario, 'part-seven', 'BenchmarkScenario');
     ensure(['completed', 'refused', 'cancelled', 'missing'].includes(e.disposition) && Number.isSafeInteger(e.ordinal) && e.ordinal >= 0,
@@ -372,12 +372,17 @@ function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRun
       ensure(scenario.record.replayInput.hash === request.record.submitted.hash, 'execution input differs from the observed request');
       ensure(r.inputDigest === scenario.record.transformedInputHash, 'execution input digest differs from the scenario replay');
       ensure(r.compatibilityDigest === source.record.compatibilityDigest, 'execution compatibility digest differs from the source manifest');
-      e.usage.forEach(id => executionObservation(id, request.record.id, all, ctx, host));
+      const cellWitnesses = new Set<string>();
+      if (attempt) cellWitnesses.add(attempt.fact.id);
+      if (resolution) cellWitnesses.add(executionObservation(resolution.record.response, request.record.id, all, ctx, host).fact.id);
+      e.usage.forEach(id => cellWitnesses.add(executionObservation(id, request.record.id, all, ctx, host).fact.id));
+      ensure(cellWitnesses.size === 1, 'benchmark execution evidence resolves to multiple execution witnesses');
+      const witness = [...cellWitnesses][0]!;
+      ensure(!executionWitnesses.has(witness), 'benchmark samples reused one execution witness');
+      executionWitnesses.add(witness);
     }
     if (e.disposition === 'completed') {
       ensure(attempt && resolution, 'completed execution resolution/request absent');
-      ensure(!completedWitnesses.has(attempt.fact.id), 'completed benchmark samples reused one execution witness');
-      completedWitnesses.add(attempt.fact.id);
     }
   }
 }
