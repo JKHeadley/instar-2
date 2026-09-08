@@ -108,13 +108,13 @@ const REBUILD_BOUNDARIES = minimalPlaneProjectionIds.map(id => `rebuild:${id}`);
  * `.instar/lanes/slice-six-seven-resolution-gap.md`.
  */
 export const PROFILE_BOUNDARIES = Object.freeze({
-  full: Object.freeze(['preservation', 'authentication', 'standing', 'run-creation',
+  full: Object.freeze(['preservation', 'authentication', 'standing', 'run-creation', 'grounding',
     'judgment-request', 'judgment-reservation', 'judgment-claim', 'judgment-dispatch',
     'model-invocation', 'judgment-resolution', 'outbound-preparation', ...REBUILD_BOUNDARIES]),
-  reply: Object.freeze(['preservation', 'authentication', 'standing', 'run-creation',
+  reply: Object.freeze(['preservation', 'authentication', 'standing', 'run-creation', 'grounding',
     'outbound-preparation', 'outbound-reservation', 'outbound-claim', 'outbound-consume',
     'external-send', 'delivery-evidence', 'settlement', 'settlement-application', ...REBUILD_BOUNDARIES]),
-  judgment: Object.freeze(['preservation', 'authentication', 'standing', 'run-creation',
+  judgment: Object.freeze(['preservation', 'authentication', 'standing', 'run-creation', 'grounding',
     'judgment-request', 'judgment-reservation', 'judgment-claim', 'judgment-dispatch',
     'model-invocation', 'judgment-resolution', 'outbound-preparation', ...REBUILD_BOUNDARIES]),
 });
@@ -123,12 +123,12 @@ export const PROFILE_BOUNDARIES = Object.freeze({
 export const SLICE_BOUNDARIES = Object.freeze([...new Set(Object.values(PROFILE_BOUNDARIES).flat())]);
 
 /**
- * Declared but never reached on this base, with the reason. `grounding` is the
- * only one: part five refuses an intake-opened run's actual-start grounding, so
- * the assembly records an owned-pending obligation instead of a grounding fact.
- * See `.instar/lanes/slice-five-gap.md`.
+ * Declared but never reached on this base, with the reason. Currently empty:
+ * `grounding` moved into the profile lists when part five accepted the message
+ * capture through the stimulus fact's capture-bearing ancestor (slice-five-gap.md
+ * option 1) and the reader's consumption receipt began binding delivered context.
  */
-export const UNREACHED_BOUNDARIES = Object.freeze({ grounding: 'part-five refuses grounding for an intake-opened run; slice-five-gap.md' });
+export const UNREACHED_BOUNDARIES = Object.freeze({});
 
 /**
  * Declared, and reached ONLY on a recovery path, so no CONTROL execution (a single
@@ -429,6 +429,8 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     // pinned in-memory context.
     { ...shared, kind: 'slice-context-evidence', fields: { evidenceId: short, evidence: { kind: 'constitutional', type: 'Evidence' } } },
     { ...shared, kind: 'slice-placement', fields: { worker: short, harness: short } },
+    { ...shared, kind: 'slice-consumption', fields: { worker: short, harness: short,
+      hashes: { kind: 'text', maxLength: 65536 }, classes: { kind: 'text', maxLength: 65536 } } },
     { ...shared, kind: 'slice-reply-source', fields: { semanticMessage: short, basis: short,
       text: { kind: 'text', maxLength: 4096 }, result: { kind: 'constitutional', type: 'Result' } } },
     { ...shared, kind: 'slice-delivery-evidence', fields: { operation: short, stage: short, decisive: short,
@@ -697,7 +699,10 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     const stimuli = all.filter(f => f.kind === 'intake-admitted').sort((a, b) => a.segment.position - b.segment.position);
     const messages = stimuli.map(f => ({ fact: factRef(f), sequence: f.segment.position,
       capture: f.body.rawHash, hash: f.body.rawHash }));
-    const consumption = append('slice-placement', { worker: request.worker, harness: request.harness }, []);
+    // Ten's consumption receipt binds what was actually delivered to the worker:
+    // the exact message capture hashes and the governed briefing classes.
+    const consumption = append('slice-consumption', { worker: request.worker, harness: request.harness,
+      hashes: JSON.stringify(messages.map(m => m.hash)), classes: JSON.stringify(groundingPolicy.briefingClasses) }, []);
     const at = now();
     return { type: 'SessionGrounding', schemaVersion: 2, id: `slice-grounding:${consumption.id}`, run: request.run.run.id,
       expected: request.run.head, worker: request.worker, harness: request.harness, reason: request.reason,

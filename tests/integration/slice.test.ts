@@ -94,9 +94,8 @@ it('P11-NF-44 the boundary enumeration has one source and is exactly what the as
   // carries its own reason. Nothing is declared without saying why it is not fired.
   expect([...DECLARED_BOUNDARIES].sort()).toEqual([...SLICE_BOUNDARIES,
     ...Object.keys(UNREACHED_BOUNDARIES), ...Object.keys(RECOVERY_BOUNDARIES)].sort());
-  expect(Object.keys(UNREACHED_BOUNDARIES)).toEqual(['grounding']);
-  expect(UNREACHED_BOUNDARIES['grounding']).toContain('slice-five-gap.md');
-  expect(SLICE_BOUNDARIES).not.toContain('grounding');
+  expect(Object.keys(UNREACHED_BOUNDARIES)).toEqual([]);
+  expect(SLICE_BOUNDARIES).toContain('grounding');
   // The conditional close is declared but reached only on a recovery path, so no
   // profile's control list may contain it.
   expect(Object.keys(RECOVERY_BOUNDARIES)).toEqual(['operation-close']);
@@ -135,13 +134,14 @@ it('P11-NF-41 the six seam refuses a second operation for one run, and the refus
   expect(a.service.journal().applications).toHaveLength(0);
 }, 120000);
 
-it('P11-NF-41 the five grounding seam refuses because the admitted stimulus carries no capture field', async () => {
+it('P11-NF-41 the five grounding seam accepts the intake-opened run through its capture-bearing receipt ancestor', async () => {
   const a = sliceAssembly({ profile: 'reply' });
-  const report = await a.drive() as { steps: { step: string; state: string; detail?: string | null }[]; grounding: string };
+  const report = await a.drive() as { steps: { step: string; state: string; detail?: string | null }[]; grounding: string;
+    obligations: { operation: string }[] };
   const grounding = report.steps.find(s => s.step === 'grounding');
-  expect(grounding?.state).toBe('refused');
-  expect(grounding?.detail).toContain('grounding capture not bound to the signed message capture field');
-  expect(report.grounding).toBe('absent');
+  expect(grounding?.state).toBe('grounded');
+  expect(report.grounding).toBe('grounded');
+  expect(report.obligations.some(o => o.operation.startsWith('grounding:'))).toBe(false);
 }, 120000);
 
 it('P11-NF-26 every minimal-plane projection rebuilds from facts alone with equal canonical bytes', async () => {
