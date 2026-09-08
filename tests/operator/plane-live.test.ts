@@ -40,9 +40,32 @@ it('P11-NF-27 P11-NF-28 P11-NF-29 complete cold/warm genesis measurements produc
 it('P11-NF-30 P11-NF-31 failed, missing and over-budget replay samples remain in the release verdict and block admission', () => {
   const x = operatorFixture(), failed = samples();
   failed[0] = { ...failed[0]!, ended: 100, failures: ['timeout'] };
-  const verdict = value(evaluateGenesisReplay(failed, { phone: ['cold', 'warm'], server: ['cold'] }, 30, 5, 0, x.f.c));
+  const verdict = value(evaluateGenesisReplay(failed, { phone: ['cold', 'warm'], server: ['cold', 'warm'] }, 30, 5, 0, x.f.c));
   expect(verdict.eligible).toBe(false);
   expect(verdict.failures).toEqual(expect.arrayContaining(['phone:cold:timeout', 'server:cold:missing', 'startup-budget-exceeded']));
+});
+
+it('P11-NF-27 P11-NF-29 P11-NF-30 P11-NF-31 replay admission refuses malformed, empty, cross-generation, and incomparable measurements', () => {
+  const x = operatorFixture(), matrix = { phone: ['cold', 'warm'] as const };
+  expect(x.detail(evaluateGenesisReplay(samples().slice(1), {}, 30, 5, 20, x.f.c))).toContain('samples and finite budgets');
+  for (const mutate of [
+    (rows: ReplaySample[]) => { rows[0] = { ...rows[0]!, ended: Number.NaN }; },
+    (rows: ReplaySample[]) => { rows[0] = { ...rows[0]!, peakMemory: Number.POSITIVE_INFINITY }; },
+    (rows: ReplaySample[]) => { rows[0] = { ...rows[0]!, resultDigest: 'not-a-digest' as never }; },
+    (rows: ReplaySample[]) => { rows[0] = { ...rows[0]!, generation: 'other-generation' }; },
+    (rows: ReplaySample[]) => { rows[0] = { ...rows[0]!, lineages: 1 }; },
+  ]) {
+    const rows = samples(); mutate(rows);
+    expect(value(evaluateGenesisReplay(rows, matrix, 30, 5, 20, x.f.c)).eligible).toBe(false);
+  }
+  expect(value(evaluateGenesisReplay(samples(), matrix, 30, 5, 20, x.f.c, 119)).failures).toContain('memory-budget-exceeded');
+});
+
+it('P11-NF-24 P11-NF-26 the authority projection folds owner authorization requests and dispositions without conferring authority', () => {
+  const authority = minimalPlaneProjections(['authorization-request', 'authorization-disposition'])[4]!;
+  expect(authority.class).toBe('informational');
+  expect(authority.decisions['authorization-request']?.kind).toBe('folds');
+  expect(authority.decisions['authorization-disposition']?.kind).toBe('folds');
 });
 
 it('P11-NF-32 corrupt non-source views are disposable while source declarations and the smallest healthy path remain separate', () => {
@@ -72,6 +95,14 @@ it('P11-NF-36 P11-NF-37 P11-NF-38 each missing required dependency yields preser
     expect(state.missing).toEqual([dependency]);
     expect(x.detail(minimalResponse(state, { attributable: true, pending: [], blocked: [], uncertain: [], emergencyStop: false }, x.f.c))).toContain(dependency);
   }
+});
+
+it('P11-NF-34 P11-NF-36 a caller cannot self-admit a minimal response by changing responseEligible', () => {
+  const x = operatorFixture();
+  const state = value(evaluateMinimalPath({ admitted: dependencies(['lease']), ordinaryUnavailable: [], inputPreserved: true,
+    repairOwner: 'repair:lease', maximumExposure: 9 }, x.f.c));
+  expect(x.detail(minimalResponse({ ...state, responseEligible: true },
+    { attributable: true, pending: [], blocked: [], uncertain: [], emergencyStop: false }, x.f.c))).toContain('contradicts admitted dependencies');
 });
 
 it('P11-NF-34 P11-NF-39 an admitted emergency stop is narrow and an unknown identity never speaks as the agent', () => {

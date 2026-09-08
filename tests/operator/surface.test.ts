@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { createOperatorSurface } from '../../src/operator/index.js';
+import type { FactSnapshot } from '../../src/facts/index.js';
+import { verificationInput } from '../verification/fixture.js';
+import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
 import { value } from '../fixtures.js';
 import { operatorFixture } from './fixture.js';
 
@@ -32,6 +35,61 @@ it('P11-NF-07 P11-NF-08 a fresh explicit independently verified yes binds the ex
   expect(x.admitted).toHaveLength(1);
   expect(x.admitted[0]).toMatchObject({ request: x.request.id, requestDigest: x.f.authorization.requestDigest,
     decision: 'approve', surface: 'phone-surface', generation: x.context.decode.register.generation });
+  const terminal = x.facts().filter(fact => fact.kind === 'authorization-disposition');
+  expect(terminal).toHaveLength(1);
+  expect(terminal[0]!.body).toEqual({ request: x.request.id, disposition: 'approve' });
+});
+
+it('P11-NF-07 P11-NF-08 copied, altered, or stale status snapshots never substitute for current Part Two history', () => {
+  const copied = operatorFixture(), copy = JSON.parse(JSON.stringify(copied.current())) as FactSnapshot;
+  const copiedSurface = value(createOperatorSurface({ ...copied.composition,
+    history: { ...copied.history, current: () => copied.f.success(copy) } }));
+  expect(copied.detail(copiedSurface.render(copied.request.id))).toContain('Part Two-issued');
+
+  const altered = operatorFixture(), alteredCopy = JSON.parse(JSON.stringify(altered.current())) as FactSnapshot;
+  (alteredCopy.entries[1]!.body as Record<string, unknown>).audience = 'unsigned-audience';
+  const alteredSurface = value(createOperatorSurface({ ...altered.composition,
+    history: { ...altered.history, current: () => altered.f.success(alteredCopy) } }));
+  expect(altered.detail(alteredSurface.render(altered.request.id))).toContain('Part Two-issued');
+
+  const stale = operatorFixture(), issued = stale.current();
+  (stale.context.decode.principals as unknown as { push(value: typeof stale.f.alice): void })
+    .push(stale.f.principal('later-principal'));
+  const staleSurface = value(createOperatorSurface({ ...stale.composition,
+    history: { ...stale.history, current: () => stale.f.success(issued) } }));
+  expect(stale.detail(staleSurface.render(stale.request.id))).toContain('current Part Two-issued');
+});
+
+it('P11-NF-06 P11-NF-07 P11-NF-08 unrecognized acts, pre-resolved principals, and broad standing grants refuse before intake', () => {
+  for (const act of [{ valid: true, scope: 'all', grant: 'all' }, operatorFixture().f.alice]) {
+    const x = operatorFixture();
+    const surface = value(createOperatorSurface({ ...x.composition, verifier: { ...x.verifier,
+      verify: challenge => x.f.success({ challenge: challenge.id, principal: x.f.alice,
+        provenance: x.f.alice.provenance, act: act as never }) } }));
+    const challenge = value(surface.challenge(x.request.id));
+    expect(x.detail(surface.confirm({ challenge, proof: 'proof', decision: 'approve' }))).toContain('unrecognized authority act');
+    expect(x.admitted).toHaveLength(0);
+  }
+  const broad = operatorFixture(), grant = broad.f.grant({ id: 'unrelated', scope: broad.f.org });
+  const surface = value(createOperatorSurface({ ...broad.composition, verifier: { ...broad.verifier,
+    verify: challenge => broad.f.success({ challenge: challenge.id, principal: broad.f.alice,
+      provenance: broad.f.alice.provenance, act: grant }) } }));
+  const challenge = value(surface.challenge(broad.request.id));
+  expect(broad.detail(surface.confirm({ challenge, proof: 'proof', decision: 'approve' }))).toContain('exact recurrence-derived');
+  expect(broad.admitted).toHaveLength(0);
+});
+
+it('P11-NF-09 P11-NF-14 confirmation rechecks signed terminal state and request-level replay', () => {
+  const declined = operatorFixture(), surface = declined.surface(), challenge = value(surface.challenge(declined.request.id));
+  declined.addTerminal('declined');
+  expect(declined.detail(surface.confirm({ challenge, proof: 'proof', decision: 'approve' }))).toContain('already terminal');
+  expect(declined.admitted).toHaveLength(0);
+
+  const consumed = operatorFixture(), first = consumed.surface(), firstChallenge = value(first.challenge(consumed.request.id));
+  value(first.confirm({ challenge: firstChallenge, proof: 'proof', decision: 'approve' }));
+  const replacement = consumed.surface(), secondChallenge = value(replacement.challenge(consumed.request.id));
+  expect(consumed.detail(replacement.confirm({ challenge: secondChallenge, proof: 'proof', decision: 'approve' }))).toContain('already terminal');
+  expect(consumed.admitted).toHaveLength(1);
 });
 
 it('P11-NF-07 P11-NF-08 P11-NF-09 silence, channel attestation, wrong operator, replay, expiry and moved rendering never become yes', () => {
@@ -64,6 +122,40 @@ it('P11-NF-10 P11-NF-11 P11-NF-12 P11-NF-13 protection is a read of independent 
   expect('install' in surface).toBe(false);
   expect(value(surface.render(x.request.id)).requestId).toBe('request:1');
   expect(x.composition.verifier.administration).toBe('independent');
+});
+
+function independentlyEvaluatedProtection(unwitnessed = false, staleGeneration = false, wrongReceiptPath = false) {
+  const x = operatorFixture(), verification = verificationRuntimeFixture();
+  const plan = verificationInput('VerificationPlan');
+  value(verification.runtime.record('VerificationPlan', plan));
+  const probe = { ...verificationInput('ProbeRecord'), ...(unwitnessed ? { witnesses: ['missing-witness'] } : {}) };
+  value(verification.runtime.record('ProbeRecord', probe));
+  if (staleGeneration) verification.setGeneration('generation:2');
+  x.setClock(21);
+  const owner = value(verification.runtime.posture(plan.id, verification.clock(21)));
+  const broker = { ...x.composition.broker, posture: () => x.f.success('protected' as const), query: () => x.f.success({
+    operation: probe.operation, path: wrongReceiptPath ? 'other-path' : probe.subject,
+    requestDigest: x.f.authorization.requestDigest, base: 'base:1', proposedHash: x.f.artifact,
+    authorization: 'authorization:1', priorHash: x.f.artifact, effectiveHash: x.f.artifact,
+    disposition: 'committed' as const, attestation: 'broker-receipt',
+  }) };
+  const surface = value(createOperatorSurface({ ...x.composition, broker, verification: verification.runtime,
+    isolation: { owner: 'part-ten', live: () => x.f.success(true) } }));
+  return { owner, view: value(surface.protection(probe.operation, probe.subject)) };
+}
+
+it('P11-NF-10 P11-NF-11 P11-NF-13 displayed protection follows current Part Nine posture and exact receipt subject', () => {
+  const clean = independentlyEvaluatedProtection();
+  expect([clean.owner.posture, clean.view.posture]).toEqual(['healthy', 'protected']);
+  for (const result of [independentlyEvaluatedProtection(true), independentlyEvaluatedProtection(false, true)]) {
+    expect(result.owner.posture).toBe('unknown');
+    expect(result.view.posture).toBe('unprotected');
+    expect(result.view.witnessFresh).toBe(false);
+  }
+  const mismatch = independentlyEvaluatedProtection(false, false, true).view;
+  expect(mismatch.posture).toBe('unprotected');
+  expect(mismatch.brokerReceipt).toBeNull();
+  expect(mismatch.uncertainty).toContain('broker-receipt-subject-mismatch');
 });
 
 it('P11-NF-13 a broker outage closes the protected receipt while request diagnosis remains reachable', () => {
@@ -103,6 +195,43 @@ it('P11-NF-17 P11-NF-18 P11-NF-21 the binding subject is complete and pair/pre-b
     state: 'bound', provenanceClass: 'verified', grantOrRevocation: x.f.g.id });
   expect(view.actions).toEqual(['pair', 'pre-bind', 'transfer', 'narrow', 'widen', 'revoke', 'inspect']);
   expect(new Set(view.actions).size).toBe(7);
+});
+
+it('P11-NF-17 P11-NF-18 a binding whose reported grant is absent from resolved authority remains unbound', () => {
+  const x = operatorFixture(); x.bind({ grantId: 'missing-grant' });
+  const view = value(x.surface().binding({ adapter: 'telegram', conversation: 'chat:1', platformIdentity: 'platform:alice', identityEpoch: 'epoch:1' }));
+  expect(view.state).toBe('unbound');
+  expect(view.operatorIdentity).toBe('unbound');
+  expect(view.grantOrRevocation).toBe('none');
+});
+
+it('P11-NF-04 P11-NF-15 a surface identifier must resolve in the current register and every bound is finite', () => {
+  const x = operatorFixture();
+  const unregistered = value(createOperatorSurface({ ...x.composition, id: 'unregistered-surface' }));
+  const challenge = value(unregistered.challenge(x.request.id));
+  expect(x.detail(unregistered.confirm({ challenge, proof: 'proof', decision: 'approve' }))).toContain('currently registered surface');
+  expect(x.admitted).toHaveLength(0);
+  for (const overrides of [{ maxPending: Infinity }, { challengeLifetime: Infinity }, { witnessFreshness: Infinity }, { maxPending: 1.5 }])
+    expect(x.detail(createOperatorSurface({ ...x.composition, ...overrides }))).toContain('finite bounds');
+  expect(value(createOperatorSurface({ ...x.composition, maxPending: 1, challengeLifetime: 1, witnessFreshness: 1 })).id).toBe('phone-surface');
+});
+
+it('P11-NF-07 P11-NF-13 P11-NF-22 the independent emergency brake stays open without authority intake and carries no authority act', () => {
+  const x = operatorFixture(), surface = value(createOperatorSurface({ ...x.composition, intake: null }));
+  const challenge = value(surface.stopChallenge({ operator: x.f.alice.id, scope: x.f.scope }));
+  const receipt = value(surface.stop({ challenge, proof: 'independent-proof', scope: x.f.scope }));
+  expect(receipt.owner).toBe('part-two');
+  expect(x.stopped).toHaveLength(1);
+  expect(x.stopped[0]).toMatchObject({ principal: { id: x.f.alice.id }, surface: 'phone-surface' });
+  expect(x.admitted).toHaveLength(0);
+
+  const smuggled = operatorFixture();
+  const unsafe = value(createOperatorSurface({ ...smuggled.composition, verifier: { ...smuggled.verifier,
+    verify: candidate => smuggled.f.success({ challenge: candidate.id, principal: smuggled.f.alice,
+      provenance: smuggled.f.alice.provenance, act: smuggled.f.authorization }) } }));
+  const unsafeChallenge = value(unsafe.stopChallenge({ operator: smuggled.f.alice.id, scope: smuggled.f.scope }));
+  expect(smuggled.detail(unsafe.stop({ challenge: unsafeChallenge, proof: 'proof', scope: smuggled.f.scope }))).toContain('no authority act');
+  expect(smuggled.stopped).toHaveLength(0);
 });
 
 it('P11-NF-19 identity churn invalidates operator selection until a fresh verified fact exists', () => {

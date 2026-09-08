@@ -23,9 +23,11 @@ export function minimalResponse(state: MinimalPathState, input: Readonly<{ attri
   blocked: readonly string[]; uncertain: readonly string[]; emergencyStop: boolean }>, context: BoundaryContext): Result<string> {
   return operatorBoundary('MinimalResponder', context, () => {
     requireOperator(state.preserved, 'P11-NF-33: minimal responder cannot speak for unpreserved input');
-    requireOperator(state.responseEligible, `P11-NF-36: required minimal dependency unavailable: ${state.missing.join(', ')}`, 'stale-base');
+    const responseEligible = state.admitted && state.missing.length === 0;
+    requireOperator(state.responseEligible === responseEligible, 'P11-NF-36: minimal response state contradicts admitted dependencies', 'stale-base');
+    requireOperator(responseEligible, `P11-NF-36: required minimal dependency unavailable: ${state.missing.join(', ')}`, 'stale-base');
     requireOperator(input.attributable, 'P11-NF-39: unknown identity may preserve but cannot speak as the agent', 'standing');
-    if (input.emergencyStop) return 'Emergency stop was accepted on the admitted minimal authority path.';
+    if (input.emergencyStop) return 'Emergency stop requires independently verified surface completion; the request remains preserved.';
     const details = [...input.pending.map(value => `pending: ${value}`), ...input.blocked.map(value => `blocked: ${value}`),
       ...input.uncertain.map(value => `uncertain: ${value}`)];
     return details.length ? `Limited response — ${details.join('; ')}. Repair owner: ${state.repairOwner}.`

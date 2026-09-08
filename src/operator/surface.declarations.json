@@ -1,0 +1,8 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "phone-surface", "kind": "operator actions", "status": "dark",
+    "requiredFacts": { "surface": "independently verified phone surface", "request": { "action": "approve-decline-bind-stop-inspect", "subject": "exact durable operator request", "parameters": [] } },
+    "profile": { "type": "Profile", "schemaVersion": 1, "consequence": "control", "reversibility": "irreversible", "reach": "operator", "surface": "device", "repeats": { "kind": "no" } },
+    "standards": [28, 79, 82, 98, 104, 106], "holds": []
+  }
+]

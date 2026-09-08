@@ -11,6 +11,7 @@ export type BindingSurfaceAction = 'pair' | 'pre-bind' | 'transfer' | 'narrow' |
 export interface OperatorHistoryPort {
   readonly owner: 'part-two';
   current(): Result<FactSnapshot>;
+  isCurrent(snapshot: FactSnapshot): Result<boolean>;
   decode(): DecodeContext;
   clock(): Clock;
   generation(): RegisterGenerationReference;
@@ -40,6 +41,15 @@ export interface OperatorActIntakeConsumer {
   readonly owner: 'part-four';
   admit(input: Readonly<{ request: string; requestDigest: Hash; decision: 'approve' | 'decline';
     act: OperatorAuthorityAct | null; proof: Provenance; challenge: string;
+    surface: string; generation: RegisterGenerationReference }>): Result<FactEnvelopeReference>;
+}
+
+// The independent brake is deliberately separate from authority completion.
+// It consumes the same independently verified challenge proof, but can never
+// carry an Authorization/StandingGrant/Revocation into the authority seam.
+export interface OperatorEmergencyStopConsumer {
+  readonly owner: 'part-four';
+  stop(input: Readonly<{ principal: VerifiedPrincipal; scope: Scope; proof: Provenance; challenge: string;
     surface: string; generation: RegisterGenerationReference }>): Result<FactEnvelopeReference>;
 }
 
@@ -87,11 +97,14 @@ export interface OperatorSurfacePort {
   confirm(input: Readonly<{ challenge: SurfaceChallenge; proof: string; decision: 'approve' | 'decline' }>): Result<FactEnvelopeReference>;
   binding(input: Readonly<{ adapter: string; conversation: string; platformIdentity: string; identityEpoch: string }>): Result<BindingView>;
   protection(operation: string, path: string): Result<ProtectionReceiptView>;
+  stopChallenge(input: Readonly<{ operator: string; scope: Scope }>): Result<SurfaceChallenge>;
+  stop(input: Readonly<{ challenge: SurfaceChallenge; proof: string; scope: Scope }>): Result<FactEnvelopeReference>;
 }
 
 export interface OperatorSurfaceComposition {
   readonly id: string; readonly boundary: BoundaryContext; readonly history: OperatorHistoryPort;
   readonly verifier: IndependentSurfaceVerifierPort; readonly intake: OperatorActIntakeConsumer | null;
+  readonly emergencyStop: OperatorEmergencyStopConsumer | null;
   readonly broker: ExternalProtectionBrokerPort; readonly verification: VerificationRuntimePort;
   readonly requestKind: string; readonly terminalKinds: readonly string[];
   readonly bindingKind: 'conversation-binding'; readonly maxPending: number; readonly challengeLifetime: number;

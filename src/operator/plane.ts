@@ -47,6 +47,8 @@ export function minimalPlaneProjections(kinds: readonly string[], stalenessBound
     definition('minimal.authority-queue', stalenessBound, all, {
       'intake-held': fold('set-union', 'logicalId', 'reason'), 'conversation-binding': fold('set-union', 'channel', 'principalId'),
       'slice-obligation': fold('set-union', 'operation', 'owner'),
+      'authorization-request': fold('exclusive-singleton', 'requestId', 'requestDigest'),
+      'authorization-disposition': fold('set-union', 'request', 'disposition'),
     }, 'Not an authorization request or disposition. The authority queue confers no authority.'),
     definition('minimal.guard-repair', stalenessBound, all, {
       'slice-obligation': fold('set-union', 'operation', 'owner'), 'slice-delivery-evidence': fold('set-union', 'operation', 'decisive'),
@@ -56,27 +58,45 @@ export function minimalPlaneProjections(kinds: readonly string[], stalenessBound
 }
 
 export function evaluateGenesisReplay(samples: readonly ReplaySample[], matrix: Readonly<Record<string, readonly ('cold' | 'warm')[]>>,
-  startupBudget: number, durationMargin: number, memoryMargin: number, context: BoundaryContext): Result<ReplayAdmission> {
+  startupBudget: number, durationMargin: number, memoryMargin: number, context: BoundaryContext,
+  memoryBudget = Number.MAX_SAFE_INTEGER): Result<ReplayAdmission> {
   return operatorBoundary('MinimalPlaneGenesisAdmission', context, () => {
-    requireOperator(samples.length > 0 && Number.isSafeInteger(startupBudget) && startupBudget > 0
+    const deployments = Object.entries(matrix);
+    requireOperator(samples.length > 0 && deployments.length > 0 && deployments.every(([, caches]) => caches.length > 0
+      && caches.includes('cold') && caches.includes('warm') && new Set(caches).size === caches.length)
+      && Number.isSafeInteger(startupBudget) && startupBudget > 0 && Number.isSafeInteger(memoryBudget) && memoryBudget > 0
       && Number.isSafeInteger(durationMargin) && durationMargin >= 0 && Number.isSafeInteger(memoryMargin) && memoryMargin >= 0,
     'P11-NF-27/31: replay admission needs samples and finite budgets');
     const failures: string[] = [];
-    for (const [deployment, cacheStates] of Object.entries(matrix)) for (const cache of cacheStates) {
-      if (!samples.some(sample => sample.deployment === deployment && sample.cache === cache)) failures.push(`${deployment}:${cache}:missing`);
+    for (const [deployment, cacheStates] of deployments) for (const cache of cacheStates) {
+      const matches = samples.filter(sample => sample.deployment === deployment && sample.cache === cache);
+      if (matches.length === 0) failures.push(`${deployment}:${cache}:missing`);
+      if (matches.length > 1) failures.push(`${deployment}:${cache}:duplicate`);
     }
     const digests = new Set<Hash>();
+    const generations = new Set<string>(), populations = new Set<string>();
     for (const sample of samples) {
+      if (!matrix[sample.deployment]?.includes(sample.cache)) failures.push(`${sample.deployment}:${sample.cache}:undeclared`);
       if (sample.failures.length) failures.push(...sample.failures.map(reason => `${sample.deployment}:${sample.cache}:${reason}`));
-      if (!sample.resultDigest) failures.push(`${sample.deployment}:${sample.cache}:no-result-digest`); else digests.add(sample.resultDigest);
-      if (sample.ended < sample.started || sample.facts < 0 || sample.bytes < 0 || sample.lineages <= 0 || sample.peakMemory < 0)
+      if (!sample.resultDigest || !/^sha256:[a-f0-9]{64}$/.test(sample.resultDigest))
+        failures.push(`${sample.deployment}:${sample.cache}:invalid-result-digest`);
+      else digests.add(sample.resultDigest);
+      if (!sample.generation.trim()) failures.push(`${sample.deployment}:${sample.cache}:missing-generation`);
+      else generations.add(sample.generation);
+      if (![sample.started, sample.ended, sample.peakMemory, sample.facts, sample.bytes, sample.lineages].every(Number.isFinite)
+        || ![sample.peakMemory, sample.facts, sample.bytes, sample.lineages].every(Number.isSafeInteger)
+        || sample.ended < sample.started || sample.facts < 0 || sample.bytes < 0 || sample.lineages <= 0 || sample.peakMemory < 0)
         failures.push(`${sample.deployment}:${sample.cache}:invalid-measurement`);
+      populations.add(`${sample.facts}:${sample.bytes}:${sample.lineages}`);
     }
     if (digests.size > 1) failures.push('canonical-replay-divergence');
-    const maximumDuration = Math.max(...samples.map(sample => sample.ended - sample.started));
-    const maximumMemory = Math.max(...samples.map(sample => sample.peakMemory));
+    if (generations.size > 1) failures.push('register-generation-divergence');
+    if (populations.size > 1) failures.push('incomparable-replay-populations');
+    const maximumDuration = Math.max(...samples.map(sample => Number.isFinite(sample.ended - sample.started) ? sample.ended - sample.started : 0));
+    const maximumMemory = Math.max(...samples.map(sample => Number.isFinite(sample.peakMemory) ? sample.peakMemory : 0));
     const admissionDuration = maximumDuration + durationMargin, admissionMemory = maximumMemory + memoryMargin;
     if (admissionDuration > startupBudget) failures.push('startup-budget-exceeded');
+    if (admissionMemory > memoryBudget) failures.push('memory-budget-exceeded');
     return Object.freeze({ eligible: failures.length === 0, maximumDuration, maximumMemory, admissionDuration, admissionMemory,
       failures: Object.freeze(failures.sort()) });
   });

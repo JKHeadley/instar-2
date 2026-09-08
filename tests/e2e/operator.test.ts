@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import type { FactEnvelope } from '../../src/facts/index.js';
 import { createOperatorSurface } from '../../src/operator/index.js';
@@ -34,9 +35,18 @@ it('P11-NF-44 P11-NF-45 P11-NF-46 P11-NF-47 P11-NF-48 P11-NF-50 the durable vert
 
 it('P11-NF-51 P11-NF-52 P11-NF-53 activation remains dark until the real provider/witness and objective phone floor produce executed evidence', () => {
   const x = operatorFixture();
-  expect(x.composition.id).toBe('phone-surface');
-  expect(x.composition.verifier.administration).toBe('independent');
-  expect(x.composition.isolation.owner).toBe('part-ten');
-  // Fixture presence is executable evidence of the negative contract, not a live claim.
-  expect(true).toBe(true);
+  const surface = x.surface();
+  const protection = value(surface.protection('operation:activation', '/operator/phone'));
+  expect(protection).toMatchObject({ posture: 'unprotected', witnessFresh: false, isolationLive: false });
+  expect(protection.brokerReceipt).toBeNull();
+  const declarations = [...JSON.parse(readFileSync('src/operator/operator.declarations.json', 'utf8')),
+    ...JSON.parse(readFileSync('src/operator/surface.declarations.json', 'utf8'))] as
+    { id: string; status: string; requiredFacts: Record<string, unknown>; holds: unknown[] }[];
+  const source = declarations.find(row => row.id === 'operator-surfaces.source');
+  const phone = declarations.find(row => row.id === 'phone-surface');
+  expect(source).toMatchObject({ status: 'dark', holds: [] });
+  expect(phone).toMatchObject({ status: 'dark', holds: [] });
+  expect(source?.requiredFacts).not.toHaveProperty('liveProof');
+  expect(phone?.requiredFacts).not.toHaveProperty('liveProof');
+  expect(Object.keys(surface)).not.toContain('activate');
 });
