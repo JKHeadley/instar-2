@@ -1,4 +1,4 @@
-import type { BoundaryContext, Clock, DecodeContext, Evidence, Hash, Json, Result, Scope, VerifiedPrincipal } from '../index.js';
+import type { Authorization, BoundaryContext, Clock, DecodeContext, Evidence, Hash, Json, Result, Scope, VerifiedPrincipal } from '../index.js';
 import type { AppendReceipt, ConflictClass, FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
 
 declare class VerificationBrand<N extends string> {
@@ -154,6 +154,42 @@ export interface VerificationRuntimePort {
   inspect(): Result<readonly VerificationFact[]>;
   due(now: Clock): Result<readonly VerificationDueItem[]>;
   posture(plan: string, now: Clock): Result<GuardPostureView>;
+}
+export interface CaptureAdmissionState {
+  readonly capacity: number; readonly retained: number; readonly reserved: number;
+  readonly repairReserve: number; readonly pinned: readonly Readonly<{ reference: string; bytes: number; reasons: readonly string[] }>[];
+}
+export interface CaptureAdmissionDecision {
+  readonly admitted: boolean; readonly requested: number; readonly remaining: number;
+  readonly reason: 'within-capacity' | 'capacity-refused';
+}
+export interface ProtectedInstallationRequest {
+  readonly operation: string; readonly path: string; readonly base: string; readonly proposed: string;
+  readonly authorization: Authorization;
+}
+export interface ProtectionJournalEntry {
+  readonly operation: string; readonly requestDigest: Hash; readonly path: string; readonly base: string;
+  readonly proposedHash: Hash; readonly authorization: string; readonly priorHash: Hash;
+  readonly effectiveHash: Hash; readonly disposition: 'committed' | 'refused'; readonly attestation: string;
+}
+export interface ProtectionJournalPort {
+  readonly owner: 'part-ten'; readonly administration: 'independent' | 'agent-writable';
+  query(operation: string): Result<ProtectionJournalEntry | null>;
+  transact(input: Readonly<Omit<ProtectionJournalEntry, 'effectiveHash' | 'disposition' | 'attestation'>>,
+    apply: () => Result<Hash>): Result<ProtectionJournalEntry>;
+}
+export interface ProtectedLoaderPort {
+  readonly owner: 'part-ten'; readonly administration: 'independent' | 'agent-writable';
+  protection(path: string): Result<Readonly<{ exactPath: string; parentWriteDenied: boolean; symlinkSwapDenied: boolean;
+    alternateLoaderDenied: boolean; debuggerDenied: boolean; rootPinned: boolean }>>;
+  current(path: string): Result<Readonly<{ hash: Hash; base: string }>>;
+  install(path: string, expected: Hash, proposed: string): Result<Hash>;
+}
+export interface ExternalProtectionBrokerPort {
+  readonly owner: 'part-nine';
+  install(request: ProtectedInstallationRequest): Result<ProtectionJournalEntry>;
+  query(operation: string): Result<ProtectionJournalEntry | null>;
+  posture(path: string): Result<'protected' | 'unprotected'>;
 }
 export interface VerificationComparison {
   readonly equal: boolean; readonly conflict?: ConflictClass;

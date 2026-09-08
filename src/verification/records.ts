@@ -221,9 +221,9 @@ export function compareVerificationRecords<N extends VerificationRecordName>(nam
     const a = take(decodeVerificationRecord(name, left, context));
     const b = take(decodeVerificationRecord(name, right, context));
     const ai = verificationIdentity(a), bi = verificationIdentity(b);
-    if (ai.id !== bi.id) return freeze({ equal: false });
+    if (ai.id !== bi.id && ai.logicalKey !== bi.logicalKey) return freeze({ equal: false });
     if (ai.canonicalHash === bi.canonicalHash) return freeze({ equal: true });
-    const conflict: ConflictClass = { key: ai.logicalKey, kind: 'immutable-disagreement', facts: [ai.canonicalHash, bi.canonicalHash].sort(), detail: `divergent canonical content for ${name} identity ${ai.id}` };
+    const conflict: ConflictClass = { key: ai.logicalKey, kind: 'immutable-disagreement', facts: [ai.canonicalHash, bi.canonicalHash].sort(), detail: `divergent canonical content for ${name} logical identity ${ai.logicalKey}` };
     return freeze({ equal: false, conflict });
   });
 }

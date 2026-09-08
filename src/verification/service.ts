@@ -1,7 +1,7 @@
 import { consumeResult } from '../index.js';
 import type { Clock, Result } from '../index.js';
 import { boundary, encoded, ensure, take } from './boundary.js';
-import { compareVerificationRecords, decodeVerificationRecord, verificationRecordFrom, verificationRows } from './records.js';
+import { compareVerificationRecords, decodeVerificationRecord, verificationLogicalKey, verificationRecordFrom, verificationRows } from './records.js';
 import { deriveGuardPosture, deriveVerificationDue } from './runtime.js';
 import type { GuardPostureView, VerificationDueItem, VerificationFact, VerificationHost,
   VerificationRecord, VerificationRecordName, VerificationRuntimePort, VerificationSpine } from './contracts.js';
@@ -15,7 +15,8 @@ export function createVerificationRuntime(host: VerificationHost, spine: Verific
       return boundary('VerificationRecord', input, host.boundary, () => {
         ensure(!host.current().stopped || name === 'VerificationAssessment' || name === 'FeedbackDisposition', 'stop inhibits new verification work');
         const candidate = take(decodeVerificationRecord(name, input, host.boundary));
-        const existing = take(inspect()).find(row => row.record.type === name && row.record.id === candidate.id);
+        const existing = take(inspect()).find(row => row.record.type === name
+          && (row.record.id === candidate.id || verificationLogicalKey(row.record) === verificationLogicalKey(candidate)));
         if (existing) {
           const compared = take(compareVerificationRecords(name, existing.record, candidate, host.boundary));
           ensure(compared.equal, compared.conflict?.detail ?? 'verification identity conflict');

@@ -18,3 +18,7 @@ export {
 } from './review.js';
 export type { ReviewPopulationCase, ReviewAccounting, FeedbackCoverage, HeldEdge, SemanticCoverageRow,
   GradeSupport, BenchmarkAccounting, WaiverAct, WaiverReview } from './review.js';
+export { assessCaptureAdmission, closureReleasedPins, routineAgeRemovalAllowed, retainedGap } from './retention.js';
+export { createExternalProtectionBroker } from './protection.js';
+export { verificationProjectionDefinitions, mergeVerificationRecords, replicaCurrency, remoteCaptureUseAllowed } from './storage.js';
+export type { VerificationMerge, ReplicaCurrency } from './storage.js';
