@@ -103,7 +103,7 @@ function validate(r: JudgmentRecord, ctx: OwnedBodyContext, host: JudgmentHost, 
   if (ctx.mode === 'origin') ensure(r.predecessor === (rows(ctx.facts.facts).at(-1)?.fact.id ?? ''), 'stale judgment origin predecessor');
   const body = ctx.origin.body as Record<string, Json>;
   if (r.type === 'BenchmarkRecord' || r.type === 'BenchmarkScenario' || r.type === 'BenchmarkRunRecord') {
-    validateBenchmark(r, all, ctx); ensure(body.result === undefined && body.decision === undefined && body.outcome === undefined && body.evidence === undefined,
+    validateBenchmark(r, all, ctx, host); ensure(body.result === undefined && body.decision === undefined && body.outcome === undefined && body.evidence === undefined,
       'benchmark records do not contain grading or constitutional conclusions'); return;
   }
   ensure(r.request.length > 0, 'judgment request identity');
@@ -211,7 +211,29 @@ function containsExcludedField(value: unknown, excluded: string): boolean {
   if (Object.hasOwn(object, excluded)) return true;
   return Object.values(object).some(item => containsExcludedField(item, excluded));
 }
-function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRunRecord, all: readonly JudgmentFact[], ctx: OwnedBodyContext): void {
+function executionObservation(id: string, request: string, all: readonly JudgmentFact[], ctx: OwnedBodyContext,
+  host: JudgmentHost): JudgmentFact & { record: JudgmentAttemptRecord } {
+  const response = all.find((v): v is JudgmentFact & { record: JudgmentAttemptRecord } =>
+    v.fact.id === id && v.record.type === 'JudgmentAttemptRecord' && v.record.request === request);
+  ensure(response?.record.phase === 'response-observed' && response.record.receipt,
+    'benchmark usage reference is not a response observation');
+  const bytes = captureBytes(ctx, response.record.receipt);
+  if (bytes !== undefined) {
+    let observation: ProviderObservation;
+    try { observation = JSON.parse(bytes) as ProviderObservation; } catch { ensure(false, 'benchmark usage observation is not JSON'); }
+    observationCheck(observation, host.description);
+  }
+  return response;
+}
+function executionOutcome(response: JudgmentFact & { record: JudgmentAttemptRecord }, all: readonly JudgmentFact[]): void {
+  const accounting = all.find(v => v.record.type === 'JudgmentAttemptRecord'
+    && v.record.request === response.record.request && v.record.attempt === response.record.attempt
+    && v.record.phase === 'accounting-observed');
+  ensure(accounting && (accounting.fact.body as { readonly outcome?: unknown }).outcome !== undefined,
+    'benchmark outcome reference lacks an accounting Outcome');
+}
+function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRunRecord, all: readonly JudgmentFact[], ctx: OwnedBodyContext,
+  host: JudgmentHost): void {
   const unique = (values: readonly string[], name: string) => ensure(values.length === new Set(values).size, `${name} contains duplicates`);
   if (r.type === 'BenchmarkRecord') {
     owned(r.request, 'part-seven', 'JudgmentRequest'); owned(r.resolution, 'part-seven', 'JudgmentResolution');
@@ -260,12 +282,10 @@ function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRun
           && r.conclusionEvidence.length === 0 && r.reasonEvidence.length === 0,
         'refused source resolution requires explicit absent Decision');
       }
-      for (const id of [...r.outcomeReferences, ...r.usageReferences]) {
-        ensure(all.some(v => v.fact.id === id && v.record.type === 'JudgmentAttemptRecord' && v.record.request === request.record.id),
-          'benchmark outcome/usage reference absent or unrelated');
-      }
       ensure(response, 'benchmark real manifest requires recorded response attempt');
     }
+    for (const id of r.usageReferences) executionObservation(id, request.record.id, all, ctx, host);
+    for (const id of r.outcomeReferences) executionOutcome(executionObservation(id, request.record.id, all, ctx, host), all);
     return;
   }
   if (r.type === 'BenchmarkScenario') {
@@ -312,6 +332,7 @@ function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRun
   const observed = r.executions.map(e => `${e.scenario.id}:${e.candidate}:${e.ordinal}`);
   unique(observed, 'execution disposition population');
   ensure(planned.length === observed.length && planned.every(key => observed.includes(key)), 'every planned benchmark execution needs a disposition');
+  const completedWitnesses = new Set<string>();
   for (const e of r.executions) {
     owned(e.scenario, 'part-seven', 'BenchmarkScenario');
     ensure(['completed', 'refused', 'cancelled', 'missing'].includes(e.disposition) && Number.isSafeInteger(e.ordinal) && e.ordinal >= 0,
@@ -335,11 +356,19 @@ function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRun
       ensure(resolution && request, 'completed execution resolution/request absent');
       ensure(resolution.record.request === request.record.id && resolution.record.response === attempt.fact.id,
         'completed execution attempt/resolution unrelated');
-      ensure(source?.record.request.id === request.fact.id, 'completed execution scenario/request unrelated');
+      ensure(scenario && source?.record.request.id === request.fact.id, 'completed execution scenario/request unrelated');
       ensure(request.record.route === e.candidate && request.record.run === r.run.id,
         'completed execution candidate/run unrelated');
-      ensure(e.usage.every(id => all.some(v => v.fact.id === id && v.record.type === 'JudgmentAttemptRecord'
-        && v.record.request === request.record.id)), 'completed execution usage absent or unrelated');
+      ensure(scenario.record.replayInput.hash === request.record.submitted.hash,
+        'completed execution input differs from the observed request');
+      ensure(r.inputDigest === scenario.record.transformedInputHash,
+        'completed execution input digest differs from the scenario replay');
+      ensure(r.compatibilityDigest === source.record.compatibilityDigest,
+        'completed execution compatibility digest differs from the source manifest');
+      ensure(!completedWitnesses.has(attempt.fact.id), 'completed benchmark samples reused one execution witness');
+      completedWitnesses.add(attempt.fact.id);
+      ensure(e.usage.length > 0, 'completed execution requires an observed usage reference');
+      e.usage.forEach(id => executionObservation(id, request.record.id, all, ctx, host));
     } else ensure(e.detail && e.detail.length > 0, 'non-completed execution requires explicit detail');
   }
 }

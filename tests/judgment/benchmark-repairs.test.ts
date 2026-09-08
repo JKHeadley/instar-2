@@ -55,14 +55,18 @@ function appendRecord(c: Awaited<ReturnType<typeof benchmarkCase>>) {
   return value(c.f.spine.append(c.record)).fact;
 }
 
-function appendScenario(c: Awaited<ReturnType<typeof benchmarkCase>>, recordId: string) {
-  const scenario = { ...c.scenario, predecessor: recordId, source: reference('BenchmarkRecord', recordId) } as unknown as BenchmarkScenario;
+function appendScenario(c: Awaited<ReturnType<typeof benchmarkCase>>, recordId: string, overrides: Partial<BenchmarkScenario> = {}) {
+  const scenario = { ...c.scenario, predecessor: recordId, source: reference('BenchmarkRecord', recordId), ...overrides } as unknown as BenchmarkScenario;
   return { scenario, fact: value(c.f.spine.append(scenario)).fact };
 }
 
-function validRun(c: Awaited<ReturnType<typeof benchmarkCase>>, scenarioId: string, predecessor: string) {
-  return { ...c.run, predecessor,
-    scenarios: [{ scenario: reference('BenchmarkScenario', scenarioId), version: 'v1' }],
+function identityScenario(c: Awaited<ReturnType<typeof benchmarkCase>>): Partial<BenchmarkScenario> {
+  return { replayInput: c.request.record.submitted, transformedInputHash: c.request.record.submitted.hash, transformationVersion: 'identity-v1' };
+}
+
+function validRun(c: Awaited<ReturnType<typeof benchmarkCase>>, scenario: BenchmarkScenario, scenarioId: string, predecessor: string) {
+  return { ...c.run, predecessor, inputDigest: scenario.transformedInputHash,
+    scenarios: [{ scenario: reference('BenchmarkScenario', scenarioId), version: scenario.version }],
     executions: [{ ...c.run.executions[0], scenario: reference('BenchmarkScenario', scenarioId) }],
   } as unknown as BenchmarkRunRecord;
 }
@@ -95,8 +99,9 @@ describe('P7 benchmark adversarial admission repairs', { timeout: 30_000 }, () =
   });
 
   it('P7-NF-48 C4 refuses completed executions whose attempt and resolution facts do not exist', async () => {
-    const c = await benchmarkCase(), recordFact = appendRecord(c), { fact: scenarioFact } = appendScenario(c, recordFact.id);
-    const good = validRun(c, scenarioFact.id, scenarioFact.id);
+    const c = await benchmarkCase(), recordFact = appendRecord(c);
+    const { scenario, fact: scenarioFact } = appendScenario(c, recordFact.id, identityScenario(c));
+    const good = validRun(c, scenario, scenarioFact.id, scenarioFact.id);
     const bad = { ...good, id: 'run:phantom', executions: [{ ...good.executions[0],
       attempt: reference('JudgmentAttemptRecord', 'does-not-exist'), resolution: reference('JudgmentResolution', 'does-not-exist') }] } as unknown as BenchmarkRunRecord;
     refused(c.f.spine.append(bad), 'attempt absent');
@@ -104,8 +109,11 @@ describe('P7 benchmark adversarial admission repairs', { timeout: 30_000 }, () =
   });
 
   it('P7-NF-32 P7-NF-34 C5 refuses scenarios and runs when a current source dependency is tainted', async () => {
-    const c = await benchmarkCase(), recordFact = appendRecord(c), { fact: scenarioFact } = appendScenario(c, recordFact.id);
-    const runFact = value(c.f.spine.append(validRun(c, scenarioFact.id, scenarioFact.id))).fact;
+    const c = await benchmarkCase(), recordFact = appendRecord(c), { scenario, fact: scenarioFact } = appendScenario(c, recordFact.id);
+    const baseRun = validRun(c, scenario, scenarioFact.id, scenarioFact.id);
+    const run = { ...baseRun, executions: [{ scenario: reference('BenchmarkScenario', scenarioFact.id), candidate: c.f.host.description.route,
+      ordinal: 0, disposition: 'missing', usage: [], detail: 'scenario has not been executed' }] } as unknown as BenchmarkRunRecord;
+    const runFact = value(c.f.spine.append(run)).fact;
     const port = createJudgmentBenchmarkReadPort(c.f.spine, c.f.c);
     value(port.readScenario(reference('BenchmarkScenario', scenarioFact.id)));
     value(port.readRun(reference('BenchmarkRunRecord', runFact.id)));
@@ -131,5 +139,44 @@ describe('P7 benchmark adversarial admission repairs', { timeout: 30_000 }, () =
     const fact = appendRecord(c);
     refused(c.f.spine.append({ ...c.record, id: 'record:contradiction', predecessor: fact.id } as unknown as BenchmarkRecord),
       'duplicate logical benchmark manifest');
+  });
+
+  it('P7-NF-48 N1 refuses a completed cell backed by an answer to a different replay input', async () => {
+    const c = await benchmarkCase(), recordFact = appendRecord(c);
+    const { scenario, fact: scenarioFact } = appendScenario(c, recordFact.id);
+    const bad = validRun(c, scenario, scenarioFact.id, scenarioFact.id);
+    refused(c.f.spine.append(bad), 'input differs');
+    const explicitMissing = { ...bad, id: 'run:unexecuted-transform', executions: [{ scenario: reference('BenchmarkScenario', scenarioFact.id),
+      candidate: c.f.host.description.route, ordinal: 0, disposition: 'missing', usage: [], detail: 'transformed input was not executed' }] } as unknown as BenchmarkRunRecord;
+    expect(value(c.f.spine.append(explicitMissing)).fact.id).toBeTruthy();
+  });
+
+  it('P7-NF-48 N2 refuses two completed samples that reuse one execution witness', async () => {
+    const c = await benchmarkCase(), recordFact = appendRecord(c);
+    const { scenario, fact: scenarioFact } = appendScenario(c, recordFact.id, identityScenario(c));
+    const one = validRun(c, scenario, scenarioFact.id, scenarioFact.id);
+    const duplicated = { ...one, id: 'run:duplicated-sample', candidates: [{ route: c.f.host.description.route, samples: 2 }],
+      executions: [one.executions[0], { ...one.executions[0], ordinal: 1 }] } as unknown as BenchmarkRunRecord;
+    refused(c.f.spine.append(duplicated), 'reused one execution witness');
+    const honest = { ...duplicated, id: 'run:one-observed-one-missing', executions: [one.executions[0], {
+      scenario: reference('BenchmarkScenario', scenarioFact.id), candidate: c.f.host.description.route, ordinal: 1,
+      disposition: 'missing', usage: [], detail: 'second sample was not executed',
+    }] } as unknown as BenchmarkRunRecord;
+    expect(value(c.f.spine.append(honest)).fact.id).toBeTruthy();
+  });
+
+  it('P7-NF-32 P7-NF-48 N3 refuses prepared phases as usage/outcome sources while response-backed observations admit', async () => {
+    const c = await benchmarkCase();
+    const prepared = c.attempts.find(row => row.record.phase === 'prepared')!;
+    refused(c.f.spine.append({ ...c.record, usageReferences: [prepared.fact.id], outcomeReferences: [prepared.fact.id] } as unknown as BenchmarkRecord),
+      'not a response observation');
+    refused(c.f.spine.append({ ...c.record, usageReferences: [prepared.fact.id] } as unknown as BenchmarkRecord), 'not a response observation');
+    refused(c.f.spine.append({ ...c.record, outcomeReferences: [prepared.fact.id] } as unknown as BenchmarkRecord), 'not a response observation');
+    const recordFact = appendRecord(c);
+    const { scenario, fact: scenarioFact } = appendScenario(c, recordFact.id, identityScenario(c));
+    const run = validRun(c, scenario, scenarioFact.id, scenarioFact.id);
+    refused(c.f.spine.append({ ...run, id: 'run:prepared-usage', executions: [{ ...run.executions[0], usage: [prepared.fact.id] }] } as unknown as BenchmarkRunRecord),
+      'not a response observation');
+    expect(value(c.f.spine.append(run)).fact.id).toBeTruthy();
   });
 });
