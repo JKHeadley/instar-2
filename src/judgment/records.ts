@@ -3,18 +3,42 @@ import type { BoundaryContext, Clock, Decision, Json, Result } from '../index.js
 import { authorAndAppend, causalCone, registerOwnedBody } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, FactStorePort, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import type { AdmissionReservation } from '../transport/index.js';
-import type { Capture, JudgmentAttemptRecord, JudgmentAuthor, JudgmentFact, JudgmentHost, JudgmentRecord, JudgmentRequest, JudgmentSpine, ProviderObservation } from './contracts.js';
+import type { BenchmarkRecord, BenchmarkRunRecord, BenchmarkScenario, Capture, JudgmentAttemptRecord, JudgmentAuthor, JudgmentFact, JudgmentHost, JudgmentRecord, JudgmentRequest, JudgmentSpine, ProviderObservation } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { observationCheck } from './model-adapter.js';
 
 const txt = { kind: 'text', maxLength: 256 } as const, int = { kind: 'integer' } as const, capture = { kind: 'capture' } as const;
-const row = { type: txt, schemaVersion: int, id: txt, request: txt, predecessor: txt };
+const ref = { kind: 'object', fields: { owner: txt, name: txt, id: txt } } as const;
+const captures = { kind: 'array', maxLength: 256, items: capture } as const;
+const texts = { kind: 'array', maxLength: 256, items: txt } as const;
+const factRow = { type: txt, schemaVersion: int, id: txt, predecessor: txt };
+const row = { ...factRow, request: txt };
 export const judgmentShapes: Readonly<Record<string, OwnedShape>> = freeze({
   JudgmentRequest: { kind: 'object', fields: { ...row, logicalKey: txt, inputDigest: txt, run: txt, step: txt, ordinal: int, semanticMessage: txt, effectRequest: txt,
     point: txt, consumer: txt, generation: txt, incarnation: txt, deadline: int, question: capture, context: capture, submitted: capture,
     route: txt, evidence: { kind: 'array', maxLength: 64, items: txt }, maxInputBytes: int, maxOutputBytes: int, maxCharge: int } },
   JudgmentAttemptRecord: { kind: 'object', fields: { ...row, attempt: txt, phase: txt, operation: txt, reservation: txt, receipt: capture }, optional: ['operation', 'reservation', 'receipt'] },
   JudgmentResolution: { kind: 'object', fields: { ...row, attempt: txt, disposition: txt, response: txt, accounting: txt, decoded: txt } },
+  BenchmarkRecord: { kind: 'object', fields: { ...factRow,
+    provenance: { kind: 'object', fields: { kind: txt, request: ref, generation: txt, vector: txt, fixture: txt, productionDerived: { kind: 'boolean' } },
+      optional: ['request', 'generation', 'vector', 'fixture', 'productionDerived'] },
+    request: ref, requestDigest: txt, resolution: ref, run: txt, step: txt, logicalKey: txt, recordingPrincipal: txt,
+    sourceGeneration: txt, scenarioClass: txt, inputDigest: txt, compatibilityDigest: txt,
+    attempts: { kind: 'array', maxLength: 256, items: ref }, captureReferences: captures,
+    decision: { kind: 'object', fields: { state: txt, id: txt }, optional: ['id'] },
+    conclusionEvidence: texts, reasonEvidence: texts, outcomeReferences: texts, usageReferences: texts } },
+  BenchmarkScenario: { kind: 'object', fields: { ...factRow, version: txt, source: ref, sourceGrade: ref,
+    pinnedGeneration: txt, pinnedVector: txt, scenarioClass: txt, promotionDecision: txt, replayInput: capture,
+    originalInputHash: txt, transformedInputHash: txt, transformationVersion: txt, changedSemanticFields: texts,
+    unavailableSemanticFields: texts, excludedAnswerFields: texts, excludedOutcomeFields: texts, floorDigest: txt,
+    outputSchemaDigest: txt, evaluationContract: txt, dataScope: txt, captureAvailability: txt } },
+  BenchmarkRunRecord: { kind: 'object', fields: { ...factRow, suite: txt, suiteVersion: txt,
+    scenarios: { kind: 'array', maxLength: 256, items: { kind: 'object', fields: { scenario: ref, version: txt } } },
+    candidates: { kind: 'array', maxLength: 256, items: { kind: 'object', fields: { route: txt, samples: int } } },
+    criterionDigest: txt, inputDigest: txt, compatibilityDigest: txt, heldOutPartition: txt, run: ref,
+    startedAt: int, stoppedAt: int,
+    executions: { kind: 'array', maxLength: 4096, items: { kind: 'object', fields: { scenario: ref, candidate: txt,
+      ordinal: int, disposition: txt, attempt: ref, resolution: ref, usage: texts, detail: txt }, optional: ['attempt', 'resolution', 'detail'] } } } },
 });
 export const kindFor = (name: string) => `judgment-${name}`;
 export function judgmentSchemas(host: JudgmentHost): readonly FactSchema[] {
@@ -73,11 +97,16 @@ function validate(r: JudgmentRecord, ctx: OwnedBodyContext, host: JudgmentHost, 
   ensure(ctx.origin.machine === host.transport.machine && ctx.origin.principal.id === host.transport.principal.id
     && ctx.origin.principal.kind === host.transport.principal.kind, 'judgment recorder identity mismatch');
   ensure(all.every(v => v.fact.machine === host.transport.machine && v.fact.principal.id === host.transport.principal.id), 'untrusted judgment predecessor');
-  ensure(r.schemaVersion === 1 && ctx.origin.kind === kindFor(r.type) && r.id.length > 0 && r.request.length > 0, 'judgment identity/version');
+  ensure(r.schemaVersion === 1 && ctx.origin.kind === kindFor(r.type) && r.id.length > 0, 'judgment identity/version');
   ensure(r.predecessor === (all.at(-1)?.fact.id ?? ''), 'judgment predecessor changed');
   ensure(!all.some(v => v.record.id === r.id), 'duplicate judgment record identity');
   if (ctx.mode === 'origin') ensure(r.predecessor === (rows(ctx.facts.facts).at(-1)?.fact.id ?? ''), 'stale judgment origin predecessor');
   const body = ctx.origin.body as Record<string, Json>;
+  if (r.type === 'BenchmarkRecord' || r.type === 'BenchmarkScenario' || r.type === 'BenchmarkRunRecord') {
+    validateBenchmark(r, all); ensure(body.result === undefined && body.decision === undefined && body.outcome === undefined && body.evidence === undefined,
+      'benchmark records do not contain grading or constitutional conclusions'); return;
+  }
+  ensure(r.request.length > 0, 'judgment request identity');
   if (!(r.type === 'JudgmentAttemptRecord' && r.phase === 'accounting-observed')) ensure(body.outcome === undefined, 'Outcome belongs to accounting observation');
   if (!(r.type === 'JudgmentAttemptRecord' && r.phase === 'response-observed')) ensure(body.evidence === undefined, 'provider evidence belongs to response');
   const bytes = (cap: Capture): string | undefined => {
@@ -157,6 +186,75 @@ function validate(r: JudgmentRecord, ctx: OwnedBodyContext, host: JudgmentHost, 
       ensure(body.decision === undefined, 'refused provider cannot produce Decision');
       if (r.type === 'JudgmentResolution') ensure(r.disposition === 'refused', 'refused disposition required');
     } });
+  }
+}
+function owned(reference: { readonly owner: string; readonly name: string; readonly id: string }, owner: string, name: string): void {
+  ensure(reference.owner === owner && reference.name === name && reference.id.length > 0, `${name} owner/reference mismatch`);
+}
+function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRunRecord, all: readonly JudgmentFact[]): void {
+  const unique = (values: readonly string[], name: string) => ensure(values.length === new Set(values).size, `${name} contains duplicates`);
+  if (r.type === 'BenchmarkRecord') {
+    owned(r.request, 'part-seven', 'JudgmentRequest'); owned(r.resolution, 'part-seven', 'JudgmentResolution');
+    ensure(r.requestDigest.length > 0 && r.inputDigest.length > 0 && r.compatibilityDigest.length > 0, 'benchmark digests required');
+    const request = all.find((v): v is JudgmentFact & { record: JudgmentRequest } => v.fact.id === r.request.id && v.record.type === 'JudgmentRequest');
+    const resolution = all.find((v): v is JudgmentFact & { record: import('./contracts.js').JudgmentResolution } => v.fact.id === r.resolution.id && v.record.type === 'JudgmentResolution');
+    ensure(request && resolution && resolution.record.request === request.record.id, 'benchmark source request/resolution absent or unrelated');
+    ensure(r.requestDigest === request.record.inputDigest && r.inputDigest === request.record.inputDigest, 'benchmark input digest differs from real request');
+    if (r.provenance.kind === 'real') {
+      ensure(Object.keys(r.provenance).sort().join(',') === 'generation,kind,request,vector', 'real provenance is not closed');
+      owned(r.provenance.request, 'part-seven', 'JudgmentRequest');
+      ensure(r.provenance.request.id === r.request.id && r.provenance.generation === request.record.generation && r.provenance.vector.length > 0,
+        'real provenance differs from source request');
+    } else {
+      ensure(Object.keys(r.provenance).sort().join(',') === 'fixture,kind,productionDerived' && r.provenance.productionDerived === false
+        && r.provenance.fixture.length > 0, 'synthetic provenance cannot claim production derivation');
+    }
+    r.attempts.forEach(a => owned(a, 'part-seven', 'JudgmentAttemptRecord'));
+    unique(r.attempts.map(a => a.id), 'benchmark attempts'); unique(r.conclusionEvidence, 'conclusion evidence'); unique(r.reasonEvidence, 'reason evidence');
+    ensure(r.decision.state === 'present' ? Object.keys(r.decision).sort().join(',') === 'id,state' && r.decision.id.length > 0
+      : Object.keys(r.decision).join(',') === 'state', 'benchmark Decision presence must be explicit');
+    ensure(r.captureReferences.length > 0 && r.run === request.record.run && r.step === request.record.step
+      && r.logicalKey === request.record.logicalKey && r.sourceGeneration === request.record.generation, 'benchmark manifest differs from source request');
+    return;
+  }
+  if (r.type === 'BenchmarkScenario') {
+    owned(r.source, 'part-seven', 'BenchmarkRecord'); owned(r.sourceGrade, 'part-nine', 'Grade');
+    const source = all.find((v): v is JudgmentFact & { record: BenchmarkRecord } => v.fact.id === r.source.id && v.record.type === 'BenchmarkRecord');
+    ensure(source?.record.provenance.kind === 'real', 'benchmark scenario requires real source provenance');
+    ensure(r.version.length > 0 && r.pinnedGeneration.length > 0 && r.pinnedVector.length > 0 && r.promotionDecision.length > 0,
+      'scenario grade/promotion pin required');
+    ensure(r.originalInputHash.length > 0 && r.transformedInputHash === r.replayInput.hash && r.floorDigest.length > 0
+      && r.outputSchemaDigest.length > 0 && r.evaluationContract.length > 0 && r.dataScope.length > 0, 'scenario lineage/digests required');
+    unique(r.excludedAnswerFields, 'excluded answer fields'); unique(r.excludedOutcomeFields, 'excluded outcome fields');
+    ensure(r.excludedAnswerFields.length > 0 && r.excludedOutcomeFields.length > 0, 'answer and outcome exclusions must be explicit');
+    ensure(['available', 'unavailable'].includes(r.captureAvailability), 'unknown scenario capture availability'); return;
+  }
+  owned(r.run, 'part-five', 'Run');
+  ensure(r.suite.length > 0 && r.suiteVersion.length > 0 && r.criterionDigest.length > 0 && r.inputDigest.length > 0
+    && r.compatibilityDigest.length > 0 && r.heldOutPartition.length > 0 && r.startedAt >= 0 && r.stoppedAt >= r.startedAt,
+  'benchmark run identity/digests/measurements required');
+  ensure(r.scenarios.length > 0 && r.candidates.length > 0, 'benchmark population must be predeclared');
+  unique(r.scenarios.map(s => `${s.scenario.id}:${s.version}`), 'scenario population'); unique(r.candidates.map(v => v.route), 'candidate population');
+  for (const s of r.scenarios) {
+    owned(s.scenario, 'part-seven', 'BenchmarkScenario');
+    ensure(s.version.length > 0 && all.some(v => v.fact.id === s.scenario.id && v.record.type === 'BenchmarkScenario' && v.record.version === s.version),
+      'run scenario/version absent');
+  }
+  for (const candidate of r.candidates) ensure(candidate.route.length > 0 && Number.isSafeInteger(candidate.samples) && candidate.samples > 0, 'invalid candidate sampling count');
+  const planned = r.scenarios.flatMap(s => r.candidates.flatMap(candidate => Array.from({ length: candidate.samples }, (_, ordinal) => `${s.scenario.id}:${candidate.route}:${ordinal}`)));
+  const observed = r.executions.map(e => `${e.scenario.id}:${e.candidate}:${e.ordinal}`);
+  unique(observed, 'execution disposition population');
+  ensure(planned.length === observed.length && planned.every(key => observed.includes(key)), 'every planned benchmark execution needs a disposition');
+  for (const e of r.executions) {
+    owned(e.scenario, 'part-seven', 'BenchmarkScenario');
+    ensure(['completed', 'refused', 'cancelled', 'missing'].includes(e.disposition) && Number.isSafeInteger(e.ordinal) && e.ordinal >= 0,
+      'invalid execution disposition');
+    ensure(r.candidates.some(candidate => candidate.route === e.candidate && e.ordinal < candidate.samples), 'execution was not predeclared');
+    ensure(r.scenarios.some(s => s.scenario.id === e.scenario.id), 'execution scenario was not predeclared');
+    if (e.disposition === 'completed') {
+      ensure(e.attempt && e.resolution && e.detail === undefined, 'completed execution requires attempt/resolution only');
+      owned(e.attempt, 'part-seven', 'JudgmentAttemptRecord'); owned(e.resolution, 'part-seven', 'JudgmentResolution');
+    } else ensure(e.detail && e.detail.length > 0, 'non-completed execution requires explicit detail');
   }
 }
 export function createJudgmentSpine(host: JudgmentHost, author: JudgmentAuthor, store: FactStorePort): JudgmentSpine {

@@ -86,7 +86,16 @@ exposure. `readAnswer` re-reads captures and checks current standing, lease, sto
 generation, deadline and evidence freshness. A restored request clock cannot be
 used as current permission; five's eventual recovery/acceptance remains separate.
 
-Not implemented: benchmarks/scenarios/runs, ask refinement, compatibility digests,
+`BenchmarkRecord`, `BenchmarkScenario`, and `BenchmarkRunRecord` are now closed,
+owner-branded records. They preserve real versus synthetic provenance, original and
+transformed input hashes, explicit answer/outcome exclusions, complete predeclared
+candidate/scenario/sample dispositions, and criterion/input/compatibility digests.
+`JudgmentBenchmarkReadPort` reads those records and the existing request manifest
+directly from the admitted status-bearing fact snapshot. It refuses absent, tainted,
+conflicted, or wrong-owner sources and exposes no append, rerun, route-selection, or
+raw-capture operation.
+
+Not implemented: benchmark execution/rerun admission, ask refinement,
 assessment pins, grading, normalized JudgmentHoldCost/cohort/queue metrics, provider
 switching, consumer default selection, live-provider pricing/token ceilings,
 replicated effect durability, runtime activation, full five/eight integration,
