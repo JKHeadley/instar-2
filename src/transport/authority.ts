@@ -1,10 +1,11 @@
 import type { BoundaryContext, Result } from '../index.js';
 import { authorAndAppend } from '../facts/index.js';
 import type { FactStorePort } from '../facts/index.js';
-import type { AdmissionReservation, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord, SettlementAccountingInput,
-  SettlementApplication, SettlementConsumer, TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
+import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord, ScanCursor,
+  SettlementAccountingInput, SettlementApplication, SettlementConsumer, TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import { checkFence, fenceFor, kindFor, latestLease, latestLoop, live, loopActive, observationAdmission, policyCheck, reservations, rows, validateTransition } from './records.js';
+import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, live, loopActive, observationAdmission, policyCheck, reservations, rows,
+  validateScanGeneration, validateTransition } from './records.js';
 import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
   requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication, withSettlementAttempt } from './settlement.js';
 
@@ -14,6 +15,103 @@ export function createTransportSpine(host: TransportHost, author: FactAuthor, st
     principal: json(host.principal), provenance: json(host.principal.provenance), at: json(host.current().clock),
     body: json({ record }), required,
   }, author.context, store, author.privateKey) });
+}
+
+export function createBoundedDueScanPort(host: TransportHost, spine: TransportSpine, c: BoundaryContext): BoundedDueScanPort {
+  let lastTick = -1;
+  const tick = () => {
+    const value = host.monotonic();
+    ensure(Number.isSafeInteger(value) && value >= lastTick && value >= 0, 'monotonic clock regressed');
+    lastTick = value;
+    return value;
+  };
+  const read = (): readonly TransportFact[] => {
+    const snapshot = take(spine.store.readForProjection());
+    ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length), 'tainted or conflicted fact prefix');
+    const all = rows(snapshot.entries.map(entry => entry.fact), host.domain);
+    ensure(all.length <= 4096, 'single-conversation replay bound exhausted');
+    return all;
+  };
+  const reference = (id: string) => freeze({ owner: 'part-six' as const, name: 'ScanCursor' as const, id });
+  return freeze({
+    owner: 'part-six' as const,
+    page: input => boundary('BoundedDueScanPage', input, c, () => {
+      live(host);
+      ensure(input !== null && typeof input === 'object' && Object.keys(input).length === 6
+        && ['scan', 'generation', 'orderedKeys', 'cursor', 'maxItems', 'maxDuration'].every(key => Object.hasOwn(input, key)),
+      'closed scan page input required');
+      ensure(typeof input.scan === 'string' && input.scan.length > 0 && input.scan.length <= 256,
+        'bounded scan identity required');
+      ensure(typeof input.generation === 'string' && input.generation.length > 0 && input.generation.length <= 256,
+        'bounded scan generation required');
+      ensure(Array.isArray(input.orderedKeys) && input.orderedKeys.every(key => typeof key === 'string' && key.length > 0 && key.length <= 256),
+        'bounded ordered keys required');
+      ensure(new Set(input.orderedKeys).size === input.orderedKeys.length, 'ordered keys must be unique');
+      ensure(Number.isSafeInteger(input.maxItems) && input.maxItems >= 0
+        && Number.isSafeInteger(input.maxDuration) && input.maxDuration >= 0, 'finite nonnegative page bounds required');
+      const digest = encoded(input.orderedKeys).hash;
+      const all = read();
+      let previous: (TransportFact & { readonly record: ScanCursor }) | undefined;
+      if (input.cursor !== null) {
+        ensure(input.cursor.owner === 'part-six' && input.cursor.name === 'ScanCursor' && input.cursor.id.length > 0,
+          'scan cursor reference owner');
+        const found = all.find((entry): entry is TransportFact & { readonly record: ScanCursor } =>
+          entry.fact.id === input.cursor!.id && entry.record.type === 'ScanCursor');
+        ensure(found, 'scan cursor absent');
+        ensure(found.record.scan === input.scan, 'scan cursor belongs to another scan');
+        previous = found;
+      }
+      const successor = all.find((entry): entry is TransportFact & { readonly record: ScanCursor } =>
+        entry.record.type === 'ScanCursor' && entry.record.scan === input.scan
+          && entry.record.previous === (previous?.fact.id ?? ''));
+      if (successor) {
+        ensure(latestScanCursor(all, input.scan)?.fact.id === successor.fact.id, 'scan cursor is stale');
+        ensure(successor.record.generation === input.generation && successor.record.orderedKeysDigest === digest
+          && successor.record.keyCount === input.orderedKeys.length && successor.record.maxItems === input.maxItems
+          && successor.record.maxDuration === input.maxDuration, 'scan cursor page changed after admission');
+        const selected = Array.from({ length: successor.record.selectedCount }, (_, offset) =>
+          input.orderedKeys[(successor.record.selectedFrom + offset) % input.orderedKeys.length]!);
+        return freeze({ selected, cursor: reference(successor.fact.id), wrapped: successor.record.wrapped === 1 });
+      }
+      ensure(latestScanCursor(all, input.scan)?.fact.id === previous?.fact.id, 'scan cursor is absent or stale');
+      validateScanGeneration(all, input.scan, input.generation, digest, input.orderedKeys.length);
+
+      const started = tick();
+      const selectedFrom = input.orderedKeys.length === 0 ? 0 : previous?.record.nextIndex ?? 0;
+      const limit = Math.min(input.maxItems, input.orderedKeys.length);
+      let selectedCount = 0;
+      let elapsed = 0;
+      // Clock sampling belongs to this bounded operational page, never to the
+      // deterministic fact-history fold in validateTransition.
+      while (selectedCount < limit && input.maxDuration > 0) {
+        const observed = tick() - started;
+        if (observed >= input.maxDuration) { elapsed = input.maxDuration; break; }
+        elapsed = observed;
+        selectedCount++;
+      }
+      const selected = Array.from({ length: selectedCount }, (_, offset) =>
+        input.orderedKeys[(selectedFrom + offset) % input.orderedKeys.length]!);
+      // This is a per-page marker. Accumulated completion across zero-work
+      // pages is derived from the signed prefix by validateScanGeneration.
+      const wrapped = selectedCount > 0 && selectedFrom + selectedCount >= input.orderedKeys.length;
+      const predecessor = all.at(-1)?.fact.id ?? '';
+      const record = freeze({
+        type: 'ScanCursor', schemaVersion: 1, domain: host.domain,
+        command: `scan:${encoded([input.scan, previous?.fact.id ?? '', input.generation, digest, input.maxItems, input.maxDuration]).hash}`,
+        predecessor, authority: host.authorityIncarnation, tick: started,
+        scan: input.scan, generation: input.generation, orderedKeysDigest: digest,
+        keyCount: input.orderedKeys.length, previous: previous?.fact.id ?? '', selectedFrom, selectedCount,
+        nextIndex: input.orderedKeys.length === 0 ? 0 : (selectedFrom + selectedCount) % input.orderedKeys.length,
+        maxItems: input.maxItems, maxDuration: input.maxDuration, elapsed, wrapped: wrapped ? 1 : 0,
+      } as ScanCursor);
+      validateTransition(record, all, host, true);
+      const receipt = take(spine.append(record, predecessor ? [predecessor] : []));
+      ensure(!receipt.taint.length, 'append was provisional or contested');
+      ensure(receipt.fact.kind === kindFor(record.type)
+        && encoded(receipt.fact.body).bytes === encoded({ record }).bytes, 'append returned different scan cursor');
+      return freeze({ selected, cursor: reference(receipt.fact.id), wrapped });
+    }),
+  });
 }
 
 export function createTransportAuthority<S = never>(host: TransportHost, spine: TransportSpine, c: BoundaryContext, settlementConsumer?: SettlementConsumer<S>): TransportAuthority<S> {
