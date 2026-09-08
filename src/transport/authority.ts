@@ -4,7 +4,8 @@ import type { FactStorePort } from '../facts/index.js';
 import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord, ScanCursor,
   SettlementAccountingInput, SettlementApplication, SettlementConsumer, TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, live, loopActive, observationAdmission, policyCheck, reservations, rows, validateTransition } from './records.js';
+import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, live, loopActive, observationAdmission, policyCheck, reservations, rows,
+  validateScanGeneration, validateTransition } from './records.js';
 import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
   requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication, withSettlementAttempt } from './settlement.js';
 
@@ -73,12 +74,7 @@ export function createBoundedDueScanPort(host: TransportHost, spine: TransportSp
         return freeze({ selected, cursor: reference(successor.fact.id), wrapped: successor.record.wrapped === 1 });
       }
       ensure(latestScanCursor(all, input.scan)?.fact.id === previous?.fact.id, 'scan cursor is absent or stale');
-      if (previous) {
-        ensure(previous.record.generation === input.generation,
-          'scan generation change is unsupported without a key-identity remainder');
-        ensure(previous.record.orderedKeysDigest === digest && previous.record.keyCount === input.orderedKeys.length,
-          'scan generation changed its ordered keys');
-      }
+      validateScanGeneration(all, input.scan, input.generation, digest, input.orderedKeys.length);
 
       const started = tick();
       const selectedFrom = input.orderedKeys.length === 0 ? 0 : previous?.record.nextIndex ?? 0;

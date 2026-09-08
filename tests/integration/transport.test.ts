@@ -25,6 +25,25 @@ it('P6-NF-20 P6-NF-33 durable scan cursor resumes missed ordered work after rest
   expect(value(restarted.api.inspect())).toHaveLength(before);
 });
 
+it('P6-NF-20 P6-NF-33 N2 safe signed generation history reopens and lost-ACK replay is byte-identical', () => {
+  const f = transportFixture(), port = createBoundedDueScanPort(f.host, f.spine, f.c);
+  const request = { scan: 'verification-due', generation: 'g1', orderedKeys: ['a', 'b', 'c', 'd'] as readonly string[],
+    cursor: null, maxItems: 2, maxDuration: 100 };
+  const first = value(port.page(request));
+  const admitted = value(port.page({ ...request, generation: 'g2', cursor: first.cursor }));
+  expect(admitted).toMatchObject({ selected: ['c', 'd'], wrapped: true });
+  const before = readFileSync(join(f.directory, 'facts.json'), 'utf8');
+
+  const reopened = transportFixture(f.directory, 'worker:legacy-reopen', 'authority:legacy-reopen');
+  expect(value(reopened.store.read())).toHaveLength(2);
+  expect(value(reopened.api.inspect()).filter(entry => entry.record.type === 'ScanCursor')).toHaveLength(2);
+  const replayed = value(createBoundedDueScanPort(reopened.host, reopened.spine, reopened.c).page({
+    ...request, generation: 'g2', cursor: first.cursor,
+  }));
+  expect(replayed).toEqual(admitted);
+  expect(readFileSync(join(f.directory, 'facts.json'), 'utf8')).toBe(before);
+});
+
 it('P6-NF-14 P6-NF-15 P6-NF-20 P6-NF-21 durable level wake observes uncertainty without settlement or execution', () => {
   const f = transportFixture(), { token, reservation } = f.prepared();
   value(f.api.claim('claim', token, reservation.operation));

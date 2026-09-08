@@ -68,7 +68,7 @@ it('P6-NF-20 P6-NF-33 C1 restart plus generation churn refuses instead of starvi
   const before = value(f.api.inspect()).filter(row => row.record.type === 'ScanCursor').length;
   for (let i = 1; i < 8; i++) {
     const restarted = transportFixture(f.directory, `worker:${i}`, `authority:${i}`);
-    const orderedKeys = i % 2 ? ['c', 'd', 'e', 'f'] : ['a', 'b', 'c', 'd'];
+    const orderedKeys = i % 2 ? ['c', 'd', 'e', 'f'] : ['b', 'c', 'd', 'e'];
     refused(createBoundedDueScanPort(restarted.host, restarted.spine, restarted.c).page(input({
       generation: `g${i}`, orderedKeys, cursor: first.cursor,
     })), 'generation change is unsupported');
@@ -81,6 +81,46 @@ it('P6-NF-20 P6-NF-33 C1 restart plus generation churn refuses instead of starvi
   expect(value(createBoundedDueScanPort(controlRestart.host, controlRestart.spine, controlRestart.c).page(input({
     orderedKeys: ['a', 'b', 'c', 'd'], cursor: controlFirst.cursor,
   })))).toMatchObject({ selected: ['c', 'd'], wrapped: true });
+});
+
+it('P6-NF-20 P6-NF-33 N1 safe generation transitions preserve a remainder or begin after completed and empty snapshots', () => {
+  const mid = transportFixture();
+  const midFirst = value(createBoundedDueScanPort(mid.host, mid.spine, mid.c).page(input({
+    generation: 'g1', orderedKeys: ['a', 'b', 'c', 'd'],
+  })));
+  const midRestart = transportFixture(mid.directory, 'worker:mid-restart', 'authority:mid-restart');
+  expect(value(createBoundedDueScanPort(midRestart.host, midRestart.spine, midRestart.c).page(input({
+    generation: 'g2', orderedKeys: ['a', 'b', 'c', 'd'], cursor: midFirst.cursor,
+  })))).toMatchObject({ selected: ['c', 'd'], wrapped: true });
+
+  const completed = transportFixture(), completedPort = createBoundedDueScanPort(completed.host, completed.spine, completed.c);
+  const completedFirst = value(completedPort.page(input({ generation: 'g1', orderedKeys: ['a', 'b', 'c', 'd'] })));
+  const completedRound = value(completedPort.page(input({
+    generation: 'g1', orderedKeys: ['a', 'b', 'c', 'd'], cursor: completedFirst.cursor,
+  })));
+  const sameRestart = transportFixture(completed.directory, 'worker:same-restart', 'authority:same-restart');
+  expect(value(createBoundedDueScanPort(sameRestart.host, sameRestart.spine, sameRestart.c).page(input({
+    generation: 'g2', orderedKeys: ['a', 'b', 'c', 'd'], cursor: completedRound.cursor,
+  })))).toMatchObject({ selected: ['a', 'b'], wrapped: false });
+
+  const changed = transportFixture(), changedPort = createBoundedDueScanPort(changed.host, changed.spine, changed.c);
+  const changedFirst = value(changedPort.page(input({ generation: 'g1', orderedKeys: ['a', 'b', 'c', 'd'] })));
+  const changedRound = value(changedPort.page(input({
+    generation: 'g1', orderedKeys: ['a', 'b', 'c', 'd'], cursor: changedFirst.cursor,
+  })));
+  const changedRestart = transportFixture(changed.directory, 'worker:changed-restart', 'authority:changed-restart');
+  expect(value(createBoundedDueScanPort(changedRestart.host, changedRestart.spine, changedRestart.c).page(input({
+    generation: 'g2', orderedKeys: ['e', 'f'], cursor: changedRound.cursor,
+  })))).toMatchObject({ selected: ['e', 'f'], wrapped: true });
+
+  const empty = transportFixture();
+  const emptyFirst = value(createBoundedDueScanPort(empty.host, empty.spine, empty.c).page(input({
+    generation: 'g1', orderedKeys: [],
+  })));
+  const emptyRestart = transportFixture(empty.directory, 'worker:empty-restart', 'authority:empty-restart');
+  expect(value(createBoundedDueScanPort(emptyRestart.host, emptyRestart.spine, emptyRestart.c).page(input({
+    generation: 'g2', orderedKeys: ['a'], cursor: emptyFirst.cursor,
+  })))).toMatchObject({ selected: ['a'], wrapped: true });
 });
 
 it('P6-NF-20 P6-NF-33 C2 durable admission refuses a signed progress reset and preserves valid replay', () => {
@@ -115,6 +155,7 @@ it('P6-NF-20 P6-NF-33 C4 historical transition validation binds a reused generat
   value(port.page(input({ generation: 'g1', orderedKeys: ['a', 'b', 'c', 'd'] })));
   const all = value(f.api.inspect()), first = all.at(-1)!;
   if (first.record.type !== 'ScanCursor') throw new Error('scan cursor missing');
+  const originalDigest = first.record.orderedKeysDigest;
   const g2 = { ...first.record, command: 'scan:legacy-g2', predecessor: first.fact.id, previous: first.fact.id,
     generation: 'g2', orderedKeysDigest: value(canonical(['c', 'd', 'e', 'f'])).hash,
     selectedFrom: 2, selectedCount: 2, nextIndex: 0, wrapped: 1 } as ScanCursor;
@@ -124,6 +165,8 @@ it('P6-NF-20 P6-NF-33 C4 historical transition validation binds a reused generat
     generation: 'g1', orderedKeysDigest: value(canonical(['a', 'c', 'b', 'd'])).hash,
     selectedFrom: 0, selectedCount: 2, nextIndex: 2, wrapped: 0 } as ScanCursor;
   expect(() => validateTransition(reused, legacyHistory, f.host)).toThrow('original ordered keys');
+  expect(() => validateTransition({ ...reused, command: 'scan:reused-g1-original',
+    orderedKeysDigest: originalDigest } as ScanCursor, legacyHistory, f.host)).toThrow('supersession');
   refused(port.page(input({ generation: 'g2', orderedKeys: ['c', 'd', 'e', 'f'],
     cursor: { owner: 'part-six', name: 'ScanCursor', id: first.fact.id } })), 'generation change is unsupported');
 });

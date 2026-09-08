@@ -89,6 +89,21 @@ export function reservations(all: readonly TransportFact[]): AdmissionReservatio
 export function latestScanCursor(all: readonly TransportFact[], scan: string): (TransportFact & { readonly record: ScanCursor }) | undefined {
   return all.filter((v): v is TransportFact & { readonly record: ScanCursor } => v.record.type === 'ScanCursor' && v.record.scan === scan).at(-1);
 }
+export function validateScanGeneration(all: readonly TransportFact[], scan: string, generation: string,
+  orderedKeysDigest: string, keyCount: number): void {
+  const prior = latestScanCursor(all, scan);
+  const original = all.find((v): v is TransportFact & { readonly record: ScanCursor } =>
+    v.record.type === 'ScanCursor' && v.record.scan === scan && v.record.generation === generation);
+  if (original) ensure(original.record.orderedKeysDigest === orderedKeysDigest && original.record.keyCount === keyCount,
+    'scan generation changed its original ordered keys');
+  if (!prior || prior.record.generation === generation) return;
+  ensure(!original, 'scan generation cannot resume after supersession');
+  const sameKeys = prior.record.orderedKeysDigest === orderedKeysDigest && prior.record.keyCount === keyCount;
+  const completedOrEmpty = prior.record.keyCount === 0
+    || prior.record.wrapped === 1 && prior.record.nextIndex === 0;
+  ensure(sameKeys || completedOrEmpty,
+    'scan generation change is unsupported while key remainder is unfinished');
+}
 export function fenceFor(all: readonly TransportFact[], lease: Lease): FenceToken {
   const assignment = all.find(v => v.record.type === 'Lease' && v.record.epoch === lease.epoch);
   ensure(assignment, 'missing committed assignment');
@@ -163,12 +178,7 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       : r.selectedFrom < r.keyCount && r.nextIndex === (r.selectedFrom + r.selectedCount) % r.keyCount
         && r.wrapped === (r.selectedCount > 0 && r.selectedFrom + r.selectedCount >= r.keyCount ? 1 : 0),
     'scan cursor progression changed');
-    const generation = all.find((v): v is TransportFact & { readonly record: ScanCursor } =>
-      v.record.type === 'ScanCursor' && v.record.scan === r.scan && v.record.generation === r.generation);
-    if (generation) ensure(generation.record.orderedKeysDigest === r.orderedKeysDigest && generation.record.keyCount === r.keyCount,
-      'scan generation changed its original ordered keys');
-    if (prior) ensure(prior.record.generation === r.generation,
-      'scan generation change is unsupported without a key-identity remainder');
+    validateScanGeneration(all, r.scan, r.generation, r.orderedKeysDigest, r.keyCount);
   } else {
     const lease = active();
     if (r.type === 'AdmissionReservation') {
