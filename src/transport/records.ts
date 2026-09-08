@@ -2,7 +2,7 @@ import { decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../inde
 import type { BoundaryContext, Json, Result } from '../index.js';
 import { causalCone, registerOwnedBody } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
-import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, SettlementConsumer, TransportFact, TransportHost, TransportRecord } from './contracts.js';
+import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, ScanCursor, SettlementConsumer, TransportFact, TransportHost, TransportRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { admissionAccounting, bindSettlementConsumer, checkApplicationEvidence, latestApplication, noteAccountingCandidate, requireApplication } from './settlement.js';
 
@@ -18,10 +18,13 @@ export const transportShapes: Readonly<Record<string, OwnedShape>> = freeze({
   AdmissionReservation: { kind: 'object', fields: { ...row, operation: txt, request: txt, attempt: txt, digest: txt, run: txt, semanticMessage: txt, deliveryAttempt: txt, fence, charge: int, state: txt, executor: txt, durability: txt, replicas: int } },
   LoopRecord: { kind: 'object', fields: { ...row, run: txt, episode: txt, policy, attempts: int, started: int, nextWake: int, state: txt, pending: txt } },
   RecoveryRecord: { kind: 'object', fields: { ...row, operation: txt, episode: txt, observation: txt, disposition: txt } },
+  ScanCursor: { kind: 'object', fields: { ...row, scan: txt, generation: txt, orderedKeysDigest: txt,
+    keyCount: int, previous: txt, selectedFrom: int, selectedCount: int, nextIndex: int,
+    maxItems: int, maxDuration: int, elapsed: int, wrapped: int } },
   SettlementApplication: { kind: 'object', fields: { ...row, operation: txt, request: txt, reservation: txt, claim: txt, digest: txt,
     settlement: txt, settlementFact: txt, settlementHash: txt, actualCharge: int, exposure: int, released: int, unresolved: int, capViolation: int, retryEligible: int } },
 });
-const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'SettlementApplication'];
+const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'ScanCursor', 'SettlementApplication'];
 export const kindFor = (name: string) => `transport-${name}`;
 export function transportSchemas(host: TransportHost): readonly FactSchema[] {
   return recordNames.map(name => ({ kind: kindFor(name), version: 1,
@@ -83,6 +86,40 @@ export function reservations(all: readonly TransportFact[]): AdmissionReservatio
   for (const { record: r } of all) if (r.type === 'AdmissionReservation') ops.set(r.operation, r);
   return [...ops.values()];
 }
+export function latestScanCursor(all: readonly TransportFact[], scan: string): (TransportFact & { readonly record: ScanCursor }) | undefined {
+  return all.filter((v): v is TransportFact & { readonly record: ScanCursor } => v.record.type === 'ScanCursor' && v.record.scan === scan).at(-1);
+}
+function completedScanRound(all: readonly TransportFact[], scan: string): boolean {
+  let orderedKeysDigest: string | undefined;
+  let keyCount: number | undefined;
+  let completed = false;
+  for (const { record } of all) {
+    if (record.type !== 'ScanCursor' || record.scan !== scan) continue;
+    if (record.orderedKeysDigest !== orderedKeysDigest || record.keyCount !== keyCount) {
+      orderedKeysDigest = record.orderedKeysDigest;
+      keyCount = record.keyCount;
+      completed = record.keyCount === 0;
+    }
+    // A zero-work page does not undo a completed round for the same key
+    // identity. Positive work either completes at zero or starts/leaves a new
+    // unfinished round, so its durable cursor replaces the accumulated state.
+    if (record.selectedCount > 0) completed = record.wrapped === 1 && record.nextIndex === 0;
+  }
+  return completed;
+}
+export function validateScanGeneration(all: readonly TransportFact[], scan: string, generation: string,
+  orderedKeysDigest: string, keyCount: number): void {
+  const prior = latestScanCursor(all, scan);
+  const original = all.find((v): v is TransportFact & { readonly record: ScanCursor } =>
+    v.record.type === 'ScanCursor' && v.record.scan === scan && v.record.generation === generation);
+  if (original) ensure(original.record.orderedKeysDigest === orderedKeysDigest && original.record.keyCount === keyCount,
+    'scan generation changed its original ordered keys');
+  if (!prior || prior.record.generation === generation) return;
+  ensure(!original, 'scan generation cannot resume after supersession');
+  const sameKeys = prior.record.orderedKeysDigest === orderedKeysDigest && prior.record.keyCount === keyCount;
+  ensure(sameKeys || completedScanRound(all, scan),
+    'scan generation change is unsupported while key remainder is unfinished');
+}
 export function fenceFor(all: readonly TransportFact[], lease: Lease): FenceToken {
   const assignment = all.find(v => v.record.type === 'Lease' && v.record.epoch === lease.epoch);
   ensure(assignment, 'missing committed assignment');
@@ -142,6 +179,22 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       ensure(r.holder === p.holder && r.machine === p.machine && r.incarnation === p.incarnation && r.generation === p.generation, 'renew/release changed owner');
     }
     ensure(r.expires > r.tick && r.expires - r.tick <= host.maxLeaseTerm, 'lease term outside finite bound');
+  } else if (r.type === 'ScanCursor') {
+    ensure(r.scan.length > 0 && r.generation.length > 0 && /^sha256:[a-f0-9]{64}$/.test(r.orderedKeysDigest), 'scan cursor identity');
+    ensure(r.keyCount >= 0 && r.selectedFrom >= 0 && r.selectedCount >= 0 && r.nextIndex >= 0
+      && r.maxItems >= 0 && r.maxDuration >= 0 && r.elapsed >= 0, 'scan cursor bounds');
+    ensure(r.selectedCount <= r.maxItems && r.selectedCount <= r.keyCount && r.elapsed <= r.maxDuration,
+      'scan cursor exceeded page bound');
+    ensure(r.maxDuration !== 0 || r.selectedCount === 0, 'zero-duration scan cannot select work');
+    ensure(r.wrapped === 0 || r.wrapped === 1, 'scan cursor wrap marker');
+    const prior = latestScanCursor(all, r.scan);
+    ensure(r.previous === (prior?.fact.id ?? ''), 'scan cursor is absent or stale');
+    ensure(r.selectedFrom === (prior?.record.nextIndex ?? 0), 'scan cursor progress reset or skipped');
+    ensure(r.keyCount === 0 ? r.selectedFrom === 0 && r.nextIndex === 0 && r.selectedCount === 0 && r.wrapped === 0
+      : r.selectedFrom < r.keyCount && r.nextIndex === (r.selectedFrom + r.selectedCount) % r.keyCount
+        && r.wrapped === (r.selectedCount > 0 && r.selectedFrom + r.selectedCount >= r.keyCount ? 1 : 0),
+    'scan cursor progression changed');
+    validateScanGeneration(all, r.scan, r.generation, r.orderedKeysDigest, r.keyCount);
   } else {
     const lease = active();
     if (r.type === 'AdmissionReservation') {
@@ -268,12 +321,14 @@ export function registerTransportBodies<S = never>(host: TransportHost, c: Bound
             ensure(v.authority === host.authorityIncarnation && v.tick <= now
               && !past.some(p => p.record.authority === v.authority && p.record.tick > v.tick), 'untrusted authority clock or incarnation');
             ensure(v.predecessor === (rows(ctx.facts.facts, host.domain).at(-1)?.fact.id ?? ''), 'stale origin predecessor');
-            const lease = latestLease(past)?.record;
-            if (v.type !== 'Lease' || v.epoch === lease?.epoch) {
-              ensure(lease?.incarnation === host.incarnation && lease.authority === host.authorityIncarnation && lease.expires > now
-                && lease.generation === host.current().generation.id, 'stale owner at durable boundary');
-            } else ensure(v.incarnation === host.incarnation && v.expires > now
-              && v.generation === host.current().generation.id, 'acquisition incarnation or expiration');
+            if (v.type !== 'ScanCursor') {
+              const lease = latestLease(past)?.record;
+              if (v.type !== 'Lease' || v.epoch === lease?.epoch) {
+                ensure(lease?.incarnation === host.incarnation && lease.authority === host.authorityIncarnation && lease.expires > now
+                  && lease.generation === host.current().generation.id, 'stale owner at durable boundary');
+              } else ensure(v.incarnation === host.incarnation && v.expires > now
+                && v.generation === host.current().generation.id, 'acquisition incarnation or expiration');
+            }
           }
         }
         return { ok: true, value: freeze(input) };

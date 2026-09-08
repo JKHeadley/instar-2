@@ -47,6 +47,13 @@ export interface RecoveryRecord extends Row, Owned {
   readonly type: 'RecoveryRecord'; readonly operation: string; readonly episode: string;
   readonly observation: string; readonly disposition: 'waiting' | 'stopped-at-bound';
 }
+export interface ScanCursor extends Row, Owned {
+  readonly type: 'ScanCursor'; readonly scan: string; readonly generation: string;
+  readonly orderedKeysDigest: string; readonly keyCount: number;
+  readonly previous: string; readonly selectedFrom: number; readonly selectedCount: number;
+  readonly nextIndex: number; readonly maxItems: number; readonly maxDuration: number;
+  readonly elapsed: number; readonly wrapped: 0 | 1;
+}
 // Six's accounting receipt, NOT an effect verdict or an eight-owned settlement.
 export interface SettlementApplication extends Row, Owned {
   readonly type: 'SettlementApplication'; readonly operation: string; readonly request: string;
@@ -70,7 +77,7 @@ export interface SettlementAccountingInput {
 }
 export type SettlementConsumer<S> = <T>(value: S, boundary: BoundaryContext,
   consumer: (value: SettlementAccountingInput) => T) => Result<T>;
-export type TransportRecord = Lease | AdmissionReservation | LoopRecord | RecoveryRecord | SettlementApplication;
+export type TransportRecord = Lease | AdmissionReservation | LoopRecord | RecoveryRecord | ScanCursor | SettlementApplication;
 export interface TransportFact { readonly fact: FactEnvelope; readonly record: TransportRecord }
 
 // Trusted host seams. P10 supplies the monotonic clock and fresh process identity.
@@ -112,6 +119,21 @@ export interface ObservationPort {
   readonly owner: 'part-eight';
   // No invoke, settle, resend, or create-if-missing capability in the recovery port.
   observe(operation: string): Result<OwnedReference<'part-eight', 'OperationObservation'>>;
+}
+export interface BoundedDueScanPort {
+  readonly owner: 'part-six';
+  page(input: Readonly<{
+    scan: string;
+    generation: string;
+    orderedKeys: readonly string[];
+    cursor: OwnedReference<'part-six', 'ScanCursor'> | null;
+    maxItems: number;
+    maxDuration: number;
+  }>): Result<Readonly<{
+    selected: readonly string[];
+    cursor: OwnedReference<'part-six', 'ScanCursor'>;
+    wrapped: boolean;
+  }>>;
 }
 export interface TransportAuthority<S = never> {
   inspect(): Result<readonly TransportFact[]>;

@@ -15,6 +15,9 @@ Composition order:
    author/append path; `createTransportAuthority` reads P2 status-bearing snapshots.
 3. Acquire the exact predecessor, schedule the run's durable loop, then let eight
    reserve its request/attempt/digest/maximum charge under that fence.
+   For generic due selection, construct `createBoundedDueScanPort(host, spine,
+   boundary)`: it admits only its own `ScanCursor` progress and never schedules
+   or mutates a due holder.
 4. Eight gets a one-use claim and calls `consume(claim, fence)` immediately before
    its executor. Only Success permits that invocation. The handle is never a JSON
    token, and is burned before its durable consumption acknowledgement.
@@ -108,7 +111,10 @@ Bounds and honesty:
   voter loss. No quorum, membership changes, independent repair domain, fairness
   across domains, or full Threadline adapter. Breaker is an explicit closed stub.
 - Rebuild is bounded to 4096 domain records; P2 verifies the signed prefix. This
-  slice does not claim incremental fleet-scale loop scanning or bounded P2 replay.
+  slice does not claim bounded P2 replay. Its bounded due-scan port persists the
+  exact scan/generation/key digest and next position, resumes missed selection
+  after restart, and refuses missing or stale cursor references. It supplies
+  selection only; the work owner derives due state and the fenced loop APIs schedule it.
 - Clock regression and stale ownership fail at admission without a loss notice.
   Signed principal/machine policy is checked on origin, replication and historical
   replay, including transport predecessors. Legitimate old incarnations remain readable.
