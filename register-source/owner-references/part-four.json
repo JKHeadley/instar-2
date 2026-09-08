@@ -72,7 +72,7 @@
       "id": "decode:Provenance",
       "module": {
         "path": "src/index.ts",
-        "hash": "sha256:b1f34651042eaefd5b916fb29dd127bbdd5e3aac9798f988e5e825d7c085d7a5"
+        "hash": "sha256:80c9ab76c37b253a3b56623688d3fded95cc749339dc1869c1f44c7abcc57bec"
       },
       "artifact": {
         "path": "src/decode/decode.ts",
@@ -83,7 +83,7 @@
       "id": "decode:VerifiedPrincipal",
       "module": {
         "path": "src/index.ts",
-        "hash": "sha256:b1f34651042eaefd5b916fb29dd127bbdd5e3aac9798f988e5e825d7c085d7a5"
+        "hash": "sha256:80c9ab76c37b253a3b56623688d3fded95cc749339dc1869c1f44c7abcc57bec"
       },
       "artifact": {
         "path": "src/decode/decode.ts",

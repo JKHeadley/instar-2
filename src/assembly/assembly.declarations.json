@@ -1,0 +1,12 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "assembly.contract", "kind": "governed documents", "status": "dark",
+    "requiredFacts": { "location": "docs/14-the-assembly.md", "changelog": "git-history:docs/14-the-assembly.md" },
+    "standards": [], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "assembly.source", "kind": "protected artifacts", "status": "dark",
+    "requiredFacts": { "pattern": "src/assembly/**", "why": "Assembly, custody, package and growth consumers must resolve signed history and cannot be weakened by configured status fields.", "surface": "repository review approval" },
+    "standards": [82], "holds": []
+  }
+]
