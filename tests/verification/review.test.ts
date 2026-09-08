@@ -3,7 +3,7 @@ import { decode } from '../../src/index.js';
 import { authorAndAppend } from '../../src/facts/index.js';
 import type { FactSchema } from '../../src/facts/index.js';
 import { affectedGrades, benchmarkAccounting, feedbackCoverage, gradeSupport, reviewAccounting,
-  semanticCoverage, waiverReview, decodeVerificationRecord } from '../../src/verification/index.js';
+  semanticCoverage, waiverReview, decodeFeedbackDisposition, decodeVerificationRecord } from '../../src/verification/index.js';
 import type { VerificationRecord, VerificationRecordName } from '../../src/verification/index.js';
 import { factsFixture, privateKey, value } from '../facts/fixtures.js';
 import { verificationInput } from './fixture.js';
@@ -79,6 +79,28 @@ it('N3 semantic adequacy withdraws when the signed review holder itself becomes 
   const edge = [{ edge: review.edge, generation: review.generation, firstSeen: 0 }];
   expect(semanticCoverage(edge, [review], { snapshot: value(runtime.store.readForProjection()) })[0]!.reviewed).toBe(true);
   Object.assign(runtime.context.captures[runtime.e.capture.reference]!, { bytes: null, status: 'missing' });
+  expect(semanticCoverage(edge, [review], { snapshot: value(runtime.store.readForProjection()) })[0])
+    .toMatchObject({ reviewed: false, verdict: 'partial' });
+});
+
+it('M2 semantic adequacy withdraws when an explicitly referenced foundation is disputed', () => {
+  const runtime = verificationRuntimeFixture();
+  (runtime.context.schemas as FactSchema[]).push(
+    { ...runtime.schema, kind: 'check-run-record', fields: { id: { kind: 'text', maxLength: 2048 } } },
+  );
+  const run = value(authorAndAppend({ kind: 'check-run-record', schemaVersion: 1, machine: 'machine-a',
+    principal: JSON.parse(JSON.stringify(runtime.alice)), provenance: JSON.parse(JSON.stringify(runtime.alice.provenance)),
+    at: JSON.parse(JSON.stringify(runtime.clock(100))), body: { id: 'check-run:resolved' }, required: [] },
+  runtime.context, runtime.store, privateKey)).fact;
+  const feedback = verificationInput('FeedbackDisposition');
+  const source = value(runtime.spine.append(value(decodeFeedbackDisposition(feedback, runtime.c)))).fact;
+  const review = decoded('SemanticReviewRecord', { ...verificationInput('SemanticReviewRecord'),
+    checkRuns: [run.id], evidencePopulation: [source.id], layerBelow: [source.id] });
+  value(runtime.runtime.record('SemanticReviewRecord', review));
+  const edge = [{ edge: review.edge, generation: review.generation, firstSeen: 0 }];
+  expect(semanticCoverage(edge, [review], { snapshot: value(runtime.store.readForProjection()) })[0])
+    .toMatchObject({ reviewed: true, verdict: 'adequate' });
+  value(runtime.spine.append(value(decodeFeedbackDisposition({ ...feedback, reason: 'explicit foundation disagreement' }, runtime.c))));
   expect(semanticCoverage(edge, [review], { snapshot: value(runtime.store.readForProjection()) })[0])
     .toMatchObject({ reviewed: false, verdict: 'partial' });
 });

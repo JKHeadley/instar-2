@@ -73,11 +73,16 @@ export interface SemanticCoverageHistory { readonly snapshot: FactSnapshot }
 interface HistoricalSemanticReview {
   readonly record: SemanticReviewRecord; readonly taint: readonly string[]; readonly conflicts: readonly unknown[];
 }
+interface HistoricalVerificationRecord {
+  readonly record: VerificationRecord; readonly aliases: readonly string[];
+  readonly conflicts: readonly unknown[];
+}
 function cleanHistoricalReferences(history: SemanticCoverageHistory | undefined): Readonly<{
   all: ReadonlySet<string>; checkRuns: ReadonlySet<string>; semanticReviews: readonly HistoricalSemanticReview[];
 }> {
   const ids = new Set<string>(), checkRuns = new Set<string>();
   const semanticReviews: HistoricalSemanticReview[] = [];
+  const verificationRecords: HistoricalVerificationRecord[] = [];
   if (!history || !snapshotCurrent(history.snapshot)) return { all: ids, checkRuns, semanticReviews };
   for (const entry of history.snapshot.entries) {
     const body = entry.body && typeof entry.body === 'object' && !Array.isArray(entry.body)
@@ -87,6 +92,16 @@ function cleanHistoricalReferences(history: SemanticCoverageHistory | undefined)
     if (entry.fact.kind === 'verification-SemanticReviewRecord' && nested?.type === 'SemanticReviewRecord') {
       semanticReviews.push({ record: nested as unknown as SemanticReviewRecord, taint: entry.taint, conflicts: entry.conflicts });
     }
+    const aliases = [entry.fact.id];
+    if (typeof body?.id === 'string') {
+      aliases.push(body.id);
+    }
+    if (typeof nested?.id === 'string') {
+      aliases.push(nested.id);
+    }
+    if (entry.fact.kind.startsWith('verification-') && typeof nested?.type === 'string') {
+      verificationRecords.push({ record: nested as unknown as VerificationRecord, aliases, conflicts: entry.conflicts });
+    }
     if (entry.taint.length || entry.conflicts.length) continue;
     ids.add(entry.fact.id); if (entry.fact.kind === 'check-run-record') checkRuns.add(entry.fact.id);
     if (typeof body?.id === 'string') {
@@ -94,6 +109,13 @@ function cleanHistoricalReferences(history: SemanticCoverageHistory | undefined)
     }
     if (typeof nested?.id === 'string') {
       ids.add(nested.id); if (entry.fact.kind === 'check-run-record') checkRuns.add(nested.id);
+    }
+  }
+  for (const row of verificationRecords) {
+    const related = verificationRecords.filter(other => verificationRecordsShareIdentity(row.record, other.record));
+    if (mergeVerificationRecords(related.map(other => other.record)).conflicts.length > 0
+      || related.some(other => other.conflicts.length > 0)) {
+      related.flatMap(other => other.aliases).forEach(id => ids.delete(id));
     }
   }
   return { all: ids, checkRuns, semanticReviews };

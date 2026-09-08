@@ -48,7 +48,7 @@ export function createVerificationRuntime(host: VerificationHost, spine: Verific
         const current = host.current(); const rows = take(inspectCurrent());
         const direct = rows.filter(row => row.record.type === 'VerificationPlan' && row.record.id === planId
           || row.record.type === 'ProbeRecord' && row.record.plan === planId);
-        const scoped = verificationIdentityClosure(rows, direct);
+        const scoped = verificationIdentityClosure(rows, direct, { followPredecessors: true });
         const merged = mergeVerificationRecords(scoped.map(row => row.record));
         ensure(merged.conflicts.length === 0, merged.conflicts[0]?.detail ?? 'verification history conflict');
         ensure(scoped.every(row => row.conflicts.length === 0), 'verification projection contains immutable disagreement');

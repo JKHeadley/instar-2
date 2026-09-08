@@ -113,6 +113,17 @@ it('N5 unrelated feedback disagreement is surfaced independently without blockin
   expect(value(f.runtime.posture(plan.id, f.clock(21))).posture).toBe('healthy');
 });
 
+it('M1 a declared predecessor disagreement prevents a dependent probe from establishing healthy posture', () => {
+  const f = verificationRuntimeFixture(); const plan = verificationInput('VerificationPlan');
+  value(f.runtime.record('VerificationPlan', plan));
+  const feedback = verificationInput('FeedbackDisposition');
+  const source = value(f.spine.append(value(decodeFeedbackDisposition(feedback, f.c)))).fact;
+  value(f.runtime.record('ProbeRecord', { ...verificationInput('ProbeRecord'), predecessors: [source.id] }));
+  expect(value(f.runtime.posture(plan.id, f.clock(21))).posture).toBe('healthy');
+  value(f.spine.append(value(decodeFeedbackDisposition({ ...feedback, reason: 'declared predecessor disagreement' }, f.c))));
+  refused(f.runtime.posture(plan.id, f.clock(21)), 'concurrent FeedbackDisposition');
+});
+
 it('P9-NF-17 P9-NF-18 a passing probe needs a real witness and complete phases', () => {
   const f = verificationRuntimeFixture();
   const probe = verificationInput('ProbeRecord');

@@ -36,8 +36,10 @@ export function verificationRecordsShareIdentity(left: VerificationRecord, right
     && (left.id === right.id || verificationLogicalKey(left) === verificationLogicalKey(right));
 }
 
-export function verificationIdentityClosure<T extends Readonly<{ record: VerificationRecord }>>(
-  rows: readonly T[], seeds: readonly T[],
+export function verificationIdentityClosure<T extends Readonly<{
+  record: VerificationRecord; fact?: Readonly<{ id: string }>;
+}>>(
+  rows: readonly T[], seeds: readonly T[], options: Readonly<{ followPredecessors?: boolean }> = {},
 ): readonly T[] {
   const selected = new Set(seeds);
   let changed = true;
@@ -45,7 +47,8 @@ export function verificationIdentityClosure<T extends Readonly<{ record: Verific
     changed = false;
     for (const row of rows) {
       if (selected.has(row)) continue;
-      if ([...selected].some(prior => verificationRecordsShareIdentity(prior.record, row.record))) {
+      if ([...selected].some(prior => verificationRecordsShareIdentity(prior.record, row.record)
+        || options.followPredecessors === true && prior.record.predecessors.includes(row.fact?.id ?? row.record.id))) {
         selected.add(row); changed = true;
       }
     }
