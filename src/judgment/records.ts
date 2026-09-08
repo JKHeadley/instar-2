@@ -341,35 +341,44 @@ function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRun
     ensure(r.scenarios.some(s => s.scenario.id === e.scenario.id), 'execution scenario was not predeclared');
     if (e.disposition === 'completed') {
       ensure(e.attempt && e.resolution && e.detail === undefined, 'completed execution requires attempt/resolution only');
-      owned(e.attempt, 'part-seven', 'JudgmentAttemptRecord'); owned(e.resolution, 'part-seven', 'JudgmentResolution');
-      const attempt = all.find((v): v is JudgmentFact & { record: JudgmentAttemptRecord } =>
-        v.fact.id === e.attempt!.id && v.record.type === 'JudgmentAttemptRecord');
-      const resolution = all.find((v): v is JudgmentFact & { record: import('./contracts.js').JudgmentResolution } =>
-        v.fact.id === e.resolution!.id && v.record.type === 'JudgmentResolution');
-      const request = attempt && all.find((v): v is JudgmentFact & { record: JudgmentRequest } =>
-        v.record.id === attempt.record.request && v.record.type === 'JudgmentRequest');
+      ensure(e.usage.length > 0, 'completed execution requires an observed usage reference');
+    } else ensure(e.detail && e.detail.length > 0, 'non-completed execution requires explicit detail');
+
+    if (e.attempt) owned(e.attempt, 'part-seven', 'JudgmentAttemptRecord');
+    if (e.resolution) owned(e.resolution, 'part-seven', 'JudgmentResolution');
+    const attempt = e.attempt && all.find((v): v is JudgmentFact & { record: JudgmentAttemptRecord } =>
+      v.fact.id === e.attempt!.id && v.record.type === 'JudgmentAttemptRecord');
+    const resolution = e.resolution && all.find((v): v is JudgmentFact & { record: import('./contracts.js').JudgmentResolution } =>
+      v.fact.id === e.resolution!.id && v.record.type === 'JudgmentResolution');
+    if (e.attempt) ensure(attempt?.record.phase === 'response-observed',
+      `${e.disposition === 'completed' ? 'completed' : 'non-completed'} execution attempt absent or not a response`);
+    if (e.resolution) ensure(resolution,
+      `${e.disposition === 'completed' ? 'completed' : 'non-completed'} execution resolution absent`);
+
+    const hasObservation = e.attempt !== undefined || e.resolution !== undefined || e.usage.length > 0;
+    if (hasObservation) {
       const scenario = all.find((v): v is JudgmentFact & { record: BenchmarkScenario } =>
         v.fact.id === e.scenario.id && v.record.type === 'BenchmarkScenario');
       const source = scenario && all.find((v): v is JudgmentFact & { record: BenchmarkRecord } =>
         v.fact.id === scenario.record.source.id && v.record.type === 'BenchmarkRecord');
-      ensure(attempt?.record.phase === 'response-observed', 'completed execution attempt absent or not a response');
-      ensure(resolution && request, 'completed execution resolution/request absent');
-      ensure(resolution.record.request === request.record.id && resolution.record.response === attempt.fact.id,
-        'completed execution attempt/resolution unrelated');
-      ensure(scenario && source?.record.request.id === request.fact.id, 'completed execution scenario/request unrelated');
-      ensure(request.record.route === e.candidate && request.record.run === r.run.id,
-        'completed execution candidate/run unrelated');
-      ensure(scenario.record.replayInput.hash === request.record.submitted.hash,
-        'completed execution input differs from the observed request');
-      ensure(r.inputDigest === scenario.record.transformedInputHash,
-        'completed execution input digest differs from the scenario replay');
-      ensure(r.compatibilityDigest === source.record.compatibilityDigest,
-        'completed execution compatibility digest differs from the source manifest');
+      const request = source && all.find((v): v is JudgmentFact & { record: JudgmentRequest } =>
+        v.fact.id === source.record.request.id && v.record.type === 'JudgmentRequest');
+      ensure(scenario && source && request, 'execution scenario/request absent');
+      if (e.disposition === 'completed') ensure(resolution, 'completed execution resolution/request absent');
+      if (attempt) ensure(attempt.record.request === request.record.id, 'execution attempt/request unrelated');
+      if (resolution) ensure(resolution.record.request === request.record.id, 'execution resolution/request unrelated');
+      if (attempt && resolution) ensure(resolution.record.response === attempt.fact.id, 'execution attempt/resolution unrelated');
+      ensure(request.record.route === e.candidate && request.record.run === r.run.id, 'execution candidate/run unrelated');
+      ensure(scenario.record.replayInput.hash === request.record.submitted.hash, 'execution input differs from the observed request');
+      ensure(r.inputDigest === scenario.record.transformedInputHash, 'execution input digest differs from the scenario replay');
+      ensure(r.compatibilityDigest === source.record.compatibilityDigest, 'execution compatibility digest differs from the source manifest');
+      e.usage.forEach(id => executionObservation(id, request.record.id, all, ctx, host));
+    }
+    if (e.disposition === 'completed') {
+      ensure(attempt && resolution, 'completed execution resolution/request absent');
       ensure(!completedWitnesses.has(attempt.fact.id), 'completed benchmark samples reused one execution witness');
       completedWitnesses.add(attempt.fact.id);
-      ensure(e.usage.length > 0, 'completed execution requires an observed usage reference');
-      e.usage.forEach(id => executionObservation(id, request.record.id, all, ctx, host));
-    } else ensure(e.detail && e.detail.length > 0, 'non-completed execution requires explicit detail');
+    }
   }
 }
 export function createJudgmentSpine(host: JudgmentHost, author: JudgmentAuthor, store: FactStorePort): JudgmentSpine {

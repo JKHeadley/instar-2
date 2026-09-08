@@ -179,4 +179,48 @@ describe('P7 benchmark adversarial admission repairs', { timeout: 30_000 }, () =
       'not a response observation');
     expect(value(c.f.spine.append(run)).fact.id).toBeTruthy();
   });
+
+  it('P7-NF-48 N4 validates usage and optional references for every non-completed disposition', async () => {
+    const c = await benchmarkCase(), prepared = c.attempts.find(row => row.record.phase === 'prepared')!;
+    const recordFact = appendRecord(c);
+    const { scenario, fact: scenarioFact } = appendScenario(c, recordFact.id, identityScenario(c));
+    const run = validRun(c, scenario, scenarioFact.id, scenarioFact.id);
+    const nonCompleted = { ...run.executions[0], disposition: 'refused' as const,
+      detail: 'provider refused request; usage recorded' };
+
+    for (const disposition of ['missing', 'refused', 'cancelled'] as const) {
+      refused(c.f.spine.append({ ...run, id: `run:${disposition}:prepared-usage`, executions: [{
+        scenario: reference('BenchmarkScenario', scenarioFact.id), candidate: c.f.host.description.route,
+        ordinal: 0, disposition, detail: 'explicit non-completion', usage: [prepared.fact.id],
+      }] } as unknown as BenchmarkRunRecord), 'not a response observation');
+    }
+    refused(c.f.spine.append({ ...run, id: 'run:refused:missing-usage', executions: [{
+      ...nonCompleted, usage: ['never-recorded-usage'],
+    }] } as unknown as BenchmarkRunRecord), 'not a response observation');
+    refused(c.f.spine.append({ ...run, id: 'run:refused:missing-attempt', executions: [{
+      ...nonCompleted, attempt: reference('JudgmentAttemptRecord', 'never-recorded-attempt'),
+    }] } as unknown as BenchmarkRunRecord), 'attempt absent');
+    refused(c.f.spine.append({ ...run, id: 'run:refused:missing-resolution', executions: [{
+      ...nonCompleted, resolution: reference('JudgmentResolution', 'never-recorded-resolution'),
+    }] } as unknown as BenchmarkRunRecord), 'resolution absent');
+    refused(c.f.spine.append({ ...run, id: 'run:refused:wrong-owner-attempt', executions: [{
+      ...nonCompleted, attempt: reference('JudgmentAttemptRecord', c.response.fact.id, 'part-nine'),
+    }] } as unknown as BenchmarkRunRecord), 'owner/reference mismatch');
+    refused(c.f.spine.append({ ...run, id: 'run:refused:wrong-owner-resolution', executions: [{
+      ...nonCompleted, resolution: reference('JudgmentResolution', c.resolution.fact.id, 'part-nine'),
+    }] } as unknown as BenchmarkRunRecord), 'owner/reference mismatch');
+
+    const observedFact = value(c.f.spine.append({ ...run, id: 'run:refused:observed', executions: [nonCompleted] } as unknown as BenchmarkRunRecord)).fact;
+    const port = createJudgmentBenchmarkReadPort(c.f.spine, c.f.c);
+    value(port.readRun(reference('BenchmarkRunRecord', observedFact.id)));
+    let predecessor = observedFact.id;
+    for (const disposition of ['missing', 'refused', 'cancelled'] as const) {
+      const fact = value(c.f.spine.append({ ...run, id: `run:${disposition}:empty`, predecessor, executions: [{
+        scenario: reference('BenchmarkScenario', scenarioFact.id), candidate: c.f.host.description.route,
+        ordinal: 0, disposition, detail: 'not executed', usage: [],
+      }] } as unknown as BenchmarkRunRecord)).fact;
+      value(port.readRun(reference('BenchmarkRunRecord', fact.id)));
+      predecessor = fact.id;
+    }
+  });
 });
