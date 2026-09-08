@@ -127,3 +127,26 @@ it('repair2 F31 prevents closure when StoreCustodyPolicy substitutes for a Measu
   const observation = appendForConsumer(f, 'GrowthObservation', { measurements: [wrong.fact.id] });
   refused(closeGrowthEpisode(episode, observation.record, f.c), 'Measurement');
 });
+
+it('repair3 G12 admits a valid Part Nine ProbeRecord referenced by its canonical fact ID', () => {
+  const f = assemblyRuntimeFixture(undefined, { verifiedProbes: true }); const probe = value(f.c.history!.lookup('probe:1'))!;
+  expect(probe.fact.kind).toBe('verification-ProbeRecord');
+  expect((probe.fact.body as { record: { type: string } }).record.type).toBe('ProbeRecord');
+  expect(value(f.c.history!.lookup(probe.fact.id))?.fact.id).toBe(probe.fact.id);
+  const conformance = signed(f, 'AdapterConformance'); const harness = signed(f, 'HarnessObservation');
+  const access = signed(f, 'StorageAccessObservation'); const manifest = signed(f, 'AssemblyManifest');
+  const admission = signed(f, 'AssemblyAdmission', { conformance: [conformance.fact.id], isolationEvidence: [harness.fact.id],
+    custodyEvidence: [access.fact.id], probeEvidence: [probe.fact.id], dependencyFacts: [manifest.fact.id] });
+  expect(value(f.runtime.resolve(admission.record)).admitted).toBe(true);
+  expect(value(f.runtime.admit(manifest.record.id, 'scope:ordinary')).id).toBe(admission.record.id);
+});
+
+it('repair3 G7 records incomplete follow-up history while resolution stays partial and closure refuses', () => {
+  const f = assemblyRuntimeFixture();
+  const prior = signed(f, 'GrowthObservation', { id: 'prior-partial', completion: 'incomplete', sampleCount: 0, timeouts: 1 });
+  const followUp = value(f.runtime.record('GrowthObservation', { ...clone(assemblyInput('GrowthObservation')), id: 'next-partial',
+    completion: 'incomplete', sampleCount: 0, timeouts: 1, predecessors: [prior.fact.id], dependencyFacts: [prior.fact.id] }));
+  const verdict = value(f.runtime.resolve(followUp));
+  expect(verdict).toMatchObject({ admitted: false, completeness: 'partial', missing: [], conflicts: [] });
+  refused(closeGrowthEpisode(episode, followUp, f.c), 'history is partial');
+});

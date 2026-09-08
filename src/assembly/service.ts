@@ -88,8 +88,9 @@ export function createAssemblyRuntime(composition: AssemblyComposition): Assembl
         const custody = admission.custodyEvidence.map(id => rows.find(row => row.fact.id === id));
         ensure(custody.length > 0 && custody.every(row => row?.record.type === 'StorageAccessObservation' && row.conflicts.length === 0 && row.taint.length === 0
           && row.record.result === 'allowed'), 'custody evidence is missing, refused, uncertain, or conflicted');
-        const probes = admission.probeEvidence.map(id => rows.find(row => row.fact.id === id));
-        ensure(probes.every((row, index) => row ? row.conflicts.length === 0 && row.taint.length === 0 : !/^[^:]+:\d+:\d+$/.test(admission.probeEvidence[index]!)), 'probe evidence is missing, unavailable, or conflicted');
+        const probes = admission.probeEvidence.map(id => take(history.lookup(id)));
+        ensure(probes.every(row => row?.fact.kind === 'verification-ProbeRecord' && row.conflicts.length === 0
+          && row.taint.length === 0 && row.completeness === 'complete'), 'probe evidence is missing, unavailable, or conflicted');
         return freeze(admission);
       });
     },

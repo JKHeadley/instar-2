@@ -83,7 +83,7 @@ it('repair1 V3-V120 decoders require substantive identifiers and resolve signed 
   const fact = value(f.runtime.inspect()).find(row => row.record.id === partial.id)!.fact;
   refused(decodeAssemblyRecord('AssemblyManifest', { ...assemblyInput('AssemblyManifest'), custodyPolicies: ['machine-z:0:999'] }, f.c), 'missing from signed history');
   refused(decodeAssemblyRecord('AssemblyManifest', { ...assemblyInput('AssemblyManifest'), custodyPolicies: [fact.id] }, f.c), 'wrong signed record kind');
-  refused(decodeAssemblyRecord('AssemblyManifest', { ...assemblyInput('AssemblyManifest'), dependencyFacts: [fact.id] }, f.c), 'incomplete');
+  expect(value(decodeAssemblyRecord('AssemblyManifest', { ...assemblyInput('AssemblyManifest'), dependencyFacts: [fact.id] }, f.c)).dependencyFacts).toEqual([fact.id]);
 });
 
 it('repair1 V121-V168 direct readers independently verify signed envelope kind, origin, and bytes', () => {

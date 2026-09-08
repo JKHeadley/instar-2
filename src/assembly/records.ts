@@ -338,8 +338,10 @@ export function validateAssemblyRecordReferences(record: AssemblyRecord, context
       `${reference.field} reference has wrong signed record kind; expected ${reference.expected ?? 'signed fact'}`);
     ensure(reference.expected || !status.record || reference.field === 'predecessors' || reference.field === 'dependencyFacts',
       `${reference.field} reference resolves to a Part Ten record owned by the wrong semantic boundary`);
-    ensure(status.taint.length === 0 && status.conflicts.length === 0 && status.completeness === 'complete',
-      `${reference.field} reference is unavailable, conflicted, or incomplete: ${reference.id}`);
+    ensure(status.taint.length === 0 && status.conflicts.length === 0,
+      `${reference.field} reference is unavailable or conflicted: ${reference.id}`);
+    ensure(status.completeness === 'complete' || reference.field === 'predecessors' || reference.field === 'dependencyFacts',
+      `${reference.field} reference is incomplete: ${reference.id}`);
   }
 }
 export function assemblyRecordFrom(fact: FactEnvelope, context: AssemblyDecodeContext): AssemblyRecord {
