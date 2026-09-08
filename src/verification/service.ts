@@ -3,7 +3,7 @@ import type { Clock, Result } from '../index.js';
 import { snapshotCurrent } from '../facts/snapshot.js';
 import { boundary, encoded, ensure, take } from './boundary.js';
 import { compareVerificationRecords, decodeVerificationRecord, verificationLogicalKey, verificationRecordFrom, verificationRows } from './records.js';
-import { mergeVerificationRecords } from './storage.js';
+import { mergeVerificationRecords, verificationIdentityClosure } from './storage.js';
 import { deriveGuardPosture, deriveVerificationDue, probeBoundToCurrentEvidence } from './runtime.js';
 import type { GuardPostureView, VerificationDueItem, VerificationFact, VerificationHost,
   VerificationRecord, VerificationRecordName, VerificationRuntimePort, VerificationSpine } from './contracts.js';
@@ -46,19 +46,27 @@ export function createVerificationRuntime(host: VerificationHost, spine: Verific
     posture(planId: string, now: Clock): Result<GuardPostureView> {
       return boundary('VerificationPosture', { planId, now }, host.boundary, () => {
         const current = host.current(); const rows = take(inspectCurrent());
-        const merged = mergeVerificationRecords(rows.map(row => row.record));
+        const direct = rows.filter(row => row.record.type === 'VerificationPlan' && row.record.id === planId
+          || row.record.type === 'ProbeRecord' && row.record.plan === planId);
+        const scoped = verificationIdentityClosure(rows, direct);
+        const merged = mergeVerificationRecords(scoped.map(row => row.record));
         ensure(merged.conflicts.length === 0, merged.conflicts[0]?.detail ?? 'verification history conflict');
-        ensure(rows.every(row => row.conflicts.length === 0), 'verification projection contains immutable disagreement');
-        const planRows = rows.filter((row): row is typeof row & { record: Extract<VerificationRecord, { type: 'VerificationPlan' }> } =>
-          row.record.type === 'VerificationPlan' && row.record.id === planId);
-        ensure(planRows.length === 1, 'verification plan missing or ambiguous');
-        const plan = planRows[0]!;
-        const probes = rows.filter((row): row is typeof row & { record: Extract<VerificationRecord, { type: 'ProbeRecord' }> } =>
-          row.record.type === 'ProbeRecord').map(row => ({ probe: row.record,
-          sourceStatus: row.taint.length || row.conflicts.length ? 'unavailable' as const : 'available' as const,
-          bound: row.taint.length === 0 && row.conflicts.length === 0
-            && probeBoundToCurrentEvidence(plan.record, row.record, now, current.evidence, current.decode, current.facts, host.boundary) }));
-        return deriveGuardPosture(plan.record, probes, now, current.generation, plan.taint.length === 0 && plan.conflicts.length === 0);
+        ensure(scoped.every(row => row.conflicts.length === 0), 'verification projection contains immutable disagreement');
+        const plans = merged.records.filter((record): record is Extract<VerificationRecord, { type: 'VerificationPlan' }> =>
+          record.type === 'VerificationPlan' && record.id === planId);
+        ensure(plans.length === 1, 'verification plan missing or ambiguous');
+        const plan = plans[0]!;
+        const cleanSource = (record: VerificationRecord) => {
+          const hash = encoded(record).hash;
+          return scoped.some(row => row.record.type === record.type && encoded(row.record).hash === hash
+            && row.taint.length === 0 && row.conflicts.length === 0);
+        };
+        const probes = merged.records.filter((record): record is Extract<VerificationRecord, { type: 'ProbeRecord' }> =>
+          record.type === 'ProbeRecord' && record.plan === plan.id).map(probe => ({ probe,
+          sourceStatus: cleanSource(probe) ? 'available' as const : 'unavailable' as const,
+          bound: cleanSource(probe)
+            && probeBoundToCurrentEvidence(plan, probe, now, current.evidence, current.decode, current.facts, host.boundary) }));
+        return deriveGuardPosture(plan, probes, now, current.generation, cleanSource(plan));
       });
     },
   });

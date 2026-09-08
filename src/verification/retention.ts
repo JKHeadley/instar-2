@@ -23,7 +23,12 @@ export function closureReleasedPins(closure: AssessmentClosure): readonly string
   // been admitted by an older decoder, so the record's nominated pin is never
   // sufficient authority on its own.
   const owned = `assessment-pin:${closure.caseId}`;
-  return freeze(closure.releasesPin === owned ? [owned] : []);
+  const substantive = closure.requiredAssessments.length > 0
+    && closure.dispositions.length === closure.requiredAssessments.length
+    && closure.requiredAssessments.every(assessment => closure.dispositions.some(item => item.assessment === assessment))
+    && closure.dispositions.every(item => item.reference.trim().length > 0
+      && (item.disposition !== 'evidence-unavailable-with-reason' || item.reason.trim().length > 0));
+  return freeze(closure.releasesPin === owned && substantive && closure.activeDisputes.length === 0 ? [owned] : []);
 }
 
 export function routineAgeRemovalAllowed(): false { return false; }

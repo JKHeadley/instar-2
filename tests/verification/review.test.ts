@@ -48,12 +48,39 @@ it('P9-NF-30 P9-NF-57 semantic review is exact-generation and disagreement remai
   runtime.context, runtime.store, privateKey)).fact;
   const adequate = decoded('SemanticReviewRecord', { ...verificationInput('SemanticReviewRecord'),
     checkRuns: ['check-run:resolved'], evidencePopulation: [run.id], layerBelow: [run.id] });
+  value(runtime.runtime.record('SemanticReviewRecord', adequate));
   const history = { snapshot: value(runtime.store.readForProjection()) };
   const old = decoded('SemanticReviewRecord', { ...adequate, id: 'semantic:old', generation: 'generation:old' });
   expect(semanticCoverage([{ edge: adequate.edge, generation: adequate.generation, firstSeen: 1 }], [old], history)[0]).toMatchObject({ reviewed: false, verdict: 'never' });
   expect(semanticCoverage([{ edge: adequate.edge, generation: adequate.generation, firstSeen: 1 }], [adequate], history)[0]).toMatchObject({ reviewed: true, verdict: 'adequate' });
   const adverse = decoded('SemanticReviewRecord', { ...adequate, id: 'semantic:adverse', verdict: 'inadequate' as const });
   expect(semanticCoverage([{ edge: adequate.edge, generation: adequate.generation, firstSeen: 1 }], [adequate, adverse], history)[0]).toMatchObject({ reviewed: false, verdict: 'disputed' });
+});
+
+it('N3 semantic adequacy withdraws when the signed review holder itself becomes tainted', () => {
+  const runtime = verificationRuntimeFixture();
+  (runtime.context.schemas as FactSchema[]).push(
+    { ...runtime.schema, kind: 'source-evidence', fields: { evidence: { kind: 'constitutional', type: 'Evidence' } } },
+    { ...runtime.schema, kind: 'check-run-record', fields: { id: { kind: 'text', maxLength: 2048 } } },
+  );
+  Object.assign(runtime.context.captures, { [runtime.e.capture.reference]: { hash: runtime.e.capture.hash,
+    bytes: runtime.captures[runtime.e.capture.reference]!, byteLength: Buffer.byteLength(runtime.captures[runtime.e.capture.reference]!), status: 'available' } });
+  const source = value(authorAndAppend({ kind: 'source-evidence', schemaVersion: 1, machine: 'machine-a',
+    principal: JSON.parse(JSON.stringify(runtime.alice)), provenance: JSON.parse(JSON.stringify(runtime.alice.provenance)),
+    at: JSON.parse(JSON.stringify(runtime.clock(100))), body: { evidence: JSON.parse(JSON.stringify(runtime.e)) }, required: [] },
+  runtime.context, runtime.store, privateKey)).fact;
+  const run = value(authorAndAppend({ kind: 'check-run-record', schemaVersion: 1, machine: 'machine-a',
+    principal: JSON.parse(JSON.stringify(runtime.alice)), provenance: JSON.parse(JSON.stringify(runtime.alice.provenance)),
+    at: JSON.parse(JSON.stringify(runtime.clock(100))), body: { id: 'check-run:resolved' }, required: [] },
+  runtime.context, runtime.store, privateKey)).fact;
+  const review = decoded('SemanticReviewRecord', { ...verificationInput('SemanticReviewRecord'), predecessors: [source.id],
+    checkRuns: ['check-run:resolved'], evidencePopulation: [run.id], layerBelow: [run.id] });
+  value(runtime.runtime.record('SemanticReviewRecord', review));
+  const edge = [{ edge: review.edge, generation: review.generation, firstSeen: 0 }];
+  expect(semanticCoverage(edge, [review], { snapshot: value(runtime.store.readForProjection()) })[0]!.reviewed).toBe(true);
+  Object.assign(runtime.context.captures[runtime.e.capture.reference]!, { bytes: null, status: 'missing' });
+  expect(semanticCoverage(edge, [review], { snapshot: value(runtime.store.readForProjection()) })[0])
+    .toMatchObject({ reviewed: false, verdict: 'partial' });
 });
 
 it('R6 semantic adequacy needs nonempty foundations and every claimed source resolved in signed current history', () => {

@@ -68,3 +68,9 @@ it('R3 requires the exact assessment partition, justified unavailability, and th
     dispositions: row.dispositions.map(item => ({ ...item, disposition: 'evidence-unavailable-with-reason', reference: '', reason: '' })) }, context), 'requires reference and reason');
   refused(decodeVerificationRecord('AssessmentClosure', { ...row, releasesPin: 'authorization-pin:another-case' }, context), 'only its own assessment pin');
 });
+
+it('N6 every assessed closure disposition requires a substantive reference', () => {
+  const context = factsFixture().c; const row = verificationInput('AssessmentClosure');
+  refused(decodeVerificationRecord('AssessmentClosure', { ...row,
+    dispositions: row.dispositions.map(item => ({ ...item, reference: '   ' })) }, context), 'reference must be substantive');
+});

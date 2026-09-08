@@ -3,6 +3,8 @@ import type { FactEnvelope } from '../facts/index.js';
 import { snapshotCurrent } from '../facts/snapshot.js';
 import type { FactSnapshot } from '../facts/snapshot.js';
 import { freeze } from './boundary.js';
+import { mergeVerificationRecords, verificationRecordsShareIdentity } from './storage.js';
+import { verificationIdentity } from './records.js';
 import type { BenchmarkEvaluation, FeedbackDisposition, Grade, RetrospectiveReviewRecord,
   SemanticReviewRecord, VerificationRecord } from './contracts.js';
 
@@ -68,24 +70,42 @@ export interface SemanticCoverageRow {
   readonly verdict: 'adequate' | 'partial' | 'inadequate' | 'disputed' | 'never'; readonly records: readonly string[];
 }
 export interface SemanticCoverageHistory { readonly snapshot: FactSnapshot }
-function cleanHistoricalReferences(history: SemanticCoverageHistory | undefined): Readonly<{ all: ReadonlySet<string>; checkRuns: ReadonlySet<string> }> {
+interface HistoricalSemanticReview {
+  readonly record: SemanticReviewRecord; readonly taint: readonly string[]; readonly conflicts: readonly unknown[];
+}
+function cleanHistoricalReferences(history: SemanticCoverageHistory | undefined): Readonly<{
+  all: ReadonlySet<string>; checkRuns: ReadonlySet<string>; semanticReviews: readonly HistoricalSemanticReview[];
+}> {
   const ids = new Set<string>(), checkRuns = new Set<string>();
-  if (!history || !snapshotCurrent(history.snapshot)) return { all: ids, checkRuns };
+  const semanticReviews: HistoricalSemanticReview[] = [];
+  if (!history || !snapshotCurrent(history.snapshot)) return { all: ids, checkRuns, semanticReviews };
   for (const entry of history.snapshot.entries) {
-    if (entry.taint.length || entry.conflicts.length) continue;
-    ids.add(entry.fact.id); if (entry.fact.kind === 'check-run-record') checkRuns.add(entry.fact.id);
     const body = entry.body && typeof entry.body === 'object' && !Array.isArray(entry.body)
       ? entry.body as Readonly<Record<string, Json>> : undefined;
+    const nested = body?.record && typeof body.record === 'object' && !Array.isArray(body.record)
+      ? body.record as Readonly<Record<string, Json>> : undefined;
+    if (entry.fact.kind === 'verification-SemanticReviewRecord' && nested?.type === 'SemanticReviewRecord') {
+      semanticReviews.push({ record: nested as unknown as SemanticReviewRecord, taint: entry.taint, conflicts: entry.conflicts });
+    }
+    if (entry.taint.length || entry.conflicts.length) continue;
+    ids.add(entry.fact.id); if (entry.fact.kind === 'check-run-record') checkRuns.add(entry.fact.id);
     if (typeof body?.id === 'string') {
       ids.add(body.id); if (entry.fact.kind === 'check-run-record') checkRuns.add(body.id);
     }
-    const nested = body?.record && typeof body.record === 'object' && !Array.isArray(body.record)
-      ? body.record as Readonly<Record<string, Json>> : undefined;
     if (typeof nested?.id === 'string') {
       ids.add(nested.id); if (entry.fact.kind === 'check-run-record') checkRuns.add(nested.id);
     }
   }
-  return { all: ids, checkRuns };
+  return { all: ids, checkRuns, semanticReviews };
+}
+function semanticHolderBinding(review: SemanticReviewRecord, history: ReturnType<typeof cleanHistoricalReferences>) {
+  const related = history.semanticReviews.filter(row => verificationRecordsShareIdentity(row.record, review));
+  const conflict = mergeVerificationRecords(related.map(row => row.record)).conflicts.length > 0
+    || related.some(row => row.conflicts.length > 0);
+  const hash = verificationIdentity(review).canonicalHash;
+  const current = !conflict && related.some(row => verificationIdentity(row.record).canonicalHash === hash
+    && row.taint.length === 0 && row.conflicts.length === 0);
+  return { current, conflict };
 }
 export function semanticCoverage(edges: readonly HeldEdge[], reviews: readonly SemanticReviewRecord[],
   history?: SemanticCoverageHistory): readonly SemanticCoverageRow[] {
@@ -93,11 +113,14 @@ export function semanticCoverage(edges: readonly HeldEdge[], reviews: readonly S
   return freeze(edges.map(edge => {
     const exact = reviews.filter(review => review.edge === edge.edge && review.generation === edge.generation);
     const verdicts = new Set(exact.map(review => review.verdict));
+    const bindings = exact.map(review => semanticHolderBinding(review, resolved));
+    const holderConflict = bindings.some(binding => binding.conflict);
     const adequateResolved = exact.filter(review => review.verdict === 'adequate').every(review =>
       review.layerBelow.length > 0 && review.evidencePopulation.length > 0 && review.checkRuns.length > 0
       && [...review.layerBelow, ...review.evidencePopulation].every(id => resolved.all.has(id))
-      && review.checkRuns.every(id => resolved.checkRuns.has(id)));
-    const verdict = exact.length === 0 ? 'never' as const : verdicts.size > 1 ? 'disputed' as const
+      && review.checkRuns.every(id => resolved.checkRuns.has(id))
+      && bindings[exact.indexOf(review)]?.current === true);
+    const verdict = exact.length === 0 ? 'never' as const : verdicts.size > 1 || holderConflict ? 'disputed' as const
       : exact[0]!.verdict === 'adequate' && !adequateResolved ? 'partial' as const : exact[0]!.verdict;
     return { edge: edge.edge, generation: edge.generation, reviewed: verdict === 'adequate', verdict,
       records: exact.map(review => review.id).sort() };

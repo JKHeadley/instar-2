@@ -1,14 +1,28 @@
-import { canonical, decode, readEvidence } from '../index.js';
+import { decode, readEvidence } from '../index.js';
 import type { Claim, Evidence, Json, Outcome, OwnedReference, Result } from '../index.js';
 import type { EffectAssessmentInput, EffectAssessmentPort, EffectAssessmentView } from '../effects/index.js';
-import { boundary, encoded, ensure, json, take } from './boundary.js';
+import { boundary, encoded, ensure, take } from './boundary.js';
 import { deriveVerificationAssessment, verificationEvidenceFreshness } from './runtime.js';
-import type { VerificationAssessment, VerificationHost, VerificationPlan, VerificationRequest, VerificationRuntimePort } from './contracts.js';
+import { mergeVerificationRecords, verificationIdentityClosure } from './storage.js';
+import type { CurrentVerificationFact, VerificationAssessment, VerificationHost, VerificationPlan,
+  VerificationRecord, VerificationRequest, VerificationRuntimePort } from './contracts.js';
 
 function rawRecord(fact: import('../facts/index.js').FactEnvelope): Readonly<Record<string, Json>> | undefined {
   const body = fact.body as Readonly<Record<string, Json>>;
   const record = body.record;
   return record && typeof record === 'object' && !Array.isArray(record) ? record as Readonly<Record<string, Json>> : undefined;
+}
+function checkedIdentityScope(rows: readonly CurrentVerificationFact[], seeds: readonly CurrentVerificationFact[]) {
+  const scoped = verificationIdentityClosure(rows, seeds);
+  const merged = mergeVerificationRecords(scoped.map(row => row.record));
+  ensure(merged.conflicts.length === 0, merged.conflicts[0]?.detail ?? 'verification history contains an immutable disagreement');
+  ensure(scoped.every(row => row.conflicts.length === 0), 'verification history contains an immutable disagreement');
+  return { scoped, merged };
+}
+function cleanCanonicalSource(rows: readonly CurrentVerificationFact[], record: VerificationRecord): boolean {
+  const hash = encoded(record).hash;
+  return rows.some(row => row.record.type === record.type && encoded(row.record).hash === hash
+    && row.taint.length === 0 && row.conflicts.length === 0);
 }
 function relatedFacts(host: VerificationHost, input: EffectAssessmentInput): readonly string[] {
   const facts = host.current().facts.facts;
@@ -21,10 +35,12 @@ function relatedFacts(host: VerificationHost, input: EffectAssessmentInput): rea
 }
 function planFor(host: VerificationHost, runtime: VerificationRuntimePort, bar: string): VerificationPlan {
   const rows = take(runtime.inspectCurrent());
-  ensure(rows.every(row => row.conflicts.length === 0), 'verification history contains an immutable disagreement');
-  const plans = rows.filter(row => row.record.type === 'VerificationPlan' && row.taint.length === 0)
-    .map(row => row.record as VerificationPlan);
-  const current = plans.filter(plan => plan.bar.version === bar && plan.subject.generation === host.current().generation);
+  const candidates = rows.filter(row => row.record.type === 'VerificationPlan'
+    && row.record.bar.version === bar && row.record.subject.generation === host.current().generation);
+  const { scoped, merged } = checkedIdentityScope(rows, candidates);
+  const current = merged.records.filter((record): record is VerificationPlan => record.type === 'VerificationPlan'
+    && record.bar.version === bar && record.subject.generation === host.current().generation
+    && cleanCanonicalSource(scoped, record));
   ensure(current.length === 1, 'exact current verification plan/bar missing or ambiguous');
   return current[0]!;
 }
@@ -100,19 +116,30 @@ export function createEffectAssessmentPort(host: VerificationHost, runtime: Veri
     captures: currentCaptureStatuses(host, evidenceFor(host, assessment.operation, assessment.operationDigest)) }).hash;
   const bindStored = (id: string, input: EffectAssessmentInput) => {
     const rows = take(runtime.inspectCurrent());
-    ensure(rows.every(row => row.conflicts.length === 0), 'verification history contains an immutable disagreement');
     const row = rows.find(item => item.fact.id === id && item.record.type === 'VerificationAssessment');
     ensure(row && row.record.type === 'VerificationAssessment', 'verification assessment fact missing');
+    const assessmentScope = checkedIdentityScope(rows, [row]);
     const assessment = row.record as VerificationAssessment;
-    ensure(row.taint.length === 0, 'verification assessment source is tainted');
-    const requests = rows.filter(item => item.record.type === 'VerificationRequest' && item.record.id === assessment.request);
-    ensure(requests.length === 1 && requests[0]!.record.type === 'VerificationRequest' && requests[0]!.taint.length === 0,
+    ensure(row.taint.length === 0 && row.conflicts.length === 0 && cleanCanonicalSource(assessmentScope.scoped, assessment),
+      'verification assessment source is tainted');
+    const requestSeeds = rows.filter(item => item.record.type === 'VerificationRequest' && item.record.id === assessment.request);
+    const requestScope = checkedIdentityScope(rows, requestSeeds);
+    const requests = requestScope.merged.records.filter((record): record is VerificationRequest =>
+      record.type === 'VerificationRequest' && record.id === assessment.request && cleanCanonicalSource(requestScope.scoped, record));
+    ensure(requests.length === 1,
       'verification assessment request missing, ambiguous, or tainted');
-    const request = requests[0]!.record as VerificationRequest;
-    const plans = rows.filter(item => item.record.type === 'VerificationPlan' && item.record.id === request.plan);
-    ensure(plans.length === 1 && plans[0]!.record.type === 'VerificationPlan' && plans[0]!.taint.length === 0,
+    const request = requests[0]!;
+    const requestFact = requestScope.scoped.find(item => item.record.type === 'VerificationRequest'
+      && encoded(item.record).hash === encoded(request).hash && assessment.predecessors.includes(item.fact.id)
+      && item.taint.length === 0 && item.conflicts.length === 0);
+    ensure(requestFact, 'verification assessment request/effect lineage differs');
+    const planSeeds = rows.filter(item => item.record.type === 'VerificationPlan' && item.record.id === request.plan);
+    const planScope = checkedIdentityScope(rows, planSeeds);
+    const plans = planScope.merged.records.filter((record): record is VerificationPlan =>
+      record.type === 'VerificationPlan' && record.id === request.plan && cleanCanonicalSource(planScope.scoped, record));
+    ensure(plans.length === 1,
       'verification assessment plan missing, ambiguous, or tainted');
-    const plan = plans[0]!.record as VerificationPlan;
+    const plan = plans[0]!;
     const currentPlan = planFor(host, runtime, input.bar);
     ensure(plan.id === currentPlan.id && request.barVersion === plan.bar.version && assessment.barVersion === plan.bar.version
       && request.sourceGeneration === plan.subject.generation && plan.subject.generation === host.current().generation,
@@ -120,7 +147,7 @@ export function createEffectAssessmentPort(host: VerificationHost, runtime: Veri
     ensure(request.operation === input.reservation.operation && request.attempt === input.reservation.attempt
       && request.operationDigest === input.request.digest && request.reservation === reservationFact(host, input)
       && assessment.operation === request.operation && assessment.attempt === request.attempt
-      && assessment.operationDigest === request.operationDigest && assessment.predecessors.includes(requests[0]!.fact.id),
+      && assessment.operationDigest === request.operationDigest && assessment.predecessors.includes(requestFact.fact.id),
     'verification assessment request/effect lineage differs');
     const snapshot = host.current(); const currentEvidence = evidenceFor(host, request.operation, request.operationDigest);
     const derived = take(deriveVerificationAssessment({ request, plan, evidence: currentEvidence.map(item => item.evidence),

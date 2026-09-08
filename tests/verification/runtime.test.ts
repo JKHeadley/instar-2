@@ -2,7 +2,8 @@ import { expect, it } from 'vitest';
 import { decode } from '../../src/index.js';
 import { authorAndAppend } from '../../src/facts/index.js';
 import type { FactSchema } from '../../src/facts/index.js';
-import { decodeProbeRecord, verificationEvidenceFreshness } from '../../src/verification/index.js';
+import { decodeFeedbackDisposition, decodeProbeRecord, mergeVerificationRecords,
+  verificationEvidenceFreshness } from '../../src/verification/index.js';
 import { privateKey, refused, value } from '../facts/fixtures.js';
 import { verificationInput } from './fixture.js';
 import { verificationRuntimeFixture } from './runtime-fixture.js';
@@ -77,6 +78,39 @@ it('R8 immutable signed probe conflicts are surfaced instead of selecting the pa
   value(f.spine.append(value(decodeProbeRecord(failed, f.c))));
   value(f.spine.append(value(decodeProbeRecord(verificationInput('ProbeRecord'), f.c))));
   refused(f.runtime.posture(plan.id, f.clock(21)), 'concurrent ProbeRecord');
+});
+
+it('N1 a shared immutable probe id conflicts even when the logical slot and attempt differ', () => {
+  const f = verificationRuntimeFixture(); const plan = verificationInput('VerificationPlan');
+  value(f.runtime.record('VerificationPlan', plan));
+  const failed = { ...verificationInput('ProbeRecord'), disposition: 'failed' as const, comparison: 'Result:failed' };
+  const passed = { ...verificationInput('ProbeRecord'), slot: 'slot:2', attempt: 'attempt:2' };
+  const witness = f.witnessFor(value(decodeProbeRecord(passed, f.c)), 'evidence:witness:2');
+  passed.witnesses = [witness.id]; f.setEvidence([...f.host.current().evidence, witness]);
+  value(f.spine.append(value(decodeProbeRecord(failed, f.c))));
+  value(f.spine.append(value(decodeProbeRecord(passed, f.c))));
+  refused(f.runtime.posture(plan.id, f.clock(21)), 'immutable record id');
+});
+
+it('N4 duplicate identical plan envelopes deduplicate without making posture ambiguous', () => {
+  const f = verificationRuntimeFixture(); const plan = verificationInput('VerificationPlan');
+  value(f.runtime.record('VerificationPlan', plan));
+  value(f.spine.append(plan));
+  value(f.runtime.record('ProbeRecord', verificationInput('ProbeRecord')));
+  expect(value(f.runtime.inspect()).filter(row => row.record.type === 'VerificationPlan')).toHaveLength(2);
+  expect(value(f.runtime.posture(plan.id, f.clock(21))).posture).toBe('healthy');
+});
+
+it('N5 unrelated feedback disagreement is surfaced independently without blocking healthy plan posture', () => {
+  const f = verificationRuntimeFixture(); const plan = verificationInput('VerificationPlan');
+  value(f.runtime.record('VerificationPlan', plan));
+  value(f.runtime.record('ProbeRecord', verificationInput('ProbeRecord')));
+  const feedback = verificationInput('FeedbackDisposition');
+  value(f.spine.append(value(decodeFeedbackDisposition(feedback, f.c))));
+  value(f.spine.append(value(decodeFeedbackDisposition({ ...feedback, reason: 'unrelated disagreement' }, f.c))));
+  expect(mergeVerificationRecords(value(f.runtime.inspect()).map(row => row.record)).conflicts)
+    .toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'immutable-disagreement' })]));
+  expect(value(f.runtime.posture(plan.id, f.clock(21))).posture).toBe('healthy');
 });
 
 it('P9-NF-17 P9-NF-18 a passing probe needs a real witness and complete phases', () => {

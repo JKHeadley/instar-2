@@ -21,6 +21,8 @@ it('P9-NF-43 P9-NF-49 assessment closure releases only its own pin and leaves by
   expect(closureReleasedPins(closure)).toEqual(['assessment-pin:case:1']);
   expect(closureReleasedPins(closure)).not.toContain('settlement-pin');
   expect(closureReleasedPins({ ...closure, releasesPin: 'authorization-pin:another-case' } as typeof closure)).toEqual([]);
+  expect(closureReleasedPins({ ...closure,
+    dispositions: closure.dispositions.map(item => ({ ...item, reference: '' })) } as unknown as typeof closure)).toEqual([]);
 });
 
 it('P9-NF-24 P9-NF-36 duplicate replicas converge while differing canonical content conflicts', () => {

@@ -169,8 +169,10 @@ function validate(record: VerificationRecord): void {
       ensure(record.dispositions.length === record.requiredAssessments.length
         && record.requiredAssessments.every(assessment => record.dispositions.some(item => item.assessment === assessment)), 'closure assessment denominator incomplete');
       record.dispositions.forEach(item => one(item.disposition, ['assessed', 'evidence-unavailable-with-reason'], 'closure disposition'));
+      ensure(record.dispositions.every(item => item.reference.trim().length > 0),
+        'closure disposition requires reference and reason; reference must be substantive');
       ensure(record.dispositions.every(item => item.disposition !== 'evidence-unavailable-with-reason'
-        || item.reference.length > 0 && item.reason.length > 0), 'unavailable closure disposition requires reference and reason');
+        || item.reason.trim().length > 0), 'unavailable closure disposition requires a reason');
       ensure(record.releasesPin === `assessment-pin:${record.caseId}`, 'closure may release only its own assessment pin');
       break;
     case 'FeedbackDisposition':

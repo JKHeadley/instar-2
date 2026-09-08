@@ -31,19 +31,59 @@ export function verificationProjectionDefinitions(generation: ProjectionGenerati
 export interface VerificationMerge {
   readonly records: readonly VerificationRecord[]; readonly conflicts: readonly ConflictClass[];
 }
+export function verificationRecordsShareIdentity(left: VerificationRecord, right: VerificationRecord): boolean {
+  return left.type === right.type
+    && (left.id === right.id || verificationLogicalKey(left) === verificationLogicalKey(right));
+}
+
+export function verificationIdentityClosure<T extends Readonly<{ record: VerificationRecord }>>(
+  rows: readonly T[], seeds: readonly T[],
+): readonly T[] {
+  const selected = new Set(seeds);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const row of rows) {
+      if (selected.has(row)) continue;
+      if ([...selected].some(prior => verificationRecordsShareIdentity(prior.record, row.record))) {
+        selected.add(row); changed = true;
+      }
+    }
+  }
+  return freeze([...selected]);
+}
+
 export function mergeVerificationRecords(records: readonly VerificationRecord[]): VerificationMerge {
-  const unique = new Map<string, VerificationRecord>(), conflicts: ConflictClass[] = [];
-  for (const record of records) {
-    const identity = verificationIdentity(record), key = verificationLogicalKey(record);
-    const storageKey = `${record.type}:${key}`;
-    const prior = unique.get(storageKey);
-    if (!prior) { unique.set(storageKey, record); continue; }
-    if (verificationIdentity(prior).canonicalHash === identity.canonicalHash) continue;
-    conflicts.push({ key, kind: 'immutable-disagreement', facts: [verificationIdentity(prior).canonicalHash, identity.canonicalHash].sort(),
-      detail: `concurrent ${record.type} content differs for one identity` });
+  const ordered = [...records].sort((a, b) => {
+    const ai = verificationIdentity(a), bi = verificationIdentity(b);
+    return `${a.type}:${ai.logicalKey}:${ai.id}:${ai.canonicalHash}`.localeCompare(`${b.type}:${bi.logicalKey}:${bi.id}:${bi.canonicalHash}`);
+  });
+  const conflicts = new Map<string, ConflictClass>();
+  for (let index = 0; index < ordered.length; index++) {
+    const left = ordered[index]!, li = verificationIdentity(left);
+    for (let other = index + 1; other < ordered.length; other++) {
+      const right = ordered[other]!;
+      if (!verificationRecordsShareIdentity(left, right)) continue;
+      const ri = verificationIdentity(right);
+      if (li.canonicalHash === ri.canonicalHash) continue;
+      const sameLogicalKey = li.logicalKey === ri.logicalKey;
+      const key = sameLogicalKey ? li.logicalKey : `id:${left.type}:${li.id}`;
+      const facts = [li.canonicalHash, ri.canonicalHash].sort();
+      conflicts.set(`${left.type}:${key}:${facts.join(':')}`, {
+        key, kind: 'immutable-disagreement', facts,
+        detail: sameLogicalKey
+          ? `concurrent ${left.type} content differs for one logical identity ${key}`
+          : `concurrent ${left.type} content differs for immutable record id ${li.id}`,
+      });
+    }
+  }
+  const unique = new Map<string, VerificationRecord>();
+  for (const record of ordered) {
+    const key = `${record.type}:${verificationLogicalKey(record)}`;
+    if (!unique.has(key)) unique.set(key, record);
   }
   return freeze({ records: [...unique.values()].sort((a, b) => `${a.type}:${a.id}`.localeCompare(`${b.type}:${b.id}`)),
-    conflicts: conflicts.sort((a, b) => a.key.localeCompare(b.key)) });
+    conflicts: [...conflicts.values()].sort((a, b) => `${a.key}:${a.facts.join(':')}`.localeCompare(`${b.key}:${b.facts.join(':')}`)) });
 }
 
 export interface ReplicaCurrency {
