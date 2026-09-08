@@ -44,3 +44,20 @@ it('RunExitReadPort returns the replay-witnessed envelope when duplicate close r
   expect(f.admissions.has(terminal.fact.id)).toBe(true);
   expect(value(f.store.read())).toHaveLength(before);
 });
+
+it.each([
+  { witnessed: false, label: 'unwitnessed' },
+  { witnessed: true, label: 'witnessed' },
+])('RunExitReadPort retains replay selection despite a $label equal-record envelope in another run bucket', ({ witnessed }) => {
+  const f = completedRun();
+  const shadow = f.append('run-transition', json({ run: 'run:other-bucket', record: recordWire(f.close as never) })).fact;
+  if (witnessed) f.admissions.add(shadow.id);
+
+  expect(value(f.graph.read(f.id)).head).toBe(f.close.id);
+  const before = value(f.store.read()).length;
+  const terminal = value(f.graph.readExit({ owner: 'part-five', name: 'Run', id: f.id }));
+
+  expect(terminal).toEqual({ fact: ref(f.closeFact), exit: f.terminalExit });
+  expect(terminal.fact.id).not.toBe(shadow.id);
+  expect(value(f.store.read())).toHaveLength(before);
+});

@@ -26,9 +26,10 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       && Number.isSafeInteger(d.groundingPolicy.maxAge) && d.groundingPolicy.maxAge > 0
       && d.groundingPolicy.briefingClasses.length > 0, 'registered positive grounding policy required');
     const context = (): RunDecodeContext => ({ ...d.context, facts: { ...d.context.facts, facts: take(d.store.read()) } });
-    const read = (id: string): RunView => {
+    const replay = (id: string): Readonly<{ view: RunView; transition: Readonly<{ fact: FactEnvelope; record: Extract<RunRecord, { type: 'RunTransition' }> }> | undefined }> => {
+      let transition: Readonly<{ fact: FactEnvelope; record: Extract<RunRecord, { type: 'RunTransition' }> }> | undefined;
       const snapshot = take(d.store.readForProjection()), c = context();
-      return take(foldRun(id, snapshot, d.generation(), c, d.clock(), { verify: (fact, record, before) => boundary('RunReplayWitness', null, c, () => {
+      const view = take(foldRun(id, snapshot, d.generation(), c, d.clock(), { verify: (fact, record, before) => boundary('RunReplayWitness', null, c, () => {
         need(same(take(d.admission.verify(factRef(fact))), factRef(fact)), 'durable admission witness missing');
         if (record.type === 'RunTransition' && before) {
           if (record.step) {
@@ -43,9 +44,12 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
             if (record.to === 'ready') need(receipt.claimClosed && receipt.chargeSettled, 'unsettled replay cannot advance');
           }
           if (record.exit) need(same(take(d.exitCheck.verify(record.exit, before.run, record.at)), record.exit.check), 'exit replay witness mismatch');
+          transition = { fact, record };
         } return factRef(fact);
       }) }));
+      return { view, transition };
     };
+    const read = (id: string): RunView => replay(id).view;
     const predecessor = (view: RunView): FactEnvelope => {
       const fact = take(d.store.read()).find(f => (f.kind === runKinds.Run || f.kind === runKinds.RunTransition)
         && object(readRecordFact(f)).id === view.head); need(fact, 'durable transition predecessor missing'); return fact;
@@ -75,13 +79,11 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
         const reference = object(safe);
         need(reference.owner === 'part-five' && reference.name === 'Run'
           && typeof reference.id === 'string' && reference.id.length > 0, 'run reference owner/name/id mismatch');
-        const view = read(reference.id);
+        const replayed = replay(reference.id), view = replayed.view;
         need(['completed', 'unreachable', 'cancelled'].includes(view.state), 'terminal run exit absent');
-        const fact = [...take(d.store.read())].reverse().find(candidate => candidate.kind === runKinds.RunTransition
-          && object(readRecordFact(candidate)).id === view.head);
-        need(fact, 'terminal run exit fact absent');
-        need(same(take(d.admission.verify(factRef(fact))), factRef(fact)), 'terminal run exit admission witness missing');
-        const transition = take(decodeRunTransition(readRecordFact(fact), context()));
+        const selected = replayed.transition;
+        need(selected, 'terminal run exit fact absent');
+        const { fact, record: transition } = selected;
         need(transition.run === reference.id && transition.kind === 'close' && transition.to === view.state
           && transition.exit, 'terminal run exit absent');
         return freeze({ fact: factRef(fact), exit: transition.exit });
