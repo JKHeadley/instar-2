@@ -48,3 +48,27 @@ it('P6-NF-11 P6-NF-20 P6-NF-30 P6-NF-34 P6-NF-36 P6-NF-38 fresh-process kill aft
     } finally { child.kill('SIGKILL'); }
   }
 }, 30000);
+
+it('P6-NF-20 P6-NF-33 production reference composition resumes its admitted due cursor in a fresh process', () => {
+  const f = transportFixture();
+  const identity = f.proof({ id: 'alice', kind: 'person' }, { id: 'alice', kind: 'person' }, 'identity');
+  const grantProof = f.proof(f.g.source.authenticated.payload as object, { id: 'alice', kind: 'person' }, 'intent-approval');
+  const seed = { register: f.ctx.decode.register, captures: f.captures, preserved: f.c.preserved,
+    principal: { ...f.alice, provenance: identity.input }, scope: f.scope, grants: [{ ...f.g, source: grantProof.input }], clock: f.now,
+    site: f.c.site, domain: f.host.domain, machine: f.host.machine, budget: f.host.budget,
+    maxLeaseTerm: f.host.maxLeaseTerm, keys: f.ctx.keys, genesis: f.ctx.genesis, privateKey };
+  const seedPath = join(f.directory, 'scan-boot-seed.json');
+  writeFileSync(seedPath, JSON.stringify(seed), { mode: 0o600 });
+  const worker = resolve('tests/fixtures/transport-scan-worker.mjs');
+
+  const firstRun = spawnSync(process.execPath, [worker, seedPath, f.directory, 'start'], { encoding: 'utf8', timeout: 15000 });
+  expect(firstRun.status, firstRun.stderr).toBe(0);
+  const first = JSON.parse(firstRun.stdout) as { selected: string[]; cursor: { id: string }; wrapped: boolean };
+  expect(first).toMatchObject({ selected: ['a', 'b'], wrapped: false });
+
+  const secondRun = spawnSync(process.execPath, [worker, seedPath, f.directory, 'resume', first.cursor.id], { encoding: 'utf8', timeout: 15000 });
+  expect(secondRun.status, secondRun.stderr).toBe(0);
+  const second = JSON.parse(secondRun.stdout) as { selected: string[]; cursor: { id: string }; wrapped: boolean };
+  expect(second).toMatchObject({ selected: ['c', 'a'], wrapped: true });
+  expect(second.cursor.id).not.toBe(first.cursor.id);
+});

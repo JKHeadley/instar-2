@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { decode, decodeMeasurement } from '../../src/index.js';
 import { createRunGraph } from '../../src/rungraph/index.js';
-import { setup, value, refused, json, ref } from '../rungraph/fixtures.js';
+import { completedRun, setup, value, refused, json, ref } from '../rungraph/fixtures.js';
 
 function fixture() {
   const f = setup(), ready = value(f.graph.open(f.run)), ground = value(f.graph.ground(f.id, 'w', 'h', 'start', f.lease));
@@ -59,6 +59,20 @@ it('P5-NF-15 P5-NF-60 an owner settlement disagreement cannot be hidden during r
   const f = fixture(); value(f.graph.transition(f.observed));
   const wrong = value(createRunGraph({ ...f.deps, settlement: { owner: 'part-eight', read: record => f.success({ record, outcome: f.outcome, claimClosed: false, chargeSettled: false }) } }));
   refused(wrong.read(f.id), 'unsettled replay');
+});
+it('owner-branded RunExitReadPort integrates terminal lookup and refuses absent neighbors', () => {
+  const open = setup(), ready = value(open.graph.open(open.run));
+  const before = value(open.store.read()).length;
+  refused(open.graph.readExit({ owner: 'part-five', name: 'Run', id: ready.run.id }), 'terminal run exit absent');
+  expect(value(open.store.read())).toHaveLength(before);
+
+  const f = completedRun();
+  const terminal = value(f.graph.readExit({ owner: 'part-five', name: 'Run', id: f.id }));
+  expect(terminal.fact).toEqual(ref(f.closeFact));
+  expect(terminal.exit).toEqual(f.terminalExit);
+  expect(terminal.exit.result.fact).toEqual(f.terminalExit.result.fact);
+  expect(terminal.exit.evidence).toEqual(f.terminalExit.evidence);
+  refused(f.graph.readExit({ owner: 'part-five', name: 'Run', id: 'run:absent' }), 'run opening missing');
 });
 it('P5-NF-02 P5-NF-07 R2 settlement never frees immutable step identities for another operation', () => {
   const f = fixture(), ready = value(f.graph.transition(f.observed));

@@ -27,7 +27,7 @@ and effect settlement. Part nine owns independent verification and grading. Part
 judgment and its benchmark record. Parts one through four retain their types and doorways.
 
 **Rule — inventory is closed.** **Check: P6-NF-02**, comparing schemas, constructors and imports
-with these tables, enforces rules 5, 69 and 90. This part defines exactly these eight types:
+with these tables, enforces rules 5, 69 and 90. This part defines exactly these nine types:
 
 | Defined here | What it represents | Producer |
 |---|---|---|
@@ -37,6 +37,7 @@ with these tables, enforces rules 5, 69 and 90. This part defines exactly these 
 | LoopPolicy | The registered brakes and resource demands for a repeating activity | Governed declaration decoder |
 | LoopRecord | Durable progress, next wake and closure of one bounded repetition episode | Loop primitive through conditional append |
 | RecoveryRecord | The facts examined, actions attempted and disposition of one recovery episode | Recovery holder under its recorded standing |
+| ScanCursor | Durable progress through one owner-selected ordered due-key generation | Bounded due-scan port through conditional append |
 | ThreadlineRoute | Adapter-local mapping from a port conversation and verified peer to transport addresses and key references | Registered adapter, from verified binding evidence |
 | ThreadlineReceipt | Adapter evidence for one port delivery-state claim | Adapter decoder of a signed receiver or relay record |
 
@@ -385,6 +386,16 @@ stop, revoked grant and a hard off-switch inhibit automatic new episodes. A reso
 obligation stays owned and visible with a bounded recheck under the observation budget; it never
 sends an unbounded stream of requests to the operator. The work owner supplies the next useful
 step or honest blocker, rather than relabeling repeated restarts as progress.
+
+**Rule — due selection advances through an admitted bounded cursor.** **Checks: P6-NF-20/33**.
+The owner-branded `BoundedDueScanPort` consumes an ordered key generation supplied by the work
+owner and returns selection only. It conditionally appends a `ScanCursor` before returning, so
+a restart resumes the next position and does not erase the time already missed by unselected
+work. A non-null cursor must resolve to the exact latest six-owned cursor for that scan; absence,
+foreign ownership, stale reuse, or changed keys under the same generation refuses without a
+replacement. Item and monotonic-duration bounds are finite nonnegative integers, with zero
+meaning zero. Historical cursor validation folds only recorded fields and never reads a clock.
+The port does not derive due work, schedule it, reserve it, or settle it.
 
 **Rule — delegation transfers credits without duplicating them.** Rules 60, 61, 114;
 **checks: P6-NF-19/35**. The parent authority commits a debit and immutable allocation id before
