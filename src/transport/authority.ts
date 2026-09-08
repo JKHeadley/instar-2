@@ -73,12 +73,15 @@ export function createBoundedDueScanPort(host: TransportHost, spine: TransportSp
         return freeze({ selected, cursor: reference(successor.fact.id), wrapped: successor.record.wrapped === 1 });
       }
       ensure(latestScanCursor(all, input.scan)?.fact.id === previous?.fact.id, 'scan cursor is absent or stale');
-      if (previous && previous.record.generation === input.generation)
+      if (previous) {
+        ensure(previous.record.generation === input.generation,
+          'scan generation change is unsupported without a key-identity remainder');
         ensure(previous.record.orderedKeysDigest === digest && previous.record.keyCount === input.orderedKeys.length,
           'scan generation changed its ordered keys');
+      }
 
       const started = tick();
-      const selectedFrom = input.orderedKeys.length === 0 ? 0 : (previous?.record.nextIndex ?? 0) % input.orderedKeys.length;
+      const selectedFrom = input.orderedKeys.length === 0 ? 0 : previous?.record.nextIndex ?? 0;
       const limit = Math.min(input.maxItems, input.orderedKeys.length);
       let selectedCount = 0;
       let elapsed = 0;

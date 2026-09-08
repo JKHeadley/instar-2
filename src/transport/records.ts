@@ -154,15 +154,21 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       && r.maxItems >= 0 && r.maxDuration >= 0 && r.elapsed >= 0, 'scan cursor bounds');
     ensure(r.selectedCount <= r.maxItems && r.selectedCount <= r.keyCount && r.elapsed <= r.maxDuration,
       'scan cursor exceeded page bound');
+    ensure(r.maxDuration !== 0 || r.selectedCount === 0, 'zero-duration scan cannot select work');
     ensure(r.wrapped === 0 || r.wrapped === 1, 'scan cursor wrap marker');
     const prior = latestScanCursor(all, r.scan);
     ensure(r.previous === (prior?.fact.id ?? ''), 'scan cursor is absent or stale');
+    ensure(r.selectedFrom === (prior?.record.nextIndex ?? 0), 'scan cursor progress reset or skipped');
     ensure(r.keyCount === 0 ? r.selectedFrom === 0 && r.nextIndex === 0 && r.selectedCount === 0 && r.wrapped === 0
       : r.selectedFrom < r.keyCount && r.nextIndex === (r.selectedFrom + r.selectedCount) % r.keyCount
         && r.wrapped === (r.selectedCount > 0 && r.selectedFrom + r.selectedCount >= r.keyCount ? 1 : 0),
     'scan cursor progression changed');
-    if (prior && prior.record.generation === r.generation)
-      ensure(prior.record.orderedKeysDigest === r.orderedKeysDigest && prior.record.keyCount === r.keyCount, 'scan generation changed its ordered keys');
+    const generation = all.find((v): v is TransportFact & { readonly record: ScanCursor } =>
+      v.record.type === 'ScanCursor' && v.record.scan === r.scan && v.record.generation === r.generation);
+    if (generation) ensure(generation.record.orderedKeysDigest === r.orderedKeysDigest && generation.record.keyCount === r.keyCount,
+      'scan generation changed its original ordered keys');
+    if (prior) ensure(prior.record.generation === r.generation,
+      'scan generation change is unsupported without a key-identity remainder');
   } else {
     const lease = active();
     if (r.type === 'AdmissionReservation') {
