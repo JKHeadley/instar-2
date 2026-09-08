@@ -5,4 +5,10 @@ export {
   decodeSemanticReviewRecord, decodeGrade, decodeAssessmentClosure, decodeFeedbackDisposition,
   decodeBenchmarkEvaluation, verificationLogicalKey, verificationIdentity, compareVerificationRecords,
   wireVerificationRecord,
+  verificationKindFor, verificationRecordFrom, verificationRows, verificationSchemas,
+  registerVerificationBodies, createVerificationSpine,
 } from './records.js';
+export { verificationEvidenceFreshness, deriveVerificationAssessment, deriveVerificationDue, deriveGuardPosture } from './runtime.js';
+export type { AssessmentDerivationInput } from './runtime.js';
+export { createVerificationRuntime } from './service.js';
+export { createEffectAssessmentPort } from './reconciliation.js';

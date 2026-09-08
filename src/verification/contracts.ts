@@ -1,4 +1,4 @@
-import type { BoundaryContext, Hash, Json, Result } from '../index.js';
+import type { BoundaryContext, Clock, DecodeContext, Evidence, Hash, Json, Result, Scope, VerifiedPrincipal } from '../index.js';
 import type { AppendReceipt, ConflictClass, FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
 
 declare class VerificationBrand<N extends string> {
@@ -47,7 +47,7 @@ export interface VerificationAssessment extends VerificationValue<'VerificationA
 }
 
 export interface ProbeRecord extends VerificationValue<'ProbeRecord'> {
-  readonly plan: string; readonly planVersion: string; readonly slot: string; readonly attempt: string;
+  readonly plan: string; readonly planVersion: string; readonly arm: string; readonly slot: string; readonly attempt: string;
   readonly subject: string; readonly challengeDigest: string; readonly run: string; readonly operation: string;
   readonly startedAt: number; readonly completedAt: number; readonly witnesses: readonly string[];
   readonly comparison: string; readonly disposition: ProbeDisposition; readonly missingPhases: readonly string[];
@@ -128,6 +128,33 @@ export interface VerificationSpine {
   append(record: VerificationRecord, required?: readonly string[]): Result<AppendReceipt>;
 }
 export interface VerificationAuthor { readonly context: FactContext; readonly privateKey: string }
+export interface VerificationHost {
+  readonly machine: string; readonly principal: VerifiedPrincipal; readonly scope: Scope;
+  readonly boundary: VerificationDecodeContext;
+  // A non-waiting snapshot supplied by the executable assembly. Runtime guards
+  // may read it synchronously but cannot refresh providers or mutate the spine.
+  current(): Readonly<{ decode: DecodeContext; clock: Clock; generation: string; stopped: boolean;
+    facts: FactContext; evidence: readonly Evidence[] }>;
+}
+export interface VerificationDueItem {
+  readonly plan: string; readonly arm: string; readonly instance: string;
+  readonly dueAt: number; readonly lastAttempt: string; readonly overdueBy: number;
+}
+export interface GuardArmStatus {
+  readonly arm: string; readonly lastAttempt: string; readonly lastSuccess: string;
+  readonly sourceStatus: 'available' | 'unavailable' | 'unknown'; readonly posture: GuardPosture;
+}
+export interface GuardPostureView {
+  readonly plan: string; readonly generation: string; readonly evaluatedAt: number;
+  readonly arms: readonly GuardArmStatus[]; readonly posture: GuardPosture;
+}
+export interface VerificationRuntimePort {
+  readonly owner: 'part-nine';
+  record<N extends VerificationRecordName>(name: N, input: unknown): Result<Extract<VerificationRecord, { type: N }>>;
+  inspect(): Result<readonly VerificationFact[]>;
+  due(now: Clock): Result<readonly VerificationDueItem[]>;
+  posture(plan: string, now: Clock): Result<GuardPostureView>;
+}
 export interface VerificationComparison {
   readonly equal: boolean; readonly conflict?: ConflictClass;
 }

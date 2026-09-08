@@ -1,8 +1,9 @@
 import { consumeResult, defineDecoder } from '../index.js';
 import type { Json, Result } from '../index.js';
-import type { ConflictClass, OwnedShape } from '../facts/index.js';
+import { authorAndAppend, causalCone, registerOwnedBody } from '../facts/index.js';
+import type { ConflictClass, FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import type { VerificationComparison, VerificationDecodeContext, VerificationIdentity, VerificationRecord, VerificationRecordName } from './contracts.js';
+import type { VerificationAuthor, VerificationComparison, VerificationDecodeContext, VerificationHost, VerificationIdentity, VerificationRecord, VerificationRecordName, VerificationSpine } from './contracts.js';
 
 const text = { kind: 'text', maxLength: 2048 } as const;
 const integer = { kind: 'integer' } as const;
@@ -34,7 +35,7 @@ export const verificationShapes: Readonly<Record<VerificationRecordName, OwnedSh
     captureStatuses: list(status), taints: texts,
     predicates: list(pair({ predicate: text, verdict: text, reason: text, evidence: texts, decision: text }), 16),
     validFrom: integer, validUntil: integer, supersedes: text }),
-  ProbeRecord: pair({ ...common, plan: text, planVersion: text, slot: text, attempt: text, subject: text, challengeDigest: text,
+  ProbeRecord: pair({ ...common, plan: text, planVersion: text, arm: text, slot: text, attempt: text, subject: text, challengeDigest: text,
     run: text, operation: text, startedAt: integer, completedAt: integer, witnesses: texts, comparison: text,
     disposition: text, missingPhases: texts, captureStatus: text, costs: list(pair({ resource: text, amount: integer }), 64) }),
   RetrospectiveReviewRecord: pair({ ...common, plan: text, reviewer: text, independenceEvidence: texts, populationQuery: text,
@@ -118,7 +119,7 @@ function validate(record: VerificationRecord): void {
     case 'ProbeRecord':
       one(record.disposition, ['passed', 'failed', 'inconclusive', 'not-run', 'cancelled'], 'probe disposition');
       one(record.captureStatus, ['available', 'tombstoned', 'expired', 'missing'], 'probe capture status');
-      ensure(record.plan && record.planVersion && record.slot && record.attempt && record.subject && record.challengeDigest, 'probe binding incomplete');
+      ensure(record.plan && record.planVersion && record.arm && record.slot && record.attempt && record.subject && record.challengeDigest, 'probe binding incomplete');
       nonnegative(record.startedAt, 'probe start'); nonnegative(record.completedAt, 'probe completion');
       ensure(record.disposition === 'not-run' || record.disposition === 'cancelled' || record.completedAt >= record.startedAt, 'probe completion precedes start');
       if (record.disposition === 'passed') ensure(record.witnesses.length > 0 && record.missingPhases.length === 0, 'passing probe requires complete independent witness');
@@ -203,7 +204,7 @@ export function verificationLogicalKey(record: VerificationRecord): string {
     case 'VerificationPlan': return `plan:${record.id}`;
     case 'VerificationRequest': return `request:${record.logicalKey}:${record.predicate}`;
     case 'VerificationAssessment': return `assessment:${record.request}:${record.barVersion}:${record.vectorDigest}`;
-    case 'ProbeRecord': return `probe:${record.plan}:${record.slot}:${record.attempt}`;
+    case 'ProbeRecord': return `probe:${record.plan}:${record.arm}:${record.slot}:${record.attempt}`;
     case 'RetrospectiveReviewRecord': return `review:${record.plan}:${record.populationQuery}:${record.vectorDigest}`;
     case 'SemanticReviewRecord': return `semantic:${record.edge}:${record.generation}`;
     case 'Grade': return `grade:${record.benchmarkRecord}:${record.criterion}:${record.vectorDigest}`;
@@ -228,3 +229,49 @@ export function compareVerificationRecords<N extends VerificationRecordName>(nam
 }
 
 export function wireVerificationRecord(record: VerificationRecord): Json { return json(record); }
+
+export const verificationKindFor = (name: VerificationRecordName): string => `verification-${name}`;
+export function verificationRecordFrom(fact: FactEnvelope): VerificationRecord {
+  const body = fact.body as { record: Json };
+  return freeze(body.record as unknown as VerificationRecord);
+}
+export function verificationRows(facts: readonly FactEnvelope[]): readonly { fact: FactEnvelope; record: VerificationRecord }[] {
+  const kinds = new Set(Object.keys(verificationShapes).map(name => verificationKindFor(name as VerificationRecordName)));
+  return facts.filter(fact => kinds.has(fact.kind)).map(fact => ({ fact, record: verificationRecordFrom(fact) }));
+}
+export function verificationSchemas(host: VerificationHost): readonly FactSchema[] {
+  return (Object.keys(verificationShapes) as VerificationRecordName[]).map(name => ({
+    kind: verificationKindFor(name), version: 1,
+    fields: { record: { kind: 'owned', owner: 'part-nine', name } }, machineScope: 'shared',
+    standing: 'requester', action: 'work', scope: host.scope, causallyBound: true,
+    requiredReferences: [], authority: 'none',
+  }));
+}
+export function registerVerificationBodies(host: VerificationHost): Result<readonly OwnedBodyRegistration[]> {
+  return boundary('VerificationRegistrations', null, host.boundary, () =>
+    (Object.keys(verificationShapes) as VerificationRecordName[]).map(name => take(registerOwnedBody({
+      name, owner: 'part-nine', currentVersion: 1,
+      versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {},
+      decodeCurrent: (value, context) => {
+        try {
+          ensure(context.origin.machine === host.machine && context.origin.principal.id === host.principal.id
+            && context.origin.principal.kind === host.principal.kind, 'foreign verification recorder');
+          const record = take(decodeVerificationRecord(name, value, context));
+          ensure(context.origin.kind === verificationKindFor(name), 'verification fact kind mismatch');
+          const cone = new Set(causalCone(context.origin, context.facts.facts).map(fact => fact.id));
+          ensure(record.predecessors.every(id => cone.has(id)), 'verification predecessor outside causal cone');
+          if (record.type === 'VerificationAssessment' && record.supersedes) ensure(record.predecessors.includes(record.supersedes), 'changed assessment must causally link predecessor');
+          if (record.type === 'Grade' && record.supersedes) ensure(record.predecessors.includes(record.supersedes), 'changed grade must causally link predecessor');
+          return { ok: true, value: wireVerificationRecord(record) };
+        } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'verification body refused' }; }
+      },
+    }, verificationShapes[name], host.boundary))),
+  );
+}
+export function createVerificationSpine(host: VerificationHost, author: VerificationAuthor, store: VerificationSpine['store']): VerificationSpine {
+  return Object.freeze({ store, append: (record: VerificationRecord, required: readonly string[] = record.predecessors) => authorAndAppend({
+    kind: verificationKindFor(record.type), schemaVersion: 1, machine: host.machine,
+    principal: json(host.principal), provenance: json(host.principal.provenance), at: json(host.current().clock),
+    body: { record: wireVerificationRecord(record) }, required,
+  }, author.context, store, author.privateKey) });
+}
