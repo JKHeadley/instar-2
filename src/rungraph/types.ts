@@ -124,7 +124,14 @@ export interface RunGraphDependencies {
   readonly groundingPolicy: Readonly<{ entry: string; threshold: number; maxAge: number; briefingClasses: readonly string[] }>;
   readonly generation: () => ProjectionGeneration; readonly clock: () => Clock;
 }
-export interface RunGraphPort {
+export interface RunExitReadPort {
+  readonly owner: 'part-five';
+  readExit(run: OwnedReference<'part-five', 'Run'>): Result<Readonly<{
+    fact: FactEnvelopeReference;
+    exit: RunExit;
+  }>>;
+}
+export interface RunGraphPort extends RunExitReadPort {
   open(input: unknown): Result<RunView>;
   read(run: string): Result<RunView>;
   ground(run: string, worker: string, harness: string, reason: SessionGrounding['reason'], ownership: LeaseReference): Result<FactEnvelope>;

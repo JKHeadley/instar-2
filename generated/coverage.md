@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:c6636db1f0ba482d14d66719459085b5e112a044acc6466f39bc749ec8570f65
-Source commit: 62e2f8ce6af34f3b90c5e86b8a17c7980476fca9
+Register generation: sha256:c6bdbd7ae81f983d709dfbd66f0d158b99928db54c7ee85537743fc3e4831eee
+Source commit: 2f7a2349997e1db9fb7720f215f1ebb68db6ba7a
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 

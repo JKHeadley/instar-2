@@ -123,3 +123,30 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
     place: (worker: string, harness: string) => { execution = { worker, harness, ownership: { ...lease, id: liveLease },
       context: ref(append('note', json({ identity: `${worker}:${harness}`, amount: '0' })).fact) }; } };
 }
+
+export function closingRun() {
+  const f = setup(), ready = value(f.graph.open(f.run));
+  const check = value(decode('Evidence', f.evidenceInput({ id: 'exit-read-check', claim: { subject: f.run.exitTest.subject,
+    predicate: `exit:${f.run.exitTest.check}:${f.run.exitTest.version}`, value: f.run.exitTest.acceptance }, freshFor: 1000 }), f.ctx.decode));
+  const checkFact = f.append('evidence-record', json({ evidence: check })).fact;
+  const result = value(decode('Result', { type: 'Result', schemaVersion: 1, kind: 'Success', value: 'terminal artifact', capacity: { kind: 'none' } }, f.ctx.decode));
+  const resultFact = f.append('result-record', json({ result })).fact;
+  const exit = { type: 'RunExit', schemaVersion: 1, id: 'exit-read-proposal', run: f.id, expected: ready.head, proposer: f.owner,
+    standing: ref(f.opening), frontier: ready.source.foldedThrough, at: f.now, kind: 'completed', exitTest: f.run.exitTest,
+    check: ref(checkFact), evidence: [{ type: 'Evidence', id: check.id, fact: ref(checkFact), field: 'evidence' }],
+    result: { type: 'Result', id: 'result:exit-read', fact: ref(resultFact), field: 'result' }, settledOperations: [] };
+  const proposal = { type: 'RunTransition', schemaVersion: 1, id: 'exit-read-propose', run: f.id, expected: ready.head,
+    trigger: ref(checkFact), kind: 'propose-exit', from: 'ready', to: 'closing', responsible: f.owner, standing: ref(f.opening), ownership: f.lease,
+    generation: f.run.generation, at: f.now, blockedOn: { kind: 'nothing' }, nextWake: f.run.nextWake, exit };
+  const closing = value(f.graph.transition(proposal));
+  const terminalExit = { ...exit, id: 'exit-read-terminal', expected: closing.head };
+  const close = { ...proposal, id: 'exit-read-close', expected: closing.head, kind: 'close', from: 'closing', to: 'completed', exit: terminalExit };
+  return { ...f, ready, closing, terminalExit, close };
+}
+
+export function completedRun() {
+  const f = closingRun();
+  const completed = value(f.graph.transition(f.close));
+  const closeFact = value(f.store.read()).at(-1)!;
+  return { ...f, completed, closeFact };
+}
