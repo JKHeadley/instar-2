@@ -103,7 +103,7 @@ function validate(r: JudgmentRecord, ctx: OwnedBodyContext, host: JudgmentHost, 
   if (ctx.mode === 'origin') ensure(r.predecessor === (rows(ctx.facts.facts).at(-1)?.fact.id ?? ''), 'stale judgment origin predecessor');
   const body = ctx.origin.body as Record<string, Json>;
   if (r.type === 'BenchmarkRecord' || r.type === 'BenchmarkScenario' || r.type === 'BenchmarkRunRecord') {
-    validateBenchmark(r, all); ensure(body.result === undefined && body.decision === undefined && body.outcome === undefined && body.evidence === undefined,
+    validateBenchmark(r, all, ctx); ensure(body.result === undefined && body.decision === undefined && body.outcome === undefined && body.evidence === undefined,
       'benchmark records do not contain grading or constitutional conclusions'); return;
   }
   ensure(r.request.length > 0, 'judgment request identity');
@@ -191,7 +191,27 @@ function validate(r: JudgmentRecord, ctx: OwnedBodyContext, host: JudgmentHost, 
 function owned(reference: { readonly owner: string; readonly name: string; readonly id: string }, owner: string, name: string): void {
   ensure(reference.owner === owner && reference.name === name && reference.id.length > 0, `${name} owner/reference mismatch`);
 }
-function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRunRecord, all: readonly JudgmentFact[]): void {
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+  return encoded(left).bytes === encoded(right).bytes;
+}
+function sameCaptures(left: readonly Capture[], right: readonly Capture[]): boolean {
+  return encoded(left).bytes === encoded(right).bytes;
+}
+function captureBytes(ctx: OwnedBodyContext, value: Capture): string | undefined {
+  const captured = ctx.facts.captures[value.reference];
+  if (captured?.status !== 'available' || captured.bytes === null || captured.hash !== value.hash) {
+    ensure(ctx.mode === 'historical', 'benchmark replay capture unavailable'); return undefined;
+  }
+  return captured.bytes;
+}
+function containsExcludedField(value: unknown, excluded: string): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some(item => containsExcludedField(item, excluded));
+  const object = value as Record<string, unknown>;
+  if (Object.hasOwn(object, excluded)) return true;
+  return Object.values(object).some(item => containsExcludedField(item, excluded));
+}
+function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRunRecord, all: readonly JudgmentFact[], ctx: OwnedBodyContext): void {
   const unique = (values: readonly string[], name: string) => ensure(values.length === new Set(values).size, `${name} contains duplicates`);
   if (r.type === 'BenchmarkRecord') {
     owned(r.request, 'part-seven', 'JudgmentRequest'); owned(r.resolution, 'part-seven', 'JudgmentResolution');
@@ -200,6 +220,7 @@ function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRun
     const resolution = all.find((v): v is JudgmentFact & { record: import('./contracts.js').JudgmentResolution } => v.fact.id === r.resolution.id && v.record.type === 'JudgmentResolution');
     ensure(request && resolution && resolution.record.request === request.record.id, 'benchmark source request/resolution absent or unrelated');
     ensure(r.requestDigest === request.record.inputDigest && r.inputDigest === request.record.inputDigest, 'benchmark input digest differs from real request');
+    ensure(r.provenance.kind === 'real' || r.provenance.kind === 'synthetic', 'unknown benchmark provenance kind');
     if (r.provenance.kind === 'real') {
       ensure(Object.keys(r.provenance).sort().join(',') === 'generation,kind,request,vector', 'real provenance is not closed');
       owned(r.provenance.request, 'part-seven', 'JudgmentRequest');
@@ -209,24 +230,70 @@ function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRun
       ensure(Object.keys(r.provenance).sort().join(',') === 'fixture,kind,productionDerived' && r.provenance.productionDerived === false
         && r.provenance.fixture.length > 0, 'synthetic provenance cannot claim production derivation');
     }
+    ensure(!all.some(v => v.record.type === 'BenchmarkRecord' && v.record.request.id === r.request.id
+      && v.record.resolution.id === r.resolution.id), 'duplicate logical benchmark manifest');
     r.attempts.forEach(a => owned(a, 'part-seven', 'JudgmentAttemptRecord'));
     unique(r.attempts.map(a => a.id), 'benchmark attempts'); unique(r.conclusionEvidence, 'conclusion evidence'); unique(r.reasonEvidence, 'reason evidence');
+    ensure(r.decision.state === 'present' || r.decision.state === 'absent', 'unknown benchmark Decision state');
     ensure(r.decision.state === 'present' ? Object.keys(r.decision).sort().join(',') === 'id,state' && r.decision.id.length > 0
       : Object.keys(r.decision).join(',') === 'state', 'benchmark Decision presence must be explicit');
     ensure(r.captureReferences.length > 0 && r.run === request.record.run && r.step === request.record.step
       && r.logicalKey === request.record.logicalKey && r.sourceGeneration === request.record.generation, 'benchmark manifest differs from source request');
+    if (r.provenance.kind === 'real') {
+      const attempts = all.filter((v): v is JudgmentFact & { record: JudgmentAttemptRecord } =>
+        v.record.type === 'JudgmentAttemptRecord' && v.record.request === request.record.id);
+      const response = attempts.find(v => v.record.phase === 'response-observed');
+      const expectedCaptures = [request.record.question, request.record.context, request.record.submitted,
+        ...attempts.flatMap(v => v.record.receipt ? [v.record.receipt] : [])];
+      const actualDecision = (resolution.fact.body as { readonly decision?: Decision }).decision;
+      ensure(r.recordingPrincipal === request.fact.principal.id && resolution.fact.principal.id === request.fact.principal.id,
+        'benchmark recording principal differs from source recorder');
+      ensure(sameStrings(r.attempts.map(v => v.id), attempts.map(v => v.fact.id)), 'benchmark attempts differ from source attempts');
+      ensure(sameCaptures(r.captureReferences, expectedCaptures), 'benchmark captures differ from source captures');
+      if (resolution.record.disposition === 'decided') {
+        ensure(actualDecision && r.decision.state === 'present' && r.decision.id === actualDecision.id,
+          'benchmark Decision differs from source resolution');
+        ensure(sameStrings(r.conclusionEvidence, actualDecision.conclusion.evidence)
+          && sameStrings(r.reasonEvidence, actualDecision.reason.evidence), 'benchmark evidence differs from source Decision');
+      } else {
+        ensure(actualDecision === undefined && r.decision.state === 'absent'
+          && r.conclusionEvidence.length === 0 && r.reasonEvidence.length === 0,
+        'refused source resolution requires explicit absent Decision');
+      }
+      for (const id of [...r.outcomeReferences, ...r.usageReferences]) {
+        ensure(all.some(v => v.fact.id === id && v.record.type === 'JudgmentAttemptRecord' && v.record.request === request.record.id),
+          'benchmark outcome/usage reference absent or unrelated');
+      }
+      ensure(response, 'benchmark real manifest requires recorded response attempt');
+    }
     return;
   }
   if (r.type === 'BenchmarkScenario') {
     owned(r.source, 'part-seven', 'BenchmarkRecord'); owned(r.sourceGrade, 'part-nine', 'Grade');
     const source = all.find((v): v is JudgmentFact & { record: BenchmarkRecord } => v.fact.id === r.source.id && v.record.type === 'BenchmarkRecord');
     ensure(source?.record.provenance.kind === 'real', 'benchmark scenario requires real source provenance');
+    const sourceRequest = all.find((v): v is JudgmentFact & { record: JudgmentRequest } =>
+      v.fact.id === source.record.request.id && v.record.type === 'JudgmentRequest');
+    ensure(sourceRequest, 'benchmark scenario source request absent');
     ensure(r.version.length > 0 && r.pinnedGeneration.length > 0 && r.pinnedVector.length > 0 && r.promotionDecision.length > 0,
       'scenario grade/promotion pin required');
-    ensure(r.originalInputHash.length > 0 && r.transformedInputHash === r.replayInput.hash && r.floorDigest.length > 0
+    ensure(/^sha256:[a-f0-9]{64}$/.test(r.originalInputHash) && r.originalInputHash === sourceRequest.record.submitted.hash
+      && r.transformedInputHash === r.replayInput.hash && /^sha256:[a-f0-9]{64}$/.test(r.transformedInputHash)
+      && /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(r.transformationVersion) && r.floorDigest.length > 0
       && r.outputSchemaDigest.length > 0 && r.evaluationContract.length > 0 && r.dataScope.length > 0, 'scenario lineage/digests required');
+    ensure(r.pinnedGeneration === source.record.sourceGeneration && r.pinnedGeneration === sourceRequest.record.generation
+      && r.pinnedVector === source.record.provenance.vector, 'scenario lineage pins differ from source manifest');
     unique(r.excludedAnswerFields, 'excluded answer fields'); unique(r.excludedOutcomeFields, 'excluded outcome fields');
     ensure(r.excludedAnswerFields.length > 0 && r.excludedOutcomeFields.length > 0, 'answer and outcome exclusions must be explicit');
+    const replayBytes = captureBytes(ctx, r.replayInput);
+    if (replayBytes !== undefined) {
+      let replay: unknown;
+      try { replay = JSON.parse(replayBytes) as unknown; } catch { ensure(false, 'benchmark replay input must be JSON'); }
+      ensure(replay !== null && typeof replay === 'object', 'benchmark replay input must be a JSON object or array');
+      for (const field of [...r.excludedAnswerFields, ...r.excludedOutcomeFields]) {
+        ensure(field.length > 0 && !containsExcludedField(replay, field), `benchmark replay input contains excluded field: ${field}`);
+      }
+    }
     ensure(['available', 'unavailable'].includes(r.captureAvailability), 'unknown scenario capture availability'); return;
   }
   owned(r.run, 'part-five', 'Run');
@@ -254,6 +321,25 @@ function validateBenchmark(r: BenchmarkRecord | BenchmarkScenario | BenchmarkRun
     if (e.disposition === 'completed') {
       ensure(e.attempt && e.resolution && e.detail === undefined, 'completed execution requires attempt/resolution only');
       owned(e.attempt, 'part-seven', 'JudgmentAttemptRecord'); owned(e.resolution, 'part-seven', 'JudgmentResolution');
+      const attempt = all.find((v): v is JudgmentFact & { record: JudgmentAttemptRecord } =>
+        v.fact.id === e.attempt!.id && v.record.type === 'JudgmentAttemptRecord');
+      const resolution = all.find((v): v is JudgmentFact & { record: import('./contracts.js').JudgmentResolution } =>
+        v.fact.id === e.resolution!.id && v.record.type === 'JudgmentResolution');
+      const request = attempt && all.find((v): v is JudgmentFact & { record: JudgmentRequest } =>
+        v.record.id === attempt.record.request && v.record.type === 'JudgmentRequest');
+      const scenario = all.find((v): v is JudgmentFact & { record: BenchmarkScenario } =>
+        v.fact.id === e.scenario.id && v.record.type === 'BenchmarkScenario');
+      const source = scenario && all.find((v): v is JudgmentFact & { record: BenchmarkRecord } =>
+        v.fact.id === scenario.record.source.id && v.record.type === 'BenchmarkRecord');
+      ensure(attempt?.record.phase === 'response-observed', 'completed execution attempt absent or not a response');
+      ensure(resolution && request, 'completed execution resolution/request absent');
+      ensure(resolution.record.request === request.record.id && resolution.record.response === attempt.fact.id,
+        'completed execution attempt/resolution unrelated');
+      ensure(source?.record.request.id === request.fact.id, 'completed execution scenario/request unrelated');
+      ensure(request.record.route === e.candidate && request.record.run === r.run.id,
+        'completed execution candidate/run unrelated');
+      ensure(e.usage.every(id => all.some(v => v.fact.id === id && v.record.type === 'JudgmentAttemptRecord'
+        && v.record.request === request.record.id)), 'completed execution usage absent or unrelated');
     } else ensure(e.detail && e.detail.length > 0, 'non-completed execution requires explicit detail');
   }
 }

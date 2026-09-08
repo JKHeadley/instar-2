@@ -14,17 +14,36 @@ export function createJudgmentBenchmarkReadPort(spine: JudgmentSpine, context: B
   const clean = (status: FactStatus): void => ensure(status.taint.length === 0 && status.conflicts.length === 0,
     'judgment benchmark source tainted or conflicted');
   const checked = <T>(name: string, run: () => T): Result<T> => boundary(name, null, context, run);
+  const statusFor = (entries: readonly FactStatus[], id: string, type: JudgmentRecord['type']): FactStatus | undefined =>
+    entries.find(entry => entry.fact.id === id && typeOf(entry)?.type === type);
+  const cleanDependencies = (status: FactStatus, entries: readonly FactStatus[], visited = new Set<string>()): void => {
+    if (visited.has(status.fact.id)) return;
+    visited.add(status.fact.id); clean(status);
+    const record = typeOf(status);
+    const dependency = (id: string, type: JudgmentRecord['type']): FactStatus => {
+      const found = statusFor(entries, id, type); ensure(found, `${type} dependency absent`); return found;
+    };
+    if (record?.type === 'BenchmarkRecord') {
+      cleanDependencies(dependency(record.request.id, 'JudgmentRequest'), entries, visited);
+      cleanDependencies(dependency(record.resolution.id, 'JudgmentResolution'), entries, visited);
+      record.attempts.forEach(attempt => cleanDependencies(dependency(attempt.id, 'JudgmentAttemptRecord'), entries, visited));
+    } else if (record?.type === 'BenchmarkScenario') {
+      cleanDependencies(dependency(record.source.id, 'BenchmarkRecord'), entries, visited);
+    } else if (record?.type === 'BenchmarkRunRecord') {
+      record.scenarios.forEach(scenario => cleanDependencies(dependency(scenario.scenario.id, 'BenchmarkScenario'), entries, visited));
+    }
+  };
   const exact = (reference: OwnedReference<'part-seven', BenchmarkRecord['type'] | BenchmarkScenario['type'] | BenchmarkRunRecord['type']>,
-    type: BenchmarkRecord['type'] | BenchmarkScenario['type'] | BenchmarkRunRecord['type']): BenchmarkRecord | BenchmarkScenario | BenchmarkRunRecord => {
+    type: BenchmarkRecord['type'] | BenchmarkScenario['type'] | BenchmarkRunRecord['type'], entries: readonly FactStatus[]): BenchmarkRecord | BenchmarkScenario | BenchmarkRunRecord => {
     ensure(reference.owner === 'part-seven' && reference.name === type && reference.id.length > 0, `${type} owner/reference mismatch`);
-    const status = read().find(entry => entry.fact.id === reference.id && typeOf(entry)?.type === type);
-    ensure(status, `${type} absent`); clean(status);
+    const status = statusFor(entries, reference.id, type);
+    ensure(status, `${type} absent`); cleanDependencies(status, entries);
     return freeze(typeOf(status) as BenchmarkRecord | BenchmarkScenario | BenchmarkRunRecord);
   };
   return Object.freeze({ owner: 'part-seven' as const,
-    readRecord: (id: OwnedReference<'part-seven', 'BenchmarkRecord'>) => checked('JudgmentBenchmarkRecordRead', () => exact(id, 'BenchmarkRecord') as BenchmarkRecord),
-    readScenario: (id: OwnedReference<'part-seven', 'BenchmarkScenario'>) => checked('JudgmentBenchmarkScenarioRead', () => exact(id, 'BenchmarkScenario') as BenchmarkScenario),
-    readRun: (id: OwnedReference<'part-seven', 'BenchmarkRunRecord'>) => checked('JudgmentBenchmarkRunRead', () => exact(id, 'BenchmarkRunRecord') as BenchmarkRunRecord),
+    readRecord: (id: OwnedReference<'part-seven', 'BenchmarkRecord'>) => checked('JudgmentBenchmarkRecordRead', () => exact(id, 'BenchmarkRecord', read()) as BenchmarkRecord),
+    readScenario: (id: OwnedReference<'part-seven', 'BenchmarkScenario'>) => checked('JudgmentBenchmarkScenarioRead', () => exact(id, 'BenchmarkScenario', read()) as BenchmarkScenario),
+    readRun: (id: OwnedReference<'part-seven', 'BenchmarkRunRecord'>) => checked('JudgmentBenchmarkRunRead', () => exact(id, 'BenchmarkRunRecord', read()) as BenchmarkRunRecord),
     readManifest: (requestReference: OwnedReference<'part-seven', 'JudgmentRequest'>) => checked('JudgmentBenchmarkManifestRead', () => {
       ensure(requestReference.owner === 'part-seven' && requestReference.name === 'JudgmentRequest' && requestReference.id.length > 0,
         'JudgmentRequest owner/reference mismatch');
