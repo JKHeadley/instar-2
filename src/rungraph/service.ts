@@ -69,7 +69,22 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       need(calls === 1 && written && same(written, receipt), 'admission did not commit the exact callback record'); return receipt;
     };
     return freeze({
+      owner: 'part-five',
       read: (run: string) => boundary('ReadRun', run, d.context, () => read(run)),
+      readExit: run => boundary('ReadRunExit', run, d.context, safe => {
+        const reference = object(safe);
+        need(reference.owner === 'part-five' && reference.name === 'Run'
+          && typeof reference.id === 'string' && reference.id.length > 0, 'run reference owner/name/id mismatch');
+        const view = read(reference.id);
+        need(['completed', 'unreachable', 'cancelled'].includes(view.state), 'terminal run exit absent');
+        const fact = take(d.store.read()).find(candidate => candidate.kind === runKinds.RunTransition
+          && object(readRecordFact(candidate)).id === view.head);
+        need(fact, 'terminal run exit fact absent');
+        const transition = take(decodeRunTransition(readRecordFact(fact), context()));
+        need(transition.run === reference.id && transition.kind === 'close' && transition.to === view.state
+          && transition.exit, 'terminal run exit absent');
+        return freeze({ fact: factRef(fact), exit: transition.exit });
+      }),
       open: (input: unknown) => preserveRunInput(input, d.context, d.governance, captured => boundary('OpenRun', input, captured, safe => {
         const run = take(runAdmission(safe, { ...context(), preserved: captured.preserved }, d.governance));
         const existing = take(d.store.read()).find(f => f.kind === runKinds.Run && object(f.body).run === run.id);
