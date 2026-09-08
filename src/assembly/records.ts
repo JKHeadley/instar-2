@@ -271,45 +271,70 @@ export function compareAssemblyRecords<N extends AssemblyRecordName>(name: N, le
 export const assemblyKindFor = (name: AssemblyRecordName): string => `assembly-${name}`;
 export interface AssemblyReference {
   readonly id: string;
-  readonly expected?: AssemblyRecordName | undefined;
+  readonly expected?: AssemblyRecordName | 'CheckRunRecord' | 'ProbeRecord' | 'Measurement' | undefined;
   readonly field: string;
   readonly requiredWhenSigned: boolean;
 }
-const refs = (ids: readonly string[], field: string, expected?: AssemblyRecordName, requiredWhenSigned = false): AssemblyReference[] =>
+const refs = (ids: readonly string[], field: string, expected?: AssemblyReference['expected'], requiredWhenSigned = false): AssemblyReference[] =>
   ids.filter(Boolean).map(id => ({ id, expected, field, requiredWhenSigned }));
 export function assemblyReferences(record: AssemblyRecord): readonly AssemblyReference[] {
   const generic = [...refs(record.predecessors, 'predecessors', undefined, true), ...refs(record.dependencyFacts, 'dependencyFacts', undefined, true)];
   switch (record.type) {
     case 'AssemblyManifest': return [...generic, ...refs(record.custodyPolicies, 'custodyPolicies', 'StoreCustodyPolicy')];
     case 'AssemblyAdmission': return [...generic, ...refs([record.priorAdmission], 'priorAdmission', 'AssemblyAdmission'),
-      ...refs(record.conformance, 'conformance', 'AdapterConformance', true), ...refs(record.isolationEvidence, 'isolationEvidence', 'HarnessObservation', true),
-      ...refs(record.custodyEvidence, 'custodyEvidence', 'StorageAccessObservation', true), ...refs(record.probeEvidence, 'probeEvidence', undefined, true)];
+      ...refs(record.conformance, 'conformance', 'AdapterConformance', true),
+      ...refs(record.isolationEvidence, 'isolationEvidence', 'HarnessObservation', true),
+      ...refs(record.custodyEvidence, 'custodyEvidence', 'StorageAccessObservation', true),
+      ...refs(record.probeEvidence, 'probeEvidence', 'ProbeRecord', true)];
     case 'HarnessLaunchSpec': return [...generic, ...refs([record.processOperation], 'processOperation')];
     case 'HarnessObservation': return [...generic, ...refs([record.launch], 'launch', 'HarnessLaunchSpec'), ...refs(record.causalReferences, 'causalReferences')];
     case 'AdapterEvidenceContract': return [...generic, ...refs([record.parserDeclaration], 'parserDeclaration')];
-    case 'AdapterConformance': return [...generic, ...refs([record.contract], 'contract', 'AdapterEvidenceContract'),
-      ...refs(record.stageChecks.map(row => row.checkRun), 'stageChecks.checkRun', undefined, true), ...refs(record.probes, 'probes', undefined, true), ...refs(record.bars, 'bars', undefined, true)];
+    case 'AdapterConformance': return [...generic, ...refs([record.contract], 'contract', 'AdapterEvidenceContract', true),
+      ...refs(record.stageChecks.map(row => row.checkRun), 'stageChecks.checkRun', 'CheckRunRecord', true),
+      ...refs(record.probes, 'probes', 'ProbeRecord', true), ...refs(record.bars, 'bars', undefined, true)];
     case 'StoreCustodyPolicy': return [...generic, ...refs(record.grants, 'grants')];
     case 'StorageAccessObservation': return [...generic, ...refs([record.policy], 'policy', 'StoreCustodyPolicy')];
-    case 'LocalCapabilityPackage': return [...generic, ...refs([record.priorPackage], 'priorPackage', 'LocalCapabilityPackage')];
+    case 'LocalCapabilityPackage': return [...generic, ...refs([record.priorPackage], 'priorPackage', 'LocalCapabilityPackage', true)];
     case 'PackageTransition': return [...generic, ...refs([record.operation], 'operation'), ...refs(record.testEvidence, 'testEvidence', undefined, true),
       ...refs(record.migrationEvidence, 'migrationEvidence', undefined, true), ...refs(record.probeEvidence, 'probeEvidence', undefined, true)];
     case 'GrowthPolicy': return [...generic, ...refs([record.loopPolicy], 'loopPolicy')];
-    case 'GrowthObservation': return [...generic, ...refs([record.policy], 'policy', 'GrowthPolicy', true), ...refs(record.measurements, 'measurements', undefined, true)];
+    case 'GrowthObservation': return [...generic, ...refs([record.policy], 'policy', 'GrowthPolicy', true), ...refs(record.measurements, 'measurements', 'Measurement', true)];
   }
 }
 export function assemblyRowForReference(reference: string, rows: readonly CurrentAssemblyFact[]): CurrentAssemblyFact | undefined {
   return rows.find(row => row.fact.id === reference || row.record.id === reference);
 }
+
+function object(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Readonly<Record<string, unknown>> : undefined;
+}
+
+export function factReferenceAliases(fact: FactEnvelope): readonly string[] {
+  const body = object(fact.body); const nested = object(body?.record); const measurement = object(body?.measurement);
+  return [...new Set([fact.id, body?.id, nested?.id, measurement?.id].filter((value): value is string => typeof value === 'string' && value.length > 0))];
+}
+
+export function referenceHasExpectedKind(reference: AssemblyReference, fact: FactEnvelope, record?: AssemblyRecord): boolean {
+  if (!reference.expected) return true;
+  if (record) return record.type === reference.expected || reference.expected === 'Measurement' && record.type === 'GrowthObservation';
+  const body = object(fact.body); const nested = object(body?.record); const measurement = object(body?.measurement);
+  switch (reference.expected) {
+    case 'CheckRunRecord': return fact.kind === 'check-run-record';
+    case 'ProbeRecord': return fact.kind === 'verification-ProbeRecord';
+    case 'Measurement': return body?.type === 'Measurement' || nested?.type === 'Measurement' || measurement?.type === 'Measurement';
+    default: return false;
+  }
+}
+
 export function validateAssemblyRecordReferences(record: AssemblyRecord, context: AssemblyDecodeContext): void {
   ensure(context.history, 'signed history resolver required');
   for (const reference of assemblyReferences(record)) {
     const status = take(context.history.lookup(reference.id));
     if (!status) {
-      ensure(!/^[^:]+:\d+:\d+$/.test(reference.id), `${reference.field} reference missing from signed history: ${reference.id}`);
+      ensure(!reference.requiredWhenSigned && !/^[^:]+:\d+:\d+$/.test(reference.id), `${reference.field} reference missing from signed history: ${reference.id}`);
       continue;
     }
-    ensure(!reference.expected || status.record?.type === reference.expected,
+    ensure(referenceHasExpectedKind(reference, status.fact, status.record),
       `${reference.field} reference has wrong signed record kind; expected ${reference.expected ?? 'signed fact'}`);
     ensure(reference.expected || !status.record || reference.field === 'predecessors' || reference.field === 'dependencyFacts',
       `${reference.field} reference resolves to a Part Ten record owned by the wrong semantic boundary`);

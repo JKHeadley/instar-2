@@ -29,7 +29,7 @@ it('P10-NF-04 P10-NF-06 P10-NF-08 P10-NF-12 P10-NF-19 P10-NF-29 P10-NF-30 P10-NF
   // in-memory view or caller-reported status survives the process boundary.
   const restartedStore = createFactStore(seed.context, seed.storage); const restartedSpine = createAssemblySpine(seed.host, { context: seed.context, privateKey }, restartedStore);
   const restarted = createAssemblyRuntime({ ...seed.composition, spine: restartedSpine });
-  rows = value(restarted.inspect()); expect(rows.map(row => row.record.type)).toEqual(['AdapterConformance', 'StoreCustodyPolicy', 'HarnessObservation', 'StorageAccessObservation', 'AssemblyManifest', 'AssemblyAdmission']);
+  rows = value(restarted.inspect()); expect(rows.map(row => row.record.type)).toEqual(['AdapterEvidenceContract', 'GrowthPolicy', 'AdapterConformance', 'StoreCustodyPolicy', 'HarnessObservation', 'StorageAccessObservation', 'AssemblyManifest', 'AssemblyAdmission']);
   expect(value(restarted.admit(manifest.id, 'scope:ordinary')).id).toBe('AssemblyAdmission');
 
   value(restartedSpine.append(value(decodeAdapterConformance({ ...conformance, disposition: 'failed', limitations: ['durable conflict'] }, { ...seed.c, validateReferences: false }))));
@@ -40,7 +40,7 @@ it('P10-NF-04 P10-NF-06 P10-NF-08 P10-NF-12 P10-NF-19 P10-NF-29 P10-NF-30 P10-NF
 
 it('P10-NF-20 P10-NF-26 P10-NF-28 P10-NF-32 P10-NF-35 P10-NF-36 P10-NF-38 P10-NF-44 P10-NF-46 P10-NF-47 P10-NF-48 P10-NF-49 P10-NF-50 P10-NF-53 P10-NF-56 P10-NF-57 lifecycle preserves exact observations and refuses duplicate immutable content after restart', () => {
   const f = assemblyRuntimeFixture(); value(f.runtime.record('GrowthPolicy', assemblyInput('GrowthPolicy'))); value(f.runtime.record('GrowthObservation', assemblyInput('GrowthObservation')));
-  expect(value(f.runtime.inspect()).map(row => row.record.type)).toEqual(['GrowthPolicy', 'GrowthObservation']);
+  expect(value(f.runtime.inspect()).map(row => row.record.type)).toEqual(['AdapterEvidenceContract', 'GrowthPolicy', 'GrowthObservation']);
   const replay = value(f.runtime.record('GrowthObservation', assemblyInput('GrowthObservation'))); expect(replay.id).toBe('GrowthObservation');
   const changed = { ...assemblyInput('GrowthObservation'), sampleCount: 0, denominator: 0, completion: 'incomplete', timeouts: 1 };
   expect(() => value(f.runtime.record('GrowthObservation', changed))).toThrow(/divergent canonical content/);

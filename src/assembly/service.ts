@@ -1,5 +1,6 @@
 import { boundary, ensure, freeze, take } from './boundary.js';
-import { assemblyLogicalKey, assemblyRows, compareAssemblyRecords, decodeAssemblyRecord, validateAssemblyRecordReferences } from './records.js';
+import { assemblyLogicalKey, assemblyRows, compareAssemblyRecords, decodeAssemblyRecord, factReferenceAliases,
+  validateAssemblyRecordReferences } from './records.js';
 import { currentAssemblyRows, resolveAssemblyHistory } from './history.js';
 import type { AdapterConformance, AssemblyAdmission, AssemblyComposition, AssemblyManifest, AssemblyRecord, AssemblyRecordName, AssemblyRuntimePort } from './contracts.js';
 
@@ -23,7 +24,8 @@ export function createAssemblyRuntime(composition: AssemblyComposition): Assembl
     lookup: (reference: string) => boundary('AssemblyHistoryLookup', reference, host.boundary, () => {
       const snapshot = take(spine.store.readForProjection()); const rows = currentAssemblyRows(snapshot, runtimeContext);
       const assembly = rows.find(row => row.fact.id === reference || row.record.id === reference);
-      const status = snapshot.entries.find(row => row.fact.id === (assembly?.fact.id ?? reference));
+      const status = snapshot.entries.find(row => row.fact.id === (assembly?.fact.id ?? reference))
+        ?? snapshot.entries.find(row => factReferenceAliases(row.fact).includes(reference));
       if (!status) return null;
       return freeze({ fact: status.fact, ...(assembly ? { record: assembly.record } : {}), taint: status.taint,
         conflicts: assembly ? [...status.conflicts, ...assembly.conflicts] : status.conflicts,
@@ -39,12 +41,10 @@ export function createAssemblyRuntime(composition: AssemblyComposition): Assembl
       return boundary('AssemblyRecord', input, host.boundary, () => {
         ensure(!host.current().stopped || name === 'HarnessObservation' || name === 'StorageAccessObservation' || name === 'GrowthObservation' || name === 'AssemblyAdmission', 'stop inhibits new assembly work');
         const candidate = take(decodeAssemblyRecord(name, input, runtimeContext));
-        if (candidate.type !== 'AssemblyAdmission' && candidate.type !== 'AdapterConformance'
-          && candidate.type !== 'LocalCapabilityPackage' && candidate.type !== 'GrowthObservation')
-          validateAssemblyRecordReferences(candidate, runtimeContext);
+        validateAssemblyRecordReferences(candidate, runtimeContext);
         const existing = take(inspect()).find(row => row.record.type === name &&
           (row.record.id === candidate.id || assemblyLogicalKey(row.record) === assemblyLogicalKey(candidate)));
-        if (existing) { const compared = take(compareAssemblyRecords(name, existing.record, candidate, host.boundary));
+        if (existing) { const compared = take(compareAssemblyRecords(name, existing.record, candidate, runtimeContext));
           ensure(compared.equal, compared.conflict?.detail ?? 'assembly identity conflict'); return existing.record as Extract<AssemblyRecord, { type: N }>; }
         take(spine.append(candidate)); return candidate;
       });
