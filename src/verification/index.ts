@@ -12,3 +12,9 @@ export { verificationEvidenceFreshness, deriveVerificationAssessment, deriveVeri
 export type { AssessmentDerivationInput } from './runtime.js';
 export { createVerificationRuntime } from './service.js';
 export { createEffectAssessmentPort } from './reconciliation.js';
+export {
+  enumerateReviewPopulation, reviewAccounting, feedbackCoverage, semanticCoverage, gradeSupport,
+  affectedGrades, benchmarkAccounting, waiverReview, verificationKindsIgnoredByExistingProjection,
+} from './review.js';
+export type { ReviewPopulationCase, ReviewAccounting, FeedbackCoverage, HeldEdge, SemanticCoverageRow,
+  GradeSupport, BenchmarkAccounting, WaiverAct, WaiverReview } from './review.js';
