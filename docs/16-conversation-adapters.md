@@ -39,7 +39,7 @@ principal, binding, queue, retry, effect, receipt, verification, assembly, or su
 | Seven | judgment request/resolution, advisory decision, benchmark record and measured hold cost |
 | Eight | `OperationDefinition`, `EffectRequest`, `EffectValidation`, `OperationObservation`, `EffectSettlement`, `OutboundMessage` and `OperationAdapterPort` |
 | Nine | verification plan/request/assessment, probe record, semantic review, grade, assessment closure and independent witness posture |
-| Ten | `AdapterEvidenceContract`, `AdapterConformance`, `AssemblyManifest`, `AssemblyAdmission`, concrete binding, confinement and package lifecycle |
+| Ten | `AdapterEvidenceContract`, `AdapterConformance`, `AssemblyManifest`, `AssemblyAdmission`, `HarnessLaunchSpec`, `HarnessObservation`, `AssemblyHistoryReadPort`, concrete binding, confinement and package lifecycle |
 | Eleven | verified pairing/binding surfaces, minimal-plane dependencies, operator views and whole-slice acceptance |
 
 Two required owner additions are not in the landed contracts. Secret-bearing intake depends on
@@ -59,8 +59,21 @@ positives and Slack activation are non-executable until both named grant files l
 implementations are integrated. None of these granted but unlanded records or operations is
 treated as present in the executable slice.
 
-The executable reference case consumes Five's landed `SessionGrounding` only for `start`,
-`recovery`, and `resume`. Five's `ContinuityAccounting` producer is granted in
+Five's landed `SessionGrounding` describes the history, clock, worker, harness, and current-work
+coverage for `start`, `recovery`, and `resume`. Its landed consumption validator, however, accepts
+only a flat compatibility receipt with top-level `worker`, `harness`, and JSON-string `hashes` and
+`classes`. Ten's production evidence is instead a signed `HarnessObservation` stored under
+`body.record`, linked to an admitted `HarnessLaunchSpec`, and resolved through Ten's public
+`AssemblyHistoryReadPort`. The production arm that makes Five consume those genuine Ten records at
+`RunGraphPort.ground()` and again at `transition(start)` is already granted in the dated 06:33Z
+addendum to `seam-response-rungraph-followup.md` (SEAM-LEDGER row 38). P12-NF-43/44/48's production
+`start`/`recovery`/`resume` positives are non-executable until that grant file lands and the public
+Ten reader plus Five consumer are integrated. The flat receipt remains valid only for isolated
+compatibility fixtures and cannot support production activation. The production consumer refuses
+a stale, wrong-kind, partial, conflicted, mismatched, non-consumed, or incomplete-manifest Ten
+observation instead of treating it as grounding.
+
+Compaction has a separate dependency. Five's `ContinuityAccounting` producer is granted in
 `seam-response-run-closure.md`, its public producer/reader follow-up is granted in
 `seam-response-rungraph-followup.md`, and Eight's first-reply consumer requested by
 `design-conversation-adapters-seam-request-rungraph-continuity.md` is granted in
@@ -495,9 +508,13 @@ Attachments are unsupported and non-executable until `seam-response-effects-payl
 its granted Part Eight implementation is integrated. Part Eight hashes the
 canonical whole message, and the request retains that digest. Current standing, binding,
 lease/fence, stop state, register generation, durability demand, and resource reservation are
-revalidated immediately before the dispatch-claim. The stable effect identity is recorded before
-the first provider call and survives worker death, machine transfer, route recovery, and receipt
-loss.
+revalidated immediately before the dispatch-claim. After the claim commits, the exact closure that
+includes the reservation and newly committed claim must meet the operation's durability demand;
+authority, stop state, and validation expiry are then checked again. After the claim is consumed
+once, the executor-acceptance observation and its causal reservation state meet the same demand and
+the current operation and expiry are checked once more before the provider call. The stable effect
+identity is recorded before the first provider call and survives worker death, machine transfer,
+route recovery, and receipt loss.
 
 **Rule — attribution is recorded even when display is compact.** Rules 28, 42 and 89;
 **checks: P12-NF-27/42/43**. `OutboundMessage.speaker` names the speaking principal, while the
@@ -508,14 +525,28 @@ account. Unknown remains unknown. A display policy may omit an origin footer, bu
 referenced evidence or let a worker invent it. A session credential proves only the enrolled
 session and operation preparation it actually covers.
 
-**Rule — current grounding and future compaction accounting are different dependencies.** Rules
-47, 96 and 110; **checks: P12-NF-42/43**. The current executable worker path consumes Five's landed
-`SessionGrounding` only for a fresh `start`, `recovery`, or `resume`. It checks the actual clock,
-the full supported history coverage, current binding, and the recorded consumption receipt before
-ordinary work. The landed record union has no `ContinuityAccounting`, and its decoder expressly
-rejects compaction accounting. A post-compaction first reply is therefore unsupported, not treated
-as an ordinary resume and not made compliant by provenance fields. The final family design depends
-on Five producing `ContinuityAccounting` and Eight requiring its exact reference before the first
+**Rule — production grounding and compaction accounting are separate dependencies.** Rules 47, 96
+and 110; **checks: P12-NF-42–44/48**. Five's landed `SessionGrounding` shape can record the actual
+clock, full supported history coverage, current binding, and a consumption reference for a fresh
+`start`, `recovery`, or `resume`. Its landed validator can prove consumption only with the flat
+worker/harness/JSON-string receipt used by isolated compatibility fixtures. That receipt is not
+Ten's production contract. The production path must instead re-resolve the signed
+`assembly-HarnessObservation` referenced by `SessionGrounding.consumption` through Ten's injected
+public `AssemblyHistoryReadPort`, require an admitted `HarnessObservation` at phase
+`context-consumed`, follow its admitted `HarnessLaunchSpec`, and bind the exact run, step, input,
+incarnation, harness, generation, execution context, boundary evidence, message digests, and
+briefing classes. Five repeats that resolution at `RunGraphPort.ground()` and
+`transition(start)`. This production arm is granted in the dated 06:33Z addendum to
+`seam-response-rungraph-followup.md` (SEAM-LEDGER row 38). P12-NF-43/44/48's production
+`start`/`recovery`/`resume` positives are non-executable until that grant file lands and its public
+Ten reader and Five consumer are integrated. Stale, wrong-kind, partial, conflicted, mismatched,
+missing-or-duplicate-manifest-row, or non-consumed observations refuse; the flat receipt cannot
+activate production.
+
+The landed record union also has no `ContinuityAccounting`, and its decoder expressly rejects
+compaction accounting. A post-compaction first reply is therefore unsupported, not treated as an
+ordinary resume and not made compliant by provenance fields. The final family design depends on
+Five producing `ContinuityAccounting` and Eight requiring its exact reference before the first
 post-compaction send, as requested in
 `design-conversation-adapters-seam-request-rungraph-continuity.md`. Five's record is granted in
 `seam-response-run-closure.md`, Five's public operations in `seam-response-rungraph-followup.md`,
@@ -728,8 +759,14 @@ without Eight's provider-operation admission, observation, or settlement, while 
 `EffectRequest` and adapter invocation accept only an ordinary `OutboundMessage`. Supplying real
 credentials to that executor would not satisfy this path.
 
+Production worker grounding is independently non-executable until the dated 06:33Z production arm
+in `seam-response-rungraph-followup.md` (SEAM-LEDGER row 38) lands and integrates Five's
+`RunGraphPort.ground()` and `transition(start)` consumption of Ten's signed `HarnessObservation`
+and `HarnessLaunchSpec` through the public `AssemblyHistoryReadPort`. The flat compatibility receipt
+does not satisfy this production path.
+
 **Rule — the end-to-end transition order is fixed.** Rules 14, 15, 26, 28, 33, 41, 42, 46,
-58, 62, 63, 68, 75 and 89; **checks: P12-NF-43/44**.
+58, 62, 63, 68, 75 and 89; **checks: P12-NF-28/43/44**.
 
 1. Capture the authenticated platform event before protocol acknowledgment.
 2. Let part four deduplicate, resolve principal and current binding/standing, and append the intake.
@@ -742,8 +779,17 @@ credentials to that executor would not satisfy this path.
    conditionally accept Seven's resolution. Without that seam, no real judgment dispatch occurs.
 6. Prepare exact rendered conversation bytes and Part Eight's attributable reply operation from the
    accepted answer or already durable fixed result.
-7. Revalidate authority and durability, then let Part Six commit the reply claim and resource reservation.
-8. Invoke the concrete conversation adapter once for that claim and record the exact observation.
+7. Let Part Eight prepare the request and let Part Six reserve it. Repeat current definition,
+   payload, authority, binding, fence, stop, generation, evidence, expiry, and resource validation,
+   then commit the one reply dispatch-claim. Satisfy the operation's durability demand for the exact
+   causal closure including the request, verification obligation, reservation, and newly committed
+   claim. Recheck current authority, stop state, and validation expiry after that wait; invalid state
+   reconciles the claim without invocation.
+8. Consume that exact claim once and record the executor-acceptance observation. Satisfy the same
+   durability demand for the consumed reservation state and executor-acceptance observation, then
+   perform the final current operation-definition, adapter-binding, and expiry recheck. Only then
+   invoke the concrete conversation adapter once and record its exact response or uncertainty
+   observation.
 9. Let Part Nine independently assess the demanded delivery stage and let Part Eight settle through
    the requested owner-validated assessment-consumption seam.
 10. Return the result to Part Five and rebuild every disposable view from the causally linked facts.
@@ -796,7 +842,10 @@ at one vector. If the platform cannot resolve a cut, the correct result is retai
 zero replay, not forced green. This positive cannot run against the landed contracts alone. It is
 non-executable until `seam-response-judgment.md` and `seam-response-effects-followup.md` land for
 the real model call and real-owner settlement, and until the BUILT production assembly accepted in
-`part-eleven-seam-response-assembly.md` is integrated. Stand-ins do not satisfy P12-NF-44/48.
+`part-eleven-seam-response-assembly.md` is integrated. Its production start/recovery/resume arms are
+also non-executable until the dated 06:33Z grounding-consumption grant in
+`seam-response-rungraph-followup.md` (SEAM-LEDGER row 38) lands and integrates the public Ten reader
+and Five consumer. Stand-ins and the flat compatibility receipt do not satisfy P12-NF-44/48.
 
 **Rule — Telegram precedes the family; later activation is evidence-independent, not list-gated.**
 Rules 44, 62, 72, 73, 76, 84 and 105; **checks: P12-NF-04/45/46/48/49**. Telegram must first pass the
@@ -899,7 +948,12 @@ model-backed lifecycle is non-executable until `seam-response-judgment.md` and
 `seam-response-effects-followup.md` land and integrate the Seven/Eight provider-effect seam. Real
 effect settlement is non-executable until `seam-response-effects-followup.md` lands and integrates
 the Nine/Eight assessment-consumption seam. P12-NF-43/44/48 stay declared and inhibited until those
-integrations run with their real owners. P12-NF-53 and affected production-wiring checks are
+integrations run with their real owners. Their production start/recovery/resume arms are separately
+non-executable until the dated 06:33Z production grounding-consumption arm in
+`seam-response-rungraph-followup.md` (SEAM-LEDGER row 38) lands and integrates Five's public
+consumption of Ten's `HarnessObservation`/`HarnessLaunchSpec` evidence through
+`AssemblyHistoryReadPort`; flat compatibility receipts cannot supply that evidence. P12-NF-53 and
+affected production-wiring checks are
 non-executable until the BUILT assembly seam accepted in `part-eleven-seam-response-assembly.md` is
 integrated; a 1.x source audit or valid reply payload does not satisfy production assembly.
 
@@ -947,7 +1001,7 @@ conversation key, acknowledgment policy, provenance ceiling, or rendered-byte id
 | P12-NF-25 | web security | Client id/cookie/tab/click grants authority or dedups another user; server-minted session-bound event passes |
 | P12-NF-26 | identity/migration | Rename, alias, bridge or forward merges histories/bindings; append-only explicit mapping with conflict passes |
 | P12-NF-27 | effect contract | Reply adds provenance, audience, attachment, notification, continuity or other undeclared message fields, or omits a landed field; record identity plus the closed ordinary-reply fields semanticMessage, run, speaker, account, conversation, text, purpose and sourceResult pass |
-| P12-NF-28 | effect admission | Stale binding/grant/fence/generation or missing durability dispatches; current atomic validation and claim pass |
+| P12-NF-28 | effect admission | Stale binding/grant/fence/generation, a claim or reservation omitted from the demanded closure, authority expiring during the post-claim durability wait, or invocation before durable executor acceptance dispatches. The positive runs Part Eight's public `prepare` then `dispatch`/`handoff`: reserve; validate and commit the exact claim; meet durability for the closure including request, verification obligation, reservation and claim; recheck current authority/stop/expiry; consume once; durably record executor acceptance and its reservation state; recheck the current operation definition, adapter binding and expiry; invoke once. Kill or change state at every adjacent cut; each invalid neighbor makes zero provider calls and retains the owned claim disposition |
 | P12-NF-29 | formatter | Rendering changes refusal, audience, link safety or meaning, or advisory disappears; exact rendered `text` plus a source-result/closure-referenced preparation fact preserves all |
 | P12-NF-30 | limits/load | Oversize text is truncated or chunked through the landed single-message path; one fitting ordinary reply or explicit `Refused` passes. Ordered aggregate cases are non-executable until `seam-response-effects-payloads.md` lands and its granted implementation integrates |
 | P12-NF-31 | format fallback | Parse rejection or timeout changes bytes and resends under the old identity; captured failure, unchanged digest, `retryEligible: false`, and return to the owning run with no second invocation pass |
@@ -962,12 +1016,12 @@ conversation key, acknowledgment policy, provenance ceiling, or rendered-byte id
 | P12-NF-40 | fairness/load | Open an ordinary round over the recorded bounded eligible population and keep an ordinary claim live on route A while continuously flooding A and serving a healthy ordinary route. Mid-round, deliver A's exact authenticated bound-operator stop; in a separate run deliver a resolved requester's exact stop-shaped signal. The fixture fails if either stop-shaped input waits for ordinary claim release, eligibility, selection, round close, or a replication peer; if the operator stop does not append Four's local-durable stop fact and apply Six's local halt before any further ordinary selection in scope; or if the requester signal does not surface immediately or is allowed to halt. For ordinary work it also fails if an opening member lacks a first-service opportunity by the current round close, a new arrival lacks one by the next round close, any ordinary delay exceeds two declared round durations, the frozen population grows with arrivals, or notices exceed one coalesced item per declared episode identity. The positive records the bounded ordinary round plus stop recognition, authentication/binding result, fact append, halt/signal disposition, and precedence timings |
 | P12-NF-41 | failure path | Advisory, refusal or notice is swallowed, recursive or reported sent; explicit bounded result and owner pass |
 | P12-NF-42 | isolation | Worker reads credential/raw account session or fabricates origin; scoped custodian and enrolled evidence pass |
-| P12-NF-43 | wiring/e2e | Harness/direct script bypasses intake/effect/grounding, a model provider is invoked by Seven without Eight's admitted operation path, or a required port is null. The complete real-model public chain is non-executable until `seam-response-judgment.md` and `seam-response-effects-followup.md` land and integrate the granted provider effect. Landed `start`/`recovery`/`resume` grounding remains supported. The compaction case is non-executable until `seam-response-run-closure.md`, `seam-response-rungraph-followup.md`, and `seam-response-effects-followup.md` land and integrate the granted producer and consumer. Production wiring is non-executable until the BUILT assembly seam accepted in `part-eleven-seam-response-assembly.md` is integrated |
-| P12-NF-44 | Telegram lifecycle | Crash cut duplicates reply or model call, loses work, overstates evidence, cannot settle real Nine evidence, or diverges rebuild. The one-owned-execution positive is honestly declared and inhibited: it is non-executable until `seam-response-judgment.md` and `seam-response-effects-followup.md` land with the granted Seven/Eight provider and Nine/Eight assessment operations, and until the BUILT seam accepted in `part-eleven-seam-response-assembly.md` is integrated. Stand-ins cannot satisfy the positive |
+| P12-NF-43 | wiring/e2e | Harness/direct script bypasses intake/effect/grounding, a model provider is invoked by Seven without Eight's admitted operation path, or a required port is null. The complete real-model public chain is non-executable until `seam-response-judgment.md` and `seam-response-effects-followup.md` land and integrate the granted provider effect. Its production `start`/`recovery`/`resume` arm is also non-executable until the dated 06:33Z production grounding-consumption arm in `seam-response-rungraph-followup.md` (SEAM-LEDGER row 38) lands and integrates Five's `RunGraphPort.ground()` and `transition(start)` validation of Ten's current signed `HarnessObservation` and linked `HarnessLaunchSpec` through `AssemblyHistoryReadPort`. The flat receipt remains only a compatibility fixture; stale, wrong-kind, partial, conflicted, mismatched, non-consumed and manifest-gap observations refuse. The compaction case is non-executable until `seam-response-run-closure.md`, `seam-response-rungraph-followup.md`, and `seam-response-effects-followup.md` land and integrate the granted producer and consumer. Production wiring is non-executable until the BUILT assembly seam accepted in `part-eleven-seam-response-assembly.md` is integrated |
+| P12-NF-44 | Telegram lifecycle | Crash cut duplicates reply or model call, loses work, overstates evidence, accepts a stale/wrong-kind/mismatched grounding observation, invokes before the exact claim closure or executor-acceptance record reaches demanded durability, skips either post-wait current-state recheck, cannot settle real Nine evidence, or diverges rebuild. The positive runs every adjacent cut in section nine and is honestly declared and inhibited: it is non-executable until `seam-response-judgment.md` and `seam-response-effects-followup.md` land with the granted Seven/Eight provider and Nine/Eight assessment operations; until the dated 06:33Z production grounding-consumption arm in `seam-response-rungraph-followup.md` (SEAM-LEDGER row 38) lands with its public Ten reader and Five consumer; and until the BUILT seam accepted in `part-eleven-seam-response-assembly.md` is integrated. Stand-ins and flat compatibility receipts cannot satisfy the positive |
 | P12-NF-45 | parity/activation | Any later adapter activates before Telegram proves the reference slice, borrows Telegram/sibling evidence, or lacks an owner seam its declared mode needs; after Telegram, each exact mode may activate on its own complete evidence regardless of another later adapter's state. Slack remains inhibited until the Four structural direction/organization-permission/channel-policy half in `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate |
 | P12-NF-46 | live probe | File/token/process/config or malformed canary counts as life; real identity/inbound/outbound fresh proof passes |
 | P12-NF-47 | measurement | Target/estimate/success-only percentile labeled measured or failed sample omitted; named hardware workload record passes |
-| P12-NF-48 | three-tier | Mock-only or parser-only test makes a significant adapter live, secret-bearing production intake activates without the custody seam, or a real-model lifecycle uses Seven's reference executor without Eight admission and settlement. Unit, integration and real lifecycle evidence pass only with every required owner implementation. The production positive is non-executable until `seam-response-intake-followup.md`, `seam-response-assembly-followup.md`, `seam-response-judgment.md`, and `seam-response-effects-followup.md` land and integrate their granted custody, provider-effect, and assessment-consumption operations, and until the BUILT seam accepted in `part-eleven-seam-response-assembly.md` is integrated |
+| P12-NF-48 | three-tier | Mock-only or parser-only test makes a significant adapter live, secret-bearing production intake activates without the custody seam, a production start uses the flat compatibility receipt instead of Ten's admitted observation/launch evidence, or a real-model lifecycle uses Seven's reference executor without Eight admission and settlement. Unit, integration and real lifecycle evidence pass only with every required owner implementation. The production positive is non-executable until `seam-response-intake-followup.md`, `seam-response-assembly-followup.md`, `seam-response-judgment.md`, and `seam-response-effects-followup.md` land and integrate their granted custody, provider-effect, and assessment-consumption operations; until the dated 06:33Z production grounding-consumption arm in `seam-response-rungraph-followup.md` (SEAM-LEDGER row 38) lands and integrates the public Ten reader and Five consumer; and until the BUILT seam accepted in `part-eleven-seam-response-assembly.md` is integrated |
 | P12-NF-49 | upgrade | Platform/API/package/mode change alters identity, provenance, acknowledgment or pending effect silently, or leaves the generated capability briefing at the prior generation; scoped inhibition, compatible replay, and a regenerated briefing with the exact current modes, supported/inhibited operations, and public doorways pass |
 | P12-NF-50 | governance | A held or live claim without a current check-run and assessment fails, as does any implementation that implies approval. An honestly declared, inhibited fixture with its named approved dependency passes this check but cannot be promoted; for example, a P12-NF-53 declaration citing `part-eleven-seam-response-assembly.md` remains non-executable until that BUILT seam is integrated |
 | P12-NF-51 | family media | Telegram, Slack, or linked-device WhatsApp media is acknowledged before original receipt, a file path substitutes for custody, source text is injected privately, transcription calls a provider privately, a fallback sends privately, or derived text becomes a fresh verified sender event. The current positive preserves the original event, records Four's generic owned `needs-judgment` hold, may drain it to `expired-judgment`, and makes zero fetch/transcription/private-send calls. Successful fetch/derivation is non-executable until `seam-response-effects-payloads.md` and `seam-response-assembly-followup.md` land and the exact mode proves the integrated owner-governed path |
@@ -985,10 +1039,10 @@ P12-NF-01/44–50/53**.
 |---|---|
 | Big picture section 10 — replaceable conversation edge and channel parity | **Held as a contract:** one family suite, no core platform branch, exact per-instance capabilities and individual activation through P12-NF-03–05/45/48. Runtime status remains declared until evidence runs. |
 | Part four — concrete authenticated evidence, event-id authority and acknowledgment policy | **Held as a contract for the landed narrow intake:** bounded structural route extraction, non-secret `receive(raw, route)`, the landed `(adapter, channel, sender, identityEpoch, eventId)` key, per-platform identity matrices, current binding resolution, and generic owned `needs-judgment` holds with `expired-judgment` terminals through P12-NF-06–26/51. Secret custody is non-executable until its Four grant in `seam-response-intake-followup.md` lands and Ten's `seam-response-assembly-followup.md` also lands. Slack policy is non-executable until the Four half in `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. Legacy compatibility is non-executable until the three owner grants in `seam-response-intake-followup.md`, `seam-response-rungraph-followup.md`, and `seam-response-effects-followup.md` land and integrate. Four retains intake and standing ownership. |
-| Part five/six — durable work, one voice, bounded observation recovery and stable operation identity | **Held as a contract for landed start/recovery/resume and observation-only recovery:** fact-derived outbox, read-only observation wakes, the defined service-round bound, stable identities and no replay on uncertainty through P12-NF-33/36–42. The real-model and real-owner-settlement crash path in P12-NF-43/44 is not held. Five/Six retain run, lease and loop ownership. Compaction accounting is non-executable until `seam-response-run-closure.md`, `seam-response-rungraph-followup.md`, and `seam-response-effects-followup.md` land. A successful successor send is non-executable until `seam-response-effects-followup.md` and `seam-response-loop-followup.md` land. |
+| Part five/six — durable work, one voice, bounded observation recovery and stable operation identity | **Held as a contract for flat grounding compatibility fixtures and observation-only recovery:** fact-derived outbox, read-only observation wakes, the defined service-round bound, stable identities and no replay on uncertainty through P12-NF-33/36–42. Production `start`/`recovery`/`resume` grounding is non-executable until the dated 06:33Z arm in `seam-response-rungraph-followup.md` (SEAM-LEDGER row 38) lands and integrates Five's public consumption of Ten's signed `HarnessObservation` and linked `HarnessLaunchSpec` through `AssemblyHistoryReadPort`; the flat receipt is excluded from activation. The real-model and real-owner-settlement crash path in P12-NF-43/44 is not held. Five/Six retain run, lease and loop ownership. Compaction accounting is non-executable until `seam-response-run-closure.md`, `seam-response-rungraph-followup.md`, and `seam-response-effects-followup.md` land. A successful successor send is non-executable until `seam-response-effects-followup.md` and `seam-response-loop-followup.md` land. |
 | Part seven/eight — advisory judgment and attributable reply effect | **Held only for the landed narrow shapes:** one exact ordinary-text reply can be prepared, validated, claimed, invoked and observed; advisory/refusal and the generic owned media judgment hold preserve zero private provider or send calls through P12-NF-27–33/37/41–43/51. The real-model, real-owner settlement, delete, media/aggregate, and successor positives remain inhibited until their named grants in `seam-response-judgment.md`, `seam-response-effects-followup.md`, `seam-response-effects-payloads.md`, and `seam-response-loop-followup.md` land as applicable. The Slack-policy judgment positive remains inhibited until the Four half in `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. Seven retains judgment and receipt ownership; Eight retains effect and settlement ownership. |
 | Part nine — independent evidence and live holder proof | **Held only for the landed assessment shape:** Nine can accept stage-specific source Evidence and retain unsupported negatives, but Eight cannot consume that real assessment into a positive settlement under the two landed predicate conventions. P12-NF-35/44 are non-executable until the Nine/Eight grant in `seam-response-effects-followup.md` lands and a joint real-owner fixture passes. Real canaries remain implementation obligations under P12-NF-46/48. Nine retains grades, assessment, and witness posture. |
-| Part ten — remaining adapter evidence contracts and executable bindings | **Held only for the landed contract/conformance shapes:** Telegram, WhatsApp, iMessage and web map to Ten's current assembly types. Slack identity capture maps to them, but Slack activation remains inhibited until the Four half in `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. P12-NF-51's current case is a generic Four hold with zero private media/provider/send calls. Secret custody, successful media, legacy import, confined model execution, and production minimal-plane wiring remain excluded until their named grants land and integrate. No new core type is introduced here. |
+| Part ten — remaining adapter evidence contracts and executable bindings | **Held only for the landed contract/conformance and harness-evidence shapes:** Telegram, WhatsApp, iMessage and web map to Ten's current assembly types. Ten's `HarnessObservation`, `HarnessLaunchSpec`, and `AssemblyHistoryReadPort` exist, but Five's production consumer of them remains non-executable until `seam-response-rungraph-followup.md` (SEAM-LEDGER row 38) lands and integrates. Slack identity capture maps to Ten's types, but Slack activation remains inhibited until the Four half in `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. P12-NF-51's current case is a generic Four hold with zero private media/provider/send calls. Secret custody, successful media, legacy import, confined model execution, and production minimal-plane wiring remain excluded until their named grants land and integrate. No new core type is introduced here. |
 | Part eleven — first vertical slice and minimal conversation route | **Declared, not held for runtime:** P12-NF-53 maps ordinary-worker failure to Eleven's limited responder and the landed ordinary-reply effect, and maps every required-minimal-dependency outage to preserved owned failure with zero fabricated response. P12-NF-53 and affected production wiring are non-executable until the BUILT production assembly accepted in `part-eleven-seam-response-assembly.md` is integrated. The Telegram production slice, real worker bridge, crash cuts and delivery witness remain implementation and evidence obligations under P12-NF-42–48/53. Eleven retains the whole-slice and operator-surface verdict. |
 
 ---
