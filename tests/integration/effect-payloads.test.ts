@@ -133,10 +133,10 @@ it('P8-TP-BOUND-REFUSAL only an exact recorded refusal plus a Part Six no-claim 
     children: [{ request, demandedStage: 'complete', inhibitLater: true, required: true }], reconciliationOwner: 'review:owner' }));
   const refusal = value(decode('Result', f.refusedInput({ detail: 'policy denied exact child', preserved: request.pending }), f.ctx.decode));
   if (refusal.kind !== 'Refused') throw new Error('fixture refusal');
-  const unrelated = f.recordRefusal({ ...request, id: 'request:unrelated' }, refusal);
-  refused(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal, refusalFact: unrelated.id }), 'exact child');
-  const exact = f.recordRefusal(request, refusal);
-  const updated = value(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal, refusalFact: exact.id }));
+  refused(f.api.recordRefusal({ ...request, id: 'request:unrelated' }, refusal), 'recorded EffectRequest');
+  refused(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal }), 'exact child');
+  const exact = value(f.api.recordRefusal(request, refusal));
+  const updated = value(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal, refusalFact: exact.id, fence: f.fence }));
   expect(updated.state).toBe('refused');
   const reservation = value(f.transport.inspect()).filter(row => row.record.type === 'AdmissionReservation').at(-1)?.record;
   expect(reservation?.type === 'AdmissionReservation' ? reservation.state : '').toBe('closed');

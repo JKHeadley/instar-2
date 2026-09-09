@@ -52,8 +52,9 @@ if (mode === 'start') {
   if (!observation) consumeResult(slice.api.dispatch(request, fence), { Success: value => { observation = value; }, Refused: value => { dispatchRefusal = value; } });
   let settlement, updated, replayRefused;
   if (dispatchRefusal) {
-    updated = take(slice.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal: dispatchRefusal }));
-    replayRefused = isRefused(slice.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal: dispatchRefusal }));
+    const refusalFact = take(slice.api.recordRefusal(request, dispatchRefusal));
+    updated = take(slice.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal: dispatchRefusal, refusalFact: refusalFact.id, fence }));
+    replayRefused = isRefused(slice.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal: dispatchRefusal, refusalFact: refusalFact.id, fence }));
   } else {
     settlement = take(slice.api.inspect()).filter(row => row.record.type === 'EffectSettlement' && row.record.operation === reservation.operation).at(-1)?.record;
     if (!settlement) settlement = take(slice.api.settle(observation.operation));

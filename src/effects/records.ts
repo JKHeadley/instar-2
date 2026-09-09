@@ -56,6 +56,7 @@ export const effectShapes: Readonly<Record<string, OwnedShape>> = freeze({
     reservation: text, digest: text, acceptance: text, observations: refs, outcome,
     finalCharge: text, delayedExecutionExcluded: { kind: 'boolean' }, retainedExposure: integer,
     retryEligible: { kind: 'boolean' }, refusal, retryClosure }, optional: ['refusal', 'retryClosure'] },
+  EffectRefusal: { kind: 'object', fields: { ...common, request: text, digest: text, sourceResult: text, refusal } },
   OrderedEffectAggregate: { kind: 'object', fields: { ...common, aggregate: text, revision: integer,
     predecessor: text, semanticMessage: text, run: text,
     children: { kind: 'array', maxLength: 64, items: aggregateChild },
@@ -197,6 +198,12 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     ensure(r.digest === q.digest && r.definition === d.id && r.generation === d.generation
       && ['reservation', 'dispatch'].includes(r.phase) && r.authority.length > 0, 'validation binding');
     if (origin) { definitionCheck(d, host); ensure(r.expires === host.current().clock.value + d.timeout, 'validation expiry differs from bounded current clock'); }
+  } else if (r.type === 'EffectRefusal') {
+    const q = find(r.request, 'EffectRequest');
+    ensure(r.digest === q.digest && r.sourceResult === q.pending
+      && r.id === `refusal:${encoded([q.id, q.digest, q.pending, r.refusal]).hash}`,
+    'recorded refusal differs from exact request/digest/source result');
+    ensure(past.some(fact => fact.id === q.pending), 'recorded refusal source result is absent');
   } else if (r.type === 'OrderedEffectAggregate') {
     ensure(r.aggregate.length > 0 && r.reconciliationOwner.length > 0 && r.children.length > 0 && r.children.length <= 64,
       'finite aggregate identity/owner required');
@@ -220,16 +227,17 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
       if (row.request !== child.request || !['pending', 'partial', 'satisfied', 'refused', 'uncertain'].includes(row.disposition)) return false;
       if (!row.settlement) {
         if (row.refusal) {
-          const fact = row.refusalFact ? past.find(item => item.id === row.refusalFact && item.kind === 'effect-refusal') : undefined;
-          const value = fact?.body as { request?: unknown; digest?: unknown; sourceResult?: unknown; result?: unknown } | undefined;
+          const recorded = row.refusalFact ? all.find(item => item.record.type === 'EffectRefusal'
+            && item.record.id === row.refusalFact) : undefined;
+          const value = recorded?.record.type === 'EffectRefusal' ? recorded.record : undefined;
           const request = requests[index]!;
           const closed = past.filter(item => item.kind === 'transport-AdmissionReservation').some(item => {
             const candidate = (item.body as { record?: { request?: unknown; state?: unknown } }).record;
             return candidate?.request === child.request && candidate.state === 'closed';
           });
-          return row.assessment === '' && !row.applied && row.disposition === 'refused' && Boolean(fact) && closed
+          return row.assessment === '' && !row.applied && row.disposition === 'refused' && Boolean(value) && closed
             && value?.request === child.request && value.digest === child.digest && value.sourceResult === request.pending
-            && encoded(value.result).bytes === encoded({ type: 'Result', schemaVersion: 1, kind: 'Refused', ...row.refusal }).bytes;
+            && encoded(value.refusal).bytes === encoded(row.refusal).bytes;
         }
         return row.assessment === '' && row.disposition === 'pending' && !row.applied && row.refusalFact === undefined;
       }

@@ -59,12 +59,8 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
     run: { kind: 'text', maxLength: 512 }, step: { kind: 'text', maxLength: 512 }, logicalEffect: { kind: 'text', maxLength: 512 },
     result: { kind: 'constitutional', type: 'Result' },
   } };
-  const refusalSchema: FactSchema = { ...f.schema, kind: 'effect-refusal', fields: {
-    request: { kind: 'text', maxLength: 512 }, digest: { kind: 'text', maxLength: 512 }, sourceResult: { kind: 'reference' },
-    result: { kind: 'constitutional', type: 'Result' },
-  } };
   const ctx: FactContext = { ...f.ctx, decode: decodeContext, get captures(): Record<string, CapturedContent> { return custody.captures; },
-    schemas: [f.schema, resultSchema, refusalSchema, ...witnessSchemas, ...transportSchemas(transportHost), ...effectSchemas(host), ...extension.schemas],
+    schemas: [f.schema, resultSchema, ...witnessSchemas, ...transportSchemas(transportHost), ...effectSchemas(host), ...extension.schemas],
     ownedBodies: [...value(registerTransportBodies(transportHost, boundary, consumeEffectSettlement)), ...value(registerEffectBodies(host)), ...extension.ownedBodies] };
   const peer = createFactStore(ctx, createTransportFileStorage(join(directory, 'peer'), result));
   const replicas = createEffectReplicaStorage(join(directory, 'origin'), { id: 'fixture-peer-directory', store: peer }, result);
@@ -190,11 +186,7 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
     durability: definition.durability as 'local-durable' | 'replicated', replicas: definition.replicas as number, ...overrides }));
   const adopt = () => value(api.adopt({ definition: d.id, message, run, pending: pending.id,
     attempt: 'attempt:1', verificationOwner: 'reply-verifier', obligation, closure: [] }));
-  const recordRefusal = (request: { id: string; digest: string; pending: string }, refusal: import('../../src/index.js').Refused) =>
-    value(authorAndAppend({ kind: 'effect-refusal', schemaVersion: 1, machine: host.machine,
-      principal: json(host.principal), provenance: json(host.principal.provenance), at: json(f.now),
-      body: { request: request.id, digest: request.digest, sourceResult: request.pending, result: json(refusal) }, required: [request.pending] }, ctx, store, privateKey)).fact;
-  return { ...f, directory, host, transportHost, ctx, store, peer, spine, transport, replicas, api, composition, note, reference, sourceFor, recordRefusal,
+  return { ...f, directory, host, transportHost, ctx, store, peer, spine, transport, replicas, api, composition, note, reference, sourceFor,
     d, definition, message, pending, run, obligation, fence, prepare, requestId, messageDigest, externalAdmission, adopt,
     calls: () => calls, queries: () => queries, onInvoke: (fn: () => void) => { invoke = fn; },
     stop: () => { stopped = true; }, time: (v: number) => { now = v; },

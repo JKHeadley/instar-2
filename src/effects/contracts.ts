@@ -77,9 +77,13 @@ export interface EffectSettlement extends RecordIdentity {
   readonly refusal?: Readonly<Pick<Refused, 'reason' | 'detail' | 'site' | 'failDirection' | 'preserved'>>;
   readonly retryClosure?: Readonly<{ didNotHappen: boolean; quiescent: boolean; chargeSettled: boolean }>;
 }
+export interface EffectRefusal extends RecordIdentity {
+  readonly type: 'EffectRefusal'; readonly request: string; readonly digest: string; readonly sourceResult: string;
+  readonly refusal: Readonly<Pick<Refused, 'reason' | 'detail' | 'site' | 'failDirection' | 'preserved'>>;
+}
 
 export type EffectRecord = OperationDefinition | OutboundMessage | TypedEffectPayload | EffectRequest | EffectValidation |
-  OperationObservation | EffectSettlement | OrderedEffectAggregate;
+  OperationObservation | EffectSettlement | EffectRefusal | OrderedEffectAggregate;
 
 export interface EffectHost {
   readonly machine: string; readonly incarnation: string; readonly principal: VerifiedPrincipal;
@@ -138,11 +142,13 @@ export interface EffectDoorway {
   handoff(request: EffectRequest, reservation: AdmissionReservation, claim: DispatchClaim, fence: FenceToken): Result<OperationObservation>;
   observe(operation: string): Result<OwnedReference<'part-eight', 'OperationObservation'>>;
   settle(operation: string): Result<EffectSettlement>;
+  recordRefusal(request: EffectRequest, refusal: Refused): Result<EffectRefusal>;
   createAggregate(input: { readonly semanticMessage: string; readonly run: RunReference;
     readonly children: readonly Readonly<{ request: EffectRequest; demandedStage: AggregateEvidenceStage;
       inhibitLater: boolean; required: boolean }>[]; readonly reconciliationOwner: string }): Result<OrderedEffectAggregate>;
   updateAggregate(input: { readonly aggregate: string; readonly request: string;
-    readonly settlement?: EffectSettlement; readonly refusal?: Refused; readonly refusalFact?: string }): Result<OrderedEffectAggregate>;
+    readonly settlement?: EffectSettlement; readonly refusal?: Refused; readonly refusalFact?: string;
+    readonly fence?: FenceToken }): Result<OrderedEffectAggregate>;
   nextAggregateChild(aggregate: string): Result<EffectRequest | null>;
   inspect(): Result<readonly { readonly fact: FactEnvelope; readonly record: EffectRecord }[]>;
 }

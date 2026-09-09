@@ -4,7 +4,7 @@ import type { FactEnvelope } from '../facts/index.js';
 import { causalCone } from '../facts/index.js';
 import type { AdmissionReservation, DispatchClaim } from '../transport/index.js';
 import type { EffectComposition, EffectDoorway, EffectRecord, EffectRequest, EffectSettlement, EffectValidation,
-  OperationDefinition, OperationObservation, OrderedEffectAggregate, OutboundMessage, TypedEffectPayload } from './contracts.js';
+  OperationDefinition, OperationObservation, OrderedEffectAggregate, OutboundMessage, TypedEffectPayload, EffectRefusal } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { definitionCheck, live, rows, wire } from './records.js';
 import { issuedSettlement, withAggregate, withSettlement } from './settlement-authority.js';
@@ -399,6 +399,19 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       } catch { return { owner: 'part-eight' as const, name: 'OperationObservation' as const, id: find(local.id, 'OperationObservation').fact.id }; }
     }),
     settle: id => settle(id, value => value),
+    recordRefusal: (request, input) => checked('EffectRefusalRecord', { request, input }, () => {
+      live(host);
+      const q = find(request.id, 'EffectRequest');
+      ensure(encoded(q.record).bytes === encoded(request).bytes, 'refusal request differs from recorded child');
+      const refusal = consumeResult(input, { Success: () => { throw new Error('effect refusal is not typed'); }, Refused: value => ({
+        reason: value.reason, detail: value.detail, site: value.site, failDirection: value.failDirection, preserved: value.preserved,
+      }) });
+      const record = { type: 'EffectRefusal', schemaVersion: 1,
+        id: `refusal:${encoded([q.record.id, q.record.digest, q.record.pending, refusal]).hash}`,
+        request: q.record.id, digest: q.record.digest, sourceResult: q.record.pending, refusal } as EffectRefusal;
+      const source = snapshot().find(fact => fact.id === q.record.pending); ensure(source, 'refusal source result is absent');
+      return persist(record, [q.fact.id, source.id]);
+    }),
     createAggregate: input => checked('OrderedEffectAggregateCreate', input, () => {
       live(host);
       ensure(input.run.owner === 'part-five' && input.run.name === 'Run' && input.run.id.length > 0
@@ -454,25 +467,27 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       } else {
         ensure(current.disposition === 'pending', 'refusal cannot rewrite a settled child');
         const refusal = consumeResult(input.refusal!, { Success: () => { throw new Error('aggregate refusal is not typed'); }, Refused: value => value });
+        const normalizedRefusal = { reason: refusal.reason, detail: refusal.detail, site: refusal.site,
+          failDirection: refusal.failDirection, preserved: refusal.preserved };
         const request = find(input.request, 'EffectRequest').record;
-        const refusalFact = snapshot().find(fact => fact.id === input.refusalFact && fact.kind === 'effect-refusal');
-        const refusalBody = refusalFact?.body as { request?: unknown; digest?: unknown; sourceResult?: unknown; result?: unknown } | undefined;
-        ensure(refusalFact && refusalBody?.request === request.id && refusalBody.digest === request.digest
-          && refusalBody.sourceResult === request.pending && encoded(refusalBody.result).bytes === encoded(refusal).bytes,
+        const refusalRecord = input.refusalFact ? find(input.refusalFact, 'EffectRefusal') : undefined;
+        ensure(refusalRecord && refusalRecord.record.request === request.id && refusalRecord.record.digest === request.digest
+          && refusalRecord.record.sourceResult === request.pending && encoded(refusalRecord.record.refusal).bytes === encoded(normalizedRefusal).bytes,
         'refusal is not recorded for the exact child request/digest/source result');
         const reservations = take(transport.inspect()).filter(row => row.record.type === 'AdmissionReservation'
           && row.record.request === input.request);
         const reservation = reservations.at(-1);
         ensure(reservation?.record.type === 'AdmissionReservation' && reservation.record.state === 'prepared',
           'unrelated refusal cannot terminalize claimed or closed work');
-        take(transport.close(`close-refused:${encoded([request.id, request.digest, refusalFact.id]).hash}`,
-          reservation.record.fence, reservation.record.operation));
+        ensure(input.fence, 'prepared refusal requires a current Part Six close fence');
+        take(transport.close(`close-refused:${encoded([request.id, request.digest, refusalRecord.record.id]).hash}`,
+          input.fence, reservation.record.operation));
         const closed = take(transport.inspect()).filter(row => row.record.type === 'AdmissionReservation'
           && row.record.request === input.request).at(-1);
         ensure(closed?.record.type === 'AdmissionReservation' && closed.record.state === 'closed',
           'prepared refusal lacks a Part Six no-claim disposition');
-        next = childFromRefusal(prior.record.children[childIndex]!, refusal, refusalFact.id);
-        required.push(refusalFact.id, closed.fact.id);
+        next = childFromRefusal(prior.record.children[childIndex]!, refusal, refusalRecord.record.id);
+        required.push(refusalRecord.fact.id, closed.fact.id);
       }
       const settlements = prior.record.settlements.map((row, index) => index === childIndex ? next : row);
       return withCurrentAggregateSettlements({ ...prior.record, settlements }, () => {

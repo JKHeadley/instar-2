@@ -91,7 +91,7 @@ for (const cut of ['record', 'claim', 'settle'] as const) it(`P8-TP-AGGREGATE-SI
     const resumed = spawnSync(process.execPath, [...args, 'recover', cut], { encoding: 'utf8', timeout: 30000 });
     expect(resumed.status, resumed.stderr).toBe(0);
     expect(JSON.parse(resumed.stdout)).toMatchObject({ operation: ready.operation, aggregate: ready.aggregate,
-      state: cut === 'record' ? 'refused' : cut === 'settle' ? 'pending' : 'satisfied', replayRefused: true });
+      state: cut === 'record' ? 'refused' : cut === 'settle' ? 'uncertain' : 'partial', replayRefused: true });
     const service = join(directory, 'aggregate-service.jsonl');
     expect(existsSync(service) ? readFileSync(service, 'utf8').trim().split('\n').length : 0).toBe(cut === 'record' ? 0 : 1);
     expect(readFileSync(join(directory, 'origin', 'facts.json'), 'utf8')).toBe(readFileSync(join(directory, 'peer', 'facts.json'), 'utf8'));
@@ -136,8 +136,8 @@ it('P8-TP-ACK P8-TP-BOUND-REFUSAL decorative acknowledgment refusal stays non-te
     children: [{ request, demandedStage: 'complete', inhibitLater: false, required: false }], reconciliationOwner: 'reconciler' }));
   const refusal = value(decode('Result', f.refusedInput({ detail: 'decorative provider unavailable' }), f.ctx.decode));
   if (refusal.kind !== 'Refused') throw new Error('fixture refusal');
-  const refusalFact = f.recordRefusal(request, refusal);
-  const updated = value(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal, refusalFact: refusalFact.id }));
+  const refusalFact = value(f.api.recordRefusal(request, refusal));
+  const updated = value(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal, refusalFact: refusalFact.id, fence: f.fence }));
   expect(updated.state).toBe('partial'); expect(updated.openRecovery).toEqual([request.id]);
   expect(f.calls()).toBe(0);
 });
