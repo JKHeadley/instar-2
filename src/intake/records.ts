@@ -389,19 +389,22 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
             'scheduled intake: package-system principal dependency is conflicted');
 
           const eventId=text(body.eventId,'scheduled event id');
-          const discoveryWitnesses=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
-            required.has(row.fact.id)&&row.record.view.type==='Evidence'
-              &&row.record.view.claim.subject===eventId&&row.record.view.claim.predicate==='scheduled-discovery'
-              &&row.record.view.claim.value===true&&row.record.view.source===row.fact.machine);
+          const discoveryCandidates=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
+            required.has(row.fact.id)&&row.record.view.type==='Evidence'&&row.record.view.source===row.fact.machine);
+          const discoveryWitnesses=discoveryCandidates.filter(row => {
+            // Historical replay retains an honestly partial admission when its
+            // already-origin-validated Evidence capture is unavailable. Every
+            // origin or available replay must cross the freshness doorway again.
+            if(c.mode==='historical'&&row.record.captureStatus!=='available') return true;
+            const claim=take(readHistoricalEvidence(row.record,causalNow,c.preserved));
+            return claim.subject===eventId&&claim.predicate==='scheduled-discovery'&&claim.value===true;
+          });
           requireIntake(discoveryWitnesses.length===1,
             'scheduled intake: one signed discovery Evidence dependency is required');
           const discoveryIdentity=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
             row.record.view.type==='Evidence'&&row.record.view.id===discoveryWitnesses[0]!.record.view.id);
           requireIntake(discoveryIdentity.every(row => same(row.record.view,discoveryWitnesses[0]!.record.view)),
             'scheduled intake: discovery Evidence dependency is conflicted');
-          if(c.mode==='origin'||discoveryWitnesses[0]!.record.captureStatus==='available')
-            take(readHistoricalEvidence(discoveryWitnesses[0]!.record,causalNow,c.preserved));
-
           const historicalRevocations=collectedRevocations.filter(row => coneIds.has(row.factId));
           const historicalGrants=collectedGrants.filter(row => coneIds.has(row.factId)&&required.has(row.factId)
             &&row.grant.view.grantee.id===principal.id&&row.grant.view.grantee.kind==='system'
