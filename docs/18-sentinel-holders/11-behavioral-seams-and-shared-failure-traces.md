@@ -1,0 +1,33 @@
+## 11. Behavioral seams and shared failure traces
+
+**Rule — each cross-part handoff has one record and one closure owner.** Rules 33, 42, 45, 46,
+49, 63, 68 and 69; **checks: P14-NF-03/04/32/36/40/42–49/59/60**.
+
+| Producer → consumer | Record passed | Consumer obligation | Closure owner |
+|---|---|---|---|
+| Ten/three → nine/package | current `LocalCapabilityPackage.declarationIds`, `Declaration`, `holds` and sentinel required facts | select exact package members; keep features out of holder edges; join each sentinel id to one per-instance `VerificationPlan.subject.holder` and exact governed subject; expose missing enrollment | ten owns package membership; three owns declaration gap; nine owns assessment |
+| Four/five → silent-stop holders | authenticated intake, run/step/progress/grounding facts | assess exact obligation and worker without changing it | five owns work completion |
+| Granted Part Ten worktree-observation operation plus ledger #40 process-inventory observer → orphaned-work holder | complete worktree enumeration, dirty/lock/session state and settle-window activity coverage plus one complete fresh current-user process snapshot in which every relevant directory and ownership join is affirmatively excluded | classify dirty/dead/settled only from both complete sources; preserve `unknown` for an unresolved process directory/owner or missing, partial, failed, stale or denied observation; open ordinary reconciliation without mutating git | ten owns both observations; its worktree-observation operation is conditionally granted but unlanded in `seam-response-assembly-followup.md`, ledger #50; five owns reconciliation; eight settles any separately admitted preservation effect |
+| Granted Part Ten worktree-observation operation plus ledger #40 process-inventory observer → clean-worktree reclamation holder | complete enumeration plus current branch/head, clean, merge, activity, owner/process/lock/build-marker, due-history and action-time worktree observations | keep every uncertain checkout; after the separate fresh action-time observation, request only a bounded non-forced typed git effect | ten owns both observations and the confined driver; its worktree-observation operation is conditionally granted but unlanded in `seam-response-assembly-followup.md`, ledger #50; six owns due/breaker pressure; eight settles the effect |
+| Four/five/eight → framework-prompt holder | current exact operation admission/authorization plus captured menu and worker identity | distinguish missing authorization from an already-admitted operation; keep unresolved menus visible; request only scoped typed input | five owns blockers; eight settles input; ten owns the confined driver |
+| Six → holders | lease, fence, loop, recovery and admission observations | bind evidence to current execution authority | six owns execution/recovery lifecycle |
+| Five/six → budget-overrun holder | current run, `RunBudget`, safety ceiling, run head and resource/admission facts | confirm the governed overrun, propose a Part Five halt and require Six to fence new work; never synthesize an operator stop or a terminal result | five closes run halt/resume/exit; six closes admission and resource recovery |
+| Holders → seven | captured signal and allowed classification outcomes | decide within floors with complete context | seven owns semantic resolution |
+| Holders/seven → eight | registered operation plus effect request | revalidate and settle occurrence/quiescence/charge | eight owns effect settlement |
+| Eight → nine | effect observations and independent outcome evidence | assess restoration without rewriting settlement | nine owns verification assessment |
+| Ten → package/nine | requested holder binding and binding admission | derive exact required instances, arm mode and production activation without inference | ten owns assembly and binding admission; nine owns posture |
+| Five/six/eight/ten → duplicate-retirement holder | current work/delegation/effect state, conversation owner and lease/fence, fresh remote-worker liveness, inbound diversion result and exact worker/drain observations | refuse contested or uncertain retirement; release toward reachability; for one uncontested losing copy, inhibit new claims, observe drain and request one graceful close | five keeps work; six owns ownership/fencing and recurrence; eight owns speaker/close effects; ten owns observation and confined actuation |
+| Nine/package → granted Eleven guard-and-repair pull operation | facts-only package fold, explicit evaluation-clock query, raw posture, four-label rendering, gaps, complete counts, evidence refs and horizons | render pull-first, preserve unknowns and prove real authenticated reachability without re-grading | eleven owns surface delivery under the unlanded `seam-response-operator-followup.md` grant; ten owns its production binding under the unlanded `seam-response-assembly-followup.md` grant; ledger #51 records both |
+| Moving-worker silence holder → five/eleven | current autonomous run, cadence, last attributable outbound and shared output-change observation | keep the lapse visible in pull posture and open the ordinary cadence-repair obligation; do not emit routine status | five closes cadence repair; eleven closes pull rendering; eight settles only separately eligible action/result messages |
+
+**Rule — four shared traces have one answer.** Rules 24, 26, 31, 33, 42, 55, 61, 63, 68 and 95;
+**checks: P14-NF-32/35/36/42–48**.
+
+| Trace | Required outcome |
+|---|---|
+| Crash after a recovery applies but before local receipt | reconstruct the original effect, query independent occurrence, keep maximum exposure and do not mint another identity |
+| Ownership moves while a holder assesses a session | old observer may append evidence; effect validation re-resolves and only the current owner may act or speak |
+| Guard observer and target fail together | last horizon expires, package becomes `diverged`, load-bearing gap remains owned and no empty all-clear is emitted |
+| Reaper closes a worker during open durable work | eligibility must refuse; if an external kill still occurs, five/six recover the same run and record the breach for retrospective review |
+
+---
