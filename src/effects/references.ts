@@ -1,8 +1,13 @@
-import type { Clock } from '../index.js';
+import type { Clock, Result } from '../index.js';
 import type { FactEnvelope } from '../facts/index.js';
-import type { EffectHost } from './contracts.js';
 import type { TypedEffectPayload } from './payloads.js';
 import { encoded, ensure, freeze, take } from './boundary.js';
+
+type EffectReferenceHost = Readonly<{
+  current(): { readonly clock: Clock };
+  referenceFacts?(): Result<readonly FactEnvelope[]>;
+  resolvePath?(path: string): Result<string>;
+}>;
 
 const object = (value: unknown, detail: string): Readonly<Record<string, unknown>> => {
   ensure(value !== null && typeof value === 'object' && !Array.isArray(value), detail);
@@ -36,7 +41,7 @@ const one = (facts: readonly FactEnvelope[], kind: string, predicate: (value: Re
 
 /** Resolve every typed-payload reference against its signed P2 history. */
 export function resolveEffectPayloadReferences(payload: TypedEffectPayload, facts: readonly FactEnvelope[], clock: Clock,
-  host?: Pick<EffectHost, 'resolvePath'>): readonly string[] {
+  host?: Pick<EffectReferenceHost, 'resolvePath'>): readonly string[] {
   const resolved: FactEnvelope[] = [];
   resolved.push(one(facts, 'run-opening', value => value.run === payload.run
     || value.type === 'Run' && value.id === payload.run, 'typed run is absent or ambiguous'));
@@ -129,8 +134,13 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
   return freeze([...new Set(resolved.map(fact => fact.id))]);
 }
 
-export function referencedPayloadFacts(payload: TypedEffectPayload, host: EffectHost,
+export function referencedPayloadFacts(payload: TypedEffectPayload, host: EffectReferenceHost,
   supplied?: readonly FactEnvelope[], clock = host.current().clock): readonly string[] {
-  const facts = supplied ?? take(host.referenceFacts?.() ?? (() => { throw new Error('typed reference history unavailable'); })());
+  let facts = supplied;
+  if (!facts) {
+    const read = host.referenceFacts;
+    ensure(read, 'typed reference history unavailable');
+    facts = take(read.call(host));
+  }
   return resolveEffectPayloadReferences(payload, facts, clock, host);
 }
