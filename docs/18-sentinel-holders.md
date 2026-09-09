@@ -58,7 +58,7 @@ executables while preserving the same plans, evidence bars and public ports.
 ## 2. The registered holder family
 
 **Rule — every member is an ordinary part-nine plan with named arms.** Rules 5, 9, 34, 38, 39,
-43, 49, 59, 69 and 78; **checks: P14-NF-05–09/12–15/22/37/38/58–62**. Each row becomes one or more
+43, 49, 59, 69 and 78; **checks: P14-NF-05–09/12–15/22/37/38/58–63**. Each row becomes one or more
 versioned `VerificationPlan` instances. Every arm names its exact subject, executable, schedule,
 freshness window, evidence sources, independent witness, failure action and capacity budget through
 the owning plan fields. Runtime activation is not an arm field; it comes from the Part Ten binding
@@ -77,6 +77,7 @@ protection.
 | Compaction sentinel | `runtime`, `probe`, `retrospective` | Did a compaction preserve and account for the last inbound message and re-ground the worker? | part-five grounding and continuity records, exact inbound id and worker-consumption witness |
 | Presence holder | `runtime`, `sentinel`, `retrospective` | Has admitted user input lacked an attributable response or honest bounded status while work remains owned? | intake fact, outbound settlement, run progress and speaker authority re-resolved at use |
 | Promise holder | `runtime`, `probe`, `retrospective` | Does an agent-owned open commitment have current progress, a valid blocker probe, or a bounded revival path? | durable run/commitment source, due obligation, probe evidence and terminal disposition |
+| Dated check-in reminder holder | `runtime`, `probe`, `retrospective` | Has an open agent-owned obligation reached its exact absolute check-in instant without an already-settled reminder or terminal closure? | Part Five due-work item and closure state, actual clock observation, exact reminder effect identity and Part Eight observation/settlement |
 | Crash-loop holder | `runtime`, `retrospective` | Does one operation class repeatedly fail under a pinned population strongly enough to propose a pause? | complete attempt population, duration/outcome facts and part-seven classification |
 | Budget-overrun holder | `runtime`, `probe`, `retrospective` | Has a current autonomous run crossed its governed safety ceiling strongly enough to halt new work without declaring the assignment finished? | current run/budget/head, consecutive current due observations, Part Five halt and Part Six admission state |
 | Moving-worker silence holder | `runtime`, `sentinel`, `retrospective` | Is a current autonomous run still producing observed worker output but missing its attributable user-report cadence even without new inbound input or an open promise? | current run/cadence, last attributable outbound, shared output-change observation and one-voice ownership (the one current, re-resolved authority allowed to speak for that conversation) |
@@ -175,7 +176,7 @@ conflicting, partial, or stale binding makes the required population incomplete 
 `diverged`; no arm kind or executable name is used to guess the mode. The request also requires the
 binding's plan id and governed subject to equal the per-instance plan before posture is consumed.
 That request is GRANTED in `seam-response-assembly-followup.md`, ledger #9, but is not landed.
-P14-NF-05/16–23/31–36/39/42/44–54/58–62 are **non-executable until
+P14-NF-05/16–23/31–36/39/42/44–54/58–63 are **non-executable until
 `seam-response-assembly-followup.md` lands** wherever their positive requires owner-decoded
 production bindings or drivers. Until the seam lands and its production bindings pass
 P14-NF-49/50, no package instance is eligible for `on-confirmed`.
@@ -263,14 +264,22 @@ so truncation cannot resemble an all-clear.
 
 **Rule — load-bearing gaps are explicit owned findings.** Rules 8, 15, 43, 64, 68, 71, 73 and
 87; **checks: P14-NF-21–24/54**. For every protection-obligation row, the projector reads the raw
-Part Nine arm posture. Only `healthy`, backed by current-generation fresh independent evidence,
-satisfies that obligation. `failed`, `stale`, `unknown` and `inactive` expose a load-bearing gap;
-missing arm or instance joins expose a gap as well. The four-state package label is displayed beside
-the gap but is never compared as if it were an arm posture. An intentionally `off` instance whose
-critical-outcome relationship still exists therefore retains its obligation and its gap even though
-its required execution population is empty. `dry-run` and `diverged` instances likewise expose
-their unsatisfied obligations. The finding names the affected rule/outcome, instance, raw arm
-posture, first observed source vector, current evidence, owner, safe fail direction and next due assessment.
+Part Nine arm posture without changing its meaning. An obligation is satisfied only when all three
+facts join at the same current source vector: the exact binding is intended active and independently
+observed active for this holder, plan, arm, instance and generation; the raw Part Nine arm is
+`healthy`; and that posture is backed by exact current-generation fresh independent evidence. A
+binding is not current active when its admission is inhibited, retired, missing, conflicting, stale,
+for another generation or contradicted by runtime observation. Such a binding retains a gap even
+while an earlier independent pass is fresh and Nine therefore still reports raw `healthy`.
+`failed`, `stale`, `unknown` and `inactive` also expose a load-bearing gap; missing arm or instance
+joins expose a gap as well. The four-state package label is displayed beside the gap but is never
+compared as if it were an arm posture. An intentionally `off` instance whose critical-outcome
+relationship still exists therefore retains its obligation and its gap even though its required
+execution population is empty. A required never-run arm remains raw `unknown` under Nine; Fourteen
+does not relabel it `inactive`. `dry-run` and `diverged` instances likewise expose their unsatisfied
+obligations. The finding names the affected rule/outcome, instance, raw arm posture, binding
+admission and observation, first observed source vector, current evidence, owner, safe fail direction
+and next due assessment.
 Activation policy may permit a bounded soak—an owner- and deadline-bound observation period in
 which selected effects remain inhibited while their gap stays visible—or an explicit accepted risk,
 but neither relabels the gap as protected. The pull surface shows all gaps. A push notice is a
@@ -404,7 +413,7 @@ self-heal; unresolved action-needed or result-bearing output is aggregated and s
 part eight. Pull posture remains complete when push output is disabled.
 
 **Rule — promise watching follows durable ownership and detects missing registration.** Rules 8,
-9, 13, 46, 55, 64, 68, 83, 87, 92 and 93; **checks: P14-NF-37–41/55**. A promise arm consumes the
+9, 13, 46, 55, 64, 68, 83, 87, 92 and 93; **checks: P14-NF-37–41/55/63**. A promise arm consumes the
 durable work/run source selected by
 parts three and five; this part does not create a competing commitment schema. Each open agent-owned
 obligation has a cadence, blocker state, next probe or progress due, terminal test and bounded
@@ -417,6 +426,32 @@ A supported finding opens the ordinary Part Five registration/reconciliation pat
 missing-registration gap until that path records or explicitly declines the obligation. Detecting a
 promise does not itself invent work authority or close the user's request.
 
+**Rule — a dated check-in is a distinct absolute due obligation.** Rules 8, 26, 42, 46, 52, 55,
+68, 83, 87, 89 and 92; **checks: P14-NF-37–39/45–47/63**. When an agent-owned promise includes an
+absolute check-in instant, its ordinary Part Five registration records a separate due obligation in
+the `run-due-view`, derived from current `nextWake` facts with that exact instant and destination.
+This names existing Five-owned fields and projection behavior, not a Fourteen-owned record. Five
+owns that due obligation and its explicit closure: an owner-valid terminal closure of the underlying
+promise suppresses it, and a settled reminder closes only the reminder obligation. The reminder
+holder owns complete observation of the open dated population and compares the absolute instant with
+an actual clock reading. Not-yet-due,
+closed and already-settled rows request no effect. Reaching the instant makes the reminder due; it
+does not prove the promised work happened.
+
+The retained reminder is a bounded `required action` message under Part Eight's message policy. It
+quotes the promise as data, says that the date arrived rather than claiming progress, and carries
+truthful provenance, the original destination and one stable logical effect identity. It never uses
+a holder-owned direct send. Eight validates current ownership, scope, notification budget and
+destination, then records observation and settlement. A lost or ambiguous delivery answer stays
+uncertain under the original identity and permits read-only reconciliation only; it does not mint a
+second reminder. Attempt or notification-budget exhaustion leaves the due obligation and undelivered
+state owned and pull-visible. The landed doorway cannot express this automatic required-action
+notice. P14-NF-63's delivery positive is **non-executable until
+`seam-response-effects-payloads.md` and `seam-response-assembly-followup.md` land**; those GRANTED
+files supply the typed infrastructure notice and its confined notice driver. Due selection,
+terminal suppression, already-settled suppression and delivery-uncertainty refusal remain testable
+without dispatch.
+
 **Rule — unregistered dirty work remains visible after its worker dies.** Rules 9, 26, 42, 45,
 59, 68, 69 and 87; **checks: P14-NF-25/35/42/45/49/50/61**. Here **dirty** means a
 version-controlled worktree has uncommitted or untracked changes. **Owner-dead** means no live
@@ -426,7 +461,11 @@ window. The orphaned-work holder enumerates the complete assembly-bound worktree
 records each classification. A dirty, owner-dead and settled worktree opens one owned finding and the ordinary
 Part Five registration/reconciliation path, even when no promise or run was registered. Dirty with
 a live owner is not orphaned. Failed enumeration makes the population `unknown`, never zero. The
-owner decides through that durable path whether to revive, retain or discard the work under current
+absence of a last-file-activity observation also makes settle eligibility `unknown`; it cannot
+establish `settled`, open the reconciliation finding or authorize preservation. The holder may only
+schedule bounded re-observation until positive activity history covers the full settle window. This
+observed-settle requirement is deliberately stronger than the 1.x classifier's unknown-activity
+fallback. The owner decides through that durable path whether to revive, retain or discard the work under current
 standing. An optional preservation commit is a separate registered Part Eight git effect through a
 confined Part Ten driver. Detection never performs that mutation directly, and preservation success
 does not close the reconciliation obligation. P14-NF-61's observation neighbors remain executable,
@@ -630,7 +669,7 @@ absent local instance.
 ## 10. What Instar 1.x does today and what carries forward
 
 **Rule — earned guarantees survive the change in architecture.** Rules 24, 26, 45, 59, 61, 68,
-70, 87, 88 and 111; **checks: P14-NF-25–35/37–48/55–62**. The layer-below audit covered the named modules and
+70, 87, 88 and 111; **checks: P14-NF-25–35/37–48/55–63**. The layer-below audit covered the named modules and
 the incidents recorded with them. The following behaviors are requirements, not endorsements of
 their current implementation.
 
@@ -647,7 +686,8 @@ their current implementation.
 | `PresenceProxy` | Correlates unanswered messages with component-specific activity classification and bounded notices. | Intake-to-reply accounting, live corroboration, one voice and conservative uncertainty remain. |
 | `CommitmentTracker`, `PromiseBeacon` | Track open commitments, blocker/progress cadence, non-terminal `atRisk`, and active-beacon caps. | Durable owner/blocker state, structured probes, bounded revival and internal-by-default follow-through remain. |
 | `CommitmentSentinel` | Reads recent user/agent exchanges, asks a model for commitments missing from `CommitmentTracker`, deduplicates candidates and records supported missing commitments. | The promise holder retains a full-context missing-registration arm under P14-NF-55. It opens the ordinary durable-work reconciliation path; it does not gain keyword authority or a competing commitment schema. |
-| `OrphanedWorkSentinel` | Covers the population that promise tracking cannot see: a worktree with uncommitted or untracked work, no live owning session/lock/process and no recent file activity. It records one deduplicated finding, keeps failed enumeration distinct from zero orphans and can optionally create a preservation commit behind a separate off-by-default flag. This closes the 2026-06-12 incident in which a worker died after leaving unregistered, uncommitted work invisible. | The orphaned-work holder retains the complete dirty/owner-dead/settled observation and the dirty/live and failed-enumeration neighbors under P14-NF-61. Reconciliation becomes owned Part Five work. The optional preservation commit is not inherited authority: it is a separately admitted typed Part Eight git effect through Part Ten, and direct git mutation is rejected. |
+| `checkInReminderCore`, `CheckInReminderReconciler` | Scan absolute `checkInAt` instants; exclude not-yet-due, closed, already-reminded, unrouted, invalid and retry-exhausted commitments; cap each pass; record attempts; and expose reminders still undelivered after exhaustion. They send before stamping success, so a crash between send and stamp can repeat delivery; short-lived relay deduplication is not a global exactly-once guarantee. Delivery uses a direct injected send dependency. | P14-NF-63 retains the absolute due test, terminal and already-settled suppression, bounded attempts and visible undelivered state. Five owns the durable due item and its closure; the reminder holder observes it; Eight owns message validation, dispatch, uncertainty and settlement. The direct-send bypass and any assumed exactly-once claim are rejected. |
+| `OrphanedWorkSentinel` | Covers the population promise tracking cannot see: a worktree with uncommitted or untracked work and no live owning session/lock/process. When a last-activity timestamp exists, recent activity excludes the worktree. When that timestamp is `null`, the classifier falls through to `orphaned` and labels the result settled even though activity is unknown. It records one deduplicated finding, keeps failed enumeration distinct from zero orphans and can optionally create a preservation commit behind a separate off-by-default flag. This closes the 2026-06-12 incident in which a worker died after leaving unregistered, uncommitted work invisible. | P14-NF-61 makes observed quiet across the full settle window a new, stronger requirement. Dirty/live, failed-enumeration and unknown-activity neighbors cannot be seized. Reconciliation becomes owned Part Five work. The optional preservation commit is not inherited authority: it is a separately admitted typed Part Eight git effect through Part Ten, and direct git mutation is rejected. |
 | `StuckInputSentinel` | Before pressing a key on the generic prompt path, compares the same pane's plain and terminal-styled captures. Dim-only text is treated as a model-suggested ghost; mixed, raced or unreadable presentation is inconclusive and is not pressed. | Silent-stop coverage retains authentic-pending-input versus ghost/inconclusive discrimination under P14-NF-56. Captured presentation is a signal; action still needs the typed effect and exact worker identity. |
 | `PermissionPromptAutoResolver` | Detects registered framework approval-menu shapes, re-captures before input and bounds repeated clearing attempts. It can answer a narrowly recognized one-call option, while persistent or unrecognized menus receive a separate visibility path. Its 1.x policy assumes framework prompts in operator-owned full-access sessions are defects rather than authorization requests. | The framework-prompt holder retains bounded detection, re-observation and unresolved-menu visibility under P14-NF-62. It separately re-resolves whether the exact underlying operation is already admitted. Missing human authorization remains a blocker. The 1.x blanket authority assumption is rejected; only the granted typed one-operation harness input may clear an exact admitted prompt, and blanket or ambiguous options remain untouched. |
 | `RateLimitSentinel` | Deduplicates one live-session throttle recovery, defers when compaction recovery owns the session, backs off before a neutral continuation, exposes active recovery to veto zombie reaping, and bounds attempts. | The session/compaction holders retain bidirectional exclusion, class-specific payloads, backoff and reaper veto under P14-NF-57. Provider text is not semantic authority, and transcript growth is not recovery proof. |
@@ -660,7 +700,7 @@ their current implementation.
 | `SourceTreeGuard`, `SafeGitExecutor`, `SafeFsExecutor` | `SourceTreeGuard` canonicalizes the nearest existing ancestor and fails toward protection when identity cannot be resolved. `SafeFsExecutor` has a directory-wide `.instar/` subtree carve-out. The wrappers audit one target and a caller frame; audit can be disabled and write failures are fail-soft. `SafeFsExecutor` has a same-directory atomic single-file replacement helper. Git and multi-object filesystem mutations are not transactionally crash-safe. | Canonical target checks remain defense in depth. Exact operation/target exceptions, separately recorded requested/resolved targets, verified principal, durable complete audit, and operation-specific crash outcomes are new requirements on requests `P14-P8-typed-recovery-effects-v2` and `P14-P10-holder-bindings-and-drivers-v2`; they are not inherited guarantees. |
 
 **Rule — omitted 1.x modules receive an explicit package disposition.** Rules 30, 42, 45, 55,
-59, 61, 68, 69 and 87; **checks: P14-NF-25–35/42–49/55–62**. `ActiveWorkSilenceSentinel` is carried into
+59, 61, 68, 69 and 87; **checks: P14-NF-25–35/42–49/55–63**. `ActiveWorkSilenceSentinel` is carried into
 silent-stop/session-watchdog coverage under P14-NF-25–30; its finite frozen-frame threshold raises
 evidence for Part Seven, never kill authority. `SocketDisconnectSentinel` is delegated to Part Six
 loop ownership and the requested Part Eight/Ten typed delivery/recovery path under P14-NF-32/34/
@@ -671,9 +711,14 @@ governor is authoritative. `ExternalHogSentinel` is included only as an observat
 session-reaper assessment under P14-NF-27/30/32 and is excluded from automatic process action until
 P14-NF-42/49/51/52 pass.
 `CommitmentSentinel` is assigned to the promise holder's missing-registration arm under P14-NF-55.
+`checkInReminderCore` and `CheckInReminderReconciler` are assigned to the distinct dated check-in
+holder under P14-NF-63. Five owns the absolute due-work item and terminal closure. Eight owns the
+required-action message and uncertain delivery. The direct send and reliance on short-lived relay
+deduplication are not carried forward.
 `OrphanedWorkSentinel` is assigned to the orphaned-work holder under P14-NF-61, including the
-unregistered dirty/owner-dead/settled population, the dirty/live exclusion and an `unknown`
-enumeration-failure result. Its reconciliation belongs to Five; its optional preservation commit
+unregistered dirty/owner-dead/observably-settled population, the dirty/live exclusion and `unknown`
+results for enumeration failure or missing last-activity evidence. Unknown activity cannot open a
+finding or preservation effect. Its reconciliation belongs to Five; its optional preservation commit
 is a distinct Eight/Ten typed git effect and never a holder-side mutation.
 `StuckInputSentinel` is assigned to silent-stop input-buffer coverage under P14-NF-56.
 `PermissionPromptAutoResolver` is assigned to the framework-prompt holder under P14-NF-62. Missing
@@ -757,18 +802,18 @@ ends a run, and new worker identities used to escape uncertainty or budgets.
 | Notification | burst failures, repeated self-heals and cross-machine duplicates through real channels | action/result-only, one provenance-correct aggregate per causal episode within finite budget |
 
 **Rule — contract availability is reported separately from the check specification.** Rules 26,
-34, 42, 45, 49, 69 and 107; **checks: P14-NF-01/33/42/43/49/50/53/56–62**. A fixture row below is a required
+34, 42, 45, 49, 69 and 107; **checks: P14-NF-01/33/42/43/49/50/53/56–63**. A fixture row below is a required
 contract, not evidence that its positive neighbor can execute against this checkout. The current
 boundary is explicit:
 
 | Contract basis | Checks that can be implemented against the landed owner shape | Checks whose full positive neighbor is blocked |
 |---|---|---|
 | Landed register, package and verification contracts | Enrollment from `LocalCapabilityPackage.declarationIds`, one-plan-per-instance identity, pure projection, evidence and audit cases can be implemented without changing their owners. Part Fourteen code and real executions are still required before any result exists. | None merely because Part Fourteen is not implemented; that is ordinary implementation work, not an owner-shape gap. |
-| GRANTED Part Ten holder binding/admission and driver request `P14-P10-holder-bindings-and-drivers-v2` in `design-sentinel-holders-seam-request-assembly.md`, ledger #9 | Pure unit fixtures may use candidate values, but they cannot count as owner decoding, production binding or lifecycle evidence. | Production-binding/driver portions of P14-NF-05/16–23/31–36/39/42/44–54/58–62 are **non-executable until `seam-response-assembly-followup.md` lands**. |
+| GRANTED Part Ten holder binding/admission and driver request `P14-P10-holder-bindings-and-drivers-v2` in `design-sentinel-holders-seam-request-assembly.md`, ledger #9 | Pure unit fixtures may use candidate values, but they cannot count as owner decoding, production binding or lifecycle evidence. | Production-binding/driver portions of P14-NF-05/16–23/31–36/39/42/44–54/58–63 are **non-executable until `seam-response-assembly-followup.md` lands**. |
 | GRANTED Part Five closure record in `seam-response-run-closure.md`, ledger #7 | Activity-only continuity negatives remain testable against the landed slice. | P14-NF-31–33 are **non-executable until `seam-response-run-closure.md` lands** wherever their positive requires `ContinuityAccounting`. |
 | GRANTED Part Five delegation, compaction and safety-ceiling follow-up in `seam-response-rungraph-followup.md`, ledger #8/#24, plus request `P14-P5-safety-ceiling-halt-v1` | Root-only, empty-child and missing-transition refusals are testable against the landed slice. | P14-NF-25/28/31–36/49/50/59 are **non-executable until `seam-response-rungraph-followup.md` lands** wherever their positive requires delegation/visible-child accounting, compaction grounding/consumption or a safety-ceiling halt. |
 | GRANTED Part Six breaker request `P14-P6-shared-recovery-breaker-v2` | First-attempt inhibition and private-counter rejection are testable on the landed `stub-closed` contract. | P14-NF-43/47/49 are **non-executable until `seam-response-loop-breaker.md` lands**. |
-| GRANTED Part Eight typed-effect request `P14-P8-typed-recovery-effects-v2` | Direct-call/bypass negatives and the landed ordinary-reply path remain testable. | P14-NF-42/45/46/51–53/61 are **non-executable until `seam-response-effects-payloads.md` lands** wherever their positive requires a typed recovery or git effect; production-driver neighbors remain blocked by `seam-response-assembly-followup.md`. |
+| GRANTED Part Eight typed-effect request `P14-P8-typed-recovery-effects-v2` | Direct-call/bypass negatives, dated-reminder due/suppression decisions and the landed ordinary-reply path remain testable. | P14-NF-42/45/46/51–53/61/63 are **non-executable until `seam-response-effects-payloads.md` lands** wherever their positive requires a typed recovery, git or required-action notice effect; production-driver neighbors remain blocked by `seam-response-assembly-followup.md`. |
 | GRANTED Part Eight continuity consumer and harness-operation follow-up in `seam-response-effects-followup.md`, ledger #8/#29 | Generic-reply rejection, first-reply reference mismatch and prompt classification remain testable without dispatch. | P14-NF-31–33/49/50/62 are **non-executable until `seam-response-effects-followup.md` lands** wherever their positive requires the first-reply consumer or typed harness `live-input delivery`; production dispatch also waits for `seam-response-assembly-followup.md`. |
 | GRANTED paired worker-input request `P14-P8-P10-typed-worker-input-v1` in `design-sentinel-holders-seam-request-worker-input.md`, ledger #21 | Authentic-pending-input discrimination, wrong-target refusal and duplicate-identity logic can be tested as pure holder decisions, but no positive worker delivery may be claimed. | P14-NF-33/56/57 and their P14-NF-49/50 production wiring/lifecycle neighbors are **non-executable until `seam-response-effects-followup.md` and `seam-response-assembly-followup.md` land**. |
 
@@ -862,33 +907,35 @@ activation blockers, not future implementation details that this part may silent
 | P14-NF-51 | target guard | Raw path, symlink or ancestor resolution reaches a protected target, or canonical identity is unavailable, and the adapter refuses; a separately rooted disposable target with verified canonical ancestry is allowed |
 | P14-NF-52 | target guard | Broad exception, target substitution or missing audit field is refused; one exact audited operation/target exception is allowed, and an adapter refusal is preserved unchanged through effect settlement |
 | P14-NF-53 | storage fault | For a declared single-object atomic replacement or one compare-and-swap ref update, hostile cuts reconstruct only the old or new state for that exact scope. For recursive, cross-filesystem, working-tree or other multi-object mutation, a cut that leaves partial physical state must reconstruct preserved per-object evidence, a partial/uncertain outcome, maximum exposure and an owned reconciliation with no blind retry; false success or an all-or-nothing claim fails. |
-| P14-NF-54 | projection | A never-enabled dark instance with fresh independent inhibition evidence reads `off`; the same instance with missing/expired inhibition evidence reads `diverged`. A deliberately disabled formerly healthy instance remains `off` only while current inhibition/no-later-execution evidence is fresh. A first-soak instance before its first required probe reads `diverged`; with every required observation fresh and passing plus a never-executed deliberately inhibited effect arm it reads `dry-run`. An unexpected inhibition and a fresh required-arm failure read `diverged`. Zero effect inhibitions with every binding active and fresh reads `on-confirmed`, not `dry-run`. Empty enrollment and mixed off/active instances read `diverged`. An intentionally off instance whose critical-outcome relationship remains current retains an `inactive` raw arm and a visible protection gap. |
+| P14-NF-54 | projection | A never-enabled dark instance with fresh independent inhibition evidence reads `off`; its required never-run arm remains raw Nine `unknown`, and its current critical-outcome obligation remains a visible gap because the binding is not active. Missing/expired inhibition evidence makes the same instance `diverged`. A formerly healthy required arm whose binding is then deliberately inhibited may remain raw Nine `healthy` while its prior pass is fresh; the package derives `off` for an otherwise eligible dark instance or `dry-run` for an otherwise eligible soaking instance, but the obligation still has a gap because current intended-and-observed active binding is absent. A first-soak instance before its first required observation reads `diverged`; with every required observation fresh and passing plus a never-executed deliberately inhibited effect arm it reads `dry-run`. An unexpected inhibition and a fresh required-arm failure read `diverged`. Zero effect inhibitions with every binding active and fresh reads `on-confirmed`, not `dry-run`. Empty enrollment and mixed off/active instances read `diverged`. No Fourteen fixture requires Nine to relabel a required arm `inactive`. |
 | P14-NF-55 | promise lifecycle | An attributable promise absent from the durable work source is ignored, or keywords create an obligation directly. Full-context judgment finds a supported missing registration and the ordinary Part Five path records or explicitly declines it; a matched existing obligation is not duplicated. |
 | P14-NF-56 | input recovery | Model-suggested dim ghost text or an inconclusive/raced capture receives a keypress or an `ordinary-reply`. The positive neighbor re-observes the exact worker/session/pane, incarnation, context generation and same-pane presentation, then admits one `submit-authentic-pending-input` request under `P14-P8-P10-typed-worker-input-v1` with the intake/payload digest and consumption bar; ghost and inconclusive neighbors remain preserved, untouched and visible. |
 | P14-NF-57 | recovery race | Provider-throttle and compaction recoveries run concurrently, reuse one another's payload, permit reaping, or retry a lost worker-input receipt under a fresh id. One Part Six exclusion key makes one defer, preserves its due work, keeps the reaper veto active and later admits only the recovery class's typed `neutral-continuation` or `recovery-injection`; lost receipt permits observation only until non-occurrence, quiescence and delayed-delivery exclusion are decisive. |
 | P14-NF-58 | declaration | A recurring package feature or sentinel declares `repeats: no`, names an unresolved/unpaired bound, or schedules through a different loop policy. The positive neighbor declares `bounded` repetition by the exact live bound entry paired with the same registered Part Six `LoopPolicy` used by its plan schedule and production binding; the package parent budget is finite. |
 | P14-NF-59 | budget halt | A confirmed autonomous-run budget overrun deletes run state, fabricates an operator stop, marks work complete/unreachable, or closes an unverified worker directly. The positive neighbor records the exact overrun, uses Part Five's durable safety-ceiling halt, Part Six's fence/resource closure and the requested typed Part Eight/Ten process effect only for an action-time verified worker; work stays open and any notice has infrastructure provenance. |
 | P14-NF-60 | cadence observation | A moving-worker run is omitted because there is no new inbound input or open promise, or routine liveness status is pushed. The positive neighbor enumerates every current autonomous run, records the moving-but-user-silent case in pull posture and opens the ordinary Part Five cadence-repair path; only a separately eligible action-needed/result-bearing message may pass through Part Eight. |
-| P14-NF-61 | orphaned work | A dirty worktree with no registered promise/run is omitted after its owner dies, dirty work with a live owner is seized, or failed enumeration is reported as zero. The positive neighbors classify a complete population: dirty/owner-dead/settled opens one owned reconciliation finding; dirty/live remains untouched; failed enumeration records `unknown`. An optional preservation commit uses a separately admitted typed git effect and does not close the finding. |
+| P14-NF-61 | orphaned work | A dirty worktree with no registered promise/run is omitted after its owner dies, dirty work with a live owner is seized, failed enumeration is reported as zero, or unknown last-file activity is treated as a settled interval. The positive neighbors classify a complete population: dirty/owner-dead with observed quiet across the full settle window opens one owned reconciliation finding; dirty/live remains untouched; failed enumeration records `unknown`; missing last-activity evidence records unknown settle eligibility, opens no finding and cannot authorize preservation. An optional preservation commit uses a separately admitted typed git effect only after observed settle eligibility and does not close the finding. |
 | P14-NF-62 | framework prompt | A missing authorization is auto-approved, an already-admitted operation remains silently stranded, or a blanket/ambiguous/unrecognized menu receives input. The positive neighbor re-resolves current admission and standing for one exact operation, re-observes the same worker/menu, and requests only that one-operation selection through the granted typed harness-input effect. Missing authorization stays blocked; persistent or unsupported menus remain untouched and visible after bounded attempts. |
+| P14-NF-63 | dated reminder | An absolute check-in sends before its instant, sends after the underlying promise is fulfilled, withdrawn or superseded, repeats after the exact reminder is settled, bypasses Eight, or treats uncertain delivery as permission for a fresh send. The positive neighbors use the same pinned population and actual clock: an open due row requests one bounded required-action effect under its stable identity; the otherwise identical not-yet-due row requests none; a terminally closed row requests none; an already-settled reminder requests none; and an ambiguous or lost delivery remains owned uncertain under the original identity with read-only reconciliation, bounded exposure and no second invocation. The delivery positive is non-executable until `seam-response-effects-payloads.md` and `seam-response-assembly-followup.md` land. |
 
 ---
 
 ## 14. Inherited duties and disposition
 
 **Rule — no inherited duty remains parked.** Rules 8, 45, 49, 59, 64, 68, 69, 71 and 87;
-**checks: P14-NF-01/03–05/25/32/35/49/50/55–62**.
+**checks: P14-NF-01/03–05/25/32/35/49/50/55–63**.
 
 | Duty | Disposition |
 |---|---|
 | Rule 59 and part ten — enumerated stall coverage | **Held:** the common matrix, adapter additions, real parser fixtures and positive neighbors are required by P14-NF-25–30. |
 | Part nine — fresh holder posture | **Held by consumption:** per-plan/arm/instance execution, independent witness and four-label projection are covered by P14-NF-05–24. Nine retains core posture and assessment authority. |
 | Parts five/six — durable work and recovery | **Partial, activation-blocking:** holders detect and assess; five retains run closure; six owns leases, loops and recovery. P14-NF-31–36 refuses worker events as work completion. Delegation, visible-child accounting, compaction grounding/continuity and safety-ceiling halt positives remain non-executable until `seam-response-run-closure.md` and `seam-response-rungraph-followup.md` land. |
-| Parts seven/eight — judgment and effects | **Partial, activation-blocking:** semantic classification uses seven. The landed eight supports ordinary replies only; the granted typed recovery/action-result payload seam is non-executable until `seam-response-effects-payloads.md` lands, and Ten's matching granted drivers are non-executable until `seam-response-assembly-followup.md` lands. Affected bindings stay inhibited under P14-NF-10–12/40–53/62. |
+| Parts seven/eight — judgment and effects | **Partial, activation-blocking:** semantic classification uses seven. The landed eight supports ordinary replies only; the granted typed recovery/action-result payload seam is non-executable until `seam-response-effects-payloads.md` lands, and Ten's matching granted drivers are non-executable until `seam-response-assembly-followup.md` lands. Affected bindings stay inhibited under P14-NF-10–12/40–53/62/63. |
 | Part eleven — reachability and operator output | **Held by the claimed split:** complete pull posture and bounded action/result notices P14-NF-20–24/37–39. Eleven owns rendering and the minimal plane. |
 | Rules 24/58 — recurrence and outcome review | **Held:** complete populations, reason/outcome separation and root-cause obligation P14-NF-13–15/41. Semantic accuracy remains judged, never mechanically guaranteed. |
 | 1.x missing-promise, pending-input and throttle recovery distinctions | **Partial, activation-blocking:** `CommitmentSentinel` missing registration is held by P14-NF-55. `StuckInputSentinel` ghost/inconclusive exclusion and `RateLimitSentinel` compaction exclusion remain explicit under P14-NF-56/57, but their positive delivery actions are non-executable until the granted `seam-response-effects-followup.md` and `seam-response-assembly-followup.md` land. Keyword authority, untyped keypresses and transcript-growth proof are deliberately excluded. |
-| 1.x unregistered orphaned work | **Held as observation; reconciliation/effect split:** P14-NF-61 retains complete dirty/owner-dead/settled detection, excludes dirty/live work and makes failed enumeration `unknown`. Five owns the resulting reconciliation. Any optional preservation commit is a separate typed Eight/Ten effect and remains non-executable until `seam-response-effects-payloads.md` and `seam-response-assembly-followup.md` land. |
+| 1.x dated commitment reminders | **Retained with owner split; delivery activation-blocking:** P14-NF-63 retains absolute due selection, terminal and already-settled suppression, bounded attempts and visible undelivered state. Five owns the due-work item and its explicit closure; the reminder holder owns observation; Eight owns required-action dispatch and uncertain settlement. Direct send is rejected. The delivery positive is non-executable until `seam-response-effects-payloads.md` and `seam-response-assembly-followup.md` land. |
+| 1.x unregistered orphaned work | **Held as a stronger observation; reconciliation/effect split:** P14-NF-61 requires positive quiet evidence across the settle window, excludes dirty/live work and makes failed enumeration or missing activity evidence `unknown`. Five owns the resulting reconciliation. Any optional preservation commit is a separate typed Eight/Ten effect and remains non-executable until `seam-response-effects-payloads.md` and `seam-response-assembly-followup.md` land. |
 | 1.x framework approval prompts | **Partial, activation-blocking:** P14-NF-62 distinguishes missing authorization from an already-admitted exact operation, preserves bounded detection and keeps unresolved menus visible. Automatic exact one-operation clearing is non-executable until `seam-response-effects-followup.md` and `seam-response-assembly-followup.md` land. Blanket prompt approval is rejected. |
 | 1.x destructive target guards | **Partial, activation-blocking:** exact target verification, audited exceptions, refusal propagation and crash cuts are specified by P14-NF-51–53, but require the requested Eight/Ten typed drivers. Part eight remains the sole effect authority. |
 | 1.x enforced autonomous-run termination | **Held at the observation/ownership split; actuation-blocking:** P14-NF-59 retains confirmed budget-overrun detection and delegates the durable halt to Five and admission/resource closure to Six. The halt positive is non-executable until `seam-response-rungraph-followup.md` lands. Worker closure uses Eight/Ten only after exact process verification. State deletion, synthetic operator-stop attribution and terminalizing unfinished work are rejected. The process-effect positive neighbor remains blocked by the same Eight/Ten dependencies above. |
