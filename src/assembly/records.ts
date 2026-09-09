@@ -3,9 +3,10 @@ import { consumeResult, defineDecoder } from '../index.js';
 import type { DecodeContext, Json, Result } from '../index.js';
 import { authorAndAppend, causalCone, factId, preimage, registerOwnedBody } from '../facts/index.js';
 import type { ConflictClass, FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
+import { minimalPlaneProjectionIds, requiredMinimalDependencies } from '../operator/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import type { AssemblyAuthor, AssemblyComparison, AssemblyDecodeContext, AssemblyHost, AssemblyIdentity,
-  AssemblyRecord, AssemblyRecordName, AssemblySpine, CurrentAssemblyFact } from './types-internal.js';
+  AssemblyManifest, AssemblyRecord, AssemblyRecordName, AssemblySpine, CurrentAssemblyFact } from './types-internal.js';
 
 const text = { kind: 'text', maxLength: 4096 } as const;
 const integer = { kind: 'integer' } as const;
@@ -17,6 +18,26 @@ const pair = (fields: Readonly<Record<string, OwnedShape>>, optional: readonly s
 const list = (items: OwnedShape, maxLength = 1024): OwnedShape => ({ kind: 'array', maxLength, items });
 const hash = text;
 const resource = pair({ resource: text, limit: integer });
+const requiredFactBinding = pair({ reference: text, expectedKind: text, required: bool });
+const implementationBinding = pair({ implementation: text, fact: requiredFactBinding });
+const productionBinding = pair({
+  scope: text,
+  surface: pair({
+    adapter: implementationBinding,
+    challengeVerifier: pair({ implementation: text, fact: requiredFactBinding, administration: text }),
+  }),
+  verifiedActIntake: pair({ implementation: text, fact: requiredFactBinding, operation: text }),
+  minimalPlane: pair({
+    folds: list(pair({ projection: text, implementation: text, fact: requiredFactBinding })),
+    sourceOnlyReplay: implementationBinding,
+  }),
+  minimalResponder: pair({ implementation: text, fact: requiredFactBinding,
+    budgets: pair({ worker: integer, storage: integer, queue: integer, transport: integer, effect: integer }) }),
+  dependencies: list(pair({ name: text, fact: requiredFactBinding })),
+  lifecycle: pair({ cut: implementationBinding, recovery: implementationBinding }),
+  deliveryWitness: pair({ implementation: text, fact: requiredFactBinding, identity: text, platform: text,
+    requester: text, effectAdapter: text }),
+});
 
 export const assemblyShapes: Readonly<Record<AssemblyRecordName, OwnedShape>> = freeze({
   AssemblyManifest: pair({ ...common, manifestDigest: hash,
@@ -27,7 +48,8 @@ export const assemblyShapes: Readonly<Record<AssemblyRecordName, OwnedShape>> = 
     genesisAnchor: text, trustRoots: texts, servicePrincipals: texts, grants: texts, custodyPolicies: texts,
     resourcePolicies: list(pair({ class: text, resource: text, limit: integer })),
     requiredChecks: list(pair({ tier: text, ids: texts })),
-  }),
+    productionBindings: list(productionBinding),
+  }, ['productionBindings']),
   AssemblyAdmission: pair({ ...common, manifest: text, manifestDigest: hash, machine: text, incarnation: text,
     scope: text, sourceGeneration: text, sourceVector: hash, artifacts: texts, environmentEvidence: texts,
     conformance: texts, isolationEvidence: texts, custodyEvidence: texts, probeEvidence: texts,
@@ -129,6 +151,8 @@ function validate(record: AssemblyRecord): void {
       unique(record.publicPorts.map(row => `${row.scope}:${row.port}`), 'port scope bindings');
       record.resourcePolicies.forEach(row => { choices(row.class, ['ordinary', 'repair', 'control'], 'resource class'); nonnegative(row.limit, 'resource limit'); });
       for (const tier of ['unit', 'integration', 'lifecycle']) ensure(record.requiredChecks.some(row => row.tier === tier && row.ids.length > 0), `missing ${tier} checks`);
+      unique((record.productionBindings ?? []).map(row => row.scope), 'production binding scopes');
+      for (const binding of record.productionBindings ?? []) validateProductionBinding(binding);
       ensure(record.generation && record.genesisAnchor && record.trustRoots.length > 0, 'independent source anchors required'); break;
     case 'AssemblyAdmission':
       substantive(record.manifest, 'manifest');
@@ -205,6 +229,43 @@ function validate(record: AssemblyRecord): void {
   }
 }
 
+function validateRequiredFactBinding(binding: Readonly<{ reference: string; expectedKind: string; required: true }>, field: string): void {
+  substantive(binding.reference, `${field} reference`);
+  substantive(binding.expectedKind, `${field} expected kind`);
+  ensure(binding.required === true, `${field} must be required`);
+}
+
+function validateProductionBinding(binding: NonNullable<AssemblyManifest['productionBindings']>[number]): void {
+  substantive(binding.scope, 'production binding scope');
+  ensure(binding.surface.challengeVerifier.administration === 'independent', 'challenge verifier must be independently administered');
+  ensure(binding.verifiedActIntake.operation === 'admitVerifiedAct', 'verified-act intake operation must be admitVerifiedAct');
+  const folds = binding.minimalPlane.folds;
+  ensure(folds.length === minimalPlaneProjectionIds.length, 'six minimal-plane projection folds required');
+  unique(folds.map(row => row.projection), 'minimal-plane projections');
+  ensure(minimalPlaneProjectionIds.every(id => folds.some(row => row.projection === id)), 'minimal-plane projection roster differs from Part Eleven');
+  const dependencies = binding.dependencies;
+  unique(dependencies.map(row => row.name), 'minimal dependency bindings');
+  ensure(requiredMinimalDependencies.every(name => dependencies.some(row => row.name === name))
+    && dependencies.length === requiredMinimalDependencies.length, 'complete minimal dependency roster required');
+  for (const budget of Object.values(binding.minimalResponder.budgets)) nonnegative(budget, 'minimal responder budget');
+  const identities = [binding.deliveryWitness.identity, binding.deliveryWitness.requester,
+    binding.surface.adapter.implementation, binding.deliveryWitness.effectAdapter];
+  identities.forEach((identity, index) => substantive(identity, `delivery identity ${index}`));
+  unique(identities, 'delivery witness/requester/surface/effect identities');
+  const implementations = [binding.surface.adapter, binding.surface.challengeVerifier, binding.verifiedActIntake,
+    binding.minimalPlane.sourceOnlyReplay, binding.minimalResponder, binding.lifecycle.cut, binding.lifecycle.recovery,
+    binding.deliveryWitness];
+  for (const row of implementations) {
+    substantive(row.implementation, 'production implementation');
+    validateRequiredFactBinding(row.fact, row.implementation);
+  }
+  for (const row of folds) {
+    substantive(row.implementation, 'projection fold implementation');
+    validateRequiredFactBinding(row.fact, row.projection);
+  }
+  for (const row of dependencies) validateRequiredFactBinding(row.fact, row.name);
+}
+
 export function safePackagePath(path: string): boolean {
   return path.length > 0 && !path.startsWith('/') && !path.includes('\\') && !path.split('/').some(part => !part || part === '.' || part === '..');
 }
@@ -271,16 +332,35 @@ export function compareAssemblyRecords<N extends AssemblyRecordName>(name: N, le
 export const assemblyKindFor = (name: AssemblyRecordName): string => `assembly-${name}`;
 export interface AssemblyReference {
   readonly id: string;
-  readonly expected?: AssemblyRecordName | 'CheckRunRecord' | 'ProbeRecord' | 'Measurement' | undefined;
+  readonly expected?: string | undefined;
   readonly field: string;
   readonly requiredWhenSigned: boolean;
+  readonly allowPartial: boolean;
 }
-const refs = (ids: readonly string[], field: string, expected?: AssemblyReference['expected'], requiredWhenSigned = false): AssemblyReference[] =>
-  ids.filter(Boolean).map(id => ({ id, expected, field, requiredWhenSigned }));
+const refs = (ids: readonly string[], field: string, expected?: AssemblyReference['expected'], requiredWhenSigned = false,
+  allowPartial = false): AssemblyReference[] => ids.filter(Boolean).map(id => ({ id, expected, field, requiredWhenSigned, allowPartial }));
+function productionReferences(record: AssemblyManifest): AssemblyReference[] {
+  return (record.productionBindings ?? []).flatMap(binding => {
+    const one = (row: Readonly<{ fact: Readonly<{ reference: string; expectedKind: string }> }>, field: string) =>
+      refs([row.fact.reference], field, row.fact.expectedKind, true, true);
+    return [
+      ...one(binding.surface.adapter, 'productionBindings.surface.adapter'),
+      ...one(binding.surface.challengeVerifier, 'productionBindings.surface.challengeVerifier'),
+      ...one(binding.verifiedActIntake, 'productionBindings.verifiedActIntake'),
+      ...binding.minimalPlane.folds.flatMap(row => one(row, `productionBindings.minimalPlane.folds.${row.projection}`)),
+      ...one(binding.minimalPlane.sourceOnlyReplay, 'productionBindings.minimalPlane.sourceOnlyReplay'),
+      ...one(binding.minimalResponder, 'productionBindings.minimalResponder'),
+      ...binding.dependencies.flatMap(row => one(row, `productionBindings.dependencies.${row.name}`)),
+      ...one(binding.lifecycle.cut, 'productionBindings.lifecycle.cut'),
+      ...one(binding.lifecycle.recovery, 'productionBindings.lifecycle.recovery'),
+      ...one(binding.deliveryWitness, 'productionBindings.deliveryWitness'),
+    ];
+  });
+}
 export function assemblyReferences(record: AssemblyRecord): readonly AssemblyReference[] {
   const generic = [...refs(record.predecessors, 'predecessors', undefined, true), ...refs(record.dependencyFacts, 'dependencyFacts', undefined, true)];
   switch (record.type) {
-    case 'AssemblyManifest': return [...generic, ...refs(record.custodyPolicies, 'custodyPolicies', 'StoreCustodyPolicy')];
+    case 'AssemblyManifest': return [...generic, ...refs(record.custodyPolicies, 'custodyPolicies', 'StoreCustodyPolicy'), ...productionReferences(record)];
     case 'AssemblyAdmission': return [...generic, ...refs([record.priorAdmission], 'priorAdmission', 'AssemblyAdmission'),
       ...refs(record.conformance, 'conformance', 'AdapterConformance', true),
       ...refs(record.isolationEvidence, 'isolationEvidence', 'HarnessObservation', true),
@@ -316,7 +396,8 @@ export function factReferenceAliases(fact: FactEnvelope): readonly string[] {
 
 export function referenceHasExpectedKind(reference: AssemblyReference, fact: FactEnvelope, record?: AssemblyRecord): boolean {
   if (!reference.expected) return true;
-  if (record) return record.type === reference.expected || reference.expected === 'Measurement' && record.type === 'GrowthObservation';
+  if (record && (record.type === reference.expected || reference.expected === 'Measurement' && record.type === 'GrowthObservation')) return true;
+  if (fact.kind === reference.expected) return true;
   const body = object(fact.body); const nested = object(body?.record); const measurement = object(body?.measurement);
   switch (reference.expected) {
     case 'CheckRunRecord': return fact.kind === 'check-run-record';
@@ -340,7 +421,7 @@ export function validateAssemblyRecordReferences(record: AssemblyRecord, context
       `${reference.field} reference resolves to a Part Ten record owned by the wrong semantic boundary`);
     ensure(status.taint.length === 0 && status.conflicts.length === 0,
       `${reference.field} reference is unavailable or conflicted: ${reference.id}`);
-    ensure(status.completeness === 'complete' || reference.field === 'predecessors' || reference.field === 'dependencyFacts',
+    ensure(status.completeness === 'complete' || reference.allowPartial || reference.field === 'predecessors' || reference.field === 'dependencyFacts',
       `${reference.field} reference is incomplete: ${reference.id}`);
   }
 }

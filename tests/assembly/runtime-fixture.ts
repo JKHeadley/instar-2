@@ -9,6 +9,15 @@ import { factsFixture, privateKey, value } from '../facts/fixtures.js';
 import { verificationInput } from '../verification/fixture.js';
 import { assemblyInput } from './fixture.js';
 
+export const productionReferenceKinds = Object.freeze([
+  'operator-surface-registration', 'operator-challenge-verifier-binding', 'intake-verified-act-binding',
+  'minimal-plane-projection-binding', 'minimal-plane-replay-binding', 'minimal-responder-binding',
+  'fact-local-durable-segment', 'register-generation-record', 'identity-key-set', 'clock-source',
+  'transport-Lease', 'transport-FenceToken', 'fact-replication-receipt', 'conversation-binding',
+  'conversation-route', 'delivery-evidence-service', 'assembly-lifecycle-control-binding',
+  'platform-delivery-witness-binding',
+] as const);
+
 export function assemblyRuntimeFixture(storageFactory?: (f: ReturnType<typeof factsFixture>) => SegmentStoragePort,
   options: { verifiedProbes?: boolean } = {}) {
   const f = factsFixture(); let stopped = false; let now = 100; let context: FactContext = f.ctx;
@@ -40,6 +49,7 @@ export function assemblyRuntimeFixture(storageFactory?: (f: ReturnType<typeof fa
     { ...f.schema, kind: 'assembly-measurement-reference', fields: {
       id: { kind: 'text', maxLength: 2048 }, measurement: { kind: 'constitutional', type: 'Measurement' },
     } },
+    ...productionReferenceKinds.map(kind => ({ ...f.schema, kind, fields: { id: { kind: 'text' as const, maxLength: 2048 } } })),
   ];
   context = { ...context,
     schemas: [...context.schemas, ...assemblySchemas(host), ...referenceSchemas],
@@ -76,6 +86,6 @@ export function assemblyRuntimeFixture(storageFactory?: (f: ReturnType<typeof fa
   // structural copy for legacy tests that add redundant schemas after fixture boot;
   // the store already owns every schema those tests use.
   const exposedContext = { ...context, schemas: [...context.schemas] };
-  return { ...f, c: historyContext, host, context: exposedContext, raw, storage, store, spine, composition, runtime,
+  return { ...f, c: historyContext, host, context: exposedContext, raw, storage, store, spine, composition, runtime, appendReference,
     stop: (value = true) => { stopped = value; }, time: (value: number) => { now = value; }, protection: (value: typeof protectedPosture) => { protectedPosture = value; } };
 }
