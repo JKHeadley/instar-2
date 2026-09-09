@@ -132,6 +132,13 @@ function recordShapeCheck(name: string, input: unknown): void {
   if (legacyRecord(name, input)) legacyShapeCheck(input, legacyEffectShapes[name]!);
   else shapeCheck(input, effectShapes[name]!);
 }
+function refusalCheck(input: unknown, host: EffectHost): void {
+  const value = input as Readonly<Record<string, unknown>>;
+  const decoded = take(decode('Result', { type: 'Result', schemaVersion: 1, kind: 'Refused', ...value }, host.current().decode));
+  ensure(decoded.kind === 'Refused' && encoded({ reason: decoded.reason, detail: decoded.detail, site: decoded.site,
+    failDirection: decoded.failDirection, preserved: decoded.preserved }).bytes === encoded(input).bytes,
+  'effect refusal is not the existing closed Refused value');
+}
 export function live(host: EffectHost): void {
   const c = host.current(); ensure(!c.stopped, 'stop inhibits effect');
   const principal = take(decode('VerifiedPrincipal', host.principal, { ...c.decode, provenance: host.principal.provenance }));
@@ -172,6 +179,7 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     const found = all.find(x => x.record.id === id && x.record.type === type);
     ensure(found, `missing ${type} predecessor`); return found.record as Extract<EffectRecord, { type: N }>;
   };
+  if ('refusal' in r && r.refusal !== undefined) refusalCheck(r.refusal, host);
   if (r.type === 'OperationDefinition') {
     ensure(r.maxBytes > 0 && r.maxBytes <= 4096 && r.maxCharge >= 0 && r.timeout > 0 && r.lossModel.length > 0, 'finite operation bounds required');
     ensure((r.durability === 'replicated' && r.replicas > 0) || (r.durability === 'local-durable' && r.replicas === 0), 'invalid durability demand');
@@ -272,6 +280,7 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     }), 'aggregate payload kind mismatch');
     ensure(r.children.every((child, index) => child.payloadKind !== 'acknowledge' || !child.required),
       'decorative acknowledgment cannot terminalize parent work');
+    r.settlements.forEach(row => { if (row.refusal !== undefined) refusalCheck(row.refusal, host); });
     ensure(r.settlements.every((row, index) => {
       const child = r.children[index]!;
       if (row.request !== child.request || !['pending', 'partial', 'satisfied', 'refused', 'uncertain'].includes(row.disposition)) return false;
@@ -470,8 +479,9 @@ export function registerEffectBodies(host: EffectHost): Result<readonly OwnedBod
           if (captured.status !== 'available') delete historicalCaptures[reference];
         const historicalStatuses = { ...(host.current().decode as { captureStatuses?: Readonly<Record<string, string>> }).captureStatuses,
           ...Object.fromEntries(Object.entries(c.facts.captures).map(([reference, captured]) => [reference, captured.status])) };
-        const validationHost = c.mode === 'historical' ? { ...host, current: () => ({ ...host.current(), clock: c.origin.at,
-          decode: { ...c.facts.decode, captures: historicalCaptures, captureStatuses: historicalStatuses } }) } : host;
+        const validationHost = c.mode === 'historical' ? { ...host, historical: true, historicalCaptures: c.facts.captures,
+          current: () => ({ ...host.current(), clock: c.origin.at,
+            decode: { ...c.facts.decode, captures: historicalCaptures, captureStatuses: historicalStatuses } }) } : host;
         validate(r, causalCone(c.origin, c.facts.facts), validationHost, c.mode === 'origin', c.origin.at);
         return { ok: true, value: freeze(input) };
       } catch (e) { return { ok: false, detail: e instanceof Error ? e.message : 'effect record refused' }; }

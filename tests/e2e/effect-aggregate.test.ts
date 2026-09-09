@@ -111,7 +111,7 @@ it('P8-TP-AGGREGATE-PARTIAL an uncertain first child exposes evidence/charge/rec
   expect(value(f.api.nextAggregateChild(aggregate.aggregate))).toBeNull(); expect(f.calls()).toBe(1);
 }, 30000);
 
-for (const cut of ['request', 'aggregate', 'applied'] as const) it(`P8-TP-R4-TYPED-SIGKILL-${cut} fresh-process typed ordered recovery preserves identity, exposure, and call counts`, async () => {
+for (const cut of ['request', 'aggregate', 'applied'] as const) it(`P8-TP-R4-TYPED-SIGKILL-${cut} P8-TP-R5-SIGKILL-${cut} P8-TP-R5-V15 fresh-process typed ordered recovery executes owner reconstruction, preserves identity/exposure, and refuses replay`, async () => {
   const directory = join(effectFixture().directory, `typed-${cut}`);
   const testFile = resolve('tests/e2e/typed-aggregate-fault-child.test.ts');
   const command = [resolve('node_modules/vitest/vitest.mjs'), 'run', testFile, '--reporter=dot'];

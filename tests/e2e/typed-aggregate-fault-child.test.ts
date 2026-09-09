@@ -1,9 +1,14 @@
 import { existsSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { decodeEffectPayload, effectOperationContracts, effectPayloadIdentity, referencedPayloadFacts } from '../../src/effects/index.js';
+import { createFactStore, prepareSnapshot } from '../../src/facts/index.js';
+import type { CapturedContent } from '../../src/facts/index.js';
+import { createTransportAuthority, createTransportSpine } from '../../src/transport/index.js';
+import { createEffectDoorway, createEffectSpine, decodeEffectPayload, effectOperationContracts, effectPayloadIdentity,
+  referencedPayloadFacts, registerEffectBodies } from '../../src/effects/index.js';
 import type { EffectRequest, TypedEffectPayload } from '../../src/effects/index.js';
 import { digest } from '../fixtures.js';
+import { privateKey } from '../facts/fixtures.js';
 import { payloadInput } from '../effects/payload-fixtures.js';
 import { typedEffectFixture, value } from '../effects/typed-effect-fixture.js';
 
@@ -19,38 +24,78 @@ it.skipIf(!mode || !cut || !directory)('typed aggregate fault child', () => {
   if (mode === 'recover') {
     const originText = readFileSync(join(directory!, 'origin', 'facts.json'), 'utf8');
     expect(originText).toBe(readFileSync(join(directory!, 'peer', 'facts.json'), 'utf8'));
-    const facts = JSON.parse(originText) as Record<string, unknown>[];
-    const records = facts.map(fact => (fact.body as { record?: Record<string, unknown> }).record).filter(Boolean) as Record<string, unknown>[];
     const state = JSON.parse(readFileSync(statePath, 'utf8')) as { first: string; second: string; firstDigest: string;
-      secondDigest: string; firstPayload: string; secondPayload: string; aggregate?: string; maxCharge: number };
-    const requests = records.filter(record => record.type === 'EffectRequest');
+      secondDigest: string; firstPayload: string; secondPayload: string; aggregate?: string; maxCharge: number;
+      captures: Record<string, CapturedContent> };
+    // Reconstruct the real signed store and every owner port, then ask the
+    // doorway for its recovered projection. Raw JSON is used only for the
+    // independent origin/peer byte comparison above and the saved identifiers.
+    const contract = effectOperationContracts['post-text'];
+    const replacement = typedEffectFixture(undefined, 'typed-fault:2', { payloadKind: 'post-text', inputSchema: contract.inputSchema,
+      canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['post-text']);
+    let store: ReturnType<typeof createFactStore>;
+    const host = { ...replacement.host, referenceFacts: () => store.read(), current: () => {
+      const current = replacement.host.current();
+      return { ...current, decode: { ...current.decode, captures: Object.fromEntries(Object.entries(state.captures)
+        .filter(([, capture]) => capture.status === 'available' && capture.bytes !== null)
+        .map(([reference, capture]) => [reference, capture.bytes!])) } };
+    } };
+    const ctx = { ...replacement.ctx, captures: state.captures,
+      ownedBodies: [...(replacement.ctx.ownedBodies ?? []).filter(registration => registration.owner !== 'part-eight'),
+        ...value(registerEffectBodies(host))] };
+    store = createFactStore(ctx, { owner: 'part-ten', read: () => JSON.parse(originText), append: () => { throw new Error('read-only recovery'); } });
+    const transport = createTransportAuthority(replacement.transportHost,
+      createTransportSpine(replacement.transportHost, { context: ctx, privateKey }, store), host.boundary);
+    const spine = createEffectSpine(host, { context: ctx, privateKey }, store);
+    const api = createEffectDoorway({ ...replacement.composition, host, transport, spine });
+    const signed = value(store.read());
+    expect(signed).toHaveLength((JSON.parse(originText) as unknown[]).length);
+    const conflicts = value(prepareSnapshot(signed, ctx)).entries.flatMap(entry => entry.conflicts);
+    if (conflicts.length) throw new Error(`recovery projection conflicts: ${JSON.stringify(conflicts)}`);
+    const rows = value(api.inspect()), requests = rows.flatMap(row => row.record.type === 'EffectRequest' ? [row.record] : []);
     expect(requests.map(request => request.id)).toEqual([state.first, state.second]);
     expect(requests.map(request => request.digest)).toEqual([state.firstDigest, state.secondDigest]);
     expect(requests.map(request => request.payload)).toEqual([state.firstPayload, state.secondPayload]);
-    const aggregates = records.filter(record => record.type === 'OrderedEffectAggregate');
-    const calls = existsSync(servicePath) ? readFileSync(servicePath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+    const aggregates = rows.flatMap(row => row.record.type === 'OrderedEffectAggregate' ? [row.record] : []);
+    const serviceCalls = () => existsSync(servicePath)
+      ? readFileSync(servicePath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+    const before = serviceCalls();
+    const first = requests[0]!, second = requests[1]!;
     if (cut === 'request') {
-      expect(aggregates).toHaveLength(0); expect(calls).toHaveLength(0);
-      marker({ recovered: true, cut, requests: 2, calls: 0, assessment: 'not-dispatched', remainingExposure: state.maxCharge * 2 });
+      expect(aggregates).toHaveLength(0); expect(before).toHaveLength(0);
+      expect(api.dispatch(first as EffectRequest, replacement.fence).kind).toBe('Refused');
+      expect(serviceCalls()).toEqual(before); expect(replacement.calls()).toBe(0);
+      marker({ recovered: true, cut, requests: requests.length, calls: before.length,
+        assessment: 'not-dispatched', remainingExposure: state.maxCharge * requests.length, replayRefused: true });
       return;
     }
     const aggregate = aggregates.at(-1)!;
     expect(aggregate.aggregate).toBe(state.aggregate);
-    expect((aggregate.children as Record<string, unknown>[]).map(child => child.request)).toEqual([state.first, state.second]);
+    expect(aggregate.children.map(child => child.request)).toEqual([state.first, state.second]);
     if (cut === 'aggregate') {
-      expect(calls).toHaveLength(0);
-      marker({ recovered: true, cut, requests: 2, aggregate: state.aggregate, calls: 0,
-        assessment: 'pending', remainingExposure: state.maxCharge * 2, next: state.first });
+      expect(before).toHaveLength(0); const next = value(api.nextAggregateChild(state.aggregate!)); expect(next?.id).toBe(state.first);
+      expect(api.dispatch(next!, replacement.fence).kind).toBe('Refused');
+      expect(serviceCalls()).toEqual(before); expect(replacement.calls()).toBe(0);
+      marker({ recovered: true, cut, requests: requests.length, aggregate: state.aggregate, calls: before.length,
+        assessment: aggregate.state, remainingExposure: state.maxCharge * requests.length, next: next?.id, replayRefused: true });
       return;
     }
-    expect(calls).toEqual([{ request: state.first, digest: state.firstDigest, order: 0 }]);
-    const firstObservations = records.filter(record => record.type === 'OperationObservation' && record.request === state.first);
+    expect(before).toEqual([{ request: state.first, digest: state.firstDigest, order: 0 }]);
+    expect(aggregate.state).toBe('uncertain'); expect(aggregate.settlements[0]?.disposition).toBe('uncertain');
+    const firstObservations = rows.flatMap(row => row.record.type === 'OperationObservation' && row.record.request === state.first ? [row.record] : []);
     expect(firstObservations.map(record => record.stage)).toEqual(['executor-accepted']);
-    expect(records.filter(record => record.type === 'OperationObservation' && record.request === state.second)).toHaveLength(0);
-    expect(records.filter(record => record.type === 'EffectSettlement')).toHaveLength(0);
-    marker({ recovered: true, cut, requests: 2, aggregate: state.aggregate, calls: 1, firstCalls: 1, secondCalls: 0,
-      assessment: 'uncertain', aggregateState: 'uncertain', remainingExposure: state.maxCharge * 2,
-      ordering: 'first-unsettled-inhibits-second', first: state.first, second: state.second });
+    expect(rows.filter(row => row.record.type === 'OperationObservation' && row.record.request === state.second)).toHaveLength(0);
+    expect(rows.filter(row => row.record.type === 'EffectSettlement')).toHaveLength(0);
+    expect(api.nextAggregateChild(state.aggregate!).kind).toBe('Refused');
+    expect(value(api.dispatch(first as EffectRequest, replacement.fence)).id).toBe(firstObservations[0]!.id);
+    expect(api.dispatch(second as EffectRequest, replacement.fence).kind).toBe('Refused');
+    expect(serviceCalls()).toEqual(before); expect(replacement.calls()).toBe(0);
+    marker({ recovered: true, cut, requests: requests.length, aggregate: state.aggregate, calls: before.length,
+      firstCalls: before.filter(call => call.request === state.first).length,
+      secondCalls: before.filter(call => call.request === state.second).length,
+      assessment: aggregate.settlements[0]?.disposition, aggregateState: aggregate.state,
+      remainingExposure: state.maxCharge * requests.length, ordering: 'first-unsettled-inhibits-second',
+      first: state.first, second: state.second, replayRefused: true });
     return;
   }
 
@@ -84,7 +129,7 @@ it.skipIf(!mode || !cut || !directory)('typed aggregate fault child', () => {
     digest: digest(binding), closure } as unknown as EffectRequest;
   value(f.spine.append(second, closure));
   const baseState = { first: first.id, second: second.id, firstDigest: first.digest, secondDigest: second.digest,
-    firstPayload: firstPayload.id, secondPayload: secondPayload.id, maxCharge: f.definition.maxCharge };
+    firstPayload: firstPayload.id, secondPayload: secondPayload.id, maxCharge: f.definition.maxCharge, captures: f.ctx.captures };
   writeFileSync(statePath, JSON.stringify(baseState));
   if (cut === 'request') pause(baseState);
   const aggregate = value(f.api.createAggregate({ semanticMessage: first.semanticMessage, run: f.run,
@@ -94,7 +139,11 @@ it.skipIf(!mode || !cut || !directory)('typed aggregate fault child', () => {
   const fullState = { ...baseState, aggregate: aggregate.aggregate };
   writeFileSync(statePath, JSON.stringify(fullState));
   if (cut === 'aggregate') pause(fullState);
-  f.onInvoke(() => { appendFileSync(servicePath, `${JSON.stringify({ request: first.id, digest: first.digest, order: 0 })}\n`); pause(fullState); });
+  f.onInvoke(() => {
+    appendFileSync(servicePath, `${JSON.stringify({ request: first.id, digest: first.digest, order: 0 })}\n`);
+    writeFileSync(statePath, JSON.stringify({ ...fullState, captures: f.ctx.captures }));
+    pause(fullState);
+  });
   value(f.api.dispatch(first, f.fence));
   throw new Error('applied cut did not stop inside the first provider invocation');
 }, 60_000);

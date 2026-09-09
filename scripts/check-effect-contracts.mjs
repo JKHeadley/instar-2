@@ -45,6 +45,8 @@ export const effectPayloadFixtures = [
   'P8-TP-R4-V20', 'P8-TP-R4-V09-V10', 'P8-TP-R4-V11', 'P8-TP-R4-V26',
   'P8-TP-R4-V15', 'P8-TP-R4-V16', 'P8-TP-R4-V24', 'P8-TP-R4-V25',
   'P8-TP-R4-TYPED-SIGKILL-request', 'P8-TP-R4-TYPED-SIGKILL-aggregate', 'P8-TP-R4-TYPED-SIGKILL-applied',
+  ...Array.from({ length: 26 }, (_, index) => `P8-TP-R5-V${String(index + 1).padStart(2, '0')}`),
+  'P8-TP-R5-SIGKILL-request', 'P8-TP-R5-SIGKILL-aggregate', 'P8-TP-R5-SIGKILL-applied',
   ...Array.from({ length: 11 }, (_, index) => `P8-TP-REPAIR-${String(index + 1).padStart(2, '0')}`),
   ...Array.from({ length: 13 }, (_, index) => `P8-TP-F${index + 1}-${[
     'ASSESSMENT-REPLAY', 'P2-STATUS', 'REAL-P', 'EXTERNAL-REFERENCES', 'PROTECTED-REFUSAL', 'GIT-DESCENDANT',

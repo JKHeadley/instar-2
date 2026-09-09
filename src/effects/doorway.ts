@@ -223,6 +223,23 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
     const obligations = aggregateObligations(aggregate.children, settlements);
     return { record: freeze({ ...aggregate, settlements, state: aggregateState(aggregate.children, settlements), ...obligations }), reconstructed: true };
   };
+  const requireOrderedDispatch = (q: EffectRequest, claimed = false): void => {
+    if (!q.payload) return;
+    const history = rows(snapshot()).filter(row => row.record.type === 'OrderedEffectAggregate'
+      && row.record.children.some(child => child.request === q.id)) as readonly { fact: FactEnvelope; record: OrderedEffectAggregate }[];
+    const current = new Map<string, OrderedEffectAggregate>();
+    for (const row of history) {
+      const prior = current.get(row.record.aggregate);
+      if (!prior || row.record.revision > prior.revision) current.set(row.record.aggregate, row.record);
+    }
+    for (const aggregate of current.values()) {
+      const presented = presentAggregate(aggregate).record;
+      const child = presented.children.find(candidate => candidate.request === q.id);
+      ensure(child && !childInhibited(presented, child.order), 'ordered aggregate predecessor inhibits child dispatch');
+      const settlement = (claimed ? aggregate : presented).settlements[child.order];
+      ensure(settlement?.disposition === 'pending', 'ordered aggregate child is not pending; replay forbidden');
+    }
+  };
   const api: EffectDoorway = {
     owner: 'part-eight',
     inspect: () => checked('EffectInspect', null, () => rows(snapshot()).map(row => row.record.type === 'OrderedEffectAggregate'
@@ -336,6 +353,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
         const observation = priorObservation(prior.record.operation);
         ensure(observation, 'claimed operation is uncertain; observe only'); return observation;
       }
+      requireOrderedDispatch(q);
       validation(q, 'dispatch');
       const claim = take(transport.claim(`claim:${q.id}`, fence, prior.record.operation));
       return take(api.handoff(q, prior.record, claim, fence));
@@ -351,6 +369,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       // request's definition and identity before any adapter call, so a mismatched or
       // unadopted admission can never authorize an invocation even by a direct handoff.
       ensure(admissionMatches(op.reservation, q, d.record), 'reservation does not match the dispatched request');
+      requireOrderedDispatch(q, true);
       const v = rows(snapshot()).filter(v => v.record.type === 'EffectValidation' && v.record.request === q.id && v.record.phase === 'dispatch').at(-1);
       ensure(v?.record.type === 'EffectValidation' && v.record.expires > host.current().clock.value
         && encoded(v.record.authority).bytes === encoded(host.current().authority).bytes, 'current dispatch validation required');

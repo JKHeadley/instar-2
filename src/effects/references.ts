@@ -1,6 +1,6 @@
 import type { Clock, DecodeContext, Result } from '../index.js';
 import { hashBytes } from '../facts/index.js';
-import type { FactEnvelope } from '../facts/index.js';
+import type { CapturedContent, FactEnvelope } from '../facts/index.js';
 import type { TypedEffectPayload } from './payloads.js';
 import { encoded, ensure, freeze, take } from './boundary.js';
 
@@ -8,6 +8,8 @@ type EffectReferenceHost = Readonly<{
   current(): { readonly clock: Clock; readonly decode?: DecodeContext & { readonly captureStatuses?: Readonly<Record<string, string>> } };
   referenceFacts?(): Result<readonly FactEnvelope[]>;
   resolvePath?(path: string): Result<string>;
+  historical?: boolean;
+  historicalCaptures?: Readonly<Record<string, CapturedContent>>;
 }>;
 
 const object = (value: unknown, detail: string): Readonly<Record<string, unknown>> => {
@@ -42,13 +44,20 @@ const usable = (fact: FactEnvelope, facts: readonly FactEnvelope[], host: Effect
     });
   };
   visit(fact);
-  if (statuses) ensure([...references].every(reference => statuses[reference] === undefined || statuses[reference] === 'available'), detail);
+  if (statuses && !host?.historical)
+    ensure([...references].every(reference => statuses[reference] === undefined || statuses[reference] === 'available'), detail);
 };
 const capture = (_facts: readonly FactEnvelope[], reference: string, hash: string, host: EffectReferenceHost | undefined,
   detail: string): undefined => {
   const decode = host?.current().decode;
   const bytes = decode?.captures[reference];
   const status = decode?.captureStatuses?.[reference];
+  if (host?.historical) {
+    const recorded = host.historicalCaptures?.[reference];
+    ensure(recorded && recorded.hash === hash, detail);
+    if (recorded.status === 'available') ensure(bytes !== undefined && hashBytes(bytes) === hash, detail);
+    return undefined;
+  }
   ensure(bytes !== undefined && hashBytes(bytes) === hash && (status === undefined || status === 'available'), detail);
   return undefined;
 };
@@ -116,8 +125,8 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
     for (const item of payload.attachments) {
       const bytes = host?.current().decode?.captures[item.capture.reference];
       capture(facts, item.capture.reference, item.capture.hash, host, 'attachment capture is absent, unavailable, or changed');
-      ensure(typeof bytes === 'string' && new TextEncoder().encode(bytes).length === item.bytes,
-        'attachment byte count differs from captured bytes');
+      if (!host?.historical || bytes !== undefined) ensure(typeof bytes === 'string'
+        && new TextEncoder().encode(bytes).length === item.bytes, 'attachment byte count differs from captured bytes');
     }
   } else if (payload.kind === 'edit-message' || payload.kind === 'react') {
     const fact = exact(facts, payload.targetMessage, 'conversation-message', 'conversation target message missing or wrong kind');
@@ -211,6 +220,12 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
     ensure(value.run === payload.routeRun && value.provider === payload.provider && value.fromAccount === payload.fromAccount
       && value.toAccount === payload.toAccount && value.generation === payload.sourceGeneration
       && value.rollbackRoute === payload.rollbackRoute, 'route generation/account subject mismatch');
+    const applicable = facts.filter(candidate => candidate.kind === 'account-route-generation'
+      && body(candidate).run === payload.routeRun && body(candidate).provider === payload.provider
+      && body(candidate).status === 'current' && Number(body(candidate).validFrom) <= clock.value
+      && Number(body(candidate).validUntil) >= clock.value);
+    ensure(applicable.length === 1 && applicable[0]!.id === fact.id,
+      'route generation is superseded or conflicted');
     for (const account of [payload.fromAccount, payload.toAccount]) {
       const registration = exact(facts, account, 'registered-account', 'route account registration missing or wrong kind');
       const registered = body(registration); current(registration, clock, 'route account registration stale');
@@ -230,7 +245,7 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
     current(fact, clock, 'configuration target witness stale');
     ensure(value.canonicalTarget === payload.canonicalTarget && value.priorDigest === payload.expectedPriorDigest
       && value.undoReference === payload.undoReference, 'configuration target/prior state mismatch'); resolved.push(fact);
-    ensure(host?.resolvePath && take(host.resolvePath(payload.canonicalTarget)) === payload.canonicalTarget,
+    if (!host?.historical) ensure(host?.resolvePath && take(host.resolvePath(payload.canonicalTarget)) === payload.canonicalTarget,
       'configuration target does not resolve to its canonical path');
   } else if (payload.kind === 'filesystem-mutation') {
     const fact = exact(facts, payload.protectedTargetPolicy, 'filesystem-target-state', 'protected-target policy/target witness missing or wrong kind'), value = body(fact);
@@ -242,9 +257,19 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
     ensure(policyValue.decision === 'allowed' && Array.isArray(policyTargets)
       && payload.fileTargets.every(target => policyTargets.includes(target.canonicalPath)),
     'protected-target policy refuses, is incomplete, or has an unrecognized decision');
-    ensure(host?.resolvePath, 'filesystem canonical path resolver unavailable');
-    for (const target of payload.fileTargets) ensure(take(host.resolvePath(target.canonicalPath)) === target.resolvedPath
-      && target.resolvedPath === target.canonicalPath, 'filesystem target crosses a symlink or differs from canonical path');
+    for (const target of payload.fileTargets) {
+      const applicable = facts.filter(candidate => candidate.kind === 'protected-target-policy'
+        && body(candidate).status === 'current' && Number(body(candidate).validFrom) <= clock.value
+        && Number(body(candidate).validUntil) >= clock.value && Array.isArray(body(candidate).targets)
+        && (body(candidate).targets as readonly unknown[]).includes(target.canonicalPath));
+      ensure(applicable.length === 1 && applicable[0]!.id === policy.id,
+        'protected-target policy is superseded, denied, or conflicted');
+    }
+    if (!host?.historical) {
+      ensure(host?.resolvePath, 'filesystem canonical path resolver unavailable');
+      for (const target of payload.fileTargets) ensure(take(host.resolvePath(target.canonicalPath)) === target.resolvedPath
+        && target.resolvedPath === target.canonicalPath, 'filesystem target crosses a symlink or differs from canonical path');
+    }
     resolved.push(fact, policy);
   } else if (payload.kind === 'git-mutation') {
     const fact = exact(facts, payload.base, 'git-target-state', 'git repository/base witness missing or wrong kind'), value = body(fact);
@@ -252,12 +277,14 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
     ensure(value.repository === payload.repository && value.worktree === payload.worktree && value.ref === payload.ref
       && value.base === payload.base && same(value.targets, payload.targets) && same(value.expectedHeads, payload.expectedHeads)
       && same(value.rollbackConstraints, payload.rollbackConstraints), 'git repository/base/head/rollback subject mismatch');
-    ensure(host?.resolvePath && take(host.resolvePath(payload.repository)) === payload.repository
-      && take(host.resolvePath(payload.worktree)) === payload.worktree, 'git repository/worktree is not canonical');
-    const root = payload.worktree.endsWith('/') ? payload.worktree.slice(0, -1) : payload.worktree;
-    for (const target of payload.targets) {
-      const actual = take(host.resolvePath(`${root}/${target}`));
-      ensure(actual === root || actual.startsWith(`${root}/`), 'git target crosses a symlink or escapes its canonical worktree');
+    if (!host?.historical) {
+      ensure(host?.resolvePath && take(host.resolvePath(payload.repository)) === payload.repository
+        && take(host.resolvePath(payload.worktree)) === payload.worktree, 'git repository/worktree is not canonical');
+      const root = payload.worktree.endsWith('/') ? payload.worktree.slice(0, -1) : payload.worktree;
+      for (const target of payload.targets) {
+        const actual = take(host.resolvePath(`${root}/${target}`));
+        ensure(actual === root || actual.startsWith(`${root}/`), 'git target crosses a symlink or escapes its canonical worktree');
+      }
     }
     resolved.push(fact);
   } else if (payload.kind === 'infrastructure-notice') {
