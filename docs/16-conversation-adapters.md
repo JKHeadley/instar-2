@@ -42,6 +42,14 @@ principal, binding, queue, retry, effect, receipt, verification, assembly, or su
 | Ten | `AdapterEvidenceContract`, `AdapterConformance`, `AssemblyManifest`, `AssemblyAdmission`, concrete binding, confinement and package lifecycle |
 | Eleven | verified pairing/binding surfaces, minimal-plane dependencies, operator views and whole-slice acceptance |
 
+Two required owner additions are not in the landed contracts. Secret-bearing intake depends on
+`design-conversation-adapters-seam-request-intake-custody.md`, which asks Four and Ten for one
+preservation-boundary operation that keeps original secret bytes exclusively in secret custody and
+gives ordinary intake consumers only a redacted capture. Slack direction, organization permission,
+and ambient handling depend on `design-conversation-adapters-seam-request-intake-policy.md`, which
+asks Four for the policy record and consumer and Seven for the bounded judgment operation it uses.
+Neither requested record or operation is treated as present in the executable slice.
+
 The executable reference case consumes Five's landed `SessionGrounding` only for `start`,
 `recovery`, and `resume`. Compaction accounting is unsupported until Five supplies the producer and
 Eight consumes its reference on the first reply, as requested in
@@ -68,13 +76,20 @@ and one recovery model across every channel.
 
 **Rule — each instance declares its exact platform contract.** Rules 5, 30, 36, 44, 69, 89
 and 105; **checks: P12-NF-03/04/48/49**. Each account-and-mode instance supplies part ten's
-`AdapterEvidenceContract` and `AdapterConformance`. The contract names its package and artifact
-digests, platform API and mode, authenticated account and tenant namespaces, credential reference,
-sender and conversation identity sources, identity stability and churn rules, forwarding rules,
-event-id authority, acknowledgment policy, disclosure scope, parser declaration, operation
-declarations, supported evidence stages, unsupported evidence, rate and size limits, captured
-fixtures, live probes, and freshness. A family default cannot fill an omitted instance field.
-Unknown support is unsupported for activation.
+`AdapterEvidenceContract` and `AdapterConformance`. The required fields are grouped by the owner
+that consumes them:
+
+| Field group | Required instance facts and their use |
+|---|---|
+| Package and mode | Package and artifact digests, platform application programming interface and mode, parser declaration, and credential reference; Ten binds the exact implementation and custodian. |
+| Authenticated identity | Account and tenant namespaces, sender and conversation identity sources, identity stability and churn rules, forwarding treatment, impersonation treatment, and event-id authority; Four resolves provenance, identity, binding, and deduplication. |
+| Intake policy | Acknowledgment policy and disclosure scope; Four applies the declared intake behavior without letting the adapter confer authority. |
+| Operations and evidence | Registered operation declarations, supported evidence stages, and unsupported evidence; Eight admits effects and Nine assesses only the declared stage. |
+| Limits | Rate, byte, item, concurrency, and platform-specific bounds; Six and the owning doorway apply the registered ceilings. |
+| Conformance evidence | Captured fixtures, live probes, check runs, limitations, and freshness; Nine and Ten decide whether this exact instance has current evidence for activation. |
+
+A family default cannot fill an omitted instance field. Unknown support is unsupported for
+activation.
 
 **Rule — capabilities describe mechanics, never authority.** Rules 26, 28, 42, 63 and 89;
 **checks: P12-NF-04/05/34**. The capability declaration may say that an instance can receive text,
@@ -110,20 +125,31 @@ account, fresh probes, and an independent part-nine witness.
 
 **Rule — bounded routing extraction precedes the first durable receipt; every lossy choice follows
 it.** Rules 7, 14, 29, 42, 46, 95 and 100; **checks: P12-NF-06/12/13/18/20/48**. The callback order
-is physical capture, bounded route extraction, then `receive`. Physical capture means holding the
-bounded original transport bytes without changing them; it is not a fact receipt or recoverable
-drain. The adapter may then extract only the structural route that the landed
-`IntakePort.receive(raw, route)` requires: `channel`,
-`sender`, `identityEpoch`, and provider `eventId`. This extraction reads declared envelope fields
-and authenticated connection metadata. It does not interpret message content, deduplicate, filter,
-fetch an attachment, acknowledge, or advance a cursor. The adapter then calls `receive` with the
-unchanged raw bytes and extracted route. Inside that call, Part Four's landed capture port preserves
-the bytes and Part Two appends the route-bearing `intake-receipt`. Only that fact receipt supplies a
-recoverable drain. A crash after extraction but before the receipt leaves the provider event
-unacknowledged and must be recovered by provider redelivery; a crash after the receipt is recovered
-through `IntakePort.recover(receiptId)`. Secret matches then take Part Four's two-artifact custody
-path. An over-limit event produces a bounded preserved refusal with the provider identity and
-available digest evidence; it is not partially interpreted as a smaller message.
+is physical capture, bounded route extraction, then intake receipt. Physical capture means holding
+the bounded original transport bytes without changing them inside the designated ingress custodian;
+it is not yet a fact receipt or recoverable drain. Route extraction may read only the structural
+fields that the landed `IntakePort.receive(raw, route)` requires: `channel`, `sender`,
+`identityEpoch`, and provider `eventId`. It reads declared envelope fields and authenticated
+connection metadata. It does not interpret message content, deduplicate, filter, fetch an
+attachment, acknowledge, or advance a cursor.
+
+For a captured non-secret fixture, the landed path calls `receive` with unchanged bytes. Part
+Four's landed capture port preserves those bytes, requires its capture hash to equal the raw input
+hash, and Part Two appends the route-bearing `intake-receipt`. Only that fact receipt supplies a
+recoverable drain. A fixture proves only its own bytes; it cannot certify that future production
+input contains no secret. A crash after extraction but before the receipt leaves the provider event
+unacknowledged and relies on provider redelivery; a crash after the receipt is recovered through
+`IntakePort.recover(receiptId)`.
+
+A matched secret cannot enter that landed call. The current implementation would place the original
+bytes in its ordinary capture, pass them to authentication and parsing, and later recover by reading
+them again. Production secret-bearing intake and P12-NF-12's two-artifact positive case therefore
+depend on `design-conversation-adapters-seam-request-intake-custody.md`. The requested Four/Ten
+boundary keeps the original only in secret custody, commits its arrival hash, and supplies a
+separately hashed redacted capture for every ordinary authentication, parse, recovery, and audit
+consumer. Until it lands, a mode that may receive secret-shaped bytes cannot be called production
+ready. An over-limit event produces a bounded preserved refusal with provider identity and available
+digest evidence; it is not partly interpreted as a smaller message.
 
 **Rule — protocol acknowledgment means only the declared custody stage.** Rules 26, 42, 46
 and 89; **checks: P12-NF-06/11/18/20**. Slack envelope acknowledgment, webhook HTTP success, web
@@ -160,13 +186,15 @@ unsupported content are explicit intake results with owners and drains; the adap
 silently drop them.
 
 **Rule — conversational acknowledgments are ordinary effects.** Rules 14, 42, 52, 63 and 87;
-**checks: P12-NF-11/32/41**. A “got it” text that qualifies as an ordinary reply can use the landed
-Part Eight path. A reaction, read receipt, typing indicator, authorization notice, or cold-start
-notice is also an outward operation, but is unsupported by the current effect slice. Those forms
+**checks: P12-NF-11/32/41/53**. A “got it” text and a fixed cold-start limited response both fit the
+landed Part Eight `OutboundMessage` when they are attributable `ordinary-reply` text with a durable
+`sourceResult`. The latter is produced only by Eleven's admitted minimal responder under its own
+system-principal grant; an adapter does not invent it. A reaction, read receipt, typing indicator,
+or non-text authorization notice remains unsupported by the current effect slice. Those forms
 depend on the requested Part Eight conversation-operation seam. Once that seam exists, they follow
 the instance's acknowledgment policy and Part Eight's validation, ownership, notification bound,
-and settlement. Fire-and-forget is never valid. Failure of a decorative acknowledgment cannot
-hide or terminalize the accepted intake.
+and settlement. Fire-and-forget is never valid. Failure of a decorative acknowledgment cannot hide
+or terminalize the accepted intake.
 
 ---
 
@@ -276,18 +304,20 @@ newest timestamp.
 **Rule — Telegram media keeps original custody and derived provenance.** Rules 7, 29, 36, 42,
 46 and 75; **checks: P12-NF-12/13/17/18/51**. Instar first captures the original update containing
 the authenticated file reference before acknowledging it. Media fetching and voice transcription
-remain unsupported in the landed ordinary-text slice. The current executable positive case keeps
-the original update in custody, records an explicit unsupported result and accountable owner, and
-makes zero file-fetch, transcription-provider, or fallback-send calls. Successful media handling
-depends on the requested Part Eight `fetch-inbound-media` and `derive-transcript` operations. After
-that seam is accepted and implemented, Part Six owns their claims, bounds, and recovery. The
-confined Part Ten custodian uses the bot credential. Part Two holds downloaded bytes and provider
-responses by capture reference. If transcription uses a model doorway, Part Seven owns its
-provider attempt and receipt. Part Five owns the run step that consumes the captured result. A
-transcript is derived evidence linked to the original `Intent`; it is never injected as a new
-verified sender message. Download, type, size, or transcription failure leaves the original intake
-preserved with an explicit owner and result. The adapter neither sends a private fallback reply nor
-deletes the obligation.
+remain unsupported in the landed ordinary-text slice. The executable neighbor preserves the
+original update, then Part Four's closed classifier returns `needs-judgment`. Its landed port writes
+an `intake-held` fact with the configured work owner and finite expiry. If unresolved, that hold
+ends as the explicit `expired-judgment` terminal. This path makes zero file-fetch,
+transcription-provider, or fallback-send calls; it does not claim a distinct unsupported-content
+result that Four cannot produce. Successful media handling depends on the requested Part Eight
+`fetch-inbound-media` and `derive-transcript` operations. After that seam is accepted and
+implemented, Part Six owns their claims, bounds, and recovery. The confined Part Ten custodian uses
+the bot credential. Part Two holds downloaded bytes and provider responses by capture reference. If
+transcription uses a model doorway, Part Seven owns its provider attempt and receipt. Part Five owns
+the run step that consumes the captured result. A transcript is derived evidence linked to the
+original `Intent`; it is never injected as a new verified sender message. Download, type, size, or
+transcription failure leaves the original intake preserved with an explicit owner and result. The
+adapter neither sends a private fallback reply nor deletes the obligation.
 
 **Rule — Telegram outbound operations are individually registered.** Rules 30, 52, 63 and 66;
 **checks: P12-NF-27–36**. Post text, post media, edit, delete where separately authorized, react,
@@ -319,19 +349,26 @@ Reconnect history is a recovery source, not permission to make new semantic ids.
 retain the root identity and outbound posts use the same channel and root tuple.
 
 **Rule — Slack admission separates structural direction, permission, and semantic judgment.**
-Rules 4, 10, 14, 28, 42, 46, 57, 66, 86 and 87; **checks: P12-NF-19/20/41**. Part Four records
-whether the authenticated event is a direct message, an explicit mention, a registered command,
-or undirected channel traffic. It resolves organization permission and current standing from
-signed history; the adapter's private allowlist or a display name cannot decide either. Directed
-DMs and mentions continue through intake even when a Part Seven advisory is unavailable, carrying
-the declared uncertainty flag. An exact deterministic authority refusal remains a preserved
-refusal. Undirected traffic is captured and receives an explicit owned disposition under the
-declared channel policy: out of scope, retain as bounded ambient context, or ask Part Seven for one
-closed `speak`, `react`, or `silent` advisory. An unavailable ambient advisory selects the declared
-conservative `silent` neighbor and records that disposition; it does not erase the capture.
-`speak` returns to the ordinary Part Four/Five intake path. `react` is an outward Part Eight effect
-and is currently unsupported because the landed payload is text-only. Mention-only mode and system
-channel policy are therefore registered intake/classification policy, not early adapter drops.
+Rules 4, 10, 14, 28, 42, 46, 57, 66, 86 and 87; **checks: P12-NF-19/20/41**. The landed Part Four
+port cannot yet record whether an authenticated Slack event is a direct message, an explicit
+mention, a registered command, or undirected channel traffic. It also cannot consume an
+organization-permission decision or record a `speak`, `react`, or `silent` disposition. Its closed
+slice accepts ordinary requester text or creates the generic owned `needs-judgment` hold described
+above. That narrow behavior is the only current positive; it must make no private permission,
+direction, ambient, reaction, or send decision.
+
+The broader Slack policy and Slack activation depend on
+`design-conversation-adapters-seam-request-intake-policy.md`. The requested Four-owned policy record
+binds the intake receipt, authenticated structural direction evidence, signed organization-policy
+and standing inputs, current policy generation, any Seven judgment reference, and one closed
+disposition. Four re-resolves permission and standing and consumes the disposition for admission or
+held work. Seven owns any semantic ambient judgment within the registered `speak`, `react`, or
+`silent` floor. Five consumes admitted or context-only work, and Eight alone can execute `react` or
+`speak`. Unavailable judgment keeps directed conversation deliverable with a recorded uncertainty
+under its declared fail-open policy, while ambient work selects the registered conservative
+disposition without erasing the capture. Until both owner additions land, P12-NF-19/20's broader
+direction, permission, and ambient cases are declared but non-executable, and no Slack instance may
+activate on them.
 
 **Rule — WhatsApp backends are different evidence modes.** Rules 28, 36, 44, 89 and 105;
 **checks: P12-NF-21/22**. The Business API verifies its webhook signature, business account,
@@ -347,17 +384,17 @@ adapter authority.
 **Rule — family media preserves custody before any private retrieval or source-text injection.**
 Rules 7, 29, 36, 42, 46, 66, 75 and 105; **checks: P12-NF-12/13/20–22/51**. A Slack file event and a
 WhatsApp linked-device audio event first enter Part Four as their unchanged original platform
-event, including authenticated attachment metadata. In the current landed slice, Part Four
-preserves an explicit unsupported-content result with its accountable owner; no Slack private-file
-download, `files.info` lookup, process-local path marker, source-text injection, Baileys media
-download, transcription provider
+event, including authenticated attachment metadata. In the current landed slice, Part Four's closed
+classifier produces a generic `needs-judgment` hold with the configured owner and expiry; if still
+unresolved it records `expired-judgment`. No Slack private-file download, `files.info` lookup,
+process-local path marker, source-text injection, Baileys media download, transcription-provider
 call, placeholder reply, or fallback private send occurs. This current positive case preserves the
-original event, records its owner and unsupported reason, and makes zero media-fetch,
-transcription, or outward provider calls. Successful retrieval and transcription are separate
-seam-dependent cases. They require the accepted Part Eight `fetch-inbound-media` and
-`derive-transcript` payloads, Part Ten credential confinement, Part Six claims and recovery, and
-Part Seven provider accounting where a model doorway is used. Derived text remains evidence linked
-to the original intake; it never becomes a new verified sender event.
+original event, records the owned hold, and makes zero media-fetch, transcription, or outward
+provider calls. Successful retrieval and transcription are separate seam-dependent cases. They
+require the accepted Part Eight `fetch-inbound-media` and `derive-transcript` payloads, Part Ten
+credential confinement, Part Six claims and recovery, and Part Seven provider accounting where a
+model doorway is used. Derived text remains evidence linked to the original intake; it never
+becomes a new verified sender event.
 
 **Rule — iMessage remains device-backed without a private effect escape.** Rules 28, 30, 36,
 63 and 89; **checks: P12-NF-23/24**. Reading the enrolled Messages database supplies
@@ -377,7 +414,7 @@ view, link click, or successful WebSocket connection cannot select authority or 
 sender's event. Reconnect resumes from the durable server cursor. Anonymous messages may be
 preserved as authority-inert input under declared policy; they cannot bind a conversation.
 
-**Rule — platform-specific UX remains an effect, not an exception.** Rules 30, 42, 52, 63,
+**Rule — platform-specific user experience remains an effect, not an exception.** Rules 30, 42, 52, 63,
 79 and 105; **checks: P12-NF-22/24/25/32**. Slack reactions and ephemeral notices, WhatsApp read
 receipts and reactions, iMessage immediate texts, and web delivery indicators use registered
 operations with their real audience and evidence once the requested Part Eight seam exists. The
@@ -582,6 +619,27 @@ the same isolation and lifecycle checks.
 8. Let part nine independently assess the demanded delivery stage and let part eight settle only what evidence proves.
 9. Return the result to part five and rebuild every disposable view from the causally linked facts.
 
+**Rule — ordinary-worker failure still has one bounded conversation answer while the minimal path
+is admitted.** Rules 14, 15, 42, 46, 63, 77 and 95; **check: P12-NF-53**. Part Ten's production
+assembly binds Eleven's minimal responder separately from ordinary workers and their model or
+business-effect dependencies. When an authenticated intake is preserved but the ordinary worker
+cannot start or restart, the minimal responder records one Part One `Result` for the limited
+response, naming the blocked work and owned repair. It then uses the landed Part Eight
+`ordinary-reply` path: one `OutboundMessage` whose speaker is the minimal system principal, whose
+text is the fixed bounded
+explanation, and whose `sourceResult` names that durable result. No new effect payload is needed.
+The same authority, current conversation binding, exclusive lease and fence, replicated(1)
+durability, route, provider observation, and independent assessment requirements apply. A private
+adapter send or a model-dependent tone gate is not this path.
+
+This guarantee is conditional on Eleven's enumerated minimal dependencies. If the minimal fact
+segment, register/decoder generation, identity key, clock, system grant, current binding, lease,
+fence, required peer acknowledgment, conversation route, or evidence service is unavailable, the
+adapter preserves whatever intake its available custody can honestly preserve, records an owned
+minimal-path outage and makes zero reply or replay calls under a fresh identity. The independent
+recovery surface remains the only promised report path. Recovery re-resolves the original intake
+and operation; missing dependencies never become permission to fabricate a reply.
+
 **Rule — Telegram proves the first real slice under crash cuts.** Rules 34, 37, 43, 62, 68
 and 105; **checks: P12-NF-44/46–48**. The production initialization path uses a real Telegram test
 bot, authenticated sender, pre-existing verified binding, real Claude Code or Codex harness, real
@@ -602,7 +660,9 @@ work priority, not an activation prerequisite between later adapters. No later a
 Telegram or a sibling's evidence. A platform API change invalidates only the affected conformance
 subject and inhibits unsupported operations. It does not silently downgrade authentication,
 discard inputs, or close other healthy adapters. Strict serialization of every later adapter is a
-separate operator policy, not this proposed baseline.
+separate operator policy, not this proposed baseline. An exact mode must also have every owner seam
+its declaration consumes. In particular, Slack remains inhibited until the requested Four/Seven
+intake-policy seam is accepted, implemented, and covered by P12-NF-19/20.
 
 ---
 
@@ -615,15 +675,16 @@ The carry-forward column states the required property, not a requirement to reus
 | Instar 1.x module and earned incident | Behavior or guarantee that carries forward | 2.0 disposition |
 |---|---|---|
 | `TelegramAdapter` | Long polling waits for handling before offset advance; forum topics keep distinct routes. A placeholder token once left a moved session reporting success while no message could reach Telegram, so admitted life requires verified bot identity and a real route. | Preserve custody-before-cursor and topic identity; replace local routing, authorization and success inference with parts four, eight, nine and ten. |
-| `TelegramAdapter` media handlers | Voice, photo, and document updates are downloaded to local paths and routed to handlers. Voice invokes a configured Groq or OpenAI transcription provider directly, then injects `[voice]` text; photo and document handlers inject local-path markers. Download or transcription failure sends a direct fallback reply. | Preserve current custody by capturing the original update and recording unsupported media with zero private fetch/provider/send calls. Retire direct download, provider, path-injection, cleanup, and fallback-send authority. Successful fetch/transcription remains gated on the requested Part Eight media operations; seven owns applicable provider attempts and five consumes the derived result. P12-NF-51 separates these cases. |
+| `lifeline/TelegramLifeline`, `MessageQueue`, `ColdStartFallbackReply`, and the server composition | The independent Telegram poller enqueues an inbound message and writes a disk-backed queue when the ordinary server is down or forwarding fails, replays retained entries after recovery, and advances its offset only after each update handler returns. Queue writes log and continue on failure and do not return a write-synchronization durability receipt, so 1.x does not prove durable custody at that cut. Replay can deliberately retire a poison item only after recording and attempting a loss notice; it is not an absolute never-drop store. When an ordinary topic worker cannot start or restart, the wired fixed reply bypasses the model tone gate, states the classified reason, and points to the Lifeline route. These paths were earned by silent server-down queues, mid-replay loss, resource rejection, and model-gate silence. | Preserve the independent custody and responder authority as Ten's separately admitted minimal path, while strengthening capture to Four's receipt contract. Four owns the persisted intake, Five owns minimal repair work and the Part One `Result` used as reply source, Eight sends that result through the landed ordinary-reply contract, Nine assesses its evidence, and Eleven owns the conditional reachability verdict. P12-NF-53 withholds any held/live claim until both the ordinary-worker-failure and required-minimal-dependency-outage neighbors run through the production assembly. |
+| `TelegramAdapter` media handlers | Voice, photo, and document updates are downloaded to local paths and routed to handlers. Voice invokes a configured Groq or OpenAI transcription provider directly, then injects `[voice]` text; photo and document handlers inject local-path markers. Download or transcription failure sends a direct fallback reply. | Preserve current custody by capturing the original update and using Four's landed generic `needs-judgment` hold and possible `expired-judgment` terminal with zero private fetch/provider/send calls. Retire direct download, provider, path-injection, cleanup, and fallback-send authority. Successful fetch/transcription remains gated on the requested Part Eight media operations; Seven owns applicable provider attempts and Five consumes the derived result. P12-NF-51 separates these cases. |
 | `pending-relay-store`, `DeliveryFailureSentinel`, and `telegram-reply.sh` | Stable delivery identity, per-agent durable custody, fenced claims, ambiguous timeout handling, and loud recovery prevent silent loss and blind duplicate sends. A restoration purge once ate a quiet-hours-held notice. Minting an id only at enqueue left the first send outside dedup. Both incidents require identity before first dispatch and no purge of unresolved work. | Re-express the queue as fact-derived outbox/recovery under six and eight. Keep adapter storage only as disposable acceleration. |
 | `telegram-reply.sh` | Wrong-port agent identity checks prevent cross-tenant sends. A tone flag placed after the topic id was delivered as user text while its effect vanished, causing a correct check to be graded wrong. Inputs that change send semantics must be typed, ordered, and refused when malformed. | Replace shell argument authority with the public effect port and typed operation input. A compatibility wrapper may only translate and return the core result. |
 | `MessageRouter`, `MessageStore`, `DeliveryRetryManager`, and `SpawnRequestManager` | Save-before-send, both sides of conversation history, stable envelopes, queued spawn work, bounded attempts, and explicit delivery phases preserve continuity. Earlier one-sided history caused context loss. Refusing a system-channel registry write caused repeated session spawning. | Part two stores facts, part five owns runs, and part six owns loops and transport recovery. HTTP receipt and session injection no longer count as conversation delivery. |
 | `ConversationRegistry` and `conversationIdentity` | A structured Slack channel/thread tuple joins a durable negative numeric id, canonical key, one-hop aliases, bind pins, origin, and crash-replayed journal/snapshot state. Its journal may retain only a send key, lane, sequence or timestamp. Positive Telegram ids pass through. These are the real cross-channel identity and alias authorities in 1.x, but a bind pin is only a retained tuple and send-guard rows do not retain the payload or provider receipt. | Preserve readable old ids, tuples, aliases, bind targets, and send-guard bytes through the compatibility decoder. Import no operator binding, effect, claim, assessment or settlement from insufficient evidence. Keep it inert and migration-blocking through the requested legacy-import seam until every numeric-id consumer has an exact disposition under P12-NF-52. |
 | `deliverToConversation`, `PromiseBeacon`, and the server composition | The shared funnel resolves Telegram ids and minted Slack ids, follows binding tuples, classifies non-delivery, records logical/content send guards, and routes pending beacon follow-through. The server wires `PromiseBeacon` through it. It also has 1.x-specific dark/dry and reachability behavior. | Move the beacon, server wiring, conversation lookup surfaces, and stored topic-id consumers to Part Eight. Preserve pending and ambiguous sends without replay, and retire the old funnel only after every stored conversation reference resolves through the new route. |
 | `TelegramMarkdownFormatter` and `slack/SlackMrkdwnFormatter` | One outbound formatting funnel, safe URL schemes, escaped code/text, bounded parsing, and explicit pass-through modes prevent literal markup, unsafe links, double escaping, and parser resource abuse. | Keep deterministic transformations and captured real-byte fixtures, but validate the rendered digest through part eight before sending. |
-| `slack/SocketModeClient` and `slack/SlackAdapter` | Fresh connected state, verified team identity, thread routing, reconnect recovery, and guarded socket writes are necessary. The adapter also has a fail-closed user check, an organization permission observer/enforcement gate, DM/mention-directed handling, mention-only ambient handling, and bounded `speak`/`react`/`silent` ambient decisions. It downloads attachments with the workspace credential and may inject retrieved or downloaded source text and process-local paths into the prompt. An unguarded acknowledgment during sleep/wake once crashed the server, stale socket callbacks once orphaned a healthy replacement, and a malformed live probe once marked a healthy API failed. | Preserve the state-machine, probe, direction, and permission requirements. Move capture/ack to Four, semantic ambient judgment to Seven, and reactions/replies to Eight. Retire private file retrieval and prompt injection; current media is preserved as unsupported, while successful retrieval depends on the requested media seam and Part Ten confinement. |
-| `WhatsAppAdapter` and its backends | Backend capabilities, fail-closed configured contacts, group/participant separation, chunking, and connection state are useful platform mechanics. The linked-device Baileys backend also downloads audio to a local file, calls a configured transcription provider, injects `[voice]` text, and falls back to an `[Audio]` placeholder when unavailable or failed. | Split Business and linked-device evidence modes. Move consent, authorization, acknowledgments, queues, limits and retries to their core owners. Retire local audio custody, direct transcription, source-text injection, and placeholder fallback as adapter authority; preserve the original event now and gate successful media derivation on the requested Part Eight seam. |
+| `slack/SocketModeClient` and `slack/SlackAdapter` | Fresh connected state, verified team identity, thread routing, reconnect recovery, and guarded socket writes are necessary. The adapter also has a fail-closed user check, an organization permission observer/enforcement gate, direct-message and mention-directed handling, mention-only ambient handling, and bounded `speak`/`react`/`silent` ambient decisions. It downloads attachments with the workspace credential and may inject retrieved or downloaded source text and process-local paths into the prompt. An unguarded acknowledgment during sleep/wake once crashed the server, stale socket callbacks once orphaned a healthy replacement, and a malformed live probe once marked a healthy application programming interface failed. | Preserve the state-machine and probe requirements now. Direction, permission, and ambient behavior require the requested Four/Seven intake-policy seam; they are not silently moved into an adapter. Retire private file retrieval and prompt injection; current media receives the generic owned `needs-judgment` hold, while successful retrieval depends on the requested media seam and Part Ten confinement. |
+| `WhatsAppAdapter` and its backends | Backend capabilities, fail-closed configured contacts, group/participant separation, chunking, and connection state are useful platform mechanics. The linked-device Baileys backend also downloads audio to a local file, calls a configured transcription provider, injects `[voice]` text, and falls back to an `[Audio]` placeholder when unavailable or failed. | Split Business and linked-device evidence modes. Move consent, authorization, acknowledgments, queues, limits and retries to their core owners. Retire local audio custody, direct transcription, source-text injection, and placeholder fallback as adapter authority; preserve the original event in Four's generic `needs-judgment` hold and gate successful media derivation on the requested Part Eight seam. |
 | `imessage/IMessageAdapter` | Unified inbound/outbound contact gating, send-disabled and proactive-disabled defaults, single-use send checks, stable chat evidence, and actual connection time are safety-relevant. A status getter once fabricated a new connection timestamp on every read. Platform permission constraints require a session-capable send helper. | Preserve conservative defaults and observed timestamps. Confine the helper behind the effect port; it cannot remain a private script escape. |
 | `MessagingToneGate` | Advisory review must return an actionable result. A provider timeout in production showed that an unavailable language-model review cannot silently suppress ordinary communication, while deterministic credential exposure still needs a hard floor. | Part seven owns advisory judgment and defaults; parts three/eight own registered blocking checks and preservation. The platform adapter only receives the settled instruction. |
 
@@ -653,22 +714,26 @@ to the constitutional contract by having carried an important 1.x fix.
 | Capture-to-ack | Real platform events at idle, declared peak, boundary, and boundary-plus-one sizes; kill at write, flush, fact append, ack and cursor cuts | No protocol ack before durable custody; failed capture remains redeliverable or an owned outage |
 | Intake isolation | Flood one sender, conversation and adapter while healthy peers send ordinary and stop messages | Finite byte/concurrency/queue caps hold; healthy eligible work receives service within a declared fair round |
 | Outbound uniqueness | Kill at preparation, claim, provider acceptance, observation, witness and settlement; lose and duplicate callbacks | At most one external semantic reply; unresolved cuts retain identity, exposure and zero replay |
-| Formatting | Real captured bytes, malformed markup, unsafe links, Unicode, NUL/control data, adversarial nesting and declared size edges | Exact deterministic digest or explicit refusal; no meaning/audience/standing change and no unbounded parse |
+| Formatting | Real captured bytes, malformed markup, unsafe links, Unicode, the null control character and other control data, adversarial nesting and declared size edges | Exact deterministic digest or explicit refusal; no meaning/audience/standing change and no unbounded parse |
 | Conversation identity | Restart, reconnect, rename, archive, topic/thread roots, account churn, aliases and cross-platform forwards | Same authenticated tuple resolves the same history; churn holds binding; no content-based merge |
 | Evidence honesty | Positive receipt, delayed receipt, forged callback, missing query, read/display signal, stale probe and unsupported stage | No stage promotion; nine records exact assessment or retained unknown |
 | Recovery cost | Cold/warm rebuild of unresolved intake/outbox over release corpus on every deployment class | Recorded scanned facts/bytes, duration, peak memory and failures fit approved finite budgets; overrun blocks activation |
 | Platform health | Cadenced authenticated identity, inbound and outbound canaries through production assembly with independent witness | Fresh exact-mode proof required; stale, failed or unavailable inhibits only unsupported scope and starts owned repair |
 | Framework parity | Claude Code, Codex, and every enabled harness attempt the same reply and direct-credential escape cases | Public doorway succeeds; raw credential/provider access fails; missing harness evidence keeps that tuple dark |
 | Notification bound | Many simultaneous permanent/transient failures, unavailable alert route and recovery flap | Existing alert destination, stable episode coalescing, finite attempts, no topic/notice storm or recursive send |
+| Minimal conversation path | Kill an ordinary worker at start and restart; separately remove every required minimal dependency while sending authenticated messages | Fixed attributable ordinary reply within the measured bound only while every named prerequisite holds; otherwise preserved input where custody remains, one owned outage, and zero fabricated reply or replay |
 
 **Rule — activation needs three tiers and fresh independent proof.** Rules 34, 37, 38, 43, 62,
-72, 73, 81 and 105; **checks: P12-NF-44–50**. Unit checks cover pure identity, parser, formatter,
+72, 73, 81 and 105; **checks: P12-NF-12/19/20/44–50/53**. Unit checks cover pure identity, parser, formatter,
 limit, dedup, and state-transition logic. Integration checks use actual persistence and every public
 port, with a kill at each durable boundary. Live lifecycle checks use production initialization,
 real platform credentials, real provider bytes, an authenticated test principal and conversation,
 an enabled real harness, and part nine's independent witness. Critical inbound/outbound outcomes
 also carry fresh probes and step supervision. Source inspection, a running process, a configured
-token, a mock transport, or a self-reported green row cannot make an instance live.
+token, a mock transport, or a self-reported green row cannot make an instance live. Production
+secret-intake activation additionally requires the requested Four/Ten custody seam. Slack activation
+additionally requires the requested Four/Seven intake-policy seam. The minimal-route claim requires
+P12-NF-53 through the production assembly; a 1.x source audit does not satisfy it.
 
 **Rule — release evidence stays exact across upgrades.** Rules 44, 45, 62, 76, 90 and 105;
 **checks: P12-NF-45/46/49/50/52**. An upgrade enumerates every installed adapter instance, parser,
@@ -692,23 +757,23 @@ conversation key, acknowledgment policy, provenance ceiling, or rendered-byte id
 | P12-NF-03 | architecture | New core message/binding/queue/retry type or private import; earlier-owned types and public ports pass |
 | P12-NF-04 | build/activation | Instance omits contract field, parser, operation or unsupported capability; complete exact-mode declaration passes |
 | P12-NF-05 | architecture | Adapter selects standing, binding, classification, retry or success; translation plus owner decision passes |
-| P12-NF-06 | fault | Content interpretation/filter/dedup/ack/cursor is reachable before Part Four's route-bearing receipt, or route extraction reads message prose; physical capture then bounded envelope extraction then `receive(raw, route)` passes. A crash after extraction produces no acknowledgment and provider redelivery; a crash after receipt drains through `recover(receiptId)` |
+| P12-NF-06 | fault | Content interpretation, filtering, deduplication, acknowledgment or cursor advance is reachable before Part Four's route-bearing receipt, or route extraction reads message prose. A captured non-secret fixture passes through physical capture, bounded envelope extraction and landed `receive(raw, route)`; a secret-shaped fixture must enter the requested custody seam. A crash after extraction produces no acknowledgment and relies on provider redelivery; a crash after receipt drains through `recover(receiptId)` |
 | P12-NF-07 | captured contract | Token/session/locality/display name inflated to stronger provenance; re-checkable exact evidence passes |
 | P12-NF-08 | security | Adapter assertion or message content selects principal/standing; part-four decode against signed history passes |
 | P12-NF-09 | dedup | Same id and changed bytes collapse; matching redelivery joins while mismatch conflicts |
 | P12-NF-10 | security | Sender-controlled id suppresses another sender/tenant or expired cache revives work; fully scoped durable key passes |
 | P12-NF-11 | contract | Protocol ack reported as principal/run/worker/answer receipt or ackPolicy bypassed; exact custody meaning passes |
-| P12-NF-12 | load/security | Oversize event partly interpreted or secret enters ordinary capture; bounded refusal/two-artifact custody passes |
+| P12-NF-12 | load/security | Oversize event is partly interpreted or a matched secret reaches ordinary capture/authentication/parsing. The landed positive covers only a captured non-secret fixture whose unchanged bytes and hash pass through `receive`; the secret-safe positive requires the requested Four/Ten boundary to keep original bytes exclusively in secret custody and give ordinary consumers a separately hashed redacted capture. Secret-intake production activation remains blocked until that seam passes |
 | P12-NF-13 | lifecycle | Unresolved/refused input drops or has no owner/drain; preserved authority-inert result passes |
 | P12-NF-14 | binding | First sender, adapter map or session registry establishes operator; verified binding facts pass |
 | P12-NF-15 | race | Stale/contested binding selects newest claimant; conflict holds new authority while stop remains live |
 | P12-NF-16 | Telegram identity | Bot/chat/topic collision or general-topic drift creates two histories; canonical scoped tuple passes |
 | P12-NF-17 | Telegram security | Forwarded/channel-post identity becomes human principal or update kind disappears; explicit source/disposition passes |
 | P12-NF-18 | Telegram fault | Offset/webhook success crosses uncaptured update; consecutive durable capture boundary passes |
-| P12-NF-19 | Slack identity/admission | Root message changes from channel to thread identity, team is omitted, or DM/mention/undirected state is conflated; predeclared stable tuple plus explicit directed or ambient disposition passes |
-| P12-NF-20 | Slack fault | Envelope ack precedes receipt, post-ack failure loses an event, private permission drops it, or unavailable advisory silences a directed ask; receipt then ack plus Four-owned permission and declared directed/ambient fallback passes |
+| P12-NF-19 | Slack identity/admission | Root message changes from channel to thread identity, team is omitted, or direct-message, mention, command and undirected traffic are conflated. Current landed coverage proves only capture and the stable team/channel/root tuple, with an owned `needs-judgment` hold for policy-bearing shapes. Explicit direction and ambient dispositions pass only after the requested Four/Seven intake-policy seam lands; Slack activation is blocked until then |
+| P12-NF-20 | Slack fault | Envelope acknowledgment precedes receipt, post-ack failure loses an event, private permission drops it, or unavailable judgment silences a directed ask. The current neighbor is receipt then acknowledgment followed by Four's generic owned `needs-judgment` hold and possible `expired-judgment`, with zero private permission/send calls. Four-owned permission and declared directed/ambient fallback are seam-dependent and cannot activate before the requested intake-policy contract lands |
 | P12-NF-21 | WhatsApp security | Backend, group participant, LID, phone label or normalized address confused as verified person; exact mode evidence passes |
-| P12-NF-22 | WhatsApp lifecycle | Private consent/allowlist/queue/receipt bypasses core owner, or linked-device audio downloads/transcribes/injects/falls back privately; public intake/effect composition and current preserved unsupported media pass |
+| P12-NF-22 | WhatsApp lifecycle | Private consent/allowlist/queue/receipt bypasses core owner, or linked-device audio downloads/transcribes/injects/falls back privately; public intake/effect composition and the current owned `needs-judgment` hold with zero media/provider/send calls pass |
 | P12-NF-23 | iMessage identity | Phone reuse, chat-db access or fabricated connected time keeps binding/live claim; observed device/chat/churn evidence passes |
 | P12-NF-24 | iMessage isolation | Helper sends without claim, standing, observation or audit; confined effect-port invocation passes |
 | P12-NF-25 | web security | Client id/cookie/tab/click grants authority or dedups another user; server-minted session-bound event passes |
@@ -718,7 +783,7 @@ conversation key, acknowledgment policy, provenance ceiling, or rendered-byte id
 | P12-NF-29 | formatter | Rendering changes refusal, audience, link safety or meaning, or advisory disappears; exact rendered `text` plus a source-result/closure-referenced preparation fact preserves all |
 | P12-NF-30 | limits/load | Oversize text is truncated or chunked through the landed single-message path; one fitting ordinary reply or explicit `Refused` passes, while aggregate cases remain gated on the requested seam |
 | P12-NF-31 | format fallback | Parse rejection or timeout changes bytes and resends under the old identity; captured failure, unchanged digest, `retryEligible: false`, and return to the owning run with no second invocation pass |
-| P12-NF-32 | UX effect | Reaction/read receipt/typing fires through the ordinary-text port or failure clears intake; explicit unsupported `Refused` passes now, and a governed optional effect passes only after the requested seam lands |
+| P12-NF-32 | user-experience effect | Reaction/read receipt/typing fires through the ordinary-text port or failure clears intake; explicit unsupported `Refused` passes now, and a governed optional effect passes only after the requested seam lands |
 | P12-NF-33 | crash | Effect identity minted after provider call or private queue is custody authority; pre-dispatch fact and rebuild pass |
 | P12-NF-34 | evidence | HTTP/socket/local log/provider acceptance labeled delivered/read or encoded as an invented observation stage; an unchanged `response`/`lookup` observation with provider bytes in its capture and only the source-supported assessment passes |
 | P12-NF-35 | verification | Adapter self-grades or stale/same-path probe certifies delivery; Part Nine decodes the captured provider evidence and accepts only the exact occurrence predicate its current bar supports |
@@ -731,31 +796,32 @@ conversation key, acknowledgment policy, provenance ceiling, or rendered-byte id
 | P12-NF-42 | isolation | Worker reads credential/raw account session or fabricates origin; scoped custodian and enrolled evidence pass |
 | P12-NF-43 | wiring/e2e | Harness/direct script bypasses intake/effect/grounding or required port is null; the complete public chain with landed `start`/`recovery`/`resume` grounding passes, while a compaction case refuses as unsupported until the requested Five/Eight seam lands |
 | P12-NF-44 | Telegram lifecycle | Crash cut duplicates reply, loses work, overstates evidence or diverges rebuild; one owned exact execution passes |
-| P12-NF-45 | parity/activation | Any later adapter activates before Telegram proves the reference slice or borrows Telegram/sibling evidence; after Telegram, each exact mode may activate on its own dark-to-live evidence regardless of another later adapter's state |
+| P12-NF-45 | parity/activation | Any later adapter activates before Telegram proves the reference slice, borrows Telegram/sibling evidence, or lacks an owner seam its declared mode needs; after Telegram, each exact mode may activate on its own complete evidence regardless of another later adapter's state. Slack remains inhibited until the Four/Seven intake-policy seam lands |
 | P12-NF-46 | live probe | File/token/process/config or malformed canary counts as life; real identity/inbound/outbound fresh proof passes |
 | P12-NF-47 | measurement | Target/estimate/success-only percentile labeled measured or failed sample omitted; named hardware workload record passes |
-| P12-NF-48 | three-tier | Mock-only or parser-only test makes significant adapter live; unit, integration and real lifecycle evidence pass |
+| P12-NF-48 | three-tier | Mock-only or parser-only test makes a significant adapter live, or secret-bearing production intake activates without the custody seam; unit, integration and real lifecycle evidence plus every required owner seam pass |
 | P12-NF-49 | upgrade | Platform/API/package change alters identity, provenance, ack or pending effect silently; scoped inhibition and compatible replay pass |
 | P12-NF-50 | governance | Declared fixture has no check-run/assessment or implementation implies approval; honest declared/held state passes |
-| P12-NF-51 | family media | Telegram, Slack, or linked-device WhatsApp media is acknowledged before original receipt, a file path substitutes for custody, source text is injected privately, transcription calls a provider privately, a fallback sends privately, or derived text becomes a fresh verified sender event. The current positive preserves the original event, records an owned unsupported result, and makes zero fetch/transcription/private-send calls. Successful fetch/derivation passes only after the requested effect seam lands and the exact mode proves the owner-governed path |
+| P12-NF-51 | family media | Telegram, Slack, or linked-device WhatsApp media is acknowledged before original receipt, a file path substitutes for custody, source text is injected privately, transcription calls a provider privately, a fallback sends privately, or derived text becomes a fresh verified sender event. The current positive preserves the original event, records Four's generic owned `needs-judgment` hold, may drain it to `expired-judgment`, and makes zero fetch/transcription/private-send calls. Successful fetch/derivation passes only after the requested effect seam lands and the exact mode proves the owner-governed path |
 | P12-NF-52 | 1.x migration | Old negative id, alias, bind pin, pending logical send, ambiguous send or `deliverToConversation` caller becomes unreadable, becomes authority, or blindly replays. A payload- and receipt-less ambiguous send must remain an inert capture linked to owned blocked work with zero effect/provider calls under the requested legacy-import seam; until that seam lands, a read-only dry run reports it as unsupported and migration cannot activate |
+| P12-NF-53 | minimal response | An ordinary worker start/restart failure produces silence, uses an adapter-private or model-gated send, or claims a response while any required minimal dependency is absent. With all minimal prerequisites admitted, one durable Part One `Result` for the limited response and one attributable landed `ordinary-reply` effect pass. Removing each minimal fact, generation, identity, authority, peer-durability, lease/fence, route or evidence dependency instead yields preserved input where custody remains, an owned outage, zero reply/replay, and recovery only after that prerequisite returns |
 
 ---
 
 ## 13. Inherited duties and disposition
 
 **Rule — no inherited duty remains parked.** Rules 8, 49, 69 and 71; **checks:
-P12-NF-01/44–50**.
+P12-NF-01/44–50/53**.
 
 | Duty | Disposition |
 |---|---|
 | Big picture section 10 — replaceable conversation edge and channel parity | **Held as a contract:** one family suite, no core platform branch, exact per-instance capabilities and individual activation through P12-NF-03–05/45/48. Runtime status remains declared until evidence runs. |
-| Part four — concrete authenticated evidence, event-id authority and acknowledgment policy | **Held as a contract for current intake:** bounded structural route extraction, `receive(raw, route)`, the landed `(adapter, channel, sender, identityEpoch, eventId)` key, per-platform identity matrices, real-byte cases, current binding resolution, and capture of media as explicitly unsupported through P12-NF-06–26/51. Four retains intake and standing ownership. Legacy compatibility activation remains gated on `design-conversation-adapters-seam-request-legacy-import.md`. |
+| Part four — concrete authenticated evidence, event-id authority and acknowledgment policy | **Held as a contract for the landed narrow intake:** bounded structural route extraction, non-secret `receive(raw, route)`, the landed `(adapter, channel, sender, identityEpoch, eventId)` key, per-platform identity matrices, current binding resolution, and generic owned `needs-judgment` holds with `expired-judgment` terminals through P12-NF-06–26/51. Secret-bearing production intake depends on `design-conversation-adapters-seam-request-intake-custody.md`. Slack direction, permission, ambient disposition, and activation depend on `design-conversation-adapters-seam-request-intake-policy.md`. Legacy compatibility activation remains gated on `design-conversation-adapters-seam-request-legacy-import.md`. Four retains intake and standing ownership. |
 | Part five/six — durable work, one voice, bounded observation recovery and stable operation identity | **Held as a contract for landed start/recovery/resume:** worker bridge, fact-derived outbox, read-only observation wakes, fairness and crash recovery through P12-NF-33/36–44. Five/Six retain run, lease and loop ownership. Compaction accounting and a successful new send attempt are not held coverage; they depend on `design-conversation-adapters-seam-request-rungraph-continuity.md` and `design-conversation-adapters-seam-request-send-retry.md`. |
-| Part seven/eight — advisory judgment and attributable reply effect | **Held as a contract for the landed slice:** one exact ordinary-text reply, current validation, preserved advisory/refusal, zero-invocation media refusal, and no hidden fallback through P12-NF-27–33/37/41–43/51. Successful media, non-text operations, and aggregates are seam-dependent coverage under `design-conversation-adapters-seam-request-effect-doorway.md`; successful send retry is seam-dependent under `design-conversation-adapters-seam-request-send-retry.md`. Seven/Eight retain decision and settlement. |
+| Part seven/eight — advisory judgment and attributable reply effect | **Held as a contract for the landed slice:** one exact ordinary-text reply, current validation, preserved advisory/refusal, generic owned media judgment hold with zero private provider or send calls, and no hidden fallback through P12-NF-27–33/37/41–43/51. Slack's intake-policy judgment consumer depends on `design-conversation-adapters-seam-request-intake-policy.md`. Successful media, non-text operations, and aggregates are seam-dependent coverage under `design-conversation-adapters-seam-request-effect-doorway.md`; successful send retry is seam-dependent under `design-conversation-adapters-seam-request-send-retry.md`. Seven/Eight retain decision and settlement. |
 | Part nine — independent evidence and live holder proof | **Held as a contract:** stage-specific observations, unsupported negatives, independent assessment and real canaries through P12-NF-34–36/44/46/48. Nine retains grades and witness posture. |
-| Part ten — remaining adapter evidence contracts and executable bindings | **Held for current family realization:** Telegram, Slack, WhatsApp, iMessage and web modes map to Ten's existing contract/conformance and assembly types through P12-NF-03/04/19–26/45/49 and P12-NF-51's zero-call unsupported-media case. Successful media and legacy import are excluded until their named owner seams land. No new core type is introduced here. |
-| Part eleven — first vertical slice and minimal conversation route | **Held for the adapter half:** the Telegram production slice, real worker bridge, crash cuts and delivery witness are P12-NF-42–48. Eleven retains the whole-slice and operator-surface verdict. |
+| Part ten — remaining adapter evidence contracts and executable bindings | **Held only for the landed contract/conformance shapes:** Telegram, WhatsApp, iMessage and web map to Ten's current assembly types; Slack identity capture maps to them but Slack activation remains gated on the Four/Seven intake-policy seam. P12-NF-51's current case is a generic Four hold with zero private media/provider/send calls. Secret custody, successful media and legacy import are excluded until their named owner seams land. No new core type is introduced here. |
+| Part eleven — first vertical slice and minimal conversation route | **Declared, not held for runtime:** P12-NF-53 maps ordinary-worker failure to Eleven's limited responder and the landed ordinary-reply effect, and maps every required-minimal-dependency outage to preserved owned failure with zero fabricated response. The Telegram production slice, real worker bridge, crash cuts and delivery witness remain implementation and evidence obligations under P12-NF-42–48/53. Eleven retains the whole-slice and operator-surface verdict. |
 
 ---
 
