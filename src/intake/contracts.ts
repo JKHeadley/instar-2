@@ -1,4 +1,5 @@
-import type { CaptureInput,Clock,FactEnvelopeReference,Intent,Provenance,ProvenanceInput,Result,Scope,VerifiedPrincipal } from '../index.js';
+import type { Authorization,CaptureInput,Clock,FactEnvelopeReference,Hash,Intent,Provenance,ProvenanceInput,
+  RegisterGenerationReference,Result,Revocation,Scope,StandingGrant,VerifiedPrincipal } from '../index.js';
 import type { FactContext,SegmentStoragePort } from '../facts/index.js';
 import type { VerifiedRegister,RegisterContext } from '../register/index.js';
 import type { ProjectionGeneration } from '../projections/index.js';
@@ -51,10 +52,28 @@ export type IntakeDisposition=Readonly<
   |{ kind: 'stopped'; logicalId: string; fact: FactEnvelopeReference; scope: Scope; fencingOwner: 'part-six' }
   |{ kind: 'stop-signal'; logicalId: string; fact: FactEnvelopeReference; priority: 'highest'; halts: false }
 >;
+export type VerifiedAuthorityAct=Authorization|StandingGrant|Revocation;
+export interface VerifiedActAdmission {
+  readonly request: FactEnvelopeReference;
+  readonly requestDigest: Hash;
+  readonly decision: 'approve'|'decline';
+  readonly act: VerifiedAuthorityAct|null;
+  // Durable capture of the closed VerifiedActProofBundle. The bundle contains
+  // independently signed P1 Provenance inputs for the challenge and act.
+  readonly proof: CaptureInput;
+  readonly surface: string;
+  readonly generation: RegisterGenerationReference;
+}
+export type VerifiedActDisposition=Readonly<{
+  readonly kind: 'approved'|'declined'|'emergency-stopped';
+  readonly fact: FactEnvelopeReference;
+}>;
 export interface IntakePort {
   receive(raw: string,route: InboundRoute): Result<IntakeDisposition>;
   // Reprocess a durable receipt; route, bytes and original clock come from the ledger.
   recover(receiptId: string): Result<IntakeDisposition>;
   // A package-authenticated maintenance operation; the scheduler calls this same port.
   expireHolds(): Result<number>;
+  // Separate from receive: requester prose can never enter this operation.
+  admitVerifiedAct(input: VerifiedActAdmission): Result<VerifiedActDisposition>;
 }

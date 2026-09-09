@@ -7,7 +7,79 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/governance.test.ts",
-        "hash": "sha256:a99326ab8f26c900e6f694c79c1581f41dba1afa9f60e7fe7ac5cb5b6865c419"
+        "hash": "sha256:dbd70f215606f2c178380b04f7b7612939d70bbff670c26fe607026b2cf661e4"
+      }
+    },
+    {
+      "id": "P4-VA-01",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/verified-act.test.ts",
+        "hash": "sha256:a34fc7f22d95b6dcf4c30c0ae5c11d53d73892b84a1e21945b5a6f6b3d38438f"
+      }
+    },
+    {
+      "id": "P4-VA-02",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/verified-act.test.ts",
+        "hash": "sha256:a34fc7f22d95b6dcf4c30c0ae5c11d53d73892b84a1e21945b5a6f6b3d38438f"
+      }
+    },
+    {
+      "id": "P4-VA-03",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/verified-act.test.ts",
+        "hash": "sha256:a34fc7f22d95b6dcf4c30c0ae5c11d53d73892b84a1e21945b5a6f6b3d38438f"
+      }
+    },
+    {
+      "id": "P4-VA-04",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/verified-act.test.ts",
+        "hash": "sha256:a34fc7f22d95b6dcf4c30c0ae5c11d53d73892b84a1e21945b5a6f6b3d38438f"
+      }
+    },
+    {
+      "id": "P4-VA-05",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/verified-act.test.ts",
+        "hash": "sha256:a34fc7f22d95b6dcf4c30c0ae5c11d53d73892b84a1e21945b5a6f6b3d38438f"
+      }
+    },
+    {
+      "id": "P4-VA-06",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/verified-act.test.ts",
+        "hash": "sha256:a34fc7f22d95b6dcf4c30c0ae5c11d53d73892b84a1e21945b5a6f6b3d38438f"
+      }
+    },
+    {
+      "id": "P4-VA-07",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/verified-act.test.ts",
+        "hash": "sha256:a34fc7f22d95b6dcf4c30c0ae5c11d53d73892b84a1e21945b5a6f6b3d38438f"
+      }
+    },
+    {
+      "id": "P4-VA-08",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/verified-act.test.ts",
+        "hash": "sha256:a34fc7f22d95b6dcf4c30c0ae5c11d53d73892b84a1e21945b5a6f6b3d38438f"
+      }
+    },
+    {
+      "id": "P4-VA-09",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/verified-act.test.ts",
+        "hash": "sha256:a34fc7f22d95b6dcf4c30c0ae5c11d53d73892b84a1e21945b5a6f6b3d38438f"
       }
     }
   ],
@@ -17,33 +89,44 @@
       "id": "intakeDedupDefinition",
       "module": {
         "path": "src/intake/index.ts",
-        "hash": "sha256:f2b6940dbdec88d33699cc9d143e0750a03b1542839ef4477c9926fd49c8568f"
+        "hash": "sha256:ca1c5b53c66d41b9e2b74fd3b6fa556e4ec044c7dbe0543c368487715a1b219c"
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:714a43e487e3ac6a484d5bc23269cd7aacd2a8693eec70267493777dacf543b8"
+        "hash": "sha256:b1e365085fff74a70a1f92609b9c8c8aa35add43666ee4396381445f39316bcd"
       }
     },
     {
       "id": "intakeWorkRegistration",
       "module": {
         "path": "src/intake/index.ts",
-        "hash": "sha256:f2b6940dbdec88d33699cc9d143e0750a03b1542839ef4477c9926fd49c8568f"
+        "hash": "sha256:ca1c5b53c66d41b9e2b74fd3b6fa556e4ec044c7dbe0543c368487715a1b219c"
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:714a43e487e3ac6a484d5bc23269cd7aacd2a8693eec70267493777dacf543b8"
+        "hash": "sha256:b1e365085fff74a70a1f92609b9c8c8aa35add43666ee4396381445f39316bcd"
       }
     },
     {
       "id": "intakeStopRegistration",
       "module": {
         "path": "src/intake/index.ts",
-        "hash": "sha256:f2b6940dbdec88d33699cc9d143e0750a03b1542839ef4477c9926fd49c8568f"
+        "hash": "sha256:ca1c5b53c66d41b9e2b74fd3b6fa556e4ec044c7dbe0543c368487715a1b219c"
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:714a43e487e3ac6a484d5bc23269cd7aacd2a8693eec70267493777dacf543b8"
+        "hash": "sha256:b1e365085fff74a70a1f92609b9c8c8aa35add43666ee4396381445f39316bcd"
+      }
+    },
+    {
+      "id": "intakeVerifiedActRegistration",
+      "module": {
+        "path": "src/intake/index.ts",
+        "hash": "sha256:ca1c5b53c66d41b9e2b74fd3b6fa556e4ec044c7dbe0543c368487715a1b219c"
+      },
+      "artifact": {
+        "path": "src/intake/records.ts",
+        "hash": "sha256:b1e365085fff74a70a1f92609b9c8c8aa35add43666ee4396381445f39316bcd"
       }
     },
     {
