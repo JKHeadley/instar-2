@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { expect, it } from 'vitest';
+import { beforeEach, expect, it } from 'vitest';
 import { value } from '../fixtures.js';
 import { operatorFixture } from '../operator/fixture.js';
 import { productionOperatorSlice } from '../operator/production-slice-fixture.js';
@@ -7,6 +7,12 @@ import { acrossExecutions } from '../slice/acceptance.js';
 import type { SliceReport } from '../slice/acceptance.js';
 import { loadPair } from '../slice/kill-schedule-artifacts.js';
 import { runExecution } from '../slice/harness.js';
+
+// Vitest batches task updates without awaiting their RPC acknowledgements. Each of the
+// first three tests below enters another ~22s synchronous production drive immediately;
+// without one event-loop turn between tests, the already-sent acknowledgement cannot be
+// received before Vitest 3's fixed 60s RPC deadline even though every assertion passes.
+beforeEach(() => new Promise<void>(resolve => setImmediate(resolve)));
 
 it('P11-NF-43 P11-NF-49 the public slice boot plus a fresh operator process revalidate durable signed history rather than serialized status fields', async () => {
   const control = productionOperatorSlice();
