@@ -1,7 +1,8 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { setTimeout as yieldWorker } from 'node:timers/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { expect, it } from 'vitest';
+import { beforeEach, expect, it } from 'vitest';
 import { decode } from '../../src/index.js';
 import { createEffectDoorway, decodeEffectPayload, effectOperationContracts, effectPayloadIdentity, referencedPayloadFacts } from '../../src/effects/index.js';
 import type { EffectRequest, TypedEffectPayload } from '../../src/effects/index.js';
@@ -10,6 +11,8 @@ import { effectFixture, refused, value } from '../effects/fixture.js';
 import { typedEffectFixture } from '../effects/typed-effect-fixture.js';
 import { payloadInput } from '../effects/payload-fixtures.js';
 import { privateKey } from '../facts/fixtures.js';
+
+beforeEach(async () => { await yieldWorker(1); });
 
 function setup() {
   const contract = effectOperationContracts['post-text'];

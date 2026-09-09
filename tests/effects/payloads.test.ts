@@ -1,4 +1,5 @@
-import { expect, it } from 'vitest';
+import { beforeEach, expect, it } from 'vitest';
+import { setTimeout as yieldWorker } from 'node:timers/promises';
 import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonical } from '../../src/index.js';
@@ -11,6 +12,8 @@ import { clone, digest } from '../fixtures.js';
 import { effectFixture, refused, value } from './fixture.js';
 import { typedEffectFixture } from './typed-effect-fixture.js';
 import { payload, payloadInput, payloadKinds } from './payload-fixtures.js';
+
+beforeEach(async () => { await yieldWorker(1); });
 
 const withIdentity = (input: Record<string, unknown>): Record<string, unknown> => {
   const draft = Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'id' && key !== 'targetDigest'));

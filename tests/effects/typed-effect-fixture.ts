@@ -176,12 +176,19 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
     } : {}),
     observe: () => { queries++; return f.success(JSON.stringify({ status: 'unknown', reason: 'Telegram-shaped fixture has no decisive negative lookup' })); },
   };
-  const verificationSpine = createVerificationSpine(verificationHost, { context: ctx, privateKey }, store);
-  const verificationRuntime = createVerificationRuntime(verificationHost, verificationSpine);
-  value(verificationRuntime.record('VerificationPlan', { ...verificationInput('VerificationPlan'), id: 'typed-effect-verification-plan',
-    subject: { ...verificationInput('VerificationPlan').subject, generation: register.generation.id },
-    bar: { ...verificationInput('VerificationPlan').bar, version: definition.verificationBar, sources: ['probe'] } }));
-  const realAssessment = createEffectAssessmentPort(verificationHost, verificationRuntime);
+  let verificationSpine: ReturnType<typeof createVerificationSpine> | undefined;
+  let verificationRuntime: ReturnType<typeof createVerificationRuntime> | undefined;
+  let realAssessment: EffectAssessmentPort | undefined;
+  const verifier = () => {
+    if (realAssessment && verificationSpine && verificationRuntime) return { verificationSpine, verificationRuntime, realAssessment };
+    verificationSpine = createVerificationSpine(verificationHost, { context: ctx, privateKey }, store);
+    verificationRuntime = createVerificationRuntime(verificationHost, verificationSpine);
+    value(verificationRuntime.record('VerificationPlan', { ...verificationInput('VerificationPlan'), id: 'typed-effect-verification-plan',
+      subject: { ...verificationInput('VerificationPlan').subject, generation: register.generation.id },
+      bar: { ...verificationInput('VerificationPlan').bar, version: definition.verificationBar, sources: ['probe'] } }));
+    realAssessment = createEffectAssessmentPort(verificationHost, verificationRuntime);
+    return { verificationSpine, verificationRuntime, realAssessment };
+  };
   let assessmentState: 'happened' | 'did-not-happen' | 'uncertain' = 'uncertain', finalCharge: number | null = null;
   let delayedExecutionExcluded = false, assessmentAvailable = true;
   const syncAssessmentEvidence = (operation: string, digest: string) => {
@@ -199,9 +206,9 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
   const withdrawn = <T>(): Result<T> => decode('Result', f.refusedInput({ detail: 'assessment withdrawn' }), decodeContext) as Result<T>;
   const assessor: EffectAssessmentPort = { owner: 'part-nine',
     assess: input => { if (!assessmentAvailable) throw new Error('assessment withdrawn');
-      syncAssessmentEvidence(input.reservation.operation, input.request.digest); return realAssessment.assess(input); },
-    read: (ref, input) => assessmentAvailable ? realAssessment.read(ref, input) : withdrawn(),
-    consumeCurrent: (ref, input, consume) => assessmentAvailable ? realAssessment.consumeCurrent(ref, input, consume)
+      syncAssessmentEvidence(input.reservation.operation, input.request.digest); return verifier().realAssessment.assess(input); },
+    read: (ref, input) => assessmentAvailable ? verifier().realAssessment.read(ref, input) : withdrawn(),
+    consumeCurrent: (ref, input, consume) => assessmentAvailable ? verifier().realAssessment.consumeCurrent(ref, input, consume)
       : withdrawn(),
   };
   const composition: EffectComposition = { host, spine, transport, durability: replicas.durability, custody: custody.custody, adapter, assessment: assessor };
@@ -231,7 +238,8 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
     },
     withdrawAssessment: () => { assessmentAvailable = false; f.evidence.splice(0); },
     assessmentGuardActive: () => false,
-    verificationHost, verificationSpine, verificationRuntime, assessment: realAssessment,
+    verificationHost, get verificationSpine() { return verifier().verificationSpine; },
+    get verificationRuntime() { return verifier().verificationRuntime; }, get assessment() { return verifier().realAssessment; },
     versions: (v: GovernedVersion[]) => { versions = v; },
   };
 }
