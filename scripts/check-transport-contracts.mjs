@@ -96,6 +96,10 @@ export const transportSeamEvidence = [
   ['SLB-GENERATION-COMPLETE-44', 'integration', 'V14 admission-pinned generation completion'],
   ['SLB-PARTIAL-RESTORATION-45', 'integration', 'V18 authentic partial restoration retention'],
   ['SLB-DELAYED-RESTORATION-46', 'integration', 'V19 evidence-only delayed closure successor'],
+  ['SLB-OUTCOME-REPLAY-47', 'integration', 'review V2 signed outcome counter refusal'],
+  ['SLB-OUTCOME-FRONTIER-48', 'integration', 'review V3 signed outcome frontier refusal'],
+  ['SLB-MISSED-BETWEEN-49', 'integration', 'review V13 exact between-members boundary acceptance'],
+  ['SLB-LEGACY-INSPECT-50', 'integration', 'review V22 legacy inspect population preservation'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

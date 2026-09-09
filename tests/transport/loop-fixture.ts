@@ -103,7 +103,9 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     { ...rg.schema, kind: 'loop-pressure-binding', fields: { parentDuty: { kind: 'text', maxLength: 256 },
       operationFamily: { kind: 'text', maxLength: 256 }, pressureScopeBytes: { kind: 'text', maxLength: 4096 } } },
   ];
-  let witnessContext: FactContext = { ...rg.ctx, facts: [...value(rg.store.read()), ...runFacts],
+  const peerFrontier = rg.fact({ machine: 'machine-b',
+    segment: { machine: 'machine-b', epoch: 0, position: 0 } });
+  let witnessContext: FactContext = { ...rg.ctx, facts: [...value(rg.store.read()), ...runFacts, peerFrontier],
     schemas: [...rg.ctx.schemas, ...verificationSchemas(verificationHost), ...proofSchemas],
     ownedBodies: [...rg.ctx.ownedBodies ?? [], ...verificationRegistrations] };
   const machineBFacts: FactEnvelope[] = [];

@@ -135,6 +135,13 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
     return spine.context;
   };
   const read = (): readonly TransportFact[] => {
+    const snapshot = take(spine.store.readForProjection());
+    ensure(snapshot.entries.every(e => !e.taint.length && !e.conflicts.length), 'tainted or conflicted fact prefix');
+    const all = rows(snapshot.entries.map(e => e.fact), host.domain);
+    ensure(all.length <= 4096, 'single-conversation replay bound exhausted');
+    return all;
+  };
+  const readComplete = (): readonly TransportFact[] => {
     const all = rows(evidenceFacts(), host.domain);
     ensure(all.length <= 4096, 'single-conversation replay bound exhausted');
     return all;
@@ -343,7 +350,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         policy, attempts: 0, started: m.tick, nextWake: m.tick + policy.minDelay, state: 'scheduled', pending: '' } as LoopRecord).record;
     }),
     scheduleEpisode: input => checked('SharedLoopSchedule', input, () => {
-      const all = read(); fence(all, input.fence); policyCheck(input.policy);
+      const all = readComplete(); fence(all, input.fence); policyCheck(input.policy);
       ensure(input.policy.breaker === 'shared-circuit-v1', 'real breaker policy required');
       ensure(input.currentOwnerRun.owner === 'part-five' && input.currentOwnerRun.name === 'Run'
         && input.currentOwnerRun.id.length > 0, 'current owner Run reference required');
@@ -411,7 +418,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       return managedWrite(all, record);
     }),
     admitLoopAttempt: input => checked('SharedLoopAttemptAdmission', input, () => {
-      const all = read(); fence(all, input.fence);
+      const all = readComplete(); fence(all, input.fence);
       ensure(input.episode.owner === 'part-six' && input.episode.name === 'LoopRecord' && input.episode.id.length > 0,
         'LoopRecord reference owner');
       sourceVectorCheck(input.sourceVector);
@@ -462,7 +469,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       return managedWrite(all, record);
     }),
     recordLoopOutcome: input => checked('SharedLoopOutcome', input, () => {
-      const all = read(); fence(all, input.fence);
+      const all = readComplete(); fence(all, input.fence);
       ensure(input.episode.owner === 'part-six' && input.episode.name === 'LoopRecord' && input.episode.id.length > 0,
         'LoopRecord reference owner'); sourceVectorCheck(input.sourceVector);
       const previous = sharedByEpisode(all, input.episode.id), policy = previous.policy, now = sharedClock();
@@ -558,7 +565,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         encoded(value.scheduledInstant).bytes === encoded(members[index]).bytes), 'exactly one ordered disposition per member required');
       const snapshot = take(spine.store.readForProjection());
       ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length), 'shared pressure or missed-range state unavailable');
-      const facts = snapshot.entries.map(entry => entry.fact), all = rows(facts, host.domain);
+      const facts = evidenceFacts(), all = rows(facts, host.domain);
       const cursor = facts.find(fact => fact.id === input.scanCursor.id && fact.kind === kindFor('ScanCursor'));
       ensure(cursor, 'exact ScanCursor fact required');
       const episode = all.filter(row => row.record.type === 'LoopRecord' && row.record.episode === input.episode.id).at(-1)?.record;
@@ -628,7 +635,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         'MissedRangeRecord reference owner');
       const snapshot = take(spine.store.readForProjection());
       ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length), 'missed-range state unavailable');
-      const latest = missedRows(snapshot.entries.map(entry => entry.fact)).filter(row => row.record.id === reference.id).at(-1);
+      const latest = missedRows(evidenceFacts()).filter(row => row.record.id === reference.id).at(-1);
       ensure(latest, 'missed range unavailable'); missedRangeCheck(latest.record);
       resolveMissedRangeEvidence(latest.record, latest.fact, evidenceFacts(), semanticContext(), host);
       return freeze({ record: latest.record,

@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { canonical, consumeResult, decodeMeasurement } from '../../src/index.js';
 import { createFactStore, decodeEnvelope, decodeHistoricalBody, factId, prepareSnapshot, signEnvelope } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
@@ -8,6 +8,10 @@ import { deriveVerificationAssessment } from '../../src/verification/index.js';
 import type { VerificationAssessment, VerificationPlan, VerificationRequest } from '../../src/verification/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { transportLoopFixture, value } from '../transport/loop-fixture.js';
+
+// This file intentionally exercises many synchronous signed-history rebuilds.
+// Yield between cases so Vitest's worker can service its fixed progress RPC.
+afterEach(() => new Promise<void>(resolve => setImmediate(resolve)));
 
 const pressureScope = { target: 'target:review', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' } as const;
 const loopRef = (loop: SharedLoopRecord) => ({ owner: 'part-six' as const, name: 'LoopRecord' as const, id: loop.episode });

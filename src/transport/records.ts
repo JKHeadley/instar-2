@@ -509,6 +509,9 @@ export function missedRangeEvidence(record: MissedRangeRecord, facts: readonly F
   const rangeFact = history.find(fact => fact.id === range.witness.id && fact.kind === 'calendar-range-proof');
   ensure(range.witness.owner === 'part-two' && range.witness.name === 'FactEnvelope' && rangeFact,
     'calendar range proof is absent');
+  ensure(sameClock(record.asOf, range.through)
+    && record.currentLateness.value === record.asOf.value - range.through.value,
+  'missed range lateness disagrees with signed calendar boundary');
   let members: readonly Clock[];
   try { members = take(host.calendarExpansion.expand({ calendarPolicy: record.calendarPolicy,
     after: range.after, through: range.through, asOf: record.asOf })); }
@@ -678,7 +681,7 @@ export function missedRangeCheck(r: MissedRangeRecord): void {
   ensure(r.orderedMembersDigest === encoded(members).hash, 'missed range membership digest disagrees');
   ensure(r.currentLateness.subject.instance === r.jobInstance
     && encoded(r.currentLateness.at).bytes === encoded(r.asOf).bytes
-    && r.currentLateness.value === r.asOf.value - r.last.value && r.currentLateness.value >= 0,
+    && Number.isSafeInteger(r.currentLateness.value) && r.currentLateness.value >= 0,
   'missed range lateness disagrees with boundary');
   ensure(r.catchUpPolicy === 'none' || r.catchUpPolicy === 'latest', 'unknown catch-up policy');
   if (catchUpRun !== null) referenceCheck(catchUpRun, 'part-five', 'Run');
@@ -1078,6 +1081,8 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
   const added = record.outcomeLog.find(outcome => !previous.outcomeLog.some(old => old.attempt === outcome.attempt));
   ensure(added && previous.pendingAttempts.includes(added.attempt), 'outcome completion was not pending');
   const attempt = previous.attemptLog.find(value => value.id === added.attempt)!;
+  ensure(encoded(added.sourceVector).bytes === encoded(attempt.sourceVector).bytes,
+    'outcome frontier differs from its admitted attempt');
   ensure(atOrAfter(added.observedAt, attempt.admittedAt) && atOrAfter(record.transitionAt, added.observedAt),
     'outcome evidence or receipt clock precedes its admission');
   ensure(encoded(record.outcomeLog).bytes === encoded(sortedOutcomes(record.outcomeLog)).bytes,
@@ -1089,14 +1094,22 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
       record.transitionAt, record.pressureKey, record.operationFamily, host, false))
     : added.restoration.filter(reference => record.closureEvidence.some(value => value.id === reference.id));
   const expected = sharedOutcomeDecision(previous, all, added, record.transitionAt, completeRestoration);
-  const actual = { state: record.state, transition: record.transition, nextEligible: record.nextEligible,
-    totalFailures: record.totalFailures, failureCount: record.failureCount, rollingAttempts: record.rollingAttempts,
-    rollingResource: record.rollingResource, breakerHasOpened: record.breakerHasOpened,
-    breakerOpenCount: record.breakerOpenCount, breakerFirstOpened: record.breakerFirstOpened,
-    halfOpenAdmitted: record.halfOpenAdmitted, halfOpenSucceeded: record.halfOpenSucceeded,
-    pendingAttempts: record.pendingAttempts, outcomeLog: record.outcomeLog,
-    outcomeWindowDigest: record.outcomeWindowDigest, closureEvidence: record.closureEvidence };
-  ensure(encoded(actual).bytes === encoded(expected).bytes && record.nextWake === expected.nextEligible.value,
+  const successor = freeze({ ...previous,
+    schemaVersion: record.schemaVersion, domain: record.domain, command: record.command,
+    predecessor: record.predecessor, authority: record.authority, tick: record.tick,
+    nextWake: expected.nextEligible.value, state: expected.state,
+    pending: expected.pendingAttempts[0] ?? '', transition: expected.transition,
+    transitionAt: record.transitionAt, nextEligible: expected.nextEligible,
+    sourceVector: previous.sourceVector, policyGeneration: record.policyGeneration,
+    totalFailures: expected.totalFailures, failureCount: expected.failureCount,
+    rollingAttempts: expected.rollingAttempts, rollingResource: expected.rollingResource,
+    breakerHasOpened: expected.breakerHasOpened, breakerOpenCount: expected.breakerOpenCount,
+    breakerFirstOpened: expected.breakerFirstOpened, halfOpenAdmitted: expected.halfOpenAdmitted,
+    halfOpenSucceeded: expected.halfOpenSucceeded, pendingAttempts: expected.pendingAttempts,
+    outcomeLog: expected.outcomeLog, outcomeWindowDigest: expected.outcomeWindowDigest,
+    closureEvidence: expected.closureEvidence,
+  } as SharedLoopRecord);
+  ensure(encoded(record).bytes === encoded(successor).bytes,
     'breaker decision differs from the complete admitted outcome frontier');
 }
 export function loopActive(all: readonly TransportFact[], loop: LoopRecord): boolean {
