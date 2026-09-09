@@ -4,7 +4,7 @@ import { canonical, decode, decodeMeasurement } from '../../src/index.js';
 import type { Clock, Json, ProvenanceInput, Scope } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import type { CausalFrontier, FactEnvelope, FactSchema } from '../../src/facts/index.js';
-import { createIntakePort } from '../../src/intake/index.js';
+import { createIntakePort, scheduledIntakeFactSchemas } from '../../src/intake/index.js';
 import type { InboundRoute, IntakeDependencies } from '../../src/intake/index.js';
 import { intakeFixture, json, value } from './fixtures.js';
 
@@ -16,6 +16,7 @@ export const scheduledPrincipalId = 'package:scheduler';
 
 export function scheduledFixture(options: { directory?: string; machine?: 'machine-a'|'machine-b' } = {}) {
   const base = intakeFixture(options), machine = options.machine ?? 'machine-a';
+  Object.assign(base.context, { schemas: [...base.context.schemas, ...scheduledIntakeFactSchemas(base.f.scope)] });
   const declarations = JSON.parse(readFileSync('src/intake/port.declarations.json', 'utf8')) as object[];
   const parser = base.r.declaration(scheduledAdapterId, 'parsers', {
     fixture: 'check', authenticationClass: [{ stimulusType: 'scheduled-tick', class: 'verified' }],

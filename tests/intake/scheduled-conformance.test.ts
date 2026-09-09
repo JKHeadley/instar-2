@@ -36,6 +36,21 @@ it('P4-ST-09 V19 a signed malformed Run cannot hide a valid pending admission', 
   expect(value(pending(x.f)).admissions).toEqual([admission.fact]);
 });
 
+it('P4-ST-09 a clean Run payload with a mismatched outer subject cannot hide pending work', () => {
+  const x = setup(), admission = scheduled(value(x.f.port().receiveScheduledTick(x.input)));
+  const harness = scheduledRunHarness(x.f, admission);
+  value(harness.graph.open(harness.run));
+  const original = x.f.frames.pop() as any, previous = x.f.frames.at(-1) as any;
+  const mismatched = x.f.f.next(previous, { kind: original.kind, principal: original.principal,
+    provenance: original.provenance, body: { ...original.body, run: 'run:forged-subject' },
+    predecessors: original.predecessors }, x.f.context);
+  x.f.frames.push(mismatched);
+  const snapshot = value(prepareSnapshot(x.f.frames as any, { ...x.f.context, facts: x.f.frames as any }));
+  const row = snapshot.entries.find(candidate => candidate.fact.id === mismatched.id)!;
+  expect(row.taint).toEqual([]); expect(row.conflicts).toEqual([]);
+  expect(value(pending(x.f)).admissions).toEqual([admission.fact]);
+});
+
 it('P4-ST-10 V24 pending projection refuses an admission that differs from its preserved tick', () => {
   const x = setup(); value(x.f.port().receiveScheduledTick(x.input));
   const original = x.f.frames.pop() as any, previous = x.f.frames.at(-1) as any;

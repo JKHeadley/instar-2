@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { canonical, consumeResult } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
-import { classifySlicePayload } from '../../src/intake/index.js';
+import { classifySlicePayload, intakeFactSchemas, intakeKinds } from '../../src/intake/index.js';
 import { intakeFixture, message, refused, route, stop, value } from './fixtures.js';
 
 const wire = (result: Result<unknown>): unknown => consumeResult<unknown, unknown>(result, {
@@ -12,6 +12,10 @@ const wire = (result: Result<unknown>): unknown => consumeResult<unknown, unknow
 
 it('P4-PRESERVE-01 keeps every pre-existing Part Four public behavior byte-for-byte', () => {
   const conversation = intakeFixture(), conversationPort = conversation.port();
+  const preScheduledKinds = ['intake-receipt', 'intake-resolved', 'intake-admitted', 'intake-held', 'intake-expired',
+    'intake-collapse', 'intake-mismatch', 'intake-stop', 'intake-stop-signal', 'intake-verified-act', 'conversation-binding'];
+  expect(intakeKinds).toEqual(preScheduledKinds);
+  expect(intakeFactSchemas(conversation.f.scope).map(schema => schema.kind)).toEqual(preScheduledKinds);
   const admitted = conversationPort.receive(message('baseline'), route);
   const duplicate = conversationPort.receive(message('baseline'), route);
   const mismatch = conversationPort.receive(message('changed'), route);

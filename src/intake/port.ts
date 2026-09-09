@@ -10,7 +10,7 @@ import { boundary,IntakeFailure,json,object,requireIntake,same,take,text } from 
 import type { ConstitutionalReference,InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort,PendingScheduledAdmissions,
   PendingScheduledAdmissionsInput,ScheduledTickAdmission,SenderEvidence,VerifiedActAdmission,VerifiedActDisposition } from './contracts.js';
 import { buildVerifiedActRecord,intakeArrival,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,
-  intakeVerifiedActRegistration,intakeWorkRegistration } from './records.js';
+  intakeVerifiedActRegistration,intakeWorkRegistration,scheduledIntakeFactSchemas } from './records.js';
 
 const reference=(f: FactEnvelope): FactEnvelopeReference => Object.freeze({ owner: 'part-two',name: 'FactEnvelope',id: f.id });
 type Classified={ kind: 'conversation'; ask: string; flags: readonly 'cannot-decide'[] }|{ kind: 'stop' }|{ kind: 'needs-judgment' };
@@ -56,7 +56,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     // The scheduled principal schema is additive. Existing conversation-only
     // compositions remain constructible and the scheduled arm checks its own
     // schema when that operation is invoked.
-    for(const schema of intakeFactSchemas(scope).filter(s => s.kind!=='intake-scheduled-principal')) requireIntake(initial.schemas.some(s => same(s,schema)),
+    for(const schema of intakeFactSchemas(scope)) requireIntake(initial.schemas.some(s => same(s,schema)),
       `P4-NF-06/12: required owner schema changed or missing: ${schema.kind}`);
     const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id));
     const stopRegistration=take(intakeStopRegistration(b,deps.author.principal.id));
@@ -437,7 +437,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               'scheduled intake: configured author is not the authenticated package system principal','standing');
             const discovery=scheduledDiscovery(input.discovery,eventId,at,preserved);
             const standing=scheduledStanding(principal,at,preserved);
-            const scheduledPrincipalSchema=intakeFactSchemas(scope).find(schema => schema.kind==='intake-scheduled-principal')!;
+            const scheduledPrincipalSchema=scheduledIntakeFactSchemas(scope)[0]!;
             requireIntake(context(preserved).schemas.some(schema => same(schema,scheduledPrincipalSchema)),
               'P4-NF-06/12: required scheduled owner schema changed or missing: intake-scheduled-principal');
             const existingPrincipal=read(preserved).find(f => f.kind==='intake-scheduled-principal'
@@ -506,6 +506,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         for(const candidate of valid) requireIntake(causalCone(candidate.row.fact,facts).every(visible),
           'scheduled intake: frontier omits an admission dependency','stale-base');
         const validIds=new Set(valid.map(candidate => candidate.row.fact.id));
+        const historicalContext={ ...context(initial.preserved),facts };
         const opened=new Set(snapshot.filter(row => visible(row.fact)&&row.fact.kind==='run-opening'
           &&row.taint.length===0&&row.conflicts.length===0&&causalCone(row.fact,facts).every(visible)).flatMap(row => {
           try {
@@ -514,7 +515,16 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             const recordField=schema?.fields.record;
             requireIntake(recordField?.kind==='owned'&&recordField.owner==='part-five'&&recordField.name==='Run',
               'scheduled intake: Run opening owner decoder is missing','integrity');
-            const record=object(object(row.body).record!),opening=object(record.opening!);
+            // A clean P2 status is necessary but the consuming projection still
+            // re-runs Part Five's historical owner decoder over the signed cone.
+            // The outer subject is then bound to that decoded Run rather than
+            // trusting either raw field independently.
+            const decoded=take(decodeHistoricalBody(row.fact,historicalContext,
+              causalStanding(row.fact,historicalContext,false).decode));
+            requireIntake(decoded.taint.length===0,'scheduled intake: Run opening evidence is unavailable','integrity');
+            const record=object(json(decoded.fields.record!)),opening=object(record.opening!);
+            requireIntake(record.type==='Run'&&object(row.body).run===record.id,
+              'scheduled intake: Run opening subject differs from its owner-decoded record','integrity');
             const id=text(opening.id,'Run opening admission');
             return opening.owner==='part-two'&&opening.name==='FactEnvelope'&&validIds.has(id)
               &&row.fact.predecessors.required.includes(id)? [id]:[];

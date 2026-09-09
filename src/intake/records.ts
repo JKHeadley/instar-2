@@ -8,7 +8,8 @@ import { json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ProjectionDefinition } from '../projections/index.js';
 
 export const intakeKinds=Object.freeze(['intake-receipt','intake-resolved','intake-admitted','intake-held','intake-expired',
-  'intake-scheduled-principal','intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','intake-verified-act','conversation-binding'] as const);
+  'intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','intake-verified-act','conversation-binding'] as const);
+export const scheduledIntakeKinds=Object.freeze(['intake-scheduled-principal'] as const);
 
 // Different scope dimensions are not evidence of disjoint work.
 export function intakeScopesOverlap(a: Scope,b: Scope): boolean {
@@ -53,7 +54,6 @@ export function intakeFactSchemas(scope: Scope): readonly FactSchema[] {
         work: { kind: 'owned',owner: 'part-four',name: 'IntakeWork' },binding: short
       }
     },
-    { ...shared,kind: 'intake-scheduled-principal',fields: { principal: { kind: 'constitutional',type: 'VerifiedPrincipal' } } },
     {
       ...shared,kind: 'intake-held',fields: {
         ...common,input: { kind: 'constitutional',type: 'UnresolvedInput' },
@@ -84,6 +84,17 @@ export function intakeFactSchemas(scope: Scope): readonly FactSchema[] {
       }
     },
   ];
+}
+
+// Additive scheduled ingress registration. Keeping it separate preserves the
+// exact pre-scheduled intakeKinds and intakeFactSchemas outputs for existing
+// conversation-only compositions.
+export function scheduledIntakeFactSchemas(scope: Scope): readonly FactSchema[] {
+  return [{
+    kind: 'intake-scheduled-principal',version: 1,machineScope: 'shared',standing: 'requester',
+    action: 'work',scope,causallyBound: false,requiredReferences: [],authority: 'none',
+    fields: { principal: { kind: 'constitutional',type: 'VerifiedPrincipal' } }
+  }];
 }
 
 const vaText={ kind: 'text',maxLength: 1048576 } as const;
