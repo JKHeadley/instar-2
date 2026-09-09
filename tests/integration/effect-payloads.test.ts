@@ -1,4 +1,5 @@
-import { expect, it } from 'vitest';
+import { setTimeout as yieldWorker } from 'node:timers/promises';
+import { beforeEach, expect, it } from 'vitest';
 import { canonical, consumeOutcome, decode } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
 import { decodeEnvelope, decodeHistoricalBody } from '../../src/facts/index.js';
@@ -12,6 +13,11 @@ import { typedEffectFixture } from '../effects/typed-effect-fixture.js';
 import { payloadInput } from '../effects/payload-fixtures.js';
 import { typedJointFixture } from '../effects/typed-joint-fixture.js';
 import { privateKey } from '../facts/fixtures.js';
+
+// These real-stack cases are intentionally synchronous and collectively exceed
+// Vitest's fixed 60s worker-RPC deadline. Yield between cases so the worker can
+// receive the prior task-update acknowledgement without changing test semantics.
+beforeEach(async () => { await yieldWorker(1); });
 
 const identify = (input: Record<string, unknown>, host: ReturnType<typeof typedEffectFixture>['host']): TypedEffectPayload => {
   const draft = Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'id' && key !== 'targetDigest'));
