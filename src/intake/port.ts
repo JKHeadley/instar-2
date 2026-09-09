@@ -10,7 +10,7 @@ import { boundary,IntakeFailure,json,object,requireIntake,same,take,text } from 
 import type { ConstitutionalReference,InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort,PendingScheduledAdmissions,
   PendingScheduledAdmissionsInput,ScheduledTickAdmission,SenderEvidence,VerifiedActAdmission,VerifiedActDisposition } from './contracts.js';
 import { buildVerifiedActRecord,intakeArrival,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,
-  intakeVerifiedActRegistration,intakeWorkRegistration,scheduledIntakeFactSchemas } from './records.js';
+  intakeVerifiedActRegistration,intakeWorkRegistration,scheduledIntakeFactSchemas,decodeScheduledTickBody } from './records.js';
 
 const reference=(f: FactEnvelope): FactEnvelopeReference => Object.freeze({ owner: 'part-two',name: 'FactEnvelope',id: f.id });
 type Classified={ kind: 'conversation'; ask: string; flags: readonly 'cannot-decide'[] }|{ kind: 'stop' }|{ kind: 'needs-judgment' };
@@ -237,21 +237,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       }));
       throw new Error('unreachable');
     }
-    const isHash=(value: unknown): value is `sha256:${string}` => typeof value==='string'&&/^sha256:[a-f0-9]{64}$/.test(value);
     const exact=(value: Record<string,Json>,keys: readonly string[],detail: string) =>
       requireIntake(Object.keys(value).length===keys.length&&Object.keys(value).every(key => keys.includes(key)),detail);
-    function rfc3339z(value: number): string {
-      requireIntake(Number.isSafeInteger(value),'scheduled intake: instant must be integral Unix milliseconds','decode');
-      const seconds=Math.floor(value/1000),milliseconds=value-seconds*1000,days=Math.floor(seconds/86400),inDay=seconds-days*86400;
-      const z=days+719468,era=Math.floor(z/146097),doe=z-era*146097;
-      const yoe=Math.floor((doe-Math.floor(doe/1460)+Math.floor(doe/36524)-Math.floor(doe/146096))/365);
-      let year=yoe+era*400;
-      const doy=doe-(365*yoe+Math.floor(yoe/4)-Math.floor(yoe/100)),mp=Math.floor((5*doy+2)/153);
-      const day=doy-Math.floor((153*mp+2)/5)+1,month=mp+(mp<10?3:-9); year+=month<=2?1:0;
-      requireIntake(year>=0&&year<=9999,'scheduled intake: instant exceeds four-digit RFC-3339-Z range','decode');
-      const pad=(n: number,width: number) => String(n).padStart(width,'0');
-      return `${pad(year,4)}-${pad(month,2)}-${pad(day,2)}T${pad(Math.floor(inDay/3600),2)}:${pad(Math.floor(inDay%3600/60),2)}:${pad(inDay%60,2)}.${pad(milliseconds,3)}Z`;
-    }
     function historicalRows(preserved: string) {
       const facts=read(preserved),rows=statuses(preserved);
       const grants=rows.flatMap(row => row.historical
@@ -344,28 +331,10 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
           &&['jobInstance','scheduledInstant','packageDigest','calendarPolicyVersion','timeZoneDataVersion'].every(key => ask[key]!==undefined);
       } catch { return false; }
     }
-    function scheduledTick(raw: string,eventId: string,preserved: string) {
-      let tick: Record<string,Json>;
-      try { tick=object(JSON.parse(raw) as Json); }
-      catch { throw new IntakeFailure('scheduled intake: malformed canonical tick bytes','decode'); }
-      exact(tick,['schemaVersion','jobInstance','scheduledInstant','packageDigest','calendarPolicyVersion','timeZoneDataVersion'],
-        'scheduled intake: malformed canonical tick body');
-      requireIntake(take(canonical(tick)).bytes===raw&&tick.schemaVersion===1,
-        'scheduled intake: tick bytes are not canonical schema version 1','decode');
-      const jobInstance=text(tick.jobInstance,'scheduled job instance');
-      requireIntake(isHash(tick.packageDigest),'scheduled intake: package digest must be SHA-256','decode');
-      text(tick.calendarPolicyVersion,'calendar policy version'); text(tick.timeZoneDataVersion,'time-zone-data version');
-      const scheduledInstant=take(decodeMeasurement('clock',tick.scheduledInstant,context(preserved).decode));
-      const expectedEventId=take(canonical([tick.schemaVersion,jobInstance,rfc3339z(scheduledInstant.value)])).hash;
-      requireIntake(eventId===expectedEventId,'scheduled intake: event id differs from namespace/job/instant identity','integrity');
-      return { tick,jobInstance,scheduledInstant };
-    }
     type ScheduledResolution={ kind: 'valid'; row: FactStatus; principal: VerifiedPrincipal }|{ kind: 'partial' };
     function resolveScheduledAdmission(row: FactStatus,facts: readonly FactEnvelope[],preserved: string): ScheduledResolution {
       requireIntake(row.fact.kind==='intake-admitted'&&isScheduledAdmission(row.fact),
         'scheduled intake: pending reference has wrong kind or subject','integrity');
-      requireIntake(row.conflicts.length===0&&!row.taint.some(taint => taint!=='evidence-unavailable'),
-        'scheduled intake: pending admission is contested','standing');
       if(row.taint.includes('evidence-unavailable')) return { kind: 'partial' };
       const c=context(preserved),snapshot=statuses(preserved),body=object(row.body),intentBody=object(body.intent!);
       const cone=new Set(causalCone(row.fact,facts).map(fact => fact.id));
@@ -393,10 +362,12 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       if(capture?.status!=='available') return { kind: 'partial' };
       requireIntake(capture.bytes!==null&&capture.hash===captureInput.hash&&capture.hash===body.rawHash
         &&hashBytes(capture.bytes)===capture.hash,'scheduled intake: preserved tick capture is missing or changed','integrity');
-      const parsed=scheduledTick(capture.bytes,arrival.route.eventId,preserved);
+      const parsed=decodeScheduledTickBody(capture.bytes,arrival.route.eventId,c.decode);
       requireIntake(body.adapter===receiptBody.adapter&&body.channel===arrival.route.channel&&body.sender===arrival.route.sender
         &&body.identityEpoch===arrival.route.identityEpoch&&body.eventId===arrival.route.eventId,
       'scheduled intake: admission route differs from its preserved receipt','integrity');
+      requireIntake(same(intentBody.ask,parsed.tick),
+        'scheduled intake: admitted Intent differs from the preserved tick','integrity');
 
       const intent=row.historical.find((record): record is HistoricalRead<Intent> => record.view.type==='Intent');
       requireIntake(intent?.captureStatus==='available','scheduled intake: admitted Intent is unavailable','integrity');
@@ -410,6 +381,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       requireIntake(intent.view.id===body.logicalId&&intent.view.via===adapterId&&intent.view.raw===capture.hash
         &&same(intent.view.receivedAt,originalReceipt.at)&&same(intent.view.ask,parsed.tick)&&same(intent.view.under,directiveIds),
       'scheduled intake: admitted Intent differs from the preserved tick','integrity');
+      requireIntake(row.conflicts.length===0&&!row.taint.some(taint => taint!=='evidence-unavailable'),
+        'scheduled intake: pending admission is contested','standing');
       const principal=intent.view.principal as VerifiedPrincipal;
       requireIntake(principal.kind==='system'&&principal.id===arrival.route.sender&&principal.provenance.class==='verified'
         &&principal.provenance.authenticated.recordType==='package-system-principal'
@@ -494,7 +467,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               const declared=object(row); return declared.stimulusType==='scheduled-tick'&&declared.class==='verified';
             }),'scheduled intake: adapter is not registered for verified scheduled ticks','standing');
             checkDedup(at,preserved);
-            const { tick,jobInstance,scheduledInstant }=scheduledTick(input.raw,eventId,preserved);
+            const { tick,jobInstance,scheduledInstant }=decodeScheduledTickBody(input.raw,eventId,context(preserved).decode);
             const authenticated=authenticateSender(input.raw,{ channel,sender,identityEpoch,eventId },at,preserved,'scheduled-tick');
             requireIntake(authenticated.provenance.class==='verified'&&authenticated.e.principalKind==='system'
               &&authenticated.e.principalId===sender&&authenticated.provenance.authenticated.recordType==='package-system-principal',

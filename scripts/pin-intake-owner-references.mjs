@@ -22,7 +22,7 @@ const manifest = { schemaVersion: 1, owner: 'part-four',
     ...Array.from({ length: 2 }, (_, i) => ({ id: `P4-ST-${String(i + 7).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/e2e/intake-scheduled.test.ts') })),
     ...Array.from({ length: 15 }, (_, i) => ({ id: `P4-ST-${String(i + 9).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/intake/scheduled-conformance.test.ts') })),
     ...Array.from({ length: 2 }, (_, i) => ({ id: `P4-ST-${String(i + 24).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/intake/scheduled-repair3.test.ts') })),
-    ...Array.from({ length: 2 }, (_, i) => ({ id: `P4-ST-${String(i + 26).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/intake/scheduled-repair4.test.ts') })),
+    ...Array.from({ length: 4 }, (_, i) => ({ id: `P4-ST-${String(i + 26).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/intake/scheduled-repair4.test.ts') })),
     { id: 'P4-PRESERVE-01', stage: 'build', artifact: artifact('tests/intake/preexisting-preservation.test.ts') },
   ],
   probes: [], decoders, documents: [{ id: 'intake.contract', artifact: artifact('docs/08-the-intake.md') }] };

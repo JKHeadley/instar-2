@@ -1,10 +1,10 @@
-import type { BoundaryContext,Clock,Evidence,Hash,HistoricalRead,Inventory,Json,Provenance,RegisterGenerationReference,Scope,StandingGrant,VerifiedPrincipal } from '../index.js';
+import type { BoundaryContext,Clock,DecodeContext,Evidence,Hash,HistoricalRead,Inventory,Json,Provenance,RegisterGenerationReference,Scope,StandingGrant,VerifiedPrincipal } from '../index.js';
 import { causalCone,causalStanding,decodeHistoricalBody,hashBytes,registerOwnedBody } from '../facts/index.js';
-import { canonical,decode,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
+import { canonical,decode,decodeMeasurement,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
 import { prepareSnapshot } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactSchema,FactSnapshot,FactStatus,OwnedBodyRegistration,OwnedShape } from '../facts/index.js';
 import type { Result } from '../index.js';
-import { json,object,requireIntake,same,take,text } from './boundary.js';
+import { IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ProjectionDefinition } from '../projections/index.js';
 
 export const intakeKinds=Object.freeze(['intake-receipt','intake-resolved','intake-admitted','intake-held','intake-expired',
@@ -118,6 +118,40 @@ export type VerifiedActResolution=Readonly<{ record: VerifiedActRecord; proof: P
 
 function exact(v: Record<string,Json>,keys: readonly string[],detail: string): void {
   requireIntake(Object.keys(v).length===keys.length&&Object.keys(v).every(k => keys.includes(k)),detail,'standing');
+}
+function rfc3339z(value: number): string {
+  requireIntake(Number.isSafeInteger(value),'scheduled intake: instant must be integral Unix milliseconds','decode');
+  const seconds=Math.floor(value/1000),milliseconds=value-seconds*1000,days=Math.floor(seconds/86400),inDay=seconds-days*86400;
+  const z=days+719468,era=Math.floor(z/146097),doe=z-era*146097;
+  const yoe=Math.floor((doe-Math.floor(doe/1460)+Math.floor(doe/36524)-Math.floor(doe/146096))/365);
+  let year=yoe+era*400;
+  const doy=doe-(365*yoe+Math.floor(yoe/4)-Math.floor(yoe/100)),mp=Math.floor((5*doy+2)/153);
+  const day=doy-Math.floor((153*mp+2)/5)+1,month=mp+(mp<10?3:-9); year+=month<=2?1:0;
+  requireIntake(year>=0&&year<=9999,'scheduled intake: instant exceeds four-digit RFC-3339-Z range','decode');
+  const pad=(n: number,width: number) => String(n).padStart(width,'0');
+  return `${pad(year,4)}-${pad(month,2)}-${pad(day,2)}T${pad(Math.floor(inDay/3600),2)}:${pad(Math.floor(inDay%3600/60),2)}:${pad(inDay%60,2)}.${pad(milliseconds,3)}Z`;
+}
+
+// One parser serves live intake, owner-body admission and signed replay. A
+// caller cannot promote an Intent whose ask merely looks scheduled: its exact
+// fields must be witnessed by the preserved canonical tick capture.
+export function decodeScheduledTickBody(raw: string,eventId: string,context: DecodeContext) {
+  let tick: Record<string,Json>;
+  try { tick=object(JSON.parse(raw) as Json); }
+  catch { throw new IntakeFailure('scheduled intake: malformed canonical tick bytes','decode'); }
+  const keys=['schemaVersion','jobInstance','scheduledInstant','packageDigest','calendarPolicyVersion','timeZoneDataVersion'];
+  requireIntake(Object.keys(tick).length===keys.length&&Object.keys(tick).every(key => keys.includes(key)),
+    'scheduled intake: malformed canonical tick body','decode');
+  requireIntake(take(canonical(tick)).bytes===raw&&tick.schemaVersion===1,
+    'scheduled intake: tick bytes are not canonical schema version 1','decode');
+  const jobInstance=text(tick.jobInstance,'scheduled job instance');
+  requireIntake(typeof tick.packageDigest==='string'&&/^sha256:[a-f0-9]{64}$/.test(tick.packageDigest),
+    'scheduled intake: package digest must be SHA-256','decode');
+  text(tick.calendarPolicyVersion,'calendar policy version'); text(tick.timeZoneDataVersion,'time-zone-data version');
+  const scheduledInstant=take(decodeMeasurement('clock',tick.scheduledInstant,context));
+  const expectedEventId=take(canonical([tick.schemaVersion,jobInstance,rfc3339z(scheduledInstant.value)])).hash;
+  requireIntake(eventId===expectedEventId,'scheduled intake: event id differs from namespace/job/instant identity','integrity');
+  return { tick,jobInstance,scheduledInstant };
 }
 function integer(v: Json|undefined,name: string): number {
   requireIntake(typeof v==='number'&&Number.isSafeInteger(v),`verified act: ${name} must be a safe integer`,'standing'); return v;
@@ -356,6 +390,16 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
         const scheduled=scheduledAsk&&Object.keys(scheduledAsk).length===6&&scheduledAsk.schemaVersion===1
           &&['jobInstance','scheduledInstant','packageDigest','calendarPolicyVersion','timeZoneDataVersion'].every(key => scheduledAsk[key]!==undefined);
         if(scheduled) {
+          const receiptBody=object(receipt.body),capturePin=object(receiptBody.capture!);
+          const capture=c.facts.captures[text(capturePin.reference,'scheduled capture reference')];
+          if(c.mode==='origin'||capture?.status==='available') {
+            requireIntake(capture?.status==='available'&&capture.bytes!==null&&capture.hash===capturePin.hash
+              &&capture.hash===receiptBody.rawHash&&capture.hash===body.rawHash&&hashBytes(capture.bytes)===capture.hash,
+            'scheduled intake: preserved tick capture is missing or changed','integrity');
+            const parsed=decodeScheduledTickBody(capture.bytes,text(body.eventId,'scheduled event id'),c.facts.decode);
+            requireIntake(same(scheduledAsk,parsed.tick),
+              'scheduled intake: admitted Intent differs from the preserved tick','integrity');
+          }
           const coneIds=new Set(cone.map(f => f.id));
           const collectedGrants=[...c.facts.historicalGrants??[]],collectedRevocations=[...c.facts.historicalRevocations??[]];
           const historicalContext={ ...c.facts,historicalGrants: collectedGrants,historicalRevocations: collectedRevocations };

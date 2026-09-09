@@ -287,7 +287,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/scheduled-repair4.test.ts",
-        "hash": "sha256:a4d788c0eb12ccd5559f599c4736dfa1c7779c0b4e780505d1ec990421b521ef"
+        "hash": "sha256:9eef69cd8dc392e751955005ca3a698cb0ae4540925ee889f94ec03c5fad2206"
       }
     },
     {
@@ -295,7 +295,23 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/scheduled-repair4.test.ts",
-        "hash": "sha256:a4d788c0eb12ccd5559f599c4736dfa1c7779c0b4e780505d1ec990421b521ef"
+        "hash": "sha256:9eef69cd8dc392e751955005ca3a698cb0ae4540925ee889f94ec03c5fad2206"
+      }
+    },
+    {
+      "id": "P4-ST-28",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-repair4.test.ts",
+        "hash": "sha256:9eef69cd8dc392e751955005ca3a698cb0ae4540925ee889f94ec03c5fad2206"
+      }
+    },
+    {
+      "id": "P4-ST-29",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-repair4.test.ts",
+        "hash": "sha256:9eef69cd8dc392e751955005ca3a698cb0ae4540925ee889f94ec03c5fad2206"
       }
     },
     {
@@ -317,7 +333,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:6c0ec243aa1e2305ad9033c9e99bdd9d1c99a4e283204fb1d820ea1c5304f97a"
+        "hash": "sha256:9865f6c2789409acf76130ba0e21ef48404b9b19064a51e1a17028313529788a"
       }
     },
     {
@@ -328,7 +344,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:6c0ec243aa1e2305ad9033c9e99bdd9d1c99a4e283204fb1d820ea1c5304f97a"
+        "hash": "sha256:9865f6c2789409acf76130ba0e21ef48404b9b19064a51e1a17028313529788a"
       }
     },
     {
@@ -339,7 +355,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:6c0ec243aa1e2305ad9033c9e99bdd9d1c99a4e283204fb1d820ea1c5304f97a"
+        "hash": "sha256:9865f6c2789409acf76130ba0e21ef48404b9b19064a51e1a17028313529788a"
       }
     },
     {
@@ -350,7 +366,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:6c0ec243aa1e2305ad9033c9e99bdd9d1c99a4e283204fb1d820ea1c5304f97a"
+        "hash": "sha256:9865f6c2789409acf76130ba0e21ef48404b9b19064a51e1a17028313529788a"
       }
     },
     {

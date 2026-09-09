@@ -5,8 +5,10 @@ import { join } from 'node:path';
 import { decode } from '../../src/index.js';
 import { authorAndAppend, createFactStore, prepareSnapshot } from '../../src/facts/index.js';
 import { intakeWorkRegistration } from '../../src/intake/index.js';
+import type { FactEnvelope } from '../../src/facts/index.js';
 import { json, refused, value } from './fixtures.js';
 import { scheduledFixture } from './scheduled-fixtures.js';
+import { recoverScheduledDisposition, scheduledRunHarness } from './scheduled-run-fixtures.js';
 
 const ref = (id: string) => ({ owner: 'part-two' as const, name: 'FactEnvelope' as const, id });
 function setup() {
@@ -140,4 +142,46 @@ it('P4-ST-27 wrong constitutional type cannot witness scheduled standing', () =>
   refused(f.port().receiveScheduledTick({ raw: tick.raw, route: tick.route, discovery: ref(discovery.fact.id) }),
     'current covering package-system grant');
   expect(f.frames.slice(before).map((fact: any) => fact.kind)).toEqual(['intake-receipt']);
+});
+
+it.each(['jobInstance', 'calendarPolicyVersion'] as const)
+('P4-ST-28 V62 direct append refuses an Intent whose %s differs from its canonical tick', field => {
+  const x = setup(); admit(x.f, x.input);
+  const original = x.f.frames.pop() as FactEnvelope, body = structuredClone(original.body) as Record<string, any>;
+  body.intent.ask[field] = 'different';
+  const registration = value(intakeWorkRegistration({ site: x.f.context.site, preserved: x.f.context.preserved,
+    register: x.f.context.decode.register }, x.f.principal.id));
+  const context = { ...x.f.context, ownedBodies: [...x.f.context.ownedBodies ?? [], registration],
+    decode: { ...x.f.context.decode, provenance: x.f.provenance } };
+  refused(authorAndAppend({ kind: original.kind, schemaVersion: original.schemaVersion, machine: original.machine,
+    principal: json(original.principal), provenance: json(original.provenance), at: json(original.at), body: json(body),
+    required: original.predecessors.required }, context, createFactStore(context, x.f.storage), x.f.deps.author.privateKey),
+  'differs from the preserved tick');
+  expect(x.f.facts().filter(fact => fact.kind === 'intake-admitted')).toEqual([]);
+  expect(() => recoverScheduledDisposition(x.f, original.id)).toThrow('durable scheduled admission absent');
+});
+
+it('P4-ST-28 V63 an unmodified signed scheduled admission opens exactly one Run', () => {
+  const x = setup(), admitted = admit(x.f, x.input), harness = scheduledRunHarness(x.f, admitted);
+  expect(value(harness.graph.open(harness.run)).run.opening).toEqual(admitted.fact);
+  expect(x.f.facts().filter(fact => fact.kind === 'run-opening')).toHaveLength(1);
+});
+
+it('P4-ST-29 NF-66 alternate-schema Evidence must be fresh at owner admission', () => {
+  const x = setup();
+  const alternate = appendConstitutional(x.f, 'other-stale-discovery-evidence', 'evidence', 'Evidence', x.discovery.evidence);
+  x.f.setTime(1101);
+  const before = x.f.frames.length;
+  refused(x.f.port().receiveScheduledTick({ ...x.input, discovery: ref(alternate.id) }));
+  expect(x.f.frames.slice(before).map((fact: any) => fact.kind)).toEqual(['intake-receipt']);
+});
+
+it('P4-ST-29 NF-66 unavailable historical tick capture remains retained but cannot promote', () => {
+  const x = setup(), admitted = admit(x.f, x.input);
+  const admission = x.f.facts().find(fact => fact.id === admitted.fact.id)!;
+  const receipt = x.f.facts().find(fact => fact.id === (admission.body as Record<string, any>).receipt)!;
+  const reference = (receipt.body as Record<string, any>).capture.reference;
+  Object.assign((x.f.context.captures as Record<string, any>)[reference], { status: 'missing', bytes: null });
+  expect(x.f.facts().some(fact => fact.id === admitted.fact.id)).toBe(true);
+  expect(value(pending(x.f)).admissions).toEqual([]);
 });
