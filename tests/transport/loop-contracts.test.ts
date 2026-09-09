@@ -36,8 +36,8 @@ it('SLB-PRESERVE-36 PRESERVE-2 keeps the exact legacy malformed-policy refusal v
 it('SLB-DECODE-02 P6-NF-02 P6-NF-17 closes every real-breaker policy arm and managed record field', () => {
   const f = transportLoopFixture();
   for (const mutation of [
-    { breaker: 'unknown' }, { concurrency: 0 }, { failureThreshold: 0 }, { countedFailureClasses: [] },
-    { halfOpenTrials: 0 }, { halfOpenConcurrency: 3 }, { jitterMaxPermille: 1001 },
+    { breaker: 'unknown' }, { failureThreshold: 0 }, { countedFailureClasses: [] },
+    { halfOpenConcurrency: 3 }, { jitterMaxPermille: 1001 },
     { closeEvidence: 'self-asserted' },
   ]) refused(decodeLoopPolicy({ ...f.sharedPolicy, ...mutation }, f.c));
   expect((value(decodeLoopPolicy({ ...f.sharedPolicy, parentAttemptBudget: 0 }, f.c)) as typeof f.sharedPolicy)
@@ -52,6 +52,21 @@ it('SLB-DECODE-02 P6-NF-02 P6-NF-17 closes every real-breaker policy arm and man
   refused(decodeLoopRecord({ ...scheduled, unknown: true }, f.c), 'undeclared');
   refused(f.spine.append({ ...scheduled, command: 'raw-shared-loop-bypass', predecessor: f.head() }, [f.head()]),
     'owner evidence');
+});
+
+it('SLB-LEGACY-REFUSALS-41 P2 keeps missing and unknown legacy breaker refusals byte-identical to main', () => {
+  const f = transportFixture();
+  const refusal = (input: unknown) => consumeResult(decodeLoopPolicy(input, f.c), {
+    Success: () => { throw new Error('expected refusal'); }, Refused: value => value,
+  });
+  const missing = { ...f.policy } as Record<string, unknown>;
+  delete missing.breaker;
+  expect(refusal(missing)).toEqual({ type: 'Result', schemaVersion: 1, kind: 'Refused', reason: 'decode',
+    detail: 'undeclared or missing field', site: 'facts.admit', failDirection: 'closed',
+    preserved: 'refusal:metadata' });
+  expect(refusal({ ...f.policy, breaker: 'unknown' })).toEqual({ type: 'Result', schemaVersion: 1,
+    kind: 'Refused', reason: 'decode', detail: 'unsupported loop policy', site: 'facts.admit',
+    failDirection: 'closed', preserved: 'refusal:metadata' });
 });
 
 it('SLB-DECODE-03 P6-NF-02 P6-NF-33 closes the exact MissedRangeRecord payload', () => {

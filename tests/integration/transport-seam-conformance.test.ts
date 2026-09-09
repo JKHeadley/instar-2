@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { canonical, consumeResult, decodeMeasurement } from '../../src/index.js';
-import { decodeEnvelope, decodeHistoricalBody, factId, prepareSnapshot, signEnvelope } from '../../src/facts/index.js';
+import { createFactStore, decodeEnvelope, decodeHistoricalBody, factId, prepareSnapshot, signEnvelope } from '../../src/facts/index.js';
+import type { FactEnvelope } from '../../src/facts/index.js';
 import { createBoundedDueScanPort, decodeLoopPolicy, decodeMissedRangeRecord } from '../../src/transport/index.js';
 import type { FenceToken, MissedRangeInput, SharedBreakerLoopPolicy, SharedLoopRecord } from '../../src/transport/index.js';
 import { privateKey } from '../facts/fixtures.js';
@@ -49,6 +50,23 @@ function signedNext(f: Fixture, record: SharedLoopRecord | Record<string, unknow
     body: { record } }, privateKey);
   const ctx = { ...f.ctx, facts: [...f.ctx.facts, ...facts] };
   return { wire, ctx, frame: value(decodeEnvelope(wire, ctx, 'replication')) };
+}
+function mutateLast(s: ReturnType<typeof setup>, transform: (record: SharedLoopRecord) => SharedLoopRecord) {
+  const stored = value(s.f.store.read());
+  const fact = stored.filter(value => value.kind === 'transport-LoopRecord').at(-1)!;
+  const wires = s.f.storage.read() as readonly FactEnvelope[];
+  const wire = wires.find(value => value.id === fact.id)!;
+  const ctx = { ...s.f.ctx, facts: [...s.f.ctx.facts, ...stored.filter(value => value.id !== fact.id)] };
+  const altered = signEnvelope({ ...wire,
+    body: { record: transform((fact.body as unknown as { record: SharedLoopRecord }).record) } }, privateKey);
+  const prefix = wires.filter(value => value.id !== fact.id);
+  const replica = createFactStore(s.f.ctx, { owner: 'part-ten', read: () => prefix,
+    append: (bytes, expected) => s.f.result(() => {
+      expect(prefix.at(-1)?.contentHash ?? null).toBe(expected);
+      prefix.push(JSON.parse(bytes) as FactEnvelope); return { kind: 'local-durable' as const };
+    }) });
+  return { ctx, altered, frame: value(decodeEnvelope(altered, ctx, 'replication')),
+    replicate: () => replica.append(altered, { peer: s.f.host.machine }) };
 }
 function missed(options: Readonly<{ existingInstants?: readonly number[]; catchUpInstants?: readonly number[] }> = {}) {
   const existing = options.existingInstants ?? [110, 120, 130];
@@ -156,6 +174,51 @@ it('SLB-ADMISSION-27 V22 V23 recomputes signed budget and half-open admission de
   rejects(decodeHistoricalBody(forgedTrial.frame, forgedTrial.ctx, forgedTrial.ctx.decode));
   rejects(cooldown.f.store.append(forgedTrial.wire, { peer: 'machine-a' }));
 }, 10000);
+
+it('SLB-TRANSITION-38 V10 V11 V12 reconstructs every signed admission and stop field on replay and replication', () => {
+  const check = (mutation: ReturnType<typeof mutateLast>) => {
+    rejects(decodeHistoricalBody(mutation.frame, mutation.ctx, mutation.ctx.decode));
+    rejects(mutation.replicate());
+  };
+
+  const counted = setup(); counted.f.advance(1); value(attempt(counted, 'complete:first'));
+  value(outcome(counted, 'complete:first')); counted.f.advance(2); value(attempt(counted, 'complete:second'));
+  check(mutateLast(counted, record => ({ ...record, failureCount: 0,
+    outcomeWindowDigest: value(canonical([])).hash })));
+
+  const stopped = setup({ maxAttempts: 1 }); stopped.f.advance(1); value(attempt(stopped, 'stop:first'));
+  value(outcome(stopped, 'stop:first', 'accepted')); stopped.f.advance(1); value(attempt(stopped, 'stop:bound'));
+  check(mutateLast(stopped, record => ({ ...record, rollingAttempts: 0, rollingResource: 0,
+    nextEligible: stopped.f.clock(0), nextWake: 0, breakerOpenCount: 999 })));
+
+  const episode = setup(); episode.f.advance(1); value(attempt(episode, 'episode:bound'));
+  check(mutateLast(episode, record => ({ ...record,
+    attemptLog: record.attemptLog.map(entry => ({ ...entry, episode: 'loop:invented' })) })));
+});
+
+it('SLB-ROLLING-39 V21 recomputes expired rolling counters on the normal stopped transition', () => {
+  const s = setup({ maxDuration: 10, budgetWindow: 5 });
+  s.f.advance(1); value(attempt(s, 'rolling:expired')); value(outcome(s, 'rolling:expired', 'accepted'));
+  s.f.advance(10);
+  expect(value(attempt(s, 'rolling:stop'))).toMatchObject({ state: 'stopped', transition: 'stopped',
+    attempts: 1, episodeAttempts: 1, rollingAttempts: 0, rollingResource: 0 });
+});
+
+it('SLB-ZERO-CAP-40 V13 accepts finite zero work caps and refuses every attempted admission', () => {
+  const f = transportLoopFixture();
+  const policy = value(decodeLoopPolicy({ ...f.sharedPolicy, id: 'policy:zero-work',
+    concurrency: 0, halfOpenTrials: 0, halfOpenConcurrency: 0 }, f.c)) as SharedBreakerLoopPolicy;
+  f.registerPolicy(policy);
+  const token = value(f.api.acquire('lease:zero-work', '', 1000));
+  const loop = value(f.api.scheduleEpisode({ command: 'schedule:zero-work', fence: token,
+    currentOwnerRun: f.run, policy, episodeKey: 'zero-work', operationFamily: 'recovery',
+    pressureScope, sourceVector: f.vector }));
+  f.advance(1);
+  rejects(f.api.admitLoopAttempt({ command: 'admit:zero-work', fence: token, episode: loopRef(loop),
+    attempt: 'zero-work', holderFamily: 'sentinel', worker: 'worker:zero', machine: 'machine-a',
+    resource: 0, sourceVector: f.vector }), 'concurrent work cap');
+  expect((value(f.api.inspect()).at(-1)!.record as SharedLoopRecord).attempts).toBe(0);
+});
 
 it('SLB-CLOSURE-17 V15 V33 restoration references are actual fresh Part Nine facts and rechecked at promotion', () => {
   const absent = open(setup({ halfOpenTrials: 1 })); absent.f.advance(20); value(attempt(absent, 'trial:absent'));

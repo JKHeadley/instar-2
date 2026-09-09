@@ -107,7 +107,11 @@ export function shapeCheck(v: unknown, shape: OwnedShape): void {
   }
 }
 export function policyCheck(p: LoopPolicy): void {
-  if (p && typeof p === 'object' && p.breaker === 'stub-closed') {
+  // Preserve the complete legacy decoder domain, including its validation
+  // order and refusal values. Only the explicitly additive breaker arm enters
+  // the expanded policy decoder.
+  if (!p || typeof p !== 'object' || p.breaker !== 'shared-circuit-v1') {
+    ensure(p !== null && typeof p === 'object' && !Array.isArray(p), 'closed object required');
     const legacy = p as unknown as Record<string, unknown>;
     ensure(Object.keys(legacy).length === Object.keys(legacyPolicyFields).length, 'undeclared or missing field');
     for (const [key, field] of Object.entries(legacyPolicyFields)) {
@@ -117,7 +121,8 @@ export function policyCheck(p: LoopPolicy): void {
     ensure(p.type === 'LoopPolicy' && p.schemaVersion === 1 && p.id.length > 0, 'policy identity');
     ensure(p.maxAttempts >= 0 && p.maxDuration >= 0 && p.minDelay > 0 && p.timeout > 0,
       'finite nonnegative bounds and positive delays required');
-    ensure(p.concurrency === 1 && p.failDirection === 'closed', 'unsupported loop policy');
+    ensure(p.concurrency === 1 && p.failDirection === 'closed' && p.breaker === 'stub-closed',
+      'unsupported loop policy');
     return;
   }
   shapeCheck(p, policy);
@@ -127,14 +132,14 @@ export function policyCheck(p: LoopPolicy): void {
   ensure(p.breaker === 'shared-circuit-v1' && Object.keys(p).length === Object.keys(policyFields).length,
     'real breaker policy is incomplete or unknown');
   ensure(p.failDirection === 'closed', 'unsupported loop fail direction');
-  ensure(p.concurrency > 0 && p.initialDelay > 0 && p.initialDelay >= p.minDelay && p.maxDelay >= p.initialDelay
+  ensure(p.concurrency >= 0 && p.initialDelay > 0 && p.initialDelay >= p.minDelay && p.maxDelay >= p.initialDelay
     && p.backoffMultiplier >= 1 && p.jitterMinPermille >= 0 && p.jitterMaxPermille >= p.jitterMinPermille
     && p.jitterMaxPermille <= 1000, 'invalid delay, multiplier, jitter, or concurrency bounds');
   ensure(p.failureThreshold > 0 && p.countedFailureClasses.length > 0
     && new Set(p.countedFailureClasses).size === p.countedFailureClasses.length
     && p.countedFailureClasses.every(value => value.length > 0), 'invalid counted failure policy');
   ensure(p.acceptedOutcomeWindow > 0 && p.breakerCooldown > 0 && p.maxOpenDuration >= p.breakerCooldown
-    && p.halfOpenTrials > 0 && p.halfOpenConcurrency > 0 && p.halfOpenConcurrency <= p.halfOpenTrials,
+    && p.halfOpenTrials >= 0 && p.halfOpenConcurrency >= 0 && p.halfOpenConcurrency <= p.halfOpenTrials,
   'invalid breaker window, cooldown, or half-open bounds');
   ensure(p.halfOpenConcurrency <= p.concurrency, 'half-open concurrency exceeds total concurrent-work cap');
   ensure(p.closeEvidence === 'part-nine-restoration' && p.reopenEvidence === 'counted-failure', 'unsupported breaker evidence contract');
@@ -791,6 +796,7 @@ export function sharedAdmissionDecision(previous: SharedLoopRecord, all: readonl
   }> {
   ensure(previous.clockBasis === now.subject.instance && atOrAfter(now, previous.transitionAt),
     'incomparable or backward shared pressure time');
+  ensure(input.episode === previous.episode, 'attempt episode differs from the governed loop episode');
   ensure(previous.state !== 'stopped' && previous.state !== 'closed', 'loop episode is terminal');
   const unfinished = previous.attemptLog.filter(attempt => !previous.outcomeLog.some(outcome => outcome.attempt === attempt.id))
     .map(attempt => attempt.id);
@@ -951,6 +957,8 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
   const unchangedAttempts = encoded(record.attemptLog).bytes === encoded(previous.attemptLog).bytes;
   const unchangedOutcomes = encoded(record.outcomeLog).bytes === encoded(previous.outcomeLog).bytes;
   if (record.transition === 'stopped') {
+    const currentOutcomes = windowAt(previous, record.transitionAt);
+    const parentRolling = parentRollingAt(all, previous, record.transitionAt);
     ensure(unchangedAttempts && unchangedOutcomes && previous.pendingAttempts.length === 0
       && record.pendingAttempts.length === 0 && record.attempts === previous.attempts
       && record.episodeAttempts === previous.episodeAttempts && record.totalFailures === previous.totalFailures
@@ -958,6 +966,18 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
         || record.transitionAt.value - previous.started >= record.policy.maxDuration
         || previous.breakerHasOpened === 1 && record.transitionAt.value - previous.breakerFirstOpened.value > record.policy.maxOpenDuration),
     'stopped transition lacks an exhausted bound');
+    const expected = freeze({ ...previous,
+      schemaVersion: record.schemaVersion, domain: record.domain, command: record.command,
+      predecessor: record.predecessor, authority: record.authority, tick: record.tick,
+      nextWake: record.transitionAt.value, state: 'stopped' as const, pending: '',
+      transition: 'stopped' as const, transitionAt: record.transitionAt,
+      nextEligible: record.transitionAt, sourceVector: previous.sourceVector,
+      failureCount: failureCountAt(record.policy, currentOutcomes),
+      rollingAttempts: parentRolling.rollingAttempts, rollingResource: parentRolling.rollingResource,
+      outcomeWindowDigest: encoded(currentOutcomes).hash,
+    } as SharedLoopRecord);
+    ensure(encoded(record).bytes === encoded(expected).bytes,
+      'stopped transition differs from the complete policy and parent-budget calculation');
     return;
   }
   if (record.transition === 'attempt-admitted' || record.transition === 'half-opened') {
@@ -971,14 +991,26 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
     'attempt admission population or clock differs');
     const { mode: _mode, ...input } = attempt;
     const decision = sharedAdmissionDecision(previous, all, record.transitionAt, input);
-    ensure(decision.kind === 'admitted' && encoded(attempt).bytes === encoded(decision.attempt).bytes
-      && record.state === decision.state && record.transition === decision.transition
-      && record.halfOpenAdmitted === decision.halfOpenAdmitted
-      && record.halfOpenSucceeded === decision.halfOpenSucceeded
-      && record.rollingAttempts === decision.rollingAttempts && record.rollingResource === decision.rollingResource
-      && record.attempts === previous.attempts + 1 && record.nextWake === record.transitionAt.value
-      && encoded(record.nextEligible).bytes === encoded(record.transitionAt).bytes,
-    'attempt admission differs from the complete policy and parent-budget calculation');
+    ensure(decision.kind === 'admitted',
+      'attempt admission differs from the complete policy and parent-budget calculation');
+    const currentOutcomes = windowAt(previous, record.transitionAt);
+    const expected = freeze({ ...previous,
+      schemaVersion: record.schemaVersion, domain: record.domain, command: record.command,
+      predecessor: record.predecessor, authority: record.authority, tick: record.tick,
+      attempts: previous.attempts + 1, episodeAttempts: previous.episodeAttempts + 1,
+      nextWake: record.transitionAt.value, state: decision.state,
+      pending: [...previous.pendingAttempts, decision.attempt.id][0]!, transition: decision.transition,
+      transitionAt: record.transitionAt, nextEligible: record.transitionAt,
+      sourceVector: previous.sourceVector,
+      failureCount: failureCountAt(record.policy, currentOutcomes),
+      rollingAttempts: decision.rollingAttempts, rollingResource: decision.rollingResource,
+      halfOpenAdmitted: decision.halfOpenAdmitted, halfOpenSucceeded: decision.halfOpenSucceeded,
+      pendingAttempts: [...previous.pendingAttempts, decision.attempt.id],
+      attemptLog: [...previous.attemptLog, decision.attempt],
+      outcomeWindowDigest: encoded(currentOutcomes).hash,
+    } as SharedLoopRecord);
+    ensure(encoded(record).bytes === encoded(expected).bytes,
+      'attempt admission differs from the complete policy and parent-budget calculation');
     return;
   }
   ensure(record.outcomeLog.length === previous.outcomeLog.length + 1 && unchangedAttempts,

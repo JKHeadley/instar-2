@@ -439,18 +439,23 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         sourceVector: input.sourceVector };
       const decision = sharedAdmissionDecision(previous, all, now, baseAttempt);
       if (decision.kind === 'stopped') {
+        const currentOutcomes = windowAt(previous, now), rolling = parentRollingAt(all, policy, now);
         const m = meta(all, input.command);
         const stopped = freeze({ ...previous, ...m, nextWake: now.value, state: 'stopped', pending: '',
-          transition: 'stopped', transitionAt: now, nextEligible: now, sourceVector: input.sourceVector } as SharedLoopRecord);
+          transition: 'stopped', transitionAt: now, nextEligible: now, sourceVector: previous.sourceVector,
+          failureCount: failureCountAt(policy, currentOutcomes), ...rolling,
+          outcomeWindowDigest: outcomeDigest(policy, previous.outcomeLog, now) } as SharedLoopRecord);
         return managedWrite(all, stopped);
       }
       const { attempt } = decision;
       const attemptLog = [...previous.attemptLog, attempt];
-      const pendingAttempts = [...previous.pendingAttempts, input.attempt], m = meta(all, input.command);
+      const pendingAttempts = [...previous.pendingAttempts, input.attempt], currentOutcomes = windowAt(previous, now);
+      const m = meta(all, input.command);
       const record = freeze({ ...previous, ...m, attempts: attemptLog.length, episodeAttempts: previous.episodeAttempts + 1,
         nextWake: now.value, state: decision.state, pending: pendingAttempts[0]!, transition: decision.transition, transitionAt: now,
-        policyGeneration: current.generation,
-        nextEligible: now, sourceVector: input.sourceVector, rollingAttempts: decision.rollingAttempts,
+        nextEligible: now, sourceVector: previous.sourceVector,
+        failureCount: failureCountAt(policy, currentOutcomes), outcomeWindowDigest: outcomeDigest(policy, previous.outcomeLog, now),
+        rollingAttempts: decision.rollingAttempts,
         rollingResource: decision.rollingResource, halfOpenAdmitted: decision.halfOpenAdmitted,
         halfOpenSucceeded: decision.halfOpenSucceeded,
         pendingAttempts, attemptLog } as SharedLoopRecord);

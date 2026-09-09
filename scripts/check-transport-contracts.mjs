@@ -87,6 +87,10 @@ export const transportSeamEvidence = [
   ['SLB-ACTIVE-POLICY-35', 'integration', 'V13 active policy consistency'],
   ['SLB-PRESERVE-36', 'unit', 'PRESERVE-2 exact legacy refusal'],
   ['SLB-MISSED-SUCCESSOR-37', 'integration', 'V21 actual member-completion successor'],
+  ['SLB-TRANSITION-38', 'integration', 'V10 V11 V12 complete signed transition reconstruction'],
+  ['SLB-ROLLING-39', 'integration', 'V21 stopped transition current rolling counters'],
+  ['SLB-ZERO-CAP-40', 'integration', 'V13 finite zero work caps'],
+  ['SLB-LEGACY-REFUSALS-41', 'unit', 'P2 exact legacy missing and unknown breaker refusals'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {
