@@ -81,6 +81,78 @@
         "path": "tests/intake/verified-act.test.ts",
         "hash": "sha256:a34fc7f22d95b6dcf4c30c0ae5c11d53d73892b84a1e21945b5a6f6b3d38438f"
       }
+    },
+    {
+      "id": "P4-ST-01",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled.test.ts",
+        "hash": "sha256:41e8b05719663b173eddbdcd481b26019c1887a2d5b10ab900ccc30409e995d3"
+      }
+    },
+    {
+      "id": "P4-ST-02",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled.test.ts",
+        "hash": "sha256:41e8b05719663b173eddbdcd481b26019c1887a2d5b10ab900ccc30409e995d3"
+      }
+    },
+    {
+      "id": "P4-ST-03",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled.test.ts",
+        "hash": "sha256:41e8b05719663b173eddbdcd481b26019c1887a2d5b10ab900ccc30409e995d3"
+      }
+    },
+    {
+      "id": "P4-ST-04",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled.test.ts",
+        "hash": "sha256:41e8b05719663b173eddbdcd481b26019c1887a2d5b10ab900ccc30409e995d3"
+      }
+    },
+    {
+      "id": "P4-ST-05",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled.test.ts",
+        "hash": "sha256:41e8b05719663b173eddbdcd481b26019c1887a2d5b10ab900ccc30409e995d3"
+      }
+    },
+    {
+      "id": "P4-ST-06",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/integration/intake-scheduled.test.ts",
+        "hash": "sha256:290dd2de7bef862127fc0d0bfc314dedd826e5d2e54e3611e7adad23182a4ddd"
+      }
+    },
+    {
+      "id": "P4-ST-07",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/e2e/intake-scheduled.test.ts",
+        "hash": "sha256:83aa55ce1ffba5807a71d9f96694157062ccd415017ea078a2b0147d342bdc32"
+      }
+    },
+    {
+      "id": "P4-ST-08",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/e2e/intake-scheduled.test.ts",
+        "hash": "sha256:83aa55ce1ffba5807a71d9f96694157062ccd415017ea078a2b0147d342bdc32"
+      }
+    },
+    {
+      "id": "P4-PRESERVE-01",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/preexisting-preservation.test.ts",
+        "hash": "sha256:bafdcb10ad119abb75908f4af5d19ba6ad455c15ce40535c6d60e980c61cca40"
+      }
     }
   ],
   "probes": [],

@@ -17,6 +17,10 @@ const manifest = { schemaVersion: 1, owner: 'part-four',
   fixtures: [
     { id: 'P4-NF-06', stage: 'build', artifact: artifact('tests/intake/governance.test.ts') },
     ...Array.from({ length: 9 }, (_, i) => ({ id: `P4-VA-${String(i + 1).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/intake/verified-act.test.ts') })),
+    ...Array.from({ length: 5 }, (_, i) => ({ id: `P4-ST-${String(i + 1).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/intake/scheduled.test.ts') })),
+    { id: 'P4-ST-06', stage: 'build', artifact: artifact('tests/integration/intake-scheduled.test.ts') },
+    ...Array.from({ length: 2 }, (_, i) => ({ id: `P4-ST-${String(i + 7).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/e2e/intake-scheduled.test.ts') })),
+    { id: 'P4-PRESERVE-01', stage: 'build', artifact: artifact('tests/intake/preexisting-preservation.test.ts') },
   ],
   probes: [], decoders, documents: [{ id: 'intake.contract', artifact: artifact('docs/08-the-intake.md') }] };
 mkdirSync('register-source/owner-references', { recursive: true });
