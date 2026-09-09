@@ -22,8 +22,9 @@ observations. A target, configured interval, estimate or successful-only percent
 
 **Rule — part fourteen defines no new core type.** Rules 1, 30, 45, 49, 69, 90 and 113;
 **checks: P14-NF-01–04**. This is an adapter, holder and package design over the landed core. A
-holder package means a shipped set of registered `VerificationPlan` instances and their executable
-bindings; it is not a register kind or persisted core schema. Earlier parts own every consumed type.
+holder package means the current Part Ten `LocalCapabilityPackage`, its exact `declarationIds`,
+the referenced `VerificationPlan` instances and their executable bindings. It is not a register
+kind or a new persisted core schema. Earlier parts own every consumed type.
 
 | Earlier part | Types and authority consumed here |
 |---|---|
@@ -36,7 +37,7 @@ bindings; it is not a register kind or persisted core schema. Earlier parts own 
 | Seven — judgment doorway | `JudgmentRequest`, attempts, resolutions, declared floors, model provenance and benchmark definitions |
 | Eight — effect doorway | `OperationDefinition`, `EffectRequest`, validation, observation, settlement, `OutboundMessage` and adapter ports |
 | Nine — verification holders | `VerificationPlan`, `VerificationRequest`, `VerificationAssessment`, `ProbeRecord`, `RetrospectiveReviewRecord`, `SemanticReviewRecord`, `Grade`, `AssessmentClosure` and `GuardPostureView`; nine owns later grading and outcome review |
-| Ten — assembly | public adapter seams, confinement, production wiring and a hostile-cut harness (a test driver that stops the responsible process between adjacent durable steps and reconstructs from owned history) |
+| Ten — assembly | `AssemblyManifest`, `AssemblyAdmission`, `LocalCapabilityPackage`, `PackageTransition`, public adapter seams, confinement, production wiring and a hostile-cut harness (a test driver that stops the responsible process between adjacent durable steps and reconstructs from owned history) |
 | Eleven — operator surfaces | authenticated pull views, the minimal plane, bounded notices and operator action surfaces |
 
 **Rule — the package cannot reinterpret an earlier owner.** Rules 4, 26, 30, 42, 45, 57, 63,
@@ -79,31 +80,91 @@ protection.
 | Guard-posture tripwire | `build`, `runtime`, `probe`, `retrospective` | Is every required arm actually executing and independently witnessed at its current generation? | part-nine source observations, check/probe records, assembly inventory and external freshness witness |
 
 **Rule — enrollment and activation have an exact source projection.** Rules 5, 26, 42, 43, 45,
-49, 69, 73 and 95; **checks: P14-NF-05/09/16–23/48–50**. At one pinned part-two source
-vector, the projection selects current part-three `Declaration` records whose `kind` is `sentinels`
-or `features` and whose required facts identify this package. `Declaration.id` is the holder id;
-`Declaration.status` is `live`, `dark`, `soaking`, or `retired`; `Declaration.holds` supplies its
-rule edges; and the sentinel's `requiredFacts.freshnessProbe`, `requiredFacts.scope` (`live` or
-`retrospective`) and `requiredFacts.authority` (`signal` or `block`) retain the meanings imposed by
-part three. A sentinel with `requiredFacts.scope: live` must also name its guarded
-`requiredFacts.irreversibleMoment`. A current part-nine
-`VerificationPlan` enrolls that declaration only when `VerificationPlan.subject.holder` equals the
-`Declaration.id`, its `subject.generation` is current, and each required `arms[].id` is represented.
-Execution comes only from `ProbeRecord.plan` plus `ProbeRecord.arm`; freshness and protection come
-from the matching `GuardPostureView.plan` and its per-arm posture, never from the plan's
-`activation` test-evidence lists.
+49, 69, 73 and 95; **checks: P14-NF-05/09/16–23/48–50**. At one pinned part-two source vector,
+the projector first resolves the current Part Ten `LocalCapabilityPackage` by its exact namespace,
+version and content digest. It then resolves the package selected by the current
+`AssemblyManifest` and `PackageTransition`. Only the declaration identifiers in that package's
+closed `declarationIds` list are members. A missing, extra, conflicting, partial or stale package
+reference makes enrollment incomplete. No `requiredFacts` field is treated as package membership.
 
-The production instance population must be derived from part-ten assembly facts. The landed
+The feature declaration and the rule-holding declarations have separate jobs. An exact feature id
+in `declarationIds` enrolls the package feature for its metrics and rollout gate. A feature is not a
+holder, supplies an empty `holds` list and never becomes a `VerificationPlan.subject.holder`.
+An exact sentinel id in `declarationIds` enrolls one rule holder. Its `Declaration.status` is
+`live`, `dark`, `soaking`, or `retired`. Its `Declaration.holds` supplies the rule edges. Its
+`requiredFacts.freshnessProbe`, `scope` (`live` or `retrospective`), `authority` (`signal` or
+`block`) and, for live scope, `irreversibleMoment`, retain Part Three's meanings.
+
+A current `VerificationPlan` enrolls one sentinel declaration only when
+`VerificationPlan.subject.holder` equals that declaration id and its `subject.generation` is the
+current register generation. Every required `arms[].id` must be present. Execution comes only from
+`ProbeRecord.plan` plus `ProbeRecord.arm`. Freshness and protection come from the matching
+`GuardPostureView.plan` and per-arm posture, never from the plan's `activation` test-evidence lists.
+These two declaration examples use only fields admitted by the landed Part Three decoder; the
+package's `declarationIds` contains both exact ids:
+
+```json
+{
+  "type": "Declaration", "schemaVersion": 1,
+  "id": "sentinel-holders-package", "kind": "features", "status": "soaking",
+  "requiredFacts": {
+    "metrics": ["sentinel-holder.instances", "sentinel-holder.gaps"],
+    "gate": {"test": "P14-NF-50", "deadline": 1798761600000}
+  },
+  "profile": {
+    "type": "Profile", "schemaVersion": 1, "consequence": "control",
+    "reversibility": "reversible", "reach": "internal", "surface": "none",
+    "repeats": {"kind": "no"}
+  },
+  "standards": [9, 39, 43, 59, 73], "holds": []
+}
+```
+
+```json
+{
+  "type": "Declaration", "schemaVersion": 1,
+  "id": "sentinel-holders.guard-posture", "kind": "sentinels", "status": "soaking",
+  "requiredFacts": {
+    "freshnessProbe": "sentinel-holders.guard-posture.probe",
+    "scope": "live", "authority": "signal",
+    "irreversibleMoment": "before any recovery effect is admitted"
+  },
+  "profile": {
+    "type": "Profile", "schemaVersion": 1, "consequence": "control",
+    "reversibility": "reversible", "reach": "agent", "surface": "dashboard",
+    "repeats": {"kind": "no"}
+  },
+  "standards": [9, 26, 43, 59, 69, 73],
+  "holds": [
+    {"rule": 9, "class": "deferred", "part": 14, "ceiling": 1798761600000,
+     "owner": "sentinel-holders", "overdueAction": "keep the package divergent"}
+  ]
+}
+```
+
+The production instance population must be derived from part-ten assembly facts. Each production
+instance has its own `VerificationPlan.id` and its own canonical
+`VerificationPlan.subject.governed`, including the machine/deployment and runtime-incarnation
+identity selected by its binding. No plan may cover two production instances. The binding must
+match its instance, plan id, holder id and governed subject before a `ProbeRecord.subject` can be
+joined. Because the landed Part Nine runtime already checks `ProbeRecord.subject` against
+`plan.subject.governed`, this one-plan-per-instance rule prevents one machine's pass from confirming
+a sibling machine.
+
+The landed
 `AssemblyManifest.publicPorts` and scope-wide `AssemblyAdmission` cannot identify a holder, plan,
 arm, instance, observation/effect mode, or operation. Part fourteen therefore depends on the
 additive Part Ten holder-binding and binding-admission records requested in
-`.instar/lanes/design-sentinel-holders-seam-request-assembly.md`. A binding is
+`.instar/lanes/design-sentinel-holders-seam-request-assembly.md`, request
+`P14-P10-holder-bindings-and-drivers-v2`. A binding is
 **observation-only** only when that record says `mode: observation` and carries no part-eight
 operation; it is **effect-capable** only when `mode: effect` references a current registered
 `OperationDefinition`. Its runtime state comes from the current binding admission. A missing,
 conflicting, partial, or stale binding makes the required population incomplete and therefore
-`diverged`; no arm kind or executable name is used to guess the mode. Until that seam lands and its
-production bindings pass P14-NF-49/50, no package instance is eligible for `on-confirmed`.
+`diverged`; no arm kind or executable name is used to guess the mode. The request also requires the
+binding's plan id and governed subject to equal the per-instance plan before posture is consumed.
+Until that seam is approved, lands and its production bindings pass P14-NF-49/50, no package
+instance is eligible for `on-confirmed`.
 
 **Rule — signal and authority remain separate.** Rules 4, 10, 12, 38, 42, 57, 67 and 86;
 **checks: P14-NF-10–12/18/21/23/26/29**. Regexes, elapsed-time thresholds, unchanged terminal
@@ -134,25 +195,38 @@ clock basis and independent witness. A never-run, late, incomparable-clock, copi
 wrong-generation or wrong-machine result is not fresh. Freshness is evaluated when consumed from
 source history, never refreshed by copying into a dashboard row.
 
+**Rule — enrollment and required execution are separate populations.** Rules 13, 26, 33, 42,
+43, 69, 73 and 95; **checks: P14-NF-16–20/54**. The enrolled population is the complete package,
+declaration, per-instance plan and binding join in section 2. It does not shrink when execution is
+deliberately inhibited. The currently required execution population is derived separately for each
+enrolled instance. For `live`, it contains every required observation and effect arm. For `soaking`,
+it contains every required observation arm and any effect arm whose binding admission says it is
+currently intended active; a deliberately inhibited effect arm remains enrolled but is not treated
+as if it executed. For `dark` or `retired`, it is empty only while fresh independent assembly
+evidence proves every binding deliberately inhibited or retired for that declaration state and no
+later execution occurred. Missing, stale, conflicting or unexpected inhibition evidence never
+shrinks the required population.
+
 **Rule — the operator-facing family view uses exactly four labels without replacing part nine's
 posture.** Rules 13, 26, 33, 42, 43, 69, 73 and 95; **checks: P14-NF-16–20/54**. The package view is
-a deterministic projection of the source mapping in section 2 and part nine's raw per-arm posture,
-not a new authority or stored truth. For each declared instance the projector applies the rows below
-in order and stops at the first match. Raw posture, missing arms, binding admissions, declaration
-facts and evidence references remain visible.
+a deterministic projection of those two populations and Part Nine's raw per-arm posture. It is not
+a new authority or stored truth. For each enrolled instance the projector applies the rows below in
+order and stops at the first match. Raw posture, missing arms, binding admissions, declaration facts
+and evidence references remain visible.
 
 | Label | Derivation |
 |---|---|
-| `diverged` — precedence 1 | The required population is empty or incomplete; sources conflict; any required arm is missing, never run, stale, failed, inconclusive, errored, unknown, wrong-generation or unwitnessed; any binding is missing or unexpectedly active/inhibited; or declaration and runtime disagree. A fresh failed observation reaches this row before any later label. |
-| `off` — precedence 2 | The current declaration `status` is `dark` or `retired`, every known binding admission is `inhibited` or `retired` for that declared reason, no execution is active, and precedence 1 did not match. Off is honest inactivity, never protection. |
-| `dry-run` — precedence 3 | The declaration is currently required (`live` or `soaking`), every required observation-only binding is active with fresh passing independently witnessed arms, at least one required effect-capable binding is deliberately `inhibited` by the current governed declaration/admission, all other required bindings are accounted for, and precedence 1 did not match. No prevented effect is claimed. Zero effect inhibitions cannot produce this label. |
-| `on-confirmed` — precedence 4 | The declaration is currently required, every required binding is active in production, every required arm has a fresh passing result for the current generation and independent witness, no effect-capable binding is inhibited, and precedence 1 did not match. |
+| `diverged` — precedence 1 | Enrollment is empty or incomplete; sources conflict; a binding disagrees with its declaration, intended mode, plan, governed subject or runtime; a claimed inhibition lacks fresh independent evidence; or any arm in the currently required execution population is missing, never run, stale, failed, inconclusive, errored, unknown, wrong-generation or unwitnessed. A fresh failed required observation reaches this row. Unexpected inhibition or activation also reaches this row. |
+| `off` — precedence 2 | The declaration is `dark` or `retired`; enrollment is complete; fresh independent evidence proves every binding deliberately `inhibited` or `retired` for that exact current declaration and admission generation; no later execution is observed; and precedence 1 did not match. No execution arm is required merely to prove it did not run. Off is current evidenced inactivity, never protection. |
+| `dry-run` — precedence 3 | The declaration is `soaking`; every required observation binding is active and has fresh passing independent evidence; every effect binding is accounted for; at least one effect binding is deliberately inhibited by a current admission matching the declared soak; every effect binding intended active has fresh passing independent evidence; and precedence 1 did not match. A never-executed deliberately inhibited effect arm does not defeat this label. No prevented effect is claimed. Zero effect inhibitions cannot produce this label. |
+| `on-confirmed` — precedence 4 | The declaration is `live` or `soaking`; every required binding is intended active and active in production; every required arm has a fresh passing result for that per-instance plan and independent witness; no effect binding is inhibited; and precedence 1 did not match. |
 
 **Rule — family aggregation is ordered and mutually exclusive.** Rules 26, 33, 42, 43, 59, 69
-and 73; **checks: P14-NF-19–22/48/54**. First, an empty/incomplete required-instance population or
-any `diverged` instance makes the family `diverged`. Second, all instances `off` makes it `off`.
-Third, if every required instance is `dry-run` or `on-confirmed` and at least one is `dry-run`, the
-family is `dry-run`. Fourth, all required instances `on-confirmed` makes it `on-confirmed`. Every
+and 73; **checks: P14-NF-19–22/48/54**. First, an empty/incomplete enrolled-instance population or
+any `diverged` instance makes the family `diverged`. Second, all enrolled instances `off` makes it
+`off`. Third, if every enrolled instance is `dry-run` or `on-confirmed` and at least one is
+`dry-run`, the family is `dry-run`. Fourth, all enrolled instances `on-confirmed` makes it
+`on-confirmed`. Every
 other mixture, including `off` mixed with an active state, is `diverged`. One green arm therefore
 cannot paint siblings green. A complete population count travels separately from any bounded list
 so truncation cannot resemble an all-clear.
@@ -172,7 +246,7 @@ part-eight effect and follows section 8.
 ## 4. The silently-stopped matrix
 
 **Rule — harness onboarding supplies the complete stop-mode matrix.** Rules 30, 34, 36, 43, 59,
-64, 68, 69 and 115; **checks: P14-NF-25–30**. The part-ten adapter registration cannot complete
+64, 68, 69 and 115; **checks: P14-NF-25–30/56/57**. The part-ten adapter registration cannot complete
 until every row below names a detector arm, an evidence bar, recovery owner, safe failure direction,
 real captured fixtures and an end-to-end positive neighbor. An adapter may add rows. It may not
 delete the common rows or claim coverage from another harness's parser.
@@ -180,11 +254,11 @@ delete the common rows or claim coverage from another harness's parser.
 | Stop mode | Evidence required before classification | Recovery owner and safe direction |
 |---|---|---|
 | Launch rejected or worker never consumes input | admitted intake plus absent exact-incarnation consumption after bounded observation; adapter launch receipt alone is insufficient | five keeps the run owned; six schedules bounded recovery; reachability remains open |
-| Input buffered, relay disconnected or delivery uncertain | exact intake/effect identity, adapter observation and unresolved consumption/settlement | eight reconciles occurrence; no blind reinjection |
+| Input buffered, relay disconnected or delivery uncertain | exact intake/effect identity, adapter observation, unresolved consumption/settlement and a captured prompt presentation distinguishing authentic pending input from model-suggested ghost text | eight reconciles occurrence; no blind reinjection and no keypress when prompt evidence is ghost or inconclusive |
 | Prompt, approval, credential or operator wait | live frame plus typed run blocker and current authorization state | five records the real blocker; silence never becomes consent |
 | Bounded external wait | declared wait subject/deadline, live process identity and progress evidence | loop remains active within its policy; timer alone cannot interrupt |
-| Provider unavailable, rate-limited or account unusable | typed adapter refusal and current doorway/account observations | seven/eight select only registered alternatives; refusal stays refusal |
-| Worker exits, disconnects or PID is reused | exact session/incarnation/lease and action-time process identity | six recovers the run; stale PID cannot be signaled |
+| Provider unavailable, rate-limited or account unusable | typed adapter refusal, current doorway/account observations and any concurrent compaction-recovery ownership | six owns one bounded backoff episode; seven/eight select only registered alternatives; a neutral continuation is distinct from compaction recovery and refusal stays refusal |
+| Worker exits, disconnects or a process identifier (`PID`) is reused | exact session/incarnation/lease and action-time process identity | six recovers the run; a stale process identifier cannot be signaled |
 | Worker alive without attributable progress | unchanged evidence plus exclusion of active tool, helper, known wait, idle-complete and recent durable progress | seven classifies within declared outcomes; unresolved stays visible |
 | Delegated helper stalls or fails | live child edge, child run/lease facts, result destination and parent accounting | parent run owns redrive or closure; helper event never becomes completion |
 | Context becomes non-resumable | repeated real adapter error capture, same context/incarnation and independent challenge | fresh grounded worker proposed through eight; corrupt context is never resumed |
@@ -214,13 +288,16 @@ proved corrupt. It proposes a fresh worker that must ground through part five; a
 becomes permission to kill or spawn.
 
 **Rule — compaction recovery proves continuity, not activity.** Rules 9, 26, 47, 68, 96 and 110;
-**checks: P14-NF-31–35**. The obligation binds the pre-compaction last inbound message id, source
+**checks: P14-NF-31–35/57**. The obligation binds the pre-compaction last inbound message id, source
 vector and open run steps. Success requires a recorded post-compaction grounding step, actual clock
 read, accounting for that exact inbound message, worker consumption and a continuing durable run.
 Transcript byte growth, a changed frame, a spinner, a new process, a recovery injection or a
 generic response proves none of those predicates. A finished run is not injected. An active worker
 is not interrupted merely because a timer expired. The same logical recovery episode deduplicates
-all triggers.
+all triggers. A provider-throttle recovery and compaction recovery for the same worker share a
+Part Six exclusion key. While either recovery is active, the other defers and reaping is vetoed.
+After the governed backoff, a throttle recovery may request only its typed neutral continuation;
+it cannot reuse a compaction-resume payload or claim continuity from transcript growth.
 
 **Rule — recovery preserves work across worker replacement.** Rules 31, 32, 33, 42, 63, 68, 96,
 110 and 113; **checks: P14-NF-32–36**. Before replacement, the consumer re-resolves run ownership,
@@ -242,13 +319,19 @@ agent's answer. The holder does not speak from a timer alone. It first attempts 
 self-heal; unresolved action-needed or result-bearing output is aggregated and sent only through
 part eight. Pull posture remains complete when push output is disabled.
 
-**Rule — promise watching follows durable ownership.** Rules 8, 9, 13, 46, 55, 64, 68, 83, 87,
-92 and 93; **checks: P14-NF-37–41**. A promise arm consumes the durable work/run source selected by
+**Rule — promise watching follows durable ownership and detects missing registration.** Rules 8,
+9, 13, 46, 55, 64, 68, 83, 87, 92 and 93; **checks: P14-NF-37–41/55**. A promise arm consumes the
+durable work/run source selected by
 parts three and five; this part does not create a competing commitment schema. Each open agent-owned
 obligation has a cadence, blocker state, next probe or progress due, terminal test and bounded
 revival policy. `at-risk` is non-terminal. An external wait needs a fresh structured probe. An
 operator-owned or authorization-blocked item is not falsely narrated as agent progress. Caps apply
 per obligation, conversation, machine and package, and overflow stays visible rather than vanishing.
+A separate sentinel arm inspects attributable conversation history for promises that have no
+matching durable obligation. Its classifier uses full-context Part Seven judgment, not keywords.
+A supported finding opens the ordinary Part Five registration/reconciliation path and remains a
+missing-registration gap until that path records or explicitly declines the obligation. Detecting a
+promise does not itself invent work authority or close the user's request.
 
 **Rule — crash-loop pausing is evidence-gated and reversible.** Rules 13, 24, 40, 55, 57, 61,
 74, 86 and 95; **checks: P14-NF-40–43**. The holder evaluates a complete pinned attempt population
@@ -265,7 +348,7 @@ operation; editing a jobs file directly is forbidden.
 
 **Rule — a watchdog cannot infer operator action or signal an unverified process.** Rules 13, 26,
 39, 42, 60, 68, 86 and 89; **checks: P14-NF-26–30/42/44**. Immediately before any process-directed
-request, the holder obtains fresh PID, parent, start identity, argv shape (the executable plus its
+request, the holder obtains a fresh process identifier (`PID`), parent, start identity, argv shape (the executable plus its
 ordered arguments as observed at action time), worker incarnation and
 lease evidence. PID reuse, adapter-host selection, known bounded waits, active helpers, compiler/test
 services and current durable progress refuse the candidate. Any intervention records the true
@@ -273,10 +356,11 @@ principal and cannot be presented as user cancellation. A pane-wide interrupt ca
 for a verified descendant target.
 
 **Rule — reaping disposes of a worker, never its work.** Rules 7, 15, 26, 60, 61, 63, 68 and 97;
-**checks: P14-NF-32/35/42–46**. Eligibility is re-resolved at effect validation and excludes the
+**checks: P14-NF-32/35/42–46/57**. Eligibility is re-resolved at effect validation and excludes the
 minimal-plane reserve, a worker holding active or uncertain work, open delegation, current
-commitments, compaction recovery, explicit protection, operator stop processing and any case whose
-identity is uncertain. Age or pressure makes a candidate due for assessment, not disposable.
+commitments, compaction recovery, provider-throttle recovery, explicit protection, operator stop
+processing and any case whose identity is uncertain. Age or pressure makes a candidate due for
+assessment, not disposable.
 Successful worker closure leaves the durable run alive until its own exit test passes or a bounded
 recovery/reassignment record owns it. `ReapLog`-style historical occurrence remains distinct from
 the live eligibility projection.
@@ -298,7 +382,8 @@ and group by the same causal episode.
 `waiting`, and `stopped`. It has no open/half-open/closed breaker transitions, cooldown,
 failure-threshold, half-open trial budget, or pressure identity shared across targets, conversations,
 machines and the pool. Part fourteen therefore depends on the additive Part Six contract requested
-in `.instar/lanes/design-sentinel-holders-seam-request-loop-breaker.md`. Until it lands and the
+in `.instar/lanes/design-sentinel-holders-seam-request-loop-breaker.md`, request
+`P14-P6-shared-recovery-breaker-v2`. Until its owner approves it, it lands and the
 shared-pressure fixture passes, automatic repeated self-action is inhibited after the first admitted
 attempt; a holder cannot claim a breaker by keeping a private counter.
 
@@ -321,9 +406,11 @@ The landed effect contract currently requires `EffectRequest.message: string`, a
 account swap, configuration change, filesystem/git mutation, or infrastructure action/result
 notice as typed effects. These classes must not be encoded as message text. Part fourteen depends
 explicitly on the additive Part Eight typed-payload seam requested in
-`.instar/lanes/design-sentinel-holders-seam-request-effect-doorway.md` and the corresponding Part Ten
-drivers requested in `.instar/lanes/design-sentinel-holders-seam-request-assembly.md`. Until both
-land and pass P14-NF-42/45/46/49/50, all affected effect-capable bindings remain inhibited and their
+`.instar/lanes/design-sentinel-holders-seam-request-effect-doorway.md`, request
+`P14-P8-typed-recovery-effects-v2`, and the corresponding Part Ten drivers in request
+`P14-P10-holder-bindings-and-drivers-v2`. These are proposed owner contracts, not approved versions
+and not landed capabilities. Until both owners approve them, they land and pass
+P14-NF-42/45/46/49/50, all affected effect-capable bindings remain inhibited and their
 instances can be no better than `dry-run`; only effects already representable by the landed doorway
 may execute. The sole existing path used here is an ordinary agent text reply: decode the current
 `OutboundMessage`, prepare/adopt the `EffectRequest`, invoke its registered message adapter, obtain
@@ -340,13 +427,36 @@ expired timer, missing local log or repeated request is not non-occurrence evide
 **Rule — destructive local guards remain defense in depth.** Rules 26, 42, 49, 60, 66, 69 and 74;
 **checks: P14-NF-03/04/42/45/51–53**. A process kill, file removal, configuration change or git mutation
 must first survive the core effect contract and then its adapter's target guard. The 1.x
-`SourceTreeGuard`, `SafeGitExecutor` and `SafeFsExecutor` establish the preserved requirement:
-canonicalize the raw target, refuse protected source targets on uncertainty, constrain narrow
-exceptions to an exact operation and canonical target, and audit the requested/resolved target,
-principal, decision and result. Those modules do not become alternate 2.0 doorways, and a local
-guard's refusal remains a refusal through settlement. Crash-safe persistence evidence is owned by
-Part Ten P10-NF-28/29/33; the typed filesystem/configuration/git drivers additionally face the
-Part Fourteen cut in P14-NF-53.
+`SourceTreeGuard`, `SafeGitExecutor` and `SafeFsExecutor` establish only a partial precedent.
+`SourceTreeGuard` resolves a nearest existing ancestor and refuses when canonical identity is
+unavailable. `SafeFsExecutor` then permits a directory-wide carve-out for paths below `.instar/`;
+that is not an exact operation-and-target exception. The 1.x audit row records one target and a
+caller stack frame. It does not separately retain the requested target, resolved target and a
+verified principal. Audit writing can be disabled and audit failures are fail-soft. Its atomic
+write helper replaces one file through a same-directory temporary file, file synchronization and
+rename. Neither wrapper supplies a general transaction across filesystem objects or across a git
+operation's ref, index and working-tree changes.
+
+The requested Part Ten drivers must add the stronger requirement. They canonicalize both requested
+and resolved identities, refuse protected targets on uncertainty, limit an exception to one exact
+operation and canonical target, authenticate the principal, and durably audit the request,
+resolution, decision and result before reporting settlement. The 1.x wrappers remain defense in
+depth, not alternate 2.0 doorways and not evidence that these new guarantees already exist. A local
+guard's refusal remains a refusal through settlement.
+
+Each mutation declares its atomic scope and crash result:
+
+| Operation | Atomic scope and permitted claim after a hostile cut |
+|---|---|
+| Configuration replacement | One exact file may claim old-or-new bytes only when the driver uses a same-filesystem temporary file, synchronizes file and parent-directory state, performs one atomic replace supported by that platform and verifies the resulting digest. Otherwise it reports `uncertain`. |
+| Filesystem create or replace | One exact directory entry may make the same old-or-new claim only under the configuration-replacement conditions. A same-filesystem move may claim one atomic name transition only when the platform contract proves it. Recursive removal, cross-filesystem move and multi-target change are multi-object operations and cannot claim atomicity. |
+| Git ref update | One compare-and-swap ref update may claim old-or-new for that ref only. Index and working-tree mutations, checkout, merge, reset and multi-ref changes are multi-object operations and cannot inherit the ref claim. |
+| Any multi-object mutation | The driver records a durable intent and per-object observations, preserves the original effect identity and maximum exposure, and returns partial or `uncertain` after a cut. Reconciliation inventories actual state before any repair. It never blindly retries. Completion needs an owner-approved transaction adapter that names its commit/rollback protocol, or a later separately admitted compensating operation. |
+
+Part Ten P10-NF-28/29/33 applies to canonical-store persistence, not arbitrary physical mutation
+atomicity. The typed filesystem/configuration/git drivers additionally face the operation-specific
+Part Fourteen cut in P14-NF-53. Their transaction mechanism is an explicit dependency of the updated
+Part Eight and Part Ten seam requests.
 
 ---
 
@@ -373,7 +483,7 @@ missing local instance unless the plan explicitly declares a shared subject and 
 ## 10. What Instar 1.x does today and what carries forward
 
 **Rule — earned guarantees survive the change in architecture.** Rules 24, 26, 45, 59, 61, 68,
-70, 88 and 111; **checks: P14-NF-25–35/37–48**. The layer-below audit covered the named modules and
+70, 88 and 111; **checks: P14-NF-25–35/37–48/55–57**. The layer-below audit covered the named modules and
 the incidents recorded with them. The following behaviors are requirements, not endorsements of
 their current implementation.
 
@@ -381,7 +491,7 @@ their current implementation.
 |---|---|---|
 | `GuardPostureTripwire`, `guardPosture`, `guardPostureView`, `GuardPostureProbe` | Compares configured guard state and probe evidence through component-specific state. | Fresh source execution, complete load-bearing gaps and the off/diverged distinction remain; configuration alone never confirms health. |
 | `ContextWedgeSentinel` | Parses captured context-error signatures and proposes replacement under its component policy. | Repeated exact-context evidence, one-off-refusal exclusion, real parser fixtures and fresh part-five grounding remain. |
-| `CompactionSentinel` | Verifies recovery using JSONL size/mtime growth (`src/monitoring/CompactionSentinel.ts:410`). Claude prefers an exact session UUID but may fall back to the newest project JSONL; Codex and Gemini select the newest account/project-level transcript (`:488`). It deduplicates recent reports, defers for active work and bounds injection attempts. | P14-NF-31/33/34 require exact pre-compaction inbound accounting, current open-obligation grounding and one logical effect identity. Current activity heuristics are evidence only and do not satisfy continuity. |
+| `CompactionSentinel` | Verifies recovery using newline-delimited JSON (`JSONL`) transcript size and modification-time growth (`src/monitoring/CompactionSentinel.ts:410`). Claude prefers an exact session universally unique identifier (`UUID`) but may fall back to the newest project transcript; Codex and Gemini select the newest account/project-level transcript (`:488`). It deduplicates recent reports, defers for active work and bounds injection attempts. | P14-NF-31/33/34 require exact pre-compaction inbound accounting, current open-obligation grounding and one logical effect identity. Transcript growth is activity evidence only and does not satisfy continuity. |
 | `SessionWatchdog` | Applies exclusions and escalating process actions around a tmux-oriented session identity. | Known-wait exclusion, action-time exact descendant identity, direct-target discipline, bounded escalation and truthful principal attribution remain. |
 | `ActiveWorkSilenceSentinel` | Enumerates registered sessions independently of inbound-topic traffic and escalates when the same active-work frame remains frozen for a finite backstop (90 minutes by default); it does not itself authorize a kill. | Preserve registry-wide coverage and a finite frozen-indicator backstop, but require subject-specific progress evidence, part-seven classification when semantic, and part-eight authorization before any recovery. |
 | `SocketDisconnectSentinel` | Detects the socket-disconnected frame, sends bounded recovery nudges with backoff (four attempts by default), and verifies that the disconnect text disappears. | Preserve bounded re-challenge and verification while binding the exact worker/context and using the typed effect and loop seams; disappeared text alone is not durable recovery. |
@@ -389,14 +499,17 @@ their current implementation.
 | `HelperWatchdog` | Emits signal-only helper stall/failure events while the parent session may remain live. | Delegation-edge coverage and parent result-destination accounting remain; a timer alone does not prove failure. |
 | `PresenceProxy` | Correlates unanswered messages with component-specific activity classification and bounded notices. | Intake-to-reply accounting, live corroboration, one voice and conservative uncertainty remain. |
 | `CommitmentTracker`, `PromiseBeacon` | Track open commitments, blocker/progress cadence, non-terminal `atRisk`, and active-beacon caps. | Durable owner/blocker state, structured probes, bounded revival and internal-by-default follow-through remain. |
+| `CommitmentSentinel` | Reads recent user/agent exchanges, asks a model for commitments missing from `CommitmentTracker`, deduplicates candidates and records supported missing commitments. | The promise holder retains a full-context missing-registration arm under P14-NF-55. It opens the ordinary durable-work reconciliation path; it does not gain keyword authority or a competing commitment schema. |
+| `StuckInputSentinel` | Before pressing a key on the generic prompt path, compares the same pane's plain and terminal-styled captures. Dim-only text is treated as a model-suggested ghost; mixed, raced or unreadable presentation is inconclusive and is not pressed. | Silent-stop coverage retains authentic-pending-input versus ghost/inconclusive discrimination under P14-NF-56. Captured presentation is a signal; action still needs the typed effect and exact worker identity. |
+| `RateLimitSentinel` | Deduplicates one live-session throttle recovery, defers when compaction recovery owns the session, backs off before a neutral continuation, exposes active recovery to veto zombie reaping, and bounds attempts. | The session/compaction holders retain bidirectional exclusion, class-specific payloads, backoff and reaper veto under P14-NF-57. Provider text is not semantic authority, and transcript growth is not recovery proof. |
 | `CrashLoopPauser` | Queries at most 1,000 run-history rows per job (`src/monitoring/CrashLoopPauser.ts:94`) and retains only five failure ids as evidence (`:122`); it applies fixed count rules, excludes critical/never-pause jobs and defaults to dry-run. | P14-NF-40/41 require the complete pinned eligible population, typed shedding exclusions, part-seven resolution and a reversible typed pause. The current capped query/evidence is not completeness proof. |
 | `SelfActionGovernor` | Centralizes class/target admission with observe-only defaults, caps and breaker state; pool-shared mode auto-demotes when more than one machine is registered because there is no pool-wide ceiling. | Preserve the shared chokepoint and conservative demotion. Full automatic mode waits on the Part Six shared-pressure/breaker seam and Part Eight/Ten typed effects. |
 | `ExternalHogSentinel` | Composes resource classification, protected floors and brakes but ships observation-only/dry-run; it does not kill a process. | Keep it observation-only until exact target evidence, governed thresholds, named-hardware measurements and typed process effects pass. A resource heuristic never becomes kill authority. |
 | `SessionReaper`, `ReapLog` | Candidate and occurrence state are component-specific; historical reaps can coexist with later revival. | Protected/minimal sessions, work-outlives-worker, bounded action, revival ownership and separate live eligibility versus historical occurrence remain. |
-| `SourceTreeGuard`, `SafeGitExecutor`, `SafeFsExecutor` | Canonicalize and guard destructive source/filesystem/git targets through local wrappers and audit their calls. | Raw-target canonicalization, fail-closed protected-target checks, narrow audited exceptions, refusal propagation and crash-safe mutation remain adapter defenses under the requested typed doorway/drivers. |
+| `SourceTreeGuard`, `SafeGitExecutor`, `SafeFsExecutor` | `SourceTreeGuard` canonicalizes the nearest existing ancestor and fails toward protection when identity cannot be resolved. `SafeFsExecutor` has a directory-wide `.instar/` subtree carve-out. The wrappers audit one target and a caller frame; audit can be disabled and write failures are fail-soft. `SafeFsExecutor` has a same-directory atomic single-file replacement helper. Git and multi-object filesystem mutations are not transactionally crash-safe. | Canonical target checks remain defense in depth. Exact operation/target exceptions, separately recorded requested/resolved targets, verified principal, durable complete audit, and operation-specific crash outcomes are new requirements on requests `P14-P8-typed-recovery-effects-v2` and `P14-P10-holder-bindings-and-drivers-v2`; they are not inherited guarantees. |
 
 **Rule — omitted 1.x modules receive an explicit package disposition.** Rules 30, 42, 45, 55,
-59, 61, 68 and 69; **checks: P14-NF-25–35/42–49**. `ActiveWorkSilenceSentinel` is carried into
+59, 61, 68 and 69; **checks: P14-NF-25–35/42–49/55–57**. `ActiveWorkSilenceSentinel` is carried into
 silent-stop/session-watchdog coverage under P14-NF-25–30; its finite frozen-frame threshold raises
 evidence for Part Seven, never kill authority. `SocketDisconnectSentinel` is delegated to Part Six
 loop ownership and the requested Part Eight/Ten typed delivery/recovery path under P14-NF-32/34/
@@ -406,6 +519,11 @@ re-expressed as Part Six admission/breaker plus Part Eight settlement under P14-
 governor is authoritative. `ExternalHogSentinel` is included only as an observation arm feeding the
 session-reaper assessment under P14-NF-27/30/32 and is excluded from automatic process action until
 P14-NF-42/49/51/52 pass.
+`CommitmentSentinel` is assigned to the promise holder's missing-registration arm under P14-NF-55.
+`StuckInputSentinel` is assigned to silent-stop input-buffer coverage under P14-NF-56.
+`RateLimitSentinel` is assigned to session-watchdog and compaction-recovery coordination under
+P14-NF-57. These dispositions retain bounded intervention and exact recovery-class separation, not
+1.x keyword authority or transcript-growth proof.
 
 **Value — what is deliberately re-expressed.** In-memory timers, JSON snapshots, regex classifiers,
 component-specific queues, direct callbacks, direct process signals, direct job-file edits and
@@ -430,7 +548,7 @@ ends a run, and new worker identities used to escape uncertainty or budgets.
 
 | Producer → consumer | Record passed | Consumer obligation | Closure owner |
 |---|---|---|---|
-| Three → nine/package | current `Declaration`, `holds` and sentinel required facts | join `Declaration.id` to `VerificationPlan.subject.holder` and expose missing enrollment | three owns declaration gap; nine owns assessment |
+| Ten/three → nine/package | current `LocalCapabilityPackage.declarationIds`, `Declaration`, `holds` and sentinel required facts | select exact package members; keep features out of holder edges; join each sentinel id to one per-instance `VerificationPlan.subject.holder` and exact governed subject; expose missing enrollment | ten owns package membership; three owns declaration gap; nine owns assessment |
 | Four/five → silent-stop holders | authenticated intake, run/step/progress/grounding facts | assess exact obligation and worker without changing it | five owns work completion |
 | Six → holders | lease, fence, loop, recovery and admission observations | bind evidence to current execution authority | six owns execution/recovery lifecycle |
 | Holders → seven | captured signal and allowed classification outcomes | decide within floors with complete context | seven owns semantic resolution |
@@ -467,6 +585,23 @@ ends a run, and new worker identities used to escape uncertainty or budgets.
 | Continuity | compact and replace workers at every grounding/consumption boundary with last-message variations | exact inbound id is accounted for and same run continues; activity-only evidence fails |
 | Reconstruction | corrupt disposable snapshots and rebuild at equal source vectors on two supported architectures | equal posture/gap projection; conflicts and missing lineage remain explicit |
 | Notification | burst failures, repeated self-heals and cross-machine duplicates through real channels | action/result-only, one provenance-correct aggregate per causal episode within finite budget |
+
+**Rule — contract availability is reported separately from the check specification.** Rules 26,
+34, 42, 45, 49, 69 and 107; **checks: P14-NF-01/42/43/49/50/53**. A fixture row below is a required
+contract, not evidence that its positive neighbor can execute against this checkout. The current
+boundary is explicit:
+
+| Contract basis | Checks that can be implemented against the landed owner shape | Checks whose full positive neighbor is blocked |
+|---|---|---|
+| Landed register, package and verification contracts | Enrollment from `LocalCapabilityPackage.declarationIds`, one-plan-per-instance identity, pure projection, evidence and audit cases can be implemented without changing their owners. Part Fourteen code and real executions are still required before any result exists. | None merely because Part Fourteen is not implemented; that is ordinary implementation work, not an owner-shape gap. |
+| Proposed Part Ten holder binding/admission request `P14-P10-holder-bindings-and-drivers-v2` | Pure unit fixtures may use candidate values, but they cannot count as owner decoding, production binding or lifecycle evidence. | Production-binding portions of P14-NF-05/16–23/36/48–50. |
+| Proposed Part Six breaker request `P14-P6-shared-recovery-breaker-v2` | First-attempt inhibition and private-counter rejection are testable on the landed `stub-closed` contract. | Shared breaker/recovery positive cases in P14-NF-43/47/49. |
+| Proposed Part Eight typed-effect request `P14-P8-typed-recovery-effects-v2` and matching Part Ten drivers | Direct-call/bypass negatives and the landed ordinary-reply path remain testable. | Typed process, scheduler, account, notice, configuration, filesystem and git positive cases in P14-NF-42/44–47/49–53. |
+
+Owner review must converge each proposed contract before implementation treats it as a public port.
+Until then P14-NF-42/43/49/50 and the affected positive neighbors cannot report PASS on this HEAD.
+The affected bindings stay inhibited; this document does not emulate the missing operation, breaker
+or binding in a private package type.
 
 **Rule — hostile-cut evidence crosses a real durability boundary.** Rules 26, 33, 34, 42 and 69;
 **checks: P14-NF-45/46/53**. A **hostile cut** is a test-controlled stop of the responsible process
@@ -520,7 +655,7 @@ not future implementation details that this part may silently emulate.
 | P14-NF-24 | lifecycle | Gap disappears without evidence/disposition or self-heal attempt; owned due finding remains |
 | P14-NF-25 | build | Harness registration omits a common stop mode or positive neighbor; full matrix passes |
 | P14-NF-26 | timing | Elapsed terminal silence alone proves stuck; subject-specific progress evidence passes |
-| P14-NF-27 | performance | Target/estimate/platform load average is called measured; named-hardware workload sample passes |
+| P14-NF-27 | performance | A fabricated or unattributed reading is called measured, or one attributable load-average sample is treated as sufficient capacity evidence or reaping authority. A load average sampled on named hardware is admitted as limited telemetry; a capacity/reaping conclusion passes only with the declared core count, memory/pressure, workload, observation window and subject-specific progress evidence. |
 | P14-NF-28 | process | Known waiter/helper/compiler/active work is interrupted; exclusion evidence keeps it running |
 | P14-NF-29 | parser | Hand-typed or another adapter's bytes establish wedge; real captured adapter fixture passes |
 | P14-NF-30 | process | Stale/reused PID or pane-wide interrupt targets work; action-time exact descendant identity passes |
@@ -529,7 +664,7 @@ not future implementation details that this part may silently emulate.
 | P14-NF-33 | continuity | A finished run or an open obligation with current attributable progress receives injection; an open owned obligation with exact last-inbound grounding, no current progress/known wait, current lease and eligible recovery evidence receives one bounded request |
 | P14-NF-34 | dedupe | Parallel compaction triggers create multiple recoveries; one logical episode/effect identity passes |
 | P14-NF-35 | lifecycle | Worker loss/reap terminates durable run; same run gains bounded recovery or queued revival |
-| P14-NF-36 | multi-machine | Non-owner acts/speaks or remote health covers local instance; evidence-only observer and current owner pass |
+| P14-NF-36 | multi-machine | Non-owner acts/speaks or remote health covers local instance. With two machine-bound plans, only machine A executes: A may derive from its own plan while machine B remains `unknown`/`diverged`; distinct exact evidence for B and the current owner is the positive neighbor. |
 | P14-NF-37 | presence | Infrastructure notice counts as agent answer or carries agent provenance; separate attributable outcomes pass |
 | P14-NF-38 | load | Presence/promise overflow vanishes or spawns without cap; visible overflow and layered bounds pass |
 | P14-NF-39 | messaging | Status pushes before self-heal or per item; failed-heal-linked action/result aggregate passes |
@@ -546,8 +681,11 @@ not future implementation details that this part may silently emulate.
 | P14-NF-50 | evidence/e2e | Declared fixture with missing check-run, named hardware or independent witness emits no live/held claim; a current production assembly actually executes unit, integration and lifecycle tiers with current digests, named hardware and independent witnesses and becomes eligible for only the corresponding held/live claim |
 | P14-NF-51 | target guard | Raw path, symlink or ancestor resolution reaches a protected target, or canonical identity is unavailable, and the adapter refuses; a separately rooted disposable target with verified canonical ancestry is allowed |
 | P14-NF-52 | target guard | Broad exception, target substitution or missing audit field is refused; one exact audited operation/target exception is allowed, and an adapter refusal is preserved unchanged through effect settlement |
-| P14-NF-53 | storage fault | Hostile cuts around typed configuration/filesystem/git write, flush, rename, observation and settlement never expose partial state or false success; old-or-new durable state reconstructs under Part Ten P10-NF-28/29/33 |
-| P14-NF-54 | projection | Fresh failed observation, zero effect inhibitions, empty required population, or mixed off/active instances take an ineligible label; paired complete inputs reach diverged, on-confirmed, diverged and the ordered family label respectively |
+| P14-NF-53 | storage fault | For a declared single-object atomic replacement or one compare-and-swap ref update, hostile cuts reconstruct only the old or new state for that exact scope. For recursive, cross-filesystem, working-tree or other multi-object mutation, a cut that leaves partial physical state must reconstruct preserved per-object evidence, a partial/uncertain outcome, maximum exposure and an owned reconciliation with no blind retry; false success or an all-or-nothing claim fails. |
+| P14-NF-54 | projection | A never-enabled dark instance with fresh independent inhibition evidence reads `off`; the same instance with missing/expired inhibition evidence reads `diverged`. A deliberately disabled formerly healthy instance remains `off` only while current inhibition/no-later-execution evidence is fresh. A first-soak instance with passing observation arms and a never-executed deliberately inhibited effect arm reads `dry-run`. An unexpected inhibition and a fresh required-arm failure read `diverged`. Zero effect inhibitions with every binding active and fresh reads `on-confirmed`, not `dry-run`. Empty enrollment and mixed off/active instances read `diverged`. |
+| P14-NF-55 | promise lifecycle | An attributable promise absent from the durable work source is ignored, or keywords create an obligation directly. Full-context judgment finds a supported missing registration and the ordinary Part Five path records or explicitly declines it; a matched existing obligation is not duplicated. |
+| P14-NF-56 | input recovery | Model-suggested dim ghost text or an inconclusive/raced capture receives a keypress. Exact same-pane presentation proves authentic pending input before one bounded request; ghost and inconclusive neighbors remain untouched and visible. |
+| P14-NF-57 | recovery race | Provider-throttle and compaction recoveries run concurrently, reuse one another's payload, or permit reaping. One Part Six exclusion key makes one defer, preserves its due work, keeps the reaper veto active and later admits only the recovery class's typed bounded continuation. |
 
 ---
 
@@ -564,6 +702,7 @@ not future implementation details that this part may silently emulate.
 | Parts seven/eight — judgment and effects | **Partial, activation-blocking:** semantic classification uses seven. The landed eight supports ordinary replies only; typed recovery/action-result payloads and Ten drivers are requested seams. Affected bindings stay inhibited under P14-NF-10–12/40–50. |
 | Part eleven — reachability and operator output | **Held by the claimed split:** complete pull posture and bounded action/result notices P14-NF-20–24/37–39. Eleven owns rendering and the minimal plane. |
 | Rules 24/58 — recurrence and outcome review | **Held:** complete populations, reason/outcome separation and root-cause obligation P14-NF-13–15/41. Semantic accuracy remains judged, never mechanically guaranteed. |
+| 1.x missing-promise, pending-input and throttle recovery distinctions | **Held as explicit package arms:** `CommitmentSentinel` missing registration is P14-NF-55; `StuckInputSentinel` ghost/inconclusive exclusion is P14-NF-56; `RateLimitSentinel` compaction exclusion, neutral continuation, backoff and reaper veto are P14-NF-57. Keyword authority and transcript-growth proof are deliberately excluded. |
 | 1.x destructive target guards | **Partial, activation-blocking:** exact target verification, audited exceptions, refusal propagation and crash cuts are specified by P14-NF-51–53, but require the requested Eight/Ten typed drivers. Part eight remains the sole effect authority. |
 
 ---
