@@ -59,6 +59,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     const registerGenerationReference={ owner: 'part-three',name: 'RegisterGeneration',id: registerGeneration.id } as const;
     const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id));
     const stopRegistration=take(intakeStopRegistration(b,deps.author.principal.id));
+    const ordinaryRegistrations=[workRegistration,stopRegistration];
     const verifiedActRegistration=hasVerifiedActSchemas
       ? take(intakeVerifiedActRegistration(b,deps.author.principal.id,registerGenerationReference)):undefined;
     // Snapshot assembly choices. Only context()/clock()/storage are live provider inputs.
@@ -104,7 +105,9 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     function context(preserved: string,principal?: VerifiedPrincipal): FactContext {
       const c=deps.context();
       return {
-        ...c,preserved,ownedBodies: [...c.ownedBodies?.filter(r => !(r.owner==='part-four'&&['IntakeWork','IntakeStop'].includes(r.name)))??[],workRegistration,stopRegistration],decode: {
+        ...c,preserved,ownedBodies: [...c.ownedBodies?.filter(r => !(r.owner==='part-four'
+          &&['IntakeWork','IntakeStop','VerifiedActDisposition'].includes(r.name)))??[],...ordinaryRegistrations,
+          ...verifiedActRegistration? [verifiedActRegistration]:[]],decode: {
           ...c.decode,preserved,
           principals: [...c.decode.principals??[],author.principal,...principal? [principal]:[]]
         }
@@ -113,7 +116,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     function verifiedActContext(preserved: string): FactContext {
       const c=context(preserved);
       requireIntake(verifiedActRegistration,'verified act: additive intake seam is unavailable because its fact schemas are not installed','standing');
-      return { ...c,ownedBodies: [...c.ownedBodies?.filter(r => !(r.owner==='part-four'&&r.name==='VerifiedActDisposition'))??[],verifiedActRegistration] };
+      return c;
     }
     function read(preserved: string,seam=false): readonly FactEnvelope[] {
       const c=seam? verifiedActContext(preserved):context(preserved);

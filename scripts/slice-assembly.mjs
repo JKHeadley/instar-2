@@ -322,6 +322,7 @@ function restartProductionAssembly(slice) {
     repairOwner: 'restart-worker', dependencyFacts: [manifestFact, conformanceFact, policyFact] }));
   const ok = value => slice.result(() => value);
   const operator = slice.restartOperator(verification);
+  const cutDependencies = new Set();
   const production = {
     requesterIdentity: binding.deliveryWitness.requester, effectAdapterIdentity: binding.deliveryWitness.effectAdapter,
     surface: operator.surface,
@@ -335,14 +336,17 @@ function restartProductionAssembly(slice) {
     run: { id: 'run:graph', port: slice.runGraph() }, lease: { id: 'lease:authority', port: slice.transport },
     judgment: { id: 'judgment:doorway', port: slice.judgment }, effect: { id: 'effect:doorway', port: slice.effects },
     verification: { id: 'verification:runtime', port: verification },
-    dependencyAdmission: { owner: 'part-ten', id: 'dependency:admission', admit: input => {
+    dependencyAdmission: { owner: 'part-ten', id: 'dependency:admission', admit: input => slice.result(() => {
+      if (cutDependencies.has(input.name)) throw new Error(`deterministic prerequisite cut: ${input.name}`);
       const commonHandle = { name: input.name, reference: input.fact.id, provider: `provider:${input.name}`, current: true };
       const extras = { 'local-facts': { durability: 'local-durable' }, register: { generation: 'generation:1' },
         'identity-keys': { keys: 'keys:restart' }, clock: { clock: 'clock:restart' }, lease: { exclusive: true }, fence: { exclusive: true },
         'replication-peer': { replicas: 1, distinctPeer: true }, 'conversation-binding': { binding: 'binding:restart' },
         route: { route: 'route:restart' }, 'delivery-evidence': { administration: 'independent' } };
-      return ok({ ...commonHandle, ...extras[input.name] }); } },
-    lifecycle: { owner: 'part-ten', cutId: 'lifecycle:cut', recoveryId: 'lifecycle:recovery', cut: noValue, recover: noValue },
+      return { ...commonHandle, ...extras[input.name] }; }) },
+    lifecycle: { owner: 'part-ten', cutId: 'lifecycle:cut', recoveryId: 'lifecycle:recovery',
+      cut: name => { cutDependencies.add(name); return ok(undefined); },
+      recover: name => { cutDependencies.delete(name); return ok(undefined); } },
     deliveryWitness: { owner: 'part-nine', administration: 'independent', id: 'witness:platform', identity: 'principal:witness',
       platform: 'telegram', observe: operation => ok((() => {
         const application = slice.service.journal().applications.find(row => row.operation === operation);
@@ -1043,7 +1047,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     if (!root) throw new Error('restart operator request requires the installed genesis grant');
     return append('authorization-request', { requestId: 'slice-operator-request:1', requestDigest: operatorRequestDigest,
       action: 'work', scope, audience: 'operator', artifact: definitionArtifact, base: operatorBase,
-      expiresAt: 100000000, approverId: alice.id, requestedById: bob.id, consequence: 'control',
+      expiresAt: 100000000, grantExpiresAt: 90000000, approverId: alice.id, requestedById: bob.id, consequence: 'control',
       reversibility: 'irreversible', blockedWork: 'the recovered attributable reply',
       recurrence: JSON.stringify(['the same durable slice resumes after a process cut']),
       requesterProse: 'complete the already-bound recovered reply', evidence }, [root.id], alice, alice.provenance);

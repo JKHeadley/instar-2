@@ -7,7 +7,8 @@ import { constructGoverned } from '../register/index.js';
 import type { GeneratedRegister, RegisterContext } from '../register/index.js';
 import { operatorBoundary, requireOperator, take } from './boundary.js';
 import type { AuthorityQueueView, AuthorityRequestView, BindingSurfaceAction, BindingView,
-  OperatorHistoryPort, OperatorSurfaceComposition, OperatorSurfacePort, ProtectionReceiptView, SurfaceChallenge } from './contracts.js';
+  NonApprovableAuthorityRequestView, OperatorHistoryPort, OperatorSurfaceComposition, OperatorSurfacePort,
+  ProtectionReceiptView, SurfaceChallenge } from './contracts.js';
 
 const BINDING_ACTIONS: readonly BindingSurfaceAction[] = Object.freeze(['pair', 'pre-bind', 'transfer', 'narrow', 'widen', 'revoke', 'inspect']);
 const CONSEQUENCE: Readonly<Record<string, number>> = Object.freeze({ security: 8, control: 7, identity: 6, external: 5, money: 4, data: 3, attention: 2, none: 1 });
@@ -115,9 +116,12 @@ function requestView(composition: OperatorSurfaceComposition, reference: string)
   const expiresAt = integer(body.expiresAt, 'expiresAt');
   const action = text(body.action, 'action'), audience = text(body.audience, 'audience');
   const consequence = text(body.consequence, 'consequence'), reversibility = text(body.reversibility, 'reversibility');
+  const recurrence = strings(body.recurrence, 'recurrence');
+  const grantExpiresAt = integer(body.grantExpiresAt, 'grantExpiresAt');
   return Object.freeze({ fact: resolved.status.fact.id, requestId: text(body.requestId, 'requestId'), requestDigest,
     action, scope, audience, artifact, base: text(body.base, 'base'), expiresAt, approver, requestedBy,
-    consequence, reversibility, blockedWork: text(body.blockedWork, 'blockedWork'), recurrence: strings(body.recurrence, 'recurrence'),
+    consequence, reversibility, blockedWork: text(body.blockedWork, 'blockedWork'), recurrence,
+    standingGrantCandidate: recurrence.length ? Object.freeze({ actions: Object.freeze([action]), scope, expiresAt: grantExpiresAt }) : null,
     currentGeneration: composition.history.generation(), completeness: resolved.completeness, missing: resolved.missing,
     primaryActions: Object.freeze(['approve', 'decline'] as const), plainLanguageEffect: effectLanguage(action, scope, audience, consequence, reversibility),
     requesterText: Object.freeze({ label: 'UNTRUSTED REQUESTER TEXT' as const, text: text(body.requesterProse, 'requesterProse') }),
@@ -127,6 +131,24 @@ function requestView(composition: OperatorSurfaceComposition, reference: string)
 function requestRenderingDigest(composition: OperatorSurfaceComposition, reference: string): Hash {
   const resolved = resolveReference(composition.history, reference, composition.requestKind);
   return take(canonical(resolved.status.body)).hash;
+}
+
+function nonApprovableRequestView(status: FactStatus, candidates: readonly FactStatus[], reason: string): NonApprovableAuthorityRequestView {
+  const body = status.body !== null && typeof status.body === 'object' && !Array.isArray(status.body)
+    ? status.body as Record<string, Json> : {};
+  const requestId = typeof body.requestId === 'string' && body.requestId.trim().length > 0
+    ? body.requestId : `unresolved:${status.fact.id}`;
+  const related = candidates.filter(row => {
+    const candidate = row.body !== null && typeof row.body === 'object' && !Array.isArray(row.body)
+      ? row.body as Record<string, Json> : {};
+    return candidate.requestId === requestId;
+  });
+  const competingFacts = [...new Set([status.fact.id, ...related.map(row => row.fact.id),
+    ...status.conflicts.flatMap(conflict => conflict.facts)])].sort();
+  return Object.freeze({ fact: status.fact.id, requestId,
+    consequence: typeof body.consequence === 'string' && body.consequence.length > 0 ? body.consequence : 'unknown',
+    state: competingFacts.length > 1 || status.conflicts.length > 0 ? 'conflict' as const : 'unavailable' as const,
+    approvable: false as const, primaryActions: Object.freeze([] as const), competingFacts: Object.freeze(competingFacts), reason });
 }
 
 function terminalRequest(composition: OperatorSurfaceComposition, request: string): boolean {
@@ -238,8 +260,26 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
           const superseded = new Set(candidates.filter(row => candidates.some(successor => successor.fact.id !== row.fact.id
             && object(successor.body).requestId === object(row.body).requestId
             && causalCone(successor.fact, facts).some(ancestor => ancestor.id === row.fact.id))).map(row => row.fact.id));
-          const rows = candidates.filter(row => !superseded.has(row.fact.id))
-            .map(row => requestView(composition, row.fact.id)).sort((a, b) => (CONSEQUENCE[b.consequence] ?? 0) - (CONSEQUENCE[a.consequence] ?? 0)
+          const heads = candidates.filter(row => !superseded.has(row.fact.id));
+          const rows: (AuthorityRequestView | NonApprovableAuthorityRequestView)[] = [], representedConflicts = new Set<string>();
+          for (const row of heads) {
+            const body = row.body !== null && typeof row.body === 'object' && !Array.isArray(row.body)
+              ? row.body as Record<string, Json> : {};
+            const requestId = typeof body.requestId === 'string' && body.requestId.trim().length > 0
+              ? body.requestId : `unresolved:${row.fact.id}`;
+            const related = heads.filter(candidate => candidate.body !== null && typeof candidate.body === 'object'
+              && !Array.isArray(candidate.body) && (candidate.body as Record<string, Json>).requestId === requestId);
+            if (related.length > 1 || row.conflicts.length > 0 || row.taint.length > 0) {
+              if (!representedConflicts.has(requestId)) {
+                representedConflicts.add(requestId);
+                rows.push(nonApprovableRequestView(row, related, 'authorization request is conflicted or unavailable in signed history'));
+              }
+              continue;
+            }
+            try { rows.push(requestView(composition, row.fact.id)); }
+            catch (error) { rows.push(nonApprovableRequestView(row, heads, error instanceof Error ? error.message : 'request row is unavailable')); }
+          }
+          rows.sort((a, b) => (CONSEQUENCE[b.consequence] ?? 0) - (CONSEQUENCE[a.consequence] ?? 0)
               || current.entries.find(row => row.fact.id === a.fact)!.fact.at.value - current.entries.find(row => row.fact.id === b.fact)!.fact.at.value);
           const boundedAt = Math.min(maxRows, composition.maxPending);
           return Object.freeze({ rows: Object.freeze(rows.slice(0, boundedAt)), total: rows.length,

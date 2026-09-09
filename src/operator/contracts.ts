@@ -69,6 +69,7 @@ export interface AuthorityRequestView {
   readonly approver: VerifiedPrincipal; readonly requestedBy: VerifiedPrincipal;
   readonly consequence: string; readonly reversibility: string; readonly blockedWork: string;
   readonly recurrence: readonly string[]; readonly currentGeneration: RegisterGenerationReference;
+  readonly standingGrantCandidate: Readonly<{ actions: readonly string[]; scope: Scope; expiresAt: number }> | null;
   readonly completeness: 'complete' | 'partial'; readonly missing: readonly string[];
   readonly primaryActions: readonly ['approve', 'decline'];
   readonly plainLanguageEffect: string;
@@ -77,8 +78,16 @@ export interface AuthorityRequestView {
   readonly phoneCapable: true;
 }
 
+export interface NonApprovableAuthorityRequestView {
+  readonly fact: string; readonly requestId: string; readonly consequence: string;
+  readonly state: 'conflict' | 'unavailable'; readonly approvable: false;
+  readonly primaryActions: readonly []; readonly competingFacts: readonly string[];
+  readonly reason: string;
+}
+
 export interface AuthorityQueueView {
-  readonly rows: readonly AuthorityRequestView[]; readonly total: number; readonly coalescedNotifications: number;
+  readonly rows: readonly (AuthorityRequestView | NonApprovableAuthorityRequestView)[];
+  readonly total: number; readonly coalescedNotifications: number;
   readonly boundedAt: number; readonly pullFirst: true;
 }
 

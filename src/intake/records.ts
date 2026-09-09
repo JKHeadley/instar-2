@@ -92,7 +92,8 @@ export function intakeVerifiedActFactSchemas(scope: Scope): readonly FactSchema[
     } },
     { ...shared,kind: 'authorization-request',fields: {
       requestId: short,requestDigest: short,action: short,scope: { kind: 'constitutional' as const,type: 'Scope' },audience: short,
-      artifact: short,base: short,expiresAt: { kind: 'integer' as const },approverId: short,requestedById: short,
+      artifact: short,base: short,expiresAt: { kind: 'integer' as const },grantExpiresAt: { kind: 'integer' as const },
+      approverId: short,requestedById: short,
       consequence: short,reversibility: short,blockedWork: short,recurrence: { kind: 'text' as const,maxLength: 1048576 },
       requesterProse: { kind: 'text' as const,maxLength: 1048576 },evidence: { kind: 'capture' as const }
     } },
@@ -292,7 +293,9 @@ export function resolveVerifiedActRecord(raw: Json,c: FactContext,now: Clock,exp
       requireIntake(Array.isArray(recurrence)&&recurrence.length>0&&recurrence.length<=100
         &&recurrence.every(item => typeof item==='string'&&item.trim().length>0),
       'verified act: StandingGrant requires bounded recurrence evidence from the durable request','standing');
-      requireIntake(same(grantScope,scopeValue)&&grantee.id===requestedBy,'verified act: StandingGrant scope or grantee exceeds request','standing');
+      const grantExpiresAt=integer(q.grantExpiresAt,'request.grantExpiresAt');
+      requireIntake(same(grantScope,scopeValue)&&grantee.id===requestedBy&&integer(a.expiresAt,'StandingGrant.expiresAt')===grantExpiresAt,
+        'verified act: StandingGrant scope, grantee, or term differs from the durable request-derived candidate','standing');
       requireIntake((a.standing==='delegate'&&same(a.actions,[action]))||(a.standing==='operator'&&action==='operator-standing'),
         'verified act: free-form grant standing/actions are forbidden','standing');
     } else {

@@ -129,7 +129,8 @@ export function intakeFixture(options: { directory?: string } = {}) {
     scope: f.scope, causallyBound: false, requiredReferences: [], authority: 'none', fields: {
       requestId: { kind: 'text', maxLength: 200 }, requestDigest: { kind: 'text', maxLength: 200 }, action: { kind: 'text', maxLength: 200 },
       scope: { kind: 'constitutional', type: 'Scope' }, audience: { kind: 'text', maxLength: 200 }, artifact: { kind: 'text', maxLength: 200 },
-      base: { kind: 'text', maxLength: 200 }, expiresAt: { kind: 'integer' }, approverId: { kind: 'text', maxLength: 200 },
+      base: { kind: 'text', maxLength: 200 }, expiresAt: { kind: 'integer' }, grantExpiresAt: { kind: 'integer' },
+      approverId: { kind: 'text', maxLength: 200 },
       requestedById: { kind: 'text', maxLength: 200 }, consequence: { kind: 'text', maxLength: 100 },
       reversibility: { kind: 'text', maxLength: 100 }, blockedWork: { kind: 'text', maxLength: 300 },
       recurrence: { kind: 'text', maxLength: 1000 }, requesterProse: { kind: 'text', maxLength: 2000 }, evidence: { kind: 'capture' },
@@ -144,7 +145,8 @@ export function intakeFixture(options: { directory?: string } = {}) {
     const digest = authorizationRequestDigest({ approver: f.alice, action: { kind: action, scope }, artifact, base });
     const requestEvidence = value(deps.capture.preserve(`request-evidence:${frames.length}`, f.now));
     const requestBody: Record<string, Json> = { requestId: 'request:verified-act', requestDigest: digest, action, scope: json(scope), audience: 'operator',
-      artifact, base, expiresAt: 500, approverId: f.alice.id, requestedById: f.bob.id, consequence: 'control', reversibility: 'irreversible',
+      artifact, base, expiresAt: 500, grantExpiresAt: 400, approverId: f.alice.id, requestedById: f.bob.id,
+      consequence: 'control', reversibility: 'irreversible',
       blockedWork: 'operator-authorized work', recurrence: JSON.stringify(['same request recurred']), requesterProse: 'please proceed',
       evidence: json(requestEvidence), ...options.request };
     const request = value(authorAndAppend({ kind: 'authorization-request', schemaVersion: 1, machine: 'machine-a', principal: json(f.alice),
