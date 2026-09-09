@@ -36,6 +36,22 @@ export function intakeArrival(fact: FactEnvelope,observerId: string) {
   } catch { return undefined; }
 }
 
+// Scheduled identity is chosen from signed ingress history, never from the
+// admission's mutable Intent. The dedicated principal record is the additive
+// discriminator; matching it to the preserved route also catches a rewritten
+// or malformed scheduled channel instead of silently treating it as ordinary.
+export function isScheduledIntakeAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[],observerId: string): boolean {
+  if(fact.kind!=='intake-admitted') return false;
+  const receipt=facts.find(candidate => candidate.id===object(fact.body).receipt&&candidate.kind==='intake-receipt');
+  const arrival=receipt&&intakeArrival(receipt,observerId);
+  if(!arrival) return false;
+  return causalCone(fact,facts).some(candidate => {
+    if(candidate.kind!=='intake-scheduled-principal') return false;
+    try { return object(object(candidate.body).principal!).id===arrival.route.sender; }
+    catch { return fact.predecessors.required.includes(candidate.id); }
+  });
+}
+
 // Binding writes require the existing P2 operator/conferring ladder. Intake never authors one.
 export function intakeFactSchemas(scope: Scope): readonly FactSchema[] {
   const short={ kind: 'text' as const,maxLength: 1024 };
@@ -385,11 +401,19 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
         const expected=directives.filter(d => !d.closedBy&&!superseded.has(d.id)
           &&scopeIncludes(take(decode('Scope',d.scope,c.facts.decode)),scope)).map(d => text(d.id,'directive id'));
         requireIntake(same([...new Set(expected)].sort(),intent.under),'P4-NF-25: intent omits or changes in-cone directives');
-        const principal=object(intent.principal!),ask=intent.ask;
-        const scheduledAsk=principal.kind==='system'&&!!ask&&typeof ask==='object'&&!Array.isArray(ask)? object(ask):undefined;
-        const scheduled=scheduledAsk&&Object.keys(scheduledAsk).length===6&&scheduledAsk.schemaVersion===1
-          &&['jobInstance','scheduledInstant','packageDigest','calendarPolicyVersion','timeZoneDataVersion'].every(key => scheduledAsk[key]!==undefined);
+        const principal=object(intent.principal!);
+        // The signed receipt chooses the scheduled arm. The admission's mutable
+        // principal/ask fields may only be checked after that choice; otherwise
+        // a malformed scheduled claim can fall through to ordinary intake.
+        const scheduled=isScheduledIntakeAdmission(c.origin,c.facts.facts,observerId);
         if(scheduled) {
+          const scheduledAsk=object(intent.ask!);
+          const eventId=text(body.eventId,'scheduled event id');
+          // Validate the claim independently of capture availability. This
+          // refuses malformed shapes and every field that changes event
+          // identity, while still allowing an honestly partial historical read
+          // when the otherwise-valid preserved capture is unavailable.
+          decodeScheduledTickBody(take(canonical(scheduledAsk)).bytes,eventId,c.facts.decode);
           const receiptBody=object(receipt.body),capturePin=object(receiptBody.capture!);
           const capture=c.facts.captures[text(capturePin.reference,'scheduled capture reference')];
           if(c.mode==='origin'||capture?.status==='available') {
@@ -432,7 +456,6 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
           requireIntake(principalIdentity.every(row => same(row.record.view,principalWitnesses[0]!.record.view)),
             'scheduled intake: package-system principal dependency is conflicted');
 
-          const eventId=text(body.eventId,'scheduled event id');
           const discoveryCandidates=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
             required.has(row.fact.id)&&row.record.view.type==='Evidence'&&row.record.view.source===row.fact.machine);
           const discoveryWitnesses=discoveryCandidates.filter(row => {
@@ -467,6 +490,28 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
               causalNow,c.preserved))==='live',
             'scheduled intake: package-system grant dependency is unavailable or not live');
           }
+          const principalProvenance=object(principal.provenance!);
+          const resolutionWitnesses=cone.filter(fact => required.has(fact.id)&&fact.kind==='intake-resolved');
+          requireIntake(resolutionWitnesses.length===1,
+            'scheduled intake: one resolved-principal witness is required','integrity');
+          const resolution=resolutionWitnesses[0]!,resolved=object(resolution.body);
+          requireIntake(resolution.principal.id===principal.id&&same(resolution.principal,principal)
+            &&same(resolution.provenance,principalProvenance)&&same(resolution.at,c.origin.at),
+          'scheduled intake: resolved-principal witness has wrong principal','standing');
+          requireIntake(resolved.logicalId===body.logicalId&&resolved.receipt===receipt.id
+            &&resolved.rawHash===body.rawHash&&resolved.adapter===body.adapter&&resolved.channel===body.channel
+            &&resolved.sender===body.sender&&resolved.identityEpoch===body.identityEpoch&&resolved.eventId===body.eventId
+            &&resolved.principalId===principal.id&&resolved.binding==='none'
+            &&same(resolved.authentication,principalProvenance.record),
+          'scheduled intake: resolved-principal witness differs from the admission','integrity');
+          requireIntake(resolution.predecessors.required.includes(receipt.id)
+            &&resolution.predecessors.required.includes(discoveryWitnesses[0]!.fact.id)
+            &&historicalGrants.some(row => resolution.predecessors.required.includes(row.factId)),
+          'scheduled intake: resolved-principal witness omits signed authority','integrity');
+          const decodedResolution=take(decodeHistoricalBody(resolution,historicalContext,
+            causalStanding(resolution,historicalContext,false).decode));
+          requireIntake(c.mode==='historical'||decodedResolution.taint.length===0,
+            'scheduled intake: resolved-principal witness is unavailable','integrity');
         }
         return { ok: true,value: input };
       } catch(e) { return { ok: false,detail: e instanceof Error? e.message:'P4-NF-12: invalid work' }; }

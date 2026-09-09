@@ -9,7 +9,7 @@ import { foldProjection,readProjection } from '../projections/index.js';
 import { boundary,IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ConstitutionalReference,InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort,PendingScheduledAdmissions,
   PendingScheduledAdmissionsInput,ScheduledTickAdmission,SenderEvidence,VerifiedActAdmission,VerifiedActDisposition } from './contracts.js';
-import { buildVerifiedActRecord,intakeArrival,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,
+import { buildVerifiedActRecord,intakeArrival,isScheduledIntakeAdmission,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,
   intakeVerifiedActRegistration,intakeWorkRegistration,scheduledIntakeFactSchemas,decodeScheduledTickBody } from './records.js';
 
 const reference=(f: FactEnvelope): FactEnvelopeReference => Object.freeze({ owner: 'part-two',name: 'FactEnvelope',id: f.id });
@@ -323,20 +323,18 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       return identities.map(id => active.filter(candidate => candidate.directive.view.id===id)
         .sort((left,right) => foldKey(left.row.fact)<foldKey(right.row.fact)?-1:foldKey(left.row.fact)>foldKey(right.row.fact)?1:0)[0]!);
     }
-    function isScheduledAdmission(fact: FactEnvelope): boolean {
-      try {
-        if(fact.kind!=='intake-admitted') return false;
-        const intent=object(object(fact.body).intent!),ask=object(intent.ask!);
-        return object(intent.principal!).kind==='system'&&Object.keys(ask).length===6&&ask.schemaVersion===1
-          &&['jobInstance','scheduledInstant','packageDigest','calendarPolicyVersion','timeZoneDataVersion'].every(key => ask[key]!==undefined);
-      } catch { return false; }
+    function isScheduledAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[]): boolean {
+      try { return isScheduledIntakeAdmission(fact,facts,author.principal.id); }
+      catch { return false; }
     }
     type ScheduledResolution={ kind: 'valid'; row: FactStatus; principal: VerifiedPrincipal }|{ kind: 'partial' };
     function resolveScheduledAdmission(row: FactStatus,facts: readonly FactEnvelope[],preserved: string): ScheduledResolution {
-      requireIntake(row.fact.kind==='intake-admitted'&&isScheduledAdmission(row.fact),
+      requireIntake(row.fact.kind==='intake-admitted'&&isScheduledAdmission(row.fact,facts),
         'scheduled intake: pending reference has wrong kind or subject','integrity');
-      if(row.taint.includes('evidence-unavailable')) return { kind: 'partial' };
       const c=context(preserved),snapshot=statuses(preserved),body=object(row.body),intentBody=object(body.intent!);
+      const claimedAsk=object(intentBody.ask!);
+      decodeScheduledTickBody(take(canonical(claimedAsk)).bytes,text(body.eventId,'scheduled event id'),c.decode);
+      if(row.taint.includes('evidence-unavailable')) return { kind: 'partial' };
       const cone=new Set(causalCone(row.fact,facts).map(fact => fact.id));
       const required=row.fact.predecessors.required;
       const dependencies=required.map(id => snapshot.find(candidate => candidate.fact.id===id));
@@ -451,7 +449,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
                 throw new IntakeFailure('P4-NF-03/08: same scheduled event id, different arrival bytes; attack signal recorded','integrity');
               }));
             }
-            const priorRows=statuses(preserved).filter(row => isScheduledAdmission(row.fact)&&object(row.body).logicalId===logicalId);
+            const priorFacts=read(preserved);
+            const priorRows=statuses(preserved).filter(row => isScheduledAdmission(row.fact,priorFacts)&&object(row.body).logicalId===logicalId);
             requireIntake(priorRows.length<=1,'scheduled intake: scheduled admission identity is conflicted','standing');
             if(priorRows.length===1) {
               const prior=resolveScheduledAdmission(priorRows[0]!,read(preserved),preserved);
@@ -506,7 +505,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             const directives=scheduledDirectives(admissionRows,preserved,directiveCone);
             const intent: Json={ type: 'Intent',schemaVersion: 1,id: logicalId,principal: json(principal),receivedAt: json(original.at),
               via: adapterId,raw: captured.hash,ask: tick,under: directives.map(candidate => candidate.directive.view.id) };
-            const committed=statuses(preserved).find(row => isScheduledAdmission(row.fact)&&object(row.body).logicalId===logicalId);
+            const committedFacts=read(preserved);
+            const committed=statuses(preserved).find(row => isScheduledAdmission(row.fact,committedFacts)&&object(row.body).logicalId===logicalId);
             if(committed) {
               requireIntake(object(committed.body).rawHash===captured.hash,'P4-NF-03: concurrent scheduled arrival hash mismatch','integrity');
               const resolvedCommitted=resolveScheduledAdmission(committed,read(preserved),preserved);
@@ -557,7 +557,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
           &&(fact.segment.epoch<Number(object(position).epoch)||fact.segment.epoch===Number(object(position).epoch)
             &&fact.segment.position<=Number(object(position).position)); };
         const snapshot=statuses(initial.preserved);
-        const rows=snapshot.filter(row => visible(row.fact)&&isScheduledAdmission(row.fact))
+        const rows=snapshot.filter(row => visible(row.fact)&&isScheduledAdmission(row.fact,facts))
           .sort((left,right) => foldKey(left.fact)<foldKey(right.fact)?-1:foldKey(left.fact)>foldKey(right.fact)?1:0);
         const resolved=rows.map(row => resolveScheduledAdmission(row,facts,initial.preserved));
         const valid=resolved.filter((candidate): candidate is Extract<ScheduledResolution,{ kind: 'valid' }> => candidate.kind==='valid');

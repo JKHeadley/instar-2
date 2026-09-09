@@ -18,7 +18,7 @@ const contracts = {
     readProjection: { module: 'src/projections/index.ts', artifact: 'src/projections/fold.ts', requires: 'intakeDedupDefinition' },
     authorAndAppend: { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', requires: 'intakeWorkRegistration' },
     'createFactStore.append': { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', symbol: 'createFactStore', requires: 'intakeWorkRegistration' } },
-    fixture: id => /^P4-(?:NF-(?:0[1-9]|1[0-9]|2[0-9])|VA-0[1-9]|ST-(?:0[1-9]|1[0-9]|2[0-9])|PRESERVE-01)$/.test(id), probe: id => id === 'P4-NF-29',
+    fixture: id => /^P4-(?:NF-(?:0[1-9]|1[0-9]|2[0-9])|VA-0[1-9]|ST-(?:0[1-9]|1[0-9]|2[0-9]|3[01])|PRESERVE-01)$/.test(id), probe: id => id === 'P4-NF-29',
     test: (_kind, path) => /^tests\/(?:intake\/[a-z][a-z0-9-]*|(?:integration|e2e)\/intake-scheduled)\.test\.ts$/.test(path) },
 };
 const exact = (v, keys) => {
