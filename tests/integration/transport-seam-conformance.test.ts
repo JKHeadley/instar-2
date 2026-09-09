@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { canonical, consumeResult, decodeMeasurement } from '../../src/index.js';
-import { decodeEnvelope, decodeHistoricalBody, factId, signEnvelope } from '../../src/facts/index.js';
+import { decodeEnvelope, decodeHistoricalBody, factId, prepareSnapshot, signEnvelope } from '../../src/facts/index.js';
 import { createBoundedDueScanPort, decodeLoopPolicy, decodeMissedRangeRecord } from '../../src/transport/index.js';
 import type { FenceToken, MissedRangeInput, SharedBreakerLoopPolicy, SharedLoopRecord } from '../../src/transport/index.js';
 import { privateKey } from '../facts/fixtures.js';
@@ -14,8 +14,8 @@ const rejects = (result: unknown, detail?: string) => {
   const text = verdict(result); expect(text).toMatch(/^REFUSE:/); if (detail) expect(text).toContain(detail); return text;
 };
 type Fixture = ReturnType<typeof transportLoopFixture>;
-function setup(overrides: Partial<SharedBreakerLoopPolicy> = {}) {
-  const f = transportLoopFixture(), token = value(f.api.acquire('lease:review', '', 1000));
+function setup(overrides: Partial<SharedBreakerLoopPolicy> = {}, fixture?: Fixture) {
+  const f = fixture ?? transportLoopFixture(), token = value(f.api.acquire('lease:review', '', 1000));
   const policy = Object.keys(overrides).length === 0 ? f.sharedPolicy : value(decodeLoopPolicy({ ...f.sharedPolicy,
     id: `policy:review:${value(canonical(overrides)).hash}`, ...overrides }, f.c)) as SharedBreakerLoopPolicy;
   f.registerPolicy(policy);
@@ -50,8 +50,10 @@ function signedNext(f: Fixture, record: SharedLoopRecord | Record<string, unknow
   const ctx = { ...f.ctx, facts: [...f.ctx.facts, ...facts] };
   return { wire, ctx, frame: value(decodeEnvelope(wire, ctx, 'replication')) };
 }
-function missed() {
-  const s = setup();
+function missed(options: Readonly<{ existingInstants?: readonly number[]; catchUpInstants?: readonly number[] }> = {}) {
+  const existing = options.existingInstants ?? [110, 120, 130];
+  const catchUp = options.catchUpInstants ?? [];
+  const s = setup({}, transportLoopFixture(undefined, undefined, undefined, options));
   const page = value(createBoundedDueScanPort(s.f.host, s.f.spine, s.f.c).page({ scan: 'scan', generation: 'g1',
     orderedKeys: ['job:one'], cursor: null, maxItems: 1, maxDuration: 10 }));
   const result = s.f.appendResult();
@@ -60,9 +62,13 @@ function missed() {
     asOf: s.f.clock(130), currentLateness: value(decodeMeasurement('duration', { type: 'Measurement', schemaVersion: 1,
       subject: { kind: 'duration', instance: 'job:one' }, value: 0, unit: 'ms', at: s.f.clock(130), by: 'probe' },
     s.f.host.current().decode)),
-    priorExpansionCursor: s.f.clock(100), missedBoundary: s.f.clock(130), catchUpPolicy: 'none',
-    dispositions: [110, 120, 130].map(n => ({ scheduledInstant: s.f.clock(n), kind: 'missed-no-execution' as const, result })),
-    catchUpRun: null };
+    priorExpansionCursor: s.f.clock(100), missedBoundary: s.f.clock(130),
+    catchUpPolicy: catchUp.length > 0 ? 'latest' : 'none',
+    dispositions: [110, 120, 130].map(n => catchUp.includes(n)
+      ? ({ scheduledInstant: s.f.clock(n), kind: 'catch-up-run' as const, run: s.f.catchUpRun(n) })
+      : existing.includes(n) ? ({ scheduledInstant: s.f.clock(n), kind: 'existing-run' as const, run: s.f.admittedRun(n) })
+        : ({ scheduledInstant: s.f.clock(n), kind: 'missed-no-execution' as const, result })),
+    catchUpRun: catchUp.length > 0 ? s.f.catchUpRun(catchUp.at(-1)!) : null };
   return { ...s, page, input };
 }
 
@@ -91,6 +97,15 @@ it('SLB-BUDGET-15 V09 stable parent identity prevents pressure-scope budget evas
   rejects(attempt(s, 'budget:b'), 'shared parent budget');
 });
 
+it('SLB-SCOPE-25 V19 derives caller scope proposals through the governed pressure binding', () => {
+  const s = open(setup()), original = s.loop;
+  s.loop = value(s.f.api.scheduleEpisode({ ...s.input, command: 'schedule:caller-scope', episodeKey: 'caller-scope',
+    pressureScope: { ...pressureScope, machine: 'caller-machine-b' } }));
+  expect(s.loop.pressureKey).toBe(original.pressureKey);
+  expect(s.loop.pressureScope).toEqual(pressureScope);
+  s.f.advance(1); rejects(attempt(s, 'scope:cooldown'), 'cooldown');
+}, 10000);
+
 it('SLB-REPLAY-16 V13 V14 V34 replay and replication refuse forged closure, counters and unwitnessed completion', () => {
   const scheduled = setup();
   const close = signedNext(scheduled.f, { ...scheduled.loop, command: 'forged:close', predecessor: scheduled.f.head(),
@@ -113,22 +128,58 @@ it('SLB-REPLAY-16 V13 V14 V34 replay and replication refuse forged closure, coun
   rejects(pending.f.store.append(completion.wire, { peer: 'machine-a' }));
 });
 
+it('SLB-OUTCOME-26 V08 V09 derives result meaning and exact attempt binding from signed completion evidence', () => {
+  const wrong = setup(); wrong.f.advance(1); value(attempt(wrong, 'actual:failed'));
+  const failed = wrong.f.appendOutcome('failed', 'actual:failed');
+  rejects(outcome(wrong, 'actual:failed', 'accepted', { completion: failed }), 'classification');
+
+  const reused = setup(); reused.f.advance(1); value(attempt(reused, 'bound:a')); value(attempt(reused, 'bound:b'));
+  const completion = reused.f.appendOutcome('accepted', 'bound:a');
+  rejects(outcome(reused, 'bound:b', 'accepted', { completion }), 'bound to this loop attempt');
+});
+
+it('SLB-ADMISSION-27 V22 V23 recomputes signed budget and half-open admission decisions', () => {
+  const budget = setup({ parentAttemptBudget: 1 }); budget.f.advance(1);
+  const admitted = value(attempt(budget, 'signed:a'));
+  const added = { ...admitted.attemptLog[0]!, id: 'signed:forged', resource: 999 };
+  const forgedBudget = signedNext(budget.f, { ...admitted, command: 'signed:budget', predecessor: budget.f.head(),
+    attempts: 2, episodeAttempts: 2, pendingAttempts: ['signed:a', 'signed:forged'],
+    attemptLog: [...admitted.attemptLog, added], rollingAttempts: 0, rollingResource: 0 });
+  rejects(decodeHistoricalBody(forgedBudget.frame, forgedBudget.ctx, forgedBudget.ctx.decode));
+  rejects(budget.f.store.append(forgedBudget.wire, { peer: 'machine-a' }));
+
+  const cooldown = open(setup()), early = { ...cooldown.loop.attemptLog[0]!, id: 'signed:early',
+    admittedAt: cooldown.loop.transitionAt, mode: 'half-open' as const };
+  const forgedTrial = signedNext(cooldown.f, { ...cooldown.loop, command: 'signed:cooldown', predecessor: cooldown.f.head(),
+    state: 'half-open', transition: 'half-opened', attempts: 3, episodeAttempts: 3, pending: 'signed:early',
+    pendingAttempts: ['signed:early'], attemptLog: [...cooldown.loop.attemptLog, early], halfOpenAdmitted: 99 });
+  rejects(decodeHistoricalBody(forgedTrial.frame, forgedTrial.ctx, forgedTrial.ctx.decode));
+  rejects(cooldown.f.store.append(forgedTrial.wire, { peer: 'machine-a' }));
+}, 10000);
+
 it('SLB-CLOSURE-17 V15 V33 restoration references are actual fresh Part Nine facts and rechecked at promotion', () => {
   const absent = open(setup({ halfOpenTrials: 1 })); absent.f.advance(20); value(attempt(absent, 'trial:absent'));
   rejects(outcome(absent, 'trial:absent', 'accepted', { restoration: [{ owner: 'part-nine',
-    name: 'VerificationAssessment', id: 'assessment:absent' }] }), 'assessment unavailable');
+    name: 'VerificationAssessment', id: 'assessment:absent' }] }), 'evidence is absent');
+
+  const partial = open(setup({ halfOpenTrials: 1 })); partial.f.advance(20); value(attempt(partial, 'trial:partial'));
+  rejects(outcome(partial, 'trial:partial', 'accepted', { restoration: [{ owner: 'part-nine',
+    name: 'VerificationAssessment', id: 'assessment:one' }] }), 'subject differs');
 
   const s = open(setup()); let available = true, calls = 0;
-  Object.assign(s.f.host, { restorationEvidence: { owner: 'part-nine', verify: (input: { reference: unknown }) =>
-    s.f.result(() => { calls++; if (!available) throw new Error('assessment unavailable'); return input.reference; }) } });
+  const originalRestoration = s.f.host.restorationEvidence!;
+  Object.assign(s.f.host, { restorationEvidence: { owner: 'part-nine', verify: (input: Parameters<typeof originalRestoration.verify>[0]) =>
+    s.f.result(() => { calls++; if (!available) throw new Error('assessment unavailable'); return value(originalRestoration.verify(input)); }) } });
   s.f.advance(20); value(attempt(s, 'trial:one'));
   s.loop = value(outcome(s, 'trial:one', 'accepted', { restoration: [{ owner: 'part-nine',
     name: 'VerificationAssessment', id: 'assessment:expires' }] }));
-  available = false; value(attempt(s, 'trial:two'));
-  rejects(outcome(s, 'trial:two', 'accepted'), 'assessment unavailable');
+  value(attempt(s, 'trial:two'));
+  const completion = s.f.appendOutcome('accepted', 'trial:two'); available = false;
+  rejects(outcome(s, 'trial:two', 'accepted', { completion }), 'assessment unavailable');
   expect(calls).toBeGreaterThanOrEqual(2);
+  available = true;
   expect((value(s.f.api.inspect()).at(-1)!.record as SharedLoopRecord).pendingAttempts).toEqual(['trial:two']);
-});
+}, 20000);
 
 it('SLB-CLOCK-18 V07 comparable shared clocks never move backward', () => {
   const s = setup(); s.f.advance(1); value(attempt(s, 'clock:a'));
@@ -146,9 +197,12 @@ it('SLB-BOUNDS-19 V11 V39 total concurrency bounds half-open and a zero parent-a
 
 it('SLB-MISSED-21 V21 V22 V26 resolves member Runs, cursor roster and catch-up admissions against owner history', () => {
   const s = missed();
+  const result = s.f.appendResult('result:erase-existing');
+  rejects(s.f.api.recordMissedRange({ ...s.input, dispositions: [110, 120, 130].map(value => ({
+    scheduledInstant: s.f.clock(value), kind: 'missed-no-execution' as const, result })) }), 'already admitted');
   rejects(s.f.api.recordMissedRange({ ...s.input, dispositions: s.input.dispositions.map(value => ({
     scheduledInstant: value.scheduledInstant, kind: 'existing-run' as const,
-    run: { owner: 'part-five', name: 'Run', id: 'run:absent' } })) }), 'Run admission');
+    run: { owner: 'part-five', name: 'Run', id: 'run:absent' } })) }), 'already admitted');
   const unrelated = value(createBoundedDueScanPort(s.f.host, s.f.spine, s.f.c).page({ scan: 'unrelated',
     generation: 'unrelated:g', orderedKeys: ['different-job'], cursor: null, maxItems: 1, maxDuration: 10 }));
   rejects(s.f.api.recordMissedRange({ ...s.input, scanCursor: unrelated.cursor }), 'roster');
@@ -156,8 +210,41 @@ it('SLB-MISSED-21 V21 V22 V26 resolves member Runs, cursor roster and catch-up a
     catchUpRun: { owner: 'part-five', name: 'Run', id: 'run:unwitnessed-catchup' },
     dispositions: s.input.dispositions.map((value, index) => index === 2 ? { scheduledInstant: value.scheduledInstant,
       kind: 'catch-up-run' as const, run: { owner: 'part-five' as const, name: 'Run' as const,
-        id: 'run:unwitnessed-catchup' } } : value) }), 'Run admission');
+        id: 'run:unwitnessed-catchup' } } : value) }), 'already admitted');
 });
+
+it('SLB-STATUS-29 V26 refuses promotion from unavailable required parent input while retaining history', () => {
+  const s = setup(); s.f.advance(1);
+  const opening = s.f.ctx.facts.find(fact => (fact.body as { capture?: { reference?: string } }).capture?.reference === 'message:1')!;
+  const old = s.f.ctx.captures['message:1']!;
+  Object.assign(s.f.ctx, { captures: { ...s.f.ctx.captures,
+    'message:1': { ...old, status: 'expired', bytes: null } } });
+  expect(value(prepareSnapshot([opening], s.f.ctx)).entries[0]!.taint).toContain('evidence-unavailable');
+  rejects(attempt(s, 'unavailable:parent'), 'unavailable');
+});
+
+it('SLB-SIBLING-28 V18 consumes either half-open completion order across restart without reopening reachability', () => {
+  const run = (order: readonly ('sibling:a' | 'sibling:b')[]) => {
+    const s = open(setup({ halfOpenConcurrency: 2 })); s.f.advance(20);
+    value(attempt(s, 'sibling:a')); value(attempt(s, 'sibling:b'));
+    const completions = { 'sibling:a': s.f.appendOutcome('accepted', 'sibling:a'),
+      'sibling:b': s.f.appendOutcome('failed', 'sibling:b') };
+    const apply = (id: 'sibling:a' | 'sibling:b') => s.f.api.recordLoopOutcome({ command: `outcome:${id}`,
+      fence: s.token, episode: loopRef(s.loop), attempt: id, kind: id === 'sibling:a' ? 'accepted' : 'failed',
+      failureClass: id === 'sibling:a' ? '' : 'transport', completion: completions[id], jitterPermille: 1000,
+      restoration: [], sourceVector: s.f.vector });
+    s.loop = value(apply(order[0]!));
+    const restarted = transportLoopFixture(s.f.directory);
+    restarted.time(s.f.host.loopClock!.now().value);
+    s.f = restarted; s.loop = value(restarted.api.inspect()).filter(row => row.record.type === 'LoopRecord').at(-1)!.record as SharedLoopRecord;
+    s.loop = value(apply(order[1]!));
+    return s.loop;
+  };
+  const acceptedFirst = run(['sibling:a', 'sibling:b']), failedFirst = run(['sibling:b', 'sibling:a']);
+  expect(acceptedFirst).toMatchObject({ state: 'open-breaker', transition: 'reopened', pendingAttempts: [] });
+  expect(failedFirst).toMatchObject({ state: 'open-breaker', pendingAttempts: [] });
+  expect(failedFirst.outcomeWindowDigest).toBe(acceptedFirst.outcomeWindowDigest);
+}, 20000);
 
 it('SLB-MISSED-REPLAY-22 V28 V29 V37 refuses signed and read-time missed records with absent dependencies', () => {
   const s = missed(), reference = value(s.f.api.recordMissedRange(s.input));
@@ -173,10 +260,8 @@ it('SLB-MISSED-REPLAY-22 V28 V29 V37 refuses signed and read-time missed records
 });
 
 it('SLB-MISSED-STABLE-23 V27 boundary-plus-one cannot mint a second catch-up identity', () => {
-  const s = missed(), run = s.f.admittedRun(130);
-  const first: MissedRangeInput = { ...s.input, catchUpPolicy: 'latest', catchUpRun: run,
-    dispositions: s.input.dispositions.map((value, index) => index === 2
-      ? { scheduledInstant: value.scheduledInstant, kind: 'catch-up-run' as const, run } : value) };
+  const s = missed({ existingInstants: [110, 120], catchUpInstants: [130] });
+  const first: MissedRangeInput = s.input;
   value(s.f.api.recordMissedRange(first));
   const changedRun = { owner: 'part-five' as const, name: 'Run' as const, id: 'run:second-catchup' };
   const next: MissedRangeInput = { ...first, asOf: s.f.clock(131),

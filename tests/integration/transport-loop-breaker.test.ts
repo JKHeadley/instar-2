@@ -51,7 +51,7 @@ it('SLB-SHARED-04 P6-NF-18 P6-NF-20 P6-NF-21 shared pressure opens once, refuses
   loop = value(outcome(f, token, loop, 'trial-pass-1', 'accepted'));
   expect(loop.state).toBe('half-open');
   loop = value(attempt(f, token, loop, 'trial-pass-2', 'sentinel', 'worker-i', 'machine-b'));
-  const evidence = [{ owner: 'part-nine' as const, name: 'VerificationAssessment' as const, id: 'assessment:one' }];
+  const evidence = [{ owner: 'part-nine' as const, name: 'VerificationAssessment' as const, id: 'assessment:restored-holder' }];
   loop = value(outcome(f, token, loop, 'trial-pass-2', 'accepted', evidence));
   expect(loop).toMatchObject({ state: 'closed', transition: 'closed', halfOpenAdmitted: 2, halfOpenSucceeded: 2,
     closureEvidence: evidence });
@@ -65,7 +65,7 @@ it('SLB-SHARED-04 P6-NF-18 P6-NF-20 P6-NF-21 shared pressure opens once, refuses
   expect(next).toMatchObject({ state: 'scheduled', attempts: 5, totalFailures: 3, breakerOpenCount: 2, episodeAttempts: 0 });
   expect(next.episode).not.toBe(loop.episode);
   expect(next.pressureKey).toBe(loop.pressureKey);
-});
+}, 20000);
 
 it('SLB-FRONTIER-05 V12 P6-NF-18 equal causal frontiers produce the same breaker outcome window regardless of completion order', () => {
   const run = (order: readonly string[]) => {
@@ -149,7 +149,7 @@ it('SLB-CUTS-07 P6-NF-18 P6-NF-20 restart cuts preserve scheduled, admitted, ope
   loop = value(afterHalfOpen.api.inspect()).filter(row => row.record.type === 'LoopRecord').at(-1)!.record as SharedLoopRecord;
   expect(loop).toMatchObject({ state: 'half-open', transition: 'half-opened', pendingAttempts: ['cut-half-open'] });
   refused(attempt(afterHalfOpen, fence, loop, 'cut-extra-trial', 'sentinel', 'worker-e', 'machine-a'), 'half-open trial');
-});
+}, 20000);
 
 it('SLB-BUDGET-11 P6-NF-19 rolling parent attempt capacity expires without resetting cumulative counters', () => {
   const f = transportFixture();

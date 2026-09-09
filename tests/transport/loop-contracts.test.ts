@@ -18,6 +18,7 @@ it('SLB-PRESERVE-01 P6-NF-02 P6-NF-17 byte-preserves every legacy LoopPolicy Loo
   ] as const;
   for (const [before, after] of fixtures)
     expect(value(canonical(after)).bytes).toBe(value(canonical(before)).bytes);
+  refused(decodeLoopPolicy({ ...f.policy, failDirection: 'open' }, f.c), 'unsupported loop policy');
   expect(value(f.api.admitWrite('legacy-neighbor', token)).operation).toBe('write');
 });
 
@@ -39,7 +40,7 @@ it('SLB-DECODE-02 P6-NF-02 P6-NF-17 closes every real-breaker policy arm and man
   refused(decodeLoopRecord({ ...scheduled, pressureKey: 'pressure:forged' }, f.c), 'pressure');
   refused(decodeLoopRecord({ ...scheduled, unknown: true }, f.c), 'undeclared');
   refused(f.spine.append({ ...scheduled, command: 'raw-shared-loop-bypass', predecessor: f.head() }, [f.head()]),
-    'conditional writer');
+    'owner evidence');
 });
 
 it('SLB-DECODE-03 P6-NF-02 P6-NF-33 closes the exact MissedRangeRecord payload', () => {

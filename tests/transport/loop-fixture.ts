@@ -9,7 +9,7 @@ import { runIdFor } from '../../src/rungraph/index.js';
 import { recordReferences, recordWire } from '../../src/rungraph/records.js';
 import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, registerTransportBodies,
   registerTransportSeamBodies, transportSchemas, transportSeamSchemas } from '../../src/transport/index.js';
-import type { FenceToken, ReserveInput, SharedBreakerLoopPolicy, TransportHost } from '../../src/transport/index.js';
+import type { FenceToken, ReserveInput, SharedBreakerLoopPolicy, SharedLoopRecord, TransportFact, TransportHost } from '../../src/transport/index.js';
 import { registerVerificationBodies, verificationSchemas } from '../../src/verification/index.js';
 import { verificationInput } from '../verification/fixture.js';
 import { setup as rungraphFixture, ref as factRef, value, refused, json } from '../rungraph/fixtures.js';
@@ -23,18 +23,22 @@ const scheduleBinding = (parent: RunReference, job: string, at: Clock) =>
   encoded([parent.id, job, at]).hash;
 
 export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-loop-')),
-  incarnation = 'worker:1', authority = 'authority:1') {
+  incarnation = 'worker:1', authority = 'authority:1', options: Readonly<{
+    existingInstants?: readonly number[]; catchUpInstants?: readonly number[];
+  }> = {}) {
   let baseBinding = '';
   const rg = rungraphFixture(undefined, undefined, {
     fields: {
       intent: { kind: 'constitutional', type: 'Intent' }, owner: { kind: 'constitutional', type: 'VerifiedPrincipal' },
       capture: { kind: 'capture' }, transportScheduleBinding: { kind: 'text', maxLength: 256 },
+      transportScheduleKind: { kind: 'text', maxLength: 256 },
     },
     extra: { 'scheduled-stimulus': { intent: { kind: 'constitutional', type: 'Intent' },
       owner: { kind: 'constitutional', type: 'VerifiedPrincipal' },
-      transportScheduleBinding: { kind: 'text', maxLength: 256 } } },
+      transportScheduleBinding: { kind: 'text', maxLength: 256 },
+      transportScheduleKind: { kind: 'text', maxLength: 256 } } },
     body: ({ intent, owner, hash }) => json({ intent, owner, capture: { reference: 'message:1', hash },
-      transportScheduleBinding: baseBinding || 'parent-duty' }),
+      transportScheduleBinding: baseBinding || 'parent-duty', transportScheduleKind: 'existing' }),
   });
   rg.grant({ id: 'g-loop-bob', grantee: rg.bob });
   (rg.c.stimulusKinds as string[]).push('scheduled-stimulus');
@@ -52,13 +56,18 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
   admitHistorical('run-opening', json({ run: rg.id,
     record: recordWire(rg.run as unknown as Parameters<typeof recordWire>[0]) }), recordReferences(json(rg.run)));
   const admittedRuns = new Map<number, RunReference>();
-  for (const instant of [110, 120, 130]) {
+  const catchUpRuns = new Map<number, RunReference>();
+  const scheduled = [
+    ...(options.existingInstants ?? [110, 120, 130]).map(instant => ({ instant, kind: 'existing' as const })),
+    ...(options.catchUpInstants ?? []).map(instant => ({ instant, kind: 'catch-up' as const })),
+  ];
+  for (const { instant, kind } of scheduled) {
     const at = rg.clock(instant);
     const ownerValue = rg.principal(`scheduled-owner:${instant}`, 'agent');
     const intent = value(decode('Intent', rg.intentInput({ id: `scheduled-intent:${instant}`, principal: ownerValue,
       raw: rg.capture(`scheduled:${instant}`) }), rg.ctx.decode));
     const opening = admitHistorical('scheduled-stimulus', json({ intent, owner: ownerValue,
-      transportScheduleBinding: scheduleBinding(parentDuty, 'job:one', at) }), []);
+      transportScheduleBinding: scheduleBinding(parentDuty, 'job:one', at), transportScheduleKind: kind }), []);
     const owner = { type: 'VerifiedPrincipal' as const, id: ownerValue.id, fact: factRef(opening), field: 'owner' };
     const id = runIdFor(factRef(opening));
     const budgetId = `scheduled-budget:${instant}`;
@@ -70,7 +79,7 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
       nextWake: { ...rg.run.nextWake, owner } };
     admitHistorical('run-opening', json({ run: id,
       record: recordWire(run as unknown as Parameters<typeof recordWire>[0]) }), recordReferences(json(run)));
-    admittedRuns.set(instant, { owner: 'part-five', name: 'Run', id });
+    (kind === 'existing' ? admittedRuns : catchUpRuns).set(instant, { owner: 'part-five', name: 'Run', id });
   }
 
   let now = 100, stopped = false, generation = 'generation:1';
@@ -83,8 +92,10 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
       generation: { kind: 'text', maxLength: 256 }, orderedKeysBytes: { kind: 'text', maxLength: 4096 } } },
     { ...rg.schema, kind: 'calendar-range-proof', fields: { binding: { kind: 'text', maxLength: 256 } } },
     { ...rg.schema, kind: 'loop-outcome-proof', fields: { evidence: { kind: 'constitutional', type: 'Evidence' },
-      outcome: { kind: 'constitutional', type: 'Outcome' } } },
+      outcome: { kind: 'constitutional', type: 'Outcome' }, loopAttemptBinding: { kind: 'text', maxLength: 256 } } },
     { ...rg.schema, kind: 'loop-result-proof', fields: { result: { kind: 'constitutional', type: 'Result' } } },
+    { ...rg.schema, kind: 'loop-pressure-binding', fields: { parentDuty: { kind: 'text', maxLength: 256 },
+      operationFamily: { kind: 'text', maxLength: 256 }, pressureScopeBytes: { kind: 'text', maxLength: 4096 } } },
   ];
   let witnessContext: FactContext = { ...rg.ctx, facts: [...value(rg.store.read()), ...runFacts],
     schemas: [...rg.ctx.schemas, ...verificationSchemas(verificationHost), ...proofSchemas],
@@ -101,10 +112,22 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     machineBFacts.push(fact); return fact;
   };
   const assessmentFacts = new Map<string, FactEnvelope>();
-  for (const id of ['assessment:fixture', 'assessment:one', 'assessment:expires']) {
-    const record = { ...verificationInput('VerificationAssessment'), id, validFrom: 0, validUntil: 10_000 };
+  const assessment = (id: string, operationFamily: string, pressureScope: object, complete: boolean) => {
+    const pressureKey = `pressure:${encoded([operationFamily, pressureScope]).hash}`;
+    const base = verificationInput('VerificationAssessment');
+    const record = { ...base, id, operation: operationFamily,
+      operationDigest: encoded([pressureKey, operationFamily]).hash, validFrom: 0, validUntil: 10_000,
+      missingEvidence: complete ? [] : base.missingEvidence,
+      predicates: complete ? base.predicates.map(value => ({ ...value,
+        verdict: value.predicate === 'non-occurrence' ? 'contradicted' : 'satisfied',
+        evidence: value.evidence.length > 0 ? value.evidence : [`evidence:${value.predicate}`] })) : base.predicates };
     assessmentFacts.set(id, appendMachineB('verification-VerificationAssessment', json({ record })));
-  }
+  };
+  assessment('assessment:one', 'operation:1', {}, false);
+  assessment('assessment:expires', 'recovery',
+    { target: 'target:review', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' }, true);
+  assessment('assessment:restored-holder', 'holder-recovery',
+    { target: 'target:shared', conversation: 'conversation:1', machine: 'fleet', pool: 'recovery' }, true);
   const orderedKeys = ['job:one'];
   const rosterFact = appendMachineB('calendar-roster-proof', json({ scan: 'scan', generation: 'g1',
     orderedKeysBytes: encoded(orderedKeys).bytes }));
@@ -113,6 +136,24 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
   const rangeFact = appendMachineB('calendar-range-proof', json({ binding: encoded([
     parentDuty.id, 'job:one', 'every-10', rangeAfter, rangeThrough, members,
   ]).hash }));
+  const pressureBindings = new Map<string, FactEnvelope>();
+  for (const [operationFamily, pressureScope] of [
+    ['recovery', { target: 'target:review', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' }],
+    ['holder-recovery', { target: 'target:shared', conversation: 'conversation:1', machine: 'fleet', pool: 'recovery' }],
+    ['budget-holder', { target: 'target:shared', conversation: 'conversation:1', machine: 'fleet', pool: 'recovery' }],
+    ['scheduled-work', { target: 'scheduled-work', conversation: 'conversation:1', machine: 'fleet', pool: 'jobs' }],
+    ['holder-recovery', { target: 'target:1', conversation: 'conversation:1', machine: 'fleet', pool: 'default' }],
+    ['recovery', { target: 'target:e2e', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' }],
+    ['recovery', { target: 'e2e', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' }],
+    ['scheduled-work', { target: 'e2e', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' }],
+    ['recovery', { target: 'target:review', conversation: 'conversation:1', machine: 'caller-machine-b', pool: 'holders' }],
+    ['recovery', { target: 'other', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' }],
+    ['caller-selected-alternate-family', { target: 'target:review', conversation: 'conversation:1', machine: 'machine-b', pool: 'holders' }],
+  ] as const) {
+    const key = encoded([parentDuty.id, operationFamily, pressureScope]).bytes;
+    pressureBindings.set(key, appendMachineB('loop-pressure-binding', json({ parentDuty: parentDuty.id,
+      operationFamily, pressureScopeBytes: encoded(pressureScope).bytes })));
+  }
   witnessContext = { ...witnessContext, facts: [...witnessContext.facts, ...machineBFacts] };
 
   const host: TransportHost = { domain: 'conversation:1', machine: 'machine-a', incarnation,
@@ -132,7 +173,24 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
         : (() => { throw new Error('owner range unavailable'); })()),
     },
     restorationEvidence: { owner: 'part-nine', verify: input => rg.success((assessmentFacts.has(input.reference.id))
-      ? input.reference : (() => { throw new Error('assessment unavailable'); })()) },
+      ? (() => {
+        const record = (assessmentFacts.get(input.reference.id)!.body as { record: {
+          operation: string; operationDigest: string; missingEvidence: readonly string[];
+          captureStatuses: readonly { reference: string; status: string }[]; taints: readonly string[];
+          predicates: readonly { predicate: string; verdict: string }[]; validFrom: number; validUntil: number;
+        } }).record;
+        return { reference: input.reference, operation: record.operation, operationDigest: record.operationDigest,
+          missingEvidence: record.missingEvidence, captureStatuses: record.captureStatuses, taints: record.taints,
+          predicates: record.predicates.map(value => ({ predicate: value.predicate, verdict: value.verdict })),
+          validFrom: record.validFrom, validUntil: record.validUntil };
+      })() : (() => { throw new Error('assessment unavailable'); })()) },
+    loopScopeBinding: { owner: 'part-three', resolve: input => rg.success((() => {
+      const governedScope = input.operationFamily === 'recovery' && input.pressureScope.machine === 'caller-machine-b'
+        ? { ...input.pressureScope, machine: 'fleet' } : input.pressureScope;
+      const fact = pressureBindings.get(encoded([input.parentDuty.id, input.operationFamily, governedScope]).bytes);
+      if (!fact) throw new Error('governed pressure scope unavailable');
+      return { operationFamily: input.operationFamily, pressureScope: governedScope, witness: factRef(fact) };
+    })()) },
     monotonic: () => now,
     current: () => {
       const gen = { owner: 'part-three' as const, name: 'RegisterGeneration' as const, id: generation };
@@ -181,7 +239,15 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     rg.evidence.push(evidence);
     const outcome = value(decode('Outcome', rg.raw('Outcome', { kind: kind === 'accepted' ? 'happened' : 'uncertain',
       evidence: [evidence.id] }), { ...rg.ctx.decode, evidence: [evidence] }));
-    const receipt = append('loop-outcome-proof', json({ evidence, outcome }));
+    const inspected = value(api.inspect());
+    const admitted = inspected.filter(row => {
+      if (row.record.type !== 'LoopRecord' || row.record.policy.breaker !== 'shared-circuit-v1') return false;
+      const record = row.record as SharedLoopRecord;
+      return record.policy.breaker === 'shared-circuit-v1' && record.attemptLog.some(value => value.id === attempt);
+    }).at(-1) as (TransportFact & { record: SharedLoopRecord }) | undefined;
+    if (!admitted) throw new Error(`attempt admission unavailable: ${attempt}`);
+    const loopAttemptBinding = encoded([admitted.record.pressureKey, admitted.record.operationFamily, attempt]).hash;
+    const receipt = append('loop-outcome-proof', json({ evidence, outcome, loopAttemptBinding }), [admitted.fact.id]);
     return { type: 'Outcome' as const, id: `outcome:${attempt}:${outcomeCounter}`,
       fact: factRef(receipt.fact), field: 'outcome' };
   };
@@ -197,7 +263,8 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
   const head = () => value(api.inspect()).at(-1)?.fact.id ?? '';
   const detail = <T>(r: Result<T>) => consumeResult(r, { Success: () => '', Refused: refusal => refusal.detail });
   return { ...rg, host, ctx, storage, store, spine, api, directory, result, sharedPolicy, parentDuty, run: parentDuty,
-    admittedRun: (instant: number) => admittedRuns.get(instant)!, appendOutcome, appendResult, input, head, detail,
+    admittedRun: (instant: number) => admittedRuns.get(instant)!, catchUpRun: (instant: number) => catchUpRuns.get(instant)!,
+    appendOutcome, appendResult, input, head, detail,
     get vector() { return vector(); }, advance: (n: number) => { now += n; }, time: (n: number) => { now = n; },
     stop: () => { stopped = true; }, generation: (value: string) => { generation = value; },
     revalidatePolicy: () => registerPolicy(), registerPolicy, assessmentFact: (id: string) => assessmentFacts.get(id),

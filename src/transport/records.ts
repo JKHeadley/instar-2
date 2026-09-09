@@ -1,8 +1,8 @@
 import { decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../index.js';
 import type { BoundaryContext, Clock, Json, Result, RunReference } from '../index.js';
-import { causalCone, registerOwnedBody } from '../facts/index.js';
+import { causalCone, prepareSnapshot, registerOwnedBody } from '../facts/index.js';
 import type { FactContext, FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
-import type { AdmissionReservation, FenceToken, Lease, LoopAttempt, LoopPolicy, LoopRecord, MissedRangeFact, MissedRangeRecord, ScanCursor, SettlementConsumer, SharedLoopRecord, TransportFact, TransportHost, TransportOwnedRecord, TransportRecord, TransportRowRecord } from './contracts.js';
+import type { AdmissionReservation, FenceToken, Lease, LoopAttempt, LoopOutcome, LoopPolicy, LoopRecord, MissedRangeFact, MissedRangeRecord, ScanCursor, SettlementConsumer, SharedLoopRecord, TransportFact, TransportHost, TransportOwnedRecord, TransportRecord, TransportRowRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { admissionAccounting, bindSettlementConsumer, checkApplicationEvidence, latestApplication, noteAccountingCandidate, requireApplication } from './settlement.js';
 
@@ -35,6 +35,7 @@ const loopOutcome: OwnedShape = { kind: 'object', fields: { attempt: txt, kind: 
   restoration: { kind: 'array', maxLength: 64, items: reference }, sourceVector } };
 const managedLoopFields = {
   parentDuty: reference, currentOwnerRun: reference, policyGeneration: reference,
+  pressureBinding: reference,
   operationFamily: txt, pressureScope: { kind: 'object', fields: { target: txt, conversation: txt, machine: txt, pool: txt } } as OwnedShape,
   pressureKey: txt, episodeKey: txt, transition: txt, transitionAt: clock, nextEligible: clock,
   clockBasis: txt, sourceVector, episodeAttempts: int, totalFailures: int, failureCount: int,
@@ -109,13 +110,14 @@ export function policyCheck(p: LoopPolicy): void {
   ensure(p.type === 'LoopPolicy' && p.schemaVersion === 1 && p.id.length > 0, 'policy identity');
   ensure(p.maxAttempts >= 0 && p.maxDuration >= 0 && p.minDelay > 0 && p.timeout > 0,
     'finite nonnegative bounds and positive delays required');
-  ensure(p.failDirection === 'closed', 'unsupported loop fail direction');
   if (p.breaker === 'stub-closed') {
-    ensure(p.concurrency === 1 && Object.keys(p).length === 10, 'unsupported loop policy');
+    ensure(p.concurrency === 1 && p.failDirection === 'closed' && Object.keys(p).length === 10,
+      'unsupported loop policy');
     return;
   }
   ensure(p.breaker === 'shared-circuit-v1' && Object.keys(p).length === Object.keys(policyFields).length,
     'real breaker policy is incomplete or unknown');
+  ensure(p.failDirection === 'closed', 'unsupported loop fail direction');
   ensure(p.concurrency > 0 && p.initialDelay > 0 && p.initialDelay >= p.minDelay && p.maxDelay >= p.initialDelay
     && p.backoffMultiplier >= 1 && p.jitterMinPermille >= 0 && p.jitterMaxPermille >= p.jitterMinPermille
     && p.jitterMaxPermille <= 1000, 'invalid delay, multiplier, jitter, or concurrency bounds');
@@ -150,15 +152,27 @@ function schemaOwns(context: FactContext, fact: FactEnvelope, field: string, own
 function allFacts(facts: readonly FactEnvelope[]): readonly FactEnvelope[] {
   return [...new Map(facts.map(fact => [fact.id, fact])).values()];
 }
-export function resolveSourceVector(vector: SharedLoopRecord['sourceVector'], facts: readonly FactEnvelope[]): readonly FactEnvelope[] {
+function requireUsableFacts(facts: readonly FactEnvelope[], context: FactContext,
+  history: readonly FactEnvelope[] = context.facts): void {
+  const population = allFacts([...context.facts, ...history]);
+  const snapshot = take(prepareSnapshot(facts, { ...context, facts: population }));
+  ensure(snapshot.entries.length === facts.length
+    && snapshot.entries.every(entry => entry.taint.length === 0 && entry.conflicts.length === 0),
+  'referenced owner evidence is unavailable, stale, or conflicted');
+}
+export function resolveSourceVector(vector: SharedLoopRecord['sourceVector'], facts: readonly FactEnvelope[],
+  context?: FactContext): readonly FactEnvelope[] {
   sourceVectorCheck(vector);
   const resolved = vector.map(point => allFacts(facts).find(fact => fact.machine === point.machine
     && fact.segment.epoch === point.epoch && fact.segment.position === point.position));
   ensure(resolved.every(Boolean), 'source vector names an unavailable signed position');
-  return resolved as readonly FactEnvelope[];
+  const exact = resolved as readonly FactEnvelope[];
+  if (context) requireUsableFacts(exact, context, facts);
+  return exact;
 }
 export function resolveRunReference(reference: RunReference, facts: readonly FactEnvelope[], context: FactContext,
-  schedule?: Readonly<{ parentDuty: RunReference; jobInstance: string; scheduledInstant: Clock }>): FactEnvelope {
+  schedule?: Readonly<{ parentDuty: RunReference; jobInstance: string; scheduledInstant: Clock }>,
+  status = true): FactEnvelope {
   referenceCheck(reference, 'part-five', 'Run');
   const candidates = allFacts(facts).filter(fact => schemaOwns(context, fact, 'record', 'part-five', 'Run'))
     .filter(fact => {
@@ -173,9 +187,11 @@ export function resolveRunReference(reference: RunReference, facts: readonly Fac
     && (value.body as { run?: unknown; record?: { run?: unknown; to?: unknown } }).run === reference.id
     && ['completed', 'cancelled', 'unreachable'].includes(String((value.body as { record?: { to?: unknown } }).record?.to)));
   ensure(!terminal, 'Run admission is terminal');
+  const openingId = (fact.body as { record: { opening?: { id?: string } } }).record.opening?.id;
+  const opening = allFacts(facts).find(value => value.id === openingId);
+  ensure(opening, 'Run opening evidence is absent');
+  if (status) requireUsableFacts([fact, opening], context, facts);
   if (schedule) {
-    const openingId = (fact.body as { record: { opening?: { id?: string } } }).record.opening?.id;
-    const opening = allFacts(facts).find(value => value.id === openingId);
     const expected = encoded([schedule.parentDuty.id, schedule.jobInstance, schedule.scheduledInstant]).hash;
     ensure(opening && (opening.body as { transportScheduleBinding?: unknown }).transportScheduleBinding === expected,
       'Run admission does not bind the exact missed member, job and parent');
@@ -183,7 +199,7 @@ export function resolveRunReference(reference: RunReference, facts: readonly Fac
   return fact;
 }
 export function resolvePolicyFact(policyValue: SharedLoopRecord['policy'], generation: string,
-  facts: readonly FactEnvelope[], context: FactContext): FactEnvelope {
+  facts: readonly FactEnvelope[], context: FactContext, status = true): FactEnvelope {
   const candidates = allFacts(facts).filter(fact => fact.kind === kindFor('LoopPolicy')
     && schemaOwns(context, fact, 'policy', 'part-six', 'LoopPolicy'))
     .filter(fact => (fact.body as { policy?: { id?: unknown }; generation?: unknown }).policy?.id === policyValue.id
@@ -193,10 +209,33 @@ export function resolvePolicyFact(policyValue: SharedLoopRecord['policy'], gener
     'governed loop policy differs from the pinned value');
   ensure(new Set(candidates.map(fact => encoded((fact.body as { policy: Json }).policy).bytes)).size === 1,
     'governed loop policy is conflicted');
+  if (status) requireUsableFacts(candidates, context, facts);
   return candidates.at(-1)!;
 }
+export function resolvePressureBinding(record: Pick<SharedLoopRecord, 'parentDuty' | 'operationFamily' | 'pressureScope'
+  | 'pressureKey' | 'pressureBinding'>, facts: readonly FactEnvelope[], context: FactContext,
+  host: TransportHost, status = true): FactEnvelope {
+  referenceCheck(record.pressureBinding, 'part-two', 'FactEnvelope');
+  ensure(host.loopScopeBinding?.owner === 'part-three', 'governed loop pressure binding unavailable');
+  const resolved = take(host.loopScopeBinding.resolve({ parentDuty: record.parentDuty,
+    operationFamily: record.operationFamily, pressureScope: record.pressureScope }));
+  ensure(resolved.operationFamily === record.operationFamily
+    && encoded(resolved.pressureScope).bytes === encoded(record.pressureScope).bytes
+    && encoded(resolved.witness).bytes === encoded(record.pressureBinding).bytes,
+  'governed loop pressure binding changed');
+  const fact = allFacts(facts).find(value => value.id === record.pressureBinding.id);
+  ensure(fact?.kind === 'loop-pressure-binding', 'governed loop pressure binding fact is absent or wrong-kind');
+  const body = fact.body as { parentDuty?: unknown; operationFamily?: unknown; pressureScopeBytes?: unknown };
+  ensure(body.parentDuty === record.parentDuty.id && body.operationFamily === record.operationFamily
+    && body.pressureScopeBytes === encoded(record.pressureScope).bytes
+    && record.pressureKey === `pressure:${encoded([record.operationFamily, record.pressureScope]).hash}`,
+  'governed loop pressure binding names another subject');
+  if (status) requireUsableFacts([fact], context, facts);
+  return fact;
+}
 export function resolveRestorationReference(reference: SharedLoopRecord['closureEvidence'][number],
-  facts: readonly FactEnvelope[], context: FactContext, at: Clock): FactEnvelope {
+  facts: readonly FactEnvelope[], context: FactContext, at: Clock, pressureKey: string,
+  operationFamily: string, host: TransportHost, status = true): FactEnvelope {
   referenceCheck(reference, 'part-nine', 'VerificationAssessment');
   const candidates = allFacts(facts).filter(fact => schemaOwns(context, fact, 'record', 'part-nine', 'VerificationAssessment'))
     .filter(fact => {
@@ -206,10 +245,36 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
   ensure(candidates.length > 0, 'VerificationAssessment evidence is absent');
   ensure(new Set(candidates.map(fact => encoded((fact.body as { record: Json }).record).bytes)).size === 1,
     'VerificationAssessment evidence is conflicted');
-  const record = (candidates.at(-1)!.body as { record: { validFrom?: number; validUntil?: number } }).record;
+  const fact = candidates.at(-1)!;
+  const record = (fact.body as { record: { operation?: unknown; operationDigest?: unknown;
+    missingEvidence?: unknown; captureStatuses?: unknown; taints?: unknown; predicates?: unknown;
+    validFrom?: number; validUntil?: number } }).record;
   ensure(Number.isSafeInteger(record.validFrom) && Number.isSafeInteger(record.validUntil)
-    && record.validFrom! <= at.value && at.value <= record.validUntil!, 'VerificationAssessment evidence is stale');
-  return candidates.at(-1)!;
+    && record.validFrom! <= at.value && at.value < record.validUntil!, 'VerificationAssessment evidence is stale');
+  const expectedDigest = encoded([pressureKey, operationFamily]).hash;
+  const predicates = Array.isArray(record.predicates) ? record.predicates as readonly { predicate?: unknown; verdict?: unknown }[] : [];
+  const verdict = (name: string) => predicates.find(value => value.predicate === name)?.verdict;
+  ensure(record.operation === operationFamily && record.operationDigest === expectedDigest,
+    'VerificationAssessment restoration subject differs from the governed pressure');
+  ensure(Array.isArray(record.missingEvidence) && record.missingEvidence.length === 0
+    && Array.isArray(record.taints) && record.taints.length === 0
+    && Array.isArray(record.captureStatuses) && record.captureStatuses.every(value =>
+      value !== null && typeof value === 'object' && (value as { status?: unknown }).status === 'available')
+    && verdict('occurrence') === 'satisfied' && verdict('non-occurrence') === 'contradicted'
+    && verdict('quiescence') === 'satisfied' && verdict('charge') === 'satisfied',
+  'VerificationAssessment does not establish complete restoration');
+  ensure(host.restorationEvidence?.owner === 'part-nine', 'independent restoration evidence unavailable');
+  const verified = take(host.restorationEvidence.verify({ reference, pressureKey, operationFamily }));
+  ensure(encoded(verified.reference).bytes === encoded(reference).bytes
+    && verified.operation === record.operation && verified.operationDigest === record.operationDigest
+    && encoded(verified.missingEvidence).bytes === encoded(record.missingEvidence).bytes
+    && encoded(verified.captureStatuses).bytes === encoded(record.captureStatuses).bytes
+    && encoded(verified.taints).bytes === encoded(record.taints).bytes
+    && encoded(verified.predicates).bytes === encoded(predicates.map(value => ({ predicate: value.predicate, verdict: value.verdict }))).bytes
+    && verified.validFrom === record.validFrom && verified.validUntil === record.validUntil,
+  'current Part Nine restoration assessment differs from signed history');
+  if (status) requireUsableFacts(candidates, context, facts);
+  return fact;
 }
 function requiredBy(origin: FactEnvelope, dependencies: readonly FactEnvelope[]): void {
   const required = new Set(origin.predecessors.required);
@@ -219,32 +284,31 @@ export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly Fac
   host: TransportHost): readonly FactEnvelope[] {
   const history = allFacts(facts);
   const dependencies: FactEnvelope[] = [
-    resolvePolicyFact(record.policy, record.policyGeneration.id, history, context),
-    resolveRunReference(record.parentDuty, history, context),
-    resolveRunReference(record.currentOwnerRun, history, context),
+    resolvePolicyFact(record.policy, record.policyGeneration.id, history, context, false),
+    resolveRunReference(record.parentDuty, history, context, undefined, false),
+    resolveRunReference(record.currentOwnerRun, history, context, undefined, false),
+    resolvePressureBinding(record, history, context, host, false),
     ...resolveSourceVector(record.sourceVector, history),
   ];
   for (const outcome of record.outcomeLog) {
     dependencies.push(...resolveSourceVector(outcome.sourceVector, history));
-    dependencies.push(constitutionalFact(outcome.completion, 'Outcome', history, context));
+    dependencies.push(resolveLoopOutcomeCompletion(record, outcome, history, context, false));
     for (const reference of outcome.restoration) dependencies.push(resolveRestorationReference(reference, history, context,
-      record.transition === 'closed' ? record.transitionAt : outcome.observedAt));
+      record.transition === 'closed' ? record.transitionAt : outcome.observedAt,
+      record.pressureKey, record.operationFamily, host, false));
   }
   for (const attempt of record.attemptLog) dependencies.push(...resolveSourceVector(attempt.sourceVector, history));
   for (const reference of record.closureEvidence) {
     const contributedAt = record.outcomeLog.find(outcome => outcome.restoration.some(value => value.id === reference.id))?.observedAt
       ?? record.transitionAt;
     const fact = resolveRestorationReference(reference, history, context,
-      record.transition === 'closed' ? record.transitionAt : contributedAt);
-    if (record.transition === 'closed') {
-      ensure(host.restorationEvidence?.owner === 'part-nine', 'independent restoration evidence unavailable');
-      const verified = take(host.restorationEvidence.verify({ reference, pressureKey: record.pressureKey,
-        operationFamily: record.operationFamily }));
-      ensure(encoded(verified).bytes === encoded(reference).bytes, 'restoration evidence changed');
-    }
+      record.transition === 'closed' ? record.transitionAt : contributedAt,
+      record.pressureKey, record.operationFamily, host, false);
     dependencies.push(fact);
   }
-  return [...new Map(dependencies.map(fact => [fact.id, fact])).values()];
+  const unique = [...new Map(dependencies.map(fact => [fact.id, fact])).values()];
+  requireUsableFacts(unique, context, history);
+  return unique;
 }
 export function resolveSharedLoopEvidence(record: SharedLoopRecord, origin: FactEnvelope,
   facts: readonly FactEnvelope[], context: FactContext, host: TransportHost): readonly string[] {
@@ -253,7 +317,7 @@ export function resolveSharedLoopEvidence(record: SharedLoopRecord, origin: Fact
 }
 function constitutionalFact(reference: { readonly type: string; readonly id: string;
   readonly fact: { readonly owner: string; readonly name: string; readonly id: string }; readonly field: string },
-  expected: 'Result' | 'Outcome', facts: readonly FactEnvelope[], context: FactContext): FactEnvelope {
+  expected: 'Result' | 'Outcome', facts: readonly FactEnvelope[], context: FactContext, status = true): FactEnvelope {
   const fact = allFacts(facts).find(value => value.id === reference.fact.id);
   ensure(fact, `${expected} fact is absent`);
   const schema = context.schemas.find(value => value.kind === fact.kind && value.version === fact.schemaVersion);
@@ -263,13 +327,37 @@ function constitutionalFact(reference: { readonly type: string; readonly id: str
   const owned = (fact.body as Record<string, unknown>)[reference.field] as { type?: unknown; id?: unknown } | undefined;
   ensure(owned?.type === expected && (owned.id === undefined || owned.id === reference.id),
     `${expected} reference names another subject`);
+  if (status) requireUsableFacts([fact], context, facts);
+  return fact;
+}
+function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: SharedLoopRecord['outcomeLog'][number],
+  facts: readonly FactEnvelope[], context: FactContext, status = true): FactEnvelope {
+  const fact = constitutionalFact(outcome.completion, 'Outcome', facts, context, status);
+  const actual = (fact.body as Record<string, unknown>)[outcome.completion.field] as { kind?: unknown } | undefined;
+  const derivedKind = actual?.kind === 'happened' ? 'accepted' : 'failed';
+  ensure(actual && ['happened', 'did-not-happen', 'uncertain'].includes(String(actual.kind))
+    && outcome.kind === derivedKind, 'loop result classification differs from signed Outcome');
+  const expectedBinding = encoded([record.pressureKey, record.operationFamily, outcome.attempt]).hash;
+  ensure((fact.body as { loopAttemptBinding?: unknown }).loopAttemptBinding === expectedBinding,
+    'Outcome completion is not bound to this loop attempt and operation family');
+  const attemptFacts = allFacts(facts).filter(candidate => candidate.kind === kindFor('LoopRecord'))
+    .filter(candidate => {
+      const candidateRecord = (candidate.body as { record?: Partial<SharedLoopRecord> }).record;
+      return candidateRecord?.type === 'LoopRecord' && candidateRecord.policy?.breaker === 'shared-circuit-v1'
+        && candidateRecord.pressureKey === record.pressureKey && candidateRecord.operationFamily === record.operationFamily
+        && candidateRecord.attemptLog?.some(attempt => attempt.id === outcome.attempt);
+    });
+  ensure(attemptFacts.length > 0 && attemptFacts.some(candidate => fact.predecessors.required.includes(candidate.id)),
+    'Outcome completion does not witness its admitted loop attempt');
+  ensure(encoded(outcome.observedAt).bytes === encoded(fact.at).bytes,
+    'loop outcome ordering clock differs from signed completion evidence');
   return fact;
 }
 export function missedRangeEvidence(record: MissedRangeRecord, facts: readonly FactEnvelope[], context: FactContext,
   host: TransportHost): readonly FactEnvelope[] {
   missedRangeCheck(record);
   ensure(host.calendarExpansion?.owner === 'part-fifteen', 'calendar expansion authority unavailable');
-  const history = allFacts(facts), parent = resolveRunReference(record.parentDuty, history, context);
+  const history = allFacts(facts), parent = resolveRunReference(record.parentDuty, history, context, undefined, false);
   const episode = history.find(fact => fact.kind === kindFor('LoopRecord')
     && (fact.body as { record?: { type?: unknown; episode?: unknown } }).record?.type === 'LoopRecord'
     && (fact.body as { record?: { episode?: unknown } }).record?.episode === record.episode.id);
@@ -285,8 +373,11 @@ export function missedRangeEvidence(record: MissedRangeRecord, facts: readonly F
   try { roster = take(host.calendarExpansion.roster({ scan: cursorRecord.scan, generation: cursorRecord.generation,
     orderedKeysDigest: cursorRecord.orderedKeysDigest as `sha256:${string}` })); }
   catch (error) { throw new Error(`calendar roster witness refused: ${error instanceof Error ? error.message : 'unknown'}`); }
-  ensure(roster.orderedKeys.includes(record.jobInstance)
-    && encoded(roster.orderedKeys).hash === cursorRecord.orderedKeysDigest, 'ScanCursor owner roster does not select this job');
+  const selected = Array.from({ length: cursorRecord.selectedCount }, (_, offset) =>
+    roster.orderedKeys[(cursorRecord.selectedFrom + offset) % roster.orderedKeys.length]!);
+  ensure(selected.includes(record.jobInstance)
+    && encoded(roster.orderedKeys).hash === cursorRecord.orderedKeysDigest,
+  'ScanCursor owner page does not select this job');
   const rosterFact = history.find(fact => fact.id === roster.witness.id && fact.kind === 'calendar-roster-proof');
   ensure(roster.witness.owner === 'part-two' && roster.witness.name === 'FactEnvelope' && rosterFact
     && (rosterFact.body as { scan?: unknown }).scan === cursorRecord.scan
@@ -311,19 +402,68 @@ export function missedRangeEvidence(record: MissedRangeRecord, facts: readonly F
     && (rangeFact.body as { binding?: unknown }).binding === encoded([record.parentDuty.id, record.jobInstance,
       record.calendarPolicy, range.after, range.through, members]).hash,
   'calendar owner proof does not reconstruct exact missed membership');
+  const expectedId = `missed:${encoded([record.parentDuty.id, record.jobInstance, record.calendarPolicy,
+    range.after, range.through, record.orderedMembersDigest]).hash}`;
+  const expectedDerivation = encoded({ parentDuty: record.parentDuty, jobInstance: record.jobInstance,
+    packageDigest: record.packageDigest, calendarPolicy: record.calendarPolicy, asOf: record.asOf,
+    priorExpansionCursor: range.after, missedBoundary: range.through,
+    orderedMembersDigest: record.orderedMembersDigest }).hash;
+  ensure(record.id === expectedId && record.derivationInputDigest === expectedDerivation,
+    'missed range identity or derivation differs from signed calendar evidence');
   const dependencies: FactEnvelope[] = [parent, episode, cursor, rosterFact, rangeFact];
-  for (const disposition of record.dispositions) {
-    if (disposition.kind === 'missed-no-execution') dependencies.push(constitutionalFact(disposition.result, 'Result', history, context));
-    else dependencies.push(resolveRunReference(disposition.run, history, context, {
-      parentDuty: record.parentDuty, jobInstance: record.jobInstance, scheduledInstant: disposition.scheduledInstant,
-    }));
-  }
-  if (record.catchUpRun) {
-    const linked = record.dispositions.filter(value => value.kind === 'catch-up-run');
-    ensure(linked.length === 1 && encoded((linked[0] as { run: RunReference }).run).bytes === encoded(record.catchUpRun).bytes,
-      'catch-up Run does not match the latest member');
-  }
-  return [...new Map(dependencies.map(fact => [fact.id, fact])).values()];
+  const admissions = members.map(member => {
+    const binding = encoded([record.parentDuty.id, record.jobInstance, member]).hash;
+    const matching = history.filter(fact => schemaOwns(context, fact, 'record', 'part-five', 'Run'))
+      .filter(fact => {
+        const run = (fact.body as { record?: { type?: unknown; id?: unknown; opening?: { id?: string } } }).record;
+        if (run?.type !== 'Run' || typeof run.id !== 'string') return false;
+        const opening = history.find(value => value.id === run.opening?.id);
+        return (opening?.body as { transportScheduleBinding?: unknown } | undefined)?.transportScheduleBinding === binding;
+      });
+    const classified = matching.map(fact => {
+      const run = (fact.body as { record: { id: string; opening: { id: string } } }).record;
+      const opening = history.find(value => value.id === run.opening.id)!;
+      const kind = (opening.body as { transportScheduleKind?: unknown }).transportScheduleKind === 'catch-up'
+        ? 'catch-up' as const : 'existing' as const;
+      return { fact, opening, kind, reference: { owner: 'part-five' as const, name: 'Run' as const, id: run.id } };
+    });
+    ensure(new Set(classified.filter(value => value.kind === 'existing').map(value => value.reference.id)).size <= 1
+      && new Set(classified.filter(value => value.kind === 'catch-up').map(value => value.reference.id)).size <= 1,
+    'missed member Run admission is conflicted');
+    return classified;
+  });
+  const otherwiseUnexecuted = admissions.map((value, index) => value.some(row => row.kind === 'existing') ? -1 : index)
+    .filter(index => index >= 0);
+  const expectedCatchUp = record.catchUpPolicy === 'latest' ? otherwiseUnexecuted.at(-1) ?? -1 : -1;
+  record.dispositions.forEach((disposition, index) => {
+    const memberAdmissions = admissions[index]!;
+    const existing = memberAdmissions.find(value => value.kind === 'existing');
+    const catchUp = memberAdmissions.find(value => value.kind === 'catch-up');
+    if (existing) {
+      ensure(disposition.kind === 'existing-run' && encoded(disposition.run).bytes === encoded(existing.reference).bytes,
+        'already admitted missed member must retain its original Run');
+      dependencies.push(resolveRunReference(existing.reference, history, context, {
+        parentDuty: record.parentDuty, jobInstance: record.jobInstance, scheduledInstant: disposition.scheduledInstant }, false));
+      return;
+    }
+    if (index === expectedCatchUp) {
+      ensure(catchUp && disposition.kind === 'catch-up-run'
+        && encoded(disposition.run).bytes === encoded(catchUp.reference).bytes
+        && encoded(record.catchUpRun).bytes === encoded(catchUp.reference).bytes,
+      'latest policy must retain the owner-admitted deterministic catch-up Run');
+      dependencies.push(resolveRunReference(catchUp.reference, history, context, {
+        parentDuty: record.parentDuty, jobInstance: record.jobInstance, scheduledInstant: disposition.scheduledInstant }, false));
+      return;
+    }
+    ensure(!catchUp && disposition.kind === 'missed-no-execution',
+      'unadmitted missed member must remain honestly unexecuted');
+    dependencies.push(constitutionalFact(disposition.result, 'Result', history, context, false));
+  });
+  ensure(record.catchUpPolicy === 'latest' || admissions.every(value => !value.some(row => row.kind === 'catch-up')),
+    'none catch-up policy cannot name an admitted catch-up Run');
+  const unique = [...new Map(dependencies.map(fact => [fact.id, fact])).values()];
+  requireUsableFacts(unique, context, history);
+  return unique;
 }
 export function resolveMissedRangeEvidence(record: MissedRangeRecord, origin: FactEnvelope,
   facts: readonly FactEnvelope[], context: FactContext, host: TransportHost): readonly string[] {
@@ -349,6 +489,7 @@ export function loopRecordCheck(r: LoopRecord): void {
   'unknown shared loop state or transition');
   referenceCheck(shared.parentDuty, 'part-five', 'Run'); referenceCheck(shared.currentOwnerRun, 'part-five', 'Run');
   referenceCheck(shared.policyGeneration, 'part-three', 'RegisterGeneration');
+  referenceCheck(shared.pressureBinding, 'part-two', 'FactEnvelope');
   ensure(encoded(shared.parentDuty).bytes === encoded(shared.policy.parentDuty).bytes, 'parent duty changed from policy');
   ensure(shared.operationFamily.length > 0 && Object.values(shared.pressureScope).every(value => value.length > 0)
     && shared.pressureKey === `pressure:${encoded([shared.operationFamily, shared.pressureScope]).hash}`,
@@ -374,6 +515,10 @@ export function loopRecordCheck(r: LoopRecord): void {
   'shared loop attempt population is incomplete or duplicated');
   ensure(shared.outcomeLog.every(outcome => shared.attemptLog.some(attempt => attempt.id === outcome.attempt)),
     'outcome lacks contributing attempt');
+  const unfinished = shared.attemptLog.filter(attempt => !shared.outcomeLog.some(outcome => outcome.attempt === attempt.id))
+    .map(attempt => attempt.id);
+  ensure(encoded(shared.pendingAttempts).bytes === encoded(unfinished).bytes,
+    'pending attempts do not equal admitted attempts minus completed attempts');
   for (const attempt of shared.attemptLog) { sourceVectorCheck(attempt.sourceVector); ensure(attempt.resource >= 0, 'negative attempt resource'); }
   for (const outcome of shared.outcomeLog) {
     sourceVectorCheck(outcome.sourceVector);
@@ -425,6 +570,21 @@ export function missedRangeCheck(r: MissedRangeRecord): void {
       referenceCheck(value.run, 'part-five', 'Run');
     }
   });
+  const catchUps = r.dispositions.map((value, index) => value.kind === 'catch-up-run' ? index : -1)
+    .filter(index => index >= 0);
+  const otherwiseUnexecuted = r.dispositions.map((value, index) => value.kind === 'existing-run' ? -1 : index)
+    .filter(index => index >= 0);
+  if (r.catchUpPolicy === 'none') {
+    ensure(catchUps.length === 0 && catchUpRun === null, 'none catch-up policy cannot link a catch-up Run');
+  } else if (otherwiseUnexecuted.length === 0) {
+    ensure(catchUps.length === 0 && catchUpRun === null, 'fully admitted range cannot link a catch-up Run');
+  } else {
+    const latest = otherwiseUnexecuted.at(-1)!;
+    ensure(catchUps.length === 1 && catchUps[0] === latest && catchUpRun !== null
+      && r.dispositions[latest]!.kind === 'catch-up-run'
+      && encoded((r.dispositions[latest] as { run: RunReference }).run).bytes === encoded(catchUpRun).bytes,
+    'latest policy must link exactly the latest otherwise-unexecuted member');
+  }
 }
 export function decodeLoopPolicy(input: unknown, c: BoundaryContext): Result<LoopPolicy> {
   return boundary('LoopPolicyInput', input, c, safe => { const p = safe as unknown as LoopPolicy; policyCheck(p); return freeze(p); });
@@ -525,7 +685,8 @@ const rollingAt = (record: Pick<SharedLoopRecord, 'policy' | 'attemptLog'>, now:
     && attempt.admittedAt.value > now.value - record.policy.budgetWindow);
   return { rollingAttempts: attempts.length, rollingResource: attempts.reduce((sum, attempt) => sum + attempt.resource, 0) };
 };
-const parentRollingAt = (all: readonly TransportFact[], record: SharedLoopRecord, now: Clock) => {
+const parentRollingAt = (all: readonly TransportFact[], record: SharedLoopRecord, now: Clock,
+  added?: LoopAttempt) => {
   const latest = new Map<string, SharedLoopRecord>();
   for (const row of all) if (row.record.type === 'LoopRecord' && row.record.policy.breaker === 'shared-circuit-v1') {
     const loop = row.record as SharedLoopRecord;
@@ -537,8 +698,114 @@ const parentRollingAt = (all: readonly TransportFact[], record: SharedLoopRecord
     ensure(!old || encoded(old).bytes === encoded(attempt).bytes, 'parent attempt identity is conflicted across pressure scopes');
     attempts.set(attempt.id, attempt);
   }
+  if (added) {
+    const old = attempts.get(added.id);
+    ensure(!old, 'parent attempt identity already belongs to another pressure scope');
+    attempts.set(added.id, added);
+  }
   return rollingAt({ policy: record.policy, attemptLog: [...attempts.values()] }, now);
 };
+export function sharedAdmissionDecision(previous: SharedLoopRecord, all: readonly TransportFact[], now: Clock,
+  input: Omit<LoopAttempt, 'mode'>): Readonly<{
+    kind: 'stopped';
+  } | {
+    kind: 'admitted'; attempt: LoopAttempt; state: SharedLoopRecord['state']; transition: SharedLoopRecord['transition'];
+    halfOpenAdmitted: number; halfOpenSucceeded: number; rollingAttempts: number; rollingResource: number;
+  }> {
+  ensure(previous.clockBasis === now.subject.instance && atOrAfter(now, previous.transitionAt),
+    'incomparable or backward shared pressure time');
+  ensure(previous.state !== 'stopped' && previous.state !== 'closed', 'loop episode is terminal');
+  const unfinished = previous.attemptLog.filter(attempt => !previous.outcomeLog.some(outcome => outcome.attempt === attempt.id))
+    .map(attempt => attempt.id);
+  ensure(encoded(previous.pendingAttempts).bytes === encoded(unfinished).bytes, 'incomplete attempt population');
+  const episodeExhausted = previous.episodeAttempts >= previous.policy.maxAttempts
+    || now.value - previous.started >= previous.policy.maxDuration;
+  const openExhausted = (previous.state === 'open-breaker' || previous.state === 'half-open')
+    && previous.breakerHasOpened === 1 && now.value - previous.breakerFirstOpened.value > previous.policy.maxOpenDuration;
+  if (episodeExhausted || openExhausted) {
+    ensure(previous.pendingAttempts.length === 0, 'unfinished attempts retain loop ownership at the bound');
+    return freeze({ kind: 'stopped' as const });
+  }
+  ensure(atOrAfter(now, previous.nextEligible), 'breaker cooldown or wake is not eligible');
+  let mode: LoopAttempt['mode'] = 'closed';
+  let state: SharedLoopRecord['state'] = 'running';
+  let transition: SharedLoopRecord['transition'] = 'attempt-admitted';
+  let halfOpenAdmitted = previous.halfOpenAdmitted;
+  let halfOpenSucceeded = previous.halfOpenSucceeded;
+  if (previous.state === 'open-breaker' || previous.state === 'half-open') {
+    ensure(previous.breakerHasOpened === 1, 'breaker-open history is incomplete');
+    mode = 'half-open'; state = 'half-open';
+    if (previous.state === 'open-breaker') {
+      ensure(previous.pendingAttempts.length === 0, 'unfinished attempts retain breaker ownership');
+      transition = 'half-opened'; halfOpenAdmitted = 0; halfOpenSucceeded = 0;
+    }
+    ensure(halfOpenAdmitted < previous.policy.halfOpenTrials
+      && previous.pendingAttempts.length < previous.policy.halfOpenConcurrency
+      && previous.pendingAttempts.length < previous.policy.concurrency,
+    'half-open trial bound exhausted');
+    halfOpenAdmitted++;
+  } else ensure(previous.pendingAttempts.length < previous.policy.concurrency, 'concurrent work cap exhausted');
+  const attempt = freeze({ ...input, mode } as LoopAttempt);
+  const rolling = parentRollingAt(all, previous, now, attempt);
+  ensure(rolling.rollingAttempts <= previous.policy.parentAttemptBudget
+    && rolling.rollingResource <= previous.policy.parentResourceBudget,
+  'shared parent budget exhausted');
+  return freeze({ kind: 'admitted' as const, attempt, state, transition, halfOpenAdmitted,
+    halfOpenSucceeded, ...rolling });
+}
+export function sharedOutcomeDecision(previous: SharedLoopRecord, all: readonly TransportFact[],
+  added: LoopOutcome, receiptAt: Clock): Readonly<Pick<SharedLoopRecord, 'state' | 'transition' | 'nextEligible'
+  | 'totalFailures' | 'failureCount' | 'rollingAttempts' | 'rollingResource' | 'breakerHasOpened'
+  | 'breakerOpenCount' | 'breakerFirstOpened' | 'halfOpenAdmitted' | 'halfOpenSucceeded'
+  | 'pendingAttempts' | 'outcomeLog' | 'outcomeWindowDigest' | 'closureEvidence'>> {
+  const policy = previous.policy;
+  const outcomeLog = sortedOutcomes([...previous.outcomeLog, added]);
+  const pendingAttempts = previous.pendingAttempts.filter(value => value !== added.attempt);
+  const outcomes = windowAt({ policy, outcomeLog }, receiptAt);
+  const failureCount = failureCountAt(policy, outcomes);
+  const counted = added.kind === 'failed' && policy.countedFailureClasses.includes(added.failureClass);
+  let state: SharedLoopRecord['state'];
+  let transition: SharedLoopRecord['transition'] = 'outcome-recorded';
+  let nextEligible = receiptAt;
+  let breakerHasOpened = previous.breakerHasOpened;
+  let breakerOpenCount = previous.breakerOpenCount;
+  let breakerFirstOpened = previous.breakerFirstOpened;
+  let halfOpenAdmitted = previous.halfOpenAdmitted;
+  let halfOpenSucceeded = previous.halfOpenSucceeded;
+  let closureEvidence = previous.closureEvidence;
+  const attempt = previous.attemptLog.find(value => value.id === added.attempt)!;
+  if (previous.state === 'open-breaker') {
+    state = 'open-breaker'; nextEligible = previous.nextEligible;
+  } else if (attempt.mode === 'half-open' && counted) {
+    state = 'open-breaker'; transition = 'reopened'; nextEligible = shifted(added.observedAt, policy.breakerCooldown);
+    breakerOpenCount++;
+    if (breakerHasOpened === 0) { breakerHasOpened = 1; breakerFirstOpened = added.observedAt; }
+    halfOpenAdmitted = 0; halfOpenSucceeded = 0;
+  } else if (attempt.mode === 'half-open') {
+    halfOpenSucceeded += added.kind === 'accepted' ? 1 : 0;
+    closureEvidence = freeze([...new Map([...closureEvidence, ...added.restoration].map(value => [value.id, value])).values()]);
+    if (halfOpenSucceeded >= policy.halfOpenTrials && pendingAttempts.length === 0 && closureEvidence.length > 0) {
+      state = 'closed'; transition = 'closed'; nextEligible = receiptAt;
+    } else state = 'half-open';
+  } else if (failureCount >= policy.failureThreshold && pendingAttempts.length === 0) {
+    state = 'open-breaker'; transition = 'opened'; nextEligible = shifted(added.observedAt, policy.breakerCooldown);
+    breakerOpenCount++;
+    if (breakerHasOpened === 0) { breakerHasOpened = 1; breakerFirstOpened = added.observedAt; }
+  } else if (pendingAttempts.length > 0) state = 'running';
+  else {
+    state = 'waiting';
+    const exponent = Math.min(failureCount, 53), base = Math.min(policy.maxDelay,
+      policy.initialDelay * Math.pow(policy.backoffMultiplier, exponent));
+    const delay = Math.max(policy.minDelay,
+      Math.min(policy.maxDelay, Math.floor(base * added.jitterPermille / 1000)));
+    nextEligible = shifted(receiptAt, delay);
+  }
+  const rolling = parentRollingAt(all, previous, receiptAt);
+  return freeze({ state, transition, nextEligible, totalFailures: previous.totalFailures + (counted ? 1 : 0),
+    failureCount, ...rolling, breakerHasOpened, breakerOpenCount, breakerFirstOpened, halfOpenAdmitted,
+    halfOpenSucceeded, pendingAttempts, outcomeLog, outcomeWindowDigest: encoded(windowAt({ policy, outcomeLog }, receiptAt)).hash,
+    closureEvidence });
+}
 function exactPrefix<T>(prior: readonly T[], next: readonly T[]): boolean {
   return prior.every((value, index) => encoded(value as never).bytes === encoded(next[index] as never).bytes);
 }
@@ -609,12 +876,16 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
       && encoded(attempt.sourceVector).bytes === encoded(record.sourceVector).bytes
       && encoded(record.pendingAttempts).bytes === encoded([...previous.pendingAttempts, attempt.id]).bytes,
     'attempt admission population or clock differs');
-    const halfOpen = previous.state === 'open-breaker' || previous.state === 'half-open';
-    ensure(attempt.mode === (halfOpen ? 'half-open' : 'closed')
-      && record.state === (halfOpen ? 'half-open' : 'running'), 'attempt mode or state differs from breaker');
-    ensure(record.pendingAttempts.length <= record.policy.concurrency
-      && (!halfOpen || record.pendingAttempts.length <= record.policy.halfOpenConcurrency),
-    'attempt admission exceeds concurrent-work bound');
+    const { mode: _mode, ...input } = attempt;
+    const decision = sharedAdmissionDecision(previous, all, record.transitionAt, input);
+    ensure(decision.kind === 'admitted' && encoded(attempt).bytes === encoded(decision.attempt).bytes
+      && record.state === decision.state && record.transition === decision.transition
+      && record.halfOpenAdmitted === decision.halfOpenAdmitted
+      && record.halfOpenSucceeded === decision.halfOpenSucceeded
+      && record.rollingAttempts === decision.rollingAttempts && record.rollingResource === decision.rollingResource
+      && record.attempts === previous.attempts + 1 && record.nextWake === record.transitionAt.value
+      && encoded(record.nextEligible).bytes === encoded(record.transitionAt).bytes,
+    'attempt admission differs from the complete policy and parent-budget calculation');
     return;
   }
   ensure(record.outcomeLog.length === previous.outcomeLog.length + 1 && unchangedAttempts,
@@ -622,33 +893,22 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
   const added = record.outcomeLog.find(outcome => !previous.outcomeLog.some(old => old.attempt === outcome.attempt));
   ensure(added && previous.pendingAttempts.includes(added.attempt), 'outcome completion was not pending');
   const attempt = previous.attemptLog.find(value => value.id === added.attempt)!;
-  ensure(encoded(added.observedAt).bytes === encoded(record.transitionAt).bytes
-    && atOrAfter(added.observedAt, attempt.admittedAt), 'outcome clock precedes its admission');
+  ensure(atOrAfter(added.observedAt, attempt.admittedAt) && atOrAfter(record.transitionAt, added.observedAt),
+    'outcome evidence or receipt clock precedes its admission');
   ensure(encoded(record.outcomeLog).bytes === encoded(sortedOutcomes(record.outcomeLog)).bytes,
     'outcome population is not canonically ordered');
   ensure(encoded(record.pendingAttempts).bytes === encoded(previous.pendingAttempts.filter(id => id !== added.attempt)).bytes,
     'outcome changed the pending population');
-  const counted = added.kind === 'failed' && record.policy.countedFailureClasses.includes(added.failureClass);
-  const failures = failureCountAt(record.policy, windowAt(record, record.transitionAt));
-  const rolling = rollingAt(record, record.transitionAt);
-  ensure(record.totalFailures === previous.totalFailures + (counted ? 1 : 0)
-    && record.failureCount === failures && record.rollingAttempts >= rolling.rollingAttempts
-    && record.rollingResource >= rolling.rollingResource, 'outcome counters differ from admitted history');
-  let expectedState: SharedLoopRecord['state'];
-  let expectedTransition: SharedLoopRecord['transition'] = 'outcome-recorded';
-  if (attempt.mode === 'half-open' && counted) { expectedState = 'open-breaker'; expectedTransition = 'reopened'; }
-  else if (attempt.mode === 'half-open') {
-    const successes = previous.halfOpenSucceeded + (added.kind === 'accepted' ? 1 : 0);
-    const canClose = successes >= record.policy.halfOpenTrials && record.pendingAttempts.length === 0
-      && record.closureEvidence.length > 0;
-    expectedState = canClose ? 'closed' : 'half-open'; expectedTransition = canClose ? 'closed' : 'outcome-recorded';
-  } else if (failures >= record.policy.failureThreshold && record.pendingAttempts.length === 0) {
-    expectedState = 'open-breaker'; expectedTransition = 'opened';
-  } else expectedState = record.pendingAttempts.length ? 'running' : 'waiting';
-  ensure(record.state === expectedState && record.transition === expectedTransition,
+  const expected = sharedOutcomeDecision(previous, all, added, record.transitionAt);
+  const actual = { state: record.state, transition: record.transition, nextEligible: record.nextEligible,
+    totalFailures: record.totalFailures, failureCount: record.failureCount, rollingAttempts: record.rollingAttempts,
+    rollingResource: record.rollingResource, breakerHasOpened: record.breakerHasOpened,
+    breakerOpenCount: record.breakerOpenCount, breakerFirstOpened: record.breakerFirstOpened,
+    halfOpenAdmitted: record.halfOpenAdmitted, halfOpenSucceeded: record.halfOpenSucceeded,
+    pendingAttempts: record.pendingAttempts, outcomeLog: record.outcomeLog,
+    outcomeWindowDigest: record.outcomeWindowDigest, closureEvidence: record.closureEvidence };
+  ensure(encoded(actual).bytes === encoded(expected).bytes && record.nextWake === expected.nextEligible.value,
     'breaker decision differs from the complete admitted outcome frontier');
-  ensure(record.outcomeWindowDigest === encoded(windowAt(record, record.transitionAt)).hash,
-    'outcome window digest differs from admitted history');
 }
 export function loopActive(all: readonly TransportFact[], loop: LoopRecord): boolean {
   return ['running', 'restoring', 'waiting'].includes(loop.state)
@@ -906,9 +1166,9 @@ function registerBodySet<S>(shapes: Readonly<Record<string, OwnedShape>>, host: 
             resolveMissedRangeEvidence(v, ctx.origin, ctx.facts.facts, ctx.facts, host);
             if (admitting) requireMissedRangeCandidate(host, v);
           } else {
-            validateTransition(v, past, host, admitting);
             if (v.type === 'LoopRecord' && v.policy.breaker === 'shared-circuit-v1')
               resolveSharedLoopEvidence(v as SharedLoopRecord, ctx.origin, ctx.facts.facts, ctx.facts, host);
+            validateTransition(v, past, host, admitting);
           }
           if (v.type === 'SettlementApplication') {
             checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past);

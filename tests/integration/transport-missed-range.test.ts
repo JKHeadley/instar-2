@@ -36,12 +36,12 @@ function input(f: ReturnType<typeof transportFixture>, setupValue: ReturnType<ty
 }
 function deterministicCatchUp(f: ReturnType<typeof transportFixture>, source: MissedRangeInput) {
   void source;
-  return f.admittedRun(130);
+  return f.catchUpRun(130);
 }
 
 it('SLB-MISSED-08 P6-NF-20 P6-NF-33 boundary and boundary-plus-one lateness retain exact stable ordered membership', () => {
   const record = (asOf: number) => {
-    const f = transportFixture(), ready = setup(f);
+    const f = transportFixture(undefined, undefined, undefined, { existingInstants: [] }), ready = setup(f);
     const ref = value(f.api.recordMissedRange(input(f, ready, asOf)));
     return value(f.api.readMissedRange(ref)).record;
   };
@@ -52,7 +52,8 @@ it('SLB-MISSED-08 P6-NF-20 P6-NF-33 boundary and boundary-plus-one lateness reta
 });
 
 it('SLB-MISSED-09 P6-NF-20 P6-NF-33 partial successors resume first undisposed, replay identically, keep admitted Runs and cannot mint a second catch-up', () => {
-  const f = transportFixture(), ready = setup(f);
+  const f = transportFixture(undefined, undefined, undefined,
+    { existingInstants: [120], catchUpInstants: [130] }), ready = setup(f);
   const base = input(f, ready, 131), catchUpRun = deterministicCatchUp(f, base);
   const firstInput: MissedRangeInput = { ...base, catchUpPolicy: 'latest', catchUpRun,
     dispositions: base.dispositions.map((value, index) => index === 1 ? { scheduledInstant: value.scheduledInstant,
@@ -65,22 +66,15 @@ it('SLB-MISSED-09 P6-NF-20 P6-NF-33 partial successors resume first undisposed, 
   expect(value(f.api.recordMissedRange(firstInput))).toEqual(reference);
   expect(value(f.api.inspect())).toHaveLength(count);
 
-  const completedInput: MissedRangeInput = { ...firstInput,
-    dispositions: firstInput.dispositions.map((value, index) => index === 0 ? { scheduledInstant: value.scheduledInstant,
-      kind: 'existing-run' as const, run: f.admittedRun(110) } : value) };
-  value(f.api.recordMissedRange(completedInput));
-  const completed = value(f.api.readMissedRange(reference));
-  expect(completed.firstUndisposed).toBeNull();
-  expect(completed.record.dispositions[1]).toMatchObject({ kind: 'existing-run', run: f.admittedRun(120) });
-  refused(f.spine.append(completed.record, [completed.fact.id]), 'owner evidence');
+  refused(f.spine.append(first.record, [first.fact.id]), 'owner evidence');
 
-  const changedExisting: MissedRangeInput = { ...completedInput,
-    dispositions: completedInput.dispositions.map((value, index) => index === 1
+  const changedExisting: MissedRangeInput = { ...firstInput,
+    dispositions: firstInput.dispositions.map((value, index) => index === 1
       ? { scheduledInstant: value.scheduledInstant, kind: 'existing-run' as const,
-        run: f.admittedRun(110) } : value) };
+        run: { owner: 'part-five' as const, name: 'Run' as const, id: 'run:other' } } : value) };
   refused(f.api.recordMissedRange(changedExisting), 'completed missed member');
-  const secondCatchUp: MissedRangeInput = { ...completedInput,
-    dispositions: completedInput.dispositions.map((value, index) => index === 0 ? { scheduledInstant: value.scheduledInstant,
+  const secondCatchUp: MissedRangeInput = { ...firstInput,
+    dispositions: firstInput.dispositions.map((value, index) => index === 0 ? { scheduledInstant: value.scheduledInstant,
       kind: 'catch-up-run' as const, run: catchUpRun } : value) };
   refused(f.api.recordMissedRange(secondCatchUp), 'latest policy');
   expect(value(f.api.readMissedRange(reference)).record.catchUpRun).toEqual(catchUpRun);

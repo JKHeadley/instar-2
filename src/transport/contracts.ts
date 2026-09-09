@@ -82,6 +82,7 @@ export interface SharedLoopRecord extends Row, Owned {
   readonly pending: string;
   readonly parentDuty: RunReference; readonly currentOwnerRun: RunReference;
   readonly policyGeneration: RegisterGenerationReference;
+  readonly pressureBinding: FactEnvelopeReference;
   readonly operationFamily: string; readonly pressureScope: LoopPressureScope; readonly pressureKey: string;
   readonly episodeKey: string; readonly transition: 'scheduled' | 'attempt-admitted' | 'outcome-recorded' | 'opened' | 'half-opened' | 'reopened' | 'closed' | 'stopped';
   readonly transitionAt: Clock; readonly nextEligible: Clock; readonly clockBasis: string;
@@ -185,7 +186,20 @@ export interface CalendarExpansionPort {
 export interface RestorationEvidencePort {
   readonly owner: 'part-nine';
   verify(input: Readonly<{ reference: OwnedReference<'part-nine', 'VerificationAssessment'>; pressureKey: string;
-    operationFamily: string }>): Result<OwnedReference<'part-nine', 'VerificationAssessment'>>;
+    operationFamily: string }>): Result<Readonly<{
+      reference: OwnedReference<'part-nine', 'VerificationAssessment'>;
+      operation: string; operationDigest: string; missingEvidence: readonly string[];
+      captureStatuses: readonly Readonly<{ reference: string; status: string }>[]; taints: readonly string[];
+      predicates: readonly Readonly<{ predicate: string; verdict: string }>[];
+      validFrom: number; validUntil: number;
+    }>>;
+}
+export interface GovernedLoopScopePort {
+  readonly owner: 'part-three';
+  resolve(input: Readonly<{ parentDuty: RunReference; operationFamily: string;
+    pressureScope: LoopPressureScope }>): Result<Readonly<{
+      operationFamily: string; pressureScope: LoopPressureScope; witness: FactEnvelopeReference;
+    }>>;
 }
 
 // Trusted host seams. P10 supplies the monotonic clock and fresh process identity.
@@ -204,6 +218,7 @@ export interface TransportHost {
   readonly loopClock?: SharedLoopClockPort;
   readonly calendarExpansion?: CalendarExpansionPort;
   readonly restorationEvidence?: RestorationEvidencePort;
+  readonly loopScopeBinding?: GovernedLoopScopePort;
   // Non-waiting local accessors, also used inside eight's final no-wait guard.
   // They must not perform storage/provider refresh or reentrant mutations.
   monotonic(): number;
