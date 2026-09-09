@@ -16,7 +16,14 @@ and table belongs to its enclosing Rule or Value block. This part defines no new
 contract check is a required future execution, not evidence that an implementation exists or ran.
 Consumers re-resolve claims against current signed history. A holder is live only after fresh
 running proof. Measured means recorded execution on named hardware and workload, never a target,
-estimate, configured value, or successful-only sample.
+estimate, configured value, or successful-only sample. An **exact adapter tuple** is the complete
+`(harness adapter package and artifact digest, registered model doorway and route, platform,
+capability mode)` subject; no member may borrow another member's check result. A **runtime pin** is
+an exact owner-resolved runtime selection bound to its source generation and validity horizon, not
+a configuration hint or caller string. **Quiescence** is current owner-accepted evidence that the
+original accepted attempt and every queued destination action can no longer execute; quiet output,
+an absent worker, or a stopped local process is insufficient. **Model Context Protocol (MCP)** is
+named here only as one possible runtime tool transport and never as an authority source.
 
 ---
 
@@ -33,26 +40,30 @@ handles are implementation details. They do not become facts, permissions, or al
 | Two | fact envelope, causal frontier, durability state, capture reference, checkpoint, projection, correction, retraction, taint, and genesis replay | The landed fact, capture, and projection contracts used here are public. |
 | Three | declaration, governed port, register generation, generation record, register feature profile, check-run record, rule graph, and honesty class | The landed registration and generation contracts used here are public. |
 | Four | intake port, conversation binding, event-id authority, operation classification, authorization request, operating standing, and session-start substrate | The landed intake and binding contracts used here remain the authority source. |
-| Five | `Run`, `RunStep`, `RunTransition`, `RunBudget`, `RunExit`, `SessionGrounding`; designed `ContinuityAccounting`, `DelegationContract`, `DelegationResult`, `AgentTransportEnvelope`, `DeliveryEvidence`, and `AgentTransportPort` | The single-root run and start/recovery/resume grounding slice is landed. Compaction accounting, nonempty child grounding, delegation, and agent transport are design-owned but unbuilt; the prerequisite below keeps their modes unsupported. `AwaitingAuthorization` and `ExhaustionRecord` are not consumed by this adapter contract. |
-| Six | `Lease`, `FenceToken`, `AdmissionReservation`, operation identity, dispatch claim, spend reservation, `LoopPolicy`, `LoopRecord`, and `RecoveryRecord`; designed `ThreadlineRoute` and `ThreadlineReceipt` only where agent transport is enabled | Lease/reservation and a bounded observation slice are landed. Full breaker/escalation and full recovery payloads are design-owned but unbuilt; same-request retry is expressly unavailable. |
-| Seven | `JudgmentRequest`, `JudgmentAttemptRecord`, `JudgmentResolution`, `BenchmarkRecord`, `BenchmarkScenario`, `BenchmarkRunRecord`, model route, and provider receipt | The listed records and a narrow fake-provider slice are landed. The public model-route/pin resolver requested below is absent. `AskRefinement` and `JudgmentHoldCost` are not consumed here. |
-| Eight | `OperationDefinition`, `EffectRequest`, `EffectValidation`, `OperationObservation`, `EffectSettlement`, `OutboundMessage`, and `OperationAdapterPort` | The landed slice accepts only an ordinary outbound-message payload. Harness process-operation payloads are absent and requested below. |
+| Five | `Run`, `RunStep`, `RunTransition`, `RunBudget`, `RunExit`, `SessionGrounding`; designed `ContinuityAccounting`, `DelegationContract`, `DelegationResult`, `AgentTransportEnvelope`, `DeliveryEvidence`, and `AgentTransportPort` | The single-root run and start/recovery/resume grounding slice is landed. `ContinuityAccounting` is granted by `seam-response-run-closure.md`; compaction grounding, nonempty child grounding, delegation, and agent transport are separately granted by `seam-response-rungraph-followup.md`. Neither grant is landed on this HEAD. `AwaitingAuthorization` and `ExhaustionRecord` are not consumed by this adapter contract. |
+| Six | `Lease`, `FenceToken`, `AdmissionReservation`, operation identity, dispatch claim, spend reservation, `LoopPolicy`, `LoopRecord`, and `RecoveryRecord`; designed `ThreadlineRoute` and `ThreadlineReceipt` only where agent transport is enabled | Lease/reservation and a bounded observation slice are landed. The recurring breaker base is granted by `seam-response-loop-breaker.md`; full ordered escalation/recovery and retry admission are separately granted by `seam-response-loop-followup.md`. Neither grant is landed on this HEAD. |
+| Seven | `JudgmentRequest`, `JudgmentAttemptRecord`, `JudgmentResolution`, `BenchmarkRecord`, `BenchmarkScenario`, `BenchmarkRunRecord`, model route, and provider receipt | The listed records and a narrow injected-provider slice are landed. The public runtime-route resolver and provider preparation/receipt operations are granted by `seam-response-judgment.md` but are not landed on this HEAD. `AskRefinement` and `JudgmentHoldCost` are not consumed here. |
+| Eight | `OperationDefinition`, `EffectRequest`, `EffectValidation`, `OperationObservation`, `EffectSettlement`, `OutboundMessage`, and `OperationAdapterPort` | The landed slice accepts only an ordinary outbound-message payload. The typed-effect base is granted by `seam-response-effects-payloads.md`; provider-call, retry-eligibility, and harness-operation arms are separately granted by `seam-response-effects-followup.md`. Neither grant is landed on this HEAD. |
 | Nine | `VerificationPlan`, `VerificationRequest`, `VerificationAssessment`, `ProbeRecord`, `Grade`, `AssessmentClosure`, verification bar, and external protection broker | The listed record contracts are landed; live holder posture still requires its own execution evidence. |
-| Ten | `AssemblyManifest`, `AssemblyAdmission`, `HarnessAdapterPort`, `HarnessLaunchSpec`, `HarnessObservation`, `AdapterEvidenceContract`, `AdapterConformance`, package lifecycle, isolation, and native-harness contract | The four-method harness port is landed. Its description and launch payload do not yet expose the capability-report reference or resolved runtime-configuration pins requested below. |
-| Eleven | registered operator surfaces, minimal-plane projection roster and live session, verified approval interactions, and the first vertical slice | The design assigns this ownership; this document claims no live minimal plane or approval beyond its current owner status. |
+| Ten | `AssemblyManifest`, `AssemblyAdmission`, `HarnessAdapterPort`, `HarnessLaunchSpec`, `HarnessObservation`, `AdapterEvidenceContract`, `AdapterConformance`, package lifecycle, isolation, and native-harness contract | The four-method harness port is landed. The capability-report reference and resolved runtime-configuration references are granted by `seam-response-assembly-followup.md` but are not landed on this HEAD. |
+| Eleven | registered operator surfaces, minimal-plane projection roster and live session, verified approval interactions, and the first vertical slice | The production composition seam is granted in `part-eleven-seam-response-assembly.md` and recorded `BUILT @07d02e3` in `SEAM-LEDGER.md`, awaiting Part Eleven integration. The required boot handles are absent on this HEAD, so no live minimal-plane result is claimed. |
 
 **Rule — unbuilt owner capabilities are explicit activation prerequisites.** Rules 42, 49, 69
 and 71; **checks: P13-NF-01/04/27/35/37/39/41/48**. The adapter does not recreate an earlier
 owner's missing record. The following prerequisites remain unsupported cells in every conformance
 record until the named owner exports the public contract and the acceptance condition executes.
 
-| Prerequisite | Owner contract and seam request | Checks held until acceptance |
+| Prerequisite | Exact granted owner seam and present limit | Checks held until the grant lands |
 |---|---|---|
-| Exact runtime configuration and rich harness capability report | Seven resolves the model route and reasoning setting; Ten resolves the concrete account, harness configuration, launch mapping, and description report. `design-harness-adapters-seam-request-part-seven-runtime-route.md` and `design-harness-adapters-seam-request-part-ten.md` state the additive contracts. | P13-NF-04 and the pin-positive arms of P13-NF-09–13/40/43–45 |
-| Compaction accounting and visible delegated work | Five exports and decodes its already-designed compaction/continuity and child/delegation contracts as requested in `design-harness-adapters-seam-request-part-five.md`. | P13-NF-26/27/41 and the corresponding live tuple cells |
-| Full finite escalation and recovery policy | Six exports its designed breaker, escalation-action, quiescence, and recovery payloads as requested in `design-harness-adapters-seam-request-part-six.md`. | The full positive arms of P13-NF-35/37/38/47; the landed bounded-observation/refusal controls remain testable |
-| Same-logical-request retry after decisive closure | Six and Eight jointly expose the retry-admission lineage requested in `design-harness-adapters-seam-request-retry.md`. | The actual-retry arm of P13-NF-39; safe refusal remains the current positive control |
-| Harness launch, delivery, control, and account-change effects | Eight exports a closed harness-operation payload and public doorway path as requested in `design-harness-adapters-seam-request-part-eight-harness-operations.md`. | Effect-positive arms of P13-NF-14/19/20/36/38/40 and the corresponding live tuple cells |
+| Runtime route, runtime configuration, and rich capability report | Seven's immutable provider/model/reasoning/billing selection is granted by `seam-response-judgment.md`. Ten's `HarnessRuntimeConfiguration`, expanded `HarnessLaunchSpec`, `HarnessCapabilityReport`, `describe` reference, and public resolvers are granted by `seam-response-assembly-followup.md`. The landed contracts expose neither additive surface. | The route arms are non-executable until `seam-response-judgment.md` lands. The runtime-configuration/capability-report arms are non-executable until `seam-response-assembly-followup.md` lands. |
+| Real model-provider effect path | Seven's preparation/receipt operations are granted by `seam-response-judgment.md`; Eight's versioned provider-call payload is granted by `seam-response-effects-followup.md`. The landed injected-provider doorway is expressly not the production Eight-owned effect path. | The Seven preparation/receipt arms of P13-NF-16/23/43/44/47 are non-executable until `seam-response-judgment.md` lands. Their Eight provider-effect arms are non-executable until `seam-response-effects-followup.md` lands. |
+| Continuity-accounting record | Five's already-designed `ContinuityAccounting` record and owner boundary are granted by `seam-response-run-closure.md`. | P13-NF-27 is non-executable until `seam-response-run-closure.md` lands. |
+| Compaction admission and visible delegated work | Five's compaction reason, nonempty child grounding, delegation records, transport port, readers, and consumers are separately granted by `seam-response-rungraph-followup.md`, which builds on the continuity record. | P13-NF-26/41 and their live tuple cells are non-executable until `seam-response-rungraph-followup.md` lands. |
+| Recurring breaker base | Six's persistent breaker states, shared pressure identity, parent budgets, and public records are granted by `seam-response-loop-breaker.md`; the landed `LoopPolicy.breaker` remains `stub-closed`. | Breaker-state positive cells in P13-NF-35/47 are non-executable until `seam-response-loop-breaker.md` lands. |
+| Full ordered escalation and recovery payload | Six's ordered escalation actions, quiescence demand, full `LoopRecord`, and full `RecoveryRecord` are separately granted by `seam-response-loop-followup.md`. | The full positive arms of P13-NF-35/37/38/47 are non-executable until `seam-response-loop-followup.md` lands; bounded observation/refusal remains executable. |
+| Same-logical-request retry after decisive closure | Eight's owner-issued retry eligibility and Six's conditional retry admission are granted respectively by `seam-response-effects-followup.md` and `seam-response-loop-followup.md`. | Eight's eligibility arm of P13-NF-39 is non-executable until `seam-response-effects-followup.md` lands. Six's retry-admission arm is non-executable until `seam-response-loop-followup.md` lands; safe refusal remains executable. |
+| Harness launch, delivery, control, compaction, and account-change effects | The typed-effect base is granted by `seam-response-effects-payloads.md`; the closed harness-operation arm and public Eight doorway path are separately granted by `seam-response-effects-followup.md`. | The typed-payload arms of P13-NF-14/19/20/36/38/40 are non-executable until `seam-response-effects-payloads.md` lands. Their harness-operation doorway arms are non-executable until `seam-response-effects-followup.md` lands. |
+| Production minimal-plane composition | `part-eleven-seam-response-assembly.md` grants real production bindings and boot-returned handles; `SEAM-LEDGER.md` records the implementation built at `07d02e3` but awaiting Part Eleven integration. Test-only responders do not satisfy it. | P13-NF-42 and the minimal-plane arm of P13-NF-47 are non-executable until `part-eleven-seam-response-assembly.md` lands in the production assembly. |
 
 **Rule — adapters are replaceable edges, not alternative owners.** Rules 1, 30, 63, 68 and
 115; **checks: P13-NF-03/05/08**. Core services depend only on `HarnessAdapterPort`. The executable
@@ -73,12 +84,13 @@ drivers is an engineering decision inside the adapter package.
 
 ## 2. One adapter family and one conformance shape
 
-**Rule — every harness implements the same four-method port shape.** Rules 30, 59, 68, 84 and
+**Rule — every harness implements the same four-method port shape.** Rules 30, 59, 68 and
 115; **checks: P13-NF-03/04/06/07**. Each package implements the `describe`, `launch`, `deliver`,
 and `observe` method set exactly as Part Ten specifies; the description's requested owner reference
 is the explicit additive contract in section 1. Process stop, close, model change, account change,
 compaction control, launch, and live-input delivery use the requested registered Part Eight harness-
-operation payload. Those effect-positive paths remain unsupported until that seam lands. Reconnect and continuation ride Part
+operation payload. Those effect-positive paths are non-executable until
+`seam-response-effects-payloads.md` and `seam-response-effects-followup.md` land. Reconnect and continuation ride Part
 Six loops. Adding a runtime adds an adapter binding and conformance tuple, not a branch in Parts
 Four through Nine. An absent capability is returned as unsupported with a stable reason. It is
 never supplied by a family default or a different harness.
@@ -98,15 +110,18 @@ supported only when every capability required by the admitted work is both decla
 for that exact tuple. A tuple missing context consumption or effect confinement may serve an
 explicitly admitted advisory mode, but it cannot be called a grounded governed worker.
 
-**Rule — parity is one suite applied to every tuple.** Rules 30, 34, 37, 49, 59 and 115;
-**checks: P13-NF-07/08/43/44/45/47**. One contract suite takes a `HarnessAdapterPort`, an exact
-artifact/platform tuple, and only public core ports. It runs identical semantic cases for Claude
-Code, Codex, and each later adapter. Harness-specific fixtures may provide protocol bytes and
-expected runtime events, but may not weaken the assertion. Unsupported cases remain enumerated
-and fail activation for modes that require them. A family label, shared base class, or mock passing
-for one tuple does not establish parity for another.
+**Rule — parity is one suite applied to every complete tuple.** Rules 30, 34, 37, 49, 59 and 115;
+**checks: P13-NF-07/08/43/44/45/47**. One contract suite takes a `HarnessAdapterPort`, the exact
+harness package and artifact digest, one owner-resolved registered model doorway and route, one
+platform, one capability mode, and only public core ports. It runs identical semantic cases for
+every compatible complete tuple, including separate executions when one artifact/platform/mode is
+compatible with more than one registered model doorway. Harness-specific fixtures may provide
+protocol bytes and expected runtime events, but may not weaken the assertion. Every incompatible
+combination remains enumerated with its stable unsupported reason. A family label, shared base
+class, one model doorway's pass, or one mock result cannot establish parity for another complete
+tuple.
 
-**Rule — exact package binding prevents runtime impersonation.** Rules 5, 44, 69 and 90;
+**Rule — exact package binding prevents runtime impersonation.** Rules 44, 69 and 90;
 **checks: P13-NF-05/07**. The assembly resolves the declared executable to exact bytes and object
 identity before launch. The launched process and observer bind back to that artifact, platform,
 adapter declaration, and `AssemblyAdmission`. PATH lookup, mutable aliases, auto-update, wrapper
@@ -149,13 +164,27 @@ route. Ten's requested runtime-configuration resolver binds that selection to an
 and credential-custody reference, harness configuration, and exact argument/environment mapping;
 the resulting references and resolved fields enter the expanded `HarnessLaunchSpec`. The adapter
 records the resolved runtime arguments, nonsecret environment digest, and runtime acceptance
-evidence. The current landed launch schema cannot express those pins, so their positive checks and
-governed activation remain blocked on the two seam requests named in section 1. A raw model string
+evidence. The current landed launch schema cannot express those pins, so the route positive is
+non-executable until `seam-response-judgment.md` lands and the launch/configuration positive is
+non-executable until `seam-response-assembly-followup.md` lands. A raw model string
 from input cannot reach the launcher. An unavailable pin refuses or follows an explicitly admitted
 policy owned by the earlier part; the adapter never silently substitutes a model, reasoning
 setting, account, provider billing route, harness configuration, or runtime while keeping the old
 label. Constitutional `Profile` remains available only to classify the consequences of the
 feature or operation.
+
+**Rule — a real model call crosses the public effect doorway.** Rules 31, 42, 55, 63, 68 and 75;
+**checks: P13-NF-16/23/43/44/47**. Seven prepares and records the canonical bytes actually to be
+submitted under its owner-resolved route. Eight admits the corresponding versioned provider-call
+payload; Six reserves and consumes one claim; Ten's guarded executor verifies the submitted bytes
+and digest before exactly one provider invocation. Seven records the provider receipt and actual
+usage observations with the exact provider, account, and billing-route attribution; Eight records
+the operation observation, Nine supplies the independent assessment, Eight settles from that
+assessment, and Six applies accounting. The model-attempt lineage remains correlated to the
+`HarnessObservation` and exact complete adapter tuple. A test-only provider, direct SDK call, or
+adapter-local receipt cannot satisfy the production boundary. Seven's preparation/receipt half is
+non-executable until `seam-response-judgment.md` lands. Eight's provider-effect half is
+non-executable until `seam-response-effects-followup.md` lands.
 
 **Rule — credentials remain references and custody stays outside the worker.** Rules 28, 36, 63
 and 100; **checks: P13-NF-13/40**. The requested Ten runtime configuration and expanded
@@ -174,15 +203,20 @@ admitted operation and, where the runtime reads credentials only at start, a rep
 **Rule — the run exists before its harness worker.** Rules 31, 63, 68, 69 and 96; **checks:
 P13-NF-14/15/17**. Part Five first records the `Run`, but it does not append a pending step before
 grounding. The assembly derives and decodes the candidate ordinary `RunStep` so its stable id can
-correlate the loading launch without yet admitting it. Part Six owns the loading-only process
-operation's current `Lease`, `FenceToken`, one-use `AdmissionReservation`, and recovery episode.
-Part Eight durably owns, validates, dispatches, observes, and settles that launch effect through
-the requested harness-operation payload; until it lands, the positive launch path is unsupported.
-Part Ten durably records the `HarnessLaunchSpec` and each `HarnessObservation`. Only then may the adapter
-call `launch`. The resulting observation binds the run, candidate step id, launch, machine,
-adapter artifact, process start identity, and fresh worker incarnation. The worker has only the
-loading and observation capabilities Part Ten permits before grounding. A process id, terminal
-name, provider conversation id, or resume token is never the durable run identity.
+correlate the loading launch without yet admitting it. It then persists the `HarnessLaunchSpec`.
+Part Eight records the loading-only launch intent and Part Six records the current `Lease`,
+`FenceToken`, one-use `AdmissionReservation`, and consumed claim. Only then does the guarded Ten
+executor invoke `HarnessAdapterPort.launch` exactly once. After that invocation, Ten persists the
+resulting `HarnessObservation`, including an `uncertain` phase when the answer or receipt is lost.
+It next admits and delivers the context/input operation, persists the resulting delivery and
+`context-consumed` observations, and only then permits Part Five to record `SessionGrounding` and
+the ordinary step. No `HarnessObservation` is fabricated before launch. A cut between any two
+records leaves the original launch or delivery identity and maximum exposure pending for
+observation; it never authorizes a second invocation. The typed-payload half is non-executable
+until `seam-response-effects-payloads.md` lands. The harness-operation doorway half is
+non-executable until `seam-response-effects-followup.md` lands. The worker has only loading and
+observation capabilities before grounding. A process id,
+terminal name, provider conversation id, or resume token is never the durable run identity.
 
 **Rule — launch success is narrow.** Rules 26, 62, 68 and 95; **checks: P13-NF-14/15/29/33**.
 Launched means the exact admitted process incarnation produced fresh runtime evidence under the
@@ -204,8 +238,8 @@ writes, and other ordinary effects remain blocked at the public doors. If the la
 consumption receipt is uncertain, Eight retains the launch effect and Six's `RecoveryRecord`
 queries that original launch identity; no second launch or pre-grounding step is created.
 
-**Rule — the working scope and hidden paths are confined before launch.** Rules 30, 41, 60, 63,
-75 and 101; **checks: P13-NF-05/14/18/47**. The adapter realizes the exact work directory, file
+**Rule — the working scope and hidden paths are confined before launch.** Rules 30, 41, 60, 63
+and 75; **checks: P13-NF-05/14/18/47**. The adapter realizes the exact work directory, file
 scope, environment allowlist, resource handles, network posture, tool route, model route, and
 process identity from `HarnessLaunchSpec`. Built-in provider, shell, tool, MCP, connector, auto-
 update, retry, and credential discovery paths are disabled or mediated through the existing
@@ -277,9 +311,11 @@ as at initial start, subject to the current generation, and records the new cons
 Part Five owns the designed `ContinuityAccounting` for the first reply: the pre-pause inbound,
 explicit compaction disclosure, and `addressed`, `superseded`, or `pending` disposition. Its landed
 decoder does not yet accept compaction grounding or export continuity accounting, so governed
-post-compaction action and P13-NF-26/27 remain unsupported until the Part Five seam in section 1
-lands. The adapter cannot infer that the model remembered a message, suppress the disclosure, or
-declare substantive adequacy from an output phrase.
+post-compaction action remains unsupported. P13-NF-27 is non-executable until
+`seam-response-run-closure.md` lands the record; P13-NF-26 is independently non-executable until
+`seam-response-rungraph-followup.md` lands compaction admission, grounding, and public consumption.
+The adapter cannot infer that the model remembered a message, suppress the disclosure, or declare
+substantive adequacy from an output phrase.
 
 **Rule — continuation never repeats an uncertain effect.** Rules 42, 55, 57, 63 and 68;
 **checks: P13-NF-24/28/38/39**. On resume, the worker receives the exact pending attempt,
@@ -289,9 +325,11 @@ Neither a blank runtime transcript nor a missing process permits a new attempt. 
 never admitted while occurrence, delayed execution, or charge remains uncertain. Even after
 decisive non-occurrence, quiescence, and charge closure, the landed Six/Eight slice still safely
 refuses the same request or semantic-message identity and reports `retryEligible: false`. An actual
-retry becomes a required positive only after the joint retry seam in section 1 lands. That seam
+retry becomes a required positive only after `seam-response-effects-followup.md` and
+`seam-response-loop-followup.md` land. Those owner seams
 must preserve the original logical request and digest and link a new attempt to the settled
-predecessor; changing semantic identity is never a retry mechanism.
+predecessor; changing semantic identity is never a retry mechanism. The actual-retry positive is
+non-executable until `seam-response-effects-followup.md` and `seam-response-loop-followup.md` land.
 
 ---
 
@@ -352,14 +390,18 @@ question inside an `ActionFloor` whose conservative default is continue observin
 names its horizon and evidence. Pane text may be captured as diagnostic input but cannot create a
 protected-wait fact, a producer identity, or interruption permission. A genuinely stuck neighbor
 has the same registered operation but no fresh wait/producer evidence after the bound and reaches
-the separately admitted escalation path.
+the separately admitted escalation path. The matrix also pairs a framework prompt for an exact
+already-authorized call with a scope-widening or unverifiable menu: only the exact already-authorized
+call may be cleared, while an “always,” session-wide, or machine-wide approval is a separate
+authority-changing operation and an unverifiable menu remains pending for bounded diagnosis.
 
 **Rule — interruption and kill are admitted effects.** Rules 42, 55, 60, 63 and 68; **checks:
 P13-NF-36/37/40**. Operator stop retains the earlier fast local path. Every other interrupt,
 graceful close, descendant signal, process termination, or harness conversation mutation is a
 registered Part Eight operation under Part Six's current lease, fence, one-use claim, resource
 reservation, and bounded loop. The landed Eight slice has no harness-operation payload, so these
-effect-positive paths remain unsupported until its section 1 seam lands. The operation targets the exact process start identity and
+effect-positive paths are non-executable until `seam-response-effects-payloads.md` and
+`seam-response-effects-followup.md` land. The operation targets the exact process start identity and
 incarnation at action time. It records principal, operator-initiated status, signal or protocol
 action, response, and uncertainty. Generic runtime text such as “aborted by user” cannot attribute
 an autonomous interruption to the operator.
@@ -371,16 +413,19 @@ sets order, waits, attempt count, elapsed ceiling, resource cost, breaker, and e
 adapter executes one admitted action and reports its observation. It cannot add retries, broaden a
 target, send pane-wide control input, or turn an elapsed threshold into proof that the process or
 provider stopped. The landed `LoopPolicy` has only a `stub-closed` breaker and the landed
-`RecoveryRecord` cannot carry this full action/evidence sequence. Therefore the full escalation
-positive remains unsupported until the Part Six seam in section 1 lands; the current executable
-positive is bounded observation ending in `stopped-at-bound` without an unauthorized interrupt.
+`RecoveryRecord` cannot carry this full action/evidence sequence. Breaker-state positives are
+non-executable until `seam-response-loop-breaker.md` lands. The full ordered escalation and
+recovery positives are separately non-executable until `seam-response-loop-followup.md` lands; the
+current executable positive is bounded observation ending in `stopped-at-bound` without an
+unauthorized interrupt.
 
 **Rule — recovery observes and adopts; it does not recreate history.** Rules 31, 42, 55, 63,
 68 and 95; **checks: P13-NF-24/25/28/38/39**. The designed `RecoveryRecord` names the original
-run, step, incarnation, operations, lease state, observations, and unresolved exposure after the
-full Part Six seam lands. The current record preserves only the operation/episode, one observation,
+run, step, incarnation, operations, lease state, observations, and unresolved exposure after
+`seam-response-loop-followup.md` lands. The current record preserves only the operation/episode, one observation,
 and waiting or stopped-at-bound disposition; it supports safe observation and refusal, not the full
-positive. Recovery queries the exact available identities, accepts late evidence through Part Four, and lets the owners settle it. A
+positive. The full recovery positive is non-executable until `seam-response-loop-followup.md`
+lands. Recovery queries the exact available identities, accepts late evidence through Part Four, and lets the owners settle it. A
 replacement launch receives a new incarnation and current fence only after exclusion or declared
 uncertainty policy permits it. It preserves logical operation identity and never resends provider,
 tool, filesystem, or outbound effects merely because the worker vanished.
@@ -390,11 +435,14 @@ tool, filesystem, or outbound effects merely because the worker vanished.
 Six resource ownership. A runtime's opaque background agent or tool path is unsupported for
 governed mode unless it can be identified, bounded, observed, stopped, and recovered through the
 same doors. Five's landed single-root slice rejects nonempty children, so visible delegated mode
-remains unsupported until the Part Five seam in section 1 lands; an adapter cannot substitute its
+and P13-NF-41 are non-executable until `seam-response-rungraph-followup.md` lands; an adapter cannot substitute its
 own child registry. Ordinary harness workers cannot consume Eleven's reserved minimal-plane capacity or
 credentials. Their crash, quota wall, compaction, or kill does not remove the minimal responder's
 ability to preserve admitted input, state honest limitations, and execute independently admitted
-stop and repair operations while its own exact prerequisites remain live.
+stop and repair operations while its own exact prerequisites remain live. P13-NF-42 and the
+minimal-plane arm of P13-NF-47 are non-executable until
+`part-eleven-seam-response-assembly.md` lands in the production assembly; the ledger's built
+integration branch and any test-only responder are not activation evidence.
 
 ---
 
@@ -408,7 +456,7 @@ unsupported cells for the tested artifact. A runtime update re-runs affected cel
 | Concern | Claude Code adapter | Codex adapter | Gemini, Grok, or later adapter |
 |---|---|---|---|
 | Launch | Translate the admitted launch specification into an exact Claude Code process, environment, work scope, and confinement mode; bind actual process start and Claude conversation evidence | Translate the same specification into an exact Codex process, named harness configuration, sandbox, work scope, and confinement mode; bind actual process start and Codex thread evidence | Supply the same exact translation and binding without adding a core framework literal |
-| Model/runtime configuration/reasoning | Resolve the Seven route and Ten runtime-configuration references into the exact supported launch or admitted runtime-control fields; observe actual acceptance independently of configured state | Resolve those same owner-issued references into exact Codex model, named harness configuration, and reasoning controls; observe actual acceptance | Declare every pin supported or unsupported for the exact artifact; never approximate a tier silently; keep this row unsupported until both resolver seams land |
+| Model/runtime configuration/reasoning | Resolve the Seven route and Ten runtime-configuration references into the exact supported launch or admitted runtime-control fields; observe actual acceptance independently of configured state | Resolve those same owner-issued references into exact Codex model, named harness configuration, and reasoning controls; observe actual acceptance | Declare every pin supported or unsupported for the exact complete tuple; never approximate a tier silently. The route positive is non-executable until `seam-response-judgment.md` lands; the runtime mapping positive is non-executable until `seam-response-assembly-followup.md` lands |
 | Live inbound | PTY or protocol delivery may carry bytes, but a correlated harness-origin input event and model-context witness establish acceptance and consumption | The same rule applies even when a busy composer visually retains text or Enter timing varies | Define exact transport, queue semantics, event identity, and context witness before governed activation |
 | Liveness | Fresh exact-incarnation process or runtime-protocol proof | Fresh exact-incarnation process or runtime-protocol proof | Same predicate and freshness contract |
 | Progress and completion | Correlated lifecycle, model, tool, and output events; no prompt/footer or final phrase authority | Correlated lifecycle, model, tool, and output events; no composer/spinner or final phrase authority | Same semantic events; unsupported if only screen scraping exists |
@@ -416,24 +464,28 @@ unsupported cells for the tested artifact. A runtime update re-runs affected cel
 | Account and quota | Prove the account at use through the approved custodian/provider source; record real readable quota windows and unknown gaps | Prove the account at use and record provider-origin quota windows with their reported lengths rather than positional assumptions | Declare observable windows, freshness, and permanent absence; no usage surface means unknown |
 | Stop and recovery | Execute only admitted exact-target process/protocol operations and report quiescence limits | Execute only admitted exact-target process/protocol operations and report quiescence limits | Same registered operation and Part Six loop contract |
 
-**Rule — Claude Code activation requires real boundary evidence.** Rules 34, 41, 47, 59, 75
-and 101; **checks: P13-NF-16/23/35/43**. The conformance run must show actual submitted context,
+**Rule — Claude Code activation requires real boundary evidence.** Rules 34, 41, 47, 59 and 75;
+**checks: P13-NF-16/23/35/43**. The conformance run must show actual submitted context,
 correlated lifecycle and output events, model/account evidence, hidden provider and tool mediation,
-and every stall row under the exact Claude Code artifact. A hook firing proves only the event and
+and every stall row under the exact Claude Code artifact and each compatible registered model
+doorway. The real provider-boundary arm is non-executable until `seam-response-judgment.md` and
+`seam-response-effects-followup.md` land. A hook firing proves only the event and
 fields it authenticates. If provider submission, built-in tools, or context consumption cannot be
 observed or confined, the tested mode remains advisory or unsupported rather than receiving a
 Claude-specific waiver.
 
-**Rule — Codex activation has the identical bar.** Rules 34, 41, 47, 59, 75 and 101; **checks:
+**Rule — Codex activation has the identical bar.** Rules 34, 41, 47, 59 and 75; **checks:
 P13-NF-16/23/35/44**. The conformance run must show actual submitted context, correlated lifecycle
 and output events, model/runtime-configuration/reasoning and account evidence, sandbox and hidden path
-confinement, and every stall row under the exact Codex artifact. A rollout file, composer state,
+confinement, and every stall row under the exact Codex artifact and each compatible registered
+model doorway. The real provider-boundary arm is non-executable until
+`seam-response-judgment.md` and `seam-response-effects-followup.md` land. A rollout file, composer state,
 or terminal render is accepted only for the precise observation its authenticated structure and
 subject binding prove. Missing strong consumption or completion evidence keeps those capabilities
 unsupported.
 
-**Rule — a future adapter arrives through declarations and evidence.** Rules 30, 44, 49, 84
-and 115; **checks: P13-NF-08/45**. The builder adds a registered package, exact assembly binding,
+**Rule — a future adapter arrives through declarations and evidence.** Rules 30, 44, 49 and 115;
+**checks: P13-NF-08/45**. The builder adds a registered package, exact assembly binding,
 `AdapterEvidenceContract`, tuple-specific conformance record, stall matrix, and the shared suite's
 captured/live evidence. No core switch statement, copied run state, new standing vocabulary,
 unregistered provenance string, or generic “CLI-compatible” assertion is permitted. An adapter may
@@ -448,7 +500,8 @@ case it cannot witness.
 `5b36623a99327e74abe5ef04d63019f9aca6b1c5`. It covered `SessionManager`,
 `PendingInjectStore`, `ModelTierEscalation`, `ModelSwapService`, `CompactionSentinel`,
 `SessionWatchdog`, `HelperWatchdog`, `SubscriptionPool`, `QuotaPoller`, `ProactiveSwapMonitor`,
-`SwapAntiThrash`, `SwapWorkGate`, `AccountSwitcher`, and the incident notes in `CLAUDE.md`.
+`SwapAntiThrash`, `SwapWorkGate`, `SessionRefresh`, `PermissionPromptAutoResolver`,
+`AccountSwitcher`, and the incident notes in `CLAUDE.md`.
 These observations describe that source tree only. They are not evidence for a 2.0 runtime.
 
 **Rule — incident-earned behavior is preserved through core-owned mechanisms.** Rules 31, 42,
@@ -461,6 +514,7 @@ These observations describe that source tree only. They are not evidence for a 2
 | Slow process probes do not freeze the server or turn timeout into death | `SessionWatchdog` records synchronous `ps` probes blocking health and restart; `SessionManager` later adds bounded asynchronous tri-state tmux probes | Bounded observation operations return unknown on probe failure; unknown cannot become process death or kill permission |
 | Healthy quiet external waits are not interrupted merely for producing no output | `SessionWatchdog.classifyProtectedWait` exempts bounded safe-merge and GitHub check watchers, and re-evaluates the evidence within a two-hour ceiling | Five/Eight register the exact waiting operation and expected external condition; Six bounds re-observation; Seven may judge only inside a continue-observing default. Expiry removes the exemption but does not itself authorize kill |
 | A quiet standard-input consumer is protected while its producer remains active | `SessionWatchdog` gives consumers a longer threshold and checks live pipeline siblings before escalation, because interrupting the consumer can abort the producer's whole turn | The producer is a registered operation or visible child with fresh liveness evidence; its consumer remains non-stalled while that evidence is current. Missing or stale producer evidence yields unknown or the separately judged stuck case, never pane-derived authority |
+| An exact already-authorized framework call may clear its low-level approval prompt without silently widening authority | `PermissionPromptAutoResolver` recognizes bounded registered menu shapes, re-captures before sending, chooses an allow-once key by meaning where needed, caps attempts, audits static pattern names, and raises one defect for persistent or unrecognized menus; `CLAUDE.md` records that such prompts otherwise strand remote sessions | Four and Eight first establish that the exact call is already authorized; only that owner-issued allow-once action may be executed through the harness effect path. “Always,” session-wide, or machine-wide approval is a separate authority-changing request and is never inferred. An unverifiable or uncleared menu retains the work and enters bounded Six-owned diagnosis/recovery; pane text is a candidate signal, never authorization |
 | Interruption escalates by exact target and carries attribution | `SessionWatchdog` records targeted descendant checks and the misleading Codex “aborted by user” text | Part Eight operations bind process start/incarnation and record the actual principal; Part Six owns finite escalation |
 | Background helpers are covered instead of hiding behind an idle parent | `HelperWatchdog` exists because parent-session monitoring missed spawned helpers | Visible helpers become child runs and resources; opaque helpers block governed activation |
 | Model identifiers are framework-specific, closed, and server-resolved | `ModelTierEscalation` records drift where a new framework was checked against Claude's model list; `ModelSwapService` added exact lookup, idle protection, cost admission, and independent confirmation | Seven's requested route resolver selects the exact model/reasoning/billing route and Ten's requested runtime-configuration resolver selects the concrete harness/account mapping; the adapter only translates them |
@@ -468,6 +522,7 @@ These observations describe that source tree only. They are not evidence for a 2
 | Proactive account optimization does not kill busy or unknown work | `ProactiveSwapMonitor` records the 2026-06-09 untagged wall and the 2026-07-02 day of 36 swaps in eight waves that repeatedly killed six build helpers; `SwapAntiThrash` and `SwapWorkGate` defer proactive swaps | Part Seven placement policy may propose a better route; Five keeps the run where it is and Six defers or drops the bounded optimization episode when work is busy or unknown. Minimum residence time since the prior move, resource limits, and fresh quota prevent thrash |
 | Ordinary interactive refresh refuses while work is busy unless a separately authorized interrupt is requested | `SwapWorkGate` returns a structured busy refusal with a work summary for ordinary interactive refresh; an explicit force request carries mitigation | Four preserves the request and Eight refuses the replacement operation while Five reports busy/unknown. A separately authorized exact interrupt is a new admitted operation with its own consequences and cannot be inferred from the original refresh |
 | Reactive continuity at an unusable account waits briefly, then mitigates instead of stranding forever | `SessionRefresh` rechecks during bounded grace and then proceeds with mitigation for reactive swaps; `SwapWorkGate` treats unknown as busy during grace | Five records the account wall and pending work; Six owns bounded re-observation. Quiescence permits clean replacement. At the grace ceiling, elapsed time proves only that grace ended: replacement or interruption proceeds only through an already registered Eight operation policy, current fence, and exact target, while pending effects remain unreplayed and the grounded successor receives the recorded mitigation context |
+| Recovery may replace a genuinely wedged worker, but may not inherit a caller-tag exemption over healthy busy work | `SwapWorkGate` currently exempts the `recovery` caller class unconditionally, and `SessionRefresh` then proceeds to kill and respawn; this avoids deadlocking recovery on a broken pane but cannot distinguish a truly wedged recovery from a healthy busy session | The unconditional exemption does not carry forward. Independent current evidence must establish the exact recovery as wedged and an owner-controlled policy must admit the exact replacement or interrupt operation. A healthy or indeterminate busy worker remains protected; a timer or caller label alone cannot grant replacement permission |
 | Pane-level tmux operations use the exact pane target | `CLAUDE.md` records tmux 3.6a silently failing pane commands without the trailing colon | A tmux-backed implementation always targets the exact admitted pane using `=session:`; conformance also proves that a syntactically successful call affected the intended incarnation |
 
 **Rule — 1.x mechanisms are re-expressed rather than copied.** Rules 1, 26, 30, 31, 49, 55,
@@ -498,7 +553,7 @@ end-to-end lifecycle tier where the row applies. Unit tests exercise decoder and
 boundaries with real dependencies. Integration tests traverse the public Parts Four through Ten
 ports. End-to-end tests start the production assembly, real adapter artifact, real worker, and
 required external witness. Wiring tests reject null, no-op, private, or test-only bindings. An
-artifact/platform/mode remains declared until its complete suite executes, held until the owning
+artifact/model-doorway/platform/mode tuple remains declared until its complete suite executes, held until the owning
 bars pass, and held-reviewed only after independent review at the exact generation. The switch
 from advisory or observation-only to governed worker mode is a new `AssemblyAdmission`, never an
 environment flag interpreted by the adapter.
@@ -535,30 +590,30 @@ check-run record at the named tuple and generation proves nothing.
 | P13-NF-01 | build | Part Thirteen defines or constructs a core type, or imports a concrete core implementation | Owner inventory is complete and the adapter imports only public types and ports |
 | P13-NF-02 | governance | A body history marker passes, or a check is described as runtime evidence | Governed-doc check passes and every claim stays inside a Rule or Value block |
 | P13-NF-03 | wiring | Adapter advances a run, settles an effect, reinterprets standing, or exposes a fifth private method | Four-method port delegates to the owning public door and returns observations only |
-| P13-NF-04 | contract | `describe` claims support from configuration, family default, stale conformance, or concrete-only extra properties | Existing mode fields and conformance resolve; after the Ten seam lands, its returned capability-report reference owner-decodes runtime/protocol versions, executable identity, account/quota observability, witnesses, sources, gaps, and current conformance refs |
+| P13-NF-04 | contract | `describe` claims support from configuration, family default, stale conformance, or concrete-only extra properties | Existing mode fields and conformance resolve. The rich report arm is non-executable until `seam-response-assembly-followup.md` lands; then its returned owner reference decodes runtime/protocol versions, executable identity, account/quota observability, witnesses, sources, gaps, and current conformance refs |
 | P13-NF-05 | security | PATH alias, wrapper, auto-update, or executable replacement changes the runtime after admission | Exact bytes/object identity match the admitted assembly and process observation |
 | P13-NF-06 | lifecycle | Missing consumption, stop, or observation support silently falls back to another mode | Affected mode refuses with stable unsupported reason while a supported advisory mode remains explicit |
-| P13-NF-07 | parity | Claude mock passes and is credited to Codex, or one platform result covers another | Same public suite records separate exact tuple results and limitations |
+| P13-NF-07 | parity | One compatible registered model doorway passes for an artifact/platform/mode and that result is credited to another doorway, or one platform result covers another | Same public suite executes independently for two compatible registered model doorways and records a separate result, limitations, and unsupported cells for every complete tuple |
 | P13-NF-08 | build | Adding Gemini/Grok requires a core runtime switch or copied run state | New declared adapter/package/binding passes unchanged port and suite |
-| P13-NF-09 | observation | Missing/stale/partial quota becomes zero usage or full headroom | Fresh provider-origin window is measured; unavailable window remains unknown with freshness/source |
-| P13-NF-10 | security | Adapter-reported account/model/runtime configuration overrides conflicting signed history | Consumer re-resolves the Seven route and Ten runtime-configuration records, records conflict, and inhibits affected action |
-| P13-NF-11 | integration | Raw inbound model string or unsupported reasoning value reaches the command line | After the Seven/Ten seams land, owner-resolved exact model, reasoning, billing-route, account, and harness-configuration pins map to validated launch fields and acceptance evidence; before then the mode is unsupported |
-| P13-NF-12 | integration | Requested model/account/runtime fails and adapter silently substitutes while retaining label | Explicit owning policy admits and labels a permitted alternative, or launch refuses |
-| P13-NF-13 | security | Credential bytes appear in argv, environment capture, logs, fixture, error, or worker-readable store | `SecretRef`/custodian handle supplies use and only redacted identity evidence leaves custody |
-| P13-NF-14 | e2e | Process launches without a recorded run, current loading-launch lease/reservation/effect/spec, or exact scope, or a pending step is fabricated before grounding | Production assembly durably admits a loading-only launch, records launch and consumption, then commits grounding plus the ordinary step in Five's `start` transition |
+| P13-NF-09 | observation | Missing/stale/partial quota becomes zero usage or full headroom | The capability-report arm is non-executable until `seam-response-assembly-followup.md` lands; then a fresh provider-origin window is measured and an unavailable window remains unknown with freshness/source |
+| P13-NF-10 | security | Adapter-reported account/model/runtime configuration overrides conflicting signed history | Route re-resolution is non-executable until `seam-response-judgment.md` lands. Runtime-configuration re-resolution is non-executable until `seam-response-assembly-followup.md` lands; then conflict inhibits the affected action |
+| P13-NF-11 | integration | Raw inbound model string or unsupported reasoning value reaches the command line | The route arm is non-executable until `seam-response-judgment.md` lands; the launch-mapping arm is non-executable until `seam-response-assembly-followup.md` lands. Then owner-resolved exact model, reasoning, billing route, account, and harness-configuration pins map to validated launch fields and acceptance evidence |
+| P13-NF-12 | integration | Requested model/account/runtime fails and adapter silently substitutes while retaining label | Route resolution is non-executable until `seam-response-judgment.md` lands. Runtime alternative mapping is non-executable until `seam-response-assembly-followup.md` lands; then explicit owning policy admits and labels a permitted alternative, or launch refuses |
+| P13-NF-13 | security | Credential bytes appear in argv, environment capture, logs, fixture, error, or worker-readable store | The launch-binding positive is non-executable until `seam-response-assembly-followup.md` lands; then a `SecretRef`/custodian handle supplies use and only redacted identity evidence leaves custody |
+| P13-NF-14 | e2e | Process launches without a recorded run, persisted `HarnessLaunchSpec`, current loading-launch intent/reservation/claim, or exact scope; a `HarnessObservation` is fabricated before invocation; or a pending step is admitted before grounding | The typed payload is non-executable until `seam-response-effects-payloads.md` lands. The harness-operation doorway is non-executable until `seam-response-effects-followup.md` lands. Then production persists spec and admitted intent, invokes once, persists the resulting observation, delivers and witnesses context, and only afterward commits grounding plus the ordinary step in Five's `start` transition; every cut retains the original uncertain identity |
 | P13-NF-15 | fault | Reused PID, terminal name, or sibling process is accepted as the prior worker | Start identity plus fresh incarnation binds the exact process and rejects reuse |
-| P13-NF-16 | integration | PTY echo or prompt disappearance is accepted as context consumption | Instrumented model-context boundary emits a correlated `context-consumed` observation |
+| P13-NF-16 | integration | PTY echo or prompt disappearance is accepted as context consumption, or a direct SDK call bypasses the governed provider effect | Instrumented model-context boundary emits a correlated `context-consumed` observation. Provider preparation/receipt is non-executable until `seam-response-judgment.md` lands. Provider effect execution is non-executable until `seam-response-effects-followup.md` lands |
 | P13-NF-17 | lifecycle | Delayed/resumed start reuses intake-time history and clock | Fresh actual-start read covers current history, clock, graph, and context receipt |
 | P13-NF-18 | security | Ungrounded worker invokes provider, tool, message, or file-write path | Loading/observation remains available while every ordinary public effect refuses |
-| P13-NF-19 | fault | Server dies after accepting inbound but before or during live delivery and input disappears | Durable intake/step/operation remains pending and recovery resumes exact custody |
-| P13-NF-20 | security | Delivery targets stale incarnation or cross-conversation worker | Current fence, exact launch/incarnation, intake identity, and digest accept the neighbor |
+| P13-NF-19 | fault | Server dies after accepting inbound but before or during live delivery and input disappears | Durable intake/step/operation remains pending and recovery resumes exact custody. The typed payload is non-executable until `seam-response-effects-payloads.md` lands. The delivery doorway is non-executable until `seam-response-effects-followup.md` lands |
+| P13-NF-20 | security | Delivery targets stale incarnation or cross-conversation worker | The typed payload is non-executable until `seam-response-effects-payloads.md` lands. Guarded delivery is non-executable until `seam-response-effects-followup.md` lands; then current fence, exact launch/incarnation, intake identity, and digest accept the neighbor |
 | P13-NF-21 | integration | PTY write, return-without-error, or echo is labelled consumed or completed | Exact observations retain accepted, consumed, output, and completed stages separately |
 | P13-NF-22 | load | Busy runtime accumulates unbounded memory queue, overwrites a draft, or merges inputs | Bounded durable backpressure preserves each operation and ordered capable runtime accepts exact inputs |
-| P13-NF-23 | live | Synthetic hook or screen scrape satisfies governed context delivery | Real exact-artifact context witness correlates input digest and model request on named hardware |
+| P13-NF-23 | live | Synthetic hook, screen scrape, test-only provider, or direct adapter-local SDK call satisfies governed context delivery and provider submission | Provider preparation/receipt is non-executable until `seam-response-judgment.md` lands. Provider effect execution is non-executable until `seam-response-effects-followup.md` lands; then the exact-artifact witness correlates the actual submitted bytes/digest, Eight effect lineage, exact provider/account/billing-route attribution, provider receipt and usage, and model request on named hardware |
 | P13-NF-24 | fault | Cut at every delivery boundary causes silent loss or blind duplicate | Original operation is observed, remains pending when unknown, and only closed evidence permits next action |
 | P13-NF-25 | lifecycle | Resume creates a new run, inherits an old lease/grant, or changes incarnation while the same process survives | Same durable run reconnects with the surviving process incarnation, or a separately owned replacement process receives a new incarnation; each uses current authority and fresh grounding |
-| P13-NF-26 | lifecycle | Post-compaction context omits a required governing class, claims obsolete byte parity, or mints a new incarnation in the surviving process | After the Five seam lands, current-generation required classes match and new consumption/grounding evidence is recorded under the surviving incarnation; until then compaction mode is unsupported |
-| P13-NF-27 | integration | First post-compaction reply omits disclosure or pre-pause inbound disposition | After the Five seam lands, its owner-decoded `ContinuityAccounting` binds disclosure, inbound, reply, and honest disposition; before then ordinary post-compaction action refuses |
+| P13-NF-26 | lifecycle | Post-compaction context omits a required governing class, claims obsolete byte parity, or mints a new incarnation in the surviving process | Non-executable until `seam-response-rungraph-followup.md` lands; then current-generation required classes match and new consumption/grounding evidence is recorded under the surviving incarnation |
+| P13-NF-27 | integration | First post-compaction reply omits disclosure or pre-pause inbound disposition | The record arm is non-executable until `seam-response-run-closure.md` lands; the compaction consumer arm is non-executable until `seam-response-rungraph-followup.md` lands. Then owner-decoded `ContinuityAccounting` binds disclosure, inbound, reply, and honest disposition |
 | P13-NF-28 | fault | Missing/stale runtime handle authorizes blind fallback or effect replay | Grounded replacement is separately admitted after original observations and current history |
 | P13-NF-29 | observation | Config file, process label, old heartbeat, pane, or probe timeout is called live/dead | Fresh exact-incarnation proof yields live; unreadable probe yields unknown |
 | P13-NF-30 | semantic | Prompt, spinner, footer, model label, completion phrase, or terminal silence changes authoritative state | Same pane is available diagnostically while structured evidence alone drives state |
@@ -566,20 +621,20 @@ check-run record at the named tuple and generation proves nothing.
 | P13-NF-32 | semantic | Final phrase, runtime success label, or process exit completes turn/run with pending children or stream | Correlated lifecycle evidence plus explicit pending closure reaches owners for acceptance |
 | P13-NF-33 | lifecycle | Exit zero maps directly to successful `RunExit`, or missing process maps to clean exit | Exit observation preserves status/evidence/unknowns and Part Five alone accepts success |
 | P13-NF-34 | fault | Partial, malformed, delayed, reordered, or duplicated output becomes a complete result, or age deletes its capture | Ordered bounded capture records exact limitations and late evidence without promotion; pinned and unpinned captures both survive age, and only an eligible permitted tombstone removes bytes |
-| P13-NF-35 | coverage | One enumerated silent-stop class lacks a source, detection limit, recovery, or positive/failing case, or quiet time alone interrupts a bounded external wait/live producer pipeline | Exact-tuple matrix distinguishes a genuinely stuck operation from current registered wait evidence and a current producer/consumer pair; unsupported full escalation remains declared until Six lands it |
-| P13-NF-36 | security | Interrupt/kill targets by substring, stale PID, pane-wide control key, or expired fence | Exact process start/incarnation and current one-use claim admit one scoped operation |
-| P13-NF-37 | fault | Stop loop retries forever, skips quiescence evidence, or treats elapsed wait as stopped | Landed bounded observation stops at its bound without unauthorized interrupt; after the Six seam lands, registered finite escalation executes its exact actions and reports unresolved stop honestly |
-| P13-NF-38 | recovery | Worker disappearance immediately relaunches and repeats original launch/delivery/effect | Recovery queries original identities, adopts late evidence, then conditionally admits replacement |
-| P13-NF-39 | effect | Resumed worker repeats an uncertain operation, changes semantic identity, or treats decisive settlement as present retry permission | Current positive is safe same-request refusal even after closure; after the Six/Eight seam lands, a new attempt preserves logical identity and cites the three-part settled predecessor |
-| P13-NF-40 | security | Account change writes credentials directly, crosses framework, mutates a live label without proof, or applies one busy policy to every caller | Proactive optimization defers/drops, ordinary interactive refresh refuses, and reactive account-wall recovery uses bounded grace plus separately admitted mitigation; the custodian-proved replacement/current runtime is re-observed |
-| P13-NF-41 | lifecycle | Opaque runtime helper survives untracked or is killed as if no child work existed | Governed child run/resource becomes visible and recoverable after the Five seam lands; until then opaque-helper/delegated mode refuses |
-| P13-NF-42 | load/e2e | Ordinary harness saturation, crash, quota wall, or kill consumes the reserved live-session responder | Production minimal plane preserves input and serves honest stop/repair while exact prerequisites remain |
-| P13-NF-43 | live | Claude Code pane fixtures or fake hooks earn production governed activation | Real Claude artifact on named hardware proves context, confinement, lifecycle, stall, and stop cells |
-| P13-NF-44 | live | Codex rollout/pane fixtures or fake events earn production governed activation | Real Codex artifact on named hardware proves context, confinement, lifecycle, stall, and stop cells |
-| P13-NF-45 | parity | Future runtime is marked compatible from CLI shape or vendor family | Exact artifact supplies declarations, full shared suite, stall matrix, and recorded unsupported cells |
-| P13-NF-46 | regression | A named 1.x incident returns through process-local custody, pane authority, blind retry, quiet-wait/pipeline interruption, caller-class collapse, or swap thrash | Each incident trace reaches the 2.0 owner and its distinct required safe outcome |
-| P13-NF-47 | wiring/load | Null/no-op holder, test-only boot, unbounded poll/capture/queue/loop, age-based evidence deletion, or ordinary worker uses reserve | Production bindings delegate to real doors; finite limits hold on named hardware; capacity refuses new affected capture work while facts and governed bytes remain |
-| P13-NF-48 | activation | Declared fixture, estimate, successful-only sample, or stale review marks tuple governed | Complete check-run evidence at exact generation and independent review precede new assembly admission |
+| P13-NF-35 | coverage | One enumerated silent-stop class lacks a source, detection limit, recovery, or positive/failing case; quiet time interrupts a bounded external wait/live producer pipeline; or an approval menu is silently wedged or answered with a broader grant | The exact complete-tuple matrix distinguishes a genuinely stuck operation from current registered wait evidence, a current producer/consumer pair, an exact already-authorized allow-once prompt, and a scope-widening/unverifiable prompt that remains pending. Breaker positives are non-executable until `seam-response-loop-breaker.md` lands; full escalation is non-executable until `seam-response-loop-followup.md` lands |
+| P13-NF-36 | security | Interrupt/kill targets by substring, stale PID, pane-wide control key, or expired fence | The typed payload is non-executable until `seam-response-effects-payloads.md` lands. The harness-operation doorway is non-executable until `seam-response-effects-followup.md` lands; then exact process start/incarnation and current one-use claim admit one scoped operation |
+| P13-NF-37 | fault | Stop loop retries forever, skips quiescence evidence, or treats elapsed wait as stopped | Landed bounded observation stops at its bound without unauthorized interrupt. Breaker behavior is non-executable until `seam-response-loop-breaker.md` lands; ordered finite escalation is non-executable until `seam-response-loop-followup.md` lands and then reports unresolved stop honestly |
+| P13-NF-38 | recovery | Worker disappearance immediately relaunches and repeats original launch/delivery/effect | The full recovery-record arm is non-executable until `seam-response-loop-followup.md` lands. The replacement payload is non-executable until `seam-response-effects-payloads.md` lands. Its harness-operation doorway is non-executable until `seam-response-effects-followup.md` lands. Then recovery queries original identities, adopts late evidence, and conditionally admits replacement |
+| P13-NF-39 | effect | Resumed worker repeats an uncertain operation, changes semantic identity, or treats decisive settlement as present retry permission | Safe same-request refusal after closure is executable now. Eight's retry eligibility is non-executable until `seam-response-effects-followup.md` lands. Six's retry admission is non-executable until `seam-response-loop-followup.md` lands; then one new attempt preserves logical identity and cites the fully settled predecessor |
+| P13-NF-40 | security | Account change writes credentials directly, crosses framework, mutates a live label without proof, applies one busy policy to every caller, or a `recovery` label kills healthy busy work | Proactive optimization defers/drops and ordinary interactive refresh refuses. Route resolution is non-executable until `seam-response-judgment.md` lands. Runtime mapping is non-executable until `seam-response-assembly-followup.md` lands. The account-change payload is non-executable until `seam-response-effects-payloads.md` lands. Its doorway is non-executable until `seam-response-effects-followup.md` lands. Reactive replacement additionally requires independent wedged-recovery evidence and an owner-admitted exact action; healthy/indeterminate busy work remains protected |
+| P13-NF-41 | lifecycle | Opaque runtime helper survives untracked or is killed as if no child work existed | Non-executable until `seam-response-rungraph-followup.md` lands; then a governed child run/resource is visible and recoverable, while opaque-helper/delegated mode refuses |
+| P13-NF-42 | load/e2e | Ordinary harness saturation, crash, quota wall, or kill consumes the reserved live-session responder, or a test-only responder is credited as production | Non-executable until `part-eleven-seam-response-assembly.md` lands in the production assembly; then the real minimal plane preserves input and serves honest stop/repair while exact prerequisites remain |
+| P13-NF-43 | live | Claude Code pane fixtures, fake hooks, a test-only provider, or one model doorway's result earn production governed activation | Each compatible registered model doorway executes independently with the real Claude artifact on named hardware. Provider preparation/receipt cells are non-executable until `seam-response-judgment.md` lands; provider/harness effect cells until `seam-response-effects-followup.md` lands; typed payload cells until `seam-response-effects-payloads.md` lands; runtime-pin cells until `seam-response-assembly-followup.md` lands; continuity-record cells until `seam-response-run-closure.md` lands; compaction/child cells until `seam-response-rungraph-followup.md` lands; breaker cells until `seam-response-loop-breaker.md` lands; and full escalation/recovery cells until `seam-response-loop-followup.md` lands |
+| P13-NF-44 | live | Codex rollout/pane fixtures, fake events, a test-only provider, or one model doorway's result earn production governed activation | Each compatible registered model doorway executes independently with the real Codex artifact on named hardware. Provider preparation/receipt cells are non-executable until `seam-response-judgment.md` lands; provider/harness effect cells until `seam-response-effects-followup.md` lands; typed payload cells until `seam-response-effects-payloads.md` lands; runtime-pin cells until `seam-response-assembly-followup.md` lands; continuity-record cells until `seam-response-run-closure.md` lands; compaction/child cells until `seam-response-rungraph-followup.md` lands; breaker cells until `seam-response-loop-breaker.md` lands; and full escalation/recovery cells until `seam-response-loop-followup.md` lands |
+| P13-NF-45 | parity | Future runtime is marked compatible from CLI shape, vendor family, or a different registered model doorway's pass | Every compatible complete tuple executes the unchanged full suite; incompatible combinations and limitations are recorded as unsupported. Route-pin cells are non-executable until `seam-response-judgment.md` lands. Runtime-map cells are non-executable until `seam-response-assembly-followup.md` lands |
+| P13-NF-46 | regression | A named 1.x incident returns through process-local custody, pane authority, blind retry, quiet-wait/pipeline interruption, caller-class collapse, swap thrash, blanket permission-prompt approval, silent prompt wedging, or an unconditional recovery-swap exemption | Each incident trace reaches the 2.0 owner and its distinct safe outcome: exact allow-once prompts clear without wider authority, unverifiable prompts stay owned and loud, genuinely wedged recovery can receive an admitted exact replacement, and healthy/indeterminate busy recovery cannot be killed by caller label or timer |
+| P13-NF-47 | wiring/load | Null/no-op holder, test-only boot/provider, direct SDK bypass, unbounded poll/capture/queue/loop, age-based evidence deletion, or ordinary worker uses reserve | Provider preparation/receipt is non-executable until `seam-response-judgment.md` lands. Provider effect execution is non-executable until `seam-response-effects-followup.md` lands. Breaker state is non-executable until `seam-response-loop-breaker.md` lands. Full loop/recovery is non-executable until `seam-response-loop-followup.md` lands. Minimal-plane composition is non-executable until `part-eleven-seam-response-assembly.md` lands. Then production bindings delegate to real doors and finite limits hold on named hardware |
+| P13-NF-48 | activation | Declared fixture, estimate, successful-only sample, stale review, or incomplete tuple marks a family governed | Complete check-run evidence for the exact package/artifact, registered model doorway/route, platform, capability mode, generation, and independent review precedes new assembly admission; incompatible tuples remain enumerated unsupported |
 
 ---
 
@@ -590,15 +645,15 @@ P13-NF-01/07/24/35/42/43/44/45/48**.
 
 | Duty | Disposition |
 |---|---|
-| A session is a worker for Part Five durable work | **Held as an ordered contract, with an Eight prerequisite:** identity, grounding, output, exit, and replacement retain the run/step owners. The real launch and delivery effect-positive arms of P13-NF-14–20 remain unsupported until Eight's harness-operation seam lands. |
+| A session is a worker for Part Five durable work | **Held as an ordered contract, with an Eight prerequisite:** identity, grounding, output, exit, and replacement retain the run/step owners. The real launch and delivery effect-positive arms of P13-NF-14–20 are non-executable until `seam-response-effects-payloads.md` and `seam-response-effects-followup.md` land. |
 | Claude Code and Codex can become real 2.0 workers | **Held by a conditional contract:** exact adapter mappings and live tuple gates P13-NF-43/44; unsupported evidence cannot be waived, and this document claims no current artifact has passed |
 | Gemini, Grok, and later runtimes have a stable entry shape | **Held:** package/declaration/assembly route plus unchanged shared suite P13-NF-08/45 |
-| Live inbound survives cuts and reaches the actual context boundary honestly | **Held for custody and evidence semantics; prerequisite for delivery execution:** stage separation, exact incarnation and cut outcomes are fixed by P13-NF-19–24, while actual delivery through Eight remains unsupported until its harness-operation seam lands. |
-| Resume and compaction preserve durable work and the last inbound | **Held for reconnect/replacement; prerequisite for compaction:** process-lifetime incarnation, current authority and fresh grounding are P13-NF-25/28. Ordinary post-compaction work remains unsupported until Five's compaction grounding and `ContinuityAccounting` seam makes P13-NF-26/27 executable. |
-| Liveness, turn completion, model pins, account, and quota are honest | **Held for observation semantics; prerequisite for pins:** no pane authority and unknown quota are fixed. Exact model/reasoning/account/configuration positives in P13-NF-09–13 wait on Seven/Ten's public resolvers and capability report. |
-| Kill and recovery use Part Six leases and loops | **Partial:** registered effects, current fences, bounded observation, original-operation recovery and no blind repeat are required now. Full escalation waits on Six; actual same-request retry waits on Six/Eight. P13-NF-35–40 keep both gaps explicit. |
-| A live ordinary session cannot take down Rule 15 reachability | **Held for reserve separation; prerequisite for delegated visibility:** the minimal plane remains independent under P13-NF-42/47. Visible child recovery in P13-NF-41 remains unsupported until Five lands delegation/child grounding. |
-| Harness parity is measured once without lowest-common-denominator claims | **Held as a contract:** one suite, exact tuple records, explicit unsupported cells, three tiers, and activation evidence P13-NF-07/43–45/48. No tuple can pass governed mode while a required owner seam is absent. |
+| Live inbound survives cuts and reaches the actual context boundary honestly | **Held for custody and evidence semantics; prerequisite for delivery execution:** stage separation, exact incarnation and cut outcomes are fixed by P13-NF-19–24. Actual delivery is non-executable until `seam-response-effects-payloads.md` and `seam-response-effects-followup.md` land. |
+| Resume and compaction preserve durable work and the last inbound | **Held for reconnect/replacement; prerequisites split by owner grant:** process-lifetime incarnation, current authority and fresh grounding are P13-NF-25/28. P13-NF-27 is non-executable until `seam-response-run-closure.md` lands; P13-NF-26 is non-executable until `seam-response-rungraph-followup.md` lands. |
+| Liveness, turn completion, model pins, account, and quota are honest | **Held for observation semantics; prerequisite for pins:** no pane authority and unknown quota are fixed. Route positives are non-executable until `seam-response-judgment.md` lands; runtime configuration and capability-report positives are non-executable until `seam-response-assembly-followup.md` lands. |
+| Kill and recovery use Part Six leases and loops | **Partial:** registered effects, current fences, bounded observation, original-operation recovery and no blind repeat are required now. Breaker positives are non-executable until `seam-response-loop-breaker.md` lands; full escalation/recovery is non-executable until `seam-response-loop-followup.md` lands; actual retry is additionally non-executable until `seam-response-effects-followup.md` lands. |
+| A live ordinary session cannot take down Rule 15 reachability | **Held for reserve separation, with explicit production prerequisites:** P13-NF-42/47 minimal-plane execution is non-executable until `part-eleven-seam-response-assembly.md` lands. P13-NF-41 child recovery is non-executable until `seam-response-rungraph-followup.md` lands. |
+| Harness parity is measured without lowest-common-denominator claims | **Held as a contract:** one suite, complete package/artifact/model-doorway/platform/mode subjects, explicit unsupported cells, three tiers, and activation evidence P13-NF-07/43–45/48. Every compatible registered doorway executes independently; no tuple can pass governed mode while a required owner seam is absent. |
 
 ---
 
@@ -617,8 +672,9 @@ replacement-by-default with a separately conformed in-session exception, or in-s
 identity coincide at one observable boundary.
 
 **Rule — activation scope and process driver are already settled.** Rules 30, 34, 49 and 115;
-**checks: P13-NF-07/43/44/45/48**. Activation is mandatory per exact artifact, platform, and
-capability mode; one tuple never activates its family. The builder chooses tmux, another PTY
+**checks: P13-NF-07/43/44/45/48**. Activation is mandatory per exact harness package and artifact
+digest, registered model doorway and route, platform, and capability mode; one complete tuple never
+activates its family or another doorway. The builder chooses tmux, another PTY
 driver, a direct subprocess, or a structured protocol as an interchangeable package implementation
 and proves the same contract. Neither item is an operator policy choice in this part.
 
