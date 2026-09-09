@@ -86,8 +86,7 @@ it.each(['jobInstance', 'calendarPolicyVersion'] as const)
     decode: { ...before.context.decode, provenance: before.provenance } };
   refused(authorAndAppend({ kind: original.kind, schemaVersion: original.schemaVersion, machine: original.machine,
     principal: json(original.principal), provenance: json(original.provenance), at: json(original.at), body: json(body),
-    required: original.predecessors.required }, context, createFactStore(context, before.storage), before.deps.author.privateKey),
-  'differs from the preserved tick');
+    required: original.predecessors.required }, context, createFactStore(context, before.storage), before.deps.author.privateKey));
 
   const restarted = scheduledFixture({ directory }); restarted.installSchemas();
   const admissions = restarted.facts().filter(fact => fact.kind === 'intake-admitted');

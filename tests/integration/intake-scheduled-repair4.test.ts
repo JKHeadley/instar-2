@@ -75,8 +75,7 @@ it.each(['jobInstance', 'calendarPolicyVersion'] as const)
     decode: { ...f.context.decode, provenance: f.provenance } };
   refused(authorAndAppend({ kind: original.kind, schemaVersion: original.schemaVersion, machine: original.machine,
     principal: json(original.principal), provenance: json(original.provenance), at: json(original.at), body: json(body),
-    required: original.predecessors.required }, context, createFactStore(context, f.storage), f.deps.author.privateKey),
-  'differs from the preserved tick');
+    required: original.predecessors.required }, context, createFactStore(context, f.storage), f.deps.author.privateKey));
   expect(f.facts().filter(fact => fact.kind === 'run-opening')).toEqual([]);
   const valid = value(f.port().receiveScheduledTick(input));
   if (valid.kind !== 'scheduled-admitted') throw new Error('expected valid scheduled admission');

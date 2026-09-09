@@ -155,8 +155,7 @@ it.each(['jobInstance', 'calendarPolicyVersion'] as const)
     decode: { ...x.f.context.decode, provenance: x.f.provenance } };
   refused(authorAndAppend({ kind: original.kind, schemaVersion: original.schemaVersion, machine: original.machine,
     principal: json(original.principal), provenance: json(original.provenance), at: json(original.at), body: json(body),
-    required: original.predecessors.required }, context, createFactStore(context, x.f.storage), x.f.deps.author.privateKey),
-  'differs from the preserved tick');
+    required: original.predecessors.required }, context, createFactStore(context, x.f.storage), x.f.deps.author.privateKey));
   expect(x.f.facts().filter(fact => fact.kind === 'intake-admitted')).toEqual([]);
   expect(() => recoverScheduledDisposition(x.f, original.id)).toThrow('durable scheduled admission absent');
 });

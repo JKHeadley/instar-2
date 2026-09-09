@@ -332,8 +332,10 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       requireIntake(row.fact.kind==='intake-admitted'&&isScheduledAdmission(row.fact,facts),
         'scheduled intake: pending reference has wrong kind or subject','integrity');
       const c=context(preserved),snapshot=statuses(preserved),body=object(row.body),intentBody=object(body.intent!);
-      const claimedAsk=object(intentBody.ask!);
-      decodeScheduledTickBody(take(canonical(claimedAsk)).bytes,text(body.eventId,'scheduled event id'),c.decode);
+      try {
+        const claimedAsk=object(intentBody.ask!);
+        decodeScheduledTickBody(take(canonical(claimedAsk)).bytes,text(body.eventId,'scheduled event id'),c.decode);
+      } catch { throw new IntakeFailure('scheduled intake: admitted Intent differs from the preserved tick','integrity'); }
       if(row.taint.includes('evidence-unavailable')) return { kind: 'partial' };
       const cone=new Set(causalCone(row.fact,facts).map(fact => fact.id));
       const required=row.fact.predecessors.required;
