@@ -1,0 +1,61 @@
+import { expect, it } from 'vitest';
+import { canonical } from '../../src/index.js';
+import { createBoundedDueScanPort, decodeLoopPolicy, decodeLoopRecord, decodeMissedRangeRecord, decodeScanCursor } from '../../src/transport/index.js';
+import type { MissedRangeRecord } from '../../src/transport/index.js';
+import { transportFixture, refused, value } from './fixture.js';
+
+it('SLB-PRESERVE-01 P6-NF-02 P6-NF-17 byte-preserves every legacy LoopPolicy LoopRecord and ScanCursor fixture', () => {
+  const f = transportFixture(), { token } = f.prepared();
+  const legacyLoop = value(f.api.inspect()).find(row => row.record.type === 'LoopRecord')!.record;
+  const cursor = value(createBoundedDueScanPort(f.host, f.spine, f.c).page({ scan: 'legacy-scan', generation: 'legacy-g1',
+    orderedKeys: ['machine-a:job', 'machine-b:job'], cursor: null, maxItems: 1, maxDuration: 10 }));
+  const legacyCursor = value(f.api.inspect()).find(row => row.fact.id === cursor.cursor.id)!.record;
+  const fixtures = [
+    [f.policy, value(decodeLoopPolicy(f.policy, f.c))],
+    [legacyLoop, value(decodeLoopRecord(legacyLoop, f.c))],
+    [legacyCursor, value(decodeScanCursor(legacyCursor, f.c))],
+  ] as const;
+  for (const [before, after] of fixtures)
+    expect(value(canonical(after)).bytes).toBe(value(canonical(before)).bytes);
+  expect(value(f.api.admitWrite('legacy-neighbor', token)).operation).toBe('write');
+});
+
+it('SLB-DECODE-02 P6-NF-02 P6-NF-17 closes every real-breaker policy arm and managed record field', () => {
+  const f = transportFixture();
+  for (const mutation of [
+    { breaker: 'unknown' }, { concurrency: 0 }, { failureThreshold: 0 }, { countedFailureClasses: [] },
+    { halfOpenTrials: 0 }, { halfOpenConcurrency: 3 }, { jitterMaxPermille: 1001 },
+    { parentAttemptBudget: 0 }, { closeEvidence: 'self-asserted' },
+  ]) refused(decodeLoopPolicy({ ...f.sharedPolicy, ...mutation }, f.c));
+  const token = value(f.api.acquire('shared-acquire', '', 500));
+  const scheduled = value(f.api.scheduleEpisode({ command: 'shared-schedule', fence: token,
+    currentOwnerRun: f.run, policy: f.sharedPolicy, episodeKey: 'episode-1', operationFamily: 'holder-recovery',
+    pressureScope: { target: 'target:1', conversation: 'conversation:1', machine: 'fleet', pool: 'default' },
+    sourceVector: f.vector }));
+  expect(value(decodeLoopRecord(scheduled, f.c))).toEqual(scheduled);
+  refused(decodeLoopRecord({ ...scheduled, pressureKey: 'pressure:forged' }, f.c), 'pressure');
+  refused(decodeLoopRecord({ ...scheduled, unknown: true }, f.c), 'undeclared');
+  refused(f.spine.append({ ...scheduled, command: 'raw-shared-loop-bypass', predecessor: f.head() }, [f.head()]),
+    'conditional writer');
+});
+
+it('SLB-DECODE-03 P6-NF-02 P6-NF-33 closes the exact MissedRangeRecord payload', () => {
+  const f = transportFixture();
+  const record = {
+    type: 'MissedRangeRecord', schemaVersion: 1, id: 'missed:one', parentDuty: f.parentDuty,
+    episode: { owner: 'part-six', name: 'LoopRecord', id: 'loop:one' },
+    scanCursor: { owner: 'part-six', name: 'ScanCursor', id: 'cursor:one' },
+    jobInstance: 'machine-a:job', packageDigest: `sha256:${'a'.repeat(64)}`, calendarPolicy: 'every-10',
+    asOf: f.clock(130), currentLateness: { type: 'Measurement', schemaVersion: 1,
+      subject: { kind: 'duration', instance: 'machine-a:job' }, value: 0, unit: 'ms', at: f.clock(130), by: 'probe' },
+    first: f.clock(110), last: f.clock(120), memberCount: 2,
+    orderedMembersDigest: `sha256:${'b'.repeat(64)}`, derivationInputDigest: `sha256:${'c'.repeat(64)}`,
+    catchUpPolicy: 'none', dispositions: [110, 120].map(at => ({ scheduledInstant: f.clock(at),
+      kind: 'missed-no-execution' as const, result: { type: 'Result' as const, id: 'result:missed', field: 'result',
+        fact: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: 'result-fact:one' } } })),
+    catchUpRun: null,
+  } as unknown as MissedRangeRecord;
+  expect(value(decodeMissedRangeRecord(record, f.c))).toEqual(record);
+  refused(decodeMissedRangeRecord({ ...record, catchUpPolicy: 'all' }, f.c));
+  refused(decodeMissedRangeRecord({ ...record, extra: true }, f.c));
+});

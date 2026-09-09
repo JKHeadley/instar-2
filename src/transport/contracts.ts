@@ -1,5 +1,6 @@
-import type { BoundaryContext, Clock, DecodeContext, Outcome, OwnedReference, RegisterGenerationReference, Result, RunReference, Scope, VerifiedPrincipal } from '../index.js';
+import type { BoundaryContext, Clock, DecodeContext, FactEnvelopeReference, Hash, Measurement, Outcome, OwnedReference, RegisterGenerationReference, Result, RunReference, Scope, VerifiedPrincipal } from '../index.js';
 import type { AppendReceipt, FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
+import type { ConstitutionalReference } from '../rungraph/index.js';
 
 // These brands are not constructors. Only the registered decoder/authority issues values.
 declare const owned: unique symbol;
@@ -31,18 +32,69 @@ export interface AdmissionReservation extends Row, Owned {
   readonly executor: string; readonly durability: 'local-durable' | 'replicated';
   readonly replicas: number;
 }
-export interface LoopPolicy extends Owned {
+export interface StubLoopPolicy extends Owned {
   readonly type: 'LoopPolicy'; readonly schemaVersion: 1; readonly id: string;
   readonly maxAttempts: number; readonly minDelay: number; readonly maxDuration: number;
   readonly timeout: number; readonly concurrency: 1; readonly failDirection: 'closed';
   readonly breaker: 'stub-closed';
 }
-export interface LoopRecord extends Row, Owned {
+export interface SharedBreakerLoopPolicy extends Owned {
+  readonly type: 'LoopPolicy'; readonly schemaVersion: 1; readonly id: string;
+  readonly maxAttempts: number; readonly minDelay: number; readonly maxDuration: number;
+  readonly timeout: number; readonly concurrency: number; readonly failDirection: 'closed';
+  readonly breaker: 'shared-circuit-v1';
+  readonly initialDelay: number; readonly maxDelay: number; readonly backoffMultiplier: number;
+  /** Integer permille bounds. Zero and 1000 mean 0x and 1x respectively. */
+  readonly jitterMinPermille: number; readonly jitterMaxPermille: number;
+  readonly failureThreshold: number; readonly countedFailureClasses: readonly string[];
+  /** Rolling breaker-outcome window in the shared clock's unit. */
+  readonly acceptedOutcomeWindow: number;
+  readonly breakerCooldown: number; readonly maxOpenDuration: number;
+  readonly halfOpenTrials: number; readonly halfOpenConcurrency: number;
+  readonly closeEvidence: 'part-nine-restoration'; readonly reopenEvidence: 'counted-failure';
+  readonly parentDuty: RunReference; readonly budgetWindow: number;
+  readonly parentAttemptBudget: number; readonly parentResourceBudget: number;
+}
+export type LoopPolicy = StubLoopPolicy | SharedBreakerLoopPolicy;
+export interface LegacyLoopRecord extends Row, Owned {
   readonly type: 'LoopRecord'; readonly run: string; readonly episode: string;
-  readonly policy: LoopPolicy; readonly attempts: number; readonly started: number;
+  readonly policy: StubLoopPolicy; readonly attempts: number; readonly started: number;
   readonly nextWake: number; readonly state: 'scheduled' | 'running' | 'restoring' | 'waiting' | 'stopped';
   readonly pending: string;
 }
+export type LoopSourceVector = readonly Readonly<{ machine: string; epoch: number; position: number }>[];
+export type LoopPressureScope = Readonly<{ target: string; conversation: string; machine: string; pool: string }>;
+export type LoopAttempt = Readonly<{
+  id: string; holderFamily: string; worker: string; machine: string; episode: string;
+  admittedAt: Clock; resource: number; mode: 'closed' | 'half-open'; sourceVector: LoopSourceVector;
+}>;
+export type LoopOutcome = Readonly<{
+  attempt: string; kind: 'accepted' | 'failed'; failureClass: string; observedAt: Clock;
+  jitterPermille: number; restoration: readonly OwnedReference<'part-nine', 'VerificationAssessment'>[];
+  sourceVector: LoopSourceVector;
+}>;
+export interface SharedLoopRecord extends Row, Owned {
+  readonly type: 'LoopRecord'; readonly run: string; readonly episode: string;
+  readonly policy: SharedBreakerLoopPolicy; readonly attempts: number; readonly started: number;
+  readonly nextWake: number;
+  readonly state: 'scheduled' | 'running' | 'restoring' | 'waiting' | 'open-breaker' | 'half-open' | 'stopped' | 'closed';
+  readonly pending: string;
+  readonly parentDuty: RunReference; readonly currentOwnerRun: RunReference;
+  readonly policyGeneration: RegisterGenerationReference;
+  readonly operationFamily: string; readonly pressureScope: LoopPressureScope; readonly pressureKey: string;
+  readonly episodeKey: string; readonly transition: 'scheduled' | 'attempt-admitted' | 'outcome-recorded' | 'opened' | 'half-opened' | 'reopened' | 'closed' | 'stopped';
+  readonly transitionAt: Clock; readonly nextEligible: Clock; readonly clockBasis: string;
+  readonly sourceVector: LoopSourceVector;
+  readonly episodeAttempts: number; readonly totalFailures: number; readonly failureCount: number;
+  readonly rollingAttempts: number; readonly rollingResource: number;
+  readonly breakerHasOpened: 0 | 1; readonly breakerOpenCount: number; readonly breakerFirstOpened: Clock;
+  readonly halfOpenAdmitted: number; readonly halfOpenSucceeded: number;
+  readonly pendingAttempts: readonly string[]; readonly attemptLog: readonly LoopAttempt[];
+  readonly outcomeLog: readonly LoopOutcome[];
+  readonly outcomeWindowDigest: Hash;
+  readonly closureEvidence: readonly OwnedReference<'part-nine', 'VerificationAssessment'>[];
+}
+export type LoopRecord = LegacyLoopRecord | SharedLoopRecord;
 export interface RecoveryRecord extends Row, Owned {
   readonly type: 'RecoveryRecord'; readonly operation: string; readonly episode: string;
   readonly observation: string; readonly disposition: 'waiting' | 'stopped-at-bound';
@@ -53,6 +105,36 @@ export interface ScanCursor extends Row, Owned {
   readonly previous: string; readonly selectedFrom: number; readonly selectedCount: number;
   readonly nextIndex: number; readonly maxItems: number; readonly maxDuration: number;
   readonly elapsed: number; readonly wrapped: 0 | 1;
+}
+export interface MissedRangeRecord extends Owned {
+  readonly type: 'MissedRangeRecord'; readonly schemaVersion: 1; readonly id: string;
+  readonly parentDuty: RunReference;
+  readonly episode: OwnedReference<'part-six', 'LoopRecord'>;
+  readonly scanCursor: OwnedReference<'part-six', 'ScanCursor'>;
+  readonly jobInstance: string; readonly packageDigest: Hash; readonly calendarPolicy: string;
+  readonly asOf: Clock; readonly currentLateness: Measurement<'duration'>;
+  readonly first: Clock; readonly last: Clock; readonly memberCount: number;
+  readonly orderedMembersDigest: Hash; readonly derivationInputDigest: Hash;
+  readonly catchUpPolicy: 'none' | 'latest';
+  readonly dispositions: readonly (
+    | Readonly<{ scheduledInstant: Clock; kind: 'missed-no-execution'; result: ConstitutionalReference<'Result'> }>
+    | Readonly<{ scheduledInstant: Clock; kind: 'existing-run' | 'catch-up-run'; run: RunReference }>
+  )[];
+  readonly catchUpRun: RunReference | null;
+}
+export interface MissedRangeInput {
+  readonly parentDuty: RunReference;
+  readonly episode: OwnedReference<'part-six', 'LoopRecord'>;
+  readonly scanCursor: OwnedReference<'part-six', 'ScanCursor'>;
+  readonly jobInstance: string; readonly packageDigest: Hash; readonly calendarPolicy: string;
+  readonly asOf: Clock; readonly currentLateness: Measurement<'duration'>;
+  readonly priorExpansionCursor: Clock; readonly missedBoundary: Clock;
+  readonly catchUpPolicy: 'none' | 'latest';
+  readonly dispositions: MissedRangeRecord['dispositions']; readonly catchUpRun: RunReference | null;
+}
+export interface MissedRangeView {
+  readonly record: MissedRangeRecord; readonly fact: FactEnvelopeReference;
+  readonly firstUndisposed: Clock | null;
 }
 // Six's accounting receipt, NOT an effect verdict or an eight-owned settlement.
 export interface SettlementApplication extends Row, Owned {
@@ -78,7 +160,24 @@ export interface SettlementAccountingInput {
 export type SettlementConsumer<S> = <T>(value: S, boundary: BoundaryContext,
   consumer: (value: SettlementAccountingInput) => T) => Result<T>;
 export type TransportRecord = Lease | AdmissionReservation | LoopRecord | RecoveryRecord | ScanCursor | SettlementApplication;
+export type TransportOwnedRecord = TransportRecord | MissedRangeRecord;
+export type TransportRowRecord = TransportRecord;
 export interface TransportFact { readonly fact: FactEnvelope; readonly record: TransportRecord }
+export interface MissedRangeFact { readonly fact: FactEnvelope; readonly record: MissedRangeRecord }
+
+export interface SharedLoopClockPort {
+  readonly owner: 'part-ten';
+  now(): Clock;
+}
+export interface CalendarExpansionPort {
+  readonly owner: 'part-fifteen';
+  expand(input: Readonly<{ calendarPolicy: string; after: Clock; through: Clock; asOf: Clock }>): Result<readonly Clock[]>;
+}
+export interface RestorationEvidencePort {
+  readonly owner: 'part-nine';
+  verify(input: Readonly<{ reference: OwnedReference<'part-nine', 'VerificationAssessment'>; pressureKey: string;
+    operationFamily: string }>): Result<OwnedReference<'part-nine', 'VerificationAssessment'>>;
+}
 
 // Trusted host seams. P10 supplies the monotonic clock and fresh process identity.
 // P3/current authority supplies a live context, not a candidate-supplied generation.
@@ -92,6 +191,10 @@ export interface TransportHost {
     readonly owner: 'part-ten';
     ensure(facts: readonly FactEnvelope[]): Result<readonly AppendReceipt[]>;
   };
+  /** Shared comparable time is mandatory for the real breaker and missed-range paths. */
+  readonly loopClock?: SharedLoopClockPort;
+  readonly calendarExpansion?: CalendarExpansionPort;
+  readonly restorationEvidence?: RestorationEvidencePort;
   // Non-waiting local accessors, also used inside eight's final no-wait guard.
   // They must not perform storage/provider refresh or reentrant mutations.
   monotonic(): number;
@@ -100,7 +203,7 @@ export interface TransportHost {
 }
 export interface TransportSpine {
   readonly store: FactStorePort;
-  append(record: TransportRecord, required: readonly string[]): Result<AppendReceipt>;
+  append(record: TransportOwnedRecord, required: readonly string[]): Result<AppendReceipt>;
 }
 export interface FactAuthor {
   readonly context: FactContext; readonly privateKey: string;
@@ -135,6 +238,23 @@ export interface BoundedDueScanPort {
     wrapped: boolean;
   }>>;
 }
+export interface LoopEpisodeInput {
+  readonly command: string; readonly fence: FenceToken; readonly currentOwnerRun: RunReference;
+  readonly policy: SharedBreakerLoopPolicy; readonly episodeKey: string; readonly operationFamily: string;
+  readonly pressureScope: LoopPressureScope; readonly sourceVector: LoopSourceVector;
+}
+export interface LoopAttemptInput {
+  readonly command: string; readonly fence: FenceToken; readonly episode: OwnedReference<'part-six', 'LoopRecord'>;
+  readonly attempt: string; readonly holderFamily: string; readonly worker: string; readonly machine: string;
+  readonly resource: number; readonly sourceVector: LoopSourceVector;
+}
+export interface LoopOutcomeInput {
+  readonly command: string; readonly fence: FenceToken; readonly episode: OwnedReference<'part-six', 'LoopRecord'>;
+  readonly attempt: string; readonly kind: 'accepted' | 'failed'; readonly failureClass: string;
+  readonly jitterPermille: number;
+  readonly restoration: readonly OwnedReference<'part-nine', 'VerificationAssessment'>[];
+  readonly sourceVector: LoopSourceVector;
+}
 export interface TransportAuthority<S = never> {
   inspect(): Result<readonly TransportFact[]>;
   acquire(command: string, expected: string, term: number): Result<FenceToken>;
@@ -142,6 +262,11 @@ export interface TransportAuthority<S = never> {
   release(command: string, fence: FenceToken): Result<Lease>;
   admitWrite(command: string, fence: FenceToken): Result<Lease>;
   schedule(command: string, fence: FenceToken, run: RunReference, policy: LoopPolicy): Result<LoopRecord>;
+  scheduleEpisode(input: LoopEpisodeInput): Result<SharedLoopRecord>;
+  admitLoopAttempt(input: LoopAttemptInput): Result<SharedLoopRecord>;
+  recordLoopOutcome(input: LoopOutcomeInput): Result<SharedLoopRecord>;
+  recordMissedRange(input: MissedRangeInput): Result<OwnedReference<'part-six', 'MissedRangeRecord'>>;
+  readMissedRange(reference: OwnedReference<'part-six', 'MissedRangeRecord'>): Result<MissedRangeView>;
   reserve(input: ReserveInput): Result<AdmissionReservation>;
   claim(command: string, fence: FenceToken, operation: string): Result<DispatchClaim>;
   consume(claim: DispatchClaim, fence: FenceToken): Result<AdmissionReservation>;

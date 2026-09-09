@@ -1,16 +1,19 @@
-import type { BoundaryContext, Result } from '../index.js';
+import { decodeMeasurement } from '../index.js';
+import type { BoundaryContext, Clock, Result } from '../index.js';
 import { authorAndAppend } from '../facts/index.js';
 import type { FactStorePort } from '../facts/index.js';
-import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord, ScanCursor,
-  SettlementAccountingInput, SettlementApplication, SettlementConsumer, TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
+import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAuthor, FenceToken, Lease, LoopAttempt, LoopOutcome, LoopRecord,
+  MissedRangeRecord, RecoveryRecord, ScanCursor, SettlementAccountingInput, SettlementApplication, SettlementConsumer, SharedLoopRecord,
+  TransportAuthority, TransportFact, TransportHost, TransportOwnedRecord, TransportRowRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, live, loopActive, observationAdmission, policyCheck, reservations, rows,
-  validateScanGeneration, validateTransition } from './records.js';
+import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, latestSharedLoop, live, loopActive, missedRangeCheck, missedRows,
+  observationAdmission, policyCheck, reservations, rows, sourceVectorCheck, validateMissedRangeHistory, validateScanGeneration, validateTransition,
+  withMissedRangeCandidate, withSharedLoopCandidate } from './records.js';
 import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
   requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication, withSettlementAttempt } from './settlement.js';
 
 export function createTransportSpine(host: TransportHost, author: FactAuthor, store: FactStorePort): TransportSpine {
-  return Object.freeze({ store, append: (record: TransportRecord, required: readonly string[]) => authorAndAppend({
+  return Object.freeze({ store, append: (record: TransportOwnedRecord, required: readonly string[]) => authorAndAppend({
     kind: kindFor(record.type), schemaVersion: 1, machine: host.machine,
     principal: json(host.principal), provenance: json(host.principal.provenance), at: json(host.current().clock),
     body: json({ record }), required,
@@ -132,7 +135,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
   });
   const meta = (all: readonly TransportFact[], command: string) => ({ schemaVersion: 1 as const, domain: host.domain,
     command, predecessor: all.at(-1)?.fact.id ?? '', authority: host.authorityIncarnation, tick: tick() });
-  const write = <T extends TransportRecord>(all: readonly TransportFact[], r: T): { record: T; all: readonly TransportFact[] } => {
+  const write = <T extends TransportRowRecord>(all: readonly TransportFact[], r: T): { record: T; all: readonly TransportFact[] } => {
     validateTransition(r, all, host, true);
     const required = r.predecessor ? [r.predecessor] : [];
     if (r.type === 'SettlementApplication') required.push(r.settlementFact);
@@ -144,6 +147,48 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
     if (r.type === 'SettlementApplication') checkAccountingReceipt(receipt.fact, receipt, reservations(all).find(p => p.operation === r.operation)!);
     const result = freeze(r); return { record: result, all: [...all, { record: result, fact: receipt.fact }] };
   };
+  const sharedClock = (): Clock => {
+    ensure(host.loopClock?.owner === 'part-ten', 'shared loop clock unavailable');
+    const value = take(decodeMeasurement('clock', host.loopClock.now(), host.current().decode));
+    ensure(Number.isSafeInteger(value.value), 'shared loop clock is not finite'); return value;
+  };
+  const sameClock = (left: Clock, right: Clock) => left.subject.kind === right.subject.kind
+    && left.subject.instance === right.subject.instance && left.unit === right.unit;
+  const after = (base: Clock, delta: number): Clock => {
+    ensure(Number.isSafeInteger(delta) && delta >= 0 && Number.isSafeInteger(base.value + delta), 'shared loop time overflow');
+    return freeze({ ...base, value: base.value + delta, at: base.at + delta } as unknown as Clock);
+  };
+  const atOrAfter = (left: Clock, right: Clock) => sameClock(left, right) && left.value >= right.value;
+  const vectorKey = (vector: SharedLoopRecord['sourceVector']) => encoded(vector).bytes;
+  const sortedOutcomes = (outcomes: readonly LoopOutcome[]) => [...outcomes].sort((a, b) =>
+    a.observedAt.value - b.observedAt.value
+      || vectorKey(a.sourceVector).localeCompare(vectorKey(b.sourceVector)) || a.attempt.localeCompare(b.attempt));
+  const windowAt = (record: Pick<SharedLoopRecord, 'policy' | 'outcomeLog'>, now: Clock) => sortedOutcomes(record.outcomeLog
+    .filter(outcome => sameClock(outcome.observedAt, now) && outcome.observedAt.value > now.value - record.policy.acceptedOutcomeWindow));
+  const failureCountAt = (policy: SharedLoopRecord['policy'], outcomes: readonly LoopOutcome[]) => {
+    let count = 0;
+    for (const outcome of outcomes) count = outcome.kind === 'accepted' ? 0
+      : policy.countedFailureClasses.includes(outcome.failureClass) ? count + 1 : count;
+    return count;
+  };
+  const rollingAt = (record: Pick<SharedLoopRecord, 'policy' | 'attemptLog'>, now: Clock) => {
+    const attempts = record.attemptLog.filter(attempt => sameClock(attempt.admittedAt, now)
+      && attempt.admittedAt.value > now.value - record.policy.budgetWindow);
+    return { rollingAttempts: attempts.length, rollingResource: attempts.reduce((sum, attempt) => sum + attempt.resource, 0) };
+  };
+  const sharedByEpisode = (all: readonly TransportFact[], episode: string): SharedLoopRecord => {
+    const record = all.filter(row => row.record.type === 'LoopRecord' && row.record.policy.breaker === 'shared-circuit-v1'
+      && row.record.episode === episode).at(-1)?.record;
+    ensure(record?.type === 'LoopRecord' && record.policy.breaker === 'shared-circuit-v1', 'shared loop episode unavailable');
+    const value = record as SharedLoopRecord;
+    ensure(latestSharedLoop(all, value.pressureKey)?.command === value.command, 'shared pressure moved to another episode');
+    return value;
+  };
+  const managedWrite = (all: readonly TransportFact[], record: SharedLoopRecord) =>
+    withSharedLoopCandidate(host, record, () => write(all, record).record as SharedLoopRecord);
+  const outcomeDigest = (policy: SharedLoopRecord['policy'], outcomes: readonly LoopOutcome[], now: Clock) =>
+    encoded(sortedOutcomes(outcomes.filter(outcome => sameClock(outcome.observedAt, now)
+      && outcome.observedAt.value > now.value - policy.acceptedOutcomeWindow))).hash;
   const fence = (all: readonly TransportFact[], token: FenceToken) => checkFence(all, token, host, tick());
   const duplicateLease = (all: readonly TransportFact[], command: string) => {
     const found = all.find(v => v.record.command === command);
@@ -254,11 +299,282 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
     admitWrite: (command, token) => leaseWrite('LeaseWrite', command, token),
     schedule: (command, token, run, policy) => checked('LoopSchedule', { command, token, run, policy }, () => {
       const all = read(); fence(all, token); policyCheck(policy);
+      ensure(policy.breaker === 'stub-closed', 'shared breaker requires scheduleEpisode');
       ensure(run.owner === 'part-five' && run.name === 'Run' && run.id.length > 0, 'run reference owner');
       ensure(!latestLoop(all, run.id), 'episode already exists; bounds cannot reset');
       const m = meta(all, command);
       return write(all, { ...m, type: 'LoopRecord', run: run.id, episode: `loop:${encoded([host.domain, run.id]).hash}`,
         policy, attempts: 0, started: m.tick, nextWake: m.tick + policy.minDelay, state: 'scheduled', pending: '' } as LoopRecord).record;
+    }),
+    scheduleEpisode: input => checked('SharedLoopSchedule', input, () => {
+      const all = read(); fence(all, input.fence); policyCheck(input.policy);
+      ensure(input.policy.breaker === 'shared-circuit-v1', 'real breaker policy required');
+      ensure(input.currentOwnerRun.owner === 'part-five' && input.currentOwnerRun.name === 'Run'
+        && input.currentOwnerRun.id.length > 0, 'current owner Run reference required');
+      sourceVectorCheck(input.sourceVector);
+      ensure(input.episodeKey.length > 0 && input.episodeKey.length <= 256 && input.operationFamily.length > 0
+        && input.operationFamily.length <= 256 && Object.values(input.pressureScope).every(value => value.length > 0 && value.length <= 256),
+      'bounded shared pressure input required');
+      const now = sharedClock(), current = host.current();
+      ensure(current.generation.id === current.decode.register.generation.id, 'current generation mismatch');
+      const pressureKey = `pressure:${encoded([input.operationFamily, input.pressureScope]).hash}`;
+      const previous = latestSharedLoop(all, pressureKey);
+      if (previous) {
+        ensure(previous.state === 'closed', 'shared pressure has an unfinished episode');
+        ensure(encoded(previous.policy).bytes === encoded(input.policy).bytes, 'conflicting shared pressure policy');
+        ensure(previous.clockBasis === now.subject.instance, 'incomparable shared pressure time');
+      }
+      const episode = `loop:${encoded([pressureKey, input.episodeKey]).hash}`;
+      ensure(!all.some(row => row.record.type === 'LoopRecord' && row.record.episode === episode), 'episode identity already used');
+      const attemptLog = previous?.attemptLog ?? [], outcomeLog = previous?.outcomeLog ?? [];
+      const currentOutcomes = windowAt({ policy: input.policy, outcomeLog }, now);
+      const rolling = rollingAt({ policy: input.policy, attemptLog }, now);
+      const firstEligible = after(now, input.policy.initialDelay), m = meta(all, input.command);
+      const record = freeze({ ...m, type: 'LoopRecord', run: input.currentOwnerRun.id, episode, policy: input.policy,
+        attempts: attemptLog.length, started: now.value, nextWake: firstEligible.value, state: 'scheduled', pending: '',
+        parentDuty: input.policy.parentDuty, currentOwnerRun: input.currentOwnerRun, policyGeneration: current.generation,
+        operationFamily: input.operationFamily, pressureScope: input.pressureScope, pressureKey,
+        episodeKey: input.episodeKey, transition: 'scheduled', transitionAt: now, nextEligible: firstEligible,
+        clockBasis: now.subject.instance, sourceVector: input.sourceVector, episodeAttempts: 0,
+        totalFailures: previous?.totalFailures ?? 0, failureCount: failureCountAt(input.policy, currentOutcomes),
+        ...rolling, breakerHasOpened: 0, breakerOpenCount: previous?.breakerOpenCount ?? 0, breakerFirstOpened: now,
+        halfOpenAdmitted: 0, halfOpenSucceeded: 0, pendingAttempts: [], attemptLog, outcomeLog,
+        outcomeWindowDigest: outcomeDigest(input.policy, outcomeLog, now), closureEvidence: [],
+      } as unknown as SharedLoopRecord);
+      return managedWrite(all, record);
+    }),
+    admitLoopAttempt: input => checked('SharedLoopAttemptAdmission', input, () => {
+      const all = read(); fence(all, input.fence);
+      ensure(input.episode.owner === 'part-six' && input.episode.name === 'LoopRecord' && input.episode.id.length > 0,
+        'LoopRecord reference owner');
+      sourceVectorCheck(input.sourceVector);
+      ensure(input.attempt.length > 0 && input.holderFamily.length > 0 && input.worker.length > 0 && input.machine.length > 0
+        && Number.isSafeInteger(input.resource) && input.resource >= 0, 'bounded loop attempt input required');
+      const previous = sharedByEpisode(all, input.episode.id), policy = previous.policy, now = sharedClock();
+      ensure(previous.clockBasis === now.subject.instance && sameClock(previous.transitionAt, now), 'incomparable shared pressure time');
+      const existing = previous.attemptLog.find(attempt => attempt.id === input.attempt);
+      if (existing) {
+        ensure(existing.holderFamily === input.holderFamily && existing.worker === input.worker && existing.machine === input.machine
+          && existing.resource === input.resource && vectorKey(existing.sourceVector) === vectorKey(input.sourceVector),
+        'attempt identity reused with changed contributor');
+        return previous;
+      }
+      ensure(previous.state !== 'stopped' && previous.state !== 'closed', 'loop episode is terminal');
+      ensure(previous.pendingAttempts.length === previous.attemptLog.filter(attempt => !previous.outcomeLog.some(outcome => outcome.attempt === attempt.id)).length,
+        'incomplete attempt population');
+      const episodeExhausted = previous.episodeAttempts >= policy.maxAttempts
+        || now.value - previous.started >= policy.maxDuration;
+      const openExhausted = (previous.state === 'open-breaker' || previous.state === 'half-open')
+        && previous.breakerHasOpened === 1 && now.value - previous.breakerFirstOpened.value > policy.maxOpenDuration;
+      if (episodeExhausted || openExhausted) {
+        ensure(previous.pendingAttempts.length === 0, 'unfinished attempts retain loop ownership at the bound');
+        const m = meta(all, input.command);
+        const stopped = freeze({ ...previous, ...m, nextWake: now.value, state: 'stopped', pending: '',
+          transition: 'stopped', transitionAt: now, nextEligible: now, sourceVector: input.sourceVector } as SharedLoopRecord);
+        return managedWrite(all, stopped);
+      }
+      ensure(atOrAfter(now, previous.nextEligible), 'breaker cooldown or wake is not eligible');
+      let mode: LoopAttempt['mode'] = 'closed', state: SharedLoopRecord['state'] = 'running';
+      let transition: SharedLoopRecord['transition'] = 'attempt-admitted';
+      let halfOpenAdmitted = previous.halfOpenAdmitted, halfOpenSucceeded = previous.halfOpenSucceeded;
+      if (previous.state === 'open-breaker' || previous.state === 'half-open') {
+        ensure(previous.breakerHasOpened === 1, 'breaker-open history is incomplete');
+        mode = 'half-open'; state = 'half-open';
+        if (previous.state === 'open-breaker') {
+          ensure(previous.pendingAttempts.length === 0, 'unfinished attempts retain breaker ownership');
+          transition = 'half-opened'; halfOpenAdmitted = 0; halfOpenSucceeded = 0;
+        }
+        ensure(halfOpenAdmitted < policy.halfOpenTrials && previous.pendingAttempts.length < policy.halfOpenConcurrency,
+          'half-open trial bound exhausted');
+        halfOpenAdmitted++;
+      } else ensure(previous.pendingAttempts.length < policy.concurrency, 'concurrent work cap exhausted');
+      const attempt = freeze({ id: input.attempt, holderFamily: input.holderFamily, worker: input.worker,
+        machine: input.machine, episode: previous.episode, admittedAt: now, resource: input.resource,
+        mode, sourceVector: input.sourceVector } as LoopAttempt);
+      const attemptLog = [...previous.attemptLog, attempt];
+      const rolling = rollingAt({ policy, attemptLog }, now);
+      ensure(rolling.rollingAttempts <= policy.parentAttemptBudget && rolling.rollingResource <= policy.parentResourceBudget,
+        'shared parent budget exhausted');
+      const pendingAttempts = [...previous.pendingAttempts, input.attempt], m = meta(all, input.command);
+      const record = freeze({ ...previous, ...m, attempts: attemptLog.length, episodeAttempts: previous.episodeAttempts + 1,
+        nextWake: now.value, state, pending: pendingAttempts[0]!, transition, transitionAt: now,
+        nextEligible: now, sourceVector: input.sourceVector, ...rolling, halfOpenAdmitted, halfOpenSucceeded,
+        pendingAttempts, attemptLog } as SharedLoopRecord);
+      return managedWrite(all, record);
+    }),
+    recordLoopOutcome: input => checked('SharedLoopOutcome', input, () => {
+      const all = read(); fence(all, input.fence);
+      ensure(input.episode.owner === 'part-six' && input.episode.name === 'LoopRecord' && input.episode.id.length > 0,
+        'LoopRecord reference owner'); sourceVectorCheck(input.sourceVector);
+      const previous = sharedByEpisode(all, input.episode.id), policy = previous.policy, now = sharedClock();
+      ensure(previous.clockBasis === now.subject.instance && sameClock(previous.transitionAt, now), 'incomparable shared pressure time');
+      const attempt = previous.attemptLog.find(value => value.id === input.attempt);
+      ensure(attempt, 'contributing loop attempt is absent');
+      const existing = previous.outcomeLog.find(value => value.attempt === input.attempt);
+      if (existing) {
+        ensure(existing.kind === input.kind && existing.failureClass === input.failureClass
+          && existing.jitterPermille === input.jitterPermille && vectorKey(existing.sourceVector) === vectorKey(input.sourceVector)
+          && encoded(existing.restoration).bytes === encoded(input.restoration).bytes,
+        'loop outcome changed after admission'); return previous;
+      }
+      ensure(previous.pendingAttempts.includes(input.attempt), 'attempt is not pending');
+      ensure(input.kind === 'accepted' || input.kind === 'failed', 'unknown loop outcome');
+      ensure(Number.isSafeInteger(input.jitterPermille) && input.jitterPermille >= policy.jitterMinPermille
+        && input.jitterPermille <= policy.jitterMaxPermille, 'jitter outside pinned policy');
+      const restoration = input.restoration.map(reference => {
+        ensure(host.restorationEvidence?.owner === 'part-nine', 'independent restoration evidence unavailable');
+        const verified = take(host.restorationEvidence.verify({ reference, pressureKey: previous.pressureKey,
+          operationFamily: previous.operationFamily }));
+        ensure(encoded(verified).bytes === encoded(reference).bytes, 'restoration evidence changed'); return verified;
+      });
+      const outcome = freeze({ attempt: input.attempt, kind: input.kind, failureClass: input.failureClass,
+        observedAt: now, jitterPermille: input.jitterPermille, restoration, sourceVector: input.sourceVector } as LoopOutcome);
+      const outcomeLog = sortedOutcomes([...previous.outcomeLog, outcome]);
+      const pendingAttempts = previous.pendingAttempts.filter(value => value !== input.attempt);
+      const outcomes = windowAt({ policy, outcomeLog }, now), failureCount = failureCountAt(policy, outcomes);
+      const counted = input.kind === 'failed' && policy.countedFailureClasses.includes(input.failureClass);
+      let state: SharedLoopRecord['state'], transition: SharedLoopRecord['transition'] = 'outcome-recorded';
+      let nextEligible = now, breakerHasOpened = previous.breakerHasOpened;
+      let breakerOpenCount = previous.breakerOpenCount;
+      let breakerFirstOpened = previous.breakerFirstOpened;
+      let halfOpenAdmitted = previous.halfOpenAdmitted, halfOpenSucceeded = previous.halfOpenSucceeded;
+      let closureEvidence = previous.closureEvidence;
+      const wasHalfOpen = attempt.mode === 'half-open';
+      if (wasHalfOpen && counted) {
+        state = 'open-breaker'; transition = 'reopened'; nextEligible = after(now, policy.breakerCooldown);
+        breakerOpenCount++;
+        if (breakerHasOpened === 0) { breakerHasOpened = 1; breakerFirstOpened = now; }
+        halfOpenAdmitted = 0; halfOpenSucceeded = 0;
+      } else if (wasHalfOpen && previous.state === 'open-breaker') {
+        state = 'open-breaker'; nextEligible = previous.nextEligible;
+      } else if (wasHalfOpen) {
+        halfOpenSucceeded += input.kind === 'accepted' ? 1 : 0;
+        closureEvidence = freeze([...new Map([...closureEvidence, ...restoration].map(value => [value.id, value])).values()]);
+        if (halfOpenSucceeded >= policy.halfOpenTrials && pendingAttempts.length === 0 && closureEvidence.length > 0) {
+          state = 'closed'; transition = 'closed'; nextEligible = now;
+        } else state = 'half-open';
+      } else if (previous.state === 'open-breaker') {
+        state = 'open-breaker'; nextEligible = previous.nextEligible;
+      } else if (failureCount >= policy.failureThreshold) {
+        state = 'open-breaker'; transition = 'opened'; nextEligible = after(now, policy.breakerCooldown);
+        breakerOpenCount++;
+        if (breakerHasOpened === 0) { breakerHasOpened = 1; breakerFirstOpened = now; }
+      } else if (pendingAttempts.length > 0) state = 'running';
+      else {
+        state = 'waiting';
+        const exponent = Math.min(failureCount, 53), base = Math.min(policy.maxDelay,
+          policy.initialDelay * Math.pow(policy.backoffMultiplier, exponent));
+        const delay = Math.max(policy.minDelay, Math.min(policy.maxDelay, Math.floor(base * input.jitterPermille / 1000)));
+        nextEligible = after(now, delay);
+      }
+      const rolling = rollingAt(previous, now), m = meta(all, input.command);
+      const record = freeze({ ...previous, ...m, nextWake: nextEligible.value, state, pending: pendingAttempts[0] ?? '',
+        transition, transitionAt: now, nextEligible, sourceVector: input.sourceVector,
+        totalFailures: previous.totalFailures + (counted ? 1 : 0), failureCount, ...rolling,
+        breakerHasOpened, breakerOpenCount, breakerFirstOpened, halfOpenAdmitted, halfOpenSucceeded,
+        pendingAttempts, outcomeLog, outcomeWindowDigest: outcomeDigest(policy, outcomeLog, now), closureEvidence } as SharedLoopRecord);
+      return managedWrite(all, record);
+    }),
+    recordMissedRange: input => checked('MissedRangeWrite', input, () => {
+      ensure(host.calendarExpansion?.owner === 'part-fifteen', 'calendar expansion authority unavailable');
+      ensure(input.parentDuty.owner === 'part-five' && input.parentDuty.name === 'Run' && input.parentDuty.id.length > 0,
+        'persistent parent duty reference required');
+      ensure(input.episode.owner === 'part-six' && input.episode.name === 'LoopRecord' && input.episode.id.length > 0,
+        'LoopRecord reference owner');
+      ensure(input.scanCursor.owner === 'part-six' && input.scanCursor.name === 'ScanCursor' && input.scanCursor.id.length > 0,
+        'ScanCursor reference owner');
+      ensure(input.jobInstance.length > 0 && input.jobInstance.length <= 256 && input.calendarPolicy.length > 0
+        && input.calendarPolicy.length <= 256 && /^sha256:[a-f0-9]{64}$/.test(input.packageDigest),
+      'missed range identity or package digest');
+      const decodeClock = (value: Clock) => take(decodeMeasurement('clock', value, host.current().decode));
+      const asOf = decodeClock(input.asOf), priorExpansionCursor = decodeClock(input.priorExpansionCursor);
+      const missedBoundary = decodeClock(input.missedBoundary);
+      ensure(sameClock(asOf, priorExpansionCursor) && sameClock(asOf, missedBoundary)
+        && priorExpansionCursor.value < missedBoundary.value && missedBoundary.value <= asOf.value,
+      'incomparable or invalid missed range boundary');
+      const lateness = take(decodeMeasurement('duration', input.currentLateness, host.current().decode));
+      ensure(lateness.value >= 0 && lateness.value === asOf.value - missedBoundary.value,
+        'current lateness does not match missed boundary');
+      const members = take(host.calendarExpansion.expand({ calendarPolicy: input.calendarPolicy,
+        after: priorExpansionCursor, through: missedBoundary, asOf })).map(decodeClock);
+      ensure(members.length > 0 && members.length <= 4096, 'calendar expansion is empty or exceeds bound');
+      ensure(members.every((member, index) => sameClock(member, asOf) && member.value > priorExpansionCursor.value
+        && member.value <= missedBoundary.value && (index === 0 || members[index - 1]!.value < member.value)),
+      'calendar expansion is not exact ordered membership');
+      ensure(input.dispositions.length === members.length && input.dispositions.every((value, index) =>
+        encoded(value.scheduledInstant).bytes === encoded(members[index]).bytes), 'exactly one ordered disposition per member required');
+      const snapshot = take(spine.store.readForProjection());
+      ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length), 'shared pressure or missed-range state unavailable');
+      const facts = snapshot.entries.map(entry => entry.fact), all = rows(facts, host.domain);
+      const cursor = facts.find(fact => fact.id === input.scanCursor.id && fact.kind === kindFor('ScanCursor'));
+      ensure(cursor, 'exact ScanCursor fact required');
+      const episode = all.filter(row => row.record.type === 'LoopRecord' && row.record.episode === input.episode.id).at(-1)?.record;
+      ensure(episode?.type === 'LoopRecord' && episode.policy.breaker === 'shared-circuit-v1'
+        && encoded(episode.policy.parentDuty).bytes === encoded(input.parentDuty).bytes, 'missed range parent episode unavailable');
+      for (const disposition of input.dispositions) {
+        if (disposition.kind !== 'missed-no-execution') continue;
+        const entry = snapshot.entries.find(value => value.fact.id === disposition.result.fact.id);
+        ensure(entry?.constitutional.some(value => value.field === disposition.result.field
+          && value.value.type === 'Result'), 'missed member constitutional Result unavailable');
+      }
+      const catchUpIndexes = input.dispositions.map((value, index) => value.kind === 'catch-up-run' ? index : -1).filter(index => index >= 0);
+      const otherwiseUnexecuted = input.dispositions.map((value, index) => value.kind === 'existing-run' ? -1 : index).filter(index => index >= 0);
+      if (input.catchUpPolicy === 'none') {
+        ensure(catchUpIndexes.length === 0 && input.catchUpRun === null, 'none catch-up policy cannot link a catch-up Run');
+      } else if (otherwiseUnexecuted.length === 0) {
+        ensure(catchUpIndexes.length === 0 && input.catchUpRun === null, 'fully admitted range cannot mint a catch-up Run');
+      } else {
+        const latest = otherwiseUnexecuted.at(-1)!;
+        ensure(catchUpIndexes.length === 1 && catchUpIndexes[0] === latest && input.catchUpRun,
+          'latest policy must link exactly the latest otherwise-unexecuted member');
+      }
+      const orderedMembersDigest = encoded(members).hash;
+      const derivationInputDigest = encoded({ parentDuty: input.parentDuty, jobInstance: input.jobInstance,
+        packageDigest: input.packageDigest, calendarPolicy: input.calendarPolicy, asOf, priorExpansionCursor,
+        missedBoundary, orderedMembersDigest }).hash;
+      const id = `missed:${encoded([input.parentDuty.id, input.jobInstance, input.calendarPolicy,
+        priorExpansionCursor, missedBoundary, asOf]).hash}`;
+      if (input.catchUpRun) {
+        const latest = otherwiseUnexecuted.at(-1)!;
+        const expected = `run:${encoded(['missed-catch-up', id, members[latest]]).hash}`;
+        ensure(input.catchUpRun.owner === 'part-five' && input.catchUpRun.name === 'Run'
+          && input.catchUpRun.id === expected, 'catch-up Run is not the deterministic latest-member Run');
+        const linked = input.dispositions[latest]!;
+        ensure(linked.kind === 'catch-up-run' && encoded(linked.run).bytes === encoded(input.catchUpRun).bytes,
+          'latest member does not retain the deterministic catch-up Run');
+      }
+      const record = freeze({ type: 'MissedRangeRecord', schemaVersion: 1, id, parentDuty: input.parentDuty,
+        episode: input.episode, scanCursor: input.scanCursor, jobInstance: input.jobInstance,
+        packageDigest: input.packageDigest, calendarPolicy: input.calendarPolicy, asOf,
+        currentLateness: lateness, first: members[0]!, last: members.at(-1)!, memberCount: members.length,
+        orderedMembersDigest, derivationInputDigest, catchUpPolicy: input.catchUpPolicy,
+        dispositions: input.dispositions, catchUpRun: input.catchUpRun } as MissedRangeRecord);
+      missedRangeCheck(record);
+      const prior = missedRows(facts), latest = prior.filter(row => row.record.id === id).at(-1);
+      if (latest && encoded(latest.record).bytes === encoded(record).bytes)
+        return freeze({ owner: 'part-six' as const, name: 'MissedRangeRecord' as const, id });
+      validateMissedRangeHistory(record, prior);
+      const wire = record.catchUpRun === null
+        ? Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'catchUpRun')) as unknown as MissedRangeRecord
+        : record;
+      const required = [...new Set([cursor.id, latest?.fact.id ?? '', ...record.dispositions.flatMap(value =>
+        value.kind === 'missed-no-execution' ? [value.result.fact.id] : [])])]
+        .filter(Boolean);
+      const receipt = withMissedRangeCandidate(host, record, () => take(spine.append(wire, required)));
+      ensure(!receipt.taint.length && receipt.fact.kind === kindFor('MissedRangeRecord')
+        && encoded(receipt.fact.body).bytes === encoded({ record: wire }).bytes, 'append returned different missed range');
+      return freeze({ owner: 'part-six' as const, name: 'MissedRangeRecord' as const, id });
+    }),
+    readMissedRange: reference => checked('MissedRangeRead', reference, () => {
+      ensure(reference.owner === 'part-six' && reference.name === 'MissedRangeRecord' && reference.id.length > 0,
+        'MissedRangeRecord reference owner');
+      const snapshot = take(spine.store.readForProjection());
+      ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length), 'missed-range state unavailable');
+      const latest = missedRows(snapshot.entries.map(entry => entry.fact)).filter(row => row.record.id === reference.id).at(-1);
+      ensure(latest, 'missed range unavailable'); missedRangeCheck(latest.record);
+      return freeze({ record: latest.record,
+        fact: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: latest.fact.id },
+        firstUndisposed: latest.record.dispositions.find(value => value.kind === 'missed-no-execution')?.scheduledInstant ?? null });
     }),
     reserve: input => checked('OperationReserve', input, () => {
       const all = read(); fence(all, input.fence);
