@@ -56,6 +56,15 @@ Eight consumes its reference on the first reply, as requested in
 `design-conversation-adapters-seam-request-rungraph-continuity.md`. Part Twelve retains the final
 family obligation but does not call the missing record existing.
 
+Two further owner gaps block the real positive chain. Effect settlement depends on
+`design-conversation-adapters-seam-request-effect-assessment-consumption.md`, which asks Nine and
+Eight for one owner-validated outcome-consumption contract that preserves Nine's original
+predicate-shaped evidence. Ordinary model execution depends on
+`design-conversation-adapters-seam-request-model-provider-effect.md`, which asks Seven and Eight to
+bind the actual submitted provider bytes to an admitted provider operation, observation, and
+settlement. P12-NF-35/44 and P12-NF-43/44/48 respectively remain seam-dependent; neither the Nine
+stand-in nor Seven's reference executor is treated as a landed positive.
+
 **Rule — translation cannot become policy.** Rules 4, 28, 30, 42, 63, 66, 89 and 103;
 **checks: P12-NF-03–05**. An adapter may authenticate a protocol exchange, preserve bytes, expose
 capabilities, render an already admitted message, invoke one admitted platform operation, and
@@ -468,7 +477,8 @@ rendered text before the outbound decoder runs. That exact rendered string becom
 mode, safe-link decisions, and transformation evidence live in an existing source-result or
 closure-referenced fact, not as undeclared message fields. Telegram HTML/Markdown and Slack's
 `mrkdwn` markup syntax have captured real-byte fixtures for nesting, code, tables, Unicode, hostile
-links, control characters, private sentinels, and adversarial lengths. WhatsApp, iMessage, and web
+links, control characters, the formatter's temporary placeholder characters that protect extracted
+code and table spans during transformation, and adversarial lengths. WhatsApp, iMessage, and web
 declare their own modes. Applying the formatter twice, using a legacy pass-through mode, or
 skipping conversion is explicit. Formatting cannot remove refusal wording, change speaker or
 audience, interpret standing, add a command, or convert a held result into a sent one.
@@ -528,7 +538,7 @@ predicate reason. A Bot API response can therefore support “provider accepted 
 without supporting “a person received or read it.” A later delivery, display, or read claim needs
 its own authenticated callback or lookup capture and an assessment bar that admits that source.
 
-A positive P12-NF-34/35 case records this exact closed shape inside its fact envelope:
+A P12-NF-34 observation case records this exact closed shape inside its fact envelope:
 
 ```json
 {
@@ -552,6 +562,19 @@ The referenced bytes contain the provider's message id and acceptance response. 
 only the provider-acceptance occurrence predicate; the human-delivery and read claims remain
 insufficient. HTTP success, socket write, local log, or adapter return alone cannot be promoted
 further, and the adapter cannot grade itself.
+
+The landed positive stops at that assessment. Nine accepts occurrence Evidence whose predicate is
+`operation-occurred` and whose object-valued claim contains the exact digest. Its returned
+`Outcome` retains those source Evidence ids. Eight currently requires each retained Evidence claim
+to use the digest itself as predicate and `happened` as its value before it will append settlement.
+One immutable Evidence record cannot satisfy both contracts, and an adapter-created replacement
+would usurp Nine. P12-NF-35's real settlement positive and P12-NF-44's settled Telegram path
+therefore depend on `design-conversation-adapters-seam-request-effect-assessment-consumption.md`.
+That seam keeps every original observation and Evidence record unchanged, gives Nine one current
+owner-validated outcome view bound to the operation, attempt, digest, bar, and source evidence, and
+lets Eight consume that view without applying a second predicate convention. Acceptance requires a
+joint real Nine/Eight settlement fixture; the landed Nine stand-in in Eight's fixture is not that
+evidence.
 
 **Rule — unsupported negative evidence leaves an owned uncertainty.** Rules 24, 26, 42, 63
 and 68; **checks: P12-NF-34–36**. Each mode declares whether it supports stable receipt lookup,
@@ -604,7 +627,11 @@ raw account sessions, arbitrary provider clients, or a general send script. The 
 assembly binds a confined conversation adapter custodian that accepts only a current validated
 operation and consumed dispatch-claim. Framework hooks may steer attempted direct writes to the
 public doorway, but a hook's presence is not confinement proof. Every enabled harness must pass
-the same isolation and lifecycle checks.
+the same isolation and lifecycle checks. A real model-backed answer also requires the requested
+Seven/Eight provider-effect seam. Seven's landed reference executor reserves and invokes its model
+without Eight's provider-operation admission, observation, or settlement, while Eight's landed
+`EffectRequest` and adapter invocation accept only an ordinary `OutboundMessage`. Supplying real
+credentials to that executor would not satisfy this path.
 
 **Rule — the end-to-end transition order is fixed.** Rules 14, 15, 26, 28, 33, 41, 42, 46,
 58, 62, 63, 68, 75 and 89; **checks: P12-NF-43/44**.
@@ -612,12 +639,23 @@ the same isolation and lifecycle checks.
 1. Capture the authenticated platform event before protocol acknowledgment.
 2. Let part four deduplicate, resolve principal and current binding/standing, and append the intake.
 3. Let part five create or resume the durable run and record actual-start grounding.
-4. Let the worker produce a bounded answer or request part seven judgment through its doorway.
-5. Prepare exact rendered platform bytes and part eight's attributable outbound operation.
-6. Revalidate authority and durability, then let part six commit the claim and resource reservation.
-7. Invoke the concrete adapter once for that claim and record the exact observation.
-8. Let part nine independently assess the demanded delivery stage and let part eight settle only what evidence proves.
-9. Return the result to part five and rebuild every disposable view from the causally linked facts.
+4. Let the worker produce a bounded answer. If it needs model judgment, Seven first prepares and
+   records the actual provider-submitted bytes, their digest, and the judgment attempt.
+5. Through the requested provider-effect seam, let Eight prepare the provider operation from that
+   Seven record before Six reserves and claims it; then let the confined Ten adapter invoke once,
+   Seven record the receipt, Eight record the observation, Nine assess it, Eight settle it, and Five
+   conditionally accept Seven's resolution. Without that seam, no real judgment dispatch occurs.
+6. Prepare exact rendered conversation bytes and Part Eight's attributable reply operation from the
+   accepted answer or already durable fixed result.
+7. Revalidate authority and durability, then let Part Six commit the reply claim and resource reservation.
+8. Invoke the concrete conversation adapter once for that claim and record the exact observation.
+9. Let Part Nine independently assess the demanded delivery stage and let Part Eight settle through
+   the requested owner-validated assessment-consumption seam.
+10. Return the result to Part Five and rebuild every disposable view from the causally linked facts.
+
+The real-model positive of P12-NF-43/44/48 is blocked until step five's Seven/Eight seam lands. The
+real settled-delivery positive of P12-NF-35/44 is blocked until step nine's Nine/Eight seam lands.
+These are owner integrations, not adapter implementation choices.
 
 **Rule — ordinary-worker failure still has one bounded conversation answer while the minimal path
 is admitted.** Rules 14, 15, 42, 46, 63, 77 and 95; **check: P12-NF-53**. Part Ten's production
@@ -649,7 +687,10 @@ after provider application before local observation. Passing requires one admitt
 durable run, stable identities within the execution, no more than one externally observed semantic
 reply, evidence no stronger than its source, every obligation owned, and equal rebuilt projections
 at one vector. If the platform cannot resolve a cut, the correct result is retained uncertainty and
-zero replay, not forced green.
+zero replay, not forced green. This positive cannot run against the landed contracts alone. It
+requires both `design-conversation-adapters-seam-request-model-provider-effect.md` for the real model
+call and `design-conversation-adapters-seam-request-effect-assessment-consumption.md` for real-owner
+settlement; stand-ins do not satisfy P12-NF-44/48.
 
 **Rule — Telegram precedes the family; later activation is evidence-independent, not list-gated.**
 Rules 44, 62, 72, 73, 76, 84 and 105; **checks: P12-NF-45/46/48/49**. Telegram must first pass the
@@ -674,7 +715,7 @@ The carry-forward column states the required property, not a requirement to reus
 
 | Instar 1.x module and earned incident | Behavior or guarantee that carries forward | 2.0 disposition |
 |---|---|---|
-| `TelegramAdapter` | Long polling waits for handling before offset advance; forum topics keep distinct routes. A placeholder token once left a moved session reporting success while no message could reach Telegram, so admitted life requires verified bot identity and a real route. | Preserve custody-before-cursor and topic identity; replace local routing, authorization and success inference with parts four, eight, nine and ten. |
+| `TelegramAdapter` | The ordinary long-poll loop awaits each update handler before advancing and saving its offset, and forum topics keep distinct routes. The offset-range repair branch is an exception: when received ids are far below the stored offset, it saves the maximum received update id before processing that batch, so a crash can cross the custody-before-cursor boundary. A placeholder token once left a moved session reporting success while no message could reach Telegram, so admitted life requires verified bot identity and a real route. | Preserve the ordinary handling order and topic identity. Retire the range-repair early offset save under P12-NF-18's capture-before-cursor contract, and replace local routing, authorization and success inference with parts four, eight, nine and ten. |
 | `lifeline/TelegramLifeline`, `MessageQueue`, `ColdStartFallbackReply`, and the server composition | The independent Telegram poller enqueues an inbound message and writes a disk-backed queue when the ordinary server is down or forwarding fails, replays retained entries after recovery, and advances its offset only after each update handler returns. Queue writes log and continue on failure and do not return a write-synchronization durability receipt, so 1.x does not prove durable custody at that cut. Replay can deliberately retire a poison item only after recording and attempting a loss notice; it is not an absolute never-drop store. When an ordinary topic worker cannot start or restart, the wired fixed reply bypasses the model tone gate, states the classified reason, and points to the Lifeline route. These paths were earned by silent server-down queues, mid-replay loss, resource rejection, and model-gate silence. | Preserve the independent custody and responder authority as Ten's separately admitted minimal path, while strengthening capture to Four's receipt contract. Four owns the persisted intake, Five owns minimal repair work and the Part One `Result` used as reply source, Eight sends that result through the landed ordinary-reply contract, Nine assesses its evidence, and Eleven owns the conditional reachability verdict. P12-NF-53 withholds any held/live claim until both the ordinary-worker-failure and required-minimal-dependency-outage neighbors run through the production assembly. |
 | `TelegramAdapter` media handlers | Voice, photo, and document updates are downloaded to local paths and routed to handlers. Voice invokes a configured Groq or OpenAI transcription provider directly, then injects `[voice]` text; photo and document handlers inject local-path markers. Download or transcription failure sends a direct fallback reply. | Preserve current custody by capturing the original update and using Four's landed generic `needs-judgment` hold and possible `expired-judgment` terminal with zero private fetch/provider/send calls. Retire direct download, provider, path-injection, cleanup, and fallback-send authority. Successful fetch/transcription remains gated on the requested Part Eight media operations; Seven owns applicable provider attempts and Five consumes the derived result. P12-NF-51 separates these cases. |
 | `pending-relay-store`, `DeliveryFailureSentinel`, and `telegram-reply.sh` | Stable delivery identity, per-agent durable custody, fenced claims, ambiguous timeout handling, and loud recovery prevent silent loss and blind duplicate sends. A restoration purge once ate a quiet-hours-held notice. Minting an id only at enqueue left the first send outside dedup. Both incidents require identity before first dispatch and no purge of unresolved work. | Re-express the queue as fact-derived outbox/recovery under six and eight. Keep adapter storage only as disposable acceleration. |
@@ -732,7 +773,10 @@ an enabled real harness, and part nine's independent witness. Critical inbound/o
 also carry fresh probes and step supervision. Source inspection, a running process, a configured
 token, a mock transport, or a self-reported green row cannot make an instance live. Production
 secret-intake activation additionally requires the requested Four/Ten custody seam. Slack activation
-additionally requires the requested Four/Seven intake-policy seam. The minimal-route claim requires
+additionally requires the requested Four/Seven intake-policy seam. A real model-backed lifecycle
+additionally requires the requested Seven/Eight provider-effect seam, and real effect settlement
+requires the requested Nine/Eight assessment-consumption seam. P12-NF-43/44/48 stay declared and
+inhibited until those integrations run with their real owners. The minimal-route claim requires
 P12-NF-53 through the production assembly; a 1.x source audit does not satisfy it.
 
 **Rule — release evidence stays exact across upgrades.** Rules 44, 45, 62, 76, 90 and 105;
@@ -786,7 +830,7 @@ conversation key, acknowledgment policy, provenance ceiling, or rendered-byte id
 | P12-NF-32 | user-experience effect | Reaction/read receipt/typing fires through the ordinary-text port or failure clears intake; explicit unsupported `Refused` passes now, and a governed optional effect passes only after the requested seam lands |
 | P12-NF-33 | crash | Effect identity minted after provider call or private queue is custody authority; pre-dispatch fact and rebuild pass |
 | P12-NF-34 | evidence | HTTP/socket/local log/provider acceptance labeled delivered/read or encoded as an invented observation stage; an unchanged `response`/`lookup` observation with provider bytes in its capture and only the source-supported assessment passes |
-| P12-NF-35 | verification | Adapter self-grades or stale/same-path probe certifies delivery; Part Nine decodes the captured provider evidence and accepts only the exact occurrence predicate its current bar supports |
+| P12-NF-35 | verification | Adapter self-grades, stale/same-path probe certifies delivery, or Eight reinterprets Nine's immutable source Evidence under a second predicate convention. The landed real Nine path can decode the captured provider evidence and accept the exact `operation-occurred` predicate with an object-valued matching digest, but the positive settlement remains seam-dependent. After the requested Nine/Eight assessment-consumption seam lands, a current owner-validated outcome bound to the same operation, attempt, digest, bar, observations, and unchanged source Evidence lets Eight settle exactly once |
 | P12-NF-36 | uncertainty | Timeout/search miss/new route/local death proves non-occurrence and retries; owned unknown with zero replay passes |
 | P12-NF-37 | retry | SDK/adapter invents backoff, invokes again, or mints a replacement identity; a Part Six bounded read-only observation wake for the unchanged operation/digest with zero additional invocations passes now. A successful new send attempt remains gated on the requested retry seam |
 | P12-NF-38 | restart | Restart loses queued intake/send, resets attempts or changes identity; fact-derived outbox/drain resumes exactly |
@@ -794,12 +838,12 @@ conversation key, acknowledgment policy, provenance ceiling, or rendered-byte id
 | P12-NF-40 | fairness/load | One failing route starves stop/healthy work or spawns per-attempt notices; finite fair/coalesced scheduling passes |
 | P12-NF-41 | failure path | Advisory, refusal or notice is swallowed, recursive or reported sent; explicit bounded result and owner pass |
 | P12-NF-42 | isolation | Worker reads credential/raw account session or fabricates origin; scoped custodian and enrolled evidence pass |
-| P12-NF-43 | wiring/e2e | Harness/direct script bypasses intake/effect/grounding or required port is null; the complete public chain with landed `start`/`recovery`/`resume` grounding passes, while a compaction case refuses as unsupported until the requested Five/Eight seam lands |
-| P12-NF-44 | Telegram lifecycle | Crash cut duplicates reply, loses work, overstates evidence or diverges rebuild; one owned exact execution passes |
+| P12-NF-43 | wiring/e2e | Harness/direct script bypasses intake/effect/grounding, a model provider is invoked by Seven without Eight's admitted operation path, or a required port is null. The complete real-model public chain passes only after the requested Seven/Eight provider-effect seam binds actual submitted bytes to admission, observation, and settlement. Landed `start`/`recovery`/`resume` grounding remains the current supported grounding, while a compaction case refuses until the requested Five/Eight continuity seam lands |
+| P12-NF-44 | Telegram lifecycle | Crash cut duplicates reply or model call, loses work, overstates evidence, cannot settle real Nine evidence, or diverges rebuild. One owned exact execution passes only with the requested Seven/Eight provider-effect seam and Nine/Eight assessment-consumption seam running against their real owners; stand-ins cannot satisfy the positive |
 | P12-NF-45 | parity/activation | Any later adapter activates before Telegram proves the reference slice, borrows Telegram/sibling evidence, or lacks an owner seam its declared mode needs; after Telegram, each exact mode may activate on its own complete evidence regardless of another later adapter's state. Slack remains inhibited until the Four/Seven intake-policy seam lands |
 | P12-NF-46 | live probe | File/token/process/config or malformed canary counts as life; real identity/inbound/outbound fresh proof passes |
 | P12-NF-47 | measurement | Target/estimate/success-only percentile labeled measured or failed sample omitted; named hardware workload record passes |
-| P12-NF-48 | three-tier | Mock-only or parser-only test makes a significant adapter live, or secret-bearing production intake activates without the custody seam; unit, integration and real lifecycle evidence plus every required owner seam pass |
+| P12-NF-48 | three-tier | Mock-only or parser-only test makes a significant adapter live, secret-bearing production intake activates without the custody seam, or a real-model lifecycle uses Seven's reference executor without Eight admission and settlement. Unit, integration and real lifecycle evidence pass only with every required owner seam, including the Seven/Eight provider effect and Nine/Eight assessment consumption, exercised against real owner implementations |
 | P12-NF-49 | upgrade | Platform/API/package change alters identity, provenance, ack or pending effect silently; scoped inhibition and compatible replay pass |
 | P12-NF-50 | governance | Declared fixture has no check-run/assessment or implementation implies approval; honest declared/held state passes |
 | P12-NF-51 | family media | Telegram, Slack, or linked-device WhatsApp media is acknowledged before original receipt, a file path substitutes for custody, source text is injected privately, transcription calls a provider privately, a fallback sends privately, or derived text becomes a fresh verified sender event. The current positive preserves the original event, records Four's generic owned `needs-judgment` hold, may drain it to `expired-judgment`, and makes zero fetch/transcription/private-send calls. Successful fetch/derivation passes only after the requested effect seam lands and the exact mode proves the owner-governed path |
@@ -817,10 +861,10 @@ P12-NF-01/44–50/53**.
 |---|---|
 | Big picture section 10 — replaceable conversation edge and channel parity | **Held as a contract:** one family suite, no core platform branch, exact per-instance capabilities and individual activation through P12-NF-03–05/45/48. Runtime status remains declared until evidence runs. |
 | Part four — concrete authenticated evidence, event-id authority and acknowledgment policy | **Held as a contract for the landed narrow intake:** bounded structural route extraction, non-secret `receive(raw, route)`, the landed `(adapter, channel, sender, identityEpoch, eventId)` key, per-platform identity matrices, current binding resolution, and generic owned `needs-judgment` holds with `expired-judgment` terminals through P12-NF-06–26/51. Secret-bearing production intake depends on `design-conversation-adapters-seam-request-intake-custody.md`. Slack direction, permission, ambient disposition, and activation depend on `design-conversation-adapters-seam-request-intake-policy.md`. Legacy compatibility activation remains gated on `design-conversation-adapters-seam-request-legacy-import.md`. Four retains intake and standing ownership. |
-| Part five/six — durable work, one voice, bounded observation recovery and stable operation identity | **Held as a contract for landed start/recovery/resume:** worker bridge, fact-derived outbox, read-only observation wakes, fairness and crash recovery through P12-NF-33/36–44. Five/Six retain run, lease and loop ownership. Compaction accounting and a successful new send attempt are not held coverage; they depend on `design-conversation-adapters-seam-request-rungraph-continuity.md` and `design-conversation-adapters-seam-request-send-retry.md`. |
-| Part seven/eight — advisory judgment and attributable reply effect | **Held as a contract for the landed slice:** one exact ordinary-text reply, current validation, preserved advisory/refusal, generic owned media judgment hold with zero private provider or send calls, and no hidden fallback through P12-NF-27–33/37/41–43/51. Slack's intake-policy judgment consumer depends on `design-conversation-adapters-seam-request-intake-policy.md`. Successful media, non-text operations, and aggregates are seam-dependent coverage under `design-conversation-adapters-seam-request-effect-doorway.md`; successful send retry is seam-dependent under `design-conversation-adapters-seam-request-send-retry.md`. Seven/Eight retain decision and settlement. |
-| Part nine — independent evidence and live holder proof | **Held as a contract:** stage-specific observations, unsupported negatives, independent assessment and real canaries through P12-NF-34–36/44/46/48. Nine retains grades and witness posture. |
-| Part ten — remaining adapter evidence contracts and executable bindings | **Held only for the landed contract/conformance shapes:** Telegram, WhatsApp, iMessage and web map to Ten's current assembly types; Slack identity capture maps to them but Slack activation remains gated on the Four/Seven intake-policy seam. P12-NF-51's current case is a generic Four hold with zero private media/provider/send calls. Secret custody, successful media and legacy import are excluded until their named owner seams land. No new core type is introduced here. |
+| Part five/six — durable work, one voice, bounded observation recovery and stable operation identity | **Held as a contract for landed start/recovery/resume and observation-only recovery:** fact-derived outbox, read-only observation wakes, fairness, stable identities and no replay on uncertainty through P12-NF-33/36–42. The real-model and real-owner-settlement crash path in P12-NF-43/44 is seam-dependent, not held. Five/Six retain run, lease and loop ownership. Compaction accounting and a successful new send attempt are also not held coverage; they depend on `design-conversation-adapters-seam-request-rungraph-continuity.md` and `design-conversation-adapters-seam-request-send-retry.md`. |
+| Part seven/eight — advisory judgment and attributable reply effect | **Held only for the landed narrow shapes:** one exact ordinary-text reply can be prepared, validated, claimed, invoked and observed; advisory/refusal and the generic owned media judgment hold preserve zero private provider or send calls through P12-NF-27–33/37/41–43/51. A real model call through Eight is not held and depends on `design-conversation-adapters-seam-request-model-provider-effect.md`; P12-NF-43/44/48 remain inhibited. Slack's intake-policy judgment consumer depends on `design-conversation-adapters-seam-request-intake-policy.md`. Successful media, non-text operations, and aggregates depend on `design-conversation-adapters-seam-request-effect-doorway.md`; successful send retry depends on `design-conversation-adapters-seam-request-send-retry.md`. Seven retains judgment and receipt ownership; Eight retains effect and settlement ownership. |
+| Part nine — independent evidence and live holder proof | **Held only for the landed assessment shape:** Nine can accept stage-specific source Evidence and retain unsupported negatives, but Eight cannot consume that real assessment into a positive settlement under the two landed predicate conventions. P12-NF-35/44 depend on `design-conversation-adapters-seam-request-effect-assessment-consumption.md` and a joint real-owner fixture. Real canaries remain implementation obligations under P12-NF-46/48. Nine retains grades, assessment, and witness posture. |
+| Part ten — remaining adapter evidence contracts and executable bindings | **Held only for the landed contract/conformance shapes:** Telegram, WhatsApp, iMessage and web map to Ten's current assembly types; Slack identity capture maps to them but Slack activation remains gated on the Four/Seven intake-policy seam. P12-NF-51's current case is a generic Four hold with zero private media/provider/send calls. Secret custody, successful media, and legacy import are excluded until their named owner seams land. Confined model-adapter execution through Eight depends specifically on `design-conversation-adapters-seam-request-model-provider-effect.md`. No new core type is introduced here. |
 | Part eleven — first vertical slice and minimal conversation route | **Declared, not held for runtime:** P12-NF-53 maps ordinary-worker failure to Eleven's limited responder and the landed ordinary-reply effect, and maps every required-minimal-dependency outage to preserved owned failure with zero fabricated response. The Telegram production slice, real worker bridge, crash cuts and delivery witness remain implementation and evidence obligations under P12-NF-42–48/53. Eleven retains the whole-slice and operator-surface verdict. |
 
 ---
