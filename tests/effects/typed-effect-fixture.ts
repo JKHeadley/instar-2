@@ -70,7 +70,8 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
   const extension = extensions?.(host) ?? { schemas: [], ownedBodies: [] };
   const witnessKinds = ['run-opening', 'run-transition', 'intake-admitted', 'intake-receipt',
     'judgment-JudgmentRequest', 'judgment-JudgmentAttemptRecord', 'process-incarnation', 'process-parent', 'process-start',
-    'scheduler-job-generation', 'account-route-generation', 'configuration-target-state',
+    'scheduler-job-generation', 'account-route-generation', 'registered-account', 'rollback-route',
+    'semantic-message-admission', 'configuration-target-state',
     'filesystem-target-state', 'protected-target-policy', 'git-target-state', 'capture-record',
     'conversation-message', 'infrastructure-provenance', 'infrastructure-episode'];
   const witnessSchemas: FactSchema[] = witnessKinds.map(kind => ({ ...f.schema, kind,
@@ -108,45 +109,65 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
   const pending = sourceFor(stepId, logicalEffect).source;
   Object.assign(host, { fixtureSourceResult: pending.id });
   reference('run-opening', { type: 'Run', id: 'run:1', run: 'run:1' });
-  reference('run-transition', { run: 'run:1', step: { id: 'step:transcript', run: 'run:1', operation: { key: 'logical:transcript-output' }, evidence: [pending.id] } });
+  if (kind === 'derive-transcript') reference('run-transition', { run: 'run:1', step: { id: 'step:transcript', run: 'run:1', operation: { key: 'logical:transcript-output' }, evidence: [pending.id] } });
   const mediaCapture = value(host.capture('media'));
   const audioCapture = value(host.capture('audio'));
+  const inboundMediaBytes = JSON.stringify({ schemaVersion: 1, kind: 'message', text: 'photo',
+    platformFile: 'provider-file:1', mediaType: 'image/png' });
+  const inboundMediaCapture = kind === 'fetch-inbound-media' ? value(host.capture(inboundMediaBytes)) : audioCapture;
   Object.assign(host, { fixtureMediaCapture: mediaCapture, fixtureAudioCapture: audioCapture });
   const submittedCapture = value(host.capture(JSON.stringify({ model: 'model:1' })));
   const responseCapture = value(host.capture(JSON.stringify({ transcript: 'fixture transcript' })));
-  reference('intake-receipt', { id: 'receipt:1', adapter: 'bot:fixture', ingress: JSON.stringify({ channel: 'chat:fixture',
-    sender: 'sender:fixture', identityEpoch: 'epoch:1', eventId: 'event:1' }), platformFile: 'provider-file:1', capture: audioCapture });
-  reference('intake-admitted', { id: 'intake:1', adapter: 'bot:fixture', channel: 'chat:fixture', receipt: 'receipt:1', binding: 'none' });
-  reference('judgment-JudgmentRequest', { record: { type: 'JudgmentRequest', id: 'judgment-request:transcribe', run: 'run:1',
-    step: 'step:transcript', question: audioCapture, context: audioCapture, submitted: submittedCapture } });
-  reference('judgment-JudgmentAttemptRecord', { record: { type: 'JudgmentAttemptRecord', id: 'provider:transcribe',
-    request: 'judgment-request:transcribe', phase: 'response-observed', operation: 'provider-operation:transcribe', receipt: responseCapture } });
+  if (['acknowledge', 'fetch-inbound-media', 'derive-transcript'].includes(kind)) {
+    const intakeCapture = kind === 'fetch-inbound-media' ? inboundMediaCapture : audioCapture;
+    reference('intake-receipt', { id: 'receipt:1', adapter: 'bot:fixture', ingress: JSON.stringify({ channel: 'chat:fixture',
+      sender: 'sender:fixture', identityEpoch: 'epoch:1', eventId: 'event:1' }), rawHash: intakeCapture.hash, capture: intakeCapture });
+    reference('intake-admitted', { id: 'intake:1', adapter: 'bot:fixture', channel: 'chat:fixture', receipt: 'receipt:1', binding: 'none' });
+  }
+  if (kind === 'derive-transcript') {
+    reference('judgment-JudgmentRequest', { record: { type: 'JudgmentRequest', id: 'judgment-request:transcribe', run: 'run:1',
+      step: 'step:transcript', question: audioCapture, context: audioCapture, submitted: submittedCapture } });
+    reference('judgment-JudgmentAttemptRecord', { record: { type: 'JudgmentAttemptRecord', id: 'provider:transcribe',
+      request: 'judgment-request:transcribe', phase: 'response-observed', operation: 'provider-operation:transcribe', receipt: responseCapture } });
+  }
   const process = { machine: 'machine-a', processId: 'process:1', processIncarnation: 'process:1:incarnation:2', parentIdentity: 'parent:1',
     startIdentity: 'start:1', executable: '/usr/bin/node', arguments: ['worker.mjs'], status: 'current', validFrom: 0, validUntil: 1000 };
-  reference('process-incarnation', { ...process, id: process.processIncarnation });
-  reference('process-parent', { ...process, id: process.parentIdentity });
-  reference('process-start', { ...process, id: process.startIdentity });
-  reference('scheduler-job-generation', { id: 'job-generation:2', jobId: 'job:1', generation: 'job-generation:2', finiteScope: 'one-run',
+  if (kind === 'process-control') {
+    reference('process-incarnation', { ...process, id: process.processIncarnation });
+    reference('process-parent', { ...process, id: process.parentIdentity });
+    reference('process-start', { ...process, id: process.startIdentity });
+  }
+  if (kind === 'scheduler-control') reference('scheduler-job-generation', { id: 'job-generation:2', jobId: 'job:1', generation: 'job-generation:2', finiteScope: 'one-run',
     undoOperation: 'resume:job:1', reviewAt: 200, status: 'current', validFrom: 0, validUntil: 1000 });
-  reference('account-route-generation', { id: 'route-generation:2', run: 'run:1', provider: 'telegram', fromAccount: 'bot:old', toAccount: 'bot:new',
-    generation: 'route-generation:2', rollbackRoute: 'route:old', status: 'current', validFrom: 0, validUntil: 1000 });
-  const prior = hashBytes('prior');
-  reference('configuration-target-state', { id: 'capture:config-prior', canonicalTarget: '/project/.instar/config.json', priorDigest: prior,
-    undoReference: 'capture:config-prior', status: 'current', validFrom: 0, validUntil: 1000 });
-  reference('filesystem-target-state', { id: 'policy:protected-targets:1', policy: 'policy:protected-targets:1',
-    targets: [{ canonicalPath: '/project/state.json', resolvedPath: '/project/state.json', ancestryDigest: prior, priorDigest: prior }],
+  if (kind === 'account-route-change') {
+    reference('account-route-generation', { id: 'route-generation:2', run: 'run:1', provider: 'telegram', fromAccount: 'bot:old', toAccount: 'bot:new',
+      generation: 'route-generation:2', rollbackRoute: 'route:old', status: 'current', validFrom: 0, validUntil: 1000 });
+    reference('registered-account', { id: 'bot:old', account: 'bot:old', provider: 'telegram', run: 'run:1', status: 'current', validFrom: 0, validUntil: 1000 });
+    reference('registered-account', { id: 'bot:new', account: 'bot:new', provider: 'telegram', run: 'run:1', status: 'current', validFrom: 0, validUntil: 1000 });
+    reference('rollback-route', { id: 'route:old', run: 'run:1', provider: 'telegram', fromAccount: 'bot:new', toAccount: 'bot:old',
+      generation: 'route-generation:2', status: 'current', validFrom: 0, validUntil: 1000 });
+  }
+  reference('semantic-message-admission', { id: 'semantic:typed:1', run: 'run:1', sourceLineage: 'run:1',
     status: 'current', validFrom: 0, validUntil: 1000 });
-  reference('protected-target-policy', { id: 'policy:protected-targets:1', decision: 'allowed',
-    targets: ['/project/state.json'], status: 'current', validFrom: 0, validUntil: 1000 });
-  reference('git-target-state', { id: 'sha:base', repository: '/project/repo', worktree: '/project/repo', ref: 'refs/heads/main', base: 'sha:base',
+  const prior = hashBytes('prior');
+  if (kind === 'configuration-change') reference('configuration-target-state', { id: 'capture:config-prior', canonicalTarget: '/project/.instar/config.json', priorDigest: prior,
+    undoReference: 'capture:config-prior', status: 'current', validFrom: 0, validUntil: 1000 });
+  if (kind === 'filesystem-mutation') {
+    reference('filesystem-target-state', { id: 'policy:protected-targets:1', policy: 'policy:protected-targets:1',
+      targets: [{ canonicalPath: '/project/state.json', resolvedPath: '/project/state.json', ancestryDigest: prior, priorDigest: prior }],
+      status: 'current', validFrom: 0, validUntil: 1000 });
+    reference('protected-target-policy', { id: 'policy:protected-targets:1', decision: 'allowed',
+      targets: ['/project/state.json'], status: 'current', validFrom: 0, validUntil: 1000 });
+  }
+  if (kind === 'git-mutation') reference('git-target-state', { id: 'sha:base', repository: '/project/repo', worktree: '/project/repo', ref: 'refs/heads/main', base: 'sha:base',
     targets: ['src/file.ts'], expectedHeads: [{ ref: 'refs/heads/main', digest: prior }], rollbackConstraints: ['only-if-head-unchanged'],
     status: 'current', validFrom: 0, validUntil: 1000 });
-  reference('capture-record', { id: 'capture:media', reference: 'capture:media', hash: hashBytes('media'), status: 'available' });
-  reference('capture-record', { id: 'capture:audio', reference: 'capture:audio', hash: hashBytes('audio'), status: 'available' });
-  reference('conversation-message', { id: 'message:7', message: 'message:7', account: 'bot:fixture', conversation: 'chat:fixture',
+  if (kind === 'edit-message' || kind === 'react') reference('conversation-message', { id: 'message:7', message: 'message:7', account: 'bot:fixture', conversation: 'chat:fixture',
     status: 'current', validFrom: 0, validUntil: 1000 });
-  reference('infrastructure-provenance', { id: 'monitor:watchdog:1', episode: 'episode:1', status: 'current', validFrom: 0, validUntil: 1000 });
-  reference('infrastructure-episode', { id: 'episode:1', provenance: 'monitor:watchdog:1', status: 'current', validFrom: 0, validUntil: 1000 });
+  if (kind === 'infrastructure-notice') {
+    reference('infrastructure-provenance', { id: 'monitor:watchdog:1', episode: 'episode:1', status: 'current', validFrom: 0, validUntil: 1000 });
+    reference('infrastructure-episode', { id: 'episode:1', provenance: 'monitor:watchdog:1', status: 'current', validFrom: 0, validUntil: 1000 });
+  }
   authority = [pending.id];
   const definition = { type: 'OperationDefinition', schemaVersion: 1, id: 'reply-definition:1', feature: 'reply', version: 'reply-version:1',
     generation: register.generation.id, adapter: 'telegram-fixture', account: 'bot:fixture', conversation: 'chat:fixture',

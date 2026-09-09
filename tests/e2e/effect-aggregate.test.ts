@@ -111,6 +111,31 @@ it('P8-TP-AGGREGATE-PARTIAL an uncertain first child exposes evidence/charge/rec
   expect(value(f.api.nextAggregateChild(aggregate.aggregate))).toBeNull(); expect(f.calls()).toBe(1);
 }, 30000);
 
+for (const cut of ['request', 'aggregate', 'applied'] as const) it(`P8-TP-R4-TYPED-SIGKILL-${cut} fresh-process typed ordered recovery preserves identity, exposure, and call counts`, async () => {
+  const directory = join(effectFixture().directory, `typed-${cut}`);
+  const testFile = resolve('tests/e2e/typed-aggregate-fault-child.test.ts');
+  const command = [resolve('node_modules/vitest/vitest.mjs'), 'run', testFile, '--reporter=dot'];
+  const environment = { ...process.env, P8_TYPED_FAULT_DIRECTORY: directory, P8_TYPED_FAULT_CUT: cut };
+  const child = spawn(process.execPath, command, { env: { ...environment, P8_TYPED_FAULT_MODE: 'start' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let output = '', error = ''; child.stdout.on('data', bytes => { output += String(bytes); }); child.stderr.on('data', bytes => { error += String(bytes); });
+  try {
+    const ready = await new Promise<Record<string, unknown>>((resolveReady, reject) => {
+      const inspect = () => { const match = output.match(/P8_TYPED_FAULT=(\{[^\n]+\})/); if (match) resolveReady(JSON.parse(match[1]!)); };
+      child.stdout.on('data', inspect); child.once('exit', code => reject(new Error(`typed fault child exited ${code}: ${error}\n${output}`)));
+    });
+    expect(ready.first).toBeTruthy(); expect(ready.second).toBeTruthy();
+    const exit = new Promise(resolveExit => child.once('exit', resolveExit)); child.kill('SIGKILL'); await exit;
+    const recovered = spawnSync(process.execPath, command, { env: { ...environment, P8_TYPED_FAULT_MODE: 'recover' }, encoding: 'utf8', timeout: 60_000 });
+    expect(recovered.status, `${recovered.stderr}\n${recovered.stdout}`).toBe(0);
+    const match = recovered.stdout.match(/P8_TYPED_FAULT=(\{[^\n]+\})/); expect(match).toBeTruthy();
+    const state = JSON.parse(match![1]!) as Record<string, unknown>;
+    expect(state).toMatchObject({ recovered: true, cut, requests: 2, remainingExposure: 40 });
+    if (cut === 'applied') expect(state).toMatchObject({ calls: 1, firstCalls: 1, secondCalls: 0,
+      assessment: 'uncertain', aggregateState: 'uncertain', ordering: 'first-unsettled-inhibits-second' });
+    else expect(state.calls).toBe(0);
+  } finally { child.kill('SIGKILL'); }
+}, 120_000);
+
 it('P8-TP-AGGREGATE-INFLIGHT-REBUILD a replacement doorway never presents or selects a claimed child as pending', () => {
   const { f, first, aggregate } = setup();
   value(f.api.dispatch(first, f.fence));

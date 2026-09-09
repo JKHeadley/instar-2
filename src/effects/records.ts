@@ -63,6 +63,26 @@ export const effectShapes: Readonly<Record<string, OwnedShape>> = freeze({
     settlements: { kind: 'array', maxLength: 64, items: aggregateSettlement }, state: text,
     openEvidence: refs, openCharge: refs, openRecovery: refs, reconciliationOwner: text } },
 });
+// These are the exact shapes that existed before typed payloads were added.
+// Legacy records must take this path before any additive optional-field logic so
+// even refusal details retain their original byte representation.
+const legacyEffectShapes: Readonly<Record<string, OwnedShape>> = freeze({
+  OperationDefinition: { kind: 'object', fields: { ...common, feature: text, version: text, generation: text,
+    adapter: text, account: text, conversation: text, speaker: text, scopeDigest: text, durability: text,
+    replicas: integer, lossModel: text, maxBytes: integer, maxCharge: integer, timeout: integer, verificationBar: text } },
+  OutboundMessage: { kind: 'object', fields: { ...common, semanticMessage: text, run: text, speaker: text,
+    account: text, conversation: text, text: { kind: 'text', maxLength: 4096 }, purpose: text, sourceResult: text } },
+  EffectRequest: { kind: 'object', fields: { ...common, definition: text, message: text, semanticMessage: text,
+    run: text, pending: text, attempt: text, digest: text, verificationOwner: text, verificationBar: text,
+    obligation: text, closure: refs } },
+  EffectValidation: effectShapes.EffectValidation!,
+  OperationObservation: { kind: 'object', fields: { ...common, request: text, operation: text, claim: text,
+    digest: text, account: text, conversation: text, stage: text, wake: text, capture, attestation: text } },
+  EffectSettlement: { kind: 'object', fields: { ...common, request: text, operation: text, claim: text,
+    reservation: text, digest: text, acceptance: text, observations: refs, outcome,
+    finalCharge: text, delayedExecutionExcluded: { kind: 'boolean' }, retainedExposure: integer,
+    retryEligible: { kind: 'boolean' } } },
+});
 export const kindFor = (name: string) => `effect-${name}`;
 export function wire(r: EffectRecord): Json {
   return json(r.type === 'EffectSettlement' ? { ...r, finalCharge: r.finalCharge === null ? 'unknown' : String(r.finalCharge) } : r);
@@ -86,6 +106,31 @@ function shapeCheck(v: unknown, shape: OwnedShape): void {
   ensure(Object.keys(r).every(k => Object.hasOwn(shape.fields, k))
     && Object.keys(shape.fields).filter(k => !optional.has(k)).every(k => Object.hasOwn(r, k)), 'missing or undeclared field');
   for (const [k, s] of Object.entries(shape.fields)) if (Object.hasOwn(r, k)) shapeCheck(r[k], s);
+}
+function legacyShapeCheck(v: unknown, shape: OwnedShape): void {
+  if (shape.kind === 'text') { ensure(typeof v === 'string' && v.length <= shape.maxLength, 'bounded text required'); return; }
+  if (shape.kind === 'integer') { ensure(Number.isSafeInteger(v), 'safe integer required'); return; }
+  if (shape.kind === 'boolean') { ensure(typeof v === 'boolean', 'boolean required'); return; }
+  if (shape.kind === 'array') { ensure(Array.isArray(v) && v.length <= shape.maxLength, 'bounded array required'); v.forEach(i => legacyShapeCheck(i, shape.items)); return; }
+  if (shape.kind === 'capture') { legacyShapeCheck(v, { kind: 'object', fields: { reference: text, hash: text } }); return; }
+  ensure(shape.kind === 'object' && v && typeof v === 'object' && !Array.isArray(v), 'closed object required');
+  const r = v as Record<string, unknown>;
+  ensure(Object.keys(r).length === Object.keys(shape.fields).length, 'missing or undeclared field');
+  for (const [k, s] of Object.entries(shape.fields)) { ensure(Object.hasOwn(r, k), `missing ${k}`); legacyShapeCheck(r[k], s); }
+}
+function legacyRecord(name: string, input: unknown): boolean {
+  if (!Object.hasOwn(legacyEffectShapes, name) || !input || typeof input !== 'object' || Array.isArray(input)) return false;
+  const value = input as Record<string, unknown>;
+  if (name === 'OperationDefinition') return value.payloadKind === undefined && value.inputSchema === undefined
+    && value.canonicalization === undefined && value.observationCapabilities === undefined;
+  if (name === 'EffectRequest') return value.payload === undefined && value.payloadDigest === undefined && value.binding === undefined;
+  if (name === 'OperationObservation') return value.refusal === undefined;
+  if (name === 'EffectSettlement') return value.refusal === undefined && value.retryClosure === undefined;
+  return true;
+}
+function recordShapeCheck(name: string, input: unknown): void {
+  if (legacyRecord(name, input)) legacyShapeCheck(input, legacyEffectShapes[name]!);
+  else shapeCheck(input, effectShapes[name]!);
 }
 export function live(host: EffectHost): void {
   const c = host.current(); ensure(!c.stopped, 'stop inhibits effect');
@@ -412,12 +457,22 @@ export function registerEffectBodies(host: EffectHost): Result<readonly OwnedBod
     name, owner: 'part-eight', currentVersion: 1, versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
     decodeCurrent: (input, c) => {
       try {
-        shapeCheck(input, shape);
+        recordShapeCheck(name, input);
         ensure(c.origin.machine === host.machine && c.origin.principal.id === host.principal.id
           && c.origin.principal.kind === host.principal.kind, 'foreign effect recorder');
         const r = recordFrom({ body: { record: input } } as unknown as FactEnvelope);
         ensure(r.type === name, 'owned type mismatch');
-        validate(r, causalCone(c.origin, c.facts.facts), host, c.mode === 'origin', c.origin.at);
+        const historicalCaptures: Record<string, string> = { ...host.current().decode.captures,
+          ...Object.fromEntries(Object.entries(c.facts.captures)
+            .filter(([, captured]) => captured.status === 'available' && captured.bytes !== null)
+            .map(([reference, captured]) => [reference, captured.bytes!])) };
+        for (const [reference, captured] of Object.entries(c.facts.captures))
+          if (captured.status !== 'available') delete historicalCaptures[reference];
+        const historicalStatuses = { ...(host.current().decode as { captureStatuses?: Readonly<Record<string, string>> }).captureStatuses,
+          ...Object.fromEntries(Object.entries(c.facts.captures).map(([reference, captured]) => [reference, captured.status])) };
+        const validationHost = c.mode === 'historical' ? { ...host, current: () => ({ ...host.current(), clock: c.origin.at,
+          decode: { ...c.facts.decode, captures: historicalCaptures, captureStatuses: historicalStatuses } }) } : host;
+        validate(r, causalCone(c.origin, c.facts.facts), validationHost, c.mode === 'origin', c.origin.at);
         return { ok: true, value: freeze(input) };
       } catch (e) { return { ok: false, detail: e instanceof Error ? e.message : 'effect record refused' }; }
     },
@@ -425,7 +480,7 @@ export function registerEffectBodies(host: EffectHost): Result<readonly OwnedBod
 }
 export function decodeOutboundMessage(input: unknown, host: EffectHost): Result<OutboundMessage> {
   return boundary('OutboundMessageInput', input, host.boundary, () => {
-    const safe = json(input); shapeCheck(safe, effectShapes.OutboundMessage!);
+    const safe = json(input); legacyShapeCheck(safe, legacyEffectShapes.OutboundMessage!);
     const m = safe as unknown as OutboundMessage;
     ensure(m.type === 'OutboundMessage' && m.schemaVersion === 1 && m.id.length > 0 && m.purpose === 'ordinary-reply'
       && m.speaker === host.principal.id && m.text.length > 0, 'message identity, purpose or speaker');
@@ -441,7 +496,7 @@ export function createEffectSpine(host: EffectHost, author: EffectAuthor, store:
 }
 export function installOperationDefinition(input: unknown, host: EffectHost, spine: EffectSpine): Result<OperationDefinition> {
   return boundary('OperationDefinitionInput', input, host.boundary, () => {
-    const safe = json(input); shapeCheck(safe, effectShapes.OperationDefinition!);
+    const safe = json(input); recordShapeCheck('OperationDefinition', safe);
     const d = safe as unknown as OperationDefinition; definitionCheck(d, host);
     take(spine.append(d, host.current().authority)); return freeze(d);
   });
