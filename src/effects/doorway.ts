@@ -350,8 +350,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
         ensure(encoded(stored.record).bytes === encoded(input.settlement).bytes, 'aggregate settlement is not recorded unchanged');
         next = childFromSettlement(prior.record.children[childIndex]!, input.settlement); required.push(stored.fact.id);
       } else {
-        const refusal = input.refusal!;
-        ensure(refusal.type === 'Result' && refusal.schemaVersion === 1 && refusal.kind === 'Refused', 'aggregate refusal is not typed');
+        const refusal = consumeResult(input.refusal!, { Success: () => { throw new Error('aggregate refusal is not typed'); }, Refused: value => value });
         next = childFromRefusal(prior.record.children[childIndex]!, refusal);
       }
       const settlements = prior.record.settlements.map((row, index) => index === childIndex ? next : row);

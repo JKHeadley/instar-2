@@ -1,4 +1,4 @@
-import { decode, decodeMeasurement, grantLiveness, isValid, scopeIncludes } from '../index.js';
+import { consumeOutcome, decode, decodeMeasurement, grantLiveness, isValid, scopeIncludes } from '../index.js';
 import type { Json, Result } from '../index.js';
 import { authorAndAppend, causalCone, registerOwnedBody, walkVersions } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
@@ -249,7 +249,8 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
       ensure(r.observations.length > 0 && r.observations.every(id => find(id, 'OperationObservation').operation === r.operation), 'settlement evidence binding');
       ensure(r.acceptance.length > 0 && past.some(f => f.id === r.acceptance), 'independent acceptance absent');
       ensure(r.retryEligible === false && r.retainedExposure >= 0 && (r.finalCharge === null || Number.isSafeInteger(r.finalCharge) && r.finalCharge >= 0), 'invalid charge or forbidden retry');
-      if (q.payload) ensure(r.retryClosure?.didNotHappen === (r.outcome.kind === 'did-not-happen')
+      const didNotHappen = consumeOutcome(r.outcome, { happened: () => false, 'did-not-happen': () => true, uncertain: () => false });
+      if (q.payload) ensure(r.retryClosure?.didNotHappen === didNotHappen
         && r.retryClosure.quiescent === r.delayedExecutionExcluded && r.retryClosure.chargeSettled === (r.finalCharge !== null),
       'typed retry three-closure evidence mismatch');
       else ensure(r.retryClosure === undefined, 'legacy settlement bytes changed');
