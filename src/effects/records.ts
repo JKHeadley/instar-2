@@ -1,4 +1,4 @@
-import { consumeOutcome, decode, decodeMeasurement, grantLiveness, isValid, readEvidence, scopeIncludes } from '../index.js';
+import { consumeOutcome, consumeResult, decode, decodeMeasurement, grantLiveness, isValid, readEvidence, scopeIncludes } from '../index.js';
 import type { Json, Result } from '../index.js';
 import { authorAndAppend, causalCone, registerOwnedBody, walkVersions } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
@@ -135,9 +135,12 @@ function recordShapeCheck(name: string, input: unknown): void {
 function refusalCheck(input: unknown, host: EffectHost): void {
   const value = input as Readonly<Record<string, unknown>>;
   const decoded = take(decode('Result', { type: 'Result', schemaVersion: 1, kind: 'Refused', ...value }, host.current().decode));
-  ensure(decoded.kind === 'Refused' && encoded({ reason: decoded.reason, detail: decoded.detail, site: decoded.site,
-    failDirection: decoded.failDirection, preserved: decoded.preserved }).bytes === encoded(input).bytes,
-  'effect refusal is not the existing closed Refused value');
+  consumeResult(decoded, {
+    Success: () => { throw new Error('effect refusal is not the existing closed Refused value'); },
+    Refused: refusal => ensure(encoded({ reason: refusal.reason, detail: refusal.detail, site: refusal.site,
+      failDirection: refusal.failDirection, preserved: refusal.preserved }).bytes === encoded(input).bytes,
+    'effect refusal is not the existing closed Refused value'),
+  });
 }
 export function live(host: EffectHost): void {
   const c = host.current(); ensure(!c.stopped, 'stop inhibits effect');
