@@ -64,6 +64,8 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       && capabilities.maxCharge <= d.record.maxCharge && capabilities.timeout === d.record.timeout
       && capabilities.hiddenRetries === 0, 'adapter mode or actual target mismatch');
     if (!q.payload) {
+      ensure(d.record.payloadKind === undefined || d.record.payloadKind === 'ordinary-reply',
+        'ordinary reply does not match operation definition');
       const m = find(q.message, 'OutboundMessage');
       ensure(capabilities.account === m.record.account && capabilities.conversation === m.record.conversation,
         'adapter mode or actual target mismatch');
@@ -204,6 +206,19 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       // later children remain inhibited until evidence settles it.
       return freeze({ ...row, disposition: 'uncertain' as const, applied: false });
     });
+    for (let index = 0; index < settlements.length; index++) {
+      const row = settlements[index]!;
+      if (!row.settlement) continue;
+      try {
+        const stored = find(row.settlement, 'EffectSettlement').record;
+        consumeStoredSettlement(stored, current => {
+          ensure(encoded(current).bytes === encoded(stored).bytes, 'aggregate child settlement is stale or no longer witnessed');
+        });
+      } catch {
+        reconstructed = true;
+        settlements[index] = freeze({ ...row, disposition: 'uncertain' as const });
+      }
+    }
     if (!reconstructed) return { record: aggregate, reconstructed: false };
     const obligations = aggregateObligations(aggregate.children, settlements);
     return { record: freeze({ ...aggregate, settlements, state: aggregateState(aggregate.children, settlements), ...obligations }), reconstructed: true };
@@ -476,14 +491,25 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
         'refusal is not recorded for the exact child request/digest/source result');
         const reservations = take(transport.inspect()).filter(row => row.record.type === 'AdmissionReservation'
           && row.record.request === input.request);
-        const reservation = reservations.at(-1);
-        ensure(reservation?.record.type === 'AdmissionReservation' && reservation.record.state === 'prepared',
-          'unrelated refusal cannot terminalize claimed or closed work');
-        ensure(input.fence, 'prepared refusal requires a current Part Six close fence');
-        take(transport.close(`close-refused:${encoded([request.id, request.digest, refusalRecord.record.id]).hash}`,
-          input.fence, reservation.record.operation));
-        const closed = take(transport.inspect()).filter(row => row.record.type === 'AdmissionReservation'
-          && row.record.request === input.request).at(-1);
+        const reservation = reservations.find(row => row.record.type === 'AdmissionReservation' && row.record.state === 'prepared');
+        ensure(reservation?.record.type === 'AdmissionReservation', 'refusal has no matching prepared operation');
+        const operationId = (reservation.record as AdmissionReservation).operation;
+        const closeCommand = `close-refused:${encoded([request.id, request.digest, refusalRecord.record.id]).hash}`;
+        let closed = reservations.find(row => row.record.type === 'AdmissionReservation'
+          && row.record.state === 'closed' && row.record.operation === operationId
+          && row.record.command === closeCommand);
+        const claimed = reservations.some(row => row.record.type === 'AdmissionReservation'
+          && row.record.operation === operationId && ['dispatch-claimed', 'consumed'].includes(row.record.state));
+        ensure(!claimed, 'unrelated refusal cannot terminalize claimed work');
+        if (!closed) {
+          const latest = reservations.at(-1);
+          ensure(latest?.record.type === 'AdmissionReservation'
+            && latest.record.state === 'prepared', 'unrelated refusal cannot terminalize closed work');
+          ensure(input.fence, 'prepared refusal requires a current Part Six close fence');
+          take(transport.close(closeCommand, input.fence, operationId));
+          closed = take(transport.inspect()).filter(row => row.record.type === 'AdmissionReservation'
+            && row.record.request === input.request).at(-1);
+        }
         ensure(closed?.record.type === 'AdmissionReservation' && closed.record.state === 'closed',
           'prepared refusal lacks a Part Six no-claim disposition');
         next = childFromRefusal(prior.record.children[childIndex]!, refusal, refusalRecord.record.id);

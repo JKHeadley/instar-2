@@ -1,4 +1,4 @@
-import { consumeOutcome, decode, decodeMeasurement, grantLiveness, isValid, scopeIncludes } from '../index.js';
+import { consumeOutcome, decode, decodeMeasurement, grantLiveness, isValid, readEvidence, scopeIncludes } from '../index.js';
 import type { Json, Result } from '../index.js';
 import { authorAndAppend, causalCone, registerOwnedBody, walkVersions } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
@@ -143,6 +143,11 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     const d = find(r.definition, 'OperationDefinition');
     if (r.payload === undefined) {
       const m = find(r.message, 'OutboundMessage');
+      ensure(d.payloadKind === undefined || d.payloadKind === 'ordinary-reply'
+        && d.inputSchema === effectOperationContracts['ordinary-reply'].inputSchema
+        && d.canonicalization === effectOperationContracts['ordinary-reply'].canonicalization
+        && encoded(d.observationCapabilities).bytes === encoded(effectOperationContracts['ordinary-reply'].observations).bytes,
+      'ordinary reply does not match operation definition');
       ensure(r.id === `request:${encoded([m.account, m.conversation, m.semanticMessage]).hash}`, 'stable semantic identity required');
       ensure(r.digest === encoded(m).hash && r.semanticMessage === m.semanticMessage && r.run === m.run, 'request/message binding');
       ensure(m.account === d.account && m.conversation === d.conversation && m.speaker === d.speaker
@@ -307,21 +312,78 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
         ensure(r.acceptance.length > 0 && acceptance, 'independent acceptance absent');
       } else {
         const acceptanceRecord = acceptance ? (acceptance.body as { record?: Record<string, unknown> }).record : undefined;
-        const marker = acceptance?.kind === 'note'
-          && typeof (acceptance.body as { identity?: unknown }).identity === 'string'
-          && (acceptance.body as { identity: string }).identity.includes('nine assessment STAND-IN');
-        const assemblyStandIn = acceptance?.kind === 'slice-delivery-evidence'
-          && (acceptance.body as { operation?: unknown }).operation === r.operation
-          && encoded((acceptance.body as { outcome?: unknown }).outcome).bytes === encoded(r.outcome).bytes;
-        ensure(r.acceptance.length > 0 && acceptance
-          && (acceptance.kind === 'verification-VerificationAssessment' || marker || assemblyStandIn),
+        ensure(r.acceptance.length > 0 && acceptance?.kind === 'verification-VerificationAssessment',
         'independent acceptance absent or wrong kind');
-        if (acceptance?.kind === 'verification-VerificationAssessment') ensure(acceptanceRecord?.type === 'VerificationAssessment'
+        ensure(acceptanceRecord?.type === 'VerificationAssessment'
           && acceptanceRecord.operation === r.operation && acceptanceRecord.attempt === q.attempt
           && acceptanceRecord.operationDigest === r.digest
           && typeof acceptanceRecord.validFrom === 'number' && typeof acceptanceRecord.validUntil === 'number'
           && acceptanceRecord.validFrom <= at.value && acceptanceRecord.validUntil >= at.value,
         'independent acceptance subject, attempt, digest, or freshness mismatch');
+        const requestFact = past.find(fact => fact.kind === 'verification-VerificationRequest'
+          && (fact.body as { record?: { id?: string } }).record?.id === acceptanceRecord.request);
+        const verificationRequest = requestFact ? (requestFact.body as { record?: Record<string, unknown> }).record : undefined;
+        ensure(requestFact && verificationRequest?.type === 'VerificationRequest'
+          && verificationRequest.operation === r.operation && verificationRequest.attempt === q.attempt
+          && verificationRequest.operationDigest === r.digest && verificationRequest.barVersion === acceptanceRecord.barVersion
+          && Array.isArray(acceptanceRecord.predecessors) && acceptanceRecord.predecessors.includes(requestFact.id),
+        'independent acceptance request lineage or binding mismatch');
+        const planFact = past.find(fact => fact.kind === 'verification-VerificationPlan'
+          && (fact.body as { record?: { id?: string } }).record?.id === verificationRequest.plan);
+        const verificationPlan = planFact ? (planFact.body as { record?: Record<string, unknown> }).record : undefined;
+        const bar = verificationPlan?.bar && typeof verificationPlan.bar === 'object' && !Array.isArray(verificationPlan.bar)
+          ? verificationPlan.bar as Readonly<Record<string, unknown>> : undefined;
+        ensure(planFact && verificationPlan?.type === 'VerificationPlan' && bar?.version === acceptanceRecord.barVersion
+          && Array.isArray(verificationRequest.predecessors) && verificationRequest.predecessors.includes(planFact.id),
+        'independent acceptance plan/bar lineage mismatch');
+        ensure(Array.isArray(acceptanceRecord.captureStatuses)
+          && acceptanceRecord.captureStatuses.every(item => item && typeof item === 'object'
+            && !Array.isArray(item) && (item as { status?: unknown }).status === 'available')
+          && Array.isArray(acceptanceRecord.taints) && acceptanceRecord.taints.length === 0,
+        'independent acceptance has unavailable or tainted evidence');
+        const predicates = Array.isArray(acceptanceRecord.predicates)
+          ? acceptanceRecord.predicates as readonly Readonly<Record<string, unknown>>[] : [];
+        const predicate = (name: string) => {
+          const matches = predicates.filter(row => row.predicate === name);
+          ensure(matches.length === 1 && ['satisfied', 'contradicted', 'insufficient'].includes(String(matches[0]!.verdict)),
+            'independent acceptance predicate set is incomplete');
+          return matches[0]!;
+        };
+        const occurrence = predicate('occurrence'), nonOccurrence = predicate('non-occurrence');
+        const quiescence = predicate('quiescence'), charge = predicate('charge');
+        const assessmentEvidence = Array.isArray(acceptanceRecord.evidence) ? acceptanceRecord.evidence as readonly string[] : [];
+        ensure(predicates.every(row => Array.isArray(row.evidence)
+          && (row.evidence as readonly unknown[]).every(id => typeof id === 'string' && assessmentEvidence.includes(id))),
+        'independent acceptance predicate evidence is inconsistent');
+        const acceptedOutcome = occurrence.verdict === 'satisfied' ? 'happened'
+          : nonOccurrence.verdict === 'satisfied' && quiescence.verdict === 'satisfied' ? 'did-not-happen' : 'uncertain';
+        const acceptedEvidence = [...new Set((acceptedOutcome === 'happened' ? occurrence.evidence
+          : acceptedOutcome === 'did-not-happen' ? [...(nonOccurrence.evidence as readonly string[]), ...(quiescence.evidence as readonly string[])]
+            : assessmentEvidence) as readonly string[])];
+        const decodedOutcome = take(decode('Outcome', { type: 'Outcome', schemaVersion: 1, kind: acceptedOutcome,
+          evidence: acceptedEvidence }, { ...host.current().decode, now: at }));
+        ensure(encoded(decodedOutcome).bytes === encoded(r.outcome).bytes
+          && r.delayedExecutionExcluded === (quiescence.verdict === 'satisfied'),
+        'typed settlement differs from nine-owned outcome or delayed-execution conclusion');
+        let acceptedCharge: number | null = null;
+        if (charge.verdict === 'satisfied') {
+          const ids = Array.isArray(charge.evidence) ? charge.evidence as readonly string[] : [];
+          ensure(ids.length > 0, 'charge conclusion lacks evidence');
+          for (const id of ids) {
+            const evidence = host.current().decode.evidence?.find(item => item.id === id);
+            ensure(evidence, 'charge conclusion evidence is absent');
+            const claim = take(readEvidence(take(decode('Evidence', evidence, host.current().decode)), at, host.boundary.preserved));
+            if (claim.subject !== r.operation || claim.predicate !== 'charge-settled'
+              || !claim.value || typeof claim.value !== 'object' || Array.isArray(claim.value)) continue;
+            const amount = (claim.value as Readonly<Record<string, Json>>).amount;
+            const digest = (claim.value as Readonly<Record<string, Json>>).digest;
+            if (digest === r.digest && typeof amount === 'number' && Number.isSafeInteger(amount) && amount >= 0) acceptedCharge = amount;
+          }
+          ensure(acceptedCharge !== null, 'charge conclusion lacks an exact bound operation amount');
+        }
+        ensure(r.finalCharge === acceptedCharge
+          && r.retainedExposure === (acceptedOutcome === 'uncertain' || acceptedCharge === null ? op.r.charge : acceptedCharge),
+        'typed settlement differs from nine-owned charge conclusion');
       }
       ensure(r.retryEligible === false && r.retainedExposure >= 0 && (r.finalCharge === null || Number.isSafeInteger(r.finalCharge) && r.finalCharge >= 0), 'invalid charge or forbidden retry');
       const didNotHappen = consumeOutcome(r.outcome, { happened: () => false, 'did-not-happen': () => true, uncertain: () => false });

@@ -2,14 +2,18 @@ import { existsSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { canonical, decode } from '../../src/index.js';
-import type { Json } from '../../src/index.js';
+import type { Json, Result } from '../../src/index.js';
 import { authorAndAppend, createFactStore, hashBytes } from '../../src/facts/index.js';
 import type { CapturedContent, FactContext, FactSchema, FactStorePort, GovernedVersion, OwnedBodyRegistration } from '../../src/facts/index.js';
 import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, registerTransportBodies, transportSchemas } from '../../src/transport/index.js';
 import type { TransportHost } from '../../src/transport/index.js';
 import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, decodeOutboundMessage, effectOperationContracts, effectSchemas, installOperationDefinition, registerEffectBodies } from '../../src/effects/index.js';
 import type { ConversationEffectKind, EffectComposition, EffectHost, EffectAssessmentPort, OperationAdapterPort, RecoveryEffectKind } from '../../src/effects/index.js';
+import { createEffectAssessmentPort, createVerificationRuntime, createVerificationSpine,
+  registerVerificationBodies, verificationSchemas } from '../../src/verification/index.js';
+import type { VerificationHost } from '../../src/verification/index.js';
 import { factsFixture, privateKey, value, refused, json } from '../facts/fixtures.js';
+import { verificationInput } from '../verification/fixture.js';
 // @ts-expect-error Reference physical host is JavaScript, outside pure core compilation.
 import { createTransportFileStorage } from '../../scripts/transport-file-storage.mjs';
 // @ts-expect-error Reference physical host is JavaScript, outside pure core compilation.
@@ -29,11 +33,16 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
   const boundary = { ...f.c, register };
   let now = 100, stopped = false;
   let authority: string[] = [], versions: GovernedVersion[] = [];
+  let assessmentRevision = 0;
   let referenceStore: FactStorePort | undefined;
+  let ctx!: FactContext;
   const result = <T>(run: () => T) => f.success(run());
   const custody = createEffectFileCaptures([join(directory, 'origin-captures'), join(directory, 'peer-captures')], result);
   const host: EffectHost = { machine: 'machine-a', incarnation, principal: f.bob, scope: f.scope, boundary,
-    current: () => ({ decode: decodeContext, clock: f.clock(now), stopped, versions, authority }),
+    current: () => ({ decode: { ...decodeContext, captures: { ...decodeContext.captures,
+      ...Object.fromEntries(Object.entries(custody.captures as Record<string, CapturedContent>).flatMap(([reference, captured]) =>
+        captured.status === 'available' && captured.bytes !== null ? [[reference, captured.bytes]] : [])) } },
+      clock: f.clock(now), stopped, versions, authority }),
     capture: custody.capture,
     referenceFacts: () => result(() => {
       if (!referenceStore) throw new Error('reference store not initialized');
@@ -45,23 +54,36 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
       return join(realpathSync(cursor), ...suffix);
     }),
   };
+  const verificationHost: VerificationHost = { machine: host.machine, principal: host.principal, scope: host.scope, boundary: host.boundary,
+    current: () => {
+      if (!referenceStore) throw new Error('verification fixture store not initialized');
+      const evidenceCaptures: Record<string, CapturedContent> = Object.fromEntries(Object.entries(f.captures).map(([reference, bytes]) => [reference,
+        { hash: hashBytes(bytes), bytes, status: 'available' as const, byteLength: Buffer.byteLength(bytes) }]));
+      const facts = { ...ctx, facts: value(referenceStore.read()), captures: { ...ctx.captures, ...evidenceCaptures },
+        folded: { ...ctx.folded, 'fixture-evidence': { epoch: 0, position: assessmentRevision } } };
+      return { decode: { ...decodeContext, evidence: f.evidence, captures: f.captures }, clock: f.clock(now), generation: register.generation.id,
+        stopped, facts, evidence: f.evidence };
+    } };
   const transportHost: TransportHost = { domain: 'conversation:1', machine: host.machine, incarnation,
     authorityIncarnation: 'authority:1', principal: host.principal, scope: host.scope, maxLeaseTerm: 1000, budget: 100,
     monotonic: () => now, current: () => ({ decode: decodeContext, clock: f.clock(now), generation: register.generation, stopped }) };
   const extension = extensions?.(host) ?? { schemas: [], ownedBodies: [] };
   const witnessKinds = ['run-opening', 'run-transition', 'intake-admitted', 'intake-receipt',
-    'judgment-JudgmentAttemptRecord', 'process-incarnation', 'process-parent', 'process-start',
+    'judgment-JudgmentRequest', 'judgment-JudgmentAttemptRecord', 'process-incarnation', 'process-parent', 'process-start',
     'scheduler-job-generation', 'account-route-generation', 'configuration-target-state',
-    'filesystem-target-state', 'git-target-state'];
+    'filesystem-target-state', 'protected-target-policy', 'git-target-state', 'capture-record',
+    'conversation-message', 'infrastructure-provenance', 'infrastructure-episode'];
   const witnessSchemas: FactSchema[] = witnessKinds.map(kind => ({ ...f.schema, kind,
     fields: { witness: { kind: 'text', maxLength: 65536 } } }));
   const resultSchema: FactSchema = { ...f.schema, kind: 'result-record', fields: {
     run: { kind: 'text', maxLength: 512 }, step: { kind: 'text', maxLength: 512 }, logicalEffect: { kind: 'text', maxLength: 512 },
     result: { kind: 'constitutional', type: 'Result' },
   } };
-  const ctx: FactContext = { ...f.ctx, decode: decodeContext, get captures(): Record<string, CapturedContent> { return custody.captures; },
-    schemas: [f.schema, resultSchema, ...witnessSchemas, ...transportSchemas(transportHost), ...effectSchemas(host), ...extension.schemas],
-    ownedBodies: [...value(registerTransportBodies(transportHost, boundary, consumeEffectSettlement)), ...value(registerEffectBodies(host)), ...extension.ownedBodies] };
+  ctx = { ...f.ctx, decode: decodeContext, get captures(): Record<string, CapturedContent> { return custody.captures; },
+    schemas: [f.schema, resultSchema, ...witnessSchemas, ...transportSchemas(transportHost), ...effectSchemas(host),
+      ...verificationSchemas(verificationHost), ...extension.schemas],
+    ownedBodies: [...value(registerTransportBodies(transportHost, boundary, consumeEffectSettlement)), ...value(registerEffectBodies(host)),
+      ...value(registerVerificationBodies(verificationHost)), ...extension.ownedBodies] };
   const peer = createFactStore(ctx, createTransportFileStorage(join(directory, 'peer'), result));
   const replicas = createEffectReplicaStorage(join(directory, 'origin'), { id: 'fixture-peer-directory', store: peer }, result);
   const store = createFactStore(ctx, replicas.storage);
@@ -84,12 +106,21 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
   const kind = String(definitionOverrides.payloadKind ?? 'post-text');
   const stepId = `step:${kind}`, logicalEffect = `logical:${kind}:1`;
   const pending = sourceFor(stepId, logicalEffect).source;
+  Object.assign(host, { fixtureSourceResult: pending.id });
   reference('run-opening', { type: 'Run', id: 'run:1', run: 'run:1' });
   reference('run-transition', { run: 'run:1', step: { id: 'step:transcript', run: 'run:1', operation: { key: 'logical:transcript-output' }, evidence: [pending.id] } });
-  reference('intake-admitted', { id: 'intake:1', account: 'bot:fixture', conversation: 'chat:fixture' });
-  reference('intake-receipt', { id: 'intake:1', account: 'bot:fixture', conversation: 'chat:fixture', platformFile: 'provider-file:1' });
-  reference('judgment-JudgmentAttemptRecord', { record: { type: 'JudgmentAttemptRecord', id: 'provider:transcribe', operation: 'provider:transcribe',
-    run: 'run:1', step: 'step:transcript', model: 'model:1', sourceCapture: { reference: 'capture:audio', hash: hashBytes('audio') }, originatingIntake: 'intake:1' } });
+  const mediaCapture = value(host.capture('media'));
+  const audioCapture = value(host.capture('audio'));
+  Object.assign(host, { fixtureMediaCapture: mediaCapture, fixtureAudioCapture: audioCapture });
+  const submittedCapture = value(host.capture(JSON.stringify({ model: 'model:1' })));
+  const responseCapture = value(host.capture(JSON.stringify({ transcript: 'fixture transcript' })));
+  reference('intake-receipt', { id: 'receipt:1', adapter: 'bot:fixture', ingress: JSON.stringify({ channel: 'chat:fixture',
+    sender: 'sender:fixture', identityEpoch: 'epoch:1', eventId: 'event:1' }), platformFile: 'provider-file:1', capture: audioCapture });
+  reference('intake-admitted', { id: 'intake:1', adapter: 'bot:fixture', channel: 'chat:fixture', receipt: 'receipt:1', binding: 'none' });
+  reference('judgment-JudgmentRequest', { record: { type: 'JudgmentRequest', id: 'judgment-request:transcribe', run: 'run:1',
+    step: 'step:transcript', question: audioCapture, context: audioCapture, submitted: submittedCapture } });
+  reference('judgment-JudgmentAttemptRecord', { record: { type: 'JudgmentAttemptRecord', id: 'provider:transcribe',
+    request: 'judgment-request:transcribe', phase: 'response-observed', operation: 'provider-operation:transcribe', receipt: responseCapture } });
   const process = { machine: 'machine-a', processId: 'process:1', processIncarnation: 'process:1:incarnation:2', parentIdentity: 'parent:1',
     startIdentity: 'start:1', executable: '/usr/bin/node', arguments: ['worker.mjs'], status: 'current', validFrom: 0, validUntil: 1000 };
   reference('process-incarnation', { ...process, id: process.processIncarnation });
@@ -105,9 +136,17 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
   reference('filesystem-target-state', { id: 'policy:protected-targets:1', policy: 'policy:protected-targets:1',
     targets: [{ canonicalPath: '/project/state.json', resolvedPath: '/project/state.json', ancestryDigest: prior, priorDigest: prior }],
     status: 'current', validFrom: 0, validUntil: 1000 });
+  reference('protected-target-policy', { id: 'policy:protected-targets:1', decision: 'allowed',
+    targets: ['/project/state.json'], status: 'current', validFrom: 0, validUntil: 1000 });
   reference('git-target-state', { id: 'sha:base', repository: '/project/repo', worktree: '/project/repo', ref: 'refs/heads/main', base: 'sha:base',
     targets: ['src/file.ts'], expectedHeads: [{ ref: 'refs/heads/main', digest: prior }], rollbackConstraints: ['only-if-head-unchanged'],
     status: 'current', validFrom: 0, validUntil: 1000 });
+  reference('capture-record', { id: 'capture:media', reference: 'capture:media', hash: hashBytes('media'), status: 'available' });
+  reference('capture-record', { id: 'capture:audio', reference: 'capture:audio', hash: hashBytes('audio'), status: 'available' });
+  reference('conversation-message', { id: 'message:7', message: 'message:7', account: 'bot:fixture', conversation: 'chat:fixture',
+    status: 'current', validFrom: 0, validUntil: 1000 });
+  reference('infrastructure-provenance', { id: 'monitor:watchdog:1', episode: 'episode:1', status: 'current', validFrom: 0, validUntil: 1000 });
+  reference('infrastructure-episode', { id: 'episode:1', provenance: 'monitor:watchdog:1', status: 'current', validFrom: 0, validUntil: 1000 });
   authority = [pending.id];
   const definition = { type: 'OperationDefinition', schemaVersion: 1, id: 'reply-definition:1', feature: 'reply', version: 'reply-version:1',
     generation: register.generation.id, adapter: 'telegram-fixture', account: 'bot:fixture', conversation: 'chat:fixture',
@@ -137,36 +176,33 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
     } : {}),
     observe: () => { queries++; return f.success(JSON.stringify({ status: 'unknown', reason: 'Telegram-shaped fixture has no decisive negative lookup' })); },
   };
-  let assessmentState: 'happened' | 'uncertain' = 'uncertain';
-  let finalCharge: number | null = null;
-  let delayedExecutionExcluded = false, assessmentAvailable = true, assessmentGuards = 0;
-  let acceptanceId = '';
-  let assessmentEvidence = '';
-  const mutableAssessment = () => { if (assessmentGuards) throw new Error('assessment held by synchronous consumer'); };
-  const assessmentView = (ref: Parameters<EffectAssessmentPort['read']>[0], input: Parameters<EffectAssessmentPort['read']>[1]) => {
-    if (!assessmentAvailable) throw new Error('assessment withdrawn');
-    if (ref.id !== acceptanceId || !input.observations.length) throw new Error('assessment binding');
-    return Object.freeze({ outcome: value(decode('Outcome', { type: 'Outcome', schemaVersion: 1, kind: assessmentState, evidence: [assessmentEvidence] }, decodeContext)),
-      finalCharge, delayedExecutionExcluded, required: Object.freeze([acceptanceId]) });
+  const verificationSpine = createVerificationSpine(verificationHost, { context: ctx, privateKey }, store);
+  const verificationRuntime = createVerificationRuntime(verificationHost, verificationSpine);
+  value(verificationRuntime.record('VerificationPlan', { ...verificationInput('VerificationPlan'), id: 'typed-effect-verification-plan',
+    subject: { ...verificationInput('VerificationPlan').subject, generation: register.generation.id },
+    bar: { ...verificationInput('VerificationPlan').bar, version: definition.verificationBar, sources: ['probe'] } }));
+  const realAssessment = createEffectAssessmentPort(verificationHost, verificationRuntime);
+  let assessmentState: 'happened' | 'did-not-happen' | 'uncertain' = 'uncertain', finalCharge: number | null = null;
+  let delayedExecutionExcluded = false, assessmentAvailable = true;
+  const syncAssessmentEvidence = (operation: string, digest: string) => {
+    f.evidence.splice(0, f.evidence.length, ...f.evidence.filter(item => !item.id.startsWith('typed-effect-evidence:')));
+    const inputs = [
+      ['occurred', 'operation-occurred', assessmentState === 'happened', undefined],
+      ['not-occurred', 'operation-did-not-occur', assessmentState !== 'happened', undefined],
+      ['quiescent', 'old-executor-quiescent', delayedExecutionExcluded, undefined],
+      ['charged', 'charge-settled', finalCharge !== null, finalCharge ?? 0],
+    ] as const;
+    for (const [name, predicate, supported, amount] of inputs) f.evidence.push(value(decode('Evidence', f.evidenceInput({ id: `typed-effect-evidence:${operation}:${name}`,
+      claim: { subject: operation, predicate, value: { digest, ...(amount === undefined ? {} : { amount }) } },
+      source: 'probe', observedAt: f.clock(now), freshFor: 100, strength: supported ? 'proof' : 'inference' }), decodeContext)));
   };
-  // EXPLICIT nine stand-in. It records a note, not a counterfeit P9 fact/type.
-  // No production claim or automatic retry may rely on this fixture composition.
+  const withdrawn = <T>(): Result<T> => decode('Result', f.refusedInput({ detail: 'assessment withdrawn' }), decodeContext) as Result<T>;
   const assessor: EffectAssessmentPort = { owner: 'part-nine',
-    assess: input => { mutableAssessment(); acceptanceId ||= note('independent nine assessment STAND-IN').id;
-      const evidenceId = `assessment:${input.reservation.operation}:${assessmentState}`;
-      if (!f.evidence.some(e => e.id === evidenceId)) f.evidence.push(value(decode('Evidence', f.evidenceInput({ id: evidenceId,
-        claim: { subject: input.reservation.operation, predicate: input.request.digest, value: assessmentState },
-        strength: 'observation', observedAt: f.clock(now), freshFor: 100 }), decodeContext)));
-      assessmentEvidence = evidenceId;
-      return f.success({ owner: 'part-nine', name: 'VerificationAssessment', id: acceptanceId }); },
-    read: (ref, input) => f.success(assessmentView(ref, input)),
-    consumeCurrent: (ref, input, consume) => {
-      // Actual local non-waiting guard: no call through read/note/custody/storage.
-      // Both fixture mutation paths and reentrant assess refuse while it is held.
-      const current = assessmentView(ref, input);
-      assessmentGuards++;
-      try { return f.success(consume(current)); } finally { assessmentGuards--; }
-    },
+    assess: input => { if (!assessmentAvailable) throw new Error('assessment withdrawn');
+      syncAssessmentEvidence(input.reservation.operation, input.request.digest); return realAssessment.assess(input); },
+    read: (ref, input) => assessmentAvailable ? realAssessment.read(ref, input) : withdrawn(),
+    consumeCurrent: (ref, input, consume) => assessmentAvailable ? realAssessment.consumeCurrent(ref, input, consume)
+      : withdrawn(),
   };
   const composition: EffectComposition = { host, spine, transport, durability: replicas.durability, custody: custody.custody, adapter, assessment: assessor };
   const api = createEffectDoorway(composition);
@@ -191,11 +227,11 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
     calls: () => calls, queries: () => queries, onInvoke: (fn: () => void) => { invoke = fn; },
     stop: () => { stopped = true; }, time: (v: number) => { now = v; },
     assess: (state: typeof assessmentState, charge: number | null, excluded = false) => {
-      mutableAssessment();
-      assessmentState = state; finalCharge = charge; delayedExecutionExcluded = excluded;
+      assessmentState = state; finalCharge = charge; delayedExecutionExcluded = excluded; assessmentRevision++;
     },
-    withdrawAssessment: () => { mutableAssessment(); assessmentAvailable = false; },
-    assessmentGuardActive: () => assessmentGuards > 0,
+    withdrawAssessment: () => { assessmentAvailable = false; f.evidence.splice(0); },
+    assessmentGuardActive: () => false,
+    verificationHost, verificationSpine, verificationRuntime, assessment: realAssessment,
     versions: (v: GovernedVersion[]) => { versions = v; },
   };
 }

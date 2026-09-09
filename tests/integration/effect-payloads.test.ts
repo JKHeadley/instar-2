@@ -2,7 +2,7 @@ import { setTimeout as yieldWorker } from 'node:timers/promises';
 import { beforeEach, expect, it } from 'vitest';
 import { canonical, consumeOutcome, decode } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
-import { decodeEnvelope, decodeHistoricalBody } from '../../src/facts/index.js';
+import { decodeEnvelope, decodeHistoricalBody, signEnvelope } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
 import { createEffectDoorway, decodeEffectPayload, effectOperationContracts, effectPayloadIdentity, referencedPayloadFacts } from '../../src/effects/index.js';
 import { consumeEffectSettlement } from '../../src/effects/index.js';
@@ -13,6 +13,8 @@ import { typedEffectFixture } from '../effects/typed-effect-fixture.js';
 import { payloadInput } from '../effects/payload-fixtures.js';
 import { typedJointFixture } from '../effects/typed-joint-fixture.js';
 import { privateKey } from '../facts/fixtures.js';
+import { intakeFixture, message as intakeMessage, route as intakeRoute } from '../intake/fixtures.js';
+import { judgmentFixture } from '../judgment/fixture.js';
 
 // These real-stack cases are intentionally synchronous and collectively exceed
 // Vitest's fixed 60s worker-RPC deadline. Yield between cases so the worker can
@@ -160,7 +162,7 @@ it('P8-TP-REPAIR-06 V31 signed typed history remains readable under a replacemen
   }
   expect(decoded.some(fact => fact.kind === 'effect-EffectRequest'
     && (fact.body as { record: { id: string } }).record.id === request.id)).toBe(true);
-});
+}, 30000);
 
 it('P8-TP-SIGNED-REPLAY-REFUSAL a correctly signed typed payload refuses replication when its owner dependency is absent', () => {
   const contract = effectOperationContracts.acknowledge;
@@ -232,32 +234,38 @@ it('P8-TP-RETURNED-MEDIA-LINEAGE successful media return retains signed intake l
   const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'fetch-inbound-media', inputSchema: contract.inputSchema,
     canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['fetch-inbound-media']);
   const payload = identify({ ...payloadInput('fetch-inbound-media', f.host), sourceResult: f.pending.id }, f.host);
-  const request = value(f.api.preparePayload({ definition: f.d.id, payload, run: f.run, pending: f.pending.id,
+  if (payload.kind !== 'fetch-inbound-media') throw new Error('media fixture kind');
+  const returned = JSON.stringify({ platformFile: 'provider-file:1', mediaType: 'image/png', bytes: 'returned-media-bytes', intake: payload.inboundReceipt });
+  const api = createEffectDoorway({ ...f.composition, adapter: { ...f.composition.adapter, invokePayload: () => f.success(returned) } });
+  const request = value(api.preparePayload({ definition: f.d.id, payload, run: f.run, pending: f.pending.id,
     attempt: 'media:1', verificationOwner: 'reply-verifier', obligation: f.obligation, closure: [], fence: f.fence }));
   const references = referencedPayloadFacts(payload, f.host);
   expect(references.every(id => request.closure.includes(id))).toBe(true);
   const receipt = value(f.host.referenceFacts!()).find(fact => fact.kind === 'intake-receipt')!;
   expect(request.closure).toContain(receipt.id);
-  const observation = value(f.api.dispatch(request, f.fence));
-  expect(observation.capture.reference.length).toBeGreaterThan(0); expect(observation.capture.hash.length).toBeGreaterThan(0);
+  const observation = value(api.dispatch(request, f.fence));
+  expect(f.ctx.captures[observation.capture.reference]).toMatchObject({ bytes: returned, hash: observation.capture.hash, status: 'available' });
 }, 30000);
 
 it('P8-TP-RETURNED-TRANSCRIPT-LINEAGE successful transcript return retains capture, provider, intake, and destination lineage', () => {
   const contract = effectOperationContracts['derive-transcript'];
   const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'derive-transcript', inputSchema: contract.inputSchema,
     canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['derive-transcript']);
-  const sourceCapture = value(f.host.capture('audio')), providerOperation = 'provider:transcribe:lineage';
-  f.reference('judgment-JudgmentAttemptRecord', { record: { type: 'JudgmentAttemptRecord', id: providerOperation, operation: providerOperation,
-    run: f.run.id, step: 'step:transcript', model: 'model:1', sourceCapture, originatingIntake: 'intake:1' } });
+  const sourceCapture = (f.host as typeof f.host & { fixtureAudioCapture: { reference: string; hash: string } }).fixtureAudioCapture;
+  const providerOperation = 'provider:transcribe';
   const payload = identify({ ...payloadInput('derive-transcript', f.host), sourceResult: f.pending.id, sourceCapture, providerOperation }, f.host);
-  const request = value(f.api.preparePayload({ definition: f.d.id, payload, run: f.run, pending: f.pending.id,
+  if (payload.kind !== 'derive-transcript') throw new Error('transcript fixture kind');
+  const returned = JSON.stringify({ transcript: 'exact returned transcript', model: payload.model,
+    sourceCapture: payload.sourceCapture, originatingIntake: payload.originatingIntake });
+  const api = createEffectDoorway({ ...f.composition, adapter: { ...f.composition.adapter, invokePayload: () => f.success(returned) } });
+  const request = value(api.preparePayload({ definition: f.d.id, payload, run: f.run, pending: f.pending.id,
     attempt: 'transcript:1', verificationOwner: 'reply-verifier', obligation: f.obligation, closure: [], fence: f.fence }));
   const facts = value(f.host.referenceFacts!()), references = referencedPayloadFacts(payload, f.host);
-  for (const kind of ['judgment-JudgmentAttemptRecord', 'intake-admitted', 'run-transition']) {
+  for (const kind of ['judgment-JudgmentRequest', 'judgment-JudgmentAttemptRecord', 'intake-admitted', 'run-transition']) {
     expect(facts.some(fact => fact.kind === kind && references.includes(fact.id) && request.closure.includes(fact.id))).toBe(true);
   }
-  const observation = value(f.api.dispatch(request, f.fence));
-  expect(observation.capture.reference.length).toBeGreaterThan(0); expect(observation.capture.hash.length).toBeGreaterThan(0);
+  const observation = value(api.dispatch(request, f.fence));
+  expect(f.ctx.captures[observation.capture.reference]).toMatchObject({ bytes: returned, hash: observation.capture.hash, status: 'available' });
 }, 30000);
 
 it('P8-TP-AGGREGATE-OPEN-CLOSURES occurrence with unknown charge or quiescence remains partial', () => {
@@ -287,4 +295,94 @@ it('P8-TP-RECOVERY lost receipt and hostile request substitution retain one iden
   refused(replacement.dispatch({ ...request, digest: request.payloadDigest! }, f.fence)); expect(f.calls()).toBe(1);
   const settlement = value(replacement.settle(observed.operation));
   expect(settlement).toMatchObject({ retainedExposure: 20, retryEligible: false, finalCharge: null });
+}, 30000);
+
+it.each(['charge-mismatch', 'wrong-kind-assessment'] as const)('P8-TP-F1-ASSESSMENT-REPLAY %s refuses signed settlement substitution', mode => {
+  const j = typedJointFixture(), settlement = value(j.settling.settle(j.observed.operation));
+  const history = value(j.store.read());
+  const original = history.find(fact => fact.kind === 'effect-EffectSettlement'
+    && (fact.body as { record?: { id?: string } }).record?.id === settlement.id)!;
+  const context = { ...j.effect.ctx, facts: history.filter(fact => fact.id !== original.id) };
+  expect(decodeHistoricalBody(original, context, context.decode).kind).toBe('Success');
+  const raw = JSON.parse(JSON.stringify(original)) as FactEnvelope & { body: { record: Record<string, unknown> } };
+  if (mode === 'charge-mismatch') { raw.body.record.finalCharge = '99'; raw.body.record.retainedExposure = 99; }
+  else raw.body.record.acceptance = j.effect.note('wrong-kind acceptance').id;
+  refused(decodeHistoricalBody(signEnvelope(raw, privateKey) as FactEnvelope, context, context.decode));
+}, 30000);
+
+it('P8-TP-F3-REAL-P4 accepts the actual Part Four admitted→receipt→binding contract', () => {
+  const intake = intakeFixture(); intake.bind(); value(intake.port().receive(intakeMessage(), intakeRoute));
+  const admitted = intake.facts().find(fact => fact.kind === 'intake-admitted')!;
+  const contract = effectOperationContracts.acknowledge;
+  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'acknowledge', inputSchema: contract.inputSchema,
+    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['acknowledge']);
+  const facts = value(f.host.referenceFacts!()).filter(fact => fact.kind !== 'intake-admitted');
+  const host = { ...f.host, referenceFacts: () => f.success([...facts, ...intake.facts()]) };
+  const raw = { ...payloadInput('acknowledge', host), sourceResult: f.pending.id, inboundFact: admitted.id,
+    account: 'host', conversation: intakeRoute.channel };
+  const decoded = identify(raw, host);
+  expect(decoded.kind === 'acknowledge' ? decoded.inboundFact : '').toBe(admitted.id);
+});
+
+it('P8-TP-F3-REAL-P7 resolves an actual Part Seven attempt through its request, receipt, model, and P4 source', async () => {
+  const rawInbound = intakeMessage('audio');
+  const intake = intakeFixture(); intake.bind(); value(intake.port().receive(rawInbound, intakeRoute));
+  const admitted = intake.facts().find(fact => fact.kind === 'intake-admitted')!;
+  const judgment = judgmentFixture(); value(await judgment.door.judge({ ...judgment.input, question: rawInbound }, judgment.start()));
+  const judgmentRows = value(judgment.door.inspect());
+  const request = judgmentRows.find(row => row.record.type === 'JudgmentRequest')!;
+  const attempt = judgmentRows.find(row => row.record.type === 'JudgmentAttemptRecord' && row.record.phase === 'response-observed')!;
+  if (request.record.type !== 'JudgmentRequest') throw new Error('judgment request fixture');
+  const contract = effectOperationContracts['derive-transcript'];
+  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'derive-transcript', inputSchema: contract.inputSchema,
+    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['derive-transcript']);
+  f.reference('run-transition', { run: f.run.id, step: { id: judgment.input.step, run: f.run.id,
+    operation: { key: 'logical:transcript-destination' }, evidence: [f.pending.id] } });
+  const captureBytes = (rows: Record<string, { bytes: string | null; status: string }>) => Object.fromEntries(Object.entries(rows)
+    .flatMap(([reference, captured]) => captured.status === 'available' && captured.bytes !== null ? [[reference, captured.bytes]] : []));
+  const baseCurrent = f.host.current;
+  const host = { ...f.host, current: () => ({ ...baseCurrent(), decode: { ...baseCurrent().decode, captures: {
+    ...baseCurrent().decode.captures, ...captureBytes(intake.context.captures), ...captureBytes(judgment.ctx.captures) } } }),
+  referenceFacts: () => f.success([...value(f.host.referenceFacts!()), ...intake.facts(), ...value(judgment.store.read())]) };
+  const raw = { ...payloadInput('derive-transcript', host), sourceResult: f.pending.id, account: 'host', conversation: intakeRoute.channel,
+    sourceCapture: request.record.question, providerOperation: attempt.fact.id, model: judgment.host.description.model,
+    destinationStep: judgment.input.step, originatingIntake: admitted.id };
+  const decoded = identify(raw, host);
+  expect(decoded.kind === 'derive-transcript' ? decoded.providerOperation : '').toBe(attempt.fact.id);
+}, 60000);
+
+it('P8-TP-F9-AGGREGATE-READ downgrades a stored satisfied child when its current P9 assessment is withdrawn', () => {
+  const j = typedJointFixture(), settlement = value(j.settling.settle(j.observed.operation));
+  const aggregate = value(j.settling.createAggregate({ semanticMessage: j.request.semanticMessage, run: j.effect.run,
+    children: [{ request: j.request, demandedStage: 'complete', inhibitLater: true, required: true }], reconciliationOwner: 'owner' }));
+  expect(value(j.settling.updateAggregate({ aggregate: aggregate.aggregate, request: j.request.id, settlement })).state).toBe('satisfied');
+  j.effect.withdrawAssessment();
+  const current = value(j.settling.inspect()).filter(row => row.record.type === 'OrderedEffectAggregate').at(-1)!.record;
+  expect(current.type === 'OrderedEffectAggregate' ? current.state : '').toBe('uncertain');
+}, 30000);
+
+it('P8-TP-F11-CLOSE-APPEND-CUT resumes the exact refusal after a durable P6 close', () => {
+  const f = typedFixture(), request = value(f.prepare());
+  const aggregate = value(f.api.createAggregate({ semanticMessage: request.semanticMessage, run: f.run,
+    children: [{ request, demandedStage: 'complete', inhibitLater: true, required: true }], reconciliationOwner: 'owner' }));
+  const refusal = value(decode('Result', f.refusedInput({ detail: 'exact refusal', preserved: request.pending }), f.ctx.decode));
+  if (refusal.kind !== 'Refused') throw new Error('refusal fixture');
+  const refusalFact = value(f.api.recordRefusal(request, refusal));
+  const cut = createEffectDoorway({ ...f.composition, spine: { ...f.spine, append: (record, references) => {
+    if (record.type === 'OrderedEffectAggregate' && record.revision === 1) throw new Error('cut after close');
+    return f.spine.append(record, references);
+  } } });
+  const input = { aggregate: aggregate.aggregate, request: request.id, refusal, refusalFact: refusalFact.id, fence: f.fence };
+  refused(cut.updateAggregate(input), 'cut after close');
+  expect(value(createEffectDoorway(f.composition).updateAggregate(input)).state).toBe('refused');
+  expect(f.calls()).toBe(0);
+}, 30000);
+
+it('P8-TP-F13-DEFINITION-PAYLOAD refuses an ordinary reply under an explicit typed definition before dispatch', () => {
+  const contract = effectOperationContracts['process-control'];
+  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'process-control', inputSchema: contract.inputSchema,
+    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, []);
+  const prepared = f.api.prepare({ definition: f.d.id, message: f.message, run: f.run, pending: f.pending.id,
+    attempt: 'legacy:under:process-definition', verificationOwner: 'owner', obligation: f.obligation, closure: [], fence: f.fence });
+  expect(prepared.kind).toBe('Refused'); expect(f.calls()).toBe(0);
 }, 30000);

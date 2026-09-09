@@ -66,9 +66,11 @@ export function childFromRefusal(child: Child, refusal: Refused, refusalFact: st
 export function aggregateState(children: readonly Child[], settlements: readonly ChildSettlement[]): OrderedEffectAggregate['state'] {
   const states = new Map(settlements.map(row => [row.request, row]));
   const required = children.filter(child => child.required).map(child => states.get(child.request)!);
-  if (required.length && required.every(row => row.disposition === 'satisfied')) return 'satisfied';
   if (settlements.some(row => row.disposition === 'uncertain')) return 'uncertain';
-  if (settlements.some(row => row.disposition === 'partial' || row.applied)) return 'partial';
+  if (settlements.some(row => row.disposition === 'partial')) return 'partial';
+  if (required.length && required.every(row => row.disposition === 'satisfied')
+    && settlements.every(row => row.disposition === 'satisfied' || row.disposition === 'refused')) return 'satisfied';
+  if (settlements.some(row => row.applied)) return 'partial';
   const refusedRequired = required.some(row => row.disposition === 'refused');
   if (refusedRequired && !settlements.some(row => row.disposition === 'satisfied')) return 'refused';
   if (settlements.some(row => row.disposition !== 'pending')) return 'partial';

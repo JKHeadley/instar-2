@@ -228,7 +228,7 @@ export function validateEffectPayload(payload: TypedEffectPayload, host?: Effect
       for (const value of [payload.machine, payload.processId, payload.processIncarnation, payload.parentIdentity, payload.startIdentity, payload.executable]) nonempty(value, 'process identity incomplete');
       ensure(payload.arguments.length <= 64, 'process arguments over bound'); break;
     case 'scheduler-control': ensure(['pause', 'resume'].includes(payload.action) && payload.reviewAt > 0 && Number.isSafeInteger(payload.reviewAt)
-      && (!host || payload.reviewAt > host.current().clock.value), 'scheduler finite review invalid');
+      && (!clock || payload.reviewAt > clock.value), 'scheduler finite review invalid');
       for (const value of [payload.jobId, payload.jobGeneration, payload.finiteScope, payload.undoOperation]) nonempty(value, 'scheduler identity incomplete'); break;
     case 'account-route-change': ensure(payload.fromAccount !== payload.toAccount, 'route change must change registered identity');
       for (const value of [payload.routeRun, payload.provider, payload.fromAccount, payload.toAccount, payload.sourceGeneration, payload.rollbackRoute]) nonempty(value, 'route change identity incomplete'); break;
@@ -236,6 +236,8 @@ export function validateEffectPayload(payload: TypedEffectPayload, host?: Effect
       hash(payload.expectedPriorDigest, 'configuration prior digest malformed'); hash(payload.proposedDigest, 'configuration proposed digest malformed');
       ensure(encoded(payload.proposedBytes).hash === payload.proposedDigest, 'configuration proposed bytes digest mismatch'); nonempty(payload.undoReference, 'configuration undo missing'); break;
     case 'filesystem-mutation': ensure(['create', 'replace', 'move', 'remove'].includes(payload.action) && payload.fileTargets.length > 0 && payload.fileTargets.length <= 64, 'filesystem mutation bounds');
+      ensure(payload.action !== 'move' || payload.fileTargets.length === 2,
+        'filesystem move requires one exact source and one exact destination');
       payload.fileTargets.forEach(target => { exactObject(target, ['canonicalPath', 'resolvedPath', 'ancestryDigest', 'priorDigest'], 'filesystem target fields invalid');
         ensure(absoluteCanonical(target.canonicalPath) && target.canonicalPath === target.resolvedPath, 'filesystem symlink or canonical target ambiguity');
         hash(target.ancestryDigest, 'filesystem ancestry digest malformed'); hash(target.priorDigest, 'filesystem prior digest malformed'); });

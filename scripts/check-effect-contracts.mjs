@@ -43,6 +43,10 @@ export const effectPayloadFixtures = [
   'P8-TP-RETURNED-MEDIA-LINEAGE', 'P8-TP-RETURNED-TRANSCRIPT-LINEAGE',
   'P8-TP-SIGNED-REPLAY-REFUSAL',
   ...Array.from({ length: 11 }, (_, index) => `P8-TP-REPAIR-${String(index + 1).padStart(2, '0')}`),
+  ...Array.from({ length: 13 }, (_, index) => `P8-TP-F${index + 1}-${[
+    'ASSESSMENT-REPLAY', 'P2-STATUS', 'REAL-P', 'EXTERNAL-REFERENCES', 'PROTECTED-REFUSAL', 'GIT-DESCENDANT',
+    'MOVE-CARDINALITY', 'HISTORICAL-CLOCK', 'AGGREGATE-READ', 'OPTIONAL-UNCERTAINTY', 'CLOSE-APPEND-CUT',
+    'LEGACY-FIXTURE', 'DEFINITION-PAYLOAD'][index]}`),
 ];
 export function checkEffectCoverage(report, dispositions = effectDispositions) {
   if (!report.success) throw new Error('effect coverage requires a successful actual test run');
