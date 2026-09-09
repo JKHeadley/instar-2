@@ -1,15 +1,25 @@
-// Four sequential Vitest lifetimes preserve the complete suite while bounding the
-// worker/main RPC lifetime. The suite contains long compiled-process lifecycle files;
-// one 16+ minute worker can otherwise hit Vitest 3's fixed 60s onTaskUpdate RPC timeout
-// under machine contention after every assertion has passed. Blob merge is Vitest's
-// native sharding path, so unhandled errors, failures, skips, and test identities remain
-// part of one canonical JSON report consumed by the contract-map gates.
-import { mkdtemp, rm } from 'node:fs/promises';
+// One Vitest lifetime per test file preserves the complete suite while preventing
+// cross-file worker accumulation. The suite contains long compiled-process lifecycle
+// files; one 16+ minute worker can otherwise hit Vitest 3's fixed 60s onTaskUpdate RPC
+// timeout under machine contention after every assertion has passed. Blob merge is
+// Vitest's native sharding path, so unhandled errors, failures, skips, and test identities
+// remain part of one canonical JSON report consumed by the contract-map gates.
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 
-const shardCount = 4;
+async function testFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const nested = await Promise.all(entries.map(entry => {
+    const path = join(directory, entry.name);
+    return entry.isDirectory() ? testFiles(path) : [path];
+  }));
+  return nested.flat();
+}
+
+const shardCount = (await testFiles('tests')).filter(path => path.endsWith('.test.ts')).length;
+if (shardCount === 0) throw new Error('no Vitest files found');
 const reports = await mkdtemp(join(tmpdir(), 'instar-vitest-reports-'));
 const vitest = 'node_modules/vitest/vitest.mjs';
 
