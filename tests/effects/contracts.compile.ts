@@ -1,10 +1,13 @@
-import type { EffectAssessmentPort, EffectRequest, EffectSettlement, OperationDefinition, OutboundMessage } from '../../src/effects/index.js';
+import type { EffectAssessmentPort, EffectPayload, EffectRequest, EffectSettlement, OperationDefinition, OrderedEffectAggregate, OutboundMessage, TypedEffectPayload } from '../../src/effects/index.js';
 import type { DispatchClaim } from '../../src/transport/index.js';
 import type { OwnedReference } from '../../src/index.js';
 declare const request: EffectRequest;
 declare const definition: OperationDefinition;
 declare const message: OutboundMessage;
 declare const settlement: EffectSettlement;
+declare const payload: TypedEffectPayload;
+declare const aggregate: OrderedEffectAggregate;
+const closedPayload: EffectPayload = payload;
 // @ts-expect-error Public records are not callable six-owned claims.
 const claim: DispatchClaim = request;
 // @ts-expect-error Missing private owner identity, not a public constructor.
@@ -18,4 +21,8 @@ const invented: OwnedReference<'part-nine', 'VerificationAssessment'> = { owner:
 declare const assessmentWithoutGuard: Omit<EffectAssessmentPort, 'consumeCurrent'>;
 // @ts-expect-error A potentially waiting read cannot substitute for the owner guard.
 const unguarded: EffectAssessmentPort = assessmentWithoutGuard;
-void [message, claim, fake, wrong, replay, invented, unguarded];
+// @ts-expect-error The aggregate is durable state, never a dispatchable payload.
+const aggregatePayload: EffectPayload = aggregate;
+// @ts-expect-error Legacy messages cannot acquire a new discriminator without a new immutable record.
+const changedLegacy: TypedEffectPayload = message;
+void [message, payload, closedPayload, aggregate, aggregatePayload, changedLegacy, claim, fake, wrong, replay, invented, unguarded];

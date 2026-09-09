@@ -2,36 +2,64 @@ import { decode, decodeMeasurement, grantLiveness, isValid, scopeIncludes } from
 import type { Json, Result } from '../index.js';
 import { authorAndAppend, causalCone, registerOwnedBody, walkVersions } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
-import type { EffectAuthor, EffectHost, EffectRecord, EffectSpine, OperationDefinition, OutboundMessage } from './contracts.js';
+import type { EffectAuthor, EffectHost, EffectRecord, EffectRequestBinding, EffectSpine, OperationDefinition, OrderedEffectAggregate, OutboundMessage, TypedEffectPayload } from './contracts.js';
 import type { FactStorePort } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { requireSettlement } from './settlement-authority.js';
+import { effectOperationContracts, effectPayloadOwnedShape, payloadKind, validateEffectPayload } from './payloads.js';
+import { aggregateObligations, aggregateState } from './aggregate.js';
 
 const text = { kind: 'text', maxLength: 512 } as const, integer = { kind: 'integer' } as const;
 const refs = { kind: 'array', maxLength: 64, items: text } as const;
 const common = { type: text, schemaVersion: integer, id: text };
 const capture = { kind: 'capture' } as const;
 const outcome: OwnedShape = { kind: 'object', fields: { type: text, schemaVersion: integer, kind: text, evidence: refs } };
+const observations: OwnedShape = { kind: 'object', fields: { occurrence: text, nonOccurrence: text, quiescence: text, charge: text } };
+const requestBinding: OwnedShape = { kind: 'object', fields: {
+  subject: text, target: text, sourceVector: text, sourceGeneration: text, principal: text,
+  definition: { kind: 'object', fields: { id: text, version: text } },
+  payload: { kind: 'object', fields: { id: text, digest: text } }, logicalEffect: text,
+  run: text, step: text, lease: text, fence: text,
+  reservation: { kind: 'object', fields: { request: text, attempt: text, charge: integer, run: text,
+    semanticMessage: text, durability: text, replicas: integer } },
+  claim: { kind: 'object', fields: { attempt: text, executor: text } },
+} };
+const aggregateChild: OwnedShape = { kind: 'object', fields: { order: integer, request: text, digest: text,
+  payloadKind: text, demandedStage: text, inhibitLater: { kind: 'boolean' }, required: { kind: 'boolean' } } };
+const refusal: OwnedShape = { kind: 'object', fields: { reason: text, detail: text, site: text, failDirection: text, preserved: text } };
+const retryClosure: OwnedShape = { kind: 'object', fields: { didNotHappen: { kind: 'boolean' }, quiescent: { kind: 'boolean' }, chargeSettled: { kind: 'boolean' } } };
+const aggregateSettlement: OwnedShape = { kind: 'object', fields: { request: text, settlement: text,
+  assessment: text, disposition: text, applied: { kind: 'boolean' }, refusal }, optional: ['refusal'] };
 // The normalized owner settlement uses null. P2's shape supports null but no
 // arbitrary union, so record
 // it as an exact bounded decimal string ("unknown" or an integer), at this seam.
 export const effectShapes: Readonly<Record<string, OwnedShape>> = freeze({
   OperationDefinition: { kind: 'object', fields: { ...common, feature: text, version: text, generation: text,
     adapter: text, account: text, conversation: text, speaker: text, scopeDigest: text, durability: text,
-    replicas: integer, lossModel: text, maxBytes: integer, maxCharge: integer, timeout: integer, verificationBar: text } },
+    replicas: integer, lossModel: text, maxBytes: integer, maxCharge: integer, timeout: integer, verificationBar: text,
+    payloadKind: text, inputSchema: text, canonicalization: text, observationCapabilities: observations },
+    optional: ['payloadKind', 'inputSchema', 'canonicalization', 'observationCapabilities'] },
   OutboundMessage: { kind: 'object', fields: { ...common, semanticMessage: text, run: text, speaker: text,
     account: text, conversation: text, text: { kind: 'text', maxLength: 4096 }, purpose: text, sourceResult: text } },
+  EffectPayload: effectPayloadOwnedShape,
   EffectRequest: { kind: 'object', fields: { ...common, definition: text, message: text, semanticMessage: text,
     run: text, pending: text, attempt: text, digest: text, verificationOwner: text, verificationBar: text,
-    obligation: text, closure: refs } },
+    obligation: text, closure: refs, payload: text, payloadDigest: text, binding: requestBinding },
+    optional: ['payload', 'payloadDigest', 'binding'] },
   EffectValidation: { kind: 'object', fields: { ...common, request: text, digest: text, phase: text,
     generation: text, definition: text, expires: integer, authority: refs } },
   OperationObservation: { kind: 'object', fields: { ...common, request: text, operation: text, claim: text,
-    digest: text, account: text, conversation: text, stage: text, wake: text, capture, attestation: text } },
+    digest: text, account: text, conversation: text, stage: text, wake: text, capture, attestation: text, refusal },
+    optional: ['refusal'] },
   EffectSettlement: { kind: 'object', fields: { ...common, request: text, operation: text, claim: text,
     reservation: text, digest: text, acceptance: text, observations: refs, outcome,
     finalCharge: text, delayedExecutionExcluded: { kind: 'boolean' }, retainedExposure: integer,
-    retryEligible: { kind: 'boolean' } } },
+    retryEligible: { kind: 'boolean' }, refusal, retryClosure }, optional: ['refusal', 'retryClosure'] },
+  OrderedEffectAggregate: { kind: 'object', fields: { ...common, aggregate: text, revision: integer,
+    predecessor: text, semanticMessage: text, run: text,
+    children: { kind: 'array', maxLength: 64, items: aggregateChild },
+    settlements: { kind: 'array', maxLength: 64, items: aggregateSettlement }, state: text,
+    openEvidence: refs, openCharge: refs, openRecovery: refs, reconciliationOwner: text } },
 });
 export const kindFor = (name: string) => `effect-${name}`;
 export function wire(r: EffectRecord): Json {
@@ -52,8 +80,10 @@ function shapeCheck(v: unknown, shape: OwnedShape): void {
   if (shape.kind === 'capture') { shapeCheck(v, { kind: 'object', fields: { reference: text, hash: text } }); return; }
   ensure(shape.kind === 'object' && v && typeof v === 'object' && !Array.isArray(v), 'closed object required');
   const r = v as Record<string, unknown>;
-  ensure(Object.keys(r).length === Object.keys(shape.fields).length, 'missing or undeclared field');
-  for (const [k, s] of Object.entries(shape.fields)) { ensure(Object.hasOwn(r, k), `missing ${k}`); shapeCheck(r[k], s); }
+  const optional = new Set(shape.optional ?? []);
+  ensure(Object.keys(r).every(k => Object.hasOwn(shape.fields, k))
+    && Object.keys(shape.fields).filter(k => !optional.has(k)).every(k => Object.hasOwn(r, k)), 'missing or undeclared field');
+  for (const [k, s] of Object.entries(shape.fields)) if (Object.hasOwn(r, k)) shapeCheck(r[k], s);
 }
 export function live(host: EffectHost): void {
   const c = host.current(); ensure(!c.stopped, 'stop inhibits effect');
@@ -79,6 +109,13 @@ export function definitionCheck(d: OperationDefinition, host: EffectHost): void 
   ensure(c.decode.register.entries.includes(d.feature) && c.decode.register.entries.includes(d.adapter)
     && d.generation === c.decode.register.generation.id, 'definition generation/feature/adapter mismatch');
   ensure(d.scopeDigest === encoded(host.scope).hash && d.speaker === host.principal.id, 'definition scope or speaker mismatch');
+  const optional = [d.payloadKind, d.inputSchema, d.canonicalization, d.observationCapabilities];
+  ensure(optional.every(value => value === undefined) || optional.every(value => value !== undefined), 'partial operation payload contract');
+  if (d.payloadKind) {
+    const contract = effectOperationContracts[d.payloadKind]; ensure(contract, 'unknown operation payload kind');
+    ensure(d.inputSchema === contract.inputSchema && d.canonicalization === contract.canonicalization
+      && encoded(d.observationCapabilities).bytes === encoded(contract.observations).bytes, 'operation payload schema/canonicalization/observation mismatch');
+  }
 }
 function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHost, origin: boolean): void {
   ensure(r.schemaVersion === 1 && r.id.length > 0, 'record identity/version');
@@ -96,12 +133,43 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     ensure(r.purpose === 'ordinary-reply' && r.speaker === host.principal.id && r.text.length > 0
       && r.semanticMessage.length > 0 && r.sourceResult.length > 0, 'attributable reply required');
     ensure(past.some(f => f.id === r.sourceResult), 'source result fact missing');
+  } else if (r.type === 'EffectPayload') {
+    validateEffectPayload(r, host);
+    ensure(past.some(f => f.id === r.sourceResult), 'source result fact missing');
   } else if (r.type === 'EffectRequest') {
-    const d = find(r.definition, 'OperationDefinition'), m = find(r.message, 'OutboundMessage');
-    ensure(r.id === `request:${encoded([m.account, m.conversation, m.semanticMessage]).hash}`, 'stable semantic identity required');
-    ensure(r.digest === encoded(m).hash && r.semanticMessage === m.semanticMessage && r.run === m.run, 'request/message binding');
-    ensure(m.account === d.account && m.conversation === d.conversation && m.speaker === d.speaker
-      && new TextEncoder().encode(encoded(m).bytes).length <= d.maxBytes, 'actual target/payload exceeds operation');
+    const d = find(r.definition, 'OperationDefinition');
+    if (r.payload === undefined) {
+      const m = find(r.message, 'OutboundMessage');
+      ensure(r.id === `request:${encoded([m.account, m.conversation, m.semanticMessage]).hash}`, 'stable semantic identity required');
+      ensure(r.digest === encoded(m).hash && r.semanticMessage === m.semanticMessage && r.run === m.run, 'request/message binding');
+      ensure(m.account === d.account && m.conversation === d.conversation && m.speaker === d.speaker
+        && new TextEncoder().encode(encoded(m).bytes).length <= d.maxBytes, 'actual target/payload exceeds operation');
+      ensure(r.payloadDigest === undefined && r.binding === undefined, 'partial typed payload request');
+    } else {
+      const p = find(r.payload, 'EffectPayload') as TypedEffectPayload;
+      ensure(r.message === r.payload && r.payloadDigest === encoded(p).hash && r.semanticMessage === p.semanticMessage && r.run === p.run,
+        'request/payload binding');
+      ensure(r.id === `request:${encoded(['effect-payload', p.logicalEffect, p.semanticMessage]).hash}`, 'stable typed semantic identity required');
+      ensure(r.binding && r.digest === encoded(r.binding).hash, 'typed request binding digest mismatch');
+      const b = r.binding as EffectRequestBinding;
+      ensure(b.subject === p.semanticMessage && b.target === p.targetDigest && b.principal === host.principal.id
+        && b.definition.id === d.id && b.definition.version === d.version
+        && b.payload.id === p.id && b.payload.digest === r.payloadDigest && b.logicalEffect === p.logicalEffect
+        && b.run === p.run && b.step === p.step && b.sourceGeneration === d.generation,
+      'typed request subject/target/principal/definition binding mismatch');
+      ensure(b.reservation.request === r.id && b.reservation.attempt === r.attempt && b.reservation.charge === d.maxCharge
+        && b.reservation.run === r.run && b.reservation.semanticMessage === r.semanticMessage
+        && b.reservation.durability === d.durability && b.reservation.replicas === d.replicas
+        && b.claim.attempt === r.attempt && b.claim.executor === host.incarnation,
+      'typed request reservation/claim binding mismatch');
+      ensure(b.sourceVector === encoded([...r.closure].sort()).hash && b.lease.length > 0 && b.fence.length > 0,
+        'typed request source vector/lease/fence binding mismatch');
+      ensure(d.payloadKind === p.kind && d.inputSchema === effectOperationContracts[p.kind].inputSchema
+        && d.canonicalization === effectOperationContracts[p.kind].canonicalization
+        && encoded(d.observationCapabilities).bytes === encoded(effectOperationContracts[p.kind].observations).bytes,
+      'typed payload does not match operation definition');
+      ensure(new TextEncoder().encode(encoded(p).bytes).length <= d.maxBytes, 'actual target/payload exceeds operation');
+    }
     ensure(r.attempt.length > 0 && r.verificationOwner.length > 0 && r.verificationBar === d.verificationBar, 'verification obligation required');
     ensure(r.closure.includes(r.pending) && r.closure.includes(r.obligation)
       && r.closure.every(id => past.some(f => f.id === id)), 'missing prerequisite closure');
@@ -113,8 +181,48 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     ensure(r.digest === q.digest && r.definition === d.id && r.generation === d.generation
       && ['reservation', 'dispatch'].includes(r.phase) && r.authority.length > 0, 'validation binding');
     if (origin) { definitionCheck(d, host); ensure(r.expires === host.current().clock.value + d.timeout, 'validation expiry differs from bounded current clock'); }
+  } else if (r.type === 'OrderedEffectAggregate') {
+    ensure(r.aggregate.length > 0 && r.reconciliationOwner.length > 0 && r.children.length > 0 && r.children.length <= 64,
+      'finite aggregate identity/owner required');
+    ensure(r.children.length === r.settlements.length && r.children.every((child, index) => child.order === index),
+      'aggregate child order/settlement partition invalid');
+    const requests = r.children.map(child => find(child.request, 'EffectRequest'));
+    ensure(new Set(r.children.map(child => child.request)).size === r.children.length
+      && r.children.every((child, index) => child.digest === requests[index]!.digest
+        && requests[index]!.semanticMessage === r.semanticMessage && requests[index]!.run === r.run),
+    'aggregate child request/digest/parent binding mismatch');
+    ensure(r.children.every((child, index) => {
+      const request = requests[index]!;
+      if (!request.payload) return child.payloadKind === 'ordinary-reply';
+      const payload = find(request.payload, 'EffectPayload'); return child.payloadKind === payloadKind(payload);
+    }), 'aggregate payload kind mismatch');
+    ensure(r.children.every((child, index) => child.payloadKind !== 'acknowledge' || !child.required),
+      'decorative acknowledgment cannot terminalize parent work');
+    ensure(r.settlements.every((settlement, index) => settlement.request === r.children[index]!.request
+      && ['pending', 'partial', 'satisfied', 'refused', 'uncertain'].includes(settlement.disposition)
+      && (settlement.refusal === undefined || settlement.disposition !== 'pending')),
+    'aggregate settlement partition invalid');
+    ensure(r.state === aggregateState(r.children, r.settlements), 'aggregate state is not derived from children');
+    const obligations = aggregateObligations(r.children, r.settlements);
+    ensure(encoded({ openEvidence: r.openEvidence, openCharge: r.openCharge, openRecovery: r.openRecovery }).bytes === encoded(obligations).bytes,
+      'aggregate open obligations differ from child state');
+    if (r.revision === 0) {
+      ensure(r.predecessor === '' && r.settlements.every(row => row.disposition === 'pending' && !row.applied && !row.settlement && !row.assessment && !row.refusal),
+        'initial aggregate is not pending');
+    } else {
+      const prior = find(r.predecessor, 'OrderedEffectAggregate') as OrderedEffectAggregate;
+      ensure(r.revision === prior.revision + 1 && r.aggregate === prior.aggregate
+        && encoded(r.children).bytes === encoded(prior.children).bytes && r.semanticMessage === prior.semanticMessage && r.run === prior.run
+        && r.reconciliationOwner === prior.reconciliationOwner, 'aggregate successor changed immutable expansion');
+      ensure(prior.settlements.every((row, index) => !row.applied || r.settlements[index]!.applied)
+        && prior.settlements.every((row, index) => row.disposition === 'pending' || encoded(row).bytes === encoded(r.settlements[index]).bytes),
+      'aggregate successor replays or rewrites a settled child');
+    }
   } else {
-    const q = find(r.request, 'EffectRequest'), m = find(q.message, 'OutboundMessage');
+    const q = find(r.request, 'EffectRequest');
+    const target = q.payload ? find(q.payload, 'EffectPayload') as TypedEffectPayload : find(q.message, 'OutboundMessage');
+    const account = target.type === 'OutboundMessage' ? target.account : 'account' in target ? target.account : find(q.definition, 'OperationDefinition').account;
+    const conversation = target.type === 'OutboundMessage' ? target.conversation : 'conversation' in target ? target.conversation : find(q.definition, 'OperationDefinition').conversation;
     const reservations = past.filter(f => f.kind === 'transport-AdmissionReservation');
     const op = reservations.map(f => ({ fact: f, r: (f.body as { record: { operation: string; state: string; digest: string; request: string; charge: number } }).record }))
       .filter(v => v.r.operation === r.operation).at(-1);
@@ -123,8 +231,9 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     ensure(claim && (claim.body as { record: { operation: string; state: string } }).record.operation === r.operation
       && (claim.body as { record: { state: string } }).record.state === 'dispatch-claimed', 'claim fact mismatch');
     if (r.type === 'OperationObservation') {
-      ensure(r.account === m.account && r.conversation === m.conversation && r.attestation === 'local-recorder'
-        && ['executor-accepted', 'response', 'unknown', 'observer-accepted', 'lookup'].includes(r.stage), 'observation target or provenance inflation');
+      ensure(r.account === account && r.conversation === conversation && r.attestation === 'local-recorder'
+        && ['executor-accepted', 'response', 'refused', 'unknown', 'observer-accepted', 'lookup'].includes(r.stage), 'observation target or provenance inflation');
+      ensure((r.stage === 'refused') === (r.refusal !== undefined), 'adapter refusal observation mismatch');
       if (r.stage === 'observer-accepted' || r.stage === 'lookup') {
         const wake = past.find(f => f.id === r.wake);
         const w = wake?.body as { record?: { pending: string; state: string; command: string } } | undefined;
@@ -140,7 +249,15 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
       ensure(r.observations.length > 0 && r.observations.every(id => find(id, 'OperationObservation').operation === r.operation), 'settlement evidence binding');
       ensure(r.acceptance.length > 0 && past.some(f => f.id === r.acceptance), 'independent acceptance absent');
       ensure(r.retryEligible === false && r.retainedExposure >= 0 && (r.finalCharge === null || Number.isSafeInteger(r.finalCharge) && r.finalCharge >= 0), 'invalid charge or forbidden retry');
+      if (q.payload) ensure(r.retryClosure?.didNotHappen === (r.outcome.kind === 'did-not-happen')
+        && r.retryClosure.quiescent === r.delayedExecutionExcluded && r.retryClosure.chargeSettled === (r.finalCharge !== null),
+      'typed retry three-closure evidence mismatch');
+      else ensure(r.retryClosure === undefined, 'legacy settlement bytes changed');
       ensure(r.finalCharge !== null || r.retainedExposure === op.r.charge, 'unknown charge must retain maximum exposure');
+      const adapterRefusal = r.observations.map(id => find(id, 'OperationObservation')).find(o => o.stage === 'refused')?.refusal;
+      ensure((r.refusal === undefined && adapterRefusal === undefined)
+        || (r.refusal !== undefined && adapterRefusal !== undefined && encoded(r.refusal).bytes === encoded(adapterRefusal).bytes),
+      'adapter refusal changed before settlement');
       // Owner-produced acceptance is consumed again at live consequential use.
       // Historical record validation never turns its Outcome into live authority.
     }

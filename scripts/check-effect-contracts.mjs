@@ -29,16 +29,30 @@ export const effectDispositions = Array.from({ length: 49 }, (_, i) => {
   return { id: `P8-NF-${number}`, status: exercised.has(number) ? 'partial' : excluded[number] ? 'out-of-scope' : 'not-built',
     reason: excluded[number] ?? gaps[number] ?? 'Named executable slice assertions only; not full-design or production conformance.' };
 });
+const payloadKinds = ['post-text', 'post-media', 'edit-message', 'react', 'create-topic', 'acknowledge',
+  'fetch-inbound-media', 'derive-transcript', 'process-control', 'scheduler-control', 'account-route-change',
+  'configuration-change', 'filesystem-mutation', 'git-mutation', 'infrastructure-notice'];
+export const effectPayloadFixtures = [
+  ...payloadKinds.flatMap(kind => [`P8-TP-DECODER-${kind}`, `P8-TP-CLOSED-${kind}`]),
+  'P8-TP-NESTED', 'P8-TP-TARGET', 'P8-TP-AUTH', 'P8-TP-DEFINITIONS', 'P8-TP-LEGACY', 'P8-TP-DIGEST',
+  'P8-TP-PORTS', 'P8-TP-UNSUPPORTED', 'P8-TP-REFUSAL', 'P8-TP-EVIDENCE', 'P8-TP-THREE-CLOSURE', 'P8-TP-RECOVERY',
+  'P8-TP-AGGREGATE-RESTART', 'P8-TP-AGGREGATE-SIGKILL', 'P8-TP-AGGREGATE-PARTIAL', 'P8-TP-ACK',
+];
 export function checkEffectCoverage(report, dispositions = effectDispositions) {
   if (!report.success) throw new Error('effect coverage requires a successful actual test run');
   if (dispositions.length !== 49 || new Set(dispositions.map(r => r.id)).size !== 49) throw new Error('missing/duplicate disposition');
-  return dispositions.map(row => {
+  const rows = dispositions.map(row => {
     if (!['partial', 'out-of-scope', 'not-built'].includes(row.status) || !row.reason) throw new Error('unsupported held claim');
     const tests = report.testResults.flatMap(f => f.assertionResults.filter(t =>
       (t.fullName.match(/\bP8-NF-\d+\b/g) ?? []).includes(row.id)).map(t => ({ title: t.fullName, status: t.status })));
     if (row.status === 'partial' && (!tests.length || tests.some(t => t.status !== 'passed'))) throw new Error(`missing executed fixture ${row.id}`);
     return { ...row, tests };
   });
+  for (const id of effectPayloadFixtures) {
+    const tests = report.testResults.flatMap(file => file.assertionResults.filter(test => test.fullName.includes(id)));
+    if (!tests.length || tests.some(test => test.status !== 'passed')) throw new Error(`missing executed effect payload fixture ${id}`);
+  }
+  return rows;
 }
 export function inspectEffects(sources) {
   const failures = [];
@@ -53,5 +67,5 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const sources = Object.fromEntries(readdirSync('src/effects').filter(f => f.endsWith('.ts')).map(f => [f, readFileSync(`src/effects/${f}`, 'utf8')]));
   const issues = inspectEffects(sources); if (issues.length) throw new Error(issues.join('\n'));
   const rows = checkEffectCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
-  console.log(`P8: ${rows.filter(r => r.status === 'partial').length} partially exercised checks; all ${rows.length} dispositions explicit; no held/live claim`);
+  console.log(`P8: ${rows.filter(r => r.status === 'partial').length} partially exercised checks; all ${rows.length} dispositions explicit; ${effectPayloadFixtures.length} payload fixtures green; no held/live claim`);
 }

@@ -4,11 +4,11 @@ import { join } from 'node:path';
 import { canonical, decode } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
 import { authorAndAppend, createFactStore, hashBytes } from '../../src/facts/index.js';
-import type { CapturedContent, FactContext, GovernedVersion } from '../../src/facts/index.js';
+import type { CapturedContent, FactContext, FactSchema, GovernedVersion, OwnedBodyRegistration } from '../../src/facts/index.js';
 import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, registerTransportBodies, transportSchemas } from '../../src/transport/index.js';
 import type { TransportHost } from '../../src/transport/index.js';
-import { createEffectDoorway, createEffectSpine, decodeOutboundMessage, effectSchemas, installOperationDefinition, registerEffectBodies } from '../../src/effects/index.js';
-import type { EffectComposition, EffectHost, EffectAssessmentPort, OperationAdapterPort } from '../../src/effects/index.js';
+import { createEffectDoorway, createEffectSpine, decodeOutboundMessage, effectOperationContracts, effectSchemas, installOperationDefinition, registerEffectBodies } from '../../src/effects/index.js';
+import type { ConversationEffectKind, EffectComposition, EffectHost, EffectAssessmentPort, OperationAdapterPort, RecoveryEffectKind } from '../../src/effects/index.js';
 import { factsFixture, privateKey, value, refused, json } from '../facts/fixtures.js';
 // @ts-expect-error Reference physical host is JavaScript, outside pure core compilation.
 import { createTransportFileStorage } from '../../scripts/transport-file-storage.mjs';
@@ -18,7 +18,9 @@ import { createEffectReplicaStorage } from '../../scripts/effect-replica-storage
 import { createEffectFileCaptures } from '../../scripts/effect-file-captures.mjs';
 export { value, refused };
 
-export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), incarnation = 'executor:1', definitionOverrides: Record<string, unknown> = {}) {
+export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), incarnation = 'executor:1', definitionOverrides: Record<string, unknown> = {},
+  supportedKinds: readonly (ConversationEffectKind | RecoveryEffectKind)[] = [],
+  extensions?: (host: EffectHost) => Readonly<{ schemas: readonly FactSchema[]; ownedBodies: readonly OwnedBodyRegistration[] }>) {
   const f = factsFixture();
   // Separate agent executor and person approving the exact definition.
   f.grant({ id: 'agent-grant', grantee: f.bob });
@@ -36,9 +38,10 @@ export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), in
   const transportHost: TransportHost = { domain: 'conversation:1', machine: host.machine, incarnation,
     authorityIncarnation: 'authority:1', principal: host.principal, scope: host.scope, maxLeaseTerm: 1000, budget: 100,
     monotonic: () => now, current: () => ({ decode: decodeContext, clock: f.clock(now), generation: register.generation, stopped }) };
+  const extension = extensions?.(host) ?? { schemas: [], ownedBodies: [] };
   const ctx: FactContext = { ...f.ctx, decode: decodeContext, get captures(): Record<string, CapturedContent> { return custody.captures; },
-    schemas: [f.schema, ...transportSchemas(transportHost), ...effectSchemas(host)],
-    ownedBodies: [...value(registerTransportBodies(transportHost, boundary)), ...value(registerEffectBodies(host))] };
+    schemas: [f.schema, ...transportSchemas(transportHost), ...effectSchemas(host), ...extension.schemas],
+    ownedBodies: [...value(registerTransportBodies(transportHost, boundary)), ...value(registerEffectBodies(host)), ...extension.ownedBodies] };
   const peer = createFactStore(ctx, createTransportFileStorage(join(directory, 'peer'), result));
   const replicas = createEffectReplicaStorage(join(directory, 'origin'), { id: 'fixture-peer-directory', store: peer }, result);
   const store = createFactStore(ctx, replicas.storage);
@@ -69,6 +72,12 @@ export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), in
     describe: () => ({ contract: 'fixture-contract:1', account: definition.account, conversation: definition.conversation,
       maxCharge: 20, timeout: 100, hiddenRetries: 0 }),
     invoke: input => { calls++; invoke?.(); return f.success(JSON.stringify({ ok: true, result: { message_id: calls, chat: { id: input.message.conversation }, text: input.message.text } })); },
+    ...(supportedKinds.length ? {
+      describePayload: () => ({ kinds: supportedKinds, schemas: supportedKinds.map(kind => effectOperationContracts[kind].inputSchema),
+        canonicalization: 'instar-canonical-json-v1' as const, observations: Object.fromEntries(supportedKinds.map(kind => [kind, effectOperationContracts[kind].observations])) }),
+      invokePayload: (input: Parameters<NonNullable<OperationAdapterPort['invokePayload']>>[0]) => {
+        calls++; invoke?.(); return f.success(JSON.stringify({ ok: true, operation: input.operation, kind: input.payload.kind })); },
+    } : {}),
     observe: () => { queries++; return f.success(JSON.stringify({ status: 'unknown', reason: 'Telegram-shaped fixture has no decisive negative lookup' })); },
   };
   let assessmentState: 'happened' | 'uncertain' = 'uncertain';
