@@ -1,20 +1,18 @@
 import type { BoundaryContext, Clock, DecodeContext, Outcome, OwnedReference, Refused, Result, RunReference, Scope, VerifiedPrincipal } from '../index.js';
 import type { AppendReceipt, DurabilityState, FactContext, FactEnvelope, FactStorePort, GovernedVersion } from '../facts/index.js';
 import type { AdmissionReservation, DispatchClaim, FenceToken, TransportAuthority } from '../transport/index.js';
+import type { ConversationEffectKind, EffectPayloadKind, ObservationCapabilities, RecoveryEffectKind, TypedEffectPayload } from './payloads.js';
+import type { AggregateEvidenceStage, OrderedEffectAggregate } from './aggregate.js';
+export type { EffectPurpose, ConversationEffectKind, RecoveryEffectKind, EffectPayloadKind, ObservationCapabilities,
+  PostTextPayload, PostMediaPayload, EditMessagePayload, ReactPayload, CreateTopicPayload, AcknowledgePayload,
+  FetchInboundMediaPayload, DeriveTranscriptPayload, ProcessControlPayload, SchedulerControlPayload,
+  AccountRouteChangePayload, ConfigurationChangePayload, FilesystemMutationPayload, GitMutationPayload,
+  InfrastructureNoticePayload, TypedEffectPayload } from './payloads.js';
+export type { AggregateEvidenceStage, AggregateChildDisposition, OrderedEffectAggregate } from './aggregate.js';
 
 declare const owned: unique symbol;
 interface Owned { readonly [owned]: 'part-eight' }
 interface RecordIdentity extends Owned { readonly type: string; readonly schemaVersion: 1; readonly id: string }
-
-export type EffectPurpose = 'requested-result' | 'required-action' | 'ordinary-reply' | 'infrastructure-receipt';
-export type ConversationEffectKind = 'post-text' | 'post-media' | 'edit-message' | 'react' | 'create-topic' |
-  'acknowledge' | 'fetch-inbound-media' | 'derive-transcript';
-export type RecoveryEffectKind = 'process-control' | 'scheduler-control' | 'account-route-change' |
-  'configuration-change' | 'filesystem-mutation' | 'git-mutation' | 'infrastructure-notice';
-export type EffectPayloadKind = 'ordinary-reply' | ConversationEffectKind | RecoveryEffectKind;
-export interface ObservationCapabilities {
-  readonly occurrence: string; readonly nonOccurrence: string; readonly quiescence: string; readonly charge: string;
-}
 
 export interface OperationDefinition extends RecordIdentity {
   readonly type: 'OperationDefinition'; readonly feature: string; readonly version: string;
@@ -38,77 +36,6 @@ export interface OutboundMessage extends RecordIdentity {
   readonly text: string; readonly purpose: 'ordinary-reply'; readonly sourceResult: string;
 }
 
-interface EffectPayloadIdentity extends Owned {
-  readonly type: 'EffectPayload'; readonly schemaVersion: 1; readonly id: string;
-  readonly kind: ConversationEffectKind | RecoveryEffectKind; readonly semanticMessage: string;
-  readonly run: string; readonly step: string; readonly sourceResult: string;
-  readonly logicalEffect: string; readonly targetDigest: string;
-}
-interface ConversationPayload extends EffectPayloadIdentity {
-  readonly kind: ConversationEffectKind; readonly speaker: string; readonly account: string;
-  readonly conversation: string; readonly purpose: EffectPurpose;
-}
-export interface PostTextPayload extends ConversationPayload { readonly kind: 'post-text'; readonly text: string }
-export interface PostMediaPayload extends ConversationPayload {
-  readonly kind: 'post-media'; readonly caption: string;
-  readonly attachments: readonly Readonly<{ capture: { reference: string; hash: string }; mediaType: string; bytes: number; filename: string }>[];
-}
-export interface EditMessagePayload extends ConversationPayload { readonly kind: 'edit-message'; readonly targetMessage: string; readonly text: string }
-export interface ReactPayload extends ConversationPayload { readonly kind: 'react'; readonly targetMessage: string; readonly reaction: string }
-export interface CreateTopicPayload extends ConversationPayload {
-  readonly kind: 'create-topic'; readonly parentConversation: string; readonly title: string;
-  readonly attributes: readonly Readonly<{ key: string; value: string }>[];
-}
-export interface AcknowledgePayload extends ConversationPayload {
-  readonly kind: 'acknowledge'; readonly inboundFact: string;
-  readonly acknowledgment: 'reaction' | 'read-receipt' | 'typing' | 'text'; readonly value: string; readonly decorative: true;
-}
-export interface FetchInboundMediaPayload extends ConversationPayload {
-  readonly kind: 'fetch-inbound-media'; readonly inboundReceipt: string; readonly platformFile: string;
-  readonly maximumBytes: number; readonly mediaTypes: readonly string[];
-}
-export interface DeriveTranscriptPayload extends ConversationPayload {
-  readonly kind: 'derive-transcript'; readonly sourceCapture: { readonly reference: string; readonly hash: string };
-  readonly providerOperation: string; readonly model: string; readonly maximumOutputBytes: number;
-  readonly destinationStep: string; readonly originatingIntake: string;
-}
-export interface ProcessControlPayload extends EffectPayloadIdentity {
-  readonly kind: 'process-control'; readonly action: 'start' | 'interrupt' | 'terminate' | 'close' | 'compact';
-  readonly machine: string; readonly processId: string; readonly processIncarnation: string;
-  readonly parentIdentity: string; readonly startIdentity: string; readonly executable: string; readonly arguments: readonly string[];
-}
-export interface SchedulerControlPayload extends EffectPayloadIdentity {
-  readonly kind: 'scheduler-control'; readonly action: 'pause' | 'resume'; readonly jobId: string;
-  readonly jobGeneration: string; readonly finiteScope: string; readonly undoOperation: string; readonly reviewAt: number;
-}
-export interface AccountRouteChangePayload extends EffectPayloadIdentity {
-  readonly kind: 'account-route-change'; readonly routeRun: string; readonly provider: string;
-  readonly fromAccount: string; readonly toAccount: string; readonly sourceGeneration: string; readonly rollbackRoute: string;
-}
-export interface ConfigurationChangePayload extends EffectPayloadIdentity {
-  readonly kind: 'configuration-change'; readonly canonicalTarget: string; readonly expectedPriorDigest: string;
-  readonly proposedBytes: string; readonly proposedDigest: string; readonly undoReference: string;
-}
-export interface FilesystemMutationPayload extends EffectPayloadIdentity {
-  readonly kind: 'filesystem-mutation'; readonly action: 'create' | 'replace' | 'move' | 'remove';
-  readonly fileTargets: readonly Readonly<{ canonicalPath: string; resolvedPath: string; ancestryDigest: string; priorDigest: string }>[];
-  readonly proposedBytes: string; readonly proposedDigest: string; readonly undoSemantics: string; readonly protectedTargetPolicy: string;
-}
-export interface GitMutationPayload extends EffectPayloadIdentity {
-  readonly kind: 'git-mutation'; readonly action: 'checkout' | 'branch-create' | 'branch-delete' | 'commit' | 'merge' |
-    'rebase' | 'reset' | 'tag-create' | 'tag-delete' | 'worktree-add' | 'worktree-remove' | 'push';
-  readonly repository: string; readonly worktree: string; readonly ref: string; readonly base: string;
-  readonly targets: readonly string[]; readonly expectedHeads: readonly Readonly<{ ref: string; digest: string }>[];
-  readonly rollbackConstraints: readonly string[];
-}
-export interface InfrastructureNoticePayload extends EffectPayloadIdentity {
-  readonly kind: 'infrastructure-notice'; readonly notice: 'action-needed' | 'result';
-  readonly infrastructureProvenance: string; readonly causalEpisode: string; readonly text: string;
-}
-export type TypedEffectPayload = PostTextPayload | PostMediaPayload | EditMessagePayload | ReactPayload |
-  CreateTopicPayload | AcknowledgePayload | FetchInboundMediaPayload | DeriveTranscriptPayload |
-  ProcessControlPayload | SchedulerControlPayload | AccountRouteChangePayload | ConfigurationChangePayload |
-  FilesystemMutationPayload | GitMutationPayload | InfrastructureNoticePayload;
 export type EffectPayload = OutboundMessage | TypedEffectPayload;
 
 export interface EffectRequestBinding {
@@ -151,20 +78,6 @@ export interface EffectSettlement extends RecordIdentity {
   readonly retryClosure?: Readonly<{ didNotHappen: boolean; quiescent: boolean; chargeSettled: boolean }>;
 }
 
-export type AggregateEvidenceStage = 'occurrence' | 'non-occurrence' | 'quiescence' | 'charge' | 'complete';
-export type AggregateChildDisposition = 'pending' | 'partial' | 'satisfied' | 'refused' | 'uncertain';
-export interface OrderedEffectAggregate extends RecordIdentity {
-  readonly type: 'OrderedEffectAggregate'; readonly aggregate: string; readonly revision: number; readonly predecessor: string;
-  readonly semanticMessage: string; readonly run: string;
-  readonly children: readonly Readonly<{ order: number; request: string; digest: string; payloadKind: EffectPayloadKind;
-    demandedStage: AggregateEvidenceStage; inhibitLater: boolean; required: boolean }>[];
-  readonly settlements: readonly Readonly<{ request: string; settlement: string; assessment: string;
-    disposition: AggregateChildDisposition; applied: boolean;
-    refusal?: Readonly<Pick<Refused, 'reason' | 'detail' | 'site' | 'failDirection' | 'preserved'>> }>[];
-  readonly state: 'pending' | 'partial' | 'satisfied' | 'refused' | 'uncertain';
-  readonly openEvidence: readonly string[]; readonly openCharge: readonly string[]; readonly openRecovery: readonly string[];
-  readonly reconciliationOwner: string;
-}
 export type EffectRecord = OperationDefinition | OutboundMessage | TypedEffectPayload | EffectRequest | EffectValidation |
   OperationObservation | EffectSettlement | OrderedEffectAggregate;
 

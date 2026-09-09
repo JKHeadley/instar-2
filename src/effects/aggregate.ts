@@ -1,7 +1,28 @@
 import { consumeOutcome } from '../index.js';
 import type { Refused } from '../index.js';
-import type { AggregateChildDisposition, EffectSettlement, OrderedEffectAggregate } from './contracts.js';
+import type { EffectSettlement } from './contracts.js';
+import type { EffectPayloadKind } from './payloads.js';
 import { ensure, freeze } from './boundary.js';
+
+declare const aggregateOwned: unique symbol;
+interface AggregateOwned { readonly [aggregateOwned]: 'part-eight' }
+export type AggregateEvidenceStage = 'occurrence' | 'non-occurrence' | 'quiescence' | 'charge' | 'complete';
+export type AggregateChildDisposition = 'pending' | 'partial' | 'satisfied' | 'refused' | 'uncertain';
+export interface OrderedEffectAggregate extends AggregateOwned {
+  readonly type: 'OrderedEffectAggregate'; readonly schemaVersion: 1; readonly id: string;
+  readonly aggregate: string; readonly revision: number; readonly predecessor: string;
+  readonly semanticMessage: string; readonly run: string;
+  readonly children: readonly Readonly<{ order: number; request: string; digest: string; payloadKind: EffectPayloadKind;
+    demandedStage: AggregateEvidenceStage; inhibitLater: boolean; required: boolean }>[];
+  readonly settlements: readonly Readonly<{ request: string; settlement: string; assessment: string;
+    disposition: AggregateChildDisposition; applied: boolean;
+    refusal?: Readonly<Pick<Refused, 'reason' | 'detail' | 'site' | 'failDirection' | 'preserved'>> }>[];
+  readonly state: 'pending' | 'partial' | 'satisfied' | 'refused' | 'uncertain';
+  readonly openEvidence: readonly string[]; readonly openCharge: readonly string[]; readonly openRecovery: readonly string[];
+  readonly reconciliationOwner: string;
+}
+type SettlementWithRefusal = EffectSettlement & Readonly<{ refusal?: Readonly<Pick<Refused,
+  'reason' | 'detail' | 'site' | 'failDirection' | 'preserved'>> }>;
 
 type Child = OrderedEffectAggregate['children'][number];
 type ChildSettlement = OrderedEffectAggregate['settlements'][number];
@@ -20,7 +41,7 @@ export function demandedStageMet(child: Child, settlement: EffectSettlement): bo
   return state !== 'uncertain' && settlement.delayedExecutionExcluded && settlement.finalCharge !== null;
 }
 
-export function childFromSettlement(child: Child, settlement: EffectSettlement): ChildSettlement {
+export function childFromSettlement(child: Child, settlement: SettlementWithRefusal): ChildSettlement {
   ensure(settlement.request === child.request && settlement.digest === child.digest, 'aggregate settlement belongs to another child');
   const state = outcome(settlement);
   const disposition: AggregateChildDisposition = state === 'uncertain' ? 'uncertain'
