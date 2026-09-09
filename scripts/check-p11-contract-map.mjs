@@ -1,12 +1,12 @@
 // Every P11-NF identifier in docs/15 resolves to an executed check. Dispositions
 // remain partial until the independently administered live phone/provider evidence
-// and the owner seams named in src/operator/README.md are present.
+// and the independent live phone/provider evidence named in src/operator/README.md is present.
 import { readFileSync, readdirSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
-const partialReason = 'Executable negative/positive-neighbour contract coverage is present; production activation remains dark pending the owner seams and independent live phone/provider evidence named by Part Eleven.';
+const partialReason = 'Executable negative/positive-neighbour contract coverage and the Part Four/Part Ten owner seams are present; production activation remains dark pending independent live phone/provider, semantic-review, and objective mobile evidence.';
 
 export function p11Dispositions(design = readFileSync('docs/15-the-operator-surfaces.md', 'utf8')) {
   const ids = [...design.matchAll(/^\| (P11-NF-(\d+)) \|/gm)].map(m => ({ id: m[1], number: Number(m[2]) }));

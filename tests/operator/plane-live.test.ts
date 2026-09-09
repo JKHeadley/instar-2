@@ -61,6 +61,18 @@ it('P11-NF-27 P11-NF-29 P11-NF-30 P11-NF-31 replay admission refuses malformed, 
   expect(value(evaluateGenesisReplay(samples(), matrix, 30, 5, 20, x.f.c, 119)).failures).toContain('memory-budget-exceeded');
 });
 
+it('P11-NF-27 P11-NF-29 repeated valid samples contribute to maxima while unknown cache enums and overflowed durations refuse', () => {
+  const x = operatorFixture(), repeated = samples();
+  repeated.push({ ...repeated[0]!, started: 60, ended: 85 });
+  expect(value(evaluateGenesisReplay(repeated, { phone: ['cold', 'warm'] }, 30, 5, 20, x.f.c))).toMatchObject({
+    eligible: true, maximumDuration: 25, admissionDuration: 30,
+  });
+  const unknown = [...samples(), { ...samples()[0]!, cache: 'unknown' as 'cold' }];
+  expect(x.detail(evaluateGenesisReplay(unknown, { phone: ['cold', 'warm', 'unknown' as 'cold'] }, 30, 5, 20, x.f.c))).toContain('finite budgets');
+  const overflow = samples(); overflow[0] = { ...overflow[0]!, started: -Number.MAX_VALUE, ended: Number.MAX_VALUE };
+  expect(value(evaluateGenesisReplay(overflow, { phone: ['cold', 'warm'] }, 30, 5, 20, x.f.c)).eligible).toBe(false);
+});
+
 it('P11-NF-24 P11-NF-26 the authority projection folds owner authorization requests and dispositions without conferring authority', () => {
   const authority = minimalPlaneProjections(['authorization-request', 'authorization-disposition'])[4]!;
   expect(authority.class).toBe('informational');

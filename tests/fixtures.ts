@@ -25,13 +25,13 @@ export function fixture() {
   const ctx: DecodeContext = {
     register: {
       generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'generation:1' },
-      entries: ['types.decode', 'host', 'probe', 'machine-a', 'machine-b', 'project-a', 'project-b', 'repo', 'chat-a', 'intent:1', 'approval:1', 'bound', 'vault', 'judgment', 'model', 'route', 'rule:94'],
-      producers: ['probe', 'host'],
+      entries: ['types.decode', 'host', 'phone-surface', 'probe', 'machine-a', 'machine-b', 'project-a', 'project-b', 'repo', 'chat-a', 'intent:1', 'approval:1', 'bound', 'vault', 'judgment', 'model', 'route', 'rule:94'],
+      producers: ['probe', 'host', 'phone-surface'],
       methods: ['signed-envelope', 'telegram-sender', 'github-review', 'github-merge'],
       actions: { work: { protected: false, repository: false }, other: { protected: false, repository: false }, merge: { protected: true, repository: true }, delegate: { protected: false, repository: false } },
       subjects: { clock: ['unix-ms'], 'detection-latency': ['ms', 's'], 'time-remaining': ['ms'] },
       sites: { 'types.decode': 'closed', delivery: 'open' },
-      keys: { host: { algorithm: 'ed25519', publicKey, methods: ['signed-envelope', 'github-review', 'github-merge', 'fact-envelope'], adapters: ['host'], owner: 'machine-a' } },
+      keys: { host: { algorithm: 'ed25519', publicKey, methods: ['signed-envelope', 'github-review', 'github-merge', 'fact-envelope'], adapters: ['host', 'phone-surface'], owner: 'machine-a' } },
       allowRedelegation: false,
       conflictStanding: { ordinary: 'delegate', authority: 'operator' },
     },
@@ -54,11 +54,12 @@ export function fixture() {
       capture: { reference: `capture:envelope:${contentHash}`, hash: capture(signedBytes, `capture:envelope:${contentHash}`) }, machineKeyId: 'host',
       path: ['body'] };
   }
-  function proof(payload: object, actor = { id: 'alice', kind: 'person' }, recordType = 'approval', attested = false) {
+  function proof(payload: object, actor = { id: 'alice', kind: 'person' }, recordType = 'approval', attested = false,
+    adapter = 'host') {
     const recordBytes = bytes({ principal: actor, recordType, payload });
     const reference = `record:${captureHash(recordBytes)}`;
     const hash = capture(recordBytes, reference);
-    const input = raw('Provenance', { adapter: 'host', method: attested ? 'telegram-sender' : 'signed-envelope', record: { reference, hash }, verifiedAt: now, machine: 'machine-a',
+    const input = raw('Provenance', { adapter, method: attested ? 'telegram-sender' : 'signed-envelope', record: { reference, hash }, verifiedAt: now, machine: 'machine-a',
       evidence: attested ? { kind: 'channel', authenticated: true } : { kind: 'signature', keyId: 'host', signature: sign(null, Buffer.from(recordBytes), privateKey).toString('hex') } });
     return { input, p: value(decode('Provenance', input, ctx)) };
   }

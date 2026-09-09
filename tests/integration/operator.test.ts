@@ -18,6 +18,14 @@ it('P11-NF-03 P11-NF-04 the shipped Part Four public intake refuses authority-sh
   expect(x.admitted).toHaveLength(0);
 });
 
+it('P11-NF-04 P11-NF-07 P11-NF-08 P11-NF-09 P11-NF-16 P11-NF-17 P11-NF-21 the full surface port completes only through the real Part Four verified-act operation', () => {
+  const x = operatorFixture(), surface = x.surface(), challenge = value(surface.challenge(x.request.id));
+  const disposition = value(surface.confirm({ challenge, proof: 'signed-proof', decision: 'approve' }));
+  expect(disposition).toMatchObject({ owner: 'part-two', name: 'FactEnvelope', id: expect.any(String) });
+  expect(x.facts().filter(row => row.kind === 'intake-verified-act')).toHaveLength(1);
+  expect(x.admitted).toHaveLength(1);
+});
+
 it('P11-NF-08 P11-NF-09 a signed request with a wrong-kind referenced dependency renders partial and cannot issue a challenge', () => {
   const x = operatorFixture();
   const history = { ...x.history, expectedKind: (reference: string) => reference === x.dependency.id ? 'wrong-owner-kind' : null };

@@ -57,10 +57,14 @@ export function intakeFixture(options: { directory?: string } = {}) {
     { stimulusType: 'message', class: 'channel-attested' },{ stimulusType: 'operator-act', class: 'verified' }],
     eventIdAuthority: { mintedBy: 'provider', uniquenessScope: 'channel-and-sender', replayWindow: 1000,
       fallbackFingerprint: { policy: 'none', basis: 'provider id required' } }, ackPolicy: 'bound-only' }, { profile: r.profile });
+  const surfaceParser = r.declaration('phone-surface', 'parsers', { fixture: 'check', authenticationClass: [
+    { stimulusType: 'operator-act', class: 'verified' }],
+    eventIdAuthority: { mintedBy: 'surface', uniquenessScope: 'challenge', replayWindow: 1000,
+      fallbackFingerprint: { policy: 'none', basis: 'surface challenge required' } }, ackPolicy: 'never' }, { profile: r.profile });
   // Explicit test-only approved extract and injected spine verifier. Never a
   // production approval or a cast from generated replay into runtime authority.
   const governanceChecks: string[] = [];
-  function govern(declared: readonly object[] = [...declarations, parser], approved = true) {
+  function govern(declared: readonly object[] = [...declarations, parser, surfaceParser], approved = true) {
     const contract = declared.find(d => (d as { id: string }).id === 'intake.contract');
     const approval = { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:intake-contract-approval' } as const;
     const rows = approved && contract ? [{ id: 'intake.contract', version: 'intake-contract:v1', status: 'live', since: 'commit:1',
@@ -129,7 +133,7 @@ export function intakeFixture(options: { directory?: string } = {}) {
       reversibility: { kind: 'text', maxLength: 100 }, blockedWork: { kind: 'text', maxLength: 300 },
       recurrence: { kind: 'text', maxLength: 1000 }, requesterProse: { kind: 'text', maxLength: 2000 }, evidence: { kind: 'capture' },
     } };
-  function verifiedAct(options: { request?: Record<string, Json>; action?: string; scope?: Scope; attested?: boolean;
+  function verifiedAct(options: { request?: Record<string, Json>; action?: string; scope?: Scope; attested?: boolean; surface?: string;
     decision?: 'approve'|'decline'; generation?: RegisterGenerationReference; referenceId?: string; actScope?: Scope;
     challengeScope?: Scope; submittedDigest?: Hash; extra?: Record<string, unknown> } = {}) {
     if (!context.schemas.some(s => s.kind === requestSchema.kind)) Object.assign(context, { schemas: [...context.schemas, requestSchema] });
@@ -149,7 +153,8 @@ export function intakeFixture(options: { directory?: string } = {}) {
       action: { kind: action, scope: options.actScope ?? actualScope },
       artifact: requestBody.artifact as Hash, base: requestBody.base as string, kind: { kind: 'approval' as const }, requestedBy: f.bob,
       requestDigest: requestBody.requestDigest as Hash };
-    const actProof = f.proof(actPayload, { id: f.alice.id, kind: 'person' }, 'approval');
+    const surface = options.surface ?? 'host';
+    const actProof = f.proof(actPayload, { id: f.alice.id, kind: 'person' }, 'approval', false, surface);
     const act = value(decode('Authorization', { type: 'Authorization', schemaVersion: 1, ...actPayload, explicitYes: actProof.p },
       { ...context.decode, provenance: actProof.p, currentBase: requestBody.base as string, artifact: requestBody.artifact as Hash,
         now: f.now, actAt: f.now })) as Authorization;
@@ -160,14 +165,14 @@ export function intakeFixture(options: { directory?: string } = {}) {
       scope: json(options.challengeScope ?? actualScope),
       audience: requestBody.audience, operator: requestBody.approverId, requestedBy: requestBody.requestedById, artifact: requestBody.artifact,
       base: requestBody.base, issuedAt: 100, expiresAt: 200, singleUse: true, decision,
-      actDigest: decision === 'decline' ? 'none' : value(canonical(act)).hash, surface: 'host', generation: options.generation ?? generation };
-    const challengeProof = f.proof(challengePayload, { id: f.alice.id, kind: 'person' }, 'verified-operator-challenge', options.attested);
+      actDigest: decision === 'decline' ? 'none' : value(canonical(act)).hash, surface, generation: options.generation ?? generation };
+    const challengeProof = f.proof(challengePayload, { id: f.alice.id, kind: 'person' }, 'verified-operator-challenge', options.attested, surface);
     const bundle = JSON.stringify({ type: 'VerifiedActProofBundle', schemaVersion: 1, challenge: challengeProof.input,
       act: decision === 'decline' ? null : actProof.input });
     const proof = value(deps.capture.preserve(bundle, f.now)); syncCaptures();
     const input: VerifiedActAdmission = { request: { owner: 'part-two', name: 'FactEnvelope', id: referenceId },
       requestDigest: options.submittedDigest ?? requestBody.requestDigest as Hash, decision, act: decision === 'decline' ? null : act, proof,
-      surface: 'host', generation: options.generation ?? generation, ...options.extra } as VerifiedActAdmission;
+      surface, generation: options.generation ?? generation, ...options.extra } as VerifiedActAdmission;
     return { binding, root, request, requestBody, requestEvidence, act, actProof: actProof.input as ProvenanceInput,
       challengeProof: challengeProof.input as ProvenanceInput, challengePayload, proof, input, generation };
   }

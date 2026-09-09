@@ -63,7 +63,8 @@ export function evaluateGenesisReplay(samples: readonly ReplaySample[], matrix: 
   return operatorBoundary('MinimalPlaneGenesisAdmission', context, () => {
     const deployments = Object.entries(matrix);
     requireOperator(samples.length > 0 && deployments.length > 0 && deployments.every(([, caches]) => caches.length > 0
-      && caches.includes('cold') && caches.includes('warm') && new Set(caches).size === caches.length)
+      && caches.includes('cold') && caches.includes('warm') && new Set(caches).size === caches.length
+      && caches.every(cache => cache === 'cold' || cache === 'warm'))
       && Number.isSafeInteger(startupBudget) && startupBudget > 0 && Number.isSafeInteger(memoryBudget) && memoryBudget > 0
       && Number.isSafeInteger(durationMargin) && durationMargin >= 0 && Number.isSafeInteger(memoryMargin) && memoryMargin >= 0,
     'P11-NF-27/31: replay admission needs samples and finite budgets');
@@ -71,7 +72,6 @@ export function evaluateGenesisReplay(samples: readonly ReplaySample[], matrix: 
     for (const [deployment, cacheStates] of deployments) for (const cache of cacheStates) {
       const matches = samples.filter(sample => sample.deployment === deployment && sample.cache === cache);
       if (matches.length === 0) failures.push(`${deployment}:${cache}:missing`);
-      if (matches.length > 1) failures.push(`${deployment}:${cache}:duplicate`);
     }
     const digests = new Set<Hash>();
     const generations = new Set<string>(), populations = new Set<string>();
@@ -83,7 +83,8 @@ export function evaluateGenesisReplay(samples: readonly ReplaySample[], matrix: 
       else digests.add(sample.resultDigest);
       if (!sample.generation.trim()) failures.push(`${sample.deployment}:${sample.cache}:missing-generation`);
       else generations.add(sample.generation);
-      if (![sample.started, sample.ended, sample.peakMemory, sample.facts, sample.bytes, sample.lineages].every(Number.isFinite)
+      const duration = sample.ended - sample.started;
+      if (![sample.started, sample.ended, duration, sample.peakMemory, sample.facts, sample.bytes, sample.lineages].every(Number.isFinite)
         || ![sample.peakMemory, sample.facts, sample.bytes, sample.lineages].every(Number.isSafeInteger)
         || sample.ended < sample.started || sample.facts < 0 || sample.bytes < 0 || sample.lineages <= 0 || sample.peakMemory < 0)
         failures.push(`${sample.deployment}:${sample.cache}:invalid-measurement`);
@@ -92,7 +93,7 @@ export function evaluateGenesisReplay(samples: readonly ReplaySample[], matrix: 
     if (digests.size > 1) failures.push('canonical-replay-divergence');
     if (generations.size > 1) failures.push('register-generation-divergence');
     if (populations.size > 1) failures.push('incomparable-replay-populations');
-    const maximumDuration = Math.max(...samples.map(sample => Number.isFinite(sample.ended - sample.started) ? sample.ended - sample.started : 0));
+    const maximumDuration = Math.max(...samples.map(sample => sample.ended - sample.started));
     const maximumMemory = Math.max(...samples.map(sample => Number.isFinite(sample.peakMemory) ? sample.peakMemory : 0));
     const admissionDuration = maximumDuration + durationMargin, admissionMemory = maximumMemory + memoryMargin;
     if (admissionDuration > startupBudget) failures.push('startup-budget-exceeded');

@@ -63,7 +63,8 @@ export function productionComposition(f: RuntimeFixture, binding = productionBin
   const noValue = () => ok(undefined as never);
   let cutAt: (typeof requiredMinimalDependencies)[number] | null = null;
   const surface = { owner: 'part-eleven' as const, id: binding.surface.adapter.implementation,
-    render: noValue, pending: noValue, challenge: noValue, confirm: noValue, binding: noValue, protection: noValue };
+    render: noValue, pending: noValue, challenge: noValue, confirm: noValue, binding: noValue, protection: noValue,
+    stopChallenge: noValue, stop: noValue };
   const verifier = { owner: 'part-nine' as const, administration: 'independent' as const, issue: noValue, verify: noValue };
   const intakePort = { receive: noValue, recover: noValue, expireHolds: () => ok(0), admitVerifiedAct: noValue };
   const definitions = minimalPlaneProjections(productionReferenceKinds);

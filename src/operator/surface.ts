@@ -1,11 +1,12 @@
 import { authorizationRequestDigest, canonical, consumeResult, decode, grantLiveness, scopeIncludes } from '../index.js';
-import type { Authorization, FactEnvelopeReference, Hash, Json, Result, Revocation, Scope, StandingGrant, VerifiedPrincipal } from '../index.js';
+import type { FactEnvelopeReference, Hash, Json, Result, Scope, VerifiedPrincipal } from '../index.js';
+import { causalCone, hashBytes } from '../facts/index.js';
 import type { FactSnapshot, FactStatus } from '../facts/index.js';
 import type { ProbeRecord } from '../verification/index.js';
 import { constructGoverned } from '../register/index.js';
 import type { GeneratedRegister, RegisterContext } from '../register/index.js';
 import { operatorBoundary, requireOperator, take } from './boundary.js';
-import type { AuthorityQueueView, AuthorityRequestView, BindingSurfaceAction, BindingView, OperatorAuthorityAct,
+import type { AuthorityQueueView, AuthorityRequestView, BindingSurfaceAction, BindingView,
   OperatorHistoryPort, OperatorSurfaceComposition, OperatorSurfacePort, ProtectionReceiptView, SurfaceChallenge } from './contracts.js';
 
 const BINDING_ACTIONS: readonly BindingSurfaceAction[] = Object.freeze(['pair', 'pre-bind', 'transfer', 'narrow', 'widen', 'revoke', 'inspect']);
@@ -81,11 +82,30 @@ function effectLanguage(action: string, scope: Scope, audience: string, conseque
 function requestView(composition: OperatorSurfaceComposition, reference: string): AuthorityRequestView {
   const resolved = resolveReference(composition.history, reference, composition.requestKind);
   const body = object(resolved.status.body);
+  const current = snapshot(composition.history);
+  const siblings = current.entries.filter(row => row.fact.kind === composition.requestKind && row.fact.id !== reference
+    && object(row.body).requestId === body.requestId);
+  const superseding = siblings.some(row => causalCone(row.fact, current.entries.map(entry => entry.fact))
+    .some(ancestor => ancestor.id === reference));
+  const concurrent = siblings.some(row => !causalCone(row.fact, current.entries.map(entry => entry.fact)).some(ancestor => ancestor.id === reference)
+    && !causalCone(resolved.status.fact, current.entries.map(entry => entry.fact)).some(ancestor => ancestor.id === row.fact.id));
+  requireOperator(!superseding && !concurrent,
+    'P11-NF-08/09: authorization request is superseded or concurrently conflicted in signed history', 'standing');
   const livePrincipals = composition.history.decode().principals ?? [];
   const approverId = text(body.approverId, 'approverId'), requestedById = text(body.requestedById, 'requestedById');
-  const approver = livePrincipals.find(principal => principal.id === approverId && principal.kind === 'person' && principal.provenance.class === 'verified');
-  const requestedBy = livePrincipals.find(principal => principal.id === requestedById && principal.provenance.class === 'verified');
-  requireOperator(approver && requestedBy, 'P11-NF-08: request principal references do not resolve to verified principals', 'standing');
+  const approverCandidate = livePrincipals.find(principal => principal.id === approverId && principal.kind === 'person' && principal.provenance.class === 'verified');
+  const requesterCandidate = livePrincipals.find(principal => principal.id === requestedById && principal.provenance.class === 'verified');
+  requireOperator(approverCandidate && requesterCandidate, 'P11-NF-08: request principal references do not resolve to verified principals', 'standing');
+  const decoded = composition.history.decode();
+  for (const principal of [approverCandidate, requesterCandidate]) {
+    const bytes = decoded.captures[principal.provenance.record.reference];
+    requireOperator(typeof bytes === 'string' && hashBytes(bytes) === principal.provenance.record.hash,
+      'P11-NF-08: request principal provenance capture is unavailable or changed', 'standing');
+  }
+  const approver = take(decode('VerifiedPrincipal', { type: 'VerifiedPrincipal', schemaVersion: 1,
+    id: approverCandidate.id, kind: approverCandidate.kind }, { ...decoded, provenance: approverCandidate.provenance }));
+  const requestedBy = take(decode('VerifiedPrincipal', { type: 'VerifiedPrincipal', schemaVersion: 1,
+    id: requesterCandidate.id, kind: requesterCandidate.kind }, { ...decoded, provenance: requesterCandidate.provenance }));
   const scope = constitutional(resolved.status, 'scope', 'Scope');
   const artifact = text(body.artifact, 'artifact') as Hash;
   requireOperator(/^sha256:[a-f0-9]{64}$/.test(artifact), 'P11-NF-08: malformed request artifact', 'standing');
@@ -102,42 +122,6 @@ function requestView(composition: OperatorSurfaceComposition, reference: string)
     primaryActions: Object.freeze(['approve', 'decline'] as const), plainLanguageEffect: effectLanguage(action, scope, audience, consequence, reversibility),
     requesterText: Object.freeze({ label: 'UNTRUSTED REQUESTER TEXT' as const, text: text(body.requesterProse, 'requesterProse') }),
     fieldsEditable: false as const, phoneCapable: true as const });
-}
-
-function validateAct(view: AuthorityRequestView, act: OperatorAuthorityAct | null, decision: 'approve' | 'decline', history: OperatorHistoryPort): void {
-  if (decision === 'decline') { requireOperator(act === null, 'P11-NF-07: decline cannot smuggle an authority act', 'standing'); return; }
-  requireOperator(act, 'P11-NF-07: explicit approval requires an owner-decoded act', 'standing');
-  const context = history.decode(), now = history.clock();
-  switch (act.type) {
-    case 'Authorization': {
-      const authorization = take(decode('Authorization', act, { ...context, preserved: view.fact, provenance: act.explicitYes,
-        principals: [...context.principals ?? [], view.approver, view.requestedBy], currentBase: view.base, artifact: view.artifact, now, actAt: now }));
-      requireOperator(authorization.requestDigest === view.requestDigest && authorization.approver.id === view.approver.id
-        && authorization.requestedBy.id === view.requestedBy.id && authorization.action.kind === view.action
-        && authorization.artifact === view.artifact && authorization.base === view.base
-        && take(canonical(authorization.action.scope)).hash === take(canonical(view.scope)).hash,
-      'P11-NF-08: authorization does not bind the exact durable request', 'standing');
-      break;
-    }
-    case 'StandingGrant': {
-      const grant = take(decode('StandingGrant', act, { ...context, preserved: view.fact, provenance: act.source, now }));
-      requireOperator(view.recurrence.length > 0 && grant.grantee.id === view.approver.id && grant.standing === 'delegate'
-        && grant.actions.length === 1 && grant.actions[0] === view.action && grant.expiresAt === view.expiresAt
-        && take(canonical(grant.scope)).hash === take(canonical(view.scope)).hash,
-      'P11-NF-06/08: standing grant is not the exact recurrence-derived subset and term', 'standing');
-      break;
-    }
-    case 'Revocation': {
-      const revocation = take(decode('Revocation', act, { ...context, preserved: view.fact, provenance: act.source, now }));
-      requireOperator(view.action === 'revoke' && revocation.by.id === view.approver.id && revocation.grantId === view.base,
-        'P11-NF-08: revocation does not bind the exact durable request', 'standing');
-      break;
-    }
-    default: {
-      const unsupported: never = act;
-      requireOperator(false, `P11-NF-07/08: unrecognized authority act ${(unsupported as { type?: unknown }).type ?? 'missing-type'}`, 'standing');
-    }
-  }
 }
 
 function terminalRequest(composition: OperatorSurfaceComposition, request: string): boolean {
@@ -188,9 +172,10 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
   const probe = [...probes].sort((a, b) => b.record.completedAt - a.record.completedAt)[0];
   const clock = composition.history.clock(), now = clock.value;
   const evaluated = probe ? take(composition.verification.posture(probe.record.plan, clock)) : null;
+  const exactWitness = probe ? take(composition.verification.probeBound(probe.fact.id, clock)) : false;
   const witnessFresh = !!probe && evaluated?.plan === probe.record.plan && evaluated.evaluatedAt === now
     && evaluated.posture === 'healthy' && probe.record.disposition === 'passed' && probe.record.completedAt <= now
-    && now - probe.record.completedAt <= composition.witnessFreshness;
+    && now - probe.record.completedAt <= composition.witnessFreshness && exactWitness;
   const isolationLive = take(composition.isolation.live(path));
   const receiptMatches = !!receipt && receipt.operation === operation && receipt.path === path;
   const uncertainty: string[] = [];
@@ -215,7 +200,8 @@ function stopSubject(composition: OperatorSurfaceComposition, operator: string, 
 }
 
 function requireRegisteredSurface(composition: OperatorSurfaceComposition): void {
-  requireOperator(composition.history.decode().register.entries.includes(composition.id),
+  const register = composition.history.decode().register;
+  requireOperator(register.entries.includes(composition.id) && register.producers.includes(composition.id),
     'P11-NF-04: authority completion requires a currently registered surface', 'standing');
 }
 
@@ -232,6 +218,7 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
     requireOperator(composition.verifier.owner === 'part-nine' && composition.verifier.administration === 'independent',
       'P11-NF-07/12: surface verifier must be independently administered', 'standing');
     requireOperator(composition.broker.owner === 'part-nine' && composition.verification.owner === 'part-nine'
+      && typeof composition.verification.probeBound === 'function'
       && composition.isolation.owner === 'part-ten', 'P11-NF-10/12: surface cannot certify itself', 'standing');
     const render = (request: string): Result<AuthorityRequestView> => operatorBoundary('OperatorSurfaceRender', composition.boundary,
       () => requestView(composition, request));
@@ -255,13 +242,19 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
           requireOperator(view.completeness === 'complete' && now.value <= view.expiresAt, 'P11-NF-09: incomplete or expired request cannot be challenged', 'stale-base');
           const renderingDigest = take(canonical(view)).hash;
           return take(composition.verifier.issue({ request: view.fact, requestDigest: view.requestDigest, renderingDigest,
-            audience: view.audience, operator: view.approver.id, expiresAt: Math.min(view.expiresAt, now.value + composition.challengeLifetime), singleUse: true }));
+            action: view.action, scope: view.scope, audience: view.audience, operator: view.approver.id,
+            requestedBy: view.requestedBy.id, artifact: view.artifact, base: view.base, issuedAt: now.value,
+            expiresAt: Math.min(view.expiresAt, now.value + composition.challengeLifetime), singleUse: true,
+            surface: composition.id, generation: composition.history.generation() }));
         });
       },
       confirm(input: Readonly<{ challenge: SurfaceChallenge; proof: string; decision: 'approve' | 'decline' }>): Result<FactEnvelopeReference> {
         return operatorBoundary('OperatorSurfaceConfirmation', composition.boundary, () => {
           requireRegisteredSurface(composition);
-          requireOperator(composition.intake?.owner === 'part-four', 'P11-NF-04: Part Four verified-act intake seam is unavailable', 'standing');
+          requireOperator(input.decision === 'approve' || input.decision === 'decline',
+            'P11-NF-07: decision must be exactly approve or decline', 'standing');
+          requireOperator(composition.intake?.owner === 'part-four' && composition.intake.operation === 'admitVerifiedAct',
+            'P11-NF-04: Part Four verified-act intake seam is unavailable', 'standing');
           const view = requestView(composition, input.challenge.request), now = composition.history.clock();
           requireOperator(view.completeness === 'complete', 'P11-NF-08: referenced request is incomplete', 'standing');
           requireOperator(!terminalRequest(composition, view.fact), 'P11-NF-09/14: authorization request is already terminal', 'standing');
@@ -269,14 +262,16 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
             && input.challenge.audience === view.audience && input.challenge.operator === view.approver.id,
           'P11-NF-08/09: challenge subject or rendering moved', 'standing');
           requireOperator(now.value <= input.challenge.expiresAt && input.challenge.singleUse, 'P11-NF-09: challenge expired', 'stale-base');
-          const proof = take(composition.verifier.verify(input.challenge, input.proof));
+          const proof = take(composition.verifier.verify(input.challenge, input.proof, input.decision));
           requireOperator(proof.challenge === input.challenge.id && proof.principal.id === view.approver.id
             && take(canonical(proof.principal)).hash === take(canonical(view.approver)).hash
             && proof.provenance.class === 'verified', 'P11-NF-07/08: explicit yes lacks the exact independently verified operator', 'standing');
-          validateAct(view, proof.act, input.decision, composition.history);
-          return take(composition.intake.admit({ request: view.fact, requestDigest: view.requestDigest, decision: input.decision,
-            act: proof.act, proof: proof.provenance, challenge: input.challenge.id, surface: composition.id,
-            generation: composition.history.generation() }));
+          const disposition = take(composition.intake.port.admitVerifiedAct({
+            request: { owner: 'part-two', name: 'FactEnvelope', id: view.fact }, requestDigest: view.requestDigest,
+            decision: input.decision, act: proof.act, proof: proof.capture, surface: composition.id,
+            generation: composition.history.generation(),
+          }));
+          return disposition.fact;
         });
       },
       binding(input: Readonly<{ adapter: string; conversation: string; platformIdentity: string; identityEpoch: string }>): Result<BindingView> {
@@ -294,8 +289,10 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
           const digest = take(canonical(stopSubject(composition, principal.id, scope))).hash;
           const now = composition.history.clock();
           return take(composition.verifier.issue({ request: composition.id, requestDigest: digest, renderingDigest: digest,
-            audience: 'independent-emergency-stop', operator: principal.id, expiresAt: now.value + composition.challengeLifetime,
-            singleUse: true }));
+            action: 'emergency-stop', scope, audience: 'independent-emergency-stop', operator: principal.id,
+            requestedBy: principal.id, artifact: digest, base: composition.id, issuedAt: now.value,
+            expiresAt: now.value + composition.challengeLifetime, singleUse: true,
+            surface: composition.id, generation: composition.history.generation() }));
         });
       },
       stop(input: Readonly<{ challenge: SurfaceChallenge; proof: string; scope: Scope }>): Result<FactEnvelopeReference> {
@@ -312,7 +309,7 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
             && input.challenge.renderingDigest === digest && input.challenge.audience === 'independent-emergency-stop'
             && input.challenge.singleUse && composition.history.clock().value <= input.challenge.expiresAt,
           'P11-NF-22: emergency-stop challenge moved, expired, or changed generation', 'stale-base');
-          const proof = take(composition.verifier.verify(input.challenge, input.proof));
+          const proof = take(composition.verifier.verify(input.challenge, input.proof, 'approve'));
           requireOperator(proof.challenge === input.challenge.id && proof.principal.id === principal.id
             && take(canonical(proof.principal)).hash === take(canonical(principal)).hash
             && proof.provenance.class === 'verified' && proof.act === null,

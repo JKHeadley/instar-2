@@ -8,7 +8,7 @@ import { json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ProjectionDefinition } from '../projections/index.js';
 
 export const intakeKinds=Object.freeze(['intake-receipt','intake-resolved','intake-admitted','intake-held','intake-expired',
-  'intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','intake-verified-act','conversation-binding'] as const);
+  'intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','intake-verified-act','conversation-binding','authorization-request'] as const);
 
 // Different scope dimensions are not evidence of disjoint work.
 export function intakeScopesOverlap(a: Scope,b: Scope): boolean {
@@ -73,6 +73,14 @@ export function intakeFactSchemas(scope: Scope): readonly FactSchema[] {
       ...shared,kind: 'intake-verified-act',fields: {
         request: { kind: 'reference' },requestDigest: short,challenge: short,surface: short,generation: short,
         disposition: short,record: { kind: 'owned',owner: 'part-four',name: 'VerifiedActDisposition' }
+      }
+    },
+    {
+      ...shared,kind: 'authorization-request',fields: {
+        requestId: short,requestDigest: short,action: short,scope: { kind: 'constitutional',type: 'Scope' },audience: short,
+        artifact: short,base: short,expiresAt: { kind: 'integer' },approverId: short,requestedById: short,
+        consequence: short,reversibility: short,blockedWork: short,recurrence: { kind: 'text',maxLength: 1048576 },
+        requesterProse: { kind: 'text',maxLength: 1048576 },evidence: { kind: 'capture' }
       }
     },
     {

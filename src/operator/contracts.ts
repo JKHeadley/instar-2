@@ -1,6 +1,7 @@
-import type { Authorization, BoundaryContext, Clock, DecodeContext, FactEnvelopeReference, Hash, Json,
+import type { Authorization, BoundaryContext, CaptureInput, Clock, DecodeContext, FactEnvelopeReference, Hash, Json,
   Provenance, RegisterGenerationReference, Result, Revocation, Scope, StandingGrant, VerifiedPrincipal } from '../index.js';
 import type { FactSnapshot } from '../facts/index.js';
+import type { IntakePort } from '../intake/index.js';
 import type { ExternalProtectionBrokerPort, VerificationRuntimePort } from '../verification/index.js';
 
 export type OperatorAuthorityAct = Authorization | StandingGrant | Revocation;
@@ -20,28 +21,36 @@ export interface OperatorHistoryPort {
 
 export interface SurfaceChallenge {
   readonly id: string; readonly request: string; readonly requestDigest: Hash; readonly renderingDigest: Hash;
-  readonly audience: string; readonly operator: string; readonly expiresAt: number; readonly singleUse: true;
+  readonly action: string; readonly scope: Scope; readonly audience: string; readonly operator: string;
+  readonly requestedBy: string; readonly artifact: Hash; readonly base: string; readonly issuedAt: number;
+  readonly expiresAt: number; readonly singleUse: true; readonly surface: string;
+  readonly generation: RegisterGenerationReference;
 }
 
 export interface VerifiedSurfaceProof {
   readonly challenge: string; readonly principal: VerifiedPrincipal; readonly provenance: Provenance;
-  readonly act: OperatorAuthorityAct | null;
+  readonly act: OperatorAuthorityAct | null; readonly capture: CaptureInput;
 }
 
 export interface IndependentSurfaceVerifierPort {
   readonly owner: 'part-nine'; readonly administration: 'independent';
   issue(subject: Readonly<Omit<SurfaceChallenge, 'id'>>): Result<SurfaceChallenge>;
-  verify(challenge: SurfaceChallenge, proof: string): Result<VerifiedSurfaceProof>;
+  verify(challenge: SurfaceChallenge, proof: string, decision: 'approve' | 'decline'): Result<VerifiedSurfaceProof>;
 }
 
-// Consumer requirement for the missing Part Four owner seam. This is not a new
-// authorization/decline record and has no constructor; Part Four must admit the
-// existing Part One act and return its own fact reference.
+/** Part Eleven's read-only adapter over Part Nine. The exact-probe predicate is
+ * evaluated by Part Nine's public verification logic and cannot be inferred from
+ * aggregate plan posture. */
+export interface OperatorVerificationPort extends VerificationRuntimePort {
+  probeBound(probeFact: string, at: Clock): Result<boolean>;
+}
+
+// Part Four owns admission and the durable disposition. Eleven only relays the
+// exact request, act and independently captured proof through this real port.
 export interface OperatorActIntakeConsumer {
   readonly owner: 'part-four';
-  admit(input: Readonly<{ request: string; requestDigest: Hash; decision: 'approve' | 'decline';
-    act: OperatorAuthorityAct | null; proof: Provenance; challenge: string;
-    surface: string; generation: RegisterGenerationReference }>): Result<FactEnvelopeReference>;
+  readonly operation: 'admitVerifiedAct';
+  readonly port: Pick<IntakePort, 'admitVerifiedAct'>;
 }
 
 // The independent brake is deliberately separate from authority completion.
@@ -105,7 +114,7 @@ export interface OperatorSurfaceComposition {
   readonly id: string; readonly boundary: BoundaryContext; readonly history: OperatorHistoryPort;
   readonly verifier: IndependentSurfaceVerifierPort; readonly intake: OperatorActIntakeConsumer | null;
   readonly emergencyStop: OperatorEmergencyStopConsumer | null;
-  readonly broker: ExternalProtectionBrokerPort; readonly verification: VerificationRuntimePort;
+  readonly broker: ExternalProtectionBrokerPort; readonly verification: OperatorVerificationPort;
   readonly requestKind: string; readonly terminalKinds: readonly string[];
   readonly bindingKind: 'conversation-binding'; readonly maxPending: number; readonly challengeLifetime: number;
   readonly witnessFreshness: number; readonly isolation: Readonly<{ owner: 'part-ten'; live(path: string): Result<boolean> }>;
@@ -146,7 +155,7 @@ export interface SeamRow {
 }
 
 export interface ProtectedViewDependencies {
-  readonly broker: ExternalProtectionBrokerPort; readonly verification: VerificationRuntimePort;
+  readonly broker: ExternalProtectionBrokerPort; readonly verification: OperatorVerificationPort;
 }
 
 export interface SurfacePayloadEnvelope { readonly record: Json }

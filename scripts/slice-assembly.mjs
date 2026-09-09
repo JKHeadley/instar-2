@@ -1,12 +1,12 @@
 // ============================================================================
 // The part-eleven vertical-slice assembly (docs/15 section 7).
 //
-// This is a REFERENCE assembly, not part ten's production executable assembly:
-// parts nine and ten are unbuilt on this base. It realizes only the ports the
-// earlier parts publish as consumer requirements (`owner: 'part-ten'`, and the
-// eight-owned `EffectAssessmentPort`), it ANNOUNCES every stand-in, and it never
-// weakens an owner's rule. Everything it consumes is a published package export
-// from `dist/` — no private import, no test-only recovery helper.
+// The durable slice engine below owns no production wiring. Production callers
+// enter through `bootProductionSliceAssembly`, which boots Part Ten's public
+// coordinator, replaces its Part Five-through-Eight handles with these exact
+// durable ports before admission, and executes only through the returned handles.
+// Part Nine's verifier and platform witness remain independently supplied owner
+// ports. Everything consumed here is a published package export from `dist/`.
 //
 // `bootSliceAssembly` is the ONE public boot path. Every restart in the kill
 // schedule re-enters through it and reconstructs the whole plane from the durable
@@ -25,13 +25,14 @@ import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, regis
 import { createJudgmentDoorway, createJudgmentSpine, createModelAdapter, judgmentSchemas, registerJudgmentBodies } from '../dist/judgment/index.js';
 import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, decodeOutboundMessage, effectSchemas, installOperationDefinition, registerEffectBodies } from '../dist/effects/index.js';
 import { checkpoint, foldProjection, rebuildProjection, restoreCheckpoint, signCheckpoint, verifyRebuild } from '../dist/projections/index.js';
+import { bootProductionAssembly } from '../dist/assembly/index.js';
+import { minimalPlaneProjectionIds, minimalPlaneProjections } from '../dist/operator/index.js';
 
 import { createTransportFileStorage } from './transport-file-storage.mjs';
 import { createEffectReplicaStorage } from './effect-replica-storage.mjs';
 import { createEffectFileCaptures } from './effect-file-captures.mjs';
 import { createJudgmentCaptures } from './judgment-captures.mjs';
 import { createSliceService, readServiceJournal } from './slice-service.mjs';
-import { minimalPlaneProjectionIds, minimalPlaneProjections } from './slice-projections.mjs';
 
 export { readServiceJournal };
 /** The durability peer ANNOUNCES itself, per part eight's slice rule. */
@@ -45,6 +46,47 @@ const json = v => JSON.parse(JSON.stringify(v));
 const bytesOf = v => take(canonical(v)).bytes;
 const hashOf = v => take(canonical(v)).hash;
 const textHash = text => `sha256:${createHash('sha256').update(text).digest('hex')}`;
+
+/**
+ * Public section-7 boot. Part Ten re-resolves the signed manifest and returns the
+ * only handles this wrapper exposes. Authority completion is performed by the
+ * returned Part Eleven surface, whose intake handle is the returned Part Four
+ * operation. The displayed result is the independently administered Part Nine
+ * witness result, never the effect adapter's self-report.
+ */
+export function bootProductionSliceAssembly(input) {
+  const slice = bootSliceAssembly(input.home, input.config ?? sliceConfig());
+  if (!input.assembly?.production) throw new Error('production slice requires Part Ten production composition');
+  const supplied = input.assembly.production;
+  const production = Object.freeze({ ...supplied,
+    run: Object.freeze({ ...supplied.run, port: slice.runGraph() }),
+    lease: Object.freeze({ ...supplied.lease, port: slice.transport }),
+    judgment: Object.freeze({ ...supplied.judgment, port: slice.judgment }),
+    effect: Object.freeze({ ...supplied.effect, port: slice.effects }),
+  });
+  const coordinator = take(bootProductionAssembly({ ...input.assembly, production }, input.manifest, input.scope));
+  return Object.freeze({ ...slice, coordinator,
+    async drive() {
+      const request = input.authorizationRequest;
+      if (typeof request !== 'string' || !request) throw new Error('production slice requires one durable authorization request');
+      const challenge = take(coordinator.handles.surface.challenge(request));
+      const authority = take(coordinator.handles.surface.confirm({ challenge, proof: input.operatorProof ?? 'verified-operator-proof', decision: 'approve' }));
+      const report = await slice.drive();
+      const operation = report.outbound?.operation;
+      if (typeof operation !== 'string' || !operation) throw new Error('production slice produced no admitted outbound operation');
+      const witnessed = take(coordinator.handles.deliveryWitness.observe(operation));
+      const verification = take(coordinator.handles.verification.port.inspectCurrent());
+      return Object.freeze({ ...report,
+        assemblyBoot: Object.freeze({ owner: coordinator.owner, admission: coordinator.admission.id,
+          scope: coordinator.scope, references: coordinator.references.map(row => Object.freeze({ name: row.name,
+            fact: row.fact.id, completeness: row.completeness })) }),
+        authorityCompletion: Object.freeze({ request, disposition: authority.id, owner: authority.owner }),
+        independentlyWitnessedResult: witnessed,
+        verificationFacts: verification.map(row => row.fact.id),
+        verificationRecords: verification.map(row => row.record.id),
+      });
+    } });
+}
 
 const syncDir = directory => { const fd = openSync(directory, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } };
 const readLines = file => (existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)) : []);
