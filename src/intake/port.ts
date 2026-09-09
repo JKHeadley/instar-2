@@ -1,7 +1,7 @@
 // docs/08: preservation -> dedup -> authentication -> resolution -> requester admission.
 // No grant/Authorization/Directive producer, model call, session launch or effect lives here.
 import { canonical,decode,decodeMeasurement,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
-import type { BoundaryContext,Clock,Directive,Evidence,FactEnvelopeReference,HistoricalRead,Json,Provenance,Result,Revocation,StandingGrant,VerifiedPrincipal } from '../index.js';
+import type { BoundaryContext,Clock,Directive,Evidence,FactEnvelopeReference,HistoricalRead,Intent,Json,Provenance,Result,Revocation,StandingGrant,VerifiedPrincipal } from '../index.js';
 import { authorAndAppend,causalCone,causalStanding,createFactStore,decodeHistoricalBody,foldKey,hashBytes,prepareSnapshot } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactStatus } from '../facts/index.js';
 import { constructGoverned,generationOf,readEnforcedRecord,readRegisterEntry } from '../register/index.js';
@@ -53,7 +53,10 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     const scope=take(decode('Scope',deps.scope,initial.decode));
     const registerGeneration=take(generationOf(deps.governance.register,deps.governance.context));
     const registerGenerationReference={ owner: 'part-three',name: 'RegisterGeneration',id: registerGeneration.id } as const;
-    for(const schema of intakeFactSchemas(scope)) requireIntake(initial.schemas.some(s => same(s,schema)),
+    // The scheduled principal schema is additive. Existing conversation-only
+    // compositions remain constructible and the scheduled arm checks its own
+    // schema when that operation is invoked.
+    for(const schema of intakeFactSchemas(scope).filter(s => s.kind!=='intake-scheduled-principal')) requireIntake(initial.schemas.some(s => same(s,schema)),
       `P4-NF-06/12: required owner schema changed or missing: ${schema.kind}`);
     const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id));
     const stopRegistration=take(intakeStopRegistration(b,deps.author.principal.id));
@@ -230,7 +233,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         .filter((record): record is HistoricalRead<Revocation> => record.view.type==='Revocation'));
       return { facts,rows,grants,revocations };
     }
-    function constitutionalField(row: FactStatus,type: 'StandingGrant'|'Evidence',id: string,preserved: string): string {
+    function constitutionalField(row: FactStatus,type: 'StandingGrant'|'Evidence'|'VerifiedPrincipal',id: string,preserved: string): string {
       const schema=context(preserved).schemas.find(s => s.kind===row.fact.kind&&s.version===row.fact.schemaVersion);
       const body=object(row.body);
       const field=Object.entries(schema?.fields??{}).find(([name,policy]) => policy.kind==='constitutional'
@@ -248,22 +251,29 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       const evidence=row.historical.find((record): record is HistoricalRead<Evidence> => record.view.type==='Evidence');
       requireIntake(evidence&&evidence.captureStatus==='available','scheduled intake: discovery Evidence is missing or unavailable','integrity');
       const claim=take(readHistoricalEvidence(evidence,at,preserved));
-      requireIntake(claim.subject===eventId&&claim.predicate==='scheduled-discovery',
+      requireIntake(claim.subject===eventId&&claim.predicate==='scheduled-discovery'&&claim.value===true,
         'scheduled intake: discovery Evidence does not bind the event id','integrity');
       requireIntake(typeof evidence.view.source==='string'&&evidence.view.source===row.fact.machine,
         'scheduled intake: discovery source machine is not recorded by its Evidence','integrity');
       const field=constitutionalField(row,'Evidence',evidence.view.id,preserved);
       return { row,evidence,field };
     }
-    function scheduledStanding(principal: VerifiedPrincipal,at: Clock,preserved: string) {
+    function scheduledStanding(principal: VerifiedPrincipal,at: Clock,preserved: string,allowed?: ReadonlySet<string>) {
       const { grants,revocations }=historicalRows(preserved);
-      const candidates=grants.filter(({ row,grant }) => !row.taint.length&&!row.conflicts.length
+      const candidates=grants.filter(({ row,grant }) => (!allowed||allowed.has(row.fact.id))&&!row.taint.length&&!row.conflicts.length
         &&grant.captureStatus==='available'&&grant.view.grantee.id===principal.id&&grant.view.grantee.kind==='system'
         &&grant.view.standing==='delegate'&&grant.view.actions.includes('work')
         &&scopeIncludes(take(decode('Scope',grant.view.scope,context(preserved).decode)),scope)
-        &&take(historicalGrantLiveness(grant,revocations.filter(r => r.view.grantId===grant.view.id),at,preserved))==='live');
-      requireIntake(candidates.length===1,'scheduled intake: one current covering package-system grant is required','standing');
-      const selected=candidates[0]!,field=constitutionalField(selected.row,'StandingGrant',selected.grant.view.id,preserved);
+        &&take(historicalGrantLiveness(grant,revocations.filter(r => r.view.grantId===grant.view.id
+          &&(!allowed||allowed.has(r.origin.id))),at,preserved))==='live');
+      const identities=[...new Set(candidates.map(candidate => candidate.grant.view.id))];
+      requireIntake(identities.length===1,'scheduled intake: one current covering package-system grant is required','standing');
+      // Repeated, independently signed witnesses for the same immutable grant
+      // are one grant identity. Snapshot comparison has already contested any
+      // disagreement, so retain a deterministic valid witness.
+      const selected=candidates.filter(candidate => candidate.grant.view.id===identities[0])
+        .sort((left,right) => foldKey(left.row.fact)<foldKey(right.row.fact)?-1:foldKey(left.row.fact)>foldKey(right.row.fact)?1:0)[0]!;
+      const field=constitutionalField(selected.row,'StandingGrant',selected.grant.view.id,preserved);
       return { row: selected.row,grant: selected.grant,field };
     }
     function isScheduledAdmission(fact: FactEnvelope): boolean {
@@ -273,6 +283,99 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         return object(intent.principal!).kind==='system'&&Object.keys(ask).length===6&&ask.schemaVersion===1
           &&['jobInstance','scheduledInstant','packageDigest','calendarPolicyVersion','timeZoneDataVersion'].every(key => ask[key]!==undefined);
       } catch { return false; }
+    }
+    function scheduledTick(raw: string,eventId: string,preserved: string) {
+      let tick: Record<string,Json>;
+      try { tick=object(JSON.parse(raw) as Json); }
+      catch { throw new IntakeFailure('scheduled intake: malformed canonical tick bytes','decode'); }
+      exact(tick,['schemaVersion','jobInstance','scheduledInstant','packageDigest','calendarPolicyVersion','timeZoneDataVersion'],
+        'scheduled intake: malformed canonical tick body');
+      requireIntake(take(canonical(tick)).bytes===raw&&tick.schemaVersion===1,
+        'scheduled intake: tick bytes are not canonical schema version 1','decode');
+      const jobInstance=text(tick.jobInstance,'scheduled job instance');
+      requireIntake(isHash(tick.packageDigest),'scheduled intake: package digest must be SHA-256','decode');
+      text(tick.calendarPolicyVersion,'calendar policy version'); text(tick.timeZoneDataVersion,'time-zone-data version');
+      const scheduledInstant=take(decodeMeasurement('clock',tick.scheduledInstant,context(preserved).decode));
+      const expectedEventId=take(canonical([tick.schemaVersion,jobInstance,rfc3339z(scheduledInstant.value)])).hash;
+      requireIntake(eventId===expectedEventId,'scheduled intake: event id differs from namespace/job/instant identity','integrity');
+      return { tick,jobInstance,scheduledInstant };
+    }
+    type ScheduledResolution={ kind: 'valid'; row: FactStatus; principal: VerifiedPrincipal }|{ kind: 'partial' };
+    function resolveScheduledAdmission(row: FactStatus,facts: readonly FactEnvelope[],preserved: string): ScheduledResolution {
+      requireIntake(row.fact.kind==='intake-admitted'&&isScheduledAdmission(row.fact),
+        'scheduled intake: pending reference has wrong kind or subject','integrity');
+      requireIntake(row.conflicts.length===0&&!row.taint.some(taint => taint!=='evidence-unavailable'),
+        'scheduled intake: pending admission is contested','standing');
+      if(row.taint.includes('evidence-unavailable')) return { kind: 'partial' };
+      const c=context(preserved),snapshot=statuses(preserved),body=object(row.body),intentBody=object(body.intent!);
+      const cone=new Set(causalCone(row.fact,facts).map(fact => fact.id));
+      const required=row.fact.predecessors.required;
+      const dependencies=required.map(id => snapshot.find(candidate => candidate.fact.id===id));
+      requireIntake(dependencies.every((candidate): candidate is FactStatus => !!candidate),
+        'scheduled intake: pending admission dependency is missing','integrity');
+      requireIntake(dependencies.every(candidate => cone.has(candidate.fact.id)),
+        'scheduled intake: pending admission dependency lies outside its signed cone','integrity');
+      requireIntake(dependencies.every(candidate => candidate.conflicts.length===0
+        &&!candidate.taint.some(taint => taint!=='evidence-unavailable')),
+      'scheduled intake: pending admission dependency is contested','standing');
+      if(dependencies.some(candidate => candidate.taint.includes('evidence-unavailable'))) return { kind: 'partial' };
+
+      const receiptId=text(body.receipt,'scheduled receipt reference');
+      const receipt=dependencies.find(candidate => candidate.fact.id===receiptId);
+      requireIntake(receipt?.fact.kind==='intake-receipt','scheduled intake: admission receipt has wrong kind','integrity');
+      const arrival=intakeArrival(receipt.fact,author.principal.id);
+      requireIntake(arrival&&arrival.logicalId===body.logicalId&&arrival.rawHash===body.rawHash,
+        'scheduled intake: admission differs from its preserved receipt','integrity');
+      const receiptBody=object(receipt.body),captureInput=object(receiptBody.capture!);
+      const captureReference=text(captureInput.reference,'scheduled capture reference');
+      const capture=c.captures[captureReference];
+      if(capture?.status!=='available') return { kind: 'partial' };
+      requireIntake(capture.bytes!==null&&capture.hash===captureInput.hash&&capture.hash===body.rawHash
+        &&hashBytes(capture.bytes)===capture.hash,'scheduled intake: preserved tick capture is missing or changed','integrity');
+      const parsed=scheduledTick(capture.bytes,arrival.route.eventId,preserved);
+      requireIntake(body.adapter===receiptBody.adapter&&body.channel===arrival.route.channel&&body.sender===arrival.route.sender
+        &&body.identityEpoch===arrival.route.identityEpoch&&body.eventId===arrival.route.eventId,
+      'scheduled intake: admission route differs from its preserved receipt','integrity');
+
+      const intent=row.historical.find((record): record is HistoricalRead<Intent> => record.view.type==='Intent');
+      requireIntake(intent?.captureStatus==='available','scheduled intake: admitted Intent is unavailable','integrity');
+      requireIntake(intent.view.id===body.logicalId&&intent.view.via===adapterId&&intent.view.raw===capture.hash
+        &&same(intent.view.receivedAt,receipt.fact.at)&&same(intent.view.ask,parsed.tick)&&intent.view.under.length===0,
+      'scheduled intake: admitted Intent differs from the preserved tick','integrity');
+      const principal=intent.view.principal as VerifiedPrincipal;
+      requireIntake(principal.kind==='system'&&principal.id===arrival.route.sender&&principal.provenance.class==='verified'
+        &&principal.provenance.authenticated.recordType==='package-system-principal'
+        &&principal.provenance.record.hash===arrival.route.identityEpoch,
+      'scheduled intake: admitted principal differs from the signed route','standing');
+
+      const principalRows=dependencies.filter(candidate => candidate.fact.kind==='intake-scheduled-principal'
+        &&candidate.historical.some(record => record.view.type==='VerifiedPrincipal'&&same(record.view,principal)));
+      requireIntake(principalRows.length>0,'scheduled intake: principal witness is missing or mismatched','standing');
+      for(const principalRow of principalRows) constitutionalField(principalRow,'VerifiedPrincipal',principal.id,preserved);
+      const discoveryRows=dependencies.filter(candidate => candidate.historical.some(record => record.view.type==='Evidence'));
+      requireIntake(discoveryRows.length===1,'scheduled intake: one discovery witness is required','integrity');
+      const discovery=scheduledDiscovery(reference(discoveryRows[0]!.fact),arrival.route.eventId,row.fact.at,preserved);
+      requireIntake(required.includes(discovery.row.fact.id),'scheduled intake: discovery witness is not a signed dependency','integrity');
+      const standing=scheduledStanding(principal,row.fact.at,preserved,cone);
+      const standingRows=dependencies.filter(candidate => candidate.historical.some(record => record.view.type==='StandingGrant'
+        &&record.view.id===standing.grant.view.id&&same(record.view,standing.grant.view)));
+      requireIntake(standingRows.length>0,'scheduled intake: standing witness is not a signed dependency','standing');
+      for(const standingRow of standingRows) constitutionalField(standingRow,'StandingGrant',standing.grant.view.id,preserved);
+
+      const resolved=dependencies.filter(candidate => candidate.fact.kind==='intake-resolved');
+      requireIntake(resolved.length===1,'scheduled intake: one resolved-principal witness is required','integrity');
+      const resolvedBody=object(resolved[0]!.body);
+      requireIntake(resolvedBody.logicalId===body.logicalId&&resolvedBody.receipt===receipt.fact.id
+        &&resolvedBody.rawHash===body.rawHash&&resolvedBody.adapter===body.adapter&&resolvedBody.channel===body.channel
+        &&resolvedBody.sender===body.sender&&resolvedBody.identityEpoch===body.identityEpoch&&resolvedBody.eventId===body.eventId
+        &&resolvedBody.principalId===principal.id&&resolvedBody.binding==='none'
+        &&same(resolvedBody.authentication,principal.provenance.record),
+      'scheduled intake: resolved-principal witness differs from the admission','integrity');
+      const work=object(body.work!);
+      requireIntake(work.type==='IntakeWork'&&work.schemaVersion===1&&work.owner===owner
+        &&work.blockedOn==='run-admission'&&work.standing==='requester'&&body.binding==='none',
+      'scheduled intake: admitted work changed owner or blocked state','standing');
+      return { kind: 'valid',row,principal };
     }
     function receiveScheduledTick(input: ScheduledTickAdmission): Result<IntakeDisposition> {
       let preserved=initial.preserved;
@@ -300,12 +403,19 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             requireIntake(intakeArrival(receipt,author.principal.id),'scheduled intake: preserved receipt has invalid route identity','integrity');
             const arrivals=read(preserved).filter(f => intakeArrival(f,author.principal.id)?.logicalId===logicalId);
             const original=arrivals[0]!;
-            const prior=read(preserved).find(f => isScheduledAdmission(f)&&object(f.body).logicalId===logicalId);
             if(object(original.body).rawHash!==captured.hash) {
               const signal=append('intake-mismatch',{ ...common,original: original.id },at,preserved,[receipt.id,original.id]);
               return take(boundary<IntakeDisposition>('IntakeScheduledMismatch',{ ...b,preserved: signal.id },() => {
                 throw new IntakeFailure('P4-NF-03/08: same scheduled event id, different arrival bytes; attack signal recorded','integrity');
               }));
+            }
+            const priorRows=statuses(preserved).filter(row => isScheduledAdmission(row.fact)&&object(row.body).logicalId===logicalId);
+            requireIntake(priorRows.length<=1,'scheduled intake: scheduled admission identity is conflicted','standing');
+            if(priorRows.length===1) {
+              const prior=resolveScheduledAdmission(priorRows[0]!,read(preserved),preserved);
+              requireIntake(prior.kind==='valid','scheduled intake: original admission evidence is unavailable','integrity');
+              append('intake-collapse',{ ...common,original: prior.row.fact.id },at,preserved,[receipt.id,prior.row.fact.id]);
+              return { kind: 'duplicate',logicalId,original: reference(prior.row.fact) };
             }
             requireIntake(routeAdapter===adapterId,'scheduled intake: unregistered scheduled-ingress adapter','standing');
             const authentication=contract.authenticationClass;
@@ -315,20 +425,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             requireIntake(channel.startsWith('scheduled:')&&channel.length>'scheduled:'.length,
               'scheduled intake: channel must name its installation','decode');
             checkDedup(at,preserved);
-            let tick: Record<string,Json>;
-            try { tick=object(JSON.parse(input.raw) as Json); }
-            catch { throw new IntakeFailure('scheduled intake: malformed canonical tick bytes','decode'); }
-            exact(tick,['schemaVersion','jobInstance','scheduledInstant','packageDigest','calendarPolicyVersion','timeZoneDataVersion'],
-              'scheduled intake: malformed canonical tick body');
-            requireIntake(take(canonical(tick)).bytes===input.raw&&tick.schemaVersion===1,
-              'scheduled intake: tick bytes are not canonical schema version 1','decode');
-            const jobInstance=text(tick.jobInstance,'scheduled job instance');
-            requireIntake(isHash(tick.packageDigest),'scheduled intake: package digest must be SHA-256','decode');
-            text(tick.calendarPolicyVersion,'calendar policy version'); text(tick.timeZoneDataVersion,'time-zone-data version');
-            const scheduledInstant=take(decodeMeasurement('clock',tick.scheduledInstant,context(preserved).decode));
-            const rfc3339=rfc3339z(scheduledInstant.value);
-            const expectedEventId=take(canonical([tick.schemaVersion,jobInstance,rfc3339])).hash;
-            requireIntake(eventId===expectedEventId,'scheduled intake: event id differs from namespace/job/instant identity','integrity');
+            const { tick,jobInstance,scheduledInstant }=scheduledTick(input.raw,eventId,preserved);
             const authenticated=authenticateSender(input.raw,{ channel,sender,identityEpoch,eventId },at,preserved,'scheduled-tick');
             requireIntake(authenticated.provenance.class==='verified'&&authenticated.e.principalKind==='system'
               &&authenticated.e.principalId===sender&&authenticated.provenance.authenticated.recordType==='package-system-principal',
@@ -340,10 +437,9 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               'scheduled intake: configured author is not the authenticated package system principal','standing');
             const discovery=scheduledDiscovery(input.discovery,eventId,at,preserved);
             const standing=scheduledStanding(principal,at,preserved);
-            if(prior) {
-              append('intake-collapse',{ ...common,original: prior.id },at,preserved,[receipt.id,prior.id]);
-              return { kind: 'duplicate',logicalId,original: reference(prior) };
-            }
+            const scheduledPrincipalSchema=intakeFactSchemas(scope).find(schema => schema.kind==='intake-scheduled-principal')!;
+            requireIntake(context(preserved).schemas.some(schema => same(schema,scheduledPrincipalSchema)),
+              'P4-NF-06/12: required scheduled owner schema changed or missing: intake-scheduled-principal');
             const existingPrincipal=read(preserved).find(f => f.kind==='intake-scheduled-principal'
               &&same(object(f.body).principal,principal));
             const principalFact=existingPrincipal??append('intake-scheduled-principal',{ principal: json(principal) },at,preserved,
@@ -353,12 +449,14 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             [receipt.id,discovery.row.fact.id,standing.row.fact.id],principal);
             const intent=take(decode('Intent',{ type: 'Intent',schemaVersion: 1,id: logicalId,principal,receivedAt: original.at,
               via: adapterId,raw: captured.hash,ask: tick,under: [] },context(preserved,principal).decode));
-            const committed=read(preserved).find(f => isScheduledAdmission(f)&&object(f.body).logicalId===logicalId);
+            const committed=statuses(preserved).find(row => isScheduledAdmission(row.fact)&&object(row.body).logicalId===logicalId);
             if(committed) {
               requireIntake(object(committed.body).rawHash===captured.hash,'P4-NF-03: concurrent scheduled arrival hash mismatch','integrity');
+              const resolvedCommitted=resolveScheduledAdmission(committed,read(preserved),preserved);
+              requireIntake(resolvedCommitted.kind==='valid','scheduled intake: committed admission evidence is unavailable','integrity');
               checkDedup(at,preserved);
-              append('intake-collapse',{ ...common,original: committed.id },at,preserved,[receipt.id,committed.id]);
-              return { kind: 'duplicate',logicalId,original: reference(committed) };
+              append('intake-collapse',{ ...common,original: committed.fact.id },at,preserved,[receipt.id,committed.fact.id]);
+              return { kind: 'duplicate',logicalId,original: reference(committed.fact) };
             }
             const admitted=append('intake-admitted',{ ...common,intent: json(intent),
               work: { type: 'IntakeWork',schemaVersion: 1,owner,blockedOn: 'run-admission',standing: 'requester' },binding: 'none'
@@ -400,18 +498,30 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         const visible=(fact: FactEnvelope) => { const position=frontier[fact.machine]; return !!position
           &&(fact.segment.epoch<Number(object(position).epoch)||fact.segment.epoch===Number(object(position).epoch)
             &&fact.segment.position<=Number(object(position).position)); };
-        const rows=statuses(initial.preserved).filter(row => visible(row.fact)&&isScheduledAdmission(row.fact))
+        const snapshot=statuses(initial.preserved);
+        const rows=snapshot.filter(row => visible(row.fact)&&isScheduledAdmission(row.fact))
           .sort((left,right) => foldKey(left.fact)<foldKey(right.fact)?-1:foldKey(left.fact)>foldKey(right.fact)?1:0);
-        const opened=new Set(facts.filter(fact => visible(fact)&&fact.kind==='run-opening').flatMap(fact => {
-          try { const opening=object(object(object(fact.body).record!).opening!); return opening.owner==='part-two'
-            &&opening.name==='FactEnvelope'&&typeof opening.id==='string'? [opening.id]:[]; }
-          catch { return []; }
+        const resolved=rows.map(row => resolveScheduledAdmission(row,facts,initial.preserved));
+        const valid=resolved.filter((candidate): candidate is Extract<ScheduledResolution,{ kind: 'valid' }> => candidate.kind==='valid');
+        for(const candidate of valid) requireIntake(causalCone(candidate.row.fact,facts).every(visible),
+          'scheduled intake: frontier omits an admission dependency','stale-base');
+        const validIds=new Set(valid.map(candidate => candidate.row.fact.id));
+        const opened=new Set(snapshot.filter(row => visible(row.fact)&&row.fact.kind==='run-opening'
+          &&row.taint.length===0&&row.conflicts.length===0&&causalCone(row.fact,facts).every(visible)).flatMap(row => {
+          try {
+            const schema=context(initial.preserved).schemas.find(candidate => candidate.kind===row.fact.kind
+              &&candidate.version===row.fact.schemaVersion);
+            const recordField=schema?.fields.record;
+            requireIntake(recordField?.kind==='owned'&&recordField.owner==='part-five'&&recordField.name==='Run',
+              'scheduled intake: Run opening owner decoder is missing','integrity');
+            const record=object(object(row.body).record!),opening=object(record.opening!);
+            const id=text(opening.id,'Run opening admission');
+            return opening.owner==='part-two'&&opening.name==='FactEnvelope'&&validIds.has(id)
+              &&row.fact.predecessors.required.includes(id)? [id]:[];
+          } catch { return []; }
         }));
-        const selected=rows.filter(row => object(object(row.body).work!).owner===ownerInput&&!opened.has(row.fact.id));
-        for(const row of selected) {
-          requireIntake(!row.taint.length&&!row.conflicts.length,'scheduled intake: pending admission is contested','standing');
-          requireIntake(causalCone(row.fact,facts).every(visible),'scheduled intake: frontier omits an admission dependency','stale-base');
-        }
+        const selected=valid.map(candidate => candidate.row)
+          .filter(row => object(object(row.body).work!).owner===ownerInput&&!opened.has(row.fact.id));
         let start=0;
         if(input.after!==null) {
           const cursor=object(json(input.after)); exact(cursor,['owner','name','id'],'scheduled intake: cursor must be one Part Two fact reference');

@@ -147,6 +147,86 @@
       }
     },
     {
+      "id": "P4-ST-09",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-conformance.test.ts",
+        "hash": "sha256:30497af40d235641d4efcf4e47ed6931a9c886718782390aab490b7ba6bfd3e1"
+      }
+    },
+    {
+      "id": "P4-ST-10",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-conformance.test.ts",
+        "hash": "sha256:30497af40d235641d4efcf4e47ed6931a9c886718782390aab490b7ba6bfd3e1"
+      }
+    },
+    {
+      "id": "P4-ST-11",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-conformance.test.ts",
+        "hash": "sha256:30497af40d235641d4efcf4e47ed6931a9c886718782390aab490b7ba6bfd3e1"
+      }
+    },
+    {
+      "id": "P4-ST-12",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-conformance.test.ts",
+        "hash": "sha256:30497af40d235641d4efcf4e47ed6931a9c886718782390aab490b7ba6bfd3e1"
+      }
+    },
+    {
+      "id": "P4-ST-13",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-conformance.test.ts",
+        "hash": "sha256:30497af40d235641d4efcf4e47ed6931a9c886718782390aab490b7ba6bfd3e1"
+      }
+    },
+    {
+      "id": "P4-ST-14",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-conformance.test.ts",
+        "hash": "sha256:30497af40d235641d4efcf4e47ed6931a9c886718782390aab490b7ba6bfd3e1"
+      }
+    },
+    {
+      "id": "P4-ST-15",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-conformance.test.ts",
+        "hash": "sha256:30497af40d235641d4efcf4e47ed6931a9c886718782390aab490b7ba6bfd3e1"
+      }
+    },
+    {
+      "id": "P4-ST-16",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-conformance.test.ts",
+        "hash": "sha256:30497af40d235641d4efcf4e47ed6931a9c886718782390aab490b7ba6bfd3e1"
+      }
+    },
+    {
+      "id": "P4-ST-17",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-conformance.test.ts",
+        "hash": "sha256:30497af40d235641d4efcf4e47ed6931a9c886718782390aab490b7ba6bfd3e1"
+      }
+    },
+    {
+      "id": "P4-ST-18",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-conformance.test.ts",
+        "hash": "sha256:30497af40d235641d4efcf4e47ed6931a9c886718782390aab490b7ba6bfd3e1"
+      }
+    },
+    {
       "id": "P4-PRESERVE-01",
       "stage": "build",
       "artifact": {
