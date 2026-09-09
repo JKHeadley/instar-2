@@ -216,7 +216,7 @@ it.each([['V36', 'chat:ordinary'], ['V36b', 'scheduled:']] as const)
 ('P4-ST-20 %s signed scheduled history with channel %s is refused while a valid second installation remains readable',
 (_id, channel) => {
   const invalid = setup(), history = rewriteScheduledRoute(invalid, 'channel', channel);
-  expect(history.rows.every(row => row.taint.length === 0 && row.conflicts.length === 0)).toBe(true);
+  expect(history.rows.some(row => row.fact.kind === 'intake-admitted' && row.taint.length > 0)).toBe(true);
   refused(pending(invalid.f), 'channel must name its installation');
 
   const direct = setup(), before = direct.f.frames.length;

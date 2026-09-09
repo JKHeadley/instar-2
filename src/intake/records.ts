@@ -36,20 +36,69 @@ export function intakeArrival(fact: FactEnvelope,observerId: string) {
   } catch { return undefined; }
 }
 
-// Scheduled identity is chosen from signed ingress history, never from the
-// admission's mutable Intent. The dedicated principal record is the additive
-// discriminator; matching it to the preserved route also catches a rewritten
-// or malformed scheduled channel instead of silently treating it as ordinary.
-export function isScheduledIntakeAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[],observerId: string): boolean {
+// Scheduled identity is chosen from signed ingress history, never solely from
+// the admission's mutable Intent or the authority witness being validated.
+function containsScheduledDiscovery(value: Json): boolean {
+  if(Array.isArray(value)) return value.some(containsScheduledDiscovery);
+  if(value===null||typeof value!=='object') return false;
+  const candidate=value as Record<string,Json>;
+  if(candidate.type==='Evidence') {
+    try {
+      const claim=object(candidate.claim!);
+      if(claim.predicate==='scheduled-discovery') return true;
+    } catch { /* A malformed scheduled claim still selects the refusal arm below. */ }
+  }
+  return Object.values(candidate).some(containsScheduledDiscovery);
+}
+
+function capturedScheduledStimulus(receipt: FactEnvelope,context?: Pick<FactContext,'captures'>): boolean {
+  if(!context) return false;
+  try {
+    const pin=object(object(receipt.body).capture!),capture=context.captures[text(pin.reference,'scheduled capture reference')];
+    if(capture?.status!=='available'||capture.bytes===null) return false;
+    const raw=object(JSON.parse(capture.bytes) as Json);
+    // Classification deliberately asks only whether the preserved bytes declare
+    // the scheduled stimulus shape. The scheduled decoder below decides whether
+    // every field, byte and identity is valid.
+    return raw.schemaVersion===1&&['jobInstance','scheduledInstant','packageDigest','calendarPolicyVersion','timeZoneDataVersion']
+      .some(key => Object.hasOwn(raw,key));
+  } catch { return false; }
+}
+
+export function isScheduledIntakeAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[],observerId: string,
+  context?: Pick<FactContext,'captures'>): boolean {
   if(fact.kind!=='intake-admitted') return false;
   const receipt=facts.find(candidate => candidate.id===object(fact.body).receipt&&candidate.kind==='intake-receipt');
   const arrival=receipt&&intakeArrival(receipt,observerId);
   if(!arrival) return false;
-  return causalCone(fact,facts).some(candidate => {
-    if(candidate.kind!=='intake-scheduled-principal') return false;
-    try { return object(object(candidate.body).principal!).id===arrival.route.sender; }
-    catch { return fact.predecessors.required.includes(candidate.id); }
-  });
+  const cone=causalCone(fact,facts);
+  // Selection must not depend on the authority witness whose validity the
+  // scheduled arm is about to prove. A wrong witness, a required scheduled
+  // discovery, or the observer-preserved tick shape all select that arm. This
+  // leaves pre-scheduled conversation records on their original path while an
+  // omitted/mismatched principal can no longer turn scheduled work into an
+  // ordinary admission.
+  return cone.some(candidate => candidate.kind==='intake-scheduled-principal')
+    ||cone.some(candidate => fact.predecessors.required.includes(candidate.id)&&containsScheduledDiscovery(candidate.body))
+    ||capturedScheduledStimulus(receipt,context);
+}
+
+export function validateScheduledIntakeRoute(adapterInput: Json,channelInput: Json,senderInput: Json,
+  identityEpochInput: Json,principalInput: Json,context: DecodeContext): void {
+  const adapter=text(adapterInput,'scheduled adapter'),channel=text(channelInput,'scheduled channel');
+  const sender=text(senderInput,'scheduled sender'),identityEpoch=text(identityEpochInput,'scheduled identity epoch');
+  requireIntake(context.register.entries.includes(adapter),
+    'scheduled intake: unregistered scheduled-ingress adapter','standing');
+  requireIntake(channel.startsWith('scheduled:')&&channel.length>'scheduled:'.length,
+    'scheduled intake: channel must name its installation','decode');
+  const principal=object(principalInput),provenance=object(principal.provenance!);
+  const authenticated=object(provenance.authenticated!),signedPrincipal=object(authenticated.principal!);
+  requireIntake(principal.kind==='system'&&principal.id===sender&&provenance.class==='verified'
+    &&provenance.adapter===adapter&&authenticated.recordType==='package-system-principal'
+    &&signedPrincipal.id===principal.id&&signedPrincipal.kind==='system',
+  'scheduled intake: admitted principal differs from the signed route','standing');
+  requireIntake(object(provenance.record!).hash===identityEpoch,
+    'scheduled intake: route identity epoch is not bound to the signed package identity','standing');
 }
 
 // Binding writes require the existing P2 operator/conferring ladder. Intake never authors one.
@@ -405,8 +454,9 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
         // The signed receipt chooses the scheduled arm. The admission's mutable
         // principal/ask fields may only be checked after that choice; otherwise
         // a malformed scheduled claim can fall through to ordinary intake.
-        const scheduled=isScheduledIntakeAdmission(c.origin,c.facts.facts,observerId);
+        const scheduled=isScheduledIntakeAdmission(c.origin,c.facts.facts,observerId,c.facts);
         if(scheduled) {
+          validateScheduledIntakeRoute(body.adapter!,body.channel!,body.sender!,body.identityEpoch!,principal,c.facts.decode);
           const scheduledAsk=object(intent.ask!);
           const eventId=text(body.eventId,'scheduled event id');
           // Validate the claim independently of capture availability. This
