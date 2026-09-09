@@ -5,6 +5,7 @@ import type { BoundaryContext,Clock,Directive,Evidence,FactEnvelopeReference,His
 import { authorAndAppend,causalCone,causalStanding,createFactStore,decodeEnvelope,decodeHistoricalBody,factId,foldKey,hashBytes,prepareSnapshot,signEnvelope } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactStatus } from '../facts/index.js';
 import { constructGoverned,generationOf,readEnforcedRecord,readRegisterEntry } from '../register/index.js';
+import { wasVerified } from '../register/generator.js';
 import { foldProjection,readProjection } from '../projections/index.js';
 import { boundary,IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ConstitutionalReference,InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort,PendingScheduledAdmissions,
@@ -39,8 +40,14 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     const declaration=deps.governance.register.entries.find(e => e.declaration.id===deps.adapter.id)!.declaration;
     requireIntake(declaration.status==='live','P4-NF-06: intake adapter must be live');
     const contract=object(json(declaration.requiredFacts));
-    bindIntakeOwnerRegister(initial.decode.register,deps.governance.register);
-    const registeredScheduledAdapters=registeredScheduledIntakeAdapters(deps.governance.register,initial.decode.register);
+    // Preserve the pre-existing delayed governance refusal: a shape-only
+    // register may construct the port, but can authorize nothing after the
+    // receipt is preserved. Only an entering-force verified register can add
+    // scheduled adapter capabilities to the owner decoder.
+    const verifiedGovernanceRegister=wasVerified(deps.governance.register)?deps.governance.register:undefined;
+    if(verifiedGovernanceRegister) bindIntakeOwnerRegister(initial.decode.register,verifiedGovernanceRegister);
+    const registeredScheduledAdapters=verifiedGovernanceRegister
+      ?registeredScheduledIntakeAdapters(verifiedGovernanceRegister,initial.decode.register):Object.freeze([] as string[]);
     const eventAuthority=object(contract.eventIdAuthority!);
     requireIntake(text(eventAuthority.mintedBy,'event-id authority')!=='sender'
       &&object(eventAuthority.fallbackFingerprint!).policy==='none','P4-NF-03: slice requires provider-minted stable event ids; no hash fallback');
@@ -61,7 +68,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     // schema when that operation is invoked.
     for(const schema of intakeFactSchemas(scope)) requireIntake(initial.schemas.some(s => same(s,schema)),
       `P4-NF-06/12: required owner schema changed or missing: ${schema.kind}`);
-    const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id,deps.governance.register));
+    const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id,verifiedGovernanceRegister));
     const stopRegistration=take(intakeStopRegistration(b,deps.author.principal.id));
     const verifiedActRegistration=take(intakeVerifiedActRegistration(b,deps.author.principal.id,registerGenerationReference));
     // Snapshot assembly choices. Only context()/clock()/storage are live provider inputs.
