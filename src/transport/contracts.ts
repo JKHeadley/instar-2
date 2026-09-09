@@ -70,6 +70,7 @@ export type LoopAttempt = Readonly<{
 }>;
 export type LoopOutcome = Readonly<{
   attempt: string; kind: 'accepted' | 'failed'; failureClass: string; observedAt: Clock;
+  completion: ConstitutionalReference<'Outcome'>;
   jitterPermille: number; restoration: readonly OwnedReference<'part-nine', 'VerificationAssessment'>[];
   sourceVector: LoopSourceVector;
 }>;
@@ -172,6 +173,14 @@ export interface SharedLoopClockPort {
 export interface CalendarExpansionPort {
   readonly owner: 'part-fifteen';
   expand(input: Readonly<{ calendarPolicy: string; after: Clock; through: Clock; asOf: Clock }>): Result<readonly Clock[]>;
+  /** Resolve the signed owner roster which caused a six-owned selection cursor. */
+  roster(input: Readonly<{ scan: string; generation: string; orderedKeysDigest: Hash }>): Result<Readonly<{
+    orderedKeys: readonly string[]; witness: FactEnvelopeReference;
+  }>>;
+  range(input: Readonly<{ parentDuty: RunReference; jobInstance: string; calendarPolicy: string; asOf: Clock;
+    first: Clock; last: Clock; memberCount: number; orderedMembersDigest: Hash }>): Result<Readonly<{
+      after: Clock; through: Clock; members: readonly Clock[]; witness: FactEnvelopeReference;
+    }>>;
 }
 export interface RestorationEvidencePort {
   readonly owner: 'part-nine';
@@ -203,6 +212,8 @@ export interface TransportHost {
 }
 export interface TransportSpine {
   readonly store: FactStorePort;
+  /** Pinned installation history used to re-resolve owner evidence on every path. */
+  readonly context?: FactContext;
   append(record: TransportOwnedRecord, required: readonly string[]): Result<AppendReceipt>;
 }
 export interface FactAuthor {
@@ -251,6 +262,7 @@ export interface LoopAttemptInput {
 export interface LoopOutcomeInput {
   readonly command: string; readonly fence: FenceToken; readonly episode: OwnedReference<'part-six', 'LoopRecord'>;
   readonly attempt: string; readonly kind: 'accepted' | 'failed'; readonly failureClass: string;
+  readonly completion: ConstitutionalReference<'Outcome'>;
   readonly jitterPermille: number;
   readonly restoration: readonly OwnedReference<'part-nine', 'VerificationAssessment'>[];
   readonly sourceVector: LoopSourceVector;

@@ -95,7 +95,7 @@ it('P6-NF-15 P6-NF-19 reservation needs a durable recovery wake and fits the act
 
 it('P6-NF-02 P6-NF-17 six-owned closed schemas and finite policies refuse open, zero-delay and missing bounds', () => {
   const f = transportFixture();
-  expect(Object.keys(transportShapes)).toEqual(['Lease', 'FenceToken', 'LoopPolicy', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'ScanCursor', 'SettlementApplication', 'MissedRangeRecord']);
+  expect(Object.keys(transportShapes)).toEqual(['Lease', 'FenceToken', 'LoopPolicy', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'ScanCursor', 'SettlementApplication']);
   for (const change of [{ minDelay: 0 }, { maxAttempts: -1 }, { maxAttempts: Infinity }, { failDirection: 'open' }, { unexpected: true }])
     refused(decodeLoopPolicy({ ...f.policy, ...change }, f.c));
   expect(value(decodeLoopPolicy({ ...f.policy, maxAttempts: 0, maxDuration: 0 }, f.c)).maxAttempts).toBe(0);

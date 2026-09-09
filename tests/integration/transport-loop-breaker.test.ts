@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { decodeLoopPolicy } from '../../src/transport/index.js';
 import type { FenceToken, SharedBreakerLoopPolicy, SharedLoopRecord } from '../../src/transport/index.js';
-import { transportFixture, refused, value } from '../transport/fixture.js';
+import { transportLoopFixture as transportFixture, refused, value } from '../transport/loop-fixture.js';
 
 const scope = { target: 'target:shared', conversation: 'conversation:1', machine: 'fleet', pool: 'recovery' } as const;
 const episodeRef = (record: SharedLoopRecord) => ({ owner: 'part-six' as const, name: 'LoopRecord' as const, id: record.episode });
@@ -15,9 +15,11 @@ function attempt(f: ReturnType<typeof transportFixture>, token: FenceToken, epis
     holderFamily, worker, machine, resource, sourceVector: f.vector });
 }
 function outcome(f: ReturnType<typeof transportFixture>, token: FenceToken, episode: SharedLoopRecord,
-  id: string, kind: 'accepted' | 'failed', restoration: readonly { owner: 'part-nine'; name: 'VerificationAssessment'; id: string }[] = []) {
+  id: string, kind: 'accepted' | 'failed', restoration: readonly { owner: 'part-nine'; name: 'VerificationAssessment'; id: string }[] = [],
+  completion = f.appendOutcome(kind, id)) {
   return f.api.recordLoopOutcome({ command: `outcome:${id}`, fence: token, episode: episodeRef(episode), attempt: id,
-    kind, failureClass: kind === 'failed' ? 'transport' : '', jitterPermille: 1000, restoration, sourceVector: f.vector });
+    kind, failureClass: kind === 'failed' ? 'transport' : '', completion,
+    jitterPermille: 1000, restoration, sourceVector: f.vector });
 }
 
 it('SLB-SHARED-04 P6-NF-18 P6-NF-20 P6-NF-21 shared pressure opens once, refuses every contender, bounds half-open, reopens and closes only with independent restoration', () => {
@@ -49,7 +51,7 @@ it('SLB-SHARED-04 P6-NF-18 P6-NF-20 P6-NF-21 shared pressure opens once, refuses
   loop = value(outcome(f, token, loop, 'trial-pass-1', 'accepted'));
   expect(loop.state).toBe('half-open');
   loop = value(attempt(f, token, loop, 'trial-pass-2', 'sentinel', 'worker-i', 'machine-b'));
-  const evidence = [{ owner: 'part-nine' as const, name: 'VerificationAssessment' as const, id: 'restored:independent' }];
+  const evidence = [{ owner: 'part-nine' as const, name: 'VerificationAssessment' as const, id: 'assessment:one' }];
   loop = value(outcome(f, token, loop, 'trial-pass-2', 'accepted', evidence));
   expect(loop).toMatchObject({ state: 'closed', transition: 'closed', halfOpenAdmitted: 2, halfOpenSucceeded: 2,
     closureEvidence: evidence });
@@ -65,13 +67,15 @@ it('SLB-SHARED-04 P6-NF-18 P6-NF-20 P6-NF-21 shared pressure opens once, refuses
   expect(next.pressureKey).toBe(loop.pressureKey);
 });
 
-it('SLB-FRONTIER-05 P6-NF-18 equal causal frontiers produce the same breaker outcome window regardless of completion order', () => {
+it('SLB-FRONTIER-05 V12 P6-NF-18 equal causal frontiers produce the same breaker outcome window regardless of completion order', () => {
   const run = (order: readonly string[]) => {
     const f = transportFixture(), token = value(f.api.acquire('acquire-frontier', '', 500));
     let loop = schedule(f, token); f.advance(1);
     loop = value(attempt(f, token, loop, 'a-accepted', 'sentinel', 'worker-a', 'machine-a'));
     loop = value(attempt(f, token, loop, 'b-failed', 'watchdog', 'worker-b', 'machine-b'));
-    for (const id of order) loop = value(outcome(f, token, loop, id, id === 'a-accepted' ? 'accepted' : 'failed'));
+    const completions = { 'a-accepted': f.appendOutcome('accepted', 'a-accepted'),
+      'b-failed': f.appendOutcome('failed', 'b-failed') };
+    for (const id of order) loop = value(outcome(f, token, loop, id, id === 'a-accepted' ? 'accepted' : 'failed', [], completions[id as keyof typeof completions]));
     return loop;
   };
   const left = run(['a-accepted', 'b-failed']), right = run(['b-failed', 'a-accepted']);
@@ -83,6 +87,7 @@ it('SLB-FRONTIER-05 P6-NF-18 equal causal frontiers produce the same breaker out
 it('SLB-RESTART-06 P6-NF-18 P6-NF-19 restart, route and machine changes cannot reset parent resource budget or an in-flight transition', () => {
   const f = transportFixture();
   const bounded = value(decodeLoopPolicy({ ...f.sharedPolicy, id: 'shared-budget:10', parentResourceBudget: 10 }, f.c)) as SharedBreakerLoopPolicy;
+  f.registerPolicy(bounded);
   const token = value(f.api.acquire('acquire-budget', '', 500));
   let loop = value(f.api.scheduleEpisode({ command: 'schedule-budget', fence: token, currentOwnerRun: f.run,
     policy: bounded, episodeKey: 'budget-episode', operationFamily: 'budget-holder', pressureScope: scope, sourceVector: f.vector }));
@@ -90,7 +95,8 @@ it('SLB-RESTART-06 P6-NF-18 P6-NF-19 restart, route and machine changes cannot r
   loop = value(f.api.admitLoopAttempt({ command: 'admit-budget-1', fence: token, episode: episodeRef(loop), attempt: 'budget-1',
     holderFamily: 'sentinel', worker: 'worker-a', machine: 'machine-a', resource: 10, sourceVector: f.vector }));
   loop = value(f.api.recordLoopOutcome({ command: 'outcome-budget-1', fence: token, episode: episodeRef(loop), attempt: 'budget-1',
-    kind: 'accepted', failureClass: '', jitterPermille: 1000, restoration: [], sourceVector: f.vector }));
+    kind: 'accepted', failureClass: '', completion: f.appendOutcome('accepted', 'budget-1'),
+    jitterPermille: 1000, restoration: [], sourceVector: f.vector }));
   value(f.api.release('release-budget', token));
 
   const restarted = transportFixture(f.directory, 'worker:route-b', 'authority:route-b');
@@ -149,6 +155,7 @@ it('SLB-BUDGET-11 P6-NF-19 rolling parent attempt capacity expires without reset
   const f = transportFixture();
   const rollingPolicy = value(decodeLoopPolicy({ ...f.sharedPolicy, id: 'shared-budget:rolling-one',
     parentAttemptBudget: 1 }, f.c)) as SharedBreakerLoopPolicy;
+  f.registerPolicy(rollingPolicy);
   const token = value(f.api.acquire('acquire-rolling-budget', '', 1000));
   let loop = value(f.api.scheduleEpisode({ command: 'schedule-rolling-budget', fence: token, currentOwnerRun: f.run,
     policy: rollingPolicy, episodeKey: 'rolling-budget', operationFamily: 'holder-recovery',
@@ -163,9 +170,10 @@ it('SLB-BUDGET-11 P6-NF-19 rolling parent attempt capacity expires without reset
   expect(loop).toMatchObject({ attempts: 2, episodeAttempts: 2, rollingAttempts: 1, rollingResource: 1 });
 });
 
-it('SLB-STOP-13 P6-NF-17 P6-NF-21 durably stops an exhausted episode without closing its unfinished duty', () => {
+it('SLB-CONTINUE-20 V18 P6-NF-17 P6-NF-21 stops an exhausted episode and permits a further bounded episode for the continuing parent', () => {
   const f = transportFixture();
   const oneAttempt = value(decodeLoopPolicy({ ...f.sharedPolicy, id: 'shared-episode:one', maxAttempts: 1 }, f.c)) as SharedBreakerLoopPolicy;
+  f.registerPolicy(oneAttempt);
   const token = value(f.api.acquire('acquire-stop-bound', '', 500));
   let loop = value(f.api.scheduleEpisode({ command: 'schedule-stop-bound', fence: token, currentOwnerRun: f.run,
     policy: oneAttempt, episodeKey: 'stop-bound', operationFamily: 'holder-recovery',
@@ -177,4 +185,8 @@ it('SLB-STOP-13 P6-NF-17 P6-NF-21 durably stops an exhausted episode without clo
   loop = value(attempt(f, token, loop, 'stop-refused-work', 'watchdog', 'worker-b', 'machine-b'));
   expect(loop).toMatchObject({ state: 'stopped', transition: 'stopped', attempts: 1, episodeAttempts: 1 });
   refused(attempt(f, token, loop, 'cannot-revive-stopped', 'watchdog', 'worker-c', 'machine-b'), 'terminal');
+  const next = value(f.api.scheduleEpisode({ command: 'schedule-after-healthy-stop', fence: token, currentOwnerRun: f.run,
+    policy: oneAttempt, episodeKey: 'after-stop', operationFamily: 'holder-recovery', pressureScope: scope,
+    sourceVector: f.vector }));
+  expect(next).toMatchObject({ state: 'scheduled', transition: 'scheduled', attempts: 1, episodeAttempts: 0 });
 });

@@ -7,13 +7,14 @@ import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAutho
   TransportAuthority, TransportFact, TransportHost, TransportOwnedRecord, TransportRowRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, latestSharedLoop, live, loopActive, missedRangeCheck, missedRows,
-  observationAdmission, policyCheck, reservations, rows, sourceVectorCheck, validateMissedRangeHistory, validateScanGeneration, validateTransition,
+  missedRangeEvidence, observationAdmission, policyCheck, reservations, resolveMissedRangeEvidence, resolvePolicyFact, resolveRunReference, resolveSourceVector, rows,
+  sharedLoopEvidence, sourceVectorCheck, validateMissedRangeHistory, validateScanGeneration, validateTransition,
   withMissedRangeCandidate, withSharedLoopCandidate } from './records.js';
 import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
   requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication, withSettlementAttempt } from './settlement.js';
 
 export function createTransportSpine(host: TransportHost, author: FactAuthor, store: FactStorePort): TransportSpine {
-  return Object.freeze({ store, append: (record: TransportOwnedRecord, required: readonly string[]) => authorAndAppend({
+  return Object.freeze({ store, context: author.context, append: (record: TransportOwnedRecord, required: readonly string[]) => authorAndAppend({
     kind: kindFor(record.type), schemaVersion: 1, machine: host.machine,
     principal: json(host.principal), provenance: json(host.principal.provenance), at: json(host.current().clock),
     body: json({ record }), required,
@@ -122,10 +123,18 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
   const claims = new WeakMap<object, { operation: string; used: boolean }>();
   let lastTick = -1;
   const tick = () => { const t = host.monotonic(); ensure(Number.isSafeInteger(t) && t >= lastTick && t >= 0, 'monotonic clock regressed'); lastTick = t; return t; };
-  const read = (): readonly TransportFact[] => {
+  const evidenceFacts = () => {
     const snapshot = take(spine.store.readForProjection());
     ensure(snapshot.entries.every(e => !e.taint.length && !e.conflicts.length), 'tainted or conflicted fact prefix');
-    const all = rows(snapshot.entries.map(e => e.fact), host.domain);
+    return [...new Map([...(spine.context?.facts ?? []), ...snapshot.entries.map(entry => entry.fact)]
+      .map(fact => [fact.id, fact])).values()];
+  };
+  const semanticContext = () => {
+    ensure(spine.context, 'owner evidence context unavailable');
+    return spine.context;
+  };
+  const read = (): readonly TransportFact[] => {
+    const all = rows(evidenceFacts(), host.domain);
     ensure(all.length <= 4096, 'single-conversation replay bound exhausted');
     return all;
   };
@@ -135,9 +144,10 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
   });
   const meta = (all: readonly TransportFact[], command: string) => ({ schemaVersion: 1 as const, domain: host.domain,
     command, predecessor: all.at(-1)?.fact.id ?? '', authority: host.authorityIncarnation, tick: tick() });
-  const write = <T extends TransportRowRecord>(all: readonly TransportFact[], r: T): { record: T; all: readonly TransportFact[] } => {
+  const write = <T extends TransportRowRecord>(all: readonly TransportFact[], r: T,
+    extraRequired: readonly string[] = []): { record: T; all: readonly TransportFact[] } => {
     validateTransition(r, all, host, true);
-    const required = r.predecessor ? [r.predecessor] : [];
+    const required = r.predecessor ? [r.predecessor, ...extraRequired] : [...extraRequired];
     if (r.type === 'SettlementApplication') required.push(r.settlementFact);
     const receipt = take(spine.append(r, [...new Set(required)]));
     ensure(!receipt.taint.length, 'append was provisional or contested');
@@ -184,8 +194,33 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
     ensure(latestSharedLoop(all, value.pressureKey)?.command === value.command, 'shared pressure moved to another episode');
     return value;
   };
-  const managedWrite = (all: readonly TransportFact[], record: SharedLoopRecord) =>
-    withSharedLoopCandidate(host, record, () => write(all, record).record as SharedLoopRecord);
+  const parentAttempts = (all: readonly TransportFact[], policy: SharedLoopRecord['policy']) => {
+    const latest = new Map<string, SharedLoopRecord>();
+    for (const row of all) if (row.record.type === 'LoopRecord' && row.record.policy.breaker === 'shared-circuit-v1') {
+      const loop = row.record as SharedLoopRecord;
+      if (loop.parentDuty.id === policy.parentDuty.id) latest.set(loop.pressureKey, loop);
+    }
+    const attempts = new Map<string, LoopAttempt>();
+    for (const loop of latest.values()) for (const attempt of loop.attemptLog) {
+      const prior = attempts.get(attempt.id);
+      ensure(!prior || encoded(prior).bytes === encoded(attempt).bytes, 'parent attempt identity is conflicted across pressure scopes');
+      attempts.set(attempt.id, attempt);
+    }
+    return [...attempts.values()];
+  };
+  const parentRollingAt = (all: readonly TransportFact[], policy: SharedLoopRecord['policy'], now: Clock,
+    added?: LoopAttempt) => {
+    const attempts = parentAttempts(all, policy);
+    if (added) {
+      const prior = attempts.find(value => value.id === added.id);
+      ensure(!prior, 'parent attempt identity already belongs to another pressure scope'); attempts.push(added);
+    }
+    return rollingAt({ policy, attemptLog: attempts }, now);
+  };
+  const managedWrite = (all: readonly TransportFact[], record: SharedLoopRecord) => {
+    const required = sharedLoopEvidence(record, evidenceFacts(), semanticContext(), host).map(fact => fact.id);
+    return withSharedLoopCandidate(host, record, () => write(all, record, required).record as SharedLoopRecord);
+  };
   const outcomeDigest = (policy: SharedLoopRecord['policy'], outcomes: readonly LoopOutcome[], now: Clock) =>
     encoded(sortedOutcomes(outcomes.filter(outcome => sameClock(outcome.observedAt, now)
       && outcome.observedAt.value > now.value - policy.acceptedOutcomeWindow))).hash;
@@ -317,18 +352,29 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       'bounded shared pressure input required');
       const now = sharedClock(), current = host.current();
       ensure(current.generation.id === current.decode.register.generation.id, 'current generation mismatch');
+      const history = evidenceFacts();
+      const context = semanticContext();
+      resolvePolicyFact(input.policy, current.generation.id, history, context);
+      resolveRunReference(input.policy.parentDuty, history, context);
+      resolveRunReference(input.currentOwnerRun, history, context);
+      resolveSourceVector(input.sourceVector, history);
       const pressureKey = `pressure:${encoded([input.operationFamily, input.pressureScope]).hash}`;
       const previous = latestSharedLoop(all, pressureKey);
       if (previous) {
-        ensure(previous.state === 'closed', 'shared pressure has an unfinished episode');
+        ensure(previous.state === 'closed' || previous.state === 'stopped' && previous.pendingAttempts.length === 0
+          && previous.failureCount < previous.policy.failureThreshold, 'shared pressure has an unfinished episode');
         ensure(encoded(previous.policy).bytes === encoded(input.policy).bytes, 'conflicting shared pressure policy');
         ensure(previous.clockBasis === now.subject.instance, 'incomparable shared pressure time');
       }
+      ensure(all.filter(row => row.record.type === 'LoopRecord' && row.record.policy.breaker === 'shared-circuit-v1')
+        .filter(row => (row.record as SharedLoopRecord).parentDuty.id === input.policy.parentDuty.id)
+        .every(row => encoded((row.record as SharedLoopRecord).policy).bytes === encoded(input.policy).bytes),
+      'conflicting parent pressure policy');
       const episode = `loop:${encoded([pressureKey, input.episodeKey]).hash}`;
       ensure(!all.some(row => row.record.type === 'LoopRecord' && row.record.episode === episode), 'episode identity already used');
       const attemptLog = previous?.attemptLog ?? [], outcomeLog = previous?.outcomeLog ?? [];
       const currentOutcomes = windowAt({ policy: input.policy, outcomeLog }, now);
-      const rolling = rollingAt({ policy: input.policy, attemptLog }, now);
+      const rolling = parentRollingAt(all, input.policy, now);
       const firstEligible = after(now, input.policy.initialDelay), m = meta(all, input.command);
       const record = freeze({ ...m, type: 'LoopRecord', run: input.currentOwnerRun.id, episode, policy: input.policy,
         attempts: attemptLog.length, started: now.value, nextWake: firstEligible.value, state: 'scheduled', pending: '',
@@ -337,7 +383,8 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         episodeKey: input.episodeKey, transition: 'scheduled', transitionAt: now, nextEligible: firstEligible,
         clockBasis: now.subject.instance, sourceVector: input.sourceVector, episodeAttempts: 0,
         totalFailures: previous?.totalFailures ?? 0, failureCount: failureCountAt(input.policy, currentOutcomes),
-        ...rolling, breakerHasOpened: 0, breakerOpenCount: previous?.breakerOpenCount ?? 0, breakerFirstOpened: now,
+        ...rolling, breakerHasOpened: previous?.breakerHasOpened ?? 0, breakerOpenCount: previous?.breakerOpenCount ?? 0,
+        breakerFirstOpened: previous?.breakerFirstOpened ?? now,
         halfOpenAdmitted: 0, halfOpenSucceeded: 0, pendingAttempts: [], attemptLog, outcomeLog,
         outcomeWindowDigest: outcomeDigest(input.policy, outcomeLog, now), closureEvidence: [],
       } as unknown as SharedLoopRecord);
@@ -351,7 +398,15 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       ensure(input.attempt.length > 0 && input.holderFamily.length > 0 && input.worker.length > 0 && input.machine.length > 0
         && Number.isSafeInteger(input.resource) && input.resource >= 0, 'bounded loop attempt input required');
       const previous = sharedByEpisode(all, input.episode.id), policy = previous.policy, now = sharedClock();
-      ensure(previous.clockBasis === now.subject.instance && sameClock(previous.transitionAt, now), 'incomparable shared pressure time');
+      const current = host.current(), history = evidenceFacts();
+      ensure(previous.clockBasis === now.subject.instance && sameClock(previous.transitionAt, now)
+        && atOrAfter(now, previous.transitionAt), 'incomparable or backward shared pressure time');
+      const context = semanticContext();
+      resolvePolicyFact(policy, current.generation.id, history, context);
+      resolveRunReference(previous.parentDuty, history, context);
+      resolveRunReference(previous.currentOwnerRun, history, context);
+      ensure(vectorKey(input.sourceVector) === vectorKey(previous.sourceVector), 'attempt frontier differs from the governed episode');
+      resolveSourceVector(input.sourceVector, history);
       const existing = previous.attemptLog.find(attempt => attempt.id === input.attempt);
       if (existing) {
         ensure(existing.holderFamily === input.holderFamily && existing.worker === input.worker && existing.machine === input.machine
@@ -384,7 +439,8 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
           ensure(previous.pendingAttempts.length === 0, 'unfinished attempts retain breaker ownership');
           transition = 'half-opened'; halfOpenAdmitted = 0; halfOpenSucceeded = 0;
         }
-        ensure(halfOpenAdmitted < policy.halfOpenTrials && previous.pendingAttempts.length < policy.halfOpenConcurrency,
+        ensure(halfOpenAdmitted < policy.halfOpenTrials && previous.pendingAttempts.length < policy.halfOpenConcurrency
+          && previous.pendingAttempts.length < policy.concurrency,
           'half-open trial bound exhausted');
         halfOpenAdmitted++;
       } else ensure(previous.pendingAttempts.length < policy.concurrency, 'concurrent work cap exhausted');
@@ -392,12 +448,13 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         machine: input.machine, episode: previous.episode, admittedAt: now, resource: input.resource,
         mode, sourceVector: input.sourceVector } as LoopAttempt);
       const attemptLog = [...previous.attemptLog, attempt];
-      const rolling = rollingAt({ policy, attemptLog }, now);
+      const rolling = parentRollingAt(all, policy, now, attempt);
       ensure(rolling.rollingAttempts <= policy.parentAttemptBudget && rolling.rollingResource <= policy.parentResourceBudget,
         'shared parent budget exhausted');
       const pendingAttempts = [...previous.pendingAttempts, input.attempt], m = meta(all, input.command);
       const record = freeze({ ...previous, ...m, attempts: attemptLog.length, episodeAttempts: previous.episodeAttempts + 1,
         nextWake: now.value, state, pending: pendingAttempts[0]!, transition, transitionAt: now,
+        policyGeneration: current.generation,
         nextEligible: now, sourceVector: input.sourceVector, ...rolling, halfOpenAdmitted, halfOpenSucceeded,
         pendingAttempts, attemptLog } as SharedLoopRecord);
       return managedWrite(all, record);
@@ -407,14 +464,24 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       ensure(input.episode.owner === 'part-six' && input.episode.name === 'LoopRecord' && input.episode.id.length > 0,
         'LoopRecord reference owner'); sourceVectorCheck(input.sourceVector);
       const previous = sharedByEpisode(all, input.episode.id), policy = previous.policy, now = sharedClock();
-      ensure(previous.clockBasis === now.subject.instance && sameClock(previous.transitionAt, now), 'incomparable shared pressure time');
+      const current = host.current(), history = evidenceFacts();
+      ensure(previous.clockBasis === now.subject.instance && sameClock(previous.transitionAt, now)
+        && atOrAfter(now, previous.transitionAt), 'incomparable or backward shared pressure time');
+      const context = semanticContext();
+      resolvePolicyFact(policy, current.generation.id, history, context);
+      resolveRunReference(previous.parentDuty, history, context);
+      resolveRunReference(previous.currentOwnerRun, history, context);
       const attempt = previous.attemptLog.find(value => value.id === input.attempt);
       ensure(attempt, 'contributing loop attempt is absent');
+      ensure(atOrAfter(now, attempt.admittedAt), 'outcome clock precedes its admission');
+      ensure(vectorKey(input.sourceVector) === vectorKey(attempt.sourceVector), 'outcome frontier differs from its admitted attempt');
+      resolveSourceVector(input.sourceVector, history);
       const existing = previous.outcomeLog.find(value => value.attempt === input.attempt);
       if (existing) {
         ensure(existing.kind === input.kind && existing.failureClass === input.failureClass
           && existing.jitterPermille === input.jitterPermille && vectorKey(existing.sourceVector) === vectorKey(input.sourceVector)
-          && encoded(existing.restoration).bytes === encoded(input.restoration).bytes,
+          && encoded(existing.restoration).bytes === encoded(input.restoration).bytes
+          && encoded(existing.completion).bytes === encoded(input.completion).bytes,
         'loop outcome changed after admission'); return previous;
       }
       ensure(previous.pendingAttempts.includes(input.attempt), 'attempt is not pending');
@@ -428,7 +495,8 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         ensure(encoded(verified).bytes === encoded(reference).bytes, 'restoration evidence changed'); return verified;
       });
       const outcome = freeze({ attempt: input.attempt, kind: input.kind, failureClass: input.failureClass,
-        observedAt: now, jitterPermille: input.jitterPermille, restoration, sourceVector: input.sourceVector } as LoopOutcome);
+        observedAt: now, completion: input.completion, jitterPermille: input.jitterPermille,
+        restoration, sourceVector: input.sourceVector } as LoopOutcome);
       const outcomeLog = sortedOutcomes([...previous.outcomeLog, outcome]);
       const pendingAttempts = previous.pendingAttempts.filter(value => value !== input.attempt);
       const outcomes = windowAt({ policy, outcomeLog }, now), failureCount = failureCountAt(policy, outcomes);
@@ -455,7 +523,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         } else state = 'half-open';
       } else if (previous.state === 'open-breaker') {
         state = 'open-breaker'; nextEligible = previous.nextEligible;
-      } else if (failureCount >= policy.failureThreshold) {
+      } else if (failureCount >= policy.failureThreshold && pendingAttempts.length === 0) {
         state = 'open-breaker'; transition = 'opened'; nextEligible = after(now, policy.breakerCooldown);
         breakerOpenCount++;
         if (breakerHasOpened === 0) { breakerHasOpened = 1; breakerFirstOpened = now; }
@@ -467,9 +535,10 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         const delay = Math.max(policy.minDelay, Math.min(policy.maxDelay, Math.floor(base * input.jitterPermille / 1000)));
         nextEligible = after(now, delay);
       }
-      const rolling = rollingAt(previous, now), m = meta(all, input.command);
+      const rolling = parentRollingAt(all, policy, now), m = meta(all, input.command);
       const record = freeze({ ...previous, ...m, nextWake: nextEligible.value, state, pending: pendingAttempts[0] ?? '',
         transition, transitionAt: now, nextEligible, sourceVector: input.sourceVector,
+        policyGeneration: current.generation,
         totalFailures: previous.totalFailures + (counted ? 1 : 0), failureCount, ...rolling,
         breakerHasOpened, breakerOpenCount, breakerFirstOpened, halfOpenAdmitted, halfOpenSucceeded,
         pendingAttempts, outcomeLog, outcomeWindowDigest: outcomeDigest(policy, outcomeLog, now), closureEvidence } as SharedLoopRecord);
@@ -533,12 +602,11 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         packageDigest: input.packageDigest, calendarPolicy: input.calendarPolicy, asOf, priorExpansionCursor,
         missedBoundary, orderedMembersDigest }).hash;
       const id = `missed:${encoded([input.parentDuty.id, input.jobInstance, input.calendarPolicy,
-        priorExpansionCursor, missedBoundary, asOf]).hash}`;
+        priorExpansionCursor, missedBoundary, orderedMembersDigest]).hash}`;
       if (input.catchUpRun) {
         const latest = otherwiseUnexecuted.at(-1)!;
-        const expected = `run:${encoded(['missed-catch-up', id, members[latest]]).hash}`;
         ensure(input.catchUpRun.owner === 'part-five' && input.catchUpRun.name === 'Run'
-          && input.catchUpRun.id === expected, 'catch-up Run is not the deterministic latest-member Run');
+          && input.catchUpRun.id.length > 0, 'catch-up Run is not a Part Five admission');
         const linked = input.dispositions[latest]!;
         ensure(linked.kind === 'catch-up-run' && encoded(linked.run).bytes === encoded(input.catchUpRun).bytes,
           'latest member does not retain the deterministic catch-up Run');
@@ -549,7 +617,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         currentLateness: lateness, first: members[0]!, last: members.at(-1)!, memberCount: members.length,
         orderedMembersDigest, derivationInputDigest, catchUpPolicy: input.catchUpPolicy,
         dispositions: input.dispositions, catchUpRun: input.catchUpRun } as MissedRangeRecord);
-      missedRangeCheck(record);
+      try { missedRangeCheck(record); } catch (error) { throw new Error(`missed range structure refused: ${error instanceof Error ? error.message : 'unknown'}`); }
       const prior = missedRows(facts), latest = prior.filter(row => row.record.id === id).at(-1);
       if (latest && encoded(latest.record).bytes === encoded(record).bytes)
         return freeze({ owner: 'part-six' as const, name: 'MissedRangeRecord' as const, id });
@@ -557,10 +625,14 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       const wire = record.catchUpRun === null
         ? Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'catchUpRun')) as unknown as MissedRangeRecord
         : record;
-      const required = [...new Set([cursor.id, latest?.fact.id ?? '', ...record.dispositions.flatMap(value =>
-        value.kind === 'missed-no-execution' ? [value.result.fact.id] : [])])]
+      let semanticRequired: readonly string[];
+      try { semanticRequired = missedRangeEvidence(record, evidenceFacts(), semanticContext(), host).map(fact => fact.id); }
+      catch (error) { throw new Error(`missed range evidence refused: ${error instanceof Error ? error.message : 'unknown'}`); }
+      const required = [...new Set([cursor.id, latest?.fact.id ?? '', ...semanticRequired])]
         .filter(Boolean);
-      const receipt = withMissedRangeCandidate(host, record, () => take(spine.append(wire, required)));
+      let receipt;
+      try { receipt = withMissedRangeCandidate(host, record, () => take(spine.append(wire, required))); }
+      catch (error) { throw new Error(`missed range append refused: ${error instanceof Error ? error.message : 'unknown'}`); }
       ensure(!receipt.taint.length && receipt.fact.kind === kindFor('MissedRangeRecord')
         && encoded(receipt.fact.body).bytes === encoded({ record: wire }).bytes, 'append returned different missed range');
       return freeze({ owner: 'part-six' as const, name: 'MissedRangeRecord' as const, id });
@@ -572,6 +644,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length), 'missed-range state unavailable');
       const latest = missedRows(snapshot.entries.map(entry => entry.fact)).filter(row => row.record.id === reference.id).at(-1);
       ensure(latest, 'missed range unavailable'); missedRangeCheck(latest.record);
+      resolveMissedRangeEvidence(latest.record, latest.fact, evidenceFacts(), semanticContext(), host);
       return freeze({ record: latest.record,
         fact: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: latest.fact.id },
         firstUndisposed: latest.record.dispositions.find(value => value.kind === 'missed-no-execution')?.scheduledInstant ?? null });

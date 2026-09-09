@@ -2,17 +2,19 @@ import { expect, it } from 'vitest';
 import { canonical, decodeMeasurement } from '../../src/index.js';
 import { createBoundedDueScanPort } from '../../src/transport/index.js';
 import type { FenceToken, MissedRangeInput, SharedLoopRecord } from '../../src/transport/index.js';
-import { transportFixture, refused, value } from '../transport/fixture.js';
+import { transportLoopFixture as transportFixture, refused, value } from '../transport/loop-fixture.js';
 
 const pressureScope = { target: 'scheduled-work', conversation: 'conversation:1', machine: 'fleet', pool: 'jobs' } as const;
 function duration(f: ReturnType<typeof transportFixture>, valueMs: number) {
   return value(decodeMeasurement('duration', { type: 'Measurement', schemaVersion: 1,
-    subject: { kind: 'duration', instance: 'job:shared' }, value: valueMs, unit: 'ms', at: f.clock(100 + valueMs), by: 'probe' },
+    subject: { kind: 'duration', instance: 'job:one' }, value: valueMs, unit: 'ms', at: f.clock(130 + valueMs), by: 'probe' },
   f.host.current().decode));
 }
-function setup(f: ReturnType<typeof transportFixture>, key = 'job:shared') {
-  const page = value(createBoundedDueScanPort(f.host, f.spine, f.c).page({ scan: `scheduled:${key}`, generation: 'calendar:g1',
-    orderedKeys: [`machine-a:${key}`, `machine-b:${key}`], cursor: null, maxItems: 2, maxDuration: 10 }));
+function setup(f: ReturnType<typeof transportFixture>, key = 'job:one') {
+  const missed = key === 'job:one';
+  const page = value(createBoundedDueScanPort(f.host, f.spine, f.c).page({ scan: missed ? 'scan' : `scheduled:${key}`,
+    generation: missed ? 'g1' : 'calendar:g1', orderedKeys: missed ? ['job:one'] : [`machine-a:${key}`, `machine-b:${key}`],
+    cursor: null, maxItems: 2, maxDuration: 10 }));
   const token = value(f.api.acquire(`acquire:${key}`, f.head(), 500));
   const loop = value(f.api.scheduleEpisode({ command: `episode:${key}`, fence: token, currentOwnerRun: f.run,
     policy: f.sharedPolicy, episodeKey: key, operationFamily: 'scheduled-work', pressureScope, sourceVector: f.vector }));
@@ -24,7 +26,7 @@ function input(f: ReturnType<typeof transportFixture>, setupValue: ReturnType<ty
   const missedResult = f.appendResult(`result:missed:${asOfValue}`);
   const base = { parentDuty: f.parentDuty,
     episode: { owner: 'part-six' as const, name: 'LoopRecord' as const, id: setupValue.loop.episode },
-    scanCursor: setupValue.page.cursor, jobInstance: 'job:shared', packageDigest: `sha256:${'d'.repeat(64)}` as const,
+    scanCursor: setupValue.page.cursor, jobInstance: 'job:one', packageDigest: `sha256:${'d'.repeat(64)}` as const,
     calendarPolicy: 'every-10', asOf: f.clock(asOfValue), currentLateness: duration(f, asOfValue - 130),
     priorExpansionCursor: f.clock(100), missedBoundary: f.clock(130), catchUpPolicy: 'none' as const,
     dispositions: members.map(scheduledInstant => ({ scheduledInstant, kind: 'missed-no-execution' as const,
@@ -33,10 +35,8 @@ function input(f: ReturnType<typeof transportFixture>, setupValue: ReturnType<ty
   return { ...base, ...overrides };
 }
 function deterministicCatchUp(f: ReturnType<typeof transportFixture>, source: MissedRangeInput) {
-  const id = `missed:${value(canonical([source.parentDuty.id, source.jobInstance, source.calendarPolicy,
-    source.priorExpansionCursor, source.missedBoundary, source.asOf])).hash}`;
-  return { owner: 'part-five' as const, name: 'Run' as const,
-    id: `run:${value(canonical(['missed-catch-up', id, f.clock(130)])).hash}` };
+  void source;
+  return f.admittedRun(130);
 }
 
 it('SLB-MISSED-08 P6-NF-20 P6-NF-33 boundary and boundary-plus-one lateness retain exact stable ordered membership', () => {
@@ -56,7 +56,7 @@ it('SLB-MISSED-09 P6-NF-20 P6-NF-33 partial successors resume first undisposed, 
   const base = input(f, ready, 131), catchUpRun = deterministicCatchUp(f, base);
   const firstInput: MissedRangeInput = { ...base, catchUpPolicy: 'latest', catchUpRun,
     dispositions: base.dispositions.map((value, index) => index === 1 ? { scheduledInstant: value.scheduledInstant,
-      kind: 'existing-run' as const, run: { ...f.run, id: 'run:original-admission' } }
+      kind: 'existing-run' as const, run: f.admittedRun(120) }
       : index === 2 ? { scheduledInstant: value.scheduledInstant, kind: 'catch-up-run' as const, run: catchUpRun } : value) };
   const reference = value(f.api.recordMissedRange(firstInput));
   const first = value(f.api.readMissedRange(reference));
@@ -67,17 +67,17 @@ it('SLB-MISSED-09 P6-NF-20 P6-NF-33 partial successors resume first undisposed, 
 
   const completedInput: MissedRangeInput = { ...firstInput,
     dispositions: firstInput.dispositions.map((value, index) => index === 0 ? { scheduledInstant: value.scheduledInstant,
-      kind: 'existing-run' as const, run: { ...f.run, id: 'run:resumed-admission' } } : value) };
+      kind: 'existing-run' as const, run: f.admittedRun(110) } : value) };
   value(f.api.recordMissedRange(completedInput));
   const completed = value(f.api.readMissedRange(reference));
   expect(completed.firstUndisposed).toBeNull();
-  expect(completed.record.dispositions[1]).toMatchObject({ kind: 'existing-run', run: { id: 'run:original-admission' } });
-  refused(f.spine.append(completed.record, [completed.fact.id]), 'conditional writer');
+  expect(completed.record.dispositions[1]).toMatchObject({ kind: 'existing-run', run: f.admittedRun(120) });
+  refused(f.spine.append(completed.record, [completed.fact.id]), 'owner evidence');
 
   const changedExisting: MissedRangeInput = { ...completedInput,
     dispositions: completedInput.dispositions.map((value, index) => index === 1
       ? { scheduledInstant: value.scheduledInstant, kind: 'existing-run' as const,
-        run: { ...f.run, id: 'run:replacement-is-forbidden' } } : value) };
+        run: f.admittedRun(110) } : value) };
   refused(f.api.recordMissedRange(changedExisting), 'completed missed member');
   const secondCatchUp: MissedRangeInput = { ...completedInput,
     dispositions: completedInput.dispositions.map((value, index) => index === 0 ? { scheduledInstant: value.scheduledInstant,

@@ -2,7 +2,8 @@ import { expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { createBoundedDueScanPort, decodeLoopPolicy, decodeLoopRecord, decodeMissedRangeRecord, decodeScanCursor } from '../../src/transport/index.js';
 import type { MissedRangeRecord } from '../../src/transport/index.js';
-import { transportFixture, refused, value } from './fixture.js';
+import { transportLoopFixture, refused, value } from './loop-fixture.js';
+import { transportFixture } from './fixture.js';
 
 it('SLB-PRESERVE-01 P6-NF-02 P6-NF-17 byte-preserves every legacy LoopPolicy LoopRecord and ScanCursor fixture', () => {
   const f = transportFixture(), { token } = f.prepared();
@@ -21,12 +22,14 @@ it('SLB-PRESERVE-01 P6-NF-02 P6-NF-17 byte-preserves every legacy LoopPolicy Loo
 });
 
 it('SLB-DECODE-02 P6-NF-02 P6-NF-17 closes every real-breaker policy arm and managed record field', () => {
-  const f = transportFixture();
+  const f = transportLoopFixture();
   for (const mutation of [
     { breaker: 'unknown' }, { concurrency: 0 }, { failureThreshold: 0 }, { countedFailureClasses: [] },
     { halfOpenTrials: 0 }, { halfOpenConcurrency: 3 }, { jitterMaxPermille: 1001 },
-    { parentAttemptBudget: 0 }, { closeEvidence: 'self-asserted' },
+    { closeEvidence: 'self-asserted' },
   ]) refused(decodeLoopPolicy({ ...f.sharedPolicy, ...mutation }, f.c));
+  expect((value(decodeLoopPolicy({ ...f.sharedPolicy, parentAttemptBudget: 0 }, f.c)) as typeof f.sharedPolicy)
+    .parentAttemptBudget).toBe(0);
   const token = value(f.api.acquire('shared-acquire', '', 500));
   const scheduled = value(f.api.scheduleEpisode({ command: 'shared-schedule', fence: token,
     currentOwnerRun: f.run, policy: f.sharedPolicy, episodeKey: 'episode-1', operationFamily: 'holder-recovery',
@@ -40,16 +43,17 @@ it('SLB-DECODE-02 P6-NF-02 P6-NF-17 closes every real-breaker policy arm and man
 });
 
 it('SLB-DECODE-03 P6-NF-02 P6-NF-33 closes the exact MissedRangeRecord payload', () => {
-  const f = transportFixture();
+  const f = transportLoopFixture();
   const record = {
     type: 'MissedRangeRecord', schemaVersion: 1, id: 'missed:one', parentDuty: f.parentDuty,
     episode: { owner: 'part-six', name: 'LoopRecord', id: 'loop:one' },
     scanCursor: { owner: 'part-six', name: 'ScanCursor', id: 'cursor:one' },
     jobInstance: 'machine-a:job', packageDigest: `sha256:${'a'.repeat(64)}`, calendarPolicy: 'every-10',
     asOf: f.clock(130), currentLateness: { type: 'Measurement', schemaVersion: 1,
-      subject: { kind: 'duration', instance: 'machine-a:job' }, value: 0, unit: 'ms', at: f.clock(130), by: 'probe' },
+      subject: { kind: 'duration', instance: 'machine-a:job' }, value: 10, unit: 'ms', at: f.clock(130), by: 'probe' },
     first: f.clock(110), last: f.clock(120), memberCount: 2,
-    orderedMembersDigest: `sha256:${'b'.repeat(64)}`, derivationInputDigest: `sha256:${'c'.repeat(64)}`,
+    orderedMembersDigest: value(canonical([f.clock(110), f.clock(120)])).hash,
+    derivationInputDigest: `sha256:${'c'.repeat(64)}`,
     catchUpPolicy: 'none', dispositions: [110, 120].map(at => ({ scheduledInstant: f.clock(at),
       kind: 'missed-no-execution' as const, result: { type: 'Result' as const, id: 'result:missed', field: 'result',
         fact: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: 'result-fact:one' } } })),

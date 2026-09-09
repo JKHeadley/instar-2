@@ -47,10 +47,31 @@ export const transportDispositions = [
   ['40', 'partial', 'Same-operation read-only recovery and distinct delivery attempt; no peer deadline or collection protocol.'],
 ].map(([number, status, reason]) => ({ id: `P6-NF-${number}`, status, reason }));
 
-export function checkTransportCoverage(report, dispositions = transportDispositions) {
+// These fixture ids are the executable acceptance contract for the additive
+// seam. Broad P6 tags cannot satisfy this list: if any seam regression is
+// removed, renamed, skipped or moved out of its required tier, the map fails.
+export const transportSeamEvidence = [
+  ['SLB-PRESERVE-01', 'unit', 'legacy additivity'],
+  ['SLB-REFS-14', 'integration', 'V02 V03 V04 V08'],
+  ['SLB-BUDGET-15', 'integration', 'V09'],
+  ['SLB-REPLAY-16', 'integration', 'V13 V14 V34'],
+  ['SLB-CLOSURE-17', 'integration', 'V15 V33'],
+  ['SLB-CLOCK-18', 'integration', 'V07'],
+  ['SLB-BOUNDS-19', 'integration', 'V11 V39'],
+  ['SLB-FRONTIER-05', 'integration', 'V12'],
+  ['SLB-CONTINUE-20', 'integration', 'V18'],
+  ['SLB-MISSED-21', 'integration', 'V21 V22 V26'],
+  ['SLB-MISSED-REPLAY-22', 'integration', 'V28 V29 V37'],
+  ['SLB-MISSED-STABLE-23', 'integration', 'V27'],
+  ['SLB-CUTS-07', 'integration', 'restart cuts'],
+  ['SLB-E2E-12', 'e2e', 'fresh process lifecycle'],
+  ['SLB-MAP-24', 'unit', 'zero-evidence map refusal'],
+].map(([id, tier, cases]) => ({ id, tier, cases }));
+
+export function checkTransportCoverage(report, dispositions = transportDispositions, seamEvidence = transportSeamEvidence) {
   if (!report.success) throw new Error('transport mapping requires a successful actual test run');
   if (dispositions.length !== 40 || new Set(dispositions.map(r => r.id)).size !== 40) throw new Error('missing/duplicate design disposition');
-  return dispositions.map(row => {
+  const rows = dispositions.map(row => {
     if (!['partial', 'out-of-scope'].includes(row.status) || !row.reason) throw new Error('unsupported or unexplained held claim');
     const tests = report.testResults.flatMap(file => file.assertionResults
       .filter(test => (test.fullName.match(/\bP6-NF-\d+\b/g) ?? []).includes(row.id))
@@ -58,6 +79,16 @@ export function checkTransportCoverage(report, dispositions = transportDispositi
     if (row.status === 'partial' && (!tests.length || tests.some(t => t.status !== 'passed'))) throw new Error(`no executed passing fixture: ${row.id}`);
     return { ...row, tests };
   });
+  const tierPath = { unit: '/tests/transport/', integration: '/tests/integration/', e2e: '/tests/e2e/' };
+  for (const required of seamEvidence) {
+    const tests = report.testResults.flatMap(file => file.assertionResults
+      .filter(test => (test.fullName.match(/\bSLB-[A-Z0-9-]+-\d+\b/g) ?? []).includes(required.id))
+      .map(test => ({ file: file.name.replaceAll('\\', '/'), status: test.status })));
+    if (!tests.length || tests.some(test => test.status !== 'passed')
+      || !tests.some(test => test.file.includes(tierPath[required.tier])))
+      throw new Error(`missing seam evidence: ${required.id} (${required.tier}; ${required.cases})`);
+  }
+  return rows;
 }
 
 export function inspectTransportCore(sources) {

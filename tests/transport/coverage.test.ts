@@ -1,13 +1,19 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { expect, it } from 'vitest';
 // @ts-expect-error Build checker lives outside pure TypeScript core.
-import { checkTransportCoverage, inspectTransportCore, transportDispositions } from '../../scripts/check-transport-contracts.mjs';
+import { checkTransportCoverage, inspectTransportCore, transportDispositions, transportSeamEvidence } from '../../scripts/check-transport-contracts.mjs';
 
-it('P6-NF-01 P6-NF-37 coverage checker rejects missing executions and unsupported held claims', () => {
+it('SLB-MAP-24 P6-NF-01 P6-NF-37 coverage checker rejects missing executions, absent seam cases and unsupported held claims', () => {
   const dispositions = transportDispositions as { id: string; status: string; reason: string }[];
-  const report = { success: true, testResults: [{ name: 'mapping-unit-positive-control', assertionResults:
-    dispositions.filter(r => r.status === 'partial').map(r => ({ fullName: `${r.id} mapping fixture`, status: 'passed' })) }] };
+  const seam = transportSeamEvidence as { id: string; tier: 'unit' | 'integration' | 'e2e'; cases: string }[];
+  const report = { success: true, testResults: [
+    { name: '/repo/tests/transport/mapping-unit-positive-control.test.ts', assertionResults:
+      dispositions.filter(r => r.status === 'partial').map(r => ({ fullName: `${r.id} mapping fixture`, status: 'passed' })) },
+    ...seam.map(row => ({ name: `/repo/tests/${row.tier === 'unit' ? 'transport' : row.tier}/fixture.test.ts`,
+      assertionResults: [{ fullName: `${row.id} ${row.cases}`, status: 'passed' }] })),
+  ] };
   expect(checkTransportCoverage(report)).toHaveLength(40);
+  expect(() => checkTransportCoverage({ ...report, testResults: report.testResults.slice(0, 1) })).toThrow('missing seam evidence');
   expect(() => checkTransportCoverage({ ...report, testResults: [] })).toThrow('no executed');
   expect(() => checkTransportCoverage({ ...report, success: false })).toThrow('successful actual');
   expect(() => checkTransportCoverage(report, dispositions.map(r => r.id === 'P6-NF-01' ? { ...r, status: 'held' } : r))).toThrow('held claim');
