@@ -47,11 +47,11 @@ assembly.
 
 | Owner and prerequisite | Governed design contract | Public implementation at this source head | Required acceptance evidence and activation dependency |
 |---|---|---|---|
-| Four — scheduled-system intake and recovery enumeration | Part four specifies scheduled ticks, system principals and `(job id, scheduled instant)` identity | `IntakePort.receive` is a message slice: its parser accepts message/stop payloads and its principal resolver refuses non-person sources | The Part Four intake/run-binding seam request must land. Two peers must submit the same canonical tick, recover a crash after intake, and obtain the same intake fact. Scheduled families remain inactive until then. |
-| Five — all lawful Run exits and designed continuity records | Part five owns completed, unreachable and cancelled `RunExit`, `ExhaustionRecord` and `ContinuityAccounting` | `RunExit.kind` and the transition validator accept only `completed`; no `ContinuityAccounting` or `ExhaustionRecord` implementation exists under `src/` | The Part Five run-closure seam request must land with decoder, writer, replay and fault evidence for all three exit arms and both records. Families needing unreachable/cancelled closure remain inactive; completion-only fixtures may activate only when they never claim the missing arms. |
-| Six — recurring parent duty, breaker and missed coverage | Part six specifies persistent parent budgets, multiple bounded episodes, open and trial-after-cooldown breaker behavior and a missed-count fact | `LoopPolicy.breaker` accepts only `stub-closed`, concurrency is one, a transport slice permits one episode per Run, and `LoopRecord`/`ScanCursor` contain no missed-range membership or disposition contract | The Part Six recurring-loop seam request must land with parent-budget, breaker and missed-coverage fixtures. Recurring scheduling and crash-loop claims remain inactive until then. |
+| Four — scheduled-system intake and recovery enumeration | Part four specifies scheduled ticks, system principals and `(job id, scheduled instant)` identity | `IntakePort.receive` is a message slice: its parser accepts message/stop payloads and its principal resolver refuses non-person sources | `seam-response-intake-scheduled.md` is GRANTED/BUILT but absent from this source head. P15-NF-04/05/18/21/52 are non-executable until that grant file lands in this branch and its acceptance evidence passes. Scheduled families remain inactive until then. |
+| Five — all lawful Run exits and designed continuity records | Part five owns completed, unreachable and cancelled `RunExit`, `ExhaustionRecord` and `ContinuityAccounting` | `RunExit.kind` and the transition validator accept only `completed`; no `ContinuityAccounting` or `ExhaustionRecord` implementation exists under `src/` | `seam-response-run-closure.md` is GRANTED but absent from this source head. Checks needing unreachable/cancelled closure are non-executable until that grant file lands with its decoder, writer, replay and fault evidence. Completion-only fixtures may activate only when they never claim the missing arms. |
+| Six — recurring parent duty, breaker and missed coverage | Part six specifies persistent parent budgets, multiple bounded episodes, open and trial-after-cooldown breaker behavior and a missed-count fact | `LoopPolicy.breaker` accepts only `stub-closed`, concurrency is one, a transport slice permits one episode per Run, and `LoopRecord`/`ScanCursor` contain no missed-range membership, coverage-selection or disposition contract | `seam-response-loop-breaker.md` is GRANTED but absent from this source head. The additional conditional coverage, bounded-chunk and causal-cohort contract is requested in `design-scheduled-work-seam-request-recurring-loop-round2.md`. P15-NF-14/20/24/27/46/47/48/52 are non-executable until both owner seams land and their acceptance evidence passes. |
 | Six — bounded key paging | Part six says the work owner supplies ordered keys and six only pages them | `BoundedDueScanPort.page` and `ScanCursor` are landed with that selection-only boundary | Part fifteen must derive and register due keys itself, then prove cursor identity and bounded paging. It may not encode missed-range authority into an opaque key or cursor field. |
-| Seven/eight/nine — fresh invocation after uncertainty | The owner designs require separate non-occurrence, delayed-execution exclusion and final-charge assessment before a fresh attempt | The public six/eight/nine settlement path retains unknown charge and prohibits another attempt; seven requires a fresh attempt and operation when provider/input changes | Joint settlement and fresh-admission fixtures P15-NF-23/35 must pass. No additional part-fifteen retry seam is assumed. |
+| Six/seven/eight/nine — fresh invocation after decisive settlement | The owner designs require separate non-occurrence, delayed-execution exclusion and final-charge assessment before a fresh attempt with unchanged logical work identity | Six refuses every reused request or semantic-message identity; Seven hardcodes `attempt:<request>:1`; Eight exposes only `retryEligible: false`; Nine can assess the required predicates but the landed composition cannot consume them into a second attempt | `seam-response-effects-followup.md` and `seam-response-loop-followup.md` grant the Eight/Nine eligibility and Six conditional retry halves but are absent from this source head. Seven's missing attempt arm and the exact four-owner order are requested in `design-scheduled-work-seam-request-fresh-attempt.md`. P15-NF-23/35 are non-executable until both grant files and that additional seam land with joint acceptance fixtures. Until then scheduled families may observe the original attempt or admit distinct subsequent work, never retry the same logical work. |
 
 **Rule — a schedule is a stimulus, never standing or success.** Rules 4, 28, 42, 63, 66, 68
 and 93; **checks: P15-NF-04/05/06**. The clock adapter may submit only the registered scheduled
@@ -100,10 +100,22 @@ are package fields and references to owned values, not a new core record.
 **Rule — recurring calendar expansion is deterministic.** Rules 26, 33, 39, 69 and 90;
 **checks: P15-NF-09/13/14**. A recurring manifest names a valid cron expression, an IANA time zone,
 and the registered calendar-policy version. `cron-v1` means a five-field, minute-resolution
-calendar expression in minute, hour, day-of-month, month and day-of-week order. It admits decimal
-values, lists, inclusive ranges, `*` and positive integer steps; it admits no seconds, years,
-macros or names. When day-of-month and day-of-week are both restricted, either match selects the
-wall time. An IANA time zone is a named zone interpreted with the manifest's exact time-zone-data
+calendar expression in minute, hour, day-of-month, month and day-of-week order. The field domains
+are `0..59`, `0..23`, `1..31`, `1..12` and `0..6`; only `0` denotes Sunday and `7` is refused. A
+field is a comma-separated, nonempty list of atoms. An atom is `*`, one unsigned decimal value, an
+ascending inclusive `value-value` range, `*/step`, or `value-value/step`. A step is a positive
+decimal integer. `*/step` starts at the field minimum and selects every step-th value through the
+maximum. `a-b/step` starts at `a` and selects `a + k*step` while the result is at most `b`. A step
+on a single value, a descending range, signs, whitespace inside a field, empty list members,
+names, macros, seconds and years are refused.
+
+Each field expands to a sorted set with duplicates removed. Canonical normalization is the five
+comma-joined sorted decimal sets, separated by one ASCII space. A day-of-month that does not exist
+in the selected month does not match. A normalized day-of-month or day-of-week set that equals its
+entire domain is **unrestricted**, even when written as a list, range or step expression equivalent
+to `*`. If both day fields are unrestricted, every otherwise-selected day matches. If exactly one
+is restricted, that field alone selects the day. If both are restricted, either matching field
+selects it. An IANA time zone is a named zone interpreted with the manifest's exact time-zone-data
 version. RFC 3339 is the absolute timestamp grammar with a required numeric offset or `Z`.
 
 The default calendar policy maps a nonexistent wall time using the last valid UTC offset before
@@ -119,17 +131,27 @@ A **current occurrence** is a due instant whose nonnegative age at the supplied 
 less than or equal to the manifest's current-lateness cutoff. An older due instant is missed. At a
 five-minute cutoff, `12:00:00Z` is current at `12:05:00Z` and missed at
 `12:05:00.001Z`. A **missed group** is the maximal ordered set of missed instants for one job
-instance, package version and calendar-policy version between the exclusive durable expansion
-cursor and the current/missed boundary. Its identity binds the first and last instants, count,
-ordered-membership digest, prior cursor and catch-up policy. Once recorded, membership never
-changes; partial processing resumes at the first member without a disposition.
+instance, package version and calendar-policy version selected between one conditionally current
+temporal-coverage predecessor and a pinned current/missed boundary. Its selection identity binds
+the predecessor, exact expansion inputs, first instant, boundary and catch-up policy. Its terminal
+commitment binds the last instant, count and streamed ordered-membership digest to that selection.
+Both records are small and immutable. Its members and dispositions are
+stored in separately paged **coverage chunks**, each capped by manifest item and encoded-byte
+limits. A group is `discovering` until its digest and count have been completed from bounded
+expansion pages, `disposing` while one or more committed chunks remain open, and `complete` only
+after every member has one disposition. Recovery resumes from the last committed expansion or
+disposition chunk. No operation materializes the whole group in memory or writes an unbounded
+member array.
 
 Calendar expansion is a pure fold over the approved manifest, activation instant, pinned time-zone
-data, prior expansion cursor and one supplied `asOf` clock measurement. Equal causal frontiers do
-not imply equal expansion. Peers converge only when all those inputs, including the exact `asOf`
-bytes, are equal. Different discovery clocks produce separate testimony and may expose different
-due prefixes; they never alter an already named occurrence. A time-zone-data change requires a new
-package version and cannot rewrite past occurrences.
+data, conditional temporal-coverage predecessor and one supplied `asOf` clock measurement. Equal
+causal frontiers do not imply equal expansion. A discoverer first pins those inputs, then proposes
+one group against the predecessor through the requested Part Six conditional coverage operation.
+Only the winning proposal may persist or resume its bounded chunks. A loser re-reads the selected
+group and its successor before proposing more coverage. The temporal-coverage successor advances
+only after all chunks are complete. Different `asOf` clocks may propose overlapping prefixes, but
+they cannot select overlapping groups from the same predecessor. A time-zone-data change requires
+a new package version and cannot rewrite past occurrences.
 
 **Rule — a one-shot is an absolute obligation.** Rules 8, 26, 46, 68 and 97; **checks:
 P15-NF-14/15**. A one-shot manifest carries one absolute instant and no recurrence. Before that
@@ -168,26 +190,35 @@ route or tick bytes.
 Two active package versions that select the same job instance and instant therefore use the same
 event id. Equal bytes collapse to the original intake admission. Different package or calendar
 bytes under that id produce part four's mismatch/conflict result; arrival order cannot choose a
-winner. This contract depends on the Part Four intake/run-binding seam request because the landed
-port does not yet admit system principals or this scheduled payload.
+winner. This contract is non-executable until the GRANTED/BUILT
+`seam-response-intake-scheduled.md` lands because the current source head does not yet admit system
+principals or this scheduled payload.
 
 **Rule — one conditional chain selects the intake-to-Run binding.** Rules 26, 33, 45, 68 and 90;
-**checks: P15-NF-18/20/21/22**. The package derives one Run id as the canonical hash of the
-scheduled-ingress namespace and occurrence identity. It first calls Part Four's requested
+**checks: P15-NF-18/20/21/22**. The package first calls Part Four's granted
 `receiveScheduledTick`. An admitted result or duplicate reference resolves to the one authoritative
-intake-admission fact. It then opens that deterministic Run id through part five, whose landed
-`RunAdmissionPort.create` conditionally appends the immutable Run root. The root causally requires
-the intake fact and carries that fact as its opening. The selected binding is that pair; a clock
-callback, discovery testimony or part-six reservation cannot select a different Run.
+intake-admission fact. That selected fact is the opening reference. The package uses Part Five's
+exported `runIdFor(opening)` and submits the complete Run root through the public
+`RunGraphPort.open`; it never calls the injected Six-owned `RunAdmissionPort.create`. The root
+causally requires the intake fact and carries that exact reference as its opening. A clock callback,
+discovery testimony or part-six reservation cannot select a different Run.
 
 A crash after intake admission leaves its existing `blockedOn: run-admission` obligation visible.
 Recovery enumerates those scheduled admissions through the requested Part Four read operation,
-derives the same Run id and calls the same conditional create. A crash after Run creation but
-before acknowledgement returns the existing immutable root. During a partition, peers may record
+computes `runIdFor(opening)`, and first asks `RunGraphPort.read` for that id. If the root exists,
+recovery reuses it. If it does not, recovery reconstructs the complete root bytes only from the
+opening fact and the immutable package version named by that fact: `createdAt` is the opening
+fact's clock, and every directive, authority, budget, cadence, wake, destination and generation
+reference is the exact admitted or package-pinned value. It takes no recovery or discovery clock.
+Only the typed not-found result permits construction; a conflict or other refusal inhibits. It
+then calls `RunGraphPort.open` with those bytes. A crash after Run creation but before
+acknowledgement therefore reads or opens the byte-identical immutable root; a changed root is a
+conflict, not a replay. During a partition, peers may record
 separate discovery testimony, but required intake/Run durability and part-six ownership inhibit
 business execution until one causally valid binding is visible. Equal competing roots merge by
 identity; unequal roots conflict and remain inhibited. No peer mints work from its local discovery
-clock or chooses a winner by arrival time.
+clock or chooses a winner by arrival time. P15-NF-18/21 are non-executable on this source head
+until the GRANTED/BUILT `seam-response-intake-scheduled.md` lands.
 
 **Rule — exactly once means one durable scheduling disposition, not one successful effect.** Rules
 26, 33, 42, 45, 68 and 90; **checks: P15-NF-18/20/21/22**. Concurrent delivery, restart replay,
@@ -204,7 +235,7 @@ mapping is:
 | Refused before work admission | Part Four preserves the tick and its `Refused` | No Run is invented; the registered policy owns any later fresh observation |
 | Queue, quota or breaker inhibits execution | Capacity enforcement may be `Success` with capacity applied for that control operation; the Run appends a waiting or halted `RunTransition` | The admitted business obligation remains open, owned and visible; `shed` is only a presentation label for this inhibited no-execution state, never a `RunExit` |
 | Optional occurrence deliberately does no work | The manifest's immutable exit test explicitly accepts named no-execution evidence for this occurrence class | A checked `completed` RunExit may close it only after that evidence passes; queue pressure or a capacity Result cannot substitute |
-| Missed group | Requested Part Six missed-coverage record gives every member a disposition and links any previously admitted member | Members deliberately not executed have no individual Run; the group may bind at most one catch-up Run exactly as defined below |
+| Missed group | Requested Part Six selection and bounded coverage chunks give every member a disposition and link any previously admitted member | Members deliberately not executed have no individual Run; only the latest member may bind its ordinary opening-derived catch-up Run exactly as defined below |
 
 **Rule — this guarantee does not claim exactly-once effects.** Rules 24, 26, 42 and 63;
 **checks: P15-NF-21/23**. Part fifteen promises one logical scheduled run and at most one admitted
@@ -225,25 +256,32 @@ until its Run has a durable admission and disposition; losing a callback merely 
 lookup. Each pass has finite pages, work, duration and resource bounds. Fair paging prevents one
 dense schedule from starving other jobs. A configured holder is not live because its manifest
 exists: part nine requires fresh evidence of an actual scan, a challenge occurrence, its intake
-receipt, and the matching run observation. Persistent parent budgets and breaker behavior depend
-on the Part Six recurring-loop seam request; the landed loop slice cannot provide them.
+receipt, and the matching run observation. Persistent parent budgets and breaker behavior are
+non-executable until the GRANTED `seam-response-loop-breaker.md` lands; conditional coverage also
+requires `design-scheduled-work-seam-request-recurring-loop-round2.md`.
 
 **Rule — missed instants are counted, coalesced, and never erased.** Rules 26, 42, 46, 55 and 68;
 **checks: P15-NF-14/20/24/27**. After sleep, outage, restart, or partition healing, the loop derives
-every eligible scheduled instant since its durable cursor in bounded pages. Part six coalesces the
-wake. Through the requested Part Six missed-coverage operation it records the group's first/last
-instant, exact ordered-member digest and count, derivation-input digest, scan-cursor predecessor,
-and one disposition reference for each member. `none` records deliberate no-execution for every
-member. `latest` does the same for older members and links the latest member to the group's one
-catch-up Run. The Run id derives from the immutable group id, so replay cannot add another.
+every eligible scheduled instant since its conditional temporal-coverage predecessor in bounded
+pages. Part six coalesces the wake. Through the requested Part Six coverage operations it first
+selects one immutable group commitment, then records bounded, ordinal coverage chunks. Each chunk
+has finite member and encoded-byte maxima, a predecessor chunk and a digest chained into the group
+commitment. `none` records deliberate no-execution for every member. `latest` does the same for
+older members and selects the latest member's canonical Part Four tick as the catch-up stimulus.
+If that member already has an admitted Run, coverage references and reuses it. Otherwise the
+package admits that member's tick and opens its Part Five opening-derived Run by the ordinary
+binding rule above. A group id never becomes a Run id or an opening stimulus.
 
 A previously admitted member remains linked to its existing Run and is never absorbed into a new
-no-execution claim. A partially processed group retains its fixed membership and resumes at the
-first member lacking a disposition; it cannot move the boundary or repeat its catch-up Run. The
-record is causally linked to the exact `ScanCursor`; `LoopRecord` continues to own wake and breaker
-progress, not range membership. A job cannot run early merely because it has never run.
-Occurrences before the package activation instant do not exist. This coverage depends on the Part
-Six recurring-loop seam request because neither landed `LoopRecord` nor `ScanCursor` can express it.
+no-execution claim. An incomplete group resumes from its committed discovery page or first open
+member without loading earlier chunks. It cannot move the boundary or repeat its catch-up Run.
+Only after every chunk is complete may Part Six conditionally advance the temporal-coverage head.
+The selection-only `ScanCursor` may witness bounded enumeration, but it neither selects coverage
+nor commits dispositions. Crashes before selection, between selection and the first chunk, between
+chunks, before Run binding, and after Run binding all resume this order. A job cannot run early
+merely because it has never run. Occurrences before the package activation instant do not exist.
+This coverage is non-executable until the GRANTED `seam-response-loop-breaker.md` and requested
+`design-scheduled-work-seam-request-recurring-loop-round2.md` land.
 
 **Rule — a manifest change has a clean temporal boundary.** Rules 33, 44, 90 and 97;
 **checks: P15-NF-16/19/28**. Activation records the first instant governed by the new package
@@ -301,14 +339,17 @@ predicts immediate failure. Critical work may use only separately reserved, curr
 with no provider usage surface stays labelled unobservable and uses its approved finite exposure
 cap plus call-time settlement; it is never reported as healthy.
 
-**Rule — rerouting is a new admission decision, not inherited permission.** Rules 28, 32, 35,
-56, 57, 63, 75 and 113; **checks: P15-NF-32/35/36**. A reroute preserves the Run, step identity,
+**Rule — rerouting is a new admission decision, not inherited permission.** Rules 28, 32, 56,
+57, 63, 75 and 113; **checks: P15-NF-32/35/36**. A reroute preserves the Run, step identity,
 floor and remaining budget. Moving an observer or recovery worker preserves the immutable original
 attempt, operation identity, input digest and reservation; it can only query that attempt. Changing
 provider or input proposes a fresh part-seven attempt under the same logical RunStep. It may invoke
 only after the original attempt has independently accepted non-occurrence, delayed-execution
-exclusion and final charge, part eight has settled it, and part six has mapped a new operation,
-created a fresh reservation and issued a fresh one-use claim. A **billing lane** is the recorded
+exclusion and final charge; part nine supplies the current accepted assessment; part eight consumes
+it into retry eligibility and settlement; part six conditionally admits unchanged request and
+semantic-message identities with a new linked reservation and one-use claim; and part seven
+records a new ordinal `JudgmentAttemptRecord` whose attempt and reservation match Six's admission.
+Changing the semantic identity to escape predecessor checks is refused. A **billing lane** is the recorded
 provider account, price policy, quota window and charge-settlement source for one attempt; it is
 evidence about the actual route, not authority to use it.
 
@@ -316,27 +357,43 @@ Every destination re-resolves standing, framework compatibility, model map, capa
 fresh quota, account identity, lease, isolation and capture policy. It records actual machine,
 framework, model, account reference, billing lane and reason. A configured pin or requested model
 is never reported as the route that ran. If no compatible destination passes, the Run waits with a
-capacity Result; it does not mint another operation merely to appear active.
+capacity Result; it does not mint another operation merely to appear active. The fresh-invocation
+path in P15-NF-23/35 is non-executable until the GRANTED `seam-response-effects-followup.md` and
+`seam-response-loop-followup.md`, plus the requested
+`design-scheduled-work-seam-request-fresh-attempt.md`, land and pass their joint fixtures.
 
 **Rule — concurrency is reserved before launch and released by evidence.** Rules 25, 33, 60, 61
 and 63; **checks: P15-NF-30/37/38**. A **job family** is the registered set of job instances that
 share one manifest lineage, work entry point and resource policy. Part six enforces finite global,
 installation, framework, account, job-family and per-job caps plus the Run's parent allocation. Numeric zero means no new
 admission. A slot is reserved before worker creation and remains charged while execution or
-settlement is unknown. Completion evidence, not process disappearance alone, releases it. Queues
-are durable run states, bounded, priority-ordered, and fair within a class. A full queue ends the
-affected admission attempt with a capacity-applied Result and leaves the Run waiting on a bounded
-re-observation. It never drops an enqueue and never constructs a business `RunExit`.
+settlement is unknown. Completion evidence, not process disappearance alone, releases it. Durable
+waiting Runs are retained obligations, not an in-memory queue, and their historical count may grow.
+A **runnable window** is the bounded projection selected for one admission pass: it contains at
+most the manifest's item limit and encoded-byte limit, and the pass also has page, duration and
+memory limits. Selection pages the retained backlog from its durable cursor; it never loads every
+waiting Run. Obligations beyond the window remain owned and selectable by later pages. Part Ten's
+`GrowthObservation` records selected count and bytes, retained-backlog count or lower bound,
+oldest due age, pages consumed and any overflow or incomplete count at the pinned frontier. Filling
+the window ends only that selection pass with a capacity-applied Result; it never drops an
+obligation or constructs a business `RunExit`.
 
 **Rule — priority chooses order, not truth or authority.** Rules 4, 18, 40, 60 and 63;
 **checks: P15-NF-33/37/39**. Priority may order eligible admissions and select an approved
 inhibition band. It cannot widen scope, increase a budget, defeat a stop, skip supervision,
 ignore uncertainty, steal an existing reservation, or certify stale evidence. The minimal plane,
 emergency stop, diagnosis and bounded repair keep their reserved capacity. After those reserves,
-the scheduler uses weighted deficit round robin across priority classes and FIFO with bounded age
-promotion inside each class. Every active class has a finite configured weight; the maintenance
-class has a nonzero minimum share. Age promotion changes ordering only and cannot cross a resource,
-standing, stop or uncertainty gate. The deployment policy states the fair-round workload,
+the scheduler uses **weighted deficit round robin** across priority classes: in each round every
+active class receives its configured number of admission credits, an admitted reservation costs
+one credit, an ineligible candidate costs none, classes are visited in registered order, and unused
+credit carries only to the declared finite credit cap. Within a class, **FIFO** means the earliest
+eligible scheduled instant or admission clock is considered first; equal instants are ordered by
+canonical occurrence id, never by arrival or Part Two's fold linearization. **Bounded age
+promotion** means an otherwise eligible item waiting at least the declared `promotionAfter`
+duration is considered one priority class higher for the next round only. It can rise at most one
+class per declared promotion interval and never above critical. Every active class has a finite
+configured weight; the maintenance class has a nonzero minimum share. Promotion changes ordering
+only and cannot cross a resource, standing, stop or uncertainty gate. The deployment policy states the fair-round workload,
 maintenance share and maximum added delay for higher-priority work; missing values refuse
 activation. This fixed mechanism prevents indefinite starvation while preserving explicit caps.
 
@@ -368,7 +425,7 @@ direction and remains visible. It cannot downgrade to `tier0`, use keywords as j
 model fluency as proof. The deterministic bootstrap that admits the supervisor call is finite and
 cannot ask another model to approve its own invocation.
 
-**Rule — opted-in post-completion learning is owned work.** Rules 8, 41, 46, 58, 68 and 85;
+**Rule — opted-in post-completion learning is owned work.** Rules 8, 41, 46, 58 and 68;
 **checks: P15-NF-42/44/45/50**. The manifest's post-completion learning mode is `off` or
 `required`. `off` creates no reflection and cannot report that learning occurred. `required` adds
 a bounded RunStep after the business outcome and before the package's closure condition. It uses
@@ -411,15 +468,29 @@ earlier uncertain Run or bypass its execution and charge settlement.
 
 **Rule — crash-loop pausing is a durable circuit state.** Rules 26, 42, 55, 60 and 88;
 **checks: P15-NF-46/47/48**. A registered breaker policy evaluates accepted Run outcomes within a
-declared **causal window**: the last `N` accepted outcomes for the job family through
-the pinned causal frontier; `N`, the counted outcome classes and the failure threshold are immutable
-policy fields, so equal frontiers produce equal membership. It can count failures, spawn refusals,
-early terminal failures and repeated resource exhaustion, while distinguishing no-work, operator
-cancellation, capacity-applied inhibition and timeouts with unresolved effects. Crossing the
-threshold inhibits new ordinary executions for that job and records one pause episode with
-supporting Run ids. It does not disable the manifest, rewrite history, classify a timeout as
-harmless, or reset because work moved machines. This behavior depends on the Part Six
-recurring-loop seam request; the landed `stub-closed` policy supplies no such breaker state.
+declared **causal window**. At a pinned frontier, Part Six first consumes Part Two's current view
+after causally effective corrections and retractions. It then takes the maximal accepted outcome facts in the remaining
+partial order as one causal cohort, removes that whole cohort, and repeats until it has selected
+the policy's last `N` cohorts or exhausted the family. Every concurrent fact at the oldest selected
+boundary stays in the window; a fold sort or timestamp never chooses one. `N`, the counted outcome
+classes, correction/retraction rules and failure threshold are immutable policy fields. A
+correction replaces its target only when it is causally effective at the pinned frontier. A
+retraction removes its target only under the same condition. Concurrent incompatible correction,
+retraction or outcome testimony is contested; it remains visible and inhibits automatic breaker
+closing until its owner resolves it. Thus equal frontiers produce equal membership and result
+under every delivery permutation.
+
+The breaker can count failures, spawn refusals, early terminal failures and repeated resource
+exhaustion, while distinguishing no-work, operator cancellation, capacity-applied inhibition and
+timeouts with unresolved effects. A cohort containing both counted success and counted failure
+contributes both; failure is not erased by its concurrent success. A half-open episode closes only
+when its required accepted outcomes are causally effective and no selected cohort contains a
+counted failure or contested member. Crossing the failure threshold inhibits new ordinary
+executions for that job and records one pause episode with supporting Run ids. It does not disable
+the manifest, rewrite history, classify a timeout as harmless, or reset because work moved
+machines. This behavior is non-executable until the GRANTED `seam-response-loop-breaker.md` and
+requested `design-scheduled-work-seam-request-recurring-loop-round2.md` land; the landed
+`stub-closed` policy supplies no such breaker state.
 
 **Rule — pausing stops waste without deleting the duty.** Rules 8, 14, 46, 55 and 88;
 **checks: P15-NF-47/48/49**. While the breaker is open, due ticks still enter intake and receive
@@ -481,6 +552,7 @@ carry forward through the 2.0 owners rather than by copying those modules.
 | Signed built-ins, namespace separation and collision refusal remain | Forged default origin, body drift, case collisions and interrupted two-file saves could otherwise select unintended work | Part-ten signed atomic package lineage and explicit conflict; P15-NF-09/16/17 |
 | Large history is read incrementally and remains honest about unmeasured jobs | Repeated synchronous parsing of a roughly 13 MB job ledger froze the event loop for 13–16 seconds; empty populations were prone to false percentages | Part-two append/projection/checkpoint model and measured-only aggregates; P15-NF-26/50 |
 | Demotion is rechecked at the launch boundary | A machine could start writable, lose its role, and keep firing cron tasks from the stale boot posture | Current part-six ownership and standing check at reservation and dispatch; P15-NF-05/21/36 |
+| Wake reaping subtracts every sleep in the Run, preserves a worker with active child processes, and obeys protected-session and lease-owner refusal | `JobScheduler.reapStuckRuns` once credited only the latest sleep and could reap early; its current path subtracts cumulative sleep, keeps active children, and delegates shutdown to `SessionManager`'s recorded reap authority. `resumeOnReap` is opt-in because a cron body is not inherently idempotent | Part Five keeps the same Run, pending step and accepted observations; Part Six owns recovery, fencing, settlement and worker replacement; Part Ten supplies the bounded sleep/wake, process-liveness and shutdown drivers. A reap is uncertain worker loss, never retry permission. Without an explicit recovery policy, recovery observes and leaves the Run inhibited; even with one, it resumes the same Run and cannot mint a fresh effect attempt without P15-NF-23. P15-NF-21/23/45/46 are non-executable where they need shutdown drivers until the GRANTED `seam-response-effects-followup.md` and `seam-response-assembly-followup.md` land. |
 | Job prompts are grounded and tool/model choices are recorded | Headless jobs historically inherited more tools, remote services and billing paths than their work required | Part-five grounding, part-ten isolation and actual route evidence; P15-NF-12/35/45 |
 | Opted-in completion performs learning before queue progression | `IntegrationGate` synchronously reflects, records reflection, derives high-confidence common blockers and may hold queue drain after a failed job; timeout proceeds with warning and a fourth consecutive block auto-releases | The bounded post-completion learning step and explicit compatibility policy in section 5; P15-NF-42/44/45/50 |
 
@@ -492,8 +564,10 @@ over admitted facts. Claim managers become part-six leases and fences. Retry tim
 part-six loop. `QuotaTracker` becomes a capacity-evidence adapter consumed by admission. Shell
 gates become registered RunSteps. The 1.x supervision strings map to parts seven and nine.
 `IntegrationGate` maps specifically to section 5's post-completion learning step, Result and
-bounded queue-hold policy; generic per-step supervision does not replace it. `Mentor*` and other job-specific state machines become ordinary capability
-packages rather than scheduler internals. Telegram topic coupling becomes a part-eleven
+bounded queue-hold policy. Generic per-step supervision does not replace that learning step.
+The four audited scheduler `Mentor*` modules separate tick orchestration, assembly wiring, bounded
+guardian work and signal-only forensics. In 2.0 those behaviors become ordinary capability packages
+rather than scheduler internals. Telegram topic coupling becomes a part-eleven
 destination rendered through the part-eight message operation.
 
 **Rule — the 2.0 design forecloses the audited mistakes.** Rules 1, 26, 33, 42, 55, 66, 67 and
@@ -575,21 +649,21 @@ captured bytes where their owner requires them.
 | P15-NF-06 | contract | Spawn, queue, lease or receipt reported as business success; accepted terminal RunExit and outcome evidence report their narrow claims |
 | P15-NF-07 | architecture | Provider-name branch or hardcoded path changes policy; replacement adapter with identical decoded values preserves decisions |
 | P15-NF-08 | decode/build | Unknown field, missing bound, duplicate id or producer omits a required manifest field; closed canonical manifest round-trips through its consumer |
-| P15-NF-09 | calendar/decode | Non-`cron-v1` syntax, invalid zone/version, ambiguous normalization or gap-mapping collision activates; valid five-field pinned expansion produces canonical instants |
+| P15-NF-09 | calendar/decode | Value outside `0..59/0..23/1..31/1..12/0..6`, Sunday `7`, zero/signed/single-value step, descending range, empty list, invalid zone/version, ambiguous normalization or gap-mapping collision activates; boundary values, Sunday `0`, `*/15`, `10-20/5` and valid pinned five-field expansion produce the canonical sets and instants |
 | P15-NF-10 | package/lifecycle | Invalid single job stops all service or is silently excluded; affected job is refused and surfaced while independent jobs and minimal plane run |
 | P15-NF-11 | build | Authority, budget, supervision or proof is hidden in prose/frontmatter outside the manifest; explicit owned references decode and bind the body digest |
 | P15-NF-12 | isolation | Job inherits undeclared tool, secret, provider or filesystem power; assembled least-authority entry point receives only declared capabilities |
-| P15-NF-13 | permutation | Peers with equal frontier but different `asOf` clocks are asserted equal, or equal complete inputs disagree for New York gap `2027-03-14 02:30` / fold `2027-11-07 01:30`; exact gap `07:30Z` missed identity and default fold `05:30Z` identity pass |
+| P15-NF-13 | permutation | Peers with equal frontier but different `asOf` clocks are asserted equal; equal complete inputs disagree for New York gap `2027-03-14 02:30` / fold `2027-11-07 01:30`; or wildcard-equivalent day fields such as `1-31` and `0-6` are treated as restricted; exact gap `07:30Z`, default fold `05:30Z` and full-domain normalization pass under every delivery order |
 | P15-NF-14 | lifecycle | Future one-shot fires on boot, nonexistent wall time has no absolute identity, or missed tick disappears; only due absolute instant admits and every mapped missed instant gets a disposition |
 | P15-NF-15 | lifecycle | One-shot fires again after restart, local timer deletion closes it or expired time proves delivery; same identity resolves the original intake receipt and terminal RunExit, while manual rerun has a new event |
 | P15-NF-16 | package/race | Update rewrites past run contract or half-staged package activates; immutable old digest completes and fully committed future version begins at boundary |
 | P15-NF-17 | security | User file masquerades as signed default, case collision wins by order or retirement deletes history; verified namespace and explicit conflict/retired state pass |
-| P15-NF-18 | concurrency/multi-machine | Different discovery bytes enter canonical tick, same global instant creates two Run bindings, or every-machine scan collapses globally; shared route/bytes plus conditional binding yield one global Run, while two machine-scoped instances yield two local Results |
+| P15-NF-18 | concurrency/multi-machine | Different discovery clocks enter canonical tick/root bytes, a caller hashes namespace/occurrence instead of `runIdFor(opening)`, same global instant creates two Run bindings, or every-machine scan collapses globally; shared route/bytes plus the selected Four opening and `RunGraphPort.open` yield one opening-derived global Run, while two machine-scoped instances yield two local Results; non-executable until `seam-response-intake-scheduled.md` lands |
 | P15-NF-19 | multi-machine | Peers expand different active definitions and choose by arrival time; one approved temporal boundary passes, conflict inhibits affected slot |
-| P15-NF-20 | rebuild | Inhibited, paused or coalesced member disappears, a partial missed group moves membership, or all members are said to own Runs; fixed coverage resumes at first open member and links at most one catch-up Run |
-| P15-NF-21 | fault/multi-machine | Crash between intake selection and Run creation, crash after creation before ack, lease expiry or takeover duplicates work; deterministic binding returns the same Run and observation precedes action |
+| P15-NF-20 | rebuild | Overlapping discovery windows select two groups from one coverage predecessor, an incomplete group moves membership, a long-outage group exceeding one record's byte limit stalls or loses a member, all members are said to own Runs, or `latest` creates a group-derived Run; conditional selection chooses one group, bounded chunks resume without whole-group materialization, and the latest member reuses its prior Run or opens its never-admitted canonical tick Run; non-executable until `seam-response-loop-breaker.md` and `design-scheduled-work-seam-request-recurring-loop-round2.md` land |
+| P15-NF-21 | fault/multi-machine | Crash between coverage selection/chunk/Run-binding stages, crash between intake selection and Run creation, lost acknowledgement after creation followed by a different discovery clock, lease expiry or takeover duplicates work; recovery reads or reconstructs byte-identical opening-derived Run roots and observes before action; non-executable until `seam-response-intake-scheduled.md` lands |
 | P15-NF-22 | rebuild/security | Run's own status or mutable last-run file overrides signed history; owner-derived fold at a pinned frontier passes |
-| P15-NF-23 | fault/effect | Timeout, process death or changed provider retries, or accepted no-effect plus quiescence but unknown final billing permits invocation; only independently accepted non-occurrence, delayed-execution exclusion and final charge followed by settlement and fresh conditional admission permit one new attempt/operation/claim |
+| P15-NF-23 | fault/effect | Timeout, process death, reap or changed provider retries, or accepted no-effect plus quiescence but unknown final billing permits invocation; only Nine's current three-predicate assessment, Eight's settlement/eligibility, Six's conditional same-identity reservation and Seven's matching fresh-attempt record permit one new attempt/operation/claim; non-executable until `seam-response-effects-followup.md`, `seam-response-loop-followup.md` and `design-scheduled-work-seam-request-fresh-attempt.md` land |
 | P15-NF-24 | lifecycle | Timer/callback loss clears due debt or restart resets cursor; level-triggered scan reconstructs the same due set |
 | P15-NF-25 | load/fairness | Missing share/delay/workload activates, dense schedule monopolizes scan or scan exceeds page budget; declared fair-round load meets maintenance share and high-priority-delay bars through the persistent cursor |
 | P15-NF-26 | performance/rebuild | Missing duration/memory/corpus bound activates, full-history scan runs on every tick, cache is unbounded or target is called measured; complete equal-vector rebuild meets both recorded bounds on named corpus/hardware |
@@ -601,9 +675,9 @@ captured bytes where their owner requires them.
 | P15-NF-32 | integration | Brake allows candidate placement rejects, or placement selects unassessed account; one shared eligible candidate set launches |
 | P15-NF-33 | placement | Hard pin or critical priority defeats wall/cap/standing; preferred eligible target passes and blocked preference records capacity Result |
 | P15-NF-34 | contract | Framework without usage surface appears healthiest or uses unlimited exposure; labelled unobservable finite exposure and settlement pass |
-| P15-NF-35 | reroute | Observer move changes original mapping, or changed provider/input reuses the attempt/operation; read-only observation preserves both, while a settled predecessor permits full destination re-resolution plus a new linked attempt, operation, reservation and claim |
+| P15-NF-35 | reroute | Observer move changes original mapping, changed provider/input changes semantic work identity, or Seven reuses/hardcodes the first attempt; read-only observation preserves the predecessor, while the joint current settlement path retains logical identity and admits one new linked attempt, operation, reservation and claim; non-executable until `seam-response-effects-followup.md`, `seam-response-loop-followup.md` and `design-scheduled-work-seam-request-fresh-attempt.md` land |
 | P15-NF-36 | multi-machine | Demoted/stale worker launches, two claim systems operate or actual route differs from report; current fence and recorded destination pass |
-| P15-NF-37 | concurrency/load | Zero cap defaults positive, slot reserves after spawn, fair share fails, or full queue drops/terminates admitted work; pre-launch finite reservation plus capacity Result leaves the Run owned and waiting |
+| P15-NF-37 | concurrency/load | Zero cap defaults positive, slot reserves after spawn, fair share fails, or sustained arrivals at zero capacity/open breaker make active memory, selected items, bytes or per-pass work exceed bounds; paged retained obligations plus a pre-launch finite runnable window and capacity Result leave every Run owned and waiting |
 | P15-NF-38 | accounting/fault | Process exit frees uncertain slot or dropped queue lacks disposition; accepted closure releases once and unresolved exposure stays charged |
 | P15-NF-39 | load/security | Priority widens authority, budget or bypasses stop/supervision; priority only orders otherwise eligible requests |
 | P15-NF-40 | contract/isolation | Free-form shell gate, command-prefix classification or arbitrary exit convention runs; registered exact programmatic operation returns typed Result |
@@ -611,10 +685,10 @@ captured bytes where their owner requires them.
 | P15-NF-42 | build/wiring | Critical step lacks supervision or named plan is null/no-op; every declared boundary has real part-seven request/resolution wiring |
 | P15-NF-43 | judgment | Supervisor unavailable downgrades to raw, wrong floor passes or model approves its own call; declared scoped failure direction and finite bootstrap pass |
 | P15-NF-44 | contract | Supervisor output for another step/digest authorizes progress or fluency proves outcome; exact bound resolution plus independent verification passes |
-| P15-NF-45 | lifecycle | Worker/session death loses Run, handoff prose supplies authority, or learning receipt closes work without its Result; durable Run resumes and owner-accepted business/learning results advance their declared steps |
-| P15-NF-46 | fault | Restart, new machine, cron window or manual trigger resets attempts/backoff; same durable loop exhausts at original bound |
-| P15-NF-47 | lifecycle | Breaker counts no-work/capacity inhibition as crash, resets on reroute, or repeated successful model spawns followed by failed completions remain at failure one; accepted completion outcomes drive one script/model-common persistent episode over the declared `N`-outcome window |
-| P15-NF-48 | lifecycle/reporting | Open breaker deletes due ticks, edits manifest off or silently suppresses critical job; paused runs remain visible and approved essential fail direction holds |
+| P15-NF-45 | lifecycle | Worker/session death loses Run, a progressing worker with active child processes is reaped, protected/non-owner shutdown proceeds, handoff prose supplies authority, or learning receipt closes work without its Result; durable Run and current owner evidence preserve/refuse correctly, and only accepted business/learning Results advance declared steps; shutdown-driver arm is non-executable until `seam-response-effects-followup.md` and `seam-response-assembly-followup.md` land |
+| P15-NF-46 | fault | Multiple sleeps charge asleep time as execution, a reaped job without explicit recovery policy restarts, or restart/new machine/cron/manual trigger resets attempts/backoff; cumulative sleep is excluded, reaping leaves uncertain same-Run work for observation, and the durable loop exhausts at its original bound |
+| P15-NF-47 | lifecycle/permutation | Breaker counts no-work/capacity inhibition as crash, resets on reroute, selects one of concurrent success/failure outcomes, ignores an effective correction/retraction, or repeated successful model spawns followed by failed completions remain at failure one; every permutation selects whole causal cohorts and yields the same justified membership and script/model-common breaker result; non-executable until `seam-response-loop-breaker.md` and `design-scheduled-work-seam-request-recurring-loop-round2.md` land |
+| P15-NF-48 | lifecycle/reporting | Sustained ticks under an open breaker delete obligations, grow the active runnable window beyond item/byte bounds, edit manifest off or silently suppress a critical job; retained paused Runs remain paged and visible while active memory and per-pass work stay bounded and the approved essential fail direction holds |
 | P15-NF-49 | load/notification | Every failure sends, broken sink marks delivered or job pause disables diagnosis; one bounded episode, visible unsent record and reserved repair path pass |
 | P15-NF-50 | surface/measurement | Projection trusts self-report, omits dispositions, claims configured target measured or hides missing samples; signed-source reconstruction and complete measured population pass |
 | P15-NF-51 | compatibility/lifecycle | 1.x import keeps two authorities, drops invalid entry/history, loses IntegrationGate behavior, or maps unsafe `perMachineIndependent` work to global/every-machine execution; one-way explicit mappings, preserved source bytes and surfaced inhibited residue pass |
@@ -630,11 +704,11 @@ parts retain their types, meanings and producers.
 
 | Source duty | Disposition in part fifteen |
 |---|---|
-| Part four — scheduled tick intake and system standing | **Held at the consumer contract, pending the named seam:** shared authenticated ingress, canonical tick bytes, separate discovery testimony, current grant and preserved admission/refusal, P15-NF-04/05/18/21. Four retains classification, dedup and admission. |
-| Part five — durable work and session independence | **Held, with deliberate coalescing:** each occurrence selected for execution resolves to one durable Run; nonexecuted missed members resolve through six's requested coverage record, and one group may share one catch-up Run. Runs retain exit, budget, grounding and result destination; P15-NF-20–22/45. Five retains progression and closure, pending the section-1 closure seam where an unavailable/cancelled arm is needed. |
-| Part six — periodic loop, leases, recovery and spend | **Held at the requested seam:** level-triggered scan, coalesced wake, coverage record, cursor, parent budget, conditional reservation, fencing, fresh-attempt mapping and breaker use six's contracts, P15-NF-21/23–25/30/37–38/46–48. The landed selection-only cursor remains unchanged; no scheduler-owned retry engine remains. |
+| Part four — scheduled tick intake and system standing | **Held at the consumer contract, pending the named seam:** shared authenticated ingress, canonical tick bytes, separate discovery testimony, current grant and preserved admission/refusal, P15-NF-04/05/18/21. Four retains classification, dedup and admission. These checks are non-executable until the GRANTED/BUILT `seam-response-intake-scheduled.md` lands. |
+| Part five — durable work and session independence | **Held, with deliberate coalescing:** each occurrence selected for execution resolves to its opening-derived Run; nonexecuted missed members resolve through Six's requested bounded coverage chunks, and only the latest member may supply the catch-up Run. Runs retain exit, budget, grounding and result destination; P15-NF-20–22/45. Five retains progression and closure. Checks needing unavailable/cancelled closure are non-executable until the GRANTED `seam-response-run-closure.md` lands. |
+| Part six — periodic loop, leases, recovery and spend | **Held at the requested seam:** level-triggered scan, coalesced wake, conditional coverage selection, bounded chunks, causal-cohort breaker windows, parent budget, conditional reservation and fencing use Six's contracts, P15-NF-21/23–25/30/37–38/46–48. The landed selection-only cursor remains unchanged; no scheduler-owned retry engine remains. These checks are non-executable until the GRANTED `seam-response-loop-breaker.md` and `seam-response-loop-followup.md`, plus `design-scheduled-work-seam-request-recurring-loop-round2.md`, land as applicable. |
 | Part seven — critical-pipeline supervision and learning | **Held at the package mapping:** three manifest levels resolve to registered plans/floors with exact attempt evidence and no recursive approval; post-completion learning uses a distinct bounded judgment step and Result, P15-NF-42–45. Seven owns judgments, attempts and provider receipts. |
-| Part eight — scheduled effects and notification | **Held at the caller contract:** observation preserves the original operation; a permitted fresh invocation uses a new settled attempt/operation; final-charge settlement and attributable bounded alert delivery remain with eight, P15-NF-23/35/38/49. |
+| Part eight — scheduled effects and notification | **Held at the caller contract:** observation preserves the original operation; a permitted fresh invocation uses a new settled attempt/operation; final-charge settlement and attributable bounded alert delivery remain with Eight, P15-NF-23/35/38/49. Retry checks are non-executable until the GRANTED `seam-response-effects-followup.md` and `seam-response-loop-followup.md`, plus `design-scheduled-work-seam-request-fresh-attempt.md`, land. |
 | Part nine — scheduler holder and outcomes | **Held:** live scheduler, calendar, breaker, supervision and reporting arms require fresh independent challenge evidence; stale proof never remains green, P15-NF-24/42/47/50/52. Nine owns assessment and grade. |
 | Part ten — packages, adapters and assembly | **Held:** closed signed manifest, atomic activation, namespace separation, compatibility import, isolation and real port wiring, P15-NF-03/07–12/16–17/51–52. Ten owns the executable assembly. |
 | Part eleven — operator visibility and verified actions | **Held at the projection contract:** complete occurrence dispositions, actual route/cost, breaker state, stale holder proof, verified enable/disable/manual-run actions and quiet aggregate alerts, P15-NF-15/20/48–50. Eleven owns presentation and verified human input. |
@@ -665,11 +739,11 @@ not known-exhausted quota inhibit only low priority, inhibit low and medium, or 
 work? The recommendation is to inhibit low priority, retain finite exposure for medium and high work,
 and require separate evidenced reserve for critical work. Known short-window walls always refuse.
 
-**Value — operator decision: fairness envelope.** Which compliant outcome should the fixed weighted
-deficit-round-robin and bounded-aging mechanism target under the declared saturation workload?
-Option A guarantees maintenance at least 10 percent of eligible admissions and limits added delay
-for ready critical work to 30 seconds. Option B uses 20 percent and 60 seconds. Option C uses
-25 percent and 120 seconds. The recommendation is B: it gives maintenance a meaningful floor
+**Value — operator decision: fairness envelope.** Which service share and delay should the
+selected admission policy deliver under the declared saturation workload? Option A guarantees
+maintenance at least 10 percent of eligible admissions and limits added delay for ready critical
+work to 30 seconds. Option B uses 20 percent and 60 seconds. Option C uses 25 percent and 120
+seconds. The recommendation is B: it gives maintenance a meaningful floor
 without presenting starvation or an unbounded delay as an admissible policy.
 
 **Value — operator decision: breaker recovery.** Should an opened job breaker recover only after
@@ -678,11 +752,13 @@ recommendation is a single half-open probe for reversible and observation-only j
 operator action for irreversible or authority-changing jobs. Neither option suppresses due-tick
 accounting or diagnosis.
 
-**Value — operator decision: compatibility horizon.** Should 1.x job definitions remain readable
-for one release train, two release trains, or indefinitely? The recommendation is two release
-trains with a one-way importer, preserved source bytes, an explicit residue report, and no dual
-runtime authority. Indefinite live compatibility would preserve the split-brain manifest and
-claim mistakes this design removes.
+**Value — operator decision: compatibility horizon.** A **release train** is one published Instar
+version together with the finite migration window in which that version is rolled across all
+supported installation cohorts; the next train starts at the next published version. Should 1.x
+job definitions remain readable for one release train, two release trains, or indefinitely? The
+recommendation is two release trains with a one-way importer, preserved source bytes, an explicit
+residue report, and no dual runtime authority. Indefinite live compatibility would preserve the
+split-brain manifest and claim mistakes this design removes.
 
 **Value — honest limits and costs.** Calendar correctness still depends on the selected time-zone
 data and clock source. Exactly-once scheduling cannot prove exactly-once external effects. A total
