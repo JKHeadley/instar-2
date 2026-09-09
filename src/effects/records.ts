@@ -7,6 +7,7 @@ import type { FactStorePort } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { requireAggregate, requireSettlement } from './settlement-authority.js';
 import { effectOperationContracts, effectPayloadOwnedShape, payloadKind, validateEffectPayload } from './payloads.js';
+import { referencedPayloadFacts } from './references.js';
 import { aggregateEvidenceStage, aggregateObligations, aggregateState, childFromSettlement } from './aggregate.js';
 
 const text = { kind: 'text', maxLength: 512 } as const, integer = { kind: 'integer' } as const;
@@ -29,7 +30,7 @@ const aggregateChild: OwnedShape = { kind: 'object', fields: { order: integer, r
 const refusal: OwnedShape = { kind: 'object', fields: { reason: text, detail: text, site: text, failDirection: text, preserved: text } };
 const retryClosure: OwnedShape = { kind: 'object', fields: { didNotHappen: { kind: 'boolean' }, quiescent: { kind: 'boolean' }, chargeSettled: { kind: 'boolean' } } };
 const aggregateSettlement: OwnedShape = { kind: 'object', fields: { request: text, settlement: text,
-  assessment: text, disposition: text, applied: { kind: 'boolean' }, refusal }, optional: ['refusal'] };
+  assessment: text, disposition: text, applied: { kind: 'boolean' }, refusalFact: text, refusal }, optional: ['refusalFact', 'refusal'] };
 // The normalized owner settlement uses null. P2's shape supports null but no
 // arbitrary union, so record
 // it as an exact bounded decimal string ("unknown" or an integer), at this seam.
@@ -117,7 +118,7 @@ export function definitionCheck(d: OperationDefinition, host: EffectHost): void 
       && encoded(d.observationCapabilities).bytes === encoded(contract.observations).bytes, 'operation payload schema/canonicalization/observation mismatch');
   }
 }
-function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHost, origin: boolean): void {
+function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHost, origin: boolean, at = host.current().clock): void {
   ensure(r.schemaVersion === 1 && r.id.length > 0, 'record identity/version');
   const all = rows(past);
   ensure(!all.some(x => x.record.type === r.type && x.record.id === r.id), 'immutable effect identity already exists');
@@ -136,8 +137,7 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
   } else if (r.type === 'EffectPayload') {
     // Historical bytes are checked against their signed context, not a later
     // wall clock or replacement executor. Action-time checks remain live-only.
-    validateEffectPayload(r, origin ? host : undefined);
-    ensure(past.some(f => f.id === r.sourceResult), 'source result fact missing');
+    validateEffectPayload(r, host, past, at);
   } else if (r.type === 'EffectRequest') {
     const d = find(r.definition, 'OperationDefinition');
     if (r.payload === undefined) {
@@ -151,18 +151,10 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
       const p = find(r.payload, 'EffectPayload') as TypedEffectPayload;
       ensure(r.message === r.payload && r.payloadDigest === encoded(p).hash && r.semanticMessage === p.semanticMessage && r.run === p.run,
         'request/payload binding');
-      const source = past.find(f => f.id === p.sourceResult);
-      ensure(p.sourceResult === r.pending && source && !source.kind.startsWith('effect-') && !source.kind.startsWith('transport-'),
-        'typed source result is missing, wrong-kind, or bound to another pending result');
-      ensure(p.step.startsWith('step:') && !p.step.startsWith('step:missing')
-        && p.logicalEffect.startsWith('logical:') && !p.logicalEffect.startsWith('logical:missing'),
-      'typed step/logical identity is not witnessed');
-      const reference = (id: string) => past.find(f => f.id === id && !f.kind.startsWith('effect-') && !f.kind.startsWith('transport-'));
-      if (p.kind === 'acknowledge') ensure(reference(p.inboundFact), 'acknowledgment intake fact missing or wrong kind');
-      if (p.kind === 'fetch-inbound-media') ensure(reference(p.inboundReceipt), 'media intake receipt missing or wrong kind');
-      if (p.kind === 'scheduler-control') ensure(reference(p.jobGeneration), 'scheduler generation missing or wrong kind');
-      if (p.kind === 'filesystem-mutation') ensure(reference(p.protectedTargetPolicy), 'protected-target policy missing or wrong kind');
-      ensure(r.id === `request:${encoded(['effect-payload', p.logicalEffect, p.semanticMessage]).hash}`, 'stable typed semantic identity required');
+      ensure(p.sourceResult === r.pending, 'typed source result is bound to another pending result');
+      const references = referencedPayloadFacts(p, host, past, at);
+      ensure(references.every(id => r.closure.includes(id)), 'typed request omits a resolved owner reference');
+      ensure(r.id === `request:${encoded(['effect-payload', p.logicalEffect, p.semanticMessage, p.id]).hash}`, 'stable typed rendering identity required');
       ensure(r.binding && r.digest === encoded(r.binding).hash, 'typed request binding digest mismatch');
       const b = r.binding as EffectRequestBinding;
       ensure(b.subject === p.semanticMessage && b.target === p.targetDigest && b.principal === host.principal.id
@@ -227,8 +219,19 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
       const child = r.children[index]!;
       if (row.request !== child.request || !['pending', 'partial', 'satisfied', 'refused', 'uncertain'].includes(row.disposition)) return false;
       if (!row.settlement) {
-        if (row.refusal) return row.assessment === '' && !row.applied && row.disposition === 'refused';
-        return row.assessment === '' && row.disposition === 'pending' && !row.applied;
+        if (row.refusal) {
+          const fact = row.refusalFact ? past.find(item => item.id === row.refusalFact && item.kind === 'effect-refusal') : undefined;
+          const value = fact?.body as { request?: unknown; digest?: unknown; sourceResult?: unknown; result?: unknown } | undefined;
+          const request = requests[index]!;
+          const closed = past.filter(item => item.kind === 'transport-AdmissionReservation').some(item => {
+            const candidate = (item.body as { record?: { request?: unknown; state?: unknown } }).record;
+            return candidate?.request === child.request && candidate.state === 'closed';
+          });
+          return row.assessment === '' && !row.applied && row.disposition === 'refused' && Boolean(fact) && closed
+            && value?.request === child.request && value.digest === child.digest && value.sourceResult === request.pending
+            && encoded(value.result).bytes === encoded({ type: 'Result', schemaVersion: 1, kind: 'Refused', ...row.refusal }).bytes;
+        }
+        return row.assessment === '' && row.disposition === 'pending' && !row.applied && row.refusalFact === undefined;
       }
       const settlement = find(row.settlement, 'EffectSettlement');
       if (settlement.request !== child.request || settlement.digest !== child.digest || row.assessment !== settlement.acceptance) return false;
@@ -289,22 +292,29 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
       if (origin) requireSettlement(host, r);
       ensure(r.observations.length > 0 && r.observations.every(id => find(id, 'OperationObservation').operation === r.operation), 'settlement evidence binding');
       const acceptance = past.find(f => f.id === r.acceptance);
-      const acceptanceRecord = acceptance ? (acceptance.body as { record?: Record<string, unknown> }).record : undefined;
-      const marker = acceptance?.kind === 'note'
-        && typeof (acceptance.body as { identity?: unknown }).identity === 'string'
-        && (acceptance.body as { identity: string }).identity.includes('nine assessment STAND-IN');
-      const assemblyStandIn = acceptance?.kind === 'slice-delivery-evidence'
-        && (acceptance.body as { operation?: unknown }).operation === r.operation
-        && encoded((acceptance.body as { outcome?: unknown }).outcome).bytes === encoded(r.outcome).bytes;
-      ensure(r.acceptance.length > 0 && acceptance
-        && (acceptance.kind === 'verification-VerificationAssessment' || marker || assemblyStandIn),
-      'independent acceptance absent or wrong kind');
-      if (acceptance?.kind === 'verification-VerificationAssessment') ensure(acceptanceRecord?.type === 'VerificationAssessment'
-        && acceptanceRecord.operation === r.operation && acceptanceRecord.attempt === q.attempt
-        && acceptanceRecord.operationDigest === r.digest
-        && typeof acceptanceRecord.validFrom === 'number' && typeof acceptanceRecord.validUntil === 'number'
-        && acceptanceRecord.validFrom <= host.current().clock.value && acceptanceRecord.validUntil >= host.current().clock.value,
-      'independent acceptance subject, attempt, digest, or freshness mismatch');
+      if (!q.payload) {
+        // Preserve the exact landed ordinary-reply replay contract.  Its live
+        // Part Nine port still owns assessment validity; historical decoding
+        // required only the referenced signed acceptance to exist.
+        ensure(r.acceptance.length > 0 && acceptance, 'independent acceptance absent');
+      } else {
+        const acceptanceRecord = acceptance ? (acceptance.body as { record?: Record<string, unknown> }).record : undefined;
+        const marker = acceptance?.kind === 'note'
+          && typeof (acceptance.body as { identity?: unknown }).identity === 'string'
+          && (acceptance.body as { identity: string }).identity.includes('nine assessment STAND-IN');
+        const assemblyStandIn = acceptance?.kind === 'slice-delivery-evidence'
+          && (acceptance.body as { operation?: unknown }).operation === r.operation
+          && encoded((acceptance.body as { outcome?: unknown }).outcome).bytes === encoded(r.outcome).bytes;
+        ensure(r.acceptance.length > 0 && acceptance
+          && (acceptance.kind === 'verification-VerificationAssessment' || marker || assemblyStandIn),
+        'independent acceptance absent or wrong kind');
+        if (acceptance?.kind === 'verification-VerificationAssessment') ensure(acceptanceRecord?.type === 'VerificationAssessment'
+          && acceptanceRecord.operation === r.operation && acceptanceRecord.attempt === q.attempt
+          && acceptanceRecord.operationDigest === r.digest
+          && typeof acceptanceRecord.validFrom === 'number' && typeof acceptanceRecord.validUntil === 'number'
+          && acceptanceRecord.validFrom <= at.value && acceptanceRecord.validUntil >= at.value,
+        'independent acceptance subject, attempt, digest, or freshness mismatch');
+      }
       ensure(r.retryEligible === false && r.retainedExposure >= 0 && (r.finalCharge === null || Number.isSafeInteger(r.finalCharge) && r.finalCharge >= 0), 'invalid charge or forbidden retry');
       const didNotHappen = consumeOutcome(r.outcome, { happened: () => false, 'did-not-happen': () => true, uncertain: () => false });
       if (q.payload) ensure(r.retryClosure?.didNotHappen === didNotHappen
@@ -337,7 +347,7 @@ export function registerEffectBodies(host: EffectHost): Result<readonly OwnedBod
           && c.origin.principal.kind === host.principal.kind, 'foreign effect recorder');
         const r = recordFrom({ body: { record: input } } as unknown as FactEnvelope);
         ensure(r.type === name, 'owned type mismatch');
-        validate(r, causalCone(c.origin, c.facts.facts), host, c.mode === 'origin');
+        validate(r, causalCone(c.origin, c.facts.facts), host, c.mode === 'origin', c.origin.at);
         return { ok: true, value: freeze(input) };
       } catch (e) { return { ok: false, detail: e instanceof Error ? e.message : 'effect record refused' }; }
     },

@@ -1,10 +1,10 @@
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { canonical, decode } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
 import { authorAndAppend, createFactStore, hashBytes } from '../../src/facts/index.js';
-import type { CapturedContent, FactContext, FactSchema, GovernedVersion, OwnedBodyRegistration } from '../../src/facts/index.js';
+import type { CapturedContent, FactContext, FactSchema, FactStorePort, GovernedVersion, OwnedBodyRegistration } from '../../src/facts/index.js';
 import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, registerTransportBodies, transportSchemas } from '../../src/transport/index.js';
 import type { TransportHost } from '../../src/transport/index.js';
 import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, decodeOutboundMessage, effectOperationContracts, effectSchemas, installOperationDefinition, registerEffectBodies } from '../../src/effects/index.js';
@@ -29,28 +29,89 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
   const boundary = { ...f.c, register };
   let now = 100, stopped = false;
   let authority: string[] = [], versions: GovernedVersion[] = [];
+  let referenceStore: FactStorePort | undefined;
   const result = <T>(run: () => T) => f.success(run());
   const custody = createEffectFileCaptures([join(directory, 'origin-captures'), join(directory, 'peer-captures')], result);
   const host: EffectHost = { machine: 'machine-a', incarnation, principal: f.bob, scope: f.scope, boundary,
     current: () => ({ decode: decodeContext, clock: f.clock(now), stopped, versions, authority }),
     capture: custody.capture,
+    referenceFacts: () => result(() => {
+      if (!referenceStore) throw new Error('reference store not initialized');
+      return value(referenceStore.read());
+    }),
+    resolvePath: path => result(() => {
+      const suffix: string[] = []; let cursor = path;
+      while (!existsSync(cursor)) { const parent = dirname(cursor); if (parent === cursor) break; suffix.unshift(basename(cursor)); cursor = parent; }
+      return join(realpathSync(cursor), ...suffix);
+    }),
   };
   const transportHost: TransportHost = { domain: 'conversation:1', machine: host.machine, incarnation,
     authorityIncarnation: 'authority:1', principal: host.principal, scope: host.scope, maxLeaseTerm: 1000, budget: 100,
     monotonic: () => now, current: () => ({ decode: decodeContext, clock: f.clock(now), generation: register.generation, stopped }) };
   const extension = extensions?.(host) ?? { schemas: [], ownedBodies: [] };
+  const witnessKinds = ['run-opening', 'run-transition', 'intake-admitted', 'intake-receipt',
+    'judgment-JudgmentAttemptRecord', 'process-incarnation', 'process-parent', 'process-start',
+    'scheduler-job-generation', 'account-route-generation', 'configuration-target-state',
+    'filesystem-target-state', 'git-target-state'];
+  const witnessSchemas: FactSchema[] = witnessKinds.map(kind => ({ ...f.schema, kind,
+    fields: { witness: { kind: 'text', maxLength: 65536 } } }));
+  const resultSchema: FactSchema = { ...f.schema, kind: 'result-record', fields: {
+    run: { kind: 'text', maxLength: 512 }, step: { kind: 'text', maxLength: 512 }, logicalEffect: { kind: 'text', maxLength: 512 },
+    result: { kind: 'constitutional', type: 'Result' },
+  } };
+  const refusalSchema: FactSchema = { ...f.schema, kind: 'effect-refusal', fields: {
+    request: { kind: 'text', maxLength: 512 }, digest: { kind: 'text', maxLength: 512 }, sourceResult: { kind: 'reference' },
+    result: { kind: 'constitutional', type: 'Result' },
+  } };
   const ctx: FactContext = { ...f.ctx, decode: decodeContext, get captures(): Record<string, CapturedContent> { return custody.captures; },
-    schemas: [f.schema, ...transportSchemas(transportHost), ...effectSchemas(host), ...extension.schemas],
+    schemas: [f.schema, resultSchema, refusalSchema, ...witnessSchemas, ...transportSchemas(transportHost), ...effectSchemas(host), ...extension.schemas],
     ownedBodies: [...value(registerTransportBodies(transportHost, boundary, consumeEffectSettlement)), ...value(registerEffectBodies(host)), ...extension.ownedBodies] };
   const peer = createFactStore(ctx, createTransportFileStorage(join(directory, 'peer'), result));
   const replicas = createEffectReplicaStorage(join(directory, 'origin'), { id: 'fixture-peer-directory', store: peer }, result);
   const store = createFactStore(ctx, replicas.storage);
+  referenceStore = store;
   const author = { context: ctx, privateKey };
   const spine = createEffectSpine(host, author, store);
   const transport = createTransportAuthority(transportHost, createTransportSpine(transportHost, author, store), boundary);
   const note = (identity: string) => value(authorAndAppend({ kind: 'note', schemaVersion: 1, machine: host.machine,
     principal: json(host.principal), provenance: json(host.principal.provenance), at: json(f.now), body: { identity, amount: '0' }, required: [] }, ctx, store, privateKey)).fact;
-  const pending = note('five-owned pending and source result STAND-IN');
+  const reference = (kind: string, witness: Record<string, unknown>) => value(authorAndAppend({ kind, schemaVersion: 1, machine: host.machine,
+    principal: json(host.principal), provenance: json(host.principal.provenance), at: json(f.now), body: { witness: JSON.stringify(witness) }, required: [] }, ctx, store, privateKey)).fact;
+  const sourceFor = (step: string, logical: string) => {
+    const sourceResult = value(decode('Result', f.refusedInput({ detail: 'work pending effect realization', preserved: `capture:${logical}` }), decodeContext));
+    const source = value(authorAndAppend({ kind: 'result-record', schemaVersion: 1, machine: host.machine,
+      principal: json(host.principal), provenance: json(host.principal.provenance), at: json(f.now),
+      body: { run: 'run:1', step, logicalEffect: logical, result: json(sourceResult) }, required: [] }, ctx, store, privateKey)).fact;
+    const transition = reference('run-transition', { run: 'run:1', step: { id: step, run: 'run:1', operation: { key: logical }, evidence: [source.id] } });
+    return { source, transition };
+  };
+  const kind = String(definitionOverrides.payloadKind ?? 'post-text');
+  const stepId = `step:${kind}`, logicalEffect = `logical:${kind}:1`;
+  const pending = sourceFor(stepId, logicalEffect).source;
+  reference('run-opening', { type: 'Run', id: 'run:1', run: 'run:1' });
+  reference('run-transition', { run: 'run:1', step: { id: 'step:transcript', run: 'run:1', operation: { key: 'logical:transcript-output' }, evidence: [pending.id] } });
+  reference('intake-admitted', { id: 'intake:1', account: 'bot:fixture', conversation: 'chat:fixture' });
+  reference('intake-receipt', { id: 'intake:1', account: 'bot:fixture', conversation: 'chat:fixture', platformFile: 'provider-file:1' });
+  reference('judgment-JudgmentAttemptRecord', { record: { type: 'JudgmentAttemptRecord', id: 'provider:transcribe', operation: 'provider:transcribe',
+    run: 'run:1', step: 'step:transcript', model: 'model:1', sourceCapture: { reference: 'capture:audio', hash: hashBytes('audio') }, originatingIntake: 'intake:1' } });
+  const process = { machine: 'machine-a', processId: 'process:1', processIncarnation: 'process:1:incarnation:2', parentIdentity: 'parent:1',
+    startIdentity: 'start:1', executable: '/usr/bin/node', arguments: ['worker.mjs'], status: 'current', validFrom: 0, validUntil: 1000 };
+  reference('process-incarnation', { ...process, id: process.processIncarnation });
+  reference('process-parent', { ...process, id: process.parentIdentity });
+  reference('process-start', { ...process, id: process.startIdentity });
+  reference('scheduler-job-generation', { id: 'job-generation:2', jobId: 'job:1', generation: 'job-generation:2', finiteScope: 'one-run',
+    undoOperation: 'resume:job:1', reviewAt: 200, status: 'current', validFrom: 0, validUntil: 1000 });
+  reference('account-route-generation', { id: 'route-generation:2', run: 'run:1', provider: 'telegram', fromAccount: 'bot:old', toAccount: 'bot:new',
+    generation: 'route-generation:2', rollbackRoute: 'route:old', status: 'current', validFrom: 0, validUntil: 1000 });
+  const prior = hashBytes('prior');
+  reference('configuration-target-state', { id: 'capture:config-prior', canonicalTarget: '/project/.instar/config.json', priorDigest: prior,
+    undoReference: 'capture:config-prior', status: 'current', validFrom: 0, validUntil: 1000 });
+  reference('filesystem-target-state', { id: 'policy:protected-targets:1', policy: 'policy:protected-targets:1',
+    targets: [{ canonicalPath: '/project/state.json', resolvedPath: '/project/state.json', ancestryDigest: prior, priorDigest: prior }],
+    status: 'current', validFrom: 0, validUntil: 1000 });
+  reference('git-target-state', { id: 'sha:base', repository: '/project/repo', worktree: '/project/repo', ref: 'refs/heads/main', base: 'sha:base',
+    targets: ['src/file.ts'], expectedHeads: [{ ref: 'refs/heads/main', digest: prior }], rollbackConstraints: ['only-if-head-unchanged'],
+    status: 'current', validFrom: 0, validUntil: 1000 });
   authority = [pending.id];
   const definition = { type: 'OperationDefinition', schemaVersion: 1, id: 'reply-definition:1', feature: 'reply', version: 'reply-version:1',
     generation: register.generation.id, adapter: 'telegram-fixture', account: 'bot:fixture', conversation: 'chat:fixture',
@@ -129,7 +190,11 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
     durability: definition.durability as 'local-durable' | 'replicated', replicas: definition.replicas as number, ...overrides }));
   const adopt = () => value(api.adopt({ definition: d.id, message, run, pending: pending.id,
     attempt: 'attempt:1', verificationOwner: 'reply-verifier', obligation, closure: [] }));
-  return { ...f, directory, host, transportHost, ctx, store, peer, spine, transport, replicas, api, composition, note,
+  const recordRefusal = (request: { id: string; digest: string; pending: string }, refusal: import('../../src/index.js').Refused) =>
+    value(authorAndAppend({ kind: 'effect-refusal', schemaVersion: 1, machine: host.machine,
+      principal: json(host.principal), provenance: json(host.principal.provenance), at: json(f.now),
+      body: { request: request.id, digest: request.digest, sourceResult: request.pending, result: json(refusal) }, required: [request.pending] }, ctx, store, privateKey)).fact;
+  return { ...f, directory, host, transportHost, ctx, store, peer, spine, transport, replicas, api, composition, note, reference, sourceFor, recordRefusal,
     d, definition, message, pending, run, obligation, fence, prepare, requestId, messageDigest, externalAdmission, adopt,
     calls: () => calls, queries: () => queries, onInvoke: (fn: () => void) => { invoke = fn; },
     stop: () => { stopped = true; }, time: (v: number) => { now = v; },

@@ -1,4 +1,6 @@
 import { expect, it } from 'vitest';
+import { mkdirSync, symlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import { canonical } from '../../src/index.js';
 import { decodeEffectPayload, decodeOutboundMessage, effectOperationContracts, effectPayloadIdentity } from '../../src/effects/index.js';
 import type { EffectHost, EffectPayloadKind } from '../../src/effects/index.js';
@@ -28,6 +30,69 @@ it.each(payloadKinds)('P8-TP-CLOSED-%s refuses undeclared, wrong kind, missing r
   const missing = clone(input); delete missing.sourceResult;
   refused(decodeEffectPayload(missing, host), 'missing');
   refused(decodeEffectPayload({ ...input, targetDigest: digest('substituted') }, host), 'target digest');
+});
+
+it('P8-TP-REFS-MISSING-WRONG-KIND signed history must own the exact run, step, source, and conversation references', () => {
+  const contract = effectOperationContracts.acknowledge;
+  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'acknowledge', inputSchema: contract.inputSchema,
+    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['acknowledge']);
+  const raw = { ...payloadInput('acknowledge', f.host), sourceResult: f.pending.id };
+  refused(decodeEffectPayload(withIdentity({ ...raw, step: 'step:never-recorded', logicalEffect: 'logical:never-recorded' }), f.host), 'lineage');
+  refused(decodeEffectPayload(withIdentity({ ...raw, inboundFact: f.pending.id }), f.host), 'wrong kind');
+  const valid = value(decodeEffectPayload(withIdentity(raw), f.host));
+  const facts = value(f.host.referenceFacts!());
+  const missingHost = { ...f.host, referenceFacts: () => f.success(facts.filter(fact => fact.kind !== 'intake-admitted')) };
+  refused(decodeEffectPayload(valid, missingHost), 'missing');
+  f.reference('intake-admitted', { id: 'intake:1', account: 'bot:fixture', conversation: 'chat:fixture', revision: 2 });
+  refused(decodeEffectPayload(valid, f.host), 'intake fact');
+});
+
+it.each(['process-control', 'scheduler-control', 'account-route-change', 'configuration-change',
+  'filesystem-mutation', 'git-mutation'] as const)(
+  'P8-TP-RECOVERY-REFERENCE-MATRIX %s accepts complete current owner history and refuses missing owner history', kind => {
+    const contract = effectOperationContracts[kind];
+    const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: kind, inputSchema: contract.inputSchema,
+      canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, [kind]);
+    const input = withIdentity({ ...payloadInput(kind, f.host), sourceResult: f.pending.id });
+    expect(value(decodeEffectPayload(input, f.host)).kind).toBe(kind);
+    const missingKind = ({ 'process-control': 'process-parent', 'scheduler-control': 'scheduler-job-generation',
+      'account-route-change': 'account-route-generation', 'configuration-change': 'configuration-target-state',
+      'filesystem-mutation': 'filesystem-target-state', 'git-mutation': 'git-target-state' } as const)[kind];
+    const facts = value(f.host.referenceFacts!());
+    const missingHost = { ...f.host, referenceFacts: () => f.success(facts.filter(fact => fact.kind !== missingKind)) };
+    refused(decodeEffectPayload(input, missingHost), 'missing');
+  });
+
+it('P8-TP-RECOVERY-REFERENCE-MATRIX stale, conflicted, and wrong-subject recovery witnesses refuse', () => {
+  const processContract = effectOperationContracts['process-control'];
+  const process = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'process-control', inputSchema: processContract.inputSchema,
+    canonicalization: processContract.canonicalization, observationCapabilities: processContract.observations }, ['process-control']);
+  const processInput = { ...payloadInput('process-control', process.host), sourceResult: process.pending.id };
+  refused(decodeEffectPayload(withIdentity({ ...processInput, processId: 'process:other' }), process.host), 'subject mismatch');
+  process.time(1001);
+  refused(decodeEffectPayload(withIdentity(processInput), process.host), 'stale');
+
+  const schedulerContract = effectOperationContracts['scheduler-control'];
+  const scheduler = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'scheduler-control', inputSchema: schedulerContract.inputSchema,
+    canonicalization: schedulerContract.canonicalization, observationCapabilities: schedulerContract.observations }, ['scheduler-control']);
+  scheduler.reference('scheduler-job-generation', { id: 'job-generation:2', jobId: 'job:1', generation: 'job-generation:2', finiteScope: 'one-run',
+    undoOperation: 'resume:job:1', reviewAt: 200, status: 'current', validFrom: 0, validUntil: 1000, revision: 2 });
+  refused(decodeEffectPayload(withIdentity({ ...payloadInput('scheduler-control', scheduler.host), sourceResult: scheduler.pending.id }), scheduler.host), 'scheduler generation');
+});
+
+it('P8-TP-TARGET-WITNESS ancestry substitutions and unresolved symlinks refuse despite self-consistent payload identities', () => {
+  const contract = effectOperationContracts['filesystem-mutation'];
+  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'filesystem-mutation', inputSchema: contract.inputSchema,
+    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['filesystem-mutation']);
+  const raw: Record<string, unknown> = { ...payloadInput('filesystem-mutation', f.host), sourceResult: f.pending.id };
+  const [target] = raw.fileTargets as Record<string, unknown>[];
+  refused(decodeEffectPayload(withIdentity({ ...raw, fileTargets: [{ ...target, ancestryDigest: digest('substituted ancestry') }] }), f.host), 'subject mismatch');
+
+  const real = join(f.directory, 'real'), link = join(f.directory, 'link'); mkdirSync(real); symlinkSync(real, link);
+  const path = join(link, 'state.json'), policy = 'policy:symlink-case';
+  const symlinkTarget = { canonicalPath: path, resolvedPath: path, ancestryDigest: digest('ancestor'), priorDigest: digest('prior') };
+  f.reference('filesystem-target-state', { id: policy, policy, targets: [symlinkTarget], status: 'current', validFrom: 0, validUntil: 1000 });
+  refused(decodeEffectPayload(withIdentity({ ...raw, fileTargets: [symlinkTarget], protectedTargetPolicy: policy }), f.host), 'symlink');
 });
 
 it('P8-TP-REPAIR-07 P8-TP-NESTED V3 V4 V5 V16 V29 V30 closed decoder refuses malformed shapes and enums', () => {

@@ -16,6 +16,7 @@ export interface OrderedEffectAggregate extends AggregateOwned {
     demandedStage: AggregateEvidenceStage; inhibitLater: boolean; required: boolean }>[];
   readonly settlements: readonly Readonly<{ request: string; settlement: string; assessment: string;
     disposition: AggregateChildDisposition; applied: boolean;
+    refusalFact?: string;
     refusal?: Readonly<Pick<Refused, 'reason' | 'detail' | 'site' | 'failDirection' | 'preserved'>> }>[];
   readonly state: 'pending' | 'partial' | 'satisfied' | 'refused' | 'uncertain';
   readonly openEvidence: readonly string[]; readonly openCharge: readonly string[]; readonly openRecovery: readonly string[];
@@ -48,16 +49,17 @@ export function demandedStageMet(child: Child, settlement: EffectSettlement): bo
 export function childFromSettlement(child: Child, settlement: SettlementWithRefusal): ChildSettlement {
   ensure(settlement.request === child.request && settlement.digest === child.digest, 'aggregate settlement belongs to another child');
   const state = outcome(settlement);
+  const closuresComplete = settlement.finalCharge !== null && settlement.delayedExecutionExcluded;
   const disposition: AggregateChildDisposition = state === 'uncertain' ? 'uncertain'
-    : demandedStageMet(child, settlement) ? 'satisfied'
+    : demandedStageMet(child, settlement) && closuresComplete ? 'satisfied'
       : state === 'did-not-happen' && child.demandedStage === 'occurrence' ? 'refused' : 'partial';
   return freeze({ request: child.request, settlement: settlement.id, assessment: settlement.acceptance,
     disposition, applied: state === 'happened', ...(settlement.refusal ? { refusal: settlement.refusal } : {}) });
 }
 
-export function childFromRefusal(child: Child, refusal: Refused): ChildSettlement {
+export function childFromRefusal(child: Child, refusal: Refused, refusalFact: string): ChildSettlement {
   return freeze({ request: child.request, settlement: '', assessment: '', disposition: 'refused' as const,
-    applied: false, refusal: { reason: refusal.reason, detail: refusal.detail, site: refusal.site,
+    applied: false, refusalFact, refusal: { reason: refusal.reason, detail: refusal.detail, site: refusal.site,
       failDirection: refusal.failDirection, preserved: refusal.preserved } });
 }
 

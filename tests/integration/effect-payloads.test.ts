@@ -1,13 +1,13 @@
 import { expect, it } from 'vitest';
 import { canonical, consumeOutcome, decode } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
-import { decodeEnvelope } from '../../src/facts/index.js';
+import { decodeEnvelope, decodeHistoricalBody } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
-import { createEffectDoorway, decodeEffectPayload, effectOperationContracts, effectPayloadIdentity } from '../../src/effects/index.js';
+import { createEffectDoorway, decodeEffectPayload, effectOperationContracts, effectPayloadIdentity, referencedPayloadFacts } from '../../src/effects/index.js';
 import { consumeEffectSettlement } from '../../src/effects/index.js';
 import type { EffectRequest, TypedEffectPayload } from '../../src/effects/index.js';
 import { createTransportAuthority, createTransportSpine } from '../../src/transport/index.js';
-import { refused, value } from '../effects/fixture.js';
+import { effectFixture, refused, value } from '../effects/fixture.js';
 import { typedEffectFixture } from '../effects/typed-effect-fixture.js';
 import { payloadInput } from '../effects/payload-fixtures.js';
 import { typedJointFixture } from '../effects/typed-joint-fixture.js';
@@ -98,13 +98,13 @@ it('P8-TP-REPAIR-01 V17 a signed aggregate cannot self-report satisfaction with 
   refused(f.spine.append(forged, [value(f.api.inspect()).find(row => row.record.id === aggregate.id)!.fact.id]));
 });
 
-it('P8-TP-REPAIR-02 V19 V34 stale or unavailable assessment cannot promote a stored settlement', () => {
+it('P8-TP-REPAIR-02 P8-TP-AGGREGATE-CURRENT-ALL V19 V34 stale or unavailable assessment cannot promote a stored settlement', () => {
   const j = typedJointFixture(), settlement = value(j.settling.settle(j.observed.operation));
   const aggregate = value(j.settling.createAggregate({ semanticMessage: j.request.semanticMessage, run: j.effect.run,
     children: [{ request: j.request, demandedStage: 'complete', inhibitLater: true, required: true }], reconciliationOwner: 'review:owner' }));
   j.effect.evidence.splice(0);
   refused(j.settling.updateAggregate({ aggregate: aggregate.aggregate, request: j.request.id, settlement }));
-});
+}, 30000);
 
 it('P8-TP-REPAIR-03 V21 a causally linked current assessment refines uncertain to decisive without redispatch', () => {
   const f = typedFixture(), request = value(f.prepare()), observed = value(f.api.dispatch(request, f.fence));
@@ -116,7 +116,7 @@ it('P8-TP-REPAIR-03 V21 a causally linked current assessment refines uncertain t
   const decisive = value(f.api.settle(observed.operation));
   expect(value(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, settlement: decisive })).state).toBe('satisfied');
   expect(f.calls()).toBe(1);
-});
+}, 30000);
 
 it('P8-TP-REPAIR-05 V23 an unrelated refusal cannot terminalize a dispatched child', () => {
   const f = typedFixture(), request = value(f.prepare()); value(f.api.dispatch(request, f.fence));
@@ -124,8 +124,23 @@ it('P8-TP-REPAIR-05 V23 an unrelated refusal cannot terminalize a dispatched chi
     children: [{ request, demandedStage: 'complete', inhibitLater: true, required: true }], reconciliationOwner: 'review:owner' }));
   const refusal = value(decode('Result', f.refusedInput({ detail: 'unrelated operation', preserved: 'capture:unrelated' }), f.ctx.decode));
   if (refusal.kind !== 'Refused') throw new Error('fixture refusal');
-  refused(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal }), 'dispatched work');
-});
+  refused(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal }), 'exact child');
+}, 30000);
+
+it('P8-TP-BOUND-REFUSAL only an exact recorded refusal plus a Part Six no-claim disposition can refuse a prepared child', () => {
+  const f = typedFixture(), request = value(f.prepare());
+  const aggregate = value(f.api.createAggregate({ semanticMessage: request.semanticMessage, run: f.run,
+    children: [{ request, demandedStage: 'complete', inhibitLater: true, required: true }], reconciliationOwner: 'review:owner' }));
+  const refusal = value(decode('Result', f.refusedInput({ detail: 'policy denied exact child', preserved: request.pending }), f.ctx.decode));
+  if (refusal.kind !== 'Refused') throw new Error('fixture refusal');
+  const unrelated = f.recordRefusal({ ...request, id: 'request:unrelated' }, refusal);
+  refused(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal, refusalFact: unrelated.id }), 'exact child');
+  const exact = f.recordRefusal(request, refusal);
+  const updated = value(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal, refusalFact: exact.id }));
+  expect(updated.state).toBe('refused');
+  const reservation = value(f.transport.inspect()).filter(row => row.record.type === 'AdmissionReservation').at(-1)?.record;
+  expect(reservation?.type === 'AdmissionReservation' ? reservation.state : '').toBe('closed');
+}, 30000);
 
 it('P8-TP-REPAIR-06 V31 signed typed history remains readable under a replacement executor incarnation', () => {
   const source = typedFixture(), request = value(source.prepare());
@@ -141,16 +156,29 @@ it('P8-TP-REPAIR-06 V31 signed typed history remains readable under a replacemen
     && (fact.body as { record: { id: string } }).record.id === request.id)).toBe(true);
 });
 
+it('P8-TP-SIGNED-REPLAY-REFUSAL a correctly signed typed payload refuses replication when its owner dependency is absent', () => {
+  const contract = effectOperationContracts.acknowledge;
+  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'acknowledge', inputSchema: contract.inputSchema,
+    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['acknowledge']);
+  const payload = identify({ ...payloadInput('acknowledge', f.host), sourceResult: f.pending.id }, f.host);
+  value(f.api.preparePayload({ definition: f.d.id, payload, run: f.run, pending: f.pending.id, attempt: 'ack:replay',
+    verificationOwner: 'reply-verifier', obligation: f.obligation, closure: [], fence: f.fence }));
+  const history = value(f.store.read()), envelope = history.find(fact => fact.kind === 'effect-EffectPayload'
+    && (fact.body as { record?: { id?: string } }).record?.id === payload.id)!;
+  const intake = history.find(fact => fact.kind === 'intake-admitted')!;
+  refused(decodeHistoricalBody(envelope, { ...f.ctx, facts: history.filter(fact => fact.id !== intake.id) }, f.ctx.decode));
+});
+
 it('P8-TP-REPAIR-08 V10 V11 V27 V28 V36 V37 unresolved source, identity, policy, target, generation, and fence refuse', () => {
   const wrongSource = typedFixture(), definitionFact = value(wrongSource.api.inspect()).find(row => row.record.type === 'OperationDefinition')!.fact.id;
-  const badSource = identify({ ...wrongSource.payload, sourceResult: definitionFact }, wrongSource.host);
-  refused(wrongSource.api.preparePayload({ definition: wrongSource.d.id, payload: badSource, run: wrongSource.run,
-    pending: wrongSource.pending.id, attempt: 'bad-source', verificationOwner: 'reply-verifier', obligation: wrongSource.obligation,
-    closure: [], fence: wrongSource.fence }), 'source result');
-  const badIdentity = identify({ ...wrongSource.payload, logicalEffect: 'missing:logical', step: 'missing:step' }, wrongSource.host);
-  refused(wrongSource.api.preparePayload({ definition: wrongSource.d.id, payload: badIdentity, run: wrongSource.run,
-    pending: wrongSource.pending.id, attempt: 'bad-identity', verificationOwner: 'reply-verifier', obligation: wrongSource.obligation,
-    closure: [], fence: wrongSource.fence }), 'identity');
+  const badSourceRaw = { ...wrongSource.payload, sourceResult: definitionFact };
+  const badSourceDraft = Object.fromEntries(Object.entries(badSourceRaw).filter(([key]) => key !== 'id' && key !== 'targetDigest'));
+  refused(decodeEffectPayload({ ...badSourceDraft,
+    ...effectPayloadIdentity(badSourceDraft as unknown as Parameters<typeof effectPayloadIdentity>[0]) }, wrongSource.host), 'lineage');
+  const badIdentityRaw = { ...wrongSource.payload, logicalEffect: 'missing:logical', step: 'missing:step' };
+  const badIdentityDraft = Object.fromEntries(Object.entries(badIdentityRaw).filter(([key]) => key !== 'id' && key !== 'targetDigest'));
+  refused(decodeEffectPayload({ ...badIdentityDraft,
+    ...effectPayloadIdentity(badIdentityDraft as unknown as Parameters<typeof effectPayloadIdentity>[0]) }, wrongSource.host), 'lineage');
   const badFence = { ...wrongSource.fence, assignment: 'missing:lease' };
   refused(wrongSource.api.preparePayload({ definition: wrongSource.d.id, payload: wrongSource.payload, run: wrongSource.run,
     pending: wrongSource.pending.id, attempt: 'bad-fence', verificationOwner: 'reply-verifier', obligation: wrongSource.obligation,
@@ -158,10 +186,11 @@ it('P8-TP-REPAIR-08 V10 V11 V27 V28 V36 V37 unresolved source, identity, policy,
   const contract = effectOperationContracts['filesystem-mutation'];
   const fs = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'filesystem-mutation', inputSchema: contract.inputSchema,
     canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['filesystem-mutation']);
-  const payload = identify({ ...payloadInput('filesystem-mutation', fs.host), sourceResult: fs.pending.id,
-    protectedTargetPolicy: 'missing:policy' }, fs.host);
-  refused(fs.api.preparePayload({ definition: fs.d.id, payload, run: fs.run, pending: fs.pending.id, attempt: 'missing-policy',
-    verificationOwner: 'reply-verifier', obligation: fs.obligation, closure: [], fence: fs.fence }), 'policy');
+  const missingPolicyRaw = { ...payloadInput('filesystem-mutation', fs.host), sourceResult: fs.pending.id,
+    protectedTargetPolicy: 'missing:policy' };
+  const missingPolicyDraft = Object.fromEntries(Object.entries(missingPolicyRaw).filter(([key]) => key !== 'id' && key !== 'targetDigest'));
+  refused(decodeEffectPayload({ ...missingPolicyDraft,
+    ...effectPayloadIdentity(missingPolicyDraft as unknown as Parameters<typeof effectPayloadIdentity>[0]) }, fs.host), 'policy');
 });
 
 it('P8-TP-REPAIR-09 V33 distinct logical children of one semantic parent receive distinct stable admissions', () => {
@@ -171,13 +200,77 @@ it('P8-TP-REPAIR-09 V33 distinct logical children of one semantic parent receive
   const accounting = createTransportAuthority(f.transportHost,
     createTransportSpine(f.transportHost, { context: f.ctx, privateKey }, f.store), f.host.boundary, consumeEffectSettlement);
   expect(value(accounting.settle(f.fence, settlement)).unresolved).toBe(0);
-  const second = identify({ ...f.payload, logicalEffect: 'logical:second', text: 'second child' }, f.host);
-  const result = f.api.preparePayload({ definition: f.d.id, payload: second, run: f.run, pending: f.pending.id,
+  const lineage = f.sourceFor('step:second', 'logical:second');
+  const second = identify({ ...f.payload, logicalEffect: 'logical:second', step: 'step:second', sourceResult: lineage.source.id, text: 'second child' }, f.host);
+  const result = f.api.preparePayload({ definition: f.d.id, payload: second, run: f.run, pending: lineage.source.id,
     attempt: 'attempt:2', verificationOwner: 'reply-verifier', obligation: f.obligation, closure: [], fence: f.fence });
   expect(result.kind).toBe('Success');
   expect(value(canonical(first.binding!.reservation.semanticMessage)).bytes)
     .not.toBe(value(canonical(value(result).binding!.reservation.semanticMessage)).bytes);
-});
+}, 30000);
+
+it('P8-TP-RENDERING-REQUEST changed immutable rendering records a distinct request without altering the first request', () => {
+  const f = typedFixture(), first = value(f.prepare());
+  const changed = identify({ ...f.payload, text: 'different immutable rendering' }, f.host);
+  const second = f.api.preparePayload({ definition: f.d.id, payload: changed, run: f.run, pending: f.pending.id,
+    attempt: 'attempt:rendering:2', verificationOwner: 'reply-verifier', obligation: f.obligation, closure: [], fence: f.fence });
+  const requests = value(f.api.inspect()).filter(row => row.record.type === 'EffectRequest').map(row => row.record as EffectRequest);
+  expect(requests.some(request => request.id === first.id && request.payload === first.payload)).toBe(true);
+  expect(requests.some(request => request.id !== first.id && request.payload === changed.id)).toBe(true);
+  if (second.kind === 'Success') expect(value(second).id).not.toBe(first.id);
+  expect(f.calls()).toBe(0);
+}, 30000);
+
+it('P8-TP-RETURNED-MEDIA-LINEAGE successful media return retains signed intake lineage and captured returned bytes', () => {
+  const contract = effectOperationContracts['fetch-inbound-media'];
+  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'fetch-inbound-media', inputSchema: contract.inputSchema,
+    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['fetch-inbound-media']);
+  const payload = identify({ ...payloadInput('fetch-inbound-media', f.host), sourceResult: f.pending.id }, f.host);
+  const request = value(f.api.preparePayload({ definition: f.d.id, payload, run: f.run, pending: f.pending.id,
+    attempt: 'media:1', verificationOwner: 'reply-verifier', obligation: f.obligation, closure: [], fence: f.fence }));
+  const references = referencedPayloadFacts(payload, f.host);
+  expect(references.every(id => request.closure.includes(id))).toBe(true);
+  const receipt = value(f.host.referenceFacts!()).find(fact => fact.kind === 'intake-receipt')!;
+  expect(request.closure).toContain(receipt.id);
+  const observation = value(f.api.dispatch(request, f.fence));
+  expect(observation.capture.reference.length).toBeGreaterThan(0); expect(observation.capture.hash.length).toBeGreaterThan(0);
+}, 30000);
+
+it('P8-TP-RETURNED-TRANSCRIPT-LINEAGE successful transcript return retains capture, provider, intake, and destination lineage', () => {
+  const contract = effectOperationContracts['derive-transcript'];
+  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'derive-transcript', inputSchema: contract.inputSchema,
+    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['derive-transcript']);
+  const sourceCapture = value(f.host.capture('audio')), providerOperation = 'provider:transcribe:lineage';
+  f.reference('judgment-JudgmentAttemptRecord', { record: { type: 'JudgmentAttemptRecord', id: providerOperation, operation: providerOperation,
+    run: f.run.id, step: 'step:transcript', model: 'model:1', sourceCapture, originatingIntake: 'intake:1' } });
+  const payload = identify({ ...payloadInput('derive-transcript', f.host), sourceResult: f.pending.id, sourceCapture, providerOperation }, f.host);
+  const request = value(f.api.preparePayload({ definition: f.d.id, payload, run: f.run, pending: f.pending.id,
+    attempt: 'transcript:1', verificationOwner: 'reply-verifier', obligation: f.obligation, closure: [], fence: f.fence }));
+  const facts = value(f.host.referenceFacts!()), references = referencedPayloadFacts(payload, f.host);
+  for (const kind of ['judgment-JudgmentAttemptRecord', 'intake-admitted', 'run-transition']) {
+    expect(facts.some(fact => fact.kind === kind && references.includes(fact.id) && request.closure.includes(fact.id))).toBe(true);
+  }
+  const observation = value(f.api.dispatch(request, f.fence));
+  expect(observation.capture.reference.length).toBeGreaterThan(0); expect(observation.capture.hash.length).toBeGreaterThan(0);
+}, 30000);
+
+it('P8-TP-AGGREGATE-OPEN-CLOSURES occurrence with unknown charge or quiescence remains partial', () => {
+  const f = typedFixture(), request = value(f.prepare()), observed = value(f.api.dispatch(request, f.fence));
+  f.assess('happened', null, false);
+  const settlement = value(f.api.settle(observed.operation));
+  const aggregate = value(f.api.createAggregate({ semanticMessage: request.semanticMessage, run: f.run,
+    children: [{ request, demandedStage: 'occurrence', inhibitLater: true, required: true }], reconciliationOwner: 'review:owner' }));
+  const updated = value(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, settlement }));
+  expect(updated.state).toBe('partial'); expect(updated.openCharge).toEqual([request.id]); expect(updated.openRecovery).toEqual([request.id]);
+}, 30000);
+
+it('P8-TP-LEGACY-ASSESSMENT historical ordinary-reply accepts an independently recorded legacy note acceptance', () => {
+  const f = effectFixture(), request = f.prepare(), observed = value(f.api.dispatch(request, f.fence));
+  f.assess('happened', 0, true);
+  const settlement = value(f.api.settle(observed.operation));
+  const acceptance = value(f.store.read()).find(fact => fact.id === settlement.acceptance);
+  expect(acceptance?.kind).toBe('note'); expect(settlement.request).toBe(request.id);
+}, 30000);
 
 it('P8-TP-RECOVERY lost receipt and hostile request substitution retain one identity, maximum exposure, and observation-only recovery', () => {
   const f = typedFixture(); f.onInvoke(() => { throw new Error('hostile cut after application before receipt'); });

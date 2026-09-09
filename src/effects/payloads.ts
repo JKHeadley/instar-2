@@ -1,7 +1,8 @@
 import type { Json, Result } from '../index.js';
-import type { OwnedShape } from '../facts/index.js';
+import type { FactEnvelope, OwnedShape } from '../facts/index.js';
 import type { EffectHost } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json } from './boundary.js';
+import { referencedPayloadFacts } from './references.js';
 
 declare const payloadOwned: unique symbol;
 interface PayloadOwned { readonly [payloadOwned]: 'part-eight' }
@@ -180,7 +181,7 @@ export function effectPayloadIdentity(input: EffectPayloadDraft): Readonly<{ id:
   return freeze({ id: `payload:${encoded({ ...input, targetDigest }).hash}`, targetDigest });
 }
 
-export function validateEffectPayload(payload: TypedEffectPayload, host?: EffectHost): void {
+export function validateEffectPayload(payload: TypedEffectPayload, host?: EffectHost, facts?: readonly FactEnvelope[], clock = host?.current().clock): void {
   // The public decoder and the P2 owned-body decoder share this complete shape
   // contract. A value cannot become more permissive by entering through one
   // boundary instead of the other.
@@ -254,6 +255,7 @@ export function validateEffectPayload(payload: TypedEffectPayload, host?: Effect
       for (const value of [payload.infrastructureProvenance, payload.causalEpisode, payload.text]) nonempty(value, 'infrastructure notice provenance incomplete');
       if (host) ensure(host.principal.kind === 'system', 'infrastructure notice cannot impersonate agent or operator'); break;
   }
+  if (host) referencedPayloadFacts(payload, host, facts, clock);
 }
 
 export function decodeEffectPayload(input: unknown, host: EffectHost): Result<TypedEffectPayload> {

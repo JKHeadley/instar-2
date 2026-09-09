@@ -1,10 +1,10 @@
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { canonical, decode } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
 import { authorAndAppend, createFactStore, hashBytes } from '../../src/facts/index.js';
-import type { CapturedContent, FactContext, GovernedVersion } from '../../src/facts/index.js';
+import type { CapturedContent, FactContext, FactEnvelope, FactStorePort, GovernedVersion } from '../../src/facts/index.js';
 import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, registerTransportBodies, transportSchemas } from '../../src/transport/index.js';
 import type { TransportHost } from '../../src/transport/index.js';
 import { createEffectDoorway, createEffectSpine, decodeOutboundMessage, effectSchemas, installOperationDefinition, registerEffectBodies } from '../../src/effects/index.js';
@@ -27,11 +27,42 @@ export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), in
   const boundary = { ...f.c, register };
   let now = 100, stopped = false;
   let authority: string[] = [], versions: GovernedVersion[] = [];
+  let referenceStore: FactStorePort | undefined;
   const result = <T>(run: () => T) => f.success(run());
   const custody = createEffectFileCaptures([join(directory, 'origin-captures'), join(directory, 'peer-captures')], result);
+  const commonSubjects = ['post-text', 'post-media', 'edit-message', 'react', 'create-topic', 'acknowledge',
+    'fetch-inbound-media', 'derive-transcript', 'process-control', 'scheduler-control', 'account-route-change',
+    'configuration-change', 'filesystem-mutation', 'git-mutation', 'infrastructure-notice'].map(kind =>
+    ({ run: 'run:1', step: `step:${kind}`, logicalEffect: `logical:${kind}:1` }));
+  const fake = (id: string, kind: string, witness: Record<string, unknown>) => ({ id, kind, body: { witness: JSON.stringify(witness) } }) as unknown as FactEnvelope;
+  const referenceRows: FactEnvelope[] = [
+    fake('run-opening:1', 'run-opening', { type: 'Run', id: 'run:1', run: 'run:1' }),
+    ...commonSubjects.map((subject, index) => fake(`run-transition:${index}`, 'run-transition', { run: subject.run,
+      step: { id: subject.step, run: subject.run, operation: { key: subject.logicalEffect }, evidence: ['five-owned pending and source result STAND-IN'] } })),
+    fake('run-transition:transcript', 'run-transition', { run: 'run:1', step: { id: 'step:transcript', run: 'run:1', operation: { key: 'logical:transcript-output' }, evidence: ['five-owned pending and source result STAND-IN'] } }),
+    { ...fake('five-owned pending and source result STAND-IN', 'result-record', {}), body: { run: 'run:1', subjects: commonSubjects,
+      result: f.refusedInput({ detail: 'pending typed source' }) } } as unknown as FactEnvelope,
+    fake('intake-admitted:1', 'intake-admitted', { id: 'intake:1', account: 'bot:fixture', conversation: 'chat:fixture' }),
+    fake('intake-receipt:1', 'intake-receipt', { id: 'intake:1', account: 'bot:fixture', conversation: 'chat:fixture', platformFile: 'provider-file:1' }),
+    fake('judgment-attempt:1', 'judgment-JudgmentAttemptRecord', { record: { type: 'JudgmentAttemptRecord', id: 'provider:transcribe', operation: 'provider:transcribe', run: 'run:1',
+      step: 'step:transcript', model: 'model:1', sourceCapture: { reference: 'capture:audio', hash: hashBytes('audio') }, originatingIntake: 'intake:1' } }),
+  ];
+  const process = { machine: 'machine-a', processId: 'process:1', processIncarnation: 'process:1:incarnation:2', parentIdentity: 'parent:1',
+    startIdentity: 'start:1', executable: '/usr/bin/node', arguments: ['worker.mjs'], status: 'current', validFrom: 0, validUntil: 1000 };
+  referenceRows.push(fake('process-incarnation-fact', 'process-incarnation', { ...process, id: process.processIncarnation }),
+    fake('process-parent-fact', 'process-parent', { ...process, id: process.parentIdentity }), fake('process-start-fact', 'process-start', { ...process, id: process.startIdentity }),
+    fake('scheduler-fact', 'scheduler-job-generation', { id: 'job-generation:2', jobId: 'job:1', generation: 'job-generation:2', finiteScope: 'one-run', undoOperation: 'resume:job:1', reviewAt: 200, status: 'current', validFrom: 0, validUntil: 1000 }),
+    fake('route-fact', 'account-route-generation', { id: 'route-generation:2', run: 'run:1', provider: 'telegram', fromAccount: 'bot:old', toAccount: 'bot:new', generation: 'route-generation:2', rollbackRoute: 'route:old', status: 'current', validFrom: 0, validUntil: 1000 }),
+    fake('config-fact', 'configuration-target-state', { id: 'capture:config-prior', canonicalTarget: '/project/.instar/config.json', priorDigest: hashBytes('prior'), undoReference: 'capture:config-prior', status: 'current', validFrom: 0, validUntil: 1000 }),
+    fake('filesystem-fact', 'filesystem-target-state', { id: 'policy:protected-targets:1', policy: 'policy:protected-targets:1', targets: [{ canonicalPath: '/project/state.json', resolvedPath: '/project/state.json', ancestryDigest: hashBytes('prior'), priorDigest: hashBytes('prior') }], status: 'current', validFrom: 0, validUntil: 1000 }),
+    fake('git-fact', 'git-target-state', { id: 'sha:base', repository: '/project/repo', worktree: '/project/repo', ref: 'refs/heads/main', base: 'sha:base', targets: ['src/file.ts'], expectedHeads: [{ ref: 'refs/heads/main', digest: hashBytes('prior') }], rollbackConstraints: ['only-if-head-unchanged'], status: 'current', validFrom: 0, validUntil: 1000 }));
   const host: EffectHost = { machine: 'machine-a', incarnation, principal: f.bob, scope: f.scope, boundary,
     current: () => ({ decode: decodeContext, clock: f.clock(now), stopped, versions, authority }),
     capture: custody.capture,
+    referenceFacts: () => result(() => [...referenceRows, ...(referenceStore ? value(referenceStore.read()) : [])]),
+    resolvePath: path => result(() => { const suffix: string[] = []; let cursor = path;
+      while (!existsSync(cursor)) { const parent = dirname(cursor); if (parent === cursor) break; suffix.unshift(basename(cursor)); cursor = parent; }
+      return join(realpathSync(cursor), ...suffix); }),
   };
   const transportHost: TransportHost = { domain: 'conversation:1', machine: host.machine, incarnation,
     authorityIncarnation: 'authority:1', principal: host.principal, scope: host.scope, maxLeaseTerm: 1000, budget: 100,
@@ -42,6 +73,7 @@ export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), in
   const peer = createFactStore(ctx, createTransportFileStorage(join(directory, 'peer'), result));
   const replicas = createEffectReplicaStorage(join(directory, 'origin'), { id: 'fixture-peer-directory', store: peer }, result);
   const store = createFactStore(ctx, replicas.storage);
+  referenceStore = store;
   const author = { context: ctx, privateKey };
   const spine = createEffectSpine(host, author, store);
   const transport = createTransportAuthority(transportHost, createTransportSpine(transportHost, author, store), boundary);

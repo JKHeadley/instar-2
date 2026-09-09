@@ -87,6 +87,8 @@ export interface EffectHost {
   current(): { readonly decode: DecodeContext; readonly clock: Clock; readonly stopped: boolean;
     readonly versions: readonly GovernedVersion[]; readonly authority: readonly string[] };
   capture(bytes: string): Result<{ readonly reference: string; readonly hash: string }>;
+  referenceFacts?(): Result<readonly FactEnvelope[]>;
+  resolvePath?(path: string): Result<string>;
 }
 export interface EffectSpine { readonly store: FactStorePort; append(record: EffectRecord, required: readonly string[]): Result<AppendReceipt> }
 export interface EffectDurabilityPort { readonly owner: 'part-ten'; ensure(facts: readonly FactEnvelope[]): Result<readonly AppendReceipt[]> }
@@ -140,7 +142,7 @@ export interface EffectDoorway {
     readonly children: readonly Readonly<{ request: EffectRequest; demandedStage: AggregateEvidenceStage;
       inhibitLater: boolean; required: boolean }>[]; readonly reconciliationOwner: string }): Result<OrderedEffectAggregate>;
   updateAggregate(input: { readonly aggregate: string; readonly request: string;
-    readonly settlement?: EffectSettlement; readonly refusal?: Refused }): Result<OrderedEffectAggregate>;
+    readonly settlement?: EffectSettlement; readonly refusal?: Refused; readonly refusalFact?: string }): Result<OrderedEffectAggregate>;
   nextAggregateChild(aggregate: string): Result<EffectRequest | null>;
   inspect(): Result<readonly { readonly fact: FactEnvelope; readonly record: EffectRecord }[]>;
 }

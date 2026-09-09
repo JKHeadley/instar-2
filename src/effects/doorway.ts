@@ -9,6 +9,7 @@ import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { definitionCheck, live, rows, wire } from './records.js';
 import { issuedSettlement, withAggregate, withSettlement } from './settlement-authority.js';
 import { effectOperationContracts, payloadKind, validateEffectPayload } from './payloads.js';
+import { referencedPayloadFacts } from './references.js';
 import { aggregateEvidenceStage, aggregateObligations, aggregateState, childFromRefusal, childFromSettlement, childInhibited } from './aggregate.js';
 
 export function createEffectDoorway(composition: EffectComposition): EffectDoorway {
@@ -70,7 +71,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       return { d, payload: m.record as OutboundMessage | TypedEffectPayload, q: stored };
     }
     const p = find(q.payload, 'EffectPayload').record as TypedEffectPayload;
-    validateEffectPayload(p, host);
+    validateEffectPayload(p, host, snapshot());
     ensure(q.payloadDigest === encoded(p).hash && q.binding && q.digest === encoded(q.binding).hash,
       'prepared effect payload digest changed');
     ensure(q.binding.claim.executor === host.incarnation, 'typed request belongs to an earlier executor incarnation');
@@ -132,7 +133,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
   // additionally excludes another instance and any reconstructed/restarted handle.
   const active = new Set<string>();
   const accepted = new WeakMap<object, OperationObservation>();
-  const recheckStoredSettlement = (settlement: EffectSettlement): EffectSettlement => {
+  const consumeStoredSettlement = <T>(settlement: EffectSettlement, consume: (value: EffectSettlement) => T): T => {
     ensure(assessment?.owner === 'part-nine', 'independent evidence assessor unavailable');
     const op = operation(settlement.operation); ensure(op.claim, 'settlement has no claim');
     const q = find(settlement.request, 'EffectRequest').record;
@@ -173,12 +174,44 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
     ensure(typeof assessment.consumeCurrent === 'function', 'non-waiting current assessment guard unavailable');
     return take(assessment.consumeCurrent(acceptance, input, current => {
       ensure(encoded(current).bytes === encoded(proof).bytes, 'assessment changed during aggregate recheck');
-      verify(current); return settlement;
+      verify(current); return consume(settlement);
     }));
+  };
+  const withCurrentAggregateSettlements = <T>(aggregate: OrderedEffectAggregate, consume: () => T): T => {
+    const visit = (index: number): T => {
+      if (index === aggregate.settlements.length) return consume();
+      const row = aggregate.settlements[index]!;
+      if (!row.settlement) return visit(index + 1);
+      const stored = find(row.settlement, 'EffectSettlement').record;
+      return consumeStoredSettlement(stored, current => {
+        ensure(encoded(current).bytes === encoded(stored).bytes, 'aggregate child settlement is stale or no longer witnessed');
+        return visit(index + 1);
+      });
+    };
+    return visit(0);
+  };
+  const presentAggregate = (aggregate: OrderedEffectAggregate): { record: OrderedEffectAggregate; reconstructed: boolean } => {
+    const reservations = take(transport.inspect()).filter(row => row.record.type === 'AdmissionReservation');
+    let reconstructed = false;
+    const settlements = aggregate.settlements.map(row => {
+      if (row.disposition !== 'pending') return row;
+      const latest = reservations.filter(candidate => candidate.record.type === 'AdmissionReservation'
+        && candidate.record.request === row.request).at(-1);
+      if (!latest || latest.record.type !== 'AdmissionReservation' || latest.record.state === 'prepared') return row;
+      reconstructed = true;
+      // A committed claim/consume is an attempted operation even when the
+      // aggregate update was the crash cut.  It is never pending again and its
+      // later children remain inhibited until evidence settles it.
+      return freeze({ ...row, disposition: 'uncertain' as const, applied: false });
+    });
+    if (!reconstructed) return { record: aggregate, reconstructed: false };
+    const obligations = aggregateObligations(aggregate.children, settlements);
+    return { record: freeze({ ...aggregate, settlements, state: aggregateState(aggregate.children, settlements), ...obligations }), reconstructed: true };
   };
   const api: EffectDoorway = {
     owner: 'part-eight',
-    inspect: () => checked('EffectInspect', null, () => rows(snapshot())),
+    inspect: () => checked('EffectInspect', null, () => rows(snapshot()).map(row => row.record.type === 'OrderedEffectAggregate'
+      ? { ...row, record: presentAggregate(row.record).record } : row)),
     prepare: input => checked('EffectPrepare', input, () => {
       live(host); ensure(input.run.owner === 'part-five' && input.run.name === 'Run' && input.run.id === input.message.run, 'run owner mismatch');
       const d = find(input.definition, 'OperationDefinition'); definitionCheck(d.record, host);
@@ -204,29 +237,18 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       live(host);
       ensure(input.run.owner === 'part-five' && input.run.name === 'Run' && input.run.id === input.payload.run,
         'run owner mismatch');
-      validateEffectPayload(input.payload, host);
+      const historical = snapshot();
+      validateEffectPayload(input.payload, host, historical);
       const d = find(input.definition, 'OperationDefinition'); definitionCheck(d.record, host);
       ensure(d.record.payloadKind === input.payload.kind, 'payload kind differs from operation definition');
       ensure(input.payload.sourceResult === input.pending, 'typed source result is not the pending result being discharged');
-      ensure(input.payload.step.startsWith('step:') && !input.payload.step.startsWith('step:missing')
-        && input.payload.logicalEffect.startsWith('logical:') && !input.payload.logicalEffect.startsWith('logical:missing'),
-      'typed run step/logical identity is not witnessed');
-      const historical = snapshot();
-      const exactReference = (id: string, detail: string) => {
-        const fact = historical.find(fact => fact.id === id);
-        ensure(fact && !fact.kind.startsWith('effect-') && !fact.kind.startsWith('transport-'), detail);
-        return fact;
-      };
-      if (input.payload.kind === 'acknowledge') exactReference(input.payload.inboundFact, 'acknowledgment intake fact missing or wrong kind');
-      if (input.payload.kind === 'fetch-inbound-media') exactReference(input.payload.inboundReceipt, 'media intake receipt missing or wrong kind');
-      if (input.payload.kind === 'scheduler-control') exactReference(input.payload.jobGeneration, 'scheduler generation missing or wrong kind');
-      if (input.payload.kind === 'filesystem-mutation') exactReference(input.payload.protectedTargetPolicy, 'protected-target policy missing or wrong kind');
+      const references = referencedPayloadFacts(input.payload, host, historical);
       if (input.payload.kind === 'post-media') take(custody.verify(input.payload.attachments.map(item => item.capture), d.record));
       if (input.payload.kind === 'derive-transcript') take(custody.verify([input.payload.sourceCapture], d.record));
-      const p = persist(input.payload, [input.payload.sourceResult]);
+      const p = persist(input.payload, references);
       const closure = [...new Set([...input.closure, input.pending, input.obligation, d.fact.id,
-        find(p.id, 'EffectPayload').fact.id, ...host.current().authority])];
-      const requestId = `request:${encoded(['effect-payload', p.logicalEffect, p.semanticMessage]).hash}`;
+        find(p.id, 'EffectPayload').fact.id, ...references, ...host.current().authority])];
+      const requestId = `request:${encoded(['effect-payload', p.logicalEffect, p.semanticMessage, p.id]).hash}`;
       const binding = freeze({ subject: p.semanticMessage, target: p.targetDigest,
         sourceVector: encoded([...closure].sort()).hash, sourceGeneration: d.record.generation,
         principal: host.principal.id, definition: { id: d.record.id, version: d.record.version },
@@ -425,39 +447,56 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       if (input.settlement) {
         const stored = find(input.settlement.id, 'EffectSettlement');
         ensure(encoded(stored.record).bytes === encoded(input.settlement).bytes, 'aggregate settlement is not recorded unchanged');
-        const currentSettlement = recheckStoredSettlement(stored.record);
+        const currentSettlement = consumeStoredSettlement(stored.record, value => value);
         ensure(encoded(currentSettlement).bytes === encoded(input.settlement).bytes, 'aggregate settlement is stale or no longer witnessed');
         ensure(!refining || current.settlement !== input.settlement.id, 'aggregate settlement replay forbidden');
         next = childFromSettlement(prior.record.children[childIndex]!, currentSettlement); required.push(stored.fact.id);
       } else {
         ensure(current.disposition === 'pending', 'refusal cannot rewrite a settled child');
-        ensure(!take(transport.inspect()).some(row => row.record.type === 'AdmissionReservation'
-          && row.record.request === input.request && row.record.state !== 'prepared'),
-        'unrelated refusal cannot terminalize dispatched work');
         const refusal = consumeResult(input.refusal!, { Success: () => { throw new Error('aggregate refusal is not typed'); }, Refused: value => value });
-        next = childFromRefusal(prior.record.children[childIndex]!, refusal);
+        const request = find(input.request, 'EffectRequest').record;
+        const refusalFact = snapshot().find(fact => fact.id === input.refusalFact && fact.kind === 'effect-refusal');
+        const refusalBody = refusalFact?.body as { request?: unknown; digest?: unknown; sourceResult?: unknown; result?: unknown } | undefined;
+        ensure(refusalFact && refusalBody?.request === request.id && refusalBody.digest === request.digest
+          && refusalBody.sourceResult === request.pending && encoded(refusalBody.result).bytes === encoded(refusal).bytes,
+        'refusal is not recorded for the exact child request/digest/source result');
+        const reservations = take(transport.inspect()).filter(row => row.record.type === 'AdmissionReservation'
+          && row.record.request === input.request);
+        const reservation = reservations.at(-1);
+        ensure(reservation?.record.type === 'AdmissionReservation' && reservation.record.state === 'prepared',
+          'unrelated refusal cannot terminalize claimed or closed work');
+        take(transport.close(`close-refused:${encoded([request.id, request.digest, refusalFact.id]).hash}`,
+          reservation.record.fence, reservation.record.operation));
+        const closed = take(transport.inspect()).filter(row => row.record.type === 'AdmissionReservation'
+          && row.record.request === input.request).at(-1);
+        ensure(closed?.record.type === 'AdmissionReservation' && closed.record.state === 'closed',
+          'prepared refusal lacks a Part Six no-claim disposition');
+        next = childFromRefusal(prior.record.children[childIndex]!, refusal, refusalFact.id);
+        required.push(refusalFact.id, closed.fact.id);
       }
       const settlements = prior.record.settlements.map((row, index) => index === childIndex ? next : row);
-      const obligations = aggregateObligations(prior.record.children, settlements, id => find(id, 'EffectSettlement').record);
-      const revision = prior.record.revision + 1;
-      const candidate = { ...prior.record, id: `${prior.record.aggregate}:${revision}`, revision,
-        predecessor: prior.record.id, settlements, state: aggregateState(prior.record.children, settlements),
-        ...obligations } as OrderedEffectAggregate;
-      return withAggregate(host, candidate, () => persist(candidate, required));
+      return withCurrentAggregateSettlements({ ...prior.record, settlements }, () => {
+        const obligations = aggregateObligations(prior.record.children, settlements, id => find(id, 'EffectSettlement').record);
+        const revision = prior.record.revision + 1;
+        const candidate = { ...prior.record, id: `${prior.record.aggregate}:${revision}`, revision,
+          predecessor: prior.record.id, settlements, state: aggregateState(prior.record.children, settlements),
+          ...obligations } as OrderedEffectAggregate;
+        return withAggregate(host, candidate, () => persist(candidate, required));
+      });
     }),
     nextAggregateChild: aggregate => checked('OrderedEffectAggregateNext', aggregate, () => {
-      const current = rows(snapshot()).filter(row => row.record.type === 'OrderedEffectAggregate'
+      const stored = rows(snapshot()).filter(row => row.record.type === 'OrderedEffectAggregate'
         && row.record.aggregate === aggregate).at(-1)?.record;
-      ensure(current?.type === 'OrderedEffectAggregate', 'aggregate missing');
-      for (const row of current.settlements) if (row.settlement) {
-        const stored = find(row.settlement, 'EffectSettlement').record;
-        const rechecked = recheckStoredSettlement(stored);
-        ensure(encoded(rechecked).bytes === encoded(stored).bytes, 'aggregate child settlement is stale or no longer witnessed');
-      }
-      const states = new Map(current.settlements.map(row => [row.request, row]));
-      const child = current.children.find(candidate => states.get(candidate.request)?.disposition === 'pending'
-        && !childInhibited(current, candidate.order));
-      return child ? find(child.request, 'EffectRequest').record : null;
+      ensure(stored?.type === 'OrderedEffectAggregate', 'aggregate missing');
+      const presented = presentAggregate(stored);
+      ensure(!presented.reconstructed, 'aggregate has a committed in-flight child; observe and settle before selection');
+      const current = presented.record;
+      return withCurrentAggregateSettlements(current, () => {
+        const states = new Map(current.settlements.map(row => [row.request, row]));
+        const child = current.children.find(candidate => states.get(candidate.request)?.disposition === 'pending'
+          && !childInhibited(current, candidate.order));
+        return child ? find(child.request, 'EffectRequest').record : null;
+      });
     }),
   };
   function settle<T>(id: string, consume: (value: EffectSettlement) => T): Result<T> {

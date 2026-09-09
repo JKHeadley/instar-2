@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import { decode } from '../../src/index.js';
-import { createEffectDoorway, decodeEffectPayload, effectOperationContracts, effectPayloadIdentity } from '../../src/effects/index.js';
+import { createEffectDoorway, decodeEffectPayload, effectOperationContracts, effectPayloadIdentity, referencedPayloadFacts } from '../../src/effects/index.js';
 import type { EffectRequest, TypedEffectPayload } from '../../src/effects/index.js';
 import { digest } from '../fixtures.js';
 import { effectFixture, refused, value } from '../effects/fixture.js';
@@ -15,27 +15,29 @@ function setup() {
   const contract = effectOperationContracts['post-text'];
   const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'post-text', inputSchema: contract.inputSchema,
     canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['post-text']);
-  const makePayload = (logicalEffect: string, text: string): TypedEffectPayload => {
-    const raw = { ...payloadInput('post-text', f.host), sourceResult: f.pending.id, logicalEffect, text };
+  const makePayload = (logicalEffect: string, text: string): { payload: TypedEffectPayload; source: ReturnType<typeof f.sourceFor>['source'] } => {
+    const step = `step:${logicalEffect}`, source = f.sourceFor(step, logicalEffect).source;
+    const raw = { ...payloadInput('post-text', f.host), sourceResult: source.id, step, logicalEffect, text };
     const draft = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== 'id' && key !== 'targetDigest'));
-    return value(decodeEffectPayload({ ...draft,
-      ...effectPayloadIdentity(draft as unknown as Parameters<typeof effectPayloadIdentity>[0]) }, f.host));
+    return { source, payload: value(decodeEffectPayload({ ...draft,
+      ...effectPayloadIdentity(draft as unknown as Parameters<typeof effectPayloadIdentity>[0]) }, f.host)) };
   };
-  const firstPayload = makePayload('logical:aggregate:first', 'first child');
+  const { payload: firstPayload, source: firstSource } = makePayload('logical:aggregate:first', 'first child');
   const first = value(f.api.preparePayload({ definition: f.d.id, payload: firstPayload, run: f.run,
-    pending: f.pending.id, attempt: 'attempt:1', verificationOwner: 'reply-verifier',
+    pending: firstSource.id, attempt: 'attempt:1', verificationOwner: 'reply-verifier',
     obligation: f.obligation, closure: [], fence: f.fence }));
-  const secondPayload = makePayload('logical:aggregate:second', 'second child');
-  const payloadReceipt = value(f.spine.append(secondPayload, [secondPayload.sourceResult]));
+  const { payload: secondPayload } = makePayload('logical:aggregate:second', 'second child');
+  const payloadReceipt = value(f.spine.append(secondPayload, referencedPayloadFacts(secondPayload, f.host)));
   const firstPayloadFact = value(f.api.inspect()).find(row => row.record.type === 'EffectPayload' && row.record.id === firstPayload.id)!.fact.id;
-  const closure = [...new Set([...first.closure.filter(id => id !== firstPayloadFact), payloadReceipt.fact.id])];
-  const requestId = `request:${digest(['effect-payload', secondPayload.logicalEffect, secondPayload.semanticMessage])}`;
+  const closure = [...new Set([...first.closure.filter(id => id !== firstPayloadFact), payloadReceipt.fact.id,
+    ...referencedPayloadFacts(secondPayload, f.host)])];
+  const requestId = `request:${digest(['effect-payload', secondPayload.logicalEffect, secondPayload.semanticMessage, secondPayload.id])}`;
   const binding = { ...first.binding!, sourceVector: digest([...closure].sort()), payload: { id: secondPayload.id, digest: digest(secondPayload) },
     target: secondPayload.targetDigest, logicalEffect: secondPayload.logicalEffect, step: secondPayload.step,
     reservation: { ...first.binding!.reservation, request: requestId, attempt: 'attempt:2',
       semanticMessage: `effect-child:${digest([secondPayload.semanticMessage, secondPayload.logicalEffect])}` },
     claim: { ...first.binding!.claim, attempt: 'attempt:2' } };
-  const second = { ...first, id: requestId, message: secondPayload.id, payload: secondPayload.id, payloadDigest: digest(secondPayload),
+  const second = { ...first, id: requestId, message: secondPayload.id, payload: secondPayload.id, payloadDigest: digest(secondPayload), pending: secondPayload.sourceResult,
     binding, attempt: 'attempt:2', digest: digest(binding), closure } as unknown as EffectRequest;
   value(f.spine.append(second, closure));
   const aggregate = value(f.api.createAggregate({ semanticMessage: first.semanticMessage, run: f.run,
@@ -106,12 +108,23 @@ it('P8-TP-AGGREGATE-PARTIAL an uncertain first child exposes evidence/charge/rec
   expect(value(f.api.nextAggregateChild(aggregate.aggregate))).toBeNull(); expect(f.calls()).toBe(1);
 }, 30000);
 
-it('P8-TP-ACK decorative acknowledgment refusal stays non-terminal and cannot be marked required', () => {
+it('P8-TP-AGGREGATE-INFLIGHT-REBUILD a replacement doorway never presents or selects a claimed child as pending', () => {
+  const { f, first, aggregate } = setup();
+  value(f.api.dispatch(first, f.fence));
+  const replacement = createEffectDoorway(f.composition);
+  const current = value(replacement.inspect()).filter(row => row.record.type === 'OrderedEffectAggregate').at(-1)!.record;
+  expect(current.type).toBe('OrderedEffectAggregate');
+  if (current.type !== 'OrderedEffectAggregate') throw new Error('aggregate fixture');
+  expect(current.state).toBe('uncertain'); expect(current.settlements[0]?.disposition).toBe('uncertain');
+  refused(replacement.nextAggregateChild(aggregate.aggregate), 'in-flight child');
+  expect(f.calls()).toBe(1);
+}, 30000);
+
+it('P8-TP-ACK P8-TP-BOUND-REFUSAL decorative acknowledgment refusal stays non-terminal and cannot be marked required', () => {
   const contract = effectOperationContracts.acknowledge;
   const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'acknowledge', inputSchema: contract.inputSchema,
     canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['acknowledge']);
-  const intake = f.note('part-seven inbound receipt STAND-IN');
-  const raw = { ...payloadInput('acknowledge', f.host), sourceResult: f.pending.id, inboundFact: intake.id };
+  const raw = { ...payloadInput('acknowledge', f.host), sourceResult: f.pending.id };
   const draft = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== 'id' && key !== 'targetDigest'));
   const payload = value(decodeEffectPayload({ ...draft,
     ...effectPayloadIdentity(draft as unknown as Parameters<typeof effectPayloadIdentity>[0]) }, f.host));
@@ -123,7 +136,8 @@ it('P8-TP-ACK decorative acknowledgment refusal stays non-terminal and cannot be
     children: [{ request, demandedStage: 'complete', inhibitLater: false, required: false }], reconciliationOwner: 'reconciler' }));
   const refusal = value(decode('Result', f.refusedInput({ detail: 'decorative provider unavailable' }), f.ctx.decode));
   if (refusal.kind !== 'Refused') throw new Error('fixture refusal');
-  const updated = value(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal }));
+  const refusalFact = f.recordRefusal(request, refusal);
+  const updated = value(f.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, refusal, refusalFact: refusalFact.id }));
   expect(updated.state).toBe('partial'); expect(updated.openRecovery).toEqual([request.id]);
   expect(f.calls()).toBe(0);
 });
