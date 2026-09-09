@@ -12,7 +12,7 @@ const consumers = [
   ['createFactStore', 'facts/index', 'facts/store'], ['authorAndAppend', 'facts/index', 'facts/store'],
   ['prepareSnapshot', 'facts/index', 'facts/snapshot'],
   ['foldProjection', 'projections/index', 'projections/fold'], ['readProjection', 'projections/index', 'projections/fold'],
-  ...['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration'].map(id => [id, 'intake/index', 'intake/records']),
+  ...['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration', 'intakeVerifiedActRegistration'].map(id => [id, 'intake/index', 'intake/records']),
 ].map(([id, module, artifact]) => ({ id, module: { path: `src/${module}.ts` }, artifact: { path: `src/${artifact}.ts` }, optional: true }));
 
 // Scope of proof: statically imported core ports with literal kind/id arguments.
@@ -204,7 +204,7 @@ export function inspectSource(path, source, sources = {}, program = sourceProgra
   function registrations(node, depth = 0) {
     const n = origin(node); if (!n || depth > 16) return [];
     if (ts.isArrayLiteralExpression(n)) return n.elements.flatMap(e => registrations(ts.isSpreadElement(e) ? e.expression : e, depth + 1));
-    if (ts.isCallExpression(n) && ['intakeWorkRegistration', 'intakeStopRegistration'].includes(target(n.expression))) return [target(n.expression)];
+    if (ts.isCallExpression(n) && ['intakeWorkRegistration', 'intakeStopRegistration', 'intakeVerifiedActRegistration'].includes(target(n.expression))) return [target(n.expression)];
     return [];
   }
   function admittedRegistrations(call, receiver = false) {

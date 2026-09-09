@@ -1,13 +1,14 @@
-import type { BoundaryContext,Json,Scope } from '../index.js';
-import { causalCone,causalStanding,registerOwnedBody } from '../facts/index.js';
+import type { BoundaryContext,Clock,Hash,HistoricalRead,Inventory,Json,Provenance,RegisterGenerationReference,Scope } from '../index.js';
+import { causalCone,causalStanding,hashBytes,registerOwnedBody } from '../facts/index.js';
 import { canonical,decode,historicalGrantLiveness,scopeIncludes } from '../index.js';
-import type { FactEnvelope,FactSchema,OwnedBodyRegistration } from '../facts/index.js';
+import { prepareSnapshot } from '../facts/index.js';
+import type { FactContext,FactEnvelope,FactSchema,FactSnapshot,FactStatus,OwnedBodyRegistration,OwnedShape } from '../facts/index.js';
 import type { Result } from '../index.js';
-import { object,requireIntake,same,take,text } from './boundary.js';
+import { json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ProjectionDefinition } from '../projections/index.js';
 
 export const intakeKinds=Object.freeze(['intake-receipt','intake-resolved','intake-admitted','intake-held','intake-expired',
-  'intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','conversation-binding'] as const);
+  'intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','intake-verified-act','conversation-binding'] as const);
 
 // Different scope dimensions are not evidence of disjoint work.
 export function intakeScopesOverlap(a: Scope,b: Scope): boolean {
@@ -69,6 +70,12 @@ export function intakeFactSchemas(scope: Scope): readonly FactSchema[] {
     },
     { ...shared,kind: 'intake-stop-signal',fields: { ...common,principalId: short,authentication: { kind: 'capture' } } },
     {
+      ...shared,kind: 'intake-verified-act',fields: {
+        request: { kind: 'reference' },requestDigest: short,challenge: short,surface: short,generation: short,
+        disposition: short,record: { kind: 'owned',owner: 'part-four',name: 'VerifiedActDisposition' }
+      }
+    },
+    {
       ...shared,kind: 'conversation-binding',standing: 'operator',authority: 'conferring',causallyBound: true,
       fields: {
         adapter: short,channel: short,sender: short,identityEpoch: short,principalId: short,
@@ -76,6 +83,220 @@ export function intakeFactSchemas(scope: Scope): readonly FactSchema[] {
       }
     },
   ];
+}
+
+const vaText={ kind: 'text',maxLength: 1048576 } as const;
+const vaShort={ kind: 'text',maxLength: 1024 } as const;
+const verifiedActShape: OwnedShape={ kind: 'object',fields: {
+  type: vaShort,schemaVersion: { kind: 'integer' },request: vaShort,requestDigest: vaShort,decision: vaShort,
+  disposition: vaShort,act: vaText,actDigest: vaShort,proof: { kind: 'capture' },challenge: vaShort,
+  surface: vaShort,generation: vaShort,action: vaShort,scope: vaText,audience: vaShort,operator: vaShort,
+  requestedBy: vaShort,artifact: vaShort,base: vaShort,issuedAt: { kind: 'integer' },expiresAt: { kind: 'integer' },
+  emergency: { kind: 'boolean' }
+} };
+
+type VerifiedActRecord=Readonly<{
+  type: 'VerifiedActDisposition'; schemaVersion: 1; request: string; requestDigest: Hash;
+  decision: 'approve'|'decline'; disposition: 'approved'|'declined'|'emergency-stopped'; act: string;
+  actDigest: string; proof: { reference: string; hash: Hash }; challenge: string; surface: string;
+  generation: string; action: string; scope: string; audience: string; operator: string; requestedBy: string;
+  artifact: Hash; base: string; issuedAt: number; expiresAt: number; emergency: boolean;
+}>;
+export type VerifiedActResolution=Readonly<{ record: VerifiedActRecord; proof: Provenance; emergency: boolean }>;
+
+function exact(v: Record<string,Json>,keys: readonly string[],detail: string): void {
+  requireIntake(Object.keys(v).length===keys.length&&Object.keys(v).every(k => keys.includes(k)),detail,'standing');
+}
+function integer(v: Json|undefined,name: string): number {
+  requireIntake(typeof v==='number'&&Number.isSafeInteger(v),`verified act: ${name} must be a safe integer`,'standing'); return v;
+}
+function hash(v: Json|undefined,name: string): Hash {
+  requireIntake(typeof v==='string'&&/^sha256:[a-f0-9]{64}$/.test(v),`verified act: ${name} must be SHA-256`,'standing'); return v as Hash;
+}
+function body(status: FactStatus): Record<string,Json> { return object(status.body); }
+function historyValues(snapshot: FactSnapshot) {
+  return snapshot.entries.flatMap(r => r.historical);
+}
+function historical<N extends keyof Inventory>(values: readonly HistoricalRead<Inventory[keyof Inventory]>[],type: N,id: string) {
+  return values.find((r): r is HistoricalRead<Inventory[N]> => r.view.type===type&&'id' in r.view&&r.view.id===id);
+}
+function currentGrant(grantId: string,values: readonly HistoricalRead<Inventory[keyof Inventory]>[],now: Clock,preserved: string) {
+  const grant=historical(values,'StandingGrant',grantId);
+  if(!grant) return undefined;
+  const revocations=values.filter((r): r is HistoricalRead<Inventory['Revocation']> => r.view.type==='Revocation'&&r.view.grantId===grantId);
+  return take(historicalGrantLiveness(grant,revocations,now,preserved))==='live'? grant:undefined;
+}
+function proofInput(c: FactContext,reference: string,expected: Hash): Json {
+  const capture=c.captures[reference];
+  requireIntake(capture?.status==='available'&&capture.bytes!==null&&capture.hash===expected&&capture.hash===hashBytes(capture.bytes),
+    'verified act: proof bundle capture is missing or changed','integrity');
+  try { return JSON.parse(capture.bytes) as Json; } catch { throw new Error('verified act: proof bundle is not JSON'); }
+}
+
+export function buildVerifiedActRecord(raw: Json,c: FactContext,now: Clock,expectedGeneration: string): VerifiedActResolution {
+  const input=object(raw);
+  exact(input,['request','requestDigest','decision','act','proof','surface','generation'],
+    'verified act: caller-authored valid/principal/free-form grant fields are forbidden');
+  const request=object(input.request!),generation=object(input.generation!),proof=object(input.proof!);
+  exact(request,['owner','name','id'],'verified act: request must be one Part Two fact reference');
+  exact(generation,['owner','name','id'],'verified act: generation must be one Part Three reference');
+  exact(proof,['reference','hash'],'verified act: proof must be one capture reference');
+  requireIntake(request.owner==='part-two'&&request.name==='FactEnvelope','verified act: request owner/type mismatch','standing');
+  requireIntake(generation.owner==='part-three'&&generation.name==='RegisterGeneration','verified act: generation owner/type mismatch','standing');
+  const bundle=object(proofInput(c,text(proof.reference,'proof.reference'),hash(proof.hash,'proof.hash'))),challengeInput=object(bundle.challenge!);
+  // Decode once here only to derive a candidate; resolveVerifiedActRecord repeats
+  // the verification and treats every derived byte as an assertion to check.
+  const challenge=take(decode('Provenance',challengeInput,{ ...c.decode,preserved: text(request.id,'request.id') }));
+  const p=object(challenge.authenticated.payload),decision=text(input.decision,'decision');
+  requireIntake(decision==='approve'||decision==='decline','verified act: decision','standing');
+  const act=input.act??null,actText=take(canonical(act)).bytes,actDigest=act===null?'none':take(canonical(act)).hash;
+  const emergency=p.action==='emergency-stop',disposition=emergency?'emergency-stopped':decision==='decline'?'declined':'approved';
+  const record: VerifiedActRecord={ type: 'VerifiedActDisposition',schemaVersion: 1,
+    request: text(request.id,'request.id'),requestDigest: hash(input.requestDigest,'requestDigest'),
+    decision: decision as 'approve'|'decline',disposition,act: actText,actDigest,
+    proof: proof as unknown as VerifiedActRecord['proof'],challenge: text(p.challenge,'challenge'),
+    surface: text(input.surface,'surface'),generation: text(generation.id,'generation.id'),action: text(p.action,'action'),
+    scope: take(canonical(p.scope)).bytes,audience: text(p.audience,'audience'),operator: text(p.operator,'operator'),
+    requestedBy: text(p.requestedBy,'requestedBy'),artifact: hash(p.artifact,'artifact'),base: text(p.base,'base'),
+    issuedAt: integer(p.issuedAt,'issuedAt'),expiresAt: integer(p.expiresAt,'expiresAt'),emergency };
+  return resolveVerifiedActRecord(json(record),c,now,expectedGeneration,'origin');
+}
+
+export function resolveVerifiedActRecord(raw: Json,c: FactContext,now: Clock,expectedGeneration: string,mode: 'origin'|'historical'): VerifiedActResolution {
+  const r=object(raw); exact(r,['type','schemaVersion','request','requestDigest','decision','disposition','act','actDigest','proof','challenge',
+    'surface','generation','action','scope','audience','operator','requestedBy','artifact','base','issuedAt','expiresAt','emergency'],
+  'verified act: caller-authored valid/principal/grant fields are forbidden');
+  requireIntake(r.type==='VerifiedActDisposition'&&r.schemaVersion===1,'verified act: record type/version','standing');
+  const requestId=text(r.request,'request'),requestDigest=hash(r.requestDigest,'requestDigest');
+  const decision=text(r.decision,'decision'); requireIntake(decision==='approve'||decision==='decline','verified act: decision','standing');
+  const proof=object(r.proof!); exact(proof,['reference','hash'],'verified act: proof must be one capture reference');
+  const bundle=object(proofInput(c,text(proof.reference,'proof.reference'),hash(proof.hash,'proof.hash')));
+  exact(bundle,['type','schemaVersion','challenge','act'],'verified act: proof bundle shape');
+  requireIntake(bundle.type==='VerifiedActProofBundle'&&bundle.schemaVersion===1,'verified act: proof bundle type/version','standing');
+  const challenge=take(decode('Provenance',bundle.challenge,{ ...c.decode,preserved: requestId }));
+  requireIntake(challenge.class==='verified','verified act: channel-attested proof cannot complete authority','standing');
+  const surface=text(r.surface,'surface');
+  requireIntake(challenge.adapter===surface&&c.decode.register.entries.includes(surface),
+    'verified act: proof does not come from the registered surface','standing');
+  requireIntake(challenge.authenticated.recordType==='verified-operator-challenge','verified act: wrong proof record type','standing');
+  const p=object(challenge.authenticated.payload);
+  exact(p,['type','schemaVersion','challenge','request','requestDigest','renderingDigest','action','scope','audience','operator','requestedBy',
+    'artifact','base','issuedAt','expiresAt','singleUse','decision','actDigest','surface','generation'],'verified act: challenge subject shape');
+  requireIntake(p.type==='VerifiedOperatorChallenge'&&p.schemaVersion===1&&p.singleUse===true,'verified act: challenge must be single-use','standing');
+  const issuedAt=integer(p.issuedAt,'issuedAt'),expiresAt=integer(p.expiresAt,'expiresAt');
+  requireIntake(issuedAt<=challenge.verifiedAt.value&&challenge.verifiedAt.value<=now.value&&now.value<=expiresAt,
+    'verified act: challenge is expired, future-dated, or stale','stale-base');
+  const generation=text(r.generation,'generation'),emergency=p.action==='emergency-stop';
+  requireIntake(emergency||generation===expectedGeneration,'verified act: stale register generation','stale-base');
+  requireIntake(same(p.generation,{ owner: 'part-three',name: 'RegisterGeneration',id: generation })
+    &&p.surface===surface&&p.request===requestId&&p.requestDigest===requestDigest&&p.challenge===r.challenge&&p.decision===decision,
+  'verified act: challenge does not bind the submitted subject','standing');
+  requireIntake(challenge.authenticated.principal.kind==='person'&&challenge.authenticated.principal.id===p.operator,
+    'verified act: proof operator differs from challenge','standing');
+  const facts=[...c.facts],snapshot=take(prepareSnapshot(facts,{ ...c,facts }));
+  const requestRows=snapshot.entries.filter(x => x.fact.id===requestId);
+  requireIntake(requestRows.length===1,'verified act: missing durable authorization-request reference','standing');
+  const request=requestRows[0]!;
+  requireIntake(request.fact.kind==='authorization-request','verified act: referenced fact has wrong kind','standing');
+  const q=body(request);
+  for(const field of ['requestId','requestDigest','action','scope','audience','artifact','base','expiresAt','approverId','requestedById'])
+    requireIntake(q[field]!==undefined,`verified act: incomplete request missing ${field}`,'standing');
+  const requestKey=text(q.requestId,'requestId');
+  const siblings=snapshot.entries.filter(x => x.fact.kind==='authorization-request'&&x.fact.id!==request.fact.id&&body(x).requestId===requestKey);
+  const superseding=siblings.find(x => causalCone(x.fact,facts).some(a => a.id===request.fact.id));
+  const concurrent=siblings.find(x => !causalCone(x.fact,facts).some(a => a.id===request.fact.id)
+    &&!causalCone(request.fact,facts).some(a => a.id===x.fact.id));
+  const prior=snapshot.entries.find(x => x.fact.kind==='intake-verified-act'&&body(x).request===requestId);
+  requireIntake(!prior,'verified act: replayed or already-disposed request','integrity');
+  if(!emergency) {
+    requireIntake(!superseding,'verified act: authorization request was superseded','stale-base');
+    requireIntake(request.taint.length===0,'verified act: authorization request is tainted or incomplete','integrity');
+    requireIntake(!concurrent&&request.conflicts.length===0,'verified act: authorization request is conflicted','integrity');
+    for(const id of request.fact.predecessors.required) {
+      const dependency=snapshot.entries.find(x => x.fact.id===id);
+      requireIntake(dependency&&dependency.taint.length===0&&dependency.conflicts.length===0,
+        'verified act: request causal dependencies are incomplete or contested','integrity');
+    }
+  }
+  const scope=json(q.scope),scopeValue=take(decode('Scope',scope,c.decode));
+  const artifact=hash(q.artifact,'artifact'),base=text(q.base,'base'),action=text(q.action,'action');
+  const audience=text(q.audience,'audience'),operator=text(q.approverId,'approverId'),requestedBy=text(q.requestedById,'requestedById');
+  requireIntake(Object.hasOwn(c.decode.register.actions,action),'verified act: request action is not registered','standing');
+  const calculated=take(canonical({ type: 'AuthorizationRequest',schemaVersion: 1,approver: operator,action,scope,artifact,base })).hash;
+  if(!emergency) {
+    requireIntake(q.requestDigest===calculated&&requestDigest===calculated,'verified act: stale or inexact request digest','stale-base');
+    requireIntake(same(p.scope,scope)&&p.action===action&&p.audience===audience&&p.operator===operator&&p.requestedBy===requestedBy
+      &&p.artifact===artifact&&p.base===base,'verified act: current base/artifact/scope/audience/operator moved','stale-base');
+    requireIntake(now.value<=integer(q.expiresAt,'request.expiresAt'),'verified act: authorization request expired','stale-base');
+  } else requireIntake(p.action==='emergency-stop','verified act: safety-open is reserved for emergency-stop','standing');
+  const actText=text(r.act,'act'),act=JSON.parse(actText) as Json;
+  const actDigest=act===null?'none':take(canonical(act)).hash;
+  requireIntake(r.actDigest===actDigest&&p.actDigest===actDigest,'verified act: proof does not bind the exact act','standing');
+  if(decision==='decline') requireIntake(act===null&&bundle.act===null,'verified act: decline cannot carry authority','standing');
+  else {
+    requireIntake(act!==null&&bundle.act!==null,'verified act: approval requires an independently verified act','standing');
+    const actProof=take(decode('Provenance',bundle.act,{ ...c.decode,preserved: requestId }));
+    requireIntake(actProof.class==='verified'&&actProof.adapter===surface&&actProof.authenticated.principal.id===operator,
+      'verified act: act provenance is not the verified operator surface','standing');
+    const a=object(act),type=text(a.type,'act.type');
+    requireIntake(['Authorization','StandingGrant','Revocation'].includes(type),'verified act: unexpected Part One authority act','standing');
+    const provenance=type==='Authorization'? a.explicitYes:a.source;
+    requireIntake(same(provenance,actProof)&&same(actProof.authenticated.payload,
+      Object.fromEntries(Object.entries(a).filter(([k]) => !['type','schemaVersion',type==='Authorization'?'explicitYes':'source'].includes(k)))),
+    'verified act: authority act differs from independently signed fields','standing');
+    if(mode==='origin') take(decode(type as 'Authorization'|'StandingGrant'|'Revocation',act,{ ...c.decode,provenance: actProof,
+      currentBase: base,artifact,now,actAt: now }));
+    if(type==='Authorization') {
+      exact(a,['type','schemaVersion','id','at','approver','under','action','artifact','base','kind','requestedBy','explicitYes','requestDigest'],
+        'verified act: Authorization shape');
+      const aa=object(a.action!),approver=object(a.approver!),requester=object(a.requestedBy!);
+      requireIntake(aa.kind===action&&same(aa.scope,scope)&&a.artifact===artifact&&a.base===base&&a.requestDigest===requestDigest
+        &&approver.id===operator&&requester.id===requestedBy,'verified act: Authorization exceeds or differs from request','standing');
+      const values=historyValues(snapshot),grant=currentGrant(text(a.under,'authorization.under'),values,now,requestId);
+      requireIntake(grant&&grant.view.grantee.id===operator&&scopeIncludes(grant.view.scope as Scope,scopeValue)
+        &&(grant.view.standing==='operator'||grant.view.actions.includes(action)),
+      'verified act: current historical standing does not authorize approval','standing');
+    } else if(type==='StandingGrant') {
+      const grantScope=take(decode('Scope',a.scope,c.decode)),grantee=object(a.grantee!);
+      requireIntake(same(grantScope,scopeValue)&&grantee.id===requestedBy,'verified act: StandingGrant scope or grantee exceeds request','standing');
+      requireIntake((a.standing==='delegate'&&same(a.actions,[action]))||(a.standing==='operator'&&action==='operator-standing'),
+        'verified act: free-form grant standing/actions are forbidden','standing');
+    } else {
+      const values=historyValues(snapshot),target=historical(values,'StandingGrant',text(a.grantId,'revocation.grantId'));
+      requireIntake(action==='revoke-standing'&&object(a.by!).id===operator&&target&&same(target.view.scope,scopeValue),
+        'verified act: Revocation target/operator/scope differs from request','standing');
+    }
+  }
+  const disposition=emergency?'emergency-stopped':decision==='decline'?'declined':'approved';
+  requireIntake(r.disposition===disposition&&r.emergency===emergency,'verified act: disposition is caller-authored','standing');
+  const expected: VerifiedActRecord={ type: 'VerifiedActDisposition',schemaVersion: 1,request: requestId,requestDigest,
+    decision: decision as 'approve'|'decline',disposition,act: actText,actDigest,proof: proof as unknown as VerifiedActRecord['proof'],
+    challenge: text(p.challenge,'challenge'),surface,generation,action,scope: take(canonical(scope)).bytes,audience,operator,requestedBy,
+    artifact,base,issuedAt,expiresAt,emergency };
+  requireIntake(same(r,expected),'verified act: disposition fields are not owner-derived','standing');
+  return { record: Object.freeze(expected),proof: challenge,emergency };
+}
+
+export function intakeVerifiedActRegistration(context: BoundaryContext,observerId: string,generation?: RegisterGenerationReference): Result<OwnedBodyRegistration> {
+  return registerOwnedBody({
+    name: 'VerifiedActDisposition',owner: 'part-four',currentVersion: 1,migrations: {},
+    versions: { 1: { validate: value => ({ ok: true,value }) } },
+    decodeCurrent: (input,c) => {
+      try {
+        requireIntake(c.origin.principal.id===observerId&&c.origin.principal.kind==='system'&&c.origin.provenance.class==='verified',
+          'verified act: disposition must be recorded by the configured intake observer','standing');
+        const cone=causalCone(c.origin,c.facts.facts);
+        const record=resolveVerifiedActRecord(input,{ ...c.facts,facts: cone },c.origin.at,
+          generation?.id??c.facts.decode.register.generation.id,c.mode).record;
+        const origin=object(c.origin.body);
+        requireIntake(origin.request===record.request&&origin.requestDigest===record.requestDigest&&origin.challenge===record.challenge
+          &&origin.surface===record.surface&&origin.generation===record.generation&&origin.disposition===record.disposition,
+        'verified act: fact envelope summary differs from owner record','integrity');
+        requireIntake(c.origin.predecessors.required.includes(record.request),'verified act: request is not in causal position','integrity');
+        return { ok: true,value: input };
+      } catch(e) { return { ok: false,reason: 'standing',detail: e instanceof Error? e.message:'verified act refused' }; }
+    }
+  },verifiedActShape,context);
 }
 
 // P4-NF-12 holds at P2 admission too, not only in the convenience constructor.
