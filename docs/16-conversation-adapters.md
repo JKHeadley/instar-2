@@ -670,8 +670,9 @@ both grant files land and their implementations are integrated. An adapter or Si
 that permission itself.
 
 **Rule — a service round has a frozen population and a finite service bound.** Rules 13, 14, 55,
-60, 61 and 77; **check: P12-NF-40**. A route is eligible when its next intake, stop, dispatch, or
-observation item is due, its owner state permits service, and it is not already under a live claim.
+60, 61 and 77; **check: P12-NF-40**. The deterministic stop path is outside service rounds. A route
+is eligible for an ordinary round when its next intake, dispatch, or observation item is due, its
+owner state permits that ordinary service, and it is not already under a live ordinary claim.
 At round opening, the loop records the causal frontier and the bounded ordered set of eligible route
 keys. The round ends when every member has received one bounded selection opportunity or has a
 recorded owner-derived reason it ceased to be eligible. New arrivals are not added to that frozen
@@ -683,11 +684,22 @@ receive its first service opportunity by that round's close. An item arriving du
 receive one by the next round's close. Thus continuing arrivals cannot extend the bound beyond two
 declared round durations. The measurement records round open and close time, frozen population,
 selection count, each route's eligible time and first-service time, and every timeout or refusal.
-P12-NF-40 fails and activation is inhibited if an eligible healthy route or stop exceeds that bound,
-even when a flooded route keeps arriving or every flooded attempt fails. This defines the acceptance
-bar without choosing the builder's scheduling algorithm. Coalescing means only that notices sharing
-one declared episode identity occupy one bounded notification item; it never removes a route from the
-service population.
+P12-NF-40 fails and activation is inhibited if an eligible healthy ordinary route exceeds that bound,
+even when a flooded route keeps arriving or every flooded attempt fails. This defines the ordinary
+acceptance bar without choosing the builder's scheduling algorithm. Coalescing means only that notices
+sharing one declared episode identity occupy one bounded notification item; it never removes a route
+from the service population.
+
+Every platform sends its native deterministic stop affordance directly through Four's intake path,
+outside ordinary service scheduling. Stop recognition occurs only after Four preserves, deduplicates,
+authenticates, and resolves the binding. A recognized bound-operator stop appends Four's local-durable
+stop fact first and applies Six's local halt immediately.
+Neither a live ordinary claim on that route, an open round, the ordinary eligibility set, nor a
+replication peer may delay that fact or halt. A resolved requester's stop-shaped signal also bypasses
+the ordinary claim and round, but remains Four's highest-priority non-authorizing signal: it surfaces
+immediately and cannot halt by itself. An ambiguous “maybe stop” remains ordinary intake. The stop
+measurement records recognition, the stop fact, halt application, and their precedence over every
+ordinary selection on the affected scope.
 
 **Rule — failure notices do not create a recursive message storm.** Rules 14, 52, 53, 54, 87
 and 95; **checks: P12-NF-40/41**. The original operation is repaired when safe. A required notice
@@ -700,7 +712,7 @@ failure notice cannot mark the original delivered or launch an unbounded notice-
 
 ## 9. The real worker-to-conversation path
 
-**Rule — Claude Code, Codex, and every harness use one path.** Rules 29, 30, 63, 84, 105 and
+**Rule — Claude Code, Codex, and every harness use one path.** Rules 29, 30, 63, 105 and
 115; **checks: P12-NF-42/43**. A harness receives part five's grounded intake and may propose an
 `OutboundMessage` through the public effect doorway. It does not receive platform credentials,
 raw account sessions, arbitrary provider clients, or a general send script. The executable
@@ -787,7 +799,7 @@ the real model call and real-owner settlement, and until the BUILT production as
 `part-eleven-seam-response-assembly.md` is integrated. Stand-ins do not satisfy P12-NF-44/48.
 
 **Rule — Telegram precedes the family; later activation is evidence-independent, not list-gated.**
-Rules 44, 62, 72, 73, 76, 84 and 105; **checks: P12-NF-45/46/48/49**. Telegram must first pass the
+Rules 44, 62, 72, 73, 76, 84 and 105; **checks: P12-NF-04/45/46/48/49**. Telegram must first pass the
 reference slice. A live canary is a bounded real test operation with an independent witness. After
 that, Slack, WhatsApp, iMessage, and web may each activate when that exact
 mode passes the shared suite, production wiring, account-level live canaries, independent
@@ -802,6 +814,14 @@ In particular, Slack remains inhibited until the Four half granted in
 `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy
 judgment consumer granted in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35)
 land, are implemented, and are covered by P12-NF-19/20.
+
+Part Three's existing generated capability briefing is the agent-awareness surface. At the active
+register generation, the feature declarations for every installed adapter mode, every supported or
+inhibited operation, and the public Part Four intake and Part Eight effect doorways appear in that
+briefing with their current status. P12-NF-04 fails if an installed mode, operation, inhibition, or
+public doorway is absent or misstated. P12-NF-49 fails if a platform, application programming
+interface, package, mode, or operation change leaves the generated briefing at the prior generation.
+No adapter keeps a separate hand-maintained capability list.
 
 ---
 
@@ -851,7 +871,7 @@ to the constitutional contract by having carried an important 1.x fix.
 | Property | Automatic workload and measurement | Bar and failure action |
 |---|---|---|
 | Capture-to-ack | Real platform events at idle, declared peak, boundary, and boundary-plus-one sizes; kill at write, flush, fact append, ack and cursor cuts | No protocol ack before durable custody; failed capture remains redeliverable or an owned outage |
-| Intake isolation | Open a recorded service round, then continuously flood one sender, conversation and adapter while healthy peers send ordinary and stop messages before and after the round frontier | Finite byte/concurrency/queue caps hold; every opening member is first-served by the current round close, every new arrival by the next round close, and no service delay exceeds two declared round durations |
+| Intake isolation and stop precedence | Open a recorded ordinary service round, keep an ordinary claim live on one route, then continuously flood it while healthy peers send ordinary work; during that round send the same route an exact bound-operator stop and a resolved requester stop-shaped signal in separate runs | Ordinary byte/concurrency/queue caps hold; every opening ordinary member is first-served by the current round close and every new ordinary arrival by the next round close. The exact operator stop bypasses eligibility and the live claim, appends its local-durable stop fact, and applies the local halt before further ordinary selection without waiting for round close or replication. The requester signal also bypasses the round and claim, surfaces immediately, and never authorizes a halt |
 | Outbound uniqueness | Kill at preparation, claim, provider acceptance, observation, witness and settlement; lose and duplicate callbacks | At most one external semantic reply; unresolved cuts retain identity, exposure and zero replay |
 | Formatting | Real captured bytes, malformed markup, unsafe links, Unicode, the null control character and other control data, adversarial nesting and declared size edges | Exact deterministic digest or explicit refusal; no meaning/audience/standing change and no unbounded parse |
 | Conversation identity | Restart, reconnect, rename, archive, topic/thread roots, account churn, aliases and cross-platform forwards | Same authenticated tuple resolves the same history; churn holds binding; no content-based merge |
@@ -903,7 +923,7 @@ conversation key, acknowledgment policy, provenance ceiling, or rendered-byte id
 | P12-NF-01 | build/docs | Missing owner, section, check, duty or governed discipline; closed inventories and compliant document pass |
 | P12-NF-02 | audit/docs | Unsupported 1.x claim or unnamed module/incident; named read-only evidence and scoped claim pass |
 | P12-NF-03 | architecture | New core message/binding/queue/retry type or private import; earlier-owned types and public ports pass |
-| P12-NF-04 | build/activation | Instance omits contract field, parser, operation or unsupported capability; complete exact-mode declaration passes |
+| P12-NF-04 | build/activation | Instance omits a contract field, parser, operation or unsupported capability, or the active-generation capability briefing omits or misstates an installed mode, supported/inhibited operation, or its public intake/effect doorway; complete exact-mode feature declarations and the regenerated briefing pass |
 | P12-NF-05 | architecture | Adapter selects standing, binding, classification, retry or success; translation plus owner decision passes |
 | P12-NF-06 | fault | Content interpretation, filtering, deduplication, acknowledgment or cursor advance is reachable before Part Four's route-bearing receipt, or route extraction reads message prose. A captured non-secret fixture passes through physical capture, bounded envelope extraction and landed `receive(raw, route)`. The secret-shaped neighbor is non-executable until the custody grants in `seam-response-intake-followup.md` and `seam-response-assembly-followup.md` land. A crash after extraction produces no acknowledgment and relies on provider redelivery; a crash after receipt drains through `recover(receiptId)` |
 | P12-NF-07 | captured contract | Token/session/locality/display name inflated to stronger provenance; re-checkable exact evidence passes |
@@ -939,7 +959,7 @@ conversation key, acknowledgment policy, provenance ceiling, or rendered-byte id
 | P12-NF-37 | retry | SDK/adapter invents backoff, invokes again, or mints a replacement identity; a Part Six bounded read-only observation wake for the unchanged operation/digest with zero additional invocations passes now. A successful successor is non-executable until `seam-response-effects-followup.md` and `seam-response-loop-followup.md` land and integrate the granted shared retry contract from `design-harness-adapters-seam-request-retry.md` |
 | P12-NF-38 | restart | Restart loses queued intake/send, resets attempts or changes identity; fact-derived outbox/drain resumes exactly |
 | P12-NF-39 | retention | Dead-letter, configured time-to-live (TTL), or purge deletes unresolved bytes, evidence or owner; retained terminal/pending obligation passes |
-| P12-NF-40 | fairness/load | Open a round over the recorded bounded eligible population, then continuously flood one failing route while a healthy route and stop are eligible before and after the frontier. The fixture fails if an opening member lacks a first-service opportunity by the current round close, a new arrival lacks one by the next round close, any delay exceeds two declared round durations, the frozen population grows with arrivals, or notices exceed one coalesced item per declared episode identity. The recorded round/open-close/population/selection/timing evidence passing all bounds is the positive neighbor |
+| P12-NF-40 | fairness/load | Open an ordinary round over the recorded bounded eligible population and keep an ordinary claim live on route A while continuously flooding A and serving a healthy ordinary route. Mid-round, deliver A's exact authenticated bound-operator stop; in a separate run deliver a resolved requester's exact stop-shaped signal. The fixture fails if either stop-shaped input waits for ordinary claim release, eligibility, selection, round close, or a replication peer; if the operator stop does not append Four's local-durable stop fact and apply Six's local halt before any further ordinary selection in scope; or if the requester signal does not surface immediately or is allowed to halt. For ordinary work it also fails if an opening member lacks a first-service opportunity by the current round close, a new arrival lacks one by the next round close, any ordinary delay exceeds two declared round durations, the frozen population grows with arrivals, or notices exceed one coalesced item per declared episode identity. The positive records the bounded ordinary round plus stop recognition, authentication/binding result, fact append, halt/signal disposition, and precedence timings |
 | P12-NF-41 | failure path | Advisory, refusal or notice is swallowed, recursive or reported sent; explicit bounded result and owner pass |
 | P12-NF-42 | isolation | Worker reads credential/raw account session or fabricates origin; scoped custodian and enrolled evidence pass |
 | P12-NF-43 | wiring/e2e | Harness/direct script bypasses intake/effect/grounding, a model provider is invoked by Seven without Eight's admitted operation path, or a required port is null. The complete real-model public chain is non-executable until `seam-response-judgment.md` and `seam-response-effects-followup.md` land and integrate the granted provider effect. Landed `start`/`recovery`/`resume` grounding remains supported. The compaction case is non-executable until `seam-response-run-closure.md`, `seam-response-rungraph-followup.md`, and `seam-response-effects-followup.md` land and integrate the granted producer and consumer. Production wiring is non-executable until the BUILT assembly seam accepted in `part-eleven-seam-response-assembly.md` is integrated |
@@ -948,7 +968,7 @@ conversation key, acknowledgment policy, provenance ceiling, or rendered-byte id
 | P12-NF-46 | live probe | File/token/process/config or malformed canary counts as life; real identity/inbound/outbound fresh proof passes |
 | P12-NF-47 | measurement | Target/estimate/success-only percentile labeled measured or failed sample omitted; named hardware workload record passes |
 | P12-NF-48 | three-tier | Mock-only or parser-only test makes a significant adapter live, secret-bearing production intake activates without the custody seam, or a real-model lifecycle uses Seven's reference executor without Eight admission and settlement. Unit, integration and real lifecycle evidence pass only with every required owner implementation. The production positive is non-executable until `seam-response-intake-followup.md`, `seam-response-assembly-followup.md`, `seam-response-judgment.md`, and `seam-response-effects-followup.md` land and integrate their granted custody, provider-effect, and assessment-consumption operations, and until the BUILT seam accepted in `part-eleven-seam-response-assembly.md` is integrated |
-| P12-NF-49 | upgrade | Platform/API/package change alters identity, provenance, ack or pending effect silently; scoped inhibition and compatible replay pass |
+| P12-NF-49 | upgrade | Platform/API/package/mode change alters identity, provenance, acknowledgment or pending effect silently, or leaves the generated capability briefing at the prior generation; scoped inhibition, compatible replay, and a regenerated briefing with the exact current modes, supported/inhibited operations, and public doorways pass |
 | P12-NF-50 | governance | A held or live claim without a current check-run and assessment fails, as does any implementation that implies approval. An honestly declared, inhibited fixture with its named approved dependency passes this check but cannot be promoted; for example, a P12-NF-53 declaration citing `part-eleven-seam-response-assembly.md` remains non-executable until that BUILT seam is integrated |
 | P12-NF-51 | family media | Telegram, Slack, or linked-device WhatsApp media is acknowledged before original receipt, a file path substitutes for custody, source text is injected privately, transcription calls a provider privately, a fallback sends privately, or derived text becomes a fresh verified sender event. The current positive preserves the original event, records Four's generic owned `needs-judgment` hold, may drain it to `expired-judgment`, and makes zero fetch/transcription/private-send calls. Successful fetch/derivation is non-executable until `seam-response-effects-payloads.md` and `seam-response-assembly-followup.md` land and the exact mode proves the integrated owner-governed path |
 | P12-NF-52 | 1.x migration | Old negative id, alias, bind pin, pending logical send, ambiguous send or `deliverToConversation` caller becomes unreadable, becomes authority, blindly replays, or imports queued PromiseBeacon work with user output enabled by omission. The import positive is non-executable until `seam-response-intake-followup.md`, `seam-response-rungraph-followup.md`, and `seam-response-effects-followup.md` land and integrate the granted authority-inert records. Until then, a read-only dry run reports the payload- and receipt-less send as unsupported. After integration it remains an inert capture linked to owned blocked work with zero effect/provider calls; absent/false PromiseBeacon output stays silent even for queued summaries, while explicit true exercises the ordinary effect path |
