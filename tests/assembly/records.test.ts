@@ -11,7 +11,7 @@ const names = Object.keys(assemblyInputs) as AssemblyRecordName[];
 const value = <T>(result: import('../../src/index.js').Result<T>): T => consumeResult(result, { Success: value => value, Refused: refusal => { throw new Error(refusal.detail); } });
 const refused = <T>(result: import('../../src/index.js').Result<T>, detail: string) => consumeResult(result, { Success: () => { throw new Error('expected refusal'); }, Refused: refusal => { expect(refusal.detail).toContain(detail); return refusal; } });
 
-it('P10-NF-01 P10-NF-02 exposes twelve closed stored payloads and leaves three ports as interfaces', () => {
+it('P10-NF-01 P10-NF-02 exposes twelve closed stored payloads and keeps composition ports interface-only', () => {
   const context = factsFixture().c; expect(names).toHaveLength(12); expect(Object.keys(assemblyShapes)).toEqual(names);
   for (const name of names) {
     const decoded = value(decodeAssemblyRecord(name, assemblyInput(name), context)); expect(decoded.type).toBe(name); expect(Object.isFrozen(decoded)).toBe(true);

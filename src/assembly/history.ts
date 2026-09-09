@@ -33,11 +33,15 @@ export function resolveAssemblyHistory(record: AssemblyRecord, spine: AssemblySp
     const byId = new Map(all.map(row => [row.fact.id, row])); const assemblyById = new Map(rows.map(row => [row.fact.id, row]));
     const statusForReference = (reference: string) => byId.get(reference)
       ?? all.find(row => factReferenceAliases(row.fact).includes(reference));
-    const queue = [seed.fact.id]; const visited = new Set<string>(); const missing = new Set<string>(); const conflicts: ConflictClass[] = [];
+    const queue: { id: string; allowPartial: boolean }[] = [{ id: seed.fact.id, allowPartial: false }];
+    const visited = new Set<string>(); const missing = new Set<string>(); const conflicts: ConflictClass[] = [];
     let completeness: AssemblyHistoryVerdict['completeness'] = 'complete';
     while (queue.length) {
-      const id = queue.shift()!; if (visited.has(id)) continue; visited.add(id);
-      const status = byId.get(id); if (!status) { missing.add(id); continue; }
+      const next = queue.shift()!; const { id, allowPartial } = next; if (visited.has(id)) continue; visited.add(id);
+      const status = byId.get(id); if (!status) {
+        if (allowPartial) completeness = 'partial'; else missing.add(id);
+        continue;
+      }
       conflicts.push(...status.conflicts);
       if (status.taint.length) conflicts.push({ key: `taint:${id}`, kind: 'poison-fact', facts: [id], detail: `referenced fact is ${status.taint.join(',')}` });
       const owned = assemblyById.get(id); if (owned) {
@@ -50,11 +54,13 @@ export function resolveAssemblyHistory(record: AssemblyRecord, spine: AssemblySp
             if (!referenceHasExpectedKind(reference, referenced.fact, resolved?.record)) {
               conflicts.push({ key: `wrong-kind:${id}:${reference.field}:${reference.id}`, kind: 'poison-fact', facts: [id, referenced.fact.id],
                 detail: `${reference.field} reference ${reference.id} has the wrong signed semantic kind; expected ${reference.expected ?? 'signed fact'}` });
-            } else queue.push(referenced.fact.id);
-          } else if (reference.requiredWhenSigned || reference.id === owned.record.id || /^[^:]+:\d+:\d+$/.test(reference.id)) missing.add(reference.id);
+            } else queue.push({ id: referenced.fact.id, allowPartial: reference.allowPartial });
+          } else if (reference.requiredWhenSigned || reference.id === owned.record.id || /^[^:]+:\d+:\d+$/.test(reference.id)) {
+            if (reference.allowPartial) completeness = 'partial'; else missing.add(reference.id);
+          }
         }
       }
-      for (const dependency of status.fact.predecessors.required) queue.push(dependency);
+      for (const dependency of status.fact.predecessors.required) queue.push({ id: dependency, allowPartial });
     }
     const unique = [...new Map(conflicts.map(item => [`${item.key}:${item.facts.join(',')}`, item])).values()];
     return freeze({ admitted: missing.size === 0 && unique.length === 0 && completeness === 'complete', completeness,

@@ -10,6 +10,7 @@ export {
 } from './records.js';
 export { currentAssemblyRows, resolveAssemblyHistory } from './history.js';
 export { createAssemblyRuntime } from './service.js';
+export { bootProductionAssembly, inspectProductionAssemblyBindings, consumeProductionAssembly } from './production.js';
 export { createNativeHarnessAdapter } from './harness.js';
 export type { NativeHarnessDriverPort } from './harness.js';
 export { createCustodiedPersistenceAdapter } from './persistence.js';

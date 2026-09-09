@@ -1,6 +1,13 @@
 import type { BoundaryContext, Clock, Hash, Json, Result, Scope, VerifiedPrincipal } from '../index.js';
 import type { AppendReceipt, ConflictClass, FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
-import type { ModelAdapterPort } from '../judgment/index.js';
+import type { IntakePort } from '../intake/index.js';
+import type { JudgmentDoorway, ModelAdapterPort } from '../judgment/index.js';
+import type { MinimalDependency, IndependentSurfaceVerifierPort, OperatorSurfacePort, minimalPlaneProjectionIds } from '../operator/index.js';
+import type { ProjectionDefinition } from '../projections/index.js';
+import type { RunGraphPort } from '../rungraph/index.js';
+import type { TransportAuthority } from '../transport/index.js';
+import type { EffectDoorway } from '../effects/index.js';
+import type { VerificationRuntimePort } from '../verification/index.js';
 
 declare class AssemblyBrand<N extends string> {
   private readonly assemblyValue: N;
@@ -19,7 +26,43 @@ export interface AssemblyManifest extends AssemblyValue<'AssemblyManifest'> {
   readonly servicePrincipals: readonly string[]; readonly grants: readonly string[]; readonly custodyPolicies: readonly string[];
   readonly resourcePolicies: readonly Readonly<{ class: 'ordinary' | 'repair' | 'control'; resource: string; limit: number }>[];
   readonly requiredChecks: readonly Readonly<{ tier: 'unit' | 'integration' | 'lifecycle'; ids: readonly string[] }>[];
+  /** Additive Part Eleven production bindings. Legacy/non-production manifests omit this field. */
+  readonly productionBindings?: readonly AssemblyProductionBindingSet[];
 }
+
+export type MinimalPlaneProjectionId = (typeof minimalPlaneProjectionIds)[number];
+export type AssemblyRequiredFactBinding = Readonly<{
+  readonly reference: string;
+  readonly expectedKind: string;
+  readonly required: true;
+}>;
+export type AssemblyImplementationBinding = Readonly<{
+  readonly implementation: string;
+  readonly fact: AssemblyRequiredFactBinding;
+}>;
+export type AssemblyProductionBindingSet = Readonly<{
+  readonly scope: string;
+  readonly surface: Readonly<{
+    adapter: AssemblyImplementationBinding;
+    challengeVerifier: AssemblyImplementationBinding & Readonly<{ administration: 'independent' }>;
+  }>;
+  readonly verifiedActIntake: AssemblyImplementationBinding & Readonly<{ operation: 'admitVerifiedAct' }>;
+  readonly minimalPlane: Readonly<{
+    folds: readonly Readonly<{ projection: MinimalPlaneProjectionId; implementation: string; fact: AssemblyRequiredFactBinding }>[];
+    sourceOnlyReplay: AssemblyImplementationBinding;
+  }>;
+  readonly minimalResponder: AssemblyImplementationBinding & Readonly<{
+    budgets: Readonly<{ worker: number; storage: number; queue: number; transport: number; effect: number }>;
+  }>;
+  readonly dependencies: readonly Readonly<{ name: MinimalDependency; fact: AssemblyRequiredFactBinding }>[];
+  readonly lifecycle: Readonly<{ cut: AssemblyImplementationBinding; recovery: AssemblyImplementationBinding }>;
+  readonly deliveryWitness: AssemblyImplementationBinding & Readonly<{
+    identity: string;
+    platform: string;
+    requester: string;
+    effectAdapter: string;
+  }>;
+}>;
 
 export interface AssemblyAdmission extends AssemblyValue<'AssemblyAdmission'> {
   readonly manifest: string; readonly manifestDigest: Hash; readonly machine: string; readonly incarnation: string;
@@ -203,10 +246,126 @@ export interface AssemblyRuntimePort {
   admit(manifest: string, scope: string): Result<AssemblyAdmission>;
 }
 
+export interface AssemblyVerifiedActIntakeBinding {
+  readonly owner: 'part-four';
+  readonly id: string;
+  readonly operation: 'admitVerifiedAct';
+  readonly port: IntakePort & Readonly<{ admitVerifiedAct(input: unknown): Result<unknown> }>;
+}
+export interface AssemblyProjectionFoldBinding {
+  readonly owner: 'part-eleven';
+  readonly id: MinimalPlaneProjectionId;
+  readonly implementation: string;
+  readonly definition: ProjectionDefinition;
+}
+export interface AssemblySourceOnlyReplayPort {
+  readonly owner: 'part-ten';
+  readonly id: string;
+  readonly sourceOnly: true;
+  rebuild(input: Readonly<{ definitions: readonly ProjectionDefinition[]; facts: readonly FactEnvelope[]; generation: string }>): Result<readonly unknown[]>;
+}
+export interface AssemblyMinimalResponderPort {
+  readonly owner: 'part-eleven';
+  readonly id: string;
+  readonly budgets: Readonly<{ worker: number; storage: number; queue: number; transport: number; effect: number }>;
+  respond(input: unknown): Result<string>;
+}
+type AssemblyLiveDependencyBase<N extends MinimalDependency> = Readonly<{
+  name: N;
+  reference: string;
+  provider: string;
+  current: true;
+}>;
+export type AssemblyLiveDependencyHandle =
+  | (AssemblyLiveDependencyBase<'local-facts'> & Readonly<{ durability: 'local-durable' }>)
+  | (AssemblyLiveDependencyBase<'register'> & Readonly<{ generation: string }>)
+  | (AssemblyLiveDependencyBase<'identity-keys'> & Readonly<{ keys: string }>)
+  | (AssemblyLiveDependencyBase<'clock'> & Readonly<{ clock: string }>)
+  | (AssemblyLiveDependencyBase<'lease'> & Readonly<{ exclusive: true }>)
+  | (AssemblyLiveDependencyBase<'fence'> & Readonly<{ exclusive: true }>)
+  | (AssemblyLiveDependencyBase<'replication-peer'> & Readonly<{ replicas: 1; distinctPeer: true }>)
+  | (AssemblyLiveDependencyBase<'conversation-binding'> & Readonly<{ binding: string }>)
+  | (AssemblyLiveDependencyBase<'route'> & Readonly<{ route: string }>)
+  | (AssemblyLiveDependencyBase<'delivery-evidence'> & Readonly<{ administration: 'independent' }>);
+export interface AssemblyDependencyAdmissionPort {
+  readonly owner: 'part-ten';
+  readonly id: string;
+  admit(input: Readonly<{ name: MinimalDependency; fact: FactEnvelope; completeness: 'complete' | 'partial'; missing: readonly string[] }>): Result<AssemblyLiveDependencyHandle>;
+}
+export interface AssemblyPrerequisiteLifecyclePort {
+  readonly owner: 'part-ten';
+  readonly cutId: string;
+  readonly recoveryId: string;
+  cut(name: MinimalDependency): Result<void>;
+  recover(name: MinimalDependency): Result<void>;
+}
+export interface AssemblyPlatformDeliveryWitnessPort {
+  readonly owner: 'part-nine';
+  readonly administration: 'independent';
+  readonly id: string;
+  readonly identity: string;
+  readonly platform: string;
+  observe(operation: string): Result<unknown>;
+}
+export interface AssemblyProductionComposition {
+  readonly requesterIdentity: string;
+  readonly effectAdapterIdentity: string;
+  readonly surface: OperatorSurfacePort;
+  readonly challengeVerifier: Readonly<{ id: string; port: IndependentSurfaceVerifierPort }>;
+  readonly verifiedActIntake: AssemblyVerifiedActIntakeBinding;
+  readonly folds: readonly AssemblyProjectionFoldBinding[];
+  readonly replay: AssemblySourceOnlyReplayPort;
+  readonly minimalResponder: AssemblyMinimalResponderPort;
+  readonly run: Readonly<{ id: string; port: RunGraphPort }>;
+  readonly lease: Readonly<{ id: string; port: TransportAuthority }>;
+  readonly judgment: Readonly<{ id: string; port: JudgmentDoorway }>;
+  readonly effect: Readonly<{ id: string; port: EffectDoorway }>;
+  readonly verification: Readonly<{ id: string; port: VerificationRuntimePort }>;
+  readonly dependencyAdmission: AssemblyDependencyAdmissionPort;
+  readonly lifecycle: AssemblyPrerequisiteLifecyclePort;
+  readonly deliveryWitness: AssemblyPlatformDeliveryWitnessPort;
+}
+export interface AssemblyResolvedProductionBinding {
+  readonly name: string;
+  readonly reference: string;
+  readonly expectedKind: string;
+  readonly fact: FactEnvelope;
+  readonly completeness: 'complete' | 'partial';
+  readonly missing: readonly string[];
+}
+export interface AssemblyProductionCoordinator {
+  readonly owner: 'part-ten';
+  readonly scope: string;
+  readonly admission: AssemblyAdmission;
+  readonly runtime: AssemblyRuntimePort;
+  readonly references: readonly AssemblyResolvedProductionBinding[];
+  readonly handles: Readonly<{
+    persistence: PersistenceAdapterPort;
+    harnesses: readonly HarnessAdapterPort[];
+    model: ModelAdapterPort;
+    intake: AssemblyVerifiedActIntakeBinding;
+    run: AssemblyProductionComposition['run'];
+    lease: AssemblyProductionComposition['lease'];
+    judgment: AssemblyProductionComposition['judgment'];
+    effect: AssemblyProductionComposition['effect'];
+    verification: AssemblyProductionComposition['verification'];
+    surface: OperatorSurfacePort;
+    challengeVerifier: AssemblyProductionComposition['challengeVerifier'];
+    folds: readonly AssemblyProjectionFoldBinding[];
+    replay: AssemblySourceOnlyReplayPort;
+    minimalResponder: AssemblyMinimalResponderPort;
+    dependencyAdmission: AssemblyDependencyAdmissionPort;
+    dependencies: Readonly<Record<MinimalDependency, AssemblyLiveDependencyHandle>>;
+    lifecycle: AssemblyPrerequisiteLifecyclePort;
+    deliveryWitness: AssemblyPlatformDeliveryWitnessPort;
+  }>;
+}
+
 export interface AssemblyComposition {
   readonly host: AssemblyHost; readonly spine: AssemblySpine; readonly harnesses: readonly HarnessAdapterPort[];
   readonly model: ModelAdapterPort; readonly persistence: PersistenceAdapterPort;
   readonly independentProtection: Readonly<{ owner: 'part-nine'; posture(scope: string): Result<'protected' | 'unprotected'> }>;
+  readonly production?: AssemblyProductionComposition;
 }
 
 export interface PackageArchiveEntry { readonly path: string; readonly bytes: string; readonly digest: Hash; readonly kind: 'file' }
