@@ -430,6 +430,11 @@ function constitutionalFact(reference: { readonly type: string; readonly id: str
   if (status) requireUsableFacts([fact], context, facts);
   return fact;
 }
+export function resolveConstitutionalResult(reference: { readonly type: string; readonly id: string;
+  readonly fact: { readonly owner: string; readonly name: string; readonly id: string }; readonly field: string },
+  facts: readonly FactEnvelope[], context: FactContext): FactEnvelope {
+  return constitutionalFact(reference, 'Result', facts, context);
+}
 function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: SharedLoopRecord['outcomeLog'][number],
   facts: readonly FactEnvelope[], context: FactContext, status = true): FactEnvelope {
   const fact = constitutionalFact(outcome.completion, 'Outcome', facts, context, status);
@@ -831,6 +836,13 @@ const parentRollingAt = (all: readonly TransportFact[], record: SharedLoopRecord
   }
   return rollingAt({ policy: record.policy, attemptLog: [...attempts.values()] }, now);
 };
+export function validateSharedParentPolicy(record: Pick<SharedLoopRecord, 'parentDuty' | 'policy'>,
+  all: readonly TransportFact[]): void {
+  ensure(all.filter(row => row.record.type === 'LoopRecord' && row.record.policy.breaker === 'shared-circuit-v1')
+    .filter(row => (row.record as SharedLoopRecord).parentDuty.id === record.parentDuty.id)
+    .every(row => encoded((row.record as SharedLoopRecord).policy).bytes === encoded(record.policy).bytes),
+  'conflicting parent pressure policy');
+}
 export function sharedAdmissionDecision(previous: SharedLoopRecord, all: readonly TransportFact[], now: Clock,
   input: Omit<LoopAttempt, 'mode'>): Readonly<{
     kind: 'stopped';
@@ -838,6 +850,7 @@ export function sharedAdmissionDecision(previous: SharedLoopRecord, all: readonl
     kind: 'admitted'; attempt: LoopAttempt; state: SharedLoopRecord['state']; transition: SharedLoopRecord['transition'];
     halfOpenAdmitted: number; halfOpenSucceeded: number; rollingAttempts: number; rollingResource: number;
   }> {
+  validateSharedParentPolicy(previous, all);
   ensure(previous.clockBasis === now.subject.instance && atOrAfter(now, previous.transitionAt),
     'incomparable or backward shared pressure time');
   ensure(input.episode === previous.episode, 'attempt episode differs from the governed loop episode');
@@ -940,6 +953,7 @@ function exactPrefix<T>(prior: readonly T[], next: readonly T[]): boolean {
 function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly TransportFact[], host: TransportHost,
   origin: boolean, evidenceFacts?: readonly FactEnvelope[], context?: FactContext): void {
   loopRecordCheck(record);
+  validateSharedParentPolicy(record, all);
   const previous = latestSharedLoop(all, record.pressureKey);
   if (origin) requireSharedLoopCandidate(host, record);
   if (!previous) {
@@ -1342,7 +1356,10 @@ function registerBodySet<S>(shapes: Readonly<Record<string, OwnedShape>>, host: 
           if (ctx.mode === 'origin') { live(host); checkFence(past, input as unknown as FenceToken, host, host.monotonic()); }
         }
         else if (recordNames.includes(name) || name === 'MissedRangeRecord') {
-          if (v.type === 'LoopRecord') loopRecordCheck(v);
+          // Main-owned legacy LoopRecords must enter their original transition
+          // validator before any additive shared-breaker validation. This keeps
+          // both acceptance and exact refusal Results byte-identical to main.
+          if (v.type === 'LoopRecord' && v.policy.breaker === 'shared-circuit-v1') loopRecordCheck(v);
           // The independently configured one-voter identity is invariant across
           // origin, replication and replay. Process incarnations may change;
           // a different signed actor/machine cannot speak for this authority.

@@ -100,6 +100,9 @@ export const transportSeamEvidence = [
   ['SLB-OUTCOME-FRONTIER-48', 'integration', 'review V3 signed outcome frontier refusal'],
   ['SLB-MISSED-BETWEEN-49', 'integration', 'review V13 exact between-members boundary acceptance'],
   ['SLB-LEGACY-INSPECT-50', 'integration', 'review V22 legacy inspect population preservation'],
+  ['SLB-PARENT-POLICY-51', 'integration', 'review V08 signed second-scope parent policy consistency'],
+  ['SLB-MISSED-INSTALLATION-52', 'integration', 'review V10 verified installation-history missed-range replay'],
+  ['SLB-LEGACY-DIFFERENTIAL-53', 'unit', 'review V23 main-byte legacy signed-decoder differential'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

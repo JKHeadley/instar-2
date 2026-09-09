@@ -7,9 +7,9 @@ import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAutho
   TransportAuthority, TransportFact, TransportHost, TransportOwnedRecord, TransportRowRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, latestSharedLoop, live, loopActive, missedRangeCheck, missedRows,
-  missedRangeEvidence, observationAdmission, policyCheck, reservations, resolveMissedRangeEvidence, resolvePolicyFact, resolveRunReference, resolveSourceVector, rows,
+  missedRangeEvidence, observationAdmission, policyCheck, reservations, resolveConstitutionalResult, resolveMissedRangeEvidence, resolvePolicyFact, resolveRunReference, resolveSourceVector, rows,
   resolvePressureBinding, restorationReferenceComplete, sharedAdmissionDecision, sharedLoopEvidence, sharedOutcomeDecision, sourceVectorCheck,
-  validateMissedRangeHistory, validateScanGeneration, validateTransition,
+  validateMissedRangeHistory, validateScanGeneration, validateSharedParentPolicy, validateTransition,
   withMissedRangeCandidate, withSharedLoopCandidate } from './records.js';
 import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
   requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication, withSettlementAttempt } from './settlement.js';
@@ -392,10 +392,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         ensure(previous.state === 'closed' || previous.pendingAttempts.length === 0
           && previous.failureCount < previous.policy.failureThreshold, 'shared pressure has an unfinished episode');
       }
-      ensure(all.filter(row => row.record.type === 'LoopRecord' && row.record.policy.breaker === 'shared-circuit-v1')
-        .filter(row => (row.record as SharedLoopRecord).parentDuty.id === input.policy.parentDuty.id)
-        .every(row => encoded((row.record as SharedLoopRecord).policy).bytes === encoded(input.policy).bytes),
-      'conflicting parent pressure policy');
+      validateSharedParentPolicy({ parentDuty: input.policy.parentDuty, policy: input.policy }, all);
       const episode = `loop:${encoded([pressureKey, input.episodeKey]).hash}`;
       ensure(!all.some(row => row.record.type === 'LoopRecord' && row.record.episode === episode), 'episode identity already used');
       const attemptLog = previous?.attemptLog ?? [], outcomeLog = previous?.outcomeLog ?? [];
@@ -566,6 +563,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       const snapshot = take(spine.store.readForProjection());
       ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length), 'shared pressure or missed-range state unavailable');
       const facts = evidenceFacts(), all = rows(facts, host.domain);
+      const context = semanticContext();
       const cursor = facts.find(fact => fact.id === input.scanCursor.id && fact.kind === kindFor('ScanCursor'));
       ensure(cursor, 'exact ScanCursor fact required');
       const episode = all.filter(row => row.record.type === 'LoopRecord' && row.record.episode === input.episode.id).at(-1)?.record;
@@ -573,9 +571,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         && encoded(episode.policy.parentDuty).bytes === encoded(input.parentDuty).bytes, 'missed range parent episode unavailable');
       for (const disposition of input.dispositions) {
         if (disposition.kind !== 'missed-no-execution') continue;
-        const entry = snapshot.entries.find(value => value.fact.id === disposition.result.fact.id);
-        ensure(entry?.constitutional.some(value => value.field === disposition.result.field
-          && value.value.type === 'Result'), 'missed member constitutional Result unavailable');
+        resolveConstitutionalResult(disposition.result, facts, context);
       }
       const catchUpIndexes = input.dispositions.map((value, index) => value.kind === 'catch-up-run' ? index : -1).filter(index => index >= 0);
       const otherwiseUnexecuted = input.dispositions.map((value, index) => value.kind === 'existing-run' ? -1 : index).filter(index => index >= 0);
