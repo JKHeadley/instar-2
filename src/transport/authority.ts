@@ -8,7 +8,7 @@ import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAutho
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, latestSharedLoop, live, loopActive, missedRangeCheck, missedRows,
   missedRangeEvidence, observationAdmission, policyCheck, reservations, resolveMissedRangeEvidence, resolvePolicyFact, resolveRunReference, resolveSourceVector, rows,
-  resolvePressureBinding, sharedAdmissionDecision, sharedLoopEvidence, sharedOutcomeDecision, sourceVectorCheck,
+  resolvePressureBinding, restorationReferenceComplete, sharedAdmissionDecision, sharedLoopEvidence, sharedOutcomeDecision, sourceVectorCheck,
   validateMissedRangeHistory, validateScanGeneration, validateTransition,
   withMissedRangeCandidate, withSharedLoopCandidate } from './records.js';
 import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
@@ -478,13 +478,27 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       ensure(atOrAfter(now, attempt.admittedAt), 'outcome clock precedes its admission');
       ensure(vectorKey(input.sourceVector) === vectorKey(attempt.sourceVector), 'outcome frontier differs from its admitted attempt');
       resolveSourceVector(input.sourceVector, history, context);
+      const completeRestoration = input.restoration.filter(reference => restorationReferenceComplete(reference,
+        history, context, now, previous.pressureKey, previous.operationFamily, host));
       const existing = previous.outcomeLog.find(value => value.attempt === input.attempt);
       if (existing) {
         ensure(existing.kind === input.kind && existing.failureClass === input.failureClass
           && existing.jitterPermille === input.jitterPermille && vectorKey(existing.sourceVector) === vectorKey(input.sourceVector)
-          && encoded(existing.restoration).bytes === encoded(input.restoration).bytes
           && encoded(existing.completion).bytes === encoded(input.completion).bytes,
-        'loop outcome changed after admission'); return previous;
+        'loop outcome changed after admission');
+        if (encoded(existing.restoration).bytes === encoded(input.restoration).bytes) return previous;
+        const closureEvidence = freeze([...new Map([...previous.closureEvidence, ...completeRestoration]
+          .map(value => [value.id, value])).values()]);
+        ensure(input.kind === 'accepted' && completeRestoration.length > 0
+          && previous.state === 'half-open' && previous.pendingAttempts.length === 0
+          && previous.halfOpenSucceeded >= policy.halfOpenTrials
+          && closureEvidence.length > previous.closureEvidence.length,
+        'loop outcome changed after admission without new complete restoration');
+        const m = meta(all, input.command);
+        const closed = freeze({ ...previous, ...m, nextWake: now.value, state: 'closed', pending: '',
+          transition: 'closed', transitionAt: now, nextEligible: now, sourceVector: previous.sourceVector,
+          policyGeneration: current.generation, closureEvidence } as SharedLoopRecord);
+        return managedWrite(all, closed);
       }
       ensure(previous.pendingAttempts.includes(input.attempt), 'attempt is not pending');
       ensure(input.kind === 'accepted' || input.kind === 'failed', 'unknown loop outcome');
@@ -500,7 +514,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         restoration: input.restoration, sourceVector: input.sourceVector } as LoopOutcome);
       ensure(atOrAfter(outcome.observedAt, attempt.admittedAt) && atOrAfter(now, outcome.observedAt),
         'outcome evidence or receipt clock precedes its admission');
-      const decision = sharedOutcomeDecision(previous, all, outcome, now), m = meta(all, input.command);
+      const decision = sharedOutcomeDecision(previous, all, outcome, now, completeRestoration), m = meta(all, input.command);
       const record = freeze({ ...previous, ...m, nextWake: decision.nextEligible.value, state: decision.state,
         pending: decision.pendingAttempts[0] ?? '', transition: decision.transition, transitionAt: now,
         nextEligible: decision.nextEligible, sourceVector: input.sourceVector,

@@ -100,6 +100,13 @@ export function shapeCheck(v: unknown, shape: OwnedShape): void {
   }
   ensure(shape.kind === 'object' && v !== null && typeof v === 'object' && !Array.isArray(v), 'closed object required');
   const r = v as Record<string, unknown>;
+  if (!shape.optional) {
+    ensure(Object.keys(r).length === Object.keys(shape.fields).length, 'undeclared or missing field');
+    for (const [key, field] of Object.entries(shape.fields)) {
+      ensure(Object.hasOwn(r, key), `missing ${key}`); shapeCheck(r[key], field);
+    }
+    return;
+  }
   ensure(Object.keys(r).every(key => Object.hasOwn(shape.fields, key)), 'undeclared field');
   for (const [key, field] of Object.entries(shape.fields)) {
     if (!Object.hasOwn(r, key)) { ensure(shape.optional?.includes(key), `missing ${key}`); continue; }
@@ -273,9 +280,21 @@ function evidenceFact(id: string, facts: readonly FactEnvelope[], context: FactC
     'VerificationAssessment predicate Evidence is conflicted');
   return candidates.at(-1)!;
 }
+function restorationAssessmentComplete(record: Readonly<{ missingEvidence?: unknown; captureStatuses?: unknown;
+  taints?: unknown; predicates?: unknown }>): boolean {
+  const predicates = Array.isArray(record.predicates)
+    ? record.predicates as readonly { predicate?: unknown; verdict?: unknown }[] : [];
+  const verdict = (name: string) => predicates.find(value => value.predicate === name)?.verdict;
+  return Array.isArray(record.missingEvidence) && record.missingEvidence.length === 0
+    && Array.isArray(record.taints) && record.taints.length === 0
+    && Array.isArray(record.captureStatuses) && record.captureStatuses.every(value =>
+      value !== null && typeof value === 'object' && (value as { status?: unknown }).status === 'available')
+    && verdict('occurrence') === 'satisfied' && verdict('non-occurrence') === 'contradicted'
+    && verdict('quiescence') === 'satisfied' && verdict('charge') === 'satisfied';
+}
 export function resolveRestorationReference(reference: SharedLoopRecord['closureEvidence'][number],
   facts: readonly FactEnvelope[], context: FactContext, at: Clock, pressureKey: string,
-  operationFamily: string, host: TransportHost, status = true): readonly FactEnvelope[] {
+  operationFamily: string, host: TransportHost, status = true, requireComplete = true): readonly FactEnvelope[] {
   referenceCheck(reference, 'part-nine', 'VerificationAssessment');
   const candidates = allFacts(facts).filter(fact => schemaOwns(context, fact, 'record', 'part-nine', 'VerificationAssessment'))
     .filter(fact => fact.id === reference.id
@@ -292,7 +311,6 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
     && record.validFrom! <= at.value && at.value < record.validUntil!, 'VerificationAssessment evidence is stale');
   const expectedDigest = encoded([pressureKey, operationFamily]).hash;
   const predicates = Array.isArray(record.predicates) ? record.predicates as readonly { predicate?: unknown; verdict?: unknown }[] : [];
-  const verdict = (name: string) => predicates.find(value => value.predicate === name)?.verdict;
   ensure(record.operation === operationFamily && record.operationDigest === expectedDigest,
     'VerificationAssessment restoration subject differs from the governed pressure');
   ensure(typeof record.request === 'string' && typeof record.attempt === 'string' && typeof record.barVersion === 'string'
@@ -325,13 +343,8 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
     .map(value => [value.id, value])).values()];
   ensure([requestFact, ...evidenceFacts, ...superseded].every(value => predecessors.includes(value.id)),
     'VerificationAssessment support is outside its signed predecessor set');
-  ensure(Array.isArray(record.missingEvidence) && record.missingEvidence.length === 0
-    && Array.isArray(record.taints) && record.taints.length === 0
-    && Array.isArray(record.captureStatuses) && record.captureStatuses.every(value =>
-      value !== null && typeof value === 'object' && (value as { status?: unknown }).status === 'available')
-    && verdict('occurrence') === 'satisfied' && verdict('non-occurrence') === 'contradicted'
-    && verdict('quiescence') === 'satisfied' && verdict('charge') === 'satisfied',
-  'VerificationAssessment does not establish complete restoration');
+  if (requireComplete) ensure(restorationAssessmentComplete(record),
+    'VerificationAssessment does not establish complete restoration');
   ensure(host.restorationEvidence?.owner === 'part-nine', 'independent restoration evidence unavailable');
   const verified = take(host.restorationEvidence.verify({ reference, pressureKey, operationFamily }));
   ensure(encoded(verified.reference).bytes === encoded(reference).bytes
@@ -345,6 +358,24 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
   if (status) requireUsableFacts(support, context, facts);
   return support;
 }
+export function restorationReferenceComplete(reference: SharedLoopRecord['closureEvidence'][number],
+  facts: readonly FactEnvelope[], context: FactContext, at: Clock, pressureKey: string,
+  operationFamily: string, host: TransportHost, status = true): boolean {
+  const support = resolveRestorationReference(reference, facts, context, at, pressureKey,
+    operationFamily, host, status, false);
+  const assessment = support.find(fact => schemaOwns(context, fact, 'record', 'part-nine', 'VerificationAssessment')
+    && (fact.id === reference.id
+      || (fact.body as { record?: { id?: unknown } }).record?.id === reference.id));
+  ensure(assessment, 'VerificationAssessment evidence is absent');
+  return restorationAssessmentComplete((assessment.body as {
+    record: Parameters<typeof restorationAssessmentComplete>[0]
+  }).record);
+}
+function sharedLoopMeasurements(record: SharedLoopRecord, host: TransportHost): void {
+  const values = [record.transitionAt, record.nextEligible, record.breakerFirstOpened,
+    ...record.attemptLog.map(value => value.admittedAt), ...record.outcomeLog.map(value => value.observedAt)];
+  for (const value of values) take(decodeMeasurement('clock', value, host.current().decode));
+}
 function requiredBy(origin: FactEnvelope, dependencies: readonly FactEnvelope[]): void {
   const required = new Set(origin.predecessors.required);
   ensure(dependencies.every(fact => required.has(fact.id)), 'owner evidence is outside the signed required-reference set');
@@ -352,6 +383,7 @@ function requiredBy(origin: FactEnvelope, dependencies: readonly FactEnvelope[])
 export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly FactEnvelope[], context: FactContext,
   host: TransportHost): readonly FactEnvelope[] {
   const history = allFacts(facts);
+  sharedLoopMeasurements(record, host);
   const dependencies: FactEnvelope[] = [
     resolvePolicyFact(record.policy, record.policyGeneration.id, history, context, false),
     resolveRunReference(record.parentDuty, history, context, undefined, false),
@@ -363,8 +395,7 @@ export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly Fac
     dependencies.push(...resolveSourceVector(outcome.sourceVector, history));
     dependencies.push(resolveLoopOutcomeCompletion(record, outcome, history, context, false));
     for (const reference of outcome.restoration) dependencies.push(...resolveRestorationReference(reference, history, context,
-      record.transition === 'closed' ? record.transitionAt : outcome.observedAt,
-      record.pressureKey, record.operationFamily, host, false));
+      outcome.observedAt, record.pressureKey, record.operationFamily, host, false, false));
   }
   for (const attempt of record.attemptLog) dependencies.push(...resolveSourceVector(attempt.sourceVector, history));
   for (const reference of record.closureEvidence) {
@@ -410,12 +441,6 @@ function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: SharedL
   ensure((fact.body as { loopAttemptBinding?: unknown }).loopAttemptBinding === expectedBinding,
     'Outcome completion is not bound to this loop attempt and operation family');
   const signedClass = (fact.body as { loopFailureClass?: unknown }).loopFailureClass;
-  const expectedPolicy = encoded([record.policy.id, record.policyGeneration.id,
-    record.policy.countedFailureClasses]).hash;
-  ensure(typeof signedClass === 'string' && signedClass === outcome.failureClass
-    && (derivedKind === 'failed' ? signedClass.length > 0 : signedClass.length === 0)
-    && (fact.body as { loopFailurePolicy?: unknown }).loopFailurePolicy === expectedPolicy,
-  'loop failure class is not witnessed under the pinned classification policy');
   const attemptFacts = allFacts(facts).filter(candidate => candidate.kind === kindFor('LoopRecord'))
     .filter(candidate => {
       const candidateRecord = (candidate.body as { record?: Partial<SharedLoopRecord> }).record;
@@ -423,8 +448,20 @@ function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: SharedL
         && candidateRecord.pressureKey === record.pressureKey && candidateRecord.operationFamily === record.operationFamily
         && candidateRecord.attemptLog?.some(attempt => attempt.id === outcome.attempt);
     });
-  ensure(attemptFacts.length > 0 && attemptFacts.some(candidate => fact.predecessors.required.includes(candidate.id)),
+  const witnessedAttempts = attemptFacts.filter(candidate => fact.predecessors.required.includes(candidate.id));
+  ensure(witnessedAttempts.length > 0,
     'Outcome completion does not witness its admitted loop attempt');
+  ensure(new Set(witnessedAttempts.map(candidate => {
+    const admitted = (candidate.body as unknown as { record: SharedLoopRecord }).record;
+    return encoded([admitted.policy, admitted.policyGeneration]).bytes;
+  })).size === 1, 'Outcome completion has conflicting admitted policy generations');
+  const admitted = (witnessedAttempts.at(-1)!.body as unknown as { record: SharedLoopRecord }).record;
+  const expectedPolicy = encoded([admitted.policy.id, admitted.policyGeneration.id,
+    admitted.policy.countedFailureClasses]).hash;
+  ensure(typeof signedClass === 'string' && signedClass === outcome.failureClass
+    && (derivedKind === 'failed' ? signedClass.length > 0 : signedClass.length === 0)
+    && (fact.body as { loopFailurePolicy?: unknown }).loopFailurePolicy === expectedPolicy,
+  'loop failure class is not witnessed under the admitted classification policy');
   ensure(encoded(outcome.observedAt).bytes === encoded(fact.at).bytes,
     'loop outcome ordering clock differs from signed completion evidence');
   return fact;
@@ -432,6 +469,10 @@ function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: SharedL
 export function missedRangeEvidence(record: MissedRangeRecord, facts: readonly FactEnvelope[], context: FactContext,
   host: TransportHost): readonly FactEnvelope[] {
   missedRangeCheck(record);
+  for (const value of [record.asOf, record.first, record.last,
+    ...record.dispositions.map(disposition => disposition.scheduledInstant)])
+    take(decodeMeasurement('clock', value, host.current().decode));
+  take(decodeMeasurement('duration', record.currentLateness, host.current().decode));
   ensure(host.calendarExpansion?.owner === 'part-fifteen', 'calendar expansion authority unavailable');
   const history = allFacts(facts), parent = resolveRunReference(record.parentDuty, history, context, undefined, false);
   const episode = history.find(fact => fact.kind === kindFor('LoopRecord')
@@ -837,7 +878,8 @@ export function sharedAdmissionDecision(previous: SharedLoopRecord, all: readonl
     halfOpenSucceeded, ...rolling });
 }
 export function sharedOutcomeDecision(previous: SharedLoopRecord, all: readonly TransportFact[],
-  added: LoopOutcome, receiptAt: Clock): Readonly<Pick<SharedLoopRecord, 'state' | 'transition' | 'nextEligible'
+  added: LoopOutcome, receiptAt: Clock,
+  completeRestoration: ReadonlyArray<SharedLoopRecord['closureEvidence'][number]> = added.restoration): Readonly<Pick<SharedLoopRecord, 'state' | 'transition' | 'nextEligible'
   | 'totalFailures' | 'failureCount' | 'rollingAttempts' | 'rollingResource' | 'breakerHasOpened'
   | 'breakerOpenCount' | 'breakerFirstOpened' | 'halfOpenAdmitted' | 'halfOpenSucceeded'
   | 'pendingAttempts' | 'outcomeLog' | 'outcomeWindowDigest' | 'closureEvidence'>> {
@@ -866,7 +908,7 @@ export function sharedOutcomeDecision(previous: SharedLoopRecord, all: readonly 
     halfOpenAdmitted = 0; halfOpenSucceeded = 0;
   } else if (attempt.mode === 'half-open') {
     halfOpenSucceeded += added.kind === 'accepted' ? 1 : 0;
-    closureEvidence = freeze([...new Map([...closureEvidence, ...added.restoration].map(value => [value.id, value])).values()]);
+    closureEvidence = freeze([...new Map([...closureEvidence, ...completeRestoration].map(value => [value.id, value])).values()]);
     if (halfOpenSucceeded >= policy.halfOpenTrials && pendingAttempts.length === 0 && closureEvidence.length > 0) {
       state = 'closed'; transition = 'closed'; nextEligible = receiptAt;
     } else state = 'half-open';
@@ -892,7 +934,8 @@ export function sharedOutcomeDecision(previous: SharedLoopRecord, all: readonly 
 function exactPrefix<T>(prior: readonly T[], next: readonly T[]): boolean {
   return prior.every((value, index) => encoded(value as never).bytes === encoded(next[index] as never).bytes);
 }
-function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly TransportFact[], host: TransportHost, origin: boolean): void {
+function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly TransportFact[], host: TransportHost,
+  origin: boolean, evidenceFacts?: readonly FactEnvelope[], context?: FactContext): void {
   loopRecordCheck(record);
   const previous = latestSharedLoop(all, record.pressureKey);
   if (origin) requireSharedLoopCandidate(host, record);
@@ -1013,6 +1056,23 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
       'attempt admission differs from the complete policy and parent-budget calculation');
     return;
   }
+  if (record.transition === 'closed' && unchangedAttempts && unchangedOutcomes) {
+    ensure(previous.state === 'half-open' && previous.pendingAttempts.length === 0
+      && previous.halfOpenSucceeded >= previous.policy.halfOpenTrials
+      && exactPrefix(previous.closureEvidence, record.closureEvidence)
+      && record.closureEvidence.length > previous.closureEvidence.length,
+    'evidence-only closure lacks completed trials or new restoration support');
+    const expected = freeze({ ...previous,
+      schemaVersion: record.schemaVersion, domain: record.domain, command: record.command,
+      predecessor: record.predecessor, authority: record.authority, tick: record.tick,
+      nextWake: record.transitionAt.value, state: 'closed' as const, pending: '', transition: 'closed' as const,
+      transitionAt: record.transitionAt, nextEligible: record.transitionAt, sourceVector: previous.sourceVector,
+      policyGeneration: record.policyGeneration, closureEvidence: record.closureEvidence,
+    } as SharedLoopRecord);
+    ensure(encoded(record).bytes === encoded(expected).bytes,
+      'evidence-only closure changed the recorded completion or breaker history');
+    return;
+  }
   ensure(record.outcomeLog.length === previous.outcomeLog.length + 1 && unchangedAttempts,
     'outcome transition must add exactly one witnessed completion');
   const added = record.outcomeLog.find(outcome => !previous.outcomeLog.some(old => old.attempt === outcome.attempt));
@@ -1024,7 +1084,11 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
     'outcome population is not canonically ordered');
   ensure(encoded(record.pendingAttempts).bytes === encoded(previous.pendingAttempts.filter(id => id !== added.attempt)).bytes,
     'outcome changed the pending population');
-  const expected = sharedOutcomeDecision(previous, all, added, record.transitionAt);
+  const completeRestoration = evidenceFacts && context
+    ? added.restoration.filter(reference => restorationReferenceComplete(reference, evidenceFacts, context,
+      record.transitionAt, record.pressureKey, record.operationFamily, host, false))
+    : added.restoration.filter(reference => record.closureEvidence.some(value => value.id === reference.id));
+  const expected = sharedOutcomeDecision(previous, all, added, record.transitionAt, completeRestoration);
   const actual = { state: record.state, transition: record.transition, nextEligible: record.nextEligible,
     totalFailures: record.totalFailures, failureCount: record.failureCount, rollingAttempts: record.rollingAttempts,
     rollingResource: record.rollingResource, breakerHasOpened: record.breakerHasOpened,
@@ -1119,7 +1183,8 @@ export function live(host: TransportHost): void {
 // The owner validator runs INSIDE P2's append boundary, after signed-chain checks and
 // before its compare-head durable append. A caller bypassing the authority API cannot
 // rebase a stale transition on a newer envelope head.
-export function validateTransition(r: TransportRowRecord, all: readonly TransportFact[], host: TransportHost, origin = false): void {
+export function validateTransition(r: TransportRowRecord, all: readonly TransportFact[], host: TransportHost,
+  origin = false, evidenceFacts?: readonly FactEnvelope[], context?: FactContext): void {
   ensure(r.domain === host.domain && r.schemaVersion === 1 && r.command.length > 0 && r.tick >= 0, 'record domain or identity');
   ensure(r.predecessor === (all.at(-1)?.fact.id ?? ''), 'conditional predecessor changed');
   ensure(!all.some(v => v.record.command === r.command), 'command already committed');
@@ -1202,7 +1267,8 @@ export function validateTransition(r: TransportRowRecord, all: readonly Transpor
       }
     } else if (r.type === 'LoopRecord') {
       policyCheck(r.policy);
-      if (r.policy.breaker === 'shared-circuit-v1') validateSharedLoopHistory(r as SharedLoopRecord, all, host, origin);
+      if (r.policy.breaker === 'shared-circuit-v1')
+        validateSharedLoopHistory(r as SharedLoopRecord, all, host, origin, evidenceFacts, context);
       else {
         ensure(r.run.length > 0 && r.episode === `loop:${encoded([r.domain, r.run]).hash}`, 'stable loop episode');
         ensure(['scheduled', 'running', 'restoring', 'waiting', 'stopped'].includes(r.state) && r.attempts >= 0 && r.attempts <= r.policy.maxAttempts, 'loop state or count');
@@ -1293,7 +1359,7 @@ function registerBodySet<S>(shapes: Readonly<Record<string, OwnedShape>>, host: 
           } else {
             if (v.type === 'LoopRecord' && v.policy.breaker === 'shared-circuit-v1')
               resolveSharedLoopEvidence(v as SharedLoopRecord, ctx.origin, ctx.facts.facts, ctx.facts, host);
-            validateTransition(v, past, host, admitting);
+            validateTransition(v, past, host, admitting, cone, ctx.facts);
           }
           if (v.type === 'SettlementApplication') {
             checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past);

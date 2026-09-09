@@ -4,6 +4,8 @@ import { createFactStore, decodeEnvelope, decodeHistoricalBody, factId, prepareS
 import type { FactEnvelope } from '../../src/facts/index.js';
 import { createBoundedDueScanPort, decodeLoopPolicy, decodeMissedRangeRecord } from '../../src/transport/index.js';
 import type { FenceToken, MissedRangeInput, SharedBreakerLoopPolicy, SharedLoopRecord } from '../../src/transport/index.js';
+import { deriveVerificationAssessment } from '../../src/verification/index.js';
+import type { VerificationAssessment, VerificationPlan, VerificationRequest } from '../../src/verification/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { transportLoopFixture, value } from '../transport/loop-fixture.js';
 
@@ -38,6 +40,45 @@ function outcome(s: ReturnType<typeof setup>, id: string, kind: 'accepted' | 'fa
 function open(s: ReturnType<typeof setup>) {
   s.f.advance(1); value(attempt(s, 'open:a')); value(outcome(s, 'open:a'));
   s.f.advance(2); value(attempt(s, 'open:b')); s.loop = value(outcome(s, 'open:b')); return s;
+}
+function appendPartialRestoration(s: ReturnType<typeof setup>) {
+  const completeFact = s.f.assessmentFact('assessment:witnessed-review')!;
+  const complete = (completeFact.body as unknown as { record: VerificationAssessment }).record;
+  const requestFact = s.f.ctx.facts.find(fact =>
+    (fact.body as { record?: { type?: unknown; id?: unknown } }).record?.type === 'VerificationRequest'
+      && (fact.body as { record?: { id?: unknown } }).record?.id === complete.request)!;
+  const request = (requestFact.body as unknown as { record: VerificationRequest }).record;
+  const planFact = s.f.ctx.facts.find(fact =>
+    (fact.body as { record?: { type?: unknown; id?: unknown } }).record?.type === 'VerificationPlan'
+      && (fact.body as { record?: { id?: unknown } }).record?.id === request.plan)!;
+  const plan = (planFact.body as unknown as { record: VerificationPlan }).record;
+  const assessment = value(deriveVerificationAssessment({ request, plan, evidence: [], observer: s.f.alice.id,
+    vectorDigest: complete.vectorDigest, knownLineages: complete.knownLineages, captureStatuses: [], taints: [],
+    now: s.f.host.current().clock, predecessors: [requestFact.id], decode: s.f.ctx.decode }, s.f.c));
+  expect(assessment.missingEvidence.length).toBeGreaterThan(0);
+  const stored = value(s.f.store.read()), last = stored.at(-1)!;
+  const segment = { machine: s.f.host.machine, epoch: last.segment.epoch, position: last.segment.position + 1 };
+  const wire = signEnvelope({ type: 'FactEnvelope', envelopeVersion: 1, id: factId(segment),
+    kind: 'verification-VerificationAssessment', schemaVersion: 1, machine: s.f.host.machine,
+    principal: s.f.alice, provenance: s.f.alice.provenance, at: s.f.host.current().clock, segment,
+    prevInSegment: last.contentHash, predecessors: { inSegment: last.id, frontier: {}, required: [requestFact.id] },
+    body: { record: assessment } }, privateKey);
+  value(s.f.store.append(wire, { peer: s.f.host.machine }));
+  const reference = { owner: 'part-nine' as const, name: 'VerificationAssessment' as const, id: assessment.id };
+  const original = s.f.host.restorationEvidence!;
+  Object.assign(s.f.host, { restorationEvidence: { owner: 'part-nine',
+    verify: (input: Parameters<typeof original.verify>[0]) => input.reference.id !== assessment.id
+      ? original.verify(input) : s.f.result(() => {
+        const current = value(deriveVerificationAssessment({ request, plan, evidence: [], observer: s.f.alice.id,
+          vectorDigest: complete.vectorDigest, knownLineages: complete.knownLineages, captureStatuses: [], taints: [],
+          now: s.f.host.current().clock, predecessors: [requestFact.id], decode: s.f.ctx.decode }, s.f.c));
+        expect(current).toEqual(assessment);
+        return { reference, operation: current.operation, operationDigest: current.operationDigest,
+          missingEvidence: current.missingEvidence, captureStatuses: current.captureStatuses, taints: current.taints,
+          predicates: current.predicates.map(({ predicate, verdict }) => ({ predicate, verdict })),
+          validFrom: current.validFrom, validUntil: current.validUntil };
+      }) } });
+  return reference;
 }
 function signedNext(f: Fixture, record: SharedLoopRecord | Record<string, unknown>) {
   const facts = value(f.store.read()), last = facts.at(-1)!;
@@ -407,3 +448,51 @@ it('SLB-RESTORE-30 V26 requires a current Part Nine assessment with signed reque
     restoration: [witnessed.f.restorationReference('assessment:witnessed-review')] }));
   expect(closed).toMatchObject({ state: 'closed', transition: 'closed' });
 }, 20000);
+
+it('SLB-SIGNED-CLOCK-43 V15 V17 refuses correctly signed loop records with unregistered clocks on replay and replication', () => {
+  const s = setup();
+  const mutation = mutateLast(s, record => {
+    const invalid = (clock: SharedLoopRecord['transitionAt']) => ({ ...clock,
+      unit: 'bogus-unit', by: 'unregistered' }) as unknown as SharedLoopRecord['transitionAt'];
+    return { ...record, transitionAt: invalid(record.transitionAt), nextEligible: invalid(record.nextEligible),
+      breakerFirstOpened: invalid(record.breakerFirstOpened) };
+  });
+  rejects(decodeHistoricalBody(mutation.frame, mutation.ctx, mutation.ctx.decode), 'unit');
+  rejects(mutation.replicate(), 'unit');
+});
+
+it('SLB-GENERATION-COMPLETE-44 V14 resolves completion against the admission-pinned generation after rollover', () => {
+  const s = setup();
+  value(s.f.api.release('release:generation-complete', s.token));
+  s.f.generation('generation:2');
+  s.token = value(s.f.api.acquire('lease:generation-complete:g2', s.f.head(), 1000));
+  s.f.revalidatePolicy(); s.f.advance(1);
+  value(attempt(s, 'generation:complete'));
+  expect(value(outcome(s, 'generation:complete', 'accepted'))).toMatchObject({
+    state: 'waiting', policyGeneration: { id: 'generation:2' }, pendingAttempts: [],
+  });
+});
+
+it('SLB-PARTIAL-RESTORATION-45 V18 retains an authentic partial assessment without promoting closure', () => {
+  const s = open(setup({ halfOpenTrials: 1 })); s.f.advance(20);
+  value(attempt(s, 'partial:trial'));
+  const reference = appendPartialRestoration(s);
+  const retained = value(outcome(s, 'partial:trial', 'accepted', { restoration: [reference] }));
+  expect(retained).toMatchObject({ state: 'half-open', transition: 'outcome-recorded', pendingAttempts: [] });
+  expect(retained.outcomeLog.at(-1)!.restoration).toEqual([reference]);
+  expect(retained.closureEvidence).toEqual([]);
+});
+
+it('SLB-DELAYED-RESTORATION-46 V19 closes by an evidence-only successor without rewriting the passing completion', () => {
+  const s = open(setup({ halfOpenTrials: 1 })); s.f.advance(20);
+  value(attempt(s, 'delayed:trial'));
+  const completion = s.f.appendOutcome('accepted', 'delayed:trial');
+  const passing = value(outcome(s, 'delayed:trial', 'accepted', { completion }));
+  expect(passing.state).toBe('half-open');
+  const closed = value(outcome(s, 'delayed:trial', 'accepted', {
+    command: 'closure:delayed:new-evidence', completion,
+    restoration: [s.f.restorationReference('assessment:witnessed-review')],
+  }));
+  expect(closed).toMatchObject({ state: 'closed', transition: 'closed', outcomeLog: passing.outcomeLog });
+  expect(closed.closureEvidence).toHaveLength(1);
+});

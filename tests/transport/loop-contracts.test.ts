@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { canonical, consumeResult } from '../../src/index.js';
 import { createBoundedDueScanPort, decodeLoopPolicy, decodeLoopRecord, decodeMissedRangeRecord, decodeScanCursor } from '../../src/transport/index.js';
-import type { MissedRangeRecord } from '../../src/transport/index.js';
+import type { FenceToken, MissedRangeRecord } from '../../src/transport/index.js';
 import { transportLoopFixture, refused, value } from './loop-fixture.js';
 import { transportFixture } from './fixture.js';
 
@@ -67,6 +67,22 @@ it('SLB-LEGACY-REFUSALS-41 P2 keeps missing and unknown legacy breaker refusals 
   expect(refusal({ ...f.policy, breaker: 'unknown' })).toEqual({ type: 'Result', schemaVersion: 1,
     kind: 'Refused', reason: 'decode', detail: 'unsupported loop policy', site: 'facts.admit',
     failDirection: 'closed', preserved: 'refusal:metadata' });
+});
+
+it('SLB-LEGACY-FENCE-42 V02 preserves the exact legacy malformed-fence refusal for extra and missing fields', () => {
+  const f = transportFixture(), token = value(f.api.acquire('legacy-fence', '', 500));
+  const expected = { type: 'Result', schemaVersion: 1, kind: 'Refused', reason: 'decode',
+    detail: 'undeclared or missing field', site: 'facts.admit', failDirection: 'closed',
+    preserved: 'refusal:metadata' };
+  for (const mutation of ['extra', 'missing'] as const) {
+    const candidate = { ...token } as Record<string, unknown>;
+    if (mutation === 'extra') candidate.extra = true;
+    else delete candidate.epoch;
+    const refusal = consumeResult(f.api.admitWrite(`legacy-fence:${mutation}`, candidate as unknown as FenceToken), {
+      Success: () => { throw new Error('expected refusal'); }, Refused: result => result,
+    });
+    expect(refusal).toEqual(expected);
+  }
 });
 
 it('SLB-DECODE-03 P6-NF-02 P6-NF-33 closes the exact MissedRangeRecord payload', () => {

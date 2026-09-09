@@ -91,6 +91,11 @@ export const transportSeamEvidence = [
   ['SLB-ROLLING-39', 'integration', 'V21 stopped transition current rolling counters'],
   ['SLB-ZERO-CAP-40', 'integration', 'V13 finite zero work caps'],
   ['SLB-LEGACY-REFUSALS-41', 'unit', 'P2 exact legacy missing and unknown breaker refusals'],
+  ['SLB-LEGACY-FENCE-42', 'unit', 'V02 exact malformed-fence legacy refusal'],
+  ['SLB-SIGNED-CLOCK-43', 'integration', 'V15 V17 signed replay and replication clock validation'],
+  ['SLB-GENERATION-COMPLETE-44', 'integration', 'V14 admission-pinned generation completion'],
+  ['SLB-PARTIAL-RESTORATION-45', 'integration', 'V18 authentic partial restoration retention'],
+  ['SLB-DELAYED-RESTORATION-46', 'integration', 'V19 evidence-only delayed closure successor'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {
