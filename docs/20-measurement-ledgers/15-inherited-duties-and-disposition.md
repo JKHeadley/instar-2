@@ -1,0 +1,19 @@
+## 15. Inherited duties and disposition
+
+**Rule — no inherited duty remains parked.** Rules 8, 49, 69 and 71; **checks:
+P16-NF-01/03/49/52**.
+
+| Duty | Disposition |
+|---|---|
+| Token and usage accounting | **Current identity/fold slice plus tracked activation:** refinement/conflict and signed-history attribution are current. The complete production attempt census, including benchmark execution, is non-executable until `seam-response-judgment.md` and `seam-response-assembly-followup.md` land with the named production wiring. Observation ingestion, exact live coverage and expanded categories also wait on their owner seams; no blocked positive neighbor is claimed, P16-NF-07–14. |
+| Per-feature model-call and spend accounting | **Held at the read contract:** attribution re-resolves through signed history and totals retain unattributed/conflicted amounts, P16-NF-12–20/30; priced output waits on part three. |
+| Price manifests joined on read | **Declared, not implementable yet:** the effective-point and arithmetic contract is specified, but P16-NF-15 and dependent activation wait on the part-three manifest seam. |
+| Quota ledger | **Held as observation:** account/window provenance and unknown states are complete; scheduling authority is deliberately re-expressed through earlier owners, P16-NF-21–23/35/51. |
+| CPU, memory and process footprint | **Held at the measurement contract, activation blocked in part:** named hardware/incarnations, bounded sampling, rate-event identity and observer self-cost are covered by P16-NF-24–29/46; admission waits on part four. |
+| Burn and routing-spend views | **Current burn algorithm plus tracked spend activation:** each activity source selects one registered quantity or derivation, applied unchanged to current, baseline and comparison populations; one exchange remains one sample even when input, output and cache-subset quantities feed its amount. The expanded-category P16-NF-33 arm waits on `seam-response-assembly-followup.md`. Missing or dispatch-uncertain windows retain episodes, complete affirmatively proven inactivity closes explicitly, and adequate defined-share recovery — including a zero feature numerator over a positive comparison denominator — uses consecutive windows. Priced and current-commitment arms wait on parts three and six, P16-NF-33–38. |
+| Benchmark connection | **Tracked follow-on, not accepted in the foundation tranche:** the landed seven record supplies only an opaque claimed digest and the landed ten route is necessarily unmeasured. P16-NF-31/32 are non-executable until `seam-response-judgment.md` and `seam-response-assembly-followup.md` land with the resolver, current support, one real eligible positive control and nine's `Grade`/`BenchmarkEvaluation`; until then no comparison can be eligible. |
+| Bounded retention | **Held within constitutional limits:** part two's source projection retains all identities; bounded read presentations, their disposable caches and workers are finite and rebuildable; source facts remain on two's spine and open pins are honored, P16-NF-39–41. |
+| Spend accounting, caps and freeze | **Declared owner split, not landed:** historical settlement remains distinct from six's qualified current exposure. Committed hour/day membership is non-executable until the granted-but-unlanded `accountingWindow` addendum in `seam-response-loop-followup.md`, tracked in `SEAM-LEDGER.md` row 34, lands; late settlement cannot be assigned by arrival day. Maximum disposition waits on its five/six/eight seam. Cap/freeze actions remain eight-owned and use part one's existing refusal vocabulary, P16-NF-19/35/45/49/51. |
+| Holder and activation proof | **Held at the evidence contract:** fresh independent running proof and three test tiers are required by P16-NF-42–50/52; the full collector-loop arm remains non-executable until `seam-response-loop-followup.md` item #25 lands, and no missing seam may report live. |
+
+---
