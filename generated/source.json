@@ -1,6 +1,6 @@
 {
-  "commit": "c8ec3364868d7e64c610d71aec7b39440f0c0dad",
-  "generation": "sha256:9733e2493937bac4f91af44f67beadb6a3cbd96f8163145aa775be6a70bba102",
+  "commit": "0b8568fe5b963edd6c4bed5b6fbabca970cbc6b0",
+  "generation": "sha256:d5f7648c39c2d8154099c78d8b10c3d3b612509f4af94d8f9332ad1eea828586",
   "authority": "shape-only",
   "mode": "replay",
   "authorityPrerequisites": [
@@ -41,6 +41,16 @@
     },
     {
       "site": "intake.resolution",
+      "record": "intake.contract",
+      "required": "verified enforced-record approval history and live writer/executor separation before entering force; replay is not runtime authority"
+    },
+    {
+      "site": "intake.verified-act",
+      "record": "intake.contract",
+      "required": "verified enforced-record approval history and live writer/executor separation before entering force; replay is not runtime authority"
+    },
+    {
+      "site": "intake.verified-act",
       "record": "intake.contract",
       "required": "verified enforced-record approval history and live writer/executor separation before entering force; replay is not runtime authority"
     },
