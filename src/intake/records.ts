@@ -1,6 +1,6 @@
 import type { BoundaryContext,Clock,DecodeContext,Evidence,Hash,HistoricalRead,Inventory,Json,Provenance,RegisterGenerationReference,RegisterReadPort,Scope,StandingGrant,VerifiedPrincipal } from '../index.js';
 import { causalCone,causalStanding,decodeHistoricalBody,hashBytes,registerOwnedBody } from '../facts/index.js';
-import { canonical,decode,decodeMeasurement,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
+import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
 import { prepareSnapshot } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactSchema,FactSnapshot,FactStatus,OwnedBodyRegistration,OwnedShape } from '../facts/index.js';
 import type { Result } from '../index.js';
@@ -48,8 +48,9 @@ const verifiedOwnerRegisters=new WeakMap<object,VerifiedRegister>();
 export function bindIntakeOwnerRegister(readPort: OwnerRegisterReadPort,register: VerifiedRegister,context: RegisterContext): void {
   const parsers=register.entries.filter(entry => entry.declaration.kind==='parsers'&&entry.declaration.status==='live');
   requireIntake(parsers.length>0&&parsers.every(entry => {
-    const verified=readRegisterEntry(entry.declaration.id,register,context);
-    return verified.kind==='Success'&&same(verified.value.declaration,entry.declaration)&&readPort.entries.includes(entry.declaration.id);
+    const verified=consumeResult(readRegisterEntry(entry.declaration.id,register,context),
+      { Success: value => value,Refused: () => undefined });
+    return !!verified&&same(verified.declaration,entry.declaration)&&readPort.entries.includes(entry.declaration.id);
   }),
   'scheduled intake: verified adapter declaration differs from decoder register','integrity');
   verifiedOwnerRegisters.set(readPort as object,register);

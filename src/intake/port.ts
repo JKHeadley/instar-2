@@ -1,6 +1,6 @@
 // docs/08: preservation -> dedup -> authentication -> resolution -> requester admission.
 // No grant/Authorization/Directive producer, model call, session launch or effect lives here.
-import { canonical,decode,decodeMeasurement,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
+import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
 import type { BoundaryContext,Clock,Directive,Evidence,FactEnvelopeReference,HistoricalRead,Intent,Json,Provenance,Result,Revocation,StandingGrant,VerifiedPrincipal } from '../index.js';
 import { authorAndAppend,causalCone,causalStanding,createFactStore,decodeEnvelope,decodeHistoricalBody,factId,foldKey,hashBytes,prepareSnapshot,signEnvelope } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactStatus } from '../facts/index.js';
@@ -44,7 +44,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     // receipt is preserved. Only an entering-force verified register can add
     // scheduled adapter capabilities to the owner decoder.
     const registerWitness=readRegisterEntry(deps.adapter.id,deps.governance.register,deps.governance.context);
-    const verifiedGovernanceRegister=registerWitness.kind==='Success'?deps.governance.register:undefined;
+    const verifiedGovernanceRegister=consumeResult(registerWitness,
+      { Success: () => deps.governance.register,Refused: () => undefined });
     if(verifiedGovernanceRegister) bindIntakeOwnerRegister(initial.decode.register,verifiedGovernanceRegister,deps.governance.context);
     const registeredScheduledAdapters=verifiedGovernanceRegister
       ?registeredScheduledIntakeAdapters(verifiedGovernanceRegister,initial.decode.register):Object.freeze([] as string[]);
