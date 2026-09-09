@@ -1,6 +1,6 @@
 import type { BoundaryContext,Clock,Hash,HistoricalRead,Inventory,Json,Provenance,RegisterGenerationReference,Scope } from '../index.js';
-import { causalCone,causalStanding,hashBytes,registerOwnedBody } from '../facts/index.js';
-import { canonical,decode,historicalGrantLiveness,scopeIncludes } from '../index.js';
+import { causalCone,causalStanding,decodeHistoricalBody,hashBytes,registerOwnedBody } from '../facts/index.js';
+import { canonical,decode,grantLiveness,historicalGrantLiveness,scopeIncludes } from '../index.js';
 import { prepareSnapshot } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactSchema,FactSnapshot,FactStatus,OwnedBodyRegistration,OwnedShape } from '../facts/index.js';
 import type { Result } from '../index.js';
@@ -351,6 +351,51 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
         const expected=directives.filter(d => !d.closedBy&&!superseded.has(d.id)
           &&scopeIncludes(take(decode('Scope',d.scope,c.facts.decode)),scope)).map(d => text(d.id,'directive id'));
         requireIntake(same([...new Set(expected)].sort(),intent.under),'P4-NF-25: intent omits or changes in-cone directives');
+        const principal=object(intent.principal!),ask=intent.ask;
+        const scheduledAsk=principal.kind==='system'&&!!ask&&typeof ask==='object'&&!Array.isArray(ask)? object(ask):undefined;
+        const scheduled=scheduledAsk&&Object.keys(scheduledAsk).length===6&&scheduledAsk.schemaVersion===1
+          &&['jobInstance','scheduledInstant','packageDigest','calendarPolicyVersion','timeZoneDataVersion'].every(key => scheduledAsk[key]!==undefined);
+        if(scheduled) {
+          const coneIds=new Set(cone.map(f => f.id));
+          const collectedGrants=[...c.facts.historicalGrants??[]],collectedRevocations=[...c.facts.historicalRevocations??[]];
+          const historicalContext={ ...c.facts,historicalGrants: collectedGrants,historicalRevocations: collectedRevocations };
+          for(const fact of [...cone].sort((left,right) => causalCone(left,c.facts.facts).length-causalCone(right,c.facts.facts).length)) {
+            const schema=c.facts.schemas.find(candidate => candidate.kind===fact.kind&&candidate.version===fact.schemaVersion);
+            if(!Object.values(schema?.fields??{}).some(field => field.kind==='constitutional'
+              &&['StandingGrant','Revocation'].includes(field.type))) continue;
+            const decoded=take(decodeHistoricalBody(fact,historicalContext,causalStanding(fact,historicalContext,false).decode));
+            for(const grant of decoded.grants) if(!collectedGrants.some(row => row.factId===fact.id&&row.grant.view.id===grant.view.id))
+              collectedGrants.push({ factId: fact.id,grant });
+            for(const revocation of decoded.revocations) if(!collectedRevocations.some(row => row.factId===fact.id
+              &&row.revocation.view.id===revocation.view.id)) collectedRevocations.push({ factId: fact.id,revocation });
+          }
+          const causalNow=causalStanding(c.origin,historicalContext,false).now;
+          const historicalRevocations=collectedRevocations.filter(row => coneIds.has(row.factId));
+          const liveRevocations=c.facts.revocations.filter(row => coneIds.has(row.factId));
+          const historicalGrants=collectedGrants.filter(row => coneIds.has(row.factId)
+            &&c.origin.predecessors.required.includes(row.factId)&&row.grant.captureStatus==='available'
+            &&row.grant.view.grantee.id===principal.id&&row.grant.view.grantee.kind==='system'
+            &&row.grant.view.standing==='delegate'&&row.grant.view.actions.includes('work')
+            &&scopeIncludes(take(decode('Scope',row.grant.view.scope,c.facts.decode)),scope)
+            &&!liveRevocations.some(revocation => revocation.revocation.grantId===row.grant.view.id)
+            &&take(historicalGrantLiveness(row.grant,historicalRevocations.filter(revocation => revocation.revocation.view.grantId===row.grant.view.id)
+              .map(revocation => revocation.revocation),causalNow,c.preserved))==='live');
+          const liveGrants=c.facts.grants.filter(row => {
+            if(!coneIds.has(row.factId)||!c.origin.predecessors.required.includes(row.factId)
+              ||row.grant.grantee.id!==principal.id||row.grant.grantee.kind!=='system'
+              ||row.grant.standing!=='delegate'||!row.grant.actions.includes('work')
+              ||!scopeIncludes(row.grant.scope,scope)) return false;
+            const witness=cone.find(fact => fact.id===row.factId),schema=witness&&c.facts.schemas.find(candidate =>
+              candidate.kind===witness.kind&&candidate.version===witness.schemaVersion);
+            const witnessed=!!witness&&same(witness.provenance,row.grant.source)&&Object.entries(schema?.fields??{})
+              .some(([field,definition]) => definition.kind==='constitutional'&&definition.type==='StandingGrant'
+                &&same(object(witness.body)[field],row.grant));
+            return witnessed&&!historicalRevocations.some(revocation => revocation.revocation.view.grantId===row.grant.id)
+              &&grantLiveness(row.grant,liveRevocations.map(revocation => revocation.revocation),causalNow)==='live';
+          });
+          requireIntake(new Set([...historicalGrants.map(row => row.grant.view.id),...liveGrants.map(row => row.grant.id)]).size===1,
+            'scheduled intake: one live signed package-system grant dependency is required');
+        }
         return { ok: true,value: input };
       } catch(e) { return { ok: false,detail: e instanceof Error? e.message:'P4-NF-12: invalid work' }; }
     },

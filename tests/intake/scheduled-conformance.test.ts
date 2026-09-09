@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canonical, consumeResult, decode } from '../../src/index.js';
 import { authorAndAppend, createFactStore, prepareSnapshot } from '../../src/facts/index.js';
-import { createIntakePort } from '../../src/intake/index.js';
+import { createIntakePort, intakeWorkRegistration } from '../../src/intake/index.js';
 import type { IntakeDisposition, ScheduledIntakeDisposition } from '../../src/intake/index.js';
 import { intakeFixture, json, refused, value } from './fixtures.js';
 import { scheduledFixture } from './scheduled-fixtures.js';
@@ -124,9 +124,11 @@ it.each(['intake-receipt', 'intake-scheduled-principal', 'intake-resolved', 'int
   } };
   refused(value(createIntakePort({ ...f.deps, storage })).receiveScheduledTick(input)); expect(hit).toBe(true);
   const restarted = scheduledFixture({ directory }); restarted.installSchemas();
+  restarted.setTime(101);
   expect(['scheduled-admitted', 'duplicate']).toContain(value(restarted.port().receiveScheduledTick(input)).kind);
   expect(restarted.facts().filter(row => row.kind === 'intake-admitted')).toHaveLength(1);
   expect(value(pending(restarted)).admissions).toHaveLength(1);
+  expect(value(restarted.port().receiveScheduledTick(input)).kind).toBe('duplicate');
 });
 
 it.each(['intake-collapse', 'intake-mismatch'])
@@ -166,4 +168,144 @@ it('P4-ST-18 a lost acknowledgement after durable Run append returns that Run on
   const next = scheduledRunHarness(restarted, recovered), result = value(next.graph.open(next.run));
   expect(result.head).toBe(harness.run.id); expect(result.run.id).toBe((root.body as any).record.id);
   expect(next.createCalls()).toBe(0); expect(value(pending(restarted)).admissions).toEqual([]);
+});
+
+it('P4-ST-19 V35 a valid retry after missing discovery remains readable when the clock advances', () => {
+  const x = setup();
+  const before = x.f.frames.length;
+  refused(x.f.port().receiveScheduledTick({ ...x.input, discovery: ref('missing:discovery') }));
+  expect(x.f.frames.slice(before).map((row: any) => row.kind)).toEqual(['intake-receipt']);
+  x.f.setTime(101);
+  const admitted = scheduled(value(x.f.port().receiveScheduledTick(x.input)));
+  expect(value(pending(x.f)).admissions).toEqual([admitted.fact]);
+  expect(value(x.f.port().receiveScheduledTick(x.input))).toMatchObject({ kind: 'duplicate', original: admitted.fact });
+});
+
+function rewriteScheduledRoute(x: ReturnType<typeof setup>, field: 'adapter'|'channel', replacement: string) {
+  value(x.f.port().receiveScheduledTick(x.input));
+  const first = x.f.frames.findIndex((row: any) => row.kind === 'intake-receipt');
+  const tail = x.f.frames.splice(first) as any[], ids = new Map<string, string>();
+  const adapter = field === 'adapter' ? replacement : x.tick.route.adapter!;
+  const channel = field === 'channel' ? replacement : x.tick.route.channel;
+  const logicalId = value(canonical([adapter, channel, x.tick.route.sender,
+    x.tick.route.identityEpoch, x.tick.eventId])).hash;
+  for (const old of tail) {
+    const body = structuredClone(old.body);
+    if (old.kind === 'intake-receipt') {
+      body.adapter = adapter;
+      const route = JSON.parse(body.ingress); route.channel = channel;
+      body.ingress = value(canonical(route)).bytes;
+    }
+    if (body.logicalId) { body.logicalId = logicalId; body.adapter = adapter; body.channel = channel; }
+    if (body.receipt) body.receipt = ids.get(body.receipt) ?? body.receipt;
+    if (body.intent) body.intent.id = logicalId;
+    const previous = x.f.frames.at(-1) as any;
+    const fact = x.f.f.next(previous, { kind: old.kind, principal: old.principal, provenance: old.provenance,
+      at: old.at, body, predecessors: { ...old.predecessors, inSegment: previous.id,
+        required: old.predecessors.required.map((id: string) => ids.get(id) ?? id) } }, x.f.context);
+    ids.set(old.id, fact.id); x.f.frames.push(fact);
+  }
+  const registration = value(intakeWorkRegistration({ site: x.f.context.site, preserved: x.f.context.preserved,
+    register: x.f.context.decode.register }, x.f.principal.id));
+  const rows = value(prepareSnapshot(x.f.frames as any, { ...x.f.context, facts: x.f.frames as any,
+    ownedBodies: [...x.f.context.ownedBodies ?? [], registration] })).entries;
+  return { rows, admission: x.f.frames.at(-1) as any };
+}
+
+it.each([['V36', 'chat:ordinary'], ['V36b', 'scheduled:']] as const)
+('P4-ST-20 %s signed scheduled history with channel %s is refused while a valid second installation remains readable',
+(_id, channel) => {
+  const invalid = setup(), history = rewriteScheduledRoute(invalid, 'channel', channel);
+  expect(history.rows.every(row => row.taint.length === 0 && row.conflicts.length === 0)).toBe(true);
+  refused(pending(invalid.f), 'channel must name its installation');
+
+  const direct = setup(), before = direct.f.frames.length;
+  refused(direct.f.port().receiveScheduledTick({ ...direct.input,
+    route: { ...direct.input.route, channel } }), 'channel must name its installation');
+  expect(direct.f.frames.slice(before).map((row: any) => row.kind)).toEqual(['intake-receipt']);
+
+  const valid = setup(), control = rewriteScheduledRoute(valid, 'channel', 'scheduled:installation-b');
+  expect(value(pending(valid.f)).admissions).toEqual([ref(control.admission.id)]);
+});
+
+it('P4-ST-21 V42 a valid scheduled tick records every applicable signed directive', () => {
+  const x = setup(); x.f.bind();
+  const directive = value(decode('Directive', x.f.f.directiveInput(), {
+    ...x.f.context.decode, grants: x.f.context.grants.map(grant => grant.grant),
+  }));
+  Object.assign(x.f.context, { schemas: [...x.f.context.schemas, { ...x.f.f.schema, kind: 'directive-record',
+    fields: { directive: { kind: 'constitutional', type: 'Directive' } } }] });
+  const appended = value(authorAndAppend({ kind: 'directive-record', schemaVersion: 1, machine: 'machine-a',
+    principal: json(x.f.f.alice), provenance: json(x.f.f.alice.provenance), at: json(x.f.f.now),
+    body: { directive: json(directive) }, required: [] }, x.f.context,
+  createFactStore(x.f.context, x.f.storage), x.f.deps.author.privateKey));
+  expect(appended.taint).toEqual([]);
+  const admitted = scheduled(value(x.f.port().receiveScheduledTick(x.input)));
+  const fact = x.f.facts().find(row => row.id === admitted.fact.id)!;
+  expect((fact.body as any).intent.under).toEqual([directive.id]);
+  expect(fact.predecessors.required).toContain(appended.fact.id);
+  expect(value(pending(x.f)).admissions).toEqual([admitted.fact]);
+});
+
+it.each(['missing', 'wrong-kind', 'wrong-owner', 'unavailable', 'mismatched-event'])
+('P4-ST-22 V43 duplicate with %s discovery is refused after preservation without a collapse', kind => {
+  const x = setup(), admitted = scheduled(value(x.f.port().receiveScheduledTick(x.input)));
+  let discovery: any = x.input.discovery;
+  if (kind === 'missing') discovery = ref('missing:discovery');
+  if (kind === 'wrong-kind') discovery = ref(x.grant.fact.id);
+  if (kind === 'wrong-owner') discovery = { ...discovery, owner: 'part-five' };
+  if (kind === 'unavailable') {
+    const other = x.f.discovery(x.tick.eventId, 'machine-b', 99);
+    x.f.dropCapture(other.evidence.capture.reference); discovery = ref(other.fact.id);
+  }
+  if (kind === 'mismatched-event') discovery = ref(x.f.discovery('another-event', 'machine-b', 99).fact.id);
+  const before = x.f.frames.length;
+  refused(x.f.port().receiveScheduledTick({ ...x.input, discovery }));
+  expect(x.f.frames.slice(before).map((row: any) => row.kind)).toEqual(['intake-receipt']);
+  expect(x.f.facts().filter(row => row.kind === 'intake-admitted')).toHaveLength(1);
+  expect(admitted.fact.id).toBeTruthy();
+});
+
+function recordScheduledRevocation(x: ReturnType<typeof setup>) {
+  const payload = { id: 'scheduled-grant-revocation', grantId: x.grant.grant.id,
+    by: x.f.f.alice, at: x.f.f.now, reason: 'grant withdrawn' };
+  const proof = x.f.f.proof(payload); x.f.syncCaptures();
+  const revocation = value(decode('Revocation', { type: 'Revocation', schemaVersion: 1, ...payload, source: proof.p },
+    { ...x.f.context.decode, provenance: proof.p, grants: [x.grant.grant, ...x.f.context.grants.map(grant => grant.grant)] }));
+  Object.assign(x.f.context, { schemas: [...x.f.context.schemas, { ...x.f.f.schema, kind: 'scheduled-grant-revocation',
+    fields: { revocation: { kind: 'constitutional', type: 'Revocation' } } }] });
+  const revocationContext = { ...x.f.context,
+    grants: [...x.f.context.grants, { factId: x.grant.fact.id, grant: x.grant.grant }],
+    decode: { ...x.f.context.decode, provenance: proof.p } };
+  const appended = value(authorAndAppend({ kind: 'scheduled-grant-revocation', schemaVersion: 1, machine: 'machine-a',
+    principal: json(x.f.f.alice), provenance: json(proof.p), at: json(x.f.f.now),
+    body: { revocation: json(revocation) }, required: [x.grant.fact.id] }, revocationContext,
+  createFactStore(revocationContext, x.f.storage), x.f.deps.author.privateKey));
+  expect(appended.taint).toEqual([]); return appended.fact;
+}
+
+it('P4-ST-23 V44/V45/V46 scheduled standing is revalidated at admission while historical replay stays stable', () => {
+  const revoked = setup(); revoked.f.bind(); recordScheduledRevocation(revoked);
+  const before = revoked.f.frames.length;
+  refused(revoked.f.port().receiveScheduledTick(revoked.input));
+  expect(revoked.f.frames.slice(before).map((row: any) => row.kind)).toEqual(['intake-receipt']);
+
+  const racing = setup(); racing.f.bind();
+  const original = racing.f.storage.append.bind(racing.f.storage); let revocation: any;
+  const storage = { ...racing.f.storage, append(bytes: string, expected: string | null) {
+    const result = original(bytes, expected);
+    if (JSON.parse(bytes).kind === 'intake-resolved') revocation = recordScheduledRevocation(racing);
+    return result;
+  } };
+  refused(value(createIntakePort({ ...racing.f.deps, storage })).receiveScheduledTick(racing.input));
+  expect(revocation).toBeDefined();
+  expect(racing.f.facts().filter(row => row.kind === 'intake-admitted')).toEqual([]);
+  expect(value(pending(racing.f)).admissions).toEqual([]);
+
+  const historical = setup(); historical.f.bind();
+  const admitted = scheduled(value(historical.f.port().receiveScheduledTick(historical.input)));
+  recordScheduledRevocation(historical);
+  expect(value(pending(historical.f)).admissions).toEqual([admitted.fact]);
+  expect(value(historical.f.port().receiveScheduledTick(historical.input)))
+    .toMatchObject({ kind: 'duplicate', original: admitted.fact });
 });

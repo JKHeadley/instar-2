@@ -122,6 +122,12 @@ export function scheduledFixture(options: { directory?: string; machine?: 'machi
   function frontier(): CausalFrontier {
     return Object.fromEntries(Object.entries(latest()).map(([id, value]) => [id, value.head]));
   }
-  return { ...base, deps, depsForMachine, port, portForMachine, principal, provenance, provenanceInput, route, tick, grant, discovery, frontier,
+  function bind(overrides: Record<string, Json> = {}) {
+    const retained = [...base.context.grants], binding = base.bind(overrides);
+    Object.assign(base.context, { grants: [...base.context.grants,
+      ...retained.filter(candidate => !base.context.grants.some(current => current.factId === candidate.factId))] });
+    return binding;
+  }
+  return { ...base, bind, deps, depsForMachine, port, portForMachine, principal, provenance, provenanceInput, route, tick, grant, discovery, frontier,
     grantSchema, evidenceSchema, installSchemas, clock, setTime: (at: number) => { instant = at; } };
 }
