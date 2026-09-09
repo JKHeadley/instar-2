@@ -95,6 +95,7 @@ export function intakeFactSchemas(scope: Scope): readonly FactSchema[] {
 
 const vaText={ kind: 'text',maxLength: 1048576 } as const;
 const vaShort={ kind: 'text',maxLength: 1024 } as const;
+const maximumVerifiedActChallengeLifetime=5*60*1000;
 const verifiedActShape: OwnedShape={ kind: 'object',fields: {
   type: vaShort,schemaVersion: { kind: 'integer' },request: vaShort,requestDigest: vaShort,decision: vaShort,
   disposition: vaShort,act: vaText,actDigest: vaShort,proof: { kind: 'capture' },challenge: vaShort,
@@ -214,8 +215,15 @@ export function resolveVerifiedActRecord(raw: Json,c: FactContext,now: Clock,exp
   const superseding=siblings.find(x => causalCone(x.fact,facts).some(a => a.id===request.fact.id));
   const concurrent=siblings.find(x => !causalCone(x.fact,facts).some(a => a.id===request.fact.id)
     &&!causalCone(request.fact,facts).some(a => a.id===x.fact.id));
-  const prior=snapshot.entries.find(x => x.fact.kind==='intake-verified-act'&&body(x).request===requestId);
-  requireIntake(!prior,'verified act: replayed or already-disposed request','integrity');
+  const priorDispositions=snapshot.entries.filter(x => x.fact.kind==='intake-verified-act').map(x => {
+    const envelope=body(x),record=object(envelope.record!);
+    return { request: text(envelope.request,'prior request'),challenge: text(envelope.challenge,'prior challenge'),
+      issuedAt: integer(record.issuedAt,'prior issuedAt'),expiresAt: integer(record.expiresAt,'prior expiresAt') };
+  });
+  const priorRequest=priorDispositions.find(x => x.request===requestId);
+  requireIntake(!priorRequest,'verified act: replayed or already-disposed request','integrity');
+  const reusedChallenge=priorDispositions.find(x => x.challenge===p.challenge);
+  requireIntake(!reusedChallenge,'verified act: single-use challenge was reused or its lifetime changed','integrity');
   if(!emergency) {
     requireIntake(!superseding,'verified act: authorization request was superseded','stale-base');
     requireIntake(request.taint.length===0,'verified act: authorization request is tainted or incomplete','integrity');
@@ -233,9 +241,15 @@ export function resolveVerifiedActRecord(raw: Json,c: FactContext,now: Clock,exp
   const calculated=take(canonical({ type: 'AuthorizationRequest',schemaVersion: 1,approver: operator,action,scope,artifact,base })).hash;
   if(!emergency) {
     requireIntake(q.requestDigest===calculated&&requestDigest===calculated,'verified act: stale or inexact request digest','stale-base');
+    const renderingDigest=take(canonical(q)).hash;
+    requireIntake(p.renderingDigest===renderingDigest,'verified act: signed rendering digest differs from the durable request','stale-base');
     requireIntake(same(p.scope,scope)&&p.action===action&&p.audience===audience&&p.operator===operator&&p.requestedBy===requestedBy
       &&p.artifact===artifact&&p.base===base,'verified act: current base/artifact/scope/audience/operator moved','stale-base');
-    requireIntake(now.value<=integer(q.expiresAt,'request.expiresAt'),'verified act: authorization request expired','stale-base');
+    const requestExpiresAt=integer(q.expiresAt,'request.expiresAt');
+    requireIntake(now.value<=requestExpiresAt&&expiresAt<=requestExpiresAt&&expiresAt-issuedAt<=maximumVerifiedActChallengeLifetime,
+      'verified act: authorization request or bounded challenge lifetime expired','stale-base');
+    requireIntake(c.decode.currentBase===base&&c.decode.artifact===artifact,
+      'verified act: current base or artifact differs from the signed request','stale-base');
   } else requireIntake(p.action==='emergency-stop','verified act: safety-open is reserved for emergency-stop','standing');
   const actText=text(r.act,'act'),act=JSON.parse(actText) as Json;
   const actDigest=act===null?'none':take(canonical(act)).hash;
@@ -253,7 +267,7 @@ export function resolveVerifiedActRecord(raw: Json,c: FactContext,now: Clock,exp
       Object.fromEntries(Object.entries(a).filter(([k]) => !['type','schemaVersion',type==='Authorization'?'explicitYes':'source'].includes(k)))),
     'verified act: authority act differs from independently signed fields','standing');
     if(mode==='origin') take(decode(type as 'Authorization'|'StandingGrant'|'Revocation',act,{ ...c.decode,provenance: actProof,
-      currentBase: base,artifact,now,actAt: now }));
+      now,actAt: now }));
     if(type==='Authorization') {
       exact(a,['type','schemaVersion','id','at','approver','under','action','artifact','base','kind','requestedBy','explicitYes','requestDigest'],
         'verified act: Authorization shape');

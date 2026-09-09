@@ -124,6 +124,11 @@ function requestView(composition: OperatorSurfaceComposition, reference: string)
     fieldsEditable: false as const, phoneCapable: true as const });
 }
 
+function requestRenderingDigest(composition: OperatorSurfaceComposition, reference: string): Hash {
+  const resolved = resolveReference(composition.history, reference, composition.requestKind);
+  return take(canonical(resolved.status.body)).hash;
+}
+
 function terminalRequest(composition: OperatorSurfaceComposition, request: string): boolean {
   return snapshot(composition.history).entries.some(row => composition.terminalKinds.includes(row.fact.kind)
     && object(row.body).request === request);
@@ -240,7 +245,7 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
         return operatorBoundary('OperatorSurfaceChallenge', composition.boundary, () => {
           const view = requestView(composition, request), now = composition.history.clock();
           requireOperator(view.completeness === 'complete' && now.value <= view.expiresAt, 'P11-NF-09: incomplete or expired request cannot be challenged', 'stale-base');
-          const renderingDigest = take(canonical(view)).hash;
+          const renderingDigest = requestRenderingDigest(composition, view.fact);
           return take(composition.verifier.issue({ request: view.fact, requestDigest: view.requestDigest, renderingDigest,
             action: view.action, scope: view.scope, audience: view.audience, operator: view.approver.id,
             requestedBy: view.requestedBy.id, artifact: view.artifact, base: view.base, issuedAt: now.value,
@@ -258,7 +263,8 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
           const view = requestView(composition, input.challenge.request), now = composition.history.clock();
           requireOperator(view.completeness === 'complete', 'P11-NF-08: referenced request is incomplete', 'standing');
           requireOperator(!terminalRequest(composition, view.fact), 'P11-NF-09/14: authorization request is already terminal', 'standing');
-          requireOperator(input.challenge.requestDigest === view.requestDigest && input.challenge.renderingDigest === take(canonical(view)).hash
+          requireOperator(input.challenge.requestDigest === view.requestDigest
+            && input.challenge.renderingDigest === requestRenderingDigest(composition, view.fact)
             && input.challenge.audience === view.audience && input.challenge.operator === view.approver.id,
           'P11-NF-08/09: challenge subject or rendering moved', 'standing');
           requireOperator(now.value <= input.challenge.expiresAt && input.challenge.singleUse, 'P11-NF-09: challenge expired', 'stale-base');

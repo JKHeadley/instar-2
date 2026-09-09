@@ -11,21 +11,29 @@ import type { AssemblyComposition, AssemblyImplementationBinding, AssemblyManife
 
 interface NamedBinding {
   readonly name: string;
+  readonly requiredKind: string;
   readonly row: AssemblyImplementationBinding | Readonly<{ implementation: string; fact: AssemblyImplementationBinding['fact'] }>;
 }
 
 function namedBindings(binding: AssemblyProductionBindingSet): readonly NamedBinding[] {
+  const dependencyKinds: Readonly<Record<(typeof requiredMinimalDependencies)[number], string>> = {
+    'local-facts': 'fact-local-durable-segment', register: 'register-generation-record', 'identity-keys': 'identity-key-set',
+    clock: 'clock-source', lease: 'transport-Lease', fence: 'transport-FenceToken',
+    'replication-peer': 'fact-replication-receipt', 'conversation-binding': 'conversation-binding',
+    route: 'conversation-route', 'delivery-evidence': 'delivery-evidence-service',
+  };
   return [
-    { name: 'surface-adapter', row: binding.surface.adapter },
-    { name: 'challenge-verifier', row: binding.surface.challengeVerifier },
-    { name: 'verified-act-intake', row: binding.verifiedActIntake },
-    ...binding.minimalPlane.folds.map(row => ({ name: `projection-fold:${row.projection}`, row })),
-    { name: 'source-only-replay', row: binding.minimalPlane.sourceOnlyReplay },
-    { name: 'minimal-responder', row: binding.minimalResponder },
-    ...binding.dependencies.map(row => ({ name: `dependency:${row.name}`, row: { implementation: row.name, fact: row.fact } })),
-    { name: 'prerequisite-cut', row: binding.lifecycle.cut },
-    { name: 'prerequisite-recovery', row: binding.lifecycle.recovery },
-    { name: 'platform-delivery-witness', row: binding.deliveryWitness },
+    { name: 'surface-adapter', requiredKind: 'operator-surface-registration', row: binding.surface.adapter },
+    { name: 'challenge-verifier', requiredKind: 'operator-challenge-verifier-binding', row: binding.surface.challengeVerifier },
+    { name: 'verified-act-intake', requiredKind: 'intake-verified-act-binding', row: binding.verifiedActIntake },
+    ...binding.minimalPlane.folds.map(row => ({ name: `projection-fold:${row.projection}`, requiredKind: 'minimal-plane-projection-binding', row })),
+    { name: 'source-only-replay', requiredKind: 'minimal-plane-replay-binding', row: binding.minimalPlane.sourceOnlyReplay },
+    { name: 'minimal-responder', requiredKind: 'minimal-responder-binding', row: binding.minimalResponder },
+    ...binding.dependencies.map(row => ({ name: `dependency:${row.name}`, requiredKind: dependencyKinds[row.name],
+      row: { implementation: row.name, fact: row.fact } })),
+    { name: 'prerequisite-cut', requiredKind: 'assembly-lifecycle-control-binding', row: binding.lifecycle.cut },
+    { name: 'prerequisite-recovery', requiredKind: 'assembly-lifecycle-control-binding', row: binding.lifecycle.recovery },
+    { name: 'platform-delivery-witness', requiredKind: 'platform-delivery-witness-binding', row: binding.deliveryWitness },
   ];
 }
 
@@ -40,12 +48,13 @@ function statusFor(snapshot: FactSnapshot, reference: string): FactStatus | null
   return aliases[0] ?? null;
 }
 
-function resolveOne(name: string, expectedKind: string, reference: string, snapshot: FactSnapshot,
-  partialAssemblyFacts: ReadonlySet<string>, unavailableAssemblyFacts: ReadonlySet<string>): AssemblyResolvedProductionBinding {
+function resolveOne(name: string, requiredKind: string, declaredKind: string, reference: string, snapshot: FactSnapshot,
+    partialAssemblyFacts: ReadonlySet<string>, unavailableAssemblyFacts: ReadonlySet<string>): AssemblyResolvedProductionBinding {
   const root = statusFor(snapshot, reference);
   ensure(root, `required production binding is missing from signed history: ${name}:${reference}`);
-  ensure(root.fact.kind === expectedKind,
-    `required production binding has wrong signed kind: ${name}:${root.fact.kind}:expected:${expectedKind}`);
+  const honestPartialPlaceholder = root.fact.kind === 'assembly-GrowthObservation' && partialAssemblyFacts.has(root.fact.id);
+  ensure(honestPartialPlaceholder || (declaredKind === requiredKind && root.fact.kind === requiredKind),
+    `required production binding has wrong signed kind: ${name}:${root.fact.kind}:expected:${requiredKind}`);
   ensure(root.taint.length === 0 && root.conflicts.length === 0,
     `required production binding is unavailable or conflicted: ${name}:${reference}`);
   ensure(!unavailableAssemblyFacts.has(root.fact.id),
@@ -67,7 +76,7 @@ function resolveOne(name: string, expectedKind: string, reference: string, snaps
     if (partialAssemblyFacts.has(status.fact.id)) completeness = 'partial';
     queue.push(...status.fact.predecessors.required);
   }
-  return freeze({ name, reference, expectedKind, fact: root.fact, completeness, missing: [...missing].sort() });
+  return freeze({ name, reference, expectedKind: requiredKind, fact: root.fact, completeness, missing: [...missing].sort() });
 }
 
 function selected(runtime: AssemblyRuntimePort, manifestId: string, scope: string): Readonly<{
@@ -94,8 +103,8 @@ function resolveReferences(composition: AssemblyComposition, runtime: AssemblyRu
   const partialAssemblyFacts = new Set(assembly.filter(row => row.record.type === 'GrowthObservation'
     && row.record.completion === 'incomplete').map(row => row.fact.id));
   const unavailableAssemblyFacts = new Set(assembly.filter(row => row.taint.length > 0 || row.conflicts.length > 0).map(row => row.fact.id));
-  const references = namedBindings(binding).map(({ name, row }) =>
-    resolveOne(name, row.fact.expectedKind, row.fact.reference, snapshot, partialAssemblyFacts, unavailableAssemblyFacts));
+  const references = namedBindings(binding).map(({ name, requiredKind, row }) =>
+    resolveOne(name, requiredKind, row.fact.expectedKind, row.fact.reference, snapshot, partialAssemblyFacts, unavailableAssemblyFacts));
   return freeze({ manifest, binding, references });
 }
 

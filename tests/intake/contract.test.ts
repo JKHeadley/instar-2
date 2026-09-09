@@ -3,6 +3,18 @@ import { createIntakePort, classifySlicePayload } from '../../src/intake/index.j
 import { intakeFixture, message, route, stop, value, refused } from './fixtures.js';
 
 describe('part-four slice intake', () => {
+  it('P11-V30 preserves the complete pre-Part-Eleven construction and receive/recover/expire behavior when extension schemas are absent', () => {
+    const f = intakeFixture(); f.bind();
+    const legacyContext = { ...f.context,
+      schemas: f.context.schemas.filter(schema => !['intake-verified-act', 'authorization-request'].includes(schema.kind)) };
+    const port = value(createIntakePort({ ...f.deps, context: () => legacyContext,
+      dedupGeneration: () => ({ ...f.deps.dedupGeneration(), kinds: [...new Set(legacyContext.schemas.map(schema => schema.kind))] }) }));
+    expect(value(port.receive(message('ordinary clean legacy input'), route)).kind).toBe('admitted');
+    const receipt = f.facts().find(row => row.kind === 'intake-receipt');
+    expect(receipt).toBeDefined();
+    expect(value(port.recover(receipt!.id)).kind).toBe('duplicate');
+    expect(value(port.expireHolds())).toBe(0);
+  });
   it('P4-NF-04 a first sender requesting a binding act is refused into a preserved hold', () => {
     const f = intakeFixture();
     refused(f.port().receive(JSON.stringify({ schemaVersion: 1, kind: 'binding', principalId: 'alice', standing: 'operator' }), route), 'needs-judgment');

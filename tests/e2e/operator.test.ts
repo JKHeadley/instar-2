@@ -7,12 +7,30 @@ import { acrossExecutions } from '../slice/acceptance.js';
 import type { SliceReport } from '../slice/acceptance.js';
 import { loadPair } from '../slice/kill-schedule-artifacts.js';
 import { runExecution } from '../slice/harness.js';
+import { consumeResult } from '../../src/index.js';
 
 // Vitest batches task updates without awaiting their RPC acknowledgements. Each of the
 // first three tests below enters another ~22s synchronous production drive immediately;
 // without one event-loop turn between tests, the already-sent acknowledgement cannot be
 // received before Vitest 3's fixed 60s RPC deadline even though every assertion passes.
 beforeEach(() => new Promise<void>(resolve => setImmediate(resolve)));
+
+it('P11-V27 the production delivery witness refuses before the real platform port has observed that operation', () => {
+  const x = productionOperatorSlice();
+  const observed = consumeResult(x.runtime.coordinator.handles.deliveryWitness.observe('operation:never-submitted'), {
+    Success: () => 'accepted', Refused: () => 'refused',
+  });
+  expect(observed).toBe('refused');
+  expect(x.runtime.service.journal().applications).toEqual([]);
+  expect(value(x.verification.runtime.inspectCurrent())).toEqual([]);
+});
+
+it('P11-V28 the production wrapper refuses a provider result not witnessed for the operation it actually drove', async () => {
+  const x = productionOperatorSlice();
+  x.production.deliveryWitness.observe = (() => x.assembly.success({ owner: 'part-nine', administration: 'independent',
+    operation: 'operation:wrong', platform: 'wrong-platform', stage: 'human-read', probe: { id: 'probe:absent' } })) as never;
+  await expect(x.runtime.drive()).rejects.toThrow('unwitnessed');
+}, 120000);
 
 it('P11-NF-43 P11-NF-49 the public slice boot plus a fresh operator process revalidate durable signed history rather than serialized status fields', async () => {
   const control = productionOperatorSlice();
@@ -43,7 +61,7 @@ it('P11-NF-44 P11-NF-45 P11-NF-46 P11-NF-47 P11-NF-48 P11-NF-50 the durable vert
   expect(report.rebuilds.every(row => row.equal === 'equal')).toBe(true);
   expect(report.assemblyBoot.admission).toBe('admission:production');
   expect(report.authorityCompletion.disposition).toBeTruthy();
-  expect(report.independentlyWitnessedResult.stage).toBe('application');
+  expect(report.independentlyWitnessedResult.stage).toBe('service-applied');
 }, 120000);
 
 it('P11-NF-43 P11-NF-44 P11-NF-47 P11-NF-49 a process cut between send and evidence recovers to the same independently witnessed semantic outcome', async () => {

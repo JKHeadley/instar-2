@@ -36,6 +36,16 @@ it('P10-NF-21 P10-NF-45 P10-NF-53 [P10-SEAM-02] the platform witness identity ca
   }
 });
 
+it('P11-V31 resolves the conversation-route role by its fixed signed-history kind, never the manifest caller\'s expectedKind', () => {
+  const f = assemblyRuntimeFixture(), base = productionBindingSet();
+  const clock = base.dependencies.find(row => row.name === 'clock')!;
+  const binding = { ...base, dependencies: base.dependencies.map(row => row.name === 'route'
+    ? { ...row, fact: clock.fact } : row) };
+  const installed = installProduction(f, binding);
+  refused(bootProductionAssembly({ ...f.composition, production: productionComposition(f, binding) },
+    installed.manifest.id, binding.scope), 'conversation-route');
+});
+
 it('P10-NF-05 P10-NF-52 P10-NF-54 [P10-SEAM-03] a resolvable partial binding is retained as partial and never promoted into boot handles', () => {
   const f = assemblyRuntimeFixture();
   const partial = value(f.runtime.record('GrowthObservation', { ...assemblyInput('GrowthObservation'), id: 'binding:partial-source',

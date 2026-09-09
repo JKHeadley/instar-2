@@ -69,6 +69,39 @@ describe('separate independently-verified operator-act admission', () => {
     refused(f.port().admitVerifiedAct(v.input), 'expired');
   });
 
+  it('P11-V15 refuses a correctly signed challenge whose rendering digest does not bind the durable request rendering', () => {
+    const f = intakeFixture(), v = f.verifiedAct({ renderingDigest: hashBytes('different rendering') });
+    refused(f.port().admitVerifiedAct(v.input), 'rendering digest');
+  });
+
+  it('P11-V16 keys single-use consumption by challenge identity across distinct durable requests', () => {
+    const f = intakeFixture(), challengeId = 'challenge:single-use';
+    const first = f.verifiedAct({ challengeId, request: { requestId: 'request:first' } });
+    const second = f.verifiedAct({ challengeId, request: { requestId: 'request:second' } });
+    expect(value(f.port().admitVerifiedAct(first.input)).kind).toBe('approved');
+    refused(f.port().admitVerifiedAct(second.input), 'reused');
+  });
+
+  it('P11-V17 refuses an independently signed challenge with an unbounded lifetime', () => {
+    const f = intakeFixture();
+    const v = f.verifiedAct({ request: { expiresAt: 1_000_000 }, challengeExpiresAt: 300_101 });
+    refused(f.port().admitVerifiedAct(v.input), 'lifetime');
+  });
+
+  it.each([
+    ['P11-V48 current base', { currentBase: 'base:2' }],
+    ['P11-V49 current artifact', { artifact: hashBytes('artifact:other') }],
+  ])('%s must match the signed durable request rather than being replaced by request values', (_name, changed) => {
+    const f = intakeFixture(), v = f.verifiedAct();
+    Object.assign(f.context, { decode: { ...f.context.decode, ...changed } });
+    refused(f.port().admitVerifiedAct(v.input), 'current');
+  });
+
+  it('P11-V50 accepts when the signed durable request matches the actual current base and artifact', () => {
+    const f = intakeFixture(), v = f.verifiedAct();
+    expect(value(f.port().admitVerifiedAct(v.input)).kind).toBe('approved');
+  });
+
   it.each([
     ['caller valid', { valid: true }],
     ['pre-resolved principal', { principal: { id: 'alice' } }],

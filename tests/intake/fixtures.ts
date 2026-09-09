@@ -35,7 +35,8 @@ export function intakeFixture(options: { directory?: string } = {}) {
     ? readFileSync(segmentPath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
   const captureIndex: Record<string, CapturedContent> = {};
   for (const [reference, bytes] of Object.entries(f.captures)) captureIndex[reference] = { bytes, hash: hashBytes(bytes), status: 'available', byteLength: Buffer.byteLength(bytes) };
-  const context: FactContext = { ...f.ctx, decode: { ...f.ctx.decode, register: { ...f.ctx.decode.register,
+  const context: FactContext = { ...f.ctx, decode: { ...f.ctx.decode, currentBase: 'base:1', artifact: f.artifact,
+    register: { ...f.ctx.decode.register,
     entries: [...f.ctx.decode.register.entries, 'intake.admit', 'intake-slice'], sites: { ...f.ctx.decode.register.sites, 'intake.admit': 'closed' } } },
     captures: captureIndex, schemas: [...f.ctx.schemas, ...intakeFactSchemas(f.scope)], grants: [], facts: [] };
   if (capturesPath) for (const name of readdirSync(capturesPath)) {
@@ -135,7 +136,8 @@ export function intakeFixture(options: { directory?: string } = {}) {
     } };
   function verifiedAct(options: { request?: Record<string, Json>; action?: string; scope?: Scope; attested?: boolean; surface?: string;
     decision?: 'approve'|'decline'; generation?: RegisterGenerationReference; referenceId?: string; actScope?: Scope;
-    challengeScope?: Scope; submittedDigest?: Hash; extra?: Record<string, unknown> } = {}) {
+    challengeScope?: Scope; submittedDigest?: Hash; renderingDigest?: Hash; challengeId?: string; challengeIssuedAt?: number;
+    challengeExpiresAt?: number; extra?: Record<string, unknown> } = {}) {
     if (!context.schemas.some(s => s.kind === requestSchema.kind)) Object.assign(context, { schemas: [...context.schemas, requestSchema] });
     const binding = bind(), root = facts().find(row => row.kind === 'genesis-grant')!;
     const scope = options.scope ?? f.scope, action = options.action ?? 'work', artifact = f.artifact, base = 'base:1';
@@ -160,11 +162,13 @@ export function intakeFixture(options: { directory?: string } = {}) {
         now: f.now, actAt: f.now })) as Authorization;
     const decision = options.decision ?? 'approve';
     const referenceId = options.referenceId ?? request.id;
-    const challengePayload = { type: 'VerifiedOperatorChallenge', schemaVersion: 1, challenge: `challenge:${referenceId}`, request: referenceId,
-      requestDigest: options.submittedDigest ?? requestBody.requestDigest, renderingDigest: value(canonical(requestBody)).hash, action: requestBody.action,
+    const challengePayload = { type: 'VerifiedOperatorChallenge', schemaVersion: 1,
+      challenge: options.challengeId ?? `challenge:${referenceId}`, request: referenceId,
+      requestDigest: options.submittedDigest ?? requestBody.requestDigest,
+      renderingDigest: options.renderingDigest ?? value(canonical(requestBody)).hash, action: requestBody.action,
       scope: json(options.challengeScope ?? actualScope),
       audience: requestBody.audience, operator: requestBody.approverId, requestedBy: requestBody.requestedById, artifact: requestBody.artifact,
-      base: requestBody.base, issuedAt: 100, expiresAt: 200, singleUse: true, decision,
+      base: requestBody.base, issuedAt: options.challengeIssuedAt ?? 100, expiresAt: options.challengeExpiresAt ?? 200, singleUse: true, decision,
       actDigest: decision === 'decline' ? 'none' : value(canonical(act)).hash, surface, generation: options.generation ?? generation };
     const challengeProof = f.proof(challengePayload, { id: f.alice.id, kind: 'person' }, 'verified-operator-challenge', options.attested, surface);
     const bundle = JSON.stringify({ type: 'VerifiedActProofBundle', schemaVersion: 1, challenge: challengeProof.input,

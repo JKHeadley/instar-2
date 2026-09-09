@@ -50,10 +50,16 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     take(decode('VerifiedPrincipal',{ type: 'VerifiedPrincipal',schemaVersion: 1,id: deps.author.principal.id,kind: 'system' },
       { ...initial.decode,provenance: deps.author.principal.provenance }));
     const scope=take(decode('Scope',deps.scope,initial.decode));
+    const schemas=intakeFactSchemas(scope);
+    const verifiedActKinds=new Set(['intake-verified-act','authorization-request']);
+    for(const schema of schemas.filter(schema => !verifiedActKinds.has(schema.kind))) requireIntake(initial.schemas.some(s => same(s,schema)),
+      `P4-NF-06/12: required owner schema changed or missing: ${schema.kind}`);
+    const hasAnyVerifiedActSchema=initial.schemas.some(schema => verifiedActKinds.has(schema.kind));
+    const hasVerifiedActSchemas=schemas.filter(schema => verifiedActKinds.has(schema.kind)).every(schema => initial.schemas.some(s => same(s,schema)));
+    requireIntake(!hasAnyVerifiedActSchema||hasVerifiedActSchemas,
+      'P4-NF-06/12: verified-act intake schemas are only partially installed');
     const registerGeneration=take(generationOf(deps.governance.register,deps.governance.context));
     const registerGenerationReference={ owner: 'part-three',name: 'RegisterGeneration',id: registerGeneration.id } as const;
-    for(const schema of intakeFactSchemas(scope)) requireIntake(initial.schemas.some(s => same(s,schema)),
-      `P4-NF-06/12: required owner schema changed or missing: ${schema.kind}`);
     const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id));
     const stopRegistration=take(intakeStopRegistration(b,deps.author.principal.id));
     const verifiedActRegistration=take(intakeVerifiedActRegistration(b,deps.author.principal.id,registerGenerationReference));
@@ -100,7 +106,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     function context(preserved: string,principal?: VerifiedPrincipal): FactContext {
       const c=deps.context();
       return {
-        ...c,preserved,ownedBodies: [...c.ownedBodies?.filter(r => !(r.owner==='part-four'&&['IntakeWork','IntakeStop','VerifiedActDisposition'].includes(r.name)))??[],
+        ...c,preserved,ownedBodies: [...c.ownedBodies?.filter(r => !(r.owner==='part-four'
+          &&['IntakeWork','IntakeStop','VerifiedActDisposition'].includes(r.name)))??[],
           workRegistration,stopRegistration,verifiedActRegistration],decode: {
           ...c.decode,preserved,
           principals: [...c.decode.principals??[],author.principal,...principal? [principal]:[]]
@@ -158,6 +165,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     }
     function admitVerifiedAct(input: VerifiedActAdmission): Result<VerifiedActDisposition> {
       return boundary('IntakeVerifiedAct',{ ...b,preserved: input?.request?.id??initial.preserved },() => {
+        requireIntake(hasVerifiedActSchemas,
+          'verified act: additive intake seam is unavailable because its fact schemas are not installed','standing');
         const at=take(decodeMeasurement('clock',deps.clock(),initial.decode));
         take(constructGoverned('parsers',input.surface,deps.governance.register,
           { ...deps.governance.context,preserved: input.proof.reference }));

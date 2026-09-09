@@ -49,6 +49,7 @@ export function minimalPlaneProjections(kinds: readonly string[], stalenessBound
       'slice-obligation': fold('set-union', 'operation', 'owner'),
       'authorization-request': fold('exclusive-singleton', 'requestId', 'requestDigest'),
       'authorization-disposition': fold('set-union', 'request', 'disposition'),
+      'intake-verified-act': fold('set-union', 'request', 'disposition'),
     }, 'Not an authorization request or disposition. The authority queue confers no authority.'),
     definition('minimal.guard-repair', stalenessBound, all, {
       'slice-obligation': fold('set-union', 'operation', 'owner'), 'slice-delivery-evidence': fold('set-union', 'operation', 'decisive'),

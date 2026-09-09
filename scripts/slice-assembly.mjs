@@ -25,7 +25,8 @@ import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, regis
 import { createJudgmentDoorway, createJudgmentSpine, createModelAdapter, judgmentSchemas, registerJudgmentBodies } from '../dist/judgment/index.js';
 import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, decodeOutboundMessage, effectSchemas, installOperationDefinition, registerEffectBodies } from '../dist/effects/index.js';
 import { checkpoint, foldProjection, rebuildProjection, restoreCheckpoint, signCheckpoint, verifyRebuild } from '../dist/projections/index.js';
-import { bootProductionAssembly } from '../dist/assembly/index.js';
+import { assemblySchemas, bootProductionAssembly, createAssemblyRuntime, createAssemblySpine,
+  registerAssemblyBodies } from '../dist/assembly/index.js';
 import { minimalPlaneProjectionIds, minimalPlaneProjections } from '../dist/operator/index.js';
 
 import { createTransportFileStorage } from './transport-file-storage.mjs';
@@ -56,36 +57,223 @@ const textHash = text => `sha256:${createHash('sha256').update(text).digest('hex
  */
 export function bootProductionSliceAssembly(input) {
   const slice = bootSliceAssembly(input.home, input.config ?? sliceConfig());
-  if (!input.assembly?.production) throw new Error('production slice requires Part Ten production composition');
-  const supplied = input.assembly.production;
+  const restart = input.restartRecovery === true ? restartProductionAssembly(slice) : null;
+  const assembly = restart?.assembly ?? input.assembly;
+  const manifest = restart?.manifest ?? input.manifest;
+  const scope = restart?.scope ?? input.scope;
+  if (!assembly?.production) throw new Error('production slice requires Part Ten production composition');
+  const supplied = assembly.production;
   const production = Object.freeze({ ...supplied,
     run: Object.freeze({ ...supplied.run, port: slice.runGraph() }),
     lease: Object.freeze({ ...supplied.lease, port: slice.transport }),
     judgment: Object.freeze({ ...supplied.judgment, port: slice.judgment }),
     effect: Object.freeze({ ...supplied.effect, port: slice.effects }),
   });
-  const coordinator = take(bootProductionAssembly({ ...input.assembly, production }, input.manifest, input.scope));
+  const coordinator = take(bootProductionAssembly({ ...assembly, production }, manifest, scope));
   return Object.freeze({ ...slice, coordinator,
     async drive() {
-      const request = input.authorizationRequest;
-      if (typeof request !== 'string' || !request) throw new Error('production slice requires one durable authorization request');
-      const challenge = take(coordinator.handles.surface.challenge(request));
-      const authority = take(coordinator.handles.surface.confirm({ challenge, proof: input.operatorProof ?? 'verified-operator-proof', decision: 'approve' }));
+      let request = null, authority = null;
+      if (!restart) {
+        request = input.authorizationRequest;
+        if (typeof request !== 'string' || !request) throw new Error('production slice requires one durable authorization request');
+        const challenge = take(coordinator.handles.surface.challenge(request));
+        authority = take(coordinator.handles.surface.confirm({ challenge, proof: input.operatorProof ?? 'verified-operator-proof', decision: 'approve' }));
+      }
       const report = await slice.drive();
+      const assemblyBoot = Object.freeze({ owner: coordinator.owner, admission: coordinator.admission.id,
+        scope: coordinator.scope, references: coordinator.references.map(row => Object.freeze({ name: row.name,
+          fact: row.fact.id, completeness: row.completeness })) });
+      if (restart) return Object.freeze({ ...report, assemblyBoot });
       const operation = report.outbound?.operation;
       if (typeof operation !== 'string' || !operation) throw new Error('production slice produced no admitted outbound operation');
       const witnessed = take(coordinator.handles.deliveryWitness.observe(operation));
       const verification = take(coordinator.handles.verification.port.inspectCurrent());
+      const witnessRecord = witnessed && typeof witnessed === 'object' ? witnessed : null;
+      const probe = witnessRecord?.probe && typeof witnessRecord.probe === 'object' ? witnessRecord.probe : null;
+      const observed = verification.find(row => row.record?.type === 'ProbeRecord' && row.record.id === probe?.id
+        && row.record.operation === operation && row.taint.length === 0 && row.conflicts.length === 0);
+      if (witnessRecord?.owner !== 'part-nine' || witnessRecord.administration !== 'independent'
+        || witnessRecord.operation !== operation || witnessRecord.platform !== coordinator.handles.deliveryWitness.platform
+        || witnessRecord.stage !== report.declaredStage || !observed)
+        throw new Error(`production slice delivery result is unwitnessed or does not bind the admitted operation: ${JSON.stringify({
+          operation, declaredStage: report.declaredStage, witness: witnessRecord,
+          verification: verification.map(row => ({ id: row.record?.id, type: row.record?.type,
+            operation: row.record?.operation, taint: row.taint, conflicts: row.conflicts })),
+        })}`);
       return Object.freeze({ ...report,
-        assemblyBoot: Object.freeze({ owner: coordinator.owner, admission: coordinator.admission.id,
-          scope: coordinator.scope, references: coordinator.references.map(row => Object.freeze({ name: row.name,
-            fact: row.fact.id, completeness: row.completeness })) }),
+        assemblyBoot,
         authorityCompletion: Object.freeze({ request, disposition: authority.id, owner: authority.owner }),
         independentlyWitnessedResult: witnessed,
         verificationFacts: verification.map(row => row.fact.id),
         verificationRecords: verification.map(row => row.record.id),
       });
     } });
+}
+
+// The process-restart worker has no test fixture object to smuggle across the
+// process cut. It therefore assembles a fresh, signed Part Ten production
+// composition on every boot and lets Part Ten re-resolve all 24 bindings before
+// the recovered slice is driven. The production coordinator is real; only the
+// operator interaction is omitted because authority was not the cut subject.
+function restartProductionAssembly(slice) {
+  const h = c => `sha256:${c.repeat(64)}`;
+  const scope = 'scope:minimal';
+  const required = (reference, expectedKind) => ({ reference, expectedKind, required: true });
+  const dependencyKinds = {
+    'local-facts': 'fact-local-durable-segment', register: 'register-generation-record', 'identity-keys': 'identity-key-set',
+    clock: 'clock-source', lease: 'transport-Lease', fence: 'transport-FenceToken',
+    'replication-peer': 'fact-replication-receipt', 'conversation-binding': 'conversation-binding',
+    route: 'conversation-route', 'delivery-evidence': 'delivery-evidence-service',
+  };
+  const definitions = minimalPlaneProjections(slice.kinds());
+  const binding = {
+    scope,
+    surface: {
+      adapter: { implementation: 'surface:phone', fact: required('binding:surface', 'operator-surface-registration') },
+      challengeVerifier: { implementation: 'verifier:phone', administration: 'independent',
+        fact: required('binding:challenge-verifier', 'operator-challenge-verifier-binding') },
+    },
+    verifiedActIntake: { implementation: 'intake:verified-act', operation: 'admitVerifiedAct',
+      fact: required('binding:verified-act-intake', 'intake-verified-act-binding') },
+    minimalPlane: {
+      folds: definitions.map(row => ({ projection: row.id, implementation: `fold:${row.id}`,
+        fact: required(`binding:fold:${row.id}`, 'minimal-plane-projection-binding') })),
+      sourceOnlyReplay: { implementation: 'replay:source-only', fact: required('binding:source-only-replay', 'minimal-plane-replay-binding') },
+    },
+    minimalResponder: { implementation: 'responder:minimal', fact: required('binding:minimal-responder', 'minimal-responder-binding'),
+      budgets: { worker: 1, storage: 4096, queue: 8, transport: 4, effect: 20 } },
+    dependencies: Object.entries(dependencyKinds).map(([name, kind]) => ({ name, fact: required(`binding:dependency:${name}`, kind) })),
+    lifecycle: {
+      cut: { implementation: 'lifecycle:cut', fact: required('binding:lifecycle:cut', 'assembly-lifecycle-control-binding') },
+      recovery: { implementation: 'lifecycle:recovery', fact: required('binding:lifecycle:recovery', 'assembly-lifecycle-control-binding') },
+    },
+    deliveryWitness: { implementation: 'witness:platform', identity: 'principal:witness', platform: 'telegram',
+      requester: 'principal:requester', effectAdapter: 'adapter:telegram',
+      fact: required('binding:delivery-witness', 'platform-delivery-witness-binding') },
+  };
+  const bindingFacts = [binding.surface.adapter.fact, binding.surface.challengeVerifier.fact, binding.verifiedActIntake.fact,
+    ...binding.minimalPlane.folds.map(row => row.fact), binding.minimalPlane.sourceOnlyReplay.fact,
+    binding.minimalResponder.fact, ...binding.dependencies.map(row => row.fact), binding.lifecycle.cut.fact,
+    binding.lifecycle.recovery.fact, binding.deliveryWitness.fact];
+  let factsContext;
+  const boundaryContext = Object.freeze({ ...slice.boundaryContext, validateReferences: true });
+  const host = { machine: slice.config.machine, principal: slice.bob, scope: slice.scope, boundary: boundaryContext,
+    current: () => ({ facts: factsContext, generation: 'generation:1', stopped: false, clock: slice.now() }) };
+  const registrations = take(registerAssemblyBodies(host));
+  const schemaBase = slice.factContext.schemas[0];
+  const referenceKinds = [...new Set(['check-run-record', 'verification-ProbeRecord', 'assembly-reference-evidence',
+    ...bindingFacts.map(row => row.expectedKind)])];
+  const schemas = [...slice.factContext.schemas.filter(schema => !referenceKinds.includes(schema.kind)), ...assemblySchemas(host),
+    ...referenceKinds.map(kind => ({ ...schemaBase, kind, fields: { id: { kind: 'text', maxLength: 4096 } },
+      causallyBound: false, requiredReferences: [], authority: 'none' }))]
+    .filter((schema, index, all) => all.findIndex(candidate => candidate.kind === schema.kind && candidate.version === schema.version) === index);
+  factsContext = { ...slice.factContext, facts: [], schemas,
+    ownedBodies: [...slice.factContext.ownedBodies ?? [], ...registrations] };
+  const frames = [];
+  const storage = { owner: 'part-ten', read: () => frames, append: (bytes, expected) => {
+    const prior = frames.at(-1); if ((prior?.contentHash ?? null) !== expected) throw new Error('restart assembly compare-head mismatch');
+    frames.push(JSON.parse(bytes)); return slice.result(() => ({ kind: 'local-durable' })); } };
+  const store = createFactStore(factsContext, storage);
+  const spine = createAssemblySpine(host, { context: factsContext, privateKey: slice.privateKey }, store);
+  const noValue = () => slice.result(() => undefined);
+  const base = { host, spine, harnesses: [], model: { owner: 'part-ten', describe: () => ({ owner: 'part-ten', provider: 'restart', model: 'none', route: 'none',
+    automaticRetries: 0, maxInputBytes: 1, maxOutputBytes: 1, maxCharge: 0, measured: false, basis: 'restart composition only' }),
+    prepare: noValue, exchange: async () => noValue() },
+    persistence: { owner: 'part-ten', id: 'restart:persistence', describe: () => ({ backend: 'memory', policy: 'restart-only', encrypted: true, appendAtomic: true }),
+      appendExact: noValue, readExact: noValue, flushEvidence: noValue },
+    independentProtection: { owner: 'part-nine', posture: () => slice.result(() => 'protected') } };
+  const runtime = createAssemblyRuntime(base);
+  const appendReference = (kind, id) => take(authorAndAppend({ kind, schemaVersion: 1, machine: host.machine,
+    principal: json(slice.bob), provenance: json(slice.bob.provenance), at: json(slice.now()), body: { id }, required: [] },
+  factsContext, store, slice.privateKey)).fact;
+  appendReference('check-run-record', 'check-run:production');
+  const probe = appendReference('verification-ProbeRecord', 'probe:production');
+  appendReference('assembly-reference-evidence', 'bar:production');
+  for (const row of bindingFacts) appendReference(row.expectedKind, row.reference);
+  const common = (type, id = type) => ({ type, schemaVersion: 1, id, predecessors: [], dependencyFacts: [] });
+  const capabilities = ['stable-lookup', 'application-stage', 'decisive-non-occurrence', 'delayed-execution-exclusion',
+    'final-charge', 'prerequisite-durability'];
+  const contract = take(runtime.record('AdapterEvidenceContract', { ...common('AdapterEvidenceContract', 'contract:restart-production'),
+    adapter: 'surface:phone', artifact: h('1'), parserDeclaration: 'parser:restart', stimulusClass: 'bot-workspace',
+    authenticatedFields: ['account', 'tenant', 'conversation', 'sender', 'event'], authenticationMethod: 'signed fact verification',
+    credentialBinding: 'secretref:restart', senderNamespace: 'principal', conversationNamespace: 'scope',
+    stabilityRules: ['signed identity'], forwardingTreatment: 'quoted data', impersonationTreatment: 'never identity',
+    churnDetector: 'generation', revocationResponse: 'refuse boot', eventIdAuthority: 'provider', replayPolicy: 'retained durable ids',
+    ackPolicy: 'bound-only', disclosureScopes: [scope], positiveFixtures: ['P11-V29'],
+    negativeFixtures: ['wrong-kind'], probes: ['probe:production'], capabilities: capabilities.map(name => ({ name, support: 'supported',
+      source: `source:${name}`, predicate: `predicate:${name}`, subjectBinding: 'signed operation', horizon: 'one production boot',
+      budget: 1, conformance: 'check-run:production', reason: '' })), contractVersion: 'restart:v1' }));
+  const conformance = take(runtime.record('AdapterConformance', { ...common('AdapterConformance'), contract: contract.id,
+    adapter: 'surface:phone', package: 'slice', artifact: h('1'), platform: 'darwin-arm64', mode: 'recovery', portVersion: '1',
+    schemaVersions: ['assembly-v1'], generation: 'generation:1', fixtureDigests: [h('2')], sourceProvenance: ['signed-restart-composition'],
+    stageChecks: [{ stage: 'boot', checkRun: 'check-run:production', positive: ['production coordinator admitted'], negative: ['wrong kind refused'] }],
+    probes: ['probe:production'], bars: ['bar:production'], limitations: [], testedAt: 0, validUntil: 100000000, disposition: 'passed' }));
+  const policy = take(runtime.record('StoreCustodyPolicy', { ...common('StoreCustodyPolicy'), governedVersion: 'policy:v1', store: 'store:restart',
+    locations: [{ class: 'segment', location: 'memory://restart' }], custodians: ['service:restart'], readOperation: 'operation:restart-read',
+    disclosureScopes: [scope], grants: ['grant:restart'], stalenessPolicy: 'per-process',
+    encryption: { suite: 'AES-256-GCM', version: '1', implementationEvidence: ['production assembly fixture isolation'] },
+    wrappingKey: 'secretref:restart', dataKeys: [{ id: 'restart-key', epoch: 1 }], recoveryCustody: 'restart-worker',
+    restoreProcedure: 'rebuild from signed facts', rotationProcedure: 'new process', migrationBound: 1,
+    plaintextRestrictions: ['ephemeral only'], metadataExposure: ['counts'], auditBound: 100, rateBound: 100, resourceBound: 4096,
+    compromiseResponse: 'refuse boot' }));
+  const harness = take(runtime.record('HarnessObservation', { ...common('HarnessObservation'), launch: 'restart-production-boot', run: 'slice-run',
+    step: 'production-assembly', input: 'signed-history', incarnation: slice.incarnation, sourceEvidence: ['bootProductionAssembly'],
+    contextDigests: [h('3')], generation: 'generation:1', causalReferences: [], observedAt: 0, freshFor: 100000000,
+    phase: 'context-consumed', boundaryEvidence: 'production-coordinator', detail: 'Part Ten production coordinator admitted before recovery drive' }));
+  const access = take(runtime.record('StorageAccessObservation', { ...common('StorageAccessObservation'), store: 'store:restart', objectClass: 'segment',
+    requester: 'restart-worker', service: 'service:restart', grant: 'grant:restart', policy: 'StoreCustodyPolicy', generation: 'generation:1',
+    operation: 'operation:restart-read', observedAt: 0, byteCount: frames.length, result: 'allowed', refusalReference: '' }));
+  const rows = () => take(runtime.inspect());
+  const factFor = id => rows().find(row => row.record.id === id).fact.id;
+  const conformanceFact = factFor(conformance.id), policyFact = factFor(policy.id), harnessFact = factFor(harness.id), accessFact = factFor(access.id);
+  const publicPorts = [
+    ['OperatorSurfacePort', 'surface:phone', '1'], ['IndependentSurfaceVerifierPort', 'verifier:phone', '2'],
+    ['IntakePort.admitVerifiedAct', 'intake:verified-act', '3'], ['RunGraphPort', 'run:graph', '4'],
+    ['TransportAuthority', 'lease:authority', '5'], ['JudgmentDoorway', 'judgment:doorway', '6'],
+    ['EffectDoorway', 'effect:doorway', '7'], ['VerificationRuntimePort', 'verification:runtime', '8'],
+  ].map(([port, implementation, digit]) => ({ port, version: '1', scope, implementation, artifact: h(digit) }));
+  const manifest = take(runtime.record('AssemblyManifest', { ...common('AssemblyManifest', 'manifest:restart-production'), manifestDigest: h('9'),
+    packages: [{ id: 'slice', digest: h('a'), artifact: h('b') }], compatibility: { runtime: 'node', toolchain: 'compiled',
+      platforms: ['darwin-arm64'], schemas: ['assembly-v1'], rollback: ['restart'] }, publicPorts,
+    requiredGraph: [{ consumer: scope, dependencies: ['source', 'authority', 'route', 'durability', 'observation'] }], generation: 'generation:1',
+    declarationSources: ['assembly.contract'], genesisAnchor: 'genesis:restart', trustRoots: ['root:restart'], servicePrincipals: ['service:restart'],
+    grants: ['grant:restart'], custodyPolicies: [policy.id], resourcePolicies: [{ class: 'control', resource: 'worker', limit: 1 }],
+    requiredChecks: [{ tier: 'unit', ids: ['P11-V29'] }, { tier: 'integration', ids: ['P11-V29'] }, { tier: 'lifecycle', ids: ['P11-V29'] }],
+    productionBindings: [binding], dependencyFacts: [conformanceFact, policyFact] }));
+  const manifestFact = factFor(manifest.id);
+  take(runtime.record('AssemblyAdmission', { ...common('AssemblyAdmission', 'admission:restart-production'), manifest: manifest.id,
+    manifestDigest: manifest.manifestDigest, machine: host.machine, incarnation: slice.incarnation, scope, sourceGeneration: 'generation:1',
+    sourceVector: h('c'), artifacts: ['slice'], environmentEvidence: ['node-process'], conformance: [conformanceFact],
+    isolationEvidence: [harnessFact], custodyEvidence: [accessFact], probeEvidence: [probe.id], resourceReservation: 'reservation:restart',
+    observedAt: 0, validUntil: 100000000, priorAdmission: '', disposition: 'active', reason: 'production restart prerequisites admitted',
+    repairOwner: 'restart-worker', dependencyFacts: [manifestFact, conformanceFact, policyFact] }));
+  const ok = value => slice.result(() => value);
+  const production = {
+    requesterIdentity: binding.deliveryWitness.requester, effectAdapterIdentity: binding.deliveryWitness.effectAdapter,
+    surface: { owner: 'part-eleven', id: 'surface:phone', render: noValue, pending: noValue, challenge: noValue, confirm: noValue,
+      binding: noValue, protection: noValue, stopChallenge: noValue, stop: noValue },
+    challengeVerifier: { id: 'verifier:phone', port: { owner: 'part-nine', administration: 'independent', issue: noValue, verify: noValue } },
+    verifiedActIntake: { owner: 'part-four', id: 'intake:verified-act', operation: 'admitVerifiedAct',
+      port: { receive: noValue, recover: noValue, expireHolds: () => ok(0), admitVerifiedAct: noValue } },
+    folds: definitions.map(row => ({ owner: 'part-eleven', id: row.id, implementation: `fold:${row.id}`, definition: row })),
+    replay: { owner: 'part-ten', id: 'replay:source-only', sourceOnly: true, rebuild: () => ok([]) },
+    minimalResponder: { owner: 'part-eleven', id: 'responder:minimal', budgets: binding.minimalResponder.budgets,
+      respond: () => ok('limited response') },
+    run: { id: 'run:graph', port: slice.runGraph() }, lease: { id: 'lease:authority', port: slice.transport },
+    judgment: { id: 'judgment:doorway', port: slice.judgment }, effect: { id: 'effect:doorway', port: slice.effects },
+    verification: { id: 'verification:runtime', port: { owner: 'part-nine', inspectCurrent: () => ok([]) } },
+    dependencyAdmission: { owner: 'part-ten', id: 'dependency:admission', admit: input => {
+      const commonHandle = { name: input.name, reference: input.fact.id, provider: `provider:${input.name}`, current: true };
+      const extras = { 'local-facts': { durability: 'local-durable' }, register: { generation: 'generation:1' },
+        'identity-keys': { keys: 'keys:restart' }, clock: { clock: 'clock:restart' }, lease: { exclusive: true }, fence: { exclusive: true },
+        'replication-peer': { replicas: 1, distinctPeer: true }, 'conversation-binding': { binding: 'binding:restart' },
+        route: { route: 'route:restart' }, 'delivery-evidence': { administration: 'independent' } };
+      return ok({ ...commonHandle, ...extras[input.name] }); } },
+    lifecycle: { owner: 'part-ten', cutId: 'lifecycle:cut', recoveryId: 'lifecycle:recovery', cut: noValue, recover: noValue },
+    deliveryWitness: { owner: 'part-nine', administration: 'independent', id: 'witness:platform', identity: 'principal:witness',
+      platform: 'telegram', observe: () => ok({ status: 'unwitnessed-in-restart-composition' }) },
+  };
+  return { assembly: { ...base, production }, manifest: manifest.id, scope };
 }
 
 const syncDir = directory => { const fd = openSync(directory, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } };

@@ -19,7 +19,7 @@ function samples(): ReplaySample[] {
 }
 
 it('P11-NF-24 P11-NF-25 P11-NF-26 the six informational projections enumerate every admitted kind and never answer authority', () => {
-  const kinds = ['intake-receipt', 'conversation-binding', 'slice-obligation', 'effect-EffectSettlement', 'run-opening'];
+  const kinds = ['intake-receipt', 'intake-verified-act', 'conversation-binding', 'slice-obligation', 'effect-EffectSettlement', 'run-opening'];
   const rows = minimalPlaneProjections(kinds);
   expect(rows.map(row => row.id)).toEqual([...minimalPlaneProjectionIds]);
   for (const row of rows) {
@@ -74,10 +74,11 @@ it('P11-NF-27 P11-NF-29 repeated valid samples contribute to maxima while unknow
 });
 
 it('P11-NF-24 P11-NF-26 the authority projection folds owner authorization requests and dispositions without conferring authority', () => {
-  const authority = minimalPlaneProjections(['authorization-request', 'authorization-disposition'])[4]!;
+  const authority = minimalPlaneProjections(['authorization-request', 'authorization-disposition', 'intake-verified-act'])[4]!;
   expect(authority.class).toBe('informational');
   expect(authority.decisions['authorization-request']?.kind).toBe('folds');
   expect(authority.decisions['authorization-disposition']?.kind).toBe('folds');
+  expect(authority.decisions['intake-verified-act']).toEqual({ kind: 'folds', merge: 'set-union', identity: 'request', value: 'disposition' });
 });
 
 it('P11-NF-32 corrupt non-source views are disposable while source declarations and the smallest healthy path remain separate', () => {
