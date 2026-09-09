@@ -10,7 +10,8 @@ import { boundary,IntakeFailure,json,object,requireIntake,same,take,text } from 
 import type { ConstitutionalReference,InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort,PendingScheduledAdmissions,
   PendingScheduledAdmissionsInput,ScheduledTickAdmission,SenderEvidence,VerifiedActAdmission,VerifiedActDisposition } from './contracts.js';
 import { buildVerifiedActRecord,intakeArrival,isScheduledIntakeAdmission,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,
-  intakeVerifiedActRegistration,intakeWorkRegistration,scheduledIntakeFactSchemas,decodeScheduledTickBody,validateScheduledIntakeRoute } from './records.js';
+  intakeVerifiedActRegistration,intakeWorkRegistration,scheduledIntakeFactSchemas,decodeScheduledTickBody,validateScheduledIntakeRoute,
+  bindIntakeOwnerRegister,registeredScheduledIntakeAdapters } from './records.js';
 
 const reference=(f: FactEnvelope): FactEnvelopeReference => Object.freeze({ owner: 'part-two',name: 'FactEnvelope',id: f.id });
 type Classified={ kind: 'conversation'; ask: string; flags: readonly 'cannot-decide'[] }|{ kind: 'stop' }|{ kind: 'needs-judgment' };
@@ -38,6 +39,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     const declaration=deps.governance.register.entries.find(e => e.declaration.id===deps.adapter.id)!.declaration;
     requireIntake(declaration.status==='live','P4-NF-06: intake adapter must be live');
     const contract=object(json(declaration.requiredFacts));
+    bindIntakeOwnerRegister(initial.decode.register,deps.governance.register);
+    const registeredScheduledAdapters=registeredScheduledIntakeAdapters(deps.governance.register,initial.decode.register);
     const eventAuthority=object(contract.eventIdAuthority!);
     requireIntake(text(eventAuthority.mintedBy,'event-id authority')!=='sender'
       &&object(eventAuthority.fallbackFingerprint!).policy==='none','P4-NF-03: slice requires provider-minted stable event ids; no hash fallback');
@@ -58,7 +61,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     // schema when that operation is invoked.
     for(const schema of intakeFactSchemas(scope)) requireIntake(initial.schemas.some(s => same(s,schema)),
       `P4-NF-06/12: required owner schema changed or missing: ${schema.kind}`);
-    const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id));
+    const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id,deps.governance.register));
     const stopRegistration=take(intakeStopRegistration(b,deps.author.principal.id));
     const verifiedActRegistration=take(intakeVerifiedActRegistration(b,deps.author.principal.id,registerGenerationReference));
     // Snapshot assembly choices. Only context()/clock()/storage are live provider inputs.
@@ -324,7 +327,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         .sort((left,right) => foldKey(left.row.fact)<foldKey(right.row.fact)?-1:foldKey(left.row.fact)>foldKey(right.row.fact)?1:0)[0]!);
     }
     function isScheduledAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[]): boolean {
-      try { return isScheduledIntakeAdmission(fact,facts,author.principal.id,context(initial.preserved)); }
+      try { return isScheduledIntakeAdmission(fact,facts,author.principal.id,registeredScheduledAdapters); }
       catch { return false; }
     }
     type ScheduledResolution={ kind: 'valid'; row: FactStatus; principal: VerifiedPrincipal }|{ kind: 'partial' };
@@ -385,7 +388,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         'scheduled intake: pending admission is contested','standing');
       const principal=intent.view.principal as VerifiedPrincipal;
       validateScheduledIntakeRoute(arrival.adapter,arrival.route.channel,arrival.route.sender,
-        arrival.route.identityEpoch,json(principal),c.decode);
+        arrival.route.identityEpoch,json(principal),c.decode,registeredScheduledAdapters);
 
       const principalRows=dependencies.filter(candidate => candidate.fact.kind==='intake-scheduled-principal'
         &&candidate.historical.some(record => record.view.type==='VerifiedPrincipal'&&same(record.view,principal)));
@@ -474,7 +477,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             requireIntake(identityEpoch===authenticated.provenance.record.hash,
               'scheduled intake: route identity epoch is not bound to the signed package identity','standing');
             const principal=resolvePrincipal(authenticated.e,authenticated.provenance,preserved,'system');
-            validateScheduledIntakeRoute(routeAdapter,channel,sender,identityEpoch,json(principal),context(preserved).decode);
+            validateScheduledIntakeRoute(routeAdapter,channel,sender,identityEpoch,json(principal),context(preserved).decode,
+              registeredScheduledAdapters);
             requireIntake(principal.id===author.principal.id&&same(principal.provenance,author.provenance),
               'scheduled intake: configured author is not the authenticated package system principal','standing');
             const discovery=scheduledDiscovery(input.discovery,eventId,at,preserved);

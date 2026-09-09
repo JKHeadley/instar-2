@@ -55,7 +55,7 @@ export function scheduledRunHarness(f: ScheduledFixture, admitted: ScheduledInta
   const register = { ...f.context.decode.register, subjects };
   Object.assign(f.context, { decode: { ...f.context.decode, register } });
   const boundary = { site: f.context.site, preserved: f.context.preserved, register };
-  const work = value(intakeWorkRegistration(boundary, f.principal.id));
+  const work = value(intakeWorkRegistration(boundary, f.principal.id, f.deps.governance.register));
   const factContext = { ...f.context, facts: [] as FactEnvelope[] };
   let context: RunDecodeContext = {
     site: f.context.site, preserved: f.context.preserved, register,

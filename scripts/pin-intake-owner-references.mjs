@@ -28,7 +28,11 @@ const manifest = { schemaVersion: 1, owner: 'part-four',
     { id: 'P4-ST-33', stage: 'build', artifact: artifact('tests/integration/intake-scheduled-repair6.test.ts') },
     { id: 'P4-ST-34', stage: 'build', artifact: artifact('tests/e2e/intake-scheduled-repair6.test.ts') },
     { id: 'P4-ST-35', stage: 'build', artifact: artifact('tests/intake/scheduled-repair6.test.ts') },
+    { id: 'P4-ST-36', stage: 'build', artifact: artifact('tests/e2e/intake-scheduled-repair7.test.ts') },
+    { id: 'P4-ST-37', stage: 'build', artifact: artifact('tests/integration/intake-scheduled-repair7.test.ts') },
+    { id: 'P4-ST-38', stage: 'build', artifact: artifact('tests/intake/scheduled-repair7.test.ts') },
     { id: 'P4-PRESERVE-01', stage: 'build', artifact: artifact('tests/intake/preexisting-preservation.test.ts') },
+    { id: 'P4-PRESERVE-02', stage: 'build', artifact: artifact('tests/e2e/intake-scheduled-repair7.test.ts') },
   ],
   probes: [], decoders, documents: [{ id: 'intake.contract', artifact: artifact('docs/08-the-intake.md') }] };
 mkdirSync('register-source/owner-references', { recursive: true });

@@ -4,7 +4,7 @@ import { canonical, decode, decodeMeasurement } from '../../src/index.js';
 import type { Clock, Json, ProvenanceInput, Scope } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import type { CausalFrontier, FactEnvelope, FactSchema } from '../../src/facts/index.js';
-import { createIntakePort, scheduledIntakeFactSchemas } from '../../src/intake/index.js';
+import { bindIntakeOwnerRegister,createIntakePort,scheduledIntakeFactSchemas } from '../../src/intake/index.js';
 import type { InboundRoute, IntakeDependencies } from '../../src/intake/index.js';
 import { intakeFixture, json, value } from './fixtures.js';
 
@@ -24,13 +24,19 @@ export function scheduledFixture(options: { directory?: string; machine?: 'machi
       fallbackFingerprint: { policy: 'none', basis: 'canonical namespace/job/instant identity required' } },
     ackPolicy: 'never',
   }, { profile: base.r.profile });
-  const governance = base.govern([...declarations, parser]).governance;
+  const hostParser = base.r.declaration('host', 'parsers', { fixture: 'check', authenticationClass: [
+    { stimulusType: 'message', class: 'channel-attested' },{ stimulusType: 'operator-act', class: 'verified' }],
+    eventIdAuthority: { mintedBy: 'provider', uniquenessScope: 'channel-and-sender', replayWindow: 1000,
+      fallbackFingerprint: { policy: 'none', basis: 'provider id required' } }, ackPolicy: 'bound-only' }, { profile: base.r.profile });
+  const governedDeclarations = [...declarations, hostParser, parser];
+  const governance = base.govern(governedDeclarations).governance;
   const priorRegister = base.context.decode.register;
   const key = priorRegister.keys.host!;
   const register = { ...priorRegister,
     entries: [...new Set([...priorRegister.entries, scheduledAdapterId, 'scheduled-clock'])],
     keys: { ...priorRegister.keys, host: { ...key, adapters: [...new Set([...key.adapters, scheduledAdapterId])] } },
   };
+  bindIntakeOwnerRegister(register,governance.register);
   Object.assign(base.f.ctx, { register });
   Object.assign(base.context, { decode: { ...base.context.decode, register } });
   const proof = base.f.proof({ id: scheduledPrincipalId, kind: 'system' },
@@ -128,6 +134,7 @@ export function scheduledFixture(options: { directory?: string; machine?: 'machi
       ...retained.filter(candidate => !base.context.grants.some(current => current.factId === candidate.factId))] });
     return binding;
   }
-  return { ...base, bind, deps, depsForMachine, port, portForMachine, principal, provenance, provenanceInput, route, tick, grant, discovery, frontier,
+  const govern = (declared: readonly object[] = governedDeclarations, approved = true) => base.govern(declared, approved);
+  return { ...base, govern, bind, deps, depsForMachine, port, portForMachine, principal, provenance, provenanceInput, route, tick, grant, discovery, frontier,
     grantSchema, evidenceSchema, installSchemas, clock, setTime: (at: number) => { instant = at; } };
 }

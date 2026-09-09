@@ -1,4 +1,4 @@
-import type { BoundaryContext,Clock,DecodeContext,Evidence,Hash,HistoricalRead,Inventory,Json,Provenance,RegisterGenerationReference,Scope,StandingGrant,VerifiedPrincipal } from '../index.js';
+import type { BoundaryContext,Clock,DecodeContext,Evidence,Hash,HistoricalRead,Inventory,Json,Provenance,RegisterGenerationReference,RegisterReadPort,Scope,StandingGrant,VerifiedPrincipal } from '../index.js';
 import { causalCone,causalStanding,decodeHistoricalBody,hashBytes,registerOwnedBody } from '../facts/index.js';
 import { canonical,decode,decodeMeasurement,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
 import { prepareSnapshot } from '../facts/index.js';
@@ -6,6 +6,8 @@ import type { FactContext,FactEnvelope,FactSchema,FactSnapshot,FactStatus,OwnedB
 import type { Result } from '../index.js';
 import { IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ProjectionDefinition } from '../projections/index.js';
+import type { VerifiedRegister } from '../register/index.js';
+import { wasVerified } from '../register/generator.js';
 
 export const intakeKinds=Object.freeze(['intake-receipt','intake-resolved','intake-admitted','intake-held','intake-expired',
   'intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','intake-verified-act','conversation-binding'] as const);
@@ -36,59 +38,70 @@ export function intakeArrival(fact: FactEnvelope,observerId: string) {
   } catch { return undefined; }
 }
 
-// Scheduled identity is chosen from signed ingress history, never solely from
-// the admission's mutable Intent or the authority witness being validated.
-function containsScheduledDiscovery(value: Json): boolean {
-  if(Array.isArray(value)) return value.some(containsScheduledDiscovery);
-  if(value===null||typeof value!=='object') return false;
-  const candidate=value as Record<string,Json>;
-  if(candidate.type==='Evidence') {
-    try {
-      const claim=object(candidate.claim!);
-      if(claim.predicate==='scheduled-discovery') return true;
-    } catch { /* A malformed scheduled claim still selects the refusal arm below. */ }
-  }
-  return Object.values(candidate).some(containsScheduledDiscovery);
+// The verified register, not payload vocabulary or nearby witnesses, declares
+// which authenticated ingress contracts carry scheduled ticks. Snapshot the
+// declaration when the owner decoder is registered so origin and historical
+// replay apply the same classification even when dependencies are malformed.
+type OwnerRegisterReadPort=Pick<RegisterReadPort,'entries'|'generation'|'sites'>;
+const verifiedOwnerRegisters=new WeakMap<object,VerifiedRegister>();
+
+export function bindIntakeOwnerRegister(readPort: OwnerRegisterReadPort,register: VerifiedRegister): void {
+  requireIntake(wasVerified(register),'scheduled intake: owner register was not verified','integrity');
+  requireIntake(register.entries.filter(entry => entry.declaration.kind==='parsers'&&entry.declaration.status==='live')
+    .every(entry => readPort.entries.includes(entry.declaration.id)),
+  'scheduled intake: verified adapter declaration differs from decoder register','integrity');
+  verifiedOwnerRegisters.set(readPort as object,register);
 }
 
-function capturedScheduledStimulus(receipt: FactEnvelope,context?: Pick<FactContext,'captures'>): boolean {
-  if(!context) return false;
-  try {
-    const pin=object(object(receipt.body).capture!),capture=context.captures[text(pin.reference,'scheduled capture reference')];
-    if(capture?.status!=='available'||capture.bytes===null) return false;
-    const raw=object(JSON.parse(capture.bytes) as Json);
-    // Classification deliberately asks only whether the preserved bytes declare
-    // the scheduled stimulus shape. The scheduled decoder below decides whether
-    // every field, byte and identity is valid.
-    return raw.schemaVersion===1&&['jobInstance','scheduledInstant','packageDigest','calendarPolicyVersion','timeZoneDataVersion']
-      .some(key => Object.hasOwn(raw,key));
-  } catch { return false; }
+export function registeredScheduledIntakeAdapters(register?: VerifiedRegister,readPort?: OwnerRegisterReadPort): readonly string[] {
+  const resolved=register??(readPort&&verifiedOwnerRegisters.get(readPort as object));
+  if(resolved) requireIntake(wasVerified(resolved),'scheduled intake: owner register was not verified','integrity');
+  const declared=resolved?.entries.filter(entry => {
+    if(entry.declaration.kind!=='parsers'||entry.declaration.status!=='live') return false;
+    const authentication=entry.declaration.requiredFacts.authenticationClass;
+    return Array.isArray(authentication)&&authentication.some(row => {
+      try {
+        const declaration=object(row);
+        return declaration.stimulusType==='scheduled-tick'&&declaration.class==='verified';
+      } catch { return false; }
+    });
+  }).map(entry => entry.declaration.id)??[];
+  // A supplied verified register is the only capability witness. The read port
+  // is checked for the same adapter entry roster; it never grants a
+  // scheduled capability by membership alone.
+  if(resolved&&readPort) requireIntake(declared.every(adapter => readPort.entries.includes(adapter)),
+    'scheduled intake: verified adapter declaration differs from decoder register','integrity');
+  return Object.freeze([...new Set(declared)].sort());
 }
 
 export function isScheduledIntakeAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[],observerId: string,
-  context?: Pick<FactContext,'captures'>): boolean {
+  registeredScheduledAdapters: readonly string[]): boolean {
   if(fact.kind!=='intake-admitted') return false;
   const receipt=facts.find(candidate => candidate.id===object(fact.body).receipt&&candidate.kind==='intake-receipt');
   const arrival=receipt&&intakeArrival(receipt,observerId);
-  if(!arrival) return false;
-  const cone=causalCone(fact,facts);
-  // Selection must not depend on the authority witness whose validity the
-  // scheduled arm is about to prove. A wrong witness, a required scheduled
-  // discovery, or the observer-preserved tick shape all select that arm. This
-  // leaves pre-scheduled conversation records on their original path while an
-  // omitted/mismatched principal can no longer turn scheduled work into an
-  // ordinary admission.
-  return cone.some(candidate => candidate.kind==='intake-scheduled-principal')
-    ||cone.some(candidate => fact.predecessors.required.includes(candidate.id)&&containsScheduledDiscovery(candidate.body))
-    ||capturedScheduledStimulus(receipt,context);
+  if(!receipt||!arrival) return false;
+  if(registeredScheduledAdapters.includes(arrival.adapter)) return true;
+  // A package-authenticated system arrival on the scheduled channel is still
+  // a scheduled attempt when its adapter declaration is wrong. Selecting the
+  // arm here lets route validation refuse that unsupported contract instead of
+  // laundering it through the ordinary decoder.
+  try {
+    const principal=object(receipt.principal),provenance=object(receipt.provenance);
+    const authenticated=object(provenance.authenticated!),signedPrincipal=object(authenticated.principal!);
+    return arrival.route.channel.startsWith('scheduled:')&&principal.kind==='system'
+      &&principal.id===arrival.route.sender&&provenance.class==='verified'
+      &&authenticated.recordType==='package-system-principal'
+      &&signedPrincipal.id===principal.id&&signedPrincipal.kind==='system'
+      &&object(provenance.record!).hash===arrival.route.identityEpoch;
+  } catch { return false; }
 }
 
 export function validateScheduledIntakeRoute(adapterInput: Json,channelInput: Json,senderInput: Json,
-  identityEpochInput: Json,principalInput: Json,context: DecodeContext): void {
+  identityEpochInput: Json,principalInput: Json,context: DecodeContext,registeredScheduledAdapters: readonly string[]): void {
   const adapter=text(adapterInput,'scheduled adapter'),channel=text(channelInput,'scheduled channel');
   const sender=text(senderInput,'scheduled sender'),identityEpoch=text(identityEpochInput,'scheduled identity epoch');
-  requireIntake(context.register.entries.includes(adapter),
-    'scheduled intake: unregistered scheduled-ingress adapter','standing');
+  requireIntake(context.register.entries.includes(adapter)&&registeredScheduledAdapters.includes(adapter),
+    'scheduled intake: adapter is not registered for verified scheduled ticks','standing');
   requireIntake(channel.startsWith('scheduled:')&&channel.length>'scheduled:'.length,
     'scheduled intake: channel must name its installation','decode');
   const principal=object(principalInput),provenance=object(principal.provenance!);
@@ -411,7 +424,8 @@ export function intakeVerifiedActRegistration(context: BoundaryContext,observerI
 }
 
 // P4-NF-12 holds at P2 admission too, not only in the convenience constructor.
-export function intakeWorkRegistration(context: BoundaryContext,observerId: string): Result<OwnedBodyRegistration> {
+export function intakeWorkRegistration(context: BoundaryContext,observerId: string,register?: VerifiedRegister): Result<OwnedBodyRegistration> {
+  const registeredScheduledAdapters=registeredScheduledIntakeAdapters(register,context.register);
   return registerOwnedBody({
     name: 'IntakeWork',owner: 'part-four',currentVersion: 1,migrations: {},
     versions: { 1: { validate: value => ({ ok: true,value }) } },
@@ -451,12 +465,13 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
           &&scopeIncludes(take(decode('Scope',d.scope,c.facts.decode)),scope)).map(d => text(d.id,'directive id'));
         requireIntake(same([...new Set(expected)].sort(),intent.under),'P4-NF-25: intent omits or changes in-cone directives');
         const principal=object(intent.principal!);
-        // The signed receipt chooses the scheduled arm. The admission's mutable
-        // principal/ask fields may only be checked after that choice; otherwise
-        // a malformed scheduled claim can fall through to ordinary intake.
-        const scheduled=isScheduledIntakeAdmission(c.origin,c.facts.facts,observerId,c.facts);
+        // The receipt's authenticated adapter contract chooses the arm. Neither
+        // mutable body vocabulary nor unrelated authority witnesses may enable
+        // or disable scheduled validation.
+        const scheduled=isScheduledIntakeAdmission(c.origin,c.facts.facts,observerId,registeredScheduledAdapters);
         if(scheduled) {
-          validateScheduledIntakeRoute(body.adapter!,body.channel!,body.sender!,body.identityEpoch!,principal,c.facts.decode);
+          validateScheduledIntakeRoute(body.adapter!,body.channel!,body.sender!,body.identityEpoch!,principal,c.facts.decode,
+            registeredScheduledAdapters);
           const scheduledAsk=object(intent.ask!);
           const eventId=text(body.eventId,'scheduled event id');
           // Validate the claim independently of capture availability. This
