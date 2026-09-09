@@ -9,7 +9,7 @@ import { foldProjection,readProjection } from '../projections/index.js';
 import { boundary,IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
 import type { InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort,SenderEvidence,VerifiedActAdmission,VerifiedActDisposition } from './contracts.js';
 import { buildVerifiedActRecord,intakeArrival,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,
-  intakeVerifiedActRegistration,intakeWorkRegistration } from './records.js';
+  intakeVerifiedActFactSchemas,intakeVerifiedActRegistration,intakeWorkRegistration } from './records.js';
 
 const reference=(f: FactEnvelope): FactEnvelopeReference => Object.freeze({ owner: 'part-two',name: 'FactEnvelope',id: f.id });
 type Classified={ kind: 'conversation'; ask: string; flags: readonly 'cannot-decide'[] }|{ kind: 'stop' }|{ kind: 'needs-judgment' };
@@ -51,18 +51,16 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       { ...initial.decode,provenance: deps.author.principal.provenance }));
     const scope=take(decode('Scope',deps.scope,initial.decode));
     const schemas=intakeFactSchemas(scope);
-    const verifiedActKinds=new Set(['intake-verified-act','authorization-request']);
-    for(const schema of schemas.filter(schema => !verifiedActKinds.has(schema.kind))) requireIntake(initial.schemas.some(s => same(s,schema)),
+    for(const schema of schemas) requireIntake(initial.schemas.some(s => same(s,schema)),
       `P4-NF-06/12: required owner schema changed or missing: ${schema.kind}`);
-    const hasAnyVerifiedActSchema=initial.schemas.some(schema => verifiedActKinds.has(schema.kind));
-    const hasVerifiedActSchemas=schemas.filter(schema => verifiedActKinds.has(schema.kind)).every(schema => initial.schemas.some(s => same(s,schema)));
-    requireIntake(!hasAnyVerifiedActSchema||hasVerifiedActSchemas,
-      'P4-NF-06/12: verified-act intake schemas are only partially installed');
+    const verifiedActSchemas=intakeVerifiedActFactSchemas(scope);
+    const hasVerifiedActSchemas=verifiedActSchemas.every(schema => initial.schemas.some(s => same(s,schema)));
     const registerGeneration=take(generationOf(deps.governance.register,deps.governance.context));
     const registerGenerationReference={ owner: 'part-three',name: 'RegisterGeneration',id: registerGeneration.id } as const;
     const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id));
     const stopRegistration=take(intakeStopRegistration(b,deps.author.principal.id));
-    const verifiedActRegistration=take(intakeVerifiedActRegistration(b,deps.author.principal.id,registerGenerationReference));
+    const verifiedActRegistration=hasVerifiedActSchemas
+      ? take(intakeVerifiedActRegistration(b,deps.author.principal.id,registerGenerationReference)):undefined;
     // Snapshot assembly choices. Only context()/clock()/storage are live provider inputs.
     const adapterId=deps.adapter.id,owner=deps.workOwner,maxAge=deps.holdMaxAge,maxActive=deps.holdMaxActive;
     const authenticate=deps.adapter.authenticate.bind(deps.adapter),parse=deps.adapter.parse.bind(deps.adapter);
@@ -106,16 +104,19 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     function context(preserved: string,principal?: VerifiedPrincipal): FactContext {
       const c=deps.context();
       return {
-        ...c,preserved,ownedBodies: [...c.ownedBodies?.filter(r => !(r.owner==='part-four'
-          &&['IntakeWork','IntakeStop','VerifiedActDisposition'].includes(r.name)))??[],
-          workRegistration,stopRegistration,verifiedActRegistration],decode: {
+        ...c,preserved,ownedBodies: [...c.ownedBodies?.filter(r => !(r.owner==='part-four'&&['IntakeWork','IntakeStop'].includes(r.name)))??[],workRegistration,stopRegistration],decode: {
           ...c.decode,preserved,
           principals: [...c.decode.principals??[],author.principal,...principal? [principal]:[]]
         }
       };
     }
-    function read(preserved: string): readonly FactEnvelope[] {
+    function verifiedActContext(preserved: string): FactContext {
       const c=context(preserved);
+      requireIntake(verifiedActRegistration,'verified act: additive intake seam is unavailable because its fact schemas are not installed','standing');
+      return { ...c,ownedBodies: [...c.ownedBodies?.filter(r => !(r.owner==='part-four'&&r.name==='VerifiedActDisposition'))??[],verifiedActRegistration] };
+    }
+    function read(preserved: string,seam=false): readonly FactEnvelope[] {
+      const c=seam? verifiedActContext(preserved):context(preserved);
       return [...new Map([...c.facts,...take(createFactStore(c,deps.storage).read())].map(f => [f.id,f])).values()];
     }
     function append(kind: string,body: Json,at: Clock,preserved: string,required: readonly string[]=[],principal?: VerifiedPrincipal,
@@ -135,12 +136,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       return receipt.fact;
     }
     function appendVerifiedAct(record: ReturnType<typeof buildVerifiedActRecord>['record'],at: Clock): FactEnvelope {
-      try {
-        const g={ ...deps.governance.context,preserved: record.request };
-        take(constructGoverned('blocking sites','intake.verified-act',deps.governance.register,g));
-        take(readEnforcedRecord('intake.verified-act','intake.contract','authorAndAppend',deps.governance.register,g));
-      } catch(e) { if(!record.emergency) throw e; }
-      const c=context(record.request);
+      const c=verifiedActContext(record.request);
       const receipt=take(authorAndAppend({ kind: 'intake-verified-act',schemaVersion: 1,machine: author.machine,
         principal: json(author.principal),provenance: json(author.provenance),at: json(at),body: {
           request: record.request,requestDigest: record.requestDigest,challenge: record.challenge,surface: record.surface,
@@ -173,7 +169,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         const surface=take(readRegisterEntry(input.surface,deps.governance.register,
           { ...deps.governance.context,preserved: input.proof.reference }));
         requireIntake(surface.declaration.status==='live','verified act: surface adapter is not live','standing');
-        const facts=read(input.request.id),c={ ...context(input.request.id),facts };
+        const facts=read(input.request.id,true),c={ ...verifiedActContext(input.request.id),facts };
         const resolved=buildVerifiedActRecord(json(input),c,at,registerGeneration.id);
         const authentication=surface.declaration.requiredFacts.authenticationClass;
         requireIntake(Array.isArray(authentication)&&authentication.some(row => {

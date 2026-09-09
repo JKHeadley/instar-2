@@ -5,7 +5,7 @@ import { authorizationRequestDigest, canonical, decode, consumeResult } from '..
 import type { Authorization, Hash, Json, ProvenanceInput, RegisterGenerationReference, Result, Scope } from '../../src/index.js';
 import { authorAndAppend, createFactStore, hashBytes } from '../../src/facts/index.js';
 import type { CapturedContent, FactContext, FactEnvelope, FactSchema, SegmentStoragePort } from '../../src/facts/index.js';
-import { createIntakePort, intakeFactSchemas } from '../../src/intake/index.js';
+import { createIntakePort, intakeFactSchemas, intakeVerifiedActFactSchemas } from '../../src/intake/index.js';
 import type { InboundRoute, IntakeDependencies, IntakeAdapterPort, VerifiedActAdmission } from '../../src/intake/index.js';
 import { generateRegister, generationOf, decodeGenerationRecord, loadRegister } from '../../src/register/index.js';
 import type { FactReference, SpineReadPort } from '../../src/register/index.js';
@@ -38,7 +38,7 @@ export function intakeFixture(options: { directory?: string } = {}) {
   const context: FactContext = { ...f.ctx, decode: { ...f.ctx.decode, currentBase: 'base:1', artifact: f.artifact,
     register: { ...f.ctx.decode.register,
     entries: [...f.ctx.decode.register.entries, 'intake.admit', 'intake-slice'], sites: { ...f.ctx.decode.register.sites, 'intake.admit': 'closed' } } },
-    captures: captureIndex, schemas: [...f.ctx.schemas, ...intakeFactSchemas(f.scope)], grants: [], facts: [] };
+    captures: captureIndex, schemas: [...f.ctx.schemas, ...intakeFactSchemas(f.scope), ...intakeVerifiedActFactSchemas(f.scope)], grants: [], facts: [] };
   if (capturesPath) for (const name of readdirSync(capturesPath)) {
     const reference = decodeURIComponent(name), bytes = readFileSync(join(capturesPath, name), 'utf8'); f.captures[reference] = bytes;
   }

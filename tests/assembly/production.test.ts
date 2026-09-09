@@ -62,3 +62,14 @@ it('P10-NF-05 P10-NF-52 P10-NF-54 [P10-SEAM-03] a resolvable partial binding is 
   expect(stored.record.productionBindings![0]!.dependencies.find(row => row.name === 'local-facts')!.fact.reference).toBe(partial.id);
   refused(bootProductionAssembly(composition, installed.manifest.id, binding.scope), 'honestly partial');
 });
+
+it('P11-V40 R4 every required confirmation operation must be callable before production boot', () => {
+  const names = ['render', 'pending', 'challenge', 'confirm', 'binding', 'protection', 'stopChallenge', 'stop'] as const;
+  for (const name of names) {
+    const f = assemblyRuntimeFixture(); const binding = productionBindingSet(); const installed = installProduction(f, binding);
+    const production = productionComposition(f, binding);
+    const surface = { ...production.surface, [name]: undefined };
+    refused(bootProductionAssembly({ ...f.composition, production: { ...production, surface } as typeof production },
+      installed.manifest.id, binding.scope), `OperatorSurfacePort.${name}`);
+  }
+}, 60_000);

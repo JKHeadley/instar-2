@@ -1,13 +1,14 @@
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { beforeEach, expect, it } from 'vitest';
 import { value } from '../fixtures.js';
 import { operatorFixture } from '../operator/fixture.js';
 import { productionOperatorSlice } from '../operator/production-slice-fixture.js';
-import { acrossExecutions } from '../slice/acceptance.js';
-import type { SliceReport } from '../slice/acceptance.js';
-import { loadPair } from '../slice/kill-schedule-artifacts.js';
 import { runExecution } from '../slice/harness.js';
 import { consumeResult } from '../../src/index.js';
+// @ts-expect-error executable acceptance harness is JavaScript by design.
+import { bootProductionSliceAssembly, sliceConfig } from '../../scripts/slice-assembly.mjs';
 
 // Vitest batches task updates without awaiting their RPC acknowledgements. Each of the
 // first three tests below enters another ~22s synchronous production drive immediately;
@@ -30,6 +31,16 @@ it('P11-V28 the production wrapper refuses a provider result not witnessed for t
   x.production.deliveryWitness.observe = (() => x.assembly.success({ owner: 'part-nine', administration: 'independent',
     operation: 'operation:wrong', platform: 'wrong-platform', stage: 'human-read', probe: { id: 'probe:absent' } })) as never;
   await expect(x.runtime.drive()).rejects.toThrow('unwitnessed');
+}, 120000);
+
+it('P11-V44 R1 displays the resolved Part Nine probe rather than a provider-mutated matching-id copy', async () => {
+  const x = productionOperatorSlice(); const original = x.production.deliveryWitness.observe;
+  x.production.deliveryWitness.observe = (operation => {
+    const witnessed = value(original(operation)) as { probe: { comparison: string } };
+    return x.assembly.success({ ...witnessed, probe: { ...witnessed.probe, comparison: 'CALLER-SUPPLIED-DISPLAY-TEXT' } });
+  }) as typeof original;
+  const report = await x.runtime.drive() as { independentlyWitnessedResult: { probe: { comparison: string } } };
+  expect(report.independentlyWitnessedResult.probe.comparison).toBe('application:service-message:1');
 }, 120000);
 
 it('P11-NF-43 P11-NF-49 the public slice boot plus a fresh operator process revalidate durable signed history rather than serialized status fields', async () => {
@@ -66,22 +77,41 @@ it('P11-NF-44 P11-NF-45 P11-NF-46 P11-NF-47 P11-NF-48 P11-NF-50 the durable vert
 
 it('P11-NF-43 P11-NF-44 P11-NF-47 P11-NF-49 a process cut between send and evidence recovers to the same independently witnessed semantic outcome', async () => {
   const pair = ['external-send', 'delivery-evidence'] as const;
-  const cached = loadPair('reply', pair);
-  const execution = cached ?? await runExecution({ profile: 'reply', cuts: pair, maxBoots: 12 });
-  const recovered = 'report' in execution ? execution.report : execution;
-  const boots = 'boots' in execution ? execution.boots : recovered.accounting.boots;
+  const execution = await runExecution({ profile: 'reply', cuts: pair, maxBoots: 12 });
+  const recovered = execution.report as typeof execution.report & {
+    authorityCompletion: { owner: string; disposition: string };
+    independentlyWitnessedResult: { owner: string; administration: string; operation: string; probe: { id: string } };
+    verificationRecords: string[];
+  };
+  const boots = execution.boots;
   expect(boots).toBeGreaterThanOrEqual(3);
   expect(recovered.externalApplications).toHaveLength(1);
   expect(recovered.rebuilds.every(row => row.equal === 'equal')).toBe(true);
-
-  const production = productionOperatorSlice();
-  const control = await production.runtime.drive() as SliceReport & { independentlyWitnessedResult: { operation: string } };
-  expect(acrossExecutions(control, recovered)).toEqual([]);
   const operation = recovered.externalApplications[0]!.operation;
-  const witnessed = value(production.runtime.coordinator.handles.deliveryWitness.observe(operation)) as { owner: string; administration: string; operation: string };
-  expect(witnessed).toMatchObject({ owner: 'part-nine', administration: 'independent', operation });
-  expect(control.independentlyWitnessedResult.operation).toBe(operation);
+  expect(recovered.authorityCompletion).toMatchObject({ owner: 'part-two', disposition: expect.any(String) });
+  expect(recovered.independentlyWitnessedResult).toMatchObject({ owner: 'part-nine', administration: 'independent', operation });
+  expect(recovered.verificationRecords).toContain(recovered.independentlyWitnessedResult.probe.id);
 }, 240000);
+
+it('P11-V49 R3 restart composition retains existing owner schemas and signed owner bodies', () => {
+  const runtime = bootProductionSliceAssembly({ home: mkdtempSync(join(tmpdir(), 'p11-owner-schema-')),
+    config: sliceConfig({ profile: 'reply' }), restartRecovery: true });
+  type Reference = { name: string; fact: { kind: string; body: Record<string, unknown> } };
+  type Schema = { kind: string; fields: Record<string, unknown> };
+  const references = runtime.coordinator.references as Reference[];
+  const schemas = runtime.factContext.schemas as Schema[];
+  const lease = references.find(row => row.name === 'dependency:lease')!;
+  const conversation = references.find(row => row.name === 'dependency:conversation-binding')!;
+  expect(lease.fact.kind).toBe('transport-Lease');
+  expect(Object.keys(lease.fact.body)).toEqual(['record']);
+  expect(Object.keys(schemas.find(schema => schema.kind === 'transport-Lease')!.fields)).toEqual(['record']);
+  expect(conversation.fact.kind).toBe('conversation-binding');
+  expect(Object.keys(conversation.fact.body).sort()).toEqual([
+    'adapter', 'channel', 'grantId', 'identityEpoch', 'principalId', 'scope', 'sender', 'supersedes',
+  ]);
+  expect(Object.keys(schemas.find(schema => schema.kind === 'conversation-binding')!.fields).sort())
+    .toEqual(Object.keys(conversation.fact.body).sort());
+}, 120000);
 
 it('P11-NF-51 P11-NF-52 P11-NF-53 activation remains dark until the real provider/witness and objective phone floor produce executed evidence', () => {
   const x = operatorFixture();

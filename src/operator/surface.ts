@@ -233,7 +233,12 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
           requireOperator(Number.isSafeInteger(maxRows) && maxRows > 0, 'P11-NF-15: pending queue requires a finite positive page');
           const current = snapshot(composition.history), terminal = new Set(current.entries.filter(row => composition.terminalKinds.includes(row.fact.kind))
             .map(row => object(row.body).request).filter((value): value is string => typeof value === 'string'));
-          const rows = current.entries.filter(row => row.fact.kind === composition.requestKind && !terminal.has(row.fact.id))
+          const candidates = current.entries.filter(row => row.fact.kind === composition.requestKind && !terminal.has(row.fact.id));
+          const facts = current.entries.map(entry => entry.fact);
+          const superseded = new Set(candidates.filter(row => candidates.some(successor => successor.fact.id !== row.fact.id
+            && object(successor.body).requestId === object(row.body).requestId
+            && causalCone(successor.fact, facts).some(ancestor => ancestor.id === row.fact.id))).map(row => row.fact.id));
+          const rows = candidates.filter(row => !superseded.has(row.fact.id))
             .map(row => requestView(composition, row.fact.id)).sort((a, b) => (CONSEQUENCE[b.consequence] ?? 0) - (CONSEQUENCE[a.consequence] ?? 0)
               || current.entries.find(row => row.fact.id === a.fact)!.fact.at.value - current.entries.find(row => row.fact.id === b.fact)!.fact.at.value);
           const boundedAt = Math.min(maxRows, composition.maxPending);

@@ -90,8 +90,7 @@ it('P4-NF-03 P4-NF-08 P4-NF-10 P4-NF-15 held event commits its first hash; chang
 });
 
 function withScope(f: ReturnType<typeof intakeFixture>,scope: Scope) {
-  Object.assign(f.context,{ schemas: [...f.context.schemas.filter(s => !s.kind.startsWith('intake-')
-    &&s.kind!=='conversation-binding'&&s.kind!=='authorization-request'),...intakeFactSchemas(scope)] });
+  Object.assign(f.context,{ schemas: [...f.context.schemas.filter(s => !s.kind.startsWith('intake-')&&s.kind!=='conversation-binding'),...intakeFactSchemas(scope)] });
   return value(createIntakePort({ ...f.deps,scope }));
 }
 

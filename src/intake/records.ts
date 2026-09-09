@@ -8,7 +8,8 @@ import { json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ProjectionDefinition } from '../projections/index.js';
 
 export const intakeKinds=Object.freeze(['intake-receipt','intake-resolved','intake-admitted','intake-held','intake-expired',
-  'intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','intake-verified-act','conversation-binding','authorization-request'] as const);
+  'intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','conversation-binding'] as const);
+export const intakeVerifiedActKinds=Object.freeze(['intake-verified-act','authorization-request'] as const);
 
 // Different scope dimensions are not evidence of disjoint work.
 export function intakeScopesOverlap(a: Scope,b: Scope): boolean {
@@ -70,26 +71,31 @@ export function intakeFactSchemas(scope: Scope): readonly FactSchema[] {
     },
     { ...shared,kind: 'intake-stop-signal',fields: { ...common,principalId: short,authentication: { kind: 'capture' } } },
     {
-      ...shared,kind: 'intake-verified-act',fields: {
-        request: { kind: 'reference' },requestDigest: short,challenge: short,surface: short,generation: short,
-        disposition: short,record: { kind: 'owned',owner: 'part-four',name: 'VerifiedActDisposition' }
-      }
-    },
-    {
-      ...shared,kind: 'authorization-request',fields: {
-        requestId: short,requestDigest: short,action: short,scope: { kind: 'constitutional',type: 'Scope' },audience: short,
-        artifact: short,base: short,expiresAt: { kind: 'integer' },approverId: short,requestedById: short,
-        consequence: short,reversibility: short,blockedWork: short,recurrence: { kind: 'text',maxLength: 1048576 },
-        requesterProse: { kind: 'text',maxLength: 1048576 },evidence: { kind: 'capture' }
-      }
-    },
-    {
       ...shared,kind: 'conversation-binding',standing: 'operator',authority: 'conferring',causallyBound: true,
       fields: {
         adapter: short,channel: short,sender: short,identityEpoch: short,principalId: short,
         grantId: short,scope: { kind: 'constitutional',type: 'Scope' },supersedes: short
       }
     },
+  ];
+}
+
+/** Additive Part Eleven seam schemas. Legacy Part Four schema composition is unchanged. */
+export function intakeVerifiedActFactSchemas(scope: Scope): readonly FactSchema[] {
+  const short={ kind: 'text',maxLength: 1024 } as const;
+  const shared={ version: 1,machineScope: 'shared' as const,standing: 'requester' as const,action: 'work',scope,
+    causallyBound: false,requiredReferences: [] as readonly string[],authority: 'none' as const };
+  return [
+    { ...shared,kind: 'intake-verified-act',fields: {
+      request: { kind: 'reference' as const },requestDigest: short,challenge: short,surface: short,generation: short,
+      disposition: short,record: { kind: 'owned' as const,owner: 'part-four',name: 'VerifiedActDisposition' }
+    } },
+    { ...shared,kind: 'authorization-request',fields: {
+      requestId: short,requestDigest: short,action: short,scope: { kind: 'constitutional' as const,type: 'Scope' },audience: short,
+      artifact: short,base: short,expiresAt: { kind: 'integer' as const },approverId: short,requestedById: short,
+      consequence: short,reversibility: short,blockedWork: short,recurrence: { kind: 'text' as const,maxLength: 1048576 },
+      requesterProse: { kind: 'text' as const,maxLength: 1048576 },evidence: { kind: 'capture' as const }
+    } },
   ];
 }
 
@@ -280,6 +286,12 @@ export function resolveVerifiedActRecord(raw: Json,c: FactContext,now: Clock,exp
       'verified act: current historical standing does not authorize approval','standing');
     } else if(type==='StandingGrant') {
       const grantScope=take(decode('Scope',a.scope,c.decode)),grantee=object(a.grantee!);
+      let recurrence: Json;
+      try { recurrence=JSON.parse(text(q.recurrence,'request.recurrence')) as Json; }
+      catch { recurrence=null; }
+      requireIntake(Array.isArray(recurrence)&&recurrence.length>0&&recurrence.length<=100
+        &&recurrence.every(item => typeof item==='string'&&item.trim().length>0),
+      'verified act: StandingGrant requires bounded recurrence evidence from the durable request','standing');
       requireIntake(same(grantScope,scopeValue)&&grantee.id===requestedBy,'verified act: StandingGrant scope or grantee exceeds request','standing');
       requireIntake((a.standing==='delegate'&&same(a.actions,[action]))||(a.standing==='operator'&&action==='operator-standing'),
         'verified act: free-form grant standing/actions are forbidden','standing');

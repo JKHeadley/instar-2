@@ -231,6 +231,16 @@ it('P11-NF-14 P11-NF-15 pending requests are bounded pull-first, coalesced, cons
   expect(value(surface.pending(1)).rows).toHaveLength(0);
 });
 
+it('P11-V22 R6 pending omits a superseded row without hiding the clean causal successor', () => {
+  const x = operatorFixture();
+  const latest = x.verifiedAct({ surface: 'phone-surface', request: { requestId: 'request:1' } });
+  const surface = x.surface();
+  expect(value(surface.render(latest.request.id)).fact).toBe(latest.request.id);
+  const pending = value(surface.pending(2));
+  expect(pending.rows.map(row => row.fact)).toContain(latest.request.id);
+  expect(pending.rows.map(row => row.fact)).not.toContain(x.request.id);
+});
+
 it('P11-NF-16 P11-NF-17 an unbound first sender remains requester-level and the surface has no chat-code binding mutation', () => {
   const x = operatorFixture(), surface = x.surface();
   const view = value(surface.binding({ adapter: 'telegram', conversation: 'chat:1', platformIdentity: 'platform:alice', identityEpoch: 'epoch:1' }));

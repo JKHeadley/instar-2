@@ -171,11 +171,21 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
 
     ensure(production.surface.owner === 'part-eleven' && production.surface.id === binding.surface.adapter.implementation,
       'registered operator surface binding differs from the manifest');
-    requireMethod(production.surface.render, 'OperatorSurfacePort.render');
+    for (const [name, operation] of Object.entries({
+      render: production.surface.render,
+      pending: production.surface.pending,
+      challenge: production.surface.challenge,
+      confirm: production.surface.confirm,
+      binding: production.surface.binding,
+      protection: production.surface.protection,
+      stopChallenge: production.surface.stopChallenge,
+      stop: production.surface.stop,
+    })) requireMethod(operation, `OperatorSurfacePort.${name}`);
     ensure(production.challengeVerifier.id === binding.surface.challengeVerifier.implementation
       && production.challengeVerifier.port.owner === 'part-nine'
       && production.challengeVerifier.port.administration === 'independent',
     'independent challenge verifier binding differs from the manifest');
+    requireMethod(production.challengeVerifier.port.issue, 'IndependentSurfaceVerifierPort.issue');
     requireMethod(production.challengeVerifier.port.verify, 'IndependentSurfaceVerifierPort.verify');
     ensure(production.verifiedActIntake.owner === 'part-four'
       && production.verifiedActIntake.id === binding.verifiedActIntake.implementation

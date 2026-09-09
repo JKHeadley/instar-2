@@ -5,6 +5,6 @@
 import { bootSliceAssembly, sliceConfig } from './slice-assembly.mjs';
 
 const [home, encoded] = process.argv.slice(2);
-const assembly = bootSliceAssembly(home, sliceConfig({ ...JSON.parse(encoded ?? '{}'), cuts: [] }));
+const assembly = bootSliceAssembly(home, sliceConfig({ ...JSON.parse(encoded ?? '{}'), cuts: [], productionRestart: true }));
 assembly.restoreGrants(); assembly.restoreEvidence();
 process.stdout.write(`${JSON.stringify(assembly.rebuildAll())}\n`);

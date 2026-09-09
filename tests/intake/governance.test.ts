@@ -12,12 +12,12 @@ const declarations = () => JSON.parse(readFileSync('src/intake/port.declarations
 const pairs = [ ['intake.dedup', 'readProjection'], ['intake.authentication', 'decode:Provenance'],
   ['intake.resolution', 'decode:VerifiedPrincipal'], ['intake.admission', 'authorAndAppend'] ] as const;
 
-it('P4-NF-06 R7 declares all six executing intake gates and their governing contract', () => {
-  const declarations = JSON.parse(readFileSync('src/intake/port.declarations.json', 'utf8')) as { id: string; kind: string }[];
-  expect(declarations.filter(d => d.kind === 'blocking sites').map(d => d.id).sort()).toEqual([
-    'intake.admission', 'intake.authentication', 'intake.dedup', 'intake.resolution', 'intake.stop', 'intake.verified-act',
+it('P4-NF-06 R7 preserves all five executing intake gates and their governing contract', () => {
+  const legacy = JSON.parse(readFileSync('src/intake/port.declarations.json', 'utf8')) as { id: string; kind: string }[];
+  expect(legacy.filter(d => d.kind === 'blocking sites').map(d => d.id).sort()).toEqual([
+    'intake.admission', 'intake.authentication', 'intake.dedup', 'intake.resolution', 'intake.stop',
   ]);
-  expect(declarations.some(d => d.id === 'intake.contract' && d.kind === 'governed documents')).toBe(true);
+  expect(legacy.some(d => d.id === 'intake.contract' && d.kind === 'governed documents')).toBe(true);
 });
 
 it('P4-NF-06 P4-NF-01 R7 a shape-only register cannot authorize intake after preservation', () => {
@@ -126,8 +126,7 @@ it('P4-NF-06 R7 actual source chain proves each enforced decoder, not a caller-a
     ["take(readProjection(view,definition,at,{ ...b,preserved },c.folded))", 'undefined', 'intake.dedup'],
     ["take(decode('Provenance',e.provenance,context(preserved).decode))", 'e.provenance', 'intake.authentication'],
     ["take(decode('VerifiedPrincipal',{ type: 'VerifiedPrincipal',schemaVersion: 1,id: e.principalId,kind: e.principalKind },\n        { ...context(preserved).decode,provenance }))", 'e', 'intake.resolution'],
-    ['workRegistration,stopRegistration,verifiedActRegistration', 'stopRegistration,verifiedActRegistration', 'intake.admission'],
-    ["take(readEnforcedRecord('intake.verified-act','intake.contract','authorAndAppend',deps.governance.register,g))", 'undefined', 'intake.verified-act'],
+    ['workRegistration,stopRegistration]', 'stopRegistration]', 'intake.admission'],
     ["take(readEnforcedRecord('intake.dedup','intake.contract','readProjection',deps.governance.register,g))", 'undefined', 'intake.dedup'],
   ]) {
     expect(port.includes(before!), before).toBe(true);
@@ -135,7 +134,6 @@ it('P4-NF-06 R7 actual source chain proves each enforced decoder, not a caller-a
   }
   const report = scanned.reports[Object.keys(files).indexOf('src/intake/port.ts')]!;
   expect(report.scopes.append!.invokes).toEqual(expect.arrayContaining(['authorAndAppend', 'intakeWorkRegistration', 'intakeStopRegistration']));
-  expect(report.scopes.appendVerifiedAct!.invokes).toEqual(expect.arrayContaining(['authorAndAppend', 'intakeVerifiedActRegistration']));
   expect(report.scopes.checkDedup!.invokes).toEqual(expect.arrayContaining(['readProjection', 'intakeDedupDefinition']));
 // CI 34019552581 measured 5,611 ms ARM / 5,372 ms x64; desk local 1,761 ms.
 // Seven full source-graph scans: bounded compiler budget with runner headroom,

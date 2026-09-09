@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decode } from '../../src/index.js';
+import { canonical, decode } from '../../src/index.js';
 import { hashBytes } from '../../src/facts/index.js';
 import { createIntakePort } from '../../src/intake/index.js';
 import type { VerifiedActAdmission } from '../../src/intake/index.js';
@@ -100,6 +100,27 @@ describe('separate independently-verified operator-act admission', () => {
   it('P11-V50 accepts when the signed durable request matches the actual current base and artifact', () => {
     const f = intakeFixture(), v = f.verifiedAct();
     expect(value(f.port().admitVerifiedAct(v.input)).kind).toBe('approved');
+  });
+
+  it.each([
+    ['P11-V46 R5 refuses a standing grant without recurrence evidence', '[]', 'refused'],
+    ['P11-V47 accepts the same exact standing grant with durable recurrence evidence', '["same bounded request recurred"]', 'approved'],
+  ])('%s', (_name, recurrence, expected) => {
+    const f = intakeFixture(), v = f.verifiedAct({ request: { recurrence } });
+    const rawGrant = f.f.grant({ id: 'grant:operator-selected', grantee: f.f.bob, standing: 'delegate',
+      actions: ['work'], scope: f.f.scope, expiresAt: 400 });
+    const grantFields = Object.fromEntries(Object.entries(rawGrant).filter(([key]) => !['type', 'schemaVersion', 'source'].includes(key)));
+    const signed = f.f.proof(grantFields, { id: 'alice', kind: 'person' }, 'intent-approval');
+    const act = value(decode('StandingGrant', { type: 'StandingGrant', schemaVersion: 1, ...grantFields, source: signed.p },
+      { ...f.context.decode, provenance: signed.p }));
+    const challenge = f.f.proof({ ...v.challengePayload, actDigest: value(canonical(act)).hash },
+      { id: 'alice', kind: 'person' }, 'verified-operator-challenge');
+    const proof = value(f.deps.capture.preserve(JSON.stringify({ type: 'VerifiedActProofBundle', schemaVersion: 1,
+      challenge: challenge.input, act: signed.input }), f.f.now));
+    f.syncCaptures();
+    const result = f.port().admitVerifiedAct({ ...v.input, act, proof });
+    if (expected === 'approved') expect(value(result).kind).toBe('approved');
+    else refused(result, 'recurrence evidence');
   });
 
   it.each([

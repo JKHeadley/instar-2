@@ -268,62 +268,6 @@
   {
     "type": "Declaration",
     "schemaVersion": 1,
-    "id": "intake.verified-act",
-    "kind": "blocking sites",
-    "status": "live",
-    "requiredFacts": {
-      "authority": "block",
-      "inspectedBy": "P4-NF-06",
-      "rungs": [
-        {
-          "decidesAlone": "governed-state",
-          "criticality": "Independently verified emergency stop remains reachable when ordinary authority policy cannot decide",
-          "failDirection": "open",
-          "preservesInput": "part-two:authorization-request + part-ten:verified-act-proof + part-four:intake-verified-act",
-          "enforces": {
-            "record": "intake.contract",
-            "decoder": "authorAndAppend"
-          }
-        },
-        {
-          "decidesAlone": "governed-state",
-          "criticality": "Authority completes only from the exact current signed request and independently verified single-use proof",
-          "failDirection": "closed",
-          "preservesInput": "part-two:authorization-request + part-ten:verified-act-proof",
-          "enforces": {
-            "record": "intake.contract",
-            "decoder": "authorAndAppend"
-          }
-        }
-      ]
-    },
-    "profile": {
-      "type": "Profile",
-      "schemaVersion": 1,
-      "consequence": "control",
-      "reversibility": "reversible",
-      "reach": "internal",
-      "surface": "none",
-      "repeats": {
-        "kind": "no"
-      }
-    },
-    "standards": [
-      4,
-      28,
-      42,
-      66,
-      82,
-      95,
-      98,
-      103,
-      104
-    ],
-    "holds": []
-  },
-  {
-    "type": "Declaration",
-    "schemaVersion": 1,
     "id": "intake.stop",
     "kind": "blocking sites",
     "status": "live",
