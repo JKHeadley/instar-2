@@ -31,14 +31,14 @@ or operator surface schema.
 |---|---|
 | One | `Measurement`, `Evidence`, `Result`, `Outcome`, `Decision`, `Authorization`, `VerifiedPrincipal`, `Conflict`, provenance, subject and unit values |
 | Two | fact envelope, causal frontier, signed history, correction, retraction, capture reference, projection, checkpoint, folded-through vector, durability state and taint |
-| Three | declarations, registered identifiers, governed ports, register generation, profiles, rules and check-run records |
-| Four | intake port, event identity, operation classification, authorization request, original evidence custody and session-start evidence |
-| Five | durable run, run step, run budget, exhaustion record, continuity accounting and delivery evidence |
-| Six | lease, fence, admission reservation, spend reservation, bounded loop, recovery record and transport receipt |
-| Seven | `JudgmentRequest`, `JudgmentAttemptRecord`, `BenchmarkRecord`, `BenchmarkRunRecord`, `JudgmentHoldCost` and provider receipt |
-| Eight | operation definition, admitted effect, provider dispatch, settlement, freeze/cap effect and verification obligation |
-| Nine | verification plan, holder, probe, assessment, grade, retention pin, finding and external protection broker |
-| Ten | model, process, persistence and channel adapter ports; executable assembly; store custody; `GrowthPolicy` and `GrowthObservation` |
+| Three | `Declaration`, registered identifiers, `GovernedPort`, register generation, profiles, rules and check-run records |
+| Four | `IntakePort`, event-id authority, operation classification, authorization request, original evidence custody and session-start evidence |
+| Five | `Run`, `RunStep`, `RunBudget`, `ExhaustionRecord`, `ContinuityAccounting` and `DeliveryEvidence` |
+| Six | `Lease`, `FenceToken`, `AdmissionReservation`, spend reservation, `SettlementApplication`, `LoopPolicy`, `LoopRecord`, `RecoveryRecord` and transport receipt |
+| Seven | `JudgmentRequest`, `JudgmentAttemptRecord`, `BenchmarkRecord`, `BenchmarkScenario`, `BenchmarkRunRecord`, `JudgmentHoldCost` and provider receipt |
+| Eight | `OperationDefinition`, `EffectRequest`, `OperationObservation`, `EffectSettlement` and verification obligation |
+| Nine | `VerificationPlan`, `ProbeRecord`, `VerificationAssessment`, `Grade`, `BenchmarkEvaluation` and the existing retention/protection contracts |
+| Ten | `ModelAdapterPort`, process, persistence and channel adapter ports; executable assembly; store custody; `GrowthPolicy` and `GrowthObservation` |
 | Eleven | registered operator surface, scoped read, verified operator act and independently witnessed receipt |
 
 **Value — boundary choice.** Sixteen owns the observational package and its read semantics. Seven
@@ -47,6 +47,20 @@ action that can spend, reserve, freeze, throttle, kill or change a cap. Nine own
 collectors and projections are presently adequate. Ten realizes the adapters and storage. Eleven
 presents the views and operator actions. Keeping those owners separate makes a missing metric a
 visible defect instead of an accidental veto or grant.
+
+**Rule — approved owner contracts and landed implementations are reported separately.** Rules 26,
+30, 49 and 69; **checks: P16-NF-02/06/09/15/35/49/51**. The design may depend on an approved
+owner contract, but activation also requires its public landed decoder, port and production
+wiring. The following prerequisites are not implemented by this package and cannot be replaced by
+private types or prose conventions.
+
+| Owner prerequisite | Approved design position | Landed public contract at this head | P16 consequence and filed seam |
+|---|---|---|---|
+| Three: governed price and exchange-rate manifests | Three owns declarations, strict decoding, approval and entering-force generations | The closed declaration union has no effective-dated price or exchange-rate payload | P16-NF-15 is unimplementable, and P16-NF-16–20/36 cannot activate, until `design-measurement-ledgers-seam-request-declarations.md` lands |
+| Four: measurement-observation intake | Four owns authenticated intake, event identity and original custody | `IntakePort` exposes `receive`, `recover` and `expireHolds` for conversational/stop intake only | P16-NF-03/04/06/08/21/24/42/44/45/49 ingestion arms depend on `design-measurement-ledgers-seam-request-intake-observations.md` |
+| Seven: `JudgmentHoldCost` | Seven defines the hold-cost meaning and producer | `JudgmentRecord` and its landed decoder omit it; the slice manifest calls cohort/queue hold metrics out of scope | P16-NF-03/04/11/49 hold-cost arms remain unavailable until `design-measurement-ledgers-seam-request-judgment-hold-cost.md` lands |
+| Eight: cap/freeze effects | Eight owns effect payloads, validation, invocation and settlement | `EffectRequest` and `OperationAdapterPort.invoke` accept only `OutboundMessage`; there is no cap/freeze/unfreeze payload | P16-NF-35/45/49/51 cap/freeze arms depend on `design-measurement-ledgers-seam-request-spend-control-effects.md` |
+| Ten: provider usage categories | Ten realizes `ModelAdapterPort`; seven records its receipt | `ProviderObservation.usage` is exactly input tokens, output tokens, charge and source; extra category fields are rejected | P16-NF-03/04/09/10/14/49 category arms depend on `design-measurement-ledgers-seam-request-model-usage.md` |
 
 ---
 
@@ -57,13 +71,25 @@ visible defect instead of an accidental veto or grant.
 
 | Term | Meaning in this part |
 |---|---|
-| usage coverage | The ratio and counts obtained by joining every eligible model-dispatch attempt to acceptable usage evidence at one causal frontier. A zero denominator is `undefined`, not 0% or 100%. |
-| unmetered model call | An eligible attempt with no acceptable usage measurement or provider settlement after its declared observation horizon. It remains an attempted call and carries unknown usage. |
+| proven no-exchange attempt | A canonical attempt whose evidence proves refusal or cancellation before provider invocation. It is retained in the attempt census but is not a provider exchange. |
+| observed exchange | A canonical attempt with evidence that a provider invocation occurred, whether it completed, failed, streamed partially or returned unusable output. |
+| dispatch-uncertain attempt | A canonical attempt whose one-use claim was consumed but whose available evidence proves neither provider invocation nor pre-invocation refusal. It is neither silently promoted to an exchange nor dropped. |
+| usage-supported exchange | An observed exchange with current acceptable usage evidence for every category its registered adapter contract says it reports; a metered exchange may validly report zero. |
+| usage coverage | For a pinned window, `usage-supported exchanges / observed exchanges`. Proven no-exchange and dispatch-uncertain attempts are displayed separately and enter neither term. A zero exchange denominator is `undefined`, not 0% or 100%. |
+| pending evidence | An observed or dispatch-uncertain attempt still inside its declared evidence horizon; retained in counts and excluded from an overdue rate until the horizon ends. |
+| overdue evidence | An observed or dispatch-uncertain attempt past its declared horizon without the evidence needed to resolve its category. `overdue / past-horizon observed-or-uncertain attempts` is reported separately from usage coverage. |
+| unmetered model call | An observed exchange past its evidence horizon with no acceptable usage observation. It remains a real exchange and carries unknown usage. |
 | unattributed usage | Metered usage for which no registered feature, run or judgment point resolves from signed history. |
 | unattributed spend | Priced or settled usage that remains unattributed. It is a subset of spend, not a feature named `unknown`. |
-| price manifest | A part-three governed declaration of effective-dated billing rates, currency, token categories, billing class, subsidy basis, freshness and source. It is read-time input, not a measurement fact or gate. |
-| committed liability | Seven's measured or maximum reserved hold cost plus eight's unsettled admitted settlements. It is not an estimate reconstructed from a dashboard total. |
-| detail horizon | The finite time range kept in a disposable high-cardinality projection or adapter cache. It never licenses removing facts from the part-two spine. |
+| price manifest | The requested part-three governed declaration of effective-dated billing rates, currency, token categories, billing class, subsidy basis, plausibility policy, freshness and source. Until that seam lands this is a prerequisite, not an existing declaration kind. |
+| settled spend | The exact charge in six's latest current `SettlementApplication` for each operation whose eight-owned settlement is final; each canonical operation contributes once. |
+| outstanding exposure | The unreleased conservative exposure in six's current accounting state for an operation without final releasable accounting, including an authorized maximum write-off; it is not seven's observational hold metric. |
+| committed window total | `settled spend + outstanding exposure` after unioning canonical operation identities and selecting each operation's one current six-owned accounting state. |
+| detail horizon | The finite time range kept in a disposable high-cardinality projection or adapter cache. `High-cardinality` means that key count grows with attempts, observations or process incarnations rather than a fixed category roster. The horizon never licenses removing spine facts. |
+| PID | A reusable operating-system process number and lookup locator, never process identity by itself. |
+| RSS | Resident set size: bytes the named OS adapter reports resident for the named process incarnation at the sample instant, subject to that adapter's documented accounting limits. |
+| observation stream | The exchange, measurement category, producer authority and source-event identity whose causal heads describe one quantity through partial, final and correction phases. |
+| cumulative-session usage | A provider/framework total for one registered session whose later snapshot replaces the earlier current snapshot. It is aggregate evidence with `per-call attribution unsupported` unless an independent exact attempt mapping exists. |
 | routing-spend view | A disposable projection that joins usage and settlement history to price manifests and attribution history at read time. It is not a money ledger or cap authority. |
 
 **Rule — every quantity has one registered subject, unit and producer.** Rules 13, 26, 32, 39,
@@ -78,16 +104,19 @@ required.
 | Family | Required measurements | Required subject and evidence |
 |---|---|---|
 | model call | input tokens, cache-read input tokens, output tokens, provider-billed token categories, elapsed duration and call count | Seven's exact attempt id; resolved provider doorway/model/account and receipt; cache-read tokens are a subset of input tokens |
+| cumulative model session | input, cached-input, output, reasoning-output and total tokens plus exposed quota-window percentages | Registered framework/session id and source snapshot; causally later cumulative total replaces, never adds to, the earlier snapshot and is not an invented attempt |
 | money | provider-settled amount, reserved maximum liability and derived price amount, each separately labelled | Seven's attempt/hold and eight's settlement; currency and settlement source are explicit; derived amount names the price-manifest point |
 | quota | used and remaining quantity when exposed, window size, reset time and collector age | Registered account and provider window; original provider observation, collector and observation time; unavailable fields remain unknown |
+| rate-limit event | breaker open/recover count, session-sentinel throttle/quota/529 count and breaker trips per declared duration | Registered account/source episode and event identity; breaker and session detections are separate populations, not duplicate evidence for one event |
 | resource | process CPU time, sampled wall interval, RSS bytes, process count and classified footprint RSS | Registered machine and process incarnation or machine aggregate; OS source, hardware profile and sample interval |
 | package cost | scan duration, rows/bytes examined, projection lag, append failures, queue depth and storage bytes | Exact holder/run and machine; used to account for the observer's own resource cost |
 
 **Rule — collection is observational and failure is explicit.** Rules 14, 31, 41, 46, 58, 75,
 86 and 95; **checks: P16-NF-04–08/21–23/42–46**. Adapters observe a dispatch, provider receipt,
 operating-system sample or quota response and submit existing `Measurement` and `Evidence`
-payloads through part four. They never call a provider, start a process, choose an account,
-admit work or mutate the observed source. A rejected measurement append returns a typed result
+payloads through the requested part-four observation-intake operation. The landed conversational
+`IntakePort` cannot yet accept that flow. Collectors never call a provider, start a process, choose
+an account, admit work or mutate the observed source. A rejected measurement append returns a typed result
 to the adapter and raises a nine-owned instrument-health obligation. It does not rewrite the
 already determined model-call or process outcome. Missing evidence is carried as missing; zero
 is accepted only when the source actually reported zero.
@@ -96,32 +125,60 @@ is accepted only when the source actually reported zero.
 
 ## 3. Model-call census, tokens and attribution
 
-**Rule — the attempt census is the denominator.** Rules 39, 41, 58, 69, 75 and 86; **checks:
-P16-NF-07–11**. Every route through a model boundary creates or references one seven-owned
-`JudgmentAttemptRecord` before exchange. The census includes provider errors, cancellations,
-timeouts, streamed partials, breaker refusals, swaps, retries admitted by six, benchmark
-candidates, supervisors, background features and interactive work. A refusal before network
-exchange is an attempt with no provider call. It is not counted as a real round trip. A provider
-exchange is counted once even when its response is later rejected by a parser.
+**Rule — the attempt census is complete even though coverage uses the exchange subset.** Rules 39,
+41, 58, 69, 75 and 86; **checks: P16-NF-07–11**. Every route through a model boundary creates or
+references one seven-owned `JudgmentAttemptRecord` before exchange. The census includes provider
+errors, cancellations, timeouts, streamed partials, breaker refusals, swaps, retries admitted by
+six, benchmark candidates, supervisors, background features and interactive work. Each
+non-conflicted canonical attempt resolves at the pinned frontier into exactly one of proven
+no-exchange, observed exchange or dispatch-uncertain; unresolved/conflicting classification is displayed separately and cannot
+enter a percentage. A provider exchange is counted once even when its response is later rejected
+by a parser. A metered zero-token exchange is an observed, usage-supported exchange, while a
+zero-call refusal is a proven no-exchange attempt.
 
-**Rule — one exchange has one usage join identity.** Rules 14, 32, 33, 58 and 75; **checks:
-P16-NF-07–09/12–14**. The provider operation id, six's one-use claim and seven's attempt id bind
-dispatch observation, token measurements, receipt and settlement. Duplicate equal observations
-are idempotent. Differing observations for the same identity create `Conflict`; a projection
-does not pick the largest, latest or cheapest row. Input, cache-read input, output, reasoning,
-tool and provider-billed categories stay separate when the provider distinguishes them. An
-adapter may map categories only through its registered conformance contract.
+**Rule — exchange identity and observation identity are separate.** Rules 14, 32, 33, 58 and 75;
+**checks: P16-NF-07–09/12–14**. The provider operation id, six's one-use claim and seven's attempt
+id form the exchange key that binds dispatch, receipt and settlement. A usage observation key is
+that exchange key plus measurement category, authenticated producer authority, source-event id
+and phase. Its observation stream links partial → final → later correction with part two's causal
+successor/correction relation. A fold uses the causally maximal compatible head per stream; it
+does not add both a partial and its final successor. Equal replay of one observation key is
+idempotent. Incompatible content under one key, or concurrent competing corrections without a
+causal winner, creates `Conflict`; a later compatible final observation or late charge is a
+refinement, not a conflict. Input, cache-read input, output, reasoning, tool and provider-billed
+categories stay separate when the provider distinguishes them. The latter categories cannot be
+implemented until the requested part-ten usage payload lands. An adapter maps categories only
+through its registered conformance contract.
+
+Charge observations use the same separation: operation/exchange identity binds the subject, while
+source event and phase identify the observation in eight's causal settlement chain. An unknown or
+partial charge can therefore gain a final successor without conflicting merely because the amount
+changed; six applies each supported settlement identity at most once.
 
 **Rule — coverage counts absence instead of normalizing it away.** Rules 13, 39, 41, 58, 75 and
-86; **checks: P16-NF-09–11/14**. For a declared window, coverage reports eligible attempts,
-network exchanges, exchanges with acceptable usage, exchanges with provider settlement,
-unmetered exchanges, conflicted joins and attempts still within the observation horizon.
+86; **checks: P16-NF-09–11/14**. For a declared window, the view reports the three disjoint attempt
+classes; usage-supported and unmetered subsets of observed exchanges; provider-settled exchanges;
+pending and overdue evidence; unsupported-by-adapter exchanges; and conflicted joins. The only
+displayed usage-coverage percentage is `usage-supported exchanges / observed exchanges`.
+The separately displayed overdue-evidence rate uses only past-horizon observed-or-uncertain
+attempts. Pending attempts remain visible but enter neither overdue numerator nor denominator.
 Coverage is partitioned by adapter artifact, provider doorway, model, account, machine, feature
-and outcome. A provider mode proven by ten to expose no usage surface is labelled
-`unsupported-by-adapter`; it remains in the denominator and is not treated as healthy coverage.
+and outcome. An unsupported exchange remains in the usage denominator and is not healthy
+coverage. A pre-exchange refusal never depresses exchange coverage, and a crash after claim
+consumption remains dispatch-uncertain rather than being guessed into or out of that denominator.
 An error response without usage remains unknown even if successful calls from the same provider
-usually report it. Unknown usage carries seven's maximum reserved liability until settlement or
-an authorized disposition closes it.
+usually report it. Outstanding exposure remains in six's accounting state until a current
+`SettlementApplication` releases or resolves it.
+
+**Rule — cumulative session observations do not become fictional calls.** Rules 13, 26, 39, 58,
+75 and 86; **checks: P16-NF-08/10/12**. A Codex-style source that exposes only a growing session
+total uses the cumulative-session subject. The observation stream keeps one current causally
+maximal snapshot per registered session; equal replay changes nothing and a growing snapshot
+replaces rather than adds to the earlier total. Cache, reasoning and quota-window fields remain
+separate. The aggregate appears in its own coverage-limitation row and is excluded from attempt
+coverage, per-feature call attribution and burn unless independent evidence maps exact deltas to
+canonical attempts. Absence of that mapping is `per-call attribution unsupported`, not zero usage
+and not a synthesized `JudgmentAttemptRecord`.
 
 **Rule — feature attribution is re-resolved, never trusted from the usage row.** Rules 26, 32,
 58, 69 and 86; **checks: P16-NF-12–14/30/31/36**. The read joins the attempt's run, judgment
@@ -138,26 +195,41 @@ feature that can dominate a burn ranking.
 
 **Rule — usage is stored independently of price.** Rules 7, 13, 26, 32, 58 and 69; **checks:
 P16-NF-15–18**. Token and provider-usage measurements contain no mutable current-price answer.
-A routing-spend read pins a causal frontier, resolves the governed price manifest and effective
-point for each attempt's billing time and class, and then computes derived cost. A price
-correction appends signed history and changes later reads at a later frontier; it never edits
-usage. Rebuilding at the same frontier, manifest generation and query parameters produces equal
-canonical rows.
+The required manifests are the explicit part-three prerequisite in section 1, not a kind this
+part may invent. Once that seam lands, a routing-spend read pins a causal frontier, resolves the
+owner-issued manifest decoder and effective point for each attempt's billing time and class, and
+then computes derived cost. A price correction appends signed history and changes later reads at
+a later frontier; it never edits usage. Rebuilding at the same frontier, manifest generation and
+query parameters produces equal canonical rows. P16-NF-15 is unimplementable until that seam
+lands; dependent checks remain declared rather than falsely held.
 
 **Rule — every dollar-like figure says what kind of figure it is.** Rules 13, 26, 39, 58 and 86;
 **checks: P16-NF-17–20**. Each row separates provider-settled cost, manifest-derived gross cost,
-subsidy or credit allocation, net derived cost, committed liability and unpriced usage. Money is
+subsidy or credit allocation, net derived cost, committed window total and unpriced usage. Money is
 kept as exact decimal or integer minor units with an explicit currency. Totals do not add unlike
-currencies. A conversion appears only with a governed exchange-rate source, effective time and
-separately labelled converted total. A missing, stale, incompatible or implausible price point
-produces unpriced usage and a reason; it never produces zero cost.
+currencies. A conversion appears only through the requested part-three exchange-rate declaration,
+with its effective time and a separately labelled converted total. A point is implausible exactly
+when its exact rate is below the manifest's inclusive `minimumRate`, above its inclusive
+`maximumRate`, or, when configured, its ratio to the causally prior current point is greater than
+the inclusive maximum-step ratio. Equality at a bound is valid. Missing bounds, a zero prior rate
+for a ratio test or another incomparable prior point yield `insufficient policy`, not implausible. A missing, stale, incompatible,
+implausible or insufficient-policy point produces unpriced usage and a reason; never zero cost.
 
 **Rule — provider settlement outranks estimation without erasing disagreement.** Rules 31, 33,
-58, 86 and 95; **checks: P16-NF-18/19/36**. Where a provider-origin settlement covers the exact
-attempt, the view reports it as settled and retains the manifest-derived amount as a comparison.
-Signed drift, token-basis mismatch and unsettled amount remain visible. A subsidy, credit or
-subscription allocation is a reporting adjustment with its own source and scope. It cannot
-reduce eight's committed liability or reopen cap headroom.
+58, 86 and 95; **checks: P16-NF-18/19/36**. Eight supplies the current supported settlement;
+six alone applies it and owns `SettlementApplication` history. The view unions canonical operation
+ids, selects each operation's current causally valid six-owned accounting state and includes it
+once: a final application's exact charge contributes settled spend, while an unresolved
+application or reservation contributes outstanding exposure. The committed window total is the
+sum of those disjoint per-operation amounts. A partial settlement later refined to final replaces
+that operation's current accounting contribution; an equal application replay adds nothing; a
+conflicting application makes the total partial. An actual charge above reservation is recorded
+in full with `capViolation`, never clipped. An authorized maximum write-off converts the maximum
+to settled spend without reducing the committed total or manufacturing headroom. Seven's
+`JudgmentHoldCost` is observational evidence about waiting and is never added again. The view
+retains manifest-derived amount as comparison. Subsidy, credit or subscription allocation is a
+reporting adjustment with its own source and scope and cannot reduce six's exposure or reopen cap
+headroom.
 
 **Rule — subscription access is never presented as free.** Rules 26, 39, 41 and 86; **checks:
 P16-NF-17/20**. A doorway billed by subscription displays `not per-call settled`, its observed
@@ -234,58 +306,96 @@ is classified and executed through part eight under the standing of its requeste
 **Rule — feature-call metrics distinguish execution from outcomes.** Rules 13, 26, 39, 41, 58,
 75 and 86; **checks: P16-NF-07–10/30**. A real provider exchange, a pre-exchange refusal, a
 provider error, a parser failure and a programmatic event are different rows. Fired, no-op and
-unclassified judgments use seven's registered outcome and grade evidence; absence of a verdict
+unclassified judgments use seven's judgment outcome evidence and nine's `Grade`; absence of a verdict
 classifier is not a no-op. Latency percentiles name their eligible population and include
 failures where duration is observable. Rates with insufficient denominators return raw counts
 and `insufficient evidence`.
 
-**Rule — benchmark comparisons join exact recorded execution.** Rules 13, 39, 64, 69, 75 and 86;
-**checks: P16-NF-31/32**. The join key is the seven-owned judgment point, model doorway, prompt or
-artifact digest and benchmark record identity resolved from signed history. Real production
-measurements retain machine and workload identity. A benchmark target, predicted pass rate or
-declared model price is never called measured. Stale benchmark evidence, prompt drift, missing
-coverage, model mismatch or dominant-machine concentration makes the comparison partial or
-ineligible; it cannot label a model aligned or divergent.
+**Rule — benchmark comparisons consume seven's compatibility identity and nine's grades.** Rules
+13, 39, 58, 69, 75 and 86; **checks: P16-NF-31/32**. Seven supplies the exact compatibility
+identity: judgment class, prompt and context assembly digests, action-floor and output-schema
+digests, model plus relevant settings, and evaluation-contract digest. Nine supplies `Grade` and
+`BenchmarkEvaluation` evidence at the pinned frontier. A production comparison is `eligible` only
+when all compatibility fields match, the scenario class and observation window match, every
+included Grade is complete and conflict-free under the same criterion version, the current route
+still has measured support, sample count is at least `minimumSamples`, grade coverage is at least
+`minimumCoverage`, maximum single-machine share is at most `maximumMachineShare`, and every
+evidence age is strictly less than `maximumEvidenceAge`. Equality satisfies the first three
+inclusive thresholds; equality at the age endpoint is stale under nine's freshness convention.
 
-**Rule — burn detection is coverage-aware, active and signal-only.** Rules 39, 41, 58, 60, 75,
-86 and 87; **checks: P16-NF-10–14/33–35**. A burn projection reports an absolute amount or share,
-a recent activity window, a comparison baseline, eligible sample count, coverage and confidence.
-The baseline needs the declared history before it can fire. A completed burst with no current
-activity is not a live burn. The bucket representing instrumentation not yet run can raise a
-coverage finding but cannot be accused as a spending feature. Genuinely metered yet unresolved
-usage can raise an unattributed-spend finding. Threshold crossings coalesce into one episode and
-close only on recorded exit evidence or authorized disposition.
+The versioned comparison policy fixes those values and a binary mapping from the chosen Grade
+dimension before the population is read. For `x` mapped passes among `n` complete cases and the
+policy's fixed z-value `z`, Wilson confidence has
+`center=(x/n+z²/(2n))/(1+z²/n)` and
+`half=z*sqrt((x/n)*(1-x/n)/n+z²/(4n²))/(1+z²/n)`; the interval is
+`[center-half, center+half]`. No mapping, zero population or missing fixed z-value yields
+`insufficient evidence`, not a percentage. A population below a
+sample, coverage or concentration threshold is `partial`. A compatibility, criterion, freshness,
+conflict, completeness or current-support failure is `ineligible`. Only `eligible` may report a
+comparison; all statuses retain raw numerator, denominator, machine shares and missing reasons.
+Real production measurements retain machine/workload identity. Targets, predicted rates and
+declared prices are never measured. The policy and its threshold values are deployment-selected
+Value choices; their decision boundaries are fixed here.
+
+**Rule — burn detection has a versioned, coverage-aware hysteresis algorithm.** Rules 39, 41, 58,
+60, 75, 86 and 87; **checks: P16-NF-10–14/33–35**. A burn policy fixes before evaluation the
+current window, preceding baseline windows, registered amount unit, minimum eligible samples,
+minimum usage coverage, entry excess/share thresholds, lower recovery excess/share thresholds
+and required consecutive recovery windows. Source observations are canonically deduplicated.
+`currentAmount` is the compatible named feature amount in the current window;
+`baselineAmount` is the median of complete compatible preceding windows (the middle sorted value,
+or the exact arithmetic mean of the two middle values for an even count);
+`excess = max(0, currentAmount - baselineAmount)`; and `share = currentAmount / all compatible
+metered current-window amount`, undefined when that denominator is zero. The confidence status is
+`adequate` exactly when sample count and coverage meet their inclusive minima and the current and
+baseline populations are complete; otherwise it is `insufficient evidence`, with raw counts.
+
+A closed episode enters when there is current activity, confidence is adequate, and both excess
+and share are greater than or equal to their entry thresholds. An open episode recovers only after
+the configured number of consecutive adequate windows have both excess and share less than or
+equal to their recovery thresholds. Values between entry and recovery retain prior state. A zero
+current amount is `inactive` and closes the episode on that recorded window, so a completed burst
+is not live. An insufficient window neither opens nor closes an episode. The instrumentation-not-
+yet-run bucket raises coverage debt but cannot be a culprit; genuinely metered unresolved usage
+may raise unattributed-spend evidence. One threshold episode produces one notification and one
+part-five investigation run; six's one bounded loop governs follow-through.
 
 **Rule — no metric decides its own remedy.** Rules 4, 24, 41, 49, 82 and 86; **checks:
 P16-NF-33–35/51**. Reliability, effectiveness, benchmark drift, quota pressure, resource pressure
 and burn findings are evidence submitted to part nine. They do not alter routing, models,
-prompts, schedules, accounts, caps or processes. A proposed remedy becomes a part-five run or a
-part-eight effect after part four resolves the requester and operation. The metric producer does
-not grade its own adequacy or close the resulting verification obligation.
+prompts, schedules, accounts, caps or processes. Ten's `GrowthPolicy` and `GrowthObservation`
+similarly measure source-fact and projection growth and, on one coalesced breach episode, trigger
+one part-five investigation governed by six's loop. They do not trigger a second part-two loop;
+part two owns only a proposed fact-storage change resulting from that investigation. A proposed
+remedy becomes a part-five run or part-eight effect after part four resolves the requester and
+operation. The producer does not grade its own adequacy or close the verification obligation.
 
 ---
 
 ## 8. Spend caps and freeze through the effect doorway
 
-**Rule — cap authority never comes from an observational projection.** Rules 4, 26, 40, 49, 82,
-86 and 95; **checks: P16-NF-18/19/35/51**. Eight's spend operation reads the current authorized
-cap policy, six's fenced reservations, seven's hold cost and eight's settlements at the required
-durability state. It does not read a routing-spend total, quota bar, burn finding, cached price or
-provider estimate as authority. Concurrent reservations are serialized by six's owned mechanism.
-Unsettled calls retain maximum liability. A successful cap refusal is a part-one `Success`
-because the protection was applied.
+**Rule — cap authority never comes from an observational projection.** Rules 4, 26, 40, 42, 49,
+82, 86 and 95; **checks: P16-NF-18/19/35/51**. Once the requested part-eight control payloads
+land, the spend operation consumes the current authorized cap policy and six's current fenced
+reservation/accounting state at the required durability. It does not add seven's observational
+hold cost to that state and does not read a routing-spend total, quota bar, burn finding, cached
+price or provider estimate as authority. Concurrent reservations remain serialized by six.
+Unsettled calls retain maximum exposure. When capacity enforcement prevents an unsafe start, the
+paid business operation remains its own part-one `Refused` with reason `budget-exhausted` (or
+`frozen`). Only the separate control operation that applied the cap/freeze may return `Success`.
+Their subjects and ids cannot satisfy one another.
 
-**Rule — changing a cap and releasing a freeze require operator authority.** Rules 28, 79, 82,
-89, 98, 101 and 109; **checks: P16-NF-35/51/52**. The action begins as an exact authorization
+**Rule — changing a cap and releasing a freeze require operator authority.** Rules 4, 28, 79, 82,
+89 and 98; **checks: P16-NF-35/51/52**. The action begins as an exact authorization
 request through part four, completes on eleven's verified surface and executes once through
-eight. The rendered subject includes account or key, doorway scope, old and proposed values,
+the requested part-eight payload. The rendered subject includes account or key, doorway scope, old and proposed values,
 currency, time window, current base digest and consequences. Silence, chat wording, a dashboard
 read, a metric threshold and a configured default are not approval. A stale base, widened scope
 or replay refuses.
 
 **Rule — freeze is a separately reachable stop effect.** Rules 15, 40, 42, 60, 77, 82 and 95;
-**checks: P16-NF-35/45/51**. Eight evaluates freeze before ordinary spend admission and records
-the effect independently of this package's construction. If the measurement package, price join
+**checks: P16-NF-35/45/51**. The requested part-eight control seam evaluates freeze before
+ordinary spend admission and records the effect independently of this package's construction. If the measurement package, price join
 or normal spend surface is unavailable, the registered operator stop path remains reachable.
 Freeze never rewrites measurements or settlements. Unfreeze is a distinct operator-authorized
 effect. An agent may invoke freeze only under an explicit, current operator-issued standing
@@ -303,7 +413,8 @@ price indexes. Pruning is bounded by rows, bytes and duration and runs off the o
 Rebuilding from the same pinned frontier forgets the same projection identities in the same
 order. A projection horizon must not be presented as the beginning of recorded history.
 
-**Rule — evidence pins and lawful redaction still win.** Rules 7, 26, 44 and 100; **checks:
+**Rule — evidence pins and lawful redaction still win.** Rules 7 and 26, plus parts two, seven and
+nine's owned retention contracts; **checks:
 P16-NF-39–41/47**. Content-free accounting facts do not require prompt or response bodies.
 Provider payload captures, when required by seven or nine, follow their existing custody and
 retention pins. An open authorization, conflict, unsettled charge, benchmark obligation or
@@ -311,19 +422,26 @@ verification assessment prevents removal where the owning part says so. Lawful c
 leaves two's tombstone and does not permit replacing an unknown quantity with zero. This part
 adds no fact-deletion or encryption-key-destruction path.
 
-**Rule — every projection is rebuildable and every merge is explicit.** Rules 24, 31–33, 39,
-45, 69, 95 and 113; **checks: P16-NF-14/16/36–41/50**. Additive quantities merge only after
-subject, unit, currency, price basis, causal frontier and process/account identity agree.
-Percentiles merge from compatible sketches or source facts, never by averaging percentiles.
-Latest quota state remains per account and window. Resource samples remain per machine and
-hardware profile. Coverage denominators and missing counts add. Conflicts and partial peers are
-unioned and remain visible. A peer timeout produces a partial response naming the missing peer
-and last admitted frontier; it never serves a pool total without that qualification.
+**Rule — every projection is rebuildable and pool merge starts from canonical identities.** Rules
+24, 31–33, 39, 45, 69, 95 and 113; **checks: P16-NF-14/16/36–41/50**. A pool query first unions
+canonical attempt ids, observation keys, operation ids and current causal heads from all admitted
+replicas. Full-replica overlap therefore contributes once; incompatible content under an identity
+conflicts; genuinely disjoint identities contribute separately. Only after this union may the
+view derive counts, money, coverage denominators or percentiles. Additive values also require
+matching subject, unit, currency, price basis, query frontier and process/account identity. This
+part chooses source-fact aggregation: percentiles are computed from the deduplicated compatible
+source observations, never from averaged peer percentiles or an unspecified sketch. Money uses
+each operation's one current six-owned accounting state. Latest quota remains per account/window;
+resource samples remain per machine/hardware profile. Missing-peer and conflict sets are unioned.
+A peer timeout returns a partial response naming the peer and last admitted frontier, never an
+unqualified pool total.
 
 **Value — the signed spine grows.** The constitutional design deliberately retains facts. Bounded
 projection and cache retention controls working sets and disclosure, but it does not bound the
-spine's physical lifetime. Part two's replay-duration instrument is the honest trigger for any
-future lossless compaction design. This part declines to disguise deletion as rollup retention.
+spine's physical lifetime. Ten's `GrowthPolicy` and `GrowthObservation` measure source-fact and
+projection growth and open one coalesced part-five investigation through six's loop. If that work
+proposes a lossless fact-storage change, part two owns its design and approval. Rollup retention
+is not deletion authority.
 
 ---
 
@@ -356,18 +474,19 @@ pinned partial horizon or a typed refusal, never an unbounded fallback scan.
 
 ## 11. What Instar 1.x does today and what carries forward
 
-**Rule — the audited 1.x guarantees that remain load-bearing are preserved.** Rules 2, 39, 41,
-58, 60, 75, 86 and 87; **checks: P16-NF-05–14/21–30/33/39–46**. The audit covered the named 1.x
-modules and their matching operator guidance.
+**Rule — the audited 1.x layer below is described as code behaves, not as 2.0 aspires.** Rules 39,
+41, 58, 60, 75, 86, 87 and 111; **checks: P16-NF-05–14/21–30/33/39–46**. The audit covered the
+named 1.x modules and their matching operator guidance; typed distinctions required by 2.0 but
+collapsed in 1.x are corrections below, not carried-forward guarantees.
 
 | 1.x module | Behavior and guarantee carried forward | Incident that earned it |
 |---|---|---|
-| `TokenLedger` and `TokenLedgerPoller` | Incremental source reads, source files never mutated, inode/head reuse detection, incomplete trailing lines retained, bounded scans, event-loop yields, non-overlapping ticks and bounded background backfill | A 119,000-file, 12 GB history blocked the event loop; a 202 MB ledger with about 390,000 sentinel rows made the earlier synchronous attribution backfill stall health long enough to enter a boot failure loop |
-| `TokenLedger` | Schema additions precede indexes and queries that use them; migrations are idempotent; native database failure is visible and repairable | Creating the attribution index before adding its column left existing installations with `no such column` and permanent token-route unavailability |
+| `TokenLedger` and `TokenLedgerPoller` | Claude transcripts use incremental offsets, source files are read-only, identity/head changes reset safely, scans yield and poller ticks do not overlap. Codex rollouts take a separate whole-file path: the last cumulative per-session total is upserted by session id, replacing prior totals rather than adding them; cached input, output, reasoning output and primary/secondary quota percentages stay separate. Repeated identical and growing snapshots must therefore remain one session row. Codex cumulative rows are intentionally absent from Claude `token_events`, `summary()` and `BurnDetector`; aggregate Codex visibility is not per-exchange coverage or burn attribution. Sources: `TokenLedger.ts` schema/upsert and `ingestCodexSession`, `TokenLedgerPoller.ts`, `CodexRolloutParser.ts`. | A 119,000-file, 12 GB history blocked the event loop; a 202 MB ledger with about 390,000 sentinel rows made synchronous attribution backfill stall health into a boot failure loop. The 2.0 correction is a registered cumulative-session subject or an explicit unsupported-attribution limitation, never promotion of cumulative snapshots into invented calls. |
+| `TokenLedger` | Schema additions precede indexes and queries that use them; migrations are idempotent; native database failure is surfaced through the existing availability path | Creating the attribution index before adding its column left existing installations with `no such column` and permanent token-route unavailability |
 | `TokenLedger`, `FeatureMetricsLedger` and `BurnDetector` | Missing attribution remains visible; coverage is distinct from burn; a finished burst is not an active burn; cache-read tokens remain visible but do not masquerade as fresh usage | Putting every older event in one pre-attribution bucket produced a permanent 100% burn alarm; a completed burst repeatedly produced a contradictory projected-zero burn notice for a full day |
 | `FeatureMetricsLedger` | Real calls, shed calls, errors, unclassified outcomes and programmatic events remain distinct; usage-presence uses row presence rather than token sums; read models are rebuilt from raw truth | Treating calls with no verdict classifier as no-op fabricated a 0% fire rate; a large token row could otherwise hide many calls with missing usage |
-| `QuotaTracker` | Stale, missing, estimated, implausible and permanently unavailable quota are distinct; unknown is never best headroom; repeated absence warns once per episode | A non-authoritative 186% estimate stopped all work; an absent file warned 902 times per day; a provider with 1.3 million observed tokens still reported 0%; account-blind allowance disagreed with placement and fed a respawn loop |
-| `ResourceLedger`, `ResourceSampler` and `ProcessFootprintMonitor` | CPU/RSS/resource history is observe-only, sampled off the hot path, batched, idle-aware and bounded; slow process-count growth is measured separately from spawn bursts | Multiple full agent stacks and heavy Chromium/Electron tool servers accumulated until the host hit an `os_refcnt` kernel panic on 2026-06-26; a load-average misread also caused a false heavy-load deferral on 2026-06-19 |
+| `QuotaTracker` | `getState()` returns `null` for missing or stale files, so those conditions collapse at its public state result even though warnings differ. On corrupt/unreadable JSON it clears cache and returns `null` for Codex, but for non-Codex frameworks it can return the prior cached Claude state. `shouldSpawnSession()` then applies framework-dependent behavior: Codex unknown sheds fail-safe, most missing non-Codex data fail open, non-authoritative/implausible estimates use bounded degraded handling, and the separately injected pool-placeability path has its own unknown rules. Job scheduling occurs only because callers invoke that method; the observation itself does not schedule. Source: `QuotaTracker.ts:getState/shouldSpawnSession/evaluateAccountQuota`. The 2.0 design requires typed missing/stale/corrupt/unsupported observations rather than claiming 1.x already exposes them. | A non-authoritative 186% estimate stopped all work; an absent file warned 902 times per day; a provider with 1.3 million observed tokens still reported 0%; account-blind allowance disagreed with placement and fed a respawn loop |
+| `ResourceLedger`, `ResourceLedgerPoller`, `ResourceSampler` and `ProcessFootprintMonitor` | The SQLite ledger durably records breaker `circuit-open`/`circuit-recover` separately from session-sentinel `throttle`/`quota`/`529`; summaries expose counts, first/last time and breaker trips/hour. Event identity is `source:timestamp:process-local-sequence`: same-process same-millisecond emissions remain distinct and an equal identity is ignored, but sequence resets on restart, so a repeated timestamp/sequence can collide and must not be overstated as a cross-restart identity guarantee. CPU/RSS history is observe-only and bounded. Sources: `ResourceLedger.ts:eventId/recordRateLimitEvent/rateLimitSummary/rateLimitByKind` and `ResourceLedgerPoller.ts:start`. | Multiple full agent stacks and heavy Chromium/Electron tool servers accumulated until the host hit an `os_refcnt` kernel panic on 2026-06-26; a load-average misread caused false heavy-load deferral on 2026-06-19. The 2.0 fixture must cover two same-ms events, equal replay, restart collision and durable restart recovery. |
 | `routingSpendView` and `routingPriceAuthority` | Immutable usage is priced on read; unpriced metered usage is loud; subscription access is labelled not per-token billed; provider settlement and internal derivation remain distinct | Earlier spend surfaces could make missing price or subscription billing look like $0 per-call cost and could blur reporting totals with committed money |
 | `RoutingSpendCapsStore`, `MeteredSpendGate` and `meteredCallEntry` | Cap/freeze authority is independent of reporting; reservations are bounded and atomic; freeze is checked before normal enable state; releasing money needs operator authority | A disable flag captured only at construction could remain cosmetically off while calls still admitted; placing freeze inside a failed money layer could take down the emergency brake with the machinery it must stop |
 
@@ -375,11 +494,14 @@ modules and their matching operator guidance.
 86 and 95; **checks: P16-NF-02/12/16/23/31/35–45/51**. SQLite tables, JSON quota files,
 process-local maps, source-side feature tags, timer ownership and private cap stores are not
 portable authorities. Measurement and evidence become part-one payloads on part two. Register
-entries and declarations replace string enums and private manifests. Four admits observations.
-Five and six own durable scans, cursors, leases and retry. Seven owns attempts, benchmark records
-and hold cost. Eight owns settlement, caps and freeze. Nine owns instrument adequacy and signals.
-Ten owns concrete adapters and persistence. Eleven owns the human read and authorization
-surfaces. The provider transcript scanner may remain one adapter, but it is not the ledger.
+entries and declarations replace string enums and private manifests after the requested
+part-three shapes land. The requested part-four operation admits observations. Five and six own
+durable scans, cursors, leases, retry and settlement application. Seven owns attempts, benchmark
+records and, once its landed seam exists, hold cost. Eight owns settlement and, once its payload
+seam exists, cap/freeze effects. Nine owns instrument adequacy and signals. Ten owns concrete
+adapters, usage-category observations and persistence. Eleven owns the human read and
+authorization surfaces. The provider transcript scanner may remain one adapter, but it is not
+the ledger.
 
 **Rule — 2.0 forecloses the audited design mistakes.** Rules 26, 30, 41, 49, 58, 69, 75 and 86;
 **checks: P16-NF-02/07/10–14/17/22/23/30/35/42/45/51**. No observability store may also expose a
@@ -399,12 +521,13 @@ holder. No read-time price, credit, estimate or burn threshold opens or closes s
 
 | Seam | Ordered record flow | Failure direction and closure owner |
 |---|---|---|
-| model usage | seven attempt → six claim → eight dispatch observation → ten adapter evidence → four intake → two facts → sixteen projection | Call outcome stands; missing usage stays unknown; nine owns instrument finding; seven owns unresolved attempt/hold |
-| price and spend | three price declaration + usage/settlement facts → pinned read join → eleven view | Missing/incompatible price becomes unpriced; eight never consumes the view; three owns manifest repair |
-| quota | provider observation → ten adapter → four intake → two facts → account/window view | Missing/stale stays unknown; no scheduling answer; nine owns collector adequacy |
-| resources | OS observation on named machine → ten adapter → four intake → two facts → machine view/finding | Missing sample breaks completeness; no kill or throttle; ten repairs adapter and nine assesses |
-| benchmark | seven benchmark/run records + production attempt measurements → pinned compatible join → nine advisory finding | Stale/mismatched/under-covered comparison is ineligible or partial; seven owns benchmark evidence |
-| cap/freeze | operator act through eleven/four → one authorization → eight effect using six reservations and seven/eight money facts → settlement/receipt | Measurement outage does not block stop; stale/replayed/widened authority refuses; eight owns effect settlement |
+| model usage | seven attempt → six claim → eight dispatch observation → ten adapter evidence → requested four observation intake → two facts → sixteen projection | Call outcome stands; missing usage stays unknown; nine owns instrument finding; seven owns attempt/receipt; expanded categories wait on the ten seam |
+| price and spend | requested three manifest + usage + eight settlement → six `SettlementApplication` → pinned read join → eleven view | Missing/incompatible price is unpriced; each operation contributes one current six-owned state; three owns manifest repair |
+| quota/rate limits | provider or breaker/sentinel observation → ten adapter → requested four observation intake → two facts → account/window/source view | Missing/stale stays unknown; breaker and session events stay separate; no scheduling answer; nine owns collector adequacy |
+| resources | OS observation on named machine → ten adapter → requested four observation intake → two facts → machine view/finding | Missing sample breaks completeness; no kill or throttle; ten repairs adapter and nine assesses |
+| benchmark | seven compatibility identity/run records + nine `Grade`/`BenchmarkEvaluation` + production measurements → pinned eligible join → nine advisory finding | Mismatch/staleness/conflict/current-support failure is ineligible; threshold shortfall is partial; seven and nine repair their owned evidence |
+| growth | ten `GrowthPolicy` + `GrowthObservation` → one coalesced episode → one five investigation under six loop → optional proposed part-two storage change | Observation never deletes facts; ten owns measurement, five/six own follow-through, two owns any later storage design |
+| cap/freeze | operator act through eleven/four → one authorization → requested eight control payload using six's current accounting → settlement/receipt | Measurement outage does not block stop; stale/replayed/widened authority refuses; eight owns effect settlement; unavailable until its seam lands |
 
 **Rule — four failure traces have exact answers.** Rules 14, 24, 31, 33, 41, 42, 46 and 86;
 **checks: P16-NF-08/10/14/17/22/26/38/42/45/50/51**.
@@ -419,8 +542,10 @@ holder. No read-time price, credit, estimate or burn threshold opens or closes s
    flight. The query completes at its pinned frontier and generations. The next query may differ
    and names the later frontier; neither rewrites usage or settlement.
 4. The measurement package fails while paid spend appears runaway. Reads report the instrument
-   outage. The independent operator freeze path still executes through eight, and later rebuild
-   reconciles observations without unfreezing anything.
+   outage. Once the requested part-eight control seam is implemented, its independently admitted
+   operator freeze path still executes without this package; later rebuild reconciles observations
+   without unfreezing anything. Before that seam lands, the stop capability is an explicit gap,
+   not a claim of current protection.
 
 ---
 
@@ -436,38 +561,38 @@ holder. No read-time price, credit, estimate or burn threshold opens or closes s
 | P16-NF-03 | Register build resolves every measurement subject, unit, producer, projection, holder, surface and bidirectional dependency; one missing or stale id fails activation. |
 | P16-NF-04 | Decoder fixtures reject wrong subject kind, instance namespace, unit, clock, producer or evidence binding and accept the realistic registered neighbor. |
 | P16-NF-05 | Measurement rendering refuses the word measured for a target, estimate, configured threshold or unnamed hardware/workload and accepts recorded execution evidence. |
-| P16-NF-06 | Adapter conformance proves collectors only observe and submit through intake; a source mutation, provider invocation or hidden effect fails. |
+| P16-NF-06 | After the part-four observation seam lands, adapter conformance proves collectors only observe and call that public intake operation; source mutation, provider invocation, conversation masquerade or direct fact append fails. |
 | P16-NF-07 | Callsite census and production assembly test prove every model exchange path creates one seven-owned attempt, including swaps, failures, benchmarks and supervisors. |
-| P16-NF-08 | Kill/fault cuts before dispatch, after provider acceptance, during streaming, after receipt and before usage append preserve one call identity and honest unknown outcome. |
-| P16-NF-09 | Provider fixtures preserve input, cache-read, output, reasoning, tool and billed categories; subset and non-negative invariants reject invalid mappings. |
-| P16-NF-10 | Coverage test derives the denominator from the attempt census, includes errors and unsupported usage surfaces, and renders a zero denominator undefined. |
+| P16-NF-08 | Kill/fault cuts preserve one exchange identity and honest unknown outcome; repeated and growing Codex cumulative-session snapshots replace one registered session total, never add calls or enter exchange coverage/burn without attribution. |
+| P16-NF-09 | Blocked on the part-ten usage-category seam: once landed, provider fixtures preserve input, cache-read/cache-write, output, reasoning, tool and billed categories; zero, unsupported, not-reported, subset and non-negative cases remain distinct. |
+| P16-NF-10 | Coverage tests distinguish proven no-exchange, observed exchange and dispatch-uncertain attempts; use only observed exchanges for usage coverage, past-horizon observed/uncertain attempts for overdue rate, retain pending and unsupported rows, and render zero denominators undefined. |
 | P16-NF-11 | Missing usage never becomes zero; the attempt retains unknown usage and maximum reserved liability until valid settlement or owned disposition. |
 | P16-NF-12 | Attribution test mutates the usage row's feature/model/machine labels and proves the view uses signed run, attempt and register history instead. |
 | P16-NF-13 | No-match and multi-match fixtures render unattributed and conflicted usage separately from named-feature totals. |
-| P16-NF-14 | Equal duplicate observations are idempotent; unequal observations produce `Conflict` and cannot be selected by latest/largest/cheapest policy. |
-| P16-NF-15 | Price-manifest decoder rejects overlapping effective ranges, missing currency/billing class/source, invalid category semantics and unregistered doorway/model ids. |
+| P16-NF-14 | Observation-stream fixtures prove partial→final and late-charge causal refinement replaces the current head, equal replay is idempotent, and incompatible same-key or competing concurrent corrections produce `Conflict`. |
+| P16-NF-15 | Unimplementable until the requested part-three manifest kinds and public decoders land; then reject overlaps, missing currency/class/source, invalid categories, unregistered ids and below/equal/above plausibility boundaries as specified. |
 | P16-NF-16 | A correction changes only reads pinned after its signed fact; rebuilds at an earlier frontier stay byte-equal and stored usage bytes remain unchanged. |
 | P16-NF-17 | Missing, stale, implausible or incompatible prices produce labelled unpriced usage; subscription calls never render as free or per-call settled. |
 | P16-NF-18 | Exact-money property tests cover rounding boundaries, large totals and mixed currencies without binary floating authority or cross-currency addition. |
-| P16-NF-19 | Provider settlement remains separate from derived gross/subsidy/net and committed liability; credit changes cannot reopen cap headroom. |
+| P16-NF-19 | Six applies each supported eight settlement once: unknown, partial, final, duplicate, above-reservation and authorized-maximum-writeoff fixtures keep settled spend, outstanding exposure and committed total disjoint; credits and seven hold metrics cannot create headroom. |
 | P16-NF-20 | Subscription allocation, when enabled, shows its exact formula and sums once at its declared scope; disabling it returns unknown call cost, not zero. |
 | P16-NF-21 | Quota fixtures preserve account, window, source, observed/reset times and freshness and distinguish stale, corrupt, missing and unsupported. |
 | P16-NF-22 | Unknown quota never sorts as best headroom or becomes 0%/100%; missing-state notification load coalesces once per episode. |
 | P16-NF-23 | Static and integration tests prove no quota or measurement projection exports or feeds an allow/place/throttle decision. |
-| P16-NF-24 | Resource conformance records named hardware, OS adapter, monotonic interval and process incarnation; unnamed or wall-clock-only CPU samples refuse. |
+| P16-NF-24 | Resource conformance records named hardware, OS adapter, monotonic interval and process incarnation; rate-limit fixtures also preserve breaker versus session source, two same-ms events, equal replay, restart/collision and counts/rates; unnamed samples refuse. |
 | P16-NF-25 | CPU/RSS tests prove one-core versus whole-machine normalization, interval arithmetic, byte units and heap unsupported-state semantics. |
 | P16-NF-26 | PID reuse, dead PID, permission denial and partial process-list fixtures create new incarnation or missing samples, never zero-valued continuity. |
 | P16-NF-27 | A limit-plus-one process census uses one bounded batch/page plan, marks truncation and never creates a per-PID spawn storm. |
 | P16-NF-28 | Classifier fixtures resolve registered process classes and preserve unmatched relevant counts without storing command lines or environment data. |
 | P16-NF-29 | Trend tests reject windows with missing ticks, hardware/classifier changes or insufficient samples and accept a complete named window. |
 | P16-NF-30 | Feature rollups keep real exchanges, refusals, errors, parser failures, events and unclassified outcomes distinct and never infer no-op from missing classifier. |
-| P16-NF-31 | Benchmark join requires exact judgment point, model doorway, artifact/prompt digest and benchmark identity from signed history. |
-| P16-NF-32 | Benchmark comparison rejects targets as measurements and marks stale, drifted, under-covered or machine-dominated populations partial/ineligible. |
-| P16-NF-33 | Burn tests cover current-activity floor, cold-start history, amount/share thresholds, sample floor, hysteresis and one episode notification. |
+| P16-NF-31 | Benchmark join requires seven's full judgment-class, prompt/context, floor/schema, model/settings and evaluation-contract compatibility identity plus nine's Grade/Evaluation at the pinned frontier. |
+| P16-NF-32 | One eligible control passes; negatives changing only floor, context, setting, criterion or current route support become ineligible, while below/equal/above sample, coverage and machine-share boundaries yield the specified partial/eligible statuses and Wilson confidence. |
+| P16-NF-33 | Burn tests cover cold baseline, zero current activity, insufficient data, below/at/above entry, separate below/at/above recovery thresholds, consecutive recovery windows and exactly one notification/investigation per episode. |
 | P16-NF-34 | Pre-instrumentation absence raises coverage debt but no culprit ranking; genuinely metered unresolved usage raises unattributed-spend evidence. |
-| P16-NF-35 | Architecture and e2e tests prove every finding is advisory and every remedy, cap change or freeze crosses the owned intake/effect/authorization path. |
+| P16-NF-35 | Architecture/e2e tests prove findings advisory and remedies owner-routed; after the eight seam lands, unsafe paid work is `Refused budget-exhausted` while only the distinct cap/freeze control subject may be `Success`. |
 | P16-NF-36 | Every view pins frontier/register/price generations; same inputs rebuild equal while later lawful facts can change only later reads. |
-| P16-NF-37 | Pool merge property tests enforce compatible subject/unit/currency/basis identities and derive percentiles from mergeable source data, never averaged percentiles. |
+| P16-NF-37 | Pool merge properties union canonical source ids before all counts, money and percentiles: fully overlapping replicas equal one replica, disjoint replicas add, incompatible identities conflict, and unlike subject/unit/currency/basis refuses. |
 | P16-NF-38 | Peer loss and clock-skew tests return local plus admitted peers with missing-peer/last-frontier labels; no response claims a complete pool total. |
 | P16-NF-39 | Projection/cache/detail horizons are declared and enforced while canonical measurement, evidence, attempt, settlement and conflict facts remain on the spine. |
 | P16-NF-40 | Open evidence pins prevent owned capture removal; lawful removal leaves a tombstone and cannot change unknown usage into zero. |
@@ -476,12 +601,12 @@ holder. No read-time price, credit, estimate or burn threshold opens or closes s
 | P16-NF-43 | Loop tests enforce one live tick, finite page, cursor, lease, backoff, attempt ceiling and no stacked timer callbacks. |
 | P16-NF-44 | Restart tests resume durable backfill/reconcile work from an admitted cursor and preserve open coverage and instrument-health obligations. |
 | P16-NF-45 | Append refusal and uncertain receipt are surfaced, observed before retry and never converted to an empty-success result or hidden by catch-and-continue. |
-| P16-NF-46 | Load tests measure scanner/projector CPU, RSS, processes, I/O, duration, queue and storage on each supported hardware class and enforce declared budgets. |
+| P16-NF-46 | Load tests measure observer cost and Growth observations; one threshold breach/replay opens exactly one five-owned investigation under one six loop, never a second part-two loop. |
 | P16-NF-47 | Privacy fixtures reject prompt/response bodies, command lines, environment values, secrets and unrelated identities from default facts and surfaces. |
 | P16-NF-48 | Query tests enforce finite windows, dimensions, pages, sort work and export bytes; timeout returns a pinned partial result or typed refusal without full-scan fallback. |
-| P16-NF-49 | Unit, integration and production-lifecycle tests prove every required port delegates to a real implementation and every registered surface reports honest availability. |
+| P16-NF-49 | Unit, integration and production-lifecycle tests prove every required landed port delegates to a real implementation; each filed seam remains unavailable until its owner decoder/port and real wiring exist. |
 | P16-NF-50 | Corrupt projection/checkpoint/index, kill at adjacent append/fold boundaries and full genesis rebuild all converge to equal pinned outputs or a visible defect. |
-| P16-NF-51 | Isolation tests prove measurements, views, price caches, quota snapshots and findings cannot admit spend, alter caps, freeze/unfreeze, route, retry, reap or mutate standing. |
+| P16-NF-51 | Isolation tests prove measurements/views/caches/findings cannot admit spend, alter caps, freeze/unfreeze, route, retry, reap or mutate standing; once the eight seam lands, only its exact payload may perform cap/freeze controls. |
 | P16-NF-52 | Independent review records executed positive and negative evidence for every P16 check; absent evidence prevents held/live claims and operator approval remains separate. |
 
 **Rule — performance bars name workloads and failure actions.** Rules 13, 34, 39, 43, 55, 60
@@ -494,7 +619,7 @@ and 64; **checks: P16-NF-05/27/36–38/41/46/48–50**.
 | resource sampler cost | process census at limit and limit-plus-one on each OS/hardware class | tick duration, CPU, RSS and spawned-process budgets hold; excess yields bounded incomplete sample and failed activation |
 | projection rebuild | cold genesis and checkpoint rebuild across maximum release corpus and peer set | canonical equality within declared memory/time/I/O budget; timeout is a failed rebuild, not an empty view |
 | query bound | widest allowed windows/dimensions, worst cardinality, slow/missing peer and export maximum | response or typed partial/refusal within budget; no unbounded fallback scan |
-| storage growth | sustained maximum admitted call/resource rate plus package self-measurement | measured fact and projection growth published separately; projection horizons hold; spine growth reopens part two's loop at its threshold |
+| storage growth | sustained maximum admitted call/resource rate plus package self-measurement | ten's policy compares source-fact and projection growth separately; one breach episode opens one five investigation under six's loop, and only a resulting storage proposal goes to part two |
 
 **Rule — activation needs three tiers and independent evidence.** Rules 34, 37, 62, 65, 72, 73,
 81 and 105; **checks: P16-NF-42/46/49/50/52**. Unit tests cover decoders, joins, arithmetic,
@@ -519,38 +644,38 @@ P16-NF-01–52**.
 | P16-NF-03 | register | Unit/producer/projection/holder has no current bidirectional entry; complete generation resolves |
 | P16-NF-04 | decode | Wrong subject, unit, producer, clock or evidence binding accepts; registered tuple passes |
 | P16-NF-05 | semantics | Target/estimate/unnamed machine is called measured; recorded named execution passes |
-| P16-NF-06 | conformance | Collector mutates source or invokes work; observe-and-submit adapter passes |
+| P16-NF-06 | conformance | Collector mutates source, invokes work, impersonates conversation or appends directly; requested observation-intake path passes after it lands |
 | P16-NF-07 | census | Swap/error/benchmark/supervisor exchange lacks one attempt; complete one-to-one census passes |
-| P16-NF-08 | fault | Kill window loses identity or duplicates exchange; one honest attempt/outcome passes |
-| P16-NF-09 | provider | Token category collapses or cache exceeds input; faithful mapped categories pass |
-| P16-NF-10 | accounting | Errors/unsupported calls leave denominator or zero denominator becomes a percentage; complete counts/undefined pass |
+| P16-NF-08 | fault | Kill window loses exchange identity or cumulative Codex snapshot adds calls; one honest attempt and replace-in-place session total pass |
+| P16-NF-09 | provider | Until ten's seam lands, category support stays unavailable; afterward collapsed/absent/zero/subset-invalid categories refuse and faithful mappings pass |
+| P16-NF-10 | accounting | Refusal enters exchange denominator, uncertain dispatch disappears, pending becomes overdue early or zero denominator becomes a percentage; exact disjoint sets pass |
 | P16-NF-11 | accounting | Missing usage becomes zero/free or releases liability; unknown plus maximum hold passes |
 | P16-NF-12 | provenance | Usage row self-label controls feature/model/machine; signed-history resolution passes |
 | P16-NF-13 | join | No/multi match hides in a named bucket; unattributed/conflicted rows pass |
-| P16-NF-14 | replay | Unequal duplicate is silently chosen; equal idempotence or explicit `Conflict` passes |
-| P16-NF-15 | decode | Price ranges overlap or omit currency/basis/source; valid governed point passes |
+| P16-NF-14 | replay | Partial plus final double-counts or late charge conflicts automatically; causal refinement/equal replay pass and competing corrections conflict |
+| P16-NF-15 | decode | Check is unavailable before three's seam; afterward overlap/missing fields/out-of-bound point refuses while equality at plausibility bound passes |
 | P16-NF-16 | rebuild | Price correction rewrites usage or changes earlier frontier; later read-only change passes |
 | P16-NF-17 | honesty | Missing price/subscription renders free; unpriced/not-per-call-settled passes |
 | P16-NF-18 | arithmetic | Float drift, implicit rounding or mixed currency total accepts; exact scoped totals pass |
-| P16-NF-19 | authority | Derived/credited amount replaces settlement/liability; separated comparison passes |
+| P16-NF-19 | authority | Hold plus settlement, partial plus final or duplicate application double-counts; one current six-owned state per operation passes, including full over-bound charge and max write-off |
 | P16-NF-20 | policy | Subscription allocation double-counts or hides formula; once-scoped labelled formula passes |
 | P16-NF-21 | quota | Account/window/source/time is missing or stale reads current; complete fresh observation passes |
 | P16-NF-22 | quota | Unknown becomes best/0% or emits 902 notices; unknown and episode coalescing pass |
 | P16-NF-23 | architecture | Quota view exports allow/place/throttle; observational read only passes |
-| P16-NF-24 | resource | CPU lacks hardware/interval/incarnation; named monotonic sample passes |
+| P16-NF-24 | resource | CPU lacks hardware/interval/incarnation or rate events collapse breaker/session, same-ms or restart cases; named sample and source-bound durable events pass |
 | P16-NF-25 | resource | CPU normalization or byte unit is ambiguous; declared arithmetic passes |
 | P16-NF-26 | lifecycle | Reused/dead PID continues old series or reads zero; new incarnation/missing passes |
 | P16-NF-27 | load | Per-PID fork storm or unmarked truncation; bounded batch with omitted count passes |
 | P16-NF-28 | privacy | Unknown process is dropped or command/env stored; count-only unclassified passes |
 | P16-NF-29 | trend | Gapped/mixed window claims a trend; compatible complete window passes |
 | P16-NF-30 | semantics | Shed/error/unclassified/event becomes real no-op call; distinct outcomes pass |
-| P16-NF-31 | benchmark | Name-only or self-reported benchmark join accepts; exact signed identities pass |
-| P16-NF-32 | evidence | Target/stale/drifted/small sample claims measured alignment; ineligible/partial passes |
-| P16-NF-33 | signal | Finished burst/cold baseline chatters; active mature deduped episode passes |
+| P16-NF-31 | benchmark | Name-only or partial compatibility accepts; exact seven identity plus nine Grade/Evaluation passes |
+| P16-NF-32 | evidence | Floor/context/settings/criterion/support mismatch or boundary error claims alignment; exact eligible, partial and ineligible statuses pass |
+| P16-NF-33 | signal | Cold/insufficient/finished burst opens, equality misclassifies or hysteresis chatters; exact entry/recovery and one episode investigation pass |
 | P16-NF-34 | attribution | Pre-instrumentation bucket is blamed as feature; coverage debt passes |
-| P16-NF-35 | authority | Finding directly changes route/cap/process; admitted owned effect passes |
+| P16-NF-35 | authority | Finding changes route/cap/process, message impersonates control or control Success replaces paid-work Refused; distinct owner path/subjects pass after eight's seam |
 | P16-NF-36 | consistency | Query has moving frontier/generation; pinned reproducible read passes |
-| P16-NF-37 | merge | Unlike units/currencies or averaged percentiles merge; compatible fold passes |
+| P16-NF-37 | merge | Full replicas double totals, overlaps add, or percentiles average; canonical union deduplicates overlap and adds disjoint source observations |
 | P16-NF-38 | partition | Missing peer vanishes from complete total; named partial horizon passes |
 | P16-NF-39 | retention | Detail prune deletes source facts or hides horizon; disposable view prune passes |
 | P16-NF-40 | retention | Open pinned capture disappears or tombstone becomes zero; owned preservation passes |
@@ -559,7 +684,7 @@ P16-NF-01–52**.
 | P16-NF-43 | loop | Ticks overlap or retry without bound; leased finite loop passes |
 | P16-NF-44 | recovery | Restart loses cursor/open debt; durable resumed work passes |
 | P16-NF-45 | failure | Append refusal is swallowed as empty success; typed uncertainty and later observation pass |
-| P16-NF-46 | performance | Observer cost is omitted or exceeds budget unnoticed; named self-measurement passes |
+| P16-NF-46 | performance | Observer cost is omitted or one growth breach creates duplicate/part-two loops; named self-measurement and one five/six investigation pass |
 | P16-NF-47 | privacy | Prompt/response/command/env/secret leaks in default read; bounded metadata passes |
 | P16-NF-48 | query | Limit evasion triggers full scan/export; bounded page or typed refusal passes |
 | P16-NF-49 | wiring/e2e | Null/no-op/test-only port appears live; production delegation evidence passes |
@@ -576,16 +701,16 @@ P16-NF-01/03/49/52**.
 
 | Duty | Disposition |
 |---|---|
-| Token and usage accounting | **Held:** one attempt census, category-preserving measurements, coverage, conflicts and unknown-liability behavior are pinned by P16-NF-07–14. |
-| Per-feature model-call and spend accounting | **Held:** attribution re-resolves through signed run/judgment history and every total retains unattributed/conflicted amounts, P16-NF-12–20/30. |
-| Price manifests joined on read | **Held:** governed effective points never rewrite usage; settlement, derivation, subsidy, subscription allocation and unpriced usage remain separate, P16-NF-15–20/36. |
+| Token and usage accounting | **Held at the join contract, activation blocked in part:** one attempt census, exact coverage sets, refinement/conflict and unknown-exposure behavior are pinned by P16-NF-07–14; expanded categories wait on the four/ten seams. |
+| Per-feature model-call and spend accounting | **Held at the read contract:** attribution re-resolves through signed history and totals retain unattributed/conflicted amounts, P16-NF-12–20/30; priced output waits on part three. |
+| Price manifests joined on read | **Declared, not implementable yet:** the effective-point and arithmetic contract is specified, but P16-NF-15 and dependent activation wait on the part-three manifest seam. |
 | Quota ledger | **Held as observation:** account/window provenance and unknown states are complete; scheduling authority is deliberately re-expressed through earlier owners, P16-NF-21–23/35/51. |
-| CPU, memory and process footprint | **Held:** named hardware/incarnations, bounded sampling, classification loss and observer self-cost are covered by P16-NF-24–29/46. |
-| Burn and routing-spend views | **Held:** activity, baseline, coverage, pinned joins, partial peers and signal-only disposition are covered by P16-NF-33–38. |
-| Benchmark connection | **Held:** exact compatible production attempts join seven's benchmark records; stale, drifted and under-covered comparisons cannot conclude, P16-NF-31/32. |
+| CPU, memory and process footprint | **Held at the measurement contract, activation blocked in part:** named hardware/incarnations, bounded sampling, rate-event identity and observer self-cost are covered by P16-NF-24–29/46; admission waits on part four. |
+| Burn and routing-spend views | **Held at the algorithm contract:** activity, baseline, exact coverage, hysteresis, pinned joins, overlap-safe peers and signal-only disposition are covered by P16-NF-33–38; priced arms wait on part three. |
+| Benchmark connection | **Held:** exact seven compatibility plus nine `Grade`/`BenchmarkEvaluation` evidence controls eligibility; stale, mismatched and threshold-short populations cannot conclude, P16-NF-31/32. |
 | Bounded retention | **Held within constitutional limits:** detail projections, caches and workers are finite and rebuildable; source facts remain on two's spine and open pins are honored, P16-NF-39–41. |
-| Spend caps and freeze | **Held by the claimed split:** observations stay read-only; operator-authorized cap/freeze actions and money settlement remain eight-owned and independently reachable, P16-NF-35/51/52. |
-| Holder and activation proof | **Held:** fresh independent running proof, durable loops, all three test tiers and production wiring are required by P16-NF-42–50/52. |
+| Spend caps and freeze | **Declared owner split, not landed:** observations stay read-only; cap/freeze actions remain eight-owned, and P16-NF-35/45/49/51 wait on the requested effect seam. |
+| Holder and activation proof | **Held at the evidence contract:** fresh independent running proof, durable loops and three test tiers are required by P16-NF-42–50/52; no missing seam may report live. |
 
 ---
 
@@ -606,24 +731,31 @@ currency, or include a converted reporting total from a governed exchange-rate m
 recommend native-currency totals by default and an opt-in converted view. This avoids hiding
 rate-source and effective-time uncertainty in a single headline.
 
+**Value — benchmark comparison policy.** What minimum complete sample count, Grade coverage,
+maximum single-machine share, evidence age and Wilson confidence level should each deployment
+approve before a comparison becomes eligible? I recommend per-judgment-class policies calibrated
+from measured workloads, with no universal fallback. The algorithm and equality boundaries in
+section 7 are fixed; only these policy values remain an operator choice.
+
 **Value — burn policy.** Should burn thresholds be one universal package default, a per-feature
 policy, or deployment-specific values approved after a measured baseline? I recommend
 deployment-specific values with per-feature overrides only where a named risk justifies them.
-The signal should ship observed before any notification policy is approved.
+The chosen values must include separate lower recovery thresholds and recovery-window count. The
+signal should ship observed before any notification policy is approved.
 
 **Value — quota presentation.** For providers with no advance-usage surface, should the primary
-view say unknown, show only locally observed tokens, or estimate a percentage from plan limits?
-I recommend unknown beside locally observed tokens. An estimated percentage invites operators to
-read an invented denominator as provider headroom.
+view show only `unknown`, or `unknown` beside the separately labelled locally observed token total?
+I recommend the latter. An estimated provider percentage from an invented plan denominator is
+forbidden by the evidence rules and is not an operator option.
 
-**Value — spine growth.** Is the permanent signed accounting history acceptable until part two's
-measured replay-duration trigger reopens a lossless compaction design, or should this part remain
-unapproved until such a design exists? I recommend accepting the permanent spine with published
-growth measurements and finite projections. Deleting facts privately would be a worse and less
-honest answer.
+**Value — signed-spine growth posture.** Should the operator approve permanent signed accounting
+history with published ten-owned growth observations and finite projections, or withhold package
+approval pending a separately approved part-two lossless storage change? I recommend the former.
+Ten's existing growth episode still opens only one five-owned investigation under six's loop; this
+choice neither creates a second trigger nor authorizes deletion.
 
-**Rule — technical completion is not approval or certification.** Rules 34, 65, 80, 82, 90 and
-109; **checks: P16-NF-49/52** and the governed review process. This document claims no deployment,
+**Rule — technical completion is not approval or certification.** Rules 34, 65, 80, 82 and 90;
+**checks: P16-NF-49/52** and the governed review process. This document claims no deployment,
 runtime measurement, review convergence, holder adequacy or operator approval. Implementation
 becomes eligible only after the real three-tier, production-lifecycle, reconstruction,
 isolation, privacy, load and independent-holder evidence exists. The operator's answers above and
