@@ -19,8 +19,9 @@ const durationMeasurement: OwnedShape = { kind: 'object', fields: { type: txt, s
   subject: { kind: 'object', fields: { kind: txt, instance: txt } }, value: int, unit: txt, at: clock, by: txt } };
 const vectorEntry: OwnedShape = { kind: 'object', fields: { machine: txt, epoch: int, position: int } };
 const sourceVector: OwnedShape = { kind: 'array', maxLength: 4096, items: vectorEntry };
-const policyFields = { ...common, id: txt, maxAttempts: int, minDelay: int, maxDuration: int, timeout: int,
-  concurrency: int, failDirection: txt, breaker: txt, initialDelay: int, maxDelay: int, backoffMultiplier: int,
+const legacyPolicyFields = { ...common, id: txt, maxAttempts: int, minDelay: int, maxDuration: int, timeout: int,
+  concurrency: int, failDirection: txt, breaker: txt };
+const policyFields = { ...legacyPolicyFields, initialDelay: int, maxDelay: int, backoffMultiplier: int,
   jitterMinPermille: int, jitterMaxPermille: int, failureThreshold: int,
   countedFailureClasses: { kind: 'array', maxLength: 64, items: txt } as OwnedShape,
   acceptedOutcomeWindow: int, breakerCooldown: int, maxOpenDuration: int,
@@ -106,15 +107,23 @@ export function shapeCheck(v: unknown, shape: OwnedShape): void {
   }
 }
 export function policyCheck(p: LoopPolicy): void {
+  if (p && typeof p === 'object' && p.breaker === 'stub-closed') {
+    const legacy = p as unknown as Record<string, unknown>;
+    ensure(Object.keys(legacy).length === Object.keys(legacyPolicyFields).length, 'undeclared or missing field');
+    for (const [key, field] of Object.entries(legacyPolicyFields)) {
+      ensure(Object.hasOwn(legacy, key), `missing ${key}`);
+      shapeCheck(legacy[key], field);
+    }
+    ensure(p.type === 'LoopPolicy' && p.schemaVersion === 1 && p.id.length > 0, 'policy identity');
+    ensure(p.maxAttempts >= 0 && p.maxDuration >= 0 && p.minDelay > 0 && p.timeout > 0,
+      'finite nonnegative bounds and positive delays required');
+    ensure(p.concurrency === 1 && p.failDirection === 'closed', 'unsupported loop policy');
+    return;
+  }
   shapeCheck(p, policy);
   ensure(p.type === 'LoopPolicy' && p.schemaVersion === 1 && p.id.length > 0, 'policy identity');
   ensure(p.maxAttempts >= 0 && p.maxDuration >= 0 && p.minDelay > 0 && p.timeout > 0,
     'finite nonnegative bounds and positive delays required');
-  if (p.breaker === 'stub-closed') {
-    ensure(p.concurrency === 1 && p.failDirection === 'closed' && Object.keys(p).length === 10,
-      'unsupported loop policy');
-    return;
-  }
   ensure(p.breaker === 'shared-circuit-v1' && Object.keys(p).length === Object.keys(policyFields).length,
     'real breaker policy is incomplete or unknown');
   ensure(p.failDirection === 'closed', 'unsupported loop fail direction');
@@ -233,20 +242,45 @@ export function resolvePressureBinding(record: Pick<SharedLoopRecord, 'parentDut
   if (status) requireUsableFacts([fact], context, facts);
   return fact;
 }
-export function resolveRestorationReference(reference: SharedLoopRecord['closureEvidence'][number],
-  facts: readonly FactEnvelope[], context: FactContext, at: Clock, pressureKey: string,
-  operationFamily: string, host: TransportHost, status = true): FactEnvelope {
-  referenceCheck(reference, 'part-nine', 'VerificationAssessment');
-  const candidates = allFacts(facts).filter(fact => schemaOwns(context, fact, 'record', 'part-nine', 'VerificationAssessment'))
+function ownerRecordCandidates(facts: readonly FactEnvelope[], context: FactContext, name: string, id: string) {
+  return allFacts(facts).filter(fact => schemaOwns(context, fact, 'record', 'part-nine', name))
     .filter(fact => {
       const record = (fact.body as { record?: { type?: unknown; id?: unknown } }).record;
-      return record?.type === 'VerificationAssessment' && record.id === reference.id;
+      return record?.type === name && record.id === id;
     });
+}
+function uniqueOwnerRecord(facts: readonly FactEnvelope[], context: FactContext, name: string, id: string): FactEnvelope {
+  const candidates = ownerRecordCandidates(facts, context, name, id);
+  ensure(candidates.length > 0, `${name} evidence is absent`);
+  ensure(new Set(candidates.map(fact => encoded((fact.body as { record: Json }).record).bytes)).size === 1,
+    `${name} evidence is conflicted`);
+  return candidates.at(-1)!;
+}
+function evidenceFact(id: string, facts: readonly FactEnvelope[], context: FactContext): FactEnvelope {
+  const candidates = allFacts(facts).filter(fact => Object.entries(fact.body as Readonly<Record<string, Json>>).some(([field, value]) => {
+    const shape = context.schemas.find(schema => schema.kind === fact.kind && schema.version === fact.schemaVersion)?.fields[field];
+    const constitutional = value as { type?: unknown; id?: unknown } | undefined;
+    return shape?.kind === 'constitutional' && shape.type === 'Evidence'
+      && constitutional?.type === 'Evidence' && constitutional.id === id;
+  }));
+  ensure(candidates.length > 0, 'VerificationAssessment predicate Evidence is absent');
+  ensure(new Set(candidates.map(fact => encoded(fact.body).bytes)).size === 1,
+    'VerificationAssessment predicate Evidence is conflicted');
+  return candidates.at(-1)!;
+}
+export function resolveRestorationReference(reference: SharedLoopRecord['closureEvidence'][number],
+  facts: readonly FactEnvelope[], context: FactContext, at: Clock, pressureKey: string,
+  operationFamily: string, host: TransportHost, status = true): readonly FactEnvelope[] {
+  referenceCheck(reference, 'part-nine', 'VerificationAssessment');
+  const candidates = allFacts(facts).filter(fact => schemaOwns(context, fact, 'record', 'part-nine', 'VerificationAssessment'))
+    .filter(fact => fact.id === reference.id
+      || (fact.body as { record?: { type?: unknown; id?: unknown } }).record?.id === reference.id);
   ensure(candidates.length > 0, 'VerificationAssessment evidence is absent');
   ensure(new Set(candidates.map(fact => encoded((fact.body as { record: Json }).record).bytes)).size === 1,
     'VerificationAssessment evidence is conflicted');
   const fact = candidates.at(-1)!;
-  const record = (fact.body as { record: { operation?: unknown; operationDigest?: unknown;
+  const record = (fact.body as { record: { request?: unknown; predecessors?: unknown; operation?: unknown; attempt?: unknown;
+    operationDigest?: unknown; barVersion?: unknown; evidence?: unknown; supersedes?: unknown;
     missingEvidence?: unknown; captureStatuses?: unknown; taints?: unknown; predicates?: unknown;
     validFrom?: number; validUntil?: number } }).record;
   ensure(Number.isSafeInteger(record.validFrom) && Number.isSafeInteger(record.validUntil)
@@ -256,6 +290,36 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
   const verdict = (name: string) => predicates.find(value => value.predicate === name)?.verdict;
   ensure(record.operation === operationFamily && record.operationDigest === expectedDigest,
     'VerificationAssessment restoration subject differs from the governed pressure');
+  ensure(typeof record.request === 'string' && typeof record.attempt === 'string' && typeof record.barVersion === 'string'
+    && Array.isArray(record.predecessors) && Array.isArray(record.evidence),
+  'VerificationAssessment support bindings are incomplete');
+  const predecessors = record.predecessors as unknown[];
+  const requestFact = uniqueOwnerRecord(facts, context, 'VerificationRequest', record.request);
+  const request = (requestFact.body as { record: { predecessors?: unknown; operation?: unknown; attempt?: unknown;
+    operationDigest?: unknown; plan?: unknown; barVersion?: unknown; sourceGeneration?: unknown } }).record;
+  ensure(Array.isArray(request.predecessors) && typeof request.plan === 'string'
+    && predecessors.includes(requestFact.id),
+  'VerificationAssessment request lineage is absent');
+  const planFact = uniqueOwnerRecord(facts, context, 'VerificationPlan', request.plan);
+  const plan = (planFact.body as { record: { subject?: { generation?: unknown }; bar?: { version?: unknown } } }).record;
+  ensure(request.predecessors.includes(planFact.id)
+    && request.operation === operationFamily && request.operationDigest === expectedDigest
+    && request.attempt === record.attempt && request.barVersion === record.barVersion
+    && plan.bar?.version === request.barVersion && plan.subject?.generation === request.sourceGeneration,
+  'VerificationAssessment request, plan, or pressure subject differs');
+  const predicateEvidence = (Array.isArray(record.predicates) ? record.predicates : [])
+    .flatMap(value => value && typeof value === 'object' && Array.isArray((value as { evidence?: unknown }).evidence)
+      ? (value as { evidence: unknown[] }).evidence : []);
+  const evidenceIds = [...new Set([...record.evidence, ...predicateEvidence])];
+  ensure(evidenceIds.every(id => typeof id === 'string' && id.length > 0),
+    'VerificationAssessment predicate Evidence reference is invalid');
+  const evidenceFacts = evidenceIds.map(id => evidenceFact(id as string, facts, context));
+  const superseded = typeof record.supersedes === 'string' && record.supersedes.length > 0
+    ? [uniqueOwnerRecord(facts, context, 'VerificationAssessment', record.supersedes)] : [];
+  const support = [...new Map([fact, requestFact, planFact, ...evidenceFacts, ...superseded]
+    .map(value => [value.id, value])).values()];
+  ensure([requestFact, ...evidenceFacts, ...superseded].every(value => predecessors.includes(value.id)),
+    'VerificationAssessment support is outside its signed predecessor set');
   ensure(Array.isArray(record.missingEvidence) && record.missingEvidence.length === 0
     && Array.isArray(record.taints) && record.taints.length === 0
     && Array.isArray(record.captureStatuses) && record.captureStatuses.every(value =>
@@ -273,8 +337,8 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
     && encoded(verified.predicates).bytes === encoded(predicates.map(value => ({ predicate: value.predicate, verdict: value.verdict }))).bytes
     && verified.validFrom === record.validFrom && verified.validUntil === record.validUntil,
   'current Part Nine restoration assessment differs from signed history');
-  if (status) requireUsableFacts(candidates, context, facts);
-  return fact;
+  if (status) requireUsableFacts(support, context, facts);
+  return support;
 }
 function requiredBy(origin: FactEnvelope, dependencies: readonly FactEnvelope[]): void {
   const required = new Set(origin.predecessors.required);
@@ -293,7 +357,7 @@ export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly Fac
   for (const outcome of record.outcomeLog) {
     dependencies.push(...resolveSourceVector(outcome.sourceVector, history));
     dependencies.push(resolveLoopOutcomeCompletion(record, outcome, history, context, false));
-    for (const reference of outcome.restoration) dependencies.push(resolveRestorationReference(reference, history, context,
+    for (const reference of outcome.restoration) dependencies.push(...resolveRestorationReference(reference, history, context,
       record.transition === 'closed' ? record.transitionAt : outcome.observedAt,
       record.pressureKey, record.operationFamily, host, false));
   }
@@ -301,10 +365,10 @@ export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly Fac
   for (const reference of record.closureEvidence) {
     const contributedAt = record.outcomeLog.find(outcome => outcome.restoration.some(value => value.id === reference.id))?.observedAt
       ?? record.transitionAt;
-    const fact = resolveRestorationReference(reference, history, context,
+    const support = resolveRestorationReference(reference, history, context,
       record.transition === 'closed' ? record.transitionAt : contributedAt,
       record.pressureKey, record.operationFamily, host, false);
-    dependencies.push(fact);
+    dependencies.push(...support);
   }
   const unique = [...new Map(dependencies.map(fact => [fact.id, fact])).values()];
   requireUsableFacts(unique, context, history);
@@ -340,6 +404,13 @@ function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: SharedL
   const expectedBinding = encoded([record.pressureKey, record.operationFamily, outcome.attempt]).hash;
   ensure((fact.body as { loopAttemptBinding?: unknown }).loopAttemptBinding === expectedBinding,
     'Outcome completion is not bound to this loop attempt and operation family');
+  const signedClass = (fact.body as { loopFailureClass?: unknown }).loopFailureClass;
+  const expectedPolicy = encoded([record.policy.id, record.policyGeneration.id,
+    record.policy.countedFailureClasses]).hash;
+  ensure(typeof signedClass === 'string' && signedClass === outcome.failureClass
+    && (derivedKind === 'failed' ? signedClass.length > 0 : signedClass.length === 0)
+    && (fact.body as { loopFailurePolicy?: unknown }).loopFailurePolicy === expectedPolicy,
+  'loop failure class is not witnessed under the pinned classification policy');
   const attemptFacts = allFacts(facts).filter(candidate => candidate.kind === kindFor('LoopRecord'))
     .filter(candidate => {
       const candidateRecord = (candidate.body as { record?: Partial<SharedLoopRecord> }).record;
@@ -467,7 +538,12 @@ export function missedRangeEvidence(record: MissedRangeRecord, facts: readonly F
 }
 export function resolveMissedRangeEvidence(record: MissedRangeRecord, origin: FactEnvelope,
   facts: readonly FactEnvelope[], context: FactContext, host: TransportHost): readonly string[] {
-  const unique = missedRangeEvidence(record, facts, context, host);
+  // Historical replay evaluates each observation at its signed causal frontier.
+  // A later Run admission promotes only a causally linked successor; it must not
+  // retroactively poison an honestly-partial predecessor during restart.
+  const population = allFacts([...context.facts, ...facts]);
+  const history = allFacts([...causalCone(origin, population), origin]);
+  const unique = missedRangeEvidence(record, history, context, host);
   requiredBy(origin, unique); return unique.map(fact => fact.id);
 }
 export function loopRecordCheck(r: LoopRecord): void {
@@ -491,6 +567,7 @@ export function loopRecordCheck(r: LoopRecord): void {
   referenceCheck(shared.policyGeneration, 'part-three', 'RegisterGeneration');
   referenceCheck(shared.pressureBinding, 'part-two', 'FactEnvelope');
   ensure(encoded(shared.parentDuty).bytes === encoded(shared.policy.parentDuty).bytes, 'parent duty changed from policy');
+  ensure(shared.run === shared.currentOwnerRun.id, 'shared loop run differs from its witnessed current owner');
   ensure(shared.operationFamily.length > 0 && Object.values(shared.pressureScope).every(value => value.length > 0)
     && shared.pressureKey === `pressure:${encoded([shared.operationFamily, shared.pressureScope]).hash}`,
   'shared pressure identity changed');
@@ -787,7 +864,7 @@ export function sharedOutcomeDecision(previous: SharedLoopRecord, all: readonly 
     if (halfOpenSucceeded >= policy.halfOpenTrials && pendingAttempts.length === 0 && closureEvidence.length > 0) {
       state = 'closed'; transition = 'closed'; nextEligible = receiptAt;
     } else state = 'half-open';
-  } else if (failureCount >= policy.failureThreshold && pendingAttempts.length === 0) {
+  } else if (failureCount >= policy.failureThreshold) {
     state = 'open-breaker'; transition = 'opened'; nextEligible = shifted(added.observedAt, policy.breakerCooldown);
     breakerOpenCount++;
     if (breakerHasOpened === 0) { breakerHasOpened = 1; breakerFirstOpened = added.observedAt; }
@@ -815,11 +892,15 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
   if (origin) requireSharedLoopCandidate(host, record);
   if (!previous) {
     const parentRolling = parentRollingAt(all, record, record.transitionAt);
+    const firstEligible = shifted(record.transitionAt, record.policy.initialDelay);
     ensure(record.transition === 'scheduled' && record.state === 'scheduled' && record.attempts === 0
+      && record.started === record.transitionAt.value && record.nextWake === firstEligible.value
+      && encoded(record.nextEligible).bytes === encoded(firstEligible).bytes
       && record.episodeAttempts === 0 && record.totalFailures === 0 && record.failureCount === 0
       && record.rollingAttempts === parentRolling.rollingAttempts
       && record.rollingResource === parentRolling.rollingResource && record.breakerHasOpened === 0
       && record.breakerOpenCount === 0
+      && encoded(record.breakerFirstOpened).bytes === encoded(record.transitionAt).bytes
       && record.halfOpenAdmitted === 0 && record.halfOpenSucceeded === 0
       && record.pendingAttempts.length === 0 && record.attemptLog.length === 0 && record.outcomeLog.length === 0
       && record.outcomeWindowDigest === encoded([]).hash && record.closureEvidence.length === 0,
@@ -832,13 +913,25 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
     && encoded(previous.pressureScope).bytes === encoded(record.pressureScope).bytes
     && previous.clockBasis === record.clockBasis, 'shared pressure policy or clock changed');
   if (record.transition === 'scheduled') {
+    const firstEligible = shifted(record.transitionAt, record.policy.initialDelay);
+    const currentOutcomes = windowAt(record, record.transitionAt);
+    const parentRolling = parentRollingAt(all, record, record.transitionAt);
     ensure((previous.state === 'closed' || previous.state === 'stopped' && previous.failureCount < previous.policy.failureThreshold)
       && previous.pendingAttempts.length === 0 && previous.episode !== record.episode
+      && record.state === 'scheduled' && record.started === record.transitionAt.value
+      && record.nextWake === firstEligible.value && encoded(record.nextEligible).bytes === encoded(firstEligible).bytes
+      && record.run === record.currentOwnerRun.id
       && record.attempts === previous.attempts && record.totalFailures === previous.totalFailures
       && encoded(record.attemptLog).bytes === encoded(previous.attemptLog).bytes
       && encoded(record.outcomeLog).bytes === encoded(previous.outcomeLog).bytes
       && record.breakerOpenCount === previous.breakerOpenCount
       && record.breakerHasOpened === previous.breakerHasOpened
+      && encoded(record.breakerFirstOpened).bytes === encoded(previous.breakerFirstOpened).bytes
+      && record.failureCount === failureCountAt(record.policy, currentOutcomes)
+      && record.rollingAttempts === parentRolling.rollingAttempts
+      && record.rollingResource === parentRolling.rollingResource
+      && record.outcomeWindowDigest === encoded(currentOutcomes).hash
+      && record.closureEvidence.length === 0
       && record.episodeAttempts === 0 && record.pendingAttempts.length === 0
       && record.halfOpenAdmitted === 0 && record.halfOpenSucceeded === 0,
     'new episode reset shared pressure or replaced an active episode');

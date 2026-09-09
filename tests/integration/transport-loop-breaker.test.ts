@@ -51,7 +51,7 @@ it('SLB-SHARED-04 P6-NF-18 P6-NF-20 P6-NF-21 shared pressure opens once, refuses
   loop = value(outcome(f, token, loop, 'trial-pass-1', 'accepted'));
   expect(loop.state).toBe('half-open');
   loop = value(attempt(f, token, loop, 'trial-pass-2', 'sentinel', 'worker-i', 'machine-b'));
-  const evidence = [{ owner: 'part-nine' as const, name: 'VerificationAssessment' as const, id: 'assessment:restored-holder' }];
+  const evidence = [f.restorationReference('assessment:restored-holder')];
   loop = value(outcome(f, token, loop, 'trial-pass-2', 'accepted', evidence));
   expect(loop).toMatchObject({ state: 'closed', transition: 'closed', halfOpenAdmitted: 2, halfOpenSucceeded: 2,
     closureEvidence: evidence });

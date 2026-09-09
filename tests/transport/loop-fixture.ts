@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canonical, consumeResult, decode, defineDecoder, deriveThrough } from '../../src/index.js';
-import type { Clock, Json, Result, RunReference } from '../../src/index.js';
+import type { Clock, Evidence, Json, Result, RunReference } from '../../src/index.js';
 import { authorAndAppend, createFactStore, factId, signEnvelope, verifyAndAdmit } from '../../src/facts/index.js';
 import type { FactContext, FactEnvelope, FactSchema, SegmentStoragePort } from '../../src/facts/index.js';
 import { runIdFor } from '../../src/rungraph/index.js';
@@ -10,7 +10,8 @@ import { recordReferences, recordWire } from '../../src/rungraph/records.js';
 import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, registerTransportBodies,
   registerTransportSeamBodies, transportSchemas, transportSeamSchemas } from '../../src/transport/index.js';
 import type { FenceToken, ReserveInput, SharedBreakerLoopPolicy, SharedLoopRecord, TransportFact, TransportHost } from '../../src/transport/index.js';
-import { registerVerificationBodies, verificationSchemas } from '../../src/verification/index.js';
+import { deriveVerificationAssessment, registerVerificationBodies, verificationSchemas } from '../../src/verification/index.js';
+import type { VerificationAssessment, VerificationPlan, VerificationRequest } from '../../src/verification/index.js';
 import { verificationInput } from '../verification/fixture.js';
 import { setup as rungraphFixture, ref as factRef, value, refused, json } from '../rungraph/fixtures.js';
 import { privateKey } from '../facts/fixtures.js';
@@ -57,11 +58,7 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     record: recordWire(rg.run as unknown as Parameters<typeof recordWire>[0]) }), recordReferences(json(rg.run)));
   const admittedRuns = new Map<number, RunReference>();
   const catchUpRuns = new Map<number, RunReference>();
-  const scheduled = [
-    ...(options.existingInstants ?? [110, 120, 130]).map(instant => ({ instant, kind: 'existing' as const })),
-    ...(options.catchUpInstants ?? []).map(instant => ({ instant, kind: 'catch-up' as const })),
-  ];
-  for (const { instant, kind } of scheduled) {
+  const admitScheduledRun = (instant: number, kind: 'existing' | 'catch-up' = 'existing') => {
     const at = rg.clock(instant);
     const ownerValue = rg.principal(`scheduled-owner:${instant}`, 'agent');
     const intent = value(decode('Intent', rg.intentInput({ id: `scheduled-intent:${instant}`, principal: ownerValue,
@@ -79,8 +76,14 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
       nextWake: { ...rg.run.nextWake, owner } };
     admitHistorical('run-opening', json({ run: id,
       record: recordWire(run as unknown as Parameters<typeof recordWire>[0]) }), recordReferences(json(run)));
-    (kind === 'existing' ? admittedRuns : catchUpRuns).set(instant, { owner: 'part-five', name: 'Run', id });
-  }
+    const reference = { owner: 'part-five' as const, name: 'Run' as const, id };
+    (kind === 'existing' ? admittedRuns : catchUpRuns).set(instant, reference); return reference;
+  };
+  const scheduled = [
+    ...(options.existingInstants ?? [110, 120, 130]).map(instant => ({ instant, kind: 'existing' as const })),
+    ...(options.catchUpInstants ?? []).map(instant => ({ instant, kind: 'catch-up' as const })),
+  ];
+  for (const { instant, kind } of scheduled) admitScheduledRun(instant, kind);
 
   let now = 100, stopped = false, generation = 'generation:1';
   const verificationHost = { machine: 'machine-a', principal: rg.alice, scope: rg.scope, boundary: rg.c,
@@ -92,8 +95,11 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
       generation: { kind: 'text', maxLength: 256 }, orderedKeysBytes: { kind: 'text', maxLength: 4096 } } },
     { ...rg.schema, kind: 'calendar-range-proof', fields: { binding: { kind: 'text', maxLength: 256 } } },
     { ...rg.schema, kind: 'loop-outcome-proof', fields: { evidence: { kind: 'constitutional', type: 'Evidence' },
-      outcome: { kind: 'constitutional', type: 'Outcome' }, loopAttemptBinding: { kind: 'text', maxLength: 256 } } },
+      outcome: { kind: 'constitutional', type: 'Outcome' }, loopAttemptBinding: { kind: 'text', maxLength: 256 },
+      loopFailureClass: { kind: 'text', maxLength: 256 }, loopFailurePolicy: { kind: 'text', maxLength: 256 } } },
     { ...rg.schema, kind: 'loop-result-proof', fields: { result: { kind: 'constitutional', type: 'Result' } } },
+    { ...rg.schema, kind: 'verification-evidence-proof', fields: {
+      evidence: { kind: 'constitutional', type: 'Evidence' } } },
     { ...rg.schema, kind: 'loop-pressure-binding', fields: { parentDuty: { kind: 'text', maxLength: 256 },
       operationFamily: { kind: 'text', maxLength: 256 }, pressureScopeBytes: { kind: 'text', maxLength: 4096 } } },
   ];
@@ -101,18 +107,18 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     schemas: [...rg.ctx.schemas, ...verificationSchemas(verificationHost), ...proofSchemas],
     ownedBodies: [...rg.ctx.ownedBodies ?? [], ...verificationRegistrations] };
   const machineBFacts: FactEnvelope[] = [];
-  const appendMachineB = (kind: string, body: Json) => {
+  const appendMachineB = (kind: string, body: Json, required: readonly string[] = []) => {
     const context = { ...witnessContext, facts: [...witnessContext.facts, ...machineBFacts] };
     const previous = machineBFacts.at(-1) ?? context.facts.filter(fact => fact.machine === 'machine-a').at(-1)!;
     const segment = { machine: 'machine-a', epoch: previous.segment.epoch, position: previous.segment.position + 1 };
     const wire = signEnvelope({ type: 'FactEnvelope', envelopeVersion: 1, id: factId(segment), kind, schemaVersion: 1,
       at: rg.now, machine: 'machine-a', principal: rg.alice, provenance: rg.alice.provenance, segment,
-      prevInSegment: previous.contentHash, predecessors: { inSegment: previous.id, frontier: {}, required: [] }, body }, privateKey);
+      prevInSegment: previous.contentHash, predecessors: { inSegment: previous.id, frontier: {}, required }, body }, privateKey);
     const fact = value(verifyAndAdmit(wire, 'machine-a', context));
     machineBFacts.push(fact); return fact;
   };
   const assessmentFacts = new Map<string, FactEnvelope>();
-  const assessment = (id: string, operationFamily: string, pressureScope: object, complete: boolean) => {
+  const unsupportedAssessment = (id: string, operationFamily: string, pressureScope: object, complete: boolean) => {
     const pressureKey = `pressure:${encoded([operationFamily, pressureScope]).hash}`;
     const base = verificationInput('VerificationAssessment');
     const record = { ...base, id, operation: operationFamily,
@@ -123,11 +129,9 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
         evidence: value.evidence.length > 0 ? value.evidence : [`evidence:${value.predicate}`] })) : base.predicates };
     assessmentFacts.set(id, appendMachineB('verification-VerificationAssessment', json({ record })));
   };
-  assessment('assessment:one', 'operation:1', {}, false);
-  assessment('assessment:expires', 'recovery',
+  unsupportedAssessment('assessment:one', 'operation:1', {}, false);
+  unsupportedAssessment('assessment:expires', 'recovery',
     { target: 'target:review', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' }, true);
-  assessment('assessment:restored-holder', 'holder-recovery',
-    { target: 'target:shared', conversation: 'conversation:1', machine: 'fleet', pool: 'recovery' }, true);
   const orderedKeys = ['job:one'];
   const rosterFact = appendMachineB('calendar-roster-proof', json({ scan: 'scan', generation: 'g1',
     orderedKeysBytes: encoded(orderedKeys).bytes }));
@@ -154,6 +158,52 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     pressureBindings.set(key, appendMachineB('loop-pressure-binding', json({ parentDuty: parentDuty.id,
       operationFamily, pressureScopeBytes: encoded(pressureScope).bytes })));
   }
+  const restorationSupport = new Map<string, Readonly<{
+    plan: VerificationPlan; request: VerificationRequest; assessment: VerificationAssessment;
+    evidence: readonly Evidence[];
+  }>>();
+  const witnessedAssessment = (alias: string, operationFamily: string, pressureScope: object) => {
+    const pressureKey = `pressure:${encoded([operationFamily, pressureScope]).hash}`;
+    const binding = pressureBindings.get(encoded([parentDuty.id, operationFamily, pressureScope]).bytes)!;
+    const plan = { ...verificationInput('VerificationPlan'), id: `plan:${alias}`, predecessors: [binding.id],
+      subject: { ...verificationInput('VerificationPlan').subject, governed: pressureKey,
+        scope: operationFamily, generation },
+      bar: { ...verificationInput('VerificationPlan').bar, version: `bar:${alias}`, sources: ['probe'],
+        minimumStrength: 'proof' as const, freshness: 10_000 } } as unknown as VerificationPlan;
+    const planFact = appendMachineB('verification-VerificationPlan', json({ record: plan }), plan.predecessors);
+    const claims = [
+      ['operation-occurred', 'occurrence'],
+      ['old-executor-quiescent', 'quiescence'],
+      ['charge-settled', 'charge'],
+    ] as const;
+    const evidence = claims.map(([predicate, suffix]) => value(decode('Evidence', rg.evidenceInput({
+      id: `evidence:${alias}:${suffix}`, claim: { subject: operationFamily, predicate, value: {
+        digest: encoded([pressureKey, operationFamily]).hash } }, source: 'probe', observedAt: rg.clock(now),
+      freshFor: 10_000, strength: 'proof' }), rg.ctx.decode)));
+    evidence.forEach(item => rg.evidence.push(item));
+    const evidenceFacts = evidence.map(item => appendMachineB('verification-evidence-proof', json({ evidence: item })));
+    const request = { ...verificationInput('VerificationRequest'), id: `request:${alias}`,
+      predecessors: [planFact.id, binding.id, ...evidenceFacts.map(fact => fact.id)],
+      logicalKey: `request:${alias}`, operation: operationFamily, attempt: `attempt:${alias}`,
+      reservation: binding.id, operationDigest: encoded([pressureKey, operationFamily]).hash,
+      scope: operationFamily, plan: plan.id, barVersion: plan.bar.version,
+      initialEvidence: evidence.map(item => item.id), missingEvidence: [], sourceGeneration: generation,
+      createdAt: now } as unknown as VerificationRequest;
+    const requestFact = appendMachineB('verification-VerificationRequest', json({ record: request }), request.predecessors);
+    const captureStatuses = evidence.map(item => ({ reference: item.capture.reference, status: 'available' as const }));
+    const assessment = value(deriveVerificationAssessment({ request, plan, evidence, observer: rg.alice.id,
+      vectorDigest: encoded(machineBFacts.map(fact => fact.id)).hash, knownLineages: ['machine-a'],
+      captureStatuses, taints: [], now: rg.clock(now), predecessors: [requestFact.id, ...evidenceFacts.map(fact => fact.id)],
+      decode: { ...rg.ctx.decode, evidence } }, rg.c));
+    const fact = appendMachineB('verification-VerificationAssessment', json({ record: assessment }), assessment.predecessors);
+    assessmentFacts.set(alias, fact); assessmentFacts.set(assessment.id, fact); assessmentFacts.set(fact.id, fact);
+    const support = { plan, request, assessment, evidence };
+    restorationSupport.set(alias, support); restorationSupport.set(assessment.id, support); restorationSupport.set(fact.id, support);
+  };
+  witnessedAssessment('assessment:witnessed-review', 'recovery',
+    { target: 'target:review', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' });
+  witnessedAssessment('assessment:restored-holder', 'holder-recovery',
+    { target: 'target:shared', conversation: 'conversation:1', machine: 'fleet', pool: 'recovery' });
   witnessContext = { ...witnessContext, facts: [...witnessContext.facts, ...machineBFacts] };
 
   const host: TransportHost = { domain: 'conversation:1', machine: 'machine-a', incarnation,
@@ -174,11 +224,31 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     },
     restorationEvidence: { owner: 'part-nine', verify: input => rg.success((assessmentFacts.has(input.reference.id))
       ? (() => {
-        const record = (assessmentFacts.get(input.reference.id)!.body as { record: {
+        const fact = assessmentFacts.get(input.reference.id)!;
+        const record = (fact.body as { record: {
           operation: string; operationDigest: string; missingEvidence: readonly string[];
           captureStatuses: readonly { reference: string; status: string }[]; taints: readonly string[];
           predicates: readonly { predicate: string; verdict: string }[]; validFrom: number; validUntil: number;
         } }).record;
+        const support = restorationSupport.get(input.reference.id);
+        if (support) {
+          const currentStatuses = support.evidence.map(item => ({ reference: item.capture.reference,
+            status: (rg.ctx.captures[item.capture.reference]?.status
+              ?? (rg.ctx.decode.captures[item.capture.reference] !== undefined ? 'available' : 'missing')) as 'available' | 'missing' }));
+          const derived = value(deriveVerificationAssessment({ request: support.request, plan: support.plan,
+            evidence: support.evidence, observer: support.assessment.observer,
+            vectorDigest: support.assessment.vectorDigest, knownLineages: support.assessment.knownLineages,
+            captureStatuses: currentStatuses, taints: [], now: rg.clock(support.assessment.validFrom),
+            predecessors: support.assessment.predecessors, decode: { ...rg.ctx.decode, evidence: support.evidence } }, rg.c));
+          const comparisons = {
+            predicates: encoded(derived.predicates).bytes === encoded(support.assessment.predicates).bytes,
+            evidence: encoded(derived.evidence).bytes === encoded(support.assessment.evidence).bytes,
+            missing: encoded(derived.missingEvidence).bytes === encoded(support.assessment.missingEvidence).bytes,
+            time: now >= support.assessment.validFrom && now < support.assessment.validUntil,
+          };
+          if (Object.values(comparisons).some(value => !value))
+            throw new Error(`assessment unavailable or no longer current: ${JSON.stringify(comparisons)}`);
+        }
         return { reference: input.reference, operation: record.operation, operationDigest: record.operationDigest,
           missingEvidence: record.missingEvidence, captureStatuses: record.captureStatuses, taints: record.taints,
           predicates: record.predicates.map(value => ({ predicate: value.predicate, verdict: value.verdict })),
@@ -223,6 +293,34 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
   const append = (kind: string, body: Json, required: readonly string[] = []) => value(authorAndAppend({ kind, body, required,
     schemaVersion: 1, machine: host.machine, principal: json(host.principal), provenance: json(host.principal.provenance),
     at: json(rg.clock(now)) }, ctx, store, privateKey));
+  const admitLiveScheduledRun = (instant: number, kind: 'existing' | 'catch-up' = 'existing') => {
+    const appendLive = (factKind: string, body: Json, required: readonly string[] = []) => {
+      const facts = [...ctx.facts, ...value(store.read())], last = facts.at(-1)!;
+      const segment = { machine: host.machine, epoch: last.segment.epoch, position: last.segment.position + 1 };
+      const wire = signEnvelope({ type: 'FactEnvelope', envelopeVersion: 1, id: factId(segment), kind: factKind,
+        schemaVersion: 1, at: rg.clock(now), machine: host.machine, principal: host.principal,
+        provenance: host.principal.provenance, segment, prevInSegment: last.contentHash,
+        predecessors: { inSegment: last.id, frontier: {}, required }, body }, privateKey);
+      const fact = value(verifyAndAdmit(wire, host.machine, { ...ctx, facts }));
+      value(store.append(wire, { peer: host.machine })); return fact;
+    };
+    const at = rg.clock(instant), ownerValue = rg.bob;
+    const intent = value(decode('Intent', rg.intentInput({ id: `live-scheduled-intent:${instant}`, principal: ownerValue,
+      raw: rg.capture(`live-scheduled:${instant}`) }), rg.ctx.decode));
+    const opening = appendLive('scheduled-stimulus', json({ intent, owner: ownerValue,
+      transportScheduleBinding: scheduleBinding(parentDuty, 'job:one', at), transportScheduleKind: kind }));
+    const owner = { type: 'VerifiedPrincipal' as const, id: ownerValue.id, fact: factRef(opening), field: 'owner' };
+    const id = runIdFor(factRef(opening)), budgetId = `live-scheduled-budget:${instant}`;
+    const run = { ...rg.run, id, opening: factRef(opening),
+      intent: { type: 'Intent' as const, id: intent.id, fact: factRef(opening), field: 'intent' }, owner,
+      authority: { ...rg.run.authority, resolution: factRef(opening) },
+      budget: { ...rg.run.budget, id: budgetId, resources: rg.run.budget.resources.map(resource => ({ ...resource,
+        subject: { ...resource.subject, instance: budgetId } })), exhaustedOwner: owner }, nextWake: { ...rg.run.nextWake, owner } };
+    appendLive('run-opening', json({ run: id,
+      record: recordWire(run as unknown as Parameters<typeof recordWire>[0]) }), recordReferences(json(run)));
+    const reference = { owner: 'part-five' as const, name: 'Run' as const, id };
+    (kind === 'existing' ? admittedRuns : catchUpRuns).set(instant, reference); return reference;
+  };
   const registerPolicy = (policy: SharedBreakerLoopPolicy = sharedPolicy) => {
     const existing = value(store.read()).find(fact => fact.kind === 'transport-LoopPolicy'
       && (fact.body as { policy?: { id?: unknown }; generation?: unknown }).policy?.id === policy.id
@@ -234,7 +332,8 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     .map(fact => ({ machine: fact.machine, epoch: fact.segment.epoch, position: fact.segment.position }))
     .sort((a, b) => a.machine.localeCompare(b.machine));
   let outcomeCounter = 0;
-  const appendOutcome = (kind: 'accepted' | 'failed', attempt: string) => {
+  const appendOutcome = (kind: 'accepted' | 'failed', attempt: string,
+    failureClass = kind === 'failed' ? 'transport' : '') => {
     const evidence = value(decode('Evidence', rg.evidenceInput({ id: `loop-evidence:${++outcomeCounter}` }), rg.ctx.decode));
     rg.evidence.push(evidence);
     const outcome = value(decode('Outcome', rg.raw('Outcome', { kind: kind === 'accepted' ? 'happened' : 'uncertain',
@@ -247,7 +346,10 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     }).at(-1) as (TransportFact & { record: SharedLoopRecord }) | undefined;
     if (!admitted) throw new Error(`attempt admission unavailable: ${attempt}`);
     const loopAttemptBinding = encoded([admitted.record.pressureKey, admitted.record.operationFamily, attempt]).hash;
-    const receipt = append('loop-outcome-proof', json({ evidence, outcome, loopAttemptBinding }), [admitted.fact.id]);
+    const loopFailurePolicy = encoded([admitted.record.policy.id, admitted.record.policyGeneration.id,
+      admitted.record.policy.countedFailureClasses]).hash;
+    const receipt = append('loop-outcome-proof', json({ evidence, outcome, loopAttemptBinding,
+      loopFailureClass: failureClass, loopFailurePolicy }), [admitted.fact.id]);
     return { type: 'Outcome' as const, id: `outcome:${attempt}:${outcomeCounter}`,
       fact: factRef(receipt.fact), field: 'outcome' };
   };
@@ -264,9 +366,15 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
   const detail = <T>(r: Result<T>) => consumeResult(r, { Success: () => '', Refused: refusal => refusal.detail });
   return { ...rg, host, ctx, storage, store, spine, api, directory, result, sharedPolicy, parentDuty, run: parentDuty,
     admittedRun: (instant: number) => admittedRuns.get(instant)!, catchUpRun: (instant: number) => catchUpRuns.get(instant)!,
+    admitScheduledRun: admitLiveScheduledRun,
     appendOutcome, appendResult, input, head, detail,
     get vector() { return vector(); }, advance: (n: number) => { now += n; }, time: (n: number) => { now = n; },
     stop: () => { stopped = true; }, generation: (value: string) => { generation = value; },
     revalidatePolicy: () => registerPolicy(), registerPolicy, assessmentFact: (id: string) => assessmentFacts.get(id),
+    restorationReference: (id: string) => {
+      const fact = assessmentFacts.get(id); if (!fact) throw new Error(`assessment unavailable: ${id}`);
+      const record = (fact.body as { record: { id: string } }).record;
+      return { owner: 'part-nine' as const, name: 'VerificationAssessment' as const, id: record.id };
+    },
   };
 }

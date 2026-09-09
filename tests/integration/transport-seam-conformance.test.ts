@@ -171,8 +171,8 @@ it('SLB-CLOSURE-17 V15 V33 restoration references are actual fresh Part Nine fac
   Object.assign(s.f.host, { restorationEvidence: { owner: 'part-nine', verify: (input: Parameters<typeof originalRestoration.verify>[0]) =>
     s.f.result(() => { calls++; if (!available) throw new Error('assessment unavailable'); return value(originalRestoration.verify(input)); }) } });
   s.f.advance(20); value(attempt(s, 'trial:one'));
-  s.loop = value(outcome(s, 'trial:one', 'accepted', { restoration: [{ owner: 'part-nine',
-    name: 'VerificationAssessment', id: 'assessment:expires' }] }));
+  s.loop = value(outcome(s, 'trial:one', 'accepted', {
+    restoration: [s.f.restorationReference('assessment:witnessed-review')] }));
   value(attempt(s, 'trial:two'));
   const completion = s.f.appendOutcome('accepted', 'trial:two'); available = false;
   rejects(outcome(s, 'trial:two', 'accepted', { completion }), 'assessment unavailable');
@@ -271,3 +271,76 @@ it('SLB-MISSED-STABLE-23 V27 boundary-plus-one cannot mint a second catch-up ide
       ? { scheduledInstant: value.scheduledInstant, kind: 'catch-up-run' as const, run: changedRun } : value) };
   rejects(s.f.api.recordMissedRange(next), 'completed missed member');
 });
+
+it('SLB-THRESHOLD-31 V11 opens at the counted threshold while preserving an admitted sibling and refuses more work', () => {
+  const s = setup({ failureThreshold: 1 }); s.f.advance(1);
+  value(attempt(s, 'threshold:failed')); value(attempt(s, 'threshold:pending'));
+  s.loop = value(outcome(s, 'threshold:failed'));
+  expect(s.loop).toMatchObject({ state: 'open-breaker', transition: 'opened', failureCount: 1,
+    pendingAttempts: ['threshold:pending'] });
+  rejects(attempt(s, 'threshold:must-not-run'), 'cooldown');
+});
+
+it('SLB-CLASS-32 V12 derives failure class from the attempt-bound signed completion under the pinned policy', () => {
+  const unwitnessed = setup({ failureThreshold: 1 }); unwitnessed.f.advance(1);
+  value(attempt(unwitnessed, 'class:unwitnessed'));
+  rejects(outcome(unwitnessed, 'class:unwitnessed', 'failed', {
+    failureClass: 'caller-supplied-escape' }), 'failure class');
+
+  const legitimate = setup({ failureThreshold: 1 }); legitimate.f.advance(1);
+  value(attempt(legitimate, 'class:non-counted'));
+  const completion = legitimate.f.appendOutcome('failed', 'class:non-counted', 'application');
+  const recorded = value(outcome(legitimate, 'class:non-counted', 'failed', {
+    failureClass: 'application', completion }));
+  expect(recorded).toMatchObject({ state: 'waiting', failureCount: 0, totalFailures: 0 });
+});
+
+it('SLB-ACTIVE-POLICY-35 V13 refuses a conflicting decoded policy before coalescing an active episode', () => {
+  const s = setup();
+  const conflicting = value(decodeLoopPolicy({ ...s.policy, id: 'policy:active-conflict',
+    parentAttemptBudget: 1 }, s.f.c)) as SharedBreakerLoopPolicy;
+  s.f.registerPolicy(conflicting);
+  rejects(s.f.api.scheduleEpisode({ ...s.input, command: 'schedule:active-conflict', policy: conflicting }),
+    'conflicting shared pressure policy');
+  expect(value(s.f.api.scheduleEpisode({ ...s.input, command: 'schedule:active-coalesce' }))).toEqual(s.loop);
+});
+
+it('SLB-MISSED-RECHECK-34 V14 re-resolves roster/range dependencies before returning an identical replay', () => {
+  const s = missed({ existingInstants: [] });
+  const reference = value(s.f.api.recordMissedRange(s.input));
+  expect(value(s.f.api.recordMissedRange(s.input))).toEqual(reference);
+  const calendar = s.f.host.calendarExpansion!;
+  Object.assign(s.f.host, { calendarExpansion: { ...calendar,
+    roster: () => s.f.result(() => { throw new Error('roster temporarily unavailable'); }) } });
+  rejects(s.f.api.recordMissedRange(s.input), 'roster');
+});
+
+it('SLB-HISTORY-33 V22 V37 reconstructs every initial schedule field from signed policy and owner evidence', () => {
+  const s = setup(), stored = value(s.f.store.read());
+  const fact = stored.find(value => value.kind === 'transport-LoopRecord')!;
+  const original = s.f.storage.read().find(value => (value as { id?: string }).id === fact.id) as Record<string, unknown>;
+  const context = { ...s.f.ctx, facts: [...s.f.ctx.facts, ...stored.filter(value => value.id !== fact.id)] };
+  const altered = (record: SharedLoopRecord) => {
+    const wire = signEnvelope({ ...original, body: { record } }, privateKey);
+    return decodeHistoricalBody(value(decodeEnvelope(wire, context, 'replication')), context, context.decode);
+  };
+  rejects(altered({ ...s.loop, nextWake: s.loop.transitionAt.value,
+    nextEligible: s.loop.transitionAt }), 'initial shared loop counters');
+  rejects(altered({ ...s.loop, run: 'run:not-the-witnessed-owner' }), 'witnessed current owner');
+});
+
+it('SLB-RESTORE-30 V26 requires a current Part Nine assessment with signed request, plan and Evidence support', () => {
+  const unsupported = open(setup({ halfOpenTrials: 1 })); unsupported.f.advance(20);
+  value(attempt(unsupported, 'restore:unsupported'));
+  const fake = unsupported.f.assessmentFact('assessment:expires')!;
+  const fakeRecord = (fake.body as { record: { id: string } }).record;
+  rejects(outcome(unsupported, 'restore:unsupported', 'accepted', { restoration: [{ owner: 'part-nine',
+    name: 'VerificationAssessment', id: fakeRecord.id }] }), 'VerificationRequest');
+  expect(unsupported.f.ctx.facts.some(fact => fact.id === fake.id)).toBe(true);
+
+  const witnessed = open(setup({ halfOpenTrials: 1 })); witnessed.f.advance(20);
+  value(attempt(witnessed, 'restore:witnessed'));
+  const closed = value(outcome(witnessed, 'restore:witnessed', 'accepted', {
+    restoration: [witnessed.f.restorationReference('assessment:witnessed-review')] }));
+  expect(closed).toMatchObject({ state: 'closed', transition: 'closed' });
+}, 20000);

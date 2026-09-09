@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { canonical } from '../../src/index.js';
+import { canonical, consumeResult } from '../../src/index.js';
 import { createBoundedDueScanPort, decodeLoopPolicy, decodeLoopRecord, decodeMissedRangeRecord, decodeScanCursor } from '../../src/transport/index.js';
 import type { MissedRangeRecord } from '../../src/transport/index.js';
 import { transportLoopFixture, refused, value } from './loop-fixture.js';
@@ -20,6 +20,17 @@ it('SLB-PRESERVE-01 P6-NF-02 P6-NF-17 byte-preserves every legacy LoopPolicy Loo
     expect(value(canonical(after)).bytes).toBe(value(canonical(before)).bytes);
   refused(decodeLoopPolicy({ ...f.policy, failDirection: 'open' }, f.c), 'unsupported loop policy');
   expect(value(f.api.admitWrite('legacy-neighbor', token)).operation).toBe('write');
+});
+
+it('SLB-PRESERVE-36 PRESERVE-2 keeps the exact legacy malformed-policy refusal value', () => {
+  const f = transportFixture(), malformed = { ...f.policy } as Record<string, unknown>;
+  delete malformed.maxAttempts;
+  const refusal = consumeResult(decodeLoopPolicy(malformed, f.c), {
+    Success: () => { throw new Error('expected refusal'); }, Refused: value => value,
+  });
+  expect(refusal).toEqual({ type: 'Result', schemaVersion: 1, kind: 'Refused', reason: 'decode',
+    detail: 'undeclared or missing field', site: 'facts.admit', failDirection: 'closed',
+    preserved: 'refusal:metadata' });
 });
 
 it('SLB-DECODE-02 P6-NF-02 P6-NF-17 closes every real-breaker policy arm and managed record field', () => {

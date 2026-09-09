@@ -79,6 +79,14 @@ export const transportSeamEvidence = [
   ['SLB-ADMISSION-27', 'integration', 'V22 V23 replay admission'],
   ['SLB-SIBLING-28', 'integration', 'V18 restart completion order'],
   ['SLB-STATUS-29', 'integration', 'V26 status-bearing parent input'],
+  ['SLB-RESTORE-30', 'integration', 'V26 witnessed Part Nine support'],
+  ['SLB-THRESHOLD-31', 'integration', 'V11 threshold with pending sibling'],
+  ['SLB-CLASS-32', 'integration', 'V12 signed failure classification'],
+  ['SLB-HISTORY-33', 'integration', 'V22 V37 complete initial reconstruction'],
+  ['SLB-MISSED-RECHECK-34', 'integration', 'V14 replay dependency revalidation'],
+  ['SLB-ACTIVE-POLICY-35', 'integration', 'V13 active policy consistency'],
+  ['SLB-PRESERVE-36', 'unit', 'PRESERVE-2 exact legacy refusal'],
+  ['SLB-MISSED-SUCCESSOR-37', 'integration', 'V21 actual member-completion successor'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

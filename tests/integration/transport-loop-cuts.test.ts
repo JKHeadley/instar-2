@@ -46,8 +46,8 @@ for (const boundary of ['outcome-recorded', 'reopened', 'closed', 'stopped', 'mi
       f.advance(20); loop = admit('trial');
       const kind = boundary === 'reopened' ? 'failed' : 'accepted';
       const completion = f.appendOutcome(kind, 'trial');
-      const restoration = boundary === 'closed' ? [{ owner: 'part-nine' as const,
-        name: 'VerificationAssessment' as const, id: 'assessment:expires' }] : [];
+      const restoration = boundary === 'closed'
+        ? [f.restorationReference('assessment:witnessed-review')] : [];
       operation = api => api.recordLoopOutcome({ command: `cut:${boundary}:write`, fence: token,
         episode: loopRef(loop), attempt: 'trial', kind, failureClass: kind === 'failed' ? 'transport' : '',
         completion, jitterPermille: 1000, restoration, sourceVector: f.vector });

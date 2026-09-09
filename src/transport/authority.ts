@@ -370,11 +370,20 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       resolvePressureBinding(bindingRecord, history, context, host);
       const previous = latestSharedLoop(all, pressureKey);
       if (previous) {
-        if (previous.state !== 'closed' && previous.state !== 'stopped') return previous;
+        ensure(encoded(previous.policy).bytes === encoded(input.policy).bytes
+          && encoded(previous.parentDuty).bytes === encoded(input.policy.parentDuty).bytes
+          && previous.operationFamily === binding.operationFamily
+          && encoded(previous.pressureScope).bytes === encoded(binding.pressureScope).bytes
+          && encoded(previous.pressureBinding).bytes === encoded(binding.witness).bytes,
+        'conflicting shared pressure policy or parent');
+        ensure(previous.clockBasis === now.subject.instance, 'incomparable shared pressure time');
+        if (previous.state !== 'closed' && previous.state !== 'stopped') {
+          ensure(encoded(previous.currentOwnerRun).bytes === encoded(input.currentOwnerRun).bytes,
+            'active shared pressure owner Run changed');
+          return previous;
+        }
         ensure(previous.state === 'closed' || previous.pendingAttempts.length === 0
           && previous.failureCount < previous.policy.failureThreshold, 'shared pressure has an unfinished episode');
-        ensure(encoded(previous.policy).bytes === encoded(input.policy).bytes, 'conflicting shared pressure policy');
-        ensure(previous.clockBasis === now.subject.instance, 'incomparable shared pressure time');
       }
       ensure(all.filter(row => row.record.type === 'LoopRecord' && row.record.policy.breaker === 'shared-circuit-v1')
         .filter(row => (row.record as SharedLoopRecord).parentDuty.id === input.policy.parentDuty.id)
@@ -575,8 +584,10 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         dispositions: input.dispositions, catchUpRun: input.catchUpRun } as MissedRangeRecord);
       try { missedRangeCheck(record); } catch (error) { throw new Error(`missed range structure refused: ${error instanceof Error ? error.message : 'unknown'}`); }
       const prior = missedRows(facts), latest = prior.filter(row => row.record.id === id).at(-1);
-      if (latest && encoded(latest.record).bytes === encoded(record).bytes)
+      if (latest && encoded(latest.record).bytes === encoded(record).bytes) {
+        resolveMissedRangeEvidence(latest.record, latest.fact, evidenceFacts(), semanticContext(), host);
         return freeze({ owner: 'part-six' as const, name: 'MissedRangeRecord' as const, id });
+      }
       validateMissedRangeHistory(record, prior);
       const wire = record.catchUpRun === null
         ? Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'catchUpRun')) as unknown as MissedRangeRecord

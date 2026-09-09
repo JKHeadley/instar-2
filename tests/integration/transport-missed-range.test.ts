@@ -1,8 +1,10 @@
 import { expect, it } from 'vitest';
 import { canonical, decodeMeasurement } from '../../src/index.js';
-import { createBoundedDueScanPort } from '../../src/transport/index.js';
+import { createFactStore } from '../../src/facts/index.js';
+import { createBoundedDueScanPort, createTransportAuthority, createTransportSpine } from '../../src/transport/index.js';
 import type { FenceToken, MissedRangeInput, SharedLoopRecord } from '../../src/transport/index.js';
 import { transportLoopFixture as transportFixture, refused, value } from '../transport/loop-fixture.js';
+import { privateKey } from '../facts/fixtures.js';
 
 const pressureScope = { target: 'scheduled-work', conversation: 'conversation:1', machine: 'fleet', pool: 'jobs' } as const;
 function duration(f: ReturnType<typeof transportFixture>, valueMs: number) {
@@ -51,7 +53,7 @@ it('SLB-MISSED-08 P6-NF-20 P6-NF-33 boundary and boundary-plus-one lateness reta
   expect(plusOne.memberCount).toBe(3);
 });
 
-it('SLB-MISSED-09 P6-NF-20 P6-NF-33 partial successors resume first undisposed, replay identically, keep admitted Runs and cannot mint a second catch-up', () => {
+it('SLB-MISSED-09 SLB-MISSED-SUCCESSOR-37 V21 P6-NF-20 P6-NF-33 partial successors resume first undisposed, replay identically, keep admitted Runs and cannot mint a second catch-up', () => {
   const f = transportFixture(undefined, undefined, undefined,
     { existingInstants: [120], catchUpInstants: [130] }), ready = setup(f);
   const base = input(f, ready, 131), catchUpRun = deterministicCatchUp(f, base);
@@ -66,7 +68,26 @@ it('SLB-MISSED-09 P6-NF-20 P6-NF-33 partial successors resume first undisposed, 
   expect(value(f.api.recordMissedRange(firstInput))).toEqual(reference);
   expect(value(f.api.inspect())).toHaveLength(count);
 
-  refused(f.spine.append(first.record, [first.fact.id]), 'owner evidence');
+  const newlyAdmitted = f.admitScheduledRun(110);
+  const successorInput: MissedRangeInput = { ...firstInput,
+    dispositions: firstInput.dispositions.map((value, index) => index === 0
+      ? { scheduledInstant: value.scheduledInstant, kind: 'existing-run' as const, run: newlyAdmitted }
+      : value) };
+  expect(value(f.api.recordMissedRange(successorInput))).toEqual(reference);
+  const successor = value(f.api.readMissedRange(reference));
+  expect(successor.firstUndisposed).toBeNull();
+  expect(successor.record.catchUpRun).toEqual(catchUpRun);
+  expect(successor.fact.id).not.toBe(first.fact.id);
+  const successorFact = value(f.store.read()).find(fact => fact.id === successor.fact.id)!;
+  expect(successorFact.predecessors.required).toContain(first.fact.id);
+  const restartedStore = createFactStore(f.ctx, f.storage);
+  const restartedApi = createTransportAuthority(f.host,
+    createTransportSpine(f.host, { context: f.ctx, privateKey }, restartedStore), f.c);
+  const rebuilt = value(restartedApi.readMissedRange(reference));
+  expect(rebuilt.firstUndisposed).toBeNull();
+  expect(rebuilt.record.catchUpRun).toEqual(catchUpRun);
+
+  refused(f.spine.append(first.record, [first.fact.id]), 'completed missed member disposition changed');
 
   const changedExisting: MissedRangeInput = { ...firstInput,
     dispositions: firstInput.dispositions.map((value, index) => index === 1
