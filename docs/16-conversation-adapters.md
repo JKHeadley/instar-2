@@ -50,11 +50,14 @@ grant files land and their implementations are integrated. The operation keeps o
 bytes exclusively in secret custody and gives ordinary intake consumers only a redacted capture.
 
 Slack direction, organization permission, and ambient handling depend on
-`design-conversation-adapters-seam-request-intake-policy.md`. Four's policy record and consumer are
-granted in `seam-response-intake-followup.md`; Seven's bounded pre-admission judgment operation is
-granted in `seam-response-judgment.md`. P12-NF-19/20's policy-bearing positives and Slack activation
-are non-executable until both grant files land and their implementations are integrated. None of
-these granted but unlanded records or operations is treated as present in the executable slice.
+`design-conversation-adapters-seam-request-intake-policy.md`. Four's structural direction,
+organization-permission, and channel-policy record and consumer are granted in
+`seam-response-intake-followup.md` (SEAM-LEDGER row 18). Seven's versioned intake-policy judgment
+consumer, which does not require an existing Part Eight effect request, is granted in the dated
+addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35). P12-NF-19/20's policy-bearing
+positives and Slack activation are non-executable until both named grant files land and their
+implementations are integrated. None of these granted but unlanded records or operations is
+treated as present in the executable slice.
 
 The executable reference case consumes Five's landed `SessionGrounding` only for `start`,
 `recovery`, and `resume`. Five's `ContinuityAccounting` producer is granted in
@@ -406,9 +409,11 @@ above. That narrow behavior is the only current positive; it must make no privat
 direction, ambient, reaction, or send decision.
 
 The broader Slack policy and Slack activation depend on
-`design-conversation-adapters-seam-request-intake-policy.md`. Four's record and consumer are granted
-in `seam-response-intake-followup.md`, and Seven's judgment operation is granted in
-`seam-response-judgment.md`. The Four-owned policy record
+`design-conversation-adapters-seam-request-intake-policy.md`. Four's structural direction,
+organization-permission, and channel-policy record and consumer are granted in
+`seam-response-intake-followup.md` (SEAM-LEDGER row 18). Seven's versioned intake-policy judgment
+consumer, which does not require an existing Part Eight effect request, is granted in the dated
+addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35). The Four-owned policy record
 binds the intake receipt, authenticated structural direction evidence, signed organization-policy
 and standing inputs, current policy generation, any Seven judgment reference, and one closed
 disposition. Four re-resolves permission and standing and consumes the disposition for admission or
@@ -417,8 +422,9 @@ held work. Seven owns any semantic ambient judgment within the registered `speak
 `speak`. Unavailable judgment keeps directed conversation deliverable with a recorded uncertainty
 under its declared fail-open policy, while ambient work selects the registered conservative
 disposition without erasing the capture. P12-NF-19/20's broader direction, permission, and ambient
-cases are non-executable until both grant files land and their implementations are integrated, and
-no Slack instance may activate on them.
+cases are non-executable until `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the dated
+intake-policy addendum in `seam-response-judgment.md` (SEAM-LEDGER row 35) land and their
+implementations are integrated. No Slack instance may activate on them.
 
 **Rule — WhatsApp backends are different evidence modes.** Rules 28, 36, 44, 89 and 105;
 **checks: P12-NF-21/22**. The Business API verifies its webhook signature, business account,
@@ -540,7 +546,7 @@ settlement, and aggregate completion requires every required child at its demand
 delivery stays partial. Any future truncation mode must be explicit in its operation definition,
 retain the full source by reference, and place an honest visible marker in the rendered bytes.
 
-**Rule — alternate rendering is unsupported in this slice.** Rules 24, 42, 55, 60 and 63;
+**Rule — alternate rendering is unsupported in this slice.** Rules 42, 55, 60 and 63;
 **checks: P12-NF-31/36/37**. A provider's definitive parse rejection is captured as evidence about
 that exact immutable request. It does not authorize changed bytes. The landed settlement always
 has `retryEligible: false`. Therefore the adapter returns the parse failure and usable remedy to the owning run and
@@ -556,10 +562,10 @@ disabled or exposed as an attempt governed by the same records.
 **Rule — advisory judgment cannot swallow the reply.** Rules 10, 12, 42, 46, 57, 67 and 86;
 **checks: P12-NF-29/41**. A registered pre-send tone or clarity review goes through part seven and
 returns its declared advisory decision. An unavailable ordinary advisory follows that consumer's
-registered deliver-with-flags or no-objection policy; deterministic credential, authority, stop,
-and effect walls still apply. A hold or refusal returns to the owning run with the exact reason and
-next permitted action. The adapter cannot loop for a different answer, treat “not sent” as success,
-or discard the pending message.
+registered deliver-with-flags or no-objection policy. Deterministic credential, authority, stop,
+and effect walls continue to apply independently. A hold or refusal returns to the owning run with
+the exact reason and next permitted action. The adapter cannot loop for a different answer, treat
+“not sent” as success, or discard the pending message.
 
 ---
 
@@ -578,7 +584,8 @@ The surrounding signed fact envelope supplies recorder principal, provenance, cl
 predecessors. Provider receipt identifiers and response details remain inside the immutable bytes
 named by `capture.reference` and `capture.hash`; they are not extra observation fields. Part Nine's
 registered evidence decoder authenticates those bytes, binds them to the observation's exact
-account, conversation, operation, and digest, and emits `Evidence` references. Its current
+account, conversation, operation, and digest, and emits `Evidence` references. Here, quiescence
+means evidence that an old executor can no longer apply the operation. The current
 `VerificationAssessment` applies the plan's stage-specific bar as separate occurrence,
 non-occurrence, quiescence, and charge predicates, naming missing evidence and limitations in each
 predicate reason. A Bot API response can therefore support “provider accepted this exact post”
@@ -625,7 +632,7 @@ lets Eight consume that view without applying a second predicate convention. Acc
 joint real Nine/Eight settlement fixture; the landed Nine stand-in in Eight's fixture is not that
 evidence.
 
-**Rule — unsupported negative evidence leaves an owned uncertainty.** Rules 24, 26, 42, 63
+**Rule — unsupported negative evidence leaves an owned uncertainty.** Rules 26, 42, 63
 and 68; **checks: P12-NF-34–36**. Each mode declares whether it supports stable receipt lookup,
 decisive non-occurrence, exclusion of delayed execution, and any final charge. Telegram and other
 send-only modes do not gain those capabilities by belonging to the conversation family. A timeout,
@@ -781,7 +788,8 @@ the real model call and real-owner settlement, and until the BUILT production as
 
 **Rule — Telegram precedes the family; later activation is evidence-independent, not list-gated.**
 Rules 44, 62, 72, 73, 76, 84 and 105; **checks: P12-NF-45/46/48/49**. Telegram must first pass the
-reference slice. After that, Slack, WhatsApp, iMessage, and web may each activate when that exact
+reference slice. A live canary is a bounded real test operation with an independent witness. After
+that, Slack, WhatsApp, iMessage, and web may each activate when that exact
 mode passes the shared suite, production wiring, account-level live canaries, independent
 delivery-stage assessment, migration compatibility, and platform-limit tests. The written list is
 work priority, not an activation prerequisite between later adapters. No later adapter borrows
@@ -789,8 +797,11 @@ Telegram or a sibling's evidence. A platform API change invalidates only the aff
 subject and inhibits unsupported operations. It does not silently downgrade authentication,
 discard inputs, or close other healthy adapters. Strict serialization of every later adapter is a
 separate operator policy, not this proposed baseline. An exact mode must also have every owner seam
-its declaration consumes. In particular, Slack remains inhibited until the requested Four/Seven
-intake-policy seam is accepted, implemented, and covered by P12-NF-19/20.
+its declaration consumes.
+In particular, Slack remains inhibited until the Four half granted in
+`seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy
+judgment consumer granted in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35)
+land, are implemented, and are covered by P12-NF-19/20.
 
 ---
 
@@ -811,7 +822,7 @@ The carry-forward column states the required property, not a requirement to reus
 | `ConversationRegistry` and `conversationIdentity` | A structured Slack channel/thread tuple joins a durable negative numeric id, canonical key, one-hop aliases, bind pins, origin, and crash-replayed journal/snapshot state. Its journal may retain only a send key, lane, sequence or timestamp. Positive Telegram ids pass through. These are the real cross-channel identity and alias authorities in 1.x, but a bind pin is only a retained tuple and send-guard rows do not retain the payload or provider receipt. | Preserve readable old ids, tuples, aliases, bind targets, and send-guard bytes through the compatibility decoder. Import no operator binding, effect, claim, assessment or settlement from insufficient evidence. The positive is non-executable until the legacy-import grants in `seam-response-intake-followup.md`, `seam-response-rungraph-followup.md`, and `seam-response-effects-followup.md` land; until then every numeric-id consumer stays migration-blocking under P12-NF-52. |
 | `deliverToConversation`, `PromiseBeacon`, and the server composition | The shared funnel resolves Telegram ids and minted Slack ids, follows binding tuples, classifies non-delivery, records logical/content send guards, and routes pending beacon follow-through. The server wires `PromiseBeacon` through it. Separately, PromiseBeacon has an absolute outer gate: conversation and Attention output, including already queued summaries, stays silent unless `userOutputEnabled === true`. That explicit opt-in is distinct from the funnel's dark/dry and reachability behavior. | Move the beacon, server wiring, conversation lookup surfaces, and stored topic-id consumers to Part Eight. Preserve pending and ambiguous sends without replay. Preserve the default-silent outer gate and require explicit opt-in before imported pending work can notify. Test both opted-out and opted-in pending work. Retire the old funnel only after every stored conversation reference resolves through the new route. |
 | `TelegramMarkdownFormatter` and `slack/SlackMrkdwnFormatter` | One outbound formatting funnel, safe URL schemes, escaped code/text, bounded parsing, and explicit pass-through modes prevent literal markup, unsafe links, double escaping, and parser resource abuse. | Keep deterministic transformations and captured real-byte fixtures, but validate the rendered digest through part eight before sending. |
-| `slack/SocketModeClient` and `slack/SlackAdapter` | Fresh connected state, verified team identity, thread routing, reconnect recovery, and guarded socket writes are necessary. The adapter also has a fail-closed user check, an organization permission observer/enforcement gate, direct-message and mention-directed handling, mention-only ambient handling, and bounded `speak`/`react`/`silent` ambient decisions. It downloads attachments with the workspace credential and may inject retrieved or downloaded source text and process-local paths into the prompt. An unguarded acknowledgment during sleep/wake once crashed the server, stale socket callbacks once orphaned a healthy replacement, and a malformed live probe once marked a healthy application programming interface failed. | Preserve the state-machine and probe requirements now. Direction, permission, and ambient behavior are non-executable until `seam-response-intake-followup.md` and `seam-response-judgment.md` land; they are not silently moved into an adapter. Retire private file retrieval and prompt injection; current media receives the generic owned `needs-judgment` hold, while successful retrieval is non-executable until `seam-response-effects-payloads.md` and the required Part Ten confinement land. |
+| `slack/SocketModeClient` and `slack/SlackAdapter` | Fresh connected state, verified team identity, thread routing, reconnect recovery, and guarded socket writes are necessary. The adapter also has a fail-closed user check, an organization permission observer/enforcement gate, direct-message and mention-directed handling, mention-only ambient handling, and bounded `speak`/`react`/`silent` ambient decisions. It downloads attachments with the workspace credential and may inject retrieved or downloaded source text and process-local paths into the prompt. An unguarded acknowledgment during sleep/wake once crashed the server, stale socket callbacks once orphaned a healthy replacement, and a malformed live probe once marked a healthy application programming interface failed. | Preserve the state-machine and probe requirements now. Direction, permission, and ambient behavior are non-executable until the Four half in `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land; they are not silently moved into an adapter. Retire private file retrieval and prompt injection; current media receives the generic owned `needs-judgment` hold, while successful retrieval is non-executable until `seam-response-effects-payloads.md` and the required Part Ten confinement land. |
 | `WhatsAppAdapter` and its backends | Backend capabilities, fail-closed configured contacts, group/participant separation, chunking, and connection state are useful platform mechanics. The linked-device Baileys backend also downloads audio to a local file, calls a configured transcription provider, injects `[voice]` text, and falls back to an `[Audio]` placeholder when unavailable or failed. | Split Business and linked-device evidence modes. Move consent, authorization, acknowledgments, queues, limits and retries to their core owners. Retire local audio custody, direct transcription, source-text injection, and placeholder fallback as adapter authority; preserve the original event in Four's generic `needs-judgment` hold. Successful media derivation is non-executable until `seam-response-effects-payloads.md` and the required Part Ten confinement land. |
 | `imessage/IMessageAdapter` | Unified inbound/outbound contact gating, send-disabled and proactive-disabled defaults, single-use send checks, stable chat evidence, and actual connection time are safety-relevant. A status getter once fabricated a new connection timestamp on every read. Platform permission constraints require a session-capable send helper. | Preserve conservative defaults and observed timestamps. Confine the helper behind the effect port; it cannot remain a private script escape. |
 | `MessagingToneGate` | Advisory review must return an actionable result. A provider timeout in production showed that an unavailable language-model review cannot silently suppress ordinary communication, while deterministic credential exposure still needs a hard floor. | Part seven owns advisory judgment and defaults; parts three/eight own registered blocking checks and preservation. The platform adapter only receives the settled instruction. |
@@ -861,8 +872,9 @@ also carry fresh probes and step supervision. Source inspection, a running proce
 token, a mock transport, or a self-reported green row cannot make an instance live. Production
 secret-intake activation is non-executable until `seam-response-intake-followup.md` and
 `seam-response-assembly-followup.md` land and integrate the granted Four/Ten custody seam. Slack
-activation is non-executable until `seam-response-intake-followup.md` and
-`seam-response-judgment.md` land and integrate the granted Four/Seven intake-policy seam. A real
+activation is non-executable until the Four half in `seam-response-intake-followup.md`
+(SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum
+to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. A real
 model-backed lifecycle is non-executable until `seam-response-judgment.md` and
 `seam-response-effects-followup.md` land and integrate the Seven/Eight provider-effect seam. Real
 effect settlement is non-executable until `seam-response-effects-followup.md` lands and integrates
@@ -906,8 +918,8 @@ conversation key, acknowledgment policy, provenance ceiling, or rendered-byte id
 | P12-NF-16 | Telegram identity | Bot/chat/topic collision or general-topic drift creates two histories; canonical scoped tuple passes |
 | P12-NF-17 | Telegram security | Forwarded/channel-post identity becomes human principal or update kind disappears; explicit source/disposition passes |
 | P12-NF-18 | Telegram fault | Offset/webhook success crosses uncaptured update; consecutive durable capture boundary passes |
-| P12-NF-19 | Slack identity/admission | Root message changes from channel to thread identity, team is omitted, or direct-message, mention, command and undirected traffic are conflated. Current landed coverage proves only capture and the stable team/channel/root tuple, with an owned `needs-judgment` hold for policy-bearing shapes. The explicit-direction and ambient-disposition positive is honestly declared and inhibited: it is non-executable until `seam-response-intake-followup.md` and `seam-response-judgment.md` land and integrate the granted Four/Seven policy operations. Slack activation is blocked until then |
-| P12-NF-20 | Slack fault | Envelope acknowledgment precedes receipt, post-ack failure loses an event, private permission drops it, or unavailable judgment silences a directed ask. The current neighbor is receipt then acknowledgment followed by Four's generic owned `needs-judgment` hold and possible `expired-judgment`, with zero private permission/send calls. The Four-owned permission and declared directed/ambient fallback positive is non-executable until `seam-response-intake-followup.md` and `seam-response-judgment.md` land and their granted implementations integrate |
+| P12-NF-19 | Slack identity/admission | Root message changes from channel to thread identity, team is omitted, or direct-message, mention, command and undirected traffic are conflated. Current landed coverage proves only capture and the stable team/channel/root tuple, with an owned `needs-judgment` hold for policy-bearing shapes. The explicit-direction and ambient-disposition positive is honestly declared and inhibited: it is non-executable until the Four structural direction/organization-permission/channel-policy half in `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. Slack activation is blocked until then |
+| P12-NF-20 | Slack fault | Envelope acknowledgment precedes receipt, post-ack failure loses an event, private permission drops it, or unavailable judgment silences a directed ask. The current neighbor is receipt then acknowledgment followed by Four's generic owned `needs-judgment` hold and possible `expired-judgment`, with zero private permission/send calls. The Four-owned permission and declared directed/ambient fallback positive is non-executable until the Four half in `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and their implementations integrate |
 | P12-NF-21 | WhatsApp security | Backend, group participant, LID, phone label or normalized address confused as verified person; exact mode evidence passes |
 | P12-NF-22 | WhatsApp lifecycle | Private consent/allowlist/queue/receipt bypasses core owner, or linked-device audio downloads/transcribes/injects/falls back privately; public intake/effect composition and the current owned `needs-judgment` hold with zero media/provider/send calls pass |
 | P12-NF-23 | iMessage identity | Phone reuse, chat-db access or fabricated connected time keeps binding/live claim; observed device/chat/churn evidence passes |
@@ -932,7 +944,7 @@ conversation key, acknowledgment policy, provenance ceiling, or rendered-byte id
 | P12-NF-42 | isolation | Worker reads credential/raw account session or fabricates origin; scoped custodian and enrolled evidence pass |
 | P12-NF-43 | wiring/e2e | Harness/direct script bypasses intake/effect/grounding, a model provider is invoked by Seven without Eight's admitted operation path, or a required port is null. The complete real-model public chain is non-executable until `seam-response-judgment.md` and `seam-response-effects-followup.md` land and integrate the granted provider effect. Landed `start`/`recovery`/`resume` grounding remains supported. The compaction case is non-executable until `seam-response-run-closure.md`, `seam-response-rungraph-followup.md`, and `seam-response-effects-followup.md` land and integrate the granted producer and consumer. Production wiring is non-executable until the BUILT assembly seam accepted in `part-eleven-seam-response-assembly.md` is integrated |
 | P12-NF-44 | Telegram lifecycle | Crash cut duplicates reply or model call, loses work, overstates evidence, cannot settle real Nine evidence, or diverges rebuild. The one-owned-execution positive is honestly declared and inhibited: it is non-executable until `seam-response-judgment.md` and `seam-response-effects-followup.md` land with the granted Seven/Eight provider and Nine/Eight assessment operations, and until the BUILT seam accepted in `part-eleven-seam-response-assembly.md` is integrated. Stand-ins cannot satisfy the positive |
-| P12-NF-45 | parity/activation | Any later adapter activates before Telegram proves the reference slice, borrows Telegram/sibling evidence, or lacks an owner seam its declared mode needs; after Telegram, each exact mode may activate on its own complete evidence regardless of another later adapter's state. Slack remains inhibited until `seam-response-intake-followup.md` and `seam-response-judgment.md` land and integrate the Four/Seven policy operations |
+| P12-NF-45 | parity/activation | Any later adapter activates before Telegram proves the reference slice, borrows Telegram/sibling evidence, or lacks an owner seam its declared mode needs; after Telegram, each exact mode may activate on its own complete evidence regardless of another later adapter's state. Slack remains inhibited until the Four structural direction/organization-permission/channel-policy half in `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate |
 | P12-NF-46 | live probe | File/token/process/config or malformed canary counts as life; real identity/inbound/outbound fresh proof passes |
 | P12-NF-47 | measurement | Target/estimate/success-only percentile labeled measured or failed sample omitted; named hardware workload record passes |
 | P12-NF-48 | three-tier | Mock-only or parser-only test makes a significant adapter live, secret-bearing production intake activates without the custody seam, or a real-model lifecycle uses Seven's reference executor without Eight admission and settlement. Unit, integration and real lifecycle evidence pass only with every required owner implementation. The production positive is non-executable until `seam-response-intake-followup.md`, `seam-response-assembly-followup.md`, `seam-response-judgment.md`, and `seam-response-effects-followup.md` land and integrate their granted custody, provider-effect, and assessment-consumption operations, and until the BUILT seam accepted in `part-eleven-seam-response-assembly.md` is integrated |
@@ -952,11 +964,11 @@ P12-NF-01/44–50/53**.
 | Duty | Disposition |
 |---|---|
 | Big picture section 10 — replaceable conversation edge and channel parity | **Held as a contract:** one family suite, no core platform branch, exact per-instance capabilities and individual activation through P12-NF-03–05/45/48. Runtime status remains declared until evidence runs. |
-| Part four — concrete authenticated evidence, event-id authority and acknowledgment policy | **Held as a contract for the landed narrow intake:** bounded structural route extraction, non-secret `receive(raw, route)`, the landed `(adapter, channel, sender, identityEpoch, eventId)` key, per-platform identity matrices, current binding resolution, and generic owned `needs-judgment` holds with `expired-judgment` terminals through P12-NF-06–26/51. Secret custody and Slack policy are non-executable until their Four grants in `seam-response-intake-followup.md` land; custody also requires Ten's `seam-response-assembly-followup.md`, and Slack judgment also requires `seam-response-judgment.md`. Legacy compatibility is non-executable until the three owner grants in `seam-response-intake-followup.md`, `seam-response-rungraph-followup.md`, and `seam-response-effects-followup.md` land and integrate. Four retains intake and standing ownership. |
+| Part four — concrete authenticated evidence, event-id authority and acknowledgment policy | **Held as a contract for the landed narrow intake:** bounded structural route extraction, non-secret `receive(raw, route)`, the landed `(adapter, channel, sender, identityEpoch, eventId)` key, per-platform identity matrices, current binding resolution, and generic owned `needs-judgment` holds with `expired-judgment` terminals through P12-NF-06–26/51. Secret custody is non-executable until its Four grant in `seam-response-intake-followup.md` lands and Ten's `seam-response-assembly-followup.md` also lands. Slack policy is non-executable until the Four half in `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. Legacy compatibility is non-executable until the three owner grants in `seam-response-intake-followup.md`, `seam-response-rungraph-followup.md`, and `seam-response-effects-followup.md` land and integrate. Four retains intake and standing ownership. |
 | Part five/six — durable work, one voice, bounded observation recovery and stable operation identity | **Held as a contract for landed start/recovery/resume and observation-only recovery:** fact-derived outbox, read-only observation wakes, the defined service-round bound, stable identities and no replay on uncertainty through P12-NF-33/36–42. The real-model and real-owner-settlement crash path in P12-NF-43/44 is not held. Five/Six retain run, lease and loop ownership. Compaction accounting is non-executable until `seam-response-run-closure.md`, `seam-response-rungraph-followup.md`, and `seam-response-effects-followup.md` land. A successful successor send is non-executable until `seam-response-effects-followup.md` and `seam-response-loop-followup.md` land. |
-| Part seven/eight — advisory judgment and attributable reply effect | **Held only for the landed narrow shapes:** one exact ordinary-text reply can be prepared, validated, claimed, invoked and observed; advisory/refusal and the generic owned media judgment hold preserve zero private provider or send calls through P12-NF-27–33/37/41–43/51. The real-model, Slack-policy judgment, real-owner settlement, delete, media/aggregate, and successor positives remain inhibited until their named grants in `seam-response-judgment.md`, `seam-response-effects-followup.md`, `seam-response-effects-payloads.md`, `seam-response-intake-followup.md`, and `seam-response-loop-followup.md` land as applicable. Seven retains judgment and receipt ownership; Eight retains effect and settlement ownership. |
+| Part seven/eight — advisory judgment and attributable reply effect | **Held only for the landed narrow shapes:** one exact ordinary-text reply can be prepared, validated, claimed, invoked and observed; advisory/refusal and the generic owned media judgment hold preserve zero private provider or send calls through P12-NF-27–33/37/41–43/51. The real-model, real-owner settlement, delete, media/aggregate, and successor positives remain inhibited until their named grants in `seam-response-judgment.md`, `seam-response-effects-followup.md`, `seam-response-effects-payloads.md`, and `seam-response-loop-followup.md` land as applicable. The Slack-policy judgment positive remains inhibited until the Four half in `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. Seven retains judgment and receipt ownership; Eight retains effect and settlement ownership. |
 | Part nine — independent evidence and live holder proof | **Held only for the landed assessment shape:** Nine can accept stage-specific source Evidence and retain unsupported negatives, but Eight cannot consume that real assessment into a positive settlement under the two landed predicate conventions. P12-NF-35/44 are non-executable until the Nine/Eight grant in `seam-response-effects-followup.md` lands and a joint real-owner fixture passes. Real canaries remain implementation obligations under P12-NF-46/48. Nine retains grades, assessment, and witness posture. |
-| Part ten — remaining adapter evidence contracts and executable bindings | **Held only for the landed contract/conformance shapes:** Telegram, WhatsApp, iMessage and web map to Ten's current assembly types; Slack identity capture maps to them but Slack activation remains inhibited until the Four/Seven grants land. P12-NF-51's current case is a generic Four hold with zero private media/provider/send calls. Secret custody, successful media, legacy import, confined model execution, and production minimal-plane wiring remain excluded until their named grants land and integrate. No new core type is introduced here. |
+| Part ten — remaining adapter evidence contracts and executable bindings | **Held only for the landed contract/conformance shapes:** Telegram, WhatsApp, iMessage and web map to Ten's current assembly types. Slack identity capture maps to them, but Slack activation remains inhibited until the Four half in `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. P12-NF-51's current case is a generic Four hold with zero private media/provider/send calls. Secret custody, successful media, legacy import, confined model execution, and production minimal-plane wiring remain excluded until their named grants land and integrate. No new core type is introduced here. |
 | Part eleven — first vertical slice and minimal conversation route | **Declared, not held for runtime:** P12-NF-53 maps ordinary-worker failure to Eleven's limited responder and the landed ordinary-reply effect, and maps every required-minimal-dependency outage to preserved owned failure with zero fabricated response. P12-NF-53 and affected production wiring are non-executable until the BUILT production assembly accepted in `part-eleven-seam-response-assembly.md` is integrated. The Telegram production slice, real worker bridge, crash cuts and delivery witness remain implementation and evidence obligations under P12-NF-42–48/53. Eleven retains the whole-slice and operator-surface verdict. |
 
 ---
