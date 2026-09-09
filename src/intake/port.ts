@@ -2,7 +2,7 @@
 // No grant/Authorization/Directive producer, model call, session launch or effect lives here.
 import { canonical,decode,decodeMeasurement,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
 import type { BoundaryContext,Clock,Directive,Evidence,FactEnvelopeReference,HistoricalRead,Intent,Json,Provenance,Result,Revocation,StandingGrant,VerifiedPrincipal } from '../index.js';
-import { authorAndAppend,causalCone,causalStanding,createFactStore,decodeHistoricalBody,foldKey,hashBytes,prepareSnapshot } from '../facts/index.js';
+import { authorAndAppend,causalCone,causalStanding,createFactStore,decodeEnvelope,decodeHistoricalBody,factId,foldKey,hashBytes,prepareSnapshot,signEnvelope } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactStatus } from '../facts/index.js';
 import { constructGoverned,generationOf,readEnforcedRecord,readRegisterEntry } from '../register/index.js';
 import { foldProjection,readProjection } from '../projections/index.js';
@@ -118,7 +118,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       return [...new Map([...c.facts,...take(createFactStore(c,deps.storage).read())].map(f => [f.id,f])).values()];
     }
     function append(kind: string,body: Json,at: Clock,preserved: string,required: readonly string[]=[],principal?: VerifiedPrincipal,
-      directives?: readonly Directive[]): FactEnvelope {
+      directives?: readonly Directive[],historicalAdmission=false): FactEnvelope {
       if(kind==='intake-admitted') {
         const g={ ...deps.governance.context,preserved };
         take(constructGoverned('blocking sites','intake.admission',deps.governance.register,g));
@@ -126,6 +126,34 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       }
       const base=context(preserved,principal);
       const c=directives? { ...base,decode: { ...base.decode,directives } }:base;
+      if(historicalAdmission) {
+        requireIntake(kind==='intake-admitted'&&principal,
+          'scheduled intake: historical admission path is only valid for an identified admission','integrity');
+        const store=createFactStore(base,deps.storage),persisted=take(store.read()),facts=[...base.facts,...persisted];
+        const head=facts.filter(fact => fact.machine===author.machine).at(-1);
+        const segment={ machine: author.machine,epoch: head?.segment.epoch??0,position: head?head.segment.position+1:0 };
+        const signed=signEnvelope({
+          type: 'FactEnvelope',envelopeVersion: 1,id: factId(segment),kind,schemaVersion: 1,
+          at: json(at),machine: author.machine,principal: json(author.principal),provenance: json(author.provenance),segment,
+          prevInSegment: head?.contentHash??base.genesis.hash,
+          predecessors: { inSegment: head?.id??null,frontier: base.folded,required: [...new Set(required)] },body
+        },author.privateKey);
+        // The local author is checked as a live principal and against the origin
+        // frontier first. The body is then reconstructed through P1/P2's signed
+        // historical decoder, which supplies the directive issuer/grant lineage
+        // without turning any HistoricalRead view into live authority. The final
+        // append repeats that same historical validation before fsync.
+        const historical=historicalRows(preserved);
+        const authority={ ...base,facts,
+          historicalGrants: historical.grants.map(({ row,grant }) => ({ factId: row.fact.id,grant })),
+          historicalRevocations: historical.revocations.map(record => ({ factId: record.origin.id,revocation: record })) };
+        const origin=take(decodeEnvelope(signed,authority,'origin'));
+        const standing=causalStanding(origin,authority,true);
+        take(decodeHistoricalBody(origin,authority,standing.decode));
+        const receipt=take(store.append(signed,{ peer: author.machine }));
+        requireIntake(receipt.taint.length===0,'P4-NF-24: authority-tainted append cannot admit work','integrity');
+        return receipt.fact;
+      }
       const receipt=take(authorAndAppend({
         kind,schemaVersion: 1,machine: author.machine,principal: json(author.principal),
         provenance: json(author.provenance),at: json(at),body,required: [...new Set(required)]
@@ -282,7 +310,6 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       return { row: selected.row,grant: selected.grant,field };
     }
     function scheduledDirectives(rows: readonly FactStatus[],preserved: string,allowed: ReadonlySet<string>) {
-      const facts=read(preserved);
       const witnessed=rows.filter(row => allowed.has(row.fact.id)).flatMap(row => {
         const schema=context(preserved).schemas.find(candidate => candidate.kind===row.fact.kind
           &&candidate.version===row.fact.schemaVersion);
@@ -299,32 +326,14 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             // live constitutional value is optional reader context and must not
             // become a second availability requirement after the signed origin,
             // capture, subject and conflict checks above have all succeeded.
-            return { row,field,raw,directive: records[0]!.view };
+            return { row,field,directive: records[0]! };
           });
       });
-      // Re-run the owner decoder over the exact signed field with the signed
-      // origin as issuer context. This issues only the live value needed to mint
-      // a new Intent; selection and agreement remain historical decisions.
-      const decoded: { row: FactStatus; directive: Directive }[]=[];
-      for(const candidate of [...witnessed].sort((left,right) => {
-        const distance=causalCone(left.row.fact,facts).length-causalCone(right.row.fact,facts).length;
-        return distance|| (foldKey(left.row.fact)<foldKey(right.row.fact)?-1:foldKey(left.row.fact)>foldKey(right.row.fact)?1:0);
-      })) {
-        const c=context(preserved),grants=[...c.decode.grants??[],...c.grants.map(row => row.grant)];
-        const issuer=grants.map(grant => grant.grantee).find(principal => same(principal,candidate.directive.principal));
-        requireIntake(issuer,'P4-NF-25: signed directive lacks its owner-supported issuer context','integrity');
-        const directive=take(decode('Directive',candidate.raw,{ ...c.decode,grants,
-          provenance: issuer.provenance,
-          principals: [...c.decode.principals??[],issuer],
-          directives: [...c.decode.directives??[],...decoded.map(row => row.directive)] }));
-        requireIntake(same(directive,candidate.directive),'P4-NF-25: live directive decode differs from signed history','integrity');
-        decoded.push({ row: candidate.row,directive });
-      }
-      const superseded=new Set(decoded.flatMap(candidate => candidate.directive.supersedes? [candidate.directive.supersedes]:[]));
-      const active=decoded.filter(candidate => !candidate.directive.closedBy&&!superseded.has(candidate.directive.id)
-        &&scopeIncludes(candidate.directive.scope,scope));
-      const identities=[...new Set(active.map(candidate => candidate.directive.id))].sort();
-      return identities.map(id => active.filter(candidate => candidate.directive.id===id)
+      const superseded=new Set(witnessed.flatMap(candidate => candidate.directive.view.supersedes? [candidate.directive.view.supersedes]:[]));
+      const active=witnessed.filter(candidate => !candidate.directive.view.closedBy&&!superseded.has(candidate.directive.view.id)
+        &&scopeIncludes(take(decode('Scope',candidate.directive.view.scope,context(preserved).decode)),scope));
+      const identities=[...new Set(active.map(candidate => candidate.directive.view.id))].sort();
+      return identities.map(id => active.filter(candidate => candidate.directive.view.id===id)
         .sort((left,right) => foldKey(left.row.fact)<foldKey(right.row.fact)?-1:foldKey(left.row.fact)>foldKey(right.row.fact)?1:0)[0]!);
     }
     function isScheduledAdmission(fact: FactEnvelope): boolean {
@@ -395,7 +404,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       requireIntake(originalReceipt&&required.includes(originalReceipt.id),
         'scheduled intake: original receipt is not a signed admission dependency','integrity');
       const directives=scheduledDirectives(snapshot,preserved,cone);
-      const directiveIds=directives.map(candidate => candidate.directive.id);
+      const directiveIds=directives.map(candidate => candidate.directive.view.id);
       requireIntake(directives.every(candidate => dependencies.some(dependency => dependency.fact.id===candidate.row.fact.id)),
         'P4-NF-25: admitted directive is not a signed dependency','integrity');
       requireIntake(intent.view.id===body.logicalId&&intent.view.via===adapterId&&intent.view.raw===capture.hash
@@ -522,9 +531,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             requireIntake(admissionPrincipal,'scheduled intake: current signed principal witness is unavailable or contested','standing');
             constitutionalField(admissionPrincipal,'VerifiedPrincipal',principal.id,preserved);
             const directives=scheduledDirectives(admissionRows,preserved,directiveCone);
-            const intent=take(decode('Intent',{ type: 'Intent',schemaVersion: 1,id: logicalId,principal,receivedAt: original.at,
-              via: adapterId,raw: captured.hash,ask: tick,under: directives.map(candidate => candidate.directive.id) },
-            { ...context(preserved,principal).decode,directives: directives.map(candidate => candidate.directive) }));
+            const intent: Json={ type: 'Intent',schemaVersion: 1,id: logicalId,principal: json(principal),receivedAt: json(original.at),
+              via: adapterId,raw: captured.hash,ask: tick,under: directives.map(candidate => candidate.directive.view.id) };
             const committed=statuses(preserved).find(row => isScheduledAdmission(row.fact)&&object(row.body).logicalId===logicalId);
             if(committed) {
               requireIntake(object(committed.body).rawHash===captured.hash,'P4-NF-03: concurrent scheduled arrival hash mismatch','integrity');
@@ -534,10 +542,10 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               append('intake-collapse',{ ...common,original: committed.fact.id },at,preserved,[receipt.id,committed.fact.id]);
               return { kind: 'duplicate',logicalId,original: reference(committed.fact) };
             }
-            const admitted=append('intake-admitted',{ ...common,intent: json(intent),
+            const admitted=append('intake-admitted',{ ...common,intent,
               work: { type: 'IntakeWork',schemaVersion: 1,owner,blockedOn: 'run-admission',standing: 'requester' },binding: 'none'
             },at,preserved,[receipt.id,original.id,resolved.id,admissionPrincipal.fact.id,admissionDiscovery.row.fact.id,admissionStanding.row.fact.id,
-              ...directives.map(candidate => candidate.row.fact.id)],principal,directives.map(candidate => candidate.directive));
+              ...directives.map(candidate => candidate.row.fact.id)],principal,undefined,true);
             const fact=reference(admitted);
             const principalReference: ConstitutionalReference<'VerifiedPrincipal'>={ type: 'VerifiedPrincipal',id: principal.id,
               fact: reference(admissionPrincipal.fact),field: 'principal' };

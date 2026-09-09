@@ -390,7 +390,7 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
 
           const eventId=text(body.eventId,'scheduled event id');
           const discoveryWitnesses=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
-            required.has(row.fact.id)&&row.fact.kind==='scheduled-discovery-evidence'&&row.record.view.type==='Evidence'
+            required.has(row.fact.id)&&row.record.view.type==='Evidence'
               &&row.record.view.claim.subject===eventId&&row.record.view.claim.predicate==='scheduled-discovery'
               &&row.record.view.claim.value===true&&row.record.view.source===row.fact.machine);
           requireIntake(discoveryWitnesses.length===1,
@@ -404,7 +404,6 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
 
           const historicalRevocations=collectedRevocations.filter(row => coneIds.has(row.factId));
           const historicalGrants=collectedGrants.filter(row => coneIds.has(row.factId)&&required.has(row.factId)
-            &&cone.find(fact => fact.id===row.factId)?.kind==='scheduled-system-grant'
             &&row.grant.view.grantee.id===principal.id&&row.grant.view.grantee.kind==='system'
             &&row.grant.view.standing==='delegate'&&row.grant.view.actions.includes('work')
             &&scopeIncludes(take(decode('Scope',row.grant.view.scope,c.facts.decode)),scope));
