@@ -127,7 +127,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/integration/intake-scheduled.test.ts",
-        "hash": "sha256:290dd2de7bef862127fc0d0bfc314dedd826e5d2e54e3611e7adad23182a4ddd"
+        "hash": "sha256:166ec9260d0a68b4c16ca39504cb920dfc6f65fcc988db589db5291e0963bbf8"
       }
     },
     {
@@ -135,7 +135,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/e2e/intake-scheduled.test.ts",
-        "hash": "sha256:83aa55ce1ffba5807a71d9f96694157062ccd415017ea078a2b0147d342bdc32"
+        "hash": "sha256:b027c139458563e75fcf35fc958174f63a9e33b644376cc33f8c78182d32de3b"
       }
     },
     {
@@ -143,7 +143,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/e2e/intake-scheduled.test.ts",
-        "hash": "sha256:83aa55ce1ffba5807a71d9f96694157062ccd415017ea078a2b0147d342bdc32"
+        "hash": "sha256:b027c139458563e75fcf35fc958174f63a9e33b644376cc33f8c78182d32de3b"
       }
     },
     {
@@ -267,6 +267,22 @@
       }
     },
     {
+      "id": "P4-ST-24",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-repair3.test.ts",
+        "hash": "sha256:b642351e7503baa791e446e9c4d591678e28136fcf6519c851b869f4042c27a2"
+      }
+    },
+    {
+      "id": "P4-ST-25",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-repair3.test.ts",
+        "hash": "sha256:b642351e7503baa791e446e9c4d591678e28136fcf6519c851b869f4042c27a2"
+      }
+    },
+    {
       "id": "P4-PRESERVE-01",
       "stage": "build",
       "artifact": {
@@ -285,7 +301,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:c1886781c6440b3e1eac20133df29c568be3a47e3b8d2b8d5043b6815391d357"
+        "hash": "sha256:ec105ce18df4e1fe33ac46df896218ba43f3127bcbe44d5e9123e55fca3008ae"
       }
     },
     {
@@ -296,7 +312,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:c1886781c6440b3e1eac20133df29c568be3a47e3b8d2b8d5043b6815391d357"
+        "hash": "sha256:ec105ce18df4e1fe33ac46df896218ba43f3127bcbe44d5e9123e55fca3008ae"
       }
     },
     {
@@ -307,7 +323,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:c1886781c6440b3e1eac20133df29c568be3a47e3b8d2b8d5043b6815391d357"
+        "hash": "sha256:ec105ce18df4e1fe33ac46df896218ba43f3127bcbe44d5e9123e55fca3008ae"
       }
     },
     {
@@ -318,7 +334,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:c1886781c6440b3e1eac20133df29c568be3a47e3b8d2b8d5043b6815391d357"
+        "hash": "sha256:ec105ce18df4e1fe33ac46df896218ba43f3127bcbe44d5e9123e55fca3008ae"
       }
     },
     {

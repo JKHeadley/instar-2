@@ -1,6 +1,6 @@
-import type { BoundaryContext,Clock,Hash,HistoricalRead,Inventory,Json,Provenance,RegisterGenerationReference,Scope } from '../index.js';
+import type { BoundaryContext,Clock,Evidence,Hash,HistoricalRead,Inventory,Json,Provenance,RegisterGenerationReference,Scope,StandingGrant,VerifiedPrincipal } from '../index.js';
 import { causalCone,causalStanding,decodeHistoricalBody,hashBytes,registerOwnedBody } from '../facts/index.js';
-import { canonical,decode,grantLiveness,historicalGrantLiveness,scopeIncludes } from '../index.js';
+import { canonical,decode,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
 import { prepareSnapshot } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactSchema,FactSnapshot,FactStatus,OwnedBodyRegistration,OwnedShape } from '../facts/index.js';
 import type { Result } from '../index.js';
@@ -370,31 +370,57 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
               &&row.revocation.view.id===revocation.view.id)) collectedRevocations.push({ factId: fact.id,revocation });
           }
           const causalNow=causalStanding(c.origin,historicalContext,false).now;
+          const histories=cone.flatMap(fact => {
+            const decoded=take(decodeHistoricalBody(fact,historicalContext,causalStanding(fact,historicalContext,false).decode));
+            return decoded.records.map(record => ({ fact,record }));
+          });
+          const required=new Set(c.origin.predecessors.required);
+
+          const principalWitnesses=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<VerifiedPrincipal> } =>
+            required.has(row.fact.id)&&row.fact.kind==='intake-scheduled-principal'
+              &&row.record.view.type==='VerifiedPrincipal'&&same(row.record.view,principal));
+          requireIntake(principalWitnesses.length===1,
+            'scheduled intake: one signed package-system principal dependency is required');
+          requireIntake(c.mode==='historical'||principalWitnesses[0]!.record.captureStatus==='available',
+            'scheduled intake: package-system principal dependency is unavailable');
+          const principalIdentity=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<VerifiedPrincipal> } =>
+            row.record.view.type==='VerifiedPrincipal'&&row.record.view.id===principal.id);
+          requireIntake(principalIdentity.every(row => same(row.record.view,principalWitnesses[0]!.record.view)),
+            'scheduled intake: package-system principal dependency is conflicted');
+
+          const eventId=text(body.eventId,'scheduled event id');
+          const discoveryWitnesses=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
+            required.has(row.fact.id)&&row.fact.kind==='scheduled-discovery-evidence'&&row.record.view.type==='Evidence'
+              &&row.record.view.claim.subject===eventId&&row.record.view.claim.predicate==='scheduled-discovery'
+              &&row.record.view.claim.value===true&&row.record.view.source===row.fact.machine);
+          requireIntake(discoveryWitnesses.length===1,
+            'scheduled intake: one signed discovery Evidence dependency is required');
+          const discoveryIdentity=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
+            row.record.view.type==='Evidence'&&row.record.view.id===discoveryWitnesses[0]!.record.view.id);
+          requireIntake(discoveryIdentity.every(row => same(row.record.view,discoveryWitnesses[0]!.record.view)),
+            'scheduled intake: discovery Evidence dependency is conflicted');
+          if(c.mode==='origin'||discoveryWitnesses[0]!.record.captureStatus==='available')
+            take(readHistoricalEvidence(discoveryWitnesses[0]!.record,causalNow,c.preserved));
+
           const historicalRevocations=collectedRevocations.filter(row => coneIds.has(row.factId));
-          const liveRevocations=c.facts.revocations.filter(row => coneIds.has(row.factId));
-          const historicalGrants=collectedGrants.filter(row => coneIds.has(row.factId)
-            &&c.origin.predecessors.required.includes(row.factId)&&row.grant.captureStatus==='available'
+          const historicalGrants=collectedGrants.filter(row => coneIds.has(row.factId)&&required.has(row.factId)
+            &&cone.find(fact => fact.id===row.factId)?.kind==='scheduled-system-grant'
             &&row.grant.view.grantee.id===principal.id&&row.grant.view.grantee.kind==='system'
             &&row.grant.view.standing==='delegate'&&row.grant.view.actions.includes('work')
-            &&scopeIncludes(take(decode('Scope',row.grant.view.scope,c.facts.decode)),scope)
-            &&!liveRevocations.some(revocation => revocation.revocation.grantId===row.grant.view.id)
-            &&take(historicalGrantLiveness(row.grant,historicalRevocations.filter(revocation => revocation.revocation.view.grantId===row.grant.view.id)
-              .map(revocation => revocation.revocation),causalNow,c.preserved))==='live');
-          const liveGrants=c.facts.grants.filter(row => {
-            if(!coneIds.has(row.factId)||!c.origin.predecessors.required.includes(row.factId)
-              ||row.grant.grantee.id!==principal.id||row.grant.grantee.kind!=='system'
-              ||row.grant.standing!=='delegate'||!row.grant.actions.includes('work')
-              ||!scopeIncludes(row.grant.scope,scope)) return false;
-            const witness=cone.find(fact => fact.id===row.factId),schema=witness&&c.facts.schemas.find(candidate =>
-              candidate.kind===witness.kind&&candidate.version===witness.schemaVersion);
-            const witnessed=!!witness&&same(witness.provenance,row.grant.source)&&Object.entries(schema?.fields??{})
-              .some(([field,definition]) => definition.kind==='constitutional'&&definition.type==='StandingGrant'
-                &&same(object(witness.body)[field],row.grant));
-            return witnessed&&!historicalRevocations.some(revocation => revocation.revocation.view.grantId===row.grant.id)
-              &&grantLiveness(row.grant,liveRevocations.map(revocation => revocation.revocation),causalNow)==='live';
-          });
-          requireIntake(new Set([...historicalGrants.map(row => row.grant.view.id),...liveGrants.map(row => row.grant.id)]).size===1,
+            &&scopeIncludes(take(decode('Scope',row.grant.view.scope,c.facts.decode)),scope));
+          const grantIds=[...new Set(historicalGrants.map(row => row.grant.view.id))];
+          requireIntake(grantIds.length===1,
             'scheduled intake: one live signed package-system grant dependency is required');
+          const grantIdentity=collectedGrants.filter(row => coneIds.has(row.factId)&&row.grant.view.id===grantIds[0]);
+          requireIntake(grantIdentity.every(row => same(row.grant.view,historicalGrants[0]!.grant.view)),
+            'scheduled intake: package-system grant dependency is conflicted');
+          if(c.mode==='origin'||historicalGrants[0]!.grant.captureStatus==='available') {
+            requireIntake(historicalGrants.every(row => row.grant.captureStatus==='available')
+              &&take(historicalGrantLiveness(historicalGrants[0]!.grant,historicalRevocations
+                .filter(revocation => revocation.revocation.view.grantId===grantIds[0]).map(revocation => revocation.revocation),
+              causalNow,c.preserved))==='live',
+            'scheduled intake: package-system grant dependency is unavailable or not live');
+          }
         }
         return { ok: true,value: input };
       } catch(e) { return { ok: false,detail: e instanceof Error? e.message:'P4-NF-12: invalid work' }; }

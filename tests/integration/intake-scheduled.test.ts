@@ -1,6 +1,8 @@
 import { expect, it } from 'vitest';
+import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
+import { createIntakePort } from '../../src/intake/index.js';
 import type { ScheduledIntakeDisposition } from '../../src/intake/index.js';
-import { value } from '../intake/fixtures.js';
+import { json, value } from '../intake/fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';
 import { scheduledRunHarness } from '../intake/scheduled-run-fixtures.js';
 
@@ -24,4 +26,30 @@ it('P4-ST-06 real P2 facts from two machines converge on one P4 admission and on
   expect(h.createCalls()).toBe(1);
   expect(f.facts().filter(row => row.kind === 'scheduled-discovery-evidence').map(row => row.machine).sort())
     .toEqual(['machine-a', 'machine-b']);
+});
+
+it.each(['grant', 'discovery'])
+('P4-ST-25 V53 matching %s witness introduced at the resolution/admission boundary remains admissible', kind => {
+  const f = scheduledFixture(); const grant = f.grant(), tick = f.tick(), discovery = f.discovery(tick.eventId);
+  const original = f.storage.append.bind(f.storage); let injected = false;
+  const storage = { ...f.storage, append(bytes: string, expected: string | null) {
+    const result = original(bytes, expected);
+    if (JSON.parse(bytes).kind === 'intake-resolved' && !injected) {
+      injected = true;
+      const isGrant = kind === 'grant', provenance = isGrant ? grant.grant.source : f.provenance;
+      const context = { ...f.context, decode: { ...f.context.decode, provenance } };
+      const appended = value(authorAndAppend({ kind: isGrant ? 'scheduled-system-grant' : 'scheduled-discovery-evidence',
+        schemaVersion: 1, machine: 'machine-a', principal: json(isGrant ? f.f.alice : f.principal),
+        provenance: json(provenance), at: json(f.f.now),
+        body: json(isGrant ? { grant: grant.grant } : { evidence: discovery.evidence }), required: [] },
+      context, createFactStore(context, f.storage), f.deps.author.privateKey));
+      expect(appended.taint).toEqual([]);
+    }
+    return result;
+  } };
+  const admitted = value(value(createIntakePort({ ...f.deps, storage })).receiveScheduledTick({
+    raw: tick.raw, route: tick.route, discovery: { owner: 'part-two', name: 'FactEnvelope', id: discovery.fact.id },
+  }));
+  expect(injected).toBe(true); expect(admitted.kind).toBe('scheduled-admitted');
+  expect(f.facts().filter(fact => fact.kind === 'intake-admitted')).toHaveLength(1);
 });

@@ -282,6 +282,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       return { row: selected.row,grant: selected.grant,field };
     }
     function scheduledDirectives(rows: readonly FactStatus[],preserved: string,allowed: ReadonlySet<string>) {
+      const facts=read(preserved);
       const witnessed=rows.filter(row => allowed.has(row.fact.id)).flatMap(row => {
         const schema=context(preserved).schemas.find(candidate => candidate.kind===row.fact.kind
           &&candidate.version===row.fact.schemaVersion);
@@ -294,14 +295,33 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               &&row.taint.length===0&&row.conflicts.length===0,
             'P4-NF-25: directive requires one available, uncontested historical witness','integrity');
             constitutionalField(row,'Directive',records[0]!.view.id,preserved);
-            const directive=row.constitutional.find(candidate => candidate.field===field&&candidate.value.type==='Directive'
-              &&candidate.value.id===records[0]!.view.id)?.value;
-            requireIntake(directive?.type==='Directive','P4-NF-25: directive lacks a current constitutional value','integrity');
-            return { row,directive };
+            // The historical wrapper is the authority for a retained record. A
+            // live constitutional value is optional reader context and must not
+            // become a second availability requirement after the signed origin,
+            // capture, subject and conflict checks above have all succeeded.
+            return { row,field,raw,directive: records[0]!.view };
           });
       });
-      const superseded=new Set(witnessed.flatMap(candidate => candidate.directive.supersedes? [candidate.directive.supersedes]:[]));
-      const active=witnessed.filter(candidate => !candidate.directive.closedBy&&!superseded.has(candidate.directive.id)
+      // Re-run the owner decoder over the exact signed field with the signed
+      // origin as issuer context. This issues only the live value needed to mint
+      // a new Intent; selection and agreement remain historical decisions.
+      const decoded: { row: FactStatus; directive: Directive }[]=[];
+      for(const candidate of [...witnessed].sort((left,right) => {
+        const distance=causalCone(left.row.fact,facts).length-causalCone(right.row.fact,facts).length;
+        return distance|| (foldKey(left.row.fact)<foldKey(right.row.fact)?-1:foldKey(left.row.fact)>foldKey(right.row.fact)?1:0);
+      })) {
+        const c=context(preserved),grants=[...c.decode.grants??[],...c.grants.map(row => row.grant)];
+        const issuer=grants.map(grant => grant.grantee).find(principal => same(principal,candidate.directive.principal));
+        requireIntake(issuer,'P4-NF-25: signed directive lacks its owner-supported issuer context','integrity');
+        const directive=take(decode('Directive',candidate.raw,{ ...c.decode,grants,
+          provenance: issuer.provenance,
+          principals: [...c.decode.principals??[],issuer],
+          directives: [...c.decode.directives??[],...decoded.map(row => row.directive)] }));
+        requireIntake(same(directive,candidate.directive),'P4-NF-25: live directive decode differs from signed history','integrity');
+        decoded.push({ row: candidate.row,directive });
+      }
+      const superseded=new Set(decoded.flatMap(candidate => candidate.directive.supersedes? [candidate.directive.supersedes]:[]));
+      const active=decoded.filter(candidate => !candidate.directive.closedBy&&!superseded.has(candidate.directive.id)
         &&scopeIncludes(candidate.directive.scope,scope));
       const identities=[...new Set(active.map(candidate => candidate.directive.id))].sort();
       return identities.map(id => active.filter(candidate => candidate.directive.id===id)
@@ -487,8 +507,21 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             const resolved=append('intake-resolved',{ ...common,principalId: principal.id,
               authentication: json(principal.provenance.record),binding: 'none' },at,preserved,
             [receipt.id,discovery.row.fact.id,standing.row.fact.id],principal);
-            const directiveFacts=read(preserved),directiveCone=new Set(causalCone(resolved,directiveFacts).map(fact => fact.id));
-            const directives=scheduledDirectives(statuses(preserved),preserved,directiveCone);
+            // Re-resolve every authority-bearing dependency after the durable
+            // resolution append. The append-side owner decoder repeats these
+            // checks against the exact current segment, closing the same race for
+            // direct signed append and replication paths.
+            const admissionFacts=read(preserved),admissionRows=statuses(preserved);
+            const directiveCone=new Set(causalCone(resolved,admissionFacts).map(fact => fact.id));
+            const admissionDiscovery=scheduledDiscovery(input.discovery,eventId,at,preserved);
+            const admissionStanding=scheduledStanding(principal,at,preserved);
+            const admissionPrincipal=admissionRows.find(row => row.fact.id===principalFact.id
+              &&row.fact.kind==='intake-scheduled-principal'&&!row.taint.length&&!row.conflicts.length
+              &&row.historical.some((record): record is HistoricalRead<VerifiedPrincipal> => record.view.type==='VerifiedPrincipal'
+                &&record.captureStatus==='available'&&same(record.view,principal)));
+            requireIntake(admissionPrincipal,'scheduled intake: current signed principal witness is unavailable or contested','standing');
+            constitutionalField(admissionPrincipal,'VerifiedPrincipal',principal.id,preserved);
+            const directives=scheduledDirectives(admissionRows,preserved,directiveCone);
             const intent=take(decode('Intent',{ type: 'Intent',schemaVersion: 1,id: logicalId,principal,receivedAt: original.at,
               via: adapterId,raw: captured.hash,ask: tick,under: directives.map(candidate => candidate.directive.id) },
             { ...context(preserved,principal).decode,directives: directives.map(candidate => candidate.directive) }));
@@ -503,13 +536,13 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             }
             const admitted=append('intake-admitted',{ ...common,intent: json(intent),
               work: { type: 'IntakeWork',schemaVersion: 1,owner,blockedOn: 'run-admission',standing: 'requester' },binding: 'none'
-            },at,preserved,[receipt.id,original.id,resolved.id,principalFact.id,discovery.row.fact.id,standing.row.fact.id,
+            },at,preserved,[receipt.id,original.id,resolved.id,admissionPrincipal.fact.id,admissionDiscovery.row.fact.id,admissionStanding.row.fact.id,
               ...directives.map(candidate => candidate.row.fact.id)],principal,directives.map(candidate => candidate.directive));
             const fact=reference(admitted);
             const principalReference: ConstitutionalReference<'VerifiedPrincipal'>={ type: 'VerifiedPrincipal',id: principal.id,
-              fact: reference(principalFact),field: 'principal' };
-            const standingReference: ConstitutionalReference<'StandingGrant'>={ type: 'StandingGrant',id: standing.grant.view.id,
-              fact: reference(standing.row.fact),field: standing.field };
+              fact: reference(admissionPrincipal.fact),field: 'principal' };
+            const standingReference: ConstitutionalReference<'StandingGrant'>={ type: 'StandingGrant',id: admissionStanding.grant.view.id,
+              fact: reference(admissionStanding.row.fact),field: admissionStanding.field };
             return { kind: 'scheduled-admitted',logicalId,fact,owner,blockedOn: 'run-admission',
               principal: Object.freeze(principalReference),standing: Object.freeze(standingReference),
               scheduledIdentity: Object.freeze({ jobInstance,scheduledInstant }) };
