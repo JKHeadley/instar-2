@@ -8,7 +8,7 @@ import { json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ProjectionDefinition } from '../projections/index.js';
 
 export const intakeKinds=Object.freeze(['intake-receipt','intake-resolved','intake-admitted','intake-held','intake-expired',
-  'intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','intake-verified-act','conversation-binding'] as const);
+  'intake-scheduled-principal','intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','intake-verified-act','conversation-binding'] as const);
 
 // Different scope dimensions are not evidence of disjoint work.
 export function intakeScopesOverlap(a: Scope,b: Scope): boolean {
@@ -53,6 +53,7 @@ export function intakeFactSchemas(scope: Scope): readonly FactSchema[] {
         work: { kind: 'owned',owner: 'part-four',name: 'IntakeWork' },binding: short
       }
     },
+    { ...shared,kind: 'intake-scheduled-principal',fields: { principal: { kind: 'constitutional',type: 'VerifiedPrincipal' } } },
     {
       ...shared,kind: 'intake-held',fields: {
         ...common,input: { kind: 'constitutional',type: 'UnresolvedInput' },

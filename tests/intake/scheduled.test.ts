@@ -12,7 +12,7 @@ it('P4-ST-01 admits only canonical scheduled ticks under the current package-sys
   } }));
   expect(result).toMatchObject({ kind: 'scheduled-admitted', owner: 'run-admission:owner', blockedOn: 'run-admission',
     scheduledIdentity: { jobInstance: tick.body.jobInstance, scheduledInstant: tick.body.scheduledInstant },
-    principal: { type: 'VerifiedPrincipal', id: f.principal.id, field: 'intent.principal' },
+    principal: { type: 'VerifiedPrincipal', id: f.principal.id, field: 'principal' },
     standing: { type: 'StandingGrant', id: grant.grant.id, fact: { id: grant.fact.id }, field: 'grant' },
   });
   expect(f.facts().filter(row => row.kind === 'intake-admitted')).toHaveLength(1);

@@ -64,7 +64,7 @@ export function scheduledFixture(options: { directory?: string; machine?: 'machi
     return lineages;
   };
   const depsForMachine = (sourceMachine: 'machine-a'|'machine-b'): IntakeDependencies => ({ ...base.deps, adapter, governance,
-    author: { ...base.deps.author, machine: sourceMachine,
+    author: { machine: sourceMachine, principal, provenance,
       privateKey: sourceMachine === 'machine-a' ? base.deps.author.privateKey : peerPrivateKey },
     clock: () => clock(instant, sourceMachine), dedupGeneration: () => ({ reference: base.context.decode.register.generation,
       kinds: [...new Set(base.context.schemas.map(schema => schema.kind))], lineages: latest() }),

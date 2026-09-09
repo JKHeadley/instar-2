@@ -19,14 +19,16 @@ export function recoverScheduledDisposition(f: ScheduledFixture, admissionId: st
   const admission = facts.find(row => row.id === admissionId && row.kind === 'intake-admitted');
   if (!admission) throw new Error('durable scheduled admission absent');
   const body = admission.body as Record<string, any>, intent = body.intent as Record<string, any>;
+  const principal = facts.find(row => row.kind === 'intake-scheduled-principal'
+    && admission.predecessors.required.includes(row.id));
   const grant = facts.find(row => row.kind === 'scheduled-system-grant'
     && admission.predecessors.required.includes(row.id));
-  if (!grant) throw new Error('durable scheduled authority references absent');
+  if (!principal || !grant) throw new Error('durable scheduled authority references absent');
   return {
     kind: 'scheduled-admitted', logicalId: body.logicalId, fact: reference(admission),
     owner: body.work.owner, blockedOn: 'run-admission',
-    principal: { type: 'VerifiedPrincipal', id: (intent.principal as Record<string, any>).id,
-      fact: reference(admission), field: 'intent.principal' },
+    principal: { type: 'VerifiedPrincipal', id: (principal.body as Record<string, any>).principal.id,
+      fact: reference(principal), field: 'principal' },
     standing: { type: 'StandingGrant', id: (grant.body as Record<string, any>).grant.id,
       fact: reference(grant), field: 'grant' },
     scheduledIdentity: { jobInstance: intent.ask.jobInstance, scheduledInstant: intent.ask.scheduledInstant },
@@ -53,7 +55,7 @@ export function scheduledRunHarness(f: ScheduledFixture, admitted: ScheduledInta
   const register = { ...f.context.decode.register, subjects };
   Object.assign(f.context, { decode: { ...f.context.decode, register } });
   const boundary = { site: f.context.site, preserved: f.context.preserved, register };
-  const work = value(intakeWorkRegistration(boundary, f.deps.author.principal.id));
+  const work = value(intakeWorkRegistration(boundary, f.principal.id));
   const factContext = { ...f.context, facts: [] as FactEnvelope[] };
   let context: RunDecodeContext = {
     site: f.context.site, preserved: f.context.preserved, register,

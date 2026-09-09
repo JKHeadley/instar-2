@@ -336,12 +336,18 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             requireIntake(identityEpoch===authenticated.provenance.record.hash,
               'scheduled intake: route identity epoch is not bound to the signed package identity','standing');
             const principal=resolvePrincipal(authenticated.e,authenticated.provenance,preserved,'system');
+            requireIntake(principal.id===author.principal.id&&same(principal.provenance,author.provenance),
+              'scheduled intake: configured author is not the authenticated package system principal','standing');
             const discovery=scheduledDiscovery(input.discovery,eventId,at,preserved);
             const standing=scheduledStanding(principal,at,preserved);
             if(prior) {
               append('intake-collapse',{ ...common,original: prior.id },at,preserved,[receipt.id,prior.id]);
               return { kind: 'duplicate',logicalId,original: reference(prior) };
             }
+            const existingPrincipal=read(preserved).find(f => f.kind==='intake-scheduled-principal'
+              &&same(object(f.body).principal,principal));
+            const principalFact=existingPrincipal??append('intake-scheduled-principal',{ principal: json(principal) },at,preserved,
+              [standing.row.fact.id],principal);
             const resolved=append('intake-resolved',{ ...common,principalId: principal.id,
               authentication: json(principal.provenance.record),binding: 'none' },at,preserved,
             [receipt.id,discovery.row.fact.id,standing.row.fact.id],principal);
@@ -356,10 +362,10 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             }
             const admitted=append('intake-admitted',{ ...common,intent: json(intent),
               work: { type: 'IntakeWork',schemaVersion: 1,owner,blockedOn: 'run-admission',standing: 'requester' },binding: 'none'
-            },at,preserved,[receipt.id,original.id,resolved.id,discovery.row.fact.id,standing.row.fact.id],principal,[]);
+            },at,preserved,[receipt.id,original.id,resolved.id,principalFact.id,discovery.row.fact.id,standing.row.fact.id],principal,[]);
             const fact=reference(admitted);
             const principalReference: ConstitutionalReference<'VerifiedPrincipal'>={ type: 'VerifiedPrincipal',id: principal.id,
-              fact,field: 'intent.principal' };
+              fact: reference(principalFact),field: 'principal' };
             const standingReference: ConstitutionalReference<'StandingGrant'>={ type: 'StandingGrant',id: standing.grant.view.id,
               fact: reference(standing.row.fact),field: standing.field };
             return { kind: 'scheduled-admitted',logicalId,fact,owner,blockedOn: 'run-admission',
