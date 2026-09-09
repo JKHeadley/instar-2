@@ -4,6 +4,7 @@ import { decodeEffectPayload, decodeOutboundMessage, effectOperationContracts, e
 import type { EffectHost, EffectPayloadKind } from '../../src/effects/index.js';
 import { clone, digest } from '../fixtures.js';
 import { effectFixture, refused, value } from './fixture.js';
+import { typedEffectFixture } from './typed-effect-fixture.js';
 import { payload, payloadInput, payloadKinds } from './payload-fixtures.js';
 
 const withIdentity = (input: Record<string, unknown>): Record<string, unknown> => {
@@ -29,7 +30,7 @@ it.each(payloadKinds)('P8-TP-CLOSED-%s refuses undeclared, wrong kind, missing r
   refused(decodeEffectPayload({ ...input, targetDigest: digest('substituted') }, host), 'target digest');
 });
 
-it('P8-TP-NESTED closed decoder refuses undeclared nested disclosure and target fields', () => {
+it('P8-TP-REPAIR-07 P8-TP-NESTED V3 V4 V5 V16 V29 V30 closed decoder refuses malformed shapes and enums', () => {
   const f = effectFixture();
   for (const [kind, field, nested] of [
     ['post-media', 'attachments', { hidden: 'path' }],
@@ -39,7 +40,7 @@ it('P8-TP-NESTED closed decoder refuses undeclared nested disclosure and target 
   ] as const) {
     const input = payloadInput(kind, f.host), rows = clone(input[field] as Record<string, unknown>[]);
     rows[0] = { ...rows[0], ...nested };
-    refused(decodeEffectPayload(withIdentity({ ...input, [field]: rows }), f.host), 'fields invalid');
+    refused(decodeEffectPayload(withIdentity({ ...input, [field]: rows }), f.host), 'undeclared');
   }
 });
 
@@ -76,7 +77,7 @@ it('P8-TP-DEFINITIONS every variant has one exact schema, canonicalization, and 
   }
 });
 
-it('P8-TP-LEGACY ordinary-reply bytes, decoder value, request keys, identity and digest remain unchanged', () => {
+it('P8-TP-REPAIR-10 P8-TP-LEGACY V24 V32 ordinary-reply bytes, decoder value, request keys, identity and digest remain unchanged', () => {
   const f = effectFixture(), decoded = value(decodeOutboundMessage(clone(f.message), f.host));
   expect(value(canonical(decoded)).bytes).toBe(value(canonical(f.message)).bytes);
   const q = f.prepare();
@@ -87,9 +88,9 @@ it('P8-TP-LEGACY ordinary-reply bytes, decoder value, request keys, identity and
 });
 
 it('P8-TP-DIGEST typed payload identity and request digest are stable; changed rendering creates a new immutable request', () => {
-  const f = effectFixture(undefined, 'executor:1', {}, ['post-text']);
+  const f = typedEffectFixture(undefined, 'executor:1', {}, ['post-text']);
   const definition = effectOperationContracts['post-text'];
-  const typedFixture = effectFixture(undefined, 'executor:1', { payloadKind: 'post-text', inputSchema: definition.inputSchema,
+  const typedFixture = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'post-text', inputSchema: definition.inputSchema,
     canonicalization: definition.canonicalization, observationCapabilities: definition.observations }, ['post-text']);
   const raw = payloadInput('post-text', typedFixture.host);
   const first = value(decodeEffectPayload(withIdentity({ ...raw, sourceResult: typedFixture.pending.id }), typedFixture.host));

@@ -131,8 +131,28 @@ const exactObject = (value: unknown, expected: readonly string[], detail: string
   ensure(Object.keys(object).length === expected.length && Object.keys(object).every(key => expected.includes(key)), detail);
   return object;
 };
-const absoluteCanonical = (value: string): boolean => value.startsWith('/') && !value.includes('//') && !value.split('/').includes('..') && !value.split('/').includes('.');
-const safeRelative = (value: string): boolean => value.length > 0 && !value.startsWith('/') && !value.split('/').includes('..') && !value.split('/').includes('.');
+const shapeCheck = (value: unknown, shape: OwnedShape): void => {
+  if (shape.kind === 'text') { ensure(typeof value === 'string' && value.length <= shape.maxLength, 'bounded text required'); return; }
+  if (shape.kind === 'integer') { ensure(Number.isSafeInteger(value), 'safe integer required'); return; }
+  if (shape.kind === 'boolean') { ensure(typeof value === 'boolean', 'boolean required'); return; }
+  if (shape.kind === 'array') {
+    ensure(Array.isArray(value) && value.length <= shape.maxLength, 'bounded array required');
+    value.forEach(item => shapeCheck(item, shape.items)); return;
+  }
+  if (shape.kind === 'capture') {
+    shapeCheck(value, { kind: 'object', fields: { reference: text, hash: text } }); return;
+  }
+  ensure(shape.kind === 'object' && value !== null && typeof value === 'object' && !Array.isArray(value), 'closed object required');
+  const object = value as Record<string, unknown>, optional = new Set(shape.optional ?? []);
+  ensure(Object.keys(object).every(key => Object.hasOwn(shape.fields, key))
+    && Object.keys(shape.fields).filter(key => !optional.has(key)).every(key => Object.hasOwn(object, key)),
+  'missing or undeclared field');
+  for (const [key, child] of Object.entries(shape.fields)) if (Object.hasOwn(object, key)) shapeCheck(object[key], child);
+};
+const absoluteCanonical = (value: string): boolean => value.length > 1 && value.startsWith('/') && !value.includes('\0')
+  && !value.includes('//') && !value.split('/').includes('..') && !value.split('/').includes('.');
+const safeRelative = (value: string): boolean => value.length > 0 && !value.includes('\0') && !value.startsWith('/')
+  && !value.split('/').includes('..') && !value.split('/').includes('.');
 const unique = (values: readonly string[], detail: string): void => ensure(new Set(values).size === values.length, detail);
 
 type EffectPayloadDraft = TypedEffectPayload extends infer P ? P extends TypedEffectPayload ? Omit<P, 'id' | 'targetDigest'> : never : never;
@@ -161,6 +181,10 @@ export function effectPayloadIdentity(input: EffectPayloadDraft): Readonly<{ id:
 }
 
 export function validateEffectPayload(payload: TypedEffectPayload, host?: EffectHost): void {
+  // The public decoder and the P2 owned-body decoder share this complete shape
+  // contract. A value cannot become more permissive by entering through one
+  // boundary instead of the other.
+  shapeCheck(payload, effectPayloadShape);
   ensure(payload.type === 'EffectPayload' && payload.schemaVersion === 1 && Object.hasOwn(variantFields, payload.kind), 'unknown effect payload kind/version');
   exactKeys(payload as unknown as Record<string, unknown>, variantFields[payload.kind]);
   const common = payload as unknown as Record<string, unknown>;
@@ -189,15 +213,21 @@ export function validateEffectPayload(payload: TypedEffectPayload, host?: Effect
       unique(payload.attributes.map(item => item.key), 'topic attributes duplicate'); break;
     case 'acknowledge': ensure(payload.decorative === true && ['reaction', 'read-receipt', 'typing', 'text'].includes(payload.acknowledgment), 'acknowledgment contract');
       nonempty(payload.inboundFact, 'acknowledgment intake missing'); if (payload.acknowledgment === 'reaction' || payload.acknowledgment === 'text') nonempty(payload.value, 'acknowledgment value missing'); break;
-    case 'fetch-inbound-media': ensure(Number.isSafeInteger(payload.maximumBytes) && payload.maximumBytes > 0 && payload.mediaTypes.length > 0, 'media fetch bound missing');
+    case 'fetch-inbound-media': nonempty(payload.inboundReceipt, 'media inbound receipt missing');
+      nonempty(payload.platformFile, 'media platform file missing');
+      ensure(Number.isSafeInteger(payload.maximumBytes) && payload.maximumBytes > 0 && payload.mediaTypes.length > 0, 'media fetch bound missing');
+      payload.mediaTypes.forEach(value => nonempty(value, 'media type missing'));
       unique(payload.mediaTypes, 'media type set duplicate'); break;
     case 'derive-transcript': exactObject(payload.sourceCapture, ['reference', 'hash'], 'transcript capture fields invalid');
-      hash(payload.sourceCapture.hash, 'transcript source hash malformed');
+      nonempty(payload.sourceCapture.reference, 'transcript source capture missing'); hash(payload.sourceCapture.hash, 'transcript source hash malformed');
+      for (const value of [payload.providerOperation, payload.model, payload.destinationStep, payload.originatingIntake])
+        nonempty(value, 'transcript reference missing');
       ensure(payload.maximumOutputBytes > 0 && Number.isSafeInteger(payload.maximumOutputBytes), 'transcript output bound'); break;
     case 'process-control': ensure(['start', 'interrupt', 'terminate', 'close', 'compact'].includes(payload.action), 'process action unknown');
       for (const value of [payload.machine, payload.processId, payload.processIncarnation, payload.parentIdentity, payload.startIdentity, payload.executable]) nonempty(value, 'process identity incomplete');
       ensure(payload.arguments.length <= 64, 'process arguments over bound'); break;
-    case 'scheduler-control': ensure(['pause', 'resume'].includes(payload.action) && payload.reviewAt > 0 && Number.isSafeInteger(payload.reviewAt), 'scheduler finite review invalid');
+    case 'scheduler-control': ensure(['pause', 'resume'].includes(payload.action) && payload.reviewAt > 0 && Number.isSafeInteger(payload.reviewAt)
+      && (!host || payload.reviewAt > host.current().clock.value), 'scheduler finite review invalid');
       for (const value of [payload.jobId, payload.jobGeneration, payload.finiteScope, payload.undoOperation]) nonempty(value, 'scheduler identity incomplete'); break;
     case 'account-route-change': ensure(payload.fromAccount !== payload.toAccount, 'route change must change registered identity');
       for (const value of [payload.routeRun, payload.provider, payload.fromAccount, payload.toAccount, payload.sourceGeneration, payload.rollbackRoute]) nonempty(value, 'route change identity incomplete'); break;
@@ -213,10 +243,13 @@ export function validateEffectPayload(payload: TypedEffectPayload, host?: Effect
       nonempty(payload.undoSemantics, 'filesystem undo missing'); nonempty(payload.protectedTargetPolicy, 'protected target policy missing'); break;
     case 'git-mutation': ensure(['checkout', 'branch-create', 'branch-delete', 'commit', 'merge', 'rebase', 'reset', 'tag-create', 'tag-delete', 'worktree-add', 'worktree-remove', 'push'].includes(payload.action), 'git operation unknown');
       ensure(absoluteCanonical(payload.repository) && absoluteCanonical(payload.worktree), 'git repository/worktree target ambiguity');
+      nonempty(payload.ref, 'git ref missing'); nonempty(payload.base, 'git base missing');
       ensure(payload.targets.length > 0 && payload.targets.every(safeRelative), 'git target set ambiguous'); unique(payload.targets, 'git target duplicate');
       payload.expectedHeads.forEach(head => { exactObject(head, ['ref', 'digest'], 'git expected-head fields invalid');
         nonempty(head.ref, 'git expected ref missing'); hash(head.digest, 'git expected head malformed'); });
-      ensure(payload.expectedHeads.length > 0 && payload.rollbackConstraints.length > 0, 'git head/rollback constraints missing'); break;
+      unique(payload.expectedHeads.map(head => head.ref), 'git expected head ref duplicate');
+      ensure(payload.expectedHeads.length > 0 && payload.rollbackConstraints.length > 0, 'git head/rollback constraints missing');
+      payload.rollbackConstraints.forEach(value => nonempty(value, 'git rollback constraint missing')); break;
     case 'infrastructure-notice': ensure(['action-needed', 'result'].includes(payload.notice), 'infrastructure notice kind');
       for (const value of [payload.infrastructureProvenance, payload.causalEpisode, payload.text]) nonempty(value, 'infrastructure notice provenance incomplete');
       if (host) ensure(host.principal.kind === 'system', 'infrastructure notice cannot impersonate agent or operator'); break;

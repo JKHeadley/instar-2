@@ -7,9 +7,9 @@ import type { EffectComposition, EffectDoorway, EffectRecord, EffectRequest, Eff
   OperationDefinition, OperationObservation, OrderedEffectAggregate, OutboundMessage, TypedEffectPayload } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { definitionCheck, live, rows, wire } from './records.js';
-import { issuedSettlement, withSettlement } from './settlement-authority.js';
+import { issuedSettlement, withAggregate, withSettlement } from './settlement-authority.js';
 import { effectOperationContracts, payloadKind, validateEffectPayload } from './payloads.js';
-import { aggregateObligations, aggregateState, childFromRefusal, childFromSettlement, childInhibited } from './aggregate.js';
+import { aggregateEvidenceStage, aggregateObligations, aggregateState, childFromRefusal, childFromSettlement, childInhibited } from './aggregate.js';
 
 export function createEffectDoorway(composition: EffectComposition): EffectDoorway {
   const { host, spine, transport, durability, custody, adapter, assessment } = composition;
@@ -73,13 +73,18 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
     validateEffectPayload(p, host);
     ensure(q.payloadDigest === encoded(p).hash && q.binding && q.digest === encoded(q.binding).hash,
       'prepared effect payload digest changed');
+    ensure(q.binding.claim.executor === host.incarnation, 'typed request belongs to an earlier executor incarnation');
     const contract = effectOperationContracts[p.kind], described = adapter.describePayload?.();
     ensure(adapter.invokePayload && described && described.kinds.includes(p.kind)
       && described.schemas.includes(contract.inputSchema) && described.canonicalization === contract.canonicalization
       && encoded(described.observations[p.kind]).bytes === encoded(contract.observations).bytes,
     `unsupported adapter capability for ${p.kind}`);
-    if ('account' in p) ensure(capabilities.account === p.account && capabilities.conversation === p.conversation,
+    if ('account' in p) {
+      const conversation = p.kind === 'create-topic' ? p.parentConversation : p.conversation;
+      ensure(capabilities.account === p.account && capabilities.conversation === conversation
+        && d.record.account === p.account && d.record.conversation === conversation,
       'adapter mode or actual target mismatch');
+    }
     return { d, payload: p as OutboundMessage | TypedEffectPayload, q: stored };
   };
   const validation = (q: EffectRequest, phase: 'reservation' | 'dispatch') => {
@@ -116,14 +121,61 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
   // (before any persist) and dispatch/handoff (the unavoidable invocation boundary),
   // so a mismatched or unadopted admission can never authorize a call even if a
   // request was left persisted by an earlier refused or partial adoption.
-  const admissionMatches = (r: AdmissionReservation, q: { digest: string; attempt: string; run: string; semanticMessage: string }, d: OperationDefinition): boolean =>
+  const admissionSemantic = (q: { semanticMessage: string; binding?: EffectRequest['binding'] }): string => q.binding
+    ? `effect-child:${encoded([q.semanticMessage, q.binding.logicalEffect]).hash}` : q.semanticMessage;
+  const admissionMatches = (r: AdmissionReservation, q: { digest: string; attempt: string; run: string; semanticMessage: string;
+    binding?: EffectRequest['binding'] }, d: OperationDefinition): boolean =>
     r.digest === q.digest && r.attempt === q.attempt && r.charge === d.maxCharge
-    && r.run === q.run && r.semanticMessage === q.semanticMessage
+    && r.run === q.run && r.semanticMessage === admissionSemantic(q)
     && r.durability === d.durability && r.replicas === d.replicas;
   // Synchronous consume-before-call excludes on-stack reentry. P6's live capability
   // additionally excludes another instance and any reconstructed/restarted handle.
   const active = new Set<string>();
   const accepted = new WeakMap<object, OperationObservation>();
+  const recheckStoredSettlement = (settlement: EffectSettlement): EffectSettlement => {
+    ensure(assessment?.owner === 'part-nine', 'independent evidence assessor unavailable');
+    const op = operation(settlement.operation); ensure(op.claim, 'settlement has no claim');
+    const q = find(settlement.request, 'EffectRequest').record;
+    ensure(op.reservation.request === q.id && op.reservation.digest === settlement.digest
+      && settlement.claim === op.claim.id && settlement.reservation === op.fact.id,
+    'stored settlement no longer matches signed operation history');
+    const d = find(q.definition, 'OperationDefinition').record;
+    const observations = settlement.observations.map(id => find(id, 'OperationObservation').record);
+    ensure(observations.every(value => value.operation === settlement.operation), 'stored settlement observation subject mismatch');
+    const input = { request: q, reservation: op.reservation, claim: op.claim.id, observations, bar: q.verificationBar };
+    const acceptance = { owner: 'part-nine' as const, name: 'VerificationAssessment' as const, id: settlement.acceptance };
+    const verify = (proof: ReturnType<NonNullable<typeof assessment>['read']> extends Result<infer P> ? P : never): void => {
+      const decodedOutcome = take(decode('Outcome', proof.outcome, host.current().decode));
+      ensure(encoded(decodedOutcome).bytes === encoded(settlement.outcome).bytes
+        && proof.finalCharge === settlement.finalCharge
+        && proof.delayedExecutionExcluded === settlement.delayedExecutionExcluded,
+      'stored settlement differs from current assessment');
+      const state = consumeOutcome(decodedOutcome, { happened: () => 'happened', 'did-not-happen': () => 'did-not-happen', uncertain: () => 'uncertain' });
+      const evidence = consumeOutcome(decodedOutcome, { happened: value => value, 'did-not-happen': value => value, uncertain: value => value });
+      for (const id of evidence) {
+        const source = host.current().decode.evidence?.find(value => value.id === id);
+        ensure(source, 'accepted evidence is absent');
+        const decoded = take(decode('Evidence', source, host.current().decode));
+        const claim = take(readEvidence(decoded, host.current().clock, host.boundary.preserved));
+        const fields = claim.value && typeof claim.value === 'object' && !Array.isArray(claim.value)
+          ? claim.value as Readonly<Record<string, import('../index.js').Json>> : undefined;
+        const standardized = Boolean(q.payload) && fields?.digest === q.digest
+          && (claim.predicate === 'operation-occurred' && state === 'happened'
+            || claim.predicate === 'operation-did-not-occur' && (state === 'did-not-happen' || state === 'uncertain')
+            || claim.predicate === 'old-executor-quiescent' || claim.predicate === 'charge-settled');
+        const historical = claim.predicate === q.digest && claim.value === state;
+        ensure(claim.subject === settlement.operation && (standardized || historical),
+          'accepted evidence has different operation/digest/predicate');
+      }
+      take(custody.verify(observations.map(value => value.capture), d));
+    };
+    const proof = take(assessment.read(acceptance, input)); verify(proof);
+    ensure(typeof assessment.consumeCurrent === 'function', 'non-waiting current assessment guard unavailable');
+    return take(assessment.consumeCurrent(acceptance, input, current => {
+      ensure(encoded(current).bytes === encoded(proof).bytes, 'assessment changed during aggregate recheck');
+      verify(current); return settlement;
+    }));
+  };
   const api: EffectDoorway = {
     owner: 'part-eight',
     inspect: () => checked('EffectInspect', null, () => rows(snapshot())),
@@ -155,6 +207,22 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       validateEffectPayload(input.payload, host);
       const d = find(input.definition, 'OperationDefinition'); definitionCheck(d.record, host);
       ensure(d.record.payloadKind === input.payload.kind, 'payload kind differs from operation definition');
+      ensure(input.payload.sourceResult === input.pending, 'typed source result is not the pending result being discharged');
+      ensure(input.payload.step.startsWith('step:') && !input.payload.step.startsWith('step:missing')
+        && input.payload.logicalEffect.startsWith('logical:') && !input.payload.logicalEffect.startsWith('logical:missing'),
+      'typed run step/logical identity is not witnessed');
+      const historical = snapshot();
+      const exactReference = (id: string, detail: string) => {
+        const fact = historical.find(fact => fact.id === id);
+        ensure(fact && !fact.kind.startsWith('effect-') && !fact.kind.startsWith('transport-'), detail);
+        return fact;
+      };
+      if (input.payload.kind === 'acknowledge') exactReference(input.payload.inboundFact, 'acknowledgment intake fact missing or wrong kind');
+      if (input.payload.kind === 'fetch-inbound-media') exactReference(input.payload.inboundReceipt, 'media intake receipt missing or wrong kind');
+      if (input.payload.kind === 'scheduler-control') exactReference(input.payload.jobGeneration, 'scheduler generation missing or wrong kind');
+      if (input.payload.kind === 'filesystem-mutation') exactReference(input.payload.protectedTargetPolicy, 'protected-target policy missing or wrong kind');
+      if (input.payload.kind === 'post-media') take(custody.verify(input.payload.attachments.map(item => item.capture), d.record));
+      if (input.payload.kind === 'derive-transcript') take(custody.verify([input.payload.sourceCapture], d.record));
       const p = persist(input.payload, [input.payload.sourceResult]);
       const closure = [...new Set([...input.closure, input.pending, input.obligation, d.fact.id,
         find(p.id, 'EffectPayload').fact.id, ...host.current().authority])];
@@ -165,7 +233,8 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
         payload: { id: p.id, digest: encoded(p).hash }, logicalEffect: p.logicalEffect,
         run: p.run, step: p.step, lease: input.fence.assignment, fence: encoded(input.fence).hash,
         reservation: { request: requestId, attempt: input.attempt, charge: d.record.maxCharge,
-          run: p.run, semanticMessage: p.semanticMessage, durability: d.record.durability, replicas: d.record.replicas },
+          run: p.run, semanticMessage: `effect-child:${encoded([p.semanticMessage, p.logicalEffect]).hash}`,
+          durability: d.record.durability, replicas: d.record.replicas },
         claim: { attempt: input.attempt, executor: host.incarnation } });
       const q = persist({ type: 'EffectRequest', schemaVersion: 1, id: requestId, definition: d.record.id,
         message: p.id, payload: p.id, payloadDigest: encoded(p).hash, binding,
@@ -178,7 +247,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       actual(q);
       take(transport.reserve({ command: `reserve:${q.id}`, fence: input.fence,
         request: { owner: 'part-eight', name: 'EffectRequest', id: q.id }, attempt: q.attempt,
-        payloadDigest: q.digest, charge: d.record.maxCharge, run: input.run, semanticMessage: q.semanticMessage,
+        payloadDigest: q.digest, charge: d.record.maxCharge, run: input.run, semanticMessage: admissionSemantic(q),
         durability: d.record.durability, replicas: d.record.replicas }));
       return q;
     }),
@@ -267,8 +336,14 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
             : adapter.invokePayload!({ operation: claim.operation, claim: op.claim.id, digest: q.digest, payload });
           bytes = ''; stage = 'unknown';
           consumeResult(response, { Success: responseBytes => { bytes = responseBytes; stage = 'response'; }, Refused: refused => {
-            bytes = encoded(refused).bytes; stage = 'refused'; adapterRefusal = { reason: refused.reason, detail: refused.detail,
-              site: refused.site, failDirection: refused.failDirection, preserved: refused.preserved };
+            if (payload.type === 'OutboundMessage') {
+              // Preserve the landed ordinary-reply protocol byte-for-byte. Typed
+              // refusal evidence belongs only to the new payload arm.
+              bytes = 'adapter returned no conclusive response'; stage = 'unknown';
+            } else {
+              bytes = encoded(refused).bytes; stage = 'refused'; adapterRefusal = { reason: refused.reason, detail: refused.detail,
+                site: refused.site, failDirection: refused.failDirection, preserved: refused.preserved };
+            }
           } });
         } catch { bytes = 'invocation ended without a recorded service response'; stage = 'unknown'; }
         // Append failure after invoke is not a clean business-effect refusal.
@@ -309,6 +384,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       'aggregate parent/run/owner missing');
       ensure(input.children.length > 0 && input.children.length <= 64, 'aggregate expansion exceeds finite bound');
       const children = input.children.map((child, order) => {
+        ensure(aggregateEvidenceStage(child.demandedStage), 'aggregate demanded stage unknown');
         const request = find(child.request.id, 'EffectRequest');
         ensure(encoded(request.record).bytes === encoded(child.request).bytes
           && request.record.semanticMessage === input.semanticMessage && request.record.run === input.run.id,
@@ -341,29 +417,43 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       const childIndex = prior.record.children.findIndex(child => child.request === input.request);
       ensure(childIndex >= 0, 'aggregate child missing');
       const current = prior.record.settlements[childIndex]!;
-      ensure(current.disposition === 'pending', 'aggregate child already settled; replay forbidden');
+      const refining = current.disposition === 'uncertain' || current.disposition === 'partial';
+      ensure(current.disposition === 'pending' || refining, 'aggregate child already settled; replay forbidden');
       ensure((input.settlement === undefined) !== (input.refusal === undefined), 'aggregate update requires exactly one settlement or refusal');
       let next;
       const required = [prior.fact.id];
       if (input.settlement) {
         const stored = find(input.settlement.id, 'EffectSettlement');
         ensure(encoded(stored.record).bytes === encoded(input.settlement).bytes, 'aggregate settlement is not recorded unchanged');
-        next = childFromSettlement(prior.record.children[childIndex]!, input.settlement); required.push(stored.fact.id);
+        const currentSettlement = recheckStoredSettlement(stored.record);
+        ensure(encoded(currentSettlement).bytes === encoded(input.settlement).bytes, 'aggregate settlement is stale or no longer witnessed');
+        ensure(!refining || current.settlement !== input.settlement.id, 'aggregate settlement replay forbidden');
+        next = childFromSettlement(prior.record.children[childIndex]!, currentSettlement); required.push(stored.fact.id);
       } else {
+        ensure(current.disposition === 'pending', 'refusal cannot rewrite a settled child');
+        ensure(!take(transport.inspect()).some(row => row.record.type === 'AdmissionReservation'
+          && row.record.request === input.request && row.record.state !== 'prepared'),
+        'unrelated refusal cannot terminalize dispatched work');
         const refusal = consumeResult(input.refusal!, { Success: () => { throw new Error('aggregate refusal is not typed'); }, Refused: value => value });
         next = childFromRefusal(prior.record.children[childIndex]!, refusal);
       }
       const settlements = prior.record.settlements.map((row, index) => index === childIndex ? next : row);
-      const obligations = aggregateObligations(prior.record.children, settlements);
+      const obligations = aggregateObligations(prior.record.children, settlements, id => find(id, 'EffectSettlement').record);
       const revision = prior.record.revision + 1;
-      return persist({ ...prior.record, id: `${prior.record.aggregate}:${revision}`, revision,
+      const candidate = { ...prior.record, id: `${prior.record.aggregate}:${revision}`, revision,
         predecessor: prior.record.id, settlements, state: aggregateState(prior.record.children, settlements),
-        ...obligations } as OrderedEffectAggregate, required);
+        ...obligations } as OrderedEffectAggregate;
+      return withAggregate(host, candidate, () => persist(candidate, required));
     }),
     nextAggregateChild: aggregate => checked('OrderedEffectAggregateNext', aggregate, () => {
       const current = rows(snapshot()).filter(row => row.record.type === 'OrderedEffectAggregate'
         && row.record.aggregate === aggregate).at(-1)?.record;
       ensure(current?.type === 'OrderedEffectAggregate', 'aggregate missing');
+      for (const row of current.settlements) if (row.settlement) {
+        const stored = find(row.settlement, 'EffectSettlement').record;
+        const rechecked = recheckStoredSettlement(stored);
+        ensure(encoded(rechecked).bytes === encoded(stored).bytes, 'aggregate child settlement is stale or no longer witnessed');
+      }
       const states = new Map(current.settlements.map(row => [row.request, row]));
       const child = current.children.find(candidate => states.get(candidate.request)?.disposition === 'pending'
         && !childInhibited(current, candidate.order));
@@ -393,7 +483,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
           const claim = take(readEvidence(e, current.clock, host.boundary.preserved));
           const claimFields = claim.value && typeof claim.value === 'object' && !Array.isArray(claim.value)
             ? claim.value as Readonly<Record<string, import('../index.js').Json>> : undefined;
-          const standardized = claimFields?.digest === q.digest
+          const standardized = Boolean(q.payload) && claimFields?.digest === q.digest
             && (claim.predicate === 'operation-occurred' && state === 'happened'
               || claim.predicate === 'operation-did-not-occur' && (state === 'did-not-happen' || state === 'uncertain')
               || claim.predicate === 'old-executor-quiescent'

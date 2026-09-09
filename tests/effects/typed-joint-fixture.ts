@@ -9,15 +9,15 @@ import { createEffectAssessmentPort, createVerificationRuntime, createVerificati
 import type { VerificationHost } from '../../src/verification/index.js';
 import { privateKey, value } from '../facts/fixtures.js';
 import { verificationInput } from '../verification/fixture.js';
-import { effectFixture } from './fixture.js';
+import { typedEffectFixture } from './typed-effect-fixture.js';
 import { payloadInput } from './payload-fixtures.js';
 import { effectPayloadIdentity } from '../../src/effects/index.js';
 
 export function typedJointFixture(evidenceKinds: readonly ('occurred' | 'not-occurred' | 'quiescent' | 'charged')[] = ['occurred', 'quiescent', 'charged']) {
   const contract = effectOperationContracts['post-text'];
-  let active: ReturnType<typeof effectFixture> | undefined;
+  let active: ReturnType<typeof typedEffectFixture> | undefined;
   let host!: VerificationHost;
-  const effect = effectFixture(undefined, 'executor:1', { payloadKind: 'post-text', inputSchema: contract.inputSchema,
+  const effect = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'post-text', inputSchema: contract.inputSchema,
     canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['post-text'], effectHost => {
       host = { machine: effectHost.machine, principal: effectHost.principal, scope: effectHost.scope, boundary: effectHost.boundary,
         current: () => {

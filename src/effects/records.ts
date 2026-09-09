@@ -5,9 +5,9 @@ import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from
 import type { EffectAuthor, EffectHost, EffectRecord, EffectRequestBinding, EffectSpine, OperationDefinition, OrderedEffectAggregate, OutboundMessage, TypedEffectPayload } from './contracts.js';
 import type { FactStorePort } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import { requireSettlement } from './settlement-authority.js';
+import { requireAggregate, requireSettlement } from './settlement-authority.js';
 import { effectOperationContracts, effectPayloadOwnedShape, payloadKind, validateEffectPayload } from './payloads.js';
-import { aggregateObligations, aggregateState } from './aggregate.js';
+import { aggregateEvidenceStage, aggregateObligations, aggregateState, childFromSettlement } from './aggregate.js';
 
 const text = { kind: 'text', maxLength: 512 } as const, integer = { kind: 'integer' } as const;
 const refs = { kind: 'array', maxLength: 64, items: text } as const;
@@ -134,7 +134,9 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
       && r.semanticMessage.length > 0 && r.sourceResult.length > 0, 'attributable reply required');
     ensure(past.some(f => f.id === r.sourceResult), 'source result fact missing');
   } else if (r.type === 'EffectPayload') {
-    validateEffectPayload(r, host);
+    // Historical bytes are checked against their signed context, not a later
+    // wall clock or replacement executor. Action-time checks remain live-only.
+    validateEffectPayload(r, origin ? host : undefined);
     ensure(past.some(f => f.id === r.sourceResult), 'source result fact missing');
   } else if (r.type === 'EffectRequest') {
     const d = find(r.definition, 'OperationDefinition');
@@ -149,6 +151,17 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
       const p = find(r.payload, 'EffectPayload') as TypedEffectPayload;
       ensure(r.message === r.payload && r.payloadDigest === encoded(p).hash && r.semanticMessage === p.semanticMessage && r.run === p.run,
         'request/payload binding');
+      const source = past.find(f => f.id === p.sourceResult);
+      ensure(p.sourceResult === r.pending && source && !source.kind.startsWith('effect-') && !source.kind.startsWith('transport-'),
+        'typed source result is missing, wrong-kind, or bound to another pending result');
+      ensure(p.step.startsWith('step:') && !p.step.startsWith('step:missing')
+        && p.logicalEffect.startsWith('logical:') && !p.logicalEffect.startsWith('logical:missing'),
+      'typed step/logical identity is not witnessed');
+      const reference = (id: string) => past.find(f => f.id === id && !f.kind.startsWith('effect-') && !f.kind.startsWith('transport-'));
+      if (p.kind === 'acknowledge') ensure(reference(p.inboundFact), 'acknowledgment intake fact missing or wrong kind');
+      if (p.kind === 'fetch-inbound-media') ensure(reference(p.inboundReceipt), 'media intake receipt missing or wrong kind');
+      if (p.kind === 'scheduler-control') ensure(reference(p.jobGeneration), 'scheduler generation missing or wrong kind');
+      if (p.kind === 'filesystem-mutation') ensure(reference(p.protectedTargetPolicy), 'protected-target policy missing or wrong kind');
       ensure(r.id === `request:${encoded(['effect-payload', p.logicalEffect, p.semanticMessage]).hash}`, 'stable typed semantic identity required');
       ensure(r.binding && r.digest === encoded(r.binding).hash, 'typed request binding digest mismatch');
       const b = r.binding as EffectRequestBinding;
@@ -158,16 +171,27 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
         && b.run === p.run && b.step === p.step && b.sourceGeneration === d.generation,
       'typed request subject/target/principal/definition binding mismatch');
       ensure(b.reservation.request === r.id && b.reservation.attempt === r.attempt && b.reservation.charge === d.maxCharge
-        && b.reservation.run === r.run && b.reservation.semanticMessage === r.semanticMessage
+        && b.reservation.run === r.run
+        && b.reservation.semanticMessage === `effect-child:${encoded([r.semanticMessage, p.logicalEffect]).hash}`
         && b.reservation.durability === d.durability && b.reservation.replicas === d.replicas
-        && b.claim.attempt === r.attempt && b.claim.executor === host.incarnation,
+        && b.claim.attempt === r.attempt,
       'typed request reservation/claim binding mismatch');
-      ensure(b.sourceVector === encoded([...r.closure].sort()).hash && b.lease.length > 0 && b.fence.length > 0,
+      const lease = past.find(f => f.id === b.lease && f.kind === 'transport-Lease');
+      const leaseRecord = lease ? (lease.body as { record?: Record<string, unknown> }).record : undefined;
+      const fence = leaseRecord ? { type: 'FenceToken', schemaVersion: 1, domain: leaseRecord.domain,
+        epoch: leaseRecord.epoch, assignment: lease!.id, holder: leaseRecord.holder, machine: leaseRecord.machine,
+        incarnation: leaseRecord.incarnation, authority: leaseRecord.authority, generation: leaseRecord.generation } : null;
+      ensure(b.sourceVector === encoded([...r.closure].sort()).hash && leaseRecord?.type === 'Lease'
+        && leaseRecord.state === 'held' && b.claim.executor === leaseRecord.incarnation
+        && fence !== null && b.fence === encoded(fence).hash,
         'typed request source vector/lease/fence binding mismatch');
       ensure(d.payloadKind === p.kind && d.inputSchema === effectOperationContracts[p.kind].inputSchema
         && d.canonicalization === effectOperationContracts[p.kind].canonicalization
         && encoded(d.observationCapabilities).bytes === encoded(effectOperationContracts[p.kind].observations).bytes,
       'typed payload does not match operation definition');
+      if ('account' in p) ensure(d.account === p.account
+        && d.conversation === (p.kind === 'create-topic' ? p.parentConversation : p.conversation),
+      'typed payload target differs from approved operation target');
       ensure(new TextEncoder().encode(encoded(p).bytes).length <= d.maxBytes, 'actual target/payload exceeds operation');
     }
     ensure(r.attempt.length > 0 && r.verificationOwner.length > 0 && r.verificationBar === d.verificationBar, 'verification obligation required');
@@ -186,6 +210,7 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
       'finite aggregate identity/owner required');
     ensure(r.children.length === r.settlements.length && r.children.every((child, index) => child.order === index),
       'aggregate child order/settlement partition invalid');
+    ensure(r.children.every(child => aggregateEvidenceStage(child.demandedStage)), 'aggregate demanded stage unknown');
     const requests = r.children.map(child => find(child.request, 'EffectRequest'));
     ensure(new Set(r.children.map(child => child.request)).size === r.children.length
       && r.children.every((child, index) => child.digest === requests[index]!.digest
@@ -198,25 +223,41 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     }), 'aggregate payload kind mismatch');
     ensure(r.children.every((child, index) => child.payloadKind !== 'acknowledge' || !child.required),
       'decorative acknowledgment cannot terminalize parent work');
-    ensure(r.settlements.every((settlement, index) => settlement.request === r.children[index]!.request
-      && ['pending', 'partial', 'satisfied', 'refused', 'uncertain'].includes(settlement.disposition)
-      && (settlement.refusal === undefined || settlement.disposition !== 'pending')),
-    'aggregate settlement partition invalid');
+    ensure(r.settlements.every((row, index) => {
+      const child = r.children[index]!;
+      if (row.request !== child.request || !['pending', 'partial', 'satisfied', 'refused', 'uncertain'].includes(row.disposition)) return false;
+      if (!row.settlement) {
+        if (row.refusal) return row.assessment === '' && !row.applied && row.disposition === 'refused';
+        return row.assessment === '' && row.disposition === 'pending' && !row.applied;
+      }
+      const settlement = find(row.settlement, 'EffectSettlement');
+      if (settlement.request !== child.request || settlement.digest !== child.digest || row.assessment !== settlement.acceptance) return false;
+      return encoded(row).bytes === encoded(childFromSettlement(child, settlement)).bytes;
+    }), 'aggregate settlement partition invalid');
     ensure(r.state === aggregateState(r.children, r.settlements), 'aggregate state is not derived from children');
-    const obligations = aggregateObligations(r.children, r.settlements);
+    const obligations = aggregateObligations(r.children, r.settlements, id => find(id, 'EffectSettlement'));
     ensure(encoded({ openEvidence: r.openEvidence, openCharge: r.openCharge, openRecovery: r.openRecovery }).bytes === encoded(obligations).bytes,
       'aggregate open obligations differ from child state');
     if (r.revision === 0) {
       ensure(r.predecessor === '' && r.settlements.every(row => row.disposition === 'pending' && !row.applied && !row.settlement && !row.assessment && !row.refusal),
         'initial aggregate is not pending');
     } else {
+      if (origin) requireAggregate(host, r);
       const prior = find(r.predecessor, 'OrderedEffectAggregate') as OrderedEffectAggregate;
       ensure(r.revision === prior.revision + 1 && r.aggregate === prior.aggregate
         && encoded(r.children).bytes === encoded(prior.children).bytes && r.semanticMessage === prior.semanticMessage && r.run === prior.run
         && r.reconciliationOwner === prior.reconciliationOwner, 'aggregate successor changed immutable expansion');
-      ensure(prior.settlements.every((row, index) => !row.applied || r.settlements[index]!.applied)
-        && prior.settlements.every((row, index) => row.disposition === 'pending' || encoded(row).bytes === encoded(r.settlements[index]).bytes),
-      'aggregate successor replays or rewrites a settled child');
+      ensure(prior.settlements.every((row, index) => !row.applied || r.settlements[index]!.applied),
+        'aggregate successor moves application backward');
+      ensure(prior.settlements.every((row, index) => {
+        const next = r.settlements[index]!;
+        if (row.disposition === 'pending' || encoded(row).bytes === encoded(next).bytes) return true;
+        if (!['uncertain', 'partial'].includes(row.disposition) || !row.settlement || !next.settlement
+          || row.settlement === next.settlement || next.disposition === 'pending') return false;
+        const oldFact = all.find(item => item.record.type === 'EffectSettlement' && item.record.id === row.settlement)?.fact;
+        const nextFact = all.find(item => item.record.type === 'EffectSettlement' && item.record.id === next.settlement)?.fact;
+        return Boolean(oldFact && nextFact && causalCone(nextFact, past).some(fact => fact.id === oldFact.id));
+      }), 'aggregate successor replays or rewrites a settled child');
     }
   } else {
     const q = find(r.request, 'EffectRequest');
@@ -247,7 +288,23 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     } else {
       if (origin) requireSettlement(host, r);
       ensure(r.observations.length > 0 && r.observations.every(id => find(id, 'OperationObservation').operation === r.operation), 'settlement evidence binding');
-      ensure(r.acceptance.length > 0 && past.some(f => f.id === r.acceptance), 'independent acceptance absent');
+      const acceptance = past.find(f => f.id === r.acceptance);
+      const acceptanceRecord = acceptance ? (acceptance.body as { record?: Record<string, unknown> }).record : undefined;
+      const marker = acceptance?.kind === 'note'
+        && typeof (acceptance.body as { identity?: unknown }).identity === 'string'
+        && (acceptance.body as { identity: string }).identity.includes('nine assessment STAND-IN');
+      const assemblyStandIn = acceptance?.kind === 'slice-delivery-evidence'
+        && (acceptance.body as { operation?: unknown }).operation === r.operation
+        && encoded((acceptance.body as { outcome?: unknown }).outcome).bytes === encoded(r.outcome).bytes;
+      ensure(r.acceptance.length > 0 && acceptance
+        && (acceptance.kind === 'verification-VerificationAssessment' || marker || assemblyStandIn),
+      'independent acceptance absent or wrong kind');
+      if (acceptance?.kind === 'verification-VerificationAssessment') ensure(acceptanceRecord?.type === 'VerificationAssessment'
+        && acceptanceRecord.operation === r.operation && acceptanceRecord.attempt === q.attempt
+        && acceptanceRecord.operationDigest === r.digest
+        && typeof acceptanceRecord.validFrom === 'number' && typeof acceptanceRecord.validUntil === 'number'
+        && acceptanceRecord.validFrom <= host.current().clock.value && acceptanceRecord.validUntil >= host.current().clock.value,
+      'independent acceptance subject, attempt, digest, or freshness mismatch');
       ensure(r.retryEligible === false && r.retainedExposure >= 0 && (r.finalCharge === null || Number.isSafeInteger(r.finalCharge) && r.finalCharge >= 0), 'invalid charge or forbidden retry');
       const didNotHappen = consumeOutcome(r.outcome, { happened: () => false, 'did-not-happen': () => true, uncertain: () => false });
       if (q.payload) ensure(r.retryClosure?.didNotHappen === didNotHappen

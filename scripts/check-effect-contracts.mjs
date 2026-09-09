@@ -37,6 +37,7 @@ export const effectPayloadFixtures = [
   'P8-TP-NESTED', 'P8-TP-TARGET', 'P8-TP-AUTH', 'P8-TP-DEFINITIONS', 'P8-TP-LEGACY', 'P8-TP-DIGEST',
   'P8-TP-PORTS', 'P8-TP-UNSUPPORTED', 'P8-TP-REFUSAL', 'P8-TP-EVIDENCE', 'P8-TP-THREE-CLOSURE', 'P8-TP-RECOVERY',
   'P8-TP-AGGREGATE-RESTART', 'P8-TP-AGGREGATE-SIGKILL', 'P8-TP-AGGREGATE-PARTIAL', 'P8-TP-ACK',
+  ...Array.from({ length: 11 }, (_, index) => `P8-TP-REPAIR-${String(index + 1).padStart(2, '0')}`),
 ];
 export function checkEffectCoverage(report, dispositions = effectDispositions) {
   if (!report.success) throw new Error('effect coverage requires a successful actual test run');

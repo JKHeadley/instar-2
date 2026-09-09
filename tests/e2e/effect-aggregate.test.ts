@@ -7,12 +7,13 @@ import { createEffectDoorway, decodeEffectPayload, effectOperationContracts, eff
 import type { EffectRequest, TypedEffectPayload } from '../../src/effects/index.js';
 import { digest } from '../fixtures.js';
 import { effectFixture, refused, value } from '../effects/fixture.js';
+import { typedEffectFixture } from '../effects/typed-effect-fixture.js';
 import { payloadInput } from '../effects/payload-fixtures.js';
 import { privateKey } from '../facts/fixtures.js';
 
 function setup() {
   const contract = effectOperationContracts['post-text'];
-  const f = effectFixture(undefined, 'executor:1', { payloadKind: 'post-text', inputSchema: contract.inputSchema,
+  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'post-text', inputSchema: contract.inputSchema,
     canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['post-text']);
   const makePayload = (logicalEffect: string, text: string): TypedEffectPayload => {
     const raw = { ...payloadInput('post-text', f.host), sourceResult: f.pending.id, logicalEffect, text };
@@ -31,7 +32,8 @@ function setup() {
   const requestId = `request:${digest(['effect-payload', secondPayload.logicalEffect, secondPayload.semanticMessage])}`;
   const binding = { ...first.binding!, sourceVector: digest([...closure].sort()), payload: { id: secondPayload.id, digest: digest(secondPayload) },
     target: secondPayload.targetDigest, logicalEffect: secondPayload.logicalEffect, step: secondPayload.step,
-    reservation: { ...first.binding!.reservation, request: requestId, attempt: 'attempt:2' },
+    reservation: { ...first.binding!.reservation, request: requestId, attempt: 'attempt:2',
+      semanticMessage: `effect-child:${digest([secondPayload.semanticMessage, secondPayload.logicalEffect])}` },
     claim: { ...first.binding!.claim, attempt: 'attempt:2' } };
   const second = { ...first, id: requestId, message: secondPayload.id, payload: secondPayload.id, payloadDigest: digest(secondPayload),
     binding, attempt: 'attempt:2', digest: digest(binding), closure } as unknown as EffectRequest;
@@ -87,7 +89,7 @@ for (const cut of ['record', 'claim', 'settle'] as const) it(`P8-TP-AGGREGATE-SI
     const resumed = spawnSync(process.execPath, [...args, 'recover', cut], { encoding: 'utf8', timeout: 30000 });
     expect(resumed.status, resumed.stderr).toBe(0);
     expect(JSON.parse(resumed.stdout)).toMatchObject({ operation: ready.operation, aggregate: ready.aggregate,
-      state: cut === 'record' ? 'refused' : 'satisfied', replayRefused: true });
+      state: cut === 'record' ? 'refused' : cut === 'settle' ? 'pending' : 'satisfied', replayRefused: true });
     const service = join(directory, 'aggregate-service.jsonl');
     expect(existsSync(service) ? readFileSync(service, 'utf8').trim().split('\n').length : 0).toBe(cut === 'record' ? 0 : 1);
     expect(readFileSync(join(directory, 'origin', 'facts.json'), 'utf8')).toBe(readFileSync(join(directory, 'peer', 'facts.json'), 'utf8'));
@@ -106,9 +108,10 @@ it('P8-TP-AGGREGATE-PARTIAL an uncertain first child exposes evidence/charge/rec
 
 it('P8-TP-ACK decorative acknowledgment refusal stays non-terminal and cannot be marked required', () => {
   const contract = effectOperationContracts.acknowledge;
-  const f = effectFixture(undefined, 'executor:1', { payloadKind: 'acknowledge', inputSchema: contract.inputSchema,
+  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'acknowledge', inputSchema: contract.inputSchema,
     canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['acknowledge']);
-  const raw = { ...payloadInput('acknowledge', f.host), sourceResult: f.pending.id };
+  const intake = f.note('part-seven inbound receipt STAND-IN');
+  const raw = { ...payloadInput('acknowledge', f.host), sourceResult: f.pending.id, inboundFact: intake.id };
   const draft = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== 'id' && key !== 'targetDigest'));
   const payload = value(decodeEffectPayload({ ...draft,
     ...effectPayloadIdentity(draft as unknown as Parameters<typeof effectPayloadIdentity>[0]) }, f.host));

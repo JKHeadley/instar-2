@@ -32,6 +32,10 @@ function outcome(settlement: EffectSettlement): 'happened' | 'did-not-happen' | 
     'did-not-happen': () => 'did-not-happen' as const, uncertain: () => 'uncertain' as const });
 }
 
+export function aggregateEvidenceStage(value: unknown): value is AggregateEvidenceStage {
+  return typeof value === 'string' && ['occurrence', 'non-occurrence', 'quiescence', 'charge', 'complete'].includes(value);
+}
+
 export function demandedStageMet(child: Child, settlement: EffectSettlement): boolean {
   const state = outcome(settlement);
   if (child.demandedStage === 'occurrence') return state === 'happened';
@@ -69,14 +73,27 @@ export function aggregateState(children: readonly Child[], settlements: readonly
   return 'pending';
 }
 
-export function aggregateObligations(children: readonly Child[], settlements: readonly ChildSettlement[]) {
+export function aggregateObligations(children: readonly Child[], settlements: readonly ChildSettlement[],
+  resolve?: (id: string) => EffectSettlement) {
   const states = new Map(settlements.map(row => [row.request, row]));
-  const openEvidence = children.filter(child => states.get(child.request)?.disposition !== 'satisfied').map(child => child.request);
+  const evidence = (child: Child, row: ChildSettlement | undefined): boolean => row?.settlement && resolve
+    ? demandedStageMet(child, resolve(row.settlement)) : row?.disposition === 'satisfied';
+  const openEvidence = children.filter(child => !evidence(child, states.get(child.request))).map(child => child.request);
   const openCharge = children.filter(child => {
-    const row = states.get(child.request); return row?.disposition === 'pending' || row?.disposition === 'partial' || row?.disposition === 'uncertain';
+    const row = states.get(child.request);
+    if (row?.settlement && resolve) {
+      const settlement = resolve(row.settlement);
+      return outcome(settlement) === 'uncertain' || settlement.finalCharge === null;
+    }
+    return row?.disposition === 'pending' || row?.disposition === 'partial' || row?.disposition === 'uncertain';
   }).map(child => child.request);
   const openRecovery = children.filter(child => {
-    const row = states.get(child.request); return row?.disposition === 'partial' || row?.disposition === 'uncertain' || row?.disposition === 'refused';
+    const row = states.get(child.request);
+    if (row?.settlement && resolve) {
+      const settlement = resolve(row.settlement);
+      return outcome(settlement) === 'uncertain' || !settlement.delayedExecutionExcluded;
+    }
+    return row?.disposition === 'partial' || row?.disposition === 'uncertain' || row?.disposition === 'refused';
   }).map(child => child.request);
   return freeze({ openEvidence, openCharge, openRecovery });
 }

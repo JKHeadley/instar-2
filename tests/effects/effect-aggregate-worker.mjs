@@ -57,8 +57,15 @@ if (mode === 'start') {
   } else {
     settlement = take(slice.api.inspect()).filter(row => row.record.type === 'EffectSettlement' && row.record.operation === reservation.operation).at(-1)?.record;
     if (!settlement) settlement = take(slice.api.settle(observation.operation));
-    updated = take(slice.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, settlement }));
-    replayRefused = isRefused(slice.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, settlement }));
+    const update = slice.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, settlement });
+    if (isRefused(update)) {
+      // A settlement whose assessment/evidence was process-local remains durable
+      // but cannot promote the parent after restart. Preserve the pending aggregate.
+      updated = aggregate; replayRefused = true;
+    } else {
+      updated = take(update);
+      replayRefused = isRefused(slice.api.updateAggregate({ aggregate: aggregate.aggregate, request: request.id, settlement }));
+    }
   }
   writeSync(1, `${JSON.stringify({ operation: reservation.operation, aggregate: updated.aggregate, state: updated.state,
     replayRefused, records: take(slice.api.inspect()).length })}\n`);

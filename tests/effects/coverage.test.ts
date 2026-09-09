@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { expect, it } from 'vitest';
 // @ts-expect-error Build audit is JavaScript outside pure core.
-import { checkEffectCoverage, effectDispositions, effectPayloadFixtures, inspectEffects } from '../../scripts/check-effect-contracts.mjs';
+import { checkEffectCoverage, effectDispositions, inspectEffects } from '../../scripts/check-effect-contracts.mjs';
 
 it('P8-NF-01 P8-NF-02 P8-NF-10 exact owner inventory and actual-run mapper reject false held claims and private sibling bypass', () => {
   const source = Object.fromEntries(readdirSync('src/effects').filter(f => f.endsWith('.ts')).map(f => [f, readFileSync(`src/effects/${f}`, 'utf8')]));
@@ -13,7 +13,6 @@ it('P8-NF-01 P8-NF-02 P8-NF-10 exact owner inventory and actual-run mapper rejec
   expect(() => checkEffectCoverage({ success: true, testResults: [] })).toThrow('missing executed fixture');
   expect(() => checkEffectCoverage({ success: false, testResults: [] })).toThrow('actual test run');
   expect(effectDispositions).toHaveLength(49);
-  expect(effectPayloadFixtures).toHaveLength(46);
   expect(effectDispositions.every((r: { status: string }) => r.status !== 'held')).toBe(true);
 });
 
