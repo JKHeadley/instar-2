@@ -413,7 +413,8 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
           // refuses malformed shapes and every field that changes event
           // identity, while still allowing an honestly partial historical read
           // when the otherwise-valid preserved capture is unavailable.
-          decodeScheduledTickBody(take(canonical(scheduledAsk)).bytes,eventId,c.facts.decode);
+          try { decodeScheduledTickBody(take(canonical(scheduledAsk)).bytes,eventId,c.facts.decode); }
+          catch { throw new IntakeFailure('scheduled intake: admitted Intent differs from the preserved tick','integrity'); }
           const receiptBody=object(receipt.body),capturePin=object(receiptBody.capture!);
           const capture=c.facts.captures[text(capturePin.reference,'scheduled capture reference')];
           if(c.mode==='origin'||capture?.status==='available') {
