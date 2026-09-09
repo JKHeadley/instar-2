@@ -36,7 +36,7 @@ export function scheduledFixture(options: { directory?: string; machine?: 'machi
     entries: [...new Set([...priorRegister.entries, scheduledAdapterId, 'scheduled-clock'])],
     keys: { ...priorRegister.keys, host: { ...key, adapters: [...new Set([...key.adapters, scheduledAdapterId])] } },
   };
-  bindIntakeOwnerRegister(register,governance.register);
+  bindIntakeOwnerRegister(register,governance.register,governance.context);
   Object.assign(base.f.ctx, { register });
   Object.assign(base.context, { decode: { ...base.context.decode, register } });
   const proof = base.f.proof({ id: scheduledPrincipalId, kind: 'system' },

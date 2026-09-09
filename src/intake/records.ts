@@ -6,8 +6,8 @@ import type { FactContext,FactEnvelope,FactSchema,FactSnapshot,FactStatus,OwnedB
 import type { Result } from '../index.js';
 import { IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ProjectionDefinition } from '../projections/index.js';
-import type { VerifiedRegister } from '../register/index.js';
-import { wasVerified } from '../register/generator.js';
+import { readRegisterEntry } from '../register/index.js';
+import type { RegisterContext,VerifiedRegister } from '../register/index.js';
 
 export const intakeKinds=Object.freeze(['intake-receipt','intake-resolved','intake-admitted','intake-held','intake-expired',
   'intake-collapse','intake-mismatch','intake-stop','intake-stop-signal','intake-verified-act','conversation-binding'] as const);
@@ -45,17 +45,20 @@ export function intakeArrival(fact: FactEnvelope,observerId: string) {
 type OwnerRegisterReadPort=Pick<RegisterReadPort,'entries'|'generation'|'sites'>;
 const verifiedOwnerRegisters=new WeakMap<object,VerifiedRegister>();
 
-export function bindIntakeOwnerRegister(readPort: OwnerRegisterReadPort,register: VerifiedRegister): void {
-  requireIntake(wasVerified(register),'scheduled intake: owner register was not verified','integrity');
-  requireIntake(register.entries.filter(entry => entry.declaration.kind==='parsers'&&entry.declaration.status==='live')
-    .every(entry => readPort.entries.includes(entry.declaration.id)),
+export function bindIntakeOwnerRegister(readPort: OwnerRegisterReadPort,register: VerifiedRegister,context: RegisterContext): void {
+  const parsers=register.entries.filter(entry => entry.declaration.kind==='parsers'&&entry.declaration.status==='live');
+  requireIntake(parsers.length>0&&parsers.every(entry => {
+    const verified=readRegisterEntry(entry.declaration.id,register,context);
+    return verified.kind==='Success'&&same(verified.value.declaration,entry.declaration)&&readPort.entries.includes(entry.declaration.id);
+  }),
   'scheduled intake: verified adapter declaration differs from decoder register','integrity');
   verifiedOwnerRegisters.set(readPort as object,register);
 }
 
 export function registeredScheduledIntakeAdapters(register?: VerifiedRegister,readPort?: OwnerRegisterReadPort): readonly string[] {
-  const resolved=register??(readPort&&verifiedOwnerRegisters.get(readPort as object));
-  if(resolved) requireIntake(wasVerified(resolved),'scheduled intake: owner register was not verified','integrity');
+  const bound=readPort&&verifiedOwnerRegisters.get(readPort as object);
+  requireIntake(!register||register===bound,'scheduled intake: owner register was not verified','integrity');
+  const resolved=bound;
   const declared=resolved?.entries.filter(entry => {
     if(entry.declaration.kind!=='parsers'||entry.declaration.status!=='live') return false;
     const authentication=entry.declaration.requiredFacts.authenticationClass;

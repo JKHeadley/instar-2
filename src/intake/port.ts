@@ -5,7 +5,6 @@ import type { BoundaryContext,Clock,Directive,Evidence,FactEnvelopeReference,His
 import { authorAndAppend,causalCone,causalStanding,createFactStore,decodeEnvelope,decodeHistoricalBody,factId,foldKey,hashBytes,prepareSnapshot,signEnvelope } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactStatus } from '../facts/index.js';
 import { constructGoverned,generationOf,readEnforcedRecord,readRegisterEntry } from '../register/index.js';
-import { wasVerified } from '../register/generator.js';
 import { foldProjection,readProjection } from '../projections/index.js';
 import { boundary,IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ConstitutionalReference,InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort,PendingScheduledAdmissions,
@@ -44,8 +43,9 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     // register may construct the port, but can authorize nothing after the
     // receipt is preserved. Only an entering-force verified register can add
     // scheduled adapter capabilities to the owner decoder.
-    const verifiedGovernanceRegister=wasVerified(deps.governance.register)?deps.governance.register:undefined;
-    if(verifiedGovernanceRegister) bindIntakeOwnerRegister(initial.decode.register,verifiedGovernanceRegister);
+    const registerWitness=readRegisterEntry(deps.adapter.id,deps.governance.register,deps.governance.context);
+    const verifiedGovernanceRegister=registerWitness.kind==='Success'?deps.governance.register:undefined;
+    if(verifiedGovernanceRegister) bindIntakeOwnerRegister(initial.decode.register,verifiedGovernanceRegister,deps.governance.context);
     const registeredScheduledAdapters=verifiedGovernanceRegister
       ?registeredScheduledIntakeAdapters(verifiedGovernanceRegister,initial.decode.register):Object.freeze([] as string[]);
     const eventAuthority=object(contract.eventIdAuthority!);
