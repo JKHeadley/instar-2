@@ -131,6 +131,12 @@ but unlanded, cover those paths. P15-NF-26 and the long-history arms of P15-NF-1
 therefore remain non-executable until those grant files land and pass
 the same instrumented occurrence trace. A small candidate page, keyed authority view, or Run view
 is never permission to append and never substitutes for complete signed-history verification.
+Eight's own effect-domain reconstruction is a separate prerequisite: the dated 09:23Z addendum in
+`seam-response-effects-followup.md`, GRANTED at `SEAM-LEDGER.md` row 54 but unlanded, supplies
+`EffectStateCheckpoint` and `advanceEffectState`. The bounded-history program for P15-NF-26 and
+the long-history arm of P15-NF-52 is non-executable until ledger rows 37, 44, 47, 48 and 54 all
+land and pass one joint cold-restart-to-settlement trace. Four's row-49 scheduled-intake grant
+remains an additional prerequisite for the complete scheduled lifecycle.
 
 **Rule — missed instants are counted, coalesced, and never erased.** Rules 26, 42, 46, 55 and 68;
 **checks: P15-NF-14/20/24/27**. After sleep, outage, restart, or partition healing, the loop derives

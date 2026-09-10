@@ -18,15 +18,31 @@ process-operation and confined-driver acceptance evidence.
 
 **Rule — supervision levels select registered part-seven plans.** Rules 34, 38, 56, 57, 66 and
 90; **checks: P15-NF-11/42/43**. The manifest chooses one of three package-level levels, each
-resolved to an approved judgment plan and model floor. `tier0` permits only deterministic,
-non-critical steps whose holder map contains no mind-held boundary. `tier1` places a bounded light
-model supervisor after every declared critical programmatic step and before its next consequential
-step. `tier2` uses a capable model for the job's reasoning and still records independent required
-supervisor or verification boundaries. The strings are manifest choices, not a new core type.
+resolved to an approved judgment plan and model floor. The registered pipeline profile derives
+whether the pipeline is critical; neither the manifest nor an individual step may declare itself
+non-critical to narrow that result. `tier0` is permitted only for a non-critical pipeline whose
+holder map contains no mind-held boundary. For a critical pipeline, `tier1` is the minimum: a
+bounded model watches and validates every business step after it produces its Result and before
+the next consequential step. This includes preparation, interpretation and cleanup steps even
+when their individual profiles are non-critical. `tier2` uses a capable model for the job's
+reasoning and still supplies the same complete step-by-step validation coverage, with independent
+supervision wherever the registered plan requires it. The strings are manifest choices, not a
+new core type.
+
+For each pipeline task class, Part Seven's benchmark process selects the most efficient supervising
+model route that passes the class's declared quality and safety bars. The selected route cites the
+matching current benchmark evaluation. Cost is reduced by that measured model choice, never by
+omitting supervision from a business step. If no candidate passes or the supporting evaluation is
+stale, supervision is unavailable and the pipeline follows its declared failure direction. This
+benchmark-selected route arm of P15-NF-43 is non-executable until ledger #27 and #30's GRANTED
+`seam-response-judgment.md` and `seam-response-assembly-followup.md` contracts land with their
+current-route, compatibility and measured-support evidence.
 
 **Rule — missing supervision is not affirmative validation.** Rules 38, 42, 43, 56 and 95;
-**checks: P15-NF-42/43/44**. Each critical step records the matching JudgmentRequest, attempt,
-receipt, resolution and exact step digest. A missing provider, timeout, insufficient floor,
+**checks: P15-NF-42/43/44**. Every business step in a critical pipeline records the matching
+JudgmentRequest, attempt, receipt, resolution and exact step digest. The holder compares the
+pipeline's complete ordered business-step roster with that evidence; a step-level criticality flag
+cannot remove a roster member. A missing provider, timeout, insufficient floor,
 unavailable capture, malformed answer, or absent resolution follows the job's declared failure
 direction and remains visible. It cannot downgrade to `tier0`, use keywords as judgment, or treat
 model fluency as proof. The deterministic bootstrap that admits the supervisor call is finite and
@@ -66,21 +82,29 @@ and ceiling release preserve a separate owned follow-up obligation; neither is r
 learning or rewrites the business outcome. The scheduler package owns this admission hold, not the
 learning verdict.
 
-Compatibility import maps the default 1.x server composition—where `IntegrationGate` is injected—
-to `required` when `livingSkills.enabled` is true and `integrationGate` is absent or true. It maps an
-explicit false gate to `off`. The default's timeout release and per-slug fourth-block release map to
-the rules above. Disabled living skills map to `off` only in that IntegrationGate-enabled
-composition.
+Compatibility import first distinguishes direct-script execution from model-session execution.
+For a model-session job in the default 1.x server composition—where `IntegrationGate` is injected—
+it maps to `required` when `livingSkills.enabled` is true and `integrationGate` is absent or true.
+It maps an explicit false gate to `off`, and disabled living skills to `off`. The default's timeout
+release and per-slug fourth-block release map to the rules above.
 
-The optional 1.x composition with no `IntegrationGate` but with intelligence is reported as
-compatibility residue. In 1.x it starts standalone reflection for every completed job regardless of
-`livingSkills.enabled`, proceeds with the global queue immediately, records any reflection in run
-history, and may deliver it to the job topic. Part fifteen deliberately does not silently map that
-composition to `off` or claim it is the default server. The one-way importer preserves its source
-bytes, marks the job inhibited, and requires an explicit package choice of `off` or `required`
-before activation. P15-NF-45/51 separately fixture the default IntegrationGate composition and this
-no-gate residue. They also cover two jobs, restart, timeout release, the fourth counted failure and
-the still-open follow-up obligation.
+For a direct script job, 1.x `triggerJob` returns through `runScriptJob`; its success and failure
+callbacks never call `notifyJobComplete` or `IntegrationGate.evaluate`. Compatibility import
+therefore maps post-completion learning to `off` for scripts while preserving and reporting the
+source `livingSkills` and `integrationGate` settings. Selecting `required` for an imported script
+is an explicit new package choice, not preserved 1.x behavior. A shared job-definition flag cannot
+make the script path appear to have run learning it never invoked.
+
+The optional 1.x model-session composition with no `IntegrationGate` but with intelligence is
+reported as compatibility residue. Its `notifyJobComplete` path starts standalone reflection for
+every completed model-session job regardless of `livingSkills.enabled`, proceeds with the global
+queue immediately, records any reflection in run history, and may deliver it to the job topic.
+Direct scripts still bypass that completion method. Part fifteen deliberately does not silently
+map the model-session composition to `off` or claim it is the default server. The one-way importer
+preserves its source bytes, marks the job inhibited, and requires an explicit package choice of
+`off` or `required` before activation. P15-NF-45/51 separately fixture the default IntegrationGate
+composition, the direct-script bypass and this no-gate model-session residue. They also cover two
+jobs, restart, timeout release, the fourth counted failure and the still-open follow-up obligation.
 
 **Rule — workers execute runs; sessions do not own them.** Rules 41, 46, 68 and 92;
 **checks: P15-NF-21/45**. A session, subprocess, or remote agent receives one leased RunStep with

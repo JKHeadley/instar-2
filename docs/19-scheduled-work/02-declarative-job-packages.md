@@ -23,7 +23,7 @@ required numeric offset or `Z`.
 | Authority | Package-minted system principal, standing-grant reference, scope, operation classes and required authorizations; manifest text grants nothing |
 | Bounds | Part-five run budget and exit test; part-six duration, attempt, concurrency, token, money, byte and notification allocations; numeric zero remains zero |
 | Admission | Priority class, eligible assemblies and machines, required capability set, capacity-evidence policy, global-once or every-eligible-machine placement, catch-up policy, finite class shares and concrete fairness/delay bounds |
-| Intelligence | Part-seven route and floor references, supervision level, supervised step boundaries, capture and grading requirements |
+| Intelligence | Part-seven route and floor references, the pipeline's registered profile, supervision level, complete ordered business-step roster, capture and grading requirements |
 | Effects and proof | Part-eight operation references, stable operation identity rules, part-nine verification plan, accepted outcome evidence and uncertainty owner |
 | Recovery | Part-six parent duty, rolling budget, loop, backoff, breaker outcome-window and recovery-policy references; maximum overdue age and final exhaustion destination |
 | Presentation | Part-eleven topic or destination reference, push policy and operator-facing description; presentation cannot alter execution policy |
