@@ -102,7 +102,8 @@ it('SLB-PARENT-POLICY-51 V08 signed first record in a second pressure scope must
 
 for (const [index,boundary] of ['scheduled','attempt-admitted','opened','half-opened','evidence-only-closed'].entries()) {
  for (const [sideIndex,side] of ['before','after'].entries()) {
-  const cutEvidenceId = `SLB-CUT-${boundary.toUpperCase()}-${side.toUpperCase()}-${54 + index * 2 + sideIndex}`;
+  const cutEvidenceBase = [54, 56, 58, 60, 64][index]!;
+  const cutEvidenceId = `SLB-CUT-${boundary.toUpperCase()}-${side.toUpperCase()}-${cutEvidenceBase + sideIndex}`;
   it(`V${11+index*2+sideIndex} cut ${side} ${boundary} ${cutEvidenceId} keeps the exact durable prefix and owned pending work`,()=>{
    const s=setup({failureThreshold:1,halfOpenTrials:1});
    let operation:(api:any)=>any;

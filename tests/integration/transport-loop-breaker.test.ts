@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { decodeLoopPolicy } from '../../src/transport/index.js';
+import { createBoundedDueScanPort, decodeLoopPolicy } from '../../src/transport/index.js';
 import type { FenceToken, SharedBreakerLoopPolicy, SharedLoopRecord } from '../../src/transport/index.js';
 import { transportLoopFixture as transportFixture, refused, value } from '../transport/loop-fixture.js';
 
@@ -21,6 +21,28 @@ function outcome(f: ReturnType<typeof transportFixture>, token: FenceToken, epis
     kind, failureClass: kind === 'failed' ? 'transport' : '', completion,
     jitterPermille: 1000, restoration, sourceVector: f.vector });
 }
+
+it('SLB-FANOUT-10 P6-NF-13 P6-NF-20 P6-NF-33 distinct machine-scoped due keys both run while one shared effect identity deduplicates once', () => {
+  const f = transportFixture();
+  const page = value(createBoundedDueScanPort(f.host, f.spine, f.c).page({
+    scan: 'scheduled:fanout', generation: 'calendar:g1',
+    orderedKeys: ['machine-a:fanout', 'machine-b:fanout'], cursor: null, maxItems: 2, maxDuration: 10,
+  }));
+  expect(page.selected).toEqual(['machine-a:fanout', 'machine-b:fanout']);
+
+  const token = value(f.api.acquire('acquire:fanout', f.head(), 500));
+  let loop = schedule(f, token, 'fanout');
+  f.advance(1);
+  loop = value(attempt(f, token, loop, 'machine-a-job', 'scheduled', 'worker-a', 'machine-a', 1));
+  const firstPressureKey = loop.pressureKey;
+  loop = value(attempt(f, token, loop, 'machine-b-job', 'scheduled', 'worker-b', 'machine-b', 1));
+  expect(loop.pendingAttempts).toEqual(['machine-a-job', 'machine-b-job']);
+  expect(loop.pressureKey).toBe(firstPressureKey);
+
+  const reservation = value(f.api.reserve(f.input(token, { attempt: 'machine-a-job' })));
+  expect(value(f.api.reserve(f.input(token, { attempt: 'machine-a-job' }))).operation).toBe(reservation.operation);
+  expect(value(f.api.inspect()).filter(row => row.record.type === 'AdmissionReservation')).toHaveLength(1);
+});
 
 it('SLB-SHARED-04 P6-NF-18 P6-NF-20 P6-NF-21 shared pressure opens once, refuses every contender, bounds half-open, reopens and closes only with independent restoration', () => {
   const f = transportFixture(), token = value(f.api.acquire('acquire-shared', '', 500));
