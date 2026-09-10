@@ -52,7 +52,7 @@
 
 **Question:** Beyond the three protections that require it, which additional protections may read the computer's complete list of running programs?
 
-**Background:** Three protections already need this broad view: finding abandoned unfinished work, cleaning up abandoned agent or helper programs, and removing unused checkouts. Reading the same list can improve other stuck-work decisions, but it reveals broad local activity; permission to observe never grants permission to stop a program.
+**Background:** Three protections already need this broad view: finding abandoned unfinished work, cleaning up abandoned agent or helper programs, and removing unused working copies of project files. Reading the same list can improve other stuck-work decisions, but it reveals broad local activity; permission to observe never grants permission to stop a program.
 
 **Choices:** Add no extra readers; add only the stuck-session watcher and idle-session cleanup; or allow every protection that watches a running program.
 

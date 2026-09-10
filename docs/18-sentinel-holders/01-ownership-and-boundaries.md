@@ -5,6 +5,8 @@
 holder package means the current Part Ten `LocalCapabilityPackage`, its exact `declarationIds`,
 the referenced `VerificationPlan` instances and their executable bindings. It is not a register
 kind or a new persisted core schema. Earlier parts own every consumed type.
+A **worktree**, also called a **checkout** here, is a separate working copy of a project's
+version-controlled files.
 
 | Earlier part | Types and authority consumed here |
 |---|---|
