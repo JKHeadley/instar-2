@@ -332,35 +332,16 @@ export function compareAssemblyRecords<N extends AssemblyRecordName>(name: N, le
 export const assemblyKindFor = (name: AssemblyRecordName): string => `assembly-${name}`;
 export interface AssemblyReference {
   readonly id: string;
-  readonly expected?: string | undefined;
+  readonly expected?: AssemblyRecordName | 'CheckRunRecord' | 'ProbeRecord' | 'Measurement' | undefined;
   readonly field: string;
   readonly requiredWhenSigned: boolean;
-  readonly allowPartial: boolean;
 }
-const refs = (ids: readonly string[], field: string, expected?: AssemblyReference['expected'], requiredWhenSigned = false,
-  allowPartial = false): AssemblyReference[] => ids.filter(Boolean).map(id => ({ id, expected, field, requiredWhenSigned, allowPartial }));
-function productionReferences(record: AssemblyManifest): AssemblyReference[] {
-  return (record.productionBindings ?? []).flatMap(binding => {
-    const one = (row: Readonly<{ fact: Readonly<{ reference: string; expectedKind: string }> }>, field: string) =>
-      refs([row.fact.reference], field, row.fact.expectedKind, true, true);
-    return [
-      ...one(binding.surface.adapter, 'productionBindings.surface.adapter'),
-      ...one(binding.surface.challengeVerifier, 'productionBindings.surface.challengeVerifier'),
-      ...one(binding.verifiedActIntake, 'productionBindings.verifiedActIntake'),
-      ...binding.minimalPlane.folds.flatMap(row => one(row, `productionBindings.minimalPlane.folds.${row.projection}`)),
-      ...one(binding.minimalPlane.sourceOnlyReplay, 'productionBindings.minimalPlane.sourceOnlyReplay'),
-      ...one(binding.minimalResponder, 'productionBindings.minimalResponder'),
-      ...binding.dependencies.flatMap(row => one(row, `productionBindings.dependencies.${row.name}`)),
-      ...one(binding.lifecycle.cut, 'productionBindings.lifecycle.cut'),
-      ...one(binding.lifecycle.recovery, 'productionBindings.lifecycle.recovery'),
-      ...one(binding.deliveryWitness, 'productionBindings.deliveryWitness'),
-    ];
-  });
-}
+const refs = (ids: readonly string[], field: string, expected?: AssemblyReference['expected'], requiredWhenSigned = false): AssemblyReference[] =>
+  ids.filter(Boolean).map(id => ({ id, expected, field, requiredWhenSigned }));
 export function assemblyReferences(record: AssemblyRecord): readonly AssemblyReference[] {
   const generic = [...refs(record.predecessors, 'predecessors', undefined, true), ...refs(record.dependencyFacts, 'dependencyFacts', undefined, true)];
   switch (record.type) {
-    case 'AssemblyManifest': return [...generic, ...refs(record.custodyPolicies, 'custodyPolicies', 'StoreCustodyPolicy'), ...productionReferences(record)];
+    case 'AssemblyManifest': return [...generic, ...refs(record.custodyPolicies, 'custodyPolicies', 'StoreCustodyPolicy')];
     case 'AssemblyAdmission': return [...generic, ...refs([record.priorAdmission], 'priorAdmission', 'AssemblyAdmission'),
       ...refs(record.conformance, 'conformance', 'AdapterConformance', true),
       ...refs(record.isolationEvidence, 'isolationEvidence', 'HarnessObservation', true),
@@ -396,8 +377,7 @@ export function factReferenceAliases(fact: FactEnvelope): readonly string[] {
 
 export function referenceHasExpectedKind(reference: AssemblyReference, fact: FactEnvelope, record?: AssemblyRecord): boolean {
   if (!reference.expected) return true;
-  if (record && (record.type === reference.expected || reference.expected === 'Measurement' && record.type === 'GrowthObservation')) return true;
-  if (fact.kind === reference.expected) return true;
+  if (record) return record.type === reference.expected || reference.expected === 'Measurement' && record.type === 'GrowthObservation';
   const body = object(fact.body); const nested = object(body?.record); const measurement = object(body?.measurement);
   switch (reference.expected) {
     case 'CheckRunRecord': return fact.kind === 'check-run-record';
@@ -421,7 +401,7 @@ export function validateAssemblyRecordReferences(record: AssemblyRecord, context
       `${reference.field} reference resolves to a Part Ten record owned by the wrong semantic boundary`);
     ensure(status.taint.length === 0 && status.conflicts.length === 0,
       `${reference.field} reference is unavailable or conflicted: ${reference.id}`);
-    ensure(status.completeness === 'complete' || reference.allowPartial || reference.field === 'predecessors' || reference.field === 'dependencyFacts',
+    ensure(status.completeness === 'complete' || reference.field === 'predecessors' || reference.field === 'dependencyFacts',
       `${reference.field} reference is incomplete: ${reference.id}`);
   }
 }

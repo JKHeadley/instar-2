@@ -11,7 +11,7 @@ it('P10-NF-03 P10-NF-04 P10-NF-40 P10-NF-45 P10-NF-51 P10-NF-52 [P10-SEAM-04] th
   const coordinator = value(bootProductionAssembly({ ...f.composition, production }, installed.manifest.id, binding.scope));
   expect(coordinator).toMatchObject({ owner: 'part-ten', scope: binding.scope, admission: { id: installed.admission.id, disposition: 'active' } });
   expect(Object.keys(coordinator.handles)).toEqual([
-    'persistence', 'harnesses', 'model', 'intake', 'run', 'lease', 'judgment', 'effect', 'verification', 'surface',
+    'persistence', 'harnesses', 'model', 'intake', 'run', 'lease', 'judgment', 'effect', 'verification', 'verificationClock', 'surface',
     'challengeVerifier', 'folds', 'replay', 'minimalResponder', 'dependencyAdmission', 'dependencies', 'lifecycle', 'deliveryWitness',
   ]);
   expect(coordinator.handles.folds.map(row => row.id)).toEqual(binding.minimalPlane.folds.map(row => row.projection));

@@ -47,6 +47,8 @@ export function productionOperatorSlice(options: {
     verifiedActIntake: { owner: 'part-four', id: binding.verifiedActIntake.implementation,
       operation: 'admitVerifiedAct', port: operator.composition.intake!.port as never },
     verification: { id: fixtureComposition.verification.id, port: verification.runtime },
+    verificationClock: { owner: 'part-nine', administration: 'independent', id: 'verification:clock',
+      current: () => assembly.success(verification.host.current().clock) },
     deliveryWitness: witness,
   };
   runtime = bootProductionSliceAssembly({ assembly: { ...assembly.composition, production }, manifest: installed.manifest.id,

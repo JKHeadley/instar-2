@@ -22,6 +22,7 @@ function handleIdentity(coordinator: AssemblyProductionCoordinator) {
     judgment: coordinator.handles.judgment.id,
     effect: coordinator.handles.effect.id,
     verification: coordinator.handles.verification.id,
+    verificationClock: coordinator.handles.verificationClock.id,
     folds: coordinator.handles.folds.map(row => `${row.id}:${row.implementation}`),
     replay: coordinator.handles.replay.id,
     responder: coordinator.handles.minimalResponder.id,

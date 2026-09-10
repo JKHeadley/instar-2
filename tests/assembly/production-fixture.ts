@@ -55,6 +55,7 @@ export function productionPublicPorts(scope = 'scope:minimal'): AssemblyManifest
     { port: 'JudgmentDoorway', version: '1', scope, implementation: 'judgment:doorway', artifact: h('6') },
     { port: 'EffectDoorway', version: '1', scope, implementation: 'effect:doorway', artifact: h('7') },
     { port: 'VerificationRuntimePort', version: '1', scope, implementation: 'verification:runtime', artifact: h('8') },
+    { port: 'VerificationClockPort', version: '1', scope, implementation: 'verification:clock', artifact: h('9') },
   ];
 }
 
@@ -92,6 +93,8 @@ export function productionComposition(f: RuntimeFixture, binding = productionBin
       handoff: noValue, observe: noValue, settle: noValue, inspect: noValue } as unknown as AssemblyProductionComposition['effect']['port'] },
     verification: { id: 'verification:runtime', port: { owner: 'part-nine', record: noValue, inspect: noValue,
       inspectCurrent: noValue, due: noValue, posture: noValue } as unknown as AssemblyProductionComposition['verification']['port'] },
+    verificationClock: { owner: 'part-nine', administration: 'independent', id: 'verification:clock',
+      current: () => ok(f.host.current().clock) },
     dependencyAdmission: { owner: 'part-ten', id: 'dependency:admission',
       admit: input => {
         if (input.name === cutAt) throw new Error(`deterministic prerequisite cut: ${input.name}`);

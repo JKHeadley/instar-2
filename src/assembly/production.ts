@@ -200,6 +200,7 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
       ['RunGraphPort', production.run], ['TransportAuthority', production.lease], ['JudgmentDoorway', production.judgment],
       ['EffectDoorway', production.effect], ['VerificationRuntimePort', production.verification],
     ] as const) requirePublicPort(manifest, scope, port, handle.id);
+    requirePublicPort(manifest, scope, 'VerificationClockPort', production.verificationClock.id);
     requireMethod(production.run.port.read, 'RunGraphPort.read');
     requireMethod(production.lease.port.acquire, 'TransportAuthority.acquire');
     requireMethod(production.judgment.port.judge, 'JudgmentDoorway.judge');
@@ -207,6 +208,10 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
     requireMethod(production.effect.port.dispatch, 'EffectDoorway.dispatch');
     ensure(production.verification.port.owner === 'part-nine', 'verification runtime must be issued by Part Nine');
     requireMethod(production.verification.port.inspectCurrent, 'VerificationRuntimePort.inspectCurrent');
+    ensure(production.verificationClock.owner === 'part-nine'
+      && production.verificationClock.administration === 'independent',
+    'verification clock must belong to the independently administered Part Nine domain');
+    requireMethod(production.verificationClock.current, 'AssemblyVerificationClockPort.current');
 
     ensure(production.folds.length === binding.minimalPlane.folds.length, 'minimal-plane fold binding count differs');
     for (const row of binding.minimalPlane.folds) {
@@ -256,7 +261,8 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
     const admission = take(runtime.admit(manifestId, scope));
     const handles = Object.freeze({ persistence: composition.persistence, harnesses: composition.harnesses, model: composition.model,
       intake: production.verifiedActIntake, run: production.run, lease: production.lease, judgment: production.judgment,
-      effect: production.effect, verification: production.verification, surface: production.surface,
+      effect: production.effect, verification: production.verification, verificationClock: production.verificationClock,
+      surface: production.surface,
       challengeVerifier: production.challengeVerifier, folds: production.folds, replay: production.replay,
       minimalResponder: production.minimalResponder, dependencyAdmission: production.dependencyAdmission,
       dependencies: Object.freeze(dependencyHandles), lifecycle: production.lifecycle, deliveryWitness: witness });

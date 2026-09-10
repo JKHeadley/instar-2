@@ -307,6 +307,12 @@ export interface AssemblyPlatformDeliveryWitnessPort {
   readonly platform: string;
   observe(operation: string): Result<unknown>;
 }
+export interface AssemblyVerificationClockPort {
+  readonly owner: 'part-nine';
+  readonly administration: 'independent';
+  readonly id: string;
+  current(): Result<Clock>;
+}
 export interface AssemblyProductionComposition {
   readonly requesterIdentity: string;
   readonly effectAdapterIdentity: string;
@@ -321,6 +327,7 @@ export interface AssemblyProductionComposition {
   readonly judgment: Readonly<{ id: string; port: JudgmentDoorway }>;
   readonly effect: Readonly<{ id: string; port: EffectDoorway }>;
   readonly verification: Readonly<{ id: string; port: VerificationRuntimePort }>;
+  readonly verificationClock: AssemblyVerificationClockPort;
   readonly dependencyAdmission: AssemblyDependencyAdmissionPort;
   readonly lifecycle: AssemblyPrerequisiteLifecyclePort;
   readonly deliveryWitness: AssemblyPlatformDeliveryWitnessPort;
@@ -349,6 +356,7 @@ export interface AssemblyProductionCoordinator {
     judgment: AssemblyProductionComposition['judgment'];
     effect: AssemblyProductionComposition['effect'];
     verification: AssemblyProductionComposition['verification'];
+    verificationClock: AssemblyVerificationClockPort;
     surface: OperatorSurfacePort;
     challengeVerifier: AssemblyProductionComposition['challengeVerifier'];
     folds: readonly AssemblyProjectionFoldBinding[];

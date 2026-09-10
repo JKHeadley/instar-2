@@ -25,6 +25,10 @@ function text(input: Json | undefined, name: string): string {
   requireOperator(typeof input === 'string' && input.trim().length > 0, `P11-NF-18: ${name} is missing`);
   return input;
 }
+function presentText(input: Json | undefined, name: string): string {
+  requireOperator(typeof input === 'string', `P11-NF-18: ${name} is missing`);
+  return input;
+}
 function integer(input: Json | undefined, name: string): number {
   requireOperator(Number.isSafeInteger(input), `P11-NF-18: ${name} must be a safe integer`);
   return input as number;
@@ -124,7 +128,7 @@ function requestView(composition: OperatorSurfaceComposition, reference: string)
     standingGrantCandidate: recurrence.length ? Object.freeze({ actions: Object.freeze([action]), scope, expiresAt: grantExpiresAt }) : null,
     currentGeneration: composition.history.generation(), completeness: resolved.completeness, missing: resolved.missing,
     primaryActions: Object.freeze(['approve', 'decline'] as const), plainLanguageEffect: effectLanguage(action, scope, audience, consequence, reversibility),
-    requesterText: Object.freeze({ label: 'UNTRUSTED REQUESTER TEXT' as const, text: text(body.requesterProse, 'requesterProse') }),
+    requesterText: Object.freeze({ label: 'UNTRUSTED REQUESTER TEXT' as const, text: presentText(body.requesterProse, 'requesterProse') }),
     fieldsEditable: false as const, phoneCapable: true as const });
 }
 

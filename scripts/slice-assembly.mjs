@@ -147,13 +147,12 @@ export function bootProductionSliceAssembly(input) {
       // probe against its current Evidence/capture inventory. Requiring this
       // exact record as both the last attempt and last success prevents another
       // probe under the same plan from lending it a healthy label.
-      // Part Nine may administer a clock distinct from the slice harness. Use
-      // the signed probe completion instant to ask whether its witness
-      // references still resolve in Part Nine's *current* evidence inventory;
-      // do not manufacture staleness by imposing the caller's unrelated clock.
-      const postureClock = observed
-        ? Object.freeze({ ...slice.now(), value: observed.record.completedAt, at: observed.record.completedAt })
-        : null;
+      // Freshness is a claim at the current instant in Part Nine's own clock
+      // domain. The signed completion instant identifies when the probe ran; it
+      // cannot be replayed as "now" after its witness has aged out. On restart,
+      // the same owner clock also places a newly recorded observation and its
+      // evaluation on one consistent timeline.
+      const postureClock = observed ? take(coordinator.handles.verificationClock.current()) : null;
       const posture = observed
         ? settled(coordinator.handles.verification.port.posture(observed.record.plan, postureClock))
         : { ok: false, detail: 'selected probe is absent from current Part Nine history' };
@@ -385,6 +384,7 @@ function restartProductionAssembly(slice) {
     ['IntakePort.admitVerifiedAct', 'intake:verified-act', '3'], ['RunGraphPort', 'run:graph', '4'],
     ['TransportAuthority', 'lease:authority', '5'], ['JudgmentDoorway', 'judgment:doorway', '6'],
     ['EffectDoorway', 'effect:doorway', '7'], ['VerificationRuntimePort', 'verification:runtime', '8'],
+    ['VerificationClockPort', 'verification:clock', '9'],
   ].map(([port, implementation, digit]) => ({ port, version: '1', scope, implementation, artifact: h(digit) }));
   manifest = manifest ?? take(runtime.record('AssemblyManifest', { ...common('AssemblyManifest', 'manifest:restart-production'), manifestDigest: h('9'),
     packages: [{ id: 'slice', digest: h('a'), artifact: h('b') }], compatibility: { runtime: 'node', toolchain: 'compiled',
@@ -417,6 +417,8 @@ function restartProductionAssembly(slice) {
     run: { id: 'run:graph', port: slice.runGraph() }, lease: { id: 'lease:authority', port: slice.transport },
     judgment: { id: 'judgment:doorway', port: slice.judgment }, effect: { id: 'effect:doorway', port: slice.effects },
     verification: { id: 'verification:runtime', port: verification },
+    verificationClock: { owner: 'part-nine', administration: 'independent', id: 'verification:clock',
+      current: () => ok(verificationHost.current().clock) },
     dependencyAdmission: { owner: 'part-ten', id: 'dependency:admission', admit: input => slice.result(() => {
       if (cutDependencies.has(input.name)) throw new Error(`deterministic prerequisite cut: ${input.name}`);
       const commonHandle = { name: input.name, reference: input.fact.id, provider: `provider:${input.name}`, current: true };
