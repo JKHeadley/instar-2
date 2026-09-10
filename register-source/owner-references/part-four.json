@@ -555,6 +555,78 @@
       }
     },
     {
+      "id": "P4-ST-60",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-repair12.test.ts",
+        "hash": "sha256:3d46dfbe7df75df11868fc6b5d9b690ac7cb7a9b22519c80bcfec871d61963d8"
+      }
+    },
+    {
+      "id": "P4-ST-61",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-repair12.test.ts",
+        "hash": "sha256:3d46dfbe7df75df11868fc6b5d9b690ac7cb7a9b22519c80bcfec871d61963d8"
+      }
+    },
+    {
+      "id": "P4-ST-62",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-repair12.test.ts",
+        "hash": "sha256:3d46dfbe7df75df11868fc6b5d9b690ac7cb7a9b22519c80bcfec871d61963d8"
+      }
+    },
+    {
+      "id": "P4-ST-63",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/integration/intake-scheduled-repair12.test.ts",
+        "hash": "sha256:defb927e6c502063585f8e1f22cb9ae4401dafdd4983138a9b0100d1294149f3"
+      }
+    },
+    {
+      "id": "P4-ST-64",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/integration/intake-scheduled-repair12.test.ts",
+        "hash": "sha256:defb927e6c502063585f8e1f22cb9ae4401dafdd4983138a9b0100d1294149f3"
+      }
+    },
+    {
+      "id": "P4-ST-65",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/integration/intake-scheduled-repair12.test.ts",
+        "hash": "sha256:defb927e6c502063585f8e1f22cb9ae4401dafdd4983138a9b0100d1294149f3"
+      }
+    },
+    {
+      "id": "P4-ST-66",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/e2e/intake-scheduled-repair12.test.ts",
+        "hash": "sha256:280aa3d944ef956c22831a61156083e7fa5f5e37619dcde7be5053ce42072034"
+      }
+    },
+    {
+      "id": "P4-ST-67",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/e2e/intake-scheduled-repair12.test.ts",
+        "hash": "sha256:280aa3d944ef956c22831a61156083e7fa5f5e37619dcde7be5053ce42072034"
+      }
+    },
+    {
+      "id": "P4-ST-68",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/e2e/intake-scheduled-repair12.test.ts",
+        "hash": "sha256:280aa3d944ef956c22831a61156083e7fa5f5e37619dcde7be5053ce42072034"
+      }
+    },
+    {
       "id": "P4-PRESERVE-01",
       "stage": "build",
       "artifact": {
@@ -589,7 +661,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:1d83091d3d4b583081d8927c7ed8e49bba44d07fb6216014c43a7674556715af"
+        "hash": "sha256:68f4e2f653c776ffd40574c184a959ad9abdeff6cf46e0e5f9285be7c3f3030c"
       }
     },
     {
@@ -600,7 +672,18 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:1d83091d3d4b583081d8927c7ed8e49bba44d07fb6216014c43a7674556715af"
+        "hash": "sha256:68f4e2f653c776ffd40574c184a959ad9abdeff6cf46e0e5f9285be7c3f3030c"
+      }
+    },
+    {
+      "id": "scheduledIntakeWorkRegistration",
+      "module": {
+        "path": "src/intake/index.ts",
+        "hash": "sha256:8a1063e898b7d9d36c238ea29046361fb178ab6ee8aa7c8377235539adc53d73"
+      },
+      "artifact": {
+        "path": "src/intake/records.ts",
+        "hash": "sha256:68f4e2f653c776ffd40574c184a959ad9abdeff6cf46e0e5f9285be7c3f3030c"
       }
     },
     {
@@ -611,7 +694,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:1d83091d3d4b583081d8927c7ed8e49bba44d07fb6216014c43a7674556715af"
+        "hash": "sha256:68f4e2f653c776ffd40574c184a959ad9abdeff6cf46e0e5f9285be7c3f3030c"
       }
     },
     {
@@ -622,7 +705,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:1d83091d3d4b583081d8927c7ed8e49bba44d07fb6216014c43a7674556715af"
+        "hash": "sha256:68f4e2f653c776ffd40574c184a959ad9abdeff6cf46e0e5f9285be7c3f3030c"
       }
     },
     {

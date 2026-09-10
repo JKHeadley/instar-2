@@ -12,14 +12,14 @@ const contracts = {
   'part-five': { decoders: owned('rungraph', ['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit', 'decodeSessionGrounding']),
     fixture: id => id === 'P5-NF-54', probe: id => id === 'P5-NF-55',
     test: (kind, path) => path === (kind === 'fixture' ? 'tests/rungraph/governance.test.ts' : 'tests/rungraph/scope.test.ts') },
-  'part-four': { decoders: { ...owned('intake', ['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration', 'intakeVerifiedActRegistration']),
+  'part-four': { decoders: { ...owned('intake', ['intakeDedupDefinition', 'intakeWorkRegistration', 'scheduledIntakeWorkRegistration', 'intakeStopRegistration', 'intakeVerifiedActRegistration']),
     'decode:Provenance': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
     'decode:VerifiedPrincipal': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
     readProjection: { module: 'src/projections/index.ts', artifact: 'src/projections/fold.ts', requires: 'intakeDedupDefinition' },
     authorAndAppend: { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', requires: 'intakeWorkRegistration' },
     'createFactStore.append': { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', symbol: 'createFactStore', requires: 'intakeWorkRegistration' } },
-    fixture: id => /^P4-(?:NF-(?:0[1-9]|1[0-9]|2[0-9])|VA-0[1-9]|ST-(?:0[1-9]|[1-5][0-9])|PRESERVE-0[1-3])$/.test(id), probe: id => id === 'P4-NF-29',
-    test: (_kind, path) => /^tests\/(?:intake\/[a-z][a-z0-9-]*|(?:integration|e2e)\/intake-scheduled(?:-repair(?:[6-9]|10|11))?)\.test\.ts$/.test(path) },
+    fixture: id => /^P4-(?:NF-(?:0[1-9]|1[0-9]|2[0-9])|VA-0[1-9]|ST-(?:0[1-9]|[1-5][0-9]|6[0-8])|PRESERVE-0[1-3])$/.test(id), probe: id => id === 'P4-NF-29',
+    test: (_kind, path) => /^tests\/(?:intake\/[a-z][a-z0-9-]*|(?:integration|e2e)\/intake-scheduled(?:-repair(?:[6-9]|10|11|12))?)\.test\.ts$/.test(path) },
 };
 const exact = (v, keys) => {
   if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !keys.includes(k)) || keys.some(k => !Object.hasOwn(v, k)))

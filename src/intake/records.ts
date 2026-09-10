@@ -86,7 +86,7 @@ export function registeredScheduledIntakeAdapters(register?: VerifiedRegister,re
 }
 
 export function isScheduledIntakeAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[],observerId: string,
-  _registeredScheduledAdapters: readonly string[]): boolean {
+  registeredScheduledAdapters: readonly string[]): boolean {
   if(fact.kind!=='intake-admitted') return false;
   const receipt=facts.find(candidate => candidate.id===object(fact.body).receipt&&candidate.kind==='intake-receipt');
   const arrival=receipt&&intakeArrival(receipt,observerId);
@@ -97,6 +97,18 @@ export function isScheduledIntakeAdmission(fact: FactEnvelope,facts: readonly Fa
   try {
     const body=object(fact.body),required=new Set(fact.predecessors.required);
     if(facts.some(candidate => required.has(candidate.id)&&candidate.kind==='intake-scheduled-principal')) return true;
+    // The signed admission envelope is independent identity evidence. It keeps
+    // scheduled validation selected when a required principal or resolution
+    // witness is missing or disagrees, so malformed scheduled work cannot fall
+    // through to the legacy decoder. A person admission on a dual-stimulus
+    // adapter remains ordinary regardless of its channel vocabulary.
+    try {
+      const provenance=object(fact.provenance),authenticated=object(provenance.authenticated!);
+      const signedPrincipal=object(authenticated.principal!);
+      if(registeredScheduledAdapters.includes(arrival.adapter)&&fact.principal.kind==='system'&&provenance.class==='verified'
+        &&authenticated.recordType==='package-system-principal'
+        &&signedPrincipal.id===fact.principal.id&&signedPrincipal.kind==='system') return true;
+    } catch { /* Existing signed resolution recognition still applies below. */ }
     return facts.some(candidate => {
       if(!required.has(candidate.id)||candidate.kind!=='intake-resolved') return false;
       const resolved=object(candidate.body),provenance=object(candidate.provenance);

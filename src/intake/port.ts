@@ -322,31 +322,38 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       const field=constitutionalField(selected.row,'StandingGrant',selected.grant.view.id,preserved);
       return { row: selected.row,grant: selected.grant,field };
     }
-    function scheduledDirectives(rows: readonly FactStatus[],preserved: string,allowed: ReadonlySet<string>) {
+    function scheduledDirectives(rows: readonly FactStatus[],preserved: string,allowed: ReadonlySet<string>,
+      required?: ReadonlySet<string>) {
       const witnessed=rows.filter(row => allowed.has(row.fact.id)).flatMap(row => {
         const schema=context(preserved).schemas.find(candidate => candidate.kind===row.fact.kind
           &&candidate.version===row.fact.schemaVersion);
         const fields=Object.entries(schema?.fields??{}).filter(([,field]) => field.kind==='constitutional'&&field.type==='Directive');
         if(fields.length===0) return [];
         const ids=new Set(fields.map(([field]) => text(object(object(row.body)[field]!).id,'directive id')));
-        const candidates=row.historical.filter((record): record is HistoricalRead<Directive> =>
-          record.view.type==='Directive'&&ids.has(record.view.id)).map(record => ({ fact: row.fact,record,status: row }));
-        const collapsed=collapseScheduledImmutableWitness(candidates,'origin','P4-NF-25: signed Directive dependency');
-        requireIntake(collapsed,'P4-NF-25: directive requires an available, uncontested historical witness','integrity');
-        const directive=collapsed.witness.record as HistoricalRead<Directive>;
-        const field=constitutionalField(row,'Directive',directive.view.id,preserved);
-        // The historical wrapper is the authority for a retained record. A
-        // live constitutional value is optional reader context and must not
-        // become a second availability requirement after the signed origin,
-        // capture, subject and conflict checks above have all succeeded.
-        return [{ row,field,directive }];
+        return [...ids].sort().map(id => {
+          const candidates=row.historical.filter((record): record is HistoricalRead<Directive> =>
+            record.view.type==='Directive'&&record.view.id===id).map(record => ({ fact: row.fact,record,status: row }));
+          const collapsed=collapseScheduledImmutableWitness(candidates,'origin','P4-NF-25: signed Directive dependency');
+          requireIntake(collapsed,'P4-NF-25: directive requires an available, uncontested historical witness','integrity');
+          const directive=collapsed.witness.record as HistoricalRead<Directive>;
+          const field=constitutionalField(row,'Directive',directive.view.id,preserved);
+          // The historical wrapper is the authority for a retained record. A
+          // live constitutional value is optional reader context and must not
+          // become a second availability requirement after the signed origin,
+          // capture, subject and conflict checks above have all succeeded.
+          return { row,field,directive };
+        });
       });
       const superseded=new Set(witnessed.flatMap(candidate => candidate.directive.view.supersedes? [candidate.directive.view.supersedes]:[]));
       const active=witnessed.filter(candidate => !candidate.directive.view.closedBy&&!superseded.has(candidate.directive.view.id)
         &&scopeIncludes(take(decode('Scope',candidate.directive.view.scope,context(preserved).decode)),scope));
       const identities=[...new Set(active.map(candidate => candidate.directive.view.id))].sort();
-      return identities.map(id => active.filter(candidate => candidate.directive.view.id===id)
-        .sort((left,right) => foldKey(left.row.fact)<foldKey(right.row.fact)?-1:foldKey(left.row.fact)>foldKey(right.row.fact)?1:0)[0]!);
+      return identities.map(id => {
+        const copies=active.filter(candidate => candidate.directive.view.id===id);
+        const linked=required?copies.filter(candidate => required.has(candidate.row.fact.id)):copies;
+        return (linked.length?linked:copies)
+          .sort((left,right) => foldKey(left.row.fact)<foldKey(right.row.fact)?-1:foldKey(left.row.fact)>foldKey(right.row.fact)?1:0)[0]!;
+      });
     }
     function isScheduledAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[]): boolean {
       try { return isScheduledIntakeAdmission(fact,facts,author.principal.id,registeredScheduledAdapters); }
@@ -399,7 +406,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       const originalReceipt=causalCone(row.fact,facts).find(candidate => intakeArrival(candidate,author.principal.id)?.logicalId===body.logicalId);
       requireIntake(originalReceipt&&required.includes(originalReceipt.id),
         'scheduled intake: original receipt is not a signed admission dependency','integrity');
-      const directives=scheduledDirectives(snapshot,preserved,cone);
+      const directives=scheduledDirectives(snapshot,preserved,cone,new Set(required));
       const directiveIds=directives.map(candidate => candidate.directive.view.id);
       requireIntake(directives.every(candidate => dependencies.some(dependency => dependency.fact.id===candidate.row.fact.id)),
         'P4-NF-25: admitted directive is not a signed dependency','integrity');
