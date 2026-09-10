@@ -49,6 +49,27 @@ it('R8-F1 main-vs-HEAD mutation harness preserves byte-identical outcomes for ev
   }
 });
 
+it('V72 main versus HEAD Part Ten decoder mutation comparison covers every original field deletion', async () => {
+  const legacy = await mainDecoder();
+  const base = assemblyRuntimeFixture();
+  let compared = 0, accepted = 0, refused = 0;
+  for (const name of Object.keys(assemblyShapes) as (keyof typeof assemblyShapes)[]) {
+    const original = assemblyInput(name);
+    const candidates = [original, { ...original, id: ' \t ' }, { ...original, schemaVersion: 2 },
+      { ...original, surprise: true },
+      ...Object.keys(original).map(key => Object.fromEntries(Object.entries(original).filter(([field]) => field !== key)))];
+    for (const candidate of candidates) {
+      const before = result(legacy(name, candidate, base.c));
+      const after = result(decodeAssemblyRecord(name, candidate, base.c));
+      expect(after, `${name}:${JSON.stringify(candidate)}`).toEqual(before);
+      compared++;
+      if (before.accepted) accepted++;
+      else refused++;
+    }
+  }
+  expect({ compared, accepted, refused }).toEqual({ compared: 322, accepted: 11, refused: 311 });
+});
+
 it.each([
   ['V87', 'GrowthPolicy', 'GrowthObservation', (id: string) => ({ policy: id })],
   ['V88', 'Measurement', 'GrowthObservation', (id: string) => ({ measurements: [id] })],

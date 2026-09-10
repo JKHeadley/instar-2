@@ -73,3 +73,11 @@ it('P11-V40 R4 every required confirmation operation must be callable before pro
       installed.manifest.id, binding.scope), `OperatorSurfacePort.${name}`);
   }
 }, 60_000);
+
+it('R9-F2 V65 production boot refuses before returning handles when verification posture is unavailable', () => {
+  const f = assemblyRuntimeFixture(), binding = productionBindingSet(), installed = installProduction(f, binding);
+  const production = productionComposition(f, binding);
+  production.verification.port.posture = undefined as never;
+  refused(bootProductionAssembly({ ...f.composition, production }, installed.manifest.id, binding.scope),
+    'VerificationRuntimePort.posture');
+});

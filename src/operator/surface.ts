@@ -2,7 +2,7 @@ import { authorizationRequestDigest, canonical, consumeResult, decode, grantLive
 import type { FactEnvelopeReference, Hash, Json, Result, Scope, VerifiedPrincipal } from '../index.js';
 import { causalCone, hashBytes } from '../facts/index.js';
 import type { FactSnapshot, FactStatus } from '../facts/index.js';
-import type { ProbeRecord } from '../verification/index.js';
+import type { ProbeRecord, ProtectionJournalEntry } from '../verification/index.js';
 import { constructGoverned } from '../register/index.js';
 import type { GeneratedRegister, RegisterContext } from '../register/index.js';
 import { operatorBoundary, requireOperator, take } from './boundary.js';
@@ -99,8 +99,9 @@ function requestView(composition: OperatorSurfaceComposition, reference: string)
   const livePrincipals = composition.history.decode().principals ?? [];
   const approverId = text(body.approverId, 'approverId'), requestedById = text(body.requestedById, 'requestedById');
   const approverCandidate = livePrincipals.find(principal => principal.id === approverId && principal.kind === 'person' && principal.provenance.class === 'verified');
-  const requesterCandidate = livePrincipals.find(principal => principal.id === requestedById && principal.provenance.class === 'verified');
-  requireOperator(approverCandidate && requesterCandidate, 'P11-NF-08: request principal references do not resolve to verified principals', 'standing');
+  const requesterCandidate = livePrincipals.find(principal => principal.id === requestedById);
+  requireOperator(approverCandidate && requesterCandidate,
+    'P11-NF-08: request principal references do not resolve to an independently verified approver and authentic requester', 'standing');
   const decoded = composition.history.decode();
   for (const principal of [approverCandidate, requesterCandidate]) {
     const bytes = decoded.captures[principal.provenance.record.reference];
@@ -195,7 +196,12 @@ function bindingView(composition: OperatorSurfaceComposition, input: Readonly<{ 
 }
 
 function protectionView(composition: OperatorSurfaceComposition, operation: string, path: string): ProtectionReceiptView {
-  const receipt = take(composition.broker.query(operation));
+  type BrokerRead = Readonly<{ ok: true; receipt: ProtectionJournalEntry | null }> | Readonly<{ ok: false; detail: string }>;
+  const brokerRead = consumeResult<ProtectionJournalEntry | null, BrokerRead>(composition.broker.query(operation), {
+    Success: receipt => ({ ok: true, receipt }),
+    Refused: refusal => ({ ok: false, detail: refusal.detail }),
+  });
+  const receipt = brokerRead.ok ? brokerRead.receipt : null;
   const brokerPosture = take(composition.broker.posture(path));
   const rows = take(composition.verification.inspectCurrent());
   const probes = rows.filter((row): row is typeof row & { record: ProbeRecord } => row.record.type === 'ProbeRecord'
@@ -210,6 +216,7 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
   const isolationLive = take(composition.isolation.live(path));
   const receiptMatches = !!receipt && receipt.operation === operation && receipt.path === path;
   const uncertainty: string[] = [];
+  if (!brokerRead.ok) uncertainty.push(`broker-evidence-unavailable:${brokerRead.detail}`);
   if (!receipt) uncertainty.push('broker-receipt-missing');
   else if (!receiptMatches) uncertainty.push('broker-receipt-subject-mismatch');
   else if (receipt.disposition !== 'committed') uncertainty.push('broker-receipt-uncommitted');

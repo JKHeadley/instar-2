@@ -208,6 +208,7 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
     requireMethod(production.effect.port.dispatch, 'EffectDoorway.dispatch');
     ensure(production.verification.port.owner === 'part-nine', 'verification runtime must be issued by Part Nine');
     requireMethod(production.verification.port.inspectCurrent, 'VerificationRuntimePort.inspectCurrent');
+    requireMethod(production.verification.port.posture, 'VerificationRuntimePort.posture');
     ensure(production.verificationClock.owner === 'part-nine'
       && production.verificationClock.administration === 'independent',
     'verification clock must belong to the independently administered Part Nine domain');

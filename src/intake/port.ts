@@ -59,7 +59,6 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     const registerGenerationReference={ owner: 'part-three',name: 'RegisterGeneration',id: registerGeneration.id } as const;
     const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id));
     const stopRegistration=take(intakeStopRegistration(b,deps.author.principal.id));
-    const ordinaryRegistrations=[workRegistration,stopRegistration];
     const verifiedActRegistration=hasVerifiedActSchemas
       ? take(intakeVerifiedActRegistration(b,deps.author.principal.id,registerGenerationReference)):undefined;
     // Snapshot assembly choices. Only context()/clock()/storage are live provider inputs.
@@ -104,10 +103,10 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
 
     function context(preserved: string,principal?: VerifiedPrincipal): FactContext {
       const c=deps.context();
+      const ordinaryRegistrations=[...c.ownedBodies?.filter(r => !(r.owner==='part-four'
+        &&['IntakeWork','IntakeStop','VerifiedActDisposition'].includes(r.name)))??[],workRegistration,stopRegistration];
       return {
-        ...c,preserved,ownedBodies: [...c.ownedBodies?.filter(r => !(r.owner==='part-four'
-          &&['IntakeWork','IntakeStop','VerifiedActDisposition'].includes(r.name)))??[],...ordinaryRegistrations,
-          ...verifiedActRegistration? [verifiedActRegistration]:[]],decode: {
+        ...c,preserved,ownedBodies: [...ordinaryRegistrations,...verifiedActRegistration? [verifiedActRegistration]:[]],decode: {
           ...c.decode,preserved,
           principals: [...c.decode.principals??[],author.principal,...principal? [principal]:[]]
         }

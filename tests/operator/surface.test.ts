@@ -29,6 +29,17 @@ it('P11-NF-04 P11-NF-05 P11-NF-06 the registered phone surface renders immutable
   expect(JSON.stringify(view).indexOf('plainLanguageEffect')).toBeLessThan(JSON.stringify(view).indexOf('requesterText'));
 });
 
+it('R9-F3 V69 a channel-attested authentic requester renders while the operator remains independently verified', () => {
+  const x = operatorFixture(), requester = x.f.principal('bob', 'person', true);
+  x.syncCaptures();
+  const history = { ...x.history, decode: () => ({ ...x.history.decode(),
+    principals: x.history.decode().principals?.map(principal => principal.id === requester.id ? requester : principal) }) };
+  const surface = value(createOperatorSurface({ ...x.composition, history }));
+  const view = value(surface.render(x.request.id));
+  expect(view.requestedBy).toMatchObject({ id: 'bob', provenance: { class: 'channel-attested' } });
+  expect(view.approver).toMatchObject({ id: 'alice', provenance: { class: 'verified' } });
+});
+
 it('P11-NF-07 P11-NF-08 a fresh explicit independently verified yes binds the exact durable request and enters only Part Four intake', () => {
   const x = operatorFixture(), surface = x.surface(), challenge = value(surface.challenge(x.request.id));
   const receipt = value(surface.confirm({ challenge, proof: 'signed-proof', decision: 'approve' }));
@@ -209,7 +220,7 @@ it('P11-NF-10 P11-NF-13 an unwitnessed operation cannot borrow a healthy result 
   expect(value(protectedSurface.protection(earlier.operation, earlier.subject))).toMatchObject({ posture: 'unprotected', witnessFresh: false });
 });
 
-it('P11-NF-13 a broker outage closes the protected receipt while request diagnosis remains reachable', () => {
+it('R9-F4 V68 a broker outage renders explicit unprotected evidence while request diagnosis remains reachable', () => {
   const x = operatorFixture();
   x.setProofMode('replay');
   const broken = { ...x.composition, broker: { ...x.composition.broker, query: () => x.verifier.verify({ id: 'bad', request: 'bad',
@@ -217,7 +228,12 @@ it('P11-NF-13 a broker outage closes the protected receipt while request diagnos
     singleUse: true, action: 'work', scope: x.f.scope, requestedBy: x.f.bob.id, artifact: x.f.artifact, base: x.f.authorization.base,
     issuedAt: 0, surface: 'phone-surface', generation: x.context.decode.register.generation }, 'bad', 'approve') as never } };
   const surface = value(createOperatorSurface(broken));
-  expect(x.detail(surface.protection('operation:1', '/protected/policy'))).not.toBe('');
+  const protection = value(surface.protection('operation:1', '/protected/policy'));
+  expect(protection.posture).toBe('unprotected');
+  expect(protection.uncertainty).toEqual(expect.arrayContaining([
+    expect.stringContaining('broker-evidence-unavailable:'), 'broker-receipt-missing',
+  ]));
+  expect('install' in surface).toBe(false);
   expect(value(surface.render(x.request.id)).requestId).toBe('request:1');
 });
 

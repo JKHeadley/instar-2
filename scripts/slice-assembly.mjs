@@ -27,7 +27,7 @@ import { createJudgmentDoorway, createJudgmentSpine, createModelAdapter, judgmen
 import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, decodeOutboundMessage, effectSchemas, installOperationDefinition, registerEffectBodies } from '../dist/effects/index.js';
 import { checkpoint, foldProjection, rebuildProjection, restoreCheckpoint, signCheckpoint, verifyRebuild } from '../dist/projections/index.js';
 import { assemblySchemas, bootProductionAssembly, createAssemblyRuntime, createAssemblySpine,
-  registerAssemblyBodies } from '../dist/assembly/index.js';
+  inspectProductionAssemblyBindings, registerAssemblyBodies } from '../dist/assembly/index.js';
 import { createOperatorSurface, minimalPlaneProjectionIds, minimalPlaneProjections,
   requiredMinimalDependencies } from '../dist/operator/index.js';
 import { createVerificationRuntime, createVerificationSpine, registerVerificationBodies,
@@ -77,14 +77,46 @@ export function bootProductionSliceAssembly(input) {
     effect: Object.freeze({ ...supplied.effect, port: slice.effects }),
   });
   const coordinator = take(bootProductionAssembly({ ...assembly, production }, manifest, scope));
+  const dependencyKinds = Object.freeze({
+    'local-facts': 'fact-local-durable-segment', register: 'register-generation-record', 'identity-keys': 'identity-key-set',
+    clock: 'clock-source', lease: 'transport-Lease', fence: 'transport-FenceToken',
+    'replication-peer': 'fact-replication-receipt', 'conversation-binding': 'conversation-binding',
+    route: 'conversation-route', 'delivery-evidence': 'delivery-evidence-service',
+  });
+  const liveHandleMismatch = (name, reference, handle) => {
+    if (!handle || typeof handle !== 'object' || handle.name !== name || handle.reference !== reference.fact.id
+      || reference.expectedKind !== dependencyKinds[name] || reference.fact.kind !== dependencyKinds[name]
+      || reference.completeness !== 'complete' || reference.missing.length !== 0
+      || handle.current !== true || typeof handle.provider !== 'string' || handle.provider.trim().length === 0)
+      return `live dependency handle differs, has the wrong kind, is incomplete, or is stale: ${name}`;
+    switch (name) {
+      case 'local-facts': return handle.durability === 'local-durable' ? null : 'minimal fact segment is not local-durable';
+      case 'register': return typeof handle.generation === 'string' && handle.generation.trim() ? null : 'current decoder/register generation is unavailable';
+      case 'identity-keys': return typeof handle.keys === 'string' && handle.keys.trim() ? null : 'current identity keys are unavailable';
+      case 'clock': return typeof handle.clock === 'string' && handle.clock.trim() ? null : 'current clock is unavailable';
+      case 'lease':
+      case 'fence': return handle.exclusive === true ? null : `minimal ${name} is not exclusive`;
+      case 'replication-peer': return handle.replicas === 1 && handle.distinctPeer === true ? null
+        : 'replicated(1) requires one distinct authenticated peer acknowledgement';
+      case 'conversation-binding': return typeof handle.binding === 'string' && handle.binding.trim() ? null : 'current conversation binding is unavailable';
+      case 'route': return typeof handle.route === 'string' && handle.route.trim() ? null : 'current conversation route is unavailable';
+      case 'delivery-evidence': return handle.administration === 'independent' ? null
+        : 'delivery-evidence service must be independently administered';
+      default: return `unknown required production dependency: ${name}`;
+    }
+  };
   const admitCurrentDependencies = () => {
+    const current = settled(inspectProductionAssemblyBindings({ ...assembly, production }, manifest, scope));
+    if (!current.ok) return { admitted: false, name: 'signed-history', detail: current.detail };
     for (const name of requiredMinimalDependencies) {
-      const reference = coordinator.references.find(row => row.name === `dependency:${name}`);
+      const reference = current.value.find(row => row.name === `dependency:${name}`);
       if (!reference) return { admitted: false, name, detail: `required production dependency reference is missing: ${name}` };
       try {
         const admission = settled(coordinator.handles.dependencyAdmission.admit({ name, fact: reference.fact,
           completeness: reference.completeness, missing: reference.missing }));
         if (!admission.ok) return { admitted: false, name, detail: admission.detail };
+        const mismatch = liveHandleMismatch(name, reference, admission.value);
+        if (mismatch) return { admitted: false, name, detail: mismatch };
       } catch (error) {
         return { admitted: false, name, detail: error instanceof Error ? error.message : String(error) };
       }
@@ -115,6 +147,14 @@ export function bootProductionSliceAssembly(input) {
       const applied = typeof operation === 'string' && operation.length > 0
         && report.externalApplications?.some(row => row.operation === operation) === true;
       if (!applied) {
+        const prerequisiteOutage = report.obligations?.filter(row => row.state === 'owned-pending-prerequisite-outage').at(-1);
+        if (prerequisiteOutage) return Object.freeze({ ...report, assemblyBoot,
+          authorityCompletion: Object.freeze({ request, disposition: authority.id, owner: authority.owner }),
+          independentlyWitnessedResult: Object.freeze({ owner: 'part-nine', administration: 'independent',
+            operation: null, platform: coordinator.handles.deliveryWitness.platform, stage: 'not-reached',
+            disposition: 'owned-uncertain', reason: prerequisiteOutage.detail, probe: null }),
+          verificationFacts: Object.freeze([]), verificationRecords: Object.freeze([]),
+        });
         if (!restart) throw new Error('production slice produced no admitted outbound operation');
         const verification = take(coordinator.handles.verification.port.inspectCurrent());
         const observed = verification.find(row => row.record?.type === 'ProbeRecord'
