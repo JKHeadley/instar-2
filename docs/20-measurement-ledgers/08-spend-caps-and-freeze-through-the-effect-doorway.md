@@ -19,16 +19,18 @@ built under the current owner contracts; it does not choose whether a positive c
 open paid service. Decision 8 asks the operator to choose between the current-contract proposal,
 where a current authorized positive cap plus current not-frozen proceeds to six's ordinary
 admission, and a separate-action policy, where those states remain insufficient until a distinct
-operator action has turned paid service on. The closing Rule block names the owner-design
-amendments the separate-action choice requires.
+operator action has turned paid service on. Section 13 keeps the separate-action alternative in a
+proposal outside the executable and granted P16 contract.
 
 `SEAM-LEDGER.md` row 65 refuses the proposed separate activation/readiness seam as beyond the
 currently approved owners' scope and returns the policy choice to the operator. It neither selects
-the current-contract proposal nor grants the separate-action path. P16-NF-35/45/49/51 activation
-arms remain non-executable until decision 8 is answered, the exact cap/freeze scope in
-`seam-response-effects-followup.md` lands, and any owner amendment required by the answer also
-lands. Under either choice, an absent, zero or negative cap cannot permit spending, a current
-freeze refuses before ordinary spend admission, and freeze remains independently reachable.
+the current-contract proposal nor grants the separate-action path. If decision 8 selects the
+current-contract option, the P16-NF-35/45/49/51 paid-opening arms remain non-executable until the
+exact cap/freeze scope in `seam-response-effects-followup.md` lands. If decision 8 selects a
+separate action, section 13's proposal first requires approved amendments to the owner designs;
+that alternative supplies no P16 check or acceptance evidence today. Under either choice, an
+absent, zero or negative cap cannot permit spending, a current freeze refuses before ordinary
+spend admission, and freeze remains independently reachable.
 
 **Rule — changing a cap and releasing a freeze require operator authority.** Rules 4, 28, 79, 82,
 89 and 98; **checks: P16-NF-35/51/52**. The action begins as an exact authorization

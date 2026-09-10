@@ -103,12 +103,14 @@ different decisions, and keeping them separate reduces accidental spending.
 and Part Ten designs. That refusal leaves decision 8 open; it neither selects the current-contract
 proposal nor grants a separate-action path. If the operator chooses the current-contract proposal,
 current authorized positive cap plus current not-frozen proceeds inside six's ordinary admission
-without a separate activation/readiness contract. If the operator chooses a separate action, the
-approved Part Eight design must be amended to add an operator-authorized per-door arm/disarm effect,
-and the approved Part Ten design must be amended to add a current paid-service readiness read and
-bind it into assembly admission. P16-NF-35/45/49/51 activation arms remain non-executable until
-that decision is answered, the exact cap/freeze grant in `seam-response-effects-followup.md` lands
-with production wiring, and any amendment required by the answer is granted and landed.
+without a separate activation/readiness contract; P16-NF-35/45/49/51 include that paid-opening arm
+only after this choice, and it remains non-executable until the exact cap/freeze grant in
+`seam-response-effects-followup.md` lands with production wiring. If the operator chooses a
+separate action, section 13's proposal requires the approved Part Eight design to be amended with
+an operator-authorized per-door arm/disarm effect and the approved Part Ten design to be amended
+with a current paid-service readiness read bound into assembly admission. That proposal is not an
+arm of P16-NF-35/45/49/51 and gains no executable checks until those owner amendments are separately
+governed and approved.
 P16-NF-32's benchmark-window arm is separately non-executable until the conditionally granted
 `P16-P7-benchmark-run-start-clock-v1` addendum at the end of
 `seam-response-judgment.md`, tracked in `SEAM-LEDGER.md` row 73, lands. This document claims no

@@ -82,13 +82,16 @@ total. Earlier snapshots remain historical points. Cache, reasoning and quota-wi
 remain separate. Each category also retains whether the source reported it. The 1.x Claude
 event path and Codex cumulative-session path both lose that distinction. Claude
 `TokenLedger.ingestLine()` coerces an absent or null input, output, cache-creation or cache-read
-category to zero, and its `token_events` rows retain no category-presence field. The Codex
-rollout parser likewise coerces absent or malformed token categories to zero before the session
-upsert. Migration reparses the original Claude transcript bytes or Codex rollout bytes when
-available, so absent, null, malformed and explicitly reported numeric zero remain distinct. When
-the applicable source bytes are unavailable, a stored legacy zero whose origin cannot be
-recovered is an `origin-lost legacy zero` and remains uncertain rather than becoming evidence
-that the source reported zero. The cumulative aggregate appears in its own coverage-limitation row and is excluded from attempt
+category to zero, and its `token_events` rows retain no category-presence field. The Codex rollout
+parser instead applies JavaScript number conversion and keeps any finite result. An absent property
+becomes zero through the non-finite fallback; `true` becomes 1, `"125"` and `[125]` become 125,
+and negative or fractional numbers survive unchanged. Migration reparses the original Claude
+transcript bytes or Codex rollout bytes when available. Only an original category value that is a
+JSON number and a non-negative integer can support source-reported token usage; absent, null, malformed,
+coercible non-numbers, negative numbers, fractional numbers and explicitly reported numeric zero
+remain distinct. When the applicable original bytes are unavailable, every stored numeric value is
+`origin-lost legacy numeric evidence`: the number is retained with that label but is never called
+source-reported usage. The cumulative aggregate appears in its own coverage-limitation row and is excluded from attempt
 coverage, per-feature call attribution and burn unless independent evidence maps exact deltas to
 canonical attempts. Absence of that mapping is `per-call attribution unsupported`, not zero usage
 and not a synthesized `JudgmentAttemptRecord`.
