@@ -40,6 +40,15 @@ it('SLB-LEGACY-DIFFERENTIAL-53 V23 matches main Result bytes for signed legacy L
     wrongRun: (record: Record<string, unknown>) => ({ ...record, run: '' }),
     wrongEpisode: (record: Record<string, unknown>) => ({ ...record, episode: '' }),
     invalidState: (record: Record<string, unknown>) => ({ ...record, state: 'bad' }),
+    pressureKey: (record: Record<string, unknown>) => ({ ...record, pressureKey: 'pressure:invented' }),
+    episodeKey: (record: Record<string, unknown>) => ({ ...record, episodeKey: 'episode:invented' }),
+    transition: (record: Record<string, unknown>) => ({ ...record, transition: 'closed' }),
+    closureEvidence: (record: Record<string, unknown>) => ({ ...record, closureEvidence: [] }),
+    failureCount: (record: Record<string, unknown>) => ({ ...record, failureCount: 1 }),
+    parentDuty: (record: Record<string, unknown>) => ({ ...record,
+      parentDuty: { owner: 'part-five', name: 'Run', id: 'run:invented' } }),
+    policyExtra: (record: Record<string, unknown>) => ({ ...record,
+      policy: { ...(record.policy as Record<string, unknown>), initialDelay: 1 } }),
   } as const;
   const mainBaseline = {
     extra: refusal('unknown field'),
@@ -48,6 +57,13 @@ it('SLB-LEGACY-DIFFERENTIAL-53 V23 matches main Result bytes for signed legacy L
     wrongRun: refusal('stable loop episode'),
     wrongEpisode: refusal('stable loop episode'),
     invalidState: refusal('loop state or count'),
+    pressureKey: refusal('unknown field'),
+    episodeKey: refusal('unknown field'),
+    transition: refusal('unknown field'),
+    closureEvidence: refusal('unknown field'),
+    failureCount: refusal('unknown field'),
+    parentDuty: refusal('unknown field'),
+    policyExtra: refusal('unknown field'),
   };
 
   for (const [name, mutate] of Object.entries(mutations)) {
@@ -57,6 +73,6 @@ it('SLB-LEGACY-DIFFERENTIAL-53 V23 matches main Result bytes for signed legacy L
       Success: (accepted: any) => ({ accepted }),
       Refused: (refused: any) => ({ refused }),
     } as any);
-    expect(value(canonical(actual)).bytes).toBe(value(canonical(mainBaseline[name as keyof typeof mainBaseline])).bytes);
+    expect(value(canonical(actual)).bytes, name).toBe(value(canonical(mainBaseline[name as keyof typeof mainBaseline])).bytes);
   }
 });

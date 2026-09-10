@@ -8,7 +8,7 @@ import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAutho
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, latestSharedLoop, live, loopActive, missedRangeCheck, missedRows,
   missedRangeEvidence, observationAdmission, policyCheck, reservations, resolveConstitutionalResult, resolveMissedRangeEvidence, resolvePolicyFact, resolveRunReference, resolveSourceVector, rows,
-  resolvePressureBinding, restorationReferenceComplete, sharedAdmissionDecision, sharedLoopEvidence, sharedOutcomeDecision, sourceVectorCheck,
+  resolvePressureBinding, resolveSharedLoopAdmission, restorationReferenceComplete, sharedAdmissionDecision, sharedLoopEvidence, sharedOutcomeDecision, sourceVectorCheck,
   validateMissedRangeHistory, validateScanGeneration, validateSharedParentPolicy, validateTransition,
   withMissedRangeCandidate, withSharedLoopCandidate } from './records.js';
 import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
@@ -178,9 +178,10 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
   };
   const atOrAfter = (left: Clock, right: Clock) => sameClock(left, right) && left.value >= right.value;
   const vectorKey = (vector: SharedLoopRecord['sourceVector']) => encoded(vector).bytes;
+  const compareBytes = (left: string, right: string) => Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'));
   const sortedOutcomes = (outcomes: readonly LoopOutcome[]) => [...outcomes].sort((a, b) =>
     a.observedAt.value - b.observedAt.value
-      || vectorKey(a.sourceVector).localeCompare(vectorKey(b.sourceVector)) || a.attempt.localeCompare(b.attempt));
+      || compareBytes(vectorKey(a.sourceVector), vectorKey(b.sourceVector)) || compareBytes(a.attempt, b.attempt));
   const windowAt = (record: Pick<SharedLoopRecord, 'policy' | 'outcomeLog'>, now: Clock) => sortedOutcomes(record.outcomeLog
     .filter(outcome => sameClock(outcome.observedAt, now) && outcome.observedAt.value > now.value - record.policy.acceptedOutcomeWindow));
   const failureCountAt = (policy: SharedLoopRecord['policy'], outcomes: readonly LoopOutcome[]) => {
@@ -648,16 +649,20 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
           && previous.semanticMessage === input.semanticMessage && previous.durability === input.durability && previous.replicas === input.replicas, 'operation mapping changed');
         return previous;
       }
+      const loopAdmission = resolveSharedLoopAdmission(all, input.run.id, input.attempt);
       return write(all, { ...meta(all, input.command), type: 'AdmissionReservation', operation, request: input.request.id,
         attempt: input.attempt, digest: input.payloadDigest, run: input.run.id, semanticMessage: input.semanticMessage,
         deliveryAttempt: `delivery:${encoded([operation, input.semanticMessage]).hash}`, fence: input.fence,
-        charge: input.charge, state: 'prepared', executor: '', durability: input.durability, replicas: input.replicas } as AdmissionReservation).record;
+        charge: input.charge, state: 'prepared', executor: '', durability: input.durability, replicas: input.replicas } as AdmissionReservation,
+      loopAdmission ? [loopAdmission.fact.id] : []).record;
     }),
     claim: (command, token, operation) => checked('DispatchClaim', { command, token, operation }, () => {
       const all = read(); fence(all, token);
       const old = reservations(all).find(p => p.operation === operation);
       ensure(old?.state === 'prepared', 'claim already issued or reservation absent');
-      const saved = write(all, { ...old, ...meta(all, command), state: 'dispatch-claimed', executor: host.incarnation });
+      const loopAdmission = resolveSharedLoopAdmission(all, old.run, old.attempt);
+      const saved = write(all, { ...old, ...meta(all, command), state: 'dispatch-claimed', executor: host.incarnation },
+        loopAdmission ? [loopAdmission.fact.id] : []);
       const capability = Object.freeze({ operation, attempt: old.attempt, digest: old.digest, executor: host.incarnation }) as DispatchClaim;
       claims.set(capability, { operation: saved.record.operation, used: false }); return capability;
     }),
@@ -668,7 +673,9 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       ensure(old?.state === 'dispatch-claimed' && old.executor === host.incarnation, 'claim no longer callable');
       // Burn before durable append. Failed acknowledgement is uncertainty, never a reusable handle.
       claim.used = true;
-      return write(all, { ...old, ...meta(all, `consume:${old.operation}`), state: 'consumed' }).record;
+      const loopAdmission = resolveSharedLoopAdmission(all, old.run, old.attempt);
+      return write(all, { ...old, ...meta(all, `consume:${old.operation}`), state: 'consumed' },
+        loopAdmission ? [loopAdmission.fact.id] : []).record;
     }),
     recover: (command, token, operation, observer) => checked('RecoveryObserve', { command, token, operation }, () => {
       let all = read(); fence(all, token); ensure(observer.owner === 'part-eight', 'observation owner');

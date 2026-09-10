@@ -49,6 +49,9 @@ const managedLoopFields = {
 };
 const loopRecordShape: OwnedShape = { kind: 'object', fields: { ...row, run: txt, episode: txt, policy,
   attempts: int, started: int, nextWake: int, state: txt, pending: txt, ...managedLoopFields }, optional: Object.keys(managedLoopFields) };
+const legacyLoopRecordFields = { ...row, run: txt, episode: txt, policy,
+  attempts: int, started: int, nextWake: int, state: txt, pending: txt };
+const legacyLoopRecordShape: OwnedShape = { kind: 'object', fields: legacyLoopRecordFields };
 const disposition: OwnedShape = { kind: 'object', fields: { scheduledInstant: clock, kind: txt,
   result: constitutionalResult, run: reference }, optional: ['result', 'run'] };
 const missedRangeShape: OwnedShape = { kind: 'object', fields: { ...common, id: txt, parentDuty: reference,
@@ -120,6 +123,7 @@ export function policyCheck(p: LoopPolicy): void {
   if (!p || typeof p !== 'object' || p.breaker !== 'shared-circuit-v1') {
     ensure(p !== null && typeof p === 'object' && !Array.isArray(p), 'closed object required');
     const legacy = p as unknown as Record<string, unknown>;
+    ensure(Object.keys(legacy).every(key => Object.hasOwn(legacyPolicyFields, key)), 'unknown field');
     ensure(Object.keys(legacy).length === Object.keys(legacyPolicyFields).length, 'undeclared or missing field');
     for (const [key, field] of Object.entries(legacyPolicyFields)) {
       ensure(Object.hasOwn(legacy, key), `missing ${key}`);
@@ -193,7 +197,7 @@ export function resolveSourceVector(vector: SharedLoopRecord['sourceVector'], fa
 }
 export function resolveRunReference(reference: RunReference, facts: readonly FactEnvelope[], context: FactContext,
   schedule?: Readonly<{ parentDuty: RunReference; jobInstance: string; scheduledInstant: Clock }>,
-  status = true): FactEnvelope {
+  status = true, allowTerminal = false): FactEnvelope {
   referenceCheck(reference, 'part-five', 'Run');
   const candidates = allFacts(facts).filter(fact => schemaOwns(context, fact, 'record', 'part-five', 'Run'))
     .filter(fact => {
@@ -207,7 +211,7 @@ export function resolveRunReference(reference: RunReference, facts: readonly Fac
   const terminal = allFacts(facts).some(value => schemaOwns(context, value, 'record', 'part-five', 'RunTransition')
     && (value.body as { run?: unknown; record?: { run?: unknown; to?: unknown } }).run === reference.id
     && ['completed', 'cancelled', 'unreachable'].includes(String((value.body as { record?: { to?: unknown } }).record?.to)));
-  ensure(!terminal, 'Run admission is terminal');
+  ensure(allowTerminal || !terminal, 'Run admission is terminal');
   const openingId = (fact.body as { record: { opening?: { id?: string } } }).record.opening?.id;
   const opening = allFacts(facts).find(value => value.id === openingId);
   ensure(opening, 'Run opening evidence is absent');
@@ -568,7 +572,7 @@ export function missedRangeEvidence(record: MissedRangeRecord, facts: readonly F
       ensure(disposition.kind === 'existing-run' && encoded(disposition.run).bytes === encoded(existing.reference).bytes,
         'already admitted missed member must retain its original Run');
       dependencies.push(resolveRunReference(existing.reference, history, context, {
-        parentDuty: record.parentDuty, jobInstance: record.jobInstance, scheduledInstant: disposition.scheduledInstant }, false));
+        parentDuty: record.parentDuty, jobInstance: record.jobInstance, scheduledInstant: disposition.scheduledInstant }, false, true));
       return;
     }
     if (index === expectedCatchUp) {
@@ -577,7 +581,7 @@ export function missedRangeEvidence(record: MissedRangeRecord, facts: readonly F
         && encoded(record.catchUpRun).bytes === encoded(catchUp.reference).bytes,
       'latest policy must retain the owner-admitted deterministic catch-up Run');
       dependencies.push(resolveRunReference(catchUp.reference, history, context, {
-        parentDuty: record.parentDuty, jobInstance: record.jobInstance, scheduledInstant: disposition.scheduledInstant }, false));
+        parentDuty: record.parentDuty, jobInstance: record.jobInstance, scheduledInstant: disposition.scheduledInstant }, false, true));
       return;
     }
     ensure(!catchUp && disposition.kind === 'missed-no-execution',
@@ -601,16 +605,18 @@ export function resolveMissedRangeEvidence(record: MissedRangeRecord, origin: Fa
   requiredBy(origin, unique); return unique.map(fact => fact.id);
 }
 export function loopRecordCheck(r: LoopRecord): void {
+  if (r?.policy?.breaker === 'stub-closed') {
+    const legacy = r as unknown as Record<string, unknown>;
+    ensure(Object.keys(legacy).every(key => Object.hasOwn(legacyLoopRecordFields, key)), 'unknown field');
+    shapeCheck(r, legacyLoopRecordShape);
+    ensure(r.type === 'LoopRecord' && r.schemaVersion === 1, 'owned type mismatch');
+    policyCheck(r.policy);
+    return;
+  }
   shapeCheck(r, loopRecordShape);
   ensure(r.type === 'LoopRecord' && r.schemaVersion === 1 && r.run.length > 0 && r.episode.length > 0,
     'loop record identity');
   policyCheck(r.policy);
-  if (r.policy.breaker === 'stub-closed') {
-    ensure(Object.keys(r).length === Object.keys(row).length + 8, 'legacy loop record bytes changed');
-    ensure(['scheduled', 'running', 'restoring', 'waiting', 'stopped'].includes(r.state)
-      && r.attempts >= 0 && r.attempts <= r.policy.maxAttempts, 'loop state or count');
-    return;
-  }
   const shared = r as SharedLoopRecord;
   ensure(Object.keys(shared).length === Object.keys(row).length + 8 + Object.keys(managedLoopFields).length,
     'shared loop transition is incomplete');
@@ -800,9 +806,10 @@ const sameClock = (left: Clock, right: Clock) => left.subject.kind === right.sub
 const atOrAfter = (left: Clock, right: Clock) => sameClock(left, right) && left.value >= right.value;
 const shifted = (base: Clock, delta: number): Clock => freeze({ ...base, value: base.value + delta,
   at: base.at + delta } as unknown as Clock);
+const compareBytes = (left: string, right: string) => Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'));
 const sortedOutcomes = (outcomes: readonly SharedLoopRecord['outcomeLog'][number][]) => [...outcomes].sort((a, b) =>
-  a.observedAt.value - b.observedAt.value || encoded(a.sourceVector).bytes.localeCompare(encoded(b.sourceVector).bytes)
-    || a.attempt.localeCompare(b.attempt));
+  a.observedAt.value - b.observedAt.value || compareBytes(encoded(a.sourceVector).bytes, encoded(b.sourceVector).bytes)
+    || compareBytes(a.attempt, b.attempt));
 const windowAt = (record: Pick<SharedLoopRecord, 'policy' | 'outcomeLog'>, now: Clock) => sortedOutcomes(record.outcomeLog
   .filter(outcome => sameClock(outcome.observedAt, now) && outcome.observedAt.value > now.value - record.policy.acceptedOutcomeWindow));
 const failureCountAt = (policy: SharedLoopRecord['policy'], outcomes: readonly SharedLoopRecord['outcomeLog'][number][]) => {
@@ -1142,6 +1149,29 @@ export function reservations(all: readonly TransportFact[]): AdmissionReservatio
   for (const { record: r } of all) if (r.type === 'AdmissionReservation') ops.set(r.operation, r);
   return [...ops.values()];
 }
+export function resolveSharedLoopAdmission(all: readonly TransportFact[], run: string,
+  attemptId: string): TransportFact | undefined {
+  const governed = all.filter(row => row.record.type === 'LoopRecord'
+    && row.record.policy.breaker === 'shared-circuit-v1'
+    && (row.record as SharedLoopRecord).currentOwnerRun.id === run) as readonly (TransportFact & { record: SharedLoopRecord })[];
+  if (governed.length === 0) return undefined;
+  const admissions = governed.filter(row => ['attempt-admitted', 'half-opened'].includes(row.record.transition)
+    && row.record.attemptLog.at(-1)?.id === attemptId);
+  ensure(admissions.length > 0, 'executable reservation lacks an admitted shared loop attempt');
+  ensure(new Set(admissions.map(row => encoded(row.record.attemptLog.at(-1)!).bytes)).size === 1
+    && new Set(admissions.map(row => row.record.pressureKey)).size === 1,
+  'executable reservation attempt is conflicted across governed pressure');
+  const admission = admissions.at(-1)!;
+  const latest = latestSharedLoop(all, admission.record.pressureKey);
+  ensure(latest && latest.episode === admission.record.episode
+    && latest.currentOwnerRun.id === run
+    && !['stopped', 'closed'].includes(latest.state)
+    && latest.pendingAttempts.includes(attemptId)
+    && latest.attemptLog.some(attempt => attempt.id === attemptId
+      && encoded(attempt).bytes === encoded(admission.record.attemptLog.at(-1)!).bytes),
+  'shared loop attempt is no longer executable');
+  return admission;
+}
 export function latestScanCursor(all: readonly TransportFact[], scan: string): (TransportFact & { readonly record: ScanCursor }) | undefined {
   return all.filter((v): v is TransportFact & { readonly record: ScanCursor } => v.record.type === 'ScanCursor' && v.record.scan === scan).at(-1);
 }
@@ -1265,6 +1295,7 @@ export function validateTransition(r: TransportRowRecord, all: readonly Transpor
       const prior = reservations(all).find(p => p.operation === r.operation);
       if (!prior) {
         ensure(r.state === 'prepared' && r.executor === '', 'reservation must precede claim');
+        resolveSharedLoopAdmission(all, r.run, r.attempt);
         // Inhibition is sticky until an owned governed reconciliation exists.
         // Different request/attempt/semantic keys cannot erase a same-run breach.
         ensure(!reservations(all).some(p => p.run === r.run && all.some(v => v.record.type === 'SettlementApplication'
@@ -1288,6 +1319,7 @@ export function validateTransition(r: TransportRowRecord, all: readonly Transpor
             && v.record.operation === r.operation && v.record.state !== 'prepared'), 'close requires proof no dispatch-claim exists');
           ensure(r.executor === '', 'a closed operation has no executor');
         } else {
+          resolveSharedLoopAdmission(all, r.run, r.attempt);
           ensure((prior.state === 'prepared' && r.state === 'dispatch-claimed') || (prior.state === 'dispatch-claimed' && r.state === 'consumed'), 'claim is one-use');
           ensure(r.executor === lease.incarnation && (prior.executor === '' || prior.executor === r.executor), 'executor binding mismatch');
         }
@@ -1359,7 +1391,7 @@ function registerBodySet<S>(shapes: Readonly<Record<string, OwnedShape>>, host: 
           // Main-owned legacy LoopRecords must enter their original transition
           // validator before any additive shared-breaker validation. This keeps
           // both acceptance and exact refusal Results byte-identical to main.
-          if (v.type === 'LoopRecord' && v.policy.breaker === 'shared-circuit-v1') loopRecordCheck(v);
+          if (v.type === 'LoopRecord') loopRecordCheck(v);
           // The independently configured one-voter identity is invariant across
           // origin, replication and replay. Process incarnations may change;
           // a different signed actor/machine cannot speak for this authority.

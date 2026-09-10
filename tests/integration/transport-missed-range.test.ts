@@ -112,8 +112,8 @@ it('SLB-FANOUT-10 P6-NF-13 P6-NF-20 P6-NF-33 distinct machine-scoped due keys bo
     episode: { owner: 'part-six', name: 'LoopRecord', id: ready.loop.episode }, attempt: 'machine-b-job',
     holderFamily: 'scheduled', worker: 'worker-b', machine: 'machine-b', resource: 1, sourceVector: f.vector }));
   expect(secondAttempt.pendingAttempts).toEqual(['machine-a-job', 'machine-b-job']);
-  const reservation = value(f.api.reserve(f.input(ready.token)));
-  expect(value(f.api.reserve(f.input(ready.token))).operation).toBe(reservation.operation);
+  const reservation = value(f.api.reserve(f.input(ready.token, { attempt: 'machine-a-job' })));
+  expect(value(f.api.reserve(f.input(ready.token, { attempt: 'machine-a-job' }))).operation).toBe(reservation.operation);
   expect(value(f.api.inspect()).filter(row => row.record.type === 'AdmissionReservation')).toHaveLength(1);
   expect(firstAttempt.pressureKey).toBe(secondAttempt.pressureKey);
 });

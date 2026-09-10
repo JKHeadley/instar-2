@@ -103,6 +103,22 @@ export const transportSeamEvidence = [
   ['SLB-PARENT-POLICY-51', 'integration', 'review V08 signed second-scope parent policy consistency'],
   ['SLB-MISSED-INSTALLATION-52', 'integration', 'review V10 verified installation-history missed-range replay'],
   ['SLB-LEGACY-DIFFERENTIAL-53', 'unit', 'review V23 main-byte legacy signed-decoder differential'],
+  ['SLB-CUT-SCHEDULED-BEFORE-54', 'integration', 'review V19 scheduled append before'],
+  ['SLB-CUT-SCHEDULED-AFTER-55', 'integration', 'review V19 scheduled append after'],
+  ['SLB-CUT-ATTEMPT-ADMITTED-BEFORE-56', 'integration', 'review V19 attempt-admitted append before'],
+  ['SLB-CUT-ATTEMPT-ADMITTED-AFTER-57', 'integration', 'review V19 attempt-admitted append after'],
+  ['SLB-CUT-OPENED-BEFORE-58', 'integration', 'review V19 opened append before'],
+  ['SLB-CUT-OPENED-AFTER-59', 'integration', 'review V19 opened append after'],
+  ['SLB-CUT-HALF-OPENED-BEFORE-60', 'integration', 'review V19 half-opened append before'],
+  ['SLB-CUT-HALF-OPENED-AFTER-61', 'integration', 'review V19 half-opened append after'],
+  ['SLB-CUT-MISSED-INITIAL-BEFORE-62', 'integration', 'review V19 missed-initial append before'],
+  ['SLB-CUT-MISSED-INITIAL-AFTER-63', 'integration', 'review V19 missed-initial append after'],
+  ['SLB-CUT-EVIDENCE-ONLY-CLOSED-BEFORE-64', 'integration', 'review V19 evidence-only-closed append before'],
+  ['SLB-CUT-EVIDENCE-ONLY-CLOSED-AFTER-65', 'integration', 'review V19 evidence-only-closed append after'],
+  ['SLB-LEGACY-REPLICATION-66', 'integration', 'review V17 legacy shared-metadata replication refusal'],
+  ['SLB-EXECUTABLE-ADMISSION-67', 'integration', 'review V14 V18 shared executable admission binding'],
+  ['SLB-LOCALE-ORDER-68', 'integration', 'review V21 locale-independent byte ordering'],
+  ['SLB-MISSED-TERMINAL-69', 'integration', 'review V16 completed historical member successor'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

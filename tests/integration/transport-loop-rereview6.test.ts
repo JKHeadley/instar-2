@@ -123,7 +123,9 @@ it('SLB-MISSED-INSTALLATION-52 V10 identical missed replay accepts with complete
 });
 
 for (const [index,boundary] of ['scheduled','attempt-admitted','opened','half-opened','missed-initial','evidence-only-closed'].entries()) {
- for (const [sideIndex,side] of ['before','after'].entries()) it(`V${11+index*2+sideIndex} cut ${side} ${boundary} keeps the exact durable prefix and owned pending work`,()=>{
+ for (const [sideIndex,side] of ['before','after'].entries()) {
+  const cutEvidenceId = `SLB-CUT-${boundary.toUpperCase()}-${side.toUpperCase()}-${54 + index * 2 + sideIndex}`;
+  it(`V${11+index*2+sideIndex} cut ${side} ${boundary} ${cutEvidenceId} keeps the exact durable prefix and owned pending work`,()=>{
    const s=boundary==='missed-initial'?missed():setup({failureThreshold:1,halfOpenTrials:1});
    let operation:(api:any)=>any;
    if(boundary==='scheduled') operation=api=>api.scheduleEpisode({...s.input,command:'cut-schedule',episodeKey:'cut-new',pressureScope:{...scope,target:'other'}});
@@ -165,7 +167,8 @@ for (const [index,boundary] of ['scheduled','attempt-admitted','opened','half-op
    expect(records.length).toBe(after.length);
    if(side==='after')expect(records.at(-1).body.record).toMatchObject(boundary==='missed-initial'?{type:'MissedRangeRecord',memberCount:3}:{transition:boundary==='evidence-only-closed'?'closed':boundary});
    else expect(records.at(-1).id).toBe((before.at(-1) as any).id);
- });
+  });
+ }
 }
 
 it('V24 conflicting signed values for the same policy refuse the next automatic attempt',()=>{
