@@ -18,7 +18,11 @@
 //     no drill shares a port or file, so they are independent; the only reason they were
 //     serial was the 2-core runner, so the default concurrency scales with the machine
 //     (see kill-schedule-pool.mjs) and stays at 1 there. Files and manifest keys are
-//     assigned before anything runs, so the artifacts are byte-identical to a serial run.
+//     assigned before anything runs, so a pooled run writes the same file names, the same
+//     manifest keys in the same order, and the same non-telemetry content (steps, outcomes,
+//     identities, fired cuts, boots, never-reached) as a serial run. Timing and memory
+//     telemetry inside each report (and therefore each recorded sha) varies between ANY two
+//     runs, serial or pooled; the sha guards a file against corruption, not against re-running.
 //  2. Reuse. When the run directory already holds a COMPLETE set for exactly this
 //     fingerprint (every planned key present, every file hashing to its recorded sha),
 //     the executions are skipped. The fingerprint covers scripts/ + dist/ + the harness,
