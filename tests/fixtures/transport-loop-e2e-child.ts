@@ -1,6 +1,4 @@
 import { expect, it } from 'vitest';
-import { decodeMeasurement } from '../../src/index.js';
-import { createBoundedDueScanPort } from '../../src/transport/index.js';
 import type { SharedLoopRecord } from '../../src/transport/index.js';
 import { transportLoopFixture, value } from '../transport/loop-fixture.js';
 
@@ -10,7 +8,7 @@ const mode = process.env.SLB_E2E_MODE;
 const directory = process.env.SLB_E2E_DIR;
 if (!directory) throw new Error('SLB_E2E_DIR is required');
 
-it.skipIf(mode !== 'produce')('producer persists owner-witnessed loop and missed range', () => {
+it.skipIf(mode !== 'produce')('producer persists an owner-witnessed loop', () => {
   const f = transportLoopFixture(directory), token = value(f.api.acquire('e2e:lease', '', 1000));
   let loop = value(f.api.scheduleEpisode({ command: 'e2e:schedule', fence: token, currentOwnerRun: f.run,
     policy: f.sharedPolicy, episodeKey: 'e2e', operationFamily: 'recovery', pressureScope: scope,
@@ -25,31 +23,76 @@ it.skipIf(mode !== 'produce')('producer persists owner-witnessed loop and missed
       restoration: [], sourceVector: f.vector }));
   }
   expect(loop).toMatchObject({ state: 'open-breaker', transition: 'opened', attempts: 2, totalFailures: 2 });
-  const missedLoop = value(f.api.scheduleEpisode({ command: 'e2e:missed:schedule', fence: token, currentOwnerRun: f.run,
-    policy: f.sharedPolicy, episodeKey: 'e2e-missed', operationFamily: 'scheduled-work', pressureScope: scope,
-    sourceVector: f.vector }));
-  const page = value(createBoundedDueScanPort(f.host, f.spine, f.c).page({ scan: 'scan', generation: 'g1',
-    orderedKeys: ['job:one'], cursor: null, maxItems: 1, maxDuration: 10 }));
-  const lateness = value(decodeMeasurement('duration', { type: 'Measurement', schemaVersion: 1,
-    subject: { kind: 'duration', instance: 'job:one' }, value: 0, unit: 'ms', at: f.clock(130), by: 'probe' },
-  f.host.current().decode));
-  const reference = value(f.api.recordMissedRange({ parentDuty: f.parentDuty, episode: ref(missedLoop), scanCursor: page.cursor,
-    jobInstance: 'job:one', packageDigest: `sha256:${'d'.repeat(64)}`, calendarPolicy: 'every-10', asOf: f.clock(130),
-    currentLateness: lateness, priorExpansionCursor: f.clock(100), missedBoundary: f.clock(130), catchUpPolicy: 'none',
-    dispositions: [110, 120, 130].map(at => ({ scheduledInstant: f.clock(at), kind: 'existing-run' as const,
-      run: f.admittedRun(at) })),
-    catchUpRun: null }));
-  console.log(`SLB_E2E_REF=${reference.id}`);
 });
 
 it.skipIf(mode !== 'recover')('new process reconstructs producer state', () => {
   const f = transportLoopFixture(directory, 'worker:e2e-recovery', 'authority:e2e-recovery');
   f.time(103);
-  const loop = value(f.api.inspect()).filter(row => row.record.type === 'LoopRecord').at(-2)!.record;
+  const loop = value(f.api.inspect()).filter(row => row.record.type === 'LoopRecord').at(-1)!.record;
   expect(loop).toMatchObject({ state: 'open-breaker', transition: 'opened', attempts: 2, totalFailures: 2 });
-  const id = process.env.SLB_E2E_REF;
-  if (!id) throw new Error('SLB_E2E_REF is required');
-  const rebuilt = value(f.api.readMissedRange({ owner: 'part-six', name: 'MissedRangeRecord', id }));
-  expect(rebuilt.record.dispositions.map(value => value.scheduledInstant.value)).toEqual([110, 120, 130]);
-  expect(rebuilt.firstUndisposed).toBeNull();
+});
+
+it.skipIf(mode !== 'repair9-budget-produce')('repair9 budget producer refuses an incomparable parent clock', () => {
+  const f = transportLoopFixture(directory);
+  const bounded = { ...f.sharedPolicy, id: 'e2e-repair9-budget',
+    parentAttemptBudget: 1, parentResourceBudget: 1 } as const;
+  f.registerPolicy(bounded);
+  const token = value(f.api.acquire('e2e-repair9-budget-lease', '', 1000));
+  let loop = value(f.api.scheduleEpisode({ command: 'e2e-repair9-budget-schedule', fence: token,
+    currentOwnerRun: f.run, policy: bounded, episodeKey: 'one', operationFamily: 'recovery',
+    pressureScope: scope, sourceVector: f.vector }));
+  f.advance(1);
+  loop = value(f.api.admitLoopAttempt({ command: 'e2e-repair9-budget-admit', fence: token, episode: ref(loop),
+    attempt: 'budget-a', holderFamily: 'sentinel', worker: 'worker:a', machine: 'machine-a', resource: 1,
+    sourceVector: f.vector }));
+  value(f.api.recordLoopOutcome({ command: 'e2e-repair9-budget-finish', fence: token, episode: ref(loop),
+    attempt: 'budget-a', kind: 'accepted', failureClass: '', completion: f.appendOutcome('accepted', 'budget-a'),
+    jitterPermille: 1000, restoration: [], sourceVector: f.vector }));
+  const clock = f.host.loopClock!;
+  Object.assign(f.host, { loopClock: { owner: 'part-ten', now: () => ({ ...clock.now(),
+    subject: { kind: 'clock', instance: 'machine-b' } }) } });
+  expect(() => value(f.api.scheduleEpisode({ command: 'e2e-repair9-budget-second', fence: token,
+    currentOwnerRun: f.run, policy: bounded, episodeKey: 'two', operationFamily: 'recovery',
+    pressureScope: { ...scope, target: 'other' }, sourceVector: f.vector }))).toThrow();
+});
+
+it.skipIf(mode !== 'repair9-budget-recover')('repair9 budget recovery retains the original expenditure', () => {
+  const f = transportLoopFixture(directory, 'worker:e2e-repair9-budget', 'authority:e2e-repair9-budget');
+  const loop = value(f.api.inspect()).filter(row => row.record.type === 'LoopRecord').at(-1)!.record as SharedLoopRecord;
+  expect(loop).toMatchObject({ attempts: 1, rollingAttempts: 1 });
+});
+
+it.skipIf(mode !== 'repair9-cycle-produce')('repair9 cycle producer admits the later-cycle trial', () => {
+  const f = transportLoopFixture(directory);
+  const restorationScope = { ...scope, target: 'target:review' } as const;
+  const policy = { ...f.sharedPolicy, id: 'e2e-repair9-cycle', failureThreshold: 1,
+    halfOpenTrials: 1, maxOpenDuration: 30 } as const;
+  f.registerPolicy(policy);
+  const token = value(f.api.acquire('e2e-repair9-cycle-lease', '', 1000));
+  let loop = value(f.api.scheduleEpisode({ command: 'e2e-repair9-cycle-schedule', fence: token,
+    currentOwnerRun: f.run, policy, episodeKey: 'one', operationFamily: 'recovery', pressureScope: restorationScope,
+    sourceVector: f.vector }));
+  const admit = (attempt: string) => value(f.api.admitLoopAttempt({ command: `e2e-repair9-admit:${attempt}`,
+    fence: token, episode: ref(loop), attempt, holderFamily: 'sentinel', worker: `worker:${attempt}`,
+    machine: 'machine-a', resource: 1, sourceVector: f.vector }));
+  const finish = (attempt: string, kind: 'accepted' | 'failed', restoration: SharedLoopRecord['closureEvidence'] = []) =>
+    value(f.api.recordLoopOutcome({ command: `e2e-repair9-finish:${attempt}`, fence: token, episode: ref(loop),
+      attempt, kind, failureClass: kind === 'failed' ? 'transport' : '', completion: f.appendOutcome(kind, attempt),
+      jitterPermille: 1000, restoration, sourceVector: f.vector }));
+  f.advance(1); loop = admit('fail-1'); finish('fail-1', 'failed');
+  f.advance(20); loop = admit('trial-1'); finish('trial-1', 'accepted', [f.restorationReference('assessment:witnessed-review')]);
+  f.advance(20); loop = value(f.api.scheduleEpisode({ command: 'e2e-repair9-cycle-two', fence: token,
+    currentOwnerRun: f.run, policy, episodeKey: 'two', operationFamily: 'recovery', pressureScope: restorationScope,
+    sourceVector: f.vector }));
+  f.advance(1); loop = admit('fail-2'); const opened = finish('fail-2', 'failed');
+  expect(opened.breakerFirstOpened.value).toBe(142);
+  f.advance(20); loop = admit('trial-2');
+  expect(loop).toMatchObject({ state: 'half-open', pendingAttempts: ['trial-2'] });
+});
+
+it.skipIf(mode !== 'repair9-cycle-recover')('repair9 cycle recovery keeps the later open interval', () => {
+  const f = transportLoopFixture(directory, 'worker:e2e-repair9-cycle', 'authority:e2e-repair9-cycle');
+  f.time(162);
+  const loop = value(f.api.inspect()).filter(row => row.record.type === 'LoopRecord').at(-1)!.record as SharedLoopRecord;
+  expect(loop).toMatchObject({ state: 'half-open', breakerFirstOpened: { value: 142 }, pendingAttempts: ['trial-2'] });
 });

@@ -3,19 +3,19 @@ import type { BoundaryContext, Clock, Result } from '../index.js';
 import { authorAndAppend } from '../facts/index.js';
 import type { FactStorePort } from '../facts/index.js';
 import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAuthor, FenceToken, Lease, LoopAttempt, LoopOutcome, LoopRecord,
-  MissedRangeRecord, RecoveryRecord, ScanCursor, SettlementAccountingInput, SettlementApplication, SettlementConsumer, SharedLoopRecord,
-  TransportAuthority, TransportFact, TransportHost, TransportOwnedRecord, TransportRowRecord, TransportSpine } from './contracts.js';
+  RecoveryRecord, ScanCursor, SettlementAccountingInput, SettlementApplication, SettlementConsumer, SharedLoopRecord,
+  TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportRowRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, latestSharedLoop, live, loopActive, missedRangeCheck, missedRows,
-  missedRangeEvidence, observationAdmission, policyCheck, reservations, resolveConstitutionalResult, resolveMissedRangeEvidence, resolvePolicyFact, resolveRunReference, resolveSourceVector, rows,
+import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, latestSharedLoop, live, loopActive,
+  observationAdmission, policyCheck, reservations, resolvePolicyFact, resolveRunReference, resolveSourceVector, rows,
   resolvePressureBinding, resolveSharedLoopAdmission, restorationReferenceComplete, sharedAdmissionDecision, sharedLoopEvidence, sharedOutcomeDecision, sourceVectorCheck,
-  validateMissedRangeHistory, validateScanGeneration, validateSharedParentPolicy, validateTransition,
-  withMissedRangeCandidate, withSharedLoopCandidate } from './records.js';
+  validateScanGeneration, validateSharedParentPolicy, validateTransition,
+  withSharedLoopCandidate } from './records.js';
 import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
   requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication, withSettlementAttempt } from './settlement.js';
 
 export function createTransportSpine(host: TransportHost, author: FactAuthor, store: FactStorePort): TransportSpine {
-  return Object.freeze({ store, context: author.context, append: (record: TransportOwnedRecord, required: readonly string[]) => authorAndAppend({
+  return Object.freeze({ store, context: author.context, append: (record: TransportRecord, required: readonly string[]) => authorAndAppend({
     kind: kindFor(record.type), schemaVersion: 1, machine: host.machine,
     principal: json(host.principal), provenance: json(host.principal.provenance), at: json(host.current().clock),
     body: json({ record }), required,
@@ -224,6 +224,8 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       const prior = attempts.find(value => value.id === added.id);
       ensure(!prior, 'parent attempt identity already belongs to another pressure scope'); attempts.push(added);
     }
+    ensure(attempts.every(attempt => sameClock(attempt.admittedAt, now)),
+      'parent budget contains an incomparable attempt clock');
     return rollingAt({ policy, attemptLog: attempts }, now);
   };
   const managedWrite = (all: readonly TransportFact[], record: SharedLoopRecord) => {
@@ -532,112 +534,6 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         outcomeLog: decision.outcomeLog, outcomeWindowDigest: decision.outcomeWindowDigest,
         closureEvidence: decision.closureEvidence } as SharedLoopRecord);
       return managedWrite(all, record);
-    }),
-    recordMissedRange: input => checked('MissedRangeWrite', input, () => {
-      ensure(host.calendarExpansion?.owner === 'part-fifteen', 'calendar expansion authority unavailable');
-      ensure(input.parentDuty.owner === 'part-five' && input.parentDuty.name === 'Run' && input.parentDuty.id.length > 0,
-        'persistent parent duty reference required');
-      ensure(input.episode.owner === 'part-six' && input.episode.name === 'LoopRecord' && input.episode.id.length > 0,
-        'LoopRecord reference owner');
-      ensure(input.scanCursor.owner === 'part-six' && input.scanCursor.name === 'ScanCursor' && input.scanCursor.id.length > 0,
-        'ScanCursor reference owner');
-      ensure(input.jobInstance.length > 0 && input.jobInstance.length <= 256 && input.calendarPolicy.length > 0
-        && input.calendarPolicy.length <= 256 && /^sha256:[a-f0-9]{64}$/.test(input.packageDigest),
-      'missed range identity or package digest');
-      const decodeClock = (value: Clock) => take(decodeMeasurement('clock', value, host.current().decode));
-      const asOf = decodeClock(input.asOf), priorExpansionCursor = decodeClock(input.priorExpansionCursor);
-      const missedBoundary = decodeClock(input.missedBoundary);
-      ensure(sameClock(asOf, priorExpansionCursor) && sameClock(asOf, missedBoundary)
-        && priorExpansionCursor.value < missedBoundary.value && missedBoundary.value <= asOf.value,
-      'incomparable or invalid missed range boundary');
-      const lateness = take(decodeMeasurement('duration', input.currentLateness, host.current().decode));
-      ensure(lateness.value >= 0 && lateness.value === asOf.value - missedBoundary.value,
-        'current lateness does not match missed boundary');
-      const members = take(host.calendarExpansion.expand({ calendarPolicy: input.calendarPolicy,
-        after: priorExpansionCursor, through: missedBoundary, asOf })).map(decodeClock);
-      ensure(members.length > 0 && members.length <= 4096, 'calendar expansion is empty or exceeds bound');
-      ensure(members.every((member, index) => sameClock(member, asOf) && member.value > priorExpansionCursor.value
-        && member.value <= missedBoundary.value && (index === 0 || members[index - 1]!.value < member.value)),
-      'calendar expansion is not exact ordered membership');
-      ensure(input.dispositions.length === members.length && input.dispositions.every((value, index) =>
-        encoded(value.scheduledInstant).bytes === encoded(members[index]).bytes), 'exactly one ordered disposition per member required');
-      const snapshot = take(spine.store.readForProjection());
-      ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length), 'shared pressure or missed-range state unavailable');
-      const facts = evidenceFacts(), all = rows(facts, host.domain);
-      const context = semanticContext();
-      const cursor = facts.find(fact => fact.id === input.scanCursor.id && fact.kind === kindFor('ScanCursor'));
-      ensure(cursor, 'exact ScanCursor fact required');
-      const episode = all.filter(row => row.record.type === 'LoopRecord' && row.record.episode === input.episode.id).at(-1)?.record;
-      ensure(episode?.type === 'LoopRecord' && episode.policy.breaker === 'shared-circuit-v1'
-        && encoded(episode.policy.parentDuty).bytes === encoded(input.parentDuty).bytes, 'missed range parent episode unavailable');
-      for (const disposition of input.dispositions) {
-        if (disposition.kind !== 'missed-no-execution') continue;
-        resolveConstitutionalResult(disposition.result, facts, context);
-      }
-      const catchUpIndexes = input.dispositions.map((value, index) => value.kind === 'catch-up-run' ? index : -1).filter(index => index >= 0);
-      const otherwiseUnexecuted = input.dispositions.map((value, index) => value.kind === 'existing-run' ? -1 : index).filter(index => index >= 0);
-      if (input.catchUpPolicy === 'none') {
-        ensure(catchUpIndexes.length === 0 && input.catchUpRun === null, 'none catch-up policy cannot link a catch-up Run');
-      } else if (otherwiseUnexecuted.length === 0) {
-        ensure(catchUpIndexes.length === 0 && input.catchUpRun === null, 'fully admitted range cannot mint a catch-up Run');
-      } else {
-        const latest = otherwiseUnexecuted.at(-1)!;
-        ensure(catchUpIndexes.length === 1 && catchUpIndexes[0] === latest && input.catchUpRun,
-          'latest policy must link exactly the latest otherwise-unexecuted member');
-      }
-      const orderedMembersDigest = encoded(members).hash;
-      const derivationInputDigest = encoded({ parentDuty: input.parentDuty, jobInstance: input.jobInstance,
-        packageDigest: input.packageDigest, calendarPolicy: input.calendarPolicy, asOf, priorExpansionCursor,
-        missedBoundary, orderedMembersDigest }).hash;
-      const id = `missed:${encoded([input.parentDuty.id, input.jobInstance, input.calendarPolicy,
-        priorExpansionCursor, missedBoundary, orderedMembersDigest]).hash}`;
-      if (input.catchUpRun) {
-        const latest = otherwiseUnexecuted.at(-1)!;
-        ensure(input.catchUpRun.owner === 'part-five' && input.catchUpRun.name === 'Run'
-          && input.catchUpRun.id.length > 0, 'catch-up Run is not a Part Five admission');
-        const linked = input.dispositions[latest]!;
-        ensure(linked.kind === 'catch-up-run' && encoded(linked.run).bytes === encoded(input.catchUpRun).bytes,
-          'latest member does not retain the deterministic catch-up Run');
-      }
-      const record = freeze({ type: 'MissedRangeRecord', schemaVersion: 1, id, parentDuty: input.parentDuty,
-        episode: input.episode, scanCursor: input.scanCursor, jobInstance: input.jobInstance,
-        packageDigest: input.packageDigest, calendarPolicy: input.calendarPolicy, asOf,
-        currentLateness: lateness, first: members[0]!, last: members.at(-1)!, memberCount: members.length,
-        orderedMembersDigest, derivationInputDigest, catchUpPolicy: input.catchUpPolicy,
-        dispositions: input.dispositions, catchUpRun: input.catchUpRun } as MissedRangeRecord);
-      try { missedRangeCheck(record); } catch (error) { throw new Error(`missed range structure refused: ${error instanceof Error ? error.message : 'unknown'}`); }
-      const prior = missedRows(facts), latest = prior.filter(row => row.record.id === id).at(-1);
-      if (latest && encoded(latest.record).bytes === encoded(record).bytes) {
-        resolveMissedRangeEvidence(latest.record, latest.fact, evidenceFacts(), semanticContext(), host);
-        return freeze({ owner: 'part-six' as const, name: 'MissedRangeRecord' as const, id });
-      }
-      validateMissedRangeHistory(record, prior);
-      const wire = record.catchUpRun === null
-        ? Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'catchUpRun')) as unknown as MissedRangeRecord
-        : record;
-      let semanticRequired: readonly string[];
-      try { semanticRequired = missedRangeEvidence(record, evidenceFacts(), semanticContext(), host).map(fact => fact.id); }
-      catch (error) { throw new Error(`missed range evidence refused: ${error instanceof Error ? error.message : 'unknown'}`); }
-      const required = [...new Set([cursor.id, latest?.fact.id ?? '', ...semanticRequired])]
-        .filter(Boolean);
-      let receipt;
-      try { receipt = withMissedRangeCandidate(host, record, () => take(spine.append(wire, required))); }
-      catch (error) { throw new Error(`missed range append refused: ${error instanceof Error ? error.message : 'unknown'}`); }
-      ensure(!receipt.taint.length && receipt.fact.kind === kindFor('MissedRangeRecord')
-        && encoded(receipt.fact.body).bytes === encoded({ record: wire }).bytes, 'append returned different missed range');
-      return freeze({ owner: 'part-six' as const, name: 'MissedRangeRecord' as const, id });
-    }),
-    readMissedRange: reference => checked('MissedRangeRead', reference, () => {
-      ensure(reference.owner === 'part-six' && reference.name === 'MissedRangeRecord' && reference.id.length > 0,
-        'MissedRangeRecord reference owner');
-      const snapshot = take(spine.store.readForProjection());
-      ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length), 'missed-range state unavailable');
-      const latest = missedRows(evidenceFacts()).filter(row => row.record.id === reference.id).at(-1);
-      ensure(latest, 'missed range unavailable'); missedRangeCheck(latest.record);
-      resolveMissedRangeEvidence(latest.record, latest.fact, evidenceFacts(), semanticContext(), host);
-      return freeze({ record: latest.record,
-        fact: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: latest.fact.id },
-        firstUndisposed: latest.record.dispositions.find(value => value.kind === 'missed-no-execution')?.scheduledInstant ?? null });
     }),
     reserve: input => checked('OperationReserve', input, () => {
       const all = read(); fence(all, input.fence);

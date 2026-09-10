@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { canonical, consumeResult } from '../../src/index.js';
-import { createBoundedDueScanPort, decodeLoopPolicy, decodeLoopRecord, decodeMissedRangeRecord, decodeScanCursor } from '../../src/transport/index.js';
-import type { FenceToken, MissedRangeRecord } from '../../src/transport/index.js';
+import { createBoundedDueScanPort, decodeLoopPolicy, decodeLoopRecord, decodeScanCursor } from '../../src/transport/index.js';
+import type { FenceToken } from '../../src/transport/index.js';
 import { transportLoopFixture, refused, value } from './loop-fixture.js';
 import { transportFixture } from './fixture.js';
 
@@ -83,26 +83,4 @@ it('SLB-LEGACY-FENCE-42 V02 preserves the exact legacy malformed-fence refusal f
     });
     expect(refusal).toEqual(expected);
   }
-});
-
-it('SLB-DECODE-03 P6-NF-02 P6-NF-33 closes the exact MissedRangeRecord payload', () => {
-  const f = transportLoopFixture();
-  const record = {
-    type: 'MissedRangeRecord', schemaVersion: 1, id: 'missed:one', parentDuty: f.parentDuty,
-    episode: { owner: 'part-six', name: 'LoopRecord', id: 'loop:one' },
-    scanCursor: { owner: 'part-six', name: 'ScanCursor', id: 'cursor:one' },
-    jobInstance: 'machine-a:job', packageDigest: `sha256:${'a'.repeat(64)}`, calendarPolicy: 'every-10',
-    asOf: f.clock(130), currentLateness: { type: 'Measurement', schemaVersion: 1,
-      subject: { kind: 'duration', instance: 'machine-a:job' }, value: 10, unit: 'ms', at: f.clock(130), by: 'probe' },
-    first: f.clock(110), last: f.clock(120), memberCount: 2,
-    orderedMembersDigest: value(canonical([f.clock(110), f.clock(120)])).hash,
-    derivationInputDigest: `sha256:${'c'.repeat(64)}`,
-    catchUpPolicy: 'none', dispositions: [110, 120].map(at => ({ scheduledInstant: f.clock(at),
-      kind: 'missed-no-execution' as const, result: { type: 'Result' as const, id: 'result:missed', field: 'result',
-        fact: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: 'result-fact:one' } } })),
-    catchUpRun: null,
-  } as unknown as MissedRangeRecord;
-  expect(value(decodeMissedRangeRecord(record, f.c))).toEqual(record);
-  refused(decodeMissedRangeRecord({ ...record, catchUpPolicy: 'all' }, f.c));
-  refused(decodeMissedRangeRecord({ ...record, extra: true }, f.c));
 });

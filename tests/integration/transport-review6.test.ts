@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { canonical, consumeResult, decodeMeasurement } from '../../src/index.js';
+import { canonical, consumeResult } from '../../src/index.js';
 import {
   authorAndAppend,
   createFactStore,
@@ -14,7 +14,7 @@ import {
   createTransportAuthority,
   createTransportSpine,
 } from '../../src/transport/index.js';
-import type { MissedRangeInput, SharedLoopRecord } from '../../src/transport/index.js';
+import type { SharedLoopRecord } from '../../src/transport/index.js';
 import { json, privateKey } from '../facts/fixtures.js';
 import { transportFixture } from '../transport/fixture.js';
 import { transportLoopFixture, value } from '../transport/loop-fixture.js';
@@ -134,83 +134,6 @@ it('SLB-OUTCOME-FRONTIER-48 V3 refuses a signed outcome that shrinks its admitte
   });
   expect(verdict(decodeHistoricalBody(mutation.frame, mutation.context, mutation.context.decode))).toMatch(/^REFUSE:/);
   expect(verdict(mutation.replicate())).toMatch(/^REFUSE:/);
-});
-
-it('SLB-MISSED-BETWEEN-49 V13 accepts exact owner-witnessed calendar membership through a boundary between members', () => {
-  const f = transportLoopFixture(undefined, undefined, undefined, { existingInstants: [] });
-  const token = value(f.api.acquire('lease:missed-between', '', 1000));
-  const loop = value(f.api.scheduleEpisode({
-    command: 'schedule:missed-between',
-    fence: token,
-    currentOwnerRun: f.run,
-    policy: f.sharedPolicy,
-    episodeKey: 'episode:missed-between',
-    operationFamily: 'recovery',
-    pressureScope,
-    sourceVector: f.vector,
-  }));
-  const page = value(createBoundedDueScanPort(f.host, f.spine, f.c).page({
-    scan: 'scan',
-    generation: 'g1',
-    orderedKeys: ['job:one'],
-    cursor: null,
-    maxItems: 1,
-    maxDuration: 10,
-  }));
-  const after = f.clock(100);
-  const through = f.clock(135);
-  const members = [110, 120, 130].map(f.clock);
-  const proof = value(authorAndAppend({
-    kind: 'calendar-range-proof',
-    schemaVersion: 1,
-    machine: f.host.machine,
-    principal: json(f.host.principal),
-    provenance: json(f.host.principal.provenance),
-    at: json(f.host.current().clock),
-    body: json({ binding: value(canonical([f.parentDuty.id, 'job:one', 'every-10', after, through, members])).hash }),
-    required: [],
-  }, f.ctx, f.store, privateKey)).fact;
-  const calendar = f.host.calendarExpansion!;
-  Object.assign(f.host, {
-    calendarExpansion: {
-      ...calendar,
-      range: () => f.result(() => ({
-        after,
-        through,
-        members,
-        witness: { owner: 'part-two', name: 'FactEnvelope', id: proof.id },
-      })),
-    },
-  });
-  const result = f.appendResult('result:missed-between');
-  const input: MissedRangeInput = {
-    parentDuty: f.parentDuty,
-    episode: loopRef(loop),
-    scanCursor: page.cursor,
-    jobInstance: 'job:one',
-    packageDigest: `sha256:${'d'.repeat(64)}`,
-    calendarPolicy: 'every-10',
-    asOf: through,
-    currentLateness: value(decodeMeasurement('duration', {
-      type: 'Measurement',
-      schemaVersion: 1,
-      subject: { kind: 'duration', instance: 'job:one' },
-      value: 0,
-      unit: 'ms',
-      at: through,
-      by: 'probe',
-    }, f.host.current().decode)),
-    priorExpansionCursor: after,
-    missedBoundary: through,
-    catchUpPolicy: 'none',
-    dispositions: members.map(scheduledInstant => ({
-      scheduledInstant,
-      kind: 'missed-no-execution' as const,
-      result,
-    })),
-    catchUpRun: null,
-  };
-  expect(verdict(f.api.recordMissedRange(input))).toBe('ACCEPT');
 });
 
 it('SLB-LEGACY-INSPECT-50 V22 preserves legacy inspect population with verified installation history and an empty local suffix', () => {

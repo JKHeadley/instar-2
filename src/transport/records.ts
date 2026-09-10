@@ -2,7 +2,7 @@ import { decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../inde
 import type { BoundaryContext, Clock, Json, Result, RunReference } from '../index.js';
 import { causalCone, prepareSnapshot, registerOwnedBody } from '../facts/index.js';
 import type { FactContext, FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
-import type { AdmissionReservation, FenceToken, Lease, LoopAttempt, LoopOutcome, LoopPolicy, LoopRecord, MissedRangeFact, MissedRangeRecord, ScanCursor, SettlementConsumer, SharedLoopRecord, TransportFact, TransportHost, TransportOwnedRecord, TransportRecord, TransportRowRecord } from './contracts.js';
+import type { AdmissionReservation, FenceToken, Lease, LoopAttempt, LoopOutcome, LoopPolicy, LoopRecord, ScanCursor, SettlementConsumer, SharedLoopRecord, TransportFact, TransportHost, TransportRecord, TransportRowRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { admissionAccounting, bindSettlementConsumer, checkApplicationEvidence, latestApplication, noteAccountingCandidate, requireApplication } from './settlement.js';
 
@@ -15,8 +15,6 @@ const reference: OwnedShape = { kind: 'object', fields: { owner: txt, name: txt,
 const constitutionalResult: OwnedShape = { kind: 'object', fields: { type: txt, id: txt, fact: reference, field: txt } };
 const clock: OwnedShape = { kind: 'object', fields: { type: txt, schemaVersion: int,
   subject: { kind: 'object', fields: { kind: txt, instance: txt } }, value: int, unit: txt, at: int, by: txt } };
-const durationMeasurement: OwnedShape = { kind: 'object', fields: { type: txt, schemaVersion: int,
-  subject: { kind: 'object', fields: { kind: txt, instance: txt } }, value: int, unit: txt, at: clock, by: txt } };
 const vectorEntry: OwnedShape = { kind: 'object', fields: { machine: txt, epoch: int, position: int } };
 const sourceVector: OwnedShape = { kind: 'array', maxLength: 4096, items: vectorEntry };
 const legacyPolicyFields = { ...common, id: txt, maxAttempts: int, minDelay: int, maxDuration: int, timeout: int,
@@ -52,13 +50,6 @@ const loopRecordShape: OwnedShape = { kind: 'object', fields: { ...row, run: txt
 const legacyLoopRecordFields = { ...row, run: txt, episode: txt, policy,
   attempts: int, started: int, nextWake: int, state: txt, pending: txt };
 const legacyLoopRecordShape: OwnedShape = { kind: 'object', fields: legacyLoopRecordFields };
-const disposition: OwnedShape = { kind: 'object', fields: { scheduledInstant: clock, kind: txt,
-  result: constitutionalResult, run: reference }, optional: ['result', 'run'] };
-const missedRangeShape: OwnedShape = { kind: 'object', fields: { ...common, id: txt, parentDuty: reference,
-  episode: reference, scanCursor: reference, jobInstance: txt, packageDigest: txt, calendarPolicy: txt,
-  asOf: clock, currentLateness: durationMeasurement, first: clock, last: clock, memberCount: int,
-  orderedMembersDigest: txt, derivationInputDigest: txt, catchUpPolicy: txt,
-  dispositions: { kind: 'array', maxLength: 4096, items: disposition }, catchUpRun: reference }, optional: ['catchUpRun'] };
 export const transportShapes: Readonly<Record<string, OwnedShape>> = freeze({
   Lease: { kind: 'object', fields: { ...row, epoch: int, holder: txt, machine: txt, incarnation: txt, generation: txt, expires: int, state: txt, operation: txt, term: int } },
   FenceToken: fence, LoopPolicy: policy,
@@ -71,8 +62,8 @@ export const transportShapes: Readonly<Record<string, OwnedShape>> = freeze({
   SettlementApplication: { kind: 'object', fields: { ...row, operation: txt, request: txt, reservation: txt, claim: txt, digest: txt,
     settlement: txt, settlementFact: txt, settlementHash: txt, actualCharge: int, exposure: int, released: int, unresolved: int, capViolation: int, retryEligible: int } },
 });
-/** Additive seam inventory. Legacy consumers keep the original eight-key transportShapes surface. */
-export const transportSeamShapes: Readonly<Record<'MissedRangeRecord', OwnedShape>> = freeze({ MissedRangeRecord: missedRangeShape });
+/** Slice-A adds no standalone record outside the governed policy/record arms. */
+export const transportSeamShapes: Readonly<Record<string, OwnedShape>> = freeze({});
 const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'ScanCursor', 'SettlementApplication'];
 export const kindFor = (name: string) => `transport-${name}`;
 export function transportSchemas(host: TransportHost): readonly FactSchema[] {
@@ -88,8 +79,6 @@ export function transportSeamSchemas(host: TransportHost): readonly FactSchema[]
   return [
     { ...base, kind: kindFor('LoopPolicy'), version: 1,
       fields: { policy: { kind: 'owned' as const, owner: 'part-six', name: 'LoopPolicy' }, generation: { kind: 'text' as const, maxLength: 256 } } },
-    { ...base, kind: kindFor('MissedRangeRecord'), version: 1,
-      fields: { record: { kind: 'owned' as const, owner: 'part-six', name: 'MissedRangeRecord' } } },
   ];
 }
 export function shapeCheck(v: unknown, shape: OwnedShape): void {
@@ -123,7 +112,6 @@ export function policyCheck(p: LoopPolicy): void {
   if (!p || typeof p !== 'object' || p.breaker !== 'shared-circuit-v1') {
     ensure(p !== null && typeof p === 'object' && !Array.isArray(p), 'closed object required');
     const legacy = p as unknown as Record<string, unknown>;
-    ensure(Object.keys(legacy).every(key => Object.hasOwn(legacyPolicyFields, key)), 'unknown field');
     ensure(Object.keys(legacy).length === Object.keys(legacyPolicyFields).length, 'undeclared or missing field');
     for (const [key, field] of Object.entries(legacyPolicyFields)) {
       ensure(Object.hasOwn(legacy, key), `missing ${key}`);
@@ -475,135 +463,6 @@ function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: SharedL
     'loop outcome ordering clock differs from signed completion evidence');
   return fact;
 }
-export function missedRangeEvidence(record: MissedRangeRecord, facts: readonly FactEnvelope[], context: FactContext,
-  host: TransportHost): readonly FactEnvelope[] {
-  missedRangeCheck(record);
-  for (const value of [record.asOf, record.first, record.last,
-    ...record.dispositions.map(disposition => disposition.scheduledInstant)])
-    take(decodeMeasurement('clock', value, host.current().decode));
-  take(decodeMeasurement('duration', record.currentLateness, host.current().decode));
-  ensure(host.calendarExpansion?.owner === 'part-fifteen', 'calendar expansion authority unavailable');
-  const history = allFacts(facts), parent = resolveRunReference(record.parentDuty, history, context, undefined, false);
-  const episode = history.find(fact => fact.kind === kindFor('LoopRecord')
-    && (fact.body as { record?: { type?: unknown; episode?: unknown } }).record?.type === 'LoopRecord'
-    && (fact.body as { record?: { episode?: unknown } }).record?.episode === record.episode.id);
-  ensure(episode, 'missed range LoopRecord fact is absent');
-  const episodeRecord = (episode.body as unknown as { record: LoopRecord }).record;
-  ensure(episodeRecord.policy.breaker === 'shared-circuit-v1'
-    && encoded(episodeRecord.policy.parentDuty).bytes === encoded(record.parentDuty).bytes,
-  'missed range episode has another parent');
-  const cursor = history.find(fact => fact.id === record.scanCursor.id && fact.kind === kindFor('ScanCursor'));
-  ensure(cursor && schemaOwns(context, cursor, 'record', 'part-six', 'ScanCursor'), 'missed range ScanCursor fact is absent or wrong-kind');
-  const cursorRecord = (cursor.body as unknown as { record: ScanCursor }).record;
-  let roster: ReturnType<NonNullable<TransportHost['calendarExpansion']>['roster']> extends Result<infer T> ? T : never;
-  try { roster = take(host.calendarExpansion.roster({ scan: cursorRecord.scan, generation: cursorRecord.generation,
-    orderedKeysDigest: cursorRecord.orderedKeysDigest as `sha256:${string}` })); }
-  catch (error) { throw new Error(`calendar roster witness refused: ${error instanceof Error ? error.message : 'unknown'}`); }
-  const selected = Array.from({ length: cursorRecord.selectedCount }, (_, offset) =>
-    roster.orderedKeys[(cursorRecord.selectedFrom + offset) % roster.orderedKeys.length]!);
-  ensure(selected.includes(record.jobInstance)
-    && encoded(roster.orderedKeys).hash === cursorRecord.orderedKeysDigest,
-  'ScanCursor owner page does not select this job');
-  const rosterFact = history.find(fact => fact.id === roster.witness.id && fact.kind === 'calendar-roster-proof');
-  ensure(roster.witness.owner === 'part-two' && roster.witness.name === 'FactEnvelope' && rosterFact
-    && (rosterFact.body as { scan?: unknown }).scan === cursorRecord.scan
-    && (rosterFact.body as { generation?: unknown }).generation === cursorRecord.generation
-    && (rosterFact.body as { orderedKeysBytes?: unknown }).orderedKeysBytes === encoded(roster.orderedKeys).bytes,
-  'calendar roster proof is absent or inconsistent');
-  let range: ReturnType<NonNullable<TransportHost['calendarExpansion']>['range']> extends Result<infer T> ? T : never;
-  try { range = take(host.calendarExpansion.range({ parentDuty: record.parentDuty, jobInstance: record.jobInstance,
-    calendarPolicy: record.calendarPolicy, asOf: record.asOf, first: record.first, last: record.last,
-    memberCount: record.memberCount, orderedMembersDigest: record.orderedMembersDigest })); }
-  catch (error) { throw new Error(`calendar range witness refused: ${error instanceof Error ? error.message : 'unknown'}`); }
-  const rangeFact = history.find(fact => fact.id === range.witness.id && fact.kind === 'calendar-range-proof');
-  ensure(range.witness.owner === 'part-two' && range.witness.name === 'FactEnvelope' && rangeFact,
-    'calendar range proof is absent');
-  ensure(sameClock(record.asOf, range.through)
-    && record.currentLateness.value === record.asOf.value - range.through.value,
-  'missed range lateness disagrees with signed calendar boundary');
-  let members: readonly Clock[];
-  try { members = take(host.calendarExpansion.expand({ calendarPolicy: record.calendarPolicy,
-    after: range.after, through: range.through, asOf: record.asOf })); }
-  catch (error) { throw new Error(`calendar expansion refused: ${error instanceof Error ? error.message : 'unknown'}`); }
-  ensure(encoded(members).bytes === encoded(range.members).bytes
-    && encoded(members).bytes === encoded(record.dispositions.map(value => value.scheduledInstant)).bytes
-    && encoded(members).hash === record.orderedMembersDigest
-    && (rangeFact.body as { binding?: unknown }).binding === encoded([record.parentDuty.id, record.jobInstance,
-      record.calendarPolicy, range.after, range.through, members]).hash,
-  'calendar owner proof does not reconstruct exact missed membership');
-  const expectedId = `missed:${encoded([record.parentDuty.id, record.jobInstance, record.calendarPolicy,
-    range.after, range.through, record.orderedMembersDigest]).hash}`;
-  const expectedDerivation = encoded({ parentDuty: record.parentDuty, jobInstance: record.jobInstance,
-    packageDigest: record.packageDigest, calendarPolicy: record.calendarPolicy, asOf: record.asOf,
-    priorExpansionCursor: range.after, missedBoundary: range.through,
-    orderedMembersDigest: record.orderedMembersDigest }).hash;
-  ensure(record.id === expectedId && record.derivationInputDigest === expectedDerivation,
-    'missed range identity or derivation differs from signed calendar evidence');
-  const dependencies: FactEnvelope[] = [parent, episode, cursor, rosterFact, rangeFact];
-  const admissions = members.map(member => {
-    const binding = encoded([record.parentDuty.id, record.jobInstance, member]).hash;
-    const matching = history.filter(fact => schemaOwns(context, fact, 'record', 'part-five', 'Run'))
-      .filter(fact => {
-        const run = (fact.body as { record?: { type?: unknown; id?: unknown; opening?: { id?: string } } }).record;
-        if (run?.type !== 'Run' || typeof run.id !== 'string') return false;
-        const opening = history.find(value => value.id === run.opening?.id);
-        return (opening?.body as { transportScheduleBinding?: unknown } | undefined)?.transportScheduleBinding === binding;
-      });
-    const classified = matching.map(fact => {
-      const run = (fact.body as { record: { id: string; opening: { id: string } } }).record;
-      const opening = history.find(value => value.id === run.opening.id)!;
-      const kind = (opening.body as { transportScheduleKind?: unknown }).transportScheduleKind === 'catch-up'
-        ? 'catch-up' as const : 'existing' as const;
-      return { fact, opening, kind, reference: { owner: 'part-five' as const, name: 'Run' as const, id: run.id } };
-    });
-    ensure(new Set(classified.filter(value => value.kind === 'existing').map(value => value.reference.id)).size <= 1
-      && new Set(classified.filter(value => value.kind === 'catch-up').map(value => value.reference.id)).size <= 1,
-    'missed member Run admission is conflicted');
-    return classified;
-  });
-  const otherwiseUnexecuted = admissions.map((value, index) => value.some(row => row.kind === 'existing') ? -1 : index)
-    .filter(index => index >= 0);
-  const expectedCatchUp = record.catchUpPolicy === 'latest' ? otherwiseUnexecuted.at(-1) ?? -1 : -1;
-  record.dispositions.forEach((disposition, index) => {
-    const memberAdmissions = admissions[index]!;
-    const existing = memberAdmissions.find(value => value.kind === 'existing');
-    const catchUp = memberAdmissions.find(value => value.kind === 'catch-up');
-    if (existing) {
-      ensure(disposition.kind === 'existing-run' && encoded(disposition.run).bytes === encoded(existing.reference).bytes,
-        'already admitted missed member must retain its original Run');
-      dependencies.push(resolveRunReference(existing.reference, history, context, {
-        parentDuty: record.parentDuty, jobInstance: record.jobInstance, scheduledInstant: disposition.scheduledInstant }, false, true));
-      return;
-    }
-    if (index === expectedCatchUp) {
-      ensure(catchUp && disposition.kind === 'catch-up-run'
-        && encoded(disposition.run).bytes === encoded(catchUp.reference).bytes
-        && encoded(record.catchUpRun).bytes === encoded(catchUp.reference).bytes,
-      'latest policy must retain the owner-admitted deterministic catch-up Run');
-      dependencies.push(resolveRunReference(catchUp.reference, history, context, {
-        parentDuty: record.parentDuty, jobInstance: record.jobInstance, scheduledInstant: disposition.scheduledInstant }, false, true));
-      return;
-    }
-    ensure(!catchUp && disposition.kind === 'missed-no-execution',
-      'unadmitted missed member must remain honestly unexecuted');
-    dependencies.push(constitutionalFact(disposition.result, 'Result', history, context, false));
-  });
-  ensure(record.catchUpPolicy === 'latest' || admissions.every(value => !value.some(row => row.kind === 'catch-up')),
-    'none catch-up policy cannot name an admitted catch-up Run');
-  const unique = [...new Map(dependencies.map(fact => [fact.id, fact])).values()];
-  requireUsableFacts(unique, context, history);
-  return unique;
-}
-export function resolveMissedRangeEvidence(record: MissedRangeRecord, origin: FactEnvelope,
-  facts: readonly FactEnvelope[], context: FactContext, host: TransportHost): readonly string[] {
-  // Historical replay evaluates each observation at its signed causal frontier.
-  // A later Run admission promotes only a causally linked successor; it must not
-  // retroactively poison an honestly-partial predecessor during restart.
-  const population = allFacts([...context.facts, ...facts]);
-  const history = allFacts([...causalCone(origin, population), origin]);
-  const unique = missedRangeEvidence(record, history, context, host);
-  requiredBy(origin, unique); return unique.map(fact => fact.id);
-}
 export function loopRecordCheck(r: LoopRecord): void {
   if (r?.policy?.breaker === 'stub-closed') {
     const legacy = r as unknown as Record<string, unknown>;
@@ -670,59 +529,6 @@ export function loopRecordCheck(r: LoopRecord): void {
   ensure(/^sha256:[a-f0-9]{64}$/.test(shared.outcomeWindowDigest), 'invalid outcome window digest');
   shared.closureEvidence.forEach(value => referenceCheck(value, 'part-nine', 'VerificationAssessment'));
 }
-export function missedRangeCheck(r: MissedRangeRecord): void {
-  const catchUpRun = r.catchUpRun ?? null;
-  const wire = catchUpRun === null ? Object.fromEntries(Object.entries(r).filter(([key]) => key !== 'catchUpRun')) : r;
-  shapeCheck(wire, missedRangeShape);
-  ensure(r.type === 'MissedRangeRecord' && r.schemaVersion === 1 && r.id.length > 0, 'missed range identity');
-  referenceCheck(r.parentDuty, 'part-five', 'Run'); referenceCheck(r.episode, 'part-six', 'LoopRecord');
-  referenceCheck(r.scanCursor, 'part-six', 'ScanCursor');
-  ensure(r.jobInstance.length > 0 && r.calendarPolicy.length > 0
-    && /^sha256:[a-f0-9]{64}$/.test(r.packageDigest)
-    && /^sha256:[a-f0-9]{64}$/.test(r.orderedMembersDigest)
-    && /^sha256:[a-f0-9]{64}$/.test(r.derivationInputDigest), 'missed range digest or identity');
-  ensure(r.memberCount > 0 && r.dispositions.length === r.memberCount, 'missed range membership/disposition mismatch');
-  const members = r.dispositions.map(value => value.scheduledInstant);
-  const comparable = (left: typeof r.first, right: typeof r.first) => left.subject.kind === right.subject.kind
-    && left.subject.instance === right.subject.instance && left.unit === right.unit;
-  ensure(members.every((member, index) => comparable(member, r.asOf)
-    && (index === 0 || members[index - 1]!.value < member.value)), 'missed range members are not strictly ordered on one clock');
-  ensure(encoded(r.first).bytes === encoded(members[0]).bytes
-    && encoded(r.last).bytes === encoded(members.at(-1)).bytes, 'missed range first/last bounds disagree with members');
-  ensure(r.orderedMembersDigest === encoded(members).hash, 'missed range membership digest disagrees');
-  ensure(r.currentLateness.subject.instance === r.jobInstance
-    && encoded(r.currentLateness.at).bytes === encoded(r.asOf).bytes
-    && Number.isSafeInteger(r.currentLateness.value) && r.currentLateness.value >= 0,
-  'missed range lateness disagrees with boundary');
-  ensure(r.catchUpPolicy === 'none' || r.catchUpPolicy === 'latest', 'unknown catch-up policy');
-  if (catchUpRun !== null) referenceCheck(catchUpRun, 'part-five', 'Run');
-  r.dispositions.forEach(value => {
-    ensure(['missed-no-execution', 'existing-run', 'catch-up-run'].includes(value.kind), 'unknown missed member disposition');
-    if (value.kind === 'missed-no-execution') {
-      ensure(Object.keys(value).length === 3 && value.result.type === 'Result' && value.result.id.length > 0
-        && value.result.field.length > 0, 'missed member must carry only its constitutional Result');
-      referenceCheck(value.result.fact, 'part-two', 'FactEnvelope');
-    } else {
-      ensure(Object.keys(value).length === 3, 'admitted member must carry only its Run');
-      referenceCheck(value.run, 'part-five', 'Run');
-    }
-  });
-  const catchUps = r.dispositions.map((value, index) => value.kind === 'catch-up-run' ? index : -1)
-    .filter(index => index >= 0);
-  const otherwiseUnexecuted = r.dispositions.map((value, index) => value.kind === 'existing-run' ? -1 : index)
-    .filter(index => index >= 0);
-  if (r.catchUpPolicy === 'none') {
-    ensure(catchUps.length === 0 && catchUpRun === null, 'none catch-up policy cannot link a catch-up Run');
-  } else if (otherwiseUnexecuted.length === 0) {
-    ensure(catchUps.length === 0 && catchUpRun === null, 'fully admitted range cannot link a catch-up Run');
-  } else {
-    const latest = otherwiseUnexecuted.at(-1)!;
-    ensure(catchUps.length === 1 && catchUps[0] === latest && catchUpRun !== null
-      && r.dispositions[latest]!.kind === 'catch-up-run'
-      && encoded((r.dispositions[latest] as { run: RunReference }).run).bytes === encoded(catchUpRun).bytes,
-    'latest policy must link exactly the latest otherwise-unexecuted member');
-  }
-}
 export function decodeLoopPolicy(input: unknown, c: BoundaryContext): Result<LoopPolicy> {
   return boundary('LoopPolicyInput', input, c, safe => { const p = safe as unknown as LoopPolicy; policyCheck(p); return freeze(p); });
 }
@@ -731,42 +537,6 @@ export function decodeLoopRecord(input: unknown, c: BoundaryContext): Result<Loo
 }
 export function decodeScanCursor(input: unknown, c: BoundaryContext): Result<ScanCursor> {
   return boundary('ScanCursorInput', input, c, safe => { const r = safe as unknown as ScanCursor; shapeCheck(r, transportShapes.ScanCursor!); return freeze(r); });
-}
-export function decodeMissedRangeRecord(input: unknown, c: BoundaryContext): Result<MissedRangeRecord> {
-  return boundary('MissedRangeRecordInput', input, c, safe => { const r = safe as unknown as MissedRangeRecord; missedRangeCheck(r); return freeze(r); });
-}
-const missedTickets = new WeakMap<TransportHost, Set<string>>();
-export function withMissedRangeCandidate<T>(host: TransportHost, record: MissedRangeRecord, run: () => T): T {
-  const key = encoded(record).hash, set = missedTickets.get(host) ?? new Set<string>();
-  missedTickets.set(host, set); ensure(!set.has(key), 'missed range candidate already active');
-  set.add(key); try { return run(); } finally { set.delete(key); }
-}
-function requireMissedRangeCandidate(host: TransportHost, record: MissedRangeRecord): void {
-  ensure(missedTickets.get(host)?.has(encoded(record).hash), 'missed range requires its conditional writer');
-}
-export function missedRows(facts: readonly FactEnvelope[]): readonly MissedRangeFact[] {
-  return facts.filter(fact => fact.kind === kindFor('MissedRangeRecord')).map(fact => {
-    const wire = (fact.body as { readonly record: Json }).record as Record<string, Json>;
-    const record = freeze({ ...wire, catchUpRun: wire.catchUpRun ?? null }) as unknown as MissedRangeRecord;
-    return { fact, record };
-  });
-}
-export function validateMissedRangeHistory(record: MissedRangeRecord, prior: readonly MissedRangeFact[]): void {
-  missedRangeCheck(record);
-  const previous = prior.filter(row => row.record.id === record.id).at(-1)?.record;
-  if (!previous) return;
-  const stable = (value: MissedRangeRecord) => ({ ...value, asOf: null, currentLateness: null,
-    derivationInputDigest: '', dispositions: [], catchUpRun: null });
-  ensure(encoded(stable(previous)).bytes === encoded(stable(record)).bytes, 'missed range identity or membership changed');
-  ensure(sameClock(previous.asOf, record.asOf) && record.asOf.value >= previous.asOf.value,
-    'missed range observation clock moved backward');
-  ensure(previous.dispositions.every((old, index) => {
-    const next = record.dispositions[index]!;
-    return encoded(old.scheduledInstant).bytes === encoded(next.scheduledInstant).bytes
-      && (old.kind === 'missed-no-execution' || encoded(old).bytes === encoded(next).bytes);
-  }), 'completed missed member disposition changed');
-  if (previous.catchUpRun) ensure(encoded(previous.catchUpRun).bytes === encoded(record.catchUpRun).bytes,
-    'catch-up Run changed or was minted twice');
 }
 export function rows(facts: readonly FactEnvelope[], domain: string): TransportFact[] {
   return facts.filter(f => recordNames.some(n => f.kind === kindFor(n))).map(fact => ({ fact,
@@ -841,6 +611,8 @@ const parentRollingAt = (all: readonly TransportFact[], record: SharedLoopRecord
     ensure(!old, 'parent attempt identity already belongs to another pressure scope');
     attempts.set(added.id, added);
   }
+  ensure([...attempts.values()].every(attempt => sameClock(attempt.admittedAt, now)),
+    'parent budget contains an incomparable attempt clock');
   return rollingAt({ policy: record.policy, attemptLog: [...attempts.values()] }, now);
 };
 export function validateSharedParentPolicy(record: Pick<SharedLoopRecord, 'parentDuty' | 'policy'>,
@@ -938,7 +710,9 @@ export function sharedOutcomeDecision(previous: SharedLoopRecord, all: readonly 
   } else if (failureCount >= policy.failureThreshold) {
     state = 'open-breaker'; transition = 'opened'; nextEligible = shifted(added.observedAt, policy.breakerCooldown);
     breakerOpenCount++;
-    if (breakerHasOpened === 0) { breakerHasOpened = 1; breakerFirstOpened = added.observedAt; }
+    // This is a new uninterrupted open interval. Cumulative counters survive a
+    // witnessed close, but time spent healthy between cycles is not open time.
+    breakerHasOpened = 1; breakerFirstOpened = added.observedAt;
   } else if (pendingAttempts.length > 0) state = 'running';
   else {
     state = 'waiting';
@@ -1377,9 +1151,7 @@ function registerBodySet<S>(shapes: Readonly<Record<string, OwnedShape>>, host: 
     decodeCurrent: (input, ctx) => {
       try {
         shapeCheck(input, shape);
-        const normalized = name === 'MissedRangeRecord' && !(input as Record<string, Json>).catchUpRun
-          ? { ...(input as Record<string, Json>), catchUpRun: null } : input;
-        const v = normalized as unknown as TransportOwnedRecord;
+        const v = input as unknown as TransportRecord;
         ensure((input as { type: string }).type === name && v.schemaVersion === 1, 'owned type mismatch');
         if (name === 'LoopPolicy') policyCheck(input as unknown as LoopPolicy);
         else if (name === 'FenceToken') {
@@ -1387,7 +1159,7 @@ function registerBodySet<S>(shapes: Readonly<Record<string, OwnedShape>>, host: 
           ensure(lease && encoded(input).bytes === encoded(fenceFor(past, lease)).bytes, 'fence lacks committed assignment');
           if (ctx.mode === 'origin') { live(host); checkFence(past, input as unknown as FenceToken, host, host.monotonic()); }
         }
-        else if (recordNames.includes(name) || name === 'MissedRangeRecord') {
+        else if (recordNames.includes(name)) {
           // Main-owned legacy LoopRecords must enter their original transition
           // validator before any additive shared-breaker validation. This keeps
           // both acceptance and exact refusal Results byte-identical to main.
@@ -1411,37 +1183,26 @@ function registerBodySet<S>(shapes: Readonly<Record<string, OwnedShape>>, host: 
           // Even a subsequently refused candidate conservatively invalidates it.
           if (candidate) noteAccountingCandidate(host);
           const admitting = ctx.mode === 'origin' && candidate;
-          if (v.type === 'MissedRangeRecord') {
-            const missed = missedRows(cone);
-            ensure(missed.every(({ fact }) => fact.machine === host.machine && fact.principal.id === host.principal.id
-              && fact.principal.kind === host.principal.kind), 'predecessor issuer is not this authority');
-            validateMissedRangeHistory(v, missed);
-            resolveMissedRangeEvidence(v, ctx.origin, ctx.facts.facts, ctx.facts, host);
-            if (admitting) requireMissedRangeCandidate(host, v);
-          } else {
-            if (v.type === 'LoopRecord' && v.policy.breaker === 'shared-circuit-v1')
-              resolveSharedLoopEvidence(v as SharedLoopRecord, ctx.origin, ctx.facts.facts, ctx.facts, host);
-            validateTransition(v, past, host, admitting, cone, ctx.facts);
-          }
+          if (v.type === 'LoopRecord' && v.policy.breaker === 'shared-circuit-v1')
+            resolveSharedLoopEvidence(v as SharedLoopRecord, ctx.origin, ctx.facts.facts, ctx.facts, host);
+          validateTransition(v, past, host, admitting, cone, ctx.facts);
           if (v.type === 'SettlementApplication') {
             checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past);
             if (ctx.mode === 'origin') requireApplication(host, v, settlementConsumer);
           }
           if (ctx.mode === 'origin') {
             live(host);
-            if (v.type !== 'MissedRangeRecord') {
-              const now = host.monotonic();
-              ensure(v.authority === host.authorityIncarnation && v.tick <= now
-                && !past.some(p => p.record.authority === v.authority && p.record.tick > v.tick), 'untrusted authority clock or incarnation');
-              ensure(v.predecessor === (rows(ctx.facts.facts, host.domain).at(-1)?.fact.id ?? ''), 'stale origin predecessor');
-              if (v.type !== 'ScanCursor') {
+            const now = host.monotonic();
+            ensure(v.authority === host.authorityIncarnation && v.tick <= now
+              && !past.some(p => p.record.authority === v.authority && p.record.tick > v.tick), 'untrusted authority clock or incarnation');
+            ensure(v.predecessor === (rows(ctx.facts.facts, host.domain).at(-1)?.fact.id ?? ''), 'stale origin predecessor');
+            if (v.type !== 'ScanCursor') {
               const lease = latestLease(past)?.record;
               if (v.type !== 'Lease' || v.epoch === lease?.epoch) {
                 ensure(lease?.incarnation === host.incarnation && lease.authority === host.authorityIncarnation && lease.expires > now
                   && lease.generation === host.current().generation.id, 'stale owner at durable boundary');
               } else ensure(v.incarnation === host.incarnation && v.expires > now
                 && v.generation === host.current().generation.id, 'acquisition incarnation or expiration');
-              }
             }
           }
         }

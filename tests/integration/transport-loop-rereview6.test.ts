@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from 'vitest';
-import { canonical, consumeResult, decodeMeasurement } from '../../src/index.js';
+import { canonical, consumeResult } from '../../src/index.js';
 import { authorAndAppend, createFactStore, decodeEnvelope, decodeHistoricalBody, signEnvelope } from '../../src/facts/index.js';
-import { createBoundedDueScanPort, createTransportAuthority, createTransportSpine, decodeLoopPolicy } from '../../src/transport/index.js';
+import { createTransportAuthority, createTransportSpine, decodeLoopPolicy } from '../../src/transport/index.js';
 import { transportLoopFixture, value } from '../transport/loop-fixture.js';
 import { privateKey } from '../facts/fixtures.js';
 afterEach(() => new Promise<void>(resolve => setImmediate(resolve)));
@@ -10,8 +10,8 @@ const ref = (loop: any) => ({ owner: 'part-six' as const, name: 'LoopRecord' as 
 const result = (r: any): any => consumeResult(r, { Success: (value: any) => ({ kind: 'ACCEPT', value }),
   Refused: (refusal: any) => ({ kind: 'REFUSE', detail: refusal.detail }) } as any);
 const reject = (r: any) => expect(result(r)).toMatchObject({kind:'REFUSE'});
-function setup(overrides = {}, options = {}) {
-  const f = transportLoopFixture(undefined, undefined, undefined, options);
+function setup(overrides = {}) {
+  const f = transportLoopFixture();
   const policy: any = value(decodeLoopPolicy({ ...f.sharedPolicy, id: 'independent-policy', ...overrides }, f.c));
   f.registerPolicy(policy);
   const token = value(f.api.acquire('independent-lease', '', 1000));
@@ -100,36 +100,13 @@ it('SLB-PARENT-POLICY-51 V08 signed first record in a second pressure scope must
  expect(replay.kind).toBe('REFUSE');expect(replication.kind).toBe('REFUSE');
 });
 
-function missed() {
- const s=setup({}, {existingInstants:[]});
- const page=value(createBoundedDueScanPort(s.f.host,s.f.spine,s.f.c).page({scan:'scan',generation:'g1',orderedKeys:['job:one'],cursor:null,maxItems:1,maxDuration:10}));
- const proof=s.f.appendResult();
- const input:any={parentDuty:s.f.parentDuty,episode:ref(s.loop),scanCursor:page.cursor,jobInstance:'job:one',packageDigest:`sha256:${'d'.repeat(64)}`,calendarPolicy:'every-10',asOf:s.f.clock(130),currentLateness:value(decodeMeasurement('duration',{type:'Measurement',schemaVersion:1,subject:{kind:'duration',instance:'job:one'},value:0,unit:'ms',at:s.f.clock(130),by:'probe'},s.f.host.current().decode)),priorExpansionCursor:s.f.clock(100),missedBoundary:s.f.clock(130),catchUpPolicy:'none',dispositions:[110,120,130].map(at=>({scheduledInstant:s.f.clock(at),kind:'missed-no-execution',result:proof})),catchUpRun:null};
- return {...s,missedInput:input};
-}
-it('V09 exact missed membership accepts; omitted/reordered/wrong cursor/extra catch-up refuses',()=>{
- const s=missed(),i=s.missedInput;
- for(const change of [{dispositions:i.dispositions.slice(1)},{dispositions:[...i.dispositions].reverse()},{scanCursor:{...i.scanCursor,id:'missing'}},{catchUpRun:s.f.run}])reject(s.f.api.recordMissedRange({...i,...change}));
- const reference=value(s.f.api.recordMissedRange(i));expect(value(s.f.api.recordMissedRange(i))).toEqual(reference);
- expect(value(s.f.api.readMissedRange(reference)).firstUndisposed?.value).toBe(110);
-});
-it('SLB-MISSED-INSTALLATION-52 V10 identical missed replay accepts with complete installation history and empty durable suffix',()=>{
- const s=missed(),reference=value(s.f.api.recordMissedRange(s.missedInput));
- const ctx={...s.f.ctx,facts:[...s.f.ctx.facts,...value(s.f.store.read())]};
- const store=createFactStore(ctx,{owner:'part-ten',read:()=>[],append:()=>s.f.result(()=>{throw new Error('read-only');})});
- const api=createTransportAuthority(s.f.host,createTransportSpine(s.f.host,{context:ctx,privateKey},store),s.f.c);
- expect(value(api.readMissedRange(reference)).record.memberCount).toBe(3);
- const replay=result(api.recordMissedRange(s.missedInput));console.log('V10 observed',JSON.stringify(replay));expect(replay.kind).toBe('ACCEPT');
-});
-
-for (const [index,boundary] of ['scheduled','attempt-admitted','opened','half-opened','missed-initial','evidence-only-closed'].entries()) {
+for (const [index,boundary] of ['scheduled','attempt-admitted','opened','half-opened','evidence-only-closed'].entries()) {
  for (const [sideIndex,side] of ['before','after'].entries()) {
   const cutEvidenceId = `SLB-CUT-${boundary.toUpperCase()}-${side.toUpperCase()}-${54 + index * 2 + sideIndex}`;
   it(`V${11+index*2+sideIndex} cut ${side} ${boundary} ${cutEvidenceId} keeps the exact durable prefix and owned pending work`,()=>{
-   const s=boundary==='missed-initial'?missed():setup({failureThreshold:1,halfOpenTrials:1});
+   const s=setup({failureThreshold:1,halfOpenTrials:1});
    let operation:(api:any)=>any;
    if(boundary==='scheduled') operation=api=>api.scheduleEpisode({...s.input,command:'cut-schedule',episodeKey:'cut-new',pressureScope:{...scope,target:'other'}});
-   else if(boundary==='missed-initial') operation=api=>api.recordMissedRange((s as any).missedInput);
    else if(boundary==='attempt-admitted') {
      s.f.advance(1);
      operation=api=>api.admitLoopAttempt({command:'cut-admit',fence:s.token,episode:ref(s.loop),attempt:'cut-one',holderFamily:'sentinel',worker:'worker-cut',machine:'machine-a',resource:1,sourceVector:s.f.vector});
@@ -153,7 +130,7 @@ for (const [index,boundary] of ['scheduled','attempt-admitted','opened','half-op
    const before=s.f.storage.read();
    const storage={...s.f.storage,append:(bytes:any,expected:any)=>{
      const record=JSON.parse(bytes).body.record;
-     const target=boundary==='missed-initial'?record?.type==='MissedRangeRecord':record?.transition===(boundary==='evidence-only-closed'?'closed':boundary);
+     const target=record?.transition===(boundary==='evidence-only-closed'?'closed':boundary);
      if(!target)return s.f.storage.append(bytes,expected);
      if(side==='after')value(s.f.storage.append(bytes,expected));
      return s.f.result(()=>{throw new Error('independent durable cut');});
@@ -165,7 +142,7 @@ for (const [index,boundary] of ['scheduled','attempt-admitted','opened','half-op
    const recovered=createFactStore(s.f.ctx,s.f.storage);
    const records=value(recovered.read()) as any[];
    expect(records.length).toBe(after.length);
-   if(side==='after')expect(records.at(-1).body.record).toMatchObject(boundary==='missed-initial'?{type:'MissedRangeRecord',memberCount:3}:{transition:boundary==='evidence-only-closed'?'closed':boundary});
+   if(side==='after')expect(records.at(-1).body.record).toMatchObject({transition:boundary==='evidence-only-closed'?'closed':boundary});
    else expect(records.at(-1).id).toBe((before.at(-1) as any).id);
   });
  }
@@ -195,38 +172,4 @@ it('V25 accepts a same-policy first record in a second pressure scope', () => {
   }));
   expect(neighbor.policy).toEqual(s.policy);
   expect(neighbor.rollingAttempts).toBe(1);
-});
-
-it('V26 refuses absent, wrong-kind, and unavailable missed-member Results', () => {
-  const make = () => missed();
-  {
-    const s = make();
-    reject(s.f.api.recordMissedRange({
-      ...s.missedInput,
-      dispositions: s.missedInput.dispositions.map((entry: any, index: number) =>
-        index === 0 ? { ...entry, result: { ...entry.result, fact: { ...entry.result.fact, id: 'missing' } } } : entry),
-    }));
-  }
-  {
-    const s = make();
-    const wrong = value(s.f.store.read()).find((fact: any) => fact.kind === 'transport-LoopPolicy')!;
-    reject(s.f.api.recordMissedRange({
-      ...s.missedInput,
-      dispositions: s.missedInput.dispositions.map((entry: any, index: number) =>
-        index === 0 ? { ...entry, result: { ...entry.result, fact: { ...entry.result.fact, id: wrong.id } } } : entry),
-    }));
-  }
-  {
-    const s = make();
-    const proofId = s.missedInput.dispositions[0].result.fact.id;
-    const wires = s.f.storage.read() as any[];
-    const original = wires.find(wire => wire.id === proofId)!;
-    const conflict = signEnvelope({ ...original, body: { ...original.body,
-      result: { ...original.body.result, reason: 'conflicting-signed-result' } } }, privateKey);
-    const storage = { ...s.f.storage, read: () => [...wires, conflict] };
-    const store = createFactStore(s.f.ctx, storage);
-    const api = createTransportAuthority(s.f.host,
-      createTransportSpine(s.f.host, { context: s.f.ctx, privateKey }, store), s.f.c);
-    reject(api.recordMissedRange(s.missedInput));
-  }
 });

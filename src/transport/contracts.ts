@@ -1,4 +1,4 @@
-import type { BoundaryContext, Clock, DecodeContext, FactEnvelopeReference, Hash, Measurement, Outcome, OwnedReference, RegisterGenerationReference, Result, RunReference, Scope, VerifiedPrincipal } from '../index.js';
+import type { BoundaryContext, Clock, DecodeContext, FactEnvelopeReference, Hash, Outcome, OwnedReference, RegisterGenerationReference, Result, RunReference, Scope, VerifiedPrincipal } from '../index.js';
 import type { AppendReceipt, FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
 import type { ConstitutionalReference } from '../rungraph/index.js';
 
@@ -108,36 +108,6 @@ export interface ScanCursor extends Row, Owned {
   readonly nextIndex: number; readonly maxItems: number; readonly maxDuration: number;
   readonly elapsed: number; readonly wrapped: 0 | 1;
 }
-export interface MissedRangeRecord extends Owned {
-  readonly type: 'MissedRangeRecord'; readonly schemaVersion: 1; readonly id: string;
-  readonly parentDuty: RunReference;
-  readonly episode: OwnedReference<'part-six', 'LoopRecord'>;
-  readonly scanCursor: OwnedReference<'part-six', 'ScanCursor'>;
-  readonly jobInstance: string; readonly packageDigest: Hash; readonly calendarPolicy: string;
-  readonly asOf: Clock; readonly currentLateness: Measurement<'duration'>;
-  readonly first: Clock; readonly last: Clock; readonly memberCount: number;
-  readonly orderedMembersDigest: Hash; readonly derivationInputDigest: Hash;
-  readonly catchUpPolicy: 'none' | 'latest';
-  readonly dispositions: readonly (
-    | Readonly<{ scheduledInstant: Clock; kind: 'missed-no-execution'; result: ConstitutionalReference<'Result'> }>
-    | Readonly<{ scheduledInstant: Clock; kind: 'existing-run' | 'catch-up-run'; run: RunReference }>
-  )[];
-  readonly catchUpRun: RunReference | null;
-}
-export interface MissedRangeInput {
-  readonly parentDuty: RunReference;
-  readonly episode: OwnedReference<'part-six', 'LoopRecord'>;
-  readonly scanCursor: OwnedReference<'part-six', 'ScanCursor'>;
-  readonly jobInstance: string; readonly packageDigest: Hash; readonly calendarPolicy: string;
-  readonly asOf: Clock; readonly currentLateness: Measurement<'duration'>;
-  readonly priorExpansionCursor: Clock; readonly missedBoundary: Clock;
-  readonly catchUpPolicy: 'none' | 'latest';
-  readonly dispositions: MissedRangeRecord['dispositions']; readonly catchUpRun: RunReference | null;
-}
-export interface MissedRangeView {
-  readonly record: MissedRangeRecord; readonly fact: FactEnvelopeReference;
-  readonly firstUndisposed: Clock | null;
-}
 // Six's accounting receipt, NOT an effect verdict or an eight-owned settlement.
 export interface SettlementApplication extends Row, Owned {
   readonly type: 'SettlementApplication'; readonly operation: string; readonly request: string;
@@ -162,26 +132,12 @@ export interface SettlementAccountingInput {
 export type SettlementConsumer<S> = <T>(value: S, boundary: BoundaryContext,
   consumer: (value: SettlementAccountingInput) => T) => Result<T>;
 export type TransportRecord = Lease | AdmissionReservation | LoopRecord | RecoveryRecord | ScanCursor | SettlementApplication;
-export type TransportOwnedRecord = TransportRecord | MissedRangeRecord;
 export type TransportRowRecord = TransportRecord;
 export interface TransportFact { readonly fact: FactEnvelope; readonly record: TransportRecord }
-export interface MissedRangeFact { readonly fact: FactEnvelope; readonly record: MissedRangeRecord }
 
 export interface SharedLoopClockPort {
   readonly owner: 'part-ten';
   now(): Clock;
-}
-export interface CalendarExpansionPort {
-  readonly owner: 'part-fifteen';
-  expand(input: Readonly<{ calendarPolicy: string; after: Clock; through: Clock; asOf: Clock }>): Result<readonly Clock[]>;
-  /** Resolve the signed owner roster which caused a six-owned selection cursor. */
-  roster(input: Readonly<{ scan: string; generation: string; orderedKeysDigest: Hash }>): Result<Readonly<{
-    orderedKeys: readonly string[]; witness: FactEnvelopeReference;
-  }>>;
-  range(input: Readonly<{ parentDuty: RunReference; jobInstance: string; calendarPolicy: string; asOf: Clock;
-    first: Clock; last: Clock; memberCount: number; orderedMembersDigest: Hash }>): Result<Readonly<{
-      after: Clock; through: Clock; members: readonly Clock[]; witness: FactEnvelopeReference;
-    }>>;
 }
 export interface RestorationEvidencePort {
   readonly owner: 'part-nine';
@@ -201,7 +157,6 @@ export interface GovernedLoopScopePort {
       operationFamily: string; pressureScope: LoopPressureScope; witness: FactEnvelopeReference;
     }>>;
 }
-
 // Trusted host seams. P10 supplies the monotonic clock and fresh process identity.
 // P3/current authority supplies a live context, not a candidate-supplied generation.
 export interface TransportHost {
@@ -214,9 +169,8 @@ export interface TransportHost {
     readonly owner: 'part-ten';
     ensure(facts: readonly FactEnvelope[]): Result<readonly AppendReceipt[]>;
   };
-  /** Shared comparable time is mandatory for the real breaker and missed-range paths. */
+  /** Shared comparable time is mandatory for the real breaker path. */
   readonly loopClock?: SharedLoopClockPort;
-  readonly calendarExpansion?: CalendarExpansionPort;
   readonly restorationEvidence?: RestorationEvidencePort;
   readonly loopScopeBinding?: GovernedLoopScopePort;
   // Non-waiting local accessors, also used inside eight's final no-wait guard.
@@ -229,7 +183,7 @@ export interface TransportSpine {
   readonly store: FactStorePort;
   /** Pinned installation history used to re-resolve owner evidence on every path. */
   readonly context?: FactContext;
-  append(record: TransportOwnedRecord, required: readonly string[]): Result<AppendReceipt>;
+  append(record: TransportRecord, required: readonly string[]): Result<AppendReceipt>;
 }
 export interface FactAuthor {
   readonly context: FactContext; readonly privateKey: string;
@@ -292,8 +246,6 @@ export interface TransportAuthority<S = never> {
   scheduleEpisode(input: LoopEpisodeInput): Result<SharedLoopRecord>;
   admitLoopAttempt(input: LoopAttemptInput): Result<SharedLoopRecord>;
   recordLoopOutcome(input: LoopOutcomeInput): Result<SharedLoopRecord>;
-  recordMissedRange(input: MissedRangeInput): Result<OwnedReference<'part-six', 'MissedRangeRecord'>>;
-  readMissedRange(reference: OwnedReference<'part-six', 'MissedRangeRecord'>): Result<MissedRangeView>;
   reserve(input: ReserveInput): Result<AdmissionReservation>;
   claim(command: string, fence: FenceToken, operation: string): Result<DispatchClaim>;
   consume(claim: DispatchClaim, fence: FenceToken): Result<AdmissionReservation>;

@@ -1,9 +1,9 @@
 import { afterEach, expect, it } from 'vitest';
-import { canonical, consumeResult, decodeMeasurement } from '../../src/index.js';
+import { canonical, consumeResult } from '../../src/index.js';
 import { createFactStore, decodeEnvelope, decodeHistoricalBody, factId, prepareSnapshot, signEnvelope } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
-import { createBoundedDueScanPort, decodeLoopPolicy, decodeMissedRangeRecord } from '../../src/transport/index.js';
-import type { FenceToken, MissedRangeInput, SharedBreakerLoopPolicy, SharedLoopRecord } from '../../src/transport/index.js';
+import { decodeLoopPolicy } from '../../src/transport/index.js';
+import type { FenceToken, SharedBreakerLoopPolicy, SharedLoopRecord } from '../../src/transport/index.js';
 import { deriveVerificationAssessment } from '../../src/verification/index.js';
 import type { VerificationAssessment, VerificationPlan, VerificationRequest } from '../../src/verification/index.js';
 import { privateKey } from '../facts/fixtures.js';
@@ -113,28 +113,6 @@ function mutateLast(s: ReturnType<typeof setup>, transform: (record: SharedLoopR
   return { ctx, altered, frame: value(decodeEnvelope(altered, ctx, 'replication')),
     replicate: () => replica.append(altered, { peer: s.f.host.machine }) };
 }
-function missed(options: Readonly<{ existingInstants?: readonly number[]; catchUpInstants?: readonly number[] }> = {}) {
-  const existing = options.existingInstants ?? [110, 120, 130];
-  const catchUp = options.catchUpInstants ?? [];
-  const s = setup({}, transportLoopFixture(undefined, undefined, undefined, options));
-  const page = value(createBoundedDueScanPort(s.f.host, s.f.spine, s.f.c).page({ scan: 'scan', generation: 'g1',
-    orderedKeys: ['job:one'], cursor: null, maxItems: 1, maxDuration: 10 }));
-  const result = s.f.appendResult();
-  const input: MissedRangeInput = { parentDuty: s.f.parentDuty, episode: loopRef(s.loop), scanCursor: page.cursor,
-    jobInstance: 'job:one', packageDigest: `sha256:${'d'.repeat(64)}`, calendarPolicy: 'every-10',
-    asOf: s.f.clock(130), currentLateness: value(decodeMeasurement('duration', { type: 'Measurement', schemaVersion: 1,
-      subject: { kind: 'duration', instance: 'job:one' }, value: 0, unit: 'ms', at: s.f.clock(130), by: 'probe' },
-    s.f.host.current().decode)),
-    priorExpansionCursor: s.f.clock(100), missedBoundary: s.f.clock(130),
-    catchUpPolicy: catchUp.length > 0 ? 'latest' : 'none',
-    dispositions: [110, 120, 130].map(n => catchUp.includes(n)
-      ? ({ scheduledInstant: s.f.clock(n), kind: 'catch-up-run' as const, run: s.f.catchUpRun(n) })
-      : existing.includes(n) ? ({ scheduledInstant: s.f.clock(n), kind: 'existing-run' as const, run: s.f.admittedRun(n) })
-        : ({ scheduledInstant: s.f.clock(n), kind: 'missed-no-execution' as const, result })),
-    catchUpRun: catchUp.length > 0 ? s.f.catchUpRun(catchUp.at(-1)!) : null };
-  return { ...s, page, input };
-}
-
 it('SLB-REFS-14 V02 V03 V04 V08 re-resolves policy, Run, vector positions and generation policy facts', () => {
   const f = transportLoopFixture(), token = value(f.api.acquire('lease:refs', '', 1000));
   const absentParent = { ...f.parentDuty, id: 'run:absent' };
@@ -303,24 +281,6 @@ it('SLB-BOUNDS-19 V11 V39 total concurrency bounds half-open and a zero parent-a
   expect((value(s.f.api.inspect()).at(-1)!.record as SharedLoopRecord).attempts).toBe(0);
 });
 
-it('SLB-MISSED-21 V21 V22 V26 resolves member Runs, cursor roster and catch-up admissions against owner history', () => {
-  const s = missed();
-  const result = s.f.appendResult('result:erase-existing');
-  rejects(s.f.api.recordMissedRange({ ...s.input, dispositions: [110, 120, 130].map(value => ({
-    scheduledInstant: s.f.clock(value), kind: 'missed-no-execution' as const, result })) }), 'already admitted');
-  rejects(s.f.api.recordMissedRange({ ...s.input, dispositions: s.input.dispositions.map(value => ({
-    scheduledInstant: value.scheduledInstant, kind: 'existing-run' as const,
-    run: { owner: 'part-five', name: 'Run', id: 'run:absent' } })) }), 'already admitted');
-  const unrelated = value(createBoundedDueScanPort(s.f.host, s.f.spine, s.f.c).page({ scan: 'unrelated',
-    generation: 'unrelated:g', orderedKeys: ['different-job'], cursor: null, maxItems: 1, maxDuration: 10 }));
-  rejects(s.f.api.recordMissedRange({ ...s.input, scanCursor: unrelated.cursor }), 'roster');
-  rejects(s.f.api.recordMissedRange({ ...s.input, catchUpPolicy: 'latest',
-    catchUpRun: { owner: 'part-five', name: 'Run', id: 'run:unwitnessed-catchup' },
-    dispositions: s.input.dispositions.map((value, index) => index === 2 ? { scheduledInstant: value.scheduledInstant,
-      kind: 'catch-up-run' as const, run: { owner: 'part-five' as const, name: 'Run' as const,
-        id: 'run:unwitnessed-catchup' } } : value) }), 'already admitted');
-});
-
 it('SLB-STATUS-29 V26 refuses promotion from unavailable required parent input while retaining history', () => {
   const s = setup(); s.f.advance(1);
   const opening = s.f.ctx.facts.find(fact => (fact.body as { capture?: { reference?: string } }).capture?.reference === 'message:1')!;
@@ -354,32 +314,6 @@ it('SLB-SIBLING-28 V18 consumes either half-open completion order across restart
   expect(failedFirst.outcomeWindowDigest).toBe(acceptedFirst.outcomeWindowDigest);
 }, 20000);
 
-it('SLB-MISSED-REPLAY-22 V28 V29 V37 refuses signed and read-time missed records with absent dependencies', () => {
-  const s = missed(), reference = value(s.f.api.recordMissedRange(s.input));
-  const record = value(s.f.api.readMissedRange(reference)).record;
-  rejects(decodeMissedRangeRecord({ ...record, first: s.f.clock(120), last: s.f.clock(110),
-    orderedMembersDigest: `sha256:${'0'.repeat(64)}` }, s.f.c));
-  const receiver = transportLoopFixture();
-  const { catchUpRun: _omitted, ...wireRecord } = record;
-  const replay = signedNext(receiver, wireRecord);
-  rejects(decodeHistoricalBody(replay.frame, replay.ctx, replay.ctx.decode));
-  rejects(receiver.store.append(replay.wire, { peer: 'machine-a' }));
-  rejects(receiver.api.readMissedRange(reference), 'unavailable');
-});
-
-it('SLB-MISSED-STABLE-23 V27 boundary-plus-one cannot mint a second catch-up identity', () => {
-  const s = missed({ existingInstants: [110, 120], catchUpInstants: [130] });
-  const first: MissedRangeInput = s.input;
-  value(s.f.api.recordMissedRange(first));
-  const changedRun = { owner: 'part-five' as const, name: 'Run' as const, id: 'run:second-catchup' };
-  const next: MissedRangeInput = { ...first, asOf: s.f.clock(131),
-    currentLateness: value(decodeMeasurement('duration', { ...first.currentLateness, value: 1, at: s.f.clock(131) },
-      s.f.host.current().decode)), catchUpRun: changedRun,
-    dispositions: first.dispositions.map((value, index) => index === 2
-      ? { scheduledInstant: value.scheduledInstant, kind: 'catch-up-run' as const, run: changedRun } : value) };
-  rejects(s.f.api.recordMissedRange(next), 'completed missed member');
-});
-
 it('SLB-THRESHOLD-31 V11 opens at the counted threshold while preserving an admitted sibling and refuses more work', () => {
   const s = setup({ failureThreshold: 1 }); s.f.advance(1);
   value(attempt(s, 'threshold:failed')); value(attempt(s, 'threshold:pending'));
@@ -411,16 +345,6 @@ it('SLB-ACTIVE-POLICY-35 V13 refuses a conflicting decoded policy before coalesc
   rejects(s.f.api.scheduleEpisode({ ...s.input, command: 'schedule:active-conflict', policy: conflicting }),
     'conflicting shared pressure policy');
   expect(value(s.f.api.scheduleEpisode({ ...s.input, command: 'schedule:active-coalesce' }))).toEqual(s.loop);
-});
-
-it('SLB-MISSED-RECHECK-34 V14 re-resolves roster/range dependencies before returning an identical replay', () => {
-  const s = missed({ existingInstants: [] });
-  const reference = value(s.f.api.recordMissedRange(s.input));
-  expect(value(s.f.api.recordMissedRange(s.input))).toEqual(reference);
-  const calendar = s.f.host.calendarExpansion!;
-  Object.assign(s.f.host, { calendarExpansion: { ...calendar,
-    roster: () => s.f.result(() => { throw new Error('roster temporarily unavailable'); }) } });
-  rejects(s.f.api.recordMissedRange(s.input), 'roster');
 });
 
 it('SLB-HISTORY-33 V22 V37 reconstructs every initial schedule field from signed policy and owner evidence', () => {
