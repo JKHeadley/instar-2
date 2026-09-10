@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 // @ts-expect-error The process-spawn boundary is executable JavaScript by design.
 import { spawnBoot } from '../../scripts/slice-execution.mjs';
 
-it('R8-F3 rereview6 V91 process cut after Part Nine delivery record recovers the same witnessed outcome', async () => {
+it('R8-F3 rereview6 V91 R10 rereview8 V94 process cut after Part Nine delivery record recovers the same witnessed outcome', async () => {
   const home = mkdtempSync(join(tmpdir(), 'p11-r8-v91-'));
   const worker = join(process.cwd(), 'scripts/slice-delivery-restart-worker.mjs');
   const first = await spawnBoot([worker, home]);

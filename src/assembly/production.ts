@@ -201,6 +201,35 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
       ['EffectDoorway', production.effect], ['VerificationRuntimePort', production.verification],
     ] as const) requirePublicPort(manifest, scope, port, handle.id);
     requirePublicPort(manifest, scope, 'VerificationClockPort', production.verificationClock.id);
+    for (const [name, operation] of Object.entries({
+      'RunGraphPort.open': production.run.port.open,
+      'RunGraphPort.ground': production.run.port.ground,
+      'RunGraphPort.transition': production.run.port.transition,
+      'RunGraphPort.readExit': production.run.port.readExit,
+      'TransportAuthority.inspect': production.lease.port.inspect,
+      'TransportAuthority.renew': production.lease.port.renew,
+      'TransportAuthority.release': production.lease.port.release,
+      'TransportAuthority.admitWrite': production.lease.port.admitWrite,
+      'TransportAuthority.schedule': production.lease.port.schedule,
+      'TransportAuthority.reserve': production.lease.port.reserve,
+      'TransportAuthority.claim': production.lease.port.claim,
+      'TransportAuthority.consume': production.lease.port.consume,
+      'TransportAuthority.recover': production.lease.port.recover,
+      'TransportAuthority.close': production.lease.port.close,
+      'TransportAuthority.settle': production.lease.port.settle,
+      'JudgmentDoorway.resumeRecording': production.judgment.port.resumeRecording,
+      'JudgmentDoorway.readAnswer': production.judgment.port.readAnswer,
+      'JudgmentDoorway.inspect': production.judgment.port.inspect,
+      'EffectDoorway.prepare': production.effect.port.prepare,
+      'EffectDoorway.adopt': production.effect.port.adopt,
+      'EffectDoorway.handoff': production.effect.port.handoff,
+      'EffectDoorway.observe': production.effect.port.observe,
+      'EffectDoorway.settle': production.effect.port.settle,
+      'EffectDoorway.inspect': production.effect.port.inspect,
+      'VerificationRuntimePort.record': production.verification.port.record,
+      'VerificationRuntimePort.inspect': production.verification.port.inspect,
+      'VerificationRuntimePort.due': production.verification.port.due,
+    })) requireMethod(operation, name);
     requireMethod(production.run.port.read, 'RunGraphPort.read');
     requireMethod(production.lease.port.acquire, 'TransportAuthority.acquire');
     requireMethod(production.judgment.port.judge, 'JudgmentDoorway.judge');

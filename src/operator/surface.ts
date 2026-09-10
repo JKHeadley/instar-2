@@ -125,7 +125,7 @@ function requestView(composition: OperatorSurfaceComposition, reference: string)
   const grantExpiresAt = integer(body.grantExpiresAt, 'grantExpiresAt');
   return Object.freeze({ fact: resolved.status.fact.id, requestId: text(body.requestId, 'requestId'), requestDigest,
     action, scope, audience, artifact, base: text(body.base, 'base'), expiresAt, approver, requestedBy,
-    consequence, reversibility, blockedWork: text(body.blockedWork, 'blockedWork'), recurrence,
+    consequence, reversibility, blockedWork: presentText(body.blockedWork, 'blockedWork'), recurrence,
     standingGrantCandidate: recurrence.length ? Object.freeze({ actions: Object.freeze([action]), scope, expiresAt: grantExpiresAt }) : null,
     currentGeneration: composition.history.generation(), completeness: resolved.completeness, missing: resolved.missing,
     primaryActions: Object.freeze(['approve', 'decline'] as const), plainLanguageEffect: effectLanguage(action, scope, audience, consequence, reversibility),
@@ -202,7 +202,11 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
     Refused: refusal => ({ ok: false, detail: refusal.detail }),
   });
   const receipt = brokerRead.ok ? brokerRead.receipt : null;
-  const brokerPosture = take(composition.broker.posture(path));
+  const postureRead = consumeResult(composition.broker.posture(path), {
+    Success: posture => ({ posture, detail: null as string | null }),
+    Refused: refusal => ({ posture: 'unprotected' as const, detail: refusal.detail }),
+  });
+  const brokerPosture = postureRead.posture;
   const rows = take(composition.verification.inspectCurrent());
   const probes = rows.filter((row): row is typeof row & { record: ProbeRecord } => row.record.type === 'ProbeRecord'
     && row.record.operation === operation && row.record.subject === path && row.taint.length === 0 && row.conflicts.length === 0);
@@ -216,6 +220,7 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
   const isolationLive = take(composition.isolation.live(path));
   const receiptMatches = !!receipt && receipt.operation === operation && receipt.path === path;
   const uncertainty: string[] = [];
+  if (postureRead.detail !== null) uncertainty.push(`broker-posture-unavailable:${postureRead.detail}`);
   if (!brokerRead.ok) uncertainty.push(`broker-evidence-unavailable:${brokerRead.detail}`);
   if (!receipt) uncertainty.push('broker-receipt-missing');
   else if (!receiptMatches) uncertainty.push('broker-receipt-subject-mismatch');
