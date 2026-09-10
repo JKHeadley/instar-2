@@ -1,0 +1,44 @@
+[
+  {
+    "revision": 2,
+    "date": "2026-09-08",
+    "status": "approved",
+    "cause": {
+      "kind": "review",
+      "pr": 45,
+      "note": "part six follow-up: the durable bounded due scan cursor, landed after the Astra desk's CONVERGED — YES at the reviewed head"
+    },
+    "approvedIn": {
+      "pr": 45,
+      "mergeCommit": "adbc272dc16d8436954924e652e9213959a429fd"
+    },
+    "changes": [
+      {
+        "what": "Part six gains the durable bounded due scan cursor: a selection-only scan port whose cursor survives restarts, with finite item and monotonic-duration bounds, and which never derives, schedules, reserves or settles due work.",
+        "why": "The scheduled-work design needs to walk a large backlog of candidates in bounded steps; the first approved version only offered a complete read.",
+        "ref": "PR #45; docs/09-the-run-graph.md and docs/10 §bounded due scan"
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-05",
+    "status": "approved",
+    "cause": {
+      "kind": "review",
+      "pr": 20,
+      "note": "first approved version of part six after the two-desk convergence review"
+    },
+    "approvedIn": {
+      "pr": 20,
+      "mergeCommit": "210d1574f02f2bd6496601db7b601b2cc9617c08"
+    },
+    "changes": [
+      {
+        "what": "First approved version of part six: the transport reference adapter, leases and fence tokens, the loop primitive, and recovery.",
+        "why": "Next part in the dependency order after part five's approval.",
+        "ref": "PR #20; docs/04-the-big-picture.md"
+      }
+    ]
+  }
+]
