@@ -20,19 +20,21 @@ reconstruction. Those five grants are GRANTED but unlanded. Row 54 is the dated 
 `seam-response-effects-followup.md`. Rows 47 and 48 are the dated 08:38Z addenda in
 `seam-response-facts-followup.md` and `seam-response-rungraph-followup.md`.
 
-The lifecycle also requires the pending owner requests
-`design-scheduled-work-seam-request-bounded-judgment-history.md`,
-`design-scheduled-work-seam-request-bounded-verification-history.md` and
-`design-scheduled-work-seam-request-bounded-assembly-history.md`. They cover Seven's own judgment
-fold, Nine's verification and assessment fold, and Ten's assembly and growth-evidence fold. The
-bounded-history arm is non-executable until all three requests are granted, entered in
-`SEAM-LEDGER.md`, landed with the five existing grants and pass one instrumented joint trace.
+The lifecycle also requires the 20:19Z bounded-history addenda in
+`seam-response-judgment.md`, `seam-response-verification-followup.md` and
+`seam-response-assembly-followup.md`, GRANTED at `SEAM-LEDGER.md` rows 66, 67 and 68 but
+unlanded. They cover Seven's own judgment fold, Nine's verification and assessment fold, and Ten's
+assembly and growth-evidence fold. The bounded-history arm is non-executable until those three
+grant files land with the five existing grants and pass one instrumented joint trace through
+judgment resolution, assessment consumption and settlement, and assembly growth recording,
+lookup and admission.
 
 The complete scheduled lifecycle separately requires the dated 08:38Z
 `seam-response-intake-followup.md` addendum at row 49. That grant is GRANTED but unlanded. Its real
-operator-surface arm also depends on the pending
-`design-scheduled-work-seam-request-operator-schedule.md`. That arm is non-executable until Eleven's
-requested public operations and Part Ten's production wiring land and pass their joint evidence.
+operator-surface arm also depends on the 20:19Z scheduled-work addendum in
+`seam-response-operator-followup.md`, GRANTED at `SEAM-LEDGER.md` row 69 but unlanded and
+buildable after `impl-part-eleven` lands. That arm is non-executable until the row-69 grant file and
+Part Ten's production wiring land and pass their joint phone/dashboard evidence.
 
 **Rule — the scheduler is a held runtime outcome.** Rules 9, 38, 41, 43 and 78; **checks:
 P15-NF-24/42/52**. Part nine holds the scanner, calendar expansion, intake path, reservation path,
@@ -83,7 +85,7 @@ Run; it never edits the target to make the sample pass.
 
 | Scheduling measurement | Required declared workload and policy values | Acceptance comparison and overrun action |
 |---|---|---|
-| Discovery-to-admission delay and due-debt age | Name the hardware, assembly and monotonic clock producer. State retained fact and byte counts, including a corpus above 4,096 Part Six domain records. State job count and due instants per minute. Declare page item, byte, decode, hash, replay and duration bounds. State peer count, fault schedule, measurement-window end, `maxDiscoveryToAdmission` and `maxDueDebtAge`. | Each finished interval compares its recorded duration with the matching bound. Exactly at the bound passes. One clock unit over breaches. An unfinished lower bound over the limit breaches. Any other unfinished or incomparable interval is unknown and prevents a passing claim. Each owner reports its enumeration, decoding, hashing, replay, reference-resolution and memory work. After a cold restart above 4,096 records, one real occurrence must cross the bounded Part Two, Four, Five, Six, Seven, Eight, Nine and Ten paths. The trace ends only after effect settlement, Six's settlement application and release, Nine's consumed assessment, and Ten's resolved growth evidence. A candidate page, keyed view, caller filter or partial snapshot is not completion. Overrun retains the due occurrence, inhibits the affected activation or class, and opens the owned breach Run. The trace is non-executable until ledger rows 37, 44, 47, 48 and 54 land. It also requires the pending Seven, Nine and Ten bounded-history requests named above to be granted, ledgered and landed. Row 54 is the dated 09:23Z `seam-response-effects-followup.md` addendum. Row 44's keyed authority view does not supply it. The complete scheduled lifecycle separately requires the row-49 `seam-response-intake-followup.md` grant. |
+| Discovery-to-admission delay and due-debt age | Name the hardware, assembly and monotonic clock producer. State retained fact and byte counts, including a corpus above 4,096 Part Six domain records. State job count and due instants per minute. Declare page item, byte, decode, hash, replay and duration bounds. State peer count, fault schedule, measurement-window end, `maxDiscoveryToAdmission` and `maxDueDebtAge`. | Each finished interval compares its recorded duration with the matching bound. Exactly at the bound passes. One clock unit over breaches. An unfinished lower bound over the limit breaches. Any other unfinished or incomparable interval is unknown and prevents a passing claim. Each owner reports its enumeration, decoding, hashing, replay, reference-resolution and memory work. After a cold restart above 4,096 records, one real occurrence must cross the bounded Part Two, Four, Five, Six, Seven, Eight, Nine and Ten paths. The trace ends only after effect settlement, Six's settlement application and release, Nine's consumed assessment, and Ten's resolved growth evidence. A candidate page, keyed view, caller filter or partial snapshot is not completion. Overrun retains the due occurrence, inhibits the affected activation or class, and opens the owned breach Run. The trace is non-executable until ledger rows 37, 44, 47, 48 and 54 land. Its Seven, Nine and Ten arms are non-executable until the row-66 `seam-response-judgment.md`, row-67 `seam-response-verification-followup.md` and row-68 `seam-response-assembly-followup.md` grant addenda land. Row 54 is the dated 09:23Z `seam-response-effects-followup.md` addendum. Row 44's keyed authority view does not supply it. The complete scheduled lifecycle separately requires the row-49 `seam-response-intake-followup.md` grant. |
 | Fair service and eligibility-to-admission duration | Named class weights; nonzero `minimumMaintenanceShare`; fair-round admission count and duration; sustained arrivals per class; zero/boundary/boundary-plus-one caps; named monotonic clock producer; `maxHighPriorityEligibilityToAdmission` | Observed eligible service per completed fair round meets the declared share. Every high or critical candidate that enters the selection set contributes one eligibility-to-committed-reservation interval. Exactly the declared duration passes and one clock unit over breaches. An unfinished interval follows the lower-bound/unknown rule above. Missing, unknown or breached values inhibit the policy and open the breach Run; they cannot select strict starvation. |
 | Projection rebuild | Named corpus with manifest, occurrence, Run, attempt and evidence counts plus canonical bytes; cold/warm mode; `maxProjectionRebuildDuration` and `maxProjectionRebuildMemory` | Equal-vector rebuild must be complete and byte-equal within both bounds. Timeout, partial data, divergence or bound overrun blocks the affected live projection and opens the breach Run while the fact spine remains authoritative. |
 

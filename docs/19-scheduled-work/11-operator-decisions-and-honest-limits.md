@@ -48,18 +48,26 @@ continuity with spending safety.
 
 **Value — decision 4: service under heavy demand.**
 
-Question: Under sustained heavy demand, how much capacity should maintenance receive and how long
-may ready urgent work wait?
+Question: Under sustained heavy demand, what share of job starts should maintenance receive, and
+how long may ready urgent work wait for its turn?
 
-Choices: Give maintenance at least 10 percent and cap urgent waiting at 30 seconds; give
-maintenance 20 percent and cap urgent waiting at 60 seconds; or give maintenance 25 percent and
-cap urgent waiting at 120 seconds.
+Background: Each job accepted to start counts as one scheduling credit, regardless of its
+processor time, model usage or cost; the maintenance share is calculated from those credits after
+separate emergency, stop, diagnosis and repair reserves are protected. Ready urgent work has
+passed every current permission, safety, capability, placement and available-capacity check and is
+waiting only for its turn to start.
 
-What it changes: More maintenance capacity prevents upkeep from starving, while a shorter urgent
-wait moves important work sooner and leaves less room for maintenance.
+Choices: Give maintenance at least 10 of every 100 start credits and let ready urgent work wait at
+most 30 seconds; give maintenance 20 of every 100 start credits and let ready urgent work wait at
+most 60 seconds; or give maintenance 25 of every 100 start credits and let ready urgent work wait
+at most 120 seconds.
 
-Recommendation: Choose 20 percent and 60 seconds because it gives maintenance a meaningful share
-without allowing urgent work to wait indefinitely.
+What it changes: The first choice starts urgent work fastest but gives upkeep the smallest
+guaranteed share. The second balances timely urgent starts with a meaningful upkeep share. The
+third protects upkeep most strongly but allows ready urgent work to wait longest.
+
+Recommendation: Choose 20 of every 100 start credits and 60 seconds because that gives maintenance
+a meaningful share after protected reserves while keeping the ready-work promise short and clear.
 
 **Value — decision 5: restarting a repeatedly failing job.**
 

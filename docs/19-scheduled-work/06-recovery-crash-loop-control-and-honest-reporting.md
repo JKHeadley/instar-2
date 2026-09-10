@@ -65,11 +65,12 @@ billing lane, measured use and evidence freshness when known. Missing facts rema
 record's own `status`, `lastRun`, `nextScheduled`, percentage or success string is never accepted as
 authority without re-resolution against its owners' signed history.
 
-This projection and its verified enable, disable and manual-run actions depend explicitly on
-`design-scheduled-work-seam-request-operator-schedule.md`. The request is pending Part Eleven's
-grant and ledger entry. P15-NF-03/15/48/50 and the schedule-surface arm of P15-NF-52 are
-non-executable until that request is granted, its public operations land, and Part Ten wires them
-into the real production surface. Until then, the source facts and paused obligations remain
+This projection and its verified enable, disable and manual-run actions depend explicitly on the
+20:19Z scheduled-work addendum in `seam-response-operator-followup.md`, GRANTED at
+`SEAM-LEDGER.md` row 69 but unlanded and buildable only after `impl-part-eleven` lands.
+P15-NF-03/15/48/50 and the schedule-surface arm of P15-NF-52 are non-executable until that grant
+file lands, Part Ten wires its public operations into the real production surface, and the joint
+phone/dashboard evidence passes. Until then, the source facts and paused obligations remain
 durable, but this design makes no live surface or control claim.
 
 **Rule — notification is quiet but loss is never silent.** Rules 52, 53, 54, 87, 88 and 106;
