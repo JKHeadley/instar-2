@@ -169,6 +169,11 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       need(same(record.frontier, origin ? frontierBefore(origin, current) : view.source.foldedThrough),
         'unreachable exit frontier differs from current signed run history');
       const validationClock = origin?.at ?? dependencies.clock();
+      const validationContext = origin ? {
+        ...current,
+        facts: { ...current.facts, facts: causalCone(origin, current.facts.facts) },
+      } : current;
+      take(decodeExhaustionRecord({ ...exhaustion.record, at: validationClock }, validationContext));
       const age = clockDifference(validationClock, record.at, current);
       need(age >= 0 && age <= dependencies.groundingPolicy.maxAge,
         'unreachable exit clock stale or uncertain');
@@ -235,6 +240,14 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
         boundary('RecordRunClosure', input, captured, safe => {
           const current = { ...context(), preserved: captured.preserved };
           const record = take(admit(safe, current));
+          const sameIdentity = rawFor(record.run, runClosureKinds[record.type]).filter(candidate =>
+            object(recordFromWire(object(candidate.body).record!)).id === record.id)
+            .map(candidate => ({ fact: candidate, record: decodeFact(candidate, current) }));
+          if (sameIdentity.length && record.type === 'UnreachableRunExit') {
+            need(sameIdentity.length === 1 && same(sameIdentity[0]!.record, record),
+              `immutable ${record.type} identity changed or conflicted`);
+            return sameIdentity[0]!.fact;
+          }
           const view = record.type === 'ContinuityAccounting'
             ? continuityView(record, current) : read(record.run);
           need(!view.conflicts.length, 'conflicted head inhibits closure record admission');
@@ -245,9 +258,6 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
               'exhaustion record clock is stale or from the future');
           }
           if (record.type === 'ContinuityAccounting') validateContinuityOwner(record, view, current);
-          const sameIdentity = rawFor(record.run, runClosureKinds[record.type]).filter(candidate =>
-            object(recordFromWire(object(candidate.body).record!)).id === record.id)
-            .map(candidate => ({ fact: candidate, record: decodeFact(candidate, current) }));
           if (record.type === 'UnreachableRunExit')
             validateUnreachableOwner(record, view, current, sameIdentity[0]?.fact);
           if (sameIdentity.length) {
@@ -323,6 +333,12 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
         validateContinuityOwner(record, continuityView(record, current), current);
         const sendFact = validateContinuitySendWitness(accountingFact, record, send,
           dependencies.clock(), dependencies.groundingPolicy.maxAge, current);
+        const sendContext = {
+          ...current,
+          facts: { ...current.facts, facts: causalCone(sendFact, current.facts.facts) },
+        };
+        need(same(take(decodeContinuityAccounting(record, sendContext)), record),
+          'continuity disposition changed before the first-reply send');
         need(same(take(dependencies.continuitySend.verify(factRef(sendFact), record)), factRef(sendFact)),
           'first-reply send owner witness differs from signed send record');
         return factRef(sendFact);
