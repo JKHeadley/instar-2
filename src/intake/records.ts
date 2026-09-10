@@ -254,11 +254,20 @@ type ScheduledHistoryRow=Readonly<{
 // one resolver. An unrelated Evidence dependency remains a dependency, but it
 // is never counted as a discovery witness for this scheduled event.
 export function resolveScheduledDiscoveryWitness(histories: readonly ScheduledHistoryRow[],required: ReadonlySet<string>,
-  eventId: string,causalNow: Clock,preserved: string,mode: 'origin'|'historical') {
+  eventId: string,causalNow: Clock,preserved: string,decodeContext: DecodeContext,mode: 'origin'|'historical') {
   const candidates=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
     required.has(row.fact.id)&&row.record.view.type==='Evidence'&&row.record.view.source===row.fact.machine);
-  const witnesses=candidates.filter(row => row.record.view.claim.subject===eventId
-    &&row.record.view.claim.predicate==='scheduled-discovery'&&row.record.view.claim.value===true);
+  const witnesses=candidates.filter(row => {
+    // An unavailable historical candidate is unresolved, not negative evidence:
+    // retaining it here prevents promotion until its capture can be reinspected.
+    if(mode==='historical'&&row.record.captureStatus!=='available') return true;
+    // Inspect the signed claim through the Evidence doorway at its observation
+    // instant to classify its role. Only the matching discovery is then required
+    // to remain fresh at the admission clock below.
+    const observedAt=take(decodeMeasurement('clock',row.record.view.observedAt,decodeContext));
+    const claim=take(readHistoricalEvidence(row.record,observedAt,preserved));
+    return claim.subject===eventId&&claim.predicate==='scheduled-discovery'&&claim.value===true;
+  });
   requireIntake(witnesses.length>0,
     'scheduled intake: discovery Evidence does not bind the event id','integrity');
   requireIntake(witnesses.length===1,
@@ -566,7 +575,7 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
           requireIntake(principalIdentity.every(row => same(row.record.view,principalWitnesses[0]!.record.view)),
             'scheduled intake: package-system principal dependency is conflicted');
 
-          const discoveryWitness=resolveScheduledDiscoveryWitness(histories,required,eventId,causalNow,c.preserved,c.mode);
+          const discoveryWitness=resolveScheduledDiscoveryWitness(histories,required,eventId,causalNow,c.preserved,c.facts.decode,c.mode);
           const historicalRevocations=collectedRevocations.filter(row => coneIds.has(row.factId));
           const historicalGrants=collectedGrants.filter(row => coneIds.has(row.factId)&&required.has(row.factId)
             &&row.grant.view.grantee.id===principal.id&&row.grant.view.grantee.kind==='system'

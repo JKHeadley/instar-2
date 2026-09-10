@@ -286,7 +286,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       const { rows }=historicalRows(preserved),row=rows.find(candidate => candidate.fact.id===referenceValue.id);
       requireIntake(row&&!row.taint.length&&!row.conflicts.length,'scheduled intake: discovery Evidence is missing or contested','integrity');
       const histories=rows.flatMap(candidate => candidate.historical.map(record => ({ fact: candidate.fact,record })));
-      const selected=resolveScheduledDiscoveryWitness(histories,new Set([row.fact.id]),eventId,at,preserved,'origin');
+      const selected=resolveScheduledDiscoveryWitness(histories,new Set([row.fact.id]),eventId,at,preserved,context(preserved).decode,'origin');
       const evidence=selected.record;
       requireIntake(evidence.captureStatus==='available','scheduled intake: discovery Evidence is missing or unavailable','integrity');
       const field=constitutionalField(row,'Evidence',evidence.view.id,preserved);
@@ -406,7 +406,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       requireIntake(principalRows.length>0,'scheduled intake: principal witness is missing or mismatched','standing');
       for(const principalRow of principalRows) constitutionalField(principalRow,'VerifiedPrincipal',principal.id,preserved);
       const histories=snapshot.flatMap(candidate => candidate.historical.map(record => ({ fact: candidate.fact,record })));
-      const discovery=resolveScheduledDiscoveryWitness(histories,new Set(required),arrival.route.eventId,row.fact.at,preserved,'origin');
+      const discovery=resolveScheduledDiscoveryWitness(histories,new Set(required),arrival.route.eventId,row.fact.at,preserved,c.decode,'origin');
       const discoveryRow=dependencies.find(candidate => candidate.fact.id===discovery.fact.id);
       requireIntake(discoveryRow,'scheduled intake: discovery witness is not a signed dependency','integrity');
       constitutionalField(discoveryRow,'Evidence',discovery.record.view.id,preserved);
