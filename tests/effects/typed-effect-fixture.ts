@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { canonical, decode } from '../../src/index.js';
 import type { Json, Result } from '../../src/index.js';
 import { authorAndAppend, createFactStore, hashBytes } from '../../src/facts/index.js';
-import type { CapturedContent, FactContext, FactSchema, FactStorePort, GovernedVersion, OwnedBodyRegistration } from '../../src/facts/index.js';
+import type { CapturedContent, FactContext, FactSchema, FactSnapshot, FactStorePort, GovernedVersion, OwnedBodyRegistration } from '../../src/facts/index.js';
 import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, registerTransportBodies, transportSchemas } from '../../src/transport/index.js';
 import type { TransportHost } from '../../src/transport/index.js';
 import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, decodeOutboundMessage, effectOperationContracts, effectSchemas, installOperationDefinition, registerEffectBodies } from '../../src/effects/index.js';
@@ -35,6 +35,7 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
   let authority: string[] = [], versions: GovernedVersion[] = [];
   let assessmentRevision = 0;
   let referenceStore: FactStorePort | undefined;
+  let referenceSnapshot: FactSnapshot | undefined;
   let ctx!: FactContext;
   const result = <T>(run: () => T) => f.success(run());
   const custody = createEffectFileCaptures([join(directory, 'origin-captures'), join(directory, 'peer-captures')], result);
@@ -46,15 +47,16 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
     capture: custody.capture,
     referenceFacts: () => result(() => {
       if (!referenceStore) throw new Error('reference store not initialized');
-      return value(referenceStore.read());
+      return referenceSnapshot ??= value(referenceStore.readForProjection());
     }),
   };
+  const constitutionalCaptures = (): Record<string, CapturedContent> => Object.fromEntries(Object.entries(f.captures)
+    .map(([reference, bytes]) => [reference, { hash: hashBytes(bytes), bytes, status: 'available' as const,
+      byteLength: Buffer.byteLength(bytes) }]));
   const verificationHost: VerificationHost = { machine: host.machine, principal: host.principal, scope: host.scope, boundary: host.boundary,
     current: () => {
       if (!referenceStore) throw new Error('verification fixture store not initialized');
-      const evidenceCaptures: Record<string, CapturedContent> = Object.fromEntries(Object.entries(f.captures).map(([reference, bytes]) => [reference,
-        { hash: hashBytes(bytes), bytes, status: 'available' as const, byteLength: Buffer.byteLength(bytes) }]));
-      const facts = { ...ctx, facts: value(referenceStore.read()), captures: { ...ctx.captures, ...evidenceCaptures },
+      const facts = { ...ctx, facts: value(referenceStore.read()), captures: { ...ctx.captures, ...constitutionalCaptures() },
         folded: { ...ctx.folded, 'fixture-evidence': { epoch: 0, position: assessmentRevision } } };
       return { decode: { ...decodeContext, evidence: f.evidence, captures: f.captures }, clock: f.clock(now), generation: register.generation.id,
         stopped, facts, evidence: f.evidence };
@@ -65,14 +67,16 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
   const extension = extensions?.(host) ?? { schemas: [], ownedBodies: [] };
   const witnessKinds = ['run-opening', 'run-transition', 'intake-admitted', 'intake-receipt',
     'judgment-JudgmentRequest', 'judgment-JudgmentAttemptRecord', 'semantic-message-admission',
-    'conversation-route-generation', 'capture-record', 'conversation-message'];
+    'conversation-route-generation', 'capture-record', 'conversation-message', 'intake-stop'];
   const witnessSchemas: FactSchema[] = witnessKinds.map(kind => ({ ...f.schema, kind,
     fields: { witness: { kind: 'text', maxLength: 65536 } } }));
   const resultSchema: FactSchema = { ...f.schema, kind: 'result-record', fields: {
     run: { kind: 'text', maxLength: 512 }, step: { kind: 'text', maxLength: 512 }, logicalEffect: { kind: 'text', maxLength: 512 },
     result: { kind: 'constitutional', type: 'Result' },
   } };
-  ctx = { ...f.ctx, decode: decodeContext, get captures(): Record<string, CapturedContent> { return custody.captures; },
+  ctx = { ...f.ctx, decode: decodeContext, get captures(): Record<string, CapturedContent> {
+    return { ...custody.captures, ...constitutionalCaptures() };
+  },
     schemas: [f.schema, resultSchema, ...witnessSchemas, ...transportSchemas(transportHost), ...effectSchemas(host),
       ...verificationSchemas(verificationHost), ...extension.schemas],
     ownedBodies: [...value(registerTransportBodies(transportHost, boundary, consumeEffectSettlement)), ...value(registerEffectBodies(host)),
@@ -86,8 +90,11 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
   const transport = createTransportAuthority(transportHost, createTransportSpine(transportHost, author, store), boundary);
   const note = (identity: string) => value(authorAndAppend({ kind: 'note', schemaVersion: 1, machine: host.machine,
     principal: json(host.principal), provenance: json(host.principal.provenance), at: json(f.now), body: { identity, amount: '0' }, required: [] }, ctx, store, privateKey)).fact;
-  const reference = (kind: string, witness: Record<string, unknown>) => value(authorAndAppend({ kind, schemaVersion: 1, machine: host.machine,
+  const reference = (kind: string, witness: Record<string, unknown>) => {
+    referenceSnapshot = undefined;
+    return value(authorAndAppend({ kind, schemaVersion: 1, machine: host.machine,
     principal: json(host.principal), provenance: json(host.principal.provenance), at: json(f.now), body: { witness: JSON.stringify(witness) }, required: [] }, ctx, store, privateKey)).fact;
+  };
   const sourceFor = (step: string, logical: string) => {
     const sourceResult = value(decode('Result', f.refusedInput({ detail: 'work pending effect realization', preserved: `capture:${logical}` }), decodeContext));
     const source = value(authorAndAppend({ kind: 'result-record', schemaVersion: 1, machine: host.machine,

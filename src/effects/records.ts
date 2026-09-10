@@ -15,6 +15,7 @@ const common = { type: text, schemaVersion: integer, id: text };
 const capture = { kind: 'capture' } as const;
 const outcome: OwnedShape = { kind: 'object', fields: { type: text, schemaVersion: integer, kind: text, evidence: refs } };
 const observations: OwnedShape = { kind: 'object', fields: { occurrence: text, nonOccurrence: text, quiescence: text, charge: text } };
+const captures: OwnedShape = { kind: 'array', maxLength: 64, items: capture };
 const requestBinding: OwnedShape = { kind: 'object', fields: {
   subject: text, target: text, sourceVector: text, sourceGeneration: text, principal: text,
   definition: { kind: 'object', fields: { id: text, version: text } },
@@ -47,7 +48,7 @@ export const effectShapes: Readonly<Record<string, OwnedShape>> = freeze({
   EffectSettlement: { kind: 'object', fields: { ...common, request: text, operation: text, claim: text,
     reservation: text, digest: text, acceptance: text, observations: refs, outcome,
     finalCharge: text, delayedExecutionExcluded: { kind: 'boolean' }, retainedExposure: integer,
-    retryEligible: { kind: 'boolean' } } },
+    retryEligible: { kind: 'boolean' }, evidenceCaptures: captures }, optional: ['evidenceCaptures'] },
 });
 // These are the exact shapes that existed before typed payloads were added.
 // Legacy records must take this path before any additive optional-field logic so
@@ -110,6 +111,7 @@ function legacyRecord(name: string, input: unknown): boolean {
   if (name === 'OperationDefinition') return value.payloadKind === undefined && value.inputSchema === undefined
     && value.canonicalization === undefined && value.observationCapabilities === undefined;
   if (name === 'EffectRequest') return value.payload === undefined && value.payloadDigest === undefined && value.binding === undefined;
+  if (name === 'EffectSettlement') return value.evidenceCaptures === undefined;
   return true;
 }
 function recordShapeCheck(name: string, input: unknown): void {
@@ -148,7 +150,8 @@ export function definitionCheck(d: OperationDefinition, host: EffectHost): void 
       && encoded(d.observationCapabilities).bytes === encoded(contract.observations).bytes, 'operation payload schema/canonicalization/observation mismatch');
   }
 }
-function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHost, origin: boolean, at = host.current().clock): void {
+function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHost, origin: boolean,
+  at = host.current().clock, historical = false): void {
   ensure(r.schemaVersion === 1 && r.id.length > 0, 'record identity/version');
   const all = rows(past);
   ensure(!all.some(x => x.record.type === r.type && x.record.id === r.id), 'immutable effect identity already exists');
@@ -265,6 +268,7 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
         // Preserve the exact landed ordinary-reply replay contract.  Its live
         // Part Nine port still owns assessment validity; historical decoding
         // required only the referenced signed acceptance to exist.
+        ensure(r.evidenceCaptures === undefined, 'missing or undeclared field');
         ensure(r.acceptance.length > 0 && acceptance, 'independent acceptance absent');
       } else {
         const acceptanceRecord = acceptance ? (acceptance.body as { record?: Record<string, unknown> }).record : undefined;
@@ -311,18 +315,36 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
         ensure(predicates.every(row => Array.isArray(row.evidence)
           && (row.evidence as readonly unknown[]).every(id => typeof id === 'string' && assessmentEvidence.includes(id))),
         'independent acceptance predicate evidence is inconsistent');
+        ensure(Array.isArray(r.evidenceCaptures) && r.evidenceCaptures.length > 0,
+          'typed settlement evidence capture closure missing');
+        const evidenceSources = assessmentEvidence.map(id => host.current().decode.evidence?.find(item => item.id === id));
+        ensure(evidenceSources.every((item): item is NonNullable<typeof item> => item !== undefined),
+          'typed settlement evidence inventory is incomplete');
+        const expectedCaptures = [...new Map(evidenceSources.map(item => [item!.capture.reference, item!.capture])).values()]
+          .sort((left, right) => left.reference.localeCompare(right.reference));
+        ensure(encoded(r.evidenceCaptures).bytes === encoded(expectedCaptures).bytes,
+          'typed settlement evidence capture closure differs from its assessment');
+        const captureStatuses = (host.current().decode as { captureStatuses?: Readonly<Record<string, string>> }).captureStatuses;
+        const evidenceUnavailable = expectedCaptures.some(item => {
+          const status = captureStatuses?.[item.reference];
+          return (status !== undefined && status !== 'available')
+            || host.current().decode.captures[item.reference] === undefined;
+        });
+        ensure(!evidenceUnavailable || historical,
+          'typed settlement evidence is unavailable for consequential use');
         const acceptedOutcome = occurrence.verdict === 'satisfied' ? 'happened'
           : nonOccurrence.verdict === 'satisfied' && quiescence.verdict === 'satisfied' ? 'did-not-happen' : 'uncertain';
         const acceptedEvidence = [...new Set((acceptedOutcome === 'happened' ? occurrence.evidence
           : acceptedOutcome === 'did-not-happen' ? [...(nonOccurrence.evidence as readonly string[]), ...(quiescence.evidence as readonly string[])]
             : assessmentEvidence) as readonly string[])];
-        const decodedOutcome = take(decode('Outcome', { type: 'Outcome', schemaVersion: 1, kind: acceptedOutcome,
-          evidence: acceptedEvidence }, { ...host.current().decode, now: at }));
+        const acceptedOutcomeValue = { type: 'Outcome', schemaVersion: 1, kind: acceptedOutcome, evidence: acceptedEvidence };
+        const decodedOutcome = evidenceUnavailable ? acceptedOutcomeValue
+          : take(decode('Outcome', acceptedOutcomeValue, { ...host.current().decode, now: at }));
         ensure(encoded(decodedOutcome).bytes === encoded(r.outcome).bytes
           && r.delayedExecutionExcluded === (quiescence.verdict === 'satisfied'),
         'typed settlement differs from nine-owned outcome or delayed-execution conclusion');
         let acceptedCharge: number | null = null;
-        if (charge.verdict === 'satisfied') {
+        if (charge.verdict === 'satisfied' && !evidenceUnavailable) {
           const ids = Array.isArray(charge.evidence) ? charge.evidence as readonly string[] : [];
           ensure(ids.length > 0, 'charge conclusion lacks evidence');
           for (const id of ids) {
@@ -337,7 +359,7 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
           }
           ensure(acceptedCharge !== null, 'charge conclusion lacks an exact bound operation amount');
         }
-        ensure(r.finalCharge === acceptedCharge
+        if (!evidenceUnavailable) ensure(r.finalCharge === acceptedCharge
           && r.retainedExposure === (acceptedOutcome === 'uncertain' || acceptedCharge === null ? op.r.charge : acceptedCharge),
         'typed settlement differs from nine-owned charge conclusion');
       }
@@ -375,7 +397,8 @@ export function registerEffectBodies(host: EffectHost): Result<readonly OwnedBod
         const validationHost = c.mode === 'historical' ? { ...host, historical: true, historicalCaptures: c.facts.captures,
           current: () => ({ ...host.current(), clock: c.origin.at,
             decode: { ...c.facts.decode, captures: historicalCaptures, captureStatuses: historicalStatuses } }) } : host;
-        validate(r, causalCone(c.origin, c.facts.facts), validationHost, c.mode === 'origin', c.origin.at);
+        validate(r, causalCone(c.origin, c.facts.facts), validationHost, c.mode === 'origin', c.origin.at,
+          c.mode === 'historical');
         return { ok: true, value: freeze(input) };
       } catch (e) { return { ok: false, detail: e instanceof Error ? e.message : 'effect record refused' }; }
     },

@@ -1,12 +1,12 @@
 import type { Clock, DecodeContext, Result } from '../index.js';
 import { hashBytes } from '../facts/index.js';
-import type { CapturedContent, FactEnvelope } from '../facts/index.js';
+import type { CapturedContent, FactEnvelope, FactSnapshot, FactStatus } from '../facts/index.js';
 import type { TypedEffectPayload } from './payloads.js';
 import { encoded, ensure, freeze, take } from './boundary.js';
 
 type EffectReferenceHost = Readonly<{
   current(): { readonly clock: Clock; readonly decode?: DecodeContext & { readonly captureStatuses?: Readonly<Record<string, string>> } };
-  referenceFacts?(): Result<readonly FactEnvelope[]>;
+  referenceFacts?(): Result<FactSnapshot | readonly FactSnapshot[]>;
   historical?: boolean;
   historicalCaptures?: Readonly<Record<string, CapturedContent>>;
 }>;
@@ -36,11 +36,19 @@ const captureReferences = (value: unknown, into: Map<string, string>): void => {
   }
   Object.values(candidate).forEach(item => captureReferences(item, into));
 };
-const usable = (fact: FactEnvelope, facts: readonly FactEnvelope[], host: EffectReferenceHost | undefined, detail: string): void => {
+const usable = (fact: FactEnvelope, facts: readonly FactEnvelope[], host: EffectReferenceHost | undefined, detail: string,
+  statuses?: ReadonlyMap<string, FactStatus>): void => {
   const byId = new Map(facts.map(candidate => [candidate.id, candidate]));
   const captures = new Map<string, string>(), visited = new Set<string>(), visit = (candidate: FactEnvelope): void => {
     if (visited.has(candidate.id)) return;
-    visited.add(candidate.id); captureReferences(body(candidate), captures);
+    visited.add(candidate.id);
+    if (!host?.historical) {
+      const status = statuses?.get(candidate.id);
+      ensure(status && status.fact.contentHash === candidate.contentHash
+        && status.taint.length === 0 && status.conflicts.length === 0,
+      `${detail}: current signed status is unavailable, tainted, or conflicted`);
+    }
+    captureReferences(body(candidate), captures);
     candidate.predecessors.required.forEach(id => {
       const dependency = byId.get(id);
       ensure(dependency, `${detail}: required dependency ${id} is absent`);
@@ -84,14 +92,22 @@ const intakeRoute = (fact: FactEnvelope, facts: readonly FactEnvelope[], detail:
   ensure(typeof value.adapter === 'string' && typeof value.channel === 'string' && typeof value.receipt === 'string', detail);
   const receipt = exact(facts, value.receipt, 'intake-receipt', `${detail}: receipt missing or wrong kind`), receiptValue = body(receipt);
   ensure(receiptValue.adapter === value.adapter, `${detail}: receipt adapter mismatch`);
-  const ingress = typeof receiptValue.ingress === 'string' ? object(JSON.parse(receiptValue.ingress), `${detail}: receipt ingress malformed`) : undefined;
-  ensure(!ingress || ingress.channel === value.channel, `${detail}: receipt channel mismatch`);
+  ensure(typeof receiptValue.ingress === 'string', `${detail}: receipt ingress missing`);
+  const ingress = object(JSON.parse(receiptValue.ingress as string), `${detail}: receipt ingress malformed`);
+  ensure(['channel', 'sender', 'identityEpoch', 'eventId'].every(key =>
+    typeof ingress[key] === 'string' && (ingress[key] as string).length > 0),
+  `${detail}: receipt ingress incomplete`);
+  ensure(ingress.channel === value.channel, `${detail}: receipt channel mismatch`);
+  const captured = object(receiptValue.capture, `${detail}: receipt capture missing`);
+  ensure(typeof captured.reference === 'string' && captured.reference.length > 0
+    && typeof captured.hash === 'string' && /^sha256:[a-f0-9]{64}$/.test(captured.hash)
+    && captured.hash === receiptValue.rawHash, `${detail}: receipt capture/hash mismatch`);
   return { value, receipt, receiptValue };
 };
 
 /** Resolve every typed-payload reference against its signed P2 history. */
 export function resolveEffectPayloadReferences(payload: TypedEffectPayload, facts: readonly FactEnvelope[], clock: Clock,
-  host?: EffectReferenceHost): readonly string[] {
+  host?: EffectReferenceHost, statuses?: ReadonlyMap<string, FactStatus>): readonly string[] {
   const resolved: FactEnvelope[] = [];
   const opening = one(facts, 'run-opening', value => value.run === payload.run
     || value.type === 'Run' && value.id === payload.run, 'typed run is absent or ambiguous');
@@ -102,7 +118,7 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
   ensure(semanticValue.id === payload.semanticMessage && semanticValue.run === payload.run
     && semanticValue.sourceLineage === payload.run, 'typed semantic parent subject/lineage mismatch');
   resolved.push(semantic);
-  resolved.push(one(facts, 'run-transition', value => {
+  const transition = one(facts, 'run-transition', value => {
     const candidate = value.step === undefined ? value : object(value.step, 'run step witness malformed');
     const operation = candidate.operation === undefined ? candidate : object(candidate.operation, 'run operation witness malformed');
     const evidence = Array.isArray(candidate.evidence) ? candidate.evidence.map(item => {
@@ -112,16 +128,25 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
     return (value.run === payload.run || candidate.run === payload.run) && candidate.id === payload.step
       && (operation.key === payload.logicalEffect || value.logicalEffect === payload.logicalEffect)
       && (value.sourceResult === payload.sourceResult || evidence.includes(payload.sourceResult));
-  }, 'typed step/logical/source lineage is absent, ambiguous, or belongs to another run'));
+  }, 'typed step/logical/source lineage is absent, ambiguous, or belongs to another run');
+  resolved.push(transition);
   const source = exact(facts, payload.sourceResult, 'result-record', 'typed source result is missing or wrong kind');
   const sourceBody = body(source), result = object(sourceBody.result, 'typed source result body missing');
   const subjects = Array.isArray(sourceBody.subjects) ? sourceBody.subjects : [];
   const subject = subjects.some(item => item !== null && typeof item === 'object'
     && (item as { run?: unknown }).run === payload.run && (item as { step?: unknown }).step === payload.step
     && (item as { logicalEffect?: unknown }).logicalEffect === payload.logicalEffect);
-  ensure(result.type === 'Result' && (subject || sourceBody.run === payload.run && sourceBody.step === payload.step
-    && sourceBody.logicalEffect === payload.logicalEffect), 'typed source result subject mismatch');
-  usable(source, facts, host, 'typed source result dependency is unavailable');
+  const transitionValue = record(transition), transitionStep = transitionValue.step === undefined
+    ? transitionValue : object(transitionValue.step, 'run step witness malformed');
+  const transitionEvidence = Array.isArray(transitionStep.evidence) ? transitionStep.evidence.map(item =>
+    typeof item === 'string' ? item : item && typeof item === 'object' && 'id' in item
+      ? String((item as { id: unknown }).id) : '') : [];
+  const ownerBound = sourceBody.run === undefined && sourceBody.step === undefined && sourceBody.logicalEffect === undefined
+    && transitionEvidence.includes(source.id);
+  const directSubject = sourceBody.run === payload.run && sourceBody.step === payload.step
+    && sourceBody.logicalEffect === payload.logicalEffect;
+  ensure(result.type === 'Result' && (subject || directSubject || ownerBound), 'typed source result subject mismatch');
+  usable(source, facts, host, 'typed source result dependency is unavailable', statuses);
   resolved.push(source);
 
   const routeConversation = payload.kind === 'create-topic' ? payload.parentConversation : payload.conversation;
@@ -136,6 +161,9 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
     && Number(body(candidate).validUntil) >= clock.value);
   ensure(applicableRoutes.length === 1 && applicableRoutes[0]!.id === route.id,
     'conversation route generation is superseded or conflicted');
+  const protectedDenials = facts.filter(candidate => candidate.kind === 'intake-stop'
+    && body(candidate).adapter === payload.account && body(candidate).channel === routeConversation);
+  ensure(protectedDenials.length === 0, 'conversation target has a protected or newer intake denial');
   resolved.push(route);
 
   if (payload.kind === 'post-media') {
@@ -150,6 +178,16 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
     const value = body(fact); current(fact, clock, 'conversation target message stale');
     ensure(value.account === payload.account && value.conversation === payload.conversation
       && (value.message === payload.targetMessage || value.id === payload.targetMessage), 'conversation target message subject mismatch');
+    const targets = facts.filter(candidate => {
+      if (candidate.kind !== 'conversation-message') return false;
+      const other = body(candidate);
+      return other.account === payload.account && other.conversation === payload.conversation
+        && (other.message === payload.targetMessage || other.id === payload.targetMessage)
+        && other.status === 'current' && Number(other.validFrom) <= clock.value
+        && Number(other.validUntil) >= clock.value;
+    });
+    ensure(targets.length === 1 && targets[0]!.id === fact.id,
+      'conversation target message is superseded or conflicted');
     resolved.push(fact);
   } else if (payload.kind === 'acknowledge') {
     const fact = exact(facts, payload.inboundFact, 'intake-admitted', 'acknowledgment intake fact missing or wrong kind');
@@ -222,17 +260,34 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
       return (item.run === payload.run || candidate.run === payload.run) && candidate.id === payload.destinationStep;
     }, 'transcript destination step missing or belongs to another run'));
   }
-  for (const fact of resolved) usable(fact, facts, host, `${fact.kind} reference dependency is unavailable`);
+  for (const fact of resolved) usable(fact, facts, host, `${fact.kind} reference dependency is unavailable`, statuses);
   return freeze([...new Set(resolved.map(fact => fact.id))]);
 }
 
+const currentReferenceHistory = (host: EffectReferenceHost): Readonly<{
+  facts: readonly FactEnvelope[]; statuses: ReadonlyMap<string, FactStatus>;
+}> => {
+  const read = host.referenceFacts;
+  ensure(read, 'typed reference history unavailable');
+  const raw = take(read.call(host)) as unknown;
+  const snapshots = Array.isArray(raw) ? raw : [raw];
+  ensure(snapshots.length > 0 && snapshots.every(candidate => candidate && typeof candidate === 'object'
+    && !Array.isArray(candidate) && Array.isArray((candidate as FactSnapshot).entries)),
+  'typed reference history must be a current Part Two status snapshot');
+  const byId = new Map<string, FactEnvelope>(), statuses = new Map<string, FactStatus>();
+  for (const snapshot of snapshots as readonly FactSnapshot[]) for (const status of snapshot.entries) {
+    const prior = byId.get(status.fact.id);
+    ensure(!prior || prior.contentHash === status.fact.contentHash,
+      'typed reference history contains conflicting signed fact identities');
+    byId.set(status.fact.id, status.fact); statuses.set(status.fact.id, status);
+  }
+  return { facts: [...byId.values()], statuses };
+};
+
 export function referencedPayloadFacts(payload: TypedEffectPayload, host: EffectReferenceHost,
   supplied?: readonly FactEnvelope[], clock = host.current().clock): readonly string[] {
-  let facts = supplied;
-  if (!facts) {
-    const read = host.referenceFacts;
-    ensure(read, 'typed reference history unavailable');
-    facts = take(read.call(host));
-  }
-  return resolveEffectPayloadReferences(payload, facts, clock, host);
+  if (host.historical) return resolveEffectPayloadReferences(payload, supplied ?? [], clock, host);
+  const current = currentReferenceHistory(host);
+  const facts = [...new Map([...(supplied ?? []), ...current.facts].map(fact => [fact.id, fact])).values()];
+  return resolveEffectPayloadReferences(payload, facts, clock, host, current.statuses);
 }

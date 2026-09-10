@@ -1,5 +1,5 @@
 import type { BoundaryContext, Clock, DecodeContext, Outcome, OwnedReference, Result, RunReference, Scope, VerifiedPrincipal } from '../index.js';
-import type { AppendReceipt, DurabilityState, FactContext, FactEnvelope, FactStorePort, GovernedVersion } from '../facts/index.js';
+import type { AppendReceipt, DurabilityState, FactContext, FactEnvelope, FactSnapshot, FactStorePort, GovernedVersion } from '../facts/index.js';
 import type { AdmissionReservation, DispatchClaim, FenceToken, TransportAuthority } from '../transport/index.js';
 import type { ConversationEffectKind, EffectPayloadKind, ObservationCapabilities, TypedEffectPayload } from './payloads.js';
 export type { EffectPurpose, ConversationEffectKind, EffectPayloadKind, ObservationCapabilities,
@@ -69,6 +69,10 @@ export interface EffectSettlement extends RecordIdentity {
   readonly acceptance: string; readonly observations: readonly string[]; readonly outcome: Outcome;
   readonly finalCharge: number | null; readonly delayedExecutionExcluded: boolean;
   readonly retainedExposure: number; readonly retryEligible: false;
+  // New typed settlements pin the complete Part Nine evidence-capture set so
+  // Part Two can retain a historically valid value as evidence-unavailable
+  // after known capture loss. Absent on legacy ordinary-reply settlements.
+  readonly evidenceCaptures?: readonly Readonly<{ readonly reference: string; readonly hash: string }>[];
 }
 
 export type EffectRecord = OperationDefinition | OutboundMessage | TypedEffectPayload | EffectRequest | EffectValidation |
@@ -80,7 +84,10 @@ export interface EffectHost {
   current(): { readonly decode: DecodeContext; readonly clock: Clock; readonly stopped: boolean;
     readonly versions: readonly GovernedVersion[]; readonly authority: readonly string[] };
   capture(bytes: string): Result<{ readonly reference: string; readonly hash: string }>;
-  referenceFacts?(): Result<readonly FactEnvelope[]>;
+  // Typed payload validation consumes Part Two's status-bearing current view.
+  // Multiple snapshots permit independently owned stores to contribute signed
+  // reference history without flattening away their taint/conflict status.
+  referenceFacts?(): Result<FactSnapshot | readonly FactSnapshot[]>;
   resolvePath?(path: string): Result<string>;
 }
 export interface EffectSpine { readonly store: FactStorePort; append(record: EffectRecord, required: readonly string[]): Result<AppendReceipt> }

@@ -281,7 +281,8 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
             ? adapter.invoke({ operation: claim.operation, claim: op.claim.id, digest: q.digest, message: payload })
             : adapter.invokePayload!({ operation: claim.operation, claim: op.claim.id, digest: q.digest, payload });
           const received = consumeResult(response, { Success: responseBytes => ({ bytes: responseBytes, ok: true }),
-            Refused: () => ({ bytes: 'adapter returned no conclusive response', ok: false }) });
+            Refused: refusal => ({ bytes: payload.type === 'OutboundMessage'
+              ? 'adapter returned no conclusive response' : encoded(refusal).bytes, ok: false }) });
           bytes = received.bytes; stage = received.ok ? 'response' : 'unknown';
         } catch { bytes = 'invocation ended without a recorded service response'; stage = 'unknown'; }
         // Append failure after invoke is not a clean business-effect refusal.
@@ -378,10 +379,24 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       demand(d, factsFor(required));
       revalidate(() => undefined);
       const issue = (value: EffectSettlement) => consume(issuedSettlement(value, next => settle(id, next)));
+      const evidenceCaptures = q.payload ? (() => {
+        const acceptanceFact = snapshot().find(fact => fact.id === acceptance.id
+          && fact.kind === 'verification-VerificationAssessment');
+        const acceptanceRecord = acceptanceFact && typeof acceptanceFact.body === 'object' && !Array.isArray(acceptanceFact.body)
+          ? (acceptanceFact.body as { record?: { evidence?: readonly string[] } }).record : undefined;
+        ensure(acceptanceRecord && Array.isArray(acceptanceRecord.evidence) && acceptanceRecord.evidence.length > 0,
+          'typed settlement assessment evidence is absent');
+        const sources = acceptanceRecord.evidence.map(evidenceId => host.current().decode.evidence?.find(item => item.id === evidenceId));
+        ensure(sources.every((item): item is NonNullable<typeof item> => item !== undefined),
+          'typed settlement assessment evidence is unavailable');
+        return freeze([...new Map(sources.map(item => [item!.capture.reference, item!.capture])).values()]
+          .sort((left, right) => left.reference.localeCompare(right.reference)));
+      })() : undefined;
       const fields = { request: q.id, operation: id, claim: op.claim.id, reservation: op.fact.id, digest: q.digest,
         acceptance: acceptance.id, observations: observations.map(o => o.id), outcome,
         finalCharge: proof.finalCharge, delayedExecutionExcluded: proof.delayedExecutionExcluded,
-        retainedExposure: state === 'uncertain' || proof.finalCharge === null ? op.reservation.charge : proof.finalCharge, retryEligible: false as const };
+        retainedExposure: state === 'uncertain' || proof.finalCharge === null ? op.reservation.charge : proof.finalCharge, retryEligible: false as const,
+        ...(evidenceCaptures ? { evidenceCaptures } : {}) };
       const prior = rows(snapshot()).filter(v => v.record.type === 'EffectSettlement' && v.record.operation === id).at(-1);
       if (prior) {
         ensure(prior.record.type === 'EffectSettlement', 'settlement type mismatch');

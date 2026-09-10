@@ -15,7 +15,7 @@ const gaps = {
   '11': 'P10 credential confinement/maintenance isolation not implemented by this fixture.',
   '12': 'Full paid-supervision primitive composition is not available on this base.',
   '27': 'Current two-directory receipt loss/corruption/restoration is exercised; full origin-loss/custody policy matrix is not implemented.',
-  '28': 'P4 stop owner is not merged on this base; fixture tests final local stop only.',
+  '28': 'Actual P4 intake ownership and denial inhibition are exercised; full stop-discovery UI remains outside this slice.',
   '29': 'Transitive provisional/reconciliation dispatch matrix is not implemented; P2-NF-73 remains explicitly skipped.',
   '30': 'Physical capture loss taints P2 reads and inhibits settlement; complete evidence withdrawal/reconciliation integration remains unbuilt.',
   '34': 'Late receipt recording exists but separately scoped production observer standing is not implemented.',
@@ -34,13 +34,19 @@ const payloadKinds = ['post-text', 'post-media', 'edit-message', 'react', 'creat
 export const effectPayloadFixtures = [
   ...payloadKinds.flatMap(kind => [`P8-TP-DECODER-${kind}`, `P8-TP-CLOSED-${kind}`,
     `P8-TP-R6-ROUTE-CONFLICT-${kind}`,
-    `P8-TP-PORTS-${kind}`, `P8-TP-R6-LIFECYCLE-${kind}`]),
+    `P8-TP-PORTS-${kind}`, `P8-TP-R6-LIFECYCLE-${kind}`, `P8-TP-R7-PROTECTED-DENIAL-${kind}`,
+    `P8-TP-R7-PROCESS-RESTART-${kind}`]),
   'P8-TP-R6-CAPTURE-BYTES', 'P8-TP-R6-FINDING-2', 'P8-TP-R6-TRANSCRIPT-missing',
   'P8-TP-R6-TRANSCRIPT-expired', 'P8-TP-R6-FETCH-MISSING', 'P8-TP-R6-FINDING-3',
   'P8-TP-SIGNED-REPLAY-REFUSAL', 'P8-TP-DEFINITIONS', 'P8-TP-LEGACY',
   'P8-TP-F12-LEGACY-FIXTURE', 'P8-TP-R6-MAIN-MUTATION-HARNESS', 'P8-TP-UNSUPPORTED', 'P8-TP-R6-DISPATCH-ROUTE',
   'P8-TP-R6-DURABLE-CUT-EffectPayload', 'P8-TP-R6-DURABLE-CUT-EffectRequest',
   'P8-TP-R6-DURABLE-CUT-EffectValidation',
+  'P8-TP-R7-INTAKE-RECEIPT-COMPLETE', 'P8-TP-R7-TARGET-CONFLICT-edit-message',
+  'P8-TP-R7-TARGET-CONFLICT-react', 'P8-TP-R7-STATUS-SNAPSHOT',
+  'P8-TP-R7-OWNER-P4', 'P8-TP-R7-OWNER-P4-PROTECTED-DENIAL', 'P8-TP-R7-OWNER-P5', 'P8-TP-R7-OWNER-P7',
+  'P8-TP-R7-REFUSAL-BYTES', 'P8-TP-R7-HISTORICAL-SETTLEMENT-LOSS',
+  'P8-TP-R7-LEGACY-ALL-RECORD-MUTATIONS',
 ];
 export function checkEffectCoverage(report, dispositions = effectDispositions) {
   if (!report.success) throw new Error('effect coverage requires a successful actual test run');

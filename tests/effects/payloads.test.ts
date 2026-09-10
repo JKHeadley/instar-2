@@ -1,7 +1,7 @@
 import { beforeEach, expect, it } from 'vitest';
 import { setTimeout as yieldWorker } from 'node:timers/promises';
 import { canonical } from '../../src/index.js';
-import { decodeHistoricalBody, hashBytes } from '../../src/facts/index.js';
+import { createFactStore, decodeHistoricalBody, hashBytes } from '../../src/facts/index.js';
 import { decodeEffectPayload, decodeOutboundMessage, effectOperationContracts, effectPayloadIdentity,
   referencedPayloadFacts } from '../../src/effects/index.js';
 import type { EffectHost, EffectPayloadKind } from '../../src/effects/index.js';
@@ -9,6 +9,8 @@ import { clone } from '../fixtures.js';
 import { effectFixture, refused, value } from './fixture.js';
 import { payloadInput, payloadKinds } from './payload-fixtures.js';
 import { typedEffectFixture } from './typed-effect-fixture.js';
+// @ts-expect-error Reference physical host is JavaScript, outside pure core compilation.
+import { createTransportFileStorage } from '../../scripts/transport-file-storage.mjs';
 
 beforeEach(async () => { await yieldWorker(1); });
 
@@ -49,6 +51,54 @@ it.each(payloadKinds)('P8-TP-R6-ROUTE-CONFLICT-%s refuses a competing current si
   f.reference('conversation-route-generation', { id: 'conversation-route:2', account: 'bot:fixture', conversation: 'chat:fixture',
     status: 'current', validFrom: 0, validUntil: 1000, supersedes: 'conversation-route:1' });
   refused(decodeEffectPayload(input, f.host), 'route generation');
+});
+
+it('P8-TP-R7-INTAKE-RECEIPT-COMPLETE refuses incomplete and hash-inconsistent signed Part Four receipt witnesses', () => {
+  const incomplete = setup('acknowledge');
+  incomplete.reference('intake-receipt', { id: 'receipt:incomplete', adapter: 'bot:fixture' });
+  incomplete.reference('intake-admitted', { id: 'intake:incomplete', adapter: 'bot:fixture', channel: 'chat:fixture',
+    receipt: 'receipt:incomplete', binding: 'none' });
+  refused(decodeEffectPayload(identify({ ...payloadInput('acknowledge', incomplete.host), inboundFact: 'intake:incomplete' }),
+    incomplete.host), 'receipt');
+
+  const mismatch = setup('acknowledge'), capture = value(mismatch.host.capture('known incoming bytes'));
+  mismatch.reference('intake-receipt', { id: 'receipt:mismatch', adapter: 'bot:fixture',
+    ingress: JSON.stringify({ channel: 'chat:fixture', sender: 'sender:fixture', identityEpoch: 'epoch:1', eventId: 'event:2' }),
+    capture, rawHash: hashBytes('different') });
+  mismatch.reference('intake-admitted', { id: 'intake:mismatch', adapter: 'bot:fixture', channel: 'chat:fixture',
+    receipt: 'receipt:mismatch', binding: 'none' });
+  refused(decodeEffectPayload(identify({ ...payloadInput('acknowledge', mismatch.host), inboundFact: 'intake:mismatch' }),
+    mismatch.host), 'capture/hash');
+});
+
+it.each(['edit-message', 'react'] as const)(
+  'P8-TP-R7-TARGET-CONFLICT-%s refuses a competing current target and accepts an inactive neighbor', kind => {
+    const f = setup(kind), input = payloadInput(kind, f.host);
+    f.reference('conversation-message', { id: 'message:future', message: 'message:7', account: 'bot:fixture',
+      conversation: 'chat:fixture', status: 'current', validFrom: 2000, validUntil: 3000 });
+    expect(decodeEffectPayload(input, f.host).kind).toBe('Success');
+    f.reference('conversation-message', { id: 'message:replacement', message: 'message:7', account: 'bot:fixture',
+      conversation: 'chat:fixture', status: 'current', validFrom: 0, validUntil: 1000, supersedes: 'message:7' });
+    refused(decodeEffectPayload(input, f.host), 'target message');
+  });
+
+it.each(payloadKinds)('P8-TP-R7-PROTECTED-DENIAL-%s refuses a signed protected-target denial', kind => {
+  const f = setup(kind), input = payloadInput(kind, f.host);
+  f.reference('intake-stop', { adapter: 'bot:fixture', channel: 'chat:fixture', authority: 'part-four' });
+  refused(decodeEffectPayload(input, f.host), 'protected');
+});
+
+it('P8-TP-R7-STATUS-SNAPSHOT refuses unavailable signed recorder evidence and a flattened history', () => {
+  const f = setup('post-text'), input = payloadInput('post-text', f.host), facts = value(f.store.read());
+  const provenance = f.bob.provenance as unknown as { record: { reference: string } };
+  const reference = provenance.record.reference, bytes = f.host.current().decode.captures[reference]!;
+  const captures = { ...f.ctx.captures, [reference]: { hash: hashBytes(bytes), bytes: null, status: 'missing' as const,
+    byteLength: Buffer.byteLength(bytes) } };
+  const cold = createFactStore({ ...f.ctx, captures }, createTransportFileStorage(`${f.directory}/origin`, f.success));
+  const source = facts.find(row => row.id === input.sourceResult)!;
+  expect(value(decodeHistoricalBody(source, { ...f.ctx, captures, facts }, f.ctx.decode)).taint).toContain('evidence-unavailable');
+  refused(decodeEffectPayload(input, { ...f.host, referenceFacts: () => cold.readForProjection() }), 'status');
+  refused(decodeEffectPayload(input, { ...f.host, referenceFacts: () => cold.read() } as unknown as EffectHost), 'status snapshot');
 });
 
 it('P8-TP-R6-CAPTURE-BYTES P8-TP-R6-FINDING-2 refuses absent, corrupt, or hash-mismatched declared attachment bytes', () => {
