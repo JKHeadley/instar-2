@@ -49,11 +49,12 @@ declaration and Seven's current immutable model-route selection in its logical i
 admission re-resolves and matches those exact references to the exact currently resolved model
 adapter and route selection before consuming the result.
 
-**Rule — exact package binding prevents runtime impersonation.** Rules 44, 69 and 90;
+**Rule — exact package binding prevents runtime impersonation.** Rules 69 and 90;
 **checks: P13-NF-05/07**. The assembly resolves the declared executable to exact bytes and object
 identity before launch. The launched process and observer bind back to that artifact, platform,
-adapter declaration, and `AssemblyAdmission`. PATH lookup, mutable aliases, auto-update, wrapper
-fallback, and a runtime that reports another runtime's name cannot silently change the binding.
+adapter declaration, and `AssemblyAdmission`. Searching for an executable through the operating
+system's configured search path, mutable aliases, auto-update, wrapper fallback, and a runtime that
+reports another runtime's name cannot silently change the binding.
 Changed bytes require a new conformance result and assembly admission for the affected scope.
 
 ---

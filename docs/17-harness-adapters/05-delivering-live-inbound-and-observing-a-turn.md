@@ -31,7 +31,8 @@ exchange, the adapter refuses or leaves the admitted input queued under its exis
 step identity. It does not type into a composer, overwrite a pending draft, concatenate two
 messages, or claim future automatic submission. A capable harness may accept more than one input
 only when its conformance evidence preserves order and maps every acceptance and consumption event
-to the exact immutable input. Backpressure uses Part Six resources and loops rather than an
+to the exact immutable input. When the receiver lacks capacity, the adapter holds or refuses new
+input instead of overfilling it. This backpressure uses Part Six resources and loops rather than an
 unbounded process-local queue.
 
 **Rule — turn evidence is bound to existing work identity.** Rules 26, 49, 68 and 69; **checks:

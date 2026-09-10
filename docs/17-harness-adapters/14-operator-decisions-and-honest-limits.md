@@ -88,20 +88,18 @@ without depending on a vendor's storage promise.
 
 **Value — decision 6: trusting the machine administrator.**
 
-Question: Should work with the full safeguards run only on machines whose administrator we
-deliberately trust, while accepting that no software on that machine can prove the administrator
-never replaced its safeguards?
+Question: Should we enable the fully safeguarded mode on the proposed trusted machines while
+accepting the administrator risk, or leave that mode disabled there?
 
 Background: A machine administrator can replace the programs and observers that run on that
 machine, so this risk cannot be removed by the adapter itself.
 
-Choices: Accept trusted administrators as people we must rely on, or keep fully safeguarded work
-off any machine where that trust is unacceptable.
+Choices: Enable the fully safeguarded mode on the listed trusted machines, or leave it disabled on
+those machines.
 
-What it changes: Accepting this trust permits fully safeguarded work on operator-controlled or
-otherwise approved machines, with administrator compromise as the residual risk. Rejecting it
-disables fully safeguarded work on those machines while leaving independently hosted limited
-communication available where its own safeguards still hold.
+What it changes: Enabling it makes fully safeguarded work available on those machines, with
+administrator compromise as the remaining risk. Leaving it disabled removes that work there while
+independently hosted limited communication can remain available where its own safeguards still hold.
 
 Recommendation: Accept this trust only for explicitly trusted administrators because pretending
 the administrator is constrained by software it controls would be misleading.
