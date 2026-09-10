@@ -10,8 +10,9 @@ import { boundary,IntakeFailure,json,object,requireIntake,same,take,text } from 
 import type { ConstitutionalReference,InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort,PendingScheduledAdmissions,
   PendingScheduledAdmissionsInput,ScheduledTickAdmission,SenderEvidence,VerifiedActAdmission,VerifiedActDisposition } from './contracts.js';
 import { buildVerifiedActRecord,intakeArrival,isScheduledIntakeAdmission,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,
-  intakeVerifiedActRegistration,intakeWorkRegistration,scheduledIntakeFactSchemas,decodeScheduledTickBody,validateScheduledIntakeRoute,
-  bindIntakeOwnerRegister,registeredScheduledIntakeAdapters,resolveScheduledDiscoveryWitness } from './records.js';
+  intakeVerifiedActRegistration,intakeWorkRegistration,scheduledIntakeWorkRegistration,scheduledIntakeFactSchemas,decodeScheduledTickBody,
+  validateScheduledIntakeRoute,bindIntakeOwnerRegister,registeredScheduledIntakeAdapters,resolveScheduledDiscoveryWitness,
+  collapseScheduledImmutableWitness } from './records.js';
 
 const reference=(f: FactEnvelope): FactEnvelopeReference => Object.freeze({ owner: 'part-two',name: 'FactEnvelope',id: f.id });
 type Classified={ kind: 'conversation'; ask: string; flags: readonly 'cannot-decide'[] }|{ kind: 'stop' }|{ kind: 'needs-judgment' };
@@ -75,7 +76,10 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     // schema when that operation is invoked.
     for(const schema of intakeFactSchemas(scope)) requireIntake(initial.schemas.some(s => same(s,schema)),
       `P4-NF-06/12: required owner schema changed or missing: ${schema.kind}`);
-    const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id,scheduledOwnerRegister));
+    const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id));
+    const scheduledWorkRegistration=scheduledOwnerRegister
+      ?take(scheduledIntakeWorkRegistration(b,deps.author.principal.id,scheduledOwnerRegister))
+      :null;
     const stopRegistration=take(intakeStopRegistration(b,deps.author.principal.id));
     const verifiedActRegistration=take(intakeVerifiedActRegistration(b,deps.author.principal.id,registerGenerationReference));
     // Snapshot assembly choices. Only context()/clock()/storage are live provider inputs.
@@ -130,6 +134,12 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         }
       };
     }
+    function scheduledContext(preserved: string,principal?: VerifiedPrincipal): FactContext {
+      const c=context(preserved,principal);
+      return scheduledWorkRegistration? { ...c,ownedBodies: [
+        ...c.ownedBodies?.filter(registration => registration!==workRegistration)??[],scheduledWorkRegistration
+      ] }:c;
+    }
     function read(preserved: string): readonly FactEnvelope[] {
       const c=context(preserved);
       return [...new Map([...c.facts,...take(createFactStore(c,deps.storage).read())].map(f => [f.id,f])).values()];
@@ -141,11 +151,10 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         take(constructGoverned('blocking sites','intake.admission',deps.governance.register,g));
         take(readEnforcedRecord('intake.admission','intake.contract','authorAndAppend',deps.governance.register,g));
       }
-      const base=context(preserved,principal);
-      const c=directives? { ...base,decode: { ...base.decode,directives } }:base;
       if(historicalAdmission) {
         requireIntake(kind==='intake-admitted'&&principal,
           'scheduled intake: historical admission path is only valid for an identified admission','integrity');
+        const base=scheduledContext(preserved,principal);
         const store=createFactStore(base,deps.storage),persisted=take(store.read()),facts=[...base.facts,...persisted];
         const head=facts.filter(fact => fact.machine===author.machine).at(-1);
         const segment={ machine: author.machine,epoch: head?.segment.epoch??0,position: head?head.segment.position+1:0 };
@@ -171,6 +180,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         requireIntake(receipt.taint.length===0,'P4-NF-24: authority-tainted append cannot admit work','integrity');
         return receipt.fact;
       }
+      const base=context(preserved,principal);
+      const c=directives? { ...base,decode: { ...base.decode,directives } }:base;
       const receipt=take(authorAndAppend({
         kind,schemaVersion: 1,machine: author.machine,principal: json(author.principal),
         provenance: json(author.provenance),at: json(at),body,required: [...new Set(required)]
@@ -194,7 +205,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       return receipt.fact;
     }
     function statuses(preserved: string): readonly FactStatus[] {
-      const c=context(preserved),facts=read(preserved);
+      const c=scheduledContext(preserved),facts=read(preserved);
       return take(prepareSnapshot(facts,{ ...c,facts })).entries;
     }
     function checkDedup(at: Clock,preserved: string): void {
@@ -285,7 +296,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         'scheduled intake: discovery reference owner/type mismatch','integrity');
       const { rows }=historicalRows(preserved),row=rows.find(candidate => candidate.fact.id===referenceValue.id);
       requireIntake(row&&!row.taint.length&&!row.conflicts.length,'scheduled intake: discovery Evidence is missing or contested','integrity');
-      const histories=rows.flatMap(candidate => candidate.historical.map(record => ({ fact: candidate.fact,record })));
+      const histories=rows.flatMap(candidate => candidate.historical.map(record => ({ fact: candidate.fact,record,status: candidate })));
       const selected=resolveScheduledDiscoveryWitness(histories,new Set([row.fact.id]),eventId,at,preserved,context(preserved).decode,'origin');
       requireIntake(selected,'scheduled intake: discovery Evidence is missing or unavailable','integrity');
       const evidence=selected.record;
@@ -315,21 +326,20 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       const witnessed=rows.filter(row => allowed.has(row.fact.id)).flatMap(row => {
         const schema=context(preserved).schemas.find(candidate => candidate.kind===row.fact.kind
           &&candidate.version===row.fact.schemaVersion);
-        return Object.entries(schema?.fields??{}).filter(([,field]) => field.kind==='constitutional'&&field.type==='Directive')
-          .map(([field]) => {
-            const raw=object(object(row.body)[field]!);
-            const records=row.historical.filter((record): record is HistoricalRead<Directive> => record.view.type==='Directive'
-              &&record.view.id===raw.id);
-            requireIntake(records.length===1&&records[0]!.captureStatus==='available'
-              &&row.taint.length===0&&row.conflicts.length===0,
-            'P4-NF-25: directive requires one available, uncontested historical witness','integrity');
-            constitutionalField(row,'Directive',records[0]!.view.id,preserved);
-            // The historical wrapper is the authority for a retained record. A
-            // live constitutional value is optional reader context and must not
-            // become a second availability requirement after the signed origin,
-            // capture, subject and conflict checks above have all succeeded.
-            return { row,field,directive: records[0]! };
-          });
+        const fields=Object.entries(schema?.fields??{}).filter(([,field]) => field.kind==='constitutional'&&field.type==='Directive');
+        if(fields.length===0) return [];
+        const ids=new Set(fields.map(([field]) => text(object(object(row.body)[field]!).id,'directive id')));
+        const candidates=row.historical.filter((record): record is HistoricalRead<Directive> =>
+          record.view.type==='Directive'&&ids.has(record.view.id)).map(record => ({ fact: row.fact,record,status: row }));
+        const collapsed=collapseScheduledImmutableWitness(candidates,'origin','P4-NF-25: signed Directive dependency');
+        requireIntake(collapsed,'P4-NF-25: directive requires an available, uncontested historical witness','integrity');
+        const directive=collapsed.witness.record as HistoricalRead<Directive>;
+        const field=constitutionalField(row,'Directive',directive.view.id,preserved);
+        // The historical wrapper is the authority for a retained record. A
+        // live constitutional value is optional reader context and must not
+        // become a second availability requirement after the signed origin,
+        // capture, subject and conflict checks above have all succeeded.
+        return [{ row,field,directive }];
       });
       const superseded=new Set(witnessed.flatMap(candidate => candidate.directive.view.supersedes? [candidate.directive.view.supersedes]:[]));
       const active=witnessed.filter(candidate => !candidate.directive.view.closedBy&&!superseded.has(candidate.directive.view.id)
@@ -402,16 +412,25 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       validateScheduledIntakeRoute(arrival.adapter,arrival.route.channel,arrival.route.sender,
         arrival.route.identityEpoch,json(principal),c.decode,registeredScheduledAdapters);
 
-      const principalRows=dependencies.filter(candidate => candidate.fact.kind==='intake-scheduled-principal'
-        &&candidate.historical.some(record => record.view.type==='VerifiedPrincipal'&&same(record.view,principal)));
-      requireIntake(principalRows.length>0,'scheduled intake: principal witness is missing or mismatched','standing');
-      for(const principalRow of principalRows) constitutionalField(principalRow,'VerifiedPrincipal',principal.id,preserved);
-      const histories=snapshot.flatMap(candidate => candidate.historical.map(record => ({ fact: candidate.fact,record })));
+      const principalCandidates=dependencies.filter(candidate => candidate.fact.kind==='intake-scheduled-principal')
+        .flatMap(candidate => candidate.historical.filter(record => record.view.type==='VerifiedPrincipal')
+          .map(record => ({ fact: candidate.fact,record,status: candidate })));
+      const collapsedPrincipal=collapseScheduledImmutableWitness(principalCandidates,'origin',
+        'scheduled intake: one signed package-system principal dependency is required');
+      requireIntake(collapsedPrincipal&&same(collapsedPrincipal.witness.record.view,principal),
+        'scheduled intake: principal witness is missing or mismatched','standing');
+      for(const principalCopy of collapsedPrincipal.copies) {
+        const principalRow=dependencies.find(candidate => candidate.fact.id===principalCopy.fact.id)!;
+        constitutionalField(principalRow,'VerifiedPrincipal',principal.id,preserved);
+      }
+      const histories=snapshot.flatMap(candidate => candidate.historical.map(record => ({ fact: candidate.fact,record,status: candidate })));
       const discovery=resolveScheduledDiscoveryWitness(histories,new Set(required),arrival.route.eventId,row.fact.at,preserved,c.decode,'origin');
       requireIntake(discovery,'scheduled intake: discovery witness is not a signed dependency','integrity');
-      const discoveryRow=dependencies.find(candidate => candidate.fact.id===discovery.fact.id);
-      requireIntake(discoveryRow,'scheduled intake: discovery witness is not a signed dependency','integrity');
-      constitutionalField(discoveryRow,'Evidence',discovery.record.view.id,preserved);
+      for(const discoveryCopy of discovery.copies) {
+        const discoveryRow=dependencies.find(candidate => candidate.fact.id===discoveryCopy.fact.id);
+        requireIntake(discoveryRow,'scheduled intake: discovery witness is not a signed dependency','integrity');
+        constitutionalField(discoveryRow,'Evidence',discovery.record.view.id,preserved);
+      }
       const standing=scheduledStanding(principal,row.fact.at,preserved,cone);
       const standingRows=dependencies.filter(candidate => candidate.historical.some(record => record.view.type==='StandingGrant'
         &&record.view.id===standing.grant.view.id&&same(record.view,standing.grant.view)));
@@ -427,6 +446,10 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         &&resolvedBody.principalId===principal.id&&resolvedBody.binding==='none'
         &&same(resolvedBody.authentication,principal.provenance.record),
       'scheduled intake: resolved-principal witness differs from the admission','integrity');
+      requireIntake(resolved[0]!.fact.predecessors.required.includes(receipt.fact.id)
+        &&discovery.copies.some(copy => resolved[0]!.fact.predecessors.required.includes(copy.fact.id))
+        &&standingRows.some(candidate => resolved[0]!.fact.predecessors.required.includes(candidate.fact.id)),
+      'scheduled intake: resolved-principal witness omits signed authority','integrity');
       const work=object(body.work!);
       requireIntake(work.type==='IntakeWork'&&work.schemaVersion===1&&typeof work.owner==='string'&&work.owner.length>0
         &&work.blockedOn==='run-admission'&&work.standing==='requester'&&body.binding==='none',
@@ -497,7 +520,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               'scheduled intake: configured author is not the authenticated package system principal','standing');
             const discovery=scheduledDiscovery(input.discovery,eventId,at,preserved);
             const standing=scheduledStanding(principal,at,preserved);
-            const scheduledPrincipalSchema=scheduledIntakeFactSchemas(scope)[0]!;
+            const principalIdentityScope=take(decode('Scope',{ type: 'Scope',schemaVersion: 1,kind: 'organization' },context(preserved).decode));
+            const scheduledPrincipalSchema=scheduledIntakeFactSchemas(principalIdentityScope)[0]!;
             requireIntake(context(preserved).schemas.some(schema => same(schema,scheduledPrincipalSchema)),
               'P4-NF-06/12: required scheduled owner schema changed or missing: intake-scheduled-principal');
             const existingPrincipal=read(preserved).find(f => f.kind==='intake-scheduled-principal'

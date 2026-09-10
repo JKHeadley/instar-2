@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
-import { intakeWorkRegistration } from '../../src/intake/index.js';
+import { scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
 import { json, refused, value } from './fixtures.js';
 import { scheduledFixture } from './scheduled-fixtures.js';
 import { scheduledRunHarness } from './scheduled-run-fixtures.js';
@@ -17,8 +17,8 @@ function setup() {
   return { f, grant, tick, discovery, input, admitted, original };
 }
 function registration(f: ReturnType<typeof scheduledFixture>) {
-  return value(intakeWorkRegistration({ site: f.context.site, preserved: f.context.preserved,
-    register: f.context.decode.register }, f.principal.id));
+  return value(scheduledIntakeWorkRegistration({ site: f.context.site, preserved: f.context.preserved,
+    register: f.context.decode.register }, f.principal.id,f.deps.governance.register));
 }
 function appendMutation(x: ReturnType<typeof setup>, mutate: (body: Record<string, any>) => void,
   omit: (fact: FactEnvelope) => boolean = () => false) {

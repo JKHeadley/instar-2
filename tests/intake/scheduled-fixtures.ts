@@ -16,7 +16,8 @@ export const scheduledPrincipalId = 'package:scheduler';
 
 export function scheduledFixture(options: { directory?: string; machine?: 'machine-a'|'machine-b' } = {}) {
   const base = intakeFixture(options), machine = options.machine ?? 'machine-a';
-  Object.assign(base.context, { schemas: [...base.context.schemas, ...scheduledIntakeFactSchemas(base.f.scope)] });
+  const principalIdentityScope=value(decode('Scope',{ type:'Scope',schemaVersion:1,kind:'organization' },base.context.decode));
+  Object.assign(base.context, { schemas: [...base.context.schemas, ...scheduledIntakeFactSchemas(principalIdentityScope)] });
   const declarations = JSON.parse(readFileSync('src/intake/port.declarations.json', 'utf8')) as object[];
   const parser = base.r.declaration(scheduledAdapterId, 'parsers', {
     fixture: 'check', authenticationClass: [{ stimulusType: 'scheduled-tick', class: 'verified' }],

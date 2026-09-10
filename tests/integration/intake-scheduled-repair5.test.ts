@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { verifyAndAdmit } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
-import { intakeWorkRegistration } from '../../src/intake/index.js';
+import { scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
 import { json, refused, value } from '../intake/fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';
 import { scheduledRunHarness } from '../intake/scheduled-run-fixtures.js';
@@ -39,8 +39,8 @@ function setup(variant: Variant) {
   const signed = f.f.next(previous, { kind: original.kind, principal: original.principal,
     provenance: original.provenance, at: original.at, body,
     predecessors: { ...original.predecessors, required } }, f.context);
-  const registration = value(intakeWorkRegistration({ site: f.context.site, preserved: f.context.preserved,
-    register: f.context.decode.register }, f.principal.id));
+  const registration = value(scheduledIntakeWorkRegistration({ site: f.context.site, preserved: f.context.preserved,
+    register: f.context.decode.register }, f.principal.id,f.deps.governance.register));
   const context = { ...f.context, facts: f.frames as FactEnvelope[],
     ownedBodies: [...f.context.ownedBodies ?? [], registration] };
   return { f, admitted, signed, context };
@@ -67,8 +67,8 @@ it('P4-ST-30/P4-ST-31 V71 unchanged signed replication remains admissible', () =
   const signed = f.f.next(previous, { kind: original.kind, principal: original.principal,
     provenance: original.provenance, at: original.at, body: original.body,
     predecessors: original.predecessors }, f.context);
-  const registration = value(intakeWorkRegistration({ site: f.context.site, preserved: f.context.preserved,
-    register: f.context.decode.register }, f.principal.id));
+  const registration = value(scheduledIntakeWorkRegistration({ site: f.context.site, preserved: f.context.preserved,
+    register: f.context.decode.register }, f.principal.id,f.deps.governance.register));
   const context = { ...f.context, facts: f.frames as FactEnvelope[],
     ownedBodies: [...f.context.ownedBodies ?? [], registration] };
   expect(value(verifyAndAdmit(json(signed), 'machine-a', context)).id).toBe(signed.id);

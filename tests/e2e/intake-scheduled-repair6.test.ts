@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { expect,it } from 'vitest';
 import { authorAndAppend,createFactStore } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
-import { intakeWorkRegistration } from '../../src/intake/index.js';
+import { scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
 import { json,refused,value } from '../intake/fixtures.js';
 import { missingScheduledPrincipalHistory } from '../intake/scheduled-repair6-fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';
@@ -13,8 +13,8 @@ it.each([false,true])('P4-ST-34 V76 durable missing-principal admission refuses 
   const x=missingScheduledPrincipalHistory(true),directory=mkdtempSync(join(tmpdir(),'instar-p4-repair6-'));
   const before=scheduledFixture({ directory }); before.installSchemas();
   Object.assign(before.f.captures,x.f.f.captures); before.syncCaptures();
-  const registration=value(intakeWorkRegistration({ site: before.context.site,preserved: before.context.preserved,
-    register: before.context.decode.register },before.principal.id));
+  const registration=value(scheduledIntakeWorkRegistration({ site: before.context.site,preserved: before.context.preserved,
+    register: before.context.decode.register },before.principal.id,before.deps.governance.register));
   const context={ ...before.context,ownedBodies: [...before.context.ownedBodies??[],registration],
     decode: { ...before.context.decode,provenance: before.provenance } };
   const store=createFactStore(context,before.storage);

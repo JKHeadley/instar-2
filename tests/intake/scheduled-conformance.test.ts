@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canonical, consumeResult, decode } from '../../src/index.js';
 import { authorAndAppend, createFactStore, prepareSnapshot } from '../../src/facts/index.js';
-import { createIntakePort, intakeWorkRegistration } from '../../src/intake/index.js';
+import { createIntakePort, scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
 import type { IntakeDisposition, ScheduledIntakeDisposition } from '../../src/intake/index.js';
 import { intakeFixture, json, refused, value } from './fixtures.js';
 import { scheduledFixture } from './scheduled-fixtures.js';
@@ -205,8 +205,8 @@ function rewriteScheduledRoute(x: ReturnType<typeof setup>, field: 'adapter'|'ch
         required: old.predecessors.required.map((id: string) => ids.get(id) ?? id) } }, x.f.context);
     ids.set(old.id, fact.id); x.f.frames.push(fact);
   }
-  const registration = value(intakeWorkRegistration({ site: x.f.context.site, preserved: x.f.context.preserved,
-    register: x.f.context.decode.register }, x.f.principal.id));
+  const registration = value(scheduledIntakeWorkRegistration({ site: x.f.context.site, preserved: x.f.context.preserved,
+    register: x.f.context.decode.register }, x.f.principal.id,x.f.deps.governance.register));
   const rows = value(prepareSnapshot(x.f.frames as any, { ...x.f.context, facts: x.f.frames as any,
     ownedBodies: [...x.f.context.ownedBodies ?? [], registration] })).entries;
   return { rows, admission: x.f.frames.at(-1) as any };

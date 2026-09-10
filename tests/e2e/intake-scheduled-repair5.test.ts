@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
-import { intakeWorkRegistration } from '../../src/intake/index.js';
+import { scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
 import { json, refused, value } from '../intake/fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';
 import { recoverScheduledDisposition, scheduledRunHarness } from '../intake/scheduled-run-fixtures.js';
@@ -40,8 +40,8 @@ it.each(variants)('P4-ST-30/P4-ST-31 durable append refuses V64/V65/V66/V70 %s e
       : variant === 'missing-principal' ? admitted.principal.fact.id
         : variant === 'missing-grant' ? grant.fact.id : undefined;
   const required = original.predecessors.required.filter(id => id !== omitted);
-  const registration = value(intakeWorkRegistration({ site: before.context.site, preserved: before.context.preserved,
-    register: before.context.decode.register }, before.principal.id));
+  const registration = value(scheduledIntakeWorkRegistration({ site: before.context.site, preserved: before.context.preserved,
+    register: before.context.decode.register }, before.principal.id,before.deps.governance.register));
   const context = { ...before.context, ownedBodies: [...before.context.ownedBodies ?? [], registration],
     decode: { ...before.context.decode, provenance: before.provenance } };
   refused(authorAndAppend({ kind: original.kind, schemaVersion: original.schemaVersion, machine: original.machine,

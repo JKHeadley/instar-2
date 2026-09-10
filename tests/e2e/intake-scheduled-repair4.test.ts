@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 import { decode } from '../../src/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
-import { intakeWorkRegistration } from '../../src/intake/index.js';
+import { scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
 import { json, refused, value } from '../intake/fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';
 import { recoverScheduledDisposition, scheduledRunHarness } from '../intake/scheduled-run-fixtures.js';
@@ -80,8 +80,8 @@ it.each(['jobInstance', 'calendarPolicyVersion'] as const)
   if (admitted.kind !== 'scheduled-admitted') throw new Error('expected scheduled admission');
   const original = before.frames.pop() as FactEnvelope, body = structuredClone(original.body) as Record<string, any>;
   body.intent.ask[field] = 'different';
-  const registration = value(intakeWorkRegistration({ site: before.context.site, preserved: before.context.preserved,
-    register: before.context.decode.register }, before.principal.id));
+  const registration = value(scheduledIntakeWorkRegistration({ site: before.context.site, preserved: before.context.preserved,
+    register: before.context.decode.register }, before.principal.id,before.deps.governance.register));
   const context = { ...before.context, ownedBodies: [...before.context.ownedBodies ?? [], registration],
     decode: { ...before.context.decode, provenance: before.provenance } };
   refused(authorAndAppend({ kind: original.kind, schemaVersion: original.schemaVersion, machine: original.machine,

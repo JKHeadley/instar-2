@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { decode } from '../../src/index.js';
 import { authorAndAppend, createFactStore, prepareSnapshot } from '../../src/facts/index.js';
-import { intakeWorkRegistration } from '../../src/intake/index.js';
+import { scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
 import { json, refused, value } from './fixtures.js';
 import { scheduledFixture } from './scheduled-fixtures.js';
@@ -44,8 +44,8 @@ function removeLiveAuthority(f: ReturnType<typeof scheduledFixture>) {
     principals: [f.principal], grants: [], directives: [] } });
 }
 function statuses(f: ReturnType<typeof scheduledFixture>) {
-  const registration = value(intakeWorkRegistration({ site: f.context.site, preserved: f.context.preserved,
-    register: f.context.decode.register }, f.principal.id));
+  const registration = value(scheduledIntakeWorkRegistration({ site: f.context.site, preserved: f.context.preserved,
+    register: f.context.decode.register }, f.principal.id,f.deps.governance.register));
   return value(prepareSnapshot(f.frames as any, { ...f.context, facts: f.frames as any,
     ownedBodies: [...f.context.ownedBodies ?? [], registration] })).entries;
 }
@@ -149,8 +149,8 @@ it.each(['jobInstance', 'calendarPolicyVersion'] as const)
   const x = setup(); admit(x.f, x.input);
   const original = x.f.frames.pop() as FactEnvelope, body = structuredClone(original.body) as Record<string, any>;
   body.intent.ask[field] = 'different';
-  const registration = value(intakeWorkRegistration({ site: x.f.context.site, preserved: x.f.context.preserved,
-    register: x.f.context.decode.register }, x.f.principal.id));
+  const registration = value(scheduledIntakeWorkRegistration({ site: x.f.context.site, preserved: x.f.context.preserved,
+    register: x.f.context.decode.register }, x.f.principal.id,x.f.deps.governance.register));
   const context = { ...x.f.context, ownedBodies: [...x.f.context.ownedBodies ?? [], registration],
     decode: { ...x.f.context.decode, provenance: x.f.provenance } };
   refused(authorAndAppend({ kind: original.kind, schemaVersion: original.schemaVersion, machine: original.machine,

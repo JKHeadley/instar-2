@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { canonical, consumeResult, decode } from '../../src/index.js';
 import { authorAndAppend, createFactStore, prepareSnapshot, verifyAndAdmit } from '../../src/facts/index.js';
-import { createIntakePort, intakeWorkRegistration } from '../../src/intake/index.js';
+import { createIntakePort, scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
 import { json, refused, value } from './fixtures.js';
 import { scheduledFixture } from './scheduled-fixtures.js';
 
@@ -34,8 +34,8 @@ function historicalOnly(x: ReturnType<typeof setup>) {
     principals: [x.f.principal], directives: [] } });
 }
 function statuses(x: ReturnType<typeof setup>) {
-  const registration = value(intakeWorkRegistration({ site: x.f.context.site, preserved: x.f.context.preserved,
-    register: x.f.context.decode.register }, x.f.principal.id));
+  const registration = value(scheduledIntakeWorkRegistration({ site: x.f.context.site, preserved: x.f.context.preserved,
+    register: x.f.context.decode.register }, x.f.principal.id,x.f.deps.governance.register));
   return value(prepareSnapshot(x.f.frames as any, { ...x.f.context, facts: x.f.frames as any,
     ownedBodies: [...x.f.context.ownedBodies ?? [], registration] })).entries;
 }
@@ -107,9 +107,9 @@ it('P4-ST-25 signed origin and replication admissions cannot bypass invalid disc
   value(unavailable.f.port().receiveScheduledTick(unavailable.input));
   const originalAdmission = unavailable.f.frames.pop() as any;
   unavailable.f.dropCapture(unavailable.discovery.evidence.capture.reference);
-  const registration = value(intakeWorkRegistration({ site: unavailable.f.context.site,
+  const registration = value(scheduledIntakeWorkRegistration({ site: unavailable.f.context.site,
     preserved: unavailable.f.context.preserved, register: unavailable.f.context.decode.register },
-  unavailable.f.principal.id));
+  unavailable.f.principal.id,unavailable.f.deps.governance.register));
   const originContext = { ...unavailable.f.context,
     ownedBodies: [...unavailable.f.context.ownedBodies ?? [], registration],
     decode: { ...unavailable.f.context.decode, provenance: unavailable.f.provenance } };
@@ -136,9 +136,9 @@ it('P4-ST-25 signed origin and replication admissions cannot bypass invalid disc
     provenance: conflicting.f.provenance, at: conflicting.f.f.now, body: validAdmission.body,
     predecessors: { inSegment: conflict.id, frontier: {}, required: validAdmission.predecessors.required } },
   conflicting.f.context);
-  const replicationRegistration = value(intakeWorkRegistration({ site: conflicting.f.context.site,
+  const replicationRegistration = value(scheduledIntakeWorkRegistration({ site: conflicting.f.context.site,
     preserved: conflicting.f.context.preserved, register: conflicting.f.context.decode.register },
-  conflicting.f.principal.id));
+  conflicting.f.principal.id,conflicting.f.deps.governance.register));
   const replicationContext = { ...conflicting.f.context, facts: conflicting.f.frames as any,
     ownedBodies: [...conflicting.f.context.ownedBodies ?? [], replicationRegistration] };
   refused(verifyAndAdmit(json(forged), 'machine-a', replicationContext), 'discovery Evidence dependency is conflicted');

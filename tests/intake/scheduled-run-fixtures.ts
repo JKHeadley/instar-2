@@ -2,7 +2,7 @@ import { canonical } from '../../src/index.js';
 import type { FactEnvelopeReference, Json } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
-import { bindIntakeOwnerRegister,intakeWorkRegistration } from '../../src/intake/index.js';
+import { bindIntakeOwnerRegister,scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
 import type { ScheduledIntakeDisposition } from '../../src/intake/index.js';
 import { createRunGraph, recordWire, resolveIntakeOwner, runFactSchemas, runIdFor } from '../../src/rungraph/index.js';
 import type { Run, RunDecodeContext, RunGraphPort } from '../../src/rungraph/index.js';
@@ -56,7 +56,7 @@ export function scheduledRunHarness(f: ScheduledFixture, admitted: ScheduledInta
   Object.assign(f.context, { decode: { ...f.context.decode, register } });
   const boundary = { site: f.context.site, preserved: f.context.preserved, register };
   bindIntakeOwnerRegister(register,f.deps.governance.register,f.deps.governance.context);
-  const work = value(intakeWorkRegistration(boundary, f.principal.id, f.deps.governance.register));
+  const work = value(scheduledIntakeWorkRegistration(boundary, f.principal.id, f.deps.governance.register));
   const factContext = { ...f.context, facts: [] as FactEnvelope[] };
   let context: RunDecodeContext = {
     site: f.context.site, preserved: f.context.preserved, register,

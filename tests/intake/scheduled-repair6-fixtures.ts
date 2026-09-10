@@ -2,7 +2,7 @@ import { canonical } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
-import { intakeWorkRegistration } from '../../src/intake/index.js';
+import { scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
 import { json, value } from './fixtures.js';
 import { scheduledFixture } from './scheduled-fixtures.js';
 
@@ -14,8 +14,8 @@ export function scheduledRepair6Setup() {
 }
 
 export function scheduledOwnerContext(f: ReturnType<typeof scheduledFixture>) {
-  const registration=value(intakeWorkRegistration({ site: f.context.site,preserved: f.context.preserved,
-    register: f.context.decode.register },f.principal.id));
+  const registration=value(scheduledIntakeWorkRegistration({ site: f.context.site,preserved: f.context.preserved,
+    register: f.context.decode.register },f.principal.id,f.deps.governance.register));
   return { ...f.context,ownedBodies: [...f.context.ownedBodies??[],registration],
     decode: { ...f.context.decode,provenance: f.provenance } };
 }

@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { decode } from '../../src/index.js';
 import { authorAndAppend, createFactStore, verifyAndAdmit } from '../../src/facts/index.js';
-import { intakeWorkRegistration } from '../../src/intake/index.js';
+import { scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
 import { json, refused, value } from '../intake/fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';
@@ -9,8 +9,8 @@ import { scheduledRunHarness } from '../intake/scheduled-run-fixtures.js';
 
 const ref = (id: string) => ({ owner: 'part-two' as const, name: 'FactEnvelope' as const, id });
 function registration(f: ReturnType<typeof scheduledFixture>) {
-  return value(intakeWorkRegistration({ site: f.context.site, preserved: f.context.preserved,
-    register: f.context.decode.register }, f.principal.id));
+  return value(scheduledIntakeWorkRegistration({ site: f.context.site, preserved: f.context.preserved,
+    register: f.context.decode.register }, f.principal.id,f.deps.governance.register));
 }
 function removeLiveAuthority(f: ReturnType<typeof scheduledFixture>) {
   Object.assign(f.context, { grants: [], decode: { ...f.context.decode, provenance: f.provenance,
