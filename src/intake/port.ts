@@ -355,13 +355,13 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
           .sort((left,right) => foldKey(left.row.fact)<foldKey(right.row.fact)?-1:foldKey(left.row.fact)>foldKey(right.row.fact)?1:0)[0]!;
       });
     }
-    function isScheduledAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[]): boolean {
-      try { return isScheduledIntakeAdmission(fact,facts,author.principal.id,registeredScheduledAdapters); }
+    function isScheduledAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[],preserved: string): boolean {
+      try { return isScheduledIntakeAdmission(fact,facts,author.principal.id,registeredScheduledAdapters,context(preserved)); }
       catch { return false; }
     }
     type ScheduledResolution={ kind: 'valid'; row: FactStatus; principal: VerifiedPrincipal }|{ kind: 'partial' };
     function resolveScheduledAdmission(row: FactStatus,facts: readonly FactEnvelope[],preserved: string): ScheduledResolution {
-      requireIntake(row.fact.kind==='intake-admitted'&&isScheduledAdmission(row.fact,facts),
+      requireIntake(row.fact.kind==='intake-admitted'&&isScheduledAdmission(row.fact,facts,preserved),
         'scheduled intake: pending reference has wrong kind or subject','integrity');
       const c=context(preserved),snapshot=statuses(preserved),body=object(row.body),intentBody=object(body.intent!);
       try {
@@ -497,7 +497,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               }));
             }
             const priorFacts=read(preserved);
-            const priorRows=statuses(preserved).filter(row => isScheduledAdmission(row.fact,priorFacts)&&object(row.body).logicalId===logicalId);
+            const priorRows=statuses(preserved).filter(row => isScheduledAdmission(row.fact,priorFacts,preserved)&&object(row.body).logicalId===logicalId);
             requireIntake(priorRows.length<=1,'scheduled intake: scheduled admission identity is conflicted','standing');
             if(priorRows.length===1) {
               const prior=resolveScheduledAdmission(priorRows[0]!,read(preserved),preserved);
@@ -556,7 +556,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
             const intent: Json={ type: 'Intent',schemaVersion: 1,id: logicalId,principal: json(principal),receivedAt: json(original.at),
               via: adapterId,raw: captured.hash,ask: tick,under: directives.map(candidate => candidate.directive.view.id) };
             const committedFacts=read(preserved);
-            const committed=statuses(preserved).find(row => isScheduledAdmission(row.fact,committedFacts)&&object(row.body).logicalId===logicalId);
+            const committed=statuses(preserved).find(row => isScheduledAdmission(row.fact,committedFacts,preserved)&&object(row.body).logicalId===logicalId);
             if(committed) {
               requireIntake(object(committed.body).rawHash===captured.hash,'P4-NF-03: concurrent scheduled arrival hash mismatch','integrity');
               const resolvedCommitted=resolveScheduledAdmission(committed,read(preserved),preserved);
@@ -607,7 +607,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
           &&(fact.segment.epoch<Number(object(position).epoch)||fact.segment.epoch===Number(object(position).epoch)
             &&fact.segment.position<=Number(object(position).position)); };
         const snapshot=statuses(initial.preserved);
-        const rows=snapshot.filter(row => visible(row.fact)&&isScheduledAdmission(row.fact,facts))
+        const rows=snapshot.filter(row => visible(row.fact)&&isScheduledAdmission(row.fact,facts,initial.preserved))
           .sort((left,right) => foldKey(left.fact)<foldKey(right.fact)?-1:foldKey(left.fact)>foldKey(right.fact)?1:0);
         const resolved=rows.map(row => resolveScheduledAdmission(row,facts,initial.preserved));
         const valid=resolved.filter((candidate): candidate is Extract<ScheduledResolution,{ kind: 'valid' }> => candidate.kind==='valid');

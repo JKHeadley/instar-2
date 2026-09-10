@@ -1,8 +1,9 @@
 import type { BoundaryContext,Clock,DecodeContext,Evidence,Hash,HistoricalRead,Inventory,Json,Provenance,RegisterGenerationReference,RegisterReadPort,Scope,StandingGrant,VerifiedPrincipal } from '../index.js';
 import { causalCone,causalStanding,decodeHistoricalBody,foldKey,hashBytes,registerOwnedBody } from '../facts/index.js';
-import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
+import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readHistorical,readHistoricalEvidence,scopeIncludes } from '../index.js';
 import { prepareSnapshot } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactSchema,FactSnapshot,FactStatus,OwnedBodyContext,OwnedBodyRegistration,OwnedShape } from '../facts/index.js';
+import { decodeFrame } from '../facts/envelope.js';
 import type { Result } from '../index.js';
 import { IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ProjectionDefinition } from '../projections/index.js';
@@ -86,8 +87,8 @@ export function registeredScheduledIntakeAdapters(register?: VerifiedRegister,re
 }
 
 export function isScheduledIntakeAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[],observerId: string,
-  registeredScheduledAdapters: readonly string[]): boolean {
-  if(fact.kind!=='intake-admitted') return false;
+  registeredScheduledAdapters: readonly string[],context: FactContext): boolean {
+  if(fact.kind!=='intake-admitted'||registeredScheduledAdapters.length===0) return false;
   const receipt=facts.find(candidate => candidate.id===object(fact.body).receipt&&candidate.kind==='intake-receipt');
   const arrival=receipt&&intakeArrival(receipt,observerId);
   if(!receipt||!arrival) return false;
@@ -95,31 +96,38 @@ export function isScheduledIntakeAdmission(fact: FactEnvelope,facts: readonly Fa
   // adapter capability and caller-authored Intent fields cannot reinterpret a
   // base-valid person message as scheduled work.
   try {
-    const body=object(fact.body),required=new Set(fact.predecessors.required);
-    if(facts.some(candidate => required.has(candidate.id)&&candidate.kind==='intake-scheduled-principal')) return true;
-    // The signed admission envelope is independent identity evidence. It keeps
-    // scheduled validation selected when a required principal or resolution
-    // witness is missing or disagrees, so malformed scheduled work cannot fall
-    // through to the legacy decoder. A person admission on a dual-stimulus
-    // adapter remains ordinary regardless of its channel vocabulary.
+    const body=object(fact.body);
+    // Recognition is deliberately independent of the outer recorder. Re-open
+    // the preserved stimulus and the Intent principal's package-signed capture:
+    // together they select scheduled validation even when a required principal
+    // or resolution fact is missing. A person message therefore remains
+    // ordinary when a package-authenticated observer records its envelope.
     try {
-      const provenance=object(fact.provenance),authenticated=object(provenance.authenticated!);
-      const signedPrincipal=object(authenticated.principal!);
-      if(registeredScheduledAdapters.includes(arrival.adapter)&&fact.principal.kind==='system'&&provenance.class==='verified'
-        &&authenticated.recordType==='package-system-principal'
-        &&signedPrincipal.id===fact.principal.id&&signedPrincipal.kind==='system') return true;
-    } catch { /* Existing signed resolution recognition still applies below. */ }
-    return facts.some(candidate => {
-      if(!required.has(candidate.id)||candidate.kind!=='intake-resolved') return false;
-      const resolved=object(candidate.body),provenance=object(candidate.provenance);
-      const authenticated=object(provenance.authenticated!),signedPrincipal=object(authenticated.principal!);
-      return resolved.logicalId===body.logicalId&&resolved.receipt===receipt.id&&resolved.rawHash===body.rawHash
-        &&resolved.adapter===body.adapter&&resolved.channel===body.channel&&resolved.sender===body.sender
-        &&resolved.identityEpoch===body.identityEpoch&&resolved.eventId===body.eventId
-        &&resolved.principalId===candidate.principal.id&&candidate.principal.kind==='system'
-        &&provenance.class==='verified'&&authenticated.recordType==='package-system-principal'
-        &&signedPrincipal.id===candidate.principal.id&&signedPrincipal.kind==='system';
-    });
+      const receiptBody=object(receipt.body),capturePin=object(receiptBody.capture!);
+      const capture=context.captures[text(capturePin.reference,'scheduled capture reference')];
+      requireIntake(capture?.status==='available'&&capture.bytes!==null&&capture.hash===capturePin.hash
+        &&capture.hash===receiptBody.rawHash&&hashBytes(capture.bytes)===capture.hash,
+      'scheduled intake: preserved stimulus capture is missing or changed','integrity');
+      const intent=object(body.intent!),principalInput=object(intent.principal!);
+      const checked=take(decodeFrame(fact,context)),originBytes=take(canonical(fact)).bytes,originReference=`origin:${fact.id}`;
+      const captures={ ...context.decode.captures,[originReference]: originBytes };
+      const captureStatuses=Object.fromEntries(Object.entries(context.captures).map(([reference,value]) => [reference,value.status]));
+      const principal=take(readHistorical('VerifiedPrincipal',principalInput,{
+        origin: { owner:'part-two',name:'FactEnvelope',id:fact.id },
+        capture: { reference:originReference,hash:hashBytes(originBytes) },machineKeyId:checked.keyId,
+        path: ['body','intent','principal']
+      },{ ...context.decode,preserved:fact.id,captures,captureStatuses })).view;
+      if(principal.kind!=='system') return false;
+      let canonicalTick=false;
+      try { decodeScheduledTickBody(capture.bytes,arrival.route.eventId,context.decode); canonicalTick=true; }
+      catch { /* A malformed package tick must still reach scheduled refusal. */ }
+      // A canonical tick keeps invalid principal proof/adapter variants in the
+      // scheduled arm. Conversely, package-minted system identity keeps a
+      // malformed tick in that arm. The full validator then requires both and
+      // their agreement; neither route vocabulary nor the outer recorder votes.
+      return canonicalTick||(principal.provenance.class==='verified'
+        &&principal.provenance.authenticated.recordType==='package-system-principal');
+    } catch { return false; }
   } catch { return false; }
 }
 
@@ -711,7 +719,7 @@ export function scheduledIntakeWorkRegistration(context: BoundaryContext,observe
     decodeCurrent: (input,c) => {
       try {
         validateScheduledBaseIntakeWork(input,c,observerId);
-        if(isScheduledIntakeAdmission(c.origin,c.facts.facts,observerId,registeredScheduledAdapters))
+        if(isScheduledIntakeAdmission(c.origin,c.facts.facts,observerId,registeredScheduledAdapters,c.facts))
           validateScheduledIntakeWork(input,c,observerId,registeredScheduledAdapters);
         return { ok: true,value: input };
       } catch(e) { return { ok: false,detail: e instanceof Error? e.message:'P4-NF-12: invalid scheduled work' }; }
