@@ -43,24 +43,11 @@ export function intakeArrival(fact: FactEnvelope,observerId: string) {
 // declaration when the owner decoder is registered so origin and historical
 // replay apply the same classification even when dependencies are malformed.
 type OwnerRegisterReadPort=Pick<RegisterReadPort,'entries'|'generation'|'sites'>;
-const verifiedOwnerRegisters=new WeakMap<object,VerifiedRegister>();
+type BoundIntakeOwnerRegister=Readonly<{ register: VerifiedRegister; scheduledAdapters: readonly string[] }>;
+const verifiedOwnerRegisters=new WeakMap<object,BoundIntakeOwnerRegister>();
 
-export function bindIntakeOwnerRegister(readPort: OwnerRegisterReadPort,register: VerifiedRegister,context: RegisterContext): void {
-  const parsers=register.entries.filter(entry => entry.declaration.kind==='parsers'&&entry.declaration.status==='live');
-  requireIntake(parsers.length>0&&parsers.every(entry => {
-    const verified=consumeResult(readRegisterEntry(entry.declaration.id,register,context),
-      { Success: value => value,Refused: () => undefined });
-    return !!verified&&same(verified.declaration,entry.declaration)&&readPort.entries.includes(entry.declaration.id);
-  }),
-  'scheduled intake: verified adapter declaration differs from decoder register','integrity');
-  verifiedOwnerRegisters.set(readPort as object,register);
-}
-
-export function registeredScheduledIntakeAdapters(register?: VerifiedRegister,readPort?: OwnerRegisterReadPort): readonly string[] {
-  const bound=readPort&&verifiedOwnerRegisters.get(readPort as object);
-  requireIntake(!register||register===bound,'scheduled intake: owner register was not verified','integrity');
-  const resolved=bound;
-  const declared=resolved?.entries.filter(entry => {
+function scheduledAdapterIds(register: VerifiedRegister): readonly string[] {
+  return register.entries.filter(entry => {
     if(entry.declaration.kind!=='parsers'||entry.declaration.status!=='live') return false;
     const authentication=entry.declaration.requiredFacts.authenticationClass;
     return Array.isArray(authentication)&&authentication.some(row => {
@@ -69,11 +56,31 @@ export function registeredScheduledIntakeAdapters(register?: VerifiedRegister,re
         return declaration.stimulusType==='scheduled-tick'&&declaration.class==='verified';
       } catch { return false; }
     });
-  }).map(entry => entry.declaration.id)??[];
+  }).map(entry => entry.declaration.id);
+}
+
+export function bindIntakeOwnerRegister(readPort: OwnerRegisterReadPort,register: VerifiedRegister,context: RegisterContext,
+  adapterId?: string): void {
+  const scheduled=new Set(scheduledAdapterIds(register));
+  const parsers=register.entries.filter(entry => scheduled.has(entry.declaration.id)
+    &&(adapterId===undefined||entry.declaration.id===adapterId));
+  requireIntake(parsers.length>0&&parsers.every(entry => {
+    const verified=consumeResult(readRegisterEntry(entry.declaration.id,register,context),
+      { Success: value => value,Refused: () => undefined });
+    return !!verified&&same(verified.declaration,entry.declaration)&&readPort.entries.includes(entry.declaration.id);
+  }),
+  'scheduled intake: verified adapter declaration differs from decoder register','integrity');
+  verifiedOwnerRegisters.set(readPort as object,{ register,scheduledAdapters: Object.freeze(parsers.map(entry => entry.declaration.id)) });
+}
+
+export function registeredScheduledIntakeAdapters(register?: VerifiedRegister,readPort?: OwnerRegisterReadPort): readonly string[] {
+  const bound=readPort&&verifiedOwnerRegisters.get(readPort as object);
+  requireIntake(!register||register===bound?.register,'scheduled intake: owner register was not verified','integrity');
+  const declared=bound?.scheduledAdapters??[];
   // A supplied verified register is the only capability witness. The read port
   // is checked for the same adapter entry roster; it never grants a
   // scheduled capability by membership alone.
-  if(resolved&&readPort) requireIntake(declared.every(adapter => readPort.entries.includes(adapter)),
+  if(bound&&readPort) requireIntake(declared.every(adapter => readPort.entries.includes(adapter)),
     'scheduled intake: verified adapter declaration differs from decoder register','integrity');
   return Object.freeze([...new Set(declared)].sort());
 }
@@ -250,14 +257,18 @@ export function resolveScheduledDiscoveryWitness(histories: readonly ScheduledHi
   eventId: string,causalNow: Clock,preserved: string,mode: 'origin'|'historical') {
   const candidates=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
     required.has(row.fact.id)&&row.record.view.type==='Evidence'&&row.record.view.source===row.fact.machine);
-  const witnesses=candidates.filter(row => {
-    if(mode==='historical'&&row.record.captureStatus!=='available') return true;
-    const claim=take(readHistoricalEvidence(row.record,causalNow,preserved));
-    return claim.subject===eventId&&claim.predicate==='scheduled-discovery'&&claim.value===true;
-  });
+  const witnesses=candidates.filter(row => row.record.view.claim.subject===eventId
+    &&row.record.view.claim.predicate==='scheduled-discovery'&&row.record.view.claim.value===true);
+  requireIntake(witnesses.length>0,
+    'scheduled intake: discovery Evidence does not bind the event id','integrity');
   requireIntake(witnesses.length===1,
     'scheduled intake: one signed discovery Evidence dependency is required');
   const witness=witnesses[0]!;
+  if(mode==='origin'||witness.record.captureStatus==='available') {
+    const claim=take(readHistoricalEvidence(witness.record,causalNow,preserved));
+    requireIntake(claim.subject===eventId&&claim.predicate==='scheduled-discovery'&&claim.value===true,
+      'scheduled intake: discovery Evidence does not bind the event id','integrity');
+  }
   const identity=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
     row.record.view.type==='Evidence'&&row.record.view.id===witness.record.view.id);
   requireIntake(identity.every(row => same(row.record.view,witness.record.view)),

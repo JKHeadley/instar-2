@@ -1,7 +1,7 @@
 // docs/08: preservation -> dedup -> authentication -> resolution -> requester admission.
 // No grant/Authorization/Directive producer, model call, session launch or effect lives here.
-import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
-import type { BoundaryContext,Clock,Directive,Evidence,FactEnvelopeReference,HistoricalRead,Intent,Json,Provenance,Result,Revocation,StandingGrant,VerifiedPrincipal } from '../index.js';
+import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,scopeIncludes } from '../index.js';
+import type { BoundaryContext,Clock,Directive,FactEnvelopeReference,HistoricalRead,Intent,Json,Provenance,Result,Revocation,StandingGrant,VerifiedPrincipal } from '../index.js';
 import { authorAndAppend,causalCone,causalStanding,createFactStore,decodeEnvelope,decodeHistoricalBody,factId,foldKey,hashBytes,prepareSnapshot,signEnvelope } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactStatus } from '../facts/index.js';
 import { constructGoverned,generationOf,readEnforcedRecord,readRegisterEntry } from '../register/index.js';
@@ -46,9 +46,15 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     const registerWitness=readRegisterEntry(deps.adapter.id,deps.governance.register,deps.governance.context);
     const verifiedGovernanceRegister=consumeResult(registerWitness,
       { Success: () => deps.governance.register,Refused: () => undefined });
-    if(verifiedGovernanceRegister) bindIntakeOwnerRegister(initial.decode.register,verifiedGovernanceRegister,deps.governance.context);
-    const registeredScheduledAdapters=verifiedGovernanceRegister
-      ?registeredScheduledIntakeAdapters(verifiedGovernanceRegister,initial.decode.register):Object.freeze([] as string[]);
+    const scheduledCapability=Array.isArray(contract.authenticationClass)&&contract.authenticationClass.some(row => {
+      const authentication=object(row);
+      return authentication.stimulusType==='scheduled-tick'&&authentication.class==='verified';
+    });
+    const scheduledOwnerRegister=verifiedGovernanceRegister&&scheduledCapability? verifiedGovernanceRegister:undefined;
+    if(scheduledOwnerRegister) bindIntakeOwnerRegister(initial.decode.register,scheduledOwnerRegister,
+      deps.governance.context,deps.adapter.id);
+    const registeredScheduledAdapters=scheduledOwnerRegister
+      ?registeredScheduledIntakeAdapters(scheduledOwnerRegister,initial.decode.register):Object.freeze([] as string[]);
     const eventAuthority=object(contract.eventIdAuthority!);
     requireIntake(text(eventAuthority.mintedBy,'event-id authority')!=='sender'
       &&object(eventAuthority.fallbackFingerprint!).policy==='none','P4-NF-03: slice requires provider-minted stable event ids; no hash fallback');
@@ -69,7 +75,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     // schema when that operation is invoked.
     for(const schema of intakeFactSchemas(scope)) requireIntake(initial.schemas.some(s => same(s,schema)),
       `P4-NF-06/12: required owner schema changed or missing: ${schema.kind}`);
-    const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id,verifiedGovernanceRegister));
+    const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id,scheduledOwnerRegister));
     const stopRegistration=take(intakeStopRegistration(b,deps.author.principal.id));
     const verifiedActRegistration=take(intakeVerifiedActRegistration(b,deps.author.principal.id,registerGenerationReference));
     // Snapshot assembly choices. Only context()/clock()/storage are live provider inputs.
@@ -279,13 +285,10 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         'scheduled intake: discovery reference owner/type mismatch','integrity');
       const { rows }=historicalRows(preserved),row=rows.find(candidate => candidate.fact.id===referenceValue.id);
       requireIntake(row&&!row.taint.length&&!row.conflicts.length,'scheduled intake: discovery Evidence is missing or contested','integrity');
-      const evidence=row.historical.find((record): record is HistoricalRead<Evidence> => record.view.type==='Evidence');
-      requireIntake(evidence&&evidence.captureStatus==='available','scheduled intake: discovery Evidence is missing or unavailable','integrity');
-      const claim=take(readHistoricalEvidence(evidence,at,preserved));
-      requireIntake(claim.subject===eventId&&claim.predicate==='scheduled-discovery'&&claim.value===true,
-        'scheduled intake: discovery Evidence does not bind the event id','integrity');
-      requireIntake(typeof evidence.view.source==='string'&&evidence.view.source===row.fact.machine,
-        'scheduled intake: discovery source machine is not recorded by its Evidence','integrity');
+      const histories=rows.flatMap(candidate => candidate.historical.map(record => ({ fact: candidate.fact,record })));
+      const selected=resolveScheduledDiscoveryWitness(histories,new Set([row.fact.id]),eventId,at,preserved,'origin');
+      const evidence=selected.record;
+      requireIntake(evidence.captureStatus==='available','scheduled intake: discovery Evidence is missing or unavailable','integrity');
       const field=constitutionalField(row,'Evidence',evidence.view.id,preserved);
       return { row,evidence,field };
     }
