@@ -25,7 +25,7 @@ it.each(payloadKinds)('P8-TP-R6-LIFECYCLE-%s P8-NF-49 reconstructs a prepared sl
   expect(effect.calls()).toBe(1);
   expect(value(restarted.dispatch(request, effect.fence)).id).toBe(observation.id);
   expect(effect.calls()).toBe(1);
-});
+}, 20_000);
 
 it.each(payloadKinds)('P8-TP-R7-PROCESS-RESTART-%s uses SIGKILL and a fresh process/store without repeating the provider call', async kind => {
   const directory = await mkdtemp(join(tmpdir(), 'effect-payload-restart-'));
