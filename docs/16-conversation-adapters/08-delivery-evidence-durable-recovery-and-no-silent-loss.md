@@ -115,23 +115,34 @@ bounded service opportunity or has a recorded owner-derived reason it ceased to 
 item that becomes a first-service head after opening enters the first later round opened after its
 eligibility clock. It does not enlarge the current frozen population.
 
-Later observation wakes for an uncertain operation obtain service membership as distinct,
-already-preserved observation items. Each wake keeps the same operation and immutable digest,
-records its own stable owner reference and due clock, and enters through
-`admitRouteServiceItem` at the route tail. It may be selected after its predecessors have each
-received a first opportunity or reached an owner-derived terminal disposition. Re-admitting the
-same wake is idempotent. Serving a wake permits only its registered observation action; it neither
-replays the uncertain invocation nor declares the underlying operation complete.
+Later observation wakes for an uncertain operation become distinct, already-preserved observation
+items, but a future-due wake is not yet an ordinary route-service item. It remains in Part Six's
+durable `LoopRecord` schedule, with that record's `nextWake` as its due clock and any recovery kept
+in the associated `RecoveryRecord`, until the clock is reached. This is the existing owner boundary recorded by
+`design-scheduled-work-seam-request-recurring-loop.md` and granted in
+`seam-response-loop-breaker.md`; it is not an adapter-private waiting queue. The item keeps the
+same operation and immutable digest and its stable owner reference while it waits.
+
+When that due clock is reached, the wake becomes eligible. The owner then exposes it through the
+Part Six route-service admission requested in
+`design-conversation-adapters-seam-request-service-backlog.md` and granted in the dated 08:03Z
+addendum to `seam-response-loop-followup.md` (SEAM-LEDGER row 43). Successful admission at the route
+tail and the eligibility transition use the same recorded clock; there is no interval in which an
+eligible wake can wait outside the bounded service contract. It may be selected after its
+predecessors have each received a first opportunity or reached an owner-derived terminal
+disposition. Re-admitting the same wake is idempotent. Serving a wake permits only its registered
+observation action; it neither replays the uncertain invocation nor declares the underlying
+operation complete.
 
 Each exact adapter mode uses a Part Six route-service policy with a positive maximum round duration,
 positive maximum selection count, positive maximum admitted item count per route, and finite maximum
 eligible-route count. The eligible-route count must fit within the round selection count. Ordinary
-service admission records an item's stable owner reference, route, admission clock, first-in-first-out
-predecessor, and bounded backlog position. An item admitted at position `p` receives its first
-service opportunity within at most `p + 1` declared round durations from admission. The extra round
-is the worst case for admission immediately after a round opens. Once the item becomes first-service head,
-it receives its first opportunity by the close of the first round opened after that eligibility
-clock.
+service admission accepts an item only when it is eligible and records its stable owner reference,
+route, shared eligibility/admission clock, first-in-first-out predecessor, and bounded backlog
+position. An item admitted at position `p` receives its first service opportunity within at most
+`p + 1` declared round durations from that eligibility clock. The extra round is the worst case for
+eligibility immediately after a round opens. Once the item becomes first-service head, it receives
+its first opportunity by the close of the first round opened after that eligibility clock.
 
 An item beyond the per-route or eligible-route cap is not admitted into ordinary service. Part Six
 returns an explicit `budget-exhausted` refusal to the owning intake or run, which retains the
@@ -140,11 +151,13 @@ Continued overload therefore cannot lengthen an admitted member's deadline or cr
 item. Coalescing means only that notices sharing one declared episode identity occupy one bounded
 notification item; it never removes an admitted service item.
 
-The measurement records item identity, route, admission clock, backlog position, eligibility clock,
-round open and close clocks, frozen item population, selection count, first-service clock, and every
-timeout or refusal. P12-NF-40 fails and activation is inhibited if the head deadline, the positional
-backlog deadline, or either capacity invariant fails. These records require the additive Part Six
-route-service contract granted in the dated 08:03Z addendum to
+The measurement records item identity, route, eligibility/admission clock, backlog position, any
+earlier scheduled due clock, round open and close clocks, frozen item population, selection count,
+first-service clock, and every timeout or refusal. A future-due observation also records that it
+remained in the owner schedule and outside route membership before its due clock. P12-NF-40 fails
+and activation is inhibited if service occurs early, eligible admission is delayed, the head
+deadline, the positional backlog deadline, or either capacity invariant fails. These records
+require the additive Part Six route-service contract granted in the dated 08:03Z addendum to
 `seam-response-loop-followup.md` (SEAM-LEDGER row 43). P12-NF-40's positive is non-executable until
 that grant file lands and its owner implementation is integrated.
 

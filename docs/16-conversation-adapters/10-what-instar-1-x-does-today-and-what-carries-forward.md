@@ -4,13 +4,16 @@
 89 and 111; **checks: P12-NF-02/49/51/52**. The required read-only audit found the following behavior.
 The carry-forward column states the required property, not a requirement to reuse the 1.x code.
 The audited 1.x source is `/Users/dabombstudio/.instar/agents/echo` at Git HEAD
-`5b36623a99327e74abe5ef04d63019f9aca6b1c5`. The separately audited `CLAUDE.md` has SHA-256
-`d3579c945b59200b9b2e62b444b1a0140dc84f862e08aa35a198a1d1f9712389`. Each positive runtime
-claim remains pinned to the named module body below because documentation and repository identity
-alone do not prove execution.
+`5b36623a99327e74abe5ef04d63019f9aca6b1c5`. The exact separately audited `CLAUDE.md` is retained as
+[the audit input](evidence/CLAUDE.md.audit-input) with SHA-256
+`006756b58b8cddb60a0addd147f1d0a2393464f8d0a63b513d857ee77b8895b4`. The repository commit id does
+not pin this separately changing file; only the retained copy and its digest identify the
+documentation that was audited. Each positive runtime claim remains pinned to the named module
+body below because documentation and repository identity alone do not prove execution.
 
-That `CLAUDE.md` snapshot documents additional Telegram sender modes and origin guarantees that
-the supplied source snapshot does not establish. A source search found no implementation of
+The audit rows below were reconciled against that retained copy. It documents additional Telegram
+sender modes and origin guarantees that the supplied source snapshot does not establish. A source
+search found no implementation of
 `/telegram/browser`, `/telegram/origins`, `postOriginAutomationReply`, or
 `sendOriginSetupGreeting`. The only `messageOrigin` match in `SendGateway` selects the unrelated
 `agent`, `system`, or `bridge` source label. The rows below record each discrepancy explicitly.

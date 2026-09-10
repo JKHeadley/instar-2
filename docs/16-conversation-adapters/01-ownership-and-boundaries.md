@@ -6,10 +6,18 @@ earlier parts. Adapter methods, platform constants, and private protocol state a
 details. Durable records use the following owned types. This part creates no second message,
 principal, binding, queue, retry, effect, receipt, verification, assembly, or surface schema.
 
-Two terms describe adapter boundaries throughout this document. A **custodian** is the confined
-service that holds platform credentials and original secret bytes; ordinary workers receive only
-the references and redacted material their grants allow. **Ephemeral delivery** is delivery of a
-notice that is visible only to one named member of a channel, never to the channel as a whole.
+The following glossary gives the plain-language meaning of boundary terms before their first use.
+The linked owner contracts remain authoritative; these explanations do not create local variants.
+
+| Term | Plain-language meaning and owner definition |
+|---|---|
+| **Custodian** | The confined service that holds platform credentials and original secret bytes. Ordinary workers receive only the references and redacted material their grants allow. |
+| **Ephemeral delivery** | Delivery of a notice that is visible only to one named member of a channel, never to the channel as a whole. |
+| **Causal frontier** | The signed-history boundary an appender had actually folded when it wrote a fact: one recorded position for each machine lineage it knew. Part Two [owns the exact envelope definition](../06-the-fact-envelope.md#the-envelope-every-fact-carries); Part Five [consumes that boundary in run records](../09-the-run-graph.md#11-declarations-projections-and-non-functional-checks). |
+| **Folded-through vector** | The per-lineage high-water marks carried by a derived view, showing exactly how much admitted history that view incorporated. Part Two [owns the projection definition](../06-the-fact-envelope.md#the-projection-contract); Part Five [requires equal-vector rebuilds to agree](../09-the-run-graph.md#11-declarations-projections-and-non-functional-checks). |
+| **Taint** | A warning carried from provisional, contested, or unavailable evidence. A derived authority view must keep that warning or refuse to make the authority claim. Part Two [owns taint admission and propagation](../06-the-fact-envelope.md#admission--the-one-boundary-a-fact-can-enter-through); Part Eight [consumes it at effect re-validation](../12-the-effect-doorway.md#6-re-validation-where-the-effect-leaves). |
+| **Fence token** | Part Six's current proof that one worker temporarily owns an exact execution scope. Every admission rejects an old epoch, wrong holder, or wrong scope; the token is not standing or approval. Part Six [owns the fence lifecycle](../10-the-transport-and-leases.md#3-lease-and-fence-lifecycle); Parts Five and Eight consume it at their [run](../09-the-run-graph.md#3-what-ownership-resources-and-recovery-must-realize) and [effect](../12-the-effect-doorway.md#6-re-validation-where-the-effect-leaves) admissions. |
+| **Dispatch-claim** | Part Six's durable, one-attempt handoff for one exact operation, digest, and executor. It can be consumed once and is never general permission to act. Part Six [owns the claim and its transition order](../10-the-transport-and-leases.md#4-operation-admission-and-the-seam-part-eight-consumes); Part Eight [consumes it where the effect leaves](../12-the-effect-doorway.md#6-re-validation-where-the-effect-leaves). |
 
 | Owner | Names consumed here |
 |---|---|
