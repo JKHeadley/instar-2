@@ -4,7 +4,7 @@ import { causalCone, causalStanding, decodeHistoricalBody, registerOwnedBody } f
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import { boundary, encoded, freeze, json, need, object, same, take } from './boundary.js';
 import { INITIAL_MAX_ATTEMPTS, INITIAL_MAX_CHILDREN, INITIAL_MAX_DEPTH } from './limits.js';
-import type { ConstitutionalReference, Run, RunBudget, RunDecodeContext, RunExit, RunRecord, RunStep, RunTransition, SessionGrounding } from './types.js';
+import type { CompletedRunExit, ConstitutionalReference, Run, RunBudget, RunDecodeContext, RunRecord, RunStep, RunTransition, SessionGrounding } from './types.js';
 
 const text: OwnedShape = { kind: 'text', maxLength: 1024 }, integer: OwnedShape = { kind: 'integer' };
 const list = (items: OwnedShape, maxLength = 1024): OwnedShape => ({ kind: 'array', items, maxLength });
@@ -214,7 +214,7 @@ export const decodeRun = (v: unknown, c: RunDecodeContext): Result<Run> => decod
 export const decodeRunBudget = (v: unknown, c: RunDecodeContext): Result<RunBudget> => decoded('RunBudget', v, c);
 export const decodeRunStep = (v: unknown, c: RunDecodeContext): Result<RunStep> => decoded('RunStep', v, c);
 export const decodeRunTransition = (v: unknown, c: RunDecodeContext): Result<RunTransition> => decoded('RunTransition', v, c);
-export const decodeRunExit = (v: unknown, c: RunDecodeContext): Result<RunExit> => decoded('RunExit', v, c);
+export const decodeRunExit = (v: unknown, c: RunDecodeContext): Result<CompletedRunExit> => decoded('RunExit', v, c);
 export const decodeSessionGrounding = (v: unknown, c: RunDecodeContext): Result<SessionGrounding> => decoded('SessionGrounding', v, c);
 export const recordWire = (record: RunRecord): Json => toWire(json(record));
 export const recordFromWire = (record: Json): Json => fromWire(record);

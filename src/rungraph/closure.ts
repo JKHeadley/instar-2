@@ -2,7 +2,8 @@ import { constructGoverned, readRegisterEntry } from '../register/index.js';
 import type { Result } from '../index.js';
 import { boundary, need, take } from './boundary.js';
 import { decodeContinuityAccounting, decodeExhaustionRecord, decodeUnreachableRunExit } from './closure-records.js';
-import type { ContinuityAccounting, ExhaustionRecord, UnreachableRunExit } from './closure-types.js';
+import type { ContinuityAccounting, ExhaustionRecord } from './closure-types.js';
+import type { UnreachableRunExit } from './types.js';
 import type { RunDecodeContext, RunGovernance } from './types.js';
 
 function ownerRecordGate(g: RunGovernance, id: string): void {

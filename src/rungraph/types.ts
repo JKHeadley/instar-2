@@ -36,12 +36,37 @@ export type RunStep = RecordValue<'RunStep'> & Readonly<{
   ownership: LeaseReference; resultDestination: RunDestination; generation: RegisterGenerationReference;
 }>;
 export type RunState = 'ready' | 'running' | 'waiting' | 'recovering' | 'halted' | 'closing' | 'completed' | 'unreachable' | 'cancelled';
-export type RunExit = RecordValue<'RunExit'> & Readonly<{
+export type CompletedRunExit = RecordValue<'RunExit'> & Readonly<{
   run: string; expected: string; proposer: PrincipalReference; standing: FactEnvelopeReference;
   frontier: CausalFrontier; at: Clock; kind: 'completed'; exitTest: RunExitTest;
   check: FactEnvelopeReference; evidence: readonly ConstitutionalReference<'Evidence'>[];
   result: ConstitutionalReference<'Result'>; settledOperations: readonly string[];
 }>;
+/** A reference to a record admitted through Part Five's additive owner boundary. */
+export type RunOwnedRecordReference<N extends 'Run' | 'RunStep' | 'SessionGrounding' | 'ExhaustionRecord' | 'ContinuityAccounting' | 'UnreachableRunExit'> = Readonly<{
+  owner: 'part-five';
+  name: N;
+  id: string;
+  fact: FactEnvelopeReference;
+}>;
+export type UnreachableRunExit = RecordValue<'UnreachableRunExit'> & Readonly<{
+  run: string;
+  expected: string;
+  proposer: PrincipalReference;
+  standing: FactEnvelopeReference;
+  frontier: CausalFrontier;
+  at: Clock;
+  kind: 'unreachable';
+  phase: 'proposal' | 'close';
+  proposal?: RunOwnedRecordReference<'UnreachableRunExit'>;
+  exhaustion: RunOwnedRecordReference<'ExhaustionRecord'>;
+  unsatisfiedClauses: readonly string[];
+  externalDependency: Readonly<{ owner: PrincipalReference; action: string; scope: Scope }>;
+  recheck: Readonly<{ at: Clock; owner: PrincipalReference; obligation: FactEnvelopeReference }>;
+  settledOperations: readonly string[];
+}>;
+/** The granted public exit is closed over the original completed and additive unreachable arms. */
+export type RunExit = CompletedRunExit | UnreachableRunExit;
 export type SessionGrounding = RecordValue<'SessionGrounding', 2> & Readonly<{
   run: string; expected: string; worker: string; harness: string; reason: 'start' | 'recovery' | 'resume';
   ownership: LeaseReference; executionContext: FactEnvelopeReference;
@@ -60,7 +85,7 @@ export type RunTransition = RecordValue<'RunTransition'> & Readonly<{
   responsible: PrincipalReference; standing: FactEnvelopeReference; ownership: LeaseReference;
   generation: RegisterGenerationReference; at: Clock; blockedOn: RunBlockedOn; nextWake: RunWake;
   step?: RunStep; grounding?: FactEnvelopeReference; affectedStep?: string;
-  outcome?: ConstitutionalReference<'Outcome'>; settlement?: FactEnvelopeReference; exit?: RunExit;
+  outcome?: ConstitutionalReference<'Outcome'>; settlement?: FactEnvelopeReference; exit?: CompletedRunExit;
 }>;
 export type RunRecord = Run | RunTransition | SessionGrounding;
 export interface RunDecodeContext extends BoundaryContext {
@@ -120,18 +145,18 @@ export interface RunGraphDependencies {
     readonly record: FactEnvelopeReference; readonly outcome: Outcome; readonly claimClosed: boolean; readonly chargeSettled: boolean;
   }> }>;
   readonly control: Readonly<{ owner: 'part-four'; verify(kind: 'stop' | 'resume', fact: FactEnvelopeReference, run: Run): Result<FactEnvelopeReference> }>;
-  readonly exitCheck: Readonly<{ owner: 'part-nine'; verify(exit: RunExit, run: Run, now: Clock): Result<FactEnvelopeReference> }>;
+  readonly exitCheck: Readonly<{ owner: 'part-nine'; verify(exit: CompletedRunExit, run: Run, now: Clock): Result<FactEnvelopeReference> }>;
   readonly groundingPolicy: Readonly<{ entry: string; threshold: number; maxAge: number; briefingClasses: readonly string[] }>;
   readonly generation: () => ProjectionGeneration; readonly clock: () => Clock;
 }
-export interface RunExitReadPort {
+export interface RunExitReadPort<E extends RunExit = RunExit> {
   readonly owner: 'part-five';
   readExit(run: OwnedReference<'part-five', 'Run'>): Result<Readonly<{
     fact: FactEnvelopeReference;
-    exit: RunExit;
+    exit: E;
   }>>;
 }
-export interface RunGraphPort extends RunExitReadPort {
+export interface RunGraphPort extends RunExitReadPort<CompletedRunExit> {
   open(input: unknown): Result<RunView>;
   read(run: string): Result<RunView>;
   ground(run: string, worker: string, harness: string, reason: SessionGrounding['reason'], ownership: LeaseReference): Result<FactEnvelope>;

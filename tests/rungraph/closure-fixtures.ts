@@ -108,6 +108,7 @@ export function exhaustionFixture(storageFactory?: (fallback: SegmentStoragePort
   const closureFrontier = value(f.graph.read(f.id)).source.foldedThrough;
   const exit = {
     type: 'UnreachableRunExit', schemaVersion: 1, id: 'exit:unreachable:proposal', run: f.id, expected: ready.head,
+    kind: 'unreachable',
     proposer: f.owner, standing: ref(f.opening), frontier: closureFrontier, at: f.now, phase: 'proposal',
     settledOperations: [], exhaustion: { owner: 'part-five', name: 'ExhaustionRecord', id: exhaustion.id, fact: ref(exhaustionFact) },
     unsatisfiedClauses: clauses, externalDependency: outsideAction, recheck,

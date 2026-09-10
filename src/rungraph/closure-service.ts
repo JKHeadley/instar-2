@@ -5,9 +5,9 @@ import type { AppendReceipt, FactEnvelope } from '../facts/index.js';
 import { boundary, encoded, freeze, json, need, object, same, take } from './boundary.js';
 import { factRef, clockDifference } from './graph.js';
 import { createRunGraph } from './service.js';
-import { decodeSessionGrounding, factReference, recordFromWire, runKinds } from './records.js';
+import { decodeRun, decodeSessionGrounding, factReference, recordFromWire, runKinds } from './records.js';
 import { preserveRunInput } from './rungraph.js';
-import type { RunDecodeContext, RunView } from './types.js';
+import type { RunDecodeContext, RunExit, RunView, UnreachableRunExit } from './types.js';
 import {
   closureRecordReferences, closureRecordWire, decodeContinuityAccounting, decodeExhaustionRecord,
   decodeUnreachableRunExit, runClosureKinds, validateContinuitySendWitness,
@@ -15,7 +15,7 @@ import {
 import { continuityAdmission, exhaustionAdmission, unreachableExitAdmission } from './closure.js';
 import type {
   ContinuityAccounting, ExhaustionRecord, RunClosureGraphDependencies, RunClosureGraphPort,
-  RunClosureRecord, UnreachableRunExit,
+  RunClosureRecord,
 } from './closure-types.js';
 
 type AdmittedClosure = Readonly<{ fact: FactEnvelope; record: RunClosureRecord }>;
@@ -56,7 +56,8 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
     };
     const predecessor = (view: RunView): FactEnvelope => {
       const fact = take(dependencies.store.read()).find(candidate =>
-        (candidate.kind === runKinds.Run || candidate.kind === runKinds.RunTransition)
+        (candidate.kind === runKinds.Run || candidate.kind === runKinds.RunTransition
+          || candidate.kind === runClosureKinds.UnreachableRunExit)
         && object(recordFromWire(object(candidate.body).record!)).id === view.head);
       need(fact, 'durable transition predecessor missing');
       return fact;
@@ -71,16 +72,30 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       const cone = new Set(coneFacts.map(candidate => candidate.id));
       need(closureRecordReferences(json(record)).every(id => cone.has(id)),
         'closure record reference is outside signed causal cone');
-      const currentRecord = take(decodeByType(record, current));
-      need(same(currentRecord, record), 'closure dependency changed after signed admission');
       need(same(take(dependencies.admission.verify(factRef(fact))), factRef(fact)),
         'closure record missing owner admission witness');
       return record;
     };
-    const admittedFor = (run: string): readonly AdmittedClosure[] => {
-      const current = context();
-      return take(dependencies.store.read()).filter(fact => Object.values(runClosureKinds).includes(fact.kind as never)
-        && object(fact.body).run === run).map(fact => ({ fact, record: decodeFact(fact, current) }));
+    const rawFor = (run: string, kind?: string): readonly FactEnvelope[] =>
+      take(dependencies.store.read()).filter(fact => (!kind
+        ? Object.values(runClosureKinds).includes(fact.kind as never) : fact.kind === kind)
+        && object(fact.body).run === run);
+    const admitted = (fact: FactEnvelope, current: RunDecodeContext): Result<AdmittedClosure> =>
+      boundary('ReplayRunClosureFact', fact, current, () => ({ fact, record: decodeFact(fact, current) }));
+    const acceptedFor = (run: string, type: RunClosureRecord['type'], current: RunDecodeContext): readonly AdmittedClosure[] =>
+      rawFor(run, runClosureKinds[type]).flatMap(fact => consumeResult(admitted(fact, current), {
+        Success: value => [value], Refused: () => [],
+      }));
+    const exactAdmitted = (reference: Readonly<{ owner: string; name: string; id: string; fact: FactEnvelopeReference }>,
+      name: RunClosureRecord['type'], current: RunDecodeContext): AdmittedClosure => {
+      need(reference.owner === 'part-five' && reference.name === name,
+        `${name} reference owner/name/id required`);
+      const fact = factReference(json(reference.fact), current);
+      need(fact.kind === runClosureKinds[name], `${name} reference fact kind differs`);
+      const selected = decodeFact(fact, current);
+      need(selected.type === name && selected.id === reference.id,
+        `${name} reference identity differs from fact`);
+      return { fact, record: selected };
     };
     const validateContinuityOwner = (record: ContinuityAccounting, view: RunView,
       current: RunDecodeContext): void => {
@@ -96,6 +111,39 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       need(same(take(dependencies.admission.verify(factRef(groundingFact))), factRef(groundingFact)),
         'SessionGrounding admission witness missing');
     };
+    const unavailableContinuityView = (record: ContinuityAccounting, current: RunDecodeContext): RunView => {
+      need(record.prePauseCapture.status === 'unavailable' && record.disposition.kind === 'pending',
+        'continuity authority is unavailable outside the honest pending arm');
+      const openings = take(dependencies.store.read()).filter(fact => fact.kind === runKinds.Run
+        && object(fact.body).run === record.run);
+      need(openings.length === 1, 'owner run is missing or conflicted');
+      const opening = openings[0]!;
+      need(rawFor(record.run, runKinds.RunTransition).length === 0,
+        'unavailable continuity cannot reconstruct a transitioned run head');
+      const run = take(decodeRun(recordFromWire(object(opening.body).record!), current));
+      need(same(take(dependencies.admission.verify(factRef(opening))), factRef(opening)),
+        'run opening admission witness missing');
+      need(record.expected === run.id && record.prePauseInbound.id === run.opening.id
+        && record.disposition.work.id === run.opening.id,
+      'unavailable continuity does not retain the original owned run and inbound');
+      return freeze({ run, state: 'ready', head: run.id, pending: [], settled: [], usedKeys: [],
+        blockedOn: run.blockedOn, nextWake: run.nextWake,
+        source: { projection: 'run-view', generation: run.generation.id,
+          policy: { class: 'authority-answering', stalenessBound: 60_000 }, values: {}, conflicts: [], taint: [],
+          foldedThrough: {}, knownLineages: {}, retractions: [], corrections: [] },
+        conflicts: [], identities: [] }) as unknown as RunView;
+    };
+    const continuityView = (record: ContinuityAccounting, current: RunDecodeContext): RunView => {
+      const ordinary = legacy.read(record.run);
+      return consumeResult(ordinary, {
+        Success: value => value,
+        Refused: refusal => {
+          need(refusal.detail === 'conflicted or tainted authority', refusal.detail);
+          need(rawFor(record.run, runKinds.RunTransition).length === 0, refusal.detail);
+          return unavailableContinuityView(record, current);
+        },
+      });
+    };
     const frontierBefore = (fact: FactEnvelope, current: RunDecodeContext) => {
       const frontier: Record<string, { epoch: number; position: number }> = {};
       for (const ancestor of causalCone(fact, current.facts.facts)) {
@@ -107,27 +155,34 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       return frontier;
     };
     const validateUnreachableOwner = (record: UnreachableRunExit, view: RunView,
-      admitted: readonly AdmittedClosure[], current: RunDecodeContext, origin?: FactEnvelope): void => {
+      current: RunDecodeContext, origin?: FactEnvelope): void => {
       need(!view.conflicts.length, 'conflicted head inhibits unreachable closure');
       need(view.pending.length === 0 && same([...record.settledOperations].sort(), [...view.settled].sort()),
         'unreachable exit has unsettled operations or incomplete settlement manifest');
+      const exhaustion = exactAdmitted(record.exhaustion, 'ExhaustionRecord', current);
+      need(exhaustion.record.type === 'ExhaustionRecord' && exhaustion.record.run === record.run,
+        'unreachable exit exhaustion is absent or unwitnessed');
+      const standing = factReference(json(record.standing), current);
+      need(same(take(dependencies.control.verify('resume', factRef(standing), view.run)), factRef(standing)),
+        'unreachable standing owner witness differs');
       need(same(record.frontier, origin ? frontierBefore(origin, current) : view.source.foldedThrough),
         'unreachable exit frontier differs from current signed run history');
-      const age = clockDifference(dependencies.clock(), record.at, current);
+      const validationClock = origin?.at ?? dependencies.clock();
+      const age = clockDifference(validationClock, record.at, current);
       need(age >= 0 && age <= dependencies.groundingPolicy.maxAge,
         'unreachable exit clock stale or uncertain');
-      need(clockDifference(record.recheck.at, dependencies.clock(), current) > 0,
+      need(clockDifference(record.recheck.at, validationClock, current) > 0,
         'unreachable recheck is already due');
-      const exhaustion = admitted.find(candidate => candidate.record.type === 'ExhaustionRecord'
-        && candidate.record.id === record.exhaustion.id && candidate.fact.id === record.exhaustion.fact.id);
-      need(exhaustion, 'unreachable exit exhaustion is absent or unwitnessed');
-      if (record.phase === 'proposal') need(record.expected === view.head,
-        'unreachable proposal expected predecessor differs');
+      if (record.phase === 'proposal') {
+        need(record.expected === view.head && !['closing', 'completed', 'unreachable', 'cancelled'].includes(view.state),
+          'unreachable proposal expected predecessor differs');
+      }
       else {
-        const proposal = admitted.find(candidate => candidate.record.type === 'UnreachableRunExit'
-          && candidate.record.phase === 'proposal' && candidate.record.id === record.expected
-          && candidate.fact.id === record.proposal?.fact.id);
-        need(proposal && record.proposal?.id === proposal.record.id,
+        need(record.proposal, 'unreachable close lacks its exact witnessed proposal');
+        const proposal = exactAdmitted(record.proposal, 'UnreachableRunExit', current);
+        need(proposal.record.type === 'UnreachableRunExit' && proposal.record.phase === 'proposal'
+          && proposal.record.run === record.run && record.expected === view.head
+          && record.proposal.id === proposal.record.id,
           'unreachable close lacks its exact witnessed proposal');
       }
     };
@@ -145,13 +200,42 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
         'writer acknowledged without durable spine admission');
       return receipt;
     };
+    const closureView = (base: RunView, current: RunDecodeContext): RunView => {
+      const successors = (view: RunView, phase: UnreachableRunExit['phase']): readonly AdmittedClosure[] =>
+        acceptedFor(base.run.id, 'UnreachableRunExit', current).filter(candidate =>
+          candidate.record.type === 'UnreachableRunExit' && candidate.record.phase === phase
+          && candidate.record.expected === view.head).flatMap(candidate => consumeResult(
+          boundary('ReplayUnreachableRunState', candidate.fact, current, () => {
+            validateUnreachableOwner(candidate.record as UnreachableRunExit, view, current, candidate.fact);
+            return candidate;
+          }), { Success: value => [value], Refused: () => [] }));
+      const proposals = successors(base, 'proposal');
+      need(proposals.length <= 1, 'conflicting unreachable proposals');
+      if (!proposals.length) return base;
+      const proposal = proposals[0] as Readonly<{ fact: FactEnvelope; record: UnreachableRunExit }>;
+      const closing: RunView = freeze({ ...base, state: 'closing', head: proposal.record.id,
+        blockedOn: { kind: 'evidence', reference: proposal.record.exhaustion.id,
+          owner: proposal.record.recheck.owner, nextObservation: proposal.record.recheck.at },
+        nextWake: { owner: proposal.record.recheck.owner, at: proposal.record.recheck.at,
+          reason: 'recheck unreachable dependency' } });
+      const closes = successors(closing, 'close');
+      need(closes.length <= 1, 'conflicting unreachable exits');
+      if (!closes.length) return closing;
+      const close = closes[0] as Readonly<{ fact: FactEnvelope; record: UnreachableRunExit }>;
+      return freeze({ ...closing, state: 'unreachable', head: close.record.id });
+    };
+    const read = (run: string): RunView => {
+      const base = take(legacy.read(run));
+      return closureView(base, context());
+    };
     const appendOwned = (input: unknown, ownership: Parameters<RunClosureGraphPort['recordExhaustion']>[1],
       admit: (value: unknown, current: RunDecodeContext) => Result<RunClosureRecord>): Result<FactEnvelope> =>
       preserveRunInput(input, dependencies.context, dependencies.governance, captured =>
         boundary('RecordRunClosure', input, captured, safe => {
           const current = { ...context(), preserved: captured.preserved };
           const record = take(admit(safe, current));
-          const view = take(legacy.read(record.run));
+          const view = record.type === 'ContinuityAccounting'
+            ? continuityView(record, current) : read(record.run);
           need(!view.conflicts.length, 'conflicted head inhibits closure record admission');
           if (record.type === 'ExhaustionRecord') {
             need(record.expected === view.head, 'exhaustion expected predecessor differs');
@@ -160,11 +244,11 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
               'exhaustion record clock is stale or from the future');
           }
           if (record.type === 'ContinuityAccounting') validateContinuityOwner(record, view, current);
-          const before = admittedFor(record.run);
-          const sameIdentity = before.filter(candidate => candidate.record.type === record.type
-            && candidate.record.id === record.id);
+          const sameIdentity = rawFor(record.run, runClosureKinds[record.type]).filter(candidate =>
+            object(recordFromWire(object(candidate.body).record!)).id === record.id)
+            .map(candidate => ({ fact: candidate, record: decodeFact(candidate, current) }));
           if (record.type === 'UnreachableRunExit')
-            validateUnreachableOwner(record, view, before, current, sameIdentity[0]?.fact);
+            validateUnreachableOwner(record, view, current, sameIdentity[0]?.fact);
           if (sameIdentity.length) {
             need(sameIdentity.length === 1 && same(sameIdentity[0]!.record, record),
               `immutable ${record.type} identity changed or conflicted`);
@@ -184,8 +268,8 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
             const fresh = context();
             const freshRecord = take(decodeByType(record, fresh));
             need(same(freshRecord, record), `${record.type} changed during conditional admission`);
-            const freshView = take(legacy.read(record.run));
-            const admitted = admittedFor(record.run);
+            const freshView = record.type === 'ContinuityAccounting'
+              ? continuityView(record, fresh) : read(record.run);
             if (record.type === 'ExhaustionRecord') {
               need(record.expected === freshView.head, 'run changed during exhaustion append');
               const age = clockDifference(dependencies.clock(), record.at, fresh);
@@ -193,32 +277,34 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
                 'exhaustion record clock is stale or from the future');
             }
             if (record.type === 'ContinuityAccounting') validateContinuityOwner(record, freshView, fresh);
-            if (record.type === 'UnreachableRunExit') validateUnreachableOwner(record, freshView, admitted, fresh);
+            if (record.type === 'UnreachableRunExit') validateUnreachableOwner(record, freshView, fresh);
             return append(record, [parent.id]);
           });
           return receipt.fact;
         }));
-    const readExitAny = (run: Parameters<RunClosureGraphPort['readExitAny']>[0]) =>
-      boundary('ReadRunExitAny', run, dependencies.context, safe => {
+    const readExit = (run: Parameters<RunClosureGraphPort['readExit']>[0]): Result<Readonly<{
+      fact: FactEnvelopeReference; exit: RunExit;
+    }>> => {
+      const legacyExit = legacy.readExit(run);
+      if (legacyExit.kind === 'Success' || legacyExit.detail !== 'terminal run exit absent') return legacyExit;
+      return boundary('ReadRunExit', run, dependencies.context, safe => {
         const referenceValue = object(safe);
         need(referenceValue.owner === 'part-five' && referenceValue.name === 'Run'
           && typeof referenceValue.id === 'string' && referenceValue.id.length > 0,
         'run reference owner/name/id mismatch');
-        const legacyExit = legacy.readExit(run);
-        const completed = consumeResult(legacyExit, {
-          Success: value => value,
-          Refused: () => undefined,
+        const view = read(referenceValue.id as string);
+        need(view.state === 'unreachable', 'terminal run exit absent');
+        const matches = rawFor(referenceValue.id as string, runClosureKinds.UnreachableRunExit).filter(fact => {
+          const wire = object(recordFromWire(object(fact.body).record!));
+          return wire.id === view.head && wire.phase === 'close';
         });
-        const records = admittedFor(referenceValue.id as string);
-        const closes = records.filter((candidate): candidate is Readonly<{ fact: FactEnvelope; record: UnreachableRunExit }> =>
-          candidate.record.type === 'UnreachableRunExit' && candidate.record.phase === 'close');
-        need(!(completed && closes.length), 'conflicting completed and unreachable exits');
-        if (completed) return completed;
-        need(closes.length === 1, closes.length ? 'conflicting unreachable exits' : 'terminal run exit absent');
-        const view = take(legacy.read(referenceValue.id as string));
-        validateUnreachableOwner(closes[0]!.record, view, records, context(), closes[0]!.fact);
-        return freeze({ fact: factRef(closes[0]!.fact), exit: closes[0]!.record });
+        need(matches.length === 1, matches.length ? 'conflicting unreachable exits' : 'terminal run exit fact absent');
+        const selected = decodeFact(matches[0]!, context());
+        need(selected.type === 'UnreachableRunExit', 'terminal run exit fact absent');
+        return freeze({ fact: factRef(matches[0]!), exit: selected });
       });
+    };
+    const readExitAny = (run: Parameters<RunClosureGraphPort['readExitAny']>[0]) => readExit(run);
     const verifyContinuitySend = (accounting: Parameters<RunClosureGraphPort['verifyContinuitySend']>[0],
       send: Parameters<RunClosureGraphPort['verifyContinuitySend']>[1]) =>
       boundary('VerifyContinuitySend', { accounting, send }, dependencies.context, () => {
@@ -231,15 +317,56 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
         const record = decodeFact(accountingFact, current);
         need(record.type === 'ContinuityAccounting' && record.id === accounting.id,
           'ContinuityAccounting reference identity differs from fact');
-        validateContinuityOwner(record, take(legacy.read(record.run)), current);
+        validateContinuityOwner(record, continuityView(record, current), current);
         const sendFact = validateContinuitySendWitness(accountingFact, record, send,
           dependencies.clock(), dependencies.groundingPolicy.maxAge, current);
         need(same(take(dependencies.continuitySend.verify(factRef(sendFact), record)), factRef(sendFact)),
           'first-reply send owner witness differs from signed send record');
         return factRef(sendFact);
       });
+    const publicRead = (run: string): Result<RunView> => {
+      const base = legacy.read(run);
+      if (base.kind === 'Refused') return base;
+      return boundary('ReadRun', run, dependencies.context, () => closureView(base.value, context()));
+    };
+    const publicOpen = (input: unknown): Result<RunView> => {
+      const opened = legacy.open(input);
+      if (opened.kind === 'Refused') return opened;
+      return publicRead(opened.value.run.id);
+    };
+    const publicGround: RunClosureGraphPort['ground'] = (run, worker, harness, reason, ownership) => {
+      const base = legacy.read(run);
+      if (base.kind === 'Refused') return legacy.ground(run, worker, harness, reason, ownership);
+      const combined = boundary('ReadRun', run, dependencies.context, () => closureView(base.value, context()));
+      if (combined.kind === 'Refused') return combined;
+      const additiveClosure = combined.value.state !== base.value.state || combined.value.head !== base.value.head;
+      if (additiveClosure) return boundary('GroundRun', null, dependencies.context, () => {
+        need(false, 'terminal/conflicted run cannot start a worker');
+      });
+      return legacy.ground(run, worker, harness, reason, ownership);
+    };
+    const publicTransition: RunClosureGraphPort['transition'] = input => {
+      const candidate = input && typeof input === 'object' && !Array.isArray(input)
+        ? input as Readonly<Record<string, unknown>> : undefined;
+      const run = typeof candidate?.run === 'string' ? candidate.run : undefined;
+      if (!run) return legacy.transition(input);
+      const base = legacy.read(run);
+      if (base.kind === 'Refused') return legacy.transition(input);
+      const combined = boundary('ReadRun', run, dependencies.context, () => closureView(base.value, context()));
+      if (combined.kind === 'Refused') return combined;
+      const additiveClosure = combined.value.state !== base.value.state || combined.value.head !== base.value.head;
+      if (additiveClosure) return boundary('TransitionRun', input, dependencies.context, () => {
+        need(false, 'terminal run cannot admit new execution');
+      });
+      return legacy.transition(input);
+    };
     return freeze({
       ...legacy,
+      open: publicOpen,
+      read: publicRead,
+      ground: publicGround,
+      transition: publicTransition,
+      readExit,
       recordExhaustion: (input, ownership) => appendOwned(input, ownership,
         (value, current) => exhaustionAdmission(value, current, dependencies.governance)),
       recordContinuity: (input, ownership) => appendOwned(input, ownership,

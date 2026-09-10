@@ -7,7 +7,7 @@ import type { SegmentStoragePort } from '../../src/facts/index.js';
 import { completedFixture, exhaustionFixture } from '../rungraph/closure-fixtures.js';
 import { ref, refused, value } from '../rungraph/fixtures.js';
 
-it('P5-SEAM-RC-A-F4-RESTART-CUTS P5-SEAM-RC-R12-V18 P5-SEAM-RC-R12-V23 P5-NF-11 P5-NF-17 P5-NF-23 both exit arms survive fsynced restart cuts before and after both exit appends', () => {
+it('P5-SEAM-RC-A-F4-RESTART-CUTS P5-SEAM-RC-R12-V18 P5-SEAM-RC-R12-V23 P5-SEAM-RC-R13-E2E-V02-V05-V18 P5-NF-11 P5-NF-17 P5-NF-23 both exit arms survive fsynced restart cuts before and after both exit appends', () => {
   for (const arm of ['completed', 'unreachable'] as const) {
     const directory = mkdtempSync(join(tmpdir(), `rungraph-${arm}-closure-`)), spine = join(directory, 'facts.jsonl');
     writeFileSync(spine, '');
@@ -49,7 +49,7 @@ it('P5-SEAM-RC-A-F4-RESTART-CUTS P5-SEAM-RC-R12-V18 P5-SEAM-RC-R12-V23 P5-NF-11 
       const rowsAfterProposal = readFileSync(spine, 'utf8').split('\n').filter(Boolean).map(row => JSON.parse(row));
       const proposalFact = rowsAfterProposal.filter(row => row.kind === (arm === 'completed' ? 'run-transition' : 'run-unreachable-exit')).at(-1)!;
       const closing = value(restarted.read(f.id));
-      expect(closing.state).toBe(arm === 'completed' ? 'closing' : 'ready');
+      expect(closing.state).toBe('closing');
 
       const terminalExit = arm === 'completed'
         ? { ...proposal.exit!, id: `exit:${arm}:terminal-cut`, expected: closing.head }
@@ -70,8 +70,10 @@ it('P5-SEAM-RC-A-F4-RESTART-CUTS P5-SEAM-RC-R12-V18 P5-SEAM-RC-R12-V23 P5-NF-11 
       const recovered = value(createRunClosureGraph(deps));
       const rows = readFileSync(spine, 'utf8').split('\n').filter(Boolean).map(row => JSON.parse(row));
       const closeFact = rows.filter(row => row.kind === (arm === 'completed' ? 'run-transition' : 'run-unreachable-exit')).at(-1)!;
-      expect(value(recovered.readExitAny({ owner: 'part-five', name: 'Run', id: f.id })))
+      expect(value(recovered.readExit({ owner: 'part-five', name: 'Run', id: f.id })))
         .toEqual({ fact: ref(closeFact), exit: terminalExit });
+      expect(value(recovered.read(f.id)).state).toBe(arm);
+      if (arm === 'unreachable') refused(recovered.ground(f.id, 'w', 'h', 'start', f.lease), 'terminal/conflicted run');
       expect(rows.filter(row => row.kind === (arm === 'completed' ? 'run-transition' : 'run-unreachable-exit'))).toHaveLength(2);
     } finally {
       rmSync(directory, { recursive: true, force: true });

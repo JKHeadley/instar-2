@@ -12,9 +12,12 @@ import { boundary, encoded, freeze, json, need, object, same, take } from './bou
 import {
   constitutional, decodeSessionGrounding, factReference, recordFromWire, recordWire, runKinds,
 } from './records.js';
-import type { ConstitutionalReference, RunDecodeContext, RunStep, SessionGrounding } from './types.js';
 import type {
-  ContinuityAccounting, ExhaustionRecord, RunClosureRecord, RunOwnedRecordReference, UnreachableRunExit,
+  ConstitutionalReference, RunDecodeContext, RunOwnedRecordReference, RunStep, SessionGrounding,
+  UnreachableRunExit,
+} from './types.js';
+import type {
+  ContinuityAccounting, ExhaustionRecord, RunClosureRecord,
 } from './closure-types.js';
 
 const text: OwnedShape = { kind: 'text', maxLength: 1024 };
@@ -41,7 +44,7 @@ const continuityShape = shape({ ...base, run: text, expected: text, grounding: o
   firstReply: shape({ operation: text, digest: text }), disclosure: ref,
   disposition: shape({ kind: text, work: ref, result: constitutionalRef, input: ref, directive: constitutionalRef,
     reason: text }, ['work', 'result', 'input', 'directive', 'reason']) });
-const unreachableShape = shape({ ...base, run: text, expected: text, proposer: constitutionalRef, standing: ref,
+const unreachableShape = shape({ ...base, run: text, expected: text, proposer: constitutionalRef, standing: ref, kind: text,
   frontier: { kind: 'text', maxLength: 65536 }, at: clock, phase: text, proposal: ownedRef,
   exhaustion: ownedRef, unsatisfiedClauses: list(text), externalDependency: outsideAction, recheck,
   settledOperations: list(text) }, ['proposal']);
@@ -346,6 +349,12 @@ function validateExhaustion(input: Json, context: RunDecodeContext): ExhaustionR
       'exhaustion resource charge names another run budget or is negative');
     return json(decoded);
   });
+  const recordedResources = (runBudget.resources as Json[]).map(raw => {
+    const kind = String(object(object(raw).subject).kind);
+    return json(take(decodeMeasurement(kind, raw, context.types)));
+  });
+  need(same(value.resources, recordedResources),
+    'exhaustion resource charge lacks matching signed run-budget evidence');
   principal(object(value.recheck).owner!, context);
   value.at = json(at);
   validateRecheck(value.recheck!, at, context, String(value.run), blocker.fact.id);
@@ -488,14 +497,24 @@ function validateContinuity(input: Json, context: RunDecodeContext): ContinuityA
 function validateUnreachable(input: Json, context: RunDecodeContext): UnreachableRunExit {
   const value = object(input);
   need(value.type === 'UnreachableRunExit' && value.schemaVersion === 1, 'type or schema version unknown');
+  need(value.kind === 'unreachable', 'unreachable exit kind required');
   need(value.phase === 'proposal' || value.phase === 'close', 'unknown unreachable exit phase');
-  exactFields(value, ['type', 'schemaVersion', 'id', 'run', 'expected', 'proposer', 'standing', 'frontier', 'at', 'phase',
+  exactFields(value, ['type', 'schemaVersion', 'id', 'run', 'expected', 'proposer', 'standing', 'frontier', 'at', 'kind', 'phase',
     ...(value.phase === 'close' ? ['proposal'] : []), 'exhaustion', 'unsatisfiedClauses', 'externalDependency', 'recheck',
     'settledOperations'], 'unreachable exit mixed or omitted fields');
   principal(value.proposer!, context);
-  factReference(value.standing!, context);
   const run = runOpening(String(value.run), context);
   need(same(value.proposer, run.record.owner), 'unreachable exit proposer differs from accountable run owner');
+  const standing = factReference(value.standing!, context);
+  const opening = factReference(run.record.opening!, context);
+  const authority = object(run.record.authority);
+  need(standing.id === opening.id && standing.kind === opening.kind
+    && standing.id === object(authority.resolution).id,
+  'unreachable exit standing is not the run current standing resolution');
+  const proposer = constitutional(value.proposer as unknown as ConstitutionalReference<'VerifiedPrincipal'>,
+    'VerifiedPrincipal', context).view;
+  need(standing.principal.id === proposer.id && same(standing.principal.provenance, proposer.provenance),
+    'unreachable exit standing lacks the exact proposer witness');
   const exhaustionReference = ownedRecord(value.exhaustion!, 'ExhaustionRecord', context);
   const exhaustion = take(decodeExhaustionRecord(recordFromWire(object(exhaustionReference.fact.body).record!), context));
   need(exhaustion.run === value.run && exhaustion.id === object(value.exhaustion).id,

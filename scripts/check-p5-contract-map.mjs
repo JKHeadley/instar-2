@@ -66,6 +66,21 @@ const seamEvidence = new Map([
   ['P5-SEAM-RC-R12-V23', 'tests/e2e/rungraph-closure.test.ts'],
   ['P5-SEAM-RC-R12-V24', 'tests/rungraph/review11-conformance.test.ts'],
   ['P5-SEAM-RC-R12-V25', 'tests/rungraph/review11-conformance.test.ts'],
+  ...['V01', 'V02', 'V03', 'V04', 'V05', 'V08', 'V11', 'V12', 'V13', 'V14', 'V15', 'V16', 'V17']
+    .map(id => [`P5-SEAM-RC-R13-${id}`, 'tests/rungraph/review13-conformance.test.ts']),
+  ...['MISSING', 'WRONG-KIND', 'WRONG-ID', 'UNWITNESSED', 'CLAUSES', 'EXTERNAL-ACTION', 'RECHECK',
+    'PENDING-EFFECT', 'BAD-SIGNATURE', 'INCOMPLETE-HISTORY']
+    .map(mode => [`P5-SEAM-RC-R13-V06-${mode}`, 'tests/rungraph/review13-conformance.test.ts']),
+  ...['UNKNOWN', 'RESOLVED', 'CONFLICTED', 'UNRELATED']
+    .map(mode => [`P5-SEAM-RC-R13-V07-${mode}`, 'tests/rungraph/review13-conformance.test.ts']),
+  ...['QUEUE-FULL', 'QUOTA-WALL', 'SAFETY-CEILING', 'OPEN-BREAKER']
+    .map(mode => [`P5-SEAM-RC-R13-V09-${mode}`, 'tests/rungraph/review13-conformance.test.ts']),
+  ...['AVAILABLE-ADDRESSED', 'AVAILABLE-PENDING', 'UNAVAILABLE-PENDING', 'UNAVAILABLE-ADDRESSED',
+    'WRONG-GROUNDING', 'WRONG-DIGEST', 'MISSING-RESULT']
+    .map(mode => [`P5-SEAM-RC-R13-V10-${mode}`, 'tests/rungraph/review13-conformance.test.ts']),
+  ['P5-SEAM-RC-R13-INTEGRATION-V02-V04', 'tests/integration/rungraph-closure.test.ts'],
+  ['P5-SEAM-RC-R13-INTEGRATION-V05', 'tests/integration/rungraph-closure.test.ts'],
+  ['P5-SEAM-RC-R13-E2E-V02-V05-V18', 'tests/e2e/rungraph-closure.test.ts'],
 ]);
 
 const map = new Map();

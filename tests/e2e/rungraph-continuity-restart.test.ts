@@ -44,6 +44,22 @@ it('P5-SEAM-RC-F8-CONTINUITY-E2E revalidates witnessed ContinuityAccounting in a
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }, 20_000);
 
+it('P5-SEAM-RC-R13-V10-UNAVAILABLE-PENDING P5-NF-46 retains unavailable pre-pause capture as pending through owner admission and restart', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'rungraph-continuity-unavailable-restart-'));
+  const spine = join(directory, 'facts.jsonl');
+  try {
+    const f = continuityFixture(durableSpine(spine));
+    Object.assign(f.ctx.captures['message:1']!, { status: 'missing', bytes: null });
+    const accounting = { ...f.accounting,
+      prePauseCapture: { ...f.accounting.prePauseCapture, status: 'unavailable' as const },
+      disposition: { kind: 'pending' as const, work: ref(f.opening), reason: 'capture unavailable; original work remains open' } };
+    const fact = value(f.graph.recordContinuity(accounting, f.lease));
+    const restarted = cold(f, spine, accounting);
+    expect(restarted.view).toMatchObject({ kind: 'refused' });
+    expect(restarted.continuity).toEqual({ kind: 'accepted', id: fact.id });
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+}, 20_000);
+
 it.each(['queue-full', 'quota-wall', 'safety-ceiling', 'open-breaker'] as const)
 ('P5-SEAM-RC-F8-PRESSURE-E2E replays fsynced %s pressure in a fresh process without terminal promotion', basis => {
   const directory = mkdtempSync(join(tmpdir(), `rungraph-pressure-${basis}-`)), spine = join(directory, 'facts.jsonl');

@@ -5,7 +5,7 @@ import type {
 import type { AppendReceipt, CausalFrontier, FactEnvelope } from '../facts/index.js';
 import type {
   ConstitutionalReference, PrincipalReference, Run, RunExit, RunGraphDependencies,
-  RunGraphPort, RunStep,
+  RunGraphPort, RunOwnedRecordReference, RunStep, UnreachableRunExit,
 } from './types.js';
 
 declare class RunClosureBrand<N extends string> { private readonly runClosureValue: N; private constructor(); }
@@ -13,14 +13,6 @@ type ClosureRecord<N extends string> = RunClosureBrand<N> & Readonly<{
   type: N;
   schemaVersion: 1;
   id: string;
-}>;
-
-/** A reference to a record admitted through Part Five's additive owner boundary. */
-export type RunOwnedRecordReference<N extends 'Run' | 'RunStep' | 'SessionGrounding' | 'ExhaustionRecord' | 'ContinuityAccounting' | 'UnreachableRunExit'> = Readonly<{
-  owner: 'part-five';
-  name: N;
-  id: string;
-  fact: FactEnvelopeReference;
 }>;
 
 export type ExhaustionAvenue = Readonly<{
@@ -69,29 +61,8 @@ export type ContinuityAccounting = ClosureRecord<'ContinuityAccounting'> & Reado
   disposition: ContinuityDisposition;
 }>;
 
-/**
- * The unreachable arm is an additive record kind. It never enters the legacy
- * RunExit or RunTransition decoders, so their accepted values and refusals stay
- * byte-identical to main.
- */
-export type UnreachableRunExit = ClosureRecord<'UnreachableRunExit'> & Readonly<{
-  run: string;
-  expected: string;
-  proposer: PrincipalReference;
-  standing: FactEnvelopeReference;
-  frontier: CausalFrontier;
-  at: Clock;
-  phase: 'proposal' | 'close';
-  proposal?: RunOwnedRecordReference<'UnreachableRunExit'>;
-  exhaustion: RunOwnedRecordReference<'ExhaustionRecord'>;
-  unsatisfiedClauses: readonly string[];
-  externalDependency: Readonly<{ owner: PrincipalReference; action: string; scope: Scope }>;
-  recheck: Readonly<{ at: Clock; owner: PrincipalReference; obligation: FactEnvelopeReference }>;
-  settledOperations: readonly string[];
-}>;
-
-export type RunExitAny = RunExit | UnreachableRunExit;
-export type CompletedRunExit = RunExit;
+/** Backward-compatible name retained for callers from the pre-grant review rounds. */
+export type RunExitAny = RunExit;
 export type RunClosureRecord = ExhaustionRecord | ContinuityAccounting | UnreachableRunExit;
 
 export type RunClosureGraphDependencies = RunGraphDependencies & Readonly<{
@@ -101,17 +72,17 @@ export type RunClosureGraphDependencies = RunGraphDependencies & Readonly<{
   }>;
 }>;
 
-export interface RunClosureGraphPort extends RunGraphPort {
+export type RunClosureGraphPort = Omit<RunGraphPort, 'readExit'> & import('./types.js').RunExitReadPort<RunExit> & {
   recordExhaustion(input: unknown, ownership: LeaseReference): Result<FactEnvelope>;
   recordContinuity(input: unknown, ownership: LeaseReference): Result<FactEnvelope>;
   recordUnreachableExit(input: unknown, ownership: LeaseReference): Result<FactEnvelope>;
   readExitAny(run: OwnedReference<'part-five', 'Run'>): Result<Readonly<{
     fact: FactEnvelopeReference;
-    exit: RunExitAny;
+    exit: RunExit;
   }>>;
   verifyContinuitySend(accounting: RunOwnedRecordReference<'ContinuityAccounting'>,
     send: FactEnvelopeReference): Result<FactEnvelopeReference>;
-}
+};
 
 export type ClosureAppend = Readonly<{
   kind: string;

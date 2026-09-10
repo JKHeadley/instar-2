@@ -16,10 +16,10 @@ declare const runReference: OwnedReference<'part-five', 'Run'>;
 const closedUnion: readonly RunExitAny[] = [completed, unreachable, ...exits];
 void closedUnion; void exhaustion; void continuity;
 
-const legacyCompletedRead: Result<Readonly<{ fact: import('../../src/index.js').FactEnvelopeReference; exit: CompletedRunExit }>> = readPort.readExit(runReference);
-const explicitCompletedRead: Result<Readonly<{ fact: import('../../src/index.js').FactEnvelopeReference; exit: CompletedRunExit }>> = readPort.readExit(runReference);
+const requiredClosedUnionRead: Result<Readonly<{ fact: import('../../src/index.js').FactEnvelopeReference; exit: RunExit }>> = readPort.readExit(runReference);
+const closureRequiredRead: Result<Readonly<{ fact: import('../../src/index.js').FactEnvelopeReference; exit: RunExit }>> = closurePort.readExit(runReference);
 const explicitUnreachableRead: Result<Readonly<{ fact: import('../../src/index.js').FactEnvelopeReference; exit: RunExitAny }>> = closurePort.readExitAny(runReference);
-void legacyCompletedRead; void explicitCompletedRead; void explicitUnreachableRead;
+void requiredClosedUnionRead; void closureRequiredRead; void explicitUnreachableRead;
 
 // Every arm excludes every other arm's required payload at compile time.
 // @ts-expect-error completed cannot carry an exhaustion reference
