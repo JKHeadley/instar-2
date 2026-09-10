@@ -62,6 +62,27 @@ post-compaction action remains unsupported. P13-NF-27 is non-executable until
 The adapter cannot infer that the model remembered a message, suppress the disclosure, or declare
 substantive adequacy from an output phrase.
 
+**Rule — preventive compaction is policy-owned and never inferred from a pane.** Rules 26, 55,
+59, 61, 63, 68 and 95; **checks: P13-NF-46/52**. A **preventive-compaction holder** is
+Part Thirteen's package component that decides only whether current owner evidence meets the finite
+threshold in its registered declaration; it cannot admit or perform the action. Part Six owns the
+bounded observation episode, cooldown, breaker, current fence, and action admission. The adapter only reports an owner-decoded
+context-pressure observation for the exact live incarnation and executes a separately admitted
+Part Eight compaction action through Ten's confined driver. It never decides from its own label or
+terminal text that compaction is due.
+
+Eligibility requires a fresh supported context-pressure measurement above the registered threshold,
+current Five-owned idle work state, current ownership, and no unresolved action or cooldown. A
+working or indeterminate worker is left alone. A stale, missing, unknown, or unsupported pressure
+observation produces no compaction action. A repeated observation inside the cooldown joins the
+same bounded episode rather than resetting attempts. Dry-run records only the would-action and can
+never count as compaction or clearance. Once an action is admitted, the same fresh correlated
+clearance, re-grounding, continuity, and no-uncertain-replay requirements as post-exhaustion
+compaction apply. The pressure-observation cases are unsupported and non-executable until
+`design-harness-adapters-seam-request-part-ten-context-pressure.md` is granted and its owner change
+lands. The compaction payload and doorway are separately non-executable until the already-GRANTED
+`seam-response-effects-payloads.md` and `seam-response-effects-followup.md` land.
+
 **Rule — continuation never repeats an uncertain effect.** Rules 42, 55, 57, 63 and 68;
 **checks: P13-NF-24/28/38/39**. On resume, the worker receives the exact pending attempt,
 reservation, receipt, charge, and verification references from the run graph. The adapter observes

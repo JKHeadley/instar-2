@@ -34,7 +34,8 @@ GRANTED in `SEAM-LEDGER.md` row 41, land.
 
 The matrix also separates **confirmed transcript poison** from an ordinary context limit. Confirmed
 transcript poison means authenticated evidence that the persisted runtime conversation itself
-reliably re-triggers an invalid thinking-block state or repeated policy rejection when resumed; it
+reliably re-triggers a vendor conversation-format error—such as a damaged saved reasoning section
+that makes the provider reject every subsequent resume—or repeated policy rejection when resumed; it
 does not mean a single rejection phrase, quoted rejection text, old visible scrollback, or a process
 that subsequently made correlated progress. A sentinel or adapter may report the observations, but
 it cannot turn its detector into interruption authority. Confirmation is resolved from current
