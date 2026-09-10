@@ -113,9 +113,13 @@ inhibition band. It cannot widen scope, increase a budget, defeat a stop, skip s
 ignore uncertainty, steal an existing reservation, or certify stale evidence. The minimal plane,
 emergency stop, diagnosis and bounded repair keep their reserved capacity. After those reserves,
 the scheduler uses **weighted deficit round robin** across priority classes. In each round, every
-active class receives its configured number of admission credits. An admitted reservation costs
-one credit. An ineligible candidate costs no credit. The scheduler visits classes in registered
-order. Unused credit carries only to the declared finite credit cap. Within a class, **FIFO** means
+active class receives its configured number of admission credits. A **fairness debit** is exactly
+one credit spent by the durable commit of an admitted occurrence's initial job-start
+`AdmissionReservation`. Every later model, session, process, provider, notification, supervision,
+learning, recovery and settlement reservation for that Run still reserves its applicable resource
+domains, but it spends no fairness credit and does not enter the fair-share denominator. An
+ineligible candidate costs no credit. The scheduler visits classes in registered order. Unused
+credit carries only to the declared finite credit cap. Within a class, **FIFO** means
 the earliest eligible scheduled instant or admission clock is considered first. Equal instants are
 ordered by canonical occurrence id. Arrival order and Part Two's fold linearization never decide
 the tie. **Bounded age

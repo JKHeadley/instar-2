@@ -106,7 +106,7 @@ preserves its source bytes, marks the job inhibited, and requires an explicit pa
 composition, the direct-script bypass and this no-gate model-session residue. They also cover two
 jobs, restart, timeout release, the fourth counted failure and the still-open follow-up obligation.
 
-**Rule — workers execute runs; sessions do not own them.** Rules 41, 46, 68 and 92;
+**Rule — workers execute runs; sessions do not own them.** Rules 41, 46 and 68;
 **checks: P15-NF-21/45**. A session, subprocess, or remote agent receives one leased RunStep with
 grounding, bounds, predecessor facts, exit test and result destination. Worker death leaves the Run
 and its obligations durable. A completion marker or transport receipt proves only the named stage.

@@ -89,7 +89,7 @@ provider or new budget cannot turn uncertainty into safe repetition. Recovery ob
 original operation identity. Uncertainty stays visible until independently assessed
 non-occurrence, exclusion of delayed execution and final charge all settle it.
 
-**Rule — due discovery is level-triggered and bounded.** Rules 8, 46, 55, 61, 68 and 92;
+**Rule — due discovery is level-triggered and bounded.** Rules 8, 46, 55, 61 and 68;
 **checks: P15-NF-24/25/26**. The scheduler holder uses part six's persistent loop, due index and
 scan cursor. The due index is a disposable package projection, not authority. It contains only the
 stable candidate key, manifest generation, next possible due instant, unresolved-obligation bit,

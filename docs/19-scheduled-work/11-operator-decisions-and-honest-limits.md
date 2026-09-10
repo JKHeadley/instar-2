@@ -51,11 +51,12 @@ continuity with spending safety.
 Question: Under sustained heavy demand, what share of job starts should maintenance receive, and
 how long may ready urgent work wait for its turn?
 
-Background: Each job accepted to start counts as one scheduling credit, regardless of its
-processor time, model usage or cost; the maintenance share is calculated from those credits after
-separate emergency, stop, diagnosis and repair reserves are protected. Ready urgent work has
-passed every current permission, safety, capability, placement and available-capacity check and is
-waiting only for its turn to start.
+Background: Each due job occurrence spends exactly one scheduling credit when it is accepted to
+start. Its later steps do not spend more scheduling credits, although every step must still fit its
+own resource limits. The maintenance share is calculated from start credits after separate
+emergency, stop, diagnosis and repair reserves are protected. Ready urgent work has passed every
+current permission, safety, capability, placement and available-capacity check and is waiting only
+for its turn to start.
 
 Choices: Give maintenance at least 10 of every 100 start credits and let ready urgent work wait at
 most 30 seconds; give maintenance 20 of every 100 start credits and let ready urgent work wait at
