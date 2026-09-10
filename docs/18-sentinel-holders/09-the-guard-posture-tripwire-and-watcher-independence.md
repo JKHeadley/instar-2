@@ -21,8 +21,12 @@ absent local instance.
 
 **Rule — temporal posture instability is separate from current raw posture.** Rules 9, 24, 26,
 43, 58, 69 and 70; **checks: P14-NF-14/20/48/65**. **Transition instability** means more than three
-changes of the raw Part Nine posture signature between adjacent eligible observations in the most
-recent ten plan-scheduled ticks for one exact plan, generation and instance. The signature is an
+changes of the raw Part Nine posture signature whose transition destination tick is in the current
+ten-tick window for one exact plan, generation and instance. At current scheduled tick `T`, that
+window retains transition destinations `t` where `t > T - 10` and `t <= T`. The evaluator retains
+the immediately preceding eligible observation solely to decide whether a transition ends at the
+first destination tick in the window. The evaluated evidence may therefore span eleven eligible
+observations while the membership window still contains at most ten destination ticks. The signature is an
 ordered sequence of tuples, one for every arm in the exact `VerificationPlan.arms` order. Each tuple
 contains only the arm id, `sourceStatus` and arm `posture`, followed by the overall
 `GuardPostureView.posture`. Equality excludes `lastAttempt`, `lastSuccess`, `evaluatedAt` and every
@@ -32,7 +36,7 @@ transitions. The tripwire's
 named `retrospective` arm derives this temporal finding from the sequence of independently recorded
 Nine observations and records the source references in its own `ProbeRecord` evidence. It does not
 add a flapping label to `GuardPosture`, rewrite any source view or replace the current raw posture.
-Four transitions within the ten-tick window open an instability finding even if the last raw posture
+Four retained transition destinations within the ten-tick window open an instability finding even if the last raw posture
 is `healthy`; three transitions are the stable-boundary neighbor and open none. A full ten-tick
 unchanged signature is the stable-state neighbor. Its positive fixture uses ten distinct fresh,
 successful executions: `lastAttempt`, `lastSuccess` and `evaluatedAt` change on every tick while all
