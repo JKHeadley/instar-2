@@ -1,148 +1,105 @@
 import { beforeEach, expect, it } from 'vitest';
 import { setTimeout as yieldWorker } from 'node:timers/promises';
-import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
-import { join } from 'node:path';
 import { canonical } from '../../src/index.js';
+import { decodeHistoricalBody, hashBytes } from '../../src/facts/index.js';
 import { decodeEffectPayload, decodeOutboundMessage, effectOperationContracts, effectPayloadIdentity,
   referencedPayloadFacts } from '../../src/effects/index.js';
-import { aggregateState } from '../../src/effects/aggregate.js';
-import { decodeHistoricalBody } from '../../src/facts/index.js';
 import type { EffectHost, EffectPayloadKind } from '../../src/effects/index.js';
-import { clone, digest } from '../fixtures.js';
+import { clone } from '../fixtures.js';
 import { effectFixture, refused, value } from './fixture.js';
+import { payloadInput, payloadKinds } from './payload-fixtures.js';
 import { typedEffectFixture } from './typed-effect-fixture.js';
-import { payload, payloadInput, payloadKinds } from './payload-fixtures.js';
 
 beforeEach(async () => { await yieldWorker(1); });
 
-const withIdentity = (input: Record<string, unknown>): Record<string, unknown> => {
+const identify = (input: Record<string, unknown>): Record<string, unknown> => {
   const draft = Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'id' && key !== 'targetDigest'));
-  return { ...draft, ...effectPayloadIdentity(draft as unknown as Parameters<typeof effectPayloadIdentity>[0]) };
+  return { ...draft, ...effectPayloadIdentity(draft as Parameters<typeof effectPayloadIdentity>[0]) };
 };
-const hostFor = (kind: typeof payloadKinds[number]): EffectHost => {
+
+const setup = (kind: typeof payloadKinds[number], supported = true) => {
   const contract = effectOperationContracts[kind];
-  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: kind, inputSchema: contract.inputSchema,
-    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, [kind]);
-  return kind === 'infrastructure-notice' ? { ...f.host, principal: f.principal('infrastructure', 'system') } : f.host;
+  return typedEffectFixture(undefined, 'executor:1', { payloadKind: kind, inputSchema: contract.inputSchema,
+    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, supported ? [kind] : []);
 };
 
-it.each(payloadKinds)('P8-TP-DECODER-%s accepts its exact closed versioned fixture', kind => {
-  const host = hostFor(kind), input = payloadInput(kind, host);
-  expect(value(decodeEffectPayload(input, host))).toEqual(input);
+it.each(payloadKinds)('P8-TP-DECODER-%s P8-TP-R6-VALID-%s accepts the exact closed slice-A payload', kind => {
+  const f = setup(kind), input = payloadInput(kind, f.host);
+  expect(value(decodeEffectPayload(input, f.host))).toEqual(input);
 });
 
-it.each(payloadKinds)('P8-TP-CLOSED-%s refuses undeclared, wrong kind, missing reference, and digest mismatch', kind => {
-  const host = hostFor(kind), input = payloadInput(kind, host);
-  refused(decodeEffectPayload({ ...input, undeclared: true }, host), 'undeclared');
-  refused(decodeEffectPayload({ ...input, kind: `wrong-${kind}` }, host), 'unknown');
-  const missing = clone(input); delete missing.sourceResult;
-  refused(decodeEffectPayload(missing, host), 'missing');
-  refused(decodeEffectPayload({ ...input, targetDigest: digest('substituted') }, host), 'target digest');
-});
-
-it('P8-TP-REFS-MISSING-WRONG-KIND signed history must own the exact run, step, source, and conversation references', () => {
-  const contract = effectOperationContracts.acknowledge;
-  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'acknowledge', inputSchema: contract.inputSchema,
-    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['acknowledge']);
-  const raw = { ...payloadInput('acknowledge', f.host), sourceResult: f.pending.id };
-  refused(decodeEffectPayload(withIdentity({ ...raw, step: 'step:never-recorded', logicalEffect: 'logical:never-recorded' }), f.host), 'lineage');
-  refused(decodeEffectPayload(withIdentity({ ...raw, inboundFact: f.pending.id }), f.host), 'wrong kind');
-  const valid = value(decodeEffectPayload(withIdentity(raw), f.host));
-  const facts = value(f.host.referenceFacts!());
-  const missingHost = { ...f.host, referenceFacts: () => f.success(facts.filter(fact => fact.kind !== 'intake-admitted')) };
-  refused(decodeEffectPayload(valid, missingHost), 'missing');
-  f.reference('intake-admitted', { id: 'intake:1', account: 'bot:fixture', conversation: 'chat:fixture', revision: 2 });
-  refused(decodeEffectPayload(valid, f.host), 'intake fact');
-});
-
-it.each(['process-control', 'scheduler-control', 'account-route-change', 'configuration-change',
-  'filesystem-mutation', 'git-mutation'] as const)(
-  'P8-TP-RECOVERY-REFERENCE-MATRIX %s accepts complete current owner history and refuses missing owner history', kind => {
-    const contract = effectOperationContracts[kind];
-    const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: kind, inputSchema: contract.inputSchema,
-      canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, [kind]);
-    const input = withIdentity({ ...payloadInput(kind, f.host), sourceResult: f.pending.id });
-    expect(value(decodeEffectPayload(input, f.host)).kind).toBe(kind);
-    const missingKind = ({ 'process-control': 'process-parent', 'scheduler-control': 'scheduler-job-generation',
-      'account-route-change': 'account-route-generation', 'configuration-change': 'configuration-target-state',
-      'filesystem-mutation': 'filesystem-target-state', 'git-mutation': 'git-target-state' } as const)[kind];
-    const facts = value(f.host.referenceFacts!());
-    const missingHost = { ...f.host, referenceFacts: () => f.success(facts.filter(fact => fact.kind !== missingKind)) };
-    refused(decodeEffectPayload(input, missingHost), 'missing');
-  });
-
-it('P8-TP-RECOVERY-REFERENCE-MATRIX stale, conflicted, and wrong-subject recovery witnesses refuse', () => {
-  const processContract = effectOperationContracts['process-control'];
-  const process = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'process-control', inputSchema: processContract.inputSchema,
-    canonicalization: processContract.canonicalization, observationCapabilities: processContract.observations }, ['process-control']);
-  const processInput = { ...payloadInput('process-control', process.host), sourceResult: process.pending.id };
-  refused(decodeEffectPayload(withIdentity({ ...processInput, processId: 'process:other' }), process.host), 'subject mismatch');
-  process.time(1001);
-  refused(decodeEffectPayload(withIdentity(processInput), process.host), 'stale');
-
-  const schedulerContract = effectOperationContracts['scheduler-control'];
-  const scheduler = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'scheduler-control', inputSchema: schedulerContract.inputSchema,
-    canonicalization: schedulerContract.canonicalization, observationCapabilities: schedulerContract.observations }, ['scheduler-control']);
-  scheduler.reference('scheduler-job-generation', { id: 'job-generation:2', jobId: 'job:1', generation: 'job-generation:2', finiteScope: 'one-run',
-    undoOperation: 'resume:job:1', reviewAt: 200, status: 'current', validFrom: 0, validUntil: 1000, revision: 2 });
-  refused(decodeEffectPayload(withIdentity({ ...payloadInput('scheduler-control', scheduler.host), sourceResult: scheduler.pending.id }), scheduler.host), 'scheduler generation');
-});
-
-it('P8-TP-TARGET-WITNESS ancestry substitutions and unresolved symlinks refuse despite self-consistent payload identities', () => {
-  const contract = effectOperationContracts['filesystem-mutation'];
-  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'filesystem-mutation', inputSchema: contract.inputSchema,
-    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['filesystem-mutation']);
-  const raw: Record<string, unknown> = { ...payloadInput('filesystem-mutation', f.host), sourceResult: f.pending.id };
-  const [target] = raw.fileTargets as Record<string, unknown>[];
-  refused(decodeEffectPayload(withIdentity({ ...raw, fileTargets: [{ ...target, ancestryDigest: digest('substituted ancestry') }] }), f.host), 'subject mismatch');
-
-  const real = join(f.directory, 'real'), link = join(f.directory, 'link'); mkdirSync(real); symlinkSync(real, link);
-  const path = join(link, 'state.json'), policy = 'policy:symlink-case';
-  const symlinkTarget = { canonicalPath: path, resolvedPath: path, ancestryDigest: digest('ancestor'), priorDigest: digest('prior') };
-  f.reference('filesystem-target-state', { id: policy, policy, targets: [symlinkTarget], status: 'current', validFrom: 0, validUntil: 1000 });
-  f.reference('protected-target-policy', { id: policy, decision: 'allowed', targets: [path], status: 'current', validFrom: 0, validUntil: 1000 });
-  refused(decodeEffectPayload(withIdentity({ ...raw, fileTargets: [symlinkTarget], protectedTargetPolicy: policy }), f.host), 'symlink');
-});
-
-it('P8-TP-REPAIR-07 P8-TP-NESTED V3 V4 V5 V16 V29 V30 closed decoder refuses malformed shapes and enums', () => {
-  const f = effectFixture();
-  for (const [kind, field, nested] of [
-    ['post-media', 'attachments', { hidden: 'path' }],
-    ['create-topic', 'attributes', { hidden: 'attribute' }],
-    ['filesystem-mutation', 'fileTargets', { hidden: 'link' }],
-    ['git-mutation', 'expectedHeads', { hidden: 'head' }],
-  ] as const) {
-    const input = payloadInput(kind, f.host), rows = clone(input[field] as Record<string, unknown>[]);
-    rows[0] = { ...rows[0], ...nested };
-    refused(decodeEffectPayload(withIdentity({ ...input, [field]: rows }), f.host), 'undeclared');
+it.each(payloadKinds)('P8-TP-CLOSED-%s P8-TP-R6-MALFORMED-%s refuses removed, null, extra, unknown, and changed-digest input', kind => {
+  const f = setup(kind), input = payloadInput(kind, f.host);
+  for (const key of Object.keys(input)) {
+    const removed = { ...input }; delete removed[key];
+    expect(decodeEffectPayload(removed, f.host).kind).toBe('Refused');
+    expect(decodeEffectPayload({ ...input, [key]: null }, f.host).kind).toBe('Refused');
   }
+  refused(decodeEffectPayload({ ...input, undeclared: true }, f.host), 'undeclared');
+  refused(decodeEffectPayload({ ...input, kind: `unsupported-${kind}` }, f.host), 'unknown');
+  refused(decodeEffectPayload({ ...input, targetDigest: hashBytes('substitution') }, f.host), 'target digest');
 });
 
-it('P8-TP-TARGET target substitution, path traversal, symlink resolution, and ancestry substitution refuse at decode', () => {
-  const f = effectFixture();
-  const text = payloadInput('post-text', f.host);
-  refused(decodeEffectPayload({ ...text, conversation: 'chat:attacker' }, f.host), 'target digest');
-  const config = payloadInput('configuration-change', f.host);
-  refused(decodeEffectPayload(withIdentity({ ...config, canonicalTarget: '/project/../secret' }), f.host), 'ambiguous');
-  const filesystem = payloadInput('filesystem-mutation', f.host);
-  const target = (filesystem.fileTargets as Record<string, unknown>[])[0]!;
-  refused(decodeEffectPayload(withIdentity({ ...filesystem, fileTargets: [{ ...target, resolvedPath: '/private/secret' }] }), f.host), 'symlink');
-  refused(decodeEffectPayload({ ...filesystem, fileTargets: [{ ...target, ancestryDigest: digest('other ancestor') }] }, f.host), 'target digest');
-  const git = payloadInput('git-mutation', f.host);
-  refused(decodeEffectPayload(withIdentity({ ...git, targets: ['../outside'] }), f.host), 'ambiguous');
+it.each(payloadKinds)('P8-TP-R6-ROUTE-CONFLICT-%s refuses a competing current signed route and accepts an unrelated route', kind => {
+  const f = setup(kind), input = payloadInput(kind, f.host);
+  expect(decodeEffectPayload(input, f.host).kind).toBe('Success');
+  f.reference('conversation-route-generation', { id: 'conversation-route:other', account: 'bot:other', conversation: 'chat:other',
+    status: 'current', validFrom: 0, validUntil: 1000 });
+  expect(decodeEffectPayload(input, f.host).kind).toBe('Success');
+  f.reference('conversation-route-generation', { id: 'conversation-route:2', account: 'bot:fixture', conversation: 'chat:fixture',
+    status: 'current', validFrom: 0, validUntil: 1000, supersedes: 'conversation-route:1' });
+  refused(decodeEffectPayload(input, f.host), 'route generation');
 });
 
-it('P8-TP-AUTH payloads cannot self-attest authority and infrastructure notices cannot impersonate an agent', () => {
-  const contract = effectOperationContracts['infrastructure-notice'];
-  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'infrastructure-notice', inputSchema: contract.inputSchema,
-    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['infrastructure-notice']);
-  refused(decodeEffectPayload({ ...payloadInput('process-control', f.host), authority: 'self-attested' }, f.host), 'undeclared');
-  refused(decodeEffectPayload(payloadInput('infrastructure-notice', f.host), f.host), 'impersonate');
-  const systemHost = { ...f.host, principal: f.principal('infrastructure', 'system') };
-  expect(payload('infrastructure-notice', systemHost).kind).toBe('infrastructure-notice');
+it('P8-TP-R6-CAPTURE-BYTES P8-TP-R6-FINDING-2 refuses absent, corrupt, or hash-mismatched declared attachment bytes', () => {
+  const f = setup('post-media'), input = payloadInput('post-media', f.host);
+  const attachment = (input.attachments as { capture: { reference: string; hash: string } }[])[0]!;
+  const current = f.host.current();
+  const withCaptures = (captures: Record<string, string>, status = 'available'): EffectHost => ({ ...f.host,
+    current: () => ({ ...current, decode: { ...current.decode, captures,
+      captureStatuses: { [attachment.capture.reference]: status } } }) });
+  const absent = { ...current.decode.captures }; delete absent[attachment.capture.reference];
+  refused(decodeEffectPayload(input, withCaptures(absent)), 'capture');
+  refused(decodeEffectPayload(input, withCaptures({ ...current.decode.captures,
+    [attachment.capture.reference]: 'changed bytes' })), 'capture');
+  const wrong = identify({ ...input, attachments: [{ ...(input.attachments as object[])[0],
+    capture: { ...attachment.capture, hash: hashBytes('different') } }] });
+  refused(decodeEffectPayload(wrong, f.host), 'capture');
 });
 
-it('P8-TP-DEFINITIONS every variant has one exact schema, canonicalization, and four distinct observation questions', () => {
+it.each(['missing', 'expired'] as const)('P8-TP-R6-TRANSCRIPT-%s P8-TP-R6-FINDING-3 retains historical transcript when submitted bytes are honestly unavailable', status => {
+  const f = setup('derive-transcript'), payload = value(decodeEffectPayload(payloadInput('derive-transcript', f.host), f.host));
+  const fact = value(f.spine.append(payload, referencedPayloadFacts(payload, f.host))).fact;
+  const facts = value(f.store.read()), request = facts.find(row => row.kind === 'judgment-JudgmentRequest')!;
+  const witness = JSON.parse(String((request.body as { witness: string }).witness));
+  const reference = String(witness.record.submitted.reference);
+  const context = { ...f.ctx, facts, captures: { ...f.ctx.captures,
+    [reference]: { ...f.ctx.captures[reference]!, bytes: null, status } } };
+  const decoded = value(decodeHistoricalBody(fact, context, context.decode));
+  expect(decoded.taint).toContain('evidence-unavailable');
+});
+
+it('P8-TP-R6-FETCH-MISSING P8-TP-R6-FINDING-3 retains historical media fetch when intake bytes are honestly missing', () => {
+  const f = setup('fetch-inbound-media'), payload = value(decodeEffectPayload(payloadInput('fetch-inbound-media', f.host), f.host));
+  const fact = value(f.spine.append(payload, referencedPayloadFacts(payload, f.host))).fact;
+  const facts = value(f.store.read()), receipt = facts.find(row => row.kind === 'intake-receipt')!;
+  const witness = JSON.parse(String((receipt.body as { witness: string }).witness));
+  const reference = String(witness.capture.reference);
+  const context = { ...f.ctx, facts, captures: { ...f.ctx.captures,
+    [reference]: { ...f.ctx.captures[reference]!, bytes: null, status: 'missing' as const } } };
+  const decoded = value(decodeHistoricalBody(fact, context, context.decode));
+  expect(decoded.taint).toContain('evidence-unavailable');
+});
+
+it('P8-TP-SIGNED-REPLAY-REFUSAL refuses signed replay when its route dependency is absent', () => {
+  const f = setup('post-text'), payload = value(decodeEffectPayload(payloadInput('post-text', f.host), f.host));
+  const fact = value(f.spine.append(payload, referencedPayloadFacts(payload, f.host))).fact;
+  const facts = value(f.store.read()).filter(row => row.kind !== 'conversation-route-generation');
+  const context = { ...f.ctx, facts };
+  refused(decodeHistoricalBody(fact, context, context.decode));
+});
+
+it('P8-TP-DEFINITIONS exposes exactly ordinary-reply plus the eight slice-A contracts with four independent questions', () => {
   const kinds: readonly EffectPayloadKind[] = ['ordinary-reply', ...payloadKinds];
   expect(Object.keys(effectOperationContracts)).toEqual(kinds);
   for (const kind of kinds) {
@@ -153,100 +110,34 @@ it('P8-TP-DEFINITIONS every variant has one exact schema, canonicalization, and 
   }
 });
 
-it('P8-TP-F12-LEGACY-FIXTURE P8-TP-REPAIR-10 P8-TP-LEGACY V24 V32 ordinary-reply bytes, decoder value, request keys, identity and digest remain unchanged', () => {
+it('P8-TP-LEGACY P8-TP-F12-LEGACY-FIXTURE preserves ordinary-reply bytes and request shape', () => {
   const f = effectFixture(), decoded = value(decodeOutboundMessage(clone(f.message), f.host));
   expect(value(canonical(decoded)).bytes).toBe(value(canonical(f.message)).bytes);
-  const q = f.prepare();
-  expect(Object.keys(q)).toEqual(['type', 'schemaVersion', 'id', 'definition', 'message', 'semanticMessage', 'run',
+  const request = f.prepare();
+  expect(Object.keys(request)).toEqual(['type', 'schemaVersion', 'id', 'definition', 'message', 'semanticMessage', 'run',
     'pending', 'attempt', 'digest', 'verificationOwner', 'verificationBar', 'obligation', 'closure']);
-  expect(q.id).toBe(f.requestId); expect(q.digest).toBe(f.messageDigest);
-  expect(q.payload).toBeUndefined(); expect(q.binding).toBeUndefined();
+  expect(request.id).toBe(f.requestId); expect(request.digest).toBe(f.messageDigest);
 });
 
-it('P8-TP-DIGEST typed payload identity and request digest are stable; changed rendering creates a new immutable request', () => {
-  const f = typedEffectFixture(undefined, 'executor:1', {}, ['post-text']);
-  const definition = effectOperationContracts['post-text'];
-  const typedFixture = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'post-text', inputSchema: definition.inputSchema,
-    canonicalization: definition.canonicalization, observationCapabilities: definition.observations }, ['post-text']);
-  const raw = payloadInput('post-text', typedFixture.host);
-  const first = value(decodeEffectPayload(withIdentity({ ...raw, sourceResult: typedFixture.pending.id }), typedFixture.host));
-  const second = value(decodeEffectPayload(clone(first), typedFixture.host));
-  expect(second.id).toBe(first.id); expect(value(canonical(second)).hash).toBe(value(canonical(first)).hash);
-  const changed = value(decodeEffectPayload(withIdentity({ ...first, text: 'different rendering' }), typedFixture.host));
-  expect(changed.id).not.toBe(first.id);
-  void f;
-});
-
-it('P8-TP-F2-P2-STATUS refuses a signed source whose causal captures are currently unavailable', () => {
-  const contract = effectOperationContracts['post-text'];
-  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'post-text', inputSchema: contract.inputSchema,
-    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['post-text']);
-  const host = f.host, input = payloadInput('post-text', host);
-  const statuses = Object.fromEntries([...Object.keys(host.current().decode.captures), ...Object.keys(f.captures)].map(reference => [reference, 'missing']));
-  const unavailable = { ...host, current: () => ({ ...host.current(), decode: { ...host.current().decode, captures: {}, captureStatuses: statuses } }) };
-  refused(decodeEffectPayload(input, unavailable), 'unavailable');
-});
-
-it('P8-TP-F4-EXTERNAL-REFERENCES refuses absent message, capture, and infrastructure witnesses', () => {
-  for (const [kind, changed] of [
-    ['edit-message', { targetMessage: 'missing:message' }],
-    ['post-media', { attachments: [{ capture: { reference: 'missing:capture', hash: digest('missing') }, mediaType: 'image/png', bytes: 5, filename: 'image.png' }] }],
-    ['infrastructure-notice', { infrastructureProvenance: 'missing:provenance', causalEpisode: 'missing:episode' }],
-  ] as const) {
-    const host = hostFor(kind), input = payloadInput(kind, host);
-    refused(decodeEffectPayload(withIdentity({ ...input, ...changed }), host));
+it('P8-TP-R6-MAIN-MUTATION-HARNESS matches main 6148c28 for every legacy fixture mutation and signed lifecycle byte', () => {
+  const f = effectFixture(), raw = clone(f.message) as unknown as Record<string, unknown>;
+  const decoded: Record<string, unknown> = { valid: decodeOutboundMessage(raw, f.host) };
+  for (const key of Object.keys(raw)) {
+    const missing = { ...raw }; delete missing[key];
+    decoded[`missing:${key}`] = decodeOutboundMessage(missing, f.host);
+    decoded[`renamed:${key}`] = decodeOutboundMessage({ ...missing, [`renamed_${key}`]: raw[key] }, f.host);
+    for (const mutation of [null, 0, false, [], {}, ''])
+      decoded[`mutation:${key}:${JSON.stringify(mutation)}`] = decodeOutboundMessage({ ...raw, [key]: mutation }, f.host);
   }
-}, 15000);
-
-it('P8-TP-F5-PROTECTED-REFUSAL refuses an applicable signed deny despite matching target state', () => {
-  const contract = effectOperationContracts['filesystem-mutation'];
-  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'filesystem-mutation', inputSchema: contract.inputSchema,
-    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['filesystem-mutation']);
-  const input = payloadInput('filesystem-mutation', f.host), policy = 'policy:deny';
-  f.reference('filesystem-target-state', { id: policy, policy, targets: input.fileTargets, status: 'current', validFrom: 0, validUntil: 1000 });
-  f.reference('protected-target-policy', { id: policy, decision: 'refused', targets: ['/project/state.json'], status: 'current', validFrom: 0, validUntil: 1000 });
-  refused(decodeEffectPayload(withIdentity({ ...input, protectedTargetPolicy: policy }), f.host), 'refuses');
-});
-
-it('P8-TP-F6-GIT-DESCENDANT refuses a symlink target escaping an otherwise canonical repository', () => {
-  const contract = effectOperationContracts['git-mutation'];
-  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'git-mutation', inputSchema: contract.inputSchema,
-    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['git-mutation']);
-  const repository = join(f.directory, 'repo'), outside = join(f.directory, 'outside'); mkdirSync(repository); mkdirSync(outside);
-  symlinkSync(outside, join(repository, 'escape'));
-  const input = payloadInput('git-mutation', f.host), base = 'sha:symlink-base', targets = ['escape/file.ts'];
-  const safeBase = 'sha:safe-base', safeTargets = ['safe.ts'];
-  f.reference('git-target-state', { id: safeBase, repository: realpathSync(repository), worktree: realpathSync(repository),
-    ref: input.ref, base: safeBase, targets: safeTargets, expectedHeads: input.expectedHeads, rollbackConstraints: input.rollbackConstraints,
-    status: 'current', validFrom: 0, validUntil: 1000 });
-  expect(value(decodeEffectPayload(withIdentity({ ...input, repository: realpathSync(repository), worktree: realpathSync(repository),
-    base: safeBase, targets: safeTargets }), f.host)).kind).toBe('git-mutation');
-  f.reference('git-target-state', { id: base, repository: realpathSync(repository), worktree: realpathSync(repository),
-    ref: input.ref, base, targets, expectedHeads: input.expectedHeads, rollbackConstraints: input.rollbackConstraints,
-    status: 'current', validFrom: 0, validUntil: 1000 });
-  refused(decodeEffectPayload(withIdentity({ ...input, repository: realpathSync(repository), worktree: realpathSync(repository), base, targets }), f.host), 'escapes');
-});
-
-it('P8-TP-F7-MOVE-CARDINALITY refuses a move with no exact destination while retaining one-target replace', () => {
-  const host = hostFor('filesystem-mutation'), input = payloadInput('filesystem-mutation', host);
-  expect(value(decodeEffectPayload(input, host)).kind).toBe('filesystem-mutation');
-  refused(decodeEffectPayload(withIdentity({ ...input, action: 'move' }), host), 'destination');
-});
-
-it('P8-TP-F8-HISTORICAL-CLOCK preserves an immutable scheduler payload after its live review deadline', () => {
-  const contract = effectOperationContracts['scheduler-control'];
-  const f = typedEffectFixture(undefined, 'executor:1', { payloadKind: 'scheduler-control', inputSchema: contract.inputSchema,
-    canonicalization: contract.canonicalization, observationCapabilities: contract.observations }, ['scheduler-control']);
-  const payload = value(decodeEffectPayload(payloadInput('scheduler-control', f.host), f.host));
-  const fact = value(f.spine.append(payload, referencedPayloadFacts(payload, f.host))).fact, facts = value(f.store.read());
-  f.time(201); refused(decodeEffectPayload(payload, f.host), 'review');
-  expect(decodeHistoricalBody(JSON.parse(JSON.stringify(fact)), { ...f.ctx, facts: JSON.parse(JSON.stringify(facts)) }, f.ctx.decode).kind).toBe('Success');
-});
-
-it('P8-TP-F10-OPTIONAL-UNCERTAINTY keeps an optional uncertain child ahead of required-child satisfaction', () => {
-  const children = [{ request: 'a', required: true }, { request: 'b', required: false }] as unknown as Parameters<typeof aggregateState>[0];
-  const satisfied = { request: 'a', settlement: 'settlement:a', assessment: 'assessment:a', disposition: 'satisfied' as const, applied: true };
-  const optional = { request: 'b', settlement: 'settlement:b', assessment: 'assessment:b', disposition: 'uncertain' as const, applied: false };
-  expect(aggregateState(children, [satisfied, { ...optional, disposition: 'refused' }])).toBe('satisfied');
-  expect(aggregateState(children, [satisfied, optional])).toBe('uncertain');
+  decoded.extra = decodeOutboundMessage({ ...raw, extra: 'x' }, f.host);
+  const q = f.prepare(), observed = value(f.api.dispatch(q, f.fence));
+  f.assess('happened', 3, true);
+  const settled = value(f.api.settle(observed.operation));
+  const facts = value(f.store.read()), rows = value(f.api.inspect());
+  const historicalRecords = rows.map(row => decodeHistoricalBody(row.fact, { ...f.ctx, facts }, f.ctx.decode));
+  const bytes = value(canonical({ decoded, q, observed, settled,
+    records: rows.map(row => row.record), historicalRecords })).bytes;
+  // Generated by the byte-identical main 6148c28 fixture used by the independent
+  // preservation harness. Any legacy decoder, request, operation, or replay drift fails.
+  expect(hashBytes(bytes)).toBe('sha256:42094803335a7081554dd43b65437864f850c5cc15ab7c688948dbb93b405e00');
 });

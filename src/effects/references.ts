@@ -7,7 +7,6 @@ import { encoded, ensure, freeze, take } from './boundary.js';
 type EffectReferenceHost = Readonly<{
   current(): { readonly clock: Clock; readonly decode?: DecodeContext & { readonly captureStatuses?: Readonly<Record<string, string>> } };
   referenceFacts?(): Result<readonly FactEnvelope[]>;
-  resolvePath?(path: string): Result<string>;
   historical?: boolean;
   historicalCaptures?: Readonly<Record<string, CapturedContent>>;
 }>;
@@ -26,17 +25,22 @@ const record = (fact: FactEnvelope): Readonly<Record<string, unknown>> => {
   const value = body(fact); return value.record === undefined ? value : object(value.record, 'reference owner record missing');
 };
 const same = (left: unknown, right: unknown): boolean => encoded(left).bytes === encoded(right).bytes;
-const stringsIn = (value: unknown, into: Set<string>): void => {
-  if (typeof value === 'string') { into.add(value); return; }
-  if (Array.isArray(value)) { value.forEach(item => stringsIn(item, into)); return; }
-  if (value && typeof value === 'object') Object.values(value as Record<string, unknown>).forEach(item => stringsIn(item, into));
+const captureReferences = (value: unknown, into: Map<string, string>): void => {
+  if (Array.isArray(value)) { value.forEach(item => captureReferences(item, into)); return; }
+  if (!value || typeof value !== 'object') return;
+  const candidate = value as Readonly<Record<string, unknown>>;
+  if (typeof candidate.reference === 'string' && typeof candidate.hash === 'string') {
+    const prior = into.get(candidate.reference);
+    ensure(prior === undefined || prior === candidate.hash, 'capture reference names conflicting hashes');
+    into.set(candidate.reference, candidate.hash);
+  }
+  Object.values(candidate).forEach(item => captureReferences(item, into));
 };
 const usable = (fact: FactEnvelope, facts: readonly FactEnvelope[], host: EffectReferenceHost | undefined, detail: string): void => {
-  const statuses = host?.current().decode?.captureStatuses;
   const byId = new Map(facts.map(candidate => [candidate.id, candidate]));
-  const references = new Set<string>(), visited = new Set<string>(), visit = (candidate: FactEnvelope): void => {
+  const captures = new Map<string, string>(), visited = new Set<string>(), visit = (candidate: FactEnvelope): void => {
     if (visited.has(candidate.id)) return;
-    visited.add(candidate.id); stringsIn(candidate, references); stringsIn(body(candidate), references);
+    visited.add(candidate.id); captureReferences(body(candidate), captures);
     candidate.predecessors.required.forEach(id => {
       const dependency = byId.get(id);
       ensure(dependency, `${detail}: required dependency ${id} is absent`);
@@ -44,8 +48,7 @@ const usable = (fact: FactEnvelope, facts: readonly FactEnvelope[], host: Effect
     });
   };
   visit(fact);
-  if (statuses && !host?.historical)
-    ensure([...references].every(reference => statuses[reference] === undefined || statuses[reference] === 'available'), detail);
+  for (const [reference, digest] of captures) capture(facts, reference, digest, host, detail);
 };
 const capture = (_facts: readonly FactEnvelope[], reference: string, hash: string, host: EffectReferenceHost | undefined,
   detail: string): undefined => {
@@ -121,6 +124,20 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
   usable(source, facts, host, 'typed source result dependency is unavailable');
   resolved.push(source);
 
+  const routeConversation = payload.kind === 'create-topic' ? payload.parentConversation : payload.conversation;
+  const route = exact(facts, payload.routeGeneration, 'conversation-route-generation',
+    'conversation route generation missing or wrong kind');
+  const routeValue = body(route); current(route, clock, 'conversation route generation stale');
+  ensure(routeValue.id === payload.routeGeneration && routeValue.account === payload.account
+    && routeValue.conversation === routeConversation, 'conversation route generation subject mismatch');
+  const applicableRoutes = facts.filter(candidate => candidate.kind === 'conversation-route-generation'
+    && body(candidate).account === payload.account && body(candidate).conversation === routeConversation
+    && body(candidate).status === 'current' && Number(body(candidate).validFrom) <= clock.value
+    && Number(body(candidate).validUntil) >= clock.value);
+  ensure(applicableRoutes.length === 1 && applicableRoutes[0]!.id === route.id,
+    'conversation route generation is superseded or conflicted');
+  resolved.push(route);
+
   if (payload.kind === 'post-media') {
     for (const item of payload.attachments) {
       const bytes = host?.current().decode?.captures[item.capture.reference];
@@ -159,11 +176,15 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
       ensure(value.adapter === payload.account && ingress.channel === payload.conversation, 'media receipt subject mismatch');
     } else ensure(false, 'media receipt must use the Part Four receipt contract');
     const captured = object(value.capture, 'media receipt capture missing');
-    ensure(captured.hash === value.rawHash, 'media receipt capture/hash mismatch');
-    const bytes = host?.current().decode?.captures[String(captured.reference)];
-    capture(facts, String(captured.reference), String(captured.hash), host, 'media receipt capture unavailable or changed');
-    const incoming = object(JSON.parse(String(bytes)), 'media receipt captured input malformed');
-    ensure(incoming.platformFile === payload.platformFile, 'media receipt file subject mismatch'); resolved.push(fact);
+    ensure(captured.hash === value.rawHash && same(captured, payload.intakeCapture), 'media receipt capture/hash mismatch');
+    const bytes = host?.current().decode?.captures[payload.intakeCapture.reference];
+    capture(facts, payload.intakeCapture.reference, payload.intakeCapture.hash, host, 'media receipt capture unavailable or changed');
+    if (!host?.historical || bytes !== undefined) {
+      ensure(typeof bytes === 'string', 'media receipt capture unavailable or changed');
+      const incoming = object(JSON.parse(bytes), 'media receipt captured input malformed');
+      ensure(incoming.platformFile === payload.platformFile, 'media receipt file subject mismatch');
+    }
+    resolved.push(fact);
   } else if (payload.kind === 'derive-transcript') {
     const attempt = exact(facts, payload.providerOperation, 'judgment-JudgmentAttemptRecord', 'transcript provider attempt missing or wrong kind');
     const value = record(attempt);
@@ -175,12 +196,18 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
       && (same(requestValue.question, payload.sourceCapture) || same(requestValue.context, payload.sourceCapture)),
     'transcript provider attempt subject mismatch');
     const submitted = object(requestValue.submitted, 'transcript submitted capture missing');
-    const submittedBytes = host?.current().decode?.captures[String(submitted.reference)];
-    ensure(typeof submittedBytes === 'string' && hashBytes(submittedBytes) === submitted.hash, 'transcript submitted capture unavailable or changed');
-    const wire = object(JSON.parse(submittedBytes), 'transcript submitted request malformed');
-    ensure(wire.model === payload.model, 'transcript provider attempt subject mismatch');
+    ensure(same(submitted, payload.submittedCapture), 'transcript submitted capture subject mismatch');
+    const submittedBytes = host?.current().decode?.captures[payload.submittedCapture.reference];
+    capture(facts, payload.submittedCapture.reference, payload.submittedCapture.hash, host,
+      'transcript submitted capture unavailable or changed');
+    if (!host?.historical || submittedBytes !== undefined) {
+      ensure(typeof submittedBytes === 'string', 'transcript submitted capture unavailable or changed');
+      const wire = object(JSON.parse(submittedBytes), 'transcript submitted request malformed');
+      ensure(wire.model === payload.model, 'transcript provider attempt subject mismatch');
+    }
     const receipt = object(value.receipt, 'transcript response receipt missing');
-    capture(facts, String(receipt.reference), String(receipt.hash), host, 'transcript response receipt unavailable or changed');
+    ensure(same(receipt, payload.responseCapture), 'transcript response receipt subject mismatch');
+    capture(facts, payload.responseCapture.reference, payload.responseCapture.hash, host, 'transcript response receipt unavailable or changed');
     resolved.push(attempt, request);
     const intake = exact(facts, payload.originatingIntake, 'intake-admitted', 'transcript originating intake missing or wrong kind');
     const linked = intakeRoute(intake, facts, 'transcript intake lineage subject mismatch');
@@ -194,115 +221,6 @@ export function resolveEffectPayloadReferences(payload: TypedEffectPayload, fact
       const candidate = item.step === undefined ? item : object(item.step, 'destination step witness malformed');
       return (item.run === payload.run || candidate.run === payload.run) && candidate.id === payload.destinationStep;
     }, 'transcript destination step missing or belongs to another run'));
-  } else if (payload.kind === 'process-control') {
-    for (const [id, kind, relation] of [[payload.processIncarnation, 'process-incarnation', 'incarnation'],
-      [payload.parentIdentity, 'process-parent', 'parent'], [payload.startIdentity, 'process-start', 'start']] as const) {
-      const fact = exact(facts, id, kind, `process ${relation} witness missing or wrong kind`), value = body(fact);
-      current(fact, clock, `process ${relation} witness stale`);
-      ensure(value.machine === payload.machine && value.processId === payload.processId && value.processIncarnation === payload.processIncarnation
-        && value.parentIdentity === payload.parentIdentity && value.startIdentity === payload.startIdentity
-        && value.executable === payload.executable && same(value.arguments, payload.arguments), `process ${relation} witness subject mismatch`);
-      resolved.push(fact);
-    }
-  } else if (payload.kind === 'scheduler-control') {
-    const fact = exact(facts, payload.jobGeneration, 'scheduler-job-generation', 'scheduler generation missing or wrong kind'), value = body(fact);
-    current(fact, clock, 'scheduler generation stale');
-    ensure(value.jobId === payload.jobId && value.generation === payload.jobGeneration && value.finiteScope === payload.finiteScope
-      && value.undoOperation === payload.undoOperation && value.reviewAt === payload.reviewAt, 'scheduler generation subject mismatch');
-    const owning = facts.filter(candidate => candidate.kind === 'scheduler-job-generation'
-      && body(candidate).jobId === payload.jobId && body(candidate).status === 'current'
-      && Number(body(candidate).validFrom) <= clock.value && Number(body(candidate).validUntil) >= clock.value);
-    ensure(owning.length === 1 && owning[0]!.id === fact.id, 'scheduler generation is superseded or conflicted');
-    resolved.push(fact);
-  } else if (payload.kind === 'account-route-change') {
-    const fact = exact(facts, payload.sourceGeneration, 'account-route-generation', 'route generation missing or wrong kind'), value = body(fact);
-    current(fact, clock, 'route generation stale');
-    ensure(value.run === payload.routeRun && value.provider === payload.provider && value.fromAccount === payload.fromAccount
-      && value.toAccount === payload.toAccount && value.generation === payload.sourceGeneration
-      && value.rollbackRoute === payload.rollbackRoute, 'route generation/account subject mismatch');
-    const applicable = facts.filter(candidate => candidate.kind === 'account-route-generation'
-      && body(candidate).run === payload.routeRun && body(candidate).provider === payload.provider
-      && body(candidate).status === 'current' && Number(body(candidate).validFrom) <= clock.value
-      && Number(body(candidate).validUntil) >= clock.value);
-    ensure(applicable.length === 1 && applicable[0]!.id === fact.id,
-      'route generation is superseded or conflicted');
-    for (const account of [payload.fromAccount, payload.toAccount]) {
-      const registration = exact(facts, account, 'registered-account', 'route account registration missing or wrong kind');
-      const registered = body(registration); current(registration, clock, 'route account registration stale');
-      ensure(registered.id === account && registered.account === account && registered.provider === payload.provider
-        && registered.run === payload.routeRun, 'route account registration subject mismatch');
-      resolved.push(registration);
-    }
-    const rollback = exact(facts, payload.rollbackRoute, 'rollback-route', 'rollback route missing or wrong kind');
-    const rollbackValue = body(rollback); current(rollback, clock, 'rollback route stale');
-    ensure(rollbackValue.id === payload.rollbackRoute && rollbackValue.run === payload.routeRun
-      && rollbackValue.provider === payload.provider && rollbackValue.fromAccount === payload.toAccount
-      && rollbackValue.toAccount === payload.fromAccount && rollbackValue.generation === payload.sourceGeneration,
-    'rollback route subject mismatch');
-    resolved.push(fact, rollback);
-  } else if (payload.kind === 'configuration-change') {
-    const fact = exact(facts, payload.undoReference, 'configuration-target-state', 'configuration target/undo witness missing or wrong kind'), value = body(fact);
-    current(fact, clock, 'configuration target witness stale');
-    ensure(value.canonicalTarget === payload.canonicalTarget && value.priorDigest === payload.expectedPriorDigest
-      && value.undoReference === payload.undoReference, 'configuration target/prior state mismatch'); resolved.push(fact);
-    if (!host?.historical) ensure(host?.resolvePath && take(host.resolvePath(payload.canonicalTarget)) === payload.canonicalTarget,
-      'configuration target does not resolve to its canonical path');
-  } else if (payload.kind === 'filesystem-mutation') {
-    const fact = exact(facts, payload.protectedTargetPolicy, 'filesystem-target-state', 'protected-target policy/target witness missing or wrong kind'), value = body(fact);
-    current(fact, clock, 'filesystem target witness stale');
-    ensure(value.policy === payload.protectedTargetPolicy && same(value.targets, payload.fileTargets), 'filesystem ancestry/prior/policy subject mismatch');
-    const policy = exact(facts, payload.protectedTargetPolicy, 'protected-target-policy', 'protected-target policy decision missing or wrong kind');
-    const policyValue = body(policy); current(policy, clock, 'protected-target policy decision stale');
-    const policyTargets = policyValue.targets;
-    ensure(policyValue.decision === 'allowed' && Array.isArray(policyTargets)
-      && payload.fileTargets.every(target => policyTargets.includes(target.canonicalPath)),
-    'protected-target policy refuses, is incomplete, or has an unrecognized decision');
-    for (const target of payload.fileTargets) {
-      const applicable = facts.filter(candidate => candidate.kind === 'protected-target-policy'
-        && body(candidate).status === 'current' && Number(body(candidate).validFrom) <= clock.value
-        && Number(body(candidate).validUntil) >= clock.value && Array.isArray(body(candidate).targets)
-        && (body(candidate).targets as readonly unknown[]).includes(target.canonicalPath));
-      ensure(applicable.length === 1 && applicable[0]!.id === policy.id,
-        'protected-target policy is superseded, denied, or conflicted');
-    }
-    if (!host?.historical) {
-      ensure(host?.resolvePath, 'filesystem canonical path resolver unavailable');
-      for (const target of payload.fileTargets) ensure(take(host.resolvePath(target.canonicalPath)) === target.resolvedPath
-        && target.resolvedPath === target.canonicalPath, 'filesystem target crosses a symlink or differs from canonical path');
-    }
-    resolved.push(fact, policy);
-  } else if (payload.kind === 'git-mutation') {
-    const fact = exact(facts, payload.base, 'git-target-state', 'git repository/base witness missing or wrong kind'), value = body(fact);
-    current(fact, clock, 'git target witness stale');
-    ensure(value.repository === payload.repository && value.worktree === payload.worktree && value.ref === payload.ref
-      && value.base === payload.base && same(value.targets, payload.targets) && same(value.expectedHeads, payload.expectedHeads)
-      && same(value.rollbackConstraints, payload.rollbackConstraints), 'git repository/base/head/rollback subject mismatch');
-    if (!host?.historical) {
-      ensure(host?.resolvePath && take(host.resolvePath(payload.repository)) === payload.repository
-        && take(host.resolvePath(payload.worktree)) === payload.worktree, 'git repository/worktree is not canonical');
-      const root = payload.worktree.endsWith('/') ? payload.worktree.slice(0, -1) : payload.worktree;
-      for (const target of payload.targets) {
-        const actual = take(host.resolvePath(`${root}/${target}`));
-        ensure(actual === root || actual.startsWith(`${root}/`), 'git target crosses a symlink or escapes its canonical worktree');
-      }
-    }
-    resolved.push(fact);
-  } else if (payload.kind === 'infrastructure-notice') {
-    const provenance = exact(facts, payload.infrastructureProvenance, 'infrastructure-provenance',
-      'infrastructure provenance missing or wrong kind');
-    const provenanceValue = body(provenance);
-    current(provenance, clock, 'infrastructure provenance stale');
-    ensure(provenanceValue.id === payload.infrastructureProvenance
-      && provenanceValue.episode === payload.causalEpisode, 'infrastructure provenance subject mismatch');
-    const episode = exact(facts, payload.causalEpisode, 'infrastructure-episode', 'infrastructure episode missing or wrong kind');
-    const episodeValue = body(episode);
-    current(episode, clock, 'infrastructure episode stale');
-    ensure(episodeValue.id === payload.causalEpisode
-      && (episodeValue.provenance === payload.infrastructureProvenance || episodeValue.provenance === undefined),
-    'infrastructure episode subject mismatch');
-    usable(provenance, facts, host, 'infrastructure provenance unavailable');
-    usable(episode, facts, host, 'infrastructure episode unavailable');
-    resolved.push(provenance, episode);
   }
   for (const fact of resolved) usable(fact, facts, host, `${fact.kind} reference dependency is unavailable`);
   return freeze([...new Set(resolved.map(fact => fact.id))]);

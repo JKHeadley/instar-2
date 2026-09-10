@@ -1,14 +1,10 @@
-import type { BoundaryContext, Clock, DecodeContext, Outcome, OwnedReference, Refused, Result, RunReference, Scope, VerifiedPrincipal } from '../index.js';
+import type { BoundaryContext, Clock, DecodeContext, Outcome, OwnedReference, Result, RunReference, Scope, VerifiedPrincipal } from '../index.js';
 import type { AppendReceipt, DurabilityState, FactContext, FactEnvelope, FactStorePort, GovernedVersion } from '../facts/index.js';
 import type { AdmissionReservation, DispatchClaim, FenceToken, TransportAuthority } from '../transport/index.js';
-import type { ConversationEffectKind, EffectPayloadKind, ObservationCapabilities, RecoveryEffectKind, TypedEffectPayload } from './payloads.js';
-import type { AggregateEvidenceStage, OrderedEffectAggregate } from './aggregate.js';
-export type { EffectPurpose, ConversationEffectKind, RecoveryEffectKind, EffectPayloadKind, ObservationCapabilities,
+import type { ConversationEffectKind, EffectPayloadKind, ObservationCapabilities, TypedEffectPayload } from './payloads.js';
+export type { EffectPurpose, ConversationEffectKind, EffectPayloadKind, ObservationCapabilities,
   PostTextPayload, PostMediaPayload, EditMessagePayload, ReactPayload, CreateTopicPayload, AcknowledgePayload,
-  FetchInboundMediaPayload, DeriveTranscriptPayload, ProcessControlPayload, SchedulerControlPayload,
-  AccountRouteChangePayload, ConfigurationChangePayload, FilesystemMutationPayload, GitMutationPayload,
-  InfrastructureNoticePayload, TypedEffectPayload } from './payloads.js';
-export type { AggregateEvidenceStage, AggregateChildDisposition, OrderedEffectAggregate } from './aggregate.js';
+  FetchInboundMediaPayload, DeriveTranscriptPayload, TypedEffectPayload } from './payloads.js';
 
 declare const owned: unique symbol;
 interface Owned { readonly [owned]: 'part-eight' }
@@ -63,10 +59,9 @@ export interface EffectValidation extends RecordIdentity {
 export interface OperationObservation extends RecordIdentity {
   readonly type: 'OperationObservation'; readonly request: string; readonly operation: string;
   readonly claim: string; readonly digest: string; readonly account: string; readonly conversation: string;
-  readonly stage: 'executor-accepted' | 'response' | 'refused' | 'unknown' | 'observer-accepted' | 'lookup';
+  readonly stage: 'executor-accepted' | 'response' | 'unknown' | 'observer-accepted' | 'lookup';
   readonly wake: string; readonly capture: { readonly reference: string; readonly hash: string };
   readonly attestation: 'local-recorder';
-  readonly refusal?: Readonly<Pick<Refused, 'reason' | 'detail' | 'site' | 'failDirection' | 'preserved'>>;
 }
 export interface EffectSettlement extends RecordIdentity {
   readonly type: 'EffectSettlement'; readonly request: string; readonly operation: string;
@@ -74,16 +69,10 @@ export interface EffectSettlement extends RecordIdentity {
   readonly acceptance: string; readonly observations: readonly string[]; readonly outcome: Outcome;
   readonly finalCharge: number | null; readonly delayedExecutionExcluded: boolean;
   readonly retainedExposure: number; readonly retryEligible: false;
-  readonly refusal?: Readonly<Pick<Refused, 'reason' | 'detail' | 'site' | 'failDirection' | 'preserved'>>;
-  readonly retryClosure?: Readonly<{ didNotHappen: boolean; quiescent: boolean; chargeSettled: boolean }>;
-}
-export interface EffectRefusal extends RecordIdentity {
-  readonly type: 'EffectRefusal'; readonly request: string; readonly digest: string; readonly sourceResult: string;
-  readonly refusal: Readonly<Pick<Refused, 'reason' | 'detail' | 'site' | 'failDirection' | 'preserved'>>;
 }
 
 export type EffectRecord = OperationDefinition | OutboundMessage | TypedEffectPayload | EffectRequest | EffectValidation |
-  OperationObservation | EffectSettlement | EffectRefusal | OrderedEffectAggregate;
+  OperationObservation | EffectSettlement;
 
 export interface EffectHost {
   readonly machine: string; readonly incarnation: string; readonly principal: VerifiedPrincipal;
@@ -106,7 +95,7 @@ export interface OperationAdapterPort {
     readonly maxCharge: number; readonly timeout: number; readonly hiddenRetries: 0 }>;
   invoke(input: { readonly operation: string; readonly claim: string; readonly digest: string; readonly message: OutboundMessage }): Result<string>;
   // Landed adapters omit these methods. Absence is unsupported before claim.
-  describePayload?(): Readonly<{ readonly kinds: readonly (ConversationEffectKind | RecoveryEffectKind)[];
+  describePayload?(): Readonly<{ readonly kinds: readonly ConversationEffectKind[];
     readonly schemas: readonly string[]; readonly canonicalization: 'instar-canonical-json-v1';
     readonly observations: Readonly<Record<string, ObservationCapabilities>> }>;
   invokePayload?(input: { readonly operation: string; readonly claim: string; readonly digest: string; readonly payload: TypedEffectPayload }): Result<string>;
@@ -142,14 +131,6 @@ export interface EffectDoorway {
   handoff(request: EffectRequest, reservation: AdmissionReservation, claim: DispatchClaim, fence: FenceToken): Result<OperationObservation>;
   observe(operation: string): Result<OwnedReference<'part-eight', 'OperationObservation'>>;
   settle(operation: string): Result<EffectSettlement>;
-  recordRefusal(request: EffectRequest, refusal: Refused): Result<EffectRefusal>;
-  createAggregate(input: { readonly semanticMessage: string; readonly run: RunReference;
-    readonly children: readonly Readonly<{ request: EffectRequest; demandedStage: AggregateEvidenceStage;
-      inhibitLater: boolean; required: boolean }>[]; readonly reconciliationOwner: string }): Result<OrderedEffectAggregate>;
-  updateAggregate(input: { readonly aggregate: string; readonly request: string;
-    readonly settlement?: EffectSettlement; readonly refusal?: Refused; readonly refusalFact?: string;
-    readonly fence?: FenceToken }): Result<OrderedEffectAggregate>;
-  nextAggregateChild(aggregate: string): Result<EffectRequest | null>;
   inspect(): Result<readonly { readonly fact: FactEnvelope; readonly record: EffectRecord }[]>;
 }
 export interface EffectComposition {

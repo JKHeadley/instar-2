@@ -30,28 +30,17 @@ export const effectDispositions = Array.from({ length: 49 }, (_, i) => {
     reason: excluded[number] ?? gaps[number] ?? 'Named executable slice assertions only; not full-design or production conformance.' };
 });
 const payloadKinds = ['post-text', 'post-media', 'edit-message', 'react', 'create-topic', 'acknowledge',
-  'fetch-inbound-media', 'derive-transcript', 'process-control', 'scheduler-control', 'account-route-change',
-  'configuration-change', 'filesystem-mutation', 'git-mutation', 'infrastructure-notice'];
+  'fetch-inbound-media', 'derive-transcript'];
 export const effectPayloadFixtures = [
-  ...payloadKinds.flatMap(kind => [`P8-TP-DECODER-${kind}`, `P8-TP-CLOSED-${kind}`]),
-  'P8-TP-NESTED', 'P8-TP-TARGET', 'P8-TP-AUTH', 'P8-TP-DEFINITIONS', 'P8-TP-LEGACY', 'P8-TP-DIGEST',
-  'P8-TP-PORTS', 'P8-TP-UNSUPPORTED', 'P8-TP-REFUSAL', 'P8-TP-EVIDENCE', 'P8-TP-THREE-CLOSURE', 'P8-TP-RECOVERY',
-  'P8-TP-AGGREGATE-RESTART', 'P8-TP-AGGREGATE-SIGKILL', 'P8-TP-AGGREGATE-PARTIAL', 'P8-TP-ACK',
-  'P8-TP-REFS-MISSING-WRONG-KIND', 'P8-TP-TARGET-WITNESS', 'P8-TP-RECOVERY-REFERENCE-MATRIX',
-  'P8-TP-AGGREGATE-CURRENT-ALL', 'P8-TP-AGGREGATE-OPEN-CLOSURES', 'P8-TP-BOUND-REFUSAL',
-  'P8-TP-RENDERING-REQUEST', 'P8-TP-LEGACY-ASSESSMENT', 'P8-TP-AGGREGATE-INFLIGHT-REBUILD',
-  'P8-TP-RETURNED-MEDIA-LINEAGE', 'P8-TP-RETURNED-TRANSCRIPT-LINEAGE',
-  'P8-TP-SIGNED-REPLAY-REFUSAL',
-  'P8-TP-R4-V20', 'P8-TP-R4-V09-V10', 'P8-TP-R4-V11', 'P8-TP-R4-V26',
-  'P8-TP-R4-V15', 'P8-TP-R4-V16', 'P8-TP-R4-V24', 'P8-TP-R4-V25',
-  'P8-TP-R4-TYPED-SIGKILL-request', 'P8-TP-R4-TYPED-SIGKILL-aggregate', 'P8-TP-R4-TYPED-SIGKILL-applied',
-  ...Array.from({ length: 26 }, (_, index) => `P8-TP-R5-V${String(index + 1).padStart(2, '0')}`),
-  'P8-TP-R5-SIGKILL-request', 'P8-TP-R5-SIGKILL-aggregate', 'P8-TP-R5-SIGKILL-applied',
-  ...Array.from({ length: 11 }, (_, index) => `P8-TP-REPAIR-${String(index + 1).padStart(2, '0')}`),
-  ...Array.from({ length: 13 }, (_, index) => `P8-TP-F${index + 1}-${[
-    'ASSESSMENT-REPLAY', 'P2-STATUS', 'REAL-P', 'EXTERNAL-REFERENCES', 'PROTECTED-REFUSAL', 'GIT-DESCENDANT',
-    'MOVE-CARDINALITY', 'HISTORICAL-CLOCK', 'AGGREGATE-READ', 'OPTIONAL-UNCERTAINTY', 'CLOSE-APPEND-CUT',
-    'LEGACY-FIXTURE', 'DEFINITION-PAYLOAD'][index]}`),
+  ...payloadKinds.flatMap(kind => [`P8-TP-DECODER-${kind}`, `P8-TP-CLOSED-${kind}`,
+    `P8-TP-R6-ROUTE-CONFLICT-${kind}`,
+    `P8-TP-PORTS-${kind}`, `P8-TP-R6-LIFECYCLE-${kind}`]),
+  'P8-TP-R6-CAPTURE-BYTES', 'P8-TP-R6-FINDING-2', 'P8-TP-R6-TRANSCRIPT-missing',
+  'P8-TP-R6-TRANSCRIPT-expired', 'P8-TP-R6-FETCH-MISSING', 'P8-TP-R6-FINDING-3',
+  'P8-TP-SIGNED-REPLAY-REFUSAL', 'P8-TP-DEFINITIONS', 'P8-TP-LEGACY',
+  'P8-TP-F12-LEGACY-FIXTURE', 'P8-TP-R6-MAIN-MUTATION-HARNESS', 'P8-TP-UNSUPPORTED', 'P8-TP-R6-DISPATCH-ROUTE',
+  'P8-TP-R6-DURABLE-CUT-EffectPayload', 'P8-TP-R6-DURABLE-CUT-EffectRequest',
+  'P8-TP-R6-DURABLE-CUT-EffectValidation',
 ];
 export function checkEffectCoverage(report, dispositions = effectDispositions) {
   if (!report.success) throw new Error('effect coverage requires a successful actual test run');

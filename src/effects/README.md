@@ -5,10 +5,9 @@ reference slice**, not live provider activation or independent convergence. The
 approved design is `docs/12-the-effect-doorway.md`.
 
 The stored owner records are OperationDefinition, the byte-preserved legacy
-OutboundMessage, the closed EffectPayload union, EffectRequest,
-EffectValidation, OperationObservation, EffectSettlement and
-OrderedEffectAggregate. OperationAdapterPort is an owned interface, not a stored
-fact. P1 owns
+OutboundMessage, the closed conversation EffectPayload union, EffectRequest,
+EffectValidation, OperationObservation and EffectSettlement.
+OperationAdapterPort is an owned interface, not a stored fact. P1 owns
 Result, Outcome, principals, scope, approval and evidence; P2 owns signatures,
 fact admission, version chains, status/taint and durability receipts; P6 owns
 reservation, one-use claim, exposure and bounded observation wakes.
@@ -30,7 +29,7 @@ reservation, one-use claim, exposure and bounded observation wakes.
    the immutable request and reservation validation before calling P6 reserve.
    Immutable semantic identity cannot change through a new transport attempt/key.
    That legacy schema, request key and digest are unchanged. `decodeEffectPayload`
-   adds eight conversation operations and seven recovery operations as an exact,
+   adds eight conversation operations as an exact,
    versioned discriminated union. Each binds an immutable target digest and a
    versioned definition contract with independent occurrence, non-occurrence,
    quiescence and charge capabilities. Existing adapters omit the typed capability
@@ -53,13 +52,7 @@ reservation, one-use claim, exposure and bounded observation wakes.
    settlement returns the existing fact. Uncertain knowledge can be refined;
    contradictory final knowledge/charge refuses rather than overwriting history.
    Unknown occurrence/charge retains maximum exposure. This slice enables no retry.
-7. `OrderedEffectAggregate` records the complete ordered expansion before child
-   execution, immutable child digests, demanded evidence stages, inhibition rules,
-   settlements and visible evidence/charge/recovery obligations. An uncertain or
-   partially applied child cannot be replayed and inhibits later children when
-   order matters. Decorative acknowledgments are necessarily optional and their
-   failure cannot terminalize inbound work.
-8. `consumeEffectSettlement` accepts only a genuine owner-issued result, reruns
+7. `consumeEffectSettlement` accepts only a genuine owner-issued result, reruns
    evidence/durability checks, and rejects copied JSON/history. Assessment inputs
    and P1 evidence freshness are rechecked after each durability wait, including
    the final wait immediately before issuance or consequential consumption.
@@ -99,9 +92,7 @@ Tests exercise unit boundaries, full-port integration and emitted-code fresh
 processes. The E2E fixture is SIGKILLed before send, after send/before observation,
 and after recording. Reopened origin/peer histories preserve exactly 0/1/1 fixture
 applications, one read-only query, unchanged liability, and refusal of new claims
-and fresh semantic keys. Aggregate cuts SIGKILL a process after aggregate record,
-claim/observation, and settlement, then reconstruct the aggregate from replicated
-facts without replay. These are actual process/storage tests, not live service
+and fresh semantic keys. These are actual process/storage tests, not live service
 or full five/seven/nine/ten assembly evidence.
 
 `scripts/check-effect-contracts.mjs` maps all 49 design IDs to actual partial

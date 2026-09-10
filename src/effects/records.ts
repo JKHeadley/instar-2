@@ -1,14 +1,13 @@
-import { consumeOutcome, consumeResult, decode, decodeMeasurement, grantLiveness, isValid, readEvidence, scopeIncludes } from '../index.js';
+import { consumeOutcome, decode, decodeMeasurement, grantLiveness, isValid, readEvidence, scopeIncludes } from '../index.js';
 import type { Json, Result } from '../index.js';
 import { authorAndAppend, causalCone, registerOwnedBody, walkVersions } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
-import type { EffectAuthor, EffectHost, EffectRecord, EffectRequestBinding, EffectSpine, OperationDefinition, OrderedEffectAggregate, OutboundMessage, TypedEffectPayload } from './contracts.js';
+import type { EffectAuthor, EffectHost, EffectRecord, EffectRequestBinding, EffectSpine, OperationDefinition, OutboundMessage, TypedEffectPayload } from './contracts.js';
 import type { FactStorePort } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import { requireAggregate, requireSettlement } from './settlement-authority.js';
-import { effectOperationContracts, effectPayloadOwnedShape, payloadKind, validateEffectPayload } from './payloads.js';
+import { requireSettlement } from './settlement-authority.js';
+import { effectOperationContracts, effectPayloadOwnedShape, validateEffectPayload } from './payloads.js';
 import { referencedPayloadFacts } from './references.js';
-import { aggregateEvidenceStage, aggregateObligations, aggregateState, childFromSettlement } from './aggregate.js';
 
 const text = { kind: 'text', maxLength: 512 } as const, integer = { kind: 'integer' } as const;
 const refs = { kind: 'array', maxLength: 64, items: text } as const;
@@ -25,12 +24,6 @@ const requestBinding: OwnedShape = { kind: 'object', fields: {
     semanticMessage: text, durability: text, replicas: integer } },
   claim: { kind: 'object', fields: { attempt: text, executor: text } },
 } };
-const aggregateChild: OwnedShape = { kind: 'object', fields: { order: integer, request: text, digest: text,
-  payloadKind: text, demandedStage: text, inhibitLater: { kind: 'boolean' }, required: { kind: 'boolean' } } };
-const refusal: OwnedShape = { kind: 'object', fields: { reason: text, detail: text, site: text, failDirection: text, preserved: text } };
-const retryClosure: OwnedShape = { kind: 'object', fields: { didNotHappen: { kind: 'boolean' }, quiescent: { kind: 'boolean' }, chargeSettled: { kind: 'boolean' } } };
-const aggregateSettlement: OwnedShape = { kind: 'object', fields: { request: text, settlement: text,
-  assessment: text, disposition: text, applied: { kind: 'boolean' }, refusalFact: text, refusal }, optional: ['refusalFact', 'refusal'] };
 // The normalized owner settlement uses null. P2's shape supports null but no
 // arbitrary union, so record
 // it as an exact bounded decimal string ("unknown" or an integer), at this seam.
@@ -50,18 +43,11 @@ export const effectShapes: Readonly<Record<string, OwnedShape>> = freeze({
   EffectValidation: { kind: 'object', fields: { ...common, request: text, digest: text, phase: text,
     generation: text, definition: text, expires: integer, authority: refs } },
   OperationObservation: { kind: 'object', fields: { ...common, request: text, operation: text, claim: text,
-    digest: text, account: text, conversation: text, stage: text, wake: text, capture, attestation: text, refusal },
-    optional: ['refusal'] },
+    digest: text, account: text, conversation: text, stage: text, wake: text, capture, attestation: text } },
   EffectSettlement: { kind: 'object', fields: { ...common, request: text, operation: text, claim: text,
     reservation: text, digest: text, acceptance: text, observations: refs, outcome,
     finalCharge: text, delayedExecutionExcluded: { kind: 'boolean' }, retainedExposure: integer,
-    retryEligible: { kind: 'boolean' }, refusal, retryClosure }, optional: ['refusal', 'retryClosure'] },
-  EffectRefusal: { kind: 'object', fields: { ...common, request: text, digest: text, sourceResult: text, refusal } },
-  OrderedEffectAggregate: { kind: 'object', fields: { ...common, aggregate: text, revision: integer,
-    predecessor: text, semanticMessage: text, run: text,
-    children: { kind: 'array', maxLength: 64, items: aggregateChild },
-    settlements: { kind: 'array', maxLength: 64, items: aggregateSettlement }, state: text,
-    openEvidence: refs, openCharge: refs, openRecovery: refs, reconciliationOwner: text } },
+    retryEligible: { kind: 'boolean' } } },
 });
 // These are the exact shapes that existed before typed payloads were added.
 // Legacy records must take this path before any additive optional-field logic so
@@ -124,23 +110,11 @@ function legacyRecord(name: string, input: unknown): boolean {
   if (name === 'OperationDefinition') return value.payloadKind === undefined && value.inputSchema === undefined
     && value.canonicalization === undefined && value.observationCapabilities === undefined;
   if (name === 'EffectRequest') return value.payload === undefined && value.payloadDigest === undefined && value.binding === undefined;
-  if (name === 'OperationObservation') return value.refusal === undefined;
-  if (name === 'EffectSettlement') return value.refusal === undefined && value.retryClosure === undefined;
   return true;
 }
 function recordShapeCheck(name: string, input: unknown): void {
   if (legacyRecord(name, input)) legacyShapeCheck(input, legacyEffectShapes[name]!);
   else shapeCheck(input, effectShapes[name]!);
-}
-function refusalCheck(input: unknown, host: EffectHost): void {
-  const value = input as Readonly<Record<string, unknown>>;
-  const decoded = take(decode('Result', { type: 'Result', schemaVersion: 1, kind: 'Refused', ...value }, host.current().decode));
-  consumeResult(decoded, {
-    Success: () => { throw new Error('effect refusal is not the existing closed Refused value'); },
-    Refused: refusal => ensure(encoded({ reason: refusal.reason, detail: refusal.detail, site: refusal.site,
-      failDirection: refusal.failDirection, preserved: refusal.preserved }).bytes === encoded(input).bytes,
-    'effect refusal is not the existing closed Refused value'),
-  });
 }
 export function live(host: EffectHost): void {
   const c = host.current(); ensure(!c.stopped, 'stop inhibits effect');
@@ -182,7 +156,6 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     const found = all.find(x => x.record.id === id && x.record.type === type);
     ensure(found, `missing ${type} predecessor`); return found.record as Extract<EffectRecord, { type: N }>;
   };
-  if ('refusal' in r && r.refusal !== undefined) refusalCheck(r.refusal, host);
   if (r.type === 'OperationDefinition') {
     ensure(r.maxBytes > 0 && r.maxBytes <= 4096 && r.maxCharge >= 0 && r.timeout > 0 && r.lossModel.length > 0, 'finite operation bounds required');
     ensure((r.durability === 'replicated' && r.replicas > 0) || (r.durability === 'local-durable' && r.replicas === 0), 'invalid durability demand');
@@ -259,79 +232,6 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     ensure(r.digest === q.digest && r.definition === d.id && r.generation === d.generation
       && ['reservation', 'dispatch'].includes(r.phase) && r.authority.length > 0, 'validation binding');
     if (origin) { definitionCheck(d, host); ensure(r.expires === host.current().clock.value + d.timeout, 'validation expiry differs from bounded current clock'); }
-  } else if (r.type === 'EffectRefusal') {
-    const q = find(r.request, 'EffectRequest');
-    ensure(r.digest === q.digest && r.sourceResult === q.pending
-      && r.id === `refusal:${encoded([q.id, q.digest, q.pending, r.refusal]).hash}`,
-    'recorded refusal differs from exact request/digest/source result');
-    ensure(past.some(fact => fact.id === q.pending), 'recorded refusal source result is absent');
-  } else if (r.type === 'OrderedEffectAggregate') {
-    ensure(r.aggregate.length > 0 && r.reconciliationOwner.length > 0 && r.children.length > 0 && r.children.length <= 64,
-      'finite aggregate identity/owner required');
-    ensure(r.children.length === r.settlements.length && r.children.every((child, index) => child.order === index),
-      'aggregate child order/settlement partition invalid');
-    ensure(r.children.every(child => aggregateEvidenceStage(child.demandedStage)), 'aggregate demanded stage unknown');
-    const requests = r.children.map(child => find(child.request, 'EffectRequest'));
-    ensure(new Set(r.children.map(child => child.request)).size === r.children.length
-      && r.children.every((child, index) => child.digest === requests[index]!.digest
-        && requests[index]!.semanticMessage === r.semanticMessage && requests[index]!.run === r.run),
-    'aggregate child request/digest/parent binding mismatch');
-    ensure(r.children.every((child, index) => {
-      const request = requests[index]!;
-      if (!request.payload) return child.payloadKind === 'ordinary-reply';
-      const payload = find(request.payload, 'EffectPayload'); return child.payloadKind === payloadKind(payload);
-    }), 'aggregate payload kind mismatch');
-    ensure(r.children.every((child, index) => child.payloadKind !== 'acknowledge' || !child.required),
-      'decorative acknowledgment cannot terminalize parent work');
-    r.settlements.forEach(row => { if (row.refusal !== undefined) refusalCheck(row.refusal, host); });
-    ensure(r.settlements.every((row, index) => {
-      const child = r.children[index]!;
-      if (row.request !== child.request || !['pending', 'partial', 'satisfied', 'refused', 'uncertain'].includes(row.disposition)) return false;
-      if (!row.settlement) {
-        if (row.refusal) {
-          const recorded = row.refusalFact ? all.find(item => item.record.type === 'EffectRefusal'
-            && item.record.id === row.refusalFact) : undefined;
-          const value = recorded?.record.type === 'EffectRefusal' ? recorded.record : undefined;
-          const request = requests[index]!;
-          const closed = past.filter(item => item.kind === 'transport-AdmissionReservation').some(item => {
-            const candidate = (item.body as { record?: { request?: unknown; state?: unknown } }).record;
-            return candidate?.request === child.request && candidate.state === 'closed';
-          });
-          return row.assessment === '' && !row.applied && row.disposition === 'refused' && Boolean(value) && closed
-            && value?.request === child.request && value.digest === child.digest && value.sourceResult === request.pending
-            && encoded(value.refusal).bytes === encoded(row.refusal).bytes;
-        }
-        return row.assessment === '' && row.disposition === 'pending' && !row.applied && row.refusalFact === undefined;
-      }
-      const settlement = find(row.settlement, 'EffectSettlement');
-      if (settlement.request !== child.request || settlement.digest !== child.digest || row.assessment !== settlement.acceptance) return false;
-      return encoded(row).bytes === encoded(childFromSettlement(child, settlement)).bytes;
-    }), 'aggregate settlement partition invalid');
-    ensure(r.state === aggregateState(r.children, r.settlements), 'aggregate state is not derived from children');
-    const obligations = aggregateObligations(r.children, r.settlements, id => find(id, 'EffectSettlement'));
-    ensure(encoded({ openEvidence: r.openEvidence, openCharge: r.openCharge, openRecovery: r.openRecovery }).bytes === encoded(obligations).bytes,
-      'aggregate open obligations differ from child state');
-    if (r.revision === 0) {
-      ensure(r.predecessor === '' && r.settlements.every(row => row.disposition === 'pending' && !row.applied && !row.settlement && !row.assessment && !row.refusal),
-        'initial aggregate is not pending');
-    } else {
-      if (origin) requireAggregate(host, r);
-      const prior = find(r.predecessor, 'OrderedEffectAggregate') as OrderedEffectAggregate;
-      ensure(r.revision === prior.revision + 1 && r.aggregate === prior.aggregate
-        && encoded(r.children).bytes === encoded(prior.children).bytes && r.semanticMessage === prior.semanticMessage && r.run === prior.run
-        && r.reconciliationOwner === prior.reconciliationOwner, 'aggregate successor changed immutable expansion');
-      ensure(prior.settlements.every((row, index) => !row.applied || r.settlements[index]!.applied),
-        'aggregate successor moves application backward');
-      ensure(prior.settlements.every((row, index) => {
-        const next = r.settlements[index]!;
-        if (row.disposition === 'pending' || encoded(row).bytes === encoded(next).bytes) return true;
-        if (!['uncertain', 'partial'].includes(row.disposition) || !row.settlement || !next.settlement
-          || row.settlement === next.settlement || next.disposition === 'pending') return false;
-        const oldFact = all.find(item => item.record.type === 'EffectSettlement' && item.record.id === row.settlement)?.fact;
-        const nextFact = all.find(item => item.record.type === 'EffectSettlement' && item.record.id === next.settlement)?.fact;
-        return Boolean(oldFact && nextFact && causalCone(nextFact, past).some(fact => fact.id === oldFact.id));
-      }), 'aggregate successor replays or rewrites a settled child');
-    }
   } else {
     const q = find(r.request, 'EffectRequest');
     const target = q.payload ? find(q.payload, 'EffectPayload') as TypedEffectPayload : find(q.message, 'OutboundMessage');
@@ -346,8 +246,7 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
       && (claim.body as { record: { state: string } }).record.state === 'dispatch-claimed', 'claim fact mismatch');
     if (r.type === 'OperationObservation') {
       ensure(r.account === account && r.conversation === conversation && r.attestation === 'local-recorder'
-        && ['executor-accepted', 'response', 'refused', 'unknown', 'observer-accepted', 'lookup'].includes(r.stage), 'observation target or provenance inflation');
-      ensure((r.stage === 'refused') === (r.refusal !== undefined), 'adapter refusal observation mismatch');
+        && ['executor-accepted', 'response', 'unknown', 'observer-accepted', 'lookup'].includes(r.stage), 'observation target or provenance inflation');
       if (r.stage === 'observer-accepted' || r.stage === 'lookup') {
         const wake = past.find(f => f.id === r.wake);
         const w = wake?.body as { record?: { pending: string; state: string; command: string } } | undefined;
@@ -443,16 +342,7 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
         'typed settlement differs from nine-owned charge conclusion');
       }
       ensure(r.retryEligible === false && r.retainedExposure >= 0 && (r.finalCharge === null || Number.isSafeInteger(r.finalCharge) && r.finalCharge >= 0), 'invalid charge or forbidden retry');
-      const didNotHappen = consumeOutcome(r.outcome, { happened: () => false, 'did-not-happen': () => true, uncertain: () => false });
-      if (q.payload) ensure(r.retryClosure?.didNotHappen === didNotHappen
-        && r.retryClosure.quiescent === r.delayedExecutionExcluded && r.retryClosure.chargeSettled === (r.finalCharge !== null),
-      'typed retry three-closure evidence mismatch');
-      else ensure(r.retryClosure === undefined, 'legacy settlement bytes changed');
       ensure(r.finalCharge !== null || r.retainedExposure === op.r.charge, 'unknown charge must retain maximum exposure');
-      const adapterRefusal = r.observations.map(id => find(id, 'OperationObservation')).find(o => o.stage === 'refused')?.refusal;
-      ensure((r.refusal === undefined && adapterRefusal === undefined)
-        || (r.refusal !== undefined && adapterRefusal !== undefined && encoded(r.refusal).bytes === encoded(adapterRefusal).bytes),
-      'adapter refusal changed before settlement');
       // Owner-produced acceptance is consumed again at live consequential use.
       // Historical record validation never turns its Outcome into live authority.
     }

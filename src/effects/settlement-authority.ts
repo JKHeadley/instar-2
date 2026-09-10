@@ -1,4 +1,4 @@
-import type { EffectHost, EffectSettlement, OrderedEffectAggregate } from './contracts.js';
+import type { EffectHost, EffectSettlement } from './contracts.js';
 import type { BoundaryContext, Result } from '../index.js';
 import { boundary, encoded, ensure, take } from './boundary.js';
 
@@ -6,7 +6,6 @@ import { boundary, encoded, ensure, take } from './boundary.js';
 // A ticket exists only on the stack after independent acceptance and durability
 // checks. Historical replay checks signed data, never recreates this live ticket.
 const tickets = new WeakMap<EffectHost, Set<string>>();
-const aggregateTickets = new WeakMap<EffectHost, Set<string>>();
 type SettlementRecheck = <T>(consumer: (value: EffectSettlement) => T) => Result<T>;
 const issued = new WeakMap<object, SettlementRecheck>();
 export function issuedSettlement(value: EffectSettlement, recheck: SettlementRecheck): EffectSettlement {
@@ -31,17 +30,4 @@ export function withSettlement<T>(host: EffectHost, value: EffectSettlement, run
 }
 export function requireSettlement(host: EffectHost, value: EffectSettlement): void {
   ensure(tickets.get(host)?.has(encoded(value).hash), 'settlement requires eight-owned evidence admission');
-}
-
-// Aggregate conclusions are owner decisions too. A valid signature authenticates
-// bytes; it does not prove that those bytes were derived through the doorway's
-// current settlement/refusal checks. Replay validates the signed dependencies,
-// while live appends additionally require this unforgeable in-process ticket.
-export function withAggregate<T>(host: EffectHost, value: OrderedEffectAggregate, run: () => T): T {
-  const set = aggregateTickets.get(host) ?? new Set<string>(); aggregateTickets.set(host, set);
-  const digest = encoded(value).hash; ensure(!set.has(digest), 'aggregate admission already active');
-  set.add(digest); try { return run(); } finally { set.delete(digest); }
-}
-export function requireAggregate(host: EffectHost, value: OrderedEffectAggregate): void {
-  ensure(aggregateTickets.get(host)?.has(encoded(value).hash), 'aggregate requires eight-owned derivation');
 }

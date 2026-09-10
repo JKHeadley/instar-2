@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, realpathSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { canonical, decode } from '../../src/index.js';
 import type { Json, Result } from '../../src/index.js';
 import { authorAndAppend, createFactStore, hashBytes } from '../../src/facts/index.js';
@@ -8,7 +8,7 @@ import type { CapturedContent, FactContext, FactSchema, FactStorePort, GovernedV
 import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, registerTransportBodies, transportSchemas } from '../../src/transport/index.js';
 import type { TransportHost } from '../../src/transport/index.js';
 import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, decodeOutboundMessage, effectOperationContracts, effectSchemas, installOperationDefinition, registerEffectBodies } from '../../src/effects/index.js';
-import type { ConversationEffectKind, EffectComposition, EffectHost, EffectAssessmentPort, OperationAdapterPort, RecoveryEffectKind } from '../../src/effects/index.js';
+import type { ConversationEffectKind, EffectComposition, EffectHost, EffectAssessmentPort, OperationAdapterPort } from '../../src/effects/index.js';
 import { createEffectAssessmentPort, createVerificationRuntime, createVerificationSpine,
   registerVerificationBodies, verificationSchemas } from '../../src/verification/index.js';
 import type { VerificationHost } from '../../src/verification/index.js';
@@ -23,7 +23,7 @@ import { createEffectFileCaptures } from '../../scripts/effect-file-captures.mjs
 export { value, refused };
 
 export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), incarnation = 'executor:1', definitionOverrides: Record<string, unknown> = {},
-  supportedKinds: readonly (ConversationEffectKind | RecoveryEffectKind)[] = [],
+  supportedKinds: readonly ConversationEffectKind[] = [],
   extensions?: (host: EffectHost) => Readonly<{ schemas: readonly FactSchema[]; ownedBodies: readonly OwnedBodyRegistration[] }>) {
   const f = factsFixture();
   // Separate agent executor and person approving the exact definition.
@@ -48,11 +48,6 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
       if (!referenceStore) throw new Error('reference store not initialized');
       return value(referenceStore.read());
     }),
-    resolvePath: path => result(() => {
-      const suffix: string[] = []; let cursor = path;
-      while (!existsSync(cursor)) { const parent = dirname(cursor); if (parent === cursor) break; suffix.unshift(basename(cursor)); cursor = parent; }
-      return join(realpathSync(cursor), ...suffix);
-    }),
   };
   const verificationHost: VerificationHost = { machine: host.machine, principal: host.principal, scope: host.scope, boundary: host.boundary,
     current: () => {
@@ -69,11 +64,8 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
     monotonic: () => now, current: () => ({ decode: decodeContext, clock: f.clock(now), generation: register.generation, stopped }) };
   const extension = extensions?.(host) ?? { schemas: [], ownedBodies: [] };
   const witnessKinds = ['run-opening', 'run-transition', 'intake-admitted', 'intake-receipt',
-    'judgment-JudgmentRequest', 'judgment-JudgmentAttemptRecord', 'process-incarnation', 'process-parent', 'process-start',
-    'scheduler-job-generation', 'account-route-generation', 'registered-account', 'rollback-route',
-    'semantic-message-admission', 'configuration-target-state',
-    'filesystem-target-state', 'protected-target-policy', 'git-target-state', 'capture-record',
-    'conversation-message', 'infrastructure-provenance', 'infrastructure-episode'];
+    'judgment-JudgmentRequest', 'judgment-JudgmentAttemptRecord', 'semantic-message-admission',
+    'conversation-route-generation', 'capture-record', 'conversation-message'];
   const witnessSchemas: FactSchema[] = witnessKinds.map(kind => ({ ...f.schema, kind,
     fields: { witness: { kind: 'text', maxLength: 65536 } } }));
   const resultSchema: FactSchema = { ...f.schema, kind: 'result-record', fields: {
@@ -115,9 +107,11 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
   const inboundMediaBytes = JSON.stringify({ schemaVersion: 1, kind: 'message', text: 'photo',
     platformFile: 'provider-file:1', mediaType: 'image/png' });
   const inboundMediaCapture = kind === 'fetch-inbound-media' ? value(host.capture(inboundMediaBytes)) : audioCapture;
-  Object.assign(host, { fixtureMediaCapture: mediaCapture, fixtureAudioCapture: audioCapture });
   const submittedCapture = value(host.capture(JSON.stringify({ model: 'model:1' })));
   const responseCapture = value(host.capture(JSON.stringify({ transcript: 'fixture transcript' })));
+  Object.assign(host, { fixtureMediaCapture: mediaCapture, fixtureAudioCapture: audioCapture,
+    fixtureInboundMediaCapture: inboundMediaCapture, fixtureSubmittedCapture: submittedCapture,
+    fixtureResponseCapture: responseCapture });
   if (['acknowledge', 'fetch-inbound-media', 'derive-transcript'].includes(kind)) {
     const intakeCapture = kind === 'fetch-inbound-media' ? inboundMediaCapture : audioCapture;
     reference('intake-receipt', { id: 'receipt:1', adapter: 'bot:fixture', ingress: JSON.stringify({ channel: 'chat:fixture',
@@ -130,44 +124,12 @@ export function typedEffectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')
     reference('judgment-JudgmentAttemptRecord', { record: { type: 'JudgmentAttemptRecord', id: 'provider:transcribe',
       request: 'judgment-request:transcribe', phase: 'response-observed', operation: 'provider-operation:transcribe', receipt: responseCapture } });
   }
-  const process = { machine: 'machine-a', processId: 'process:1', processIncarnation: 'process:1:incarnation:2', parentIdentity: 'parent:1',
-    startIdentity: 'start:1', executable: '/usr/bin/node', arguments: ['worker.mjs'], status: 'current', validFrom: 0, validUntil: 1000 };
-  if (kind === 'process-control') {
-    reference('process-incarnation', { ...process, id: process.processIncarnation });
-    reference('process-parent', { ...process, id: process.parentIdentity });
-    reference('process-start', { ...process, id: process.startIdentity });
-  }
-  if (kind === 'scheduler-control') reference('scheduler-job-generation', { id: 'job-generation:2', jobId: 'job:1', generation: 'job-generation:2', finiteScope: 'one-run',
-    undoOperation: 'resume:job:1', reviewAt: 200, status: 'current', validFrom: 0, validUntil: 1000 });
-  if (kind === 'account-route-change') {
-    reference('account-route-generation', { id: 'route-generation:2', run: 'run:1', provider: 'telegram', fromAccount: 'bot:old', toAccount: 'bot:new',
-      generation: 'route-generation:2', rollbackRoute: 'route:old', status: 'current', validFrom: 0, validUntil: 1000 });
-    reference('registered-account', { id: 'bot:old', account: 'bot:old', provider: 'telegram', run: 'run:1', status: 'current', validFrom: 0, validUntil: 1000 });
-    reference('registered-account', { id: 'bot:new', account: 'bot:new', provider: 'telegram', run: 'run:1', status: 'current', validFrom: 0, validUntil: 1000 });
-    reference('rollback-route', { id: 'route:old', run: 'run:1', provider: 'telegram', fromAccount: 'bot:new', toAccount: 'bot:old',
-      generation: 'route-generation:2', status: 'current', validFrom: 0, validUntil: 1000 });
-  }
   reference('semantic-message-admission', { id: 'semantic:typed:1', run: 'run:1', sourceLineage: 'run:1',
     status: 'current', validFrom: 0, validUntil: 1000 });
-  const prior = hashBytes('prior');
-  if (kind === 'configuration-change') reference('configuration-target-state', { id: 'capture:config-prior', canonicalTarget: '/project/.instar/config.json', priorDigest: prior,
-    undoReference: 'capture:config-prior', status: 'current', validFrom: 0, validUntil: 1000 });
-  if (kind === 'filesystem-mutation') {
-    reference('filesystem-target-state', { id: 'policy:protected-targets:1', policy: 'policy:protected-targets:1',
-      targets: [{ canonicalPath: '/project/state.json', resolvedPath: '/project/state.json', ancestryDigest: prior, priorDigest: prior }],
-      status: 'current', validFrom: 0, validUntil: 1000 });
-    reference('protected-target-policy', { id: 'policy:protected-targets:1', decision: 'allowed',
-      targets: ['/project/state.json'], status: 'current', validFrom: 0, validUntil: 1000 });
-  }
-  if (kind === 'git-mutation') reference('git-target-state', { id: 'sha:base', repository: '/project/repo', worktree: '/project/repo', ref: 'refs/heads/main', base: 'sha:base',
-    targets: ['src/file.ts'], expectedHeads: [{ ref: 'refs/heads/main', digest: prior }], rollbackConstraints: ['only-if-head-unchanged'],
+  reference('conversation-route-generation', { id: 'conversation-route:1', account: 'bot:fixture', conversation: 'chat:fixture',
     status: 'current', validFrom: 0, validUntil: 1000 });
   if (kind === 'edit-message' || kind === 'react') reference('conversation-message', { id: 'message:7', message: 'message:7', account: 'bot:fixture', conversation: 'chat:fixture',
     status: 'current', validFrom: 0, validUntil: 1000 });
-  if (kind === 'infrastructure-notice') {
-    reference('infrastructure-provenance', { id: 'monitor:watchdog:1', episode: 'episode:1', status: 'current', validFrom: 0, validUntil: 1000 });
-    reference('infrastructure-episode', { id: 'episode:1', provenance: 'monitor:watchdog:1', status: 'current', validFrom: 0, validUntil: 1000 });
-  }
   authority = [pending.id];
   const definition = { type: 'OperationDefinition', schemaVersion: 1, id: 'reply-definition:1', feature: 'reply', version: 'reply-version:1',
     generation: register.generation.id, adapter: 'telegram-fixture', account: 'bot:fixture', conversation: 'chat:fixture',
