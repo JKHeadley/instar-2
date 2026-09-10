@@ -79,20 +79,21 @@ Recommendation: Allow one limited test for reversible and observation-only work,
 person for irreversible or permission-changing work because the cost of a mistaken restart is much
 higher there.
 
-**Value — decision 6: how long to read old job definitions.**
+**Value — decision 6: how long to support importing an old installation.**
 
-Question: For how many published update cycles should old job definitions remain readable?
+Question: For how many published updates should Instar support bringing job definitions directly
+from an old installation into the new scheduler?
 
-Background: An update cycle is one published version and the period in which supported
-installations move to it.
+Background: After that window, an installation that is too old would need an intermediate update
+or a separate conversion. Its preserved job and run history would still be readable.
 
-Choices: Support old definitions for one update cycle, two update cycles, or indefinitely.
+Choices: Support direct import for one update, two updates, or indefinitely.
 
-What it changes: A longer window gives installations more time to move, but indefinite support
-keeps two competing ways to describe and control the same work.
+What it changes: A longer window lets more old installations update directly, but it requires
+maintaining and testing more old conversion readers and cases for every release.
 
-Recommendation: Support two update cycles because that gives a practical migration window without
-keeping the old control path forever.
+Recommendation: Support two updates because that gives a practical direct-update window while
+keeping compatibility work bounded.
 
 **Value — operator note: keeping supervision efficient.** Every step of a high-risk workflow is
 watched and validated. The benchmark process chooses the least expensive model that has passed the

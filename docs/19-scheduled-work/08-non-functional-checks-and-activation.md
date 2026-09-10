@@ -1,24 +1,38 @@
 ## 8. Non-functional checks and activation
 
 **Rule — activation follows the governed dependency order.** Rules 34, 43, 65, 66, 72, 73,
-78, 83 and 103; **checks: P15-NF-03/08/42/45/50/52**. A job family activates only after its
-manifest and feature declarations are approved, its package is assembled, every referenced port
-is real—including every prerequisite in section 1—supervision and verification coverage are present, compatibility import is complete, and
-unit, full-port integration and production-lifecycle evidence exists. Dark and dry-run states
+78, 83 and 103; **checks: P15-NF-03/08/42/45/50/52**. A job family first needs approved manifest
+and feature declarations. Its package must be assembled, and every referenced port must be real.
+That requirement includes every prerequisite in section 1. Supervision and verification coverage
+must be present. Compatibility import must be complete. Unit, full-port integration and
+production-lifecycle evidence must exist. Dark and dry-run states
 remain distinct. Dry run admits challenge occurrences and records intended admission decisions but
 cannot invoke the business entry point. Activation of one job cannot silently activate another.
 For a model-backed family, P15-NF-52's normal production lifecycle includes ledger #23's real first
-provider-call preparation and Eight-governed observation/settlement, and ledger #27's current Part
-Seven route. That arm is non-executable until the GRANTED `seam-response-effects-followup.md` and
-`seam-response-judgment.md` land with joint evidence. Ledger #30 joins those prerequisites only
-when the route is claimed measured or benchmark-supported. The bounded-history lifecycle is
-non-executable until ledger #37's paged input, ledger #44's current authority, ledger #47's
-verified mutation, ledger #48's Run reconstruction and ledger #54's effect reconstruction have
-all landed and passed one joint trace. Row 54 is the dated 09:23Z addendum in
-`seam-response-effects-followup.md`; rows 47 and 48 are the dated 08:38Z addenda in
-`seam-response-facts-followup.md` and `seam-response-rungraph-followup.md`. The complete scheduled
-lifecycle also requires the dated 08:38Z `seam-response-intake-followup.md` addendum at row 49.
-All five bounded-history grants and the separate intake grant are GRANTED but unlanded.
+provider-call preparation and Eight-governed observation and settlement. It also includes ledger
+#27's current Part Seven route. That arm is non-executable until the GRANTED
+`seam-response-effects-followup.md` and `seam-response-judgment.md` land with joint evidence.
+Ledger #30 joins those prerequisites only when the route is claimed measured or benchmark-supported.
+
+The bounded-history lifecycle requires ledger #37's paged input, ledger #44's current authority,
+ledger #47's verified mutation, ledger #48's Run reconstruction and ledger #54's effect
+reconstruction. Those five grants are GRANTED but unlanded. Row 54 is the dated 09:23Z addendum in
+`seam-response-effects-followup.md`. Rows 47 and 48 are the dated 08:38Z addenda in
+`seam-response-facts-followup.md` and `seam-response-rungraph-followup.md`.
+
+The lifecycle also requires the pending owner requests
+`design-scheduled-work-seam-request-bounded-judgment-history.md`,
+`design-scheduled-work-seam-request-bounded-verification-history.md` and
+`design-scheduled-work-seam-request-bounded-assembly-history.md`. They cover Seven's own judgment
+fold, Nine's verification and assessment fold, and Ten's assembly and growth-evidence fold. The
+bounded-history arm is non-executable until all three requests are granted, entered in
+`SEAM-LEDGER.md`, landed with the five existing grants and pass one instrumented joint trace.
+
+The complete scheduled lifecycle separately requires the dated 08:38Z
+`seam-response-intake-followup.md` addendum at row 49. That grant is GRANTED but unlanded. Its real
+operator-surface arm also depends on the pending
+`design-scheduled-work-seam-request-operator-schedule.md`. That arm is non-executable until Eleven's
+requested public operations and Part Ten's production wiring land and pass their joint evidence.
 
 **Rule — the scheduler is a held runtime outcome.** Rules 9, 38, 41, 43 and 78; **checks:
 P15-NF-24/42/52**. Part nine holds the scanner, calendar expansion, intake path, reservation path,
@@ -69,7 +83,7 @@ Run; it never edits the target to make the sample pass.
 
 | Scheduling measurement | Required declared workload and policy values | Acceptance comparison and overrun action |
 |---|---|---|
-| Discovery-to-admission delay and due-debt age | Named hardware/assembly and monotonic clock producer; retained fact and byte count including a corpus above 4,096 Part Six domain records; job count; due instants per minute; page item/byte/decode/hash/replay/duration bounds; peer count; fault schedule; measurement-window end; `maxDiscoveryToAdmission` and `maxDueDebtAge` durations | Each finished interval compares its recorded start/end duration with the matching bound. At exactly the bound it passes; one clock unit over breaches. An unfinished lower bound over the limit breaches, while any other unfinished or incomparable interval is unknown and prevents a passing claim. Every owner pass separately reports key enumeration, decoding, hashing, replay and memory work. After a cold restart above 4,096 records, the positive case must carry one real occurrence through Part Two verified mutation, Part Four admission/occurrence binding, Part Five open/ground/transitions, current-authority reconstruction, reservation, claim, consume, effect observation/settlement and Six's settlement application/release; a candidate page or keyed view is not completion. Overrun keeps the occurrence due, inhibits the affected activation or class, and opens the owned breach Run. This bounded-history acceptance is non-executable until ledger rows 37, 44, 47, 48 and 54 have all landed and passed the one instrumented trace. Row 54 is the dated 09:23Z `seam-response-effects-followup.md` addendum granting Eight's bounded effect snapshot; it is not supplied by row 44's keyed authority view. The complete scheduled lifecycle separately requires the row-49 `seam-response-intake-followup.md` grant. |
+| Discovery-to-admission delay and due-debt age | Name the hardware, assembly and monotonic clock producer. State retained fact and byte counts, including a corpus above 4,096 Part Six domain records. State job count and due instants per minute. Declare page item, byte, decode, hash, replay and duration bounds. State peer count, fault schedule, measurement-window end, `maxDiscoveryToAdmission` and `maxDueDebtAge`. | Each finished interval compares its recorded duration with the matching bound. Exactly at the bound passes. One clock unit over breaches. An unfinished lower bound over the limit breaches. Any other unfinished or incomparable interval is unknown and prevents a passing claim. Each owner reports its enumeration, decoding, hashing, replay, reference-resolution and memory work. After a cold restart above 4,096 records, one real occurrence must cross the bounded Part Two, Four, Five, Six, Seven, Eight, Nine and Ten paths. The trace ends only after effect settlement, Six's settlement application and release, Nine's consumed assessment, and Ten's resolved growth evidence. A candidate page, keyed view, caller filter or partial snapshot is not completion. Overrun retains the due occurrence, inhibits the affected activation or class, and opens the owned breach Run. The trace is non-executable until ledger rows 37, 44, 47, 48 and 54 land. It also requires the pending Seven, Nine and Ten bounded-history requests named above to be granted, ledgered and landed. Row 54 is the dated 09:23Z `seam-response-effects-followup.md` addendum. Row 44's keyed authority view does not supply it. The complete scheduled lifecycle separately requires the row-49 `seam-response-intake-followup.md` grant. |
 | Fair service and eligibility-to-admission duration | Named class weights; nonzero `minimumMaintenanceShare`; fair-round admission count and duration; sustained arrivals per class; zero/boundary/boundary-plus-one caps; named monotonic clock producer; `maxHighPriorityEligibilityToAdmission` | Observed eligible service per completed fair round meets the declared share. Every high or critical candidate that enters the selection set contributes one eligibility-to-committed-reservation interval. Exactly the declared duration passes and one clock unit over breaches. An unfinished interval follows the lower-bound/unknown rule above. Missing, unknown or breached values inhibit the policy and open the breach Run; they cannot select strict starvation. |
 | Projection rebuild | Named corpus with manifest, occurrence, Run, attempt and evidence counts plus canonical bytes; cold/warm mode; `maxProjectionRebuildDuration` and `maxProjectionRebuildMemory` | Equal-vector rebuild must be complete and byte-equal within both bounds. Timeout, partial data, divergence or bound overrun blocks the affected live projection and opens the breach Run while the fact spine remains authoritative. |
 

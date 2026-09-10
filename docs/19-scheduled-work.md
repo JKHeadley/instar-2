@@ -18,7 +18,10 @@ execution on named hardware and workload, never a configured target, extrapolati
 
 ## Sections
 
-This document is split into one file per section so each renders on GitHub and can take line comments. The files below, read in order, are the complete document.
+This document is split into one file per section so each renders on GitHub and can take line
+comments. The Governed status above covers this index and every linked section as one governed
+body. `scripts/check-governed-docs.mjs` follows this stable numbered list and scans the complete
+body. The files below, read in order, are the complete document.
 
 1. [Ownership and boundaries](19-scheduled-work/01-ownership-and-boundaries.md)
 2. [Declarative job packages](19-scheduled-work/02-declarative-job-packages.md)

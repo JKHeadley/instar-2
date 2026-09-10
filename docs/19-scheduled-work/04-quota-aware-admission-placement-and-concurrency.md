@@ -58,16 +58,16 @@ provider account, price policy, quota window and charge-settlement source for on
 evidence about the actual route, not authority to use it.
 
 Every destination re-resolves standing, framework compatibility, Part Seven's current runtime
-route, capability package, fresh quota, account identity, lease, isolation and capture policy. It records actual machine,
-framework, model, account reference, billing lane and reason. A configured pin or requested model
+route, capability package, fresh quota, account identity, lease, isolation and capture policy. It
+records the actual machine, framework, model, account reference, billing lane and reason. A configured pin or requested model
 is never reported as the route that ran. If no compatible destination passes, the Run waits with a
-capacity Result; it does not mint another operation merely to appear active. The fresh-invocation
+capacity Result. It does not mint another operation merely to appear active. The fresh-invocation
 path in P15-NF-23/35 is non-executable until the GRANTED `seam-response-effects-followup.md` and
 `seam-response-loop-followup.md`, plus `seam-response-judgment.md`, GRANTED at `SEAM-LEDGER.md`
 row 32 but unlanded, land and pass their joint fixtures. The current runtime-route resolution used
 here is separately GRANTED at ledger #27 in `seam-response-judgment.md` and remains non-executable
 until that grant file lands with its resolver evidence. Ledger #30 is required in addition only
-when the selected route is claimed measured or benchmark-supported; it is not the current-route
+when the selected route is claimed measured or benchmark-supported. It is not the current-route
 resolver.
 
 **Rule — concurrency is reserved before launch and released by evidence.** Rules 25, 33, 60, 61
@@ -81,7 +81,7 @@ the exact allocation carried by the owning RunBudget.
 
 The granted Part Six `ResourceAllocationSet` reserves one demand against every applicable domain
 before launch. These are independent ceilings, not transferable copies of one credit. Each debit is
-prepared under one allocation identity; the set becomes dispatchable only after every debit is
+prepared under one allocation identity. The set becomes dispatchable only after every debit is
 committed by `TransportAuthority.reserveResourceSet` and attached to the ordinary reservation by
 `attachResourceSet`. A partial set cannot launch. Recovery completes the same set or returns each
 proved-unused debit once. Settlement returns unused capacity once through `closeResourceSet`.
@@ -96,11 +96,11 @@ A **runnable window** is the bounded projection selected for one admission pass:
 most the manifest's item limit and encoded-byte limit, and the pass also has page, duration and
 memory limits. Key enumeration, history decoding, hashing, replay and candidate-index update count
 against those bounds. Selection consumes bounded candidate batches from the package index and
-advances the granted durable Part Six `ScanCursor`; it never loads every waiting Run or replays full
+advances the granted durable Part Six `ScanCursor`. It never loads every waiting Run or replays full
 history on every tick. Obligations beyond the window remain owned and selectable by later pages. Part Ten's
 `GrowthObservation` records selected count and bytes, retained-backlog count or lower bound,
 oldest due age, pages consumed and any overflow or incomplete count at the pinned frontier. Filling
-the window ends only that selection pass with a capacity-applied Result; it never drops an
+the window ends only that selection pass with a capacity-applied Result. It never drops an
 obligation or constructs a business `RunExit`. P15-NF-30/37 are non-executable until the dated
 06:25Z `seam-response-loop-followup.md` addendum, GRANTED at `SEAM-LEDGER.md` row 36 but unlanded,
 lands. P15-NF-37 is also non-executable until `seam-response-facts-followup.md` and the dated
@@ -112,18 +112,20 @@ land.
 inhibition band. It cannot widen scope, increase a budget, defeat a stop, skip supervision,
 ignore uncertainty, steal an existing reservation, or certify stale evidence. The minimal plane,
 emergency stop, diagnosis and bounded repair keep their reserved capacity. After those reserves,
-the scheduler uses **weighted deficit round robin** across priority classes: in each round every
-active class receives its configured number of admission credits, an admitted reservation costs
-one credit, an ineligible candidate costs none, classes are visited in registered order, and unused
-credit carries only to the declared finite credit cap. Within a class, **FIFO** means the earliest
-eligible scheduled instant or admission clock is considered first; equal instants are ordered by
-canonical occurrence id, never by arrival or Part Two's fold linearization. **Bounded age
+the scheduler uses **weighted deficit round robin** across priority classes. In each round, every
+active class receives its configured number of admission credits. An admitted reservation costs
+one credit. An ineligible candidate costs no credit. The scheduler visits classes in registered
+order. Unused credit carries only to the declared finite credit cap. Within a class, **FIFO** means
+the earliest eligible scheduled instant or admission clock is considered first. Equal instants are
+ordered by canonical occurrence id. Arrival order and Part Two's fold linearization never decide
+the tie. **Bounded age
 promotion** means an otherwise eligible item waiting at least the declared `promotionAfter`
 duration is considered one priority class higher for the next round only. It can rise at most one
 class per declared promotion interval and never above critical. Every active class has a finite
-configured weight; the maintenance class has a nonzero minimum share. Promotion changes ordering
-only and cannot cross a resource, standing, stop or uncertainty gate. The deployment policy states the fair-round workload,
-maintenance share and maximum eligibility-to-admission duration for higher-priority work; missing values refuse
+configured weight. The maintenance class has a nonzero minimum share. Promotion changes ordering
+only and cannot cross a resource, standing, stop or uncertainty gate. The deployment policy states
+the fair-round workload, maintenance share and maximum eligibility-to-admission duration for
+higher-priority work. Missing values refuse
 activation. This fixed mechanism prevents indefinite starvation while preserving explicit caps.
 
 ---

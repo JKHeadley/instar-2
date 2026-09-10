@@ -56,7 +56,7 @@ be paused by the failing job. A critical job has an explicit approved fail direc
 never-pause list is not authority.
 
 **Rule — every due occurrence is reportable as fact.** Rules 26, 41, 42, 87 and 89;
-**checks: P15-NF-20/31/38/48/50**. The part-eleven schedule projection joins current signed
+**checks: P15-NF-03/15/20/31/38/48/50/52**. The part-eleven schedule projection joins current signed
 manifest history, part-four intake receipts, part-five runs, part-six reservations and loops,
 part-seven supervision, part-eight settlements and part-nine assessments. It exposes pending,
 admitted, running, waiting, no-work, coalesced, shed, paused, refused, failed, uncertain and
@@ -64,6 +64,13 @@ completed cases with reasons and source references. It shows actual machine, fra
 billing lane, measured use and evidence freshness when known. Missing facts remain unknown. A
 record's own `status`, `lastRun`, `nextScheduled`, percentage or success string is never accepted as
 authority without re-resolution against its owners' signed history.
+
+This projection and its verified enable, disable and manual-run actions depend explicitly on
+`design-scheduled-work-seam-request-operator-schedule.md`. The request is pending Part Eleven's
+grant and ledger entry. P15-NF-03/15/48/50 and the schedule-surface arm of P15-NF-52 are
+non-executable until that request is granted, its public operations land, and Part Ten wires them
+into the real production surface. Until then, the source facts and paused obligations remain
+durable, but this design makes no live surface or control claim.
 
 **Rule — notification is quiet but loss is never silent.** Rules 52, 53, 54, 87, 88 and 106;
 **checks: P15-NF-49/50**. Routine successful and no-work occurrences remain pull-first. One

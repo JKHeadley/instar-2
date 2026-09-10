@@ -9,10 +9,10 @@ conflicting active definitions refuse the affected job without stopping the mini
 
 **Rule — the manifest separates identity, policy, and executable content.** Rules 25, 28, 57,
 60, 69, 75 and 90; **checks: P15-NF-08/11/12**. The manifest contains the following groups. These
-are package fields and references to owned values, not a new core record. At their first use in
-the Schedule row, `cron-v1` means the five-field minute-resolution grammar defined in the next
-Rule block, an **IANA named time zone** means a named zone interpreted with the pinned time-zone
-database version, and an **RFC 3339 offset timestamp** means the absolute timestamp grammar with a
+are package fields and references to owned values, not a new core record. At its first use in the
+Schedule row, `cron-v1` means the five-field minute-resolution grammar defined in the next Rule
+block. An **IANA named time zone** is a named zone interpreted with the pinned time-zone database
+version. An **RFC 3339 offset timestamp** is an absolute timestamp in RFC 3339 grammar with a
 required numeric offset or `Z`.
 
 | Field group | Required content |
