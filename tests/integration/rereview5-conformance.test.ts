@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { beforeEach, expect, it } from 'vitest';
 import { hashBytes } from '../../src/facts/index.js';
 import { evaluateGenesisReplay, evaluateMinimalPath, minimalResponse, requiredMinimalDependencies } from '../../src/operator/index.js';
 import { bootProductionAssembly, inspectProductionAssemblyBindings } from '../../src/assembly/index.js';
@@ -7,6 +7,11 @@ import { operatorFixture } from '../operator/fixture.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { installProduction, productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
+
+// Several production-assembly refusal cases are synchronously CPU-bound. Give
+// Vitest's worker RPC one turn between cases so already-sent task updates cannot
+// age past its fixed 60-second acknowledgement deadline.
+beforeEach(() => new Promise<void>(resolve => setImmediate(resolve)));
 
 it('V1 clean surface uses durable rendering and Part Four disposition',()=>{const f=operatorFixture(),s=f.surface();const view=value(s.render(f.request.id));expect(view.fieldsEditable).toBe(false);expect(view.requesterText.label).toBe('UNTRUSTED REQUESTER TEXT');const c=value(s.challenge(f.request.id));value(s.confirm({challenge:c,proof:'verified',decision:'approve'}));expect(f.admitted).toHaveLength(1);expect(f.facts().at(-1)!.kind).toBe('intake-verified-act');});
 it.each([
