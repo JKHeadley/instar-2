@@ -133,8 +133,9 @@ feature. P14-NF-58 compares each recurring declaration's bound with the exact cu
 registered Part Six loop policy, package-wide parent budget and production binding.
 
 **Rule — signal and authority remain separate.** Rules 4, 10, 12, 38, 42, 57, 67 and 86;
-**checks: P14-NF-10–12/18/21/23/26/29**. Regexes, elapsed-time thresholds, unchanged terminal
-frames, process names, adapter text, config differences and resource readings may raise a signal.
+**checks: P14-NF-10–12/18/21/23/26/29**. Text-pattern matches (regular expressions, or regexes),
+elapsed-time thresholds, unchanged terminal frames, process names, adapter text, config differences
+and resource readings may raise a signal.
 They do not decide a person's meaning, establish a semantic wedge, prove a worker is stuck, or
 authorize recovery. Exact structural invariants may enforce recorded governed state. Other
 classification goes through part seven with the relevant full context, explicit allowed outcomes

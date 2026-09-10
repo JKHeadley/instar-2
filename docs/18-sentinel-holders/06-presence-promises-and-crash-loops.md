@@ -52,10 +52,11 @@ A due date by itself remains a pull-visible obligation. It does not satisfy Part
 `required action` or result eligibility and cannot route a system notice to the ordinary
 conversation. A bounded infrastructure notice becomes eligible only when fresh evidence separately
 establishes a concrete result or a human-required action and, for an internal issue, records the
-eligible self-heal that was attempted and failed. That notice carries infrastructure provenance,
-quotes the promise only as data, aggregates by a **causal episode**—the stable identity joining one
-originating failure's observations and actions across retries, workers and machines—and routes through Eight to the
-declared alerts destination under Rule 53—not to the promise's original destination. Eight
+eligible self-heal that was attempted and failed. That notice carries infrastructure provenance.
+It quotes the promise only as data. A **causal episode** is the stable identity joining one
+originating failure's observations and actions across retries, workers and machines. The notice
+aggregates by that causal episode. It routes through Eight to the declared alerts destination under
+Rule 53, not to the promise's original destination. Eight
 re-resolves current ownership, scope, message eligibility, notification budget and route before it
 records observation and settlement. If the promise explicitly requires delivery of a reminder or
 result to a named destination, that is a distinct owner-approved agent reply/result contract through

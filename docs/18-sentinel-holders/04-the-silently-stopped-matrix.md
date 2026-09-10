@@ -38,19 +38,20 @@ current read-only answer for whether one machine can receive conversation-servic
 the current stop, fence, capacity and resource policies. Part Fourteen therefore depends on the
 additive Part Six observation requested in
 `.instar/lanes/design-sentinel-holders-seam-request-serving-admission.md`, request
-`P14-P6-conversation-serving-admission-v1`. The landed Part Ten
+`P14-P6-conversation-serving-admission-v1`. That addition is GRANTED CONDITIONALLY in
+`seam-response-loop-followup.md`, ledger row 70, but is not landed. The landed Part Ten
 `HarnessAdapterPort.observe` covers one known launch/delivery, and landed
 `AssemblyManifest`/`AssemblyAdmission` describe configured assembly rather than that complete fresh
 population. They cannot supply the observation above. Part Fourteen therefore
 depends on the additive read-only Part Ten operation requested in
 `.instar/lanes/design-sentinel-holders-seam-request-conversation-servability.md`, request
 `P14-P10-conversation-service-observation-v1`, which consumes the requested Six-owned observation
-rather than recasting it. P14-NF-68's pure decision/refusal cases remain executable, but its
-complete-population and production-observer positives are **non-executable until the ungranted
-request `P14-P6-conversation-serving-admission-v1` in
-`design-sentinel-holders-seam-request-serving-admission.md` and the ungranted request
-`P14-P10-conversation-service-observation-v1` in
-`design-sentinel-holders-seam-request-conversation-servability.md` are both granted and landed**.
+rather than recasting it. That addition is GRANTED CONDITIONALLY in
+`seam-response-assembly-followup.md`, ledger row 71, but is not landed; row 71 lands only after row
+70 lands. P14-NF-68's pure decision/refusal cases remain executable, but its complete-population
+and production-observer positives are **non-executable until the ledger-row-70 grant in
+`seam-response-loop-followup.md` and the ledger-row-71 grant in
+`seam-response-assembly-followup.md` land**.
 No candidate values or private platform scan may stand in for the missing owner-decoded
 observations.
 
