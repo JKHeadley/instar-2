@@ -9,7 +9,8 @@ probe. A file, table, timer declaration, process existence or successful startup
 satisfy the holder.
 
 **Rule — collection work is durable and loop-governed.** Rules 8, 46, 52, 60 and 88;
-**checks: P16-NF-43–45**. Backfill, reconciliation, retention and benchmark joins run as part-five
+**checks: P16-NF-43–45**. Backfill means importing older observations that predate the currently
+collected range. Backfill, reconciliation, retention and benchmark joins run as part-five
 durable runs with six-owned cursor, lease, finite page, retry, backoff and recovery records. A
 session may execute one step but does not own the assignment. Ticks do not overlap. A restart
 resumes from an admitted cursor; an uncertain append is observed before another attempt. Retry

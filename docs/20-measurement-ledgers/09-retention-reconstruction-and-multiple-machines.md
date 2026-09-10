@@ -60,7 +60,7 @@ read-presentation and cache retention controls working sets and disclosure, but 
 spine's physical lifetime. Ten's `GrowthPolicy` and `GrowthObservation` measure source-fact and
 complete-projection growth separately from presentation-cache growth and open one coalesced
 part-five investigation through six's loop. If that work
-proposes a lossless fact-storage change, part two owns its design and approval. Rollup retention
-is not deletion authority.
+proposes a lossless fact-storage change, part two owns its design and approval. A rollup summarizes
+existing observations into grouped totals; retaining that summary is not deletion authority.
 
 ---

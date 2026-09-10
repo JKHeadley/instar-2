@@ -26,18 +26,19 @@ collapsed in 1.x are corrections below, not carried-forward guarantees.
 | `RoutingSpendCapsStore`, `MeteredSpendGate`, `moneyLayerEnable` and `meteredCallEntry` helper path | `adjustCaps()` changes positive caps but does not arm a door. `setGoLive()` is a separate operator action that arms/disarms one door and designates its machine. `MeteredSpendGate.admit()` refuses an absent or disabled go-live record before checking caps. The helper checks freeze first, then calls the current `servingReady` predicate; requested enablement or construction alone is not serving readiness. Only after both checks does it enter the cap/reservation gate. These are real helper/control-path guarantees, and the readiness probe exercises the gate with a no-network provider. | A positive cap must not become permission to spend. A disable flag captured only at construction could remain cosmetically off while calls still admitted; placing freeze inside a failed money layer could take down the emergency brake with the machinery it must stop. |
 | `meteredCallEntry` production dispatch integration | No 1.x production paid-provider call invokes `admitMeteredCall`; the module names that dispatch seam as future work. Probe and helper evidence therefore do not prove that a real paid exchange is protected end to end. | A chokepoint that no paid dispatch calls is a required integration seam, not current spend protection. |
 
-**Rule — 2.0 intentionally retires 1.x's separate door activation and live-readiness step.** Rules
-4, 26, 40, 42, 49, 60, 82, 86 and 95; **checks: P16-NF-35/45/49/51**. In 1.x, `setGoLive()` is
-genuinely separate from positive caps and the helper checks `servingReady` before entering the
+**Rule — 1.x's separate door activation remains a policy choice for 2.0.** Rules 4, 26, 40, 42,
+49, 60, 82, 86 and 95; **checks: P16-NF-35/45/49/51**. In 1.x, `setGoLive()` is genuinely
+separate from positive caps and the helper checks `servingReady` before entering the
 cap/reservation gate. The approved 2.0 Part Eight and Part Ten designs contain neither an
-equivalent arm/disarm operation nor a current readiness read. This design records that difference
-as intentional: a current authorized positive cap plus a current not-frozen result opens the door,
-subject to six's ordinary admission contract and every other existing prerequisite. No separate
-arm or readiness record is consulted. `SEAM-LEDGER.md` row 65's refusal of the proposed separate
-seam confirms that no such owner operation is available; it is not treated as a grant. The GRANTED
-cap/freeze scope in `seam-response-effects-followup.md` supplies the only new control payloads on
-which these checks depend. The 1.x production-dispatch gap also remains: a helper fixture cannot
-prove a real paid call traverses the doorway, so the positive lifecycle neighbor must do so.
+equivalent arm/disarm operation nor a current readiness read. That difference is audited, but its
+policy consequence is not selected here. Decision 8 chooses between carrying forward a separate
+activation action through owner-design amendments and the current-contract proposal in which a
+current authorized positive cap plus current not-frozen proceeds to six's ordinary admission.
+`SEAM-LEDGER.md` row 65's refusal confirms only that the separate path is outside the currently
+approved owner designs; it does not choose the proposal. The activation arms remain non-executable
+pending that decision and the contracts required by its answer. The 1.x production-dispatch gap
+also remains: a helper fixture cannot prove a real paid call traverses the doorway, so the eventual
+positive lifecycle neighbor must do so.
 
 **Rule — the 1.x provider reconciliation populations remain distinct.** Rules 13, 26, 39, 58,
 86 and 111; **checks: P16-NF-14/17/36/44**. When the routing-spend view is enabled and

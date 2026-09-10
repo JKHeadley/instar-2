@@ -84,21 +84,38 @@ waiting may reduce future migration work but blocks the package on a separate de
 Recommendation: Keep complete history with bounded views and growth monitoring because it preserves
 evidence without making everyday queries unbounded.
 
+**Value — decision 8: Whether setting a budget should also turn paid service on.**
+Question: Should setting a spending budget also turn paid service on, or should turning it on be a
+separate action?
+Background: A budget limits how much can be spent, while turning paid service on decides whether
+spending may begin at all.
+Choices: Setting a positive budget also turns paid service on; or turning paid service on requires
+a separate action after the budget is set.
+What it changes: Combining them takes one less step but means changing a limit can start paid
+service; separating them adds a deliberate step and keeps a budget change from starting spending.
+Recommendation: Require a separate action because setting a limit and granting permission are
+different decisions, and keeping them separate reduces accidental spending.
+
 **Rule — technical completion is not approval or certification.** Rules 34, 65, 80, 82 and 90;
 **checks: P16-NF-35/45/49/51/52** and the governed review process. `SEAM-LEDGER.md` row 65 refuses
 `P16-P8-P10-paid-door-readiness-v1`, recorded in
 `design-measurement-ledgers-seam-request-paid-door-readiness.md`, as outside the approved Part Eight
-and Part Ten designs. Section 8 therefore selects the existing-contract behavior rather than
-leaving an operator choice: current authorized positive cap plus current not-frozen opens the door
-inside six's ordinary admission path, and no separate arm/readiness operation is required. Those
-checks remain non-executable until the exact cap/freeze grant in
-`seam-response-effects-followup.md` lands with production wiring; the refusal is not a grant.
-P16-NF-32's benchmark-window arm is separately non-executable until Part Seven grants and lands
-`design-measurement-ledgers-seam-request-benchmark-run-start-clock.md`. This document claims no
-deployment, runtime measurement, review convergence, holder adequacy or operator approval. Implementation
-becomes eligible only after the real three-tier, production-lifecycle, reconstruction,
-isolation, privacy, load and independent-holder evidence exists. The operator's answers above and
-explicit approval remain separate from every technical pass.
+and Part Ten designs. That refusal leaves decision 8 open; it neither selects the current-contract
+proposal nor grants a separate-action path. If the operator chooses the current-contract proposal,
+current authorized positive cap plus current not-frozen proceeds inside six's ordinary admission
+without a separate activation/readiness contract. If the operator chooses a separate action, the
+approved Part Eight design must be amended to add an operator-authorized per-door arm/disarm effect,
+and the approved Part Ten design must be amended to add a current paid-service readiness read and
+bind it into assembly admission. P16-NF-35/45/49/51 activation arms remain non-executable until
+that decision is answered, the exact cap/freeze grant in `seam-response-effects-followup.md` lands
+with production wiring, and any amendment required by the answer is granted and landed.
+P16-NF-32's benchmark-window arm is separately non-executable until the conditionally granted
+`P16-P7-benchmark-run-start-clock-v1` addendum at the end of
+`seam-response-judgment.md`, tracked in `SEAM-LEDGER.md` row 73, lands. This document claims no
+deployment, runtime measurement, review convergence, holder adequacy or operator approval.
+Implementation becomes eligible only after the real three-tier, production-lifecycle,
+reconstruction, isolation, privacy, load and independent-holder evidence exists. The operator's
+answers above and explicit approval remain separate from every technical pass.
 
 ---
 

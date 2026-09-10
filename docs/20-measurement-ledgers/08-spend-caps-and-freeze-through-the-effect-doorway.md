@@ -12,22 +12,23 @@ own part-one `Refused` with `reason: budget-exhausted`. A current freeze makes t
 that applied the cap/freeze may return `Success`.
 Their subjects and ids cannot satisfy one another.
 
-**Rule — the paid door opens through the existing cap and freeze contract.** Rules 4, 26, 40, 42,
-49, 82, 86 and 95; **checks: P16-NF-35/45/49/51**. The approved Part Eight and Part Ten designs
-define no separate per-door arm/disarm operation or paid-service readiness read. This design
-therefore selects the existing-contract behavior: after the independently reachable freeze check,
-a current authorized positive cap means the door is open, subject to six's ordinary reservation,
-fence, capacity and every other existing admission prerequisite. An absent, zero or negative cap
-cannot open the door. A current freeze refuses before ordinary spend admission. No configuration
-flag, constructed object, metric, stale cap, or nonexistent arm/readiness record can substitute for
-those current owner-resolved inputs.
+**Rule — the paid-door opening policy remains an operator decision.** Rules 4, 26, 40, 42, 49,
+82, 86 and 95; **checks: P16-NF-35/45/49/51**. The approved Part Eight and Part Ten designs define
+no separate per-door arm/disarm operation or paid-service readiness read. That limits what can be
+built under the current owner contracts; it does not choose whether a positive cap should itself
+open paid service. Decision 8 asks the operator to choose between the current-contract proposal,
+where a current authorized positive cap plus current not-frozen proceeds to six's ordinary
+admission, and a separate-action policy, where those states remain insufficient until a distinct
+operator action has turned paid service on. The closing Rule block names the owner-design
+amendments the separate-action choice requires.
 
 `SEAM-LEDGER.md` row 65 refuses the proposed separate activation/readiness seam as beyond the
-approved owners' scope; this policy does not depend on that refusal as a grant and requires no
-operation it proposed. P16-NF-35/45/49/51 now test positive-cap/not-frozen, absent-or-non-positive-
-cap and frozen neighbors directly against the exact cap/freeze scope granted in
-`seam-response-effects-followup.md`. Those arms remain non-executable only until that grant lands
-with its real production wiring. Freeze remains checked first and independently reachable.
+currently approved owners' scope and returns the policy choice to the operator. It neither selects
+the current-contract proposal nor grants the separate-action path. P16-NF-35/45/49/51 activation
+arms remain non-executable until decision 8 is answered, the exact cap/freeze scope in
+`seam-response-effects-followup.md` lands, and any owner amendment required by the answer also
+lands. Under either choice, an absent, zero or negative cap cannot permit spending, a current
+freeze refuses before ordinary spend admission, and freeze remains independently reachable.
 
 **Rule — changing a cap and releasing a freeze require operator authority.** Rules 4, 28, 79, 82,
 89 and 98; **checks: P16-NF-35/51/52**. The action begins as an exact authorization
