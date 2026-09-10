@@ -52,6 +52,7 @@ export const transportDispositions = [
 // removed, renamed, skipped or moved out of its required tier, the map fails.
 export const transportSeamEvidence = [
   ['SLB-PRESERVE-01', 'unit', 'legacy additivity'],
+  ['SLB-LEGACY-PRIORITY-76', 'unit', 'Astra V31-V65 combined legacy refusal priority'],
   ['SLB-DECODE-02', 'unit', 'shared policy and record decoding'],
   ['SLB-SHARED-04', 'integration', 'shared pressure identity'],
   ['SLB-FRONTIER-05', 'integration', 'fixed frontier determinism'],
@@ -106,10 +107,16 @@ export const transportSeamEvidence = [
   ['SLB-LEGACY-REPLICATION-66', 'integration', 'review V17 legacy shared-metadata replication refusal'],
   ['SLB-EXECUTABLE-ADMISSION-67', 'integration', 'review V14 V18 shared executable admission binding'],
   ['SLB-LOCALE-ORDER-68', 'integration', 'review V21 locale-independent byte ordering'],
+  ['SLB-SOURCE-BYTES-74', 'unit', 'Astra V13 V14 UTF-8 source-vector order'],
   ['SLB-PARENT-CLOCK-70', 'integration', 'review V01 incomparable parent-budget clock refusal'],
   ['SLB-LATER-CYCLE-71', 'integration', 'review V02 later restored breaker cycle'],
   ['SLB-LEGACY-MUTATION-72', 'unit', 'review F3 public decoder and scheduling refusal bytes'],
   ['SLB-E2E-REPAIR9-73', 'e2e', 'review V01 V02 durable reconstruction'],
+  ['SLB-SLICE-A-75', 'unit', 'Astra V23 excluded missed-member scope'],
+  ['SLB-RESOURCE-DEMAND-77', 'integration', 'Astra V1 V2 exact admitted shared resource demand'],
+  ['SLB-RESOURCE-RESTART-78', 'integration', 'Astra V16 durable shared resource demand'],
+  ['SLB-RESOURCE-REPLAY-79', 'integration', 'Astra V17 replay and replication demand validation'],
+  ['SLB-E2E-RESOURCE-80', 'e2e', 'Astra V16 fresh-process shared resource validation'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

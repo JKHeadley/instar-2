@@ -66,7 +66,9 @@ export type LoopSourceVector = readonly Readonly<{ machine: string; epoch: numbe
 export type LoopPressureScope = Readonly<{ target: string; conversation: string; machine: string; pool: string }>;
 export type LoopAttempt = Readonly<{
   id: string; holderFamily: string; worker: string; machine: string; episode: string;
-  admittedAt: Clock; resource: number; mode: 'closed' | 'half-open'; sourceVector: LoopSourceVector;
+  admittedAt: Clock;
+  /** Exact resource-credit unit consumed by AdmissionReservation.charge for this attempt. */
+  resource: number; mode: 'closed' | 'half-open'; sourceVector: LoopSourceVector;
 }>;
 export type LoopOutcome = Readonly<{
   attempt: string; kind: 'accepted' | 'failed'; failureClass: string; observedAt: Clock;

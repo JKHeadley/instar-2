@@ -96,3 +96,24 @@ it.skipIf(mode !== 'repair9-cycle-recover')('repair9 cycle recovery keeps the la
   const loop = value(f.api.inspect()).filter(row => row.record.type === 'LoopRecord').at(-1)!.record as SharedLoopRecord;
   expect(loop).toMatchObject({ state: 'half-open', breakerFirstOpened: { value: 142 }, pendingAttempts: ['trial-2'] });
 });
+
+it.skipIf(mode !== 'repair10-resource-produce')('repair10 producer persists exact shared resource admission', () => {
+  const f = transportLoopFixture(directory);
+  const policy = { ...f.sharedPolicy, id: 'e2e-repair10-resource', parentResourceBudget: 1 } as const;
+  f.registerPolicy(policy);
+  const token = value(f.api.acquire('e2e-repair10-resource-lease', '', 1000));
+  const loop = value(f.api.scheduleEpisode({ command: 'e2e-repair10-resource-schedule', fence: token,
+    currentOwnerRun: f.run, policy, episodeKey: 'one', operationFamily: 'recovery', pressureScope: scope,
+    sourceVector: f.vector }));
+  f.advance(1);
+  value(f.api.admitLoopAttempt({ command: 'e2e-repair10-resource-admit', fence: token, episode: ref(loop),
+    attempt: 'resource-attempt', holderFamily: 'sentinel', worker: 'worker:resource', machine: 'machine-a',
+    resource: 1, sourceVector: f.vector }));
+});
+
+it.skipIf(mode !== 'repair10-resource-recover')('repair10 recovery refuses resource inflation', () => {
+  const f = transportLoopFixture(directory, 'worker:e2e-repair10', 'authority:e2e-repair10');
+  f.time(101);
+  const token = value(f.api.acquire('e2e-repair10-resource-takeover', f.head(), 1000));
+  expect(() => value(f.api.reserve(f.input(token, { attempt: 'resource-attempt', charge: 20 })))).toThrow();
+});

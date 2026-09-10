@@ -545,7 +545,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
           && previous.semanticMessage === input.semanticMessage && previous.durability === input.durability && previous.replicas === input.replicas, 'operation mapping changed');
         return previous;
       }
-      const loopAdmission = resolveSharedLoopAdmission(all, input.run.id, input.attempt);
+      const loopAdmission = resolveSharedLoopAdmission(all, input.run.id, input.attempt, input.charge);
       return write(all, { ...meta(all, input.command), type: 'AdmissionReservation', operation, request: input.request.id,
         attempt: input.attempt, digest: input.payloadDigest, run: input.run.id, semanticMessage: input.semanticMessage,
         deliveryAttempt: `delivery:${encoded([operation, input.semanticMessage]).hash}`, fence: input.fence,
@@ -556,7 +556,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       const all = read(); fence(all, token);
       const old = reservations(all).find(p => p.operation === operation);
       ensure(old?.state === 'prepared', 'claim already issued or reservation absent');
-      const loopAdmission = resolveSharedLoopAdmission(all, old.run, old.attempt);
+      const loopAdmission = resolveSharedLoopAdmission(all, old.run, old.attempt, old.charge);
       const saved = write(all, { ...old, ...meta(all, command), state: 'dispatch-claimed', executor: host.incarnation },
         loopAdmission ? [loopAdmission.fact.id] : []);
       const capability = Object.freeze({ operation, attempt: old.attempt, digest: old.digest, executor: host.incarnation }) as DispatchClaim;
@@ -569,7 +569,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       ensure(old?.state === 'dispatch-claimed' && old.executor === host.incarnation, 'claim no longer callable');
       // Burn before durable append. Failed acknowledgement is uncertainty, never a reusable handle.
       claim.used = true;
-      const loopAdmission = resolveSharedLoopAdmission(all, old.run, old.attempt);
+      const loopAdmission = resolveSharedLoopAdmission(all, old.run, old.attempt, old.charge);
       return write(all, { ...old, ...meta(all, `consume:${old.operation}`), state: 'consumed' },
         loopAdmission ? [loopAdmission.fact.id] : []).record;
     }),

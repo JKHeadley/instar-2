@@ -21,22 +21,8 @@ export { value, refused };
 const encoded = (input: unknown) => value(canonical(input));
 export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-loop-')),
   incarnation = 'worker:1', authority = 'authority:1') {
-  let baseBinding = '';
-  const rg = rungraphFixture(undefined, undefined, {
-    fields: {
-      intent: { kind: 'constitutional', type: 'Intent' }, owner: { kind: 'constitutional', type: 'VerifiedPrincipal' },
-      capture: { kind: 'capture' }, transportScheduleBinding: { kind: 'text', maxLength: 256 },
-      transportScheduleKind: { kind: 'text', maxLength: 256 },
-    },
-    extra: { 'scheduled-stimulus': { intent: { kind: 'constitutional', type: 'Intent' },
-      owner: { kind: 'constitutional', type: 'VerifiedPrincipal' },
-      transportScheduleBinding: { kind: 'text', maxLength: 256 },
-      transportScheduleKind: { kind: 'text', maxLength: 256 } } },
-    body: ({ intent, owner, hash }) => json({ intent, owner, capture: { reference: 'message:1', hash },
-      transportScheduleBinding: baseBinding || 'parent-duty', transportScheduleKind: 'existing' }),
-  });
+  const rg = rungraphFixture();
   rg.grant({ id: 'g-loop-bob', grantee: rg.bob });
-  (rg.c.stimulusKinds as string[]).push('scheduled-stimulus');
   const parentDuty = { owner: 'part-five' as const, name: 'Run' as const, id: rg.id };
   const runFacts: FactEnvelope[] = [];
   const runHistory = (): FactContext => ({ ...rg.ctx, facts: [...value(rg.store.read()), ...runFacts] });
@@ -267,7 +253,7 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
   };
   const input = (fence: FenceToken, overrides: Partial<ReserveInput> = {}): ReserveInput => ({ command: 'reserve', fence,
     request: { owner: 'part-eight', name: 'EffectRequest', id: 'request:1' }, attempt: 'attempt:1',
-    payloadDigest: `sha256:${'a'.repeat(64)}`, charge: 20, run: parentDuty,
+    payloadDigest: `sha256:${'a'.repeat(64)}`, charge: 1, run: parentDuty,
     semanticMessage: 'message:five-owned', durability: 'local-durable', replicas: 0, ...overrides });
   const head = () => value(api.inspect()).at(-1)?.fact.id ?? '';
   const detail = <T>(r: Result<T>) => consumeResult(r, { Success: () => '', Refused: refusal => refusal.detail });

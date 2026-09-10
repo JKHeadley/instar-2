@@ -31,3 +31,15 @@ it('SLB-E2E-REPAIR9-73 V01 V02 reconstructs cross-clock budget evidence and a la
     }
   }
 }, 140000);
+
+it('SLB-E2E-RESOURCE-80 V16 reconstructs exact shared resource admission and refuses inflation', () => {
+  const vitest = resolve('node_modules/vitest/vitest.mjs');
+  const directory = mkdtempSync(join(tmpdir(), 'transport-loop-repair10-resource-'));
+  const run = (mode: string) => spawnSync(process.execPath, [vitest, 'run', '--config',
+    'tests/fixtures/transport-loop-e2e.config.mjs', '--reporter=verbose'], { encoding: 'utf8', timeout: 60000,
+    env: { ...process.env, SLB_E2E_MODE: mode, SLB_E2E_DIR: directory } });
+  for (const phase of ['produce', 'recover']) {
+    const result = run(`repair10-resource-${phase}`);
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+  }
+}, 70000);
