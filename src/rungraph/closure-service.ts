@@ -1,6 +1,6 @@
 import { consumeResult } from '../index.js';
 import type { FactEnvelopeReference, Json, Result } from '../index.js';
-import { causalCone, hashBytes } from '../facts/index.js';
+import { causalCone, createFactStore, hashBytes } from '../facts/index.js';
 import type { AppendReceipt, ConflictClass, FactEnvelope } from '../facts/index.js';
 import { foldProjection } from '../projections/index.js';
 import { boundary, encoded, freeze, json, need, object, same, take } from './boundary.js';
@@ -402,6 +402,23 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
         'writer acknowledged without durable spine admission');
       return receipt;
     };
+    const legacyBefore = (origin: FactEnvelope, current: RunDecodeContext): RunView => {
+      const facts = causalCone(origin, current.facts.facts);
+      const frontier = frontierBefore(origin, current);
+      const historicalContext = { ...current, facts: { ...current.facts, facts: [] } };
+      const unavailable = (): never => { throw new Error('historical closure validation is read-only'); };
+      const store = createFactStore(historicalContext.facts, {
+        owner: 'part-ten', read: () => facts, append: unavailable,
+      });
+      const generation = dependencies.generation();
+      const graph = take(createRunGraph({ ...dependencies, context: historicalContext, store,
+        clock: () => origin.at,
+        generation: () => ({ ...generation, lineages: Object.fromEntries(Object.entries(frontier)
+          .map(([machine, head]) => [machine, { head, observedAt: origin.at.value, closed: false }])) }),
+        writer: { owner: 'part-ten', append: unavailable },
+      }));
+      return take(graph.read(String(object(origin.body).run)));
+    };
     const closureView = (base: RunView, current: RunDecodeContext): RunView => {
       const exitCopies = immutableCopies(base.run.id, 'UnreachableRunExit', current);
       const candidates = exitCopies.records;
@@ -411,6 +428,26 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
         conflicts.push(...immutableCopies(record.run, 'ExhaustionRecord', current, record.exhaustion.id).conflicts);
         if (record.phase === 'close')
           conflicts.push(...immutableCopies(record.run, 'UnreachableRunExit', current, record.proposal!.id).conflicts);
+      }
+      // The legacy fold can advance past a predecessor also consumed by a new exit.
+      // Revalidate that proposal at its signed frontier before retaining the disagreement.
+      const legacyTransitions = current.facts.facts.filter(fact => fact.kind === runKinds.RunTransition
+        && object(fact.body).run === base.run.id);
+      for (const candidate of candidates) {
+        if (candidate.record.type !== 'UnreachableRunExit' || candidate.record.phase !== 'proposal') continue;
+        const record = candidate.record;
+        const competing = legacyTransitions.filter(fact =>
+          object(recordFromWire(object(fact.body).record!)).expected === record.expected);
+        if (!competing.length) continue;
+        consumeResult(boundary('ReplayMixedRunSuccessors', candidate.fact, current, () => {
+          validateUnreachableOwner(record, legacyBefore(candidate.fact, current), current, candidate.fact);
+          return true;
+        }), {
+          Success: () => { conflicts.push({ key: `run-head:${record.run}:${record.expected}`,
+            kind: 'immutable-disagreement', facts: [candidate.fact.id, ...competing.map(fact => fact.id)].sort(),
+            detail: 'incompatible legacy transition and unreachable proposal consume the same predecessor' }); },
+          Refused: () => undefined,
+        });
       }
       const withConflicts = (view: RunView): RunView => conflicts.length ? freeze({ ...view, state: 'halted',
         conflicts: [...conflicts].sort((left, right) => left.key.localeCompare(right.key)) }) : view;
@@ -503,7 +540,15 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
     const readExit = (run: Parameters<RunClosureGraphPort['readExit']>[0]): ClosureExitRead => {
       const legacyExit = legacy.readExit(run);
       return consumeResult(legacyExit, {
-        Success: (): ClosureExitRead => legacyExit,
+        Success: (): ClosureExitRead => {
+          if (!rawFor(run.id, runClosureKinds.UnreachableRunExit).length) return legacyExit;
+          return consumeResult(boundary('ReadRunExit', run, dependencies.context, () => {
+            const view = read(run.id);
+            need(view.conflicts.length === 0 && view.state === 'completed',
+              'conflicting run successors prevent a terminal exit claim');
+            return true;
+          }), { Success: () => legacyExit, Refused: refusal => refusal });
+        },
         Refused: (refusal): ClosureExitRead => refusal.detail !== 'terminal run exit absent' ? refusal
           : boundary('ReadRunExit', run, dependencies.context, safe => {
             const referenceValue = object(safe);

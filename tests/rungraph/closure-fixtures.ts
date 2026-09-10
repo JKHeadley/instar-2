@@ -1,6 +1,7 @@
 import { decode } from '../../src/index.js';
 import type { FactEnvelopeReference, Json } from '../../src/index.js';
-import { closureRecordWire, createRunClosureGraph, recordFromWire, recordWire } from '../../src/rungraph/index.js';
+import { closureRecordWire, createRunClosureGraph, createRunGraph, recordFromWire,
+  recordWire } from '../../src/rungraph/index.js';
 import type { RunView } from '../../src/rungraph/index.js';
 import { factId, signEnvelope } from '../../src/facts/index.js';
 import type { FactSchema, SegmentStoragePort } from '../../src/facts/index.js';
@@ -118,8 +119,9 @@ export function exhaustionFixture(storageFactory?: (fallback: SegmentStoragePort
     obligation, exhaustion, exhaustionFact, exit, transition };
 }
 
-export function closeUnreachable() {
-  const f = exhaustionFixture(), proposalFact = value(f.graph.recordUnreachableExit(f.transition, f.lease));
+export function closeUnreachable(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort) {
+  const f = exhaustionFixture(storageFactory);
+  const proposalFact = value(f.graph.recordUnreachableExit(f.transition, f.lease));
   const closing = value(f.graph.read(f.id));
   const terminalExit = { ...f.exit, id: 'exit:unreachable:terminal', expected: f.exit.id, phase: 'close',
     frontier: closing.source.foldedThrough,
@@ -128,6 +130,39 @@ export function closeUnreachable() {
   const closeFact = value(f.graph.recordUnreachableExit(close, f.lease));
   const terminal = value(f.graph.readExitAny({ owner: 'part-five', name: 'Run', id: f.id }));
   return { ...f, closing, terminalExit, close, terminal, closeFact };
+}
+
+/** Use the unchanged public legacy writer to append a supported completion from
+ * the run's original predecessor. This is deliberately separate from the
+ * additive closure writer so mixed signed successor histories remain testable. */
+export function appendLegacyCompletion(f: ReturnType<typeof exhaustionFixture>) {
+  const legacy = value(createRunGraph(f.deps));
+  const ready = value(legacy.read(f.id));
+  const check = value(decode('Evidence', f.evidenceInput({ id: 'review18:completed-check',
+    claim: { subject: f.run.exitTest.subject,
+      predicate: `exit:${f.run.exitTest.check}:${f.run.exitTest.version}`,
+      value: f.run.exitTest.acceptance }, freshFor: 1000 }), f.ctx.decode));
+  const checkFact = f.append('evidence-record', json({ evidence: check })).fact;
+  const result = value(decode('Result', { type: 'Result', schemaVersion: 1, kind: 'Success',
+    value: 'completed by legacy writer', capacity: { kind: 'none' } }, f.ctx.decode));
+  const resultFact = f.append('result-record', json({ result })).fact;
+  const exit = { type: 'RunExit', schemaVersion: 1, id: 'review18:completed', run: f.id,
+    expected: ready.head, proposer: f.owner, standing: ref(f.opening),
+    frontier: ready.source.foldedThrough, at: f.now, kind: 'completed', exitTest: f.run.exitTest,
+    check: ref(checkFact), evidence: [{ type: 'Evidence', id: check.id, fact: ref(checkFact),
+      field: 'evidence' }], result: { type: 'Result', id: 'review18:completed-result',
+      fact: ref(resultFact), field: 'result' }, settledOperations: [] } as const;
+  const proposal = { type: 'RunTransition', schemaVersion: 1, id: 'review18:completed-proposal',
+    run: f.id, expected: ready.head, trigger: ref(checkFact), kind: 'propose-exit',
+    from: 'ready', to: 'closing', responsible: f.owner, standing: ref(f.opening),
+    ownership: f.lease, generation: f.run.generation, at: f.now, blockedOn: { kind: 'nothing' },
+    nextWake: f.run.nextWake, exit } as const;
+  value(legacy.transition(proposal));
+  const close = { ...proposal, id: 'review18:completed-close', expected: proposal.id,
+    kind: 'close', from: 'closing', to: 'completed',
+    exit: { ...exit, id: 'review18:completed-terminal', expected: proposal.id } } as const;
+  value(legacy.transition(close));
+  return { legacy, ready, checkFact, resultFact, proposal, close };
 }
 
 export function continuityFixture(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort) {

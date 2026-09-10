@@ -120,6 +120,12 @@ const seamEvidence = new Map([
   ['P5-SEAM-RC-R17-V42', 'tests/integration/rungraph-closure-review17.test.ts'],
   ...['V50', 'V52']
     .map(id => [`P5-SEAM-RC-R17-${id}`, 'tests/e2e/rungraph-closure-review17.test.ts']),
+  ...['V60', 'V66', 'V67']
+    .map(id => [`P5-SEAM-RC-R18-${id}-UNIT`, 'tests/rungraph/review18-conformance.test.ts']),
+  ...['V60', 'V66', 'V67']
+    .map(id => [`P5-SEAM-RC-R18-${id}-INTEGRATION`, 'tests/integration/rungraph-closure-review18.test.ts']),
+  ...['V61', 'V66', 'V67']
+    .map(id => [`P5-SEAM-RC-R18-${id}-E2E`, 'tests/e2e/rungraph-closure-review18.test.ts']),
 ]);
 
 const map = new Map();
