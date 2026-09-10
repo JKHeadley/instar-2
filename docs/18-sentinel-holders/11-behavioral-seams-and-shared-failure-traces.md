@@ -1,7 +1,7 @@
 ## 11. Behavioral seams and shared failure traces
 
 **Rule — each cross-part handoff has one record and one closure owner.** Rules 33, 42, 45, 46,
-49, 63, 68 and 69; **checks: P14-NF-03/04/32/36/40/42–49/59/60**.
+49, 63, 68 and 69; **checks: P14-NF-03/04/32/36/40/42–49/59/60/68**.
 
 | Producer → consumer | Record passed | Consumer obligation | Closure owner |
 |---|---|---|---|
@@ -12,6 +12,7 @@
 | Four/five/eight → framework-prompt holder | current exact operation admission/authorization plus captured menu and worker identity | distinguish missing authorization from an already-admitted operation; keep unresolved menus visible; request only scoped typed input | five owns blockers; eight settles input; ten owns the confined driver |
 | Six → holders | lease, fence, loop, recovery and admission observations | bind evidence to current execution authority | six owns execution/recovery lifecycle |
 | Five/six → budget-overrun holder | current run, `RunBudget`, safety ceiling, run head and resource/admission facts | confirm the governed overrun, propose a Part Five halt and require Six to fence new work; never synthesize an operator stop or a terminal result | five closes run halt/resume/exit; six closes admission and resource recovery |
+| Proposed Six serving-admission observation plus proposed Ten conversation-service observation → stranded-conversation holder | complete current conversation-owner population; exact binding and channel scope; current Six owner/candidate admission observation; sustained owner and peer liveness; bound-channel adapter service evidence; complete eligible-peer result and explicit unknowns | inspect every current ownership record without requiring admitted input or a local worker; distinguish healthy owner, online-but-unservable owner with a servable peer, fleet-wide service gap and cannot-assess; never choose a destination, move ownership, start work or speak | six owns serving admission and any separately authorized handoff/recovery; ten owns complete production observation; the ungranted requests are `design-sentinel-holders-seam-request-serving-admission.md` and `design-sentinel-holders-seam-request-conversation-servability.md`, so P14-NF-68's complete-population and production-observer positives are non-executable until both are granted and land |
 | Holders → seven | captured signal and allowed classification outcomes | decide within floors with complete context | seven owns semantic resolution |
 | Holders/seven → eight | registered operation plus effect request | revalidate and settle occurrence/quiescence/charge | eight owns effect settlement |
 | Eight → nine | effect observations and independent outcome evidence | assess restoration without rewriting settlement | nine owns verification assessment |

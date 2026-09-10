@@ -1,7 +1,7 @@
 ## 4. The silently-stopped matrix
 
 **Rule — harness onboarding supplies the complete stop-mode matrix.** Rules 30, 34, 36, 43, 59,
-64, 68, 69 and 115; **checks: P14-NF-25–30/56/57**. The part-ten adapter registration cannot complete
+64, 68, 69 and 115; **checks: P14-NF-25–30/56/57/68**. The part-ten adapter registration cannot complete
 until every row below names a detector arm, an evidence bar, recovery owner, safe failure direction,
 real captured fixtures and an end-to-end positive neighbor. An adapter may add rows. It may not
 delete the common rows or claim coverage from another harness's parser.
@@ -20,7 +20,35 @@ delete the common rows or claim coverage from another harness's parser.
 | Context becomes non-resumable | repeated real adapter error capture, same context/incarnation and independent challenge | fresh grounded worker proposed through eight; corrupt context is never resumed |
 | Compaction loses continuity | exact last inbound id absent from grounding/continuity accounting or post-compaction consumption | five retains work and requires truthful re-grounding; output growth is insufficient |
 | Stop, fence, lease, capacity or hardware loss | source facts from their owners and named-hardware measurement | six reassigns or recovers within budget; session event cannot close the run |
+| Conversation owner stays online but cannot serve its bound channel | complete current ownership population; current conversation binding and channel scope; at least two advancing fresh owner observations spanning the declared minimum observation period; typed capacity refusal or adapter-unavailable evidence; and a complete observation of every peer eligible under current binding and assembly proving whether a healthy peer can serve | the holder raises a signal and no takeover claim; six alone may schedule an already-authorized handoff or recovery, while missing, stale, partial or conflicting service evidence remains visibly `unknown` and cannot move ownership |
 | Malformed, delayed or misleading output | captured bytes, parser result, provenance and independent outcome witness | parser signal plus judgment as needed; no unsupported success claim |
+
+The **conversation-service population** is the complete set of current conversation-ownership
+records together with each owner's and every eligible peer's current ability to serve the bound
+channel. It does not require a previously admitted unanswered message, a local worker, or a local
+stall candidate. A healthy current owner is the no-finding neighbor. One observation, a minimum observation period that
+has not elapsed, an unreadable binding or channel scope, a stale owner observation, an incomplete
+peer population, or unknown capacity/adapter posture produces a visible cannot-assess result and no
+stranding verdict. An owner that cannot serve with no proved servable peer produces a separate
+fleet-wide service gap, not authority to choose a destination. Observation never assigns an owner,
+starts a worker, forwards input, or sends a conversational reply.
+
+The landed Part Six `Lease` and `TransportAuthority.inspect` expose ownership facts but not a
+current read-only answer for whether one machine can receive conversation-service admission under
+the current stop, fence, capacity and resource policies. Part Fourteen therefore depends on the
+additive Part Six observation requested in
+`.instar/lanes/design-sentinel-holders-seam-request-serving-admission.md`, request
+`P14-P6-conversation-serving-admission-v1`. The landed Part Ten
+`HarnessAdapterPort.observe` covers one known launch/delivery, and landed
+`AssemblyManifest`/`AssemblyAdmission` describe configured assembly rather than that complete fresh
+population. They cannot supply the observation above. Part Fourteen therefore
+depends on the additive read-only Part Ten operation requested in
+`.instar/lanes/design-sentinel-holders-seam-request-conversation-servability.md`, request
+`P14-P10-conversation-service-observation-v1`, which consumes the requested Six-owned observation
+rather than recasting it. P14-NF-68's pure decision/refusal cases are
+specified, but its complete-population and production-observer positives are non-executable until
+both requested seams are granted and land. No candidate values or private platform scan may stand
+in for the missing owner-decoded observations.
 
 The landed Part Five run graph admits only root depth, rejects nonempty grounding children and has
 no `DelegationContract` or `DelegationResult`. The delegation and visible-child accounting in

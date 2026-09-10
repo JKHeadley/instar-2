@@ -1,7 +1,7 @@
 ## 1. Ownership and boundaries
 
 **Rule — part fourteen defines no new core type.** Rules 1, 30, 45, 49, 69, 90 and 113;
-**checks: P14-NF-01–04**. This is an adapter, holder and package design over the landed core. A
+**checks: P14-NF-01–04/68**. This is an adapter, holder and package design over the landed core. A
 holder package means the current Part Ten `LocalCapabilityPackage`, its exact `declarationIds`,
 the referenced `VerificationPlan` instances and their executable bindings. It is not a register
 kind or a new persisted core schema. Earlier parts own every consumed type.
@@ -13,11 +13,11 @@ kind or a new persisted core schema. Earlier parts own every consumed type.
 | Three — register | declarations, holder entries, `holds`/`freshnessProbe`/`scope`/`authority` facts, rule graph, check-run records and honesty classes |
 | Four — intake | authenticated intake, principal and conversation binding, authorization classification and preserved refusal |
 | Five — run graph | durable runs, steps, transitions, budgets, exit tests, progress, worker grounding, continuation and delegation edges |
-| Six — execution | leases, fences, admission reservations, `LoopPolicy`, `LoopRecord`, `RecoveryRecord` and bounded recovery ownership |
+| Six — execution | leases, fences, admission reservations, `LoopPolicy`, `LoopRecord`, `RecoveryRecord` and bounded recovery ownership; the read-only current conversation-serving admission observation needed by P14-NF-68 is requested in `design-sentinel-holders-seam-request-serving-admission.md` and is neither granted nor landed |
 | Seven — judgment doorway | `JudgmentRequest`, attempts, resolutions, declared floors, model provenance and benchmark definitions |
 | Eight — effect doorway | `OperationDefinition`, `EffectRequest`, validation, observation, settlement, `OutboundMessage` and adapter ports |
 | Nine — verification holders | `VerificationPlan`, `VerificationRequest`, `VerificationAssessment`, `ProbeRecord`, `RetrospectiveReviewRecord`, `SemanticReviewRecord`, `Grade`, `AssessmentClosure` and `GuardPostureView`; nine owns later grading and outcome review |
-| Ten — assembly | `AssemblyManifest`, `AssemblyAdmission`, `LocalCapabilityPackage`, `PackageTransition`, public adapter seams, confinement, production wiring and a hostile-cut harness (a test driver that stops the responsible process between adjacent durable steps and reconstructs from owned history); the complete worktree observation consumed here is the conditionally granted read-only worktree-observation operation in `seam-response-assembly-followup.md`, ledger #50, and is not landed |
+| Ten — assembly | `AssemblyManifest`, `AssemblyAdmission`, `LocalCapabilityPackage`, `PackageTransition`, public adapter seams, confinement, production wiring and a hostile-cut harness (a test driver that stops the responsible process between adjacent durable steps and reconstructs from owned history); the complete worktree observation consumed here is the conditionally granted read-only worktree-observation operation in `seam-response-assembly-followup.md`, ledger #50, and is not landed; the complete live conversation-service observation needed by P14-NF-68 is requested in `design-sentinel-holders-seam-request-conversation-servability.md` and is neither granted nor landed |
 | Eleven — operator surfaces | authenticated pull views, the minimal plane, bounded notices and operator action surfaces; the real guard-and-repair pull operation is granted in `seam-response-operator-followup.md`, with its Part Ten production wiring granted in `seam-response-assembly-followup.md`, ledger #51, and neither is landed |
 
 **Rule — the package cannot reinterpret an earlier owner.** Rules 4, 26, 30, 42, 45, 57, 63,

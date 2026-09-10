@@ -1,7 +1,7 @@
 ## 2. The registered holder family
 
 **Rule — every member is an ordinary part-nine plan with named arms.** Rules 5, 9, 34, 38, 39,
-43, 49, 59, 69 and 78; **checks: P14-NF-05–09/12–15/22/37/38/58–67**. Each row becomes one or more
+43, 49, 59, 69 and 78; **checks: P14-NF-05–09/12–15/22/37/38/58–68**. Each row becomes one or more
 versioned `VerificationPlan` instances. Every arm names its exact subject, executable, schedule,
 freshness window, evidence sources, independent witness, failure action and capacity budget through
 the owning plan fields. Runtime activation is not an arm field; it comes from the Part Ten binding
@@ -25,6 +25,7 @@ protection.
 | Crash-loop holder | `runtime`, `retrospective` | Does one operation class repeatedly fail under a pinned population strongly enough to propose a pause? | complete attempt population, duration/outcome facts and part-seven classification |
 | Budget-overrun holder | `runtime`, `probe`, `retrospective` | Has a current autonomous run crossed its governed safety ceiling strongly enough to halt new work without declaring the assignment finished? | current run/budget/head, consecutive current due observations, Part Five halt and Part Six admission state |
 | Moving-worker silence holder | `runtime`, `sentinel`, `retrospective` | Is a current autonomous run still producing observed worker output but missing its attributable user-report cadence even without new inbound input or an open promise? | current run/cadence, last attributable outbound, shared output-change observation and one-voice ownership (the one current, re-resolved authority allowed to speak for that conversation) |
+| Stranded-conversation holder | `runtime`, `sentinel`, `retrospective` | Does a current conversation point to an online owner that has remained unable to serve its bound channel while a separately observed healthy peer can serve it? | complete current conversation-owner population, current binding and channel scope, at least two advancing fresh owner observations spanning the declared minimum observation period, typed capacity refusal or adapter-unavailable evidence, complete eligible-peer service observations and visible unknowns |
 | Session reaper | `build`, `probe`, `retrospective` | Is a named worker disposable now without ending work, breaking reachability or widening exposure? | affirmative ready/idle evidence, sustained unchanged candidacy, a separate **reap-pending** grace observation—the finite grace state after sustained candidacy—live run/lease/delegation/commitment state, measured hardware pressure, fresh full pre-effect evaluation and action-time identity |
 | Process-population reaper | `build`, `probe`, `retrospective` | Does the complete current-user process population contain an old ownerless Instar command-line interface (CLI) process or leaked/reparented allowlisted Model Context Protocol (MCP) descendant that is disposable without touching live owned or external terminal sessions? | complete Part Ten process inventory, ancestry and session/worker ownership joins, then separate action-time identity |
 | Guard-posture tripwire | `build`, `runtime`, `probe`, `retrospective` | Is every required arm actually executing and independently witnessed at its current generation? | part-nine source observations, check/probe records, assembly inventory and external freshness witness |

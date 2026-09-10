@@ -1,7 +1,7 @@
 ## 14. Inherited duties and disposition
 
 **Rule — no inherited duty remains parked.** Rules 8, 45, 49, 53, 59, 64, 68, 69, 71, 87 and 88;
-**checks: P14-NF-01/03–05/25/32/35/49/50/55–67**.
+**checks: P14-NF-01/03–05/25/32/35/49/50/55–68**.
 
 | Duty | Disposition |
 |---|---|
@@ -22,5 +22,6 @@
 | 1.x destructive target guards | **Partial, activation-blocking:** exact target verification, audited exceptions, refusal propagation and crash cuts are specified by P14-NF-51–53, but require the requested Eight/Ten typed drivers. Part eight remains the sole effect authority. |
 | 1.x enforced autonomous-run termination | **Held at the observation/ownership split; actuation-blocking:** P14-NF-59 retains confirmed budget-overrun detection and delegates the durable halt to Five and admission/resource closure to Six. The halt positive is non-executable until `seam-response-rungraph-followup.md` lands. Worker closure uses Eight/Ten only after exact process verification. State deletion, synthetic operator-stop attribution and terminalizing unfinished work are rejected. The process-effect positive neighbor remains blocked by the same Eight/Ten dependencies above. |
 | 1.x autonomous moving-worker silence heartbeat | **Held as observation, routine push rejected:** P14-NF-60 enumerates moving-but-user-silent autonomous runs even without inbound input or a promise, exposes them on Eleven's pull surface and assigns cadence repair to Five. Rule 87 forbids preserving a routine status push; only independently eligible action-needed/result-bearing output may use Eight. |
+| 1.x online-but-unservable conversation ownership | **Held as a distinct signal; production observation is activation-blocking:** P14-NF-68 scans every current conversation-ownership record even without admitted unanswered input or a stalled local worker. It requires sustained fresh evidence that the online owner cannot serve the bound channel, retains the healthy-serving neighbor, makes insufficient evidence visibly cannot-assess and gives the holder no takeover or speaking authority. Six owns any authorized handoff/recovery. The landed Six port cannot supply current serving-admission posture and the landed Ten ports cannot enumerate this live service population, so its complete-population and production-observer positives are non-executable until the ungranted requests `P14-P6-conversation-serving-admission-v1` in `design-sentinel-holders-seam-request-serving-admission.md` and `P14-P10-conversation-service-observation-v1` in `design-sentinel-holders-seam-request-conversation-servability.md` are granted and land. The 1.x in-memory ownership/capacity scan, narrow blind-spot reporting and direct Telegram callback do not become 2.0 authority. |
 
 ---

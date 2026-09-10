@@ -42,10 +42,13 @@ The later actuation positive remains separately blocked on
 
 **Rule — clean-worktree reclamation keeps every uncertain checkout.** Rules 5, 9, 26, 42, 55,
 60, 61, 68, 69 and 73; **check: P14-NF-66**. Here **clean** means the current checkout has no
-tracked or untracked user work after applying one registered narrow residue list. **Merged** means
-the current branch head's content is already in the current default branch. Patch-equivalent
-history may prove that condition. A merged-pull-request observation may prove it only when its exact
-head object identity equals the checkout's current head. **Unused** means no live session or index
+tracked or untracked user work after applying one **registered narrow residue list**: a specifically
+registered list of generated files and machine-created markers that may be ignored, never
+user-authored tracked or untracked work. **Merged** means the current branch head's content is
+already in the current default branch. **Patch-equivalent history** means equivalent changes are
+already present in the destination history even though the source and destination commit identities
+differ. That equivalence may prove the merged condition. A merged-pull-request observation may prove
+it only when its exact head object identity equals the checkout's current head. **Unused** means no live session or index
 lock, no current process whose working directory lies inside the checkout, no live run/delegation
 owner and no active-build marker. Detached or unknown branches, dirty or unmerged heads, incomplete
 enumeration, failed classification and every uncertain owner/process observation remain kept.
