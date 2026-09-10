@@ -6,7 +6,7 @@
 | Property | Automatic workload and measurement | Bar and failure action |
 |---|---|---|
 | Capture-to-ack | Real platform events at idle, declared peak, boundary, and boundary-plus-one sizes; kill at write, flush, fact append, ack and cursor cuts | No protocol ack before durable custody; failed capture remains redeliverable or an owned outage |
-| Ordinary service and backlog | Use a maximum of two eligible routes and two selections per round, with at most one first-service head selected from each route per round. Admit three items to route A under a per-route capacity of three. Add one healthy item to route B while continuously offering more work to A. Offer a fourth item to the full A route. Measure every item's admission, position, eligibility, round membership and first opportunity. Keep A1's owner result uncertain after its first opportunity and later admit a distinct observation wake for that same operation. | A1 and B1 receive opportunities in the first applicable round. A1 remains uncertain and owned. A2 and A3 still receive their first opportunities in the second and third rounds; A1 is not marked complete to free them. The later A1 observation wake receives membership under its own stable item identity without another invocation. Each first-service head is served by the first round close after eligibility. Every admitted item meets its `p + 1` round-duration admission bound. The fourth A item is preserved but receives `budget-exhausted` and never becomes an admitted member. P12-NF-40 is non-executable until the dated 08:03Z grant in `seam-response-loop-followup.md` (SEAM-LEDGER row 43) lands and its Part Six implementation integrates. |
+| Ordinary service and backlog | Use a maximum of two eligible routes and two selections per round, with at most one first-service head selected from each route per round. Admit three already-eligible items to route A under a per-route capacity of three. Add one healthy item to route B while continuously offering more work to A. Offer a fourth item to the full A route. Measure every item's eligibility/admission clock, position, round membership and first opportunity. Keep A1's owner result uncertain after its first opportunity. Create a distinct A1 observation wake with a due clock two rounds in the future and keep it in Part Six's durable schedule until then. | A1 and B1 receive opportunities in the first applicable round. A1 remains uncertain and owned. A2 and A3 still receive their first opportunities in the second and third rounds; A1 is not marked complete to free them. The future A1 wake is neither observed nor admitted to route service before its due clock. When that clock is reached, it becomes eligible and is admitted under its own stable item identity, then receives its first opportunity within its `p + 1` round-duration bound measured from that eligibility/admission clock, with no second invocation. Each first-service head is served by the first round close after it becomes head. The fourth A item is preserved but receives `budget-exhausted` and never becomes an admitted member. P12-NF-40 is non-executable until the dated 08:03Z grant in `seam-response-loop-followup.md` (SEAM-LEDGER row 43) lands and its Part Six implementation integrates. The due clock and durable wait use the scheduled-work contract granted in `seam-response-loop-breaker.md`. |
 | Stop precedence | Keep an ordinary claim live on one route during an open ordinary round. Send the same route an exact bound-operator stop and a resolved requester's stop-shaped signal in separate runs. | The exact operator stop bypasses eligibility and the live claim. It appends its local-durable stop fact and applies the local halt before further ordinary selection, without waiting for round close or replication. The requester signal also bypasses the round and claim, surfaces immediately, and never authorizes a halt. |
 | Outbound uniqueness | Kill at preparation, claim, provider acceptance, observation, witness and settlement; lose and duplicate callbacks | At most one external semantic reply; unresolved cuts retain identity, exposure and zero replay |
 | Formatting | Real captured bytes, malformed markup, unsafe links, Unicode, the null control character and other control data, adversarial nesting and declared size edges | Exact deterministic digest or explicit refusal; no meaning/audience/standing change and no unbounded parse |
@@ -30,12 +30,21 @@ of this block is the activation seam inventory referenced by the production fixt
 
 Held-input redelivery and receipt-recovery positives are non-executable until
 the receipt-continuation addendum to `seam-response-intake-followup.md` (SEAM-LEDGER row 46) lands
-and its Four-owned implementation integrates. Production
+and its Four-owned implementation integrates. P12-NF-11's acknowledgment-policy arm and any mode
+that depends on a conversational acknowledgment are non-executable until the “acknowledgment policy
+consumer” addendum to `seam-response-intake-followup.md` (SEAM-LEDGER row 60) lands and its Four
+implementation integrates with the landed Part Eight reply path. A mode that declares `judged` also
+depends on the row-58 addendum in that file and its Four, Seven, and Ten implementations. The
+protocol custody acknowledgment does not depend on either policy addendum. P12-NF-18's recurring
+open-decision and reminder positive is non-executable until the “recurring open-decision reminder” addendum to
+`seam-response-operator-followup.md` (SEAM-LEDGER row 59) lands and its Part Eleven and Ten
+implementations integrate. Production
 secret-intake activation is non-executable until `seam-response-intake-followup.md` and
 `seam-response-assembly-followup.md` land and integrate the granted Four/Ten custody seam. Slack
 activation is non-executable until the Four half in `seam-response-intake-followup.md`
-(SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum
-to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. A Slack ephemeral positive
+(SEAM-LEDGER row 18), the stable-event commitment in that file's “stable event identity vs delivery
+attempt” addendum (SEAM-LEDGER row 57), and the Seven versioned intake-policy judgment consumer in
+the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. A Slack ephemeral positive
 is separately non-executable until the audience addendum in `seam-response-effects-followup.md`
 (SEAM-LEDGER row 53) lands and integrates; unsupported ephemeral delivery does not block Slack's
 ordinary-text mode. A real model-backed lifecycle is non-executable until `seam-response-judgment.md` and

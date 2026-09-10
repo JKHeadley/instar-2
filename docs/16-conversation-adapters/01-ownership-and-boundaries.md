@@ -6,6 +6,19 @@ earlier parts. Adapter methods, platform constants, and private protocol state a
 details. Durable records use the following owned types. This part creates no second message,
 principal, binding, queue, retry, effect, receipt, verification, assembly, or surface schema.
 
+The following glossary gives the plain-language meaning of boundary terms before their first use.
+The linked owner contracts remain authoritative; these explanations do not create local variants.
+
+| Term | Plain-language meaning and owner definition |
+|---|---|
+| **Custodian** | The confined service that holds platform credentials and original secret bytes. Ordinary workers receive only the references and redacted material their grants allow. |
+| **Ephemeral delivery** | Delivery of a notice that is visible only to one named member of a channel, never to the channel as a whole. |
+| **Causal frontier** | The signed-history boundary an appender had actually folded when it wrote a fact: one recorded position for each machine lineage it knew. Part Two [owns the exact envelope definition](../06-the-fact-envelope.md#the-envelope-every-fact-carries); Part Five [consumes that boundary in run records](../09-the-run-graph.md#11-declarations-projections-and-non-functional-checks). |
+| **Folded-through vector** | The per-lineage high-water marks carried by a derived view, showing exactly how much admitted history that view incorporated. Part Two [owns the projection definition](../06-the-fact-envelope.md#the-projection-contract); Part Five [requires equal-vector rebuilds to agree](../09-the-run-graph.md#11-declarations-projections-and-non-functional-checks). |
+| **Taint** | A warning carried from provisional, contested, or unavailable evidence. A derived authority view must keep that warning or refuse to make the authority claim. Part Two [owns taint admission and propagation](../06-the-fact-envelope.md#admission--the-one-boundary-a-fact-can-enter-through); Part Eight [consumes it at effect re-validation](../12-the-effect-doorway.md#6-re-validation-where-the-effect-leaves). |
+| **Fence token** | Part Six's current proof that one worker temporarily owns an exact execution scope. Every admission rejects an old epoch, wrong holder, or wrong scope; the token is not standing or approval. Part Six [owns the fence lifecycle](../10-the-transport-and-leases.md#3-lease-and-fence-lifecycle); Parts Five and Eight consume it at their [run](../09-the-run-graph.md#3-what-ownership-resources-and-recovery-must-realize) and [effect](../12-the-effect-doorway.md#6-re-validation-where-the-effect-leaves) admissions. |
+| **Dispatch-claim** | Part Six's durable, one-attempt handoff for one exact operation, digest, and executor. It can be consumed once and is never general permission to act. Part Six [owns the claim and its transition order](../10-the-transport-and-leases.md#4-operation-admission-and-the-seam-part-eight-consumes); Part Eight [consumes it where the effect leaves](../12-the-effect-doorway.md#6-re-validation-where-the-effect-leaves). |
+
 | Owner | Names consumed here |
 |---|---|
 | One | `VerifiedPrincipal`, `StandingGrant`, `Revocation`, `Intent`, `Directive`, `Authorization`, `Scope`, `Result`, `Outcome`, `Evidence`, `Measurement`, `Profile`, `Decision`, `Conflict`, `UnresolvedInput`, provenance and secret references |
@@ -36,6 +49,19 @@ addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35). P12-NF-19/20's pol
 positives and Slack activation are non-executable until both named grant files land and their
 implementations are integrated. None of these granted but unlanded records or operations is
 treated as present in the executable slice.
+
+The landed Four contract and Ten decoder currently accept only the names `always`, `bound-only`,
+and `never`; they do not enforce those policies. Four's public decision and consumer for all four
+policies is granted in the “acknowledgment policy consumer” addendum to
+`seam-response-intake-followup.md` (SEAM-LEDGER row 60). At the custody boundary, that consumer uses
+the admitted inbound's verified-principal resolution and declared mode policy to record whether a
+conversational acknowledgment may be requested as an ordinary Part Eight reply. It does not control
+the separate protocol custody acknowledgment in section three. P12-NF-11's policy-enforcement arm
+and every activation that depends on conversational acknowledgment policy are non-executable until
+that grant file lands and its Four implementation is integrated with the landed Part Eight ordinary
+reply path. The additive `judged` arm also depends on the “judged acknowledgment policy arm”
+addendum in the same file (SEAM-LEDGER row 58) and remains non-executable until its Four, Seven, and
+Ten implementations are integrated.
 
 Slack ephemeral delivery has its own Part Eight audience dependency. The single-member payload and
 evidence contract is granted in the 09:10Z addendum to `seam-response-effects-followup.md`
@@ -114,6 +140,15 @@ receipt-continuation operation is granted in the dated addendum to
 redelivery and recovery arms of P12-NF-13/19/20/22/51 are non-executable until that grant file
 lands and its implementation integrates. An adapter-local cache or private terminal filter
 cannot satisfy this dependency.
+
+Real provider redelivery has another granted Part Four dependency. Full transport bytes remain the
+custody record, but they cannot also be the only commitment for a stable event when a provider
+changes delivery-attempt metadata. The “stable event identity vs delivery attempt” addendum to
+`seam-response-intake-followup.md` (SEAM-LEDGER row 57) grants Four an adapter-declared stable-event
+commitment beside the full-bytes capture, with Ten binding the declaration through its
+`AdapterEvidenceContract`. P12-NF-09/19/20's real-redelivery positives are non-executable until
+that grant file lands and its Four/Ten implementations are integrated. Both original envelopes
+remain captured, and the canonical Part Four logical tuple remains the owner of deduplication.
 
 **Rule — translation cannot become policy.** Rules 4, 28, 30, 42, 63, 66, 89 and 103;
 **checks: P12-NF-03–05**. An adapter may authenticate a protocol exchange, preserve bytes, expose

@@ -2,12 +2,23 @@
 
 **Rule — Slack preserves before persistent-stream acknowledgment.** Rules 14, 36, 42, 46 and 89;
 **checks: P12-NF-19/20**. Slack Socket Mode is Slack's persistent authenticated WebSocket envelope
-stream. Slack authenticates the app connection and verifies the connected team identity. The outer
-event or interaction id is scoped to that team and app; a message timestamp is also scoped to its
-channel. Socket Mode acknowledges an envelope only after durable capture.
+stream. Slack authenticates the app connection and verifies the connected team identity. The
+Events API payload's `event_id`, or the declared interaction id for an interaction, is scoped to
+that team and app; the inner `event.event_ts` is scoped
+to its channel. Those fields and the event payload form the stable event. `retry_attempt` and
+`retry_reason` describe Slack's delivery attempt and do not change the stable event. Every outer
+envelope remains captured. Socket Mode acknowledges an envelope only after durable capture.
 Webhook mode verifies the registered signature and replay window before supplying provenance.
 Reconnect history is a recovery source, not permission to make new semantic ids. Thread replies
 retain the root identity and outbound posts use the same channel and root tuple.
+
+The stable-event comparison is granted, not landed, in the “stable event identity vs delivery
+attempt” addendum to `seam-response-intake-followup.md` (SEAM-LEDGER row 57). The real positive
+replays one captured Slack event with the same `event_id`, `event.event_ts`, and event payload but
+different `retry_attempt` and `retry_reason`; it keeps both envelopes and joins one logical
+obligation without an attack signal. Its negative neighbor reuses the provider id with a changed
+`event.event_ts` or event payload and must preserve a conflict and attack signal. P12-NF-09/19/20's
+pair is non-executable until that grant file lands and its Four/Ten implementations are integrated.
 
 **Rule — Slack admission separates structural direction, permission, and semantic judgment.**
 Rules 4, 10, 14, 28, 42, 46, 57, 66, 86 and 87; **checks: P12-NF-19/20/41**. The landed Part Four
@@ -38,6 +49,24 @@ disposition without erasing the capture. P12-NF-19/20's broader direction, permi
 cases are non-executable until `seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the dated
 intake-policy addendum in `seam-response-judgment.md` (SEAM-LEDGER row 35) land and their
 implementations are integrated. No Slack instance may activate on them.
+
+**Rule — every new thread-scoped Slack assignment receives channel background in one standard
+grounding handoff.** Rules 7, 33, 42, 46, 68, 89 and 96; **checks: P12-NF-19/43/48**. Thread history
+remains the authoritative conversation history for the assignment. Before the first worker starts,
+the same Part Ten context-delivery manifest used by production grounding also carries a separate
+channel-background entry: captured channel messages up to the declared threshold, or a fresh
+rolling summary for material beyond it, with its channel scope, coverage boundary, capture
+references, digest, clock and freshness evidence. Five's grounding read resolves and delivers both
+the thread history and that channel entry, then records witnessed consumption. Channel background
+may inform the work, but it cannot merge thread bindings, approvals, standing, directives or
+results. Missing, stale, partial, conflicted or wrong-channel background leaves the start owned and
+held; it never silently starts with an unlabelled partial skim.
+
+This uses the current-context delivery contract granted in `seam-response-assembly-followup.md`
+and `seam-response-rungraph-followup.md` (SEAM-LEDGER row 45), rather than a new adapter record.
+P12-NF-19/43/48's production channel-background positive is non-executable until both grant files
+land and their Ten/Five implementations are integrated. The flat compatibility grounding receipt
+cannot satisfy it.
 
 **Rule — WhatsApp backends are different evidence modes.** Rules 28, 36, 44, 89 and 105;
 **checks: P12-NF-21/22**. The Business API verifies its webhook signature, business account,
