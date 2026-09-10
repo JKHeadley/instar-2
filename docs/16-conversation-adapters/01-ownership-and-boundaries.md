@@ -42,13 +42,18 @@ positives and Slack activation are non-executable until both named grant files l
 implementations are integrated. None of these granted but unlanded records or operations is
 treated as present in the executable slice.
 
-The landed Four contract and Ten decoder currently accept only `always`, `bound-only`, and `never`
-acknowledgment policies. The additive `judged` arm is granted in the “judged acknowledgment policy
-arm” addendum to `seam-response-intake-followup.md` (SEAM-LEDGER row 58). It lets Seven decide
-whether and how to acknowledge one unresolved sender inside the mode's recorded bounds, while
-forbidding disclosure of existing-relationship status and recording every decision. The three
-landed arms keep their exact behavior. The `judged` positive is non-executable until that grant
-file lands and its Four, Seven, and Ten implementations are integrated.
+The landed Four contract and Ten decoder currently accept only the names `always`, `bound-only`,
+and `never`; they do not enforce those policies. Four's public decision and consumer for all four
+policies is granted in the “acknowledgment policy consumer” addendum to
+`seam-response-intake-followup.md` (SEAM-LEDGER row 60). At the custody boundary, that consumer uses
+the admitted inbound's verified-principal resolution and declared mode policy to record whether a
+conversational acknowledgment may be requested as an ordinary Part Eight reply. It does not control
+the separate protocol custody acknowledgment in section three. P12-NF-11's policy-enforcement arm
+and every activation that depends on conversational acknowledgment policy are non-executable until
+that grant file lands and its Four implementation is integrated with the landed Part Eight ordinary
+reply path. The additive `judged` arm also depends on the “judged acknowledgment policy arm”
+addendum in the same file (SEAM-LEDGER row 58) and remains non-executable until its Four, Seven, and
+Ten implementations are integrated.
 
 Slack ephemeral delivery has its own Part Eight audience dependency. The single-member payload and
 evidence contract is granted in the 09:10Z addendum to `seam-response-effects-followup.md`

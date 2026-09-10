@@ -18,13 +18,15 @@ known.
 If the governing policy says each installation records its own public-endpoint choice and this
 installation has no recorded choice, a public endpoint is not selected by default. Long polling
 remains the conservative receiving mode when its checks pass, so an unanswered policy choice does
-not make the user unreachable. Part Eleven
-re-presents the same plain-language choice to the verified main user through the attention hub and
-dashboard at least once in each 24-hour period until an explicit choice is recorded or the policy is
-superseded. The prompt is one open decision with a stable identity, not a new notice on every scan;
-it remains visible between reminders and follows the normal notification bound. P12-NF-18 rejects
-a silent default, a one-time prompt that can be forgotten, a reminder to an unverified user, or
-reminders after the choice is recorded.
+not make the user unreachable. The required choice workflow is granted in the “recurring
+open-decision reminder” addendum to `seam-response-operator-followup.md` (SEAM-LEDGER row 59).
+Part Eleven keeps exactly one durable open-decision item, shows it on the pending-request surface
+and dashboard, and reminds the verified main user through an ordinary reply no more than once in
+each 24-hour period. It closes the item only when a recorded, signed choice names it. P12-NF-18's
+open-decision and reminder positive is non-executable until that grant file lands and its Part Eleven
+and Ten implementations integrate. The check rejects a silent default, a one-time prompt that can
+be forgotten, a reminder to an unverified user, or a reminder after the signed choice closes the
+item.
 
 **Rule — Telegram update identity and topic routing are exact.** Rules 28, 33, 36 and 89;
 **checks: P12-NF-16/17**. The provider `update_id`, scoped to the verified bot instance and

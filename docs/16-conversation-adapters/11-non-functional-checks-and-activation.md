@@ -30,16 +30,21 @@ of this block is the activation seam inventory referenced by the production fixt
 
 Held-input redelivery and receipt-recovery positives are non-executable until
 the receipt-continuation addendum to `seam-response-intake-followup.md` (SEAM-LEDGER row 46) lands
-and its Four-owned implementation integrates. Production
+and its Four-owned implementation integrates. P12-NF-11's acknowledgment-policy arm and any mode
+that depends on a conversational acknowledgment are non-executable until the “acknowledgment policy
+consumer” addendum to `seam-response-intake-followup.md` (SEAM-LEDGER row 60) lands and its Four
+implementation integrates with the landed Part Eight reply path. A mode that declares `judged` also
+depends on the row-58 addendum in that file and its Four, Seven, and Ten implementations. The
+protocol custody acknowledgment does not depend on either policy addendum. P12-NF-18's recurring
+open-decision and reminder positive is non-executable until the “recurring open-decision reminder” addendum to
+`seam-response-operator-followup.md` (SEAM-LEDGER row 59) lands and its Part Eleven and Ten
+implementations integrate. Production
 secret-intake activation is non-executable until `seam-response-intake-followup.md` and
 `seam-response-assembly-followup.md` land and integrate the granted Four/Ten custody seam. Slack
 activation is non-executable until the Four half in `seam-response-intake-followup.md`
 (SEAM-LEDGER row 18), the stable-event commitment in that file's “stable event identity vs delivery
 attempt” addendum (SEAM-LEDGER row 57), and the Seven versioned intake-policy judgment consumer in
-the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. A mode
-that declares per-message acknowledgment judgment is additionally non-executable until the
-“judged acknowledgment policy arm” addendum to `seam-response-intake-followup.md` (SEAM-LEDGER row
-58) lands and its Four, Seven, and Ten implementations integrate. A Slack ephemeral positive
+the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. A Slack ephemeral positive
 is separately non-executable until the audience addendum in `seam-response-effects-followup.md`
 (SEAM-LEDGER row 53) lands and integrates; unsupported ephemeral delivery does not block Slack's
 ordinary-text mode. A real model-backed lifecycle is non-executable until `seam-response-judgment.md` and

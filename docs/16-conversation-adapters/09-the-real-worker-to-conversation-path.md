@@ -132,8 +132,11 @@ In particular, Slack remains inhibited until the Four half granted in
 that file's “stable event identity vs delivery attempt” addendum (SEAM-LEDGER row 57), and the Seven versioned intake-policy
 judgment consumer granted in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35)
 land, are implemented, and are covered by P12-NF-19/20.
-A Slack mode that selects per-message acknowledgment judgment also waits for the “judged
-acknowledgment policy arm” addendum to `seam-response-intake-followup.md` (SEAM-LEDGER row 58).
+Any exact mode that depends on conversational acknowledgment policy also waits for the
+“acknowledgment policy consumer” addendum to `seam-response-intake-followup.md` (SEAM-LEDGER row
+60) to land and for its Four implementation to integrate with the landed Part Eight reply path. A
+mode that selects per-message acknowledgment judgment additionally waits for the row-58 addendum in
+that file and its Four, Seven, and Ten implementations.
 
 Part Three's existing generated capability briefing is the agent-awareness surface. At the active
 register generation, the feature declarations for every installed adapter mode, every supported or

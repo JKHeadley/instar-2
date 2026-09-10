@@ -37,9 +37,13 @@ client receipt, Telegram offset advance, WhatsApp callback response, and an iMes
 advance occur only after the exact event has a recoverable Part Four receipt. A level-triggered
 drain means that repeated bounded scans rediscover every pending receipt until an owned terminal
 disposition exists; it is not a one-shot in-memory notification. The acknowledgment policy still
-decides whether an unbound or unresolved sender receives a conversational acknowledgment. A
-protocol acknowledgment never means that a
-principal resolved, a run began, a worker consumed input, or an answer was sent. If durable
+decides whether a sender receives a separate conversational acknowledgment. That decision depends
+on Four's public consumer granted in the “acknowledgment policy consumer” addendum to
+`seam-response-intake-followup.md` (SEAM-LEDGER row 60), and any resulting message travels through
+Part Eight as an ordinary reply. This policy arm of P12-NF-11 is non-executable until the grant file
+lands and its Four implementation integrates with the landed Part Eight reply path. The protocol
+acknowledgment itself remains the custody signal defined above; it never means that a principal
+resolved, a run began, a worker consumed input, or an answer was sent. If durable
 capture fails, the adapter leaves the platform event unacknowledged where redelivery exists and
 records the scoped outage through an independently durable path where it does not.
 
@@ -107,9 +111,10 @@ landed Part Eight `OutboundMessage` when they are attributable `ordinary-reply` 
 system-principal grant; an adapter does not invent it. A reaction, read receipt, typing indicator,
 or non-text authorization notice remains unsupported by the current effect slice. Those forms are
 granted in `seam-response-effects-payloads.md` and are non-executable until that grant file lands
-and its implementation is integrated. Once integrated, they follow
-the instance's acknowledgment policy and Part Eight's validation, ownership, notification bound,
-and settlement. Fire-and-forget is never valid. Failure of a decorative acknowledgment cannot hide
-or terminalize the accepted intake.
+and its implementation is integrated. Any conversational acknowledgment first needs the Four-owned
+decision granted in the row-60 addendum to `seam-response-intake-followup.md`; a permitted
+acknowledgment then follows Part Eight's validation, audience, ownership, notification bound, and
+settlement. This path is separate from the platform custody acknowledgment above. Fire-and-forget is
+never valid. Failure of a decorative acknowledgment cannot hide or terminalize the accepted intake.
 
 ---

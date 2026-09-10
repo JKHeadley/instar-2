@@ -9,12 +9,12 @@ Choices: fixed order; or each on its own evidence once Telegram is proven.
 What it changes: a fixed order means one slow platform delays every platform behind it; independent activation means each platform waits only for its own proof.
 Recommendation: prove Telegram first, then let each platform go live on its own evidence, because one platform's limits should not hold back another that is ready.
 
-**Value — decision 2: replying to people the agent does not know, in public or group chats.**
-Question: when a message arrives from a sender with no binding in a public or group chat, should the agent acknowledge it?
-Background: a binding is a recorded relationship between a known sender and a conversation. A brief acknowledgment only confirms receipt; it is separate from the eventual conversational answer.
-Choices: acknowledge everyone; acknowledge only senders who have a binding; acknowledge nobody; or let the agent decide message by message inside recorded limits.
-What it changes: acknowledging everyone gives every sender a receipt; binding-only keeps known senders reachable without revealing relationship status to strangers; acknowledging nobody can leave a legitimate contact with silence; message-by-message judgment adds flexibility but is less predictable, and this approved choice is not built yet.
-Recommendation: use binding-only by default, because it gives known senders a receipt without making an unbound sender's message a source of authority.
+**Value — decision 2: who gets a private receipt in a public or group chat.**
+Question: when someone writes in a public or group chat, who should receive a brief private message confirming that the agent received it?
+Background: one verified person is chosen to direct the agent for that chat and its agreed scope. Other participants are not included automatically, even when the agent recognizes them, and a reply visible to the whole chat can reveal that recognition to every observer.
+Choices: acknowledge everyone privately; acknowledge only the one verified person; acknowledge nobody; or let the agent decide message by message within recorded limits.
+What it changes: acknowledging everyone gives each sender a private receipt; verified-person-only gives a receipt to that one person and gives no automatic receipt to other familiar participants; acknowledging nobody can leave a legitimate contact with silence; message-by-message judgment adds flexibility but is less predictable and is not available yet. Any choice that promises privacy stays unavailable when the platform cannot prove delivery to just one person.
+Recommendation: acknowledge only the one verified person by default, because that preserves a receipt for the person whose authority was verified without treating familiarity as authority.
 
 **Value — decision 3: what counts as "one conversation" in Slack.**
 Question: when someone asks the agent to do something in a Slack thread, should that work belong to the thread or to the whole channel?
@@ -54,11 +54,23 @@ Recommendation: send one immediate grouped notice and then a daily digest, becau
 P12-NF-11/18–20/29/34/41/45–48**. The per-message acknowledgment choice is granted but
 non-executable until the “judged acknowledgment policy arm” addendum to
 `seam-response-intake-followup.md` (SEAM-LEDGER row 58) lands and its Four, Seven, and Ten
-implementations integrate. Bound-only means that an acknowledgment is sent only when signed
-history resolves a recorded relationship between the sender and that conversation. The Slack
+implementations integrate. A binding is Four's verified grant that selects one operator for one
+conversation and scope. Under `bound-only`, only that verified person receives a conversational
+acknowledgment; every other participant remains a requester even when familiar. The acknowledgment
+decision uses Four's public consumer granted in the “acknowledgment policy consumer” addendum to
+`seam-response-intake-followup.md` (SEAM-LEDGER row 60), and the private reply uses Part Eight's
+single-member audience contract granted in the audience addendum to
+`seam-response-effects-followup.md` (SEAM-LEDGER row 53). If the exact mode cannot prove private
+delivery to that one person, it reports unsupported and sends no public fallback. P12-NF-11's
+policy arm and P12-NF-32's private-delivery positive are non-executable until those grant files land
+and their Four and Eight implementations integrate. The platform custody acknowledgment remains a
+separate signal and does not apply or replace this binding decision. The Slack
 channel-background handoff depends on the current-context delivery grants in
 `seam-response-assembly-followup.md` and `seam-response-rungraph-followup.md` (SEAM-LEDGER row 45).
-Per-installation public-endpoint choices use the re-presentation duty in section five. Delivery
+Per-installation public-endpoint choices use the durable workflow granted in the “recurring
+open-decision reminder” addendum to `seam-response-operator-followup.md` (SEAM-LEDGER row 59), which
+is non-executable until that grant file lands and its Part Eleven and Ten implementations integrate.
+Delivery
 status words and registered emoji equivalents remain bound to the same Part Nine assessment.
 Unchanged delivery uncertainty stays on the attention hub and dashboard; a pushed message must
 still qualify under the notification policy.
