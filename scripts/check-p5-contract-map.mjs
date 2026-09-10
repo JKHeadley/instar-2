@@ -108,6 +108,14 @@ const seamEvidence = new Map([
     .map(finding => [`P5-SEAM-RC-R15-${finding}-INTEGRATION`, 'tests/integration/rungraph-closure-review15.test.ts']),
   ...['F1-CLOCK', 'F2-CAPTURE', 'F3-PARTIAL']
     .map(finding => [`P5-SEAM-RC-R15-${finding}-E2E`, 'tests/e2e/rungraph-closure-review15.test.ts']),
+  ['P5-SEAM-RC-R16-F1-SCOPE-UNIT', 'tests/rungraph/review16-conformance.test.ts'],
+  ...['F2-RESULT-BINDING', 'F3-CURRENT-WORK', 'F4-CONFLICT', 'F5-ENVELOPE-RUN', 'F6-EQUAL-COPIES']
+    .map(finding => [`P5-SEAM-RC-R16-${finding}-UNIT`, 'tests/rungraph/review16-conformance.test.ts']),
+  ['P5-SEAM-RC-R16-F6-EQUAL-COPIES-NEAR-MISS-UNIT', 'tests/rungraph/review16-conformance.test.ts'],
+  ...['F2-RESULT-BINDING', 'F3-CURRENT-WORK', 'F4-CONFLICT', 'F5-ENVELOPE-RUN', 'F6-EQUAL-COPIES']
+    .map(finding => [`P5-SEAM-RC-R16-${finding}-INTEGRATION`, 'tests/integration/rungraph-closure-review16.test.ts']),
+  ...['F2-RESULT-BINDING', 'F3-CURRENT-WORK', 'F4-CONFLICT', 'F5-ENVELOPE-RUN', 'F6-EQUAL-COPIES']
+    .map(finding => [`P5-SEAM-RC-R16-${finding}-E2E`, 'tests/e2e/rungraph-closure-review16.test.ts']),
 ]);
 
 const map = new Map();

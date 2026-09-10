@@ -1,7 +1,7 @@
 import { consumeResult } from '../index.js';
 import type { FactEnvelopeReference, Json, Result } from '../index.js';
 import { causalCone, hashBytes } from '../facts/index.js';
-import type { AppendReceipt, FactEnvelope } from '../facts/index.js';
+import type { AppendReceipt, ConflictClass, FactEnvelope } from '../facts/index.js';
 import { foldProjection } from '../projections/index.js';
 import { boundary, encoded, freeze, json, need, object, same, take } from './boundary.js';
 import {
@@ -78,6 +78,7 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       const coneContext = { ...current, facts: { ...current.facts, facts: coneFacts } };
       const record = take(decodeByType(recordFromWire(object(fact.body).record!), coneContext));
       need(record.type === expectedKind[0], 'closure fact kind and record type differ');
+      need(record.run === object(fact.body).run, 'closure envelope and record run differ');
       const cone = new Set(coneFacts.map(candidate => candidate.id));
       need(closureRecordReferences(json(record)).every(id => cone.has(id)),
         'closure record reference is outside signed causal cone');
@@ -95,6 +96,28 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       rawFor(run, runClosureKinds[type]).flatMap(fact => consumeResult(admitted(fact, current), {
         Success: value => [value], Refused: () => [],
       }));
+    const immutableCopies = (run: string, type: RunClosureRecord['type'], current: RunDecodeContext,
+      id?: string): Readonly<{ records: readonly AdmittedClosure[]; conflicts: readonly ConflictClass[] }> => {
+      const groups = new Map<string, AdmittedClosure[]>();
+      for (const candidate of acceptedFor(run, type, current)) {
+        if (id !== undefined && candidate.record.id !== id) continue;
+        const rows = groups.get(candidate.record.id) ?? [];
+        rows.push(candidate);
+        groups.set(candidate.record.id, rows);
+      }
+      const records: AdmittedClosure[] = [], conflicts: ConflictClass[] = [];
+      for (const [recordId, rows] of groups) {
+        const original = rows[0]!;
+        records.push(original);
+        if (!rows.every(candidate => same(candidate.record, original.record))) conflicts.push({
+          key: `${type}:${recordId}`,
+          kind: 'immutable-disagreement',
+          facts: rows.map(candidate => candidate.fact.id).sort(),
+          detail: `conflicting immutable ${type} identity`,
+        });
+      }
+      return { records, conflicts };
+    };
     const exactAdmitted = (reference: Readonly<{ owner: string; name: string; id: string; fact: FactEnvelopeReference }>,
       name: RunClosureRecord['type'], current: RunDecodeContext): AdmittedClosure => {
       need(reference.owner === 'part-five' && reference.name === name,
@@ -104,6 +127,8 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       const selected = decodeFact(fact, current);
       need(selected.type === name && selected.id === reference.id,
         `${name} reference identity differs from fact`);
+      const copies = immutableCopies(selected.run, selected.type, current, selected.id);
+      need(copies.conflicts.length === 0, `conflicting immutable ${selected.type} identity`);
       return { fact, record: selected };
     };
     const validateContinuityOwner = (record: ContinuityAccounting, view: RunView,
@@ -378,8 +403,19 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       return receipt;
     };
     const closureView = (base: RunView, current: RunDecodeContext): RunView => {
+      const exitCopies = immutableCopies(base.run.id, 'UnreachableRunExit', current);
+      const candidates = exitCopies.records;
+      const conflicts: ConflictClass[] = [...base.conflicts, ...exitCopies.conflicts];
+      for (const candidate of candidates) {
+        const record = candidate.record as UnreachableRunExit;
+        conflicts.push(...immutableCopies(record.run, 'ExhaustionRecord', current, record.exhaustion.id).conflicts);
+        if (record.phase === 'close')
+          conflicts.push(...immutableCopies(record.run, 'UnreachableRunExit', current, record.proposal!.id).conflicts);
+      }
+      const withConflicts = (view: RunView): RunView => conflicts.length ? freeze({ ...view, state: 'halted',
+        conflicts: [...conflicts].sort((left, right) => left.key.localeCompare(right.key)) }) : view;
       const successors = (view: RunView, phase: UnreachableRunExit['phase']): readonly AdmittedClosure[] =>
-        acceptedFor(base.run.id, 'UnreachableRunExit', current).filter(candidate =>
+        candidates.filter(candidate =>
           candidate.record.type === 'UnreachableRunExit' && candidate.record.phase === phase
           && candidate.record.expected === view.head).flatMap(candidate => consumeResult(
           boundary('ReplayUnreachableRunState', candidate.fact, current, () => {
@@ -388,7 +424,7 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
           }), { Success: value => [value], Refused: () => [] }));
       const proposals = successors(base, 'proposal');
       need(proposals.length <= 1, 'conflicting unreachable proposals');
-      if (!proposals.length) return base;
+      if (!proposals.length) return withConflicts(base);
       const proposal = proposals[0] as Readonly<{ fact: FactEnvelope; record: UnreachableRunExit }>;
       const closing: RunView = freeze({ ...base, state: 'closing', head: proposal.record.id,
         blockedOn: { kind: 'evidence', reference: proposal.record.exhaustion.id,
@@ -397,9 +433,9 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
           reason: 'recheck unreachable dependency' } });
       const closes = successors(closing, 'close');
       need(closes.length <= 1, 'conflicting unreachable exits');
-      if (!closes.length) return closing;
+      if (!closes.length) return withConflicts(closing);
       const close = closes[0] as Readonly<{ fact: FactEnvelope; record: UnreachableRunExit }>;
-      return freeze({ ...closing, state: 'unreachable', head: close.record.id });
+      return withConflicts(freeze({ ...closing, state: 'unreachable', head: close.record.id }));
     };
     const read = (run: string): RunView => {
       const base = take(legacy.read(run));
@@ -411,11 +447,11 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
         boundary('RecordRunClosure', input, captured, safe => {
           const current = { ...context(), preserved: captured.preserved };
           const record = take(admit(safe, current));
-          const sameIdentity = rawFor(record.run, runClosureKinds[record.type]).filter(candidate =>
-            object(recordFromWire(object(candidate.body).record!)).id === record.id)
-            .map(candidate => ({ fact: candidate, record: decodeFact(candidate, current) }));
+          const copies = immutableCopies(record.run, record.type, current, record.id);
+          need(copies.conflicts.length === 0, `conflicting immutable ${record.type} identity`);
+          const sameIdentity = copies.records;
           if (sameIdentity.length && record.type === 'UnreachableRunExit') {
-            need(sameIdentity.length === 1 && same(sameIdentity[0]!.record, record),
+            need(same(sameIdentity[0]!.record, record),
               `immutable ${record.type} identity changed or conflicted`);
             return sameIdentity[0]!.fact;
           }
@@ -432,7 +468,7 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
           if (record.type === 'UnreachableRunExit')
             validateUnreachableOwner(record, view, current, sameIdentity[0]?.fact);
           if (sameIdentity.length) {
-            need(sameIdentity.length === 1 && same(sameIdentity[0]!.record, record),
+            need(same(sameIdentity[0]!.record, record),
               `immutable ${record.type} identity changed or conflicted`);
             return sameIdentity[0]!.fact;
           }
@@ -476,15 +512,15 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
             'run reference owner/name/id mismatch');
             const view = read(referenceValue.id as string);
             need(view.state === 'unreachable', 'terminal run exit absent');
-            const matches = rawFor(referenceValue.id as string, runClosureKinds.UnreachableRunExit).filter(fact => {
-              const wire = object(recordFromWire(object(fact.body).record!));
-              return wire.id === view.head && wire.phase === 'close';
-            });
-            need(matches.length === 1,
-              matches.length ? 'conflicting unreachable exits' : 'terminal run exit fact absent');
-            const selected = decodeFact(matches[0]!, context());
-            need(selected.type === 'UnreachableRunExit', 'terminal run exit fact absent');
-            return freeze({ fact: factRef(matches[0]!), exit: selected });
+            const resolved = immutableCopies(referenceValue.id as string, 'UnreachableRunExit', context(), view.head);
+            need(resolved.conflicts.length === 0, 'conflicting unreachable exits');
+            const matches = resolved.records
+              .filter(candidate => candidate.record.type === 'UnreachableRunExit'
+                && candidate.record.phase === 'close');
+            need(matches.length === 1, 'terminal run exit fact absent');
+            const selected = matches[0]!;
+            need(selected.record.type === 'UnreachableRunExit', 'terminal run exit fact absent');
+            return freeze({ fact: factRef(selected.fact), exit: selected.record as UnreachableRunExit });
           }),
       });
     };
@@ -501,6 +537,8 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
         const record = decodeFact(accountingFact, current);
         need(record.type === 'ContinuityAccounting' && record.id === accounting.id,
           'ContinuityAccounting reference identity differs from fact');
+        const copies = immutableCopies(record.run, record.type, current, record.id);
+        need(copies.conflicts.length === 0, `conflicting immutable ${record.type} identity`);
         validateContinuityOwner(record, continuityView(record, current), current);
         const sendFact = validateContinuitySendWitness(accountingFact, record, send,
           dependencies.clock(), dependencies.groundingPolicy.maxAge, current);
@@ -510,6 +548,8 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
         };
         need(same(take(decodeContinuityAccounting(record, sendContext)), record),
           'continuity disposition changed before the first-reply send');
+        need(same(take(decodeContinuityAccounting(record, current)), record),
+          'continuity disposition is no longer supported by current signed history');
         need(same(take(dependencies.continuitySend.verify(factRef(sendFact), record)), factRef(sendFact)),
           'first-reply send owner witness differs from signed send record');
         return factRef(sendFact);

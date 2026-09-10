@@ -464,6 +464,8 @@ function validateContinuity(input: Json, context: RunDecodeContext): ContinuityA
     need(object(json(result.view)).kind === 'Success', 'addressed continuity result is not a usable durable answer or work result');
     need(resultFact.principal.id === owner.id && same(resultFact.principal.provenance, owner.provenance),
       'addressed continuity result lacks its accountable run owner witness');
+    need(work.fact.predecessors.required.includes(resultFact.id),
+      'addressed work does not explicitly witness this durable answer or work result');
     need(causalCone(work.fact, context.facts.facts).some(fact => fact.id === resultFact.id),
       'addressed work is not causally linked to its durable answer or work result');
   } else if (disposition.kind === 'superseded') {
