@@ -32,6 +32,7 @@ export function productionOperatorSlice(options: {
       const application = runtime?.service.journal().applications.find((row: { operation: string }) => row.operation === operation);
       if (!application) return decode('Scope', { type: 'Scope', schemaVersion: 1, kind: 'project', members: [] },
         operator.context.decode) as ReturnType<AssemblyProductionComposition['deliveryWitness']['observe']>;
+      value(verification.runtime.record('VerificationPlan', verificationInput('VerificationPlan')));
       const probe = { ...verificationInput('ProbeRecord'), id: `delivery:${operation}`, operation,
         witnesses: [`evidence:${operation}`], comparison: `application:${application.messageId}` } as unknown as ProbeRecord;
       verification.setEvidence([verification.witnessFor(probe, `evidence:${operation}`)]);

@@ -33,7 +33,7 @@ it('P11-V28 the production wrapper refuses a provider result not witnessed for t
   await expect(x.runtime.drive()).rejects.toThrow('unwitnessed');
 }, 120000);
 
-it('P11-V44 R1 displays the resolved Part Nine probe rather than a provider-mutated matching-id copy', async () => {
+it('P11-V44 R1 rereview5 V36 displays the resolved Part Nine probe rather than a provider-mutated matching-id copy', async () => {
   const x = productionOperatorSlice(); const original = x.production.deliveryWitness.observe;
   x.production.deliveryWitness.observe = (operation => {
     const witnessed = value(original(operation)) as { probe: { comparison: string } };
@@ -41,6 +41,27 @@ it('P11-V44 R1 displays the resolved Part Nine probe rather than a provider-muta
   }) as typeof original;
   const report = await x.runtime.drive() as { independentlyWitnessedResult: { probe: { comparison: string } } };
   expect(report.independentlyWitnessedResult.probe.comparison).toBe('application:service-message:1');
+}, 120000);
+
+it('R7-F2 rereview5 V35/V51 refuses an independently witnessed result when the selected stored probe loses its current evidence', async () => {
+  const x = productionOperatorSlice(); const original = x.production.deliveryWitness.observe;
+  x.production.deliveryWitness.observe = (operation => {
+    const witnessed = original(operation);
+    x.verification.setEvidence([]);
+    return witnessed;
+  }) as typeof original;
+  await expect(x.runtime.drive()).rejects.toThrow('unwitnessed');
+  expect(x.runtime.service.journal().applications).toHaveLength(1);
+  expect(value(x.verification.runtime.inspectCurrent()).some(row => row.record.type === 'ProbeRecord')).toBe(true);
+}, 120000);
+
+it('R7-F2 rereview5 V37 refuses a witnessed callback whose stage is stronger than the admitted adapter stage', async () => {
+  const x = productionOperatorSlice(); const original = x.production.deliveryWitness.observe;
+  x.production.deliveryWitness.observe = (operation => {
+    const witnessed = value(original(operation)) as Record<string, unknown>;
+    return x.assembly.success({ ...witnessed, stage: 'human-read' });
+  }) as typeof original;
+  await expect(x.runtime.drive()).rejects.toThrow('unwitnessed');
 }, 120000);
 
 it('P11-NF-43 P11-NF-49 the public slice boot plus a fresh operator process revalidate durable signed history rather than serialized status fields', async () => {
@@ -75,7 +96,7 @@ it('P11-NF-44 P11-NF-45 P11-NF-46 P11-NF-47 P11-NF-48 P11-NF-50 the durable vert
   expect(report.independentlyWitnessedResult.stage).toBe('service-applied');
 }, 120000);
 
-it('P11-NF-43 P11-NF-44 P11-NF-47 P11-NF-49 a process cut between send and evidence recovers to the same independently witnessed semantic outcome', async () => {
+it('P11-NF-43 P11-NF-44 P11-NF-47 P11-NF-49 rereview5 V38 a process cut between send and evidence recovers to the same independently witnessed semantic outcome', async () => {
   const pair = ['external-send', 'delivery-evidence'] as const;
   const execution = await runExecution({ profile: 'reply', cuts: pair, maxBoots: 12 });
   const recovered = execution.report as typeof execution.report & {

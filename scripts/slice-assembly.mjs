@@ -28,7 +28,8 @@ import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, decode
 import { checkpoint, foldProjection, rebuildProjection, restoreCheckpoint, signCheckpoint, verifyRebuild } from '../dist/projections/index.js';
 import { assemblySchemas, bootProductionAssembly, createAssemblyRuntime, createAssemblySpine,
   registerAssemblyBodies } from '../dist/assembly/index.js';
-import { createOperatorSurface, minimalPlaneProjectionIds, minimalPlaneProjections } from '../dist/operator/index.js';
+import { createOperatorSurface, minimalPlaneProjectionIds, minimalPlaneProjections,
+  requiredMinimalDependencies } from '../dist/operator/index.js';
 import { createVerificationRuntime, createVerificationSpine, registerVerificationBodies,
   verificationSchemas } from '../dist/verification/index.js';
 
@@ -76,6 +77,20 @@ export function bootProductionSliceAssembly(input) {
     effect: Object.freeze({ ...supplied.effect, port: slice.effects }),
   });
   const coordinator = take(bootProductionAssembly({ ...assembly, production }, manifest, scope));
+  const admitCurrentDependencies = () => {
+    for (const name of requiredMinimalDependencies) {
+      const reference = coordinator.references.find(row => row.name === `dependency:${name}`);
+      if (!reference) return { admitted: false, name, detail: `required production dependency reference is missing: ${name}` };
+      try {
+        const admission = settled(coordinator.handles.dependencyAdmission.admit({ name, fact: reference.fact,
+          completeness: reference.completeness, missing: reference.missing }));
+        if (!admission.ok) return { admitted: false, name, detail: admission.detail };
+      } catch (error) {
+        return { admitted: false, name, detail: error instanceof Error ? error.message : String(error) };
+      }
+    }
+    return { admitted: true };
+  };
   return Object.freeze({ ...slice, coordinator,
     async drive() {
       let request = null, authority = null;
@@ -88,7 +103,11 @@ export function bootProductionSliceAssembly(input) {
         const challenge = take(coordinator.handles.surface.challenge(request));
         authority = take(coordinator.handles.surface.confirm({ challenge, proof: input.operatorProof ?? 'verified-operator-proof', decision: 'approve' }));
       }
-      const report = await slice.drive();
+      // Part Ten's boot-time handles are evidence of the initial composition,
+      // not a lease on future availability. Re-enter the public live-admission
+      // port inside every drive, after Part Four has preserved the input and
+      // before any run/effect work can begin.
+      const report = await slice.drive(admitCurrentDependencies);
       const assemblyBoot = Object.freeze({ owner: coordinator.owner, admission: coordinator.admission.id,
         scope: coordinator.scope, references: coordinator.references.map(row => Object.freeze({ name: row.name,
           fact: row.fact.id, completeness: row.completeness })) });
@@ -123,11 +142,32 @@ export function bootProductionSliceAssembly(input) {
       const probe = witnessRecord?.probe && typeof witnessRecord.probe === 'object' ? witnessRecord.probe : null;
       const observed = verification.find(row => row.record?.type === 'ProbeRecord' && row.record.id === probe?.id
         && row.record.operation === operation && row.taint.length === 0 && row.conflicts.length === 0);
+      // A clean signed ProbeRecord is still only a claim about its witness ids.
+      // Ask Part Nine's public posture operation to re-resolve the selected
+      // probe against its current Evidence/capture inventory. Requiring this
+      // exact record as both the last attempt and last success prevents another
+      // probe under the same plan from lending it a healthy label.
+      // Part Nine may administer a clock distinct from the slice harness. Use
+      // the signed probe completion instant to ask whether its witness
+      // references still resolve in Part Nine's *current* evidence inventory;
+      // do not manufacture staleness by imposing the caller's unrelated clock.
+      const postureClock = observed
+        ? Object.freeze({ ...slice.now(), value: observed.record.completedAt, at: observed.record.completedAt })
+        : null;
+      const posture = observed
+        ? settled(coordinator.handles.verification.port.posture(observed.record.plan, postureClock))
+        : { ok: false, detail: 'selected probe is absent from current Part Nine history' };
+      const arm = posture.ok
+        ? posture.value.arms.find(row => row.arm === observed.record.arm)
+        : null;
       if (witnessRecord?.owner !== 'part-nine' || witnessRecord.administration !== 'independent'
         || witnessRecord.operation !== operation || witnessRecord.platform !== coordinator.handles.deliveryWitness.platform
-        || witnessRecord.stage !== report.declaredStage || !observed)
+        || witnessRecord.stage !== report.declaredStage || !observed || !posture.ok
+        || posture.value.posture !== 'healthy' || arm?.lastAttempt !== observed.record.id
+        || arm?.lastSuccess !== observed.record.id)
         throw new Error(`production slice delivery result is unwitnessed or does not bind the admitted operation: ${JSON.stringify({
           operation, declaredStage: report.declaredStage, witness: witnessRecord,
+          posture: posture.ok ? posture.value : { refused: posture.detail },
           verification: verification.map(row => ({ id: row.record?.id, type: row.record?.type,
             operation: row.record?.operation, taint: row.taint, conflicts: row.conflicts })),
         })}`);
@@ -218,6 +258,47 @@ function restartProductionAssembly(slice) {
     disposition: 'passed', missingPhases: [], captureStatus: 'available', costs: [{ resource: 'money', amount: 0 }],
   }; };
   const recordProbe = (id, operation, comparison) => take(verification.record('ProbeRecord', probeInput(id, operation, comparison)));
+  const deliveryPlanInput = operation => ({
+    type: 'VerificationPlan', schemaVersion: 1, id: `plan:delivery:${operation}`, predecessors: [],
+    subject: { rules: [26, 89], holder: 'part-nine', governed: 'platform-delivery', scope, generation: 'generation:1' },
+    arms: [{ id: 'delivery', kind: 'runtime', executable: 'witness:platform', fixture: 'P11-NF-47',
+      outputContract: 'ProbeRecord+Evidence', canFail: 'supporting evidence unavailable', required: true }],
+    bar: { version: 'delivery:v1', predicates: ['occurrence'], sources: ['slice-witness'], minimumStrength: 'observation',
+      subjectDigest: hashOf('platform-delivery'), captureRequired: true, freshness: 1000000, complete: true },
+    independence: { testedPrincipal: slice.bob.id, observerPrincipal: slice.observer.id,
+      witnessController: 'slice-witness', commonFailures: ['fixture service journal loss'] },
+    scheduling: { owner: 'part-nine', run: 'slice-run', loopPolicy: 'single observation', cadence: 1000000,
+      freshnessWindow: 1000000, dueAction: 'observe delivery', recoveryBudget: 'bounded by slice fixture' },
+    bounds: [{ resource: 'attempts', limit: 1 }],
+    consumers: [{ id: 'operator-surface', direction: 'closed', enforcedRecord: 'ProbeRecord',
+      decoder: 'probeBoundToCurrentEvidence', preserved: operation }],
+    privacy: { readers: ['operator'], providers: ['slice-witness'], captureClass: 'delivery-observation',
+      secretCustody: 'part-ten fixture custody', destinations: ['operator-surface'] },
+    activation: { unit: ['P11-NF-47'], integration: ['P11-NF-47'], lifecycle: ['P11-NF-47'],
+      semantic: ['P11-NF-47'], limits: ['one attempt'], evidence: ['check-run:production'] },
+  });
+  const recordDeliveryProbe = (operation, application, existing = null) => {
+    const plan = verificationRows().find(row => row.record.type === 'VerificationPlan'
+      && row.record.id === `plan:delivery:${operation}`)?.record
+      ?? take(verification.record('VerificationPlan', deliveryPlanInput(operation)));
+    const at = slice.now();
+    const probe = existing ?? { ...probeInput(`delivery:${operation}`, operation, `application:${application.messageId}`),
+      plan: plan.id, planVersion: plan.bar.version, arm: 'delivery', slot: operation, attempt: operation,
+      subject: plan.subject.governed, challengeDigest: hashOf(operation), startedAt: at.value, completedAt: at.value,
+      witnesses: [`witness:${operation}`] };
+    const claim = { subject: probe.subject, predicate: 'probe-passed', value: { challengeDigest: probe.challengeDigest,
+      subjectDigest: plan.bar.subjectDigest, plan: probe.plan, planVersion: probe.planVersion, arm: probe.arm,
+      slot: probe.slot, attempt: probe.attempt, run: probe.run, operation: probe.operation, comparison: probe.comparison } };
+    const bytes = JSON.stringify({ application, claim });
+    const capture = take(slice.custody.capture(bytes));
+    slice.decodeContext.captures[capture.reference] = bytes;
+    const witness = take(decode('Evidence', { type: 'Evidence', schemaVersion: 1, id: `witness:${operation}`,
+      claim, source: 'slice-witness', observedAt: at, freshFor: 1000000, capture, strength: 'observation' }, slice.decodeContext));
+    const prior = slice.decodeContext.evidence.findIndex(row => row.id === witness.id);
+    if (prior >= 0) slice.decodeContext.evidence.splice(prior, 1, witness);
+    else slice.decodeContext.evidence.push(witness);
+    return existing ?? take(verification.record('ProbeRecord', probe));
+  };
   let manifest = currentRecord('AssemblyManifest', 'manifest:restart-production');
   let binding;
   if (manifest) binding = manifest.productionBindings.find(row => row.scope === scope);
@@ -352,7 +433,10 @@ function restartProductionAssembly(slice) {
         const application = slice.service.journal().applications.find(row => row.operation === operation);
         if (!application) throw new Error('the recovered execution has no platform application for this operation');
         const existing = verificationRows().find(row => row.record.type === 'ProbeRecord' && row.record.operation === operation)?.record;
-        const recorded = existing ?? recordProbe(`delivery:${operation}`, operation, `application:${application.messageId}`);
+        // Evidence is a current dependency, not a property frozen into the
+        // signed probe. Re-observe the same service application after restart so
+        // Part Nine can resolve the stored probe's witness references now.
+        const recorded = recordDeliveryProbe(operation, application, existing);
         return { owner: 'part-nine', administration: 'independent', operation, platform: 'telegram',
           stage: slice.declaredStage(), probe: recorded };
       })()) },
@@ -1286,7 +1370,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     operation: fields.operation, blocker: fields.blocker ?? 'none', semanticMessage: fields.semanticMessage,
     state: fields.state, owner: fields.owner, exposure: String(fields.exposure ?? 0), detail: fields.detail ?? '' }, fields.required ?? []);
 
-  async function drive() {
+  async function drive(admitRequiredDependencies) {
     install(); restoreGrants(); restoreEvidence();
 
     // ---- 1. preserve, authenticate, resolve standing, admit -----------------
@@ -1301,6 +1385,30 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
       if (!admitted) return report();
       boundary('standing', { logicalId: admitted.body.logicalId });
     } else record('intake', 'already-admitted');
+
+    // A production wrapper supplies Part Ten's live dependency admission. The
+    // check happens only after intake is durable and before any run, judgment,
+    // reply, or effect can begin. The outage is itself durable and owned; a
+    // matching recovery appends a closure before normal execution resumes.
+    if (typeof admitRequiredDependencies === 'function') {
+      const admission = admitRequiredDependencies();
+      const prior = factsOfKind('slice-obligation')
+        .filter(f => String(f.body.operation).startsWith('prerequisite:')).at(-1);
+      if (!admission.admitted) {
+        const operation = `prerequisite:${admission.name}`;
+        if (!prior || prior.body.operation !== operation || prior.body.state !== 'owned-pending-prerequisite-outage')
+          obligation({ operation, blocker: admission.name, semanticMessage: 'minimal-path-prerequisite',
+            state: 'owned-pending-prerequisite-outage', owner: 'part-ten', exposure: 0,
+            detail: `live dependency admission refused after durable intake preservation: ${admission.detail}` });
+        record('prerequisites', 'refused', { dependency: admission.name, detail: admission.detail });
+        return report(rebuildAll());
+      }
+      if (prior?.body.state === 'owned-pending-prerequisite-outage')
+        obligation({ operation: prior.body.operation, blocker: 'none', semanticMessage: prior.body.semanticMessage,
+          state: 'recovered', owner: 'part-ten', exposure: 0,
+          detail: 'matching Part Ten lifecycle recovery restored live dependency admission' });
+      record('prerequisites', 'admitted');
+    }
 
     // ---- 2. admit one durable run ------------------------------------------
     let opening = factOfKind('run-opening');

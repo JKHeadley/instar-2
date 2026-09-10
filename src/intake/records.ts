@@ -203,7 +203,12 @@ export function resolveVerifiedActRecord(raw: Json,c: FactContext,now: Clock,exp
   requireIntake(issuedAt<=challenge.verifiedAt.value&&challenge.verifiedAt.value<=now.value&&now.value<=expiresAt,
     'verified act: challenge is expired, future-dated, or stale','stale-base');
   const generation=text(r.generation,'generation'),emergency=p.action==='emergency-stop';
-  requireIntake(emergency||generation===expectedGeneration,'verified act: stale register generation','stale-base');
+  // Current-subject checks belong only to the origin admission. A disposition
+  // that already passed this decoder at its causal position remains historical
+  // evidence after the register advances; replay/new authority still re-enters
+  // through origin mode and must match the current generation.
+  requireIntake(emergency||mode==='historical'||generation===expectedGeneration,
+    'verified act: stale register generation','stale-base');
   requireIntake(same(p.generation,{ owner: 'part-three',name: 'RegisterGeneration',id: generation })
     &&p.surface===surface&&p.request===requestId&&p.requestDigest===requestDigest&&p.challenge===r.challenge&&p.decision===decision,
   'verified act: challenge does not bind the submitted subject','standing');
@@ -255,7 +260,12 @@ export function resolveVerifiedActRecord(raw: Json,c: FactContext,now: Clock,exp
     const requestExpiresAt=integer(q.expiresAt,'request.expiresAt');
     requireIntake(now.value<=requestExpiresAt&&expiresAt<=requestExpiresAt&&expiresAt-issuedAt<=maximumVerifiedActChallengeLifetime,
       'verified act: authorization request or bounded challenge lifetime expired','stale-base');
-    requireIntake(c.decode.currentBase===base&&c.decode.artifact===artifact,
+    // `origin` validates a new act against the live subject. Historical replay
+    // validates the immutable signed request/challenge/act relationships above,
+    // but must not reinterpret a once-valid disposition against today's base or
+    // artifact. Otherwise unrelated ordinary intake becomes tainted whenever the
+    // deployment advances.
+    if(mode==='origin') requireIntake(c.decode.currentBase===base&&c.decode.artifact===artifact,
       'verified act: current base or artifact differs from the signed request','stale-base');
   } else requireIntake(p.action==='emergency-stop','verified act: safety-open is reserved for emergency-stop','standing');
   const actText=text(r.act,'act'),act=JSON.parse(actText) as Json;
