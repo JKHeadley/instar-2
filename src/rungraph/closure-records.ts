@@ -265,16 +265,6 @@ function validateExhaustion(input: Json, context: RunDecodeContext): ExhaustionR
     && object(fact.body).run === value.run && object(fact.body).blocker === blocker.fact.id);
   const currentDependencies = relatedDependencies.filter(candidate => !relatedDependencies.some(other => other.id !== candidate.id
     && causalCone(other, context.facts.facts).some(ancestor => ancestor.id === candidate.id)));
-  const submittedDependencies = value.dependencies as Json[];
-  for (const referenceValue of submittedDependencies) {
-    const dependency = currentSemanticFact(referenceValue, 'run-dependency-observation', ['run', 'blocker'], context);
-    need(dependency.body.run === value.run && dependency.body.blocker === blocker.fact.id
-      && dependency.body.status === 'blocked', 'dependency observation has the wrong run or blocker subject');
-    boundedCurrentFact(dependency.fact, at, freshFor, context);
-  }
-  need(same(submittedDependencies.map(referenceValue => object(referenceValue).id).sort(),
-    currentDependencies.map(fact => fact.id).sort()),
-  'exhaustion dependencies differ from the complete current dependency inventory');
   const conclusion = constitutional(value.conclusion as unknown as ConstitutionalReference<'Decision'>, 'Decision', context);
   const reason = constitutional(value.reason as unknown as ConstitutionalReference<'Decision'>, 'Decision', context);
   const exhaustive = conclusion.view.conclusion.value;
@@ -283,6 +273,17 @@ function validateExhaustion(input: Json, context: RunDecodeContext): ExhaustionR
     && reason.view.conclusion.subject === value.run && reason.view.conclusion.predicate === 'exhaustion-reason'
     && reason.view.conclusion.value === true,
   'exhaustion conclusion and reason must be separate run-bound decisions');
+  const submittedDependencies = value.dependencies as Json[];
+  for (const referenceValue of submittedDependencies) {
+    const dependency = currentSemanticFact(referenceValue, 'run-dependency-observation', ['run', 'blocker'], context);
+    need(dependency.body.run === value.run && dependency.body.blocker === blocker.fact.id
+      && (dependency.body.status === 'blocked' || exhaustive === false && dependency.body.status === 'unknown'),
+    'dependency observation has the wrong run or blocker subject');
+    boundedCurrentFact(dependency.fact, at, freshFor, context);
+  }
+  need(same(submittedDependencies.map(referenceValue => object(referenceValue).id).sort(),
+    currentDependencies.map(fact => fact.id).sort()),
+  'exhaustion dependencies differ from the complete current dependency inventory');
   const avenues = value.avenues as Json[];
   const ids = new Set<string>();
   need(avenues.length > 0, 'finite avenue set required');
@@ -543,7 +544,7 @@ function validateUnreachable(input: Json, context: RunDecodeContext): Unreachabl
     const proposal = ownedRecord(value.proposal!, 'UnreachableRunExit', context);
     need(proposal.record.phase === 'proposal' && proposal.record.run === value.run
       && proposal.record.id === value.expected && same({ ...proposal.record, id: value.id, expected: value.expected,
-        phase: value.phase, proposal: value.proposal, frontier: value.frontier }, value),
+        phase: value.phase, proposal: value.proposal, frontier: value.frontier, at: value.at }, value),
     'unreachable close does not exactly continue its witnessed proposal');
   }
   return freeze(value) as unknown as UnreachableRunExit;

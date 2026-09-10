@@ -102,6 +102,12 @@ const seamEvidence = new Map([
   ['P5-SEAM-RC-R14-INTEGRATION-V08-V09', 'tests/integration/rungraph-closure-review14.test.ts'],
   ['P5-SEAM-RC-R14-INTEGRATION-V11-V20', 'tests/integration/rungraph-closure-review14.test.ts'],
   ['P5-SEAM-RC-R14-INTEGRATION-V13-V14', 'tests/integration/rungraph-closure-review14.test.ts'],
+  ...['F1-CLOCK', 'F2-CAPTURE', 'F3-PARTIAL']
+    .map(finding => [`P5-SEAM-RC-R15-${finding}-UNIT`, 'tests/rungraph/review15-conformance.test.ts']),
+  ...['F1-CLOCK', 'F2-CAPTURE', 'F3-PARTIAL']
+    .map(finding => [`P5-SEAM-RC-R15-${finding}-INTEGRATION`, 'tests/integration/rungraph-closure-review15.test.ts']),
+  ...['F1-CLOCK', 'F2-CAPTURE', 'F3-PARTIAL']
+    .map(finding => [`P5-SEAM-RC-R15-${finding}-E2E`, 'tests/e2e/rungraph-closure-review15.test.ts']),
 ]);
 
 const map = new Map();

@@ -1,13 +1,21 @@
 import { consumeResult } from '../index.js';
 import type { FactEnvelopeReference, Json, Result } from '../index.js';
-import { causalCone } from '../facts/index.js';
+import { causalCone, hashBytes } from '../facts/index.js';
 import type { AppendReceipt, FactEnvelope } from '../facts/index.js';
+import { foldProjection } from '../projections/index.js';
 import { boundary, encoded, freeze, json, need, object, same, take } from './boundary.js';
-import { factRef, clockDifference } from './graph.js';
+import {
+  clockDifference, factRef, runProjection, statePairs, validateTransition,
+} from './graph.js';
 import { createRunGraph } from './service.js';
-import { decodeRun, decodeSessionGrounding, factReference, recordFromWire, runKinds } from './records.js';
+import {
+  decodeRun, decodeRunTransition, decodeSessionGrounding, factReference, recordFromWire, runKinds,
+} from './records.js';
+import { checkIdentities, identityIndex } from './identity.js';
 import { preserveRunInput } from './rungraph.js';
-import type { RunDecodeContext, RunExit, RunView, UnreachableRunExit } from './types.js';
+import type {
+  RunDecodeContext, RunExit, RunTransition, RunView, SessionGrounding, UnreachableRunExit,
+} from './types.js';
 import {
   closureRecordReferences, closureRecordWire, decodeContinuityAccounting, decodeExhaustionRecord,
   decodeUnreachableRunExit, runClosureKinds, validateContinuitySendWitness,
@@ -112,27 +120,185 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       need(same(take(dependencies.admission.verify(factRef(groundingFact))), factRef(groundingFact)),
         'SessionGrounding admission witness missing');
     };
+    const groundingCaptureCarrier = (fact: FactEnvelope, current: RunDecodeContext): FactEnvelope => {
+      const schema = current.facts.schemas.find(candidate => candidate.kind === fact.kind
+        && candidate.version === fact.schemaVersion);
+      need(schema, 'continuity grounding capture not bound to the signed message capture field');
+      if (Object.values(schema.fields).some(policy => policy.kind === 'capture')) return fact;
+      const bearers = Object.entries(schema.fields).filter(([, policy]) => policy.kind === 'reference').map(([field]) => {
+        const id = object(fact.body)[field];
+        const ancestor = typeof id === 'string'
+          ? current.facts.facts.find(candidate => candidate.id === id) : undefined;
+        const ancestorSchema = ancestor && current.facts.schemas.find(candidate => candidate.kind === ancestor.kind
+          && candidate.version === ancestor.schemaVersion);
+        need(ancestor && ancestorSchema, 'continuity grounding capture ancestor missing or unverified');
+        return { ancestor, captureBearing: Object.values(ancestorSchema.fields).some(policy => policy.kind === 'capture') };
+      }).filter(candidate => candidate.captureBearing);
+      need(bearers.length === 1, 'continuity grounding capture ancestor missing, ambiguous, or unverified');
+      const selected = bearers[0]!;
+      need(causalCone(fact, current.facts.facts).some(ancestor => ancestor.id === selected.ancestor.id),
+        'continuity grounding capture ancestor missing or unverified');
+      return selected.ancestor;
+    };
+    const validateUnavailableGrounding = (grounding: SessionGrounding, view: RunView,
+      record: ContinuityAccounting, current: RunDecodeContext): void => {
+      need(grounding.run === view.run.id && grounding.expected === view.head
+        && same(grounding.principal, view.run.owner)
+        && same(grounding.binding, view.run.resultDestination.binding),
+      'continuity grounding run/head/principal/binding mismatch');
+      need(same(grounding.directives, view.run.directives) && same(grounding.generation, view.run.generation),
+        'continuity grounding directives or generation differ');
+      need(same([...grounding.pendingOperations].sort(), view.pending.map(step => step.operation.key).sort())
+        && grounding.children.length === 0, 'continuity grounding omitted pending work');
+      const receipt = factReference(json(grounding.consumption), current);
+      const receiptBody = object(receipt.body);
+      const consumedCone = [...causalCone(receipt, current.facts.facts), receipt];
+      for (const [machine, position] of Object.entries(grounding.frontier))
+        need(consumedCone.some(fact => fact.machine === machine && fact.segment.epoch === position.epoch
+          && fact.segment.position === position.position), 'continuity grounding frontier claims unseen history');
+      const history = current.facts.facts.filter(fact => current.stimulusKinds.includes(fact.kind)
+        && grounding.frontier[fact.machine]
+        && (fact.segment.epoch < grounding.frontier[fact.machine]!.epoch
+          || fact.segment.epoch === grounding.frontier[fact.machine]!.epoch
+          && fact.segment.position <= grounding.frontier[fact.machine]!.position));
+      need(new Set(history.map(fact => fact.machine)).size === 1,
+        'out of slice scope: multi-lineage conversation ordering');
+      history.sort((left, right) => left.segment.epoch - right.segment.epoch
+        || left.segment.position - right.segment.position);
+      need(history.length <= grounding.threshold,
+        'out of slice scope: history requires summaries; no skim permitted');
+      need(grounding.messages.length === history.length
+        && new Set(grounding.messages.map(message => message.fact.id)).size === history.length,
+      'continuity grounding history coverage gap or overlap');
+      const expected = new Set(history.map(fact => fact.id));
+      for (const message of grounding.messages) {
+        const fact = factReference(json(message.fact), current);
+        need(expected.has(fact.id) && message.sequence === fact.segment.position,
+          'continuity grounding claims an absent/post-frontier message');
+        const capture = current.facts.captures[message.capture];
+        if (message.fact.id === record.prePauseInbound.id) {
+          need(message.capture === record.prePauseCapture.reference && message.hash === record.prePauseCapture.hash
+            && (!capture || capture.status !== 'available'),
+          'continuity grounding unavailable capture differs from the accounted pre-pause inbound');
+        } else need(capture?.status === 'available' && capture.bytes !== null && capture.hash === message.hash
+          && hashBytes(capture.bytes) === message.hash,
+        'continuity grounding has another unavailable or changed capture');
+        const carrier = groundingCaptureCarrier(fact, current);
+        const carrierSchema = current.facts.schemas.find(candidate => candidate.kind === carrier.kind
+          && candidate.version === carrier.schemaVersion);
+        need(carrierSchema && Object.entries(carrierSchema.fields).some(([field, policy]) => policy.kind === 'capture'
+          && same(object(carrier.body)[field], { reference: message.capture, hash: message.hash })),
+        'continuity grounding capture is not bound to the signed message capture field');
+      }
+      need(grounding.knownLineages.length === Object.keys(grounding.frontier).length
+        && grounding.knownLineages.every(machine => Object.hasOwn(grounding.frontier, machine)),
+      'continuity grounding lineage coverage differs');
+      const latest = history.at(-1);
+      need(latest && latest.id === grounding.lastInbound.id, 'continuity grounding last inbound differs');
+      need(receiptBody.worker === grounding.worker && receiptBody.harness === grounding.harness
+        && typeof receiptBody.hashes === 'string' && typeof receiptBody.classes === 'string'
+        && same(JSON.parse(receiptBody.hashes), grounding.messages.map(message => message.hash))
+        && same(JSON.parse(receiptBody.classes), grounding.briefingClasses),
+      'continuity grounding consumption receipt does not bind delivered context');
+    };
+    const validateUnavailableStart = (transition: RunTransition, view: RunView,
+      record: ContinuityAccounting, current: RunDecodeContext): void => {
+      checkIdentities(json(transition), view.identities);
+      need(transition.run === view.run.id && transition.expected === view.head && transition.from === view.state,
+        'continuity transition expected predecessor/state differs');
+      need(statePairs[transition.from]?.includes(transition.to), 'continuity state pair is not permitted');
+      need(same(transition.responsible, view.run.owner) && same(transition.generation, view.run.generation),
+        'continuity transition owner/generation differs');
+      need(transition.kind === 'start' && transition.from === 'ready' && transition.to === 'running'
+        && transition.step && transition.grounding && !transition.outcome && !transition.exit,
+      'continuity start requires admitted step and actual-start grounding');
+      need(view.pending.length === 0, 'continuity start cannot bypass an uncertain predecessor');
+      const step = transition.step;
+      need(step.run === view.run.id && step.expected === view.head && same(step.ownership, transition.ownership)
+        && same(step.generation, view.run.generation), 'continuity step identity/predecessor/ownership differs');
+      need(!view.usedKeys.includes(step.operation.key), 'continuity operation key is already admitted');
+      need(step.allocation.budget === view.run.budget.id && view.run.budget.maxWorkers > 0
+        && view.run.budget.maxProcesses > 0 && view.pending.length < view.run.budget.maxOutstanding
+        && clockDifference(transition.at, view.run.budget.safetyCeiling, current) <= 0,
+      'continuity budget ceiling or zero capacity forbids work');
+      need(same(step.directives, view.run.directives)
+        && same(step.resultDestination, view.run.resultDestination),
+      'continuity step changed directives/destination');
+      const groundingFact = factReference(json(transition.grounding), current);
+      need(groundingFact.kind === runKinds.SessionGrounding, 'continuity grounding reference has wrong schema');
+      const grounding = take(decodeSessionGrounding(recordFromWire(object(groundingFact.body).record!), current));
+      validateUnavailableGrounding(grounding, view, record, current);
+      need(same(take(dependencies.admission.verify(factRef(groundingFact))), factRef(groundingFact)),
+        'continuity grounding admission witness missing');
+      need(same(grounding.ownership, transition.ownership),
+        'continuity grounding belongs to another ownership context');
+      need(clockDifference(transition.at, grounding.at, current) >= 0,
+        'continuity grounding clock is in the future');
+      need(transition.blockedOn.kind === 'step' && transition.blockedOn.reference === step.id,
+        'continuity running step lost its pending obligation');
+    };
     const unavailableContinuityView = (record: ContinuityAccounting, current: RunDecodeContext): RunView => {
       need(record.prePauseCapture.status === 'unavailable' && record.disposition.kind === 'pending',
         'continuity authority is unavailable outside the honest pending arm');
-      const openings = take(dependencies.store.read()).filter(fact => fact.kind === runKinds.Run
-        && object(fact.body).run === record.run);
-      need(openings.length === 1, 'owner run is missing or conflicted');
-      const opening = openings[0]!;
-      need(rawFor(record.run, runKinds.RunTransition).length === 0,
-        'unavailable continuity cannot reconstruct a transitioned run head');
-      const run = take(decodeRun(recordFromWire(object(opening.body).record!), current));
+      need(Object.entries(current.facts.captures).every(([reference, capture]) =>
+        reference === record.prePauseCapture.reference || capture.status === 'available'),
+      'unavailable continuity has another unavailable capture dependency');
+      const snapshot = take(dependencies.store.readForProjection());
+      const generation = dependencies.generation();
+      const source = take(foldProjection(runProjection(generation), snapshot, generation, current));
+      need(source.conflicts.length === 0 && source.taint.length > 0
+        && source.taint.every(taint => taint === 'evidence-unavailable'),
+      'unavailable continuity requires an otherwise clean signed history');
+      const openingRecord = source.values[`${runKinds.Run}:${record.run}`];
+      need(openingRecord && !Array.isArray(openingRecord), 'owner run is missing or conflicted');
+      const run = take(decodeRun(recordFromWire(openingRecord), current));
+      const facts = snapshot.entries.map(entry => entry.fact);
+      const opening = facts.find(fact => fact.kind === runKinds.Run && object(fact.body).run === record.run);
+      need(opening, 'owner run is missing or conflicted');
       need(same(take(dependencies.admission.verify(factRef(opening))), factRef(opening)),
         'run opening admission witness missing');
-      need(record.expected === run.id && record.prePauseInbound.id === run.opening.id
-        && record.disposition.work.id === run.opening.id,
-      'unavailable continuity does not retain the original owned run and inbound');
-      return freeze({ run, state: 'ready', head: run.id, pending: [], settled: [], usedKeys: [],
-        blockedOn: run.blockedOn, nextWake: run.nextWake,
-        source: { projection: 'run-view', generation: run.generation.id,
-          policy: { class: 'authority-answering', stalenessBound: 60_000 }, values: {}, conflicts: [], taint: [],
-          foldedThrough: {}, knownLineages: {}, retractions: [], corrections: [] },
-        conflicts: [], identities: [] }) as unknown as RunView;
+      const transitionFacts = facts.filter(fact => fact.kind === runKinds.RunTransition
+        && object(fact.body).run === record.run);
+      const transitions = transitionFacts.map(fact => ({ fact,
+        record: take(decodeRunTransition(recordFromWire(object(fact.body).record!), current)) }));
+      const identities = identityIndex(facts);
+      let view: RunView = { run, head: run.id, state: 'ready', pending: [], settled: [], usedKeys: [],
+        blockedOn: run.blockedOn, nextWake: run.nextWake, source, conflicts: [], identities };
+      const remaining = new Map(transitions.map(row => [encoded(row.record).bytes, row]));
+      while (remaining.size) {
+        const successors = [...remaining.values()].filter(row => row.record.expected === view.head);
+        need(successors.length === 1, successors.length
+          ? 'incompatible concurrent continuity transition successors'
+          : 'continuity transition predecessor is missing or cyclic');
+        const { fact, record: transition } = successors[0]!;
+        const parent = transitionFacts.find(candidate =>
+          object(recordFromWire(object(candidate.body).record!)).id === transition.expected) ?? opening;
+        need(causalCone(fact, current.facts.facts).some(ancestor => ancestor.id === parent.id),
+          'continuity transition is not causally linked to its predecessor');
+        if (transition.kind === 'start') validateUnavailableStart(transition, view, record, current);
+        else validateTransition(transition, view, current);
+        need(same(take(dependencies.admission.verify(factRef(fact))), factRef(fact)),
+          'continuity transition admission witness missing');
+        let pending = [...view.pending];
+        const settled = [...view.settled];
+        const usedKeys = [...view.usedKeys];
+        if (transition.kind === 'start') {
+          pending.push(transition.step!);
+          usedKeys.push(transition.step!.operation.key);
+        }
+        if (transition.kind === 'observe' && transition.to === 'ready') {
+          const step = pending.find(candidate => candidate.id === transition.affectedStep);
+          need(step, 'continuity settlement pending step missing');
+          settled.push(step.operation.key);
+          pending = pending.filter(candidate => candidate.id !== step.id);
+        }
+        view = { ...view, state: transition.to, head: transition.id, pending, settled, usedKeys,
+          blockedOn: transition.blockedOn, nextWake: transition.nextWake };
+        remaining.delete(encoded(transition).bytes);
+      }
+      need(record.expected === view.head,
+        'unavailable continuity expected predecessor differs from signed transition history');
+      return freeze(view);
     };
     const continuityView = (record: ContinuityAccounting, current: RunDecodeContext): RunView => {
       const ordinary = legacy.read(record.run);
@@ -140,8 +306,13 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
         Success: value => value,
         Refused: refusal => {
           need(refusal.detail === 'conflicted or tainted authority', refusal.detail);
-          need(rawFor(record.run, runKinds.RunTransition).length === 0, refusal.detail);
-          return unavailableContinuityView(record, current);
+          return consumeResult(boundary('ReadUnavailableContinuityHistory', record, current,
+            () => unavailableContinuityView(record, current)), {
+            Success: value => value,
+            Refused: () => {
+              need(false, refusal.detail);
+            },
+          });
         },
       });
     };
