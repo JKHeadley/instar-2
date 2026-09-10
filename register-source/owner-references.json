@@ -9,6 +9,14 @@
         "path": "tests/rungraph/governance.test.ts",
         "hash": "sha256:99265c7a0aa3af6c25ab78a3f30508b52c8af19061efa8d2c8c177339f889473"
       }
+    },
+    {
+      "id": "P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/rungraph/closure-registration-additivity.test.ts",
+        "hash": "sha256:f9be0fc9cf4332475c0a90a5f6d2cd073508530740ac906c18d5de075ddb49db"
+      }
     }
   ],
   "probes": [
@@ -27,7 +35,7 @@
       "id": "decodeRun",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -38,7 +46,7 @@
       "id": "decodeRunStep",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -49,7 +57,7 @@
       "id": "decodeRunTransition",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -60,7 +68,7 @@
       "id": "decodeRunExit",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -71,11 +79,44 @@
       "id": "decodeSessionGrounding",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
         "hash": "sha256:3dbdf54cf760fa696832ebc327485f4eeca919425822ef3eeb582d3a4be448c0"
+      }
+    },
+    {
+      "id": "decodeExhaustionRecord",
+      "module": {
+        "path": "src/rungraph/index.ts",
+        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
+      },
+      "artifact": {
+        "path": "src/rungraph/closure-records.ts",
+        "hash": "sha256:c4f14828bde5134ac0e22607c6e836d8c2b6540587f31b41d2c2a3dc58c6551c"
+      }
+    },
+    {
+      "id": "decodeContinuityAccounting",
+      "module": {
+        "path": "src/rungraph/index.ts",
+        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
+      },
+      "artifact": {
+        "path": "src/rungraph/closure-records.ts",
+        "hash": "sha256:c4f14828bde5134ac0e22607c6e836d8c2b6540587f31b41d2c2a3dc58c6551c"
+      }
+    },
+    {
+      "id": "decodeUnreachableRunExit",
+      "module": {
+        "path": "src/rungraph/index.ts",
+        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
+      },
+      "artifact": {
+        "path": "src/rungraph/closure-records.ts",
+        "hash": "sha256:c4f14828bde5134ac0e22607c6e836d8c2b6540587f31b41d2c2a3dc58c6551c"
       }
     }
   ],
