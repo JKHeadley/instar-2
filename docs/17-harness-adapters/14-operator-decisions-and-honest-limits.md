@@ -51,22 +51,79 @@ is full. A new policy could free space but would make some later investigation i
 Recommendation: Keep the current policy for initial activation because evidence should not
 disappear before the removal policy is reviewed on its own merits.
 
-**Value — decision 4: how to handle limits that cannot be proved away.**
+**Value — decision 4: using an assistant when understanding cannot be proved.**
 
-Question: For each exact setup, should we accept a clearly stated unprovable limit, or keep that
-setup unavailable?
+Question: Should an otherwise fully tested assistant remain available even though we can prove
+what background it received but cannot prove that it understood that background?
 
-Background: Examples include proving that a model understood supplied information, that a provider
-will preserve a conversation forever, that an administrator cannot replace an observer, or that a
-vendor will never post a later charge.
+Background: Delivery evidence can show what reached the assistant, while the quality of its
+understanding remains something we judge from its work.
 
-Choices: Accept the named limit for that exact setup, or keep that setup unavailable.
+Choices: Allow the assistant with this stated limit, or disable every setup that uses an assistant.
 
-What it changes: Acceptance makes the setup available with that limit. Keeping it unavailable
-avoids offering a guarantee that the evidence cannot support.
+What it changes: Allowing it keeps normal tested and reviewed uses available while accepting the
+risk of a mistaken interpretation. Disabling it removes all assistant work because no setup can
+eliminate that risk.
 
-Recommendation: Keep the setup unavailable until concrete evidence makes its remaining limit
-specific enough for deliberate acceptance.
+Recommendation: Allow it because independent checks of outputs can catch mistakes even though they
+cannot prove understanding in advance.
+
+**Value — decision 5: using a provider that may lose its saved conversation.**
+
+Question: Should a tested setup remain available when the provider may lose its saved conversation,
+provided our durable work and current history remain available for a replacement?
+
+Background: A provider's saved conversation can make continuation faster, but it is not the
+authoritative record of the work.
+
+Choices: Allow recoverable use without a forever-retention promise, or require a provider that
+guarantees permanent conversation retention.
+
+What it changes: Recoverable use keeps normal work available but may require a slower fresh start
+after provider data loss. Requiring permanent retention keeps the setup unavailable unless a
+provider supplies that guarantee.
+
+Recommendation: Allow recoverable use because the durable work record preserves the assignment
+without depending on a vendor's storage promise.
+
+**Value — decision 6: trusting the machine administrator.**
+
+Question: Should work with the full safeguards run only on machines whose administrator we
+deliberately trust, while accepting that no software on that machine can prove the administrator
+never replaced its safeguards?
+
+Background: A machine administrator can replace the programs and observers that run on that
+machine, so this risk cannot be removed by the adapter itself.
+
+Choices: Accept trusted administrators as people we must rely on, or keep fully safeguarded work
+off any machine where that trust is unacceptable.
+
+What it changes: Accepting this trust permits fully safeguarded work on operator-controlled or
+otherwise approved machines, with administrator compromise as the residual risk. Rejecting it
+disables fully safeguarded work on those machines while leaving independently hosted limited
+communication available where its own safeguards still hold.
+
+Recommendation: Accept this trust only for explicitly trusted administrators because pretending
+the administrator is constrained by software it controls would be misleading.
+
+**Value — decision 7: using a paid service whose final charge arrives later.**
+
+Question: Should a paid service remain available when its final charge cannot be seen promptly,
+but the company charging us enforces a cap on the total possible charge?
+
+Background: A delayed bill can leave part of the budget unusable because the system must reserve
+for the largest charge still possible and must not repeat an uncertain call.
+
+Choices: Allow capped use while treating the largest still-possible charge as spent, or disable
+that paid service.
+
+What it changes: Capped use continues until the available budget is exhausted and accepts a later
+charge up to the enforced cap. Disabling the service avoids that billing uncertainty but removes
+all work that depends on it. A paid service without an enforceable cap remains unavailable under
+either choice.
+
+Recommendation: Allow capped use because the financial risk stays bounded and uncertainty cannot
+silently release budget or authorize a repeat.
 
 **Value — honest limits.** No adapter can prove that a model understood supplied context, that a
 provider will preserve a conversation forever, that an administrator cannot replace the runtime
@@ -77,7 +134,11 @@ mode.
 
 **Rule — technical completion is not approval or certification.** Rules 30,
 34, 49, 65, 82, 90, 109 and 115; **checks: P13-NF-02/07/43/44/45/47/48** and the governed review
-process. Activation is mandatory for each exact harness package and artifact digest, registered
+process. Decisions 4–6 do not waive actual context delivery, current grounding, durable history,
+output verification, confinement, or honest trust-boundary disclosure. Decision 7 cannot release
+a reservation, close charge exposure, repeat an uncertain call, or claim bounded completion; it
+only selects whether a capped route may accept work under its existing uncertainty policy.
+Activation is mandatory for each exact harness package and artifact digest, registered
 model doorway and route, platform, and capability mode. One complete tuple never activates its
 family or another doorway. The builder may use tmux, another PTY driver, a direct subprocess, or a
 structured protocol as an interchangeable package implementation. Every choice must prove the same
