@@ -12,28 +12,18 @@ own part-one `Refused` with `reason: budget-exhausted`. A current freeze makes t
 that applied the cap/freeze may return `Success`.
 Their subjects and ids cannot satisfy one another.
 
-**Rule — a positive cap, an armed door and current service readiness are three different
-conditions.** Rules 4, 26, 40, 42, 49, 82, 86 and 95; **checks:
-P16-NF-35/45/49/51**. Changing a cap does not arm its doorway. The separate
-`SpendDoorActivation` effect requested in
-`design-measurement-ledgers-seam-request-paid-door-readiness.md` owns per-door arm/disarm under an
-exact operator authorization and current base. Immediately before a paid admission, Eight must
-re-resolve that current arm, Ten's current paid-service posture, and Six's current fence,
-reservation and accounting state. Ten's posture is ready only for the exact active assembly scope,
-machine/incarnation, production bindings and fresh probe evidence; requested enablement,
-construction, configuration, file presence or an old probe does not satisfy it. A positive cap
-with no current arm refuses before reservation. A current arm while service posture is unavailable
-or not ready also refuses before reservation. Freeze is checked first and stays independently
-reachable.
+**Rule — the paid-door opening policy is unresolved.** Rules 4, 26, 40, 42, 49, 82, 86 and 95;
+**checks: P16-NF-35/45/49/51**. The approved Part Eight and Part Ten designs do not define a
+separate per-door arm/disarm operation or paid-service readiness read. `SEAM-LEDGER.md` row 65
+therefore REFUSES `P16-P8-P10-paid-door-readiness-v1` as beyond their approved scope. Section 16
+decision 8 asks the operator either to treat a positive cap plus not-frozen as open, without a
+separate arm, or to commission amendments to both approved designs for separate activation and
+readiness. Until that decision is recorded, P16-NF-35/45/49/51's activation-policy arms are
+non-executable and no implementation may assume either answer. Freeze remains checked first and
+independently reachable. The separately GRANTED spend-control scope in
+`seam-response-effects-followup.md` still covers only cap set, freeze and unfreeze.
 
-The existing GRANTED spend-control scope in `seam-response-effects-followup.md` covers cap set,
-freeze and unfreeze, but not the activation/readiness contract above. The request in
-`design-measurement-ledgers-seam-request-paid-door-readiness.md` is not granted. Those check arms
-remain non-executable until that request receives a named Eight/Ten grant and GRANTED/BUILT
-`SEAM-LEDGER.md` row, its additive contract lands, and the separately granted spend-control scope
-lands.
-
-**Rule — changing a cap, arming a door and releasing a freeze require operator authority.** Rules 4, 28, 79, 82,
+**Rule — changing a cap and releasing a freeze require operator authority.** Rules 4, 28, 79, 82,
 89 and 98; **checks: P16-NF-35/51/52**. The action begins as an exact authorization
 request through part four, completes on eleven's verified surface and executes once through
 the requested part-eight payload. The rendered subject includes account or key, doorway scope, old and proposed values,

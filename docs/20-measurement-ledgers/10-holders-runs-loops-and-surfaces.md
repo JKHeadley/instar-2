@@ -31,11 +31,12 @@ pinned partial horizon or a typed refusal, never an unbounded fallback scan.
 
 The package-local bounded read and privacy renderer are pure and can satisfy the foundation arms
 of P16-NF-47/48. They are not an operator surface. This head has no `src/operator` package or
-operator export, and `seam-response-operator-followup.md` grants only part fourteen's
-guard-and-repair view. The real authenticated Eleven integration and Ten production lifecycle
-depend explicitly on `design-measurement-ledgers-seam-request-operator-surface.md`, which is not
-granted. The real-surface arms of P16-NF-03/47/48/49 are non-executable until that request receives
-a named Eleven/Ten grant and GRANTED/BUILT `SEAM-LEDGER.md` row and its public Eleven port and Ten
-composition land. Part sixteen does not fill the gap with a private port, route or surface record.
+operator export. The addendum to `seam-response-operator-followup.md` explicitly GRANTS
+`P16-P11-measurement-spend-surface-v1`; `SEAM-LEDGER.md` row 64 records the authenticated bounded
+pull operation and Ten composition, buildable after the Part Eleven implementation lands. The
+real-surface arms of P16-NF-03/47/48/49 are non-executable until row 64 lands with its public Eleven
+port and Ten composition. The earlier guard-and-repair grant is still a different surface and a
+unit renderer is still not the positive. Part sixteen does not fill the gap with a private port,
+route or surface record.
 
 ---

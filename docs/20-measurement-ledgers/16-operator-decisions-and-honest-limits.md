@@ -84,8 +84,23 @@ waiting may reduce future migration work but blocks the package on a separate de
 Recommendation: Keep complete history with bounded views and growth monitoring because it preserves
 evidence without making everyday queries unbounded.
 
+**Value — decision 8: Whether a spending limit also opens a paid service.**
+Question: Should a paid service be open whenever its spending limit is above zero and the emergency
+freeze is off, or should it also need a separate on/off switch?
+Background: The older system used an extra switch, but the approved new design does not currently
+include that switch or a separate readiness check.
+Choices: Let a positive limit and no freeze mean open; or add a separate on/off switch and readiness
+check by revising the two approved designs that own those controls.
+What it changes: The first choice is simpler and deliberately leaves the old extra switch behind;
+the second adds another safety step but requires more design, implementation and operator action.
+Recommendation: Let a positive limit and no freeze mean open because the limit and emergency freeze
+already provide clear control without adding another state that can disagree with them.
+
 **Rule — technical completion is not approval or certification.** Rules 34, 65, 80, 82 and 90;
-**checks: P16-NF-49/52** and the governed review process. This document claims no deployment,
+**checks: P16-NF-35/45/49/51/52** and the governed review process. Decision 8 is required because
+`SEAM-LEDGER.md` row 65 refuses `P16-P8-P10-paid-door-readiness-v1`, recorded in
+`design-measurement-ledgers-seam-request-paid-door-readiness.md`, as outside the approved Part Eight
+and Part Ten designs. This document claims no deployment,
 runtime measurement, review convergence, holder adequacy or operator approval. Implementation
 becomes eligible only after the real three-tier, production-lifecycle, reconstruction,
 isolation, privacy, load and independent-holder evidence exists. The operator's answers above and

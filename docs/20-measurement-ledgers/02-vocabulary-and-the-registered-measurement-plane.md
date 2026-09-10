@@ -146,12 +146,11 @@ operating-system sample or quota response and submit existing `Measurement` and 
 payloads through the requested part-four observation-intake operation. The landed conversational
 `IntakePort` cannot yet accept that flow. The real operating-system producer is also unavailable:
 the GRANTED CONDITIONAL process-inventory addendum in `seam-response-assembly-followup.md`, tracked
-in `SEAM-LEDGER.md` row 40 and buildable only after docs/18 approval, has not landed. Its grant says
-only `resource observations`; the interval and point semantics needed here are the narrow request
-in `design-measurement-ledgers-seam-request-resource-observation.md`. That request is not granted.
-P16-NF-24/49's production resource arms remain non-executable until it receives a named Part Ten
-grant and GRANTED/BUILT ledger row, its additive contract and the conditional inventory contract
-land, and the Four intake grant lands.
+in `SEAM-LEDGER.md` row 40 and buildable only after docs/18 approval, has not landed. The same grant
+file now explicitly grants `P16-P10-process-resource-observation-v1` as a conditional addendum with
+the required CPU interval, RSS point and observation-state fields; `SEAM-LEDGER.md` row 63 records
+that grant under the same docs/18 condition. P16-NF-24/49's production resource arms remain
+non-executable until row 63 lands together with row 40 and the Four intake grant.
 Collectors never call a provider, start a process, choose
 an account, admit work or mutate the observed source. A rejected measurement append returns a typed result
 to the adapter and raises a nine-owned instrument-health obligation. It does not rewrite the

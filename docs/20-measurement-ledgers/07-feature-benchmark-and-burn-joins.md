@@ -91,6 +91,18 @@ its sample or coverage floor, or production above its concentration ceiling, is 
 compatibility, criterion, freshness, conflict, completeness or current-support failure is
 `ineligible`. Only `eligible` may report a comparison. Every status retains both raw numerators
 and denominators, both intervals, machine shares and missing reasons.
+
+Every comparison also segments each population's usable grades by the current Part One
+`Evidence.strength` values resolved from the grades' cited evidence: proof, observation,
+attestation and inference. It separately identifies the grading rule and grading method from
+Nine's current `Grade` criterion, plan version, grader and grading `Decision`, with the matching
+`BenchmarkEvaluation` criterion. A legacy strength, rule or rung from 1.x is retained only as a
+labelled legacy classification and never silently promoted to a current class. The read reports
+the count and share whose evidence is controlled by the interested party, including whether every
+settled grade is such a self-report, and states that attestation/self-report or inference does not
+provide independent support for that segment. No headline pass rate may blend evidence-strength
+classes. Thus equal numerators, denominators and Wilson intervals can still carry materially
+different evidence limitations, which P16-NF-32 tests explicitly.
 Real production measurements retain machine/workload identity. Targets, predicted rates and
 declared prices are never measured. The policy and its threshold values are deployment-selected
 Value choices; their decision boundaries are fixed here.
