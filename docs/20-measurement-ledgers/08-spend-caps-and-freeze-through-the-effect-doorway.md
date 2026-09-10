@@ -12,7 +12,25 @@ own part-one `Refused` with `reason: budget-exhausted`. A current freeze makes t
 that applied the cap/freeze may return `Success`.
 Their subjects and ids cannot satisfy one another.
 
-**Rule — changing a cap and releasing a freeze require operator authority.** Rules 4, 28, 79, 82,
+**Rule — a positive cap, an armed door and current service readiness are three different
+conditions.** Rules 4, 26, 40, 42, 49, 82, 86 and 95; **checks:
+P16-NF-35/45/49/51**. Changing a cap does not arm its doorway. The separate
+`SpendDoorActivation` effect requested in
+`design-measurement-ledgers-seam-request-paid-door-readiness.md` owns per-door arm/disarm under an
+exact operator authorization and current base. Immediately before a paid admission, Eight must
+re-resolve that current arm, Ten's current paid-service posture, and Six's current fence,
+reservation and accounting state. Ten's posture is ready only for the exact active assembly scope,
+machine/incarnation, production bindings and fresh probe evidence; requested enablement,
+construction, configuration, file presence or an old probe does not satisfy it. A positive cap
+with no current arm refuses before reservation. A current arm while service posture is unavailable
+or not ready also refuses before reservation. Freeze is checked first and stays independently
+reachable.
+
+The existing GRANTED spend-control scope in `seam-response-effects-followup.md` covers cap set,
+freeze and unfreeze, but not the activation/readiness contract above. Those check arms remain
+non-executable until that grant lands and the new paid-door-readiness request is granted and lands.
+
+**Rule — changing a cap, arming a door and releasing a freeze require operator authority.** Rules 4, 28, 79, 82,
 89 and 98; **checks: P16-NF-35/51/52**. The action begins as an exact authorization
 request through part four, completes on eleven's verified surface and executes once through
 the requested part-eight payload. The rendered subject includes account or key, doorway scope, old and proposed values,

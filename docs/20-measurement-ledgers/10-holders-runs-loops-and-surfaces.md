@@ -29,4 +29,13 @@ prompt, response, command line, environment, secret, raw account credential or u
 identity. Authorized diagnostic detail remains scoped and audited. A query timeout returns its
 pinned partial horizon or a typed refusal, never an unbounded fallback scan.
 
+The package-local bounded read and privacy renderer are pure and can satisfy the foundation arms
+of P16-NF-47/48. They are not an operator surface. This head has no `src/operator` package or
+operator export, and `seam-response-operator-followup.md` grants only part fourteen's
+guard-and-repair view. The real authenticated Eleven integration and Ten production lifecycle
+depend explicitly on `design-measurement-ledgers-seam-request-operator-surface.md`. The real-surface
+arms of P16-NF-03/47/48/49 are non-executable until that request is granted and its Eleven port and
+Ten composition land. Part sixteen does not fill the gap with a private port, route or surface
+record.
+
 ---

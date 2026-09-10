@@ -10,6 +10,9 @@ no-exchange, observed exchange or dispatch-uncertain; unresolved/conflicting cla
 enter a percentage. A provider exchange is counted once even when its response is later rejected
 by a parser. A metered zero-token exchange is an observed, usage-supported exchange, while a
 zero-call refusal is a proven no-exchange attempt.
+The read obtains accepted/prepared and dispatch membership clocks from complete envelopes in its
+pinned owner-issued source history input. The attempt bodies and body-only projection cannot supply
+those missing clocks.
 
 The complete production census in P16-NF-07 is not executable at this head. The landed seven
 slice excludes benchmark execution and rerun admission. It also lists production activation gaps
@@ -93,7 +96,9 @@ and not a synthesized `JudgmentAttemptRecord`.
 **Rule — feature attribution is re-resolved, never trusted from the usage row.** Rules 26, 32,
 58, 69 and 86; **checks: P16-NF-12–14/30/31/36**. The read joins the attempt's run, judgment
 point, registered feature and benchmark identities from signed history at the requested causal
-frontier. A source-supplied feature string is retained only as evidence. No match produces
+frontier. That join consumes the exact `FactStatus` envelopes and status evidence in the pinned
+source history input and records its digest; it does not reconstruct causal links or authority from
+projection values. A source-supplied feature string is retained only as evidence. No match produces
 unattributed usage. Several incompatible matches produce `Conflict`. A later lawful correction
 can change the derived attribution without rewriting the measurement. Per-feature totals show
 unattributed and conflicted amounts beside named features; they never hide them in a synthetic

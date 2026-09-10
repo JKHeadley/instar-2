@@ -47,6 +47,7 @@
 | cumulative-session usage | A provider/framework total for one registered session whose later snapshot replaces the earlier current snapshot. It is aggregate evidence with `per-call attribution unsupported` unless an independent exact attempt mapping exists. |
 | origin-lost legacy zero | A numeric zero migrated from 1.x for which the original source bytes are unavailable, so the migration cannot prove whether the source reported zero or the old parser coerced an absent or malformed category to zero. It remains uncertain, not an observed zero. |
 | routing-spend view | A bounded read presentation over part two's complete `all-identities` projection. It applies the requested window, detail horizon, price and attribution joins without becoming a projection fold, money ledger or cap authority. |
+| source history input | The exact owner-issued `FactSnapshot` returned by part two's public `FactStorePort.readForProjection()` for one pinned read. Its statuses carry decoded bodies, conflicts and taint; each status's `fact` carries the complete signed envelope, including the source clock and causal metadata. The presentation consumes it beside, not through, the source projection and records its canonical digest. It is a package input name, not a new core type. |
 | feature outcome classifier | A registered mapping from current attempt, decision, effect/event and grading evidence to the feature's declared action predicate. It yields `fired` only when that action is proved to have occurred, `no-op` only when complete evidence proves it did not occur, and `unclassified` when the mapping is absent, incomplete or conflicted. A `Grade` or judgment result alone is not this classifier. |
 | shed attempt | Work refused before provider invocation by admission or a circuit breaker. It has no provider exchange and is distinct from a completed `no-op`. |
 | full sample identity | One source observation's subject kind and instance, source sample identity, category, unit, producer authority, witness source-event identity and causal head. It is preserved even when an explicit cross-instance aggregate is computed. |
@@ -59,13 +60,19 @@
 | Wilson half-width | The margin on either side of a Wilson estimated pass rate after sample size is considered. A larger half-width means the observed rate is less precise. |
 
 **Rule — every window uses an owner-recorded membership time.** Rules 13, 26, 32, 33, 58
-and 69; **checks: P16-NF-16/19/36/37**. Every requested window is half-open: it includes a
+and 69; **checks: P16-NF-16/19/32/36/37/50**. Every requested window is half-open: it includes a
 member whose authoritative source time equals `start` and excludes one whose source time equals
 `end`. Both endpoints and the member time must be comparable `Clock` values in the declared
 basis. An incomparable clock makes the result partial; append time, arrival time and the query's
 evaluation clock cannot substitute for membership time. UTC is the default display basis for
 ordinary hour and day slices. A provider/account policy or six-owned budget policy may instead
 name another basis, which the response must display.
+
+For every envelope-clock row below, the presentation reads `FactStatus.fact.at` from its exact
+source history input. It does not ask the body-only projection for that value. The accepted-request
+and prepared/dispatch bodies contain no substitute clock. The same source-history digest is pinned
+beside the source-projection digest so a replay cannot combine projection bytes from one snapshot
+with envelope times or status evidence from another.
 
 | Family | Authoritative membership source | Late evidence and correction rule |
 |---|---|---|
@@ -137,7 +144,13 @@ asking for a pool total.
 86 and 95; **checks: P16-NF-04–08/21–23/42–46**. Adapters observe a dispatch, provider receipt,
 operating-system sample or quota response and submit existing `Measurement` and `Evidence`
 payloads through the requested part-four observation-intake operation. The landed conversational
-`IntakePort` cannot yet accept that flow. Collectors never call a provider, start a process, choose
+`IntakePort` cannot yet accept that flow. The real operating-system producer is also unavailable:
+the GRANTED CONDITIONAL process-inventory addendum in `seam-response-assembly-followup.md`, tracked
+in `SEAM-LEDGER.md` row 40 and buildable only after docs/18 approval, has not landed. Its grant says
+only `resource observations`; the interval and point semantics needed here are the narrow request
+in `design-measurement-ledgers-seam-request-resource-observation.md`. P16-NF-24/49's production
+resource arms remain non-executable until both Ten dependencies and the Four intake grant land.
+Collectors never call a provider, start a process, choose
 an account, admit work or mutate the observed source. A rejected measurement append returns a typed result
 to the adapter and raises a nine-owned instrument-health obligation. It does not rewrite the
 already determined model-call or process outcome. Missing evidence is carried as missing; zero

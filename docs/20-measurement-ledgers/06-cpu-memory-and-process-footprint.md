@@ -11,8 +11,20 @@ it; it is not substituted for RSS. A PID is joined to a process-incarnation iden
 start evidence and owning run; PID reuse cannot join a new process to an old run. Dead or
 unreadable processes are missing samples, not zero CPU or zero memory.
 
+The production source is Ten's owner-decoded process inventory, not a private shell call or a
+caller-filled `GrowthObservation`. Its process-inventory addendum in
+`seam-response-assembly-followup.md` is GRANTED CONDITIONAL, tracked in `SEAM-LEDGER.md` row 40,
+and may be built only after docs/18 approval. That grant supplies a pinned complete/partial/failed
+process census, but its phrase `resource observations` does not name the CPU interval and RSS point
+contract above. `design-measurement-ledgers-seam-request-resource-observation.md` requests that
+narrow owner addition. The real-producer arms of P16-NF-24/49 remain non-executable until the grant,
+that addition and `seam-response-intake-followup.md` land. Pure arithmetic, missing-state,
+classification and trend fixtures may use owner-shaped decoded test inputs without claiming the
+production observer exists.
+
 **Rule — the sampler has bounded work and measures its own footprint.** Rules 39, 55, 60 and 86;
-**checks: P16-NF-27/29/43/46**. One tick has finite process, byte, duration and concurrency limits.
+**checks: P16-NF-24/27/29/43/46/49**. Once the named Ten producer lands, one tick has finite process,
+byte, duration and concurrency limits.
 Process reads are batched where the platform permits it. An over-limit census produces an
 explicit truncated sample with examined and omitted counts. Ticks do not overlap. Idle cadence,
 active cadence and retry backoff are six-owned loop policy. Scan CPU, memory, process creation,

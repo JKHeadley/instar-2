@@ -1,7 +1,7 @@
 ## 11. What Instar 1.x does today and what carries forward
 
 **Rule — the audited 1.x layer below is described as code behaves, not as 2.0 aspires.** Rules 39,
-41, 58, 60, 75, 86, 87 and 111; **checks: P16-NF-05–14/21–33/39–46**. The audit covered the
+41, 58, 60, 75, 86, 87 and 111; **checks: P16-NF-05–14/21–35/39–46/49/51**. The audit covered the
 named 1.x modules and their matching operator guidance; typed distinctions required by 2.0 but
 collapsed in 1.x are corrections below, not carried-forward guarantees.
 
@@ -23,8 +23,23 @@ collapsed in 1.x are corrections below, not carried-forward guarantees.
 | `routingSpendView` and `routingPriceAuthority` | Immutable usage is priced on read; unpriced metered usage is loud; subscription access is labelled not per-token billed; provider settlement and internal derivation remain distinct. For a declared subscription, `routingSpendView` divides monthly price by 30.4375 average Gregorian days and multiplies by the door's distinct active UTC calendar days in the window. It displays the full derivation. The same door-level amount is attached to each model row for context, while totals deduplicate by door and count it once across models. The 2.0 compatibility view preserves that calendar allocation. A token-share view would be a separately labelled policy addition or explicit replacement, not a description of current behavior. | Earlier spend surfaces could make missing price or subscription billing look like $0 per-call cost and could blur reporting totals with committed money |
 | `ProviderCostReportStore`, `ProviderReconciliationSweep` and conditional `AgentServer` wiring | The reporting store retains valid, invalid and comparison rows. Its provider, internal and committed columns can describe different populations. A failed sweep can leave no row or a durable prefix while returning zero counters. Construction is conditional, and the audited production tree has no producer callsite. Detailed preservation and activation requirements follow this table. | Provider-reported cost can disagree with internal pricing without rewriting committed money. Invalid or absent evidence, mismatched populations and incomplete sweeps must remain visible. |
 | `MeteredSpendLedger` and its `AgentServer` wiring | The enabled money layer appends before updating its disposable totals cache and rebuilds that cache from its JSONL source. Its timer expiry, read-failure and malformed-row behavior can release or omit liability without decisive evidence. Detailed durability and migration requirements follow this table. | Append-first accounting and concurrent reservations protect cap headroom. Timer expiry and permissive rebuild are availability shortcuts, not execution or charge evidence. |
-| `RoutingSpendCapsStore`, `MeteredSpendGate` and `meteredCallEntry` helper path | The helper checks freeze before live enablement. The gate checks current caps and books bounded reservations atomically. Releasing money needs operator authority. These are real helper/control-path guarantees, and the readiness probe exercises the gate with a no-network provider. | A disable flag captured only at construction could remain cosmetically off while calls still admitted; placing freeze inside a failed money layer could take down the emergency brake with the machinery it must stop. |
+| `RoutingSpendCapsStore`, `MeteredSpendGate`, `moneyLayerEnable` and `meteredCallEntry` helper path | `adjustCaps()` changes positive caps but does not arm a door. `setGoLive()` is a separate operator action that arms/disarms one door and designates its machine. `MeteredSpendGate.admit()` refuses an absent or disabled go-live record before checking caps. The helper checks freeze first, then calls the current `servingReady` predicate; requested enablement or construction alone is not serving readiness. Only after both checks does it enter the cap/reservation gate. These are real helper/control-path guarantees, and the readiness probe exercises the gate with a no-network provider. | A positive cap must not become permission to spend. A disable flag captured only at construction could remain cosmetically off while calls still admitted; placing freeze inside a failed money layer could take down the emergency brake with the machinery it must stop. |
 | `meteredCallEntry` production dispatch integration | No 1.x production paid-provider call invokes `admitMeteredCall`; the module names that dispatch seam as future work. Probe and helper evidence therefore do not prove that a real paid exchange is protected end to end. | A chokepoint that no paid dispatch calls is a required integration seam, not current spend protection. |
+
+**Rule — 2.0 preserves separate door activation and live readiness without copying 1.x's private
+stores.** Rules 4, 26, 40, 42, 49, 60, 82, 86 and 95; **checks:
+P16-NF-35/45/49/51**. Eight's requested `SpendDoorActivation` effect replaces `setGoLive()` as the
+distinct operator-authorized arm/disarm action; the granted cap-set effect cannot imply it. Ten's
+requested current paid-service posture replaces the process-local `servingReady` function with an
+owner-issued read over the exact active `AssemblyAdmission`, production bindings and fresh probe
+evidence. Six still owns the current fence, reservation and accounting state. Paid admission
+requires all three current owner answers and checks freeze first. A positive cap without a current
+arm refuses. A current arm with requested enablement, construction or stale probe but no current
+ready posture also refuses. `design-measurement-ledgers-seam-request-paid-door-readiness.md`
+requests the missing Eight/Ten contract; its affected arms are non-executable until granted and
+landed, in addition to the GRANTED spend-control scope in `seam-response-effects-followup.md`.
+The 1.x production-dispatch gap remains: neither helper fixtures nor a readiness probe proves a
+real paid call traverses the doorway.
 
 **Rule — the 1.x provider reconciliation populations remain distinct.** Rules 13, 26, 39, 58,
 86 and 111; **checks: P16-NF-14/17/36/44**. When the routing-spend view is enabled and
