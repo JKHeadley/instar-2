@@ -19,6 +19,7 @@ import type {
 } from './closure-types.js';
 
 type AdmittedClosure = Readonly<{ fact: FactEnvelope; record: RunClosureRecord }>;
+type ClosureExitRead = Result<Readonly<{ fact: FactEnvelopeReference; exit: RunExit }>>;
 
 function decodeByType(input: unknown, context: RunDecodeContext): Result<RunClosureRecord> {
   const type = object(json(input)).type;
@@ -282,26 +283,28 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
           });
           return receipt.fact;
         }));
-    const readExit = (run: Parameters<RunClosureGraphPort['readExit']>[0]): Result<Readonly<{
-      fact: FactEnvelopeReference; exit: RunExit;
-    }>> => {
+    const readExit = (run: Parameters<RunClosureGraphPort['readExit']>[0]): ClosureExitRead => {
       const legacyExit = legacy.readExit(run);
-      if (legacyExit.kind === 'Success' || legacyExit.detail !== 'terminal run exit absent') return legacyExit;
-      return boundary('ReadRunExit', run, dependencies.context, safe => {
-        const referenceValue = object(safe);
-        need(referenceValue.owner === 'part-five' && referenceValue.name === 'Run'
-          && typeof referenceValue.id === 'string' && referenceValue.id.length > 0,
-        'run reference owner/name/id mismatch');
-        const view = read(referenceValue.id as string);
-        need(view.state === 'unreachable', 'terminal run exit absent');
-        const matches = rawFor(referenceValue.id as string, runClosureKinds.UnreachableRunExit).filter(fact => {
-          const wire = object(recordFromWire(object(fact.body).record!));
-          return wire.id === view.head && wire.phase === 'close';
-        });
-        need(matches.length === 1, matches.length ? 'conflicting unreachable exits' : 'terminal run exit fact absent');
-        const selected = decodeFact(matches[0]!, context());
-        need(selected.type === 'UnreachableRunExit', 'terminal run exit fact absent');
-        return freeze({ fact: factRef(matches[0]!), exit: selected });
+      return consumeResult(legacyExit, {
+        Success: (): ClosureExitRead => legacyExit,
+        Refused: (refusal): ClosureExitRead => refusal.detail !== 'terminal run exit absent' ? refusal
+          : boundary('ReadRunExit', run, dependencies.context, safe => {
+            const referenceValue = object(safe);
+            need(referenceValue.owner === 'part-five' && referenceValue.name === 'Run'
+              && typeof referenceValue.id === 'string' && referenceValue.id.length > 0,
+            'run reference owner/name/id mismatch');
+            const view = read(referenceValue.id as string);
+            need(view.state === 'unreachable', 'terminal run exit absent');
+            const matches = rawFor(referenceValue.id as string, runClosureKinds.UnreachableRunExit).filter(fact => {
+              const wire = object(recordFromWire(object(fact.body).record!));
+              return wire.id === view.head && wire.phase === 'close';
+            });
+            need(matches.length === 1,
+              matches.length ? 'conflicting unreachable exits' : 'terminal run exit fact absent');
+            const selected = decodeFact(matches[0]!, context());
+            need(selected.type === 'UnreachableRunExit', 'terminal run exit fact absent');
+            return freeze({ fact: factRef(matches[0]!), exit: selected });
+          }),
       });
     };
     const readExitAny = (run: Parameters<RunClosureGraphPort['readExitAny']>[0]) => readExit(run);
@@ -324,26 +327,30 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
           'first-reply send owner witness differs from signed send record');
         return factRef(sendFact);
       });
-    const publicRead = (run: string): Result<RunView> => {
-      const base = legacy.read(run);
-      if (base.kind === 'Refused') return base;
-      return boundary('ReadRun', run, dependencies.context, () => closureView(base.value, context()));
-    };
-    const publicOpen = (input: unknown): Result<RunView> => {
-      const opened = legacy.open(input);
-      if (opened.kind === 'Refused') return opened;
-      return publicRead(opened.value.run.id);
-    };
+    const publicRead = (run: string): Result<RunView> => consumeResult(legacy.read(run), {
+      Refused: refusal => refusal,
+      Success: base => boundary('ReadRun', run, dependencies.context, () => closureView(base, context())),
+    });
+    const publicOpen = (input: unknown): Result<RunView> => consumeResult(legacy.open(input), {
+      Refused: refusal => refusal,
+      Success: opened => publicRead(opened.run.id),
+    });
     const publicGround: RunClosureGraphPort['ground'] = (run, worker, harness, reason, ownership) => {
       const base = legacy.read(run);
-      if (base.kind === 'Refused') return legacy.ground(run, worker, harness, reason, ownership);
-      const combined = boundary('ReadRun', run, dependencies.context, () => closureView(base.value, context()));
-      if (combined.kind === 'Refused') return combined;
-      const additiveClosure = combined.value.state !== base.value.state || combined.value.head !== base.value.head;
-      if (additiveClosure) return boundary('GroundRun', null, dependencies.context, () => {
-        need(false, 'terminal/conflicted run cannot start a worker');
+      return consumeResult(base, {
+        Refused: () => legacy.ground(run, worker, harness, reason, ownership),
+        Success: baseView => consumeResult(
+          boundary('ReadRun', run, dependencies.context, () => closureView(baseView, context())), {
+            Refused: refusal => refusal,
+            Success: combined => {
+              const additiveClosure = combined.state !== baseView.state || combined.head !== baseView.head;
+              if (additiveClosure) return boundary('GroundRun', null, dependencies.context, () => {
+                need(false, 'terminal/conflicted run cannot start a worker');
+              });
+              return legacy.ground(run, worker, harness, reason, ownership);
+            },
+          }),
       });
-      return legacy.ground(run, worker, harness, reason, ownership);
     };
     const publicTransition: RunClosureGraphPort['transition'] = input => {
       const candidate = input && typeof input === 'object' && !Array.isArray(input)
@@ -351,14 +358,20 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       const run = typeof candidate?.run === 'string' ? candidate.run : undefined;
       if (!run) return legacy.transition(input);
       const base = legacy.read(run);
-      if (base.kind === 'Refused') return legacy.transition(input);
-      const combined = boundary('ReadRun', run, dependencies.context, () => closureView(base.value, context()));
-      if (combined.kind === 'Refused') return combined;
-      const additiveClosure = combined.value.state !== base.value.state || combined.value.head !== base.value.head;
-      if (additiveClosure) return boundary('TransitionRun', input, dependencies.context, () => {
-        need(false, 'terminal run cannot admit new execution');
+      return consumeResult(base, {
+        Refused: () => legacy.transition(input),
+        Success: baseView => consumeResult(
+          boundary('ReadRun', run, dependencies.context, () => closureView(baseView, context())), {
+            Refused: refusal => refusal,
+            Success: combined => {
+              const additiveClosure = combined.state !== baseView.state || combined.head !== baseView.head;
+              if (additiveClosure) return boundary('TransitionRun', input, dependencies.context, () => {
+                need(false, 'terminal run cannot admit new execution');
+              });
+              return legacy.transition(input);
+            },
+          }),
       });
-      return legacy.transition(input);
     };
     return freeze({
       ...legacy,
