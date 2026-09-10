@@ -45,10 +45,14 @@ population. They cannot supply the observation above. Part Fourteen therefore
 depends on the additive read-only Part Ten operation requested in
 `.instar/lanes/design-sentinel-holders-seam-request-conversation-servability.md`, request
 `P14-P10-conversation-service-observation-v1`, which consumes the requested Six-owned observation
-rather than recasting it. P14-NF-68's pure decision/refusal cases are
-specified, but its complete-population and production-observer positives are non-executable until
-both requested seams are granted and land. No candidate values or private platform scan may stand
-in for the missing owner-decoded observations.
+rather than recasting it. P14-NF-68's pure decision/refusal cases remain executable, but its
+complete-population and production-observer positives are **non-executable until the ungranted
+request `P14-P6-conversation-serving-admission-v1` in
+`design-sentinel-holders-seam-request-serving-admission.md` and the ungranted request
+`P14-P10-conversation-service-observation-v1` in
+`design-sentinel-holders-seam-request-conversation-servability.md` are both granted and landed**.
+No candidate values or private platform scan may stand in for the missing owner-decoded
+observations.
 
 The landed Part Five run graph admits only root depth, rejects nonempty grounding children and has
 no `DelegationContract` or `DelegationResult`. The delegation and visible-child accounting in
