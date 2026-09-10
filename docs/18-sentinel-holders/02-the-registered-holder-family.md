@@ -1,5 +1,9 @@
 ## 2. The registered holder family
 
+**Rule — two terms used below.** Rules 49 and 69; **checks: P14-NF-01/02**. An **arm** is a
+separately identified check within a verification plan. **Admission shedding** is declining new
+work because its allowed capacity is full.
+
 **Rule — every member is an ordinary part-nine plan with named arms.** Rules 5, 9, 34, 38, 39,
 43, 49, 59, 69 and 78; **checks: P14-NF-05–09/12–15/22/37/38/58–68**. Each row becomes one or more
 versioned `VerificationPlan` instances. Every arm names its exact subject, executable, schedule,
