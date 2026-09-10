@@ -27,8 +27,11 @@ or not ready also refuses before reservation. Freeze is checked first and stays 
 reachable.
 
 The existing GRANTED spend-control scope in `seam-response-effects-followup.md` covers cap set,
-freeze and unfreeze, but not the activation/readiness contract above. Those check arms remain
-non-executable until that grant lands and the new paid-door-readiness request is granted and lands.
+freeze and unfreeze, but not the activation/readiness contract above. The request in
+`design-measurement-ledgers-seam-request-paid-door-readiness.md` is not granted. Those check arms
+remain non-executable until that request receives a named Eight/Ten grant and GRANTED/BUILT
+`SEAM-LEDGER.md` row, its additive contract lands, and the separately granted spend-control scope
+lands.
 
 **Rule — changing a cap, arming a door and releasing a freeze require operator authority.** Rules 4, 28, 79, 82,
 89 and 98; **checks: P16-NF-35/51/52**. The action begins as an exact authorization

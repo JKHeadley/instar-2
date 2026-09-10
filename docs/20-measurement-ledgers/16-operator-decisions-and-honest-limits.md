@@ -34,19 +34,18 @@ Recommendation: Keep native-currency totals as the default and offer conversion 
 because the headline should not conceal an uncertain rate.
 
 **Value — decision 4: How much evidence a model comparison needs.**
-Question: Should the product show an early clearly labelled comparison as well as a stricter
-publishable one, or wait until the stricter bar is met before showing any comparison?
-Background: An early view arrives sooner but is more likely to move as evidence accumulates; a
-publishable view needs more complete, recent and machine-diverse cases.
-Choices: Two levels—an early view with at least 10 complete cases, at least 25% graded coverage,
-no more than 80% from one machine, evidence under 30 days old and a 90% confidence range, plus a
-publishable view with at least 100 complete cases, at least 90% graded coverage, no more than 50%
-from one machine, evidence under 14 days old and a 95% confidence range; or the publishable level
-only.
-What it changes: Two levels provide earlier learning but require prominent caution labels; the
-publishable-only choice is simpler and more conservative but delays useful feedback.
-Recommendation: Show both levels but reserve the primary and published claim for the stricter level
-because early evidence is useful when its limits are impossible to miss.
+Question: Should the product show a clearly labelled early signal as well as a result that is ready
+to rely on, or wait until the stronger result is ready before showing anything?
+Background: An early signal appears sooner, but it is based on less evidence and may change as more
+real cases arrive. A ready-to-rely-on result waits for enough recent cases from a broad mix of
+machines to make important choices safer.
+Choices: Show both the early signal and the ready-to-rely-on result; or show only the
+ready-to-rely-on result.
+What it changes: Showing both gives earlier direction, but the early signal should not guide an
+important change on its own. Showing only the stronger result is simpler and safer to act on, but
+the operator waits longer for any feedback.
+Recommendation: Show both, but make the ready-to-rely-on result the only one used for primary or
+published claims, because early direction is useful when its limits and proper use are unmistakable.
 
 **Value — decision 5: Where unusual-spending warning levels come from.**
 Question: Should warning levels be the same everywhere, differ by feature, or be chosen for each
@@ -75,8 +74,9 @@ visible without being promoted into a provider percentage.
 **Value — decision 7: Whether to keep complete signed accounting history.**
 Question: Should the system keep complete signed history with bounded everyday views, or delay
 approval until a separate lossless storage redesign is approved?
-Background: Complete history makes reconstruction possible, while bounded views keep routine reads
-manageable; storage growth is measured and investigated rather than solved by silent deletion.
+Background: Complete history lets the system rebuild current views and inspect past facts, while
+bounded views keep routine reads manageable; storage growth is measured and investigated rather
+than solved by silent deletion.
 Choices: Keep complete history now with bounded views and growth monitoring; or wait for a separate
 lossless storage redesign.
 What it changes: Keeping history allows this package to proceed while storage needs grow over time;

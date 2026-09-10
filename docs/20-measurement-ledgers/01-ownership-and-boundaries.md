@@ -35,15 +35,25 @@ owner contract, but activation also requires its public landed decoder, port and
 wiring. The following prerequisites are not implemented by this package and cannot be replaced by
 private types or prose conventions.
 
-The historical presentation has one additional, already landed owner input. It receives the exact
-`FactSnapshot` returned once by two's public `FactStorePort.readForProjection()` for the pinned
-read. The same owner-issued snapshot is supplied to the source fold and separately to the
-presentation. Its `FactStatus.fact` values retain each complete envelope, including `at`, machine,
-principal, provenance and predecessors; its status values retain conflict, taint, constitutional
-and historical-read evidence. The
-presentation records the snapshot's canonical digest as its `sourceHistoryDigest`. It never asks
-the projection to expose envelope fields, reconstructs them from a body, or substitutes arrival or
-query time. P16-NF-16/32/36/37/50 verify that exact public input and digest.
+The historical presentation has one additional, already landed owner input. For each read, it
+receives the exact current `FactSnapshot` returned by two's public
+`FactStorePort.readForProjection()`. The same owner-issued snapshot is supplied immediately to the
+source fold and separately to the presentation. Its `FactStatus.fact` values retain each complete
+envelope, including `at`, machine, principal, provenance and predecessors; its status values retain
+conflict, taint, constitutional and historical-read evidence. The presentation records the
+snapshot's canonical digest as its `sourceHistoryDigest`, and the resulting projection records the
+frontier it actually folded. It never asks the projection to expose envelope fields, reconstructs
+them from a body, or substitutes arrival or query time.
+
+This is a current-snapshot path, not a former-frontier reconstruction port. The landed owner
+invalidates that `FactSnapshot` when the fact store advances; folding it then refuses with
+`integrity`, and reading the projection already folded from it refuses with `stale-base`. The next
+read must call `readForProjection()` again, fold that fresh owner snapshot and present the new
+frontier. A previously completed presentation may be retained as evidence of what was displayed,
+but it is not current authority and cannot be rebuilt from copied or deserialized old snapshot
+bytes. In this document, *historical presentation* means a current-frontier view grouped by the
+facts' historical occurrence times; it does not mean a view of authority as it stood at an earlier
+frontier. P16-NF-16/32/36/37/50 verify that exact public path and boundary.
 
 | Owner prerequisite | Approved design position | Landed public contract at this head | P16 consequence and filed seam |
 |---|---|---|---|
@@ -56,9 +66,9 @@ query time. P16-NF-16/32/36/37/50 verify that exact public input and digest.
 | Eight: cap/freeze effects | Eight owns effect payloads, validation, invocation and settlement | `EffectRequest` and `OperationAdapterPort.invoke` accept only `OutboundMessage`; there is no cap/freeze/unfreeze payload | P16-NF-35/45/49/51 cap/freeze arms are non-executable until the grant in `seam-response-effects-followup.md` lands |
 | Ten: provider usage categories | Ten realizes `ModelAdapterPort`; seven records its receipt | `ProviderObservation.usage` is exactly input tokens, output tokens, charge and source; extra category fields are rejected | P16-NF-03/04/09/10/14/49 and the expanded-category arm of P16-NF-33 are non-executable until the grant in `seam-response-assembly-followup.md` lands |
 | Seven/ten: benchmark compatibility resolution, benchmark execution and current measured-route support | Seven owns benchmark compatibility, bounded benchmark execution and support evidence; ten owns the concrete route description and live provider adapter | `BenchmarkRecord` exposes only an opaque claimed digest; `JudgmentBenchmarkReadPort` has no tuple resolver; `ModelDescription.measured` is the literal `false`; the landed slice excludes benchmark execution, rerun admission and measured-route selection and lists production activation gaps | The benchmark arm of P16-NF-07 and all of P16-NF-31/32 are non-executable until the grants in `seam-response-judgment.md` and `seam-response-assembly-followup.md` land, together with the named five/six/eight/nine production wiring |
-| Ten: operating-system process and resource producer | Ten owns production assembly and platform adapters | `HarnessAdapterPort.observe()` reports lifecycle/context phases for a known launch, and `GrowthObservation` retains caller-supplied measurement references; neither obtains a process census, CPU interval or RSS point | The process-inventory addendum in `seam-response-assembly-followup.md`, tracked in `SEAM-LEDGER.md` row 40, is GRANTED CONDITIONAL and builds only after docs/18 approval. Its unnamed `resource observations` do not define P16 interval semantics, so the real-producer arms of P16-NF-24/49 are non-executable until that grant and `design-measurement-ledgers-seam-request-resource-observation.md` land, together with `seam-response-intake-followup.md` |
-| Eleven/ten: measurement and spend operator surface | Eleven owns authenticated scoped presentation; ten owns production composition | This head has no `src/operator` package or operator export. The granted guard-and-repair pull operation is specific to part fourteen and cannot render this package | The pure read/privacy fixtures in P16-NF-47/48 remain runnable. Their real-surface arms, P16-NF-03 surface resolution and P16-NF-49 production lifecycle are non-executable until `design-measurement-ledgers-seam-request-operator-surface.md` is granted and its Eleven port plus Ten composition land |
-| Eight/ten: paid-door activation and current serving posture | Eight owns authority-changing effects; ten owns assembly admission and live realization | The granted spend-control seam adds cap, freeze and unfreeze payloads but no separate per-door arm/disarm operation. Landed assembly has no paid-service posture read for consumption immediately before admission | P16-NF-35/45/49/51 door-activation/readiness arms are non-executable until `design-measurement-ledgers-seam-request-paid-door-readiness.md` is granted and lands, in addition to the granted `seam-response-effects-followup.md` spend controls |
+| Ten: operating-system process and resource producer | Ten owns production assembly and platform adapters | `HarnessAdapterPort.observe()` reports lifecycle/context phases for a known launch, and `GrowthObservation` retains caller-supplied measurement references; neither obtains a process census, CPU interval or RSS point | The process-inventory addendum in `seam-response-assembly-followup.md`, tracked in `SEAM-LEDGER.md` row 40, is GRANTED CONDITIONAL and builds only after docs/18 approval. Its unnamed `resource observations` do not define P16 interval semantics. The real-producer arms of P16-NF-24/49 are non-executable until that conditional grant lands, `design-measurement-ledgers-seam-request-resource-observation.md` receives a named owner grant and GRANTED/BUILT ledger row and that additive contract lands, and `seam-response-intake-followup.md` lands |
+| Eleven/ten: measurement and spend operator surface | Eleven owns authenticated scoped presentation; ten owns production composition | This head has no `src/operator` package or operator export. The granted guard-and-repair pull operation is specific to part fourteen and cannot render this package | The pure read/privacy fixtures in P16-NF-47/48 remain runnable. Their real-surface arms, P16-NF-03 surface resolution and P16-NF-49 production lifecycle are non-executable until `design-measurement-ledgers-seam-request-operator-surface.md` receives a named Eleven/Ten grant and GRANTED/BUILT ledger row, then its public Eleven port and Ten composition land |
+| Eight/ten: paid-door activation and current serving posture | Eight owns authority-changing effects; ten owns assembly admission and live realization | The granted spend-control seam adds cap, freeze and unfreeze payloads but no separate per-door arm/disarm operation. Landed assembly has no paid-service posture read for consumption immediately before admission | P16-NF-35/45/49/51 door-activation/readiness arms are non-executable until `design-measurement-ledgers-seam-request-paid-door-readiness.md` receives a named Eight/Ten grant and GRANTED/BUILT ledger row and that contract lands, in addition to the granted `seam-response-effects-followup.md` spend controls |
 
 Part five also designs `ExhaustionRecord`, `ContinuityAccounting` and `DeliveryEvidence`, but its
 landed `RunRecord` union does not contain them. This package does not consume those three names and

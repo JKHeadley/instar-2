@@ -17,8 +17,10 @@ caller-filled `GrowthObservation`. Its process-inventory addendum in
 and may be built only after docs/18 approval. That grant supplies a pinned complete/partial/failed
 process census, but its phrase `resource observations` does not name the CPU interval and RSS point
 contract above. `design-measurement-ledgers-seam-request-resource-observation.md` requests that
-narrow owner addition. The real-producer arms of P16-NF-24/49 remain non-executable until the grant,
-that addition and `seam-response-intake-followup.md` land. Pure arithmetic, missing-state,
+narrow owner addition and is not granted. The real-producer arms of P16-NF-24/49 remain
+non-executable until that request receives a named Part Ten grant and GRANTED/BUILT
+`SEAM-LEDGER.md` row, the granted additive contract and the conditional process-inventory contract
+land, and `seam-response-intake-followup.md` lands. Pure arithmetic, missing-state,
 classification and trend fixtures may use owner-shaped decoded test inputs without claiming the
 production observer exists.
 

@@ -36,8 +36,9 @@ evidence. Six still owns the current fence, reservation and accounting state. Pa
 requires all three current owner answers and checks freeze first. A positive cap without a current
 arm refuses. A current arm with requested enablement, construction or stale probe but no current
 ready posture also refuses. `design-measurement-ledgers-seam-request-paid-door-readiness.md`
-requests the missing Eight/Ten contract; its affected arms are non-executable until granted and
-landed, in addition to the GRANTED spend-control scope in `seam-response-effects-followup.md`.
+requests the missing Eight/Ten contract and is not granted. Its affected arms are non-executable
+until a named Eight/Ten seam response and GRANTED/BUILT `SEAM-LEDGER.md` row grant it, that contract
+lands, and the separately GRANTED spend-control scope in `seam-response-effects-followup.md` lands.
 The 1.x production-dispatch gap remains: neither helper fixtures nor a readiness probe proves a
 real paid call traverses the doorway.
 

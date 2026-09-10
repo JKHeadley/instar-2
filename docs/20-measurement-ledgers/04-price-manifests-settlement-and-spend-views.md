@@ -3,19 +3,26 @@
 **Rule — usage is stored independently of price.** Rules 7, 13, 26, 32, 58 and 69; **checks:
 P16-NF-15–18**. Token and provider-usage measurements contain no mutable current-price answer.
 The required manifests are the explicit part-three prerequisite in section 1, not a kind this
-part may invent. Once that seam lands, a routing-spend read obtains one owner-issued source history
-input from two's public `FactStorePort.readForProjection()`, pins its canonical digest and causal
-frontier, and supplies that same snapshot to the source fold. It resolves the owner-issued manifest
+part may invent. Once that seam lands, a routing-spend read calls two's public
+`FactStorePort.readForProjection()` and receives one current owner-issued source history input. It
+pins that snapshot's canonical digest, supplies that exact object to the source fold, and uses the
+fold's actual `foldedThrough` vector as the read frontier. It resolves the owner-issued manifest
 decoder and effective point for each attempt's dispatch time and billing class, and then computes
-derived cost. A price correction appends signed history and changes later
-reads at a later frontier. It never edits usage or moves the exchange out of its dispatch window.
-Rebuilding part two's source projection from the same source-history bytes, pinned frontier and
-register generation produces equal canonical projection bytes. Given those projection bytes, the
-same source-history bytes and digest, manifest generation, query parameters and explicit evaluation
-clock produce equal canonical read-presentation rows. The complete envelopes supply acceptance,
-prepared and dispatch membership clocks and source-history joins that the body-only projection does
-not retain. Manifest generation, query parameters, source-history metadata and evaluation time are
-never fold inputs. P16-NF-15 remains a tracked follow-on until that seam lands; neither its unavailable state
+derived cost. Repeating the fold and presentation while that owner snapshot remains current, with
+the same register generation, manifest generation, query and explicit evaluation clock, produces
+equal canonical bytes. The complete envelopes supply acceptance, prepared and dispatch membership
+clocks and source-history joins that the body-only projection does not retain. Manifest generation,
+query parameters, source-history metadata and evaluation time are never fold inputs.
+
+A price correction appends signed history and invalidates the old owner snapshot. Even though the
+old snapshot's encoded bytes and digest have not changed, `foldProjection()` must refuse it with
+`integrity`, and `readProjection()` must refuse the view previously folded from it with
+`stale-base`. The read then obtains a fresh snapshot through `readForProjection()`, folds the new
+frontier and may produce a different current presentation. The correction never edits usage or
+moves the exchange out of its dispatch window. This package does not promise to reconstruct the
+former frontier after the store advances, because the landed owner port supplies no historical-
+frontier read. Copying or deserializing the old snapshot is not an owner-issued reconstruction.
+P16-NF-15 remains a tracked follow-on until the manifest seam lands; neither its unavailable state
 nor its written fixture counts as a positive result.
 
 **Rule — every dollar-like figure says what kind of figure it is.** Rules 13, 26, 39, 58 and 86;
@@ -106,16 +113,22 @@ successful rebuild and whether settlement is final. A reporting total and an aut
 committed liability are never collapsed into one number.
 
 The response has two independently labelled sections. `historicalPresentation` is a bounded,
-deterministic read over `sourceProjection` plus the exact source history input from which that
-projection was folded. The source is part two's pure fold of the owner-issued snapshot at the
-pinned frontier and register generation, with `retention: 'all-identities'`; it takes no query,
-manifest or clock input and drops no identity because a display window moved. The presentation
-reads envelope clocks, machine/principal/provenance, predecessors and status evidence only from the
-separately supplied source history input. It then applies the pinned manifest generation, query
-parameters, membership rules, detail horizon and evaluation clock. Equal source-history bytes and
-digest, source-projection bytes and other presentation inputs produce byte-equal canonical rows.
+deterministic read over `sourceProjection` plus the exact current source history input from which
+that projection was folded. The source is part two's pure fold of the owner-issued snapshot at the
+frontier that fold actually reached and the register generation, with
+`retention: 'all-identities'`; it takes no query, manifest or clock input and drops no identity
+because a display window moved. The presentation reads envelope clocks,
+machine/principal/provenance, predecessors and status evidence only from the separately supplied
+source history input. It then applies the pinned manifest generation, query parameters, membership
+rules, detail horizon and evaluation clock. Equal still-current source-history bytes and digest,
+source-projection bytes and other presentation inputs produce byte-equal canonical rows.
 Its optional detail cache is disposable, finite and non-authoritative;
 eviction changes neither the projection nor the result rebuilt from it.
+
+Here `historicalPresentation` describes rows grouped by historical occurrence time at the current
+frontier. It is not authority from a former frontier. Once the store advances, the old input set is
+no longer executable through the owner port; only an already completed render may remain as
+labelled audit evidence.
 
 `liveAccounting` is present only after the requested six-owned read seam lands. It is a pure
 presentation of the exact owner-issued `AdmissionAccountingView` observations captured for the
@@ -125,9 +138,11 @@ those exact view bytes produces byte-equal live-accounting rows. Re-running the 
 lawfully change that section after restart, qualification loss or restoration, durability change
 or clock advancement. It does not alter the source projection or historical presentation and
 does not make an earlier signed application current. P16-NF-36 compares source-projection bytes
-only for equal source-history/frontier/register-generation inputs, compares `historicalPresentation`
-bytes for equal source-history, projection and other presentation inputs and, when a live input set is supplied, compares the
-`liveAccounting` bytes for that exact set. It never compares two different live observations as
-though their inputs were equal.
+only while the exact owner-issued source snapshot remains current and the register generation is
+equal, compares `historicalPresentation` bytes for that same executable source-history/projection
+input and equal presentation inputs and, when a live input set is supplied, compares the
+`liveAccounting` bytes for that exact set. It separately proves that a history advance invalidates
+the old snapshot/view and that a fresh owner read succeeds. It never compares two different live
+observations as though their inputs were equal.
 
 ---

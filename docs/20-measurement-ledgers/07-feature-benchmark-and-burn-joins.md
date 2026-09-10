@@ -7,8 +7,10 @@ registers the action predicate and evidence mapping used by its feature outcome 
 `fired` requires current evidence that the declared action occurred. `no-op` requires the
 classifier to run over complete, conflict-free evidence and prove that action did not occur.
 Missing, incomplete or conflicted classification is `unclassified`, not `no-op`. Seven's
-judgment result and nine's `Grade` are inputs to the mapping, not the classes themselves. Latency
-percentiles name their eligible population and include failures where duration is observable.
+judgment result and nine's `Grade` are inputs to the mapping, not the classes themselves. A
+duration percentile is the time at or below which the stated percentage of eligible calls
+finished. Every displayed duration percentile names that eligible population and includes
+failures where duration is observable.
 Rates with insufficient denominators return raw counts and `insufficient evidence`.
 
 **Rule — grade coverage counts canonical cases, not attempts or surviving results.** Rules 13,
@@ -92,6 +94,16 @@ and denominators, both intervals, machine shares and missing reasons.
 Real production measurements retain machine/workload identity. Targets, predicted rates and
 declared prices are never measured. The policy and its threshold values are deployment-selected
 Value choices; their decision boundaries are fixed here.
+
+**Value — comparison display profiles.** The tentative profile requires at least 10 production
+cases and 10 benchmark cases with current complete, conflict-free grades, at least 25% grade
+coverage in each population, no more than 80% of production
+cases from one machine, evidence younger than 30 days and the policy multiplier for a 90%
+confidence interval. The ready-to-publish profile requires at least 100 such cases in each
+population, at least 90% grade coverage in each population, no more than 50% of production cases
+from one machine, evidence younger than 14 days and the policy multiplier for a 95% confidence
+interval. Section 16 decision 4 chooses whether the tentative profile is shown at all. Only the
+ready-to-publish profile may support a primary or published claim.
 
 **Rule — burn detection has a versioned, coverage-aware hysteresis algorithm.** Rules 39, 41, 58,
 60, 75, 86 and 87; **checks: P16-NF-10–14/33–35**. A burn policy fixes before evaluation the

@@ -7,12 +7,14 @@ for bounded read presentations, their disposable high-cardinality detail caches,
 ingestion buffers and regenerable price indexes. Part two's underlying projection declares
 `retention: 'all-identities'`; neither it nor its checkpoints remove an identity because query
 time advances. Cache and buffer eviction is bounded by rows, bytes and duration and runs off the
-observed path. Rebuilding the source projection from the same facts, pinned frontier and register
-generation produces the same complete projection bytes. Rebuilding a read presentation from
-those bytes plus the same query, manifest generation and evaluation clock produces the same
-bounded result. Advancing the evaluation clock may advance only the presentation cutoff and cache
-contents. A detail horizon must not be presented as the beginning of the source projection or
-recorded history.
+observed path. Repeatedly rebuilding the source projection from the same still-current
+owner-issued `FactSnapshot` and register generation produces the same complete projection bytes.
+Rebuilding a read presentation from that same source-history input and digest, those projection
+bytes, and the same query, manifest generation and evaluation clock produces the same bounded
+result. If the fact store advances, the old snapshot and projection refuse; a fresh owner read and
+fold establish a new current frontier. Advancing only the evaluation clock may advance only the
+presentation cutoff and cache contents. A detail horizon must not be presented as the beginning of
+the source projection or recorded history.
 
 **Rule — evidence pins and lawful redaction still win.** Rules 7 and 26, plus parts two, seven and
 nine's owned retention contracts; **checks:
@@ -29,8 +31,9 @@ canonical attempt ids, observation keys, operation ids and current causal heads 
 replicas. Full-replica overlap therefore contributes once; incompatible content under an identity
 conflicts; genuinely disjoint identities contribute separately. Only after this union may the
 bounded read presentation derive counts, money, coverage denominators or percentiles. The
-underlying part-two projection folds only facts plus the register generation, retains all
-identities and is checkpointed and rebuilt at its exact folded-through vector. Query parameters,
+underlying part-two projection folds only the exact current owner-issued snapshot plus the register
+generation, retains all identities and records its exact folded-through vector. Its checkpoints
+are usable only after rebinding to a current owner snapshot as part two requires. Query parameters,
 the evaluation clock and the presentation's detail horizon do not enter that fold. Same-sample arithmetic continues
 to require the full subject instance. Cross-instance addition uses only the registered
 `aggregateMeasurements` operation and a declared `measurement-window aggregate`; compatible

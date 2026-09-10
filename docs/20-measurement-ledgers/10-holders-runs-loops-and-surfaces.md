@@ -8,7 +8,7 @@ last successful tick, lag, failure counters, supported measurement families and 
 probe. A file, table, timer declaration, process existence or successful startup log cannot
 satisfy the holder.
 
-**Rule — collection work is durable and loop-governed.** Rules 8, 38, 46, 52, 60 and 88;
+**Rule — collection work is durable and loop-governed.** Rules 8, 46, 52, 60 and 88;
 **checks: P16-NF-43–45**. Backfill, reconciliation, retention and benchmark joins run as part-five
 durable runs with six-owned cursor, lease, finite page, retry, backoff and recovery records. A
 session may execute one step but does not own the assignment. Ticks do not overlap. A restart
@@ -33,9 +33,9 @@ The package-local bounded read and privacy renderer are pure and can satisfy the
 of P16-NF-47/48. They are not an operator surface. This head has no `src/operator` package or
 operator export, and `seam-response-operator-followup.md` grants only part fourteen's
 guard-and-repair view. The real authenticated Eleven integration and Ten production lifecycle
-depend explicitly on `design-measurement-ledgers-seam-request-operator-surface.md`. The real-surface
-arms of P16-NF-03/47/48/49 are non-executable until that request is granted and its Eleven port and
-Ten composition land. Part sixteen does not fill the gap with a private port, route or surface
-record.
+depend explicitly on `design-measurement-ledgers-seam-request-operator-surface.md`, which is not
+granted. The real-surface arms of P16-NF-03/47/48/49 are non-executable until that request receives
+a named Eleven/Ten grant and GRANTED/BUILT `SEAM-LEDGER.md` row and its public Eleven port and Ten
+composition land. Part sixteen does not fill the gap with a private port, route or surface record.
 
 ---
