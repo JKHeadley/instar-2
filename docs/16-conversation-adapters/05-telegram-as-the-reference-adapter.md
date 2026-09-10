@@ -15,6 +15,17 @@ is admitted per bot. The adapter declaration records the constraint and the meas
 implementer does not ask the operator to choose between equivalent mechanics after those facts are
 known.
 
+If the governing policy says each installation records its own public-endpoint choice and this
+installation has no recorded choice, a public endpoint is not selected by default. Long polling
+remains the conservative receiving mode when its checks pass, so an unanswered policy choice does
+not make the user unreachable. Part Eleven
+re-presents the same plain-language choice to the verified main user through the attention hub and
+dashboard at least once in each 24-hour period until an explicit choice is recorded or the policy is
+superseded. The prompt is one open decision with a stable identity, not a new notice on every scan;
+it remains visible between reminders and follows the normal notification bound. P12-NF-18 rejects
+a silent default, a one-time prompt that can be forgotten, a reminder to an unverified user, or
+reminders after the choice is recorded.
+
 **Rule — Telegram update identity and topic routing are exact.** Rules 28, 33, 36 and 89;
 **checks: P12-NF-16/17**. The provider `update_id`, scoped to the verified bot instance and
 authenticated chat, is the event identity. The conversation evidence uses chat id plus normalized

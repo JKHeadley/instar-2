@@ -34,8 +34,12 @@ and its Four-owned implementation integrates. Production
 secret-intake activation is non-executable until `seam-response-intake-followup.md` and
 `seam-response-assembly-followup.md` land and integrate the granted Four/Ten custody seam. Slack
 activation is non-executable until the Four half in `seam-response-intake-followup.md`
-(SEAM-LEDGER row 18) and the Seven versioned intake-policy judgment consumer in the dated addendum
-to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. A Slack ephemeral positive
+(SEAM-LEDGER row 18), the stable-event commitment in that file's “stable event identity vs delivery
+attempt” addendum (SEAM-LEDGER row 57), and the Seven versioned intake-policy judgment consumer in
+the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35) land and integrate. A mode
+that declares per-message acknowledgment judgment is additionally non-executable until the
+“judged acknowledgment policy arm” addendum to `seam-response-intake-followup.md` (SEAM-LEDGER row
+58) lands and its Four, Seven, and Ten implementations integrate. A Slack ephemeral positive
 is separately non-executable until the audience addendum in `seam-response-effects-followup.md`
 (SEAM-LEDGER row 53) lands and integrates; unsupported ephemeral delivery does not block Slack's
 ordinary-text mode. A real model-backed lifecycle is non-executable until `seam-response-judgment.md` and

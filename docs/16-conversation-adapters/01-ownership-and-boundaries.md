@@ -6,6 +6,11 @@ earlier parts. Adapter methods, platform constants, and private protocol state a
 details. Durable records use the following owned types. This part creates no second message,
 principal, binding, queue, retry, effect, receipt, verification, assembly, or surface schema.
 
+Two terms describe adapter boundaries throughout this document. A **custodian** is the confined
+service that holds platform credentials and original secret bytes; ordinary workers receive only
+the references and redacted material their grants allow. **Ephemeral delivery** is delivery of a
+notice that is visible only to one named member of a channel, never to the channel as a whole.
+
 | Owner | Names consumed here |
 |---|---|
 | One | `VerifiedPrincipal`, `StandingGrant`, `Revocation`, `Intent`, `Directive`, `Authorization`, `Scope`, `Result`, `Outcome`, `Evidence`, `Measurement`, `Profile`, `Decision`, `Conflict`, `UnresolvedInput`, provenance and secret references |
@@ -36,6 +41,14 @@ addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35). P12-NF-19/20's pol
 positives and Slack activation are non-executable until both named grant files land and their
 implementations are integrated. None of these granted but unlanded records or operations is
 treated as present in the executable slice.
+
+The landed Four contract and Ten decoder currently accept only `always`, `bound-only`, and `never`
+acknowledgment policies. The additive `judged` arm is granted in the “judged acknowledgment policy
+arm” addendum to `seam-response-intake-followup.md` (SEAM-LEDGER row 58). It lets Seven decide
+whether and how to acknowledge one unresolved sender inside the mode's recorded bounds, while
+forbidding disclosure of existing-relationship status and recording every decision. The three
+landed arms keep their exact behavior. The `judged` positive is non-executable until that grant
+file lands and its Four, Seven, and Ten implementations are integrated.
 
 Slack ephemeral delivery has its own Part Eight audience dependency. The single-member payload and
 evidence contract is granted in the 09:10Z addendum to `seam-response-effects-followup.md`
@@ -114,6 +127,15 @@ receipt-continuation operation is granted in the dated addendum to
 redelivery and recovery arms of P12-NF-13/19/20/22/51 are non-executable until that grant file
 lands and its implementation integrates. An adapter-local cache or private terminal filter
 cannot satisfy this dependency.
+
+Real provider redelivery has another granted Part Four dependency. Full transport bytes remain the
+custody record, but they cannot also be the only commitment for a stable event when a provider
+changes delivery-attempt metadata. The “stable event identity vs delivery attempt” addendum to
+`seam-response-intake-followup.md` (SEAM-LEDGER row 57) grants Four an adapter-declared stable-event
+commitment beside the full-bytes capture, with Ten binding the declaration through its
+`AdapterEvidenceContract`. P12-NF-09/19/20's real-redelivery positives are non-executable until
+that grant file lands and its Four/Ten implementations are integrated. Both original envelopes
+remain captured, and the canonical Part Four logical tuple remains the owner of deduplication.
 
 **Rule — translation cannot become policy.** Rules 4, 28, 30, 42, 63, 66, 89 and 103;
 **checks: P12-NF-03–05**. An adapter may authenticate a protocol exchange, preserve bytes, expose

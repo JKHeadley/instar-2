@@ -128,9 +128,12 @@ discard inputs, or close other healthy adapters. Strict serialization of every l
 separate operator policy, not this proposed baseline. An exact mode must also have every owner seam
 its declaration consumes.
 In particular, Slack remains inhibited until the Four half granted in
-`seam-response-intake-followup.md` (SEAM-LEDGER row 18) and the Seven versioned intake-policy
+`seam-response-intake-followup.md` (SEAM-LEDGER row 18), the stable-event commitment granted in
+that file's “stable event identity vs delivery attempt” addendum (SEAM-LEDGER row 57), and the Seven versioned intake-policy
 judgment consumer granted in the dated addendum to `seam-response-judgment.md` (SEAM-LEDGER row 35)
 land, are implemented, and are covered by P12-NF-19/20.
+A Slack mode that selects per-message acknowledgment judgment also waits for the “judged
+acknowledgment policy arm” addendum to `seam-response-intake-followup.md` (SEAM-LEDGER row 58).
 
 Part Three's existing generated capability briefing is the agent-awareness surface. At the active
 register generation, the feature declarations for every installed adapter mode, every supported or

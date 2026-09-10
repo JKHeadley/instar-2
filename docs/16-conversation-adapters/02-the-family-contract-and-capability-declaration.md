@@ -8,8 +8,8 @@ that consumes them:
 | Field group | Required instance facts and their use |
 |---|---|
 | Package and mode | Package and artifact digests, platform application programming interface and mode, parser declaration, and credential reference; Ten binds the exact implementation and custodian. |
-| Authenticated identity | Account and tenant namespaces, sender and conversation identity sources, identity stability and churn rules, forwarding treatment, impersonation treatment, and event-id authority; Four resolves provenance, identity, binding, and deduplication. |
-| Intake policy | Acknowledgment policy and disclosure scope; Four applies the declared intake behavior without letting the adapter confer authority. |
+| Authenticated identity | Account and tenant namespaces, sender and conversation identity sources, identity stability and churn rules, forwarding treatment, impersonation treatment, event-id authority, stable-event fields and delivery-attempt fields; Four resolves provenance, identity, binding, and deduplication. The added stable-event comparison is non-executable until the row-57 addendum to `seam-response-intake-followup.md` lands and integrates. |
+| Intake policy | Acknowledgment policy and disclosure scope; Four applies the declared intake behavior without letting the adapter confer authority. The landed choices are `always`, `bound-only`, and `never`; the additive `judged` arm is non-executable until the row-58 addendum to `seam-response-intake-followup.md` lands and integrates. |
 | Operations and evidence | Registered operation declarations, supported evidence stages, and unsupported evidence; Eight admits effects and Nine assesses only the declared stage. |
 | Limits | Rate, byte, item, concurrency, and platform-specific bounds; Six and the owning doorway apply the registered ceilings. |
 | Conformance evidence | Captured fixtures, live probes, check runs, limitations, and freshness; Nine and Ten decide whether this exact instance has current evidence for activation. |

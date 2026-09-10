@@ -81,6 +81,12 @@ declare their own modes. Applying the formatter twice, using a legacy pass-throu
 skipping conversion is explicit. Formatting cannot remove refusal wording, change speaker or
 audience, interpret standing, add a command, or convert a held result into a sent one.
 
+A user-facing delivery status may use its exact plain-language label or a registered emoji
+equivalent. The emoji's accessible label and legend must name the same source-bounded stage, so an
+emoji for “accepted by platform” cannot imply delivered or read. Changing words to an emoji is
+rendering only: it cannot promote the underlying assessment, hide uncertainty, or erase the
+recorded evidence. P12-NF-29/34 exercise the word and emoji forms against the same status fact.
+
 **Rule — platform limits produce an explicit plan, never silent loss.** Rules 42, 52, 60 and
 77; **check: P12-NF-30**. The adapter declares exact text, byte, entity, attachment, recipient,
 rate, and ordering limits for the active API mode. In the landed slice, preparation either fits

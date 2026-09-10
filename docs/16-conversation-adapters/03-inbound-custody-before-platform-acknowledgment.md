@@ -43,17 +43,43 @@ principal resolved, a run began, a worker consumed input, or an answer was sent.
 capture fails, the adapter leaves the platform event unacknowledged where redelivery exists and
 records the scoped outage through an independently durable path where it does not.
 
-**Rule — deduplication follows capture and keeps its scope.** Rules 31, 33, 36 and 42;
-**checks: P12-NF-09/10**. Part four's landed logical identity is the canonical tuple
+**Rule — deduplication follows capture and separates a stable event from its delivery attempts.**
+Rules 31, 33, 36 and 42; **checks: P12-NF-09/10/19/20**. Part four's landed logical identity is the canonical tuple
 `(adapter, channel, sender, identityEpoch, eventId)`. The adapter instance is `adapter`. The
 `channel` value encodes the authenticated account or tenant and authenticated conversation
 namespace in one unambiguous, versioned string. `sender` is always present, even where the provider
 claims a globally unique event id. `identityEpoch` identifies the authenticated identity era so
 provider reassignment cannot collide with earlier history. `eventId` is the provider-minted id
-under the declared authority. Part twelve creates no second deduplication key. Same tuple and same
-arrival hash joins the original state only after the landed owner has written `intake-admitted`.
-Same tuple and different bytes records `Conflict` and an attack signal. An expired acceleration
-cache cannot make an old event new because consumers re-resolve against durable history.
+under the declared authority. Part twelve creates no adapter-local deduplication key. In the landed
+slice, the full arrival hash is both custody evidence and the compared commitment: the same tuple
+and same arrival hash joins the original state only after the owner has written `intake-admitted`,
+while the same tuple and different bytes records `Conflict` and an attack signal. That landed
+comparison remains the executable behavior until the granted owner seam below is integrated. An
+expired acceleration cache cannot make an old event new because consumers re-resolve against
+durable history.
+
+The family contract declares an authenticated stable-event projection for each mode. That
+projection includes the provider's stable identity fields and the event payload, and excludes only
+the delivery-attempt fields named by the declaration. The full envelope is always preserved. The
+closed declarations are:
+
+| Platform mode | Stable event fields committed by Four | Delivery-attempt evidence kept beside the event |
+|---|---|---|
+| Telegram bot | Verified bot/account scope, `update_id`, authenticated chat and sender scope, identity epoch, update kind and payload | The webhook request or long-poll response envelope, arrival clock and cursor/offset observation. Telegram supplies no event-level retry counter to this contract. |
+| Slack | Verified app/team scope, Events API payload `event_id`, inner `event.event_ts`, channel, sender, event kind and event payload | `retry_attempt`, `retry_reason`, and the outer HTTP or Socket Mode delivery envelope. These fields may change while `event_id`, `event.event_ts`, and the event payload remain unchanged. |
+| WhatsApp Business | Verified business/phone scope, the provider message or status-event id, chat, sender/participant, event kind and payload | The authenticated webhook request envelope, arrival clock and any provider retry metadata declared for that API version. No retry counter is assumed when the provider supplies none. |
+| WhatsApp linked device | Enrolled device/account scope, message `key.id`, chat and sender/participant identifiers, device epoch, event kind and payload | The WebSocket/upsert envelope, batch and reconnect observation, and arrival clock. No library reconnect counter becomes stable event identity. |
+| iMessage on a Mac | Enrolled account/service and database epoch, stable message GUID or provider message id, chat GUID, sender, event kind and payload | The poll batch, durable cursor and observation clock. A database row number or poll count is not stable event identity. |
+| Web | Installation/account/session epoch, server-minted event id, conversation, request digest, event kind and payload | The authenticated HTTP or WebSocket arrival and replay evidence, plus client retry metadata only when the registered protocol declares it. A client-selected id never becomes stable identity. |
+
+This distinction depends on the “stable event identity vs delivery attempt” addendum to
+`seam-response-intake-followup.md` (SEAM-LEDGER row 57). It grants Four the stable-event commitment
+beside full-byte capture and lets Ten bind each adapter's declaration. With that owner seam, a Slack
+redelivery whose `event_id`, `event.event_ts`, and payload are unchanged joins the original work
+even when `retry_attempt` and `retry_reason` change; both envelopes remain captured. Reusing the
+same provider id with a changed stable field or changed event payload remains a conflict and attack
+signal. P12-NF-09/19/20's real-redelivery positive and negative fixture pair is non-executable until
+`seam-response-intake-followup.md` lands and its Four/Ten implementations are integrated.
 
 The family contract also requires a matching redelivery or receipt recovery to join an original
 active hold or its expired terminal. It retains every arrival capture, the first logical

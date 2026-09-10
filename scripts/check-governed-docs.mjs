@@ -11,7 +11,7 @@
 // Usage: node scripts/check-governed-docs.mjs <path-or-dir> [more...]
 //        node scripts/check-governed-docs.mjs docs
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, normalize } from "node:path";
 import { execFileSync } from "node:child_process";
 
 // Rule 91: a governed document needs its sibling changelog once it has MORE THAN ONE approved
@@ -50,6 +50,28 @@ function isGoverned(text) {
   return !!m && /\bGoverned\b/.test(m[0]);
 }
 
+// A governed design may be a short index plus numbered section files. The index is
+// the governance declaration and changelog owner; its linked sections are one body
+// with it for the marker scan. Only the stable split-doc shape is followed, so an
+// unrelated markdown link cannot silently enlarge the governed body.
+function indexedSections(file, text) {
+  const sectionStart = text.search(/^## Sections\s*$/m);
+  if (sectionStart < 0) return [];
+  const body = text.slice(sectionStart);
+  const expectedDir = normalize(file.replace(/\.md$/, ""));
+  const linked = [];
+  const seen = new Set();
+  const link = /^\s*\d+\.\s+\[[^\]]+\]\(([^)#?]+\.md)\)\s*$/gm;
+  for (let match = link.exec(body); match; match = link.exec(body)) {
+    const child = normalize(join(dirname(file), match[1]));
+    if (dirname(child) !== expectedDir || !/^\d{2}-[^/]+\.md$/.test(child.slice(expectedDir.length + 1))) continue;
+    if (seen.has(child)) continue;
+    seen.add(child);
+    linked.push(child);
+  }
+  return linked;
+}
+
 function allowed(file, lineNo) {
   return ALLOW.some((a) => a.file === file && (a.line == null || a.line === lineNo));
 }
@@ -62,20 +84,42 @@ for (const a of args) walk(a, files);
 
 const errors = [];
 let governed = 0;
-for (const file of files) {
-  const text = readFileSync(file, "utf8");
+let coveredSections = 0;
+const texts = new Map(files.map((file) => [normalize(file), readFileSync(file, "utf8")]));
+const governedBodies = [];
+const includedSections = new Set();
+for (const file of files.map(normalize)) {
+  const text = texts.get(file);
   if (!isGoverned(text)) continue;
+  const sections = indexedSections(file, text);
+  for (const section of sections) {
+    includedSections.add(section);
+    if (!existsSync(section)) errors.push(`${file}: indexed section is missing: ${section}`);
+  }
+  governedBodies.push({ file, text, sections });
+}
+
+for (const { file, text, sections } of governedBodies) {
+  if (includedSections.has(file)) continue; // counted and scanned once under its governed parent
   governed++;
   const changelog = file.replace(/\.md$/, ".changelog.json");
   if (!existsSync(changelog) && approvedVersions(file) > 1)
     errors.push(`${file}: governed with more than one approved version but no sibling ${changelog.split("/").pop()} (rule 91)`);
-  const lines = text.split("\n");
-  lines.forEach((line, i) => {
-    const lineNo = i + 1;
-    for (const m of MARKERS) {
-      if (m.re.test(line) && !allowed(file, lineNo)) errors.push(`${file}:${lineNo}: history marker "${m.name}" in the body — move it to the changelog (rule 91)`);
-    }
-  });
+  const bodyFiles = [{ file, text }];
+  for (const section of sections) {
+    if (!existsSync(section)) continue;
+    coveredSections++;
+    bodyFiles.push({ file: section, text: texts.get(section) ?? readFileSync(section, "utf8") });
+  }
+  for (const bodyFile of bodyFiles) {
+    const lines = bodyFile.text.split("\n");
+    lines.forEach((line, i) => {
+      const lineNo = i + 1;
+      for (const m of MARKERS) {
+        if (m.re.test(line) && !allowed(bodyFile.file, lineNo)) errors.push(`${bodyFile.file}:${lineNo}: history marker "${m.name}" in the body — move it to the changelog (rule 91)`);
+      }
+    });
+  }
 }
 
 if (errors.length) {
@@ -83,4 +127,4 @@ if (errors.length) {
   for (const e of errors) console.error("  - " + e);
   process.exit(1);
 }
-console.log(`governed-document check OK (${governed} governed document${governed === 1 ? "" : "s"} of ${files.length} scanned)`);
+console.log(`governed-document check OK (${governed} governed bod${governed === 1 ? "y" : "ies"} of ${files.length} files scanned; ${coveredSections} indexed section file${coveredSections === 1 ? "" : "s"} covered)`);

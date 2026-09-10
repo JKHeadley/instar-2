@@ -4,77 +4,64 @@ This section is written for the human reviewer. Each decision states the questio
 each choice changes for you, and a recommendation. The rule and check numbers this section rests on sit in the closing block, so the decisions themselves stay readable.
 
 **Value — decision 1: which platforms go live, and in what order.**
-Question: after Telegram is proven, must Slack, WhatsApp, iMessage, and web go live one at a time in a fixed order, or can
-each go live as soon as its own evidence is ready?
+Question: after Telegram is proven, should the other platforms follow a fixed order or should each go live when its own proof is ready?
 Choices: fixed order; or each on its own evidence once Telegram is proven.
-What it changes: a fixed order means one slow platform delays every platform behind it. Independent activation means a
-platform never waits on another, only on its own proof.
-Recommendation: prove Telegram first, then let each platform go live on its own evidence. Treat the list order as work
-priority only.
+What it changes: a fixed order means one slow platform delays every platform behind it; independent activation means each platform waits only for its own proof.
+Recommendation: prove Telegram first, then let each platform go live on its own evidence, because one platform's limits should not hold back another that is ready.
 
 **Value — decision 2: replying to people the agent does not know, in public or group chats.**
-Question: when a message arrives from a sender the agent cannot match to any known relationship, what should it do?
-Choices: always acknowledge; acknowledge only when a relationship (a binding) already exists; never acknowledge; or let
-the agent decide per message, within a policy the operator declares for that chat mode.
-What it changes: always acknowledging lets strangers discover which accounts the agent already has a relationship with.
-Never acknowledging can leave a legitimate new contact with silence. Binding-only protects that information while keeping
-known contacts reachable. Agent judgement gives flexibility at the cost of predictability, so it must run inside a declared
-policy and every choice the agent makes is recorded.
-Recommendation: binding-only as the default. A deployment may declare a different policy per chat mode, including the
-agent-judgement option, and that declaration is recorded.
+Question: when a message arrives from a sender with no binding in a public or group chat, should the agent acknowledge it?
+Background: a binding is a recorded relationship between a known sender and a conversation. A brief acknowledgment only confirms receipt; it is separate from the eventual conversational answer.
+Choices: acknowledge everyone; acknowledge only senders who have a binding; acknowledge nobody; or let the agent decide message by message inside recorded limits.
+What it changes: acknowledging everyone gives every sender a receipt; binding-only keeps known senders reachable without revealing relationship status to strangers; acknowledging nobody can leave a legitimate contact with silence; message-by-message judgment adds flexibility but is less predictable, and this approved choice is not built yet.
+Recommendation: use binding-only by default, because it gives known senders a receipt without making an unbound sender's message a source of authority.
 
 **Value — decision 3: what counts as "one conversation" in Slack.**
-Question: when someone asks the agent to do something in a Slack thread, should that piece of work belong to that thread,
-or to the whole channel?
+Question: when someone asks the agent to do something in a Slack thread, should that work belong to the thread or to the whole channel?
 Choices: the thread; or the whole channel.
-What it changes: two people can ask for two different things in two threads of the same channel at the same time. If work
-belongs to the channel, those two requests share one approval history and can interfere with each other. If work belongs
-to the thread, each request has its own history and approvals, while general channel context is still visible to both.
-Recommendation: the thread. Directed work belongs to the thread where it was asked; the channel provides background
-context only.
+What it changes: channel-wide work makes separate requests share one history and approval trail; thread work keeps each request separate while a standard handoff still gives every new thread the channel's relevant history as background.
+Recommendation: use the thread, because separate requests should not interfere with each other while shared channel context remains available.
 
-**Value — decision 4: how much WhatsApp and iMessage may do once they are admitted.**
-Background: these two run through a personal device (a linked phone or a Mac), so a mistake sends messages from a real
-personal account. Nothing here starts until the live proof in section 11 passes; no choice can skip that proof.
-Question: once a device channel is admitted, may the agent only read, reply to messages it received, or also start new
-conversations on its own?
-Choices: read-only; reply-only (respond to admitted incoming messages); or proactive sending under an explicit standing
-permission that the operator records.
-What it changes: read-only can never send anything wrong but cannot answer anyone. Reply-only limits the damage of any
-mistake to conversations someone else started. Proactive sending is the most useful and the most dangerous, so it needs
-its own explicit permission and its own proof.
-Recommendation: reply-only after admission. Proactive sending only under a recorded standing permission with its own
-evidence.
+**Value — decision 4: what personal WhatsApp and iMessage accounts may send.**
+Question: after the required checks pass, may these personal-device channels only read, reply to received messages, or also start new conversations?
+Background: this choice covers WhatsApp linked to a personal phone and iMessage on a Mac, where a personal account runs on a personal device. The WhatsApp Business backend is a separate mode with its own policy and is not covered by this choice.
+Choices: read-only; reply-only; or new conversations when permission has already been recorded.
+What it changes: read-only cannot answer anyone; reply-only can answer conversations another person started; permission-based new conversations are more useful but can speak from a personal account without a fresh incoming message.
+Recommendation: enable reply-only after its checks pass, because it is useful without granting broad proactive use of a personal account.
 
 **Value — decision 5: the word shown to people when a platform has only accepted a message.**
 Question: when a platform has taken the message but not confirmed delivery, what should the user see?
-Choices: "sent"; "accepted by platform"; or hide the state.
-What it changes: "sent" can claim more than is known. "Accepted by platform" says exactly what happened. Hiding the state
-gives the user nothing.
-Recommendation: "accepted by platform", upgraded to delivered or read only when independent evidence exists for that
-stage. Familiar wording is not worth a false claim.
+Choices: “sent”; “accepted by platform” or an emoji with that exact meaning; or no status.
+What it changes: “sent” can imply delivery that has not been proved; the accurate words or their emoji equivalent show exactly what is known; no status avoids a claim but gives the user no feedback.
+Recommendation: show “accepted by platform” or its clear emoji equivalent, because familiar wording is not worth a false delivery claim.
 
 **Value — decision 6: whether Telegram may receive messages through a public web address.**
-Background: Telegram can deliver messages two ways. Long polling: the agent asks Telegram for new messages, and nothing is
-exposed to the internet. Webhook: Telegram pushes messages to a public address the installation exposes, which is faster
-but means running a public, authenticated endpoint.
-Question: may an installation use the webhook method?
-Choices: allow it for installations that accept the exposure and pass the endpoint checks; forbid it and require long
-polling everywhere; or decide per installation.
-What it changes: allowing it trades some internet exposure for lower latency. Forbidding it keeps every installation
-private but slower. Per installation lets each deployment weigh its own exposure.
-Recommendation: decide per installation, record the choice, and let the engineering rule in section 5 pick the method
-from that record plus measured evidence.
+Question: may an installation let Telegram push messages to its public web address?
+Background: with a webhook, Telegram pushes messages to a public address; with long polling, the agent asks Telegram for messages on a timer. A webhook therefore requires an internet-facing receiving address, while long polling uses an outgoing connection.
+Choices: allow a webhook wherever the receiving address passes its checks; forbid webhooks everywhere; or require each installation to record its own choice.
+What it changes: allowing webhooks makes a checked public receiving address available everywhere; forbidding them keeps every installation on outgoing long polling; choosing per installation matches local exposure needs but keeps reminding the main user until that installation records a choice.
+Recommendation: choose per installation, because internet exposure and operating constraints differ from one installation to another.
 
 **Value — decision 7: how loudly to tell you about a message whose delivery is uncertain.**
-Background: sometimes the agent cannot tell whether a message was delivered. The agent watches for a bounded time; if it
-still cannot tell, the uncertainty is recorded and kept, in every option below. This decision only changes how you hear
-about it.
 Question: when that bounded watch ends without an answer, how should your attention be requested?
-Choices: one immediate notice (grouped with any others) and then a daily digest while it stays unresolved; a daily digest
-only; or nothing pushed, visible only when you look.
-What it changes: how often you are interrupted. It never changes what is kept or what is true.
-Recommendation: one immediate grouped notice, then a daily digest.
+Background: sometimes the agent cannot tell whether a message was delivered after its bounded checks finish. The unresolved item remains visible in the attention hub and the dashboard in every choice.
+Choices: one immediate grouped notice followed by a daily digest; a daily digest only; or no pushed message.
+What it changes: the first choice gives immediate awareness and asks you to review the uncertainty now; the second can delay awareness by up to a day and asks you to review it with the digest; the third interrupts you never and leaves the item unseen unless you open the attention hub or dashboard.
+Recommendation: send one immediate grouped notice and then a daily digest, because the first notice limits how long a possibly missed message goes unseen while the digest avoids repeated interruptions.
+
+**Rule — the decisions remain inside the governed contracts.** Rules 13, 14, 26, 28, 42, 43,
+52, 54, 57, 62, 63, 77, 79, 83, 87, 89, 96, 98, 104 and 105; **checks:
+P12-NF-11/18–20/29/34/41/45–48**. The per-message acknowledgment choice is granted but
+non-executable until the “judged acknowledgment policy arm” addendum to
+`seam-response-intake-followup.md` (SEAM-LEDGER row 58) lands and its Four, Seven, and Ten
+implementations integrate. Bound-only means that an acknowledgment is sent only when signed
+history resolves a recorded relationship between the sender and that conversation. The Slack
+channel-background handoff depends on the current-context delivery grants in
+`seam-response-assembly-followup.md` and `seam-response-rungraph-followup.md` (SEAM-LEDGER row 45).
+Per-installation public-endpoint choices use the re-presentation duty in section five. Delivery
+status words and registered emoji equivalents remain bound to the same Part Nine assessment.
+Unchanged delivery uncertainty stays on the attention hub and dashboard; a pushed message must
+still qualify under the notification policy.
 
 **Rule — technical completion is not approval or certification.** Rules 34, 65, 82, 90 and 109;
 **checks: P12-NF-01/44/48/50–52** and the governed review process.
