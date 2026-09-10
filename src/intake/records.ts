@@ -231,9 +231,38 @@ export function decodeScheduledTickBody(raw: string,eventId: string,context: Dec
     'scheduled intake: package digest must be SHA-256','decode');
   text(tick.calendarPolicyVersion,'calendar policy version'); text(tick.timeZoneDataVersion,'time-zone-data version');
   const scheduledInstant=take(decodeMeasurement('clock',tick.scheduledInstant,context));
+  requireIntake(scheduledInstant.subject.instance==='scheduled-clock',
+    'scheduled intake: canonical tick instant must use the source-independent scheduled clock','decode');
   const expectedEventId=take(canonical([tick.schemaVersion,jobInstance,rfc3339z(scheduledInstant.value)])).hash;
   requireIntake(eventId===expectedEventId,'scheduled intake: event id differs from namespace/job/instant identity','integrity');
   return { tick,jobInstance,scheduledInstant };
+}
+
+type ScheduledHistoryRow=Readonly<{
+  fact: FactEnvelope;
+  record: HistoricalRead<Inventory[keyof Inventory]>;
+}>;
+
+// Owner admission, signed replay and pending recovery select discovery through
+// one resolver. An unrelated Evidence dependency remains a dependency, but it
+// is never counted as a discovery witness for this scheduled event.
+export function resolveScheduledDiscoveryWitness(histories: readonly ScheduledHistoryRow[],required: ReadonlySet<string>,
+  eventId: string,causalNow: Clock,preserved: string,mode: 'origin'|'historical') {
+  const candidates=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
+    required.has(row.fact.id)&&row.record.view.type==='Evidence'&&row.record.view.source===row.fact.machine);
+  const witnesses=candidates.filter(row => {
+    if(mode==='historical'&&row.record.captureStatus!=='available') return true;
+    const claim=take(readHistoricalEvidence(row.record,causalNow,preserved));
+    return claim.subject===eventId&&claim.predicate==='scheduled-discovery'&&claim.value===true;
+  });
+  requireIntake(witnesses.length===1,
+    'scheduled intake: one signed discovery Evidence dependency is required');
+  const witness=witnesses[0]!;
+  const identity=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
+    row.record.view.type==='Evidence'&&row.record.view.id===witness.record.view.id);
+  requireIntake(identity.every(row => same(row.record.view,witness.record.view)),
+    'scheduled intake: discovery Evidence dependency is conflicted');
+  return witness;
 }
 function integer(v: Json|undefined,name: string): number {
   requireIntake(typeof v==='number'&&Number.isSafeInteger(v),`verified act: ${name} must be a safe integer`,'standing'); return v;
@@ -526,22 +555,7 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
           requireIntake(principalIdentity.every(row => same(row.record.view,principalWitnesses[0]!.record.view)),
             'scheduled intake: package-system principal dependency is conflicted');
 
-          const discoveryCandidates=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
-            required.has(row.fact.id)&&row.record.view.type==='Evidence'&&row.record.view.source===row.fact.machine);
-          const discoveryWitnesses=discoveryCandidates.filter(row => {
-            // Historical replay retains an honestly partial admission when its
-            // already-origin-validated Evidence capture is unavailable. Every
-            // origin or available replay must cross the freshness doorway again.
-            if(c.mode==='historical'&&row.record.captureStatus!=='available') return true;
-            const claim=take(readHistoricalEvidence(row.record,causalNow,c.preserved));
-            return claim.subject===eventId&&claim.predicate==='scheduled-discovery'&&claim.value===true;
-          });
-          requireIntake(discoveryWitnesses.length===1,
-            'scheduled intake: one signed discovery Evidence dependency is required');
-          const discoveryIdentity=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
-            row.record.view.type==='Evidence'&&row.record.view.id===discoveryWitnesses[0]!.record.view.id);
-          requireIntake(discoveryIdentity.every(row => same(row.record.view,discoveryWitnesses[0]!.record.view)),
-            'scheduled intake: discovery Evidence dependency is conflicted');
+          const discoveryWitness=resolveScheduledDiscoveryWitness(histories,required,eventId,causalNow,c.preserved,c.mode);
           const historicalRevocations=collectedRevocations.filter(row => coneIds.has(row.factId));
           const historicalGrants=collectedGrants.filter(row => coneIds.has(row.factId)&&required.has(row.factId)
             &&row.grant.view.grantee.id===principal.id&&row.grant.view.grantee.kind==='system'
@@ -575,7 +589,7 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
             &&same(resolved.authentication,principalProvenance.record),
           'scheduled intake: resolved-principal witness differs from the admission','integrity');
           requireIntake(resolution.predecessors.required.includes(receipt.id)
-            &&resolution.predecessors.required.includes(discoveryWitnesses[0]!.fact.id)
+            &&resolution.predecessors.required.includes(discoveryWitness.fact.id)
             &&historicalGrants.some(row => resolution.predecessors.required.includes(row.factId)),
           'scheduled intake: resolved-principal witness omits signed authority','integrity');
           const decodedResolution=take(decodeHistoricalBody(resolution,historicalContext,

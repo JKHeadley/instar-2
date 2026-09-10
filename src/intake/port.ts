@@ -11,7 +11,7 @@ import type { ConstitutionalReference,InboundRoute,IntakeDependencies,IntakeDisp
   PendingScheduledAdmissionsInput,ScheduledTickAdmission,SenderEvidence,VerifiedActAdmission,VerifiedActDisposition } from './contracts.js';
 import { buildVerifiedActRecord,intakeArrival,isScheduledIntakeAdmission,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,
   intakeVerifiedActRegistration,intakeWorkRegistration,scheduledIntakeFactSchemas,decodeScheduledTickBody,validateScheduledIntakeRoute,
-  bindIntakeOwnerRegister,registeredScheduledIntakeAdapters } from './records.js';
+  bindIntakeOwnerRegister,registeredScheduledIntakeAdapters,resolveScheduledDiscoveryWitness } from './records.js';
 
 const reference=(f: FactEnvelope): FactEnvelopeReference => Object.freeze({ owner: 'part-two',name: 'FactEnvelope',id: f.id });
 type Classified={ kind: 'conversation'; ask: string; flags: readonly 'cannot-decide'[] }|{ kind: 'stop' }|{ kind: 'needs-judgment' };
@@ -402,10 +402,11 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         &&candidate.historical.some(record => record.view.type==='VerifiedPrincipal'&&same(record.view,principal)));
       requireIntake(principalRows.length>0,'scheduled intake: principal witness is missing or mismatched','standing');
       for(const principalRow of principalRows) constitutionalField(principalRow,'VerifiedPrincipal',principal.id,preserved);
-      const discoveryRows=dependencies.filter(candidate => candidate.historical.some(record => record.view.type==='Evidence'));
-      requireIntake(discoveryRows.length===1,'scheduled intake: one discovery witness is required','integrity');
-      const discovery=scheduledDiscovery(reference(discoveryRows[0]!.fact),arrival.route.eventId,row.fact.at,preserved);
-      requireIntake(required.includes(discovery.row.fact.id),'scheduled intake: discovery witness is not a signed dependency','integrity');
+      const histories=snapshot.flatMap(candidate => candidate.historical.map(record => ({ fact: candidate.fact,record })));
+      const discovery=resolveScheduledDiscoveryWitness(histories,new Set(required),arrival.route.eventId,row.fact.at,preserved,'origin');
+      const discoveryRow=dependencies.find(candidate => candidate.fact.id===discovery.fact.id);
+      requireIntake(discoveryRow,'scheduled intake: discovery witness is not a signed dependency','integrity');
+      constitutionalField(discoveryRow,'Evidence',discovery.record.view.id,preserved);
       const standing=scheduledStanding(principal,row.fact.at,preserved,cone);
       const standingRows=dependencies.filter(candidate => candidate.historical.some(record => record.view.type==='StandingGrant'
         &&record.view.id===standing.grant.view.id&&same(record.view,standing.grant.view)));
