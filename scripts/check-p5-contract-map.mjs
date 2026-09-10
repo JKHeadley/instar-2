@@ -116,6 +116,10 @@ const seamEvidence = new Map([
     .map(finding => [`P5-SEAM-RC-R16-${finding}-INTEGRATION`, 'tests/integration/rungraph-closure-review16.test.ts']),
   ...['F2-RESULT-BINDING', 'F3-CURRENT-WORK', 'F4-CONFLICT', 'F5-ENVELOPE-RUN', 'F6-EQUAL-COPIES']
     .map(finding => [`P5-SEAM-RC-R16-${finding}-E2E`, 'tests/e2e/rungraph-closure-review16.test.ts']),
+  ['P5-SEAM-RC-R17-V41', 'tests/rungraph/review17-conformance.test.ts'],
+  ['P5-SEAM-RC-R17-V42', 'tests/integration/rungraph-closure-review17.test.ts'],
+  ...['V50', 'V52']
+    .map(id => [`P5-SEAM-RC-R17-${id}`, 'tests/e2e/rungraph-closure-review17.test.ts']),
 ]);
 
 const map = new Map();

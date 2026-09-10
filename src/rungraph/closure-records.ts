@@ -138,9 +138,11 @@ function boundedCurrentFact(fact: FactEnvelope, at: Clock, freshFor: number, con
 
 function runOpening(run: string, context: RunDecodeContext): { fact: FactEnvelope; record: Record<string, Json> } {
   const rows = context.facts.facts.filter(fact => fact.kind === runKinds.Run && object(fact.body).run === run);
-  need(rows.length === 1, 'owner run is missing or conflicted');
+  need(rows.length > 0, 'owner run is missing or conflicted');
   const fact = rows[0]!;
   const record = object(recordFromWire(object(fact.body).record!));
+  need(rows.every(row => same(recordFromWire(object(row.body).record!), record)),
+    'owner run is missing or conflicted');
   need(record.type === 'Run' && record.id === run, 'owner run identity differs');
   return { fact, record };
 }
