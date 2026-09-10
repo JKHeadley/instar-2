@@ -41,7 +41,7 @@ Unmatched relevant processes remain `unclassified` with a count. A trend is deri
 declared complete sample window; missing ticks, classifier-generation changes or a machine change
 break comparability and are shown rather than interpolated away.
 
-**Rule — resource alerts are signals and cleanup remains elsewhere.** Rules 24, 41, 60 and 86;
+**Rule — resource alerts are signals and cleanup remains elsewhere.** Rules 41, 60 and 86;
 **checks: P16-NF-29/33–35/51**. A footprint threshold or rising trend may create a nine-owned
 finding with episode deduplication and measured entry/exit conditions. It cannot kill a process,
 reap a session, deny a spawn or load/unload an adapter. Any proposed cleanup enters part four and

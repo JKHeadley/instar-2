@@ -46,7 +46,10 @@ not an owner-resolved full tuple, while the current `ModelDescription` permits o
 `measured:false` and construction rejects any other value. P16 does not interpret that digest as
 proof and does not create a route-support authority. P16-NF-31/32 stay outside the runnable
 foundation tranche. They are non-executable until the grants in `seam-response-judgment.md` and
-`seam-response-assembly-followup.md` land with the eligible positive control.
+`seam-response-assembly-followup.md` land with the eligible positive control. P16-NF-32's
+benchmark-window arm additionally remains non-executable until Part Seven grants and lands
+`design-measurement-ledgers-seam-request-benchmark-run-start-clock.md`; the landed numeric
+`startedAt` is not a comparable clock.
 
 After that seam lands, seven's public resolver must supply the exact compatibility tuple:
 judgment class, prompt and context-assembly digests, action-floor and output-schema digests, model

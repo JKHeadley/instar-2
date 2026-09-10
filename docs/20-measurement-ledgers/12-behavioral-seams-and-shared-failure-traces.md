@@ -1,7 +1,7 @@
 ## 12. Behavioral seams and shared failure traces
 
 **Rule — every cross-part interaction has one producer, record, order and closure owner.** Rules
-24, 31, 33, 42, 45, 49, 68 and 69; **checks: P16-NF-02/07/12/15/23/31/35/42–45/51**.
+31, 33, 42, 45, 49, 68 and 69; **checks: P16-NF-02/07/12/15/23/31/35/42–45/51**.
 
 | Seam | Ordered record flow | Failure direction and closure owner |
 |---|---|---|
@@ -12,10 +12,10 @@
 | benchmark | requested seven compatibility resolver + requested ten current measured-route support + nine `Grade`/`BenchmarkEvaluation` + production measurements → pinned eligible join → nine advisory finding | The landed opaque digest and `measured:false` route cannot produce a positive control; after the seam lands, mismatch/staleness/conflict/current-support failure is ineligible and threshold shortfall is partial; seven, ten and nine repair their owned evidence |
 | growth | ten `GrowthPolicy` + `GrowthObservation` → one coalesced episode → one five investigation under six loop → optional proposed part-two storage change | Observation never deletes facts; ten owns measurement, five/six own follow-through, two owns any later storage design |
 | maximum disposition | five-owned conservative disposition → requested eight settlement variant → six application and qualified accounting read → pinned view | Before disposition the maximum is outstanding; after it the maximum is separately accounted with no headroom release or execution conclusion; unavailable until its five/six/eight seam lands |
-| cap/freeze and paid-door opening | operator act through eleven/four → one authorization → requested eight cap/freeze payload → six accounting/fence → settlement/receipt; any separate activation/readiness flow awaits policy | Measurement outage does not block stop; stale/replayed/widened authority refuses; a frozen paid operation uses `reason: policy`; cap/freeze waits on the GRANTED `seam-response-effects-followup.md`. `SEAM-LEDGER.md` row 65 refused the separate activation/readiness seam, so its P16-NF-35/45/49/51 arms are non-executable until section 16 decision 8 chooses positive-cap-plus-not-frozen or approved-design amendments |
+| cap/freeze and paid-door opening | operator act through eleven/four → one authorization → requested eight cap/freeze payload → current not-frozen and positive-cap resolution → six accounting/fence → settlement/receipt; there is no separate activation/readiness flow | Measurement outage does not block stop; stale/replayed/widened authority refuses; a frozen paid operation uses `reason: policy`; an absent, zero or negative cap cannot open the door. P16-NF-35/45/49/51 use these concrete neighbors and remain non-executable only until the GRANTED `seam-response-effects-followup.md` cap/freeze contract lands with production wiring |
 | measurement/spend surface | pinned source history + source projection + requested manifests + optional exact live-accounting inputs → package bounded read → granted Eleven authenticated pull operation → Ten production surface binding | `P16-P11-measurement-spend-surface-v1` is GRANTED in the `seam-response-operator-followup.md` addendum and tracked in `SEAM-LEDGER.md` row 64; pure renderer/privacy checks stay local, while real-surface arms are non-executable until row 64 lands after the Part Eleven implementation. A mock, screenshot or part-fourteen guard surface is not the positive |
 
-**Rule — four failure traces have exact answers.** Rules 14, 24, 31, 33, 41, 42, 46 and 86;
+**Rule — four failure traces have exact answers.** Rules 14, 31, 33, 41, 42, 46 and 86;
 **checks: P16-NF-08/10/14/17/22/26/38/42/45/50/51**.
 
 1. A provider returns output but no usage at clock `t`, with evidence-horizon endpoint `H`. The

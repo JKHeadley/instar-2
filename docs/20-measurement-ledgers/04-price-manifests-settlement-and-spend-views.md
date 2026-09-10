@@ -92,13 +92,21 @@ P16-NF-17/20**. A doorway billed by subscription displays `not per-call settled`
 tokens and quota state. If the operator has supplied a governed allocation policy, the view may
 also display an allocated subscription cost with the complete formula, period and basis. That
 allocation stays separate from provider settlement and cap enforcement. With no policy, cost is
-unknown at call level rather than zero. The 1.x compatibility view is preserved explicitly: a
-declared monthly door price is divided by 30.4375 average Gregorian days and multiplied by the
-number of distinct active UTC calendar days for that door in the requested window. The complete
-derivation is displayed. The door-level amount may appear beside each model row for context, but
-the total counts it exactly once across every model using that door. Any token-share allocation
-approved for 2.0 is a separately labelled additional view or an explicit policy replacement; it
-cannot silently replace this calendar view or be presented as provider billing.
+unknown at call level rather than zero. The 1.x formula divides a declared monthly door price by
+30.4375 average Gregorian days and multiplies by an active-day count, but its result is grain-
+dependent: it regroups daily buckets before collecting active dates. Day grain therefore counts
+the original daily buckets, while month and total grain retain only each model's first regrouped
+bucket date and may undercount the door's actual active days. With one $304.375 monthly door, two
+active UTC days and two models active on both days, 1.x reports $20.0000 at day grain but $10.0000
+at month and total grain. Migrated reports keep those values only as labelled legacy evidence.
+
+The 2.0 calendar allocation corrects the defect by counting the door's distinct original active
+UTC calendar days before any display regrouping. The same example therefore yields $20.0000 at
+day, month and total grain. This corrected result is not described as byte-compatible 1.x output.
+The complete derivation is displayed. The door-level amount may appear beside each model row for
+context, but the total counts it exactly once across every model using that door. Any token-share
+allocation approved for 2.0 is a separately labelled additional view or an explicit policy
+replacement; it cannot silently replace this calendar view or be presented as provider billing.
 
 **Rule — routing-spend surfaces disclose their horizon and completeness.** Rules 26, 32, 39, 41,
 69, 86 and 113; **checks: P16-NF-10/16–20/36–38/48**. Hour, day, feature, model, doorway, account,
