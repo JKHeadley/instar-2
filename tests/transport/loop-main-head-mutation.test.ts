@@ -13,6 +13,7 @@ type Snapshot = Readonly<{
   policies: Record<string, unknown>;
   scheduleMalformedPolicy: unknown;
   legacyPriority: Record<string, unknown>;
+  mutations: Record<string, unknown>;
 }>;
 const modes = { null: null, empty: '', negative: -1, wrong: 'wrong', zero: 0 } as const;
 const policyErrors = [['maxAttempts', -1], ['minDelay', 0], ['timeout', 0], ['concurrency', 2],
@@ -74,10 +75,39 @@ function snapshot(): Snapshot {
         Refused: refused => { throw new Error(refused.detail); },
       }), context, context.decode));
   }
-  return { policies, scheduleMalformedPolicy, legacyPriority };
+  const mutations: Record<string, unknown> = {};
+  const variants: Record<string, Record<string, unknown>> = {
+    valid: priorityFixture.policy as unknown as Record<string, unknown>,
+  };
+  for (const key of Object.keys(priorityFixture.policy)) {
+    for (const [mode, changed] of Object.entries({ null: null, empty: '', wrong: 'wrong', zero: 0,
+      negative: -1, array: [], object: {}, bool: true }))
+      variants[`${key}:${mode}`] = { ...priorityFixture.policy, [key]: changed };
+    variants[`${key}:delete`] = { ...priorityFixture.policy };
+    delete variants[`${key}:delete`]![key];
+  }
+  variants.extra = { ...priorityFixture.policy, extra: 1 };
+  variants.newField = { ...priorityFixture.policy, initialDelay: 1 };
+  const outerVariants: Record<string, Record<string, unknown>> = {
+    valid: {}, wrongDomain: { domain: 'wrong' }, badTick: { tick: -1 }, badState: { state: 'invalid' },
+    wrongType: { type: 'Lease' }, wrongEpisode: { episode: '' }, extra: { extra: 1 },
+    newField: { pressureKey: 'invented' }, missing: {},
+  };
+  for (const [name, candidatePolicy] of Object.entries(variants))
+    for (const [outer, changes] of Object.entries(outerVariants)) {
+      const record = { ...(wire.body as any).record, policy: candidatePolicy, ...changes };
+      if (outer === 'missing') delete record.pending;
+      const altered = signEnvelope({ ...wire, body: { record } }, privateKey);
+      mutations[`${name}/${outer}`] = resultValue(decodeHistoricalBody(
+        consumeResult(decodeEnvelope(altered, context, 'replication'), {
+          Success: accepted => accepted,
+          Refused: refused => { throw new Error(refused.detail); },
+        }), context, context.decode));
+    }
+  return { policies, scheduleMalformedPolicy, legacyPriority, mutations };
 }
 
-it('SLB-LEGACY-MUTATION-72 SLB-LEGACY-PRIORITY-76 permanently compares public and 42 combined signed legacy mutations against main 6148c28', () => {
+it('SLB-LEGACY-MUTATION-72 SLB-LEGACY-PRIORITY-76 SLB-LEGACY-FULL-837-81 permanently compares all 837 signed legacy mutations against main 6148c28', () => {
   const directory = mkdtempSync(join(tmpdir(), 'transport-main-differential-'));
   const archive = spawnSync('git', ['archive', '--format=tar', '6148c28', 'src', 'tests/transport/fixture.ts',
     'tests/facts/fixtures.ts', 'tests/fixtures.ts', 'scripts/transport-file-storage.mjs'],
@@ -137,7 +167,26 @@ it('captures main legacy mutation results', () => {
       Refused: refused => { throw new Error(refused.detail); } });
     legacyPriority[outer + ':' + key] = resultValue(decodeHistoricalBody(frame, context, context.decode));
   }
-  writeFileSync(${JSON.stringify(output)}, JSON.stringify({ policies, scheduleMalformedPolicy, legacyPriority }));
+  const mutations = {}, variants = { valid: priorityFixture.policy };
+  for (const key of Object.keys(priorityFixture.policy)) {
+    for (const [mode, changed] of Object.entries({ null: null, empty: '', wrong: 'wrong', zero: 0,
+      negative: -1, array: [], object: {}, bool: true })) variants[key + ':' + mode] = { ...priorityFixture.policy, [key]: changed };
+    variants[key + ':delete'] = { ...priorityFixture.policy }; delete variants[key + ':delete'][key];
+  }
+  variants.extra = { ...priorityFixture.policy, extra: 1 };
+  variants.newField = { ...priorityFixture.policy, initialDelay: 1 };
+  const outerVariants = { valid: {}, wrongDomain: { domain: 'wrong' }, badTick: { tick: -1 },
+    badState: { state: 'invalid' }, wrongType: { type: 'Lease' }, wrongEpisode: { episode: '' },
+    extra: { extra: 1 }, newField: { pressureKey: 'invented' }, missing: {} };
+  for (const [name, candidatePolicy] of Object.entries(variants)) for (const [outer, changes] of Object.entries(outerVariants)) {
+    const record = { ...wire.body.record, policy: candidatePolicy, ...changes };
+    if (outer === 'missing') delete record.pending;
+    const altered = signEnvelope({ ...wire, body: { record } }, privateKey);
+    const frame = consumeResult(decodeEnvelope(altered, context, 'replication'), { Success: accepted => accepted,
+      Refused: refused => { throw new Error(refused.detail); } });
+    mutations[name + '/' + outer] = resultValue(decodeHistoricalBody(frame, context, context.decode));
+  }
+  writeFileSync(${JSON.stringify(output)}, JSON.stringify({ policies, scheduleMalformedPolicy, legacyPriority, mutations }));
 });
 `);
   const config = join(directory, 'vitest.config.mjs');
@@ -146,5 +195,7 @@ it('captures main legacy mutation results', () => {
   const run = spawnSync(process.execPath, [resolve('node_modules/vitest/vitest.mjs'), 'run', '--config', config,
     '--reporter=dot'], { cwd: directory, encoding: 'utf8', timeout: 60_000 });
   expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
-  expect(snapshot()).toEqual(JSON.parse(readFileSync(output, 'utf8')));
+  const head = snapshot(), main = JSON.parse(readFileSync(output, 'utf8')) as Snapshot;
+  expect(Object.keys(head.mutations)).toHaveLength(837);
+  expect(head).toEqual(main);
 }, 70_000);

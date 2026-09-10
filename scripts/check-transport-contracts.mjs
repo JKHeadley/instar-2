@@ -117,6 +117,9 @@ export const transportSeamEvidence = [
   ['SLB-RESOURCE-RESTART-78', 'integration', 'Astra V16 durable shared resource demand'],
   ['SLB-RESOURCE-REPLAY-79', 'integration', 'Astra V17 replay and replication demand validation'],
   ['SLB-E2E-RESOURCE-80', 'e2e', 'Astra V16 fresh-process shared resource validation'],
+  ['SLB-LEGACY-FULL-837-81', 'unit', 'review V28 V29 V40 complete signed legacy mutation differential'],
+  ['SLB-CURRENT-STOP-82', 'integration', 'review V27 current-episode stop bound with V47 control'],
+  ['SLB-DELAYED-WINDOW-83', 'integration', 'review V38 delayed closure window and replay refusal'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

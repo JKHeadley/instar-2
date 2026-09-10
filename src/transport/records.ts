@@ -4,6 +4,10 @@ import { causalCone, prepareSnapshot, registerOwnedBody } from '../facts/index.j
 import type { FactContext, FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import type { AdmissionReservation, FenceToken, Lease, LoopAttempt, LoopOutcome, LoopPolicy, LoopRecord, ScanCursor, SettlementConsumer, SharedLoopRecord, TransportFact, TransportHost, TransportRecord, TransportRowRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
+import { compatibleLoopPolicyShape, isSharedLoopPolicy, isSharedLoopRecord, isStoredSharedLoopRecord,
+  loadSharedLoopRecord, seamShapeCheck, sharedLoopRecordCheck,
+  sharedLoopPolicyOwnedName, sharedLoopRecordFactKind, sharedLoopRecordOwnedName, sharedPolicyCheck, sourceVectorCheck,
+  transportSeamShapes as seamShapes } from './loop-seam.js';
 import { admissionAccounting, bindSettlementConsumer, checkApplicationEvidence, latestApplication, noteAccountingCandidate, requireApplication } from './settlement.js';
 
 const txt = { kind: 'text', maxLength: 256 } as const;
@@ -11,51 +15,12 @@ const int = { kind: 'integer' } as const;
 const common = { type: txt, schemaVersion: int };
 const row = { ...common, domain: txt, command: txt, predecessor: txt, authority: txt, tick: int };
 const fence: OwnedShape = { kind: 'object', fields: { ...common, domain: txt, epoch: int, assignment: txt, holder: txt, machine: txt, incarnation: txt, authority: txt, generation: txt } };
-const reference: OwnedShape = { kind: 'object', fields: { owner: txt, name: txt, id: txt } };
-const constitutionalResult: OwnedShape = { kind: 'object', fields: { type: txt, id: txt, fact: reference, field: txt } };
-const clock: OwnedShape = { kind: 'object', fields: { type: txt, schemaVersion: int,
-  subject: { kind: 'object', fields: { kind: txt, instance: txt } }, value: int, unit: txt, at: int, by: txt } };
-const vectorEntry: OwnedShape = { kind: 'object', fields: { machine: txt, epoch: int, position: int } };
-const sourceVector: OwnedShape = { kind: 'array', maxLength: 4096, items: vectorEntry };
-const legacyPolicyFields = { ...common, id: txt, maxAttempts: int, minDelay: int, maxDuration: int, timeout: int,
-  concurrency: int, failDirection: txt, breaker: txt };
-const policyFields = { ...legacyPolicyFields, initialDelay: int, maxDelay: int, backoffMultiplier: int,
-  jitterMinPermille: int, jitterMaxPermille: int, failureThreshold: int,
-  countedFailureClasses: { kind: 'array', maxLength: 64, items: txt } as OwnedShape,
-  acceptedOutcomeWindow: int, breakerCooldown: int, maxOpenDuration: int,
-  halfOpenTrials: int, halfOpenConcurrency: int, closeEvidence: txt, reopenEvidence: txt,
-  parentDuty: reference, budgetWindow: int, parentAttemptBudget: int, parentResourceBudget: int };
-const governedPolicyFields = Object.keys(policyFields).filter(key => !['type', 'schemaVersion', 'id', 'maxAttempts', 'minDelay', 'maxDuration', 'timeout', 'concurrency', 'failDirection', 'breaker'].includes(key));
-const policy: OwnedShape = { kind: 'object', fields: policyFields, optional: governedPolicyFields };
-const loopAttempt: OwnedShape = { kind: 'object', fields: { id: txt, holderFamily: txt, worker: txt, machine: txt,
-  episode: txt, admittedAt: clock, resource: int, mode: txt, sourceVector } };
-const loopOutcome: OwnedShape = { kind: 'object', fields: { attempt: txt, kind: txt, failureClass: txt,
-  observedAt: clock, completion: constitutionalResult, jitterPermille: int,
-  restoration: { kind: 'array', maxLength: 64, items: reference }, sourceVector } };
-const managedLoopFields = {
-  parentDuty: reference, currentOwnerRun: reference, policyGeneration: reference,
-  pressureBinding: reference,
-  operationFamily: txt, pressureScope: { kind: 'object', fields: { target: txt, conversation: txt, machine: txt, pool: txt } } as OwnedShape,
-  pressureKey: txt, episodeKey: txt, transition: txt, transitionAt: clock, nextEligible: clock,
-  clockBasis: txt, sourceVector, episodeAttempts: int, totalFailures: int, failureCount: int,
-  rollingAttempts: int, rollingResource: int, breakerHasOpened: int, breakerOpenCount: int, breakerFirstOpened: clock,
-  halfOpenAdmitted: int, halfOpenSucceeded: int,
-  pendingAttempts: { kind: 'array', maxLength: 4096, items: txt } as OwnedShape,
-  attemptLog: { kind: 'array', maxLength: 4096, items: loopAttempt } as OwnedShape,
-  outcomeLog: { kind: 'array', maxLength: 4096, items: loopOutcome } as OwnedShape,
-  outcomeWindowDigest: txt, closureEvidence: { kind: 'array', maxLength: 64, items: reference } as OwnedShape,
-};
-const loopRecordShape: OwnedShape = { kind: 'object', fields: { ...row, run: txt, episode: txt, policy,
-  attempts: int, started: int, nextWake: int, state: txt, pending: txt, ...managedLoopFields }, optional: Object.keys(managedLoopFields) };
-const legacyLoopRecordFields = { ...row, run: txt, episode: txt, policy,
-  attempts: int, started: int, nextWake: int, state: txt, pending: txt };
-const legacyLoopRecordShape: OwnedShape = { kind: 'object', fields: { ...legacyLoopRecordFields,
-  policy: { kind: 'object', fields: legacyPolicyFields } } };
+const policy: OwnedShape = { kind: 'object', fields: { ...common, id: txt, maxAttempts: int, minDelay: int, maxDuration: int, timeout: int, concurrency: int, failDirection: txt, breaker: txt } };
 export const transportShapes: Readonly<Record<string, OwnedShape>> = freeze({
   Lease: { kind: 'object', fields: { ...row, epoch: int, holder: txt, machine: txt, incarnation: txt, generation: txt, expires: int, state: txt, operation: txt, term: int } },
   FenceToken: fence, LoopPolicy: policy,
   AdmissionReservation: { kind: 'object', fields: { ...row, operation: txt, request: txt, attempt: txt, digest: txt, run: txt, semanticMessage: txt, deliveryAttempt: txt, fence, charge: int, state: txt, executor: txt, durability: txt, replicas: int } },
-  LoopRecord: loopRecordShape,
+  LoopRecord: { kind: 'object', fields: { ...row, run: txt, episode: txt, policy, attempts: int, started: int, nextWake: int, state: txt, pending: txt } },
   RecoveryRecord: { kind: 'object', fields: { ...row, operation: txt, episode: txt, observation: txt, disposition: txt } },
   ScanCursor: { kind: 'object', fields: { ...row, scan: txt, generation: txt, orderedKeysDigest: txt,
     keyCount: int, previous: txt, selectedFrom: int, selectedCount: int, nextIndex: int,
@@ -63,10 +28,14 @@ export const transportShapes: Readonly<Record<string, OwnedShape>> = freeze({
   SettlementApplication: { kind: 'object', fields: { ...row, operation: txt, request: txt, reservation: txt, claim: txt, digest: txt,
     settlement: txt, settlementFact: txt, settlementHash: txt, actualCharge: int, exposure: int, released: int, unresolved: int, capViolation: int, retryEligible: int } },
 });
-/** Slice-A adds no standalone record outside the governed policy/record arms. */
-export const transportSeamShapes: Readonly<Record<string, OwnedShape>> = freeze({});
+const registeredTransportShapes: Readonly<Record<string, OwnedShape>> = freeze({
+  ...transportShapes,
+  LoopPolicy: compatibleLoopPolicyShape,
+});
+export const transportSeamShapes = seamShapes;
 const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'ScanCursor', 'SettlementApplication'];
 export const kindFor = (name: string) => `transport-${name}`;
+export const kindForRecord = (record: TransportRecord) => isSharedLoopRecord(record) ? sharedLoopRecordFactKind : kindFor(record.type);
 export function transportSchemas(host: TransportHost): readonly FactSchema[] {
   return recordNames.map(name => ({ kind: kindFor(name), version: 1,
     fields: { record: { kind: 'owned', owner: 'part-six', name } }, machineScope: 'shared',
@@ -79,86 +48,30 @@ export function transportSeamSchemas(host: TransportHost): readonly FactSchema[]
     causallyBound: false, requiredReferences: [] as readonly string[], authority: 'none' as const };
   return [
     { ...base, kind: kindFor('LoopPolicy'), version: 1,
-      fields: { policy: { kind: 'owned' as const, owner: 'part-six', name: 'LoopPolicy' }, generation: { kind: 'text' as const, maxLength: 256 } } },
+      fields: { policy: { kind: 'owned' as const, owner: 'part-six', name: sharedLoopPolicyOwnedName }, generation: { kind: 'text' as const, maxLength: 256 } } },
+    { ...base, kind: sharedLoopRecordFactKind, version: 1,
+      fields: { record: { kind: 'owned' as const, owner: 'part-six', name: sharedLoopRecordOwnedName } } },
   ];
 }
 export function shapeCheck(v: unknown, shape: OwnedShape): void {
   if (shape.kind === 'text') { ensure(typeof v === 'string' && v.length <= shape.maxLength, 'bounded text required'); return; }
   if (shape.kind === 'integer') { ensure(Number.isSafeInteger(v), 'safe integer required'); return; }
-  if (shape.kind === 'boolean') { ensure(typeof v === 'boolean', 'boolean required'); return; }
-  if (shape.kind === 'null') { ensure(v === null, 'null required'); return; }
-  if (shape.kind === 'array') {
-    ensure(Array.isArray(v) && v.length <= shape.maxLength, 'bounded array required');
-    v.forEach(value => shapeCheck(value, shape.items)); return;
-  }
   ensure(shape.kind === 'object' && v !== null && typeof v === 'object' && !Array.isArray(v), 'closed object required');
   const r = v as Record<string, unknown>;
-  if (!shape.optional) {
-    ensure(Object.keys(r).length === Object.keys(shape.fields).length, 'undeclared or missing field');
-    for (const [key, field] of Object.entries(shape.fields)) {
-      ensure(Object.hasOwn(r, key), `missing ${key}`); shapeCheck(r[key], field);
-    }
-    return;
-  }
-  ensure(Object.keys(r).every(key => Object.hasOwn(shape.fields, key)), 'undeclared field');
-  for (const [key, field] of Object.entries(shape.fields)) {
-    if (!Object.hasOwn(r, key)) { ensure(shape.optional?.includes(key), `missing ${key}`); continue; }
-    shapeCheck(r[key], field);
-  }
+  ensure(Object.keys(r).length === Object.keys(shape.fields).length, 'undeclared or missing field');
+  for (const [key, field] of Object.entries(shape.fields)) { ensure(Object.hasOwn(r, key), `missing ${key}`); shapeCheck(r[key], field); }
 }
 export function policyCheck(p: LoopPolicy): void {
-  // Preserve the complete legacy decoder domain, including its validation
-  // order and refusal values. Only the explicitly additive breaker arm enters
-  // the expanded policy decoder.
-  if (!p || typeof p !== 'object' || p.breaker !== 'shared-circuit-v1') {
-    ensure(p !== null && typeof p === 'object' && !Array.isArray(p), 'closed object required');
-    const legacy = p as unknown as Record<string, unknown>;
-    ensure(Object.keys(legacy).length === Object.keys(legacyPolicyFields).length, 'undeclared or missing field');
-    for (const [key, field] of Object.entries(legacyPolicyFields)) {
-      ensure(Object.hasOwn(legacy, key), `missing ${key}`);
-      shapeCheck(legacy[key], field);
-    }
-    ensure(p.type === 'LoopPolicy' && p.schemaVersion === 1 && p.id.length > 0, 'policy identity');
-    ensure(p.maxAttempts >= 0 && p.maxDuration >= 0 && p.minDelay > 0 && p.timeout > 0,
-      'finite nonnegative bounds and positive delays required');
-    ensure(p.concurrency === 1 && p.failDirection === 'closed' && p.breaker === 'stub-closed',
-      'unsupported loop policy');
-    return;
-  }
   shapeCheck(p, policy);
   ensure(p.type === 'LoopPolicy' && p.schemaVersion === 1 && p.id.length > 0, 'policy identity');
   ensure(p.maxAttempts >= 0 && p.maxDuration >= 0 && p.minDelay > 0 && p.timeout > 0,
     'finite nonnegative bounds and positive delays required');
-  ensure(p.breaker === 'shared-circuit-v1' && Object.keys(p).length === Object.keys(policyFields).length,
-    'real breaker policy is incomplete or unknown');
-  ensure(p.failDirection === 'closed', 'unsupported loop fail direction');
-  ensure(p.concurrency >= 0 && p.initialDelay > 0 && p.initialDelay >= p.minDelay && p.maxDelay >= p.initialDelay
-    && p.backoffMultiplier >= 1 && p.jitterMinPermille >= 0 && p.jitterMaxPermille >= p.jitterMinPermille
-    && p.jitterMaxPermille <= 1000, 'invalid delay, multiplier, jitter, or concurrency bounds');
-  ensure(p.failureThreshold > 0 && p.countedFailureClasses.length > 0
-    && new Set(p.countedFailureClasses).size === p.countedFailureClasses.length
-    && p.countedFailureClasses.every(value => value.length > 0), 'invalid counted failure policy');
-  ensure(p.acceptedOutcomeWindow > 0 && p.breakerCooldown > 0 && p.maxOpenDuration >= p.breakerCooldown
-    && p.halfOpenTrials >= 0 && p.halfOpenConcurrency >= 0 && p.halfOpenConcurrency <= p.halfOpenTrials,
-  'invalid breaker window, cooldown, or half-open bounds');
-  ensure(p.halfOpenConcurrency <= p.concurrency, 'half-open concurrency exceeds total concurrent-work cap');
-  ensure(p.closeEvidence === 'part-nine-restoration' && p.reopenEvidence === 'counted-failure', 'unsupported breaker evidence contract');
-  ensure(p.parentDuty.owner === 'part-five' && p.parentDuty.name === 'Run' && p.parentDuty.id.length > 0,
-    'persistent parent duty reference required');
-  ensure(p.budgetWindow > 0 && p.parentAttemptBudget >= 0 && p.parentAttemptBudget <= 4096 && p.parentResourceBudget >= 0,
-    'invalid shared parent budget');
+  ensure(p.concurrency === 1 && p.failDirection === 'closed' && p.breaker === 'stub-closed', 'unsupported loop policy');
 }
 function referenceCheck(value: { readonly owner: string; readonly name: string; readonly id: string }, owner: string, name: string): void {
   ensure(value.owner === owner && value.name === name && value.id.length > 0, `${name} reference owner`);
 }
-export function sourceVectorCheck(vector: SharedLoopRecord['sourceVector']): void {
-  shapeCheck(vector, sourceVector);
-  ensure(vector.length > 0, 'source vector population is empty');
-  ensure(new Set(vector.map(entry => entry.machine)).size === vector.length, 'source vector has duplicate machine');
-  ensure(vector.every(entry => entry.machine.length > 0 && entry.epoch >= 0 && entry.position >= 0), 'invalid source vector position');
-  ensure(vector.every((entry, index) => index === 0 || compareBytes(vector[index - 1]!.machine, entry.machine) < 0),
-    'source vector must be machine-sorted');
-}
+export { sourceVectorCheck } from './loop-seam.js';
 function schemaOwns(context: FactContext, fact: FactEnvelope, field: string, owner: string, name: string): boolean {
   const schema = context.schemas.find(value => value.kind === fact.kind && value.version === fact.schemaVersion);
   const shape = schema?.fields[field];
@@ -210,7 +123,7 @@ export function resolveRunReference(reference: RunReference, facts: readonly Fac
 export function resolvePolicyFact(policyValue: SharedLoopRecord['policy'], generation: string,
   facts: readonly FactEnvelope[], context: FactContext, status = true): FactEnvelope {
   const candidates = allFacts(facts).filter(fact => fact.kind === kindFor('LoopPolicy')
-    && schemaOwns(context, fact, 'policy', 'part-six', 'LoopPolicy'))
+    && schemaOwns(context, fact, 'policy', 'part-six', sharedLoopPolicyOwnedName))
     .filter(fact => (fact.body as { policy?: { id?: unknown }; generation?: unknown }).policy?.id === policyValue.id
       && (fact.body as { generation?: unknown }).generation === generation);
   ensure(candidates.length > 0, 'governed loop policy fact is absent for the pinned generation');
@@ -434,21 +347,22 @@ function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: SharedL
   ensure((fact.body as { loopAttemptBinding?: unknown }).loopAttemptBinding === expectedBinding,
     'Outcome completion is not bound to this loop attempt and operation family');
   const signedClass = (fact.body as { loopFailureClass?: unknown }).loopFailureClass;
-  const attemptFacts = allFacts(facts).filter(candidate => candidate.kind === kindFor('LoopRecord'))
+  const attemptFacts = allFacts(facts).filter(candidate => candidate.kind === sharedLoopRecordFactKind)
     .filter(candidate => {
-      const candidateRecord = (candidate.body as { record?: Partial<SharedLoopRecord> }).record;
-      return candidateRecord?.type === 'LoopRecord' && candidateRecord.policy?.breaker === 'shared-circuit-v1'
-        && candidateRecord.pressureKey === record.pressureKey && candidateRecord.operationFamily === record.operationFamily
-        && candidateRecord.attemptLog?.some(attempt => attempt.id === outcome.attempt);
+      const stored = (candidate.body as { record?: unknown }).record;
+      if (!isStoredSharedLoopRecord(stored)) return false;
+      const candidateRecord = loadSharedLoopRecord(stored);
+      return candidateRecord.pressureKey === record.pressureKey && candidateRecord.operationFamily === record.operationFamily
+        && candidateRecord.attemptLog.some(attempt => attempt.id === outcome.attempt);
     });
   const witnessedAttempts = attemptFacts.filter(candidate => fact.predecessors.required.includes(candidate.id));
   ensure(witnessedAttempts.length > 0,
     'Outcome completion does not witness its admitted loop attempt');
   ensure(new Set(witnessedAttempts.map(candidate => {
-    const admitted = (candidate.body as unknown as { record: SharedLoopRecord }).record;
+    const admitted = loadSharedLoopRecord((candidate.body as { record: never }).record);
     return encoded([admitted.policy, admitted.policyGeneration]).bytes;
   })).size === 1, 'Outcome completion has conflicting admitted policy generations');
-  const admitted = (witnessedAttempts.at(-1)!.body as unknown as { record: SharedLoopRecord }).record;
+  const admitted = loadSharedLoopRecord((witnessedAttempts.at(-1)!.body as { record: never }).record);
   const expectedPolicy = encoded([admitted.policy.id, admitted.policyGeneration.id,
     admitted.policy.countedFailureClasses]).hash;
   ensure(typeof signedClass === 'string' && signedClass === outcome.failureClass
@@ -460,83 +374,36 @@ function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: SharedL
   return fact;
 }
 export function loopRecordCheck(r: LoopRecord): void {
-  if (r?.policy?.breaker === 'stub-closed') {
-    const legacy = r as unknown as Record<string, unknown>;
-    ensure(Object.keys(legacy).every(key => Object.hasOwn(legacyLoopRecordFields, key)), 'unknown field');
-    shapeCheck(r, legacyLoopRecordShape);
-    ensure(r.type === 'LoopRecord' && r.schemaVersion === 1, 'owned type mismatch');
-    policyCheck(r.policy);
-    return;
-  }
-  shapeCheck(r, loopRecordShape);
-  ensure(r.type === 'LoopRecord' && r.schemaVersion === 1 && r.run.length > 0 && r.episode.length > 0,
-    'loop record identity');
+  if (isSharedLoopRecord(r)) { sharedLoopRecordCheck(r); return; }
+  shapeCheck(r, transportShapes.LoopRecord!);
+  ensure(r.type === 'LoopRecord' && r.schemaVersion === 1, 'owned type mismatch');
   policyCheck(r.policy);
-  const shared = r as SharedLoopRecord;
-  ensure(Object.keys(shared).length === Object.keys(row).length + 8 + Object.keys(managedLoopFields).length,
-    'shared loop transition is incomplete');
-  ensure(['scheduled', 'running', 'restoring', 'waiting', 'open-breaker', 'half-open', 'stopped', 'closed'].includes(shared.state)
-    && ['scheduled', 'attempt-admitted', 'outcome-recorded', 'opened', 'half-opened', 'reopened', 'closed', 'stopped'].includes(shared.transition),
-  'unknown shared loop state or transition');
-  referenceCheck(shared.parentDuty, 'part-five', 'Run'); referenceCheck(shared.currentOwnerRun, 'part-five', 'Run');
-  referenceCheck(shared.policyGeneration, 'part-three', 'RegisterGeneration');
-  referenceCheck(shared.pressureBinding, 'part-two', 'FactEnvelope');
-  ensure(encoded(shared.parentDuty).bytes === encoded(shared.policy.parentDuty).bytes, 'parent duty changed from policy');
-  ensure(shared.run === shared.currentOwnerRun.id, 'shared loop run differs from its witnessed current owner');
-  ensure(shared.operationFamily.length > 0 && Object.values(shared.pressureScope).every(value => value.length > 0)
-    && shared.pressureKey === `pressure:${encoded([shared.operationFamily, shared.pressureScope]).hash}`,
-  'shared pressure identity changed');
-  ensure(shared.episode === `loop:${encoded([shared.pressureKey, shared.episodeKey]).hash}` && shared.episodeKey.length > 0,
-    'shared episode identity changed');
-  ensure(shared.clockBasis === shared.transitionAt.subject.instance
-    && shared.nextEligible.subject.instance === shared.clockBasis
-    && shared.breakerFirstOpened.subject.instance === shared.clockBasis,
-  'incomparable shared loop time');
-  sourceVectorCheck(shared.sourceVector);
-  ensure(shared.attempts === shared.attemptLog.length && shared.episodeAttempts >= 0
-    && shared.episodeAttempts <= shared.policy.maxAttempts && shared.totalFailures >= shared.failureCount
-    && shared.rollingAttempts >= 0 && shared.rollingResource >= 0, 'shared loop counters disagree');
-  ensure(shared.breakerHasOpened === 0 || shared.breakerHasOpened === 1,
-    'invalid breaker-open marker');
-  ensure(shared.breakerOpenCount >= shared.breakerHasOpened, 'invalid breaker-open count');
-  ensure(new Set(shared.pendingAttempts).size === shared.pendingAttempts.length
-    && shared.pending === (shared.pendingAttempts[0] ?? ''), 'pending attempts disagree');
-  ensure(shared.outcomeLog.length <= shared.attemptLog.length
-    && new Set(shared.attemptLog.map(attempt => attempt.id)).size === shared.attemptLog.length
-    && new Set(shared.outcomeLog.map(outcome => outcome.attempt)).size === shared.outcomeLog.length,
-  'shared loop attempt population is incomplete or duplicated');
-  ensure(shared.outcomeLog.every(outcome => shared.attemptLog.some(attempt => attempt.id === outcome.attempt)),
-    'outcome lacks contributing attempt');
-  const unfinished = shared.attemptLog.filter(attempt => !shared.outcomeLog.some(outcome => outcome.attempt === attempt.id))
-    .map(attempt => attempt.id);
-  ensure(encoded(shared.pendingAttempts).bytes === encoded(unfinished).bytes,
-    'pending attempts do not equal admitted attempts minus completed attempts');
-  for (const attempt of shared.attemptLog) { sourceVectorCheck(attempt.sourceVector); ensure(attempt.resource >= 0, 'negative attempt resource'); }
-  for (const outcome of shared.outcomeLog) {
-    sourceVectorCheck(outcome.sourceVector);
-    ensure(outcome.jitterPermille >= shared.policy.jitterMinPermille
-      && outcome.jitterPermille <= shared.policy.jitterMaxPermille, 'outcome jitter outside pinned policy');
-    ensure(outcome.kind === 'accepted' || outcome.kind === 'failed', 'unknown loop outcome');
-    ensure(outcome.completion.type === 'Outcome' && outcome.completion.id.length > 0,
-      'loop outcome requires an owner Outcome completion');
-    referenceCheck(outcome.completion.fact, 'part-two', 'FactEnvelope');
-    outcome.restoration.forEach(value => referenceCheck(value, 'part-nine', 'VerificationAssessment'));
-  }
-  ensure(/^sha256:[a-f0-9]{64}$/.test(shared.outcomeWindowDigest), 'invalid outcome window digest');
-  shared.closureEvidence.forEach(value => referenceCheck(value, 'part-nine', 'VerificationAssessment'));
 }
 export function decodeLoopPolicy(input: unknown, c: BoundaryContext): Result<LoopPolicy> {
-  return boundary('LoopPolicyInput', input, c, safe => { const p = safe as unknown as LoopPolicy; policyCheck(p); return freeze(p); });
+  const legacy = boundary('LoopPolicyInput', input, c, safe => { const p = safe as unknown as LoopPolicy; policyCheck(p); return freeze(p); });
+  if (!isSharedLoopPolicy(input)) return legacy;
+  return boundary('LoopPolicyInput', input, c, safe => {
+    const p = safe as unknown as SharedLoopRecord['policy']; sharedPolicyCheck(p); return freeze(p);
+  });
 }
 export function decodeLoopRecord(input: unknown, c: BoundaryContext): Result<LoopRecord> {
-  return boundary('LoopRecordInput', input, c, safe => { const r = safe as unknown as LoopRecord; loopRecordCheck(r); return freeze(r); });
+  const legacy = boundary('LoopRecordInput', input, c, safe => {
+    const r = safe as unknown as LoopRecord; shapeCheck(r, transportShapes.LoopRecord!);
+    ensure(r.type === 'LoopRecord' && r.schemaVersion === 1, 'owned type mismatch'); policyCheck(r.policy); return freeze(r);
+  });
+  if (!isSharedLoopRecord(input)) return legacy;
+  return boundary('LoopRecordInput', input, c, safe => {
+    const r = safe as unknown as SharedLoopRecord; sharedLoopRecordCheck(r); return freeze(r);
+  });
 }
 export function decodeScanCursor(input: unknown, c: BoundaryContext): Result<ScanCursor> {
   return boundary('ScanCursorInput', input, c, safe => { const r = safe as unknown as ScanCursor; shapeCheck(r, transportShapes.ScanCursor!); return freeze(r); });
 }
 export function rows(facts: readonly FactEnvelope[], domain: string): TransportFact[] {
-  return facts.filter(f => recordNames.some(n => f.kind === kindFor(n))).map(fact => ({ fact,
-    record: (fact.body as { readonly record: Json }).record as unknown as TransportRecord,
+  return facts.filter(f => recordNames.some(n => f.kind === kindFor(n)) || f.kind === sharedLoopRecordFactKind).map(fact => ({ fact,
+    record: fact.kind === sharedLoopRecordFactKind
+      ? loadSharedLoopRecord((fact.body as { readonly record: Json }).record as never)
+      : (fact.body as { readonly record: Json }).record as unknown as TransportRecord,
   })).filter(f => f.record.domain === domain);
 }
 export function latestLease(all: readonly TransportFact[]): TransportFact & { readonly record: Lease } | undefined {
@@ -801,7 +668,9 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
       && record.episodeAttempts === previous.episodeAttempts && record.totalFailures === previous.totalFailures
       && record.state === 'stopped' && (previous.episodeAttempts >= record.policy.maxAttempts
         || record.transitionAt.value - previous.started >= record.policy.maxDuration
-        || previous.breakerHasOpened === 1 && record.transitionAt.value - previous.breakerFirstOpened.value > record.policy.maxOpenDuration),
+        || (previous.state === 'open-breaker' || previous.state === 'half-open')
+          && previous.breakerHasOpened === 1
+          && record.transitionAt.value - previous.breakerFirstOpened.value > record.policy.maxOpenDuration),
     'stopped transition lacks an exhausted bound');
     const expected = freeze({ ...previous,
       schemaVersion: record.schemaVersion, domain: record.domain, command: record.command,
@@ -856,12 +725,17 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly Trans
       && exactPrefix(previous.closureEvidence, record.closureEvidence)
       && record.closureEvidence.length > previous.closureEvidence.length,
     'evidence-only closure lacks completed trials or new restoration support');
+    const currentOutcomes = windowAt(previous, record.transitionAt);
+    const parentRolling = parentRollingAt(all, previous, record.transitionAt);
     const expected = freeze({ ...previous,
       schemaVersion: record.schemaVersion, domain: record.domain, command: record.command,
       predecessor: record.predecessor, authority: record.authority, tick: record.tick,
       nextWake: record.transitionAt.value, state: 'closed' as const, pending: '', transition: 'closed' as const,
       transitionAt: record.transitionAt, nextEligible: record.transitionAt, sourceVector: previous.sourceVector,
       policyGeneration: record.policyGeneration, closureEvidence: record.closureEvidence,
+      failureCount: failureCountAt(record.policy, currentOutcomes),
+      rollingAttempts: parentRolling.rollingAttempts, rollingResource: parentRolling.rollingResource,
+      outcomeWindowDigest: encoded(currentOutcomes).hash,
     } as SharedLoopRecord);
     ensure(encoded(record).bytes === encoded(expected).bytes,
       'evidence-only closure changed the recorded completion or breaker history');
@@ -1098,10 +972,10 @@ export function validateTransition(r: TransportRowRecord, all: readonly Transpor
         }
       }
     } else if (r.type === 'LoopRecord') {
-      policyCheck(r.policy);
-      if (r.policy.breaker === 'shared-circuit-v1')
-        validateSharedLoopHistory(r as SharedLoopRecord, all, host, origin, evidenceFacts, context);
+      if (isSharedLoopRecord(r))
+        validateSharedLoopHistory(r, all, host, origin, evidenceFacts, context);
       else {
+        policyCheck(r.policy);
         ensure(r.run.length > 0 && r.episode === `loop:${encoded([r.domain, r.run]).hash}`, 'stable loop episode');
         ensure(['scheduled', 'running', 'restoring', 'waiting', 'stopped'].includes(r.state) && r.attempts >= 0 && r.attempts <= r.policy.maxAttempts, 'loop state or count');
         const prior = latestLoop(all, r.run);
@@ -1142,40 +1016,33 @@ export function validateTransition(r: TransportRowRecord, all: readonly Transpor
     }
   }
 }
-function registerBodySet<S>(shapes: Readonly<Record<string, OwnedShape>>, host: TransportHost, c: BoundaryContext,
-  settlementConsumer: SettlementConsumer<S> | undefined, bind: boolean): Result<readonly OwnedBodyRegistration[]> {
+export function registerTransportBodies<S = never>(host: TransportHost, c: BoundaryContext, settlementConsumer?: SettlementConsumer<S>): Result<readonly OwnedBodyRegistration[]> {
   return boundary('TransportRegistrations', null, c, () => {
-    const registrations = Object.entries(shapes).map(([name, shape]) => take(registerOwnedBody({
+    const registrations = Object.entries(registeredTransportShapes).map(([name, shape]) => take(registerOwnedBody({
     name, owner: 'part-six', currentVersion: 1, versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
     decodeCurrent: (input, ctx) => {
       try {
-        shapeCheck(input, shape);
+        if (name === 'LoopPolicy') {
+          if (isSharedLoopPolicy(input)) seamShapeCheck(input, shape);
+          else shapeCheck(input, transportShapes.LoopPolicy!);
+        } else shapeCheck(input, shape);
         const v = input as unknown as TransportRecord;
         ensure((input as { type: string }).type === name && v.schemaVersion === 1, 'owned type mismatch');
-        if (name === 'LoopPolicy') policyCheck(input as unknown as LoopPolicy);
+        if (name === 'LoopPolicy') {
+          if (isSharedLoopPolicy(input)) sharedPolicyCheck(input); else policyCheck(input as unknown as LoopPolicy);
+        }
         else if (name === 'FenceToken') {
           const past = rows(causalCone(ctx.origin, ctx.facts.facts), host.domain), lease = latestLease(past)?.record;
           ensure(lease && encoded(input).bytes === encoded(fenceFor(past, lease)).bytes, 'fence lacks committed assignment');
           if (ctx.mode === 'origin') { live(host); checkFence(past, input as unknown as FenceToken, host, host.monotonic()); }
         }
         else if (recordNames.includes(name)) {
-          // Main-owned legacy LoopRecords must enter their original transition
-          // validator before any additive shared-breaker validation. This keeps
-          // both acceptance and exact refusal Results byte-identical to main.
-          if (v.type === 'LoopRecord') {
-            if (v.policy.breaker === 'shared-circuit-v1') loopRecordCheck(v);
-            else {
-              ensure(Object.keys(v).every(key => Object.hasOwn(legacyLoopRecordFields, key)), 'unknown field');
-              shapeCheck(v, legacyLoopRecordShape);
-            }
-          }
           // The independently configured one-voter identity is invariant across
           // origin, replication and replay. Process incarnations may change;
           // a different signed actor/machine cannot speak for this authority.
           ensure(ctx.origin.machine === host.machine && ctx.origin.principal.id === host.principal.id
             && ctx.origin.principal.kind === host.principal.kind, 'issuer is not this authority');
-          const cone = causalCone(ctx.origin, ctx.facts.facts);
-          const past = rows(cone, host.domain);
+          const past = rows(causalCone(ctx.origin, ctx.facts.facts), host.domain);
           ensure(past.every(({ fact }) => fact.machine === host.machine && fact.principal.id === host.principal.id
             && fact.principal.kind === host.principal.kind), 'predecessor issuer is not this authority');
           // P2 also live-decodes preserved facts for projection reconstruction.
@@ -1188,9 +1055,7 @@ function registerBodySet<S>(shapes: Readonly<Record<string, OwnedShape>>, host: 
           // Even a subsequently refused candidate conservatively invalidates it.
           if (candidate) noteAccountingCandidate(host);
           const admitting = ctx.mode === 'origin' && candidate;
-          if (v.type === 'LoopRecord' && v.policy.breaker === 'shared-circuit-v1')
-            resolveSharedLoopEvidence(v as SharedLoopRecord, ctx.origin, ctx.facts.facts, ctx.facts, host);
-          validateTransition(v, past, host, admitting, cone, ctx.facts);
+          validateTransition(v, past, host, admitting);
           if (v.type === 'SettlementApplication') {
             checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past);
             if (ctx.mode === 'origin') requireApplication(host, v, settlementConsumer);
@@ -1215,13 +1080,53 @@ function registerBodySet<S>(shapes: Readonly<Record<string, OwnedShape>>, host: 
       } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'transport record refused' }; }
     },
     }, shape, c)));
-    if (bind) bindSettlementConsumer(host, settlementConsumer); return registrations;
+    bindSettlementConsumer(host, settlementConsumer); return registrations;
   });
 }
-export function registerTransportBodies<S = never>(host: TransportHost, c: BoundaryContext,
-  settlementConsumer?: SettlementConsumer<S>): Result<readonly OwnedBodyRegistration[]> {
-  return registerBodySet(transportShapes, host, c, settlementConsumer, true);
-}
 export function registerTransportSeamBodies(host: TransportHost, c: BoundaryContext): Result<readonly OwnedBodyRegistration[]> {
-  return registerBodySet(transportSeamShapes, host, c, undefined, false);
+  return boundary('TransportSeamRegistrations', null, c, () => Object.entries(transportSeamShapes).map(([name, shape]) =>
+    take(registerOwnedBody({
+      name, owner: 'part-six', currentVersion: 1,
+      versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {},
+      decodeCurrent: (input, ctx) => {
+        try {
+          seamShapeCheck(input, shape);
+          if (name === sharedLoopPolicyOwnedName) {
+            const policy = input as unknown as SharedLoopRecord['policy'];
+            sharedPolicyCheck(policy);
+          } else {
+            ensure(name === sharedLoopRecordOwnedName && isStoredSharedLoopRecord(input), 'owned type mismatch');
+            const record = loadSharedLoopRecord(input);
+            sharedLoopRecordCheck(record);
+            ensure(ctx.origin.machine === host.machine && ctx.origin.principal.id === host.principal.id
+              && ctx.origin.principal.kind === host.principal.kind, 'issuer is not this authority');
+            const cone = causalCone(ctx.origin, ctx.facts.facts);
+            const past = rows(cone, host.domain);
+            ensure(past.every(({ fact }) => fact.machine === host.machine && fact.principal.id === host.principal.id
+              && fact.principal.kind === host.principal.kind), 'predecessor issuer is not this authority');
+            const candidate = !ctx.facts.facts.some(fact => fact.id === ctx.origin.id);
+            if (candidate) noteAccountingCandidate(host);
+            const admitting = ctx.mode === 'origin' && candidate;
+            resolveSharedLoopEvidence(record, ctx.origin, ctx.facts.facts, ctx.facts, host);
+            validateTransition(record, past, host, admitting, cone, ctx.facts);
+            if (ctx.mode === 'origin') {
+              live(host);
+              const now = host.monotonic();
+              ensure(record.authority === host.authorityIncarnation && record.tick <= now
+                && !past.some(row => row.record.authority === record.authority && row.record.tick > record.tick),
+              'untrusted authority clock or incarnation');
+              ensure(record.predecessor === (rows(ctx.facts.facts, host.domain).at(-1)?.fact.id ?? ''),
+                'stale origin predecessor');
+              const lease = latestLease(past)?.record;
+              ensure(lease?.incarnation === host.incarnation && lease.authority === host.authorityIncarnation
+                && lease.expires > now && lease.generation === host.current().generation.id,
+              'stale owner at durable boundary');
+            }
+          }
+          return { ok: true, value: freeze(input) };
+        } catch (error) {
+          return { ok: false, detail: error instanceof Error ? error.message : 'transport seam record refused' };
+        }
+      },
+    }, shape, c))));
 }

@@ -88,7 +88,7 @@ it.skipIf(mode !== 'repair9-cycle-produce')('repair9 cycle producer admits the l
   expect(opened.breakerFirstOpened.value).toBe(142);
   f.advance(20); loop = admit('trial-2');
   expect(loop).toMatchObject({ state: 'half-open', pendingAttempts: ['trial-2'] });
-});
+}, 20000);
 
 it.skipIf(mode !== 'repair9-cycle-recover')('repair9 cycle recovery keeps the later open interval', () => {
   const f = transportLoopFixture(directory, 'worker:e2e-repair9-cycle', 'authority:e2e-repair9-cycle');

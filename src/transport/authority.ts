@@ -6,7 +6,8 @@ import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAutho
   RecoveryRecord, ScanCursor, SettlementAccountingInput, SettlementApplication, SettlementConsumer, SharedLoopRecord,
   TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportRowRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, latestSharedLoop, live, loopActive,
+import { isSharedLoopRecord, sharedPolicyCheck, storeSharedLoopRecord } from './loop-seam.js';
+import { checkFence, fenceFor, kindFor, kindForRecord, latestLease, latestLoop, latestScanCursor, latestSharedLoop, live, loopActive,
   observationAdmission, policyCheck, reservations, resolvePolicyFact, resolveRunReference, resolveSourceVector, rows,
   resolvePressureBinding, resolveSharedLoopAdmission, restorationReferenceComplete, sharedAdmissionDecision, sharedLoopEvidence, sharedOutcomeDecision, sourceVectorCheck,
   validateScanGeneration, validateSharedParentPolicy, validateTransition,
@@ -15,11 +16,13 @@ import { accounting, accountingRevision, checkAccountingReceipt, checkApplicatio
   requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication, withSettlementAttempt } from './settlement.js';
 
 export function createTransportSpine(host: TransportHost, author: FactAuthor, store: FactStorePort): TransportSpine {
-  return Object.freeze({ store, context: author.context, append: (record: TransportRecord, required: readonly string[]) => authorAndAppend({
-    kind: kindFor(record.type), schemaVersion: 1, machine: host.machine,
-    principal: json(host.principal), provenance: json(host.principal.provenance), at: json(host.current().clock),
-    body: json({ record }), required,
-  }, author.context, store, author.privateKey) });
+  return Object.freeze({ store, context: author.context, append: (record: TransportRecord, required: readonly string[]) => {
+    const stored = isSharedLoopRecord(record) ? storeSharedLoopRecord(record) : record;
+    return authorAndAppend({ kind: kindForRecord(record), schemaVersion: 1, machine: host.machine,
+      principal: json(host.principal), provenance: json(host.principal.provenance), at: json(host.current().clock),
+      body: json({ record: stored }), required,
+    }, author.context, store, author.privateKey);
+  } });
 }
 
 export function createBoundedDueScanPort(host: TransportHost, spine: TransportSpine, c: BoundaryContext): BoundedDueScanPort {
@@ -159,7 +162,9 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
     if (r.type === 'SettlementApplication') required.push(r.settlementFact);
     const receipt = take(spine.append(r, [...new Set(required)]));
     ensure(!receipt.taint.length, 'append was provisional or contested');
-    ensure(receipt.fact.kind === kindFor(r.type) && encoded(receipt.fact.body).bytes === encoded({ record: r }).bytes, 'append returned different record');
+    const stored = isSharedLoopRecord(r) ? storeSharedLoopRecord(r) : r;
+    ensure(receipt.fact.kind === kindForRecord(r) && encoded(receipt.fact.body).bytes === encoded({ record: stored }).bytes,
+      'append returned different record');
     if (r.type === 'AdmissionReservation' && r.durability === 'replicated')
       ensure(receipt.durability.kind === 'replicated' && receipt.durability.n >= r.replicas, 'effect requires stronger durability than lease');
     if (r.type === 'SettlementApplication') checkAccountingReceipt(receipt.fact, receipt, reservations(all).find(p => p.operation === r.operation)!);
@@ -353,7 +358,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         policy, attempts: 0, started: m.tick, nextWake: m.tick + policy.minDelay, state: 'scheduled', pending: '' } as LoopRecord).record;
     }),
     scheduleEpisode: input => checked('SharedLoopSchedule', input, () => {
-      const all = readComplete(); fence(all, input.fence); policyCheck(input.policy);
+      const all = readComplete(); fence(all, input.fence); sharedPolicyCheck(input.policy);
       ensure(input.policy.breaker === 'shared-circuit-v1', 'real breaker policy required');
       ensure(input.currentOwnerRun.owner === 'part-five' && input.currentOwnerRun.name === 'Run'
         && input.currentOwnerRun.id.length > 0, 'current owner Run reference required');
@@ -501,10 +506,13 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
           && previous.halfOpenSucceeded >= policy.halfOpenTrials
           && closureEvidence.length > previous.closureEvidence.length,
         'loop outcome changed after admission without new complete restoration');
+        const currentOutcomes = windowAt(previous, now), rolling = parentRollingAt(all, policy, now);
         const m = meta(all, input.command);
         const closed = freeze({ ...previous, ...m, nextWake: now.value, state: 'closed', pending: '',
           transition: 'closed', transitionAt: now, nextEligible: now, sourceVector: previous.sourceVector,
-          policyGeneration: current.generation, closureEvidence } as SharedLoopRecord);
+          policyGeneration: current.generation, closureEvidence,
+          failureCount: failureCountAt(policy, currentOutcomes), ...rolling,
+          outcomeWindowDigest: encoded(currentOutcomes).hash } as SharedLoopRecord);
         return managedWrite(all, closed);
       }
       ensure(previous.pendingAttempts.includes(input.attempt), 'attempt is not pending');

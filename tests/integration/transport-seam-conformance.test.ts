@@ -4,6 +4,7 @@ import { createFactStore, decodeEnvelope, decodeHistoricalBody, factId, prepareS
 import type { FactEnvelope } from '../../src/facts/index.js';
 import { decodeLoopPolicy } from '../../src/transport/index.js';
 import type { FenceToken, SharedBreakerLoopPolicy, SharedLoopRecord } from '../../src/transport/index.js';
+import { loadSharedLoopRecord, storeSharedLoopRecord } from '../../src/transport/loop-seam.js';
 import { deriveVerificationAssessment } from '../../src/verification/index.js';
 import type { VerificationAssessment, VerificationPlan, VerificationRequest } from '../../src/verification/index.js';
 import { privateKey } from '../facts/fixtures.js';
@@ -98,12 +99,13 @@ function signedNext(f: Fixture, record: SharedLoopRecord | Record<string, unknow
 }
 function mutateLast(s: ReturnType<typeof setup>, transform: (record: SharedLoopRecord) => SharedLoopRecord) {
   const stored = value(s.f.store.read());
-  const fact = stored.filter(value => value.kind === 'transport-LoopRecord').at(-1)!;
+  const fact = stored.filter(value => value.kind === 'transport-SharedLoopRecord').at(-1)!;
   const wires = s.f.storage.read() as readonly FactEnvelope[];
   const wire = wires.find(value => value.id === fact.id)!;
   const ctx = { ...s.f.ctx, facts: [...s.f.ctx.facts, ...stored.filter(value => value.id !== fact.id)] };
   const altered = signEnvelope({ ...wire,
-    body: { record: transform((fact.body as unknown as { record: SharedLoopRecord }).record) } }, privateKey);
+    body: { record: storeSharedLoopRecord(transform(loadSharedLoopRecord(
+      (fact.body as unknown as { record: Parameters<typeof loadSharedLoopRecord>[0] }).record))) } }, privateKey);
   const prefix = wires.filter(value => value.id !== fact.id);
   const replica = createFactStore(s.f.ctx, { owner: 'part-ten', read: () => prefix,
     append: (bytes, expected) => s.f.result(() => {
@@ -349,11 +351,11 @@ it('SLB-ACTIVE-POLICY-35 V13 refuses a conflicting decoded policy before coalesc
 
 it('SLB-HISTORY-33 V22 V37 reconstructs every initial schedule field from signed policy and owner evidence', () => {
   const s = setup(), stored = value(s.f.store.read());
-  const fact = stored.find(value => value.kind === 'transport-LoopRecord')!;
+  const fact = stored.find(value => value.kind === 'transport-SharedLoopRecord')!;
   const original = s.f.storage.read().find(value => (value as { id?: string }).id === fact.id) as Record<string, unknown>;
   const context = { ...s.f.ctx, facts: [...s.f.ctx.facts, ...stored.filter(value => value.id !== fact.id)] };
   const altered = (record: SharedLoopRecord) => {
-    const wire = signEnvelope({ ...original, body: { record } }, privateKey);
+    const wire = signEnvelope({ ...original, body: { record: storeSharedLoopRecord(record) } }, privateKey);
     return decodeHistoricalBody(value(decodeEnvelope(wire, context, 'replication')), context, context.decode);
   };
   rejects(altered({ ...s.loop, nextWake: s.loop.transitionAt.value,

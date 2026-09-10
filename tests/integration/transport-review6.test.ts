@@ -15,6 +15,7 @@ import {
   createTransportSpine,
 } from '../../src/transport/index.js';
 import type { SharedLoopRecord } from '../../src/transport/index.js';
+import { loadSharedLoopRecord, storeSharedLoopRecord } from '../../src/transport/loop-seam.js';
 import { json, privateKey } from '../facts/fixtures.js';
 import { transportFixture } from '../transport/fixture.js';
 import { transportLoopFixture, value } from '../transport/loop-fixture.js';
@@ -83,13 +84,14 @@ function mutateLastOutcome(
   transform: (record: SharedLoopRecord) => SharedLoopRecord,
 ) {
   const stored = value(f.store.read());
-  const fact = stored.filter(candidate => candidate.kind === 'transport-LoopRecord').at(-1)!;
+  const fact = stored.filter(candidate => candidate.kind === 'transport-SharedLoopRecord').at(-1)!;
   const wires = f.storage.read() as FactEnvelope[];
   const wire = wires.find(candidate => candidate.id === fact.id)!;
   const context = { ...f.ctx, facts: [...f.ctx.facts, ...stored.filter(candidate => candidate.id !== fact.id)] };
   const altered = signEnvelope({
     ...wire,
-    body: { record: transform((fact.body as unknown as { record: SharedLoopRecord }).record) },
+    body: { record: storeSharedLoopRecord(transform(loadSharedLoopRecord(
+      (fact.body as unknown as { record: Parameters<typeof loadSharedLoopRecord>[0] }).record))) },
   }, privateKey);
   const prefix = wires.filter(candidate => candidate.id !== fact.id);
   const replica = createFactStore(f.ctx, {

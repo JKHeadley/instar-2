@@ -63,7 +63,7 @@ it('SLB-LEGACY-DIFFERENTIAL-53 V23 matches main Result bytes for signed legacy L
     closureEvidence: refusal('unknown field'),
     failureCount: refusal('unknown field'),
     parentDuty: refusal('unknown field'),
-    policyExtra: refusal('undeclared or missing field'),
+    policyExtra: refusal('unknown field'),
   };
 
   for (const [name, mutate] of Object.entries(mutations)) {

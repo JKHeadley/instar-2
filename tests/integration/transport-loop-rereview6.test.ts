@@ -27,7 +27,7 @@ function finish(s: any, id: string, kind = 'failed', extra = {}) {
 }
 function mutation(f: any, transform: any, extraRequired: string[] = []) {
   const stored = value(f.store.read()) as any[];
-  const fact = stored.filter(x=>x.kind==='transport-LoopRecord').at(-1)!;
+  const fact = stored.filter(x=>x.kind==='transport-SharedLoopRecord').at(-1)!;
   const wires = f.storage.read();
   const original = wires.find((x:any)=>x.id===fact.id);
   const ctx = {...f.ctx,facts:[...f.ctx.facts,...stored.filter(x=>x.id!==fact.id)]};

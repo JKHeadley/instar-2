@@ -4,6 +4,7 @@ import { createFactStore, decodeEnvelope, decodeHistoricalBody, signEnvelope } f
 import type { FactEnvelope } from '../../src/facts/index.js';
 import { createTransportAuthority, createTransportSpine, decodeLoopPolicy } from '../../src/transport/index.js';
 import type { SharedLoopRecord } from '../../src/transport/index.js';
+import { storeSharedLoopRecord } from '../../src/transport/loop-seam.js';
 import { privateKey } from '../facts/fixtures.js';
 import { transportLoopFixture, value } from '../transport/loop-fixture.js';
 
@@ -62,7 +63,7 @@ it('SLB-PARENT-CLOCK-70 V01 refuses an incomparable parent-budget clock live and
   state.fixture.advance(11);
   const later = value(state.fixture.api.scheduleEpisode({ ...next, command: 'repair9-later-signed' }));
   const stored = value(state.fixture.store.read());
-  const fact = stored.filter(candidate => candidate.kind === 'transport-LoopRecord').at(-1)!;
+  const fact = stored.filter(candidate => candidate.kind === 'transport-SharedLoopRecord').at(-1)!;
   const wires = state.fixture.storage.read() as FactEnvelope[];
   const wire = wires.find(candidate => candidate.id === fact.id)!;
   const otherClock = (clock: SharedLoopRecord['transitionAt']) => ({ ...clock,
@@ -71,7 +72,8 @@ it('SLB-PARENT-CLOCK-70 V01 refuses an incomparable parent-budget clock live and
     breakerFirstOpened: otherClock(later.breakerFirstOpened), clockBasis: 'machine-b' };
   const historical = { ...state.fixture.ctx,
     facts: [...state.fixture.ctx.facts, ...stored.filter(candidate => candidate.id !== fact.id)] };
-  const altered = signEnvelope({ ...wire, body: { record: changed } }, privateKey);
+  const altered = signEnvelope({ ...wire,
+    body: { record: storeSharedLoopRecord(changed as unknown as SharedLoopRecord) } }, privateKey);
   const frame = value(decodeEnvelope(altered, historical, 'replication'));
   expect(verdict(decodeHistoricalBody(frame, historical, historical.decode))).toMatchObject({ kind: 'REFUSE' });
   const prefix = wires.filter(candidate => candidate.id !== fact.id);
