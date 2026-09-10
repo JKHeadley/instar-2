@@ -12,8 +12,8 @@ standing, grant, register generation, or proof that its recalled context is curr
 and 110; **checks: P13-NF-25/26/27/28**. A replacement process requires the current lease/fence,
 a fresh worker incarnation and corresponding ownership admission. Reconnect to a surviving process
 retains its incarnation. Compaction inside that surviving process also retains its incarnation,
-because a worker incarnation is one process lifetime; it instead creates a new grounding and
-context-consumption boundary. Every case reads current signed history, current clock, current run
+because no restart occurred; it instead creates a new grounding and context-consumption boundary.
+Every case reads current signed history, current clock, current run
 graph, pending effects, current directives and register generation. Runtime-restored history is
 supplemental input, not the grounding source. A stale, missing, rejected, or ambiguous runtime
 handle cannot authorize fallback. Part Six recovery and the assembly choose whether to attempt a
@@ -30,15 +30,15 @@ identity across machines.
 
 A fresh same-machine reconnect may retain the process incarnation only after the current owner
 re-resolves its fence and proves that exact local process-start identity is still live. A
-cross-machine replacement is permitted only through Six's break-before-make handoff: current
-ownership loss for the old epoch is committed, unresolved reservations and effects are preserved,
-the new machine obtains the current fence and capacity, and Ten records a new launch, machine, and
-process incarnation before Five grounds it. An unreachable old worker is fenced at every later
-step, resource, provider, tool, and conversation-effect admission even if it never receives a stop
-notice. It is not reported killed or quiescent without evidence. Late authenticated observations
+cross-machine replacement of a session is unsupported. Neither the landed Part Six authority nor
+the RECOVERY grant can re-own a partitioned machine's lease on another machine. Until Part Six
+grants and lands the ownership/admission path requested in
+`design-harness-adapters-seam-request-cross-machine-ownership.md`, a partition closes ordinary
+execution and preserves queued input; it never starts a replacement on another machine or permits
+two speaking workers. An adapter must not implement a substitute lease authority. An unreachable
+old worker is not reported killed or quiescent without evidence. Late authenticated observations
 may enter under separate observer standing; unresolved effects remain owned and are observed or
-settled before any retry. During a partition, inability to establish exclusive current ownership
-closes ordinary execution and preserves queued input; it never permits two speaking workers.
+settled before any retry.
 
 **Rule — compaction preserves classes and discloses the seam.** Rules 47, 69 and 110; **checks:
 P13-NF-26/27/52**. The adapter delivers the same required governing-context classes after compaction

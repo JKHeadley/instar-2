@@ -19,20 +19,22 @@ pretending the stronger guarantee exists.
 
 **Value — decision 2: how much private session content to keep for diagnosis.**
 
-Question: Should diagnosis keep only compact event records, or may it also keep short snapshots of
-what appeared in a session?
+Question: Beyond the required record of what was sent to and returned by the model, should diagnosis
+keep only compact session events, or may it also keep short snapshots of what appeared in a session?
 
-Background: Session snapshots can make rare failures easier to understand, but they may contain
-more private content than event records.
+Background: Both choices still capture the exact model input and output required to audit each model
+call. This choice affects only extra session diagnostic detail; snapshots can reveal more
+private content and use more storage than compact session events.
 
-Choices: Keep compact event records only, or also allow limited snapshots for approved problem
-categories.
+Choices: Keep only compact extra session events, or also allow limited session snapshots for
+approved problem categories.
 
-What it changes: Event records only reduce privacy and storage exposure. Limited snapshots improve
-debugging for the approved categories while increasing that exposure.
+What it changes: Compact extra events reduce the additional privacy and storage cost but do not
+remove the required model-call record. Limited snapshots improve debugging for the approved
+categories while increasing that additional exposure.
 
-Recommendation: Keep event records only by default because snapshots should be justified by a
-specific diagnostic need.
+Recommendation: Keep only compact extra session events by default because snapshots should be
+justified by a specific diagnostic need.
 
 **Value — decision 3: whether old diagnostic content should be removed automatically.**
 
@@ -88,21 +90,24 @@ without depending on a vendor's storage promise.
 
 **Value — decision 6: trusting the machine administrator.**
 
-Question: Should we enable the fully safeguarded mode on the proposed trusted machines while
-accepting the administrator risk, or leave that mode disabled there?
+Question: Should we allow fully safeguarded work only on computers named in an approved deployment
+proposal with their responsible administrator identified, or leave it disabled everywhere?
 
 Background: A machine administrator can replace the programs and observers that run on that
-machine, so this risk cannot be removed by the adapter itself.
+machine, so this risk cannot be removed by the adapter itself. The proposed list is empty today;
+a computer joins it only through a concrete deployment proposal that names the computer and the
+person or organization responsible for administering it.
 
-Choices: Enable the fully safeguarded mode on the listed trusted machines, or leave it disabled on
-those machines.
+Choices: Adopt the named-computer approval policy, or leave fully safeguarded work disabled on every
+computer.
 
-What it changes: Enabling it makes fully safeguarded work available on those machines, with
-administrator compromise as the remaining risk. Leaving it disabled removes that work there while
-independently hosted limited communication can remain available where its own safeguards still hold.
+What it changes: The approval policy enables nothing today, but a later named proposal could make
+fully safeguarded work available on each approved computer while accepting its administrator risk.
+Leaving it disabled everywhere rules out that mode even after a concrete proposal, while separately
+hosted limited communication can remain available where its own safeguards still hold.
 
-Recommendation: Accept this trust only for explicitly trusted administrators because pretending
-the administrator is constrained by software it controls would be misleading.
+Recommendation: Adopt the named-computer approval policy because it keeps the list empty until the
+operator can evaluate a specific computer and its administrator.
 
 **Value — decision 7: using a paid service whose final charge arrives later.**
 
