@@ -1,5 +1,5 @@
 import type { BoundaryContext,Clock,DecodeContext,Evidence,Hash,HistoricalRead,Inventory,Json,Provenance,RegisterGenerationReference,RegisterReadPort,Scope,StandingGrant,VerifiedPrincipal } from '../index.js';
-import { causalCone,causalStanding,decodeHistoricalBody,hashBytes,registerOwnedBody } from '../facts/index.js';
+import { causalCone,causalStanding,decodeHistoricalBody,foldKey,hashBytes,registerOwnedBody } from '../facts/index.js';
 import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readHistoricalEvidence,scopeIncludes } from '../index.js';
 import { prepareSnapshot } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactSchema,FactSnapshot,FactStatus,OwnedBodyRegistration,OwnedShape } from '../facts/index.js';
@@ -86,25 +86,27 @@ export function registeredScheduledIntakeAdapters(register?: VerifiedRegister,re
 }
 
 export function isScheduledIntakeAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[],observerId: string,
-  registeredScheduledAdapters: readonly string[]): boolean {
+  _registeredScheduledAdapters: readonly string[]): boolean {
   if(fact.kind!=='intake-admitted') return false;
   const receipt=facts.find(candidate => candidate.id===object(fact.body).receipt&&candidate.kind==='intake-receipt');
   const arrival=receipt&&intakeArrival(receipt,observerId);
   if(!receipt||!arrival) return false;
-  if(registeredScheduledAdapters.includes(arrival.adapter)) return true;
-  // A package-authenticated system arrival on the scheduled channel is still
-  // a scheduled attempt when its adapter declaration is wrong. Selecting the
-  // arm here lets route validation refuse that unsupported contract instead of
-  // laundering it through the ordinary decoder.
+  // Classify the preserved stimulus, never the adapter's capability set. A
+  // multi-stimulus parser must keep its ordinary message path byte-identical.
+  // Conversely, the reserved channel, the authenticated system principal, or
+  // a scheduled-principal dependency is enough to select this arm so malformed
+  // route data and a missing/mismatched companion witness cannot disable it.
   try {
+    const body=object(fact.body),intent=object(body.intent!),admittedPrincipal=object(intent.principal!);
     const principal=object(receipt.principal),provenance=object(receipt.provenance);
     const authenticated=object(provenance.authenticated!),signedPrincipal=object(authenticated.principal!);
-    return arrival.route.channel.startsWith('scheduled:')&&principal.kind==='system'
-      &&principal.id===arrival.route.sender&&provenance.class==='verified'
+    return arrival.route.channel.startsWith('scheduled:')||admittedPrincipal.kind==='system'
+      ||fact.predecessors.required.some(id => facts.some(candidate => candidate.id===id&&candidate.kind==='intake-scheduled-principal'))
+      ||(principal.kind==='system'&&provenance.class==='verified'
       &&authenticated.recordType==='package-system-principal'
-      &&signedPrincipal.id===principal.id&&signedPrincipal.kind==='system'
-      &&object(provenance.record!).hash===arrival.route.identityEpoch;
-  } catch { return false; }
+      &&signedPrincipal.kind==='system'
+      &&(arrival.route.sender===signedPrincipal.id||object(provenance.record!).hash===arrival.route.identityEpoch));
+  } catch { return arrival.route.channel.startsWith('scheduled:'); }
 }
 
 export function validateScheduledIntakeRoute(adapterInput: Json,channelInput: Json,senderInput: Json,
@@ -258,9 +260,10 @@ export function resolveScheduledDiscoveryWitness(histories: readonly ScheduledHi
   const candidates=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
     required.has(row.fact.id)&&row.record.view.type==='Evidence'&&row.record.view.source===row.fact.machine);
   const witnesses=candidates.filter(row => {
-    // An unavailable historical candidate is unresolved, not negative evidence:
-    // retaining it here prevents promotion until its capture can be reinspected.
-    if(mode==='historical'&&row.record.captureStatus!=='available') return true;
+    // An unavailable historical candidate is unknown. It is neither a
+    // confirmed discovery nor a positive conflict; Part Two's taint retains
+    // the admission while downstream promotion stays closed.
+    if(mode==='historical'&&row.record.captureStatus!=='available') return false;
     // Inspect the signed claim through the Evidence doorway at its observation
     // instant to classify its role. Only the matching discovery is then required
     // to remain fresh at the admission clock below.
@@ -268,11 +271,16 @@ export function resolveScheduledDiscoveryWitness(histories: readonly ScheduledHi
     const claim=take(readHistoricalEvidence(row.record,observedAt,preserved));
     return claim.subject===eventId&&claim.predicate==='scheduled-discovery'&&claim.value===true;
   });
-  requireIntake(witnesses.length>0,
-    'scheduled intake: discovery Evidence does not bind the event id','integrity');
-  requireIntake(witnesses.length===1,
+  const identities=[...new Set(witnesses.map(row => row.record.view.id))].sort();
+  requireIntake(identities.length<=1,
     'scheduled intake: one signed discovery Evidence dependency is required');
-  const witness=witnesses[0]!;
+  if(identities.length===0) {
+    requireIntake(mode==='historical'&&candidates.some(row => row.record.captureStatus!=='available'),
+      'scheduled intake: discovery Evidence does not bind the event id','integrity');
+    return undefined;
+  }
+  const witness=witnesses.filter(row => row.record.view.id===identities[0])
+    .sort((left,right) => foldKey(left.fact)<foldKey(right.fact)?-1:foldKey(left.fact)>foldKey(right.fact)?1:0)[0]!;
   if(mode==='origin'||witness.record.captureStatus==='available') {
     const claim=take(readHistoricalEvidence(witness.record,causalNow,preserved));
     requireIntake(claim.subject===eventId&&claim.predicate==='scheduled-discovery'&&claim.value===true,
@@ -609,7 +617,7 @@ export function intakeWorkRegistration(context: BoundaryContext,observerId: stri
             &&same(resolved.authentication,principalProvenance.record),
           'scheduled intake: resolved-principal witness differs from the admission','integrity');
           requireIntake(resolution.predecessors.required.includes(receipt.id)
-            &&resolution.predecessors.required.includes(discoveryWitness.fact.id)
+            &&(!discoveryWitness||resolution.predecessors.required.includes(discoveryWitness.fact.id))
             &&historicalGrants.some(row => resolution.predecessors.required.includes(row.factId)),
           'scheduled intake: resolved-principal witness omits signed authority','integrity');
           const decodedResolution=take(decodeHistoricalBody(resolution,historicalContext,

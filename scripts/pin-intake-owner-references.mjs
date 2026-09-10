@@ -39,8 +39,13 @@ const manifest = { schemaVersion: 1, owner: 'part-four',
     { id: 'P4-ST-44', stage: 'build', artifact: artifact('tests/intake/scheduled-repair9.test.ts') },
     { id: 'P4-ST-45', stage: 'build', artifact: artifact('tests/intake/scheduled-repair9.test.ts') },
     { id: 'P4-ST-46', stage: 'build', artifact: artifact('tests/intake/scheduled-repair9.test.ts') },
+    { id: 'P4-ST-47', stage: 'build', artifact: artifact('tests/intake/scheduled-repair10.test.ts') },
+    { id: 'P4-ST-48', stage: 'build', artifact: artifact('tests/e2e/intake-scheduled-repair10.test.ts') },
+    { id: 'P4-ST-49', stage: 'build', artifact: artifact('tests/integration/intake-scheduled-repair10.test.ts') },
+    { id: 'P4-ST-50', stage: 'build', artifact: artifact('tests/intake/scheduled-repair10.test.ts') },
     { id: 'P4-PRESERVE-01', stage: 'build', artifact: artifact('tests/intake/preexisting-preservation.test.ts') },
     { id: 'P4-PRESERVE-02', stage: 'build', artifact: artifact('tests/e2e/intake-scheduled-repair7.test.ts') },
+    { id: 'P4-PRESERVE-03', stage: 'build', artifact: artifact('tests/e2e/intake-scheduled-repair10.test.ts') },
   ],
   probes: [], decoders, documents: [{ id: 'intake.contract', artifact: artifact('docs/08-the-intake.md') }] };
 mkdirSync('register-source/owner-references', { recursive: true });

@@ -287,6 +287,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       requireIntake(row&&!row.taint.length&&!row.conflicts.length,'scheduled intake: discovery Evidence is missing or contested','integrity');
       const histories=rows.flatMap(candidate => candidate.historical.map(record => ({ fact: candidate.fact,record })));
       const selected=resolveScheduledDiscoveryWitness(histories,new Set([row.fact.id]),eventId,at,preserved,context(preserved).decode,'origin');
+      requireIntake(selected,'scheduled intake: discovery Evidence is missing or unavailable','integrity');
       const evidence=selected.record;
       requireIntake(evidence.captureStatus==='available','scheduled intake: discovery Evidence is missing or unavailable','integrity');
       const field=constitutionalField(row,'Evidence',evidence.view.id,preserved);
@@ -407,6 +408,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       for(const principalRow of principalRows) constitutionalField(principalRow,'VerifiedPrincipal',principal.id,preserved);
       const histories=snapshot.flatMap(candidate => candidate.historical.map(record => ({ fact: candidate.fact,record })));
       const discovery=resolveScheduledDiscoveryWitness(histories,new Set(required),arrival.route.eventId,row.fact.at,preserved,c.decode,'origin');
+      requireIntake(discovery,'scheduled intake: discovery witness is not a signed dependency','integrity');
       const discoveryRow=dependencies.find(candidate => candidate.fact.id===discovery.fact.id);
       requireIntake(discoveryRow,'scheduled intake: discovery witness is not a signed dependency','integrity');
       constitutionalField(discoveryRow,'Evidence',discovery.record.view.id,preserved);
