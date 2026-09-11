@@ -384,6 +384,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
         kind: derivedKind,
         failureClass: input.failureClass,
         observedAt: completionFact.at,
+        recordedAt: now,
         completion: input.completion,
         jitterPermille: input.jitterPermille,
         restoration: input.restoration,

@@ -59,7 +59,7 @@ export const transportSeamEvidence = [
   ['SLB-A1-RESTART-90', 'integration', 'durable Part Two reconstruction'],
   ['SLB-A1-E2E-91', 'e2e', 'fresh-process reconstruction'],
   ['SLB-A1-MAP-92', 'unit', 'zero-test and per-fixture coverage refusal'],
-  ['SLB-LEGACY-ALL-KINDS-93', 'unit', 'generated 863-case legacy mutation differential over every legacy field plus V34'],
+  ['SLB-LEGACY-ALL-KINDS-93', 'unit', 'generated 1313-case legacy mutation differential over every legacy field plus V34'],
   ['SLB-LEGACY-V2-94', 'unit', 'legacy breaker marker remains a byte-identical main refusal'],
   ['SLB-A1-PARENT-95', 'integration', 'second pressure and conflicting parent policy refusal'],
   ['SLB-A1-EXCLUSIONS-96', 'integration', 'all excluded A2 budget and cursor fields are refused'],
@@ -75,6 +75,9 @@ export const transportSeamEvidence = [
   ['SLB-A1-EXCLUDED-INVENTORY-106', 'integration', 'every excluded field typed-refuses on requests and signed replay'],
   ['SLB-A1-HISTORICAL-TIME-107', 'integration', 'historical restoration validity is judged at its witnessed transition'],
   ['SLB-A1-SHARED-HISTORY-108', 'integration', 'one durable history contains both signed machine contributors across recovery'],
+  ['SLB-A1-RESTORATION-TRANSITION-109', 'integration', 'V18 and V27 transition-time restoration with forged-time and expired replay controls'],
+  ['SLB-A1-EXCLUSION-PRESENCE-110', 'integration', 'every top-level and nested excluded field presence typed-refuses before value interpretation'],
+  ['SLB-LEGACY-TEXT-RANGES-111', 'unit', 'empty, exact-limit, over-limit, non-ASCII and whitespace values for every legacy text field'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

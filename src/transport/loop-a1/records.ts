@@ -29,7 +29,9 @@ import {
   isStoredSharedLoopRecord,
   loadSharedLoopPolicy,
   loadSharedLoopRecord,
+  loopA1AdmissionShape,
   loopA1Shapes,
+  rejectRequestExtensions,
   rejectUnsupportedSliceA1Fields,
   sharedLoopPolicyOwnedName,
   sharedLoopRecordCheck,
@@ -336,7 +338,8 @@ export function restorationReferenceComplete(reference: SharedLoopRecord['closur
 
 function sharedLoopMeasurements(record: SharedLoopRecord, host: LoopA1Host): void {
   const values = [record.transitionAt, record.nextEligible, record.breakerFirstOpened,
-    ...record.attemptLog.map(value => value.admittedAt), ...record.outcomeLog.map(value => value.observedAt)];
+    ...record.attemptLog.map(value => value.admittedAt),
+    ...record.outcomeLog.flatMap(value => [value.observedAt, value.recordedAt])];
   for (const value of values) take(decodeMeasurement('clock', value, host.current().decode));
 }
 function requiredBy(origin: FactEnvelope, dependencies: readonly FactEnvelope[]): void {
@@ -415,13 +418,13 @@ export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly Fac
   for (const outcome of record.outcomeLog) {
     dependencies.push(resolveLoopOutcomeCompletion(record, outcome, history, context, false));
     for (const reference of outcome.restoration) {
-      dependencies.push(...resolveRestorationReference(reference, history, context, outcome.observedAt,
+      dependencies.push(...resolveRestorationReference(reference, history, context, outcome.recordedAt,
         record.pressureKey, record.operationFamily, host, false, false));
     }
   }
   for (const reference of record.closureEvidence) {
     const contributedAt = record.outcomeLog.find(outcome =>
-      outcome.restoration.some(value => value.id === reference.id))?.observedAt ?? record.transitionAt;
+      outcome.restoration.some(value => value.id === reference.id))?.recordedAt ?? record.transitionAt;
     dependencies.push(...resolveRestorationReference(reference, history, context,
       record.transition === 'closed' ? record.transitionAt : contributedAt,
       record.pressureKey, record.operationFamily, host, false));
@@ -811,6 +814,8 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
     !previous.outcomeLog.some(old => old.attempt === outcome.attempt));
   ensure(added && previous.pendingAttempts.includes(added.attempt), 'outcome completion was not pending');
   const attempt = previous.attemptLog.find(value => value.id === added.attempt)!;
+  ensure(encoded(added.recordedAt).bytes === encoded(record.transitionAt).bytes,
+    'outcome recording time differs from its introducing transition');
   ensure(atOrAfter(added.observedAt, attempt.admittedAt) && atOrAfter(record.transitionAt, added.observedAt),
     'outcome evidence or receipt clock precedes its admission');
   ensure(encoded(record.outcomeLog).bytes === encoded(sortedOutcomes(record.outcomeLog)).bytes,
@@ -890,6 +895,8 @@ export function registerLoopA1Bodies(host: LoopA1Host, context: BoundaryContext)
             ensure(isStoredSharedLoopPolicy(input), 'owned type mismatch');
             sharedPolicyCheck(loadSharedLoopPolicy(input));
           } else {
+            rejectRequestExtensions(input);
+            rejectUnsupportedSliceA1Fields((input as { policy?: unknown })?.policy);
             shapeCheck(input, shape);
             ensure(name === sharedLoopRecordOwnedName && isStoredSharedLoopRecord(input), 'owned type mismatch');
             const record = loadSharedLoopRecord(input);
@@ -922,7 +929,7 @@ export function registerLoopA1Bodies(host: LoopA1Host, context: BoundaryContext)
           return { ok: false, detail: error instanceof Error ? error.message : 'transport loop A1 record refused' };
         }
       },
-    }, shape, context))));
+    }, loopA1AdmissionShape(shape), context))));
 }
 
 export function liveLoopA1Host(host: LoopA1Host): void {

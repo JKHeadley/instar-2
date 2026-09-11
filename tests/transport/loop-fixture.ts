@@ -66,7 +66,9 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     schemas: [...rg.ctx.schemas, ...verificationSchemas(verificationHost), ...proofSchemas],
     ownedBodies: [...rg.ctx.ownedBodies ?? [], ...verificationRegistrations] };
   const machineBFacts: FactEnvelope[] = [];
+  let liveAppend: ((kind: string, body: Json, required: readonly string[]) => FactEnvelope) | undefined;
   const appendMachineB = (kind: string, body: Json, required: readonly string[] = []) => {
+    if (liveAppend) return liveAppend(kind, body, required);
     const context = { ...witnessContext, facts: [...witnessContext.facts, ...machineBFacts] };
     const previous = machineBFacts.at(-1) ?? context.facts.filter(fact => fact.machine === 'machine-a').at(-1)!;
     const segment = { machine: 'machine-a', epoch: previous.segment.epoch, position: previous.segment.position + 1 };
@@ -219,6 +221,15 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
   const ctx: FactContext = { ...provisional, ownedBodies: [...provisional.ownedBodies ?? [],
     ...value(registerTransportBodies(host, rg.c)), ...value(registerLoopA1Bodies(host, rg.c))] };
   const store = createFactStore(ctx, storage);
+  liveAppend = (kind, body, required) => {
+    const facts = [...ctx.facts, ...value(store.read())];
+    const head = facts.filter(fact => fact.machine === host.machine).at(-1)!;
+    const segment = { ...head.segment, position: head.segment.position + 1 };
+    const wire = signEnvelope({ type: 'FactEnvelope', envelopeVersion: 1, id: factId(segment), kind, schemaVersion: 1,
+      at: rg.clock(now), machine: host.machine, principal: rg.alice, provenance: rg.alice.provenance, segment,
+      prevInSegment: head.contentHash, predecessors: { inSegment: head.id, frontier: {}, required }, body }, hostPrivateKey);
+    return value(store.append(wire, { peer: host.machine })).fact;
+  };
   const spine = createLoopA1Spine(host, { context: ctx, privateKey: hostPrivateKey }, store);
   const api = createLoopA1Authority(host, spine, rg.c);
   const sharedPolicy = value(decodeLoopPolicyA1({ type: 'LoopPolicy', schemaVersion: 1, id: 'shared-loop-policy:1',
@@ -270,6 +281,8 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
   const detail = <T>(r: Result<T>) => consumeResult(r, { Success: () => '', Refused: refusal => refusal.detail });
   return { ...rg, host, ctx, storage, store, spine, api, directory, result, sharedPolicy, parentDuty, run: parentDuty,
     appendOutcome, input, head, detail,
+    addAssessment: (alias: string) => witnessedAssessment(alias, 'recovery',
+      { target: 'target:review', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' }),
     vector, advance: (n: number) => { now += n; }, time: (n: number) => { now = n; },
     stop: () => { stopped = true; }, generation: (value: string) => { generation = value; },
     revalidatePolicy: () => registerPolicy(), registerPolicy, assessmentFact: (id: string) => assessmentFacts.get(id),

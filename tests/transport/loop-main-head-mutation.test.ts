@@ -8,7 +8,7 @@ import { decodeLoopPolicy } from '../../src/transport/index.js';
 import { transportFixture } from './fixture.js';
 
 const MAIN_TIP = 'db15e137a259e7d56bf39be1b6839a1c56c33155';
-const GENERATED_CASE_COUNT = 863;
+const GENERATED_CASE_COUNT = 1_313;
 
 function resultValue(result: unknown): unknown {
   return consumeResult<unknown, unknown>(result as never, {
@@ -55,6 +55,11 @@ function paths(shape, prefix = []) {
     ...Object.entries(shape.fields).flatMap(([key, child]) => paths(child, [...prefix, key])),
   ];
 }
+function shapeAt(shape, path) {
+  let current = shape;
+  for (const key of path) current = current.fields[key];
+  return current;
+}
 it('generates every signed legacy record field mutation', () => {
   const fixture = transportFixture();
   const { token } = fixture.prepared();
@@ -89,7 +94,8 @@ it('generates every signed legacy record field mutation', () => {
       ]) cases.push(['V34:' + field, { ...body, [field]: value }]);
     }
     for (const path of paths(shape)) for (const mode of
-      ['missing', 'extra', 'wrong-type', 'negative', 'overflow', 'new-marker']) {
+      ['missing', 'extra', 'wrong-type', 'negative', 'overflow', 'new-marker',
+        'text-empty', 'text-max', 'text-overflow', 'text-non-ascii', 'text-whitespace']) {
       const candidate = structuredClone(body);
       let parent = candidate;
       for (const key of path.slice(0, -1)) parent = parent[key];
@@ -100,6 +106,15 @@ it('generates every signed legacy record field mutation', () => {
       if (mode === 'negative') parent[key] = -1;
       if (mode === 'overflow') parent[key] = Number.MAX_SAFE_INTEGER + 1;
       if (mode === 'new-marker') parent[key] = 'shared-circuit-v1';
+      if (mode.startsWith('text-')) {
+        const fieldShape = shapeAt(shape, path);
+        if (fieldShape.kind !== 'text') continue;
+        if (mode === 'text-empty') parent[key] = '';
+        if (mode === 'text-max') parent[key] = 'x'.repeat(fieldShape.maxLength);
+        if (mode === 'text-overflow') parent[key] = 'x'.repeat(fieldShape.maxLength + 1);
+        if (mode === 'text-non-ascii') parent[key] = 'é';
+        if (mode === 'text-whitespace') parent[key] = ' ';
+      }
       cases.push([path.join('.') + ':' + mode, candidate]);
     }
     for (const [label, record] of cases) {
@@ -132,7 +147,7 @@ function runProbe(targetRoot: string, output: string, directory: string): void {
   expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
 }
 
-it('SLB-LEGACY-ALL-KINDS-93 generates and compares all 863 main-vs-HEAD signed legacy mutations', () => {
+it('SLB-LEGACY-ALL-KINDS-93 SLB-LEGACY-TEXT-RANGES-111 generates and compares all 1313 main-vs-HEAD signed legacy mutations', () => {
   const directory = mkdtempSync(join(tmpdir(), 'transport-full-main-differential-'));
   const mainRoot = join(directory, 'main');
   const archive = spawnSync('git', ['archive', '--format=tar', MAIN_TIP, 'src', 'tests',

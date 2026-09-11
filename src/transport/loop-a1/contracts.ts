@@ -73,6 +73,7 @@ export type LoopOutcome = Readonly<{
   kind: 'accepted' | 'failed';
   failureClass: string;
   observedAt: Clock;
+  recordedAt: Clock;
   completion: ConstitutionalReference<'Outcome'>;
   jitterPermille: number;
   restoration: readonly OwnedReference<'part-nine', 'VerificationAssessment'>[];
