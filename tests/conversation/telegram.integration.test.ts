@@ -28,7 +28,7 @@ function installIntake(f: ReturnType<typeof conversationFixture>) {
   return { intake, facts, ingress };
 }
 
-it('P12-NF-03 P12-NF-05 P12-NF-06 P12-NF-08 P12-NF-10 captured reply enters the public Part Four order and is admitted only by owner facts', () => {
+it('P12-NF-03 P12-NF-05 P12-NF-06 P12-NF-08 P12-NF-10 P12-NF-48 integration: captured reply enters the public Part Four order and is admitted only by owner facts', () => {
   const f = conversationFixture();
   const raw = telegramRaw('reply');
   const route = extractTelegramUpdate(raw, f.declaration).route;

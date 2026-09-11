@@ -12,7 +12,7 @@ import { createTransportFileStorage } from '../../scripts/transport-file-storage
 // @ts-expect-error Reference fsync capture host is JavaScript, outside pure core compilation.
 import { createEffectFileCaptures } from '../../scripts/effect-file-captures.mjs';
 
-it('P12-NF-13 P12-NF-18 P12-NF-38 lifecycle rebuild derives the Telegram cursor from fsync-backed owner facts', () => {
+it('P12-NF-13 P12-NF-18 P12-NF-38 P12-NF-48 lifecycle: rebuild derives the Telegram cursor from fsync-backed owner facts', () => {
   const f = conversationFixture();
   const directory = mkdtempSync(join(tmpdir(), 'p12-telegram-'));
   const result = <T>(run: () => T) => f.intake.f.success(run());

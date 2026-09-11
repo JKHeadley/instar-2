@@ -14,7 +14,7 @@ const refused = <T>(result: Result<T>, detail: string) =>
     Refused: value => { expect(value.detail).toContain(detail); return value; },
   });
 
-it('P12-NF-04 P12-NF-07 P12-NF-45 P12-NF-46 declaration defaults to one long-poll mode and requires a matching fresh identity probe', () => {
+it('P12-NF-04 P12-NF-07 P12-NF-45 P12-NF-46 P12-NF-48 unit: declaration defaults to one long-poll mode and requires a matching fresh identity probe', () => {
   const f = conversationFixture();
   expect(f.admitted).toMatchObject({ id: 'telegram:v1:bot:9001', account: 'telegram:v1:bot:9001', mode: 'long-poll' });
   expect(f.admitted.declaration.supportedOperations).toEqual(['ordinary-reply']);

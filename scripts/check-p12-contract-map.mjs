@@ -16,8 +16,8 @@ const executable = {
 };
 
 const partial = {
-  1: 'PARTIAL: whole-part governed documentation inventory remains a build/docs check outside Slice A implementation.',
-  2: 'PARTIAL: the retained 1.x audit is design evidence, not a Slice A runtime consumer.',
+  1: 'PARTIAL: the whole-part governed documentation inventory is executable as a retained build input; non-Telegram platform implementation remains Slice B.',
+  2: 'PARTIAL: the retained 1.x audit digest is executable build evidence, not a Slice A runtime consumer.',
   6: 'PARTIAL: non-secret capture-before-receipt is executable; secret-shaped production intake is non-executable-until-seam-response-intake-followup.md-and-seam-response-assembly-followup.md.',
   9: 'PARTIAL: byte-identical admitted redelivery is owner-provided; real attempt-metadata redelivery is non-executable-until-seam-response-intake-followup.md rows 46 and 57.',
   11: 'PARTIAL: protocol custody acknowledgment is executable; conversational policy enforcement is non-executable-until-seam-response-intake-followup.md row 60.',
@@ -74,12 +74,23 @@ for (const file of report.testResults) for (const test of file.assertionResults)
     rows.push({ file: relative(process.cwd(), file.name), title: test.title }); tests.set(id, rows);
   }
 }
+// PARTIAL means at least one named arm is deferred; it never excuses a landed arm.
+// These rows all have a concrete Slice A/build/owner-path assertion that must pass.
+const landedArms = new Set([
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 41, 42, 45, 46,
+  48, 49, 50, 51,
+]);
 for (const row of expected) {
   const reason = executable[row.number] ?? partial[row.number];
   if (!reason) throw new Error(`${row.id}: missing disposition`);
-  if (executable[row.number] && !(tests.get(row.id)?.length)) throw new Error(`${row.id}: EXECUTABLE without a passing test`);
+  if (landedArms.has(row.number) && !(tests.get(row.id)?.length))
+    throw new Error(`${row.id}: landed executable arm without a passing test`);
   if (partial[row.number] && !reason.startsWith('PARTIAL:')) throw new Error(`${row.id}: partial reason is not explicit`);
 }
+const p12nf48Files = new Set((tests.get('P12-NF-48') ?? []).map(test => test.file));
+for (const tier of ['telegram.unit.test.ts', 'telegram.integration.test.ts', 'telegram.lifecycle.test.ts'])
+  if (![...p12nf48Files].some(file => file.endsWith(tier))) throw new Error(`P12-NF-48: missing passing ${tier} tier`);
 const capabilities = readFileSync('generated/capabilities.md', 'utf8');
 for (const required of ['telegram-conversation-adapter: dark', 'telegram.mode.long-poll.default',
   'telegram.mode.webhook.signed-choice-only', 'telegram.operation.ordinary-reply.supported',
@@ -93,5 +104,5 @@ if (/[0-9]{6,}:[A-Za-z0-9_-]{20,}/.test(candidates)) throw new Error('P12-NF-12:
 
 console.log('| Check | Disposition | Passing test files |');
 console.log('|---|---|---|');
-for (const row of expected) console.log(`| ${row.id} | ${executable[row.number] ? 'EXECUTABLE' : 'PARTIAL'} | ${[...new Set((tests.get(row.id) ?? []).map(test => test.file))].join('; ') || '—'} |`);
-console.log(`${Object.keys(executable).length} executable and ${Object.keys(partial).length} PARTIAL P12 checks mapped; no missing consumer passes as a no-op.`);
+for (const row of expected) console.log(`| ${row.id} | ${executable[row.number] ? 'EXECUTABLE' : landedArms.has(row.number) ? 'EXECUTABLE ARM + PARTIAL' : 'PARTIAL'} | ${[...new Set((tests.get(row.id) ?? []).map(test => test.file))].join('; ') || '—'} |`);
+console.log(`${landedArms.size} P12 checks have passing executable arms; all 53 have explicit dispositions and no missing consumer passes as a no-op.`);

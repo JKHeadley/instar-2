@@ -1,7 +1,7 @@
 import type {
   BoundaryContext, Clock, Hash, ProvenanceInput, RefusalReason, Result, SecretRef,
 } from '../index.js';
-import type { AdapterConformance, AdapterEvidenceContract, AssemblyRuntimePort } from '../assembly/index.js';
+import type { AdapterConformance, AdapterEvidenceContract, AssemblyHistoryReadPort, AssemblyRuntimePort } from '../assembly/index.js';
 import type { FactStorePort } from '../facts/index.js';
 import type { InboundRoute, IntakePort } from '../intake/index.js';
 import type { RegisterContext, VerifiedRegister } from '../register/index.js';
@@ -59,6 +59,7 @@ export interface TelegramBotApiCustodianPort {
   readonly owner: 'part-ten';
   readonly id: string;
   identity(input: Readonly<{ token: SecretRef; apiVersion: string }>): Result<TelegramIdentityProbe>;
+  readCapture(reference: string): Result<string>;
   authenticate(input: Readonly<{
     token: SecretRef; apiVersion: string; raw: string; route: InboundRoute; at: Clock;
   }>): Result<ProvenanceInput>;
@@ -90,6 +91,7 @@ export interface TelegramAdmissionDependencies {
   readonly boundary: BoundaryContext;
   readonly governance: Readonly<{ register: VerifiedRegister; context: RegisterContext }>;
   readonly assembly: AssemblyRuntimePort;
+  readonly history: AssemblyHistoryReadPort;
   readonly api: TelegramBotApiCustodianPort;
   readonly clock: () => Clock;
   readonly generation: string;

@@ -14,6 +14,7 @@ import type {
 import { privateKey } from '../facts/fixtures.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { intakeFixture, json, value } from '../intake/fixtures.js';
+import { verificationInput } from '../verification/fixture.js';
 
 const fixtureNames = ['reply', 'callback', 'edit', 'channel-post', 'service-event', 'media-metadata', 'unsupported'] as const;
 export type TelegramFixtureName = typeof fixtureNames[number];
@@ -22,9 +23,21 @@ export function telegramRaw(name: TelegramFixtureName): string {
   return readFileSync(`tests/conversation/fixtures/telegram/${name}.json`, 'utf8');
 }
 
-export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; botId?: string } = {}) {
+export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; botId?: string; initialOffset?: number } = {}) {
   const intake = intakeFixture();
-  const assembly = assemblyRuntimeFixture();
+  const assembly = assemblyRuntimeFixture(undefined, { verifiedProbes: true });
+  const botId = options.botId ?? '9001';
+  const apiVersion = '9.2';
+  const appendAssemblyFact = (kind: string, body: object) => value(authorAndAppend({
+    kind, schemaVersion: 1, machine: assembly.host.machine, principal: json(assembly.alice),
+    provenance: json(assembly.alice.provenance), at: json(assembly.clock(100)), body: json(body), required: [],
+  }, assembly.context, assembly.store, privateKey)).fact;
+  const endpointAvailabilityEvidence = ['check:integration'];
+  const captureBeforeResponseEvidence = ['check:unit'];
+  const endpointChoice = options.mode === 'webhook' ? appendAssemblyFact('assembly-reference-evidence', {
+    id: value(canonical({ type: 'telegram-endpoint-choice', schemaVersion: 1, botId, mode: 'webhook',
+      endpointAvailabilityEvidence, captureBeforeResponseEvidence })).bytes,
+  }) : null;
   const declarations = [
     ...JSON.parse(readFileSync('src/intake/port.declarations.json', 'utf8')) as object[],
     ...JSON.parse(readFileSync('src/conversation/telegram.declarations.json', 'utf8')) as object[],
@@ -48,16 +61,17 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
   }, intake.f.ctx.decode)) as SecretRef;
   const declaration: TelegramBotDeclaration = Object.freeze({
     schemaVersion: 1,
-    bot: Object.freeze({ id: options.botId ?? '9001', username: '@fixture_bot', identityEpoch: 'installation-1' }),
+    bot: Object.freeze({ id: botId, username: '@fixture_bot', identityEpoch: 'installation-1' }),
     token,
-    apiVersion: '9.2',
+    apiVersion,
     ...(options.mode === 'webhook' ? { recordedEndpointChoice: Object.freeze({
       mode: 'webhook' as const,
-      signedChoice: Object.freeze({ owner: 'part-two' as const, name: 'FactEnvelope' as const, id: 'fact:telegram-endpoint-choice' }),
-      endpointAvailabilityEvidence: Object.freeze(['probe:webhook-route']),
-      captureBeforeResponseEvidence: Object.freeze(['check:integration']),
+      signedChoice: Object.freeze({ owner: 'part-two' as const, name: 'FactEnvelope' as const, id: endpointChoice!.id }),
+      endpointAvailabilityEvidence: Object.freeze(endpointAvailabilityEvidence),
+      captureBeforeResponseEvidence: Object.freeze(captureBeforeResponseEvidence),
     }) } : {}),
-    cursor: Object.freeze({ contractVersion: 'telegram-update-offset:v1', initialOffset: 0, maxBatchItems: 100, maxPollSeconds: 30 }),
+    cursor: Object.freeze({ contractVersion: 'telegram-update-offset:v1', initialOffset: options.initialOffset ?? 0,
+      maxBatchItems: 100, maxPollSeconds: 30 }),
     limits: Object.freeze({ maxUpdateBytes: 64 * 1024, maxReplyCharacters: 4096 as const, maxReplyBytes: 4096,
       maxEntities: 100, maxConcurrentPolls: 1 as const, maxCharge: 1, timeout: 30 }),
     supportedOperations: Object.freeze(['ordinary-reply'] as const),
@@ -66,16 +80,30 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
     identity: [], authenticate: [], poll: [], send: [],
   };
   let batches: string[][] = [];
+  const identityCaptureReference = `capture:telegram:get-me:${botId}`;
+  const identityCaptureBytes = JSON.stringify({ ok: true, result: { id: Number(botId), username: 'fixture_bot', is_bot: true } });
+  const identityCaptureHash = hashBytes(identityCaptureBytes);
+  const identityProbeRecord = { ...verificationInput('ProbeRecord'), id: `probe:telegram:get-me:${botId}:${apiVersion}`,
+    subject: `telegram:v1:bot:${botId}`, challengeDigest: identityCaptureHash,
+    operation: `telegram-bot-api:getMe:${apiVersion}`, startedAt: 99, completedAt: 100,
+    witnesses: [identityCaptureReference], comparison: 'Result:pass', disposition: 'passed' as const,
+    captureStatus: 'available' as const };
+  appendAssemblyFact('verification-ProbeRecord', { record: identityProbeRecord });
   let probe: TelegramIdentityProbe = {
     botId: declaration.bot.id, username: declaration.bot.username, apiVersion: declaration.apiVersion,
-    authenticated: true, observedAt: 100, freshFor: 50, reference: 'probe:1',
-    capture: { reference: 'capture:telegram:get-me', hash: hashBytes('{"ok":true,"id":9001}') },
+    authenticated: true, observedAt: 100, freshFor: 50, reference: identityProbeRecord.id,
+    capture: { reference: identityCaptureReference, hash: identityCaptureHash },
   };
   let sendResult = '{"ok":true,"result":{"message_id":700}}';
+  let loseSendResponse = false;
   const api: TelegramBotApiCustodianPort = Object.freeze({
     owner: 'part-ten' as const,
     id: 'telegram-bot-api-custodian:fixture',
     identity(input: Parameters<TelegramBotApiCustodianPort['identity']>[0]) { calls.identity.push(input); return intake.f.success(probe); },
+    readCapture(reference: string) {
+      if (reference !== identityCaptureReference) throw new Error('capture absent from Telegram custodian');
+      return intake.f.success(identityCaptureBytes);
+    },
     authenticate(input: Parameters<TelegramBotApiCustodianPort['authenticate']>[0]) {
       calls.authenticate.push({ token: input.token, apiVersion: input.apiVersion, route: input.route });
       const extracted = extractTelegramUpdate(input.raw, declaration);
@@ -96,13 +124,18 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
       return intake.f.success({ updates, response: { reference: `capture:telegram:poll:${input.offset}`,
         hash: hashBytes(JSON.stringify({ ok: true, result: updates })) } });
     },
-    sendMessage(input: Parameters<TelegramBotApiCustodianPort['sendMessage']>[0]) { calls.send.push(input); return intake.f.success(sendResult); },
+    sendMessage(input: Parameters<TelegramBotApiCustodianPort['sendMessage']>[0]) {
+      calls.send.push(input);
+      if (loseSendResponse) throw new Error('response lost after provider application');
+      return intake.f.success(sendResult);
+    },
   });
   const fixtureDigests = fixtureNames.map(name => hashBytes(telegramRaw(name)));
   const admissionDependencies = {
     boundary: { ...intake.f.c, register: runtimeRegister },
     governance: governed.governance,
     assembly: assembly.runtime,
+    history: assembly.c.history!,
     api,
     clock: () => intake.f.clock(100),
     generation: 'generation:fixture',
@@ -161,6 +194,7 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
     queue: (...updates: string[]) => { batches.push(updates); },
     setProbe: (value: TelegramIdentityProbe) => { probe = value; },
     setSendResult: (value: string) => { sendResult = value; },
+    loseSendResponse: () => { loseSendResponse = true; },
     bind,
   };
 }
