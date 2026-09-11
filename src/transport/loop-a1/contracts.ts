@@ -102,7 +102,7 @@ export interface SharedLoopRecord extends Owned {
   readonly pressureScope: LoopPressureScope;
   readonly pressureKey: string;
   readonly episodeKey: string;
-  readonly transition: 'scheduled' | 'attempt-admitted' | 'outcome-recorded' | 'opened' | 'half-opened' | 'reopened' | 'closed' | 'stopped';
+  readonly transition: 'scheduled' | 'attempt-admitted' | 'outcome-recorded' | 'opened' | 'half-opened' | 'reopened' | 'evidence-retained' | 'closed' | 'stopped';
   readonly transitionAt: Clock;
   readonly nextEligible: Clock;
   readonly clockBasis: string;
@@ -123,6 +123,8 @@ export interface SharedLoopRecord extends Owned {
   readonly stoppedSubmission?: LoopAttemptInput;
   /** Present only when an existing accepted outcome is closed by later restoration evidence. */
   readonly closureSubmission?: LoopOutcomeInput;
+  /** Present only when later partial restoration evidence is retained without closing. */
+  readonly evidenceSubmission?: LoopOutcomeInput;
 }
 
 export type StoredSharedLoopPolicy = Omit<SharedBreakerLoopPolicy, 'type'> & {

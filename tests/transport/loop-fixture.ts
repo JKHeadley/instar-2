@@ -182,6 +182,12 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     return fact;
   };
   honestlyPartialAssessment('assessment:e2e-repair17-partial');
+  const initialNow = now;
+  now = 130;
+  witnessedAssessment('assessment:e2e-repair18-late-complete', 'recovery',
+    { target: 'target:review', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' });
+  honestlyPartialAssessment('assessment:e2e-repair18-late-partial', 'assessment:e2e-repair18-late-complete');
+  now = initialNow;
   witnessContext = { ...witnessContext, facts: [...witnessContext.facts, ...machineBFacts] };
 
   const host: LoopA1Host = { domain: 'conversation:1', machine, incarnation,

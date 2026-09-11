@@ -82,6 +82,10 @@ export const transportSeamEvidence = [
   ['SLB-A1-PARTIAL-RETENTION-113', 'integration', 'honestly partial evidence remains referenced without closure promotion'],
   ['SLB-A1-REPAIR17-E2E-114', 'e2e', 'fresh processes repeat mixed-evidence close and stopped commands without another transition'],
   ['SLB-A1-SUBMISSION-SHAPE-115', 'unit', 'optional signed submission evidence preserves old records and refuses inconsistency'],
+  ['SLB-A1-LATE-RESTORATION-116', 'integration', 'V11 and V12 late evidence uses its signed introducing transition across restart cuts'],
+  ['SLB-A1-PARTIAL-ONLY-117', 'integration', 'V17 partial-only evidence is retained without closure across restart cuts'],
+  ['SLB-A1-REPAIR18-E2E-118', 'e2e', 'fresh processes replay late closure and partial-only retention exactly'],
+  ['SLB-A1-EVIDENCE-SUBMISSION-119', 'unit', 'signed partial-evidence successor is closed and replay-validated'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

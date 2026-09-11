@@ -125,7 +125,7 @@ const closureSubmission: OwnedShape = {
 };
 export const sharedLoopRecordShape: OwnedShape = {
   kind: 'object',
-  optional: [...loopA1ExcludedRecordFields, 'stoppedSubmission', 'closureSubmission'],
+  optional: [...loopA1ExcludedRecordFields, 'stoppedSubmission', 'closureSubmission', 'evidenceSubmission'],
   fields: {
     ...row,
     ...Object.fromEntries(loopA1ExcludedRecordFields.map(field => [field, policyFields[field]])),
@@ -163,6 +163,7 @@ export const sharedLoopRecordShape: OwnedShape = {
     closureEvidence: { kind: 'array', maxLength: 64, items: reference },
     stoppedSubmission,
     closureSubmission,
+    evidenceSubmission: closureSubmission,
   },
 };
 
@@ -312,7 +313,7 @@ export function sharedLoopRecordCheck(shared: SharedLoopRecord): void {
   sharedPolicyCheck(shared.policy);
   requireOpaqueSourceReference(shared.sourceVector);
   ensure(['scheduled', 'running', 'restoring', 'waiting', 'open-breaker', 'half-open', 'stopped', 'closed'].includes(shared.state)
-    && ['scheduled', 'attempt-admitted', 'outcome-recorded', 'opened', 'half-opened', 'reopened', 'closed', 'stopped'].includes(shared.transition),
+    && ['scheduled', 'attempt-admitted', 'outcome-recorded', 'opened', 'half-opened', 'reopened', 'evidence-retained', 'closed', 'stopped'].includes(shared.transition),
   'unknown shared loop state or transition');
   referenceCheck(shared.currentOwnerRun, 'part-five', 'Run');
   referenceCheck(shared.policyGeneration, 'part-three', 'RegisterGeneration');
@@ -353,7 +354,8 @@ export function sharedLoopRecordCheck(shared: SharedLoopRecord): void {
   }
   ensure(/^sha256:[a-f0-9]{64}$/.test(shared.outcomeWindowDigest), 'invalid outcome window digest');
   shared.closureEvidence.forEach(value => referenceCheck(value, 'part-nine', 'VerificationAssessment'));
-  ensure(!(shared.stoppedSubmission && shared.closureSubmission), 'shared loop record has conflicting submissions');
+  ensure([shared.stoppedSubmission, shared.closureSubmission, shared.evidenceSubmission]
+    .filter(Boolean).length <= 1, 'shared loop record has conflicting submissions');
   if (shared.stoppedSubmission) {
     ensure(shared.transition === 'stopped' && shared.stoppedSubmission.command === shared.command,
       'stopped submission differs from its transition');
@@ -367,5 +369,12 @@ export function sharedLoopRecordCheck(shared: SharedLoopRecord): void {
     referenceCheck(shared.closureSubmission.episode, 'part-six', 'LoopRecord');
     ensure(shared.closureSubmission.episode.id === shared.episode && shared.closureSubmission.attempt.length > 0,
       'closure submission names another episode or empty attempt');
+  }
+  if (shared.evidenceSubmission) {
+    ensure(shared.transition === 'evidence-retained' && shared.evidenceSubmission.command === shared.command,
+      'evidence submission differs from its transition');
+    referenceCheck(shared.evidenceSubmission.episode, 'part-six', 'LoopRecord');
+    ensure(shared.evidenceSubmission.episode.id === shared.episode && shared.evidenceSubmission.attempt.length > 0,
+      'evidence submission names another episode or empty attempt');
   }
 }

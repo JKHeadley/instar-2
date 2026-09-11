@@ -114,7 +114,8 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
   const outcomeDigest = (policy: SharedLoopRecord['policy'], outcomes: readonly LoopOutcome[], now: Clock) =>
     encoded(windowAt({ policy, outcomeLog: outcomes }, now)).hash;
   const withoutSubmission = (record: SharedLoopRecord): SharedLoopRecord => {
-    const { stoppedSubmission: _stopped, closureSubmission: _closure, ...rest } = record;
+    const { stoppedSubmission: _stopped, closureSubmission: _closure,
+      evidenceSubmission: _evidence, ...rest } = record;
     return rest as SharedLoopRecord;
   };
   const fence = (all: readonly LoopA1TransportFact[], token: FenceToken) =>
@@ -344,6 +345,8 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
         history, spine.context, now, previous.pressureKey, previous.operationFamily, host));
       if (previous.closureSubmission
         && encoded(previous.closureSubmission).bytes === encoded(input).bytes) return previous;
+      if (previous.evidenceSubmission
+        && encoded(previous.evidenceSubmission).bytes === encoded(input).bytes) return previous;
       const existing = previous.outcomeLog.find(value => value.attempt === input.attempt);
       if (existing) {
         ensure(existing.kind === input.kind && existing.failureClass === input.failureClass
@@ -351,18 +354,36 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
           && encoded(existing.completion).bytes === encoded(input.completion).bytes,
         'loop outcome changed after admission');
         if (encoded(existing.restoration).bytes === encoded(input.restoration).bytes) return previous;
-        const closureEvidence = freeze([...new Map([...previous.closureEvidence, ...completeRestoration]
-          .map(value => [value.id, value])).values()]);
-        ensure(input.kind === 'accepted' && completeRestoration.length > 0
-          && previous.state === 'half-open' && previous.pendingAttempts.length === 0
-          && previous.halfOpenSucceeded >= previous.policy.halfOpenTrials
-          && closureEvidence.length > previous.closureEvidence.length,
-        'loop outcome changed after admission without new complete restoration');
         const restoration = freeze([...new Map([...existing.restoration, ...input.restoration]
           .map(value => [value.id, value])).values()]);
+        if (restoration.length === existing.restoration.length) return previous;
         const outcomeLog = freeze(previous.outcomeLog.map(value => value.attempt === existing.attempt
           ? freeze({ ...value, restoration } as LoopOutcome) : value));
         const currentOutcomes = windowAt({ policy: previous.policy, outcomeLog }, now);
+        const closureEvidence = freeze([...new Map([...previous.closureEvidence, ...completeRestoration]
+          .map(value => [value.id, value])).values()]);
+        const mayClose = input.kind === 'accepted' && completeRestoration.length > 0
+          && previous.state === 'half-open' && previous.pendingAttempts.length === 0
+          && previous.halfOpenSucceeded >= previous.policy.halfOpenTrials
+          && closureEvidence.length > previous.closureEvidence.length;
+        if (!mayClose) {
+          ensure(input.kind === 'accepted' && completeRestoration.length === 0
+            && previous.state === 'half-open',
+          'loop outcome changed after admission without new complete restoration');
+          const retained = freeze({
+            ...withoutSubmission(previous),
+            ...meta(all, input.command),
+            transition: 'evidence-retained',
+            transitionAt: now,
+            sourceVector: previous.sourceVector,
+            policyGeneration: current.generation,
+            outcomeLog,
+            failureCount: failureCountAt(previous.policy, currentOutcomes),
+            outcomeWindowDigest: encoded(currentOutcomes).hash,
+            evidenceSubmission: freeze({ ...input }),
+          } as SharedLoopRecord);
+          return managedWrite(all, retained);
+        }
         const closed = freeze({
           ...withoutSubmission(previous),
           ...meta(all, input.command),

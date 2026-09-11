@@ -406,6 +406,21 @@ function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: LoopOut
   return fact;
 }
 
+function restorationIntroductionAt(record: SharedLoopRecord, outcome: LoopOutcome,
+  reference: SharedLoopRecord['closureEvidence'][number], history: readonly FactEnvelope[]): Clock {
+  const predecessor = history.find(fact => fact.id === record.predecessor);
+  ensure(predecessor, 'restoration introduction predecessor is absent');
+  const past = rowsA1([...causalCone(predecessor, history), predecessor], record.domain);
+  for (const row of past) {
+    if (!isA1Record(row.record) || row.record.episode !== record.episode) continue;
+    const contributed = row.record.outcomeLog.find(value => value.attempt === outcome.attempt);
+    if (contributed?.restoration.some(value => encoded(value).bytes === encoded(reference).bytes)) {
+      return row.record.transitionAt;
+    }
+  }
+  return record.transitionAt;
+}
+
 export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly FactEnvelope[], context: FactContext,
   host: LoopA1Host): readonly FactEnvelope[] {
   const history = allFacts(facts);
@@ -418,13 +433,17 @@ export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly Fac
   for (const outcome of record.outcomeLog) {
     dependencies.push(resolveLoopOutcomeCompletion(record, outcome, history, context, false));
     for (const reference of outcome.restoration) {
-      dependencies.push(...resolveRestorationReference(reference, history, context, outcome.recordedAt,
+      dependencies.push(...resolveRestorationReference(reference, history, context,
+        restorationIntroductionAt(record, outcome, reference, history),
         record.pressureKey, record.operationFamily, host, false, false));
     }
   }
   for (const reference of record.closureEvidence) {
-    const contributedAt = record.outcomeLog.find(outcome =>
-      outcome.restoration.some(value => value.id === reference.id))?.recordedAt ?? record.transitionAt;
+    const contributingOutcome = record.outcomeLog.find(outcome =>
+      outcome.restoration.some(value => encoded(value).bytes === encoded(reference).bytes));
+    const contributedAt = contributingOutcome
+      ? restorationIntroductionAt(record, contributingOutcome, reference, history)
+      : record.transitionAt;
     dependencies.push(...resolveRestorationReference(reference, history, context,
       record.transition === 'closed' ? record.transitionAt : contributedAt,
       record.pressureKey, record.operationFamily, host, false));
@@ -653,7 +672,8 @@ function exactPrefix<T>(prior: readonly T[], next: readonly T[]): boolean {
 }
 
 function withoutSubmission(record: SharedLoopRecord): SharedLoopRecord {
-  const { stoppedSubmission: _stopped, closureSubmission: _closure, ...rest } = record;
+  const { stoppedSubmission: _stopped, closureSubmission: _closure,
+    evidenceSubmission: _evidence, ...rest } = record;
   return rest as SharedLoopRecord;
 }
 
@@ -710,7 +730,8 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
     && record.breakerOpenCount >= previous.breakerOpenCount
     && exactPrefix(previous.attemptLog, record.attemptLog)
     && previous.outcomeLog.every(value => record.outcomeLog.some(next =>
-      priorOutcomePreserved(value, next, record.closureSubmission?.attempt))),
+      priorOutcomePreserved(value, next,
+        record.closureSubmission?.attempt ?? record.evidenceSubmission?.attempt))),
   'shared pressure history reset or changed');
   ensure(previous.state !== 'stopped', 'terminal loop episode cannot transition');
   const unchangedAttempts = encoded(record.attemptLog).bytes === encoded(previous.attemptLog).bytes;
@@ -803,6 +824,59 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
     } as SharedLoopRecord);
     ensure(encoded(record).bytes === encoded(expected).bytes,
       'attempt admission differs from the complete policy calculation');
+    return;
+  }
+  if (record.transition === 'evidence-retained' && record.evidenceSubmission) {
+    const submission = record.evidenceSubmission;
+    const existing = previous.outcomeLog.find(value => value.attempt === submission.attempt);
+    ensure(existing?.kind === 'accepted' && previous.state === 'half-open',
+      'partial evidence retention lacks an accepted half-open outcome');
+    const lease = latestLease(all as readonly TransportFact[])!.record;
+    const expectedSubmission = freeze({
+      command: record.command,
+      fence: fenceFor(all as readonly TransportFact[], lease),
+      episode: { owner: 'part-six' as const, name: 'LoopRecord' as const, id: record.episode },
+      attempt: existing.attempt,
+      kind: existing.kind,
+      failureClass: existing.failureClass,
+      completion: existing.completion,
+      jitterPermille: existing.jitterPermille,
+      restoration: submission.restoration,
+    });
+    ensure(encoded(submission).bytes === encoded(expectedSubmission).bytes,
+      'partial evidence submission differs from its recorded outcome');
+    const completeRestoration = evidenceFacts && context
+      ? submission.restoration.filter(reference => restorationReferenceComplete(reference, evidenceFacts, context,
+        record.transitionAt, record.pressureKey, record.operationFamily, host, false))
+      : submission.restoration.filter(reference => record.closureEvidence.some(value => value.id === reference.id));
+    ensure(completeRestoration.length === 0,
+      'complete restoration evidence must use the closing transition');
+    const restoration = freeze([...new Map([...existing.restoration, ...submission.restoration]
+      .map(value => [value.id, value])).values()]);
+    ensure(restoration.length > existing.restoration.length,
+      'partial evidence transition lacks new restoration support');
+    const outcomeLog = freeze(previous.outcomeLog.map(value => value.attempt === existing.attempt
+      ? freeze({ ...value, restoration } as LoopOutcome) : value));
+    const currentOutcomes = windowAt({ policy: previous.policy, outcomeLog }, record.transitionAt);
+    const expected = freeze({
+      ...withoutSubmission(previous),
+      schemaVersion: record.schemaVersion,
+      domain: record.domain,
+      command: record.command,
+      predecessor: record.predecessor,
+      authority: record.authority,
+      tick: record.tick,
+      transition: 'evidence-retained' as const,
+      transitionAt: record.transitionAt,
+      sourceVector: previous.sourceVector,
+      policyGeneration: record.policyGeneration,
+      outcomeLog,
+      failureCount: failureCountAt(record.policy, currentOutcomes),
+      outcomeWindowDigest: encoded(currentOutcomes).hash,
+      evidenceSubmission: submission,
+    } as SharedLoopRecord);
+    ensure(encoded(record).bytes === encoded(expected).bytes,
+      'partial evidence transition changed the breaker history or closure requirements');
     return;
   }
   if (record.transition === 'closed' && record.closureSubmission) {
