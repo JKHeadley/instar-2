@@ -9,6 +9,14 @@
         "path": "tests/rungraph/governance.test.ts",
         "hash": "sha256:99265c7a0aa3af6c25ab78a3f30508b52c8af19061efa8d2c8c177339f889473"
       }
+    },
+    {
+      "id": "P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/rungraph/closure-registration-additivity.test.ts",
+        "hash": "sha256:f9be0fc9cf4332475c0a90a5f6d2cd073508530740ac906c18d5de075ddb49db"
+      }
     }
   ],
   "probes": [
@@ -27,55 +35,77 @@
       "id": "decodeRun",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:3dbdf54cf760fa696832ebc327485f4eeca919425822ef3eeb582d3a4be448c0"
+        "hash": "sha256:fb8da6664f08d3829908ba5ef1f17b7fa5ddaecbb65aaf388b90c9733c06d883"
       }
     },
     {
       "id": "decodeRunStep",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:3dbdf54cf760fa696832ebc327485f4eeca919425822ef3eeb582d3a4be448c0"
+        "hash": "sha256:fb8da6664f08d3829908ba5ef1f17b7fa5ddaecbb65aaf388b90c9733c06d883"
       }
     },
     {
       "id": "decodeRunTransition",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:3dbdf54cf760fa696832ebc327485f4eeca919425822ef3eeb582d3a4be448c0"
+        "hash": "sha256:fb8da6664f08d3829908ba5ef1f17b7fa5ddaecbb65aaf388b90c9733c06d883"
       }
     },
     {
       "id": "decodeRunExit",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:3dbdf54cf760fa696832ebc327485f4eeca919425822ef3eeb582d3a4be448c0"
+        "hash": "sha256:fb8da6664f08d3829908ba5ef1f17b7fa5ddaecbb65aaf388b90c9733c06d883"
       }
     },
     {
       "id": "decodeSessionGrounding",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:548ae7dfb8dd55fd58bac0efe714c89d8cd4f729b51ba9e83331eab3d07fa2e2"
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:3dbdf54cf760fa696832ebc327485f4eeca919425822ef3eeb582d3a4be448c0"
+        "hash": "sha256:fb8da6664f08d3829908ba5ef1f17b7fa5ddaecbb65aaf388b90c9733c06d883"
+      }
+    },
+    {
+      "id": "decodeExhaustionRecord",
+      "module": {
+        "path": "src/rungraph/index.ts",
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
+      },
+      "artifact": {
+        "path": "src/rungraph/closure-records.ts",
+        "hash": "sha256:c75b6cd509007b9306926ccbd0e02be3994d352457a7883a6c03084375ca2382"
+      }
+    },
+    {
+      "id": "decodeUnreachableRunExit",
+      "module": {
+        "path": "src/rungraph/index.ts",
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
+      },
+      "artifact": {
+        "path": "src/rungraph/closure-records.ts",
+        "hash": "sha256:c75b6cd509007b9306926ccbd0e02be3994d352457a7883a6c03084375ca2382"
       }
     }
   ],
