@@ -47,7 +47,7 @@ it('P15-CONTRACT-MAP keeps real RunAdmissionPort production wiring on its exact 
   expect(() => checkP15Architecture(altered)).toThrow(/design-bound validation obligation/);
 });
 
-it('P15-CONTRACT-MAP does not credit quota decoding as the P15-NF-33 placement decision', () => {
+it('P15-CONTRACT-MAP does not credit quota decoding as scheduled-work check 33 placement evidence', () => {
   const row = p15Dispositions().find((candidate: { number: number }) => candidate.number === 33);
   expect(row).toMatchObject({ executable: false, held: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36' });
 });
