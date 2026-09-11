@@ -875,6 +875,30 @@
       }
     },
     {
+      "id": "P4-ST-100",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-repair19.test.ts",
+        "hash": "sha256:34c599721285ff5ca56a2d8a0eac2f71d0dd2f973a5160b2c273ce096bee57d8"
+      }
+    },
+    {
+      "id": "P4-ST-101",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/integration/intake-scheduled-repair19.test.ts",
+        "hash": "sha256:b3262b9df9e1f3ebc5d05d2cd2ce07dea418ce1203046fa617dea40e4c75b8ff"
+      }
+    },
+    {
+      "id": "P4-ST-102",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/e2e/intake-scheduled-repair19.test.ts",
+        "hash": "sha256:0e345a5ac4207d4846a3c553ac23a5692d1c457682b29c9b2d9f77864f1eb2f1"
+      }
+    },
+    {
       "id": "P4-PRESERVE-01",
       "stage": "build",
       "artifact": {

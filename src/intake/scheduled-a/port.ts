@@ -455,6 +455,8 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
           requireIntake(!busy,'P4-NF-01: overlapping scheduled arrival durably queued','integrity');
           busy=true;
           try {
+            exact(object(json(input)),['raw','route','discovery'],
+              'unsupported-in-slice-a: scheduled input accepts only raw, route and discovery');
             exact(supplied,['adapter','channel','sender','identityEpoch','eventId'],
               'scheduled intake: route shape is malformed');
             const routeAdapter=text(supplied.adapter,'scheduled adapter');
