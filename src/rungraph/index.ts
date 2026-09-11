@@ -5,3 +5,9 @@ export { decodeRun, decodeRunBudget, decodeRunStep, decodeRunTransition, decodeR
 export { createRunGraph } from './service.js';
 export { foldRun, runProjection, statePairs } from './graph.js';
 export { decodeRunGraphRegistration } from './registration.js';
+export type * from './closure-types.js';
+export { decodeExhaustionRecord, decodeUnreachableRunExit,
+  runClosureFactSchemas, runClosureKinds, runClosureShapes, closureRecordWire,
+  closureRecordReferences } from './closure-records.js';
+export { exhaustionAdmission, unreachableExitAdmission } from './closure.js';
+export { createRunClosureGraph } from './closure-service.js';

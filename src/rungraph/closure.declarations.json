@@ -1,0 +1,54 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "rungraph.exhaustion",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "criticality": "Owner-record admission cannot itself close a run",
+      "failDirection": "closed",
+      "preservesInput": "part-two:run-input",
+      "inspectedBy": "P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION"
+    },
+    "standards": [],
+    "holds": [],
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "costly",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": { "kind": "bounded", "by": "rungraph.bound" }
+    }
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "rungraph.unreachable",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "criticality": "An unreachable proposal cannot become terminal without exact signed exhaustion and settlement evidence",
+      "failDirection": "closed",
+      "preservesInput": "part-two:run-input",
+      "inspectedBy": "P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION"
+    },
+    "standards": [],
+    "holds": [],
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "costly",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": { "kind": "bounded", "by": "rungraph.bound" }
+    }
+  }
+]

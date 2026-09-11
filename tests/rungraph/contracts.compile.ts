@@ -1,0 +1,35 @@
+import type {
+  CompletedRunExit, ExhaustionRecord,
+  RunExit, RunExitAny, RunExitReadPort, RunClosureGraphPort, RunOwnedRecordReference, UnreachableRunExit,
+} from '../../src/rungraph/index.js';
+import type { OwnedReference, Result } from '../../src/index.js';
+
+declare const completed: CompletedRunExit;
+declare const unreachable: UnreachableRunExit;
+declare const exhaustion: ExhaustionRecord;
+declare const exits: readonly RunExit[];
+declare const readPort: RunExitReadPort;
+declare const closurePort: RunClosureGraphPort;
+declare const runReference: OwnedReference<'part-five', 'Run'>;
+
+const closedUnion: readonly RunExitAny[] = [completed, unreachable, ...exits];
+void closedUnion; void exhaustion;
+
+const requiredClosedUnionRead: Result<Readonly<{ fact: import('../../src/index.js').FactEnvelopeReference; exit: RunExit }>> = readPort.readExit(runReference);
+const closureRequiredRead: Result<Readonly<{ fact: import('../../src/index.js').FactEnvelopeReference; exit: RunExit }>> = closurePort.readExit(runReference);
+const explicitUnreachableRead: Result<Readonly<{ fact: import('../../src/index.js').FactEnvelopeReference; exit: RunExitAny }>> = closurePort.readExitAny(runReference);
+void requiredClosedUnionRead; void closureRequiredRead; void explicitUnreachableRead;
+
+// Every arm excludes every other arm's required payload at compile time.
+// @ts-expect-error completed cannot carry an exhaustion reference
+const mixedCompleted: CompletedRunExit = { ...completed, exhaustion: unreachable.exhaustion };
+// @ts-expect-error unreachable requires its unsatisfied clauses
+const missingClauses: UnreachableRunExit = (({ unsatisfiedClauses: _, ...rest }) => rest)(unreachable);
+
+// Part Five's owner references cannot be widened to an unregistered owner/name pair.
+// @ts-expect-error ExhaustionRecord is owned only by part-five
+const foreignOwner: RunOwnedRecordReference<'ExhaustionRecord'> = { ...unreachable.exhaustion, owner: 'part-fifteen' };
+// @ts-expect-error only registered Part Five record names inhabit this reference
+const foreignName: RunOwnedRecordReference<'ExhaustionRecord'> = { ...unreachable.exhaustion, name: 'RunExit' };
+
+void mixedCompleted; void missingClauses; void foreignOwner; void foreignName;
