@@ -26,14 +26,17 @@ describe('Part Fifteen consumes landed owner ports without replacing authority',
     const f = scheduledFixture(); const context = { ...f.core.ctx, site: 'types.decode', register: { ...f.core.ctx.register,
       entries: [...f.core.ctx.register.entries, 'account:a', 'account:b'],
       subjects: { ...f.core.ctx.register.subjects, 'quota-utilization': ['percent'] } } };
-    const measurement = { type: 'Measurement', schemaVersion: 1, subject: { kind: 'quota-utilization', instance: 'account:a' },
+    const actAt = f.core.clock(1_000_000); const measurement = { type: 'Measurement', schemaVersion: 1, subject: { kind: 'quota-utilization', instance: 'account:a' },
       value: 50, unit: 'percent', at: f.core.clock(100), by: 'probe' };
-    expect(consumeResult(decodeScheduledCapacityMeasurement('quota-utilization', 'account:a', measurement, context),
+    expect(consumeResult(decodeScheduledCapacityMeasurement('quota-utilization', 'account:a', measurement, { ...context, actAt }),
       { Success: () => 'accepted', Refused: () => 'refused' })).toBe('accepted');
     for (const malformed of [
-      { ...measurement, value: Number.NaN }, { ...measurement, value: '50' }, { ...measurement, by: 'unregistered' },
+      { ...measurement, value: Number.NaN }, { ...measurement, value: -1 }, { ...measurement, value: 101 }, { ...measurement, value: '50' }, { ...measurement, by: 'unregistered' },
       { ...measurement, subject: { ...measurement.subject, instance: 'account:b' } }, { ...measurement, configuredTarget: 50 },
-    ]) expect(consumeResult(decodeScheduledCapacityMeasurement('quota-utilization', 'account:a', malformed, context),
+      { ...measurement, at: f.core.clock(0) },
+    ]) expect(consumeResult(decodeScheduledCapacityMeasurement('quota-utilization', 'account:a', malformed, { ...context, actAt }),
+      { Success: () => 'accepted', Refused: () => 'refused' })).toBe('refused');
+    expect(consumeResult(decodeScheduledCapacityMeasurement('quota-utilization', 'account:a', measurement, context),
       { Success: () => 'accepted', Refused: () => 'refused' })).toBe('refused');
   });
 });

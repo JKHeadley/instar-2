@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonical, consumeResult } from '../../src/index.js';
+import { consumeResult } from '../../src/index.js';
 import { createScheduledWorkPackagePort } from '../../src/scheduled/index.js';
 import { activeScheduledFixture, clone, scheduledFixture, value } from './fixture.js';
 
@@ -9,7 +9,7 @@ describe('Part Fifteen full public package-port integration', () => {
     expect(value(port.admitPackageResource({ package: f.package, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [] }, f.context)).identity.jobId).toBe('job:maintenance');
     const changed = f.manifestBytes.replace('Maintenance', 'Forged');
     expect(consumeResult(port.admitPackageResource({ package: f.package, manifestPath: 'scheduled/manifest.json', manifestBytes: changed, existingManifests: [] }, f.context), { Success: () => '', Refused: item => item.detail })).toContain('bytes differ');
-    expect(consumeResult(port.admitPackageResource({ package: f.package, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [f.manifest] }, f.context), { Success: () => '', Refused: item => item.detail })).toContain('duplicate scheduled job id');
+    expect(consumeResult(port.admitPackageResource({ package: f.package, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [f.manifest] }, f.context), { Success: () => '', Refused: item => item.detail })).toContain('carries no authority');
   });
 
   it('P15-NF-10 refuses one invalid job while an independent package resource remains usable', () => {
@@ -17,7 +17,7 @@ describe('Part Fifteen full public package-port integration', () => {
     const surfaced = consumeResult(port.decode(invalid, f.context), { Success: () => '', Refused: refusal => refusal.detail });
     expect(surfaced).toContain('unexpected field');
     expect(value(port.admitPackageResource({ package: f.package, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [] }, f.context)).identity.jobId).toBe('job:maintenance');
-    expect(value(canonical({ minimalPlane: 'still-operating' })).bytes).toContain('still-operating');
+    expect(value(f.assembly.runtime.inspectCurrent()).some(row => row.record.type === 'LocalCapabilityPackage')).toBe(true);
   });
 
   it('P15-NF-09 P15-SLICE-A-CRON binds normalized cron-v1 into the closed manifest through the public port', () => {

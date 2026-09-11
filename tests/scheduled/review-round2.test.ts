@@ -106,7 +106,7 @@ describe('Part Fifteen independent review round 2 regressions', () => {
     value(assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'), id: 'transition:scheduled-canonical:active',
       package: canonicalPackage.namespace, manifestDigest: canonicalPackage.contentDigest, observedArtifactDigest: canonicalPackage.contentDigest }));
     expect(status(port.admitPackageResource({ package: canonicalPackage, manifestPath: 'scheduled/manifest.json', manifestBytes: canonicalBytes,
-      existingManifests: [] }, assembly.c))).toBe('accepted');
+      existingManifests: [] }, assembly.c))).toBe('refused');
   });
 
   it('P15-NF-09 accepts unsigned decimal spellings and refuses non-text cron input', () => {

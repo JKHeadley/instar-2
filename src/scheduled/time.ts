@@ -1,6 +1,6 @@
 import { ensure } from './boundary.js';
 
-const rfc3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/;
+const rfc3339 = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?([Zz]|[+-]\d{2}:\d{2})$/;
 
 function leap(year: number): boolean { return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0); }
 function daysInMonth(year: number, month: number): number {
@@ -17,19 +17,32 @@ function daysFromCivil(year: number, month: number, day: number): number {
   return era * 146097 + doe - 719468;
 }
 
-export function parseRfc3339Offset(source: string): number {
+/** Validate the complete RFC 3339 offset grammar without narrowing its fractional precision. */
+export function validateRfc3339Offset(source: string): void {
   const match = rfc3339.exec(source); ensure(match, 'timestamp must be RFC 3339 with Z or numeric offset');
   const year = Number(match[1]); const month = Number(match[2]); const day = Number(match[3]);
   const hour = Number(match[4]); const minute = Number(match[5]); const second = Number(match[6]);
   ensure(month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month), 'timestamp has invalid calendar date');
   ensure(hour <= 23 && minute <= 59 && second <= 59, 'timestamp has invalid clock value');
+  if (match[8]!.toUpperCase() !== 'Z') {
+    const oh = Number(match[8]!.slice(1, 3)); const om = Number(match[8]!.slice(4, 6));
+    ensure(oh <= 23 && om <= 59, 'timestamp has invalid numeric offset');
+  }
+}
+
+export function parseRfc3339Offset(source: string): number {
+  validateRfc3339Offset(source);
+  const match = rfc3339.exec(source)!;
+  const year = Number(match[1]); const month = Number(match[2]); const day = Number(match[3]);
+  const hour = Number(match[4]); const minute = Number(match[5]); const second = Number(match[6]);
   const fraction = match[7] ?? '';
-  ensure(fraction.length <= 3 || /^0*$/.test(fraction.slice(3)), 'timestamp precision is below milliseconds');
+  ensure(fraction.length <= 3 || /^0*$/.test(fraction.slice(3)),
+    'RFC 3339 instant cannot be represented by the Part One Clock whole-millisecond rule');
   const milliseconds = Number(fraction.slice(0, 3).padEnd(3, '0'));
   let offset = 0;
-  if (match[8] !== 'Z') {
+  if (match[8]!.toUpperCase() !== 'Z') {
     const sign = match[8]![0] === '+' ? 1 : -1; const oh = Number(match[8]!.slice(1, 3)); const om = Number(match[8]!.slice(4, 6));
-    ensure(oh <= 23 && om <= 59, 'timestamp has invalid numeric offset'); offset = sign * (oh * 60 + om);
+    offset = sign * (oh * 60 + om);
   }
   const value = ((daysFromCivil(year, month, day) * 24 + hour) * 60 + minute - offset) * 60_000 + second * 1000 + milliseconds;
   ensure(Number.isSafeInteger(value), 'timestamp is outside safe clock range'); return value;

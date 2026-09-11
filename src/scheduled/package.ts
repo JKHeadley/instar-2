@@ -2,7 +2,7 @@ import { canonical, consumeResult, decodeMeasurement } from '../index.js';
 import type { BoundaryContext, Clock, Hash } from '../index.js';
 import { hashBytes } from '../facts/index.js';
 import { decodeLocalCapabilityPackage, resolveActivePackage, safePackagePath } from '../assembly/index.js';
-import type { AssemblyDecodeContext } from '../assembly/index.js';
+import type { AssemblyDecodeContext, CurrentAssemblyFact, PackageTransition } from '../assembly/index.js';
 import type { RunExit, RunExitReadPort } from '../rungraph/index.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import { parseUnambiguousJson } from './json.js';
@@ -11,6 +11,29 @@ import { canonicalInstant, parseRfc3339Offset } from './time.js';
 import type { ScheduledOccurrencePlan, ScheduledWorkPackagePort } from './contracts.js';
 
 function encoded(value: unknown): Readonly<{ bytes: string; hash: Hash }> { return take(canonical(value)); }
+
+function authoritativeCollision(manifestJobId: string, namespace: string, context: AssemblyDecodeContext): string | undefined {
+  ensure(context.history, 'complete authoritative Part Ten package comparison is unavailable');
+  const current = take(context.history.current());
+  const transitions = current.filter((row): row is CurrentAssemblyFact & { record: PackageTransition } =>
+    row.record.type === 'PackageTransition');
+  const superseded = new Set(transitions.flatMap(row => [...row.record.predecessors, ...row.record.dependencyFacts]));
+  const activeNamespaces = new Set(transitions.filter(row => !superseded.has(row.fact.id) && row.record.to === 'active')
+    .map(row => row.record.package));
+  const competingNamespaces = new Set(current.filter((row): row is CurrentAssemblyFact & {
+    record: import('../assembly/index.js').LocalCapabilityPackage;
+  } => row.record.type === 'LocalCapabilityPackage'
+      && row.record.namespace !== namespace
+      && activeNamespaces.has(row.record.namespace)
+      && row.record.declarationIds.some(id => id.toLowerCase() === manifestJobId.toLowerCase()))
+    .map(row => row.record.namespace));
+  for (const competingNamespace of competingNamespaces) {
+    const competing = take(resolveActivePackage(competingNamespace, current, context));
+    const jobId = competing.declarationIds.find(id => id.toLowerCase() === manifestJobId.toLowerCase());
+    if (jobId) return jobId;
+  }
+  return undefined;
+}
 
 export function createScheduledWorkPackagePort(): ScheduledWorkPackagePort {
   return Object.freeze({ owner: 'part-fifteen' as const,
@@ -45,8 +68,10 @@ export function createScheduledWorkPackagePort(): ScheduledWorkPackagePort {
         ensure(manifest.identity.packageVersion === active.version && manifest.identity.contentDigest === active.contentDigest,
           'manifest package version or content digest differs from Part Ten authority');
         ensure(active.declarationIds.includes(manifest.identity.jobId), 'matching Part Ten feature declaration is absent');
-        const collision = input.existingManifests.find(existing => existing.identity.jobId.toLowerCase() === manifest.identity.jobId.toLowerCase());
-        ensure(!collision, collision?.identity.jobId === manifest.identity.jobId ? 'duplicate scheduled job id' : 'case-folded scheduled job identity collision');
+        ensure(Array.isArray(input.existingManifests), 'caller manifest collision copy must be a list');
+        ensure(input.existingManifests.length === 0, 'caller manifest collision copy carries no authority');
+        const collision = authoritativeCollision(manifest.identity.jobId, active.namespace, context as AssemblyDecodeContext);
+        ensure(!collision, collision === manifest.identity.jobId ? 'duplicate scheduled job id' : 'case-folded scheduled job identity collision');
         const body = active.entrypoints.find(entry => entry.id === manifest.work.entryPoint);
         ensure(body && body.digest === manifest.work.bodyDigest, 'manifest body differs from immutable Part Ten entry point');
         const packageChecks = new Set([...active.checks.unit, ...active.checks.integration, ...active.checks.lifecycle]);

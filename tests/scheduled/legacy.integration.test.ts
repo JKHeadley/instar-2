@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { consumeResult } from '../../src/index.js';
 import { importLegacyScheduledJob } from '../../src/scheduled/index.js';
 import { scheduledFixture, value } from './fixture.js';
@@ -8,12 +9,27 @@ const source = (overrides: Record<string, unknown> = {}) => JSON.stringify({ slu
   machineLocalEffects: false, ...overrides });
 
 describe('Part Fifteen 1.x one-way compatibility policy import', () => {
+  it('P15-NF-51 reads captured 1.x declaration bytes and preserves required scheduling fields', () => {
+    const context = scheduledFixture().context;
+    const healthBytes = readFileSync('tests/scheduled/fixtures/legacy-health-check.json', 'utf8');
+    const health = value(importLegacyScheduledJob(healthBytes, context));
+    expect(health).toMatchObject({ sourceKind: 'legacy-job-declaration', slug: 'health-check', schedule: '*/5 * * * *',
+      priority: 'critical', expectedDurationMinutes: 1, model: 'haiku', postCompletionLearning: 'off' });
+    expect(health.sourceBytes).toBe(healthBytes);
+    const omittedBytes = readFileSync('tests/scheduled/fixtures/legacy-benchmark-divergence-analysis.json', 'utf8');
+    expect(value(importLegacyScheduledJob(omittedBytes, context))).toMatchObject({ schedule: '45 3 * * *', model: 'sonnet' });
+    expect(consumeResult(importLegacyScheduledJob(healthBytes.replace('"haiku"', '"not-a-1x-model"'), context),
+      { Success: () => 'accepted', Refused: () => 'refused' })).toBe('refused');
+  });
+
   it('P15-NF-51 preserves input bytes, defaults an omitted model, and distinguishes script and model learning', () => {
     const context = scheduledFixture().context;
     const model = value(importLegacyScheduledJob(source(), context));
     expect(model.model).toBe('sonnet'); expect(model.postCompletionLearning).toBe('required'); expect(model.activation).toBe('eligible');
     expect(model.sourceBytes).toBe(source());
     const supplied = value(importLegacyScheduledJob(source({ model: 'opus' }), context)); expect(supplied.model).toBe('opus');
+    expect(consumeResult(importLegacyScheduledJob(source({ model: 'not-a-1x-model' }), context),
+      { Success: () => 'accepted', Refused: () => 'refused' })).toBe('refused');
     const script = value(importLegacyScheduledJob(source({ executionMode: 'script' }), context)); expect(script.postCompletionLearning).toBe('off');
     const optedOut = value(importLegacyScheduledJob(source({ integrationGate: false }), context)); expect(optedOut.postCompletionLearning).toBe('off');
   });

@@ -2,11 +2,18 @@ import { canonical, consumeResult, defineDecoder, deriveThrough } from '../index
 import type { BoundaryContext, Hash, Json, Result, VersionedDecoder } from '../index.js';
 import { ensure, freeze, take } from './boundary.js';
 import { parseCronV1 } from './cron.js';
-import { parseRfc3339Offset } from './time.js';
+import { validateRfc3339Offset } from './time.js';
 import type { ScheduledPriority, ScheduledWorkManifest } from './contracts.js';
 
 type Obj = Record<string, Json>;
 const priorities = ['low', 'maintenance', 'medium', 'high', 'critical'] as const;
+export const SCHEDULED_MANIFEST_LIMITS = Object.freeze({
+  textBytes: 4_096,
+  listItems: 256,
+  listBytes: 8_192,
+  manifestBytes: 32_768,
+});
+const utf8Bytes = (value: string): number => new TextEncoder().encode(value).byteLength;
 
 function object(value: unknown, path: string): Obj {
   ensure(value !== null && typeof value === 'object' && !Array.isArray(value), `${path}: expected object`); return value as Obj;
@@ -15,7 +22,11 @@ function fields(value: Obj, required: readonly string[], path: string): void {
   for (const key of required) ensure(Object.hasOwn(value, key), `${path}.${key}: missing required field`);
   for (const key of Object.keys(value)) ensure(required.includes(key), `${path}.${key}: unexpected field`);
 }
-function text(value: unknown, path: string): string { ensure(typeof value === 'string' && value.length > 0, `${path}: expected nonempty string`); return value; }
+function text(value: unknown, path: string): string {
+  ensure(typeof value === 'string' && value.length > 0, `${path}: expected nonempty string`);
+  ensure(utf8Bytes(value) <= SCHEDULED_MANIFEST_LIMITS.textBytes, `${path}: exceeds encoded text byte limit`);
+  return value;
+}
 function number(value: unknown, path: string, integer = false): number {
   ensure(typeof value === 'number' && Number.isFinite(value) && value >= 0 && (!integer || Number.isSafeInteger(value)), `${path}: expected nonnegative ${integer ? 'safe integer' : 'number'}`); return value;
 }
@@ -23,7 +34,10 @@ function hash(value: unknown, path: string): Hash {
   const result = text(value, path); ensure(/^sha256:[a-f0-9]{64}$/.test(result), `${path}: expected SHA-256 digest`); return result as Hash;
 }
 function list(value: unknown, path: string, nonempty = false, ordered = false): readonly string[] {
-  ensure(Array.isArray(value), `${path}: expected list`); const result = value.map((item, index) => text(item, `${path}[${index}]`));
+  ensure(Array.isArray(value), `${path}: expected list`);
+  ensure(value.length <= SCHEDULED_MANIFEST_LIMITS.listItems, `${path}: exceeds list item limit`);
+  const result = value.map((item, index) => text(item, `${path}[${index}]`));
+  ensure(utf8Bytes(JSON.stringify(result)) <= SCHEDULED_MANIFEST_LIMITS.listBytes, `${path}: exceeds encoded list byte limit`);
   ensure((!nonempty || result.length > 0) && new Set(result).size === result.length, `${path}: empty or duplicate members`);
   if (!ordered) ensure(result.every((item, index) => index === 0 || result[index - 1]! < item), `${path}: set members must use canonical lexical order`);
   return freeze(result);
@@ -35,7 +49,9 @@ function one<T extends string>(value: unknown, allowed: readonly T[], path: stri
 const groups = ['type', 'schemaVersion', 'identity', 'schedule', 'work', 'authority', 'bounds', 'admission',
   'intelligence', 'effectsAndProof', 'recovery', 'presentation', 'activation'] as const;
 
-function decodeShape(input: Json, expectedVersion: 1 | 2): ScheduledWorkManifest {
+function decodeShape(input: Json, expectedVersion: 1 | 2, context: BoundaryContext): ScheduledWorkManifest {
+  ensure(utf8Bytes(take(canonical(input)).bytes) <= SCHEDULED_MANIFEST_LIMITS.manifestBytes,
+    'manifest exceeds encoded byte budget');
   const root = object(input, 'manifest'); fields(root, groups, 'manifest');
   ensure(root.type === 'ScheduledWorkManifest' && root.schemaVersion === expectedVersion, 'manifest: unknown type or schema version');
   const identity = object(root.identity, 'identity'); fields(identity, ['jobId', 'displayName', 'accountableOwner', 'packageVersion', 'contentDigest'], 'identity');
@@ -47,7 +63,7 @@ function decodeShape(input: Json, expectedVersion: 1 | 2): ScheduledWorkManifest
   const schedule = object(root.schedule, 'schedule'); const scheduleCommon = ['kind', 'activationInstant', 'timeZoneDataVersion', 'calendarPolicyVersion', 'currentLatenessCutoffMs'];
   const kind = one(schedule.kind, ['recurring', 'one-shot'] as const, 'schedule.kind');
   fields(schedule, [...scheduleCommon, ...(kind === 'recurring' ? ['expression', 'timeZone'] : ['at'])], 'schedule');
-  const activationInstant = text(schedule.activationInstant, 'schedule.activationInstant'); parseRfc3339Offset(activationInstant);
+  const activationInstant = text(schedule.activationInstant, 'schedule.activationInstant'); validateRfc3339Offset(activationInstant);
   const common = { activationInstant, timeZoneDataVersion: text(schedule.timeZoneDataVersion, 'schedule.timeZoneDataVersion'),
     calendarPolicyVersion: text(schedule.calendarPolicyVersion, 'schedule.calendarPolicyVersion'),
     currentLatenessCutoffMs: number(schedule.currentLatenessCutoffMs, 'schedule.currentLatenessCutoffMs') };
@@ -55,7 +71,13 @@ function decodeShape(input: Json, expectedVersion: 1 | 2): ScheduledWorkManifest
     ? freeze({ kind, expression: parseCronV1(text(schedule.expression, 'schedule.expression')).expression,
       timeZone: text(schedule.timeZone, 'schedule.timeZone'), ...common })
     : freeze({ kind, at: text(schedule.at, 'schedule.at'), ...common });
-  if (decodedSchedule.kind === 'one-shot') parseRfc3339Offset(decodedSchedule.at);
+  if (decodedSchedule.kind === 'one-shot') validateRfc3339Offset(decodedSchedule.at);
+  ensure(/^tzdb:\d{4}[a-z]$/.test(decodedSchedule.timeZoneDataVersion),
+    'schedule.timeZoneDataVersion: expected a pinned tzdb release reference');
+  ensure(/^calendar:[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9]\d*$/.test(decodedSchedule.calendarPolicyVersion),
+    'schedule.calendarPolicyVersion: expected a pinned calendar policy reference');
+  if (decodedSchedule.kind === 'recurring') ensure(/^[A-Z][A-Za-z0-9_+-]*(?:\/[A-Z][A-Za-z0-9_+-]*)+$/.test(decodedSchedule.timeZone),
+    'schedule.timeZone: expected a canonical named-zone reference');
 
   const work = object(root.work, 'work'); fields(work, ['entryPoint', 'bodyDigest', 'resultDestination', 'groundingContract', 'predecessors'], 'work');
   const authority = object(root.authority, 'authority'); fields(authority, ['systemPrincipal', 'standingGrant', 'scope', 'operationClasses', 'authorizations'], 'authority');
@@ -84,12 +106,12 @@ function decodeShape(input: Json, expectedVersion: 1 | 2): ScheduledWorkManifest
 }
 
 export function decoder(preserved: string): Result<VersionedDecoder<ScheduledWorkManifest, BoundaryContext>> {
-  const validate = (value: Json, version: 1 | 2) => { try { decodeShape(value, version); return { ok: true as const, value }; }
+  const validate = (value: Json, version: 1 | 2, context: BoundaryContext) => { try { decodeShape(value, version, context); return { ok: true as const, value }; }
     catch (error) { return { ok: false as const, detail: error instanceof Error ? error.message : 'invalid manifest' }; } };
   return defineDecoder<ScheduledWorkManifest, BoundaryContext>({ name: 'ScheduledWorkManifest', owner: 'part-fifteen', currentVersion: 2,
-    versions: { 1: { validate: value => validate(value, 1) }, 2: { validate: value => validate(value, 2) } },
+    versions: { 1: { validate: (value, context) => validate(value, 1, context) }, 2: { validate: (value, context) => validate(value, 2, context) } },
     migrations: { 1: value => ({ ...(value as Record<string, Json>), schemaVersion: 2 }) },
-    decodeCurrent: value => { try { return { ok: true, value: decodeShape(value, 2) }; } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'invalid manifest' }; } } }, preserved);
+    decodeCurrent: (value, context) => { try { return { ok: true, value: decodeShape(value, 2, context) }; } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'invalid manifest' }; } } }, preserved);
 }
 
 export function decodeScheduledWorkManifest(input: unknown, context: BoundaryContext): Result<ScheduledWorkManifest> {

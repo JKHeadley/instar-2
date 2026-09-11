@@ -1,7 +1,8 @@
 // Slice A maps every P15 negative fixture to executed evidence or the exact
 // granted-but-unlanded owner boundary. No stand-in promotes a held arm.
-import { readFileSync } from 'node:fs';
-import { relative } from 'node:path';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const executable = {
   1: 'Architecture test proves Part Fifteen introduces no duplicate core type and imports every consumed owner through its public index.',
@@ -18,8 +19,13 @@ const executable = {
   18: 'Local every-machine instance identity expansion executes; authenticated cross-epoch admission and long-history arms remain held.',
   22: 'A forged mutable Run view cannot override the current state reconstructed through the landed public RunGraphPort.',
   27: 'The future one-shot boundary executes; full outage coverage remains held at the named loop and calendar seams.',
-  29: 'Malformed, foreign and target-like capacity measurements are refused through Part One; resource allocation remains separately held.',
+  29: 'Closed percent range, explicit-action-clock freshness and unknown-evidence refusal execute through Part One; resource allocation remains separately held.',
+  31: 'Local capacity evidence range, freshness and unknown-evidence classification executes; an actual capacity-inhibited launch remains held.',
+  33: 'Local quota-wall validation executes; launch through a pinned allocated candidate remains held.',
+  34: 'Local unobservable-evidence classification executes; finite-exposure allocation and route policy remain held.',
+  38: 'Landed unresolved accounting and terminal unreachable exits execute; only the production shutdown-driver arm remains held.',
   39: 'The closed manifest keeps priority separate from authority and budget; real resource admission remains held at Part Six.',
+  45: 'Generic durable Part Five Run retention and session-independent reconstruction execute; shutdown and model-learning arms remain held.',
   51: 'One-way source preservation, omitted-model default, execution-mode learning and machine-local placement conversion execute; launch remains held.',
 };
 
@@ -27,23 +33,23 @@ const held = {
   3: 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69-and-Part-Ten-production-wiring',
   4: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49',
   5: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-loop-followup.md-row-36',
-  7: 'NON-EXECUTABLE-UNTIL-design-19-scheduled-work-seam-request-calendar-adapter.md',
-  9: 'NON-EXECUTABLE-UNTIL-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  7: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  9: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   12: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-confined-production-driver',
-  13: 'NON-EXECUTABLE-UNTIL-design-19-scheduled-work-seam-request-calendar-adapter.md',
-  14: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  13: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  14: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   15: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-operator-followup.md-row-69',
   16: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49',
   18: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-facts-followup.md-row-47-and-seam-response-rungraph-followup.md-row-48-and-seam-response-intake-followup.md-row-49',
-  19: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-design-19-scheduled-work-seam-request-calendar-adapter.md',
-  20: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  19: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  20: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   21: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-facts-followup.md-row-47-and-seam-response-rungraph-followup.md-row-48-and-seam-response-intake-followup.md-row-49',
   23: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-loop-followup.md-and-seam-response-judgment.md-row-32',
-  24: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37-and-design-19-scheduled-work-seam-request-calendar-adapter.md',
-  25: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37-and-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  24: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  25: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   26: 'NON-EXECUTABLE-UNTIL-SEAM-LEDGER.md-rows-37-44-47-48-49-54-66-67-68',
-  27: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-design-19-scheduled-work-seam-request-calendar-adapter.md',
-  28: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  27: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  28: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   29: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-resource-allocation-and-launch-arm',
   30: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36',
   31: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36',
@@ -81,11 +87,71 @@ export function p15Dispositions(design = readFileSync('docs/19-scheduled-work/09
   });
 }
 
+const proofFiles = ['tests/scheduled/review-round3.test.ts', 'tests/integration/scheduled-round3.test.ts',
+  'tests/e2e/scheduled-round3.test.ts'];
+const laneDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.instar/lanes');
+const calendarRequest = 'design-19-scheduled-work-seam-request-calendar-adapter.md';
+const dependencyFiles = value => value.match(/(?:SEAM-LEDGER|seam-response-[a-z0-9-]+|design-19-[a-z0-9-]+)\.md/g) ?? [];
+
+export function checkP15Architecture(dispositions = p15Dispositions()) {
+  for (const file of proofFiles) {
+    if (!existsSync(file)) throw new Error(`missing required P15 proof file: ${file}`);
+    const source = readFileSync(file, 'utf8');
+    if (!source.includes('exerciseP15Round3Proof()') || !source.includes('expect('))
+      throw new Error(`${file}: required proof must execute the shared real-owner exercise and assertions`);
+  }
+  const proofSource = readFileSync('tests/scheduled/round3-proof.ts', 'utf8');
+  for (const token of ['runtime.record(', 'inspectCurrent(', 'decodeScheduledCapacityMeasurement(',
+    'importLegacyScheduledJob(', 'graph.read(', 'readExit(', 'closeUnreachable(']) {
+    if (!proofSource.includes(token)) throw new Error(`round-three proof is missing real owner operation ${token}`);
+  }
+  const ledgerPath = resolve(laneDirectory, 'SEAM-LEDGER.md');
+  if (!existsSync(ledgerPath)) throw new Error(`missing authoritative seam ledger: ${ledgerPath}`);
+  const ledger = readFileSync(ledgerPath, 'utf8');
+  const allowed = new Set([...Object.values(held).flatMap(dependencyFiles)]);
+  for (const row of dispositions) {
+    if (!row.held) continue;
+    const files = dependencyFiles(row.held);
+    if (!files.length) throw new Error(`${row.id}: held disposition has no existing grant/request evidence`);
+    for (const file of files) {
+      if (!allowed.has(file)) throw new Error(`${row.id}: unrecognized held disposition ${file}`);
+      const path = resolve(laneDirectory, file);
+      if (!existsSync(path)) throw new Error(`${row.id}: held disposition names nonexistent ${file}`);
+      const source = readFileSync(path, 'utf8');
+      if (file === calendarRequest) {
+        if (!row.held.includes(`UNGRANTED-REQUEST-${file}`) || !/^Status: REQUESTED/m.test(source))
+          throw new Error(`${row.id}: calendar adapter must be labelled as an UNGRANTED REQUEST`);
+      } else if (file !== 'SEAM-LEDGER.md' && !/GRANTED/i.test(source.slice(0, 2500))) {
+        throw new Error(`${row.id}: ${file} does not establish a granted dependency`);
+      }
+    }
+    for (const match of row.held.matchAll(/row(?:s)?-([0-9-]+)/g)) for (const number of match[1].split('-').filter(Boolean)) {
+      const ledgerRow = ledger.split('\n').find(line => line.startsWith(`| ${number} |`));
+      if (!ledgerRow || !/\| (?:GRANTED|ALREADY GRANTED)/.test(ledgerRow))
+        throw new Error(`${row.id}: ledger row ${number} is absent or not granted`);
+    }
+  }
+  return { proofFiles };
+}
+
+function validateReportedTest(fileName, title) {
+  const path = realpathSync(fileName);
+  const testsRoot = `${realpathSync(resolve(process.cwd(), 'tests'))}/`;
+  if (!path.startsWith(testsRoot)) throw new Error(`${title}: evidence is not a real test file`);
+  const source = readFileSync(path, 'utf8'); const offset = source.indexOf(title);
+  if (offset < 0) throw new Error(`${title}: reported test title is absent from ${relative(process.cwd(), path)}`);
+  const body = source.slice(offset, offset + 6000);
+  if (!/(?:expect\(|assert\.|exerciseP15Round3Proof\()/.test(body))
+    throw new Error(`${title}: test body does not validate an outcome`);
+  return relative(process.cwd(), path);
+}
+
 export function checkP15Coverage(report, dispositions = p15Dispositions()) {
   if (!report.success) throw new Error('P15 mapping requires a successful actual test run');
+  checkP15Architecture(dispositions);
   return dispositions.map(row => {
     const tests = report.testResults.flatMap(file => file.assertionResults.filter(test => (test.fullName.match(/\bP15-NF-\d+\b/g) ?? []).includes(row.id))
-      .map(test => ({ file: relative(process.cwd(), file.name), title: test.title, status: test.status })));
+      .map(test => ({ file: validateReportedTest(file.name, test.title), title: test.title, status: test.status })));
     if (row.executable) {
       if (!tests.length || tests.some(test => test.status !== 'passed')) throw new Error(`${row.id}: EXECUTABLE without exclusively passing real tests`);
     } else if (tests.length) throw new Error(`${row.id}: held owner arm is falsely labelled by a local passing test`);

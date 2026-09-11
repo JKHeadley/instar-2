@@ -20,6 +20,22 @@ describe('Part Fifteen package-resource restart evidence', () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it('P15-NF-16 recovers both intermediate owner-history cuts and refuses altered or truncated history', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'p15-owner-cuts-'));
+    const args = ['--loader', './scripts/slice-ts-loader.mjs', './scripts/slice-scheduled-package.mjs', directory];
+    try {
+      const run = spawnSync(process.execPath, [...args, 'owner-cuts'], { encoding: 'utf8', timeout: 30_000 });
+      expect(run.status, run.stderr).toBe(0);
+      const rows = JSON.parse(run.stdout) as Array<Record<string, unknown>>;
+      expect(rows).toEqual([
+        expect.objectContaining({ kind: 'LocalCapabilityPackage', seedSignal: 'SIGKILL', status: 'refused' }),
+        expect.objectContaining({ kind: 'PackageTransition', seedSignal: 'SIGKILL', status: 'accepted' }),
+        expect.objectContaining({ kind: 'tampered', status: 'refused' }),
+        expect.objectContaining({ kind: 'missing-prefix', status: 'refused' }),
+      ]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }, 30_000);
+
   it('P15-SLICE-A-CRON gives independently decoded recurring declarations the same identity without claiming lifecycle expansion', () => {
     const before = scheduledFixture(); const port = createScheduledWorkPackagePort();
     const recurring = { ...before.manifest, schedule: { kind: 'recurring' as const, expression: '10-20/5 1 * * 0', timeZone: 'America/New_York',
@@ -38,9 +54,11 @@ describe('Part Fifteen package-resource restart evidence', () => {
       expect(cut.signal).toBe('SIGKILL');
       const recovered = spawnSync(process.execPath, [...args, 'legacy-recover'], { encoding: 'utf8', timeout: 30_000 });
       expect(recovered.status, recovered.stderr).toBe(0);
-      const plan = JSON.parse(recovered.stdout) as { model: string; postCompletionLearning: string; activation: string; sourceBytes: string };
-      expect(plan.model).toBe('sonnet'); expect(plan.postCompletionLearning).toBe('required'); expect(plan.activation).toBe('eligible');
-      expect(JSON.parse(plan.sourceBytes).slug).toBe('maintenance');
+      const plan = JSON.parse(recovered.stdout) as { sourceKind: string; model: string; postCompletionLearning: string;
+        activation: string; sourceBytes: string; schedule: string };
+      expect(plan.sourceKind).toBe('legacy-job-declaration'); expect(plan.model).toBe('haiku');
+      expect(plan.postCompletionLearning).toBe('off'); expect(plan.activation).toBe('eligible');
+      expect(plan.schedule).toBe('*/5 * * * *'); expect(JSON.parse(plan.sourceBytes).slug).toBe('health-check');
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });
