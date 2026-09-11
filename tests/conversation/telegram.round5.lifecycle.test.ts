@@ -51,12 +51,12 @@ it.each([
   60_000,
 );
 
-it.each(['chat', 'topic', 'sender'] as const)(
-  'P12-NF-06 P12-NF-16 P12-NF-18 P12-NF-38 round5 real SIGKILL mismatch-%s receipt stays owned but cannot advance the declared route cursor',
-  field => {
-    const recovered = cutAndRecover(intakeChild, `mismatch-${field}`);
+it.each(['mismatch-chat', 'mismatch-topic', 'mismatch-sender'] as const)(
+  'P12-NF-06 P12-NF-16 P12-NF-18 P12-NF-38 round5 real SIGKILL %s receipt stays owned but cannot advance the declared route cursor',
+  phase => {
+    const recovered = cutAndRecover(intakeChild, phase);
     expect(recovered).toMatchObject({
-      phase: `mismatch-${field}`,
+      phase,
       offsetBeforeRecovery: 100,
       offsetAfterRecovery: 100,
       receiptsBefore: 1,
