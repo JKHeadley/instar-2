@@ -11,6 +11,15 @@ it('P15-CONTRACT-MAP rejects labels attributed to a nonexistent or non-executed 
   expect(() => checkP15Coverage(report)).toThrow();
 });
 
+it('P15-CONTRACT-MAP rejects executable labels smuggled through fullName beside one real test title', () => {
+  const labels = p15Dispositions().filter((row: { executable: boolean }) => row.executable)
+    .map((row: { id: string }) => row.id).join(' ');
+  const title = 'P15-NF-39 priority changes ordering metadata without widening authority or budget';
+  const report = { success: true, testResults: [{ name: `${process.cwd()}/tests/scheduled/package.integration.test.ts`,
+    assertionResults: [{ fullName: labels, title, status: 'passed' }] }] };
+  expect(() => checkP15Coverage(report)).toThrow(/EXECUTABLE without exclusively passing real tests/);
+});
+
 it('P15-CONTRACT-MAP rejects a held disposition naming an invented grant or ledger source', () => {
   const dispositions = p15Dispositions();
   const altered = dispositions.map((row: { number: number }) => row.number === 7 ? { ...row,

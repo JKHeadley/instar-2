@@ -33,7 +33,7 @@ describe('Part Fifteen round-four authoritative package conflicts', () => {
     expect(status(admit(pkg, bytes))).toBe('refused');
   });
 
-  it('P15-NF-08 refuses every entrypoint when one active package cannot prove a complete single-manifest inventory', () => {
+  it('P15-NF-08 refuses every entrypoint when one active package declares two scheduled manifest resources', () => {
     const s = scheduledFixture(); const a = assemblyRuntimeFixture(); const port = createScheduledWorkPackagePort();
     const second = clone(s.manifest) as any; second.schedule.at = '2027-01-02T00:00:00Z';
     const secondBytes = value(canonical(second)).bytes; const input = clone(s.package) as any;

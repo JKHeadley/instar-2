@@ -1,4 +1,4 @@
-import { decodeMeasurement } from '../index.js';
+import { compareMeasurements, decodeMeasurement } from '../index.js';
 import type { BoundaryContext, DecodeContext, Measurement, Result } from '../index.js';
 import { boundary, ensure, take } from './boundary.js';
 
@@ -18,7 +18,7 @@ export function decodeScheduledCapacityMeasurement(kind: string, instance: strin
     ensure(context.actAt !== undefined, 'capacity evidence is unknown without an explicit action clock');
     const action = take(decodeMeasurement('clock', context.actAt, context));
     ensure(typeof measurement.at !== 'number', 'capacity evidence is missing its observed clock');
-    const age = action.value - measurement.at.value;
+    const age = take(compareMeasurements<'clock'>(action, measurement.at, context.preserved));
     ensure(age >= 0 && age <= SCHEDULED_CAPACITY_MAX_AGE_MS,
       'capacity evidence is stale or observed after the explicit action clock');
     return measurement;

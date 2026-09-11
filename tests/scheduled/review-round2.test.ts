@@ -12,7 +12,7 @@ const status = (result: unknown) => consumeResult(result as Parameters<typeof co
 });
 
 describe('Part Fifteen independent review round 2 regressions', () => {
-  it('P15-NF-03 P15-NF-16 P15-NF-17 P15-NF-22 re-resolves the owner-decoded current signed package', () => {
+  it('P15-NF-03 P15-NF-16 P15-NF-17 re-resolves the owner-decoded current signed package', () => {
     const absent = scheduledFixture(); const port = createScheduledWorkPackagePort();
     const admission = { package: absent.package, manifestPath: 'scheduled/manifest.json', manifestBytes: absent.manifestBytes, existingManifests: [] };
     expect(status(resolveActivePackage(absent.package.namespace, [], absent.context))).toBe('refused');

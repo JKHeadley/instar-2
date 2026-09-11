@@ -45,7 +45,12 @@ export function parseRfc3339Offset(source: string): number {
     offset = sign * (oh * 60 + om);
   }
   const value = ((daysFromCivil(year, month, day) * 24 + hour) * 60 + minute - offset) * 60_000 + second * 1000 + milliseconds;
-  ensure(Number.isSafeInteger(value), 'timestamp is outside safe clock range'); return value;
+  ensure(Number.isSafeInteger(value), 'timestamp is outside safe clock range');
+  const firstRepresentable = daysFromCivil(0, 1, 1) * 86_400_000;
+  const lastRepresentable = daysFromCivil(9999, 12, 31) * 86_400_000 + 86_399_999;
+  ensure(value >= firstRepresentable && value <= lastRepresentable,
+    'timestamp normalizes outside the four-digit RFC 3339 year range');
+  return value;
 }
 
 export function canonicalInstant(source: string): string {

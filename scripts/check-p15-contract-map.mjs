@@ -8,7 +8,7 @@ const executable = {
   1: 'Architecture test proves Part Fifteen introduces no duplicate core type and imports every consumed owner through its public index.',
   2: 'Governance test inventories every governed Rule and all 52 distinct fixture identifiers; this checker binds the inventory to the actual run.',
   3: 'Package-resource admission delegates decoding and current signed-history selection to the public Part Ten owner paths.',
-  6: 'The landed Part Five closure and read ports resolve a signed terminal unreachable exit; the permissive completedRun test fixture is not accepted as Part Nine evidence.',
+  7: 'Package storage replacement executes through the same public Part Two and Part Ten operations with byte-identical scheduled admission; pinned calendar replacement remains held.',
   8: 'Closed manifest decoding, required-field omission, duplicate identity, canonical bytes, Part Ten package/body pinning and cold reconstruction execute at all three tiers.',
   9: 'The local cron-v1 grammar and normalization arm executes; pinned zone/calendar expansion remains held at its named adapter seam.',
   10: 'An invalid manifest is surfaced while an independent valid signed package and constitutional canonical boundary remain usable.',
@@ -17,15 +17,13 @@ const executable = {
   16: 'Part Ten current-package resolution refuses missing or half-staged authority; scheduled Run boundary behavior remains held at Four.',
   17: 'Part Ten decoding, signed namespace/source selection and retirement re-resolution execute without a schedule-surface dependency.',
   18: 'Local every-machine instance identity expansion executes; authenticated cross-epoch admission and long-history arms remain held.',
-  22: 'A forged mutable Run view cannot override the current state reconstructed through the landed public RunGraphPort.',
+  19: 'Part Ten package-history resolution refuses a potentially conflicting active definition, including an unresolved competing namespace; calendar-boundary expansion remains held.',
   27: 'The future one-shot boundary executes; full outage coverage remains held at the named loop and calendar seams.',
   29: 'Closed percent range, explicit-action-clock freshness and unknown-evidence refusal execute through Part One; resource allocation remains separately held.',
   31: 'Local capacity evidence range, freshness and unknown-evidence classification executes; an actual capacity-inhibited launch remains held.',
   33: 'Local quota-wall validation executes; launch through a pinned allocated candidate remains held.',
   34: 'Local unobservable-evidence classification executes; finite-exposure allocation and route policy remain held.',
-  38: 'The landed Part Five port preserves an unresolved Run and resolves a signed terminal unreachable exit; resource release and production shutdown remain held at their owners.',
   39: 'The closed manifest keeps priority separate from authority and budget; real resource admission remains held at Part Six.',
-  45: 'Local Part Five reconstruction from signed facts executes without claiming a process cut or a real Part Six admission witness; shutdown and model-learning arms remain held.',
   51: 'One-way source preservation, omitted-model default, execution-mode learning and unwitnessed-locality inhibition execute; launch remains held.',
 };
 
@@ -33,6 +31,7 @@ const held = {
   3: 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69-and-Part-Ten-production-wiring',
   4: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49',
   5: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-loop-followup.md-row-36',
+  6: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-real-Part-Six-RunAdmissionPort-production-wiring',
   7: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   9: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   12: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-confined-production-driver',
@@ -44,6 +43,7 @@ const held = {
   19: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   20: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   21: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-facts-followup.md-row-47-and-seam-response-rungraph-followup.md-row-48-and-seam-response-intake-followup.md-row-49',
+  22: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-real-Part-Six-RunAdmissionPort-production-wiring',
   23: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-loop-followup.md-and-seam-response-judgment.md-row-32',
   24: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   25: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
@@ -59,14 +59,14 @@ const held = {
   35: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-loop-followup.md-and-seam-response-judgment.md-rows-27-32',
   36: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-judgment.md-row-27-and-seam-response-intake-followup.md-row-49',
   37: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-rows-36-37-and-seam-response-facts-followup.md-row-37',
-  38: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver',
+  38: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-real-Part-Six-RunAdmissionPort-and-shutdown-driver',
   39: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-resource-admission-arm',
   40: 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md',
   41: 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md',
   42: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-judgment.md-row-23',
   43: 'NON-EXECUTABLE-UNTIL-seam-response-judgment.md-row-27-and-seam-response-assembly-followup.md-row-30',
   44: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-judgment.md-row-23',
-  45: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver-and-seam-response-judgment.md-row-23',
+  45: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-real-Part-Six-RunAdmissionPort-and-shutdown-driver-and-seam-response-judgment.md-row-23',
   46: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33',
   47: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33',
   48: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-seam-response-operator-followup.md-row-69',
@@ -115,6 +115,8 @@ export function checkP15Architecture(dispositions = p15Dispositions()) {
   for (const token of ['closeUnreachable(', 'readScheduledBusinessDisposition(', 'graph.readExit(']) {
     if (!ownerProofSource.includes(token)) throw new Error(`owner-port proof is missing ${token}`);
   }
+  if (/P15-NF-(?:06|22|38|45)\b/.test(ownerProofSource))
+    throw new Error('isolated Part Five fixtures must not be attributed as independently witnessed P15 owner-composition positives');
   if (proofSource.includes('const durable: unknown[]') || proofSource.includes('const admissions = new Set<string>()'))
     throw new Error('round-three proof must not present retained process-local arrays or admission sets as restart evidence');
   const ledgerPath = resolve(laneDirectory, 'SEAM-LEDGER.md');
@@ -164,7 +166,7 @@ export function checkP15Coverage(report, dispositions = p15Dispositions()) {
   if (!report.success) throw new Error('P15 mapping requires a successful actual test run');
   checkP15Architecture(dispositions);
   return dispositions.map(row => {
-    const tests = report.testResults.flatMap(file => file.assertionResults.filter(test => (test.fullName.match(/\bP15-NF-\d+\b/g) ?? []).includes(row.id))
+    const tests = report.testResults.flatMap(file => file.assertionResults.filter(test => (test.title.match(/\bP15-NF-\d+\b/g) ?? []).includes(row.id))
       .map(test => ({ file: validateReportedTest(file.name, test.title), title: test.title, status: test.status })));
     if (row.executable) {
       if (!tests.length || tests.some(test => test.status !== 'passed')) throw new Error(`${row.id}: EXECUTABLE without exclusively passing real tests`);

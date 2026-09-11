@@ -20,11 +20,14 @@ function authoritativeCollision(manifestJobId: string, namespace: string, contex
   } => row.record.type === 'LocalCapabilityPackage' && row.record.namespace !== namespace)
     .map(row => row.record.namespace));
   for (const competingNamespace of competingNamespaces) {
-    const competing = consumeResult(resolveActivePackage(competingNamespace, current, context), {
-      Success: value => value,
-      Refused: () => undefined,
-    });
-    if (!competing) continue;
+    const potentiallyConflicting = current.some(row => row.record.type === 'LocalCapabilityPackage'
+      && row.record.namespace === competingNamespace
+      && row.record.declarationIds.some(id => id.toLowerCase() === manifestJobId.toLowerCase()));
+    if (!potentiallyConflicting) continue;
+    // A namespace which may own this job must resolve through Part Ten before
+    // absence of a collision is established. Ambiguous/tainted activity is
+    // uncertainty about the competing definition, never permission to ignore it.
+    const competing = take(resolveActivePackage(competingNamespace, current, context));
     const jobId = competing.declarationIds.find(id => id.toLowerCase() === manifestJobId.toLowerCase());
     if (jobId) return jobId;
   }
@@ -64,17 +67,15 @@ export function createScheduledWorkPackagePort(): ScheduledWorkPackagePort {
         ensure(manifest.identity.packageVersion === active.version && manifest.identity.contentDigest === active.contentDigest,
           'manifest package version or content digest differs from Part Ten authority');
         ensure(active.declarationIds.includes(manifest.identity.jobId), 'matching Part Ten feature declaration is absent');
-        ensure(active.declarationIds.length === 1,
-          'complete same-package scheduled manifest inventory is unavailable for a multi-declaration package');
         ensure(Array.isArray(input.existingManifests), 'caller manifest collision copy must be a list');
         ensure(input.existingManifests.length === 0, 'caller manifest collision copy carries no authority');
         const collision = authoritativeCollision(manifest.identity.jobId, active.namespace, context as AssemblyDecodeContext);
         ensure(!collision, collision === manifest.identity.jobId ? 'duplicate scheduled job id' : 'case-folded scheduled job identity collision');
         const body = active.entrypoints.find(entry => entry.id === manifest.work.entryPoint);
         ensure(body && body.digest === manifest.work.bodyDigest, 'manifest body differs from immutable Part Ten entry point');
-        ensure(active.entrypoints.length === 2
-          && active.entrypoints.every(entry => entry.path === input.manifestPath || entry.id === manifest.work.entryPoint),
-        'complete same-package scheduled manifest inventory is unavailable');
+        const otherScheduledManifest = active.entrypoints.find(entry => entry.path !== input.manifestPath
+          && entry.path.startsWith('scheduled/') && entry.path.endsWith('.json'));
+        ensure(!otherScheduledManifest, 'package declares another scheduled manifest resource');
         const packageChecks = new Set([...active.checks.unit, ...active.checks.integration, ...active.checks.lifecycle]);
         ensure(manifest.activation.requiredChecks.every(check => packageChecks.has(check)), 'manifest requires a check absent from the Part Ten package');
         return manifest;

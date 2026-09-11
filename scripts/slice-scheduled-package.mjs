@@ -136,6 +136,52 @@ if (mode === 'round4-conflicts-recover') {
   same: [admit(persisted.samePackage, 'scheduled/manifest.json', persisted.sameBytes),
     admit(persisted.samePackage, 'scheduled/second.json', persisted.sameSecondBytes)] }));
 }
+if (mode === 'round5-validation-seed-cut') {
+  const ambiguous = activeScheduledFixture();
+  const competingInput = clone(ambiguous.package);
+  Object.assign(competingInput, { id: 'package:competing', namespace: 'alice.competing', contentDigest: ambiguous.h('d') });
+  const competingManifest = clone(ambiguous.manifest);
+  competingManifest.identity.contentDigest = ambiguous.h('d'); competingManifest.schedule.at = '2027-01-02T00:00:00Z';
+  const competingBytes = value(canonical(competingManifest)).bytes;
+  competingInput.entrypoints[0].digest = hashBytes(competingBytes);
+  const competingPackage = value(ambiguous.assembly.runtime.record('LocalCapabilityPackage',
+    value(decodeLocalCapabilityPackage(competingInput, ambiguous.context))));
+  for (const ordinal of [1, 2]) value(ambiguous.assembly.runtime.record('PackageTransition', {
+    ...assemblyInput('PackageTransition'), id: `transition:competing:${ordinal}`,
+    operation: `operation:competing:${ordinal}`, package: competingPackage.namespace,
+    manifestDigest: competingPackage.contentDigest, observedArtifactDigest: competingPackage.contentDigest,
+  }));
+
+  const scheduled = scheduledFixture(); const extraAssembly = assemblyRuntimeFixture(); const extraBaselineLength = extraAssembly.raw.length;
+  const extraInput = clone(scheduled.package);
+  extraInput.entrypoints.push({ id: 'support-library', path: 'dist/support.js', digest: scheduled.h('d') });
+  extraInput.declarationIds.push('capability:support');
+  const extraPackage = value(extraAssembly.runtime.record('LocalCapabilityPackage',
+    value(decodeLocalCapabilityPackage(extraInput, extraAssembly.c))));
+  value(extraAssembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+    id: 'transition:extra:active', operation: 'operation:extra:active', package: extraPackage.namespace,
+    manifestDigest: extraPackage.contentDigest, observedArtifactDigest: extraPackage.contentDigest }));
+  const payload = { ambiguousTail: ambiguous.assembly.raw.slice(ambiguous.baselineLength), package: ambiguous.package,
+    manifestBytes: ambiguous.manifestBytes, extraTail: extraAssembly.raw.slice(extraBaselineLength), extraPackage,
+    extraManifestBytes: scheduled.manifestBytes };
+  const descriptor = openSync(durable, 'w'); writeSync(descriptor, JSON.stringify(payload)); fsyncSync(descriptor); closeSync(descriptor);
+  process.kill(process.pid, 'SIGKILL');
+}
+if (mode === 'round5-validation-recover') {
+  const persisted = JSON.parse(readFileSync(durable, 'utf8')); const scheduled = scheduledFixture();
+  const recover = (tail, pkg, manifestBytes) => {
+    const assembly = assemblyRuntimeFixture(); assembly.raw.push(...tail);
+    const context = { ...assembly.c, register: { ...assembly.c.register,
+      entries: [...new Set([...assembly.c.register.entries, ...scheduled.context.register.entries])] } };
+    return consumeResult(createScheduledWorkPackagePort().admitPackageResource({ package: pkg,
+      manifestPath: 'scheduled/manifest.json', manifestBytes, existingManifests: [] }, context),
+    { Success: () => 'accepted', Refused: () => 'refused' });
+  };
+  process.stdout.write(JSON.stringify({
+    ambiguous: recover(persisted.ambiguousTail, persisted.package, persisted.manifestBytes),
+    additionalContent: recover(persisted.extraTail, persisted.extraPackage, persisted.extraManifestBytes),
+  }));
+}
 if (mode === 'legacy-recover') {
   const sourceBytes = readFileSync(durable, 'utf8'); const context = scheduledFixture().context;
   process.stdout.write(JSON.stringify(value(importLegacyScheduledJob(sourceBytes, context))));

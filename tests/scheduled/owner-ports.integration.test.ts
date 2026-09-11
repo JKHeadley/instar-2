@@ -6,7 +6,7 @@ import { closeUnreachable } from '../rungraph/closure-fixtures.js';
 import { setup, value } from '../rungraph/fixtures.js';
 
 describe('Part Fifteen consumes landed owner ports without replacing authority', () => {
-  it('P15-NF-06 only a Part Five terminal exit supplies the durable business disposition', () => {
+  it('isolated Part Five fixture: only a terminal exit supplies the durable business disposition', () => {
     const f = closeUnreachable();
     expect(value(f.graph.read(f.id)).state).toBe('unreachable');
     expect(value(readScheduledBusinessDisposition(f.graph, { owner: 'part-five', name: 'Run', id: f.id })).exit.kind).toBe('unreachable');
@@ -15,7 +15,7 @@ describe('Part Fifteen consumes landed owner ports without replacing authority',
     ]) expect(consumeResult(readScheduledBusinessDisposition(f.graph, falseOutcome), { Success: () => 'accepted', Refused: () => 'refused' })).toBe('refused');
   });
 
-  it('P15-NF-22 ignores a mutable Run view and reconstructs current state through RunGraphPort', () => {
+  it('isolated Part Five fixture: ignores a mutable Run view and reconstructs current state through RunGraphPort', () => {
     const f = setup(); const opened = value(f.graph.open(f.run));
     const forged = JSON.parse(JSON.stringify(opened)) as { state: string; head: string };
     forged.state = 'completed'; forged.head = 'forged:last-run';
@@ -23,7 +23,7 @@ describe('Part Fifteen consumes landed owner ports without replacing authority',
     expect(reread.state).toBe('ready'); expect(reread.head).not.toBe(forged.head);
   });
 
-  it('P15-NF-38 P15-NF-45 limits local evidence to signed Part Five retention and closure reads', () => {
+  it('isolated Part Five fixture: limits local evidence to signed Part Five retention and closure reads', () => {
     const open = setup(); value(open.graph.open(open.run));
     expect(value(open.graph.read(open.id)).state).toBe('ready');
     expect(consumeResult(open.graph.readExit({ owner: 'part-five', name: 'Run', id: open.id }),

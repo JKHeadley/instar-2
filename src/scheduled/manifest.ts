@@ -2,7 +2,7 @@ import { canonical, consumeResult, defineDecoder, deriveThrough } from '../index
 import type { BoundaryContext, Hash, Json, Result, VersionedDecoder } from '../index.js';
 import { ensure, freeze, take } from './boundary.js';
 import { parseCronV1 } from './cron.js';
-import { validateRfc3339Offset } from './time.js';
+import { parseRfc3339Offset } from './time.js';
 import type { ScheduledPriority, ScheduledWorkManifest } from './contracts.js';
 
 type Obj = Record<string, Json>;
@@ -63,7 +63,7 @@ function decodeShape(input: Json, expectedVersion: 1 | 2, context: BoundaryConte
   const schedule = object(root.schedule, 'schedule'); const scheduleCommon = ['kind', 'activationInstant', 'timeZoneDataVersion', 'calendarPolicyVersion', 'currentLatenessCutoffMs'];
   const kind = one(schedule.kind, ['recurring', 'one-shot'] as const, 'schedule.kind');
   fields(schedule, [...scheduleCommon, ...(kind === 'recurring' ? ['expression', 'timeZone'] : ['at'])], 'schedule');
-  const activationInstant = text(schedule.activationInstant, 'schedule.activationInstant'); validateRfc3339Offset(activationInstant);
+  const activationInstant = text(schedule.activationInstant, 'schedule.activationInstant'); parseRfc3339Offset(activationInstant);
   const common = { activationInstant, timeZoneDataVersion: text(schedule.timeZoneDataVersion, 'schedule.timeZoneDataVersion'),
     calendarPolicyVersion: text(schedule.calendarPolicyVersion, 'schedule.calendarPolicyVersion'),
     currentLatenessCutoffMs: number(schedule.currentLatenessCutoffMs, 'schedule.currentLatenessCutoffMs') };
@@ -71,7 +71,7 @@ function decodeShape(input: Json, expectedVersion: 1 | 2, context: BoundaryConte
     ? freeze({ kind, expression: parseCronV1(text(schedule.expression, 'schedule.expression')).expression,
       timeZone: text(schedule.timeZone, 'schedule.timeZone'), ...common })
     : freeze({ kind, at: text(schedule.at, 'schedule.at'), ...common });
-  if (decodedSchedule.kind === 'one-shot') validateRfc3339Offset(decodedSchedule.at);
+  if (decodedSchedule.kind === 'one-shot') parseRfc3339Offset(decodedSchedule.at);
   ensure(/^tzdb:\d{4}[a-z]$/.test(decodedSchedule.timeZoneDataVersion),
     'schedule.timeZoneDataVersion: expected a pinned tzdb release reference');
   ensure(/^calendar:[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9]\d*$/.test(decodedSchedule.calendarPolicyVersion),
@@ -93,7 +93,7 @@ function decodeShape(input: Json, expectedVersion: 1 | 2, context: BoundaryConte
   const presentation = object(root.presentation, 'presentation'); fields(presentation, ['destination', 'pushPolicy', 'description'], 'presentation');
   const activation = object(root.activation, 'activation'); fields(activation, ['requiredChecks', 'semanticReview', 'assemblyCompatibility', 'holderProof', 'rollout'], 'activation');
 
-  return freeze({ type: 'ScheduledWorkManifest', schemaVersion: 2, identity: decodedIdentity, schedule: decodedSchedule,
+  const decoded = freeze({ type: 'ScheduledWorkManifest', schemaVersion: 2, identity: decodedIdentity, schedule: decodedSchedule,
     work: { entryPoint: text(work.entryPoint, 'work.entryPoint'), bodyDigest: hash(work.bodyDigest, 'work.bodyDigest'), resultDestination: text(work.resultDestination, 'work.resultDestination'), groundingContract: text(work.groundingContract, 'work.groundingContract'), predecessors: list(work.predecessors, 'work.predecessors') },
     authority: { systemPrincipal: text(authority.systemPrincipal, 'authority.systemPrincipal'), standingGrant: text(authority.standingGrant, 'authority.standingGrant'), scope: text(authority.scope, 'authority.scope'), operationClasses: list(authority.operationClasses, 'authority.operationClasses', true), authorizations: list(authority.authorizations, 'authority.authorizations') },
     bounds: { runBudget: text(bounds.runBudget, 'bounds.runBudget'), exitTest: text(bounds.exitTest, 'bounds.exitTest'), durationMs: number(bounds.durationMs, 'bounds.durationMs'), attempts: number(bounds.attempts, 'bounds.attempts', true), concurrency: number(bounds.concurrency, 'bounds.concurrency', true), tokens: number(bounds.tokens, 'bounds.tokens'), money: number(bounds.money, 'bounds.money'), bytes: number(bounds.bytes, 'bounds.bytes'), notifications: number(bounds.notifications, 'bounds.notifications', true) },
@@ -103,6 +103,9 @@ function decodeShape(input: Json, expectedVersion: 1 | 2, context: BoundaryConte
     recovery: { parentDuty: text(recovery.parentDuty, 'recovery.parentDuty'), rollingBudget: text(recovery.rollingBudget, 'recovery.rollingBudget'), loopPolicy: text(recovery.loopPolicy, 'recovery.loopPolicy'), backoffPolicy: text(recovery.backoffPolicy, 'recovery.backoffPolicy'), breakerOutcomeWindow: text(recovery.breakerOutcomeWindow, 'recovery.breakerOutcomeWindow'), recoveryPolicy: text(recovery.recoveryPolicy, 'recovery.recoveryPolicy'), maxOverdueAgeMs: number(recovery.maxOverdueAgeMs, 'recovery.maxOverdueAgeMs'), exhaustionDestination: text(recovery.exhaustionDestination, 'recovery.exhaustionDestination') },
     presentation: { destination: text(presentation.destination, 'presentation.destination'), pushPolicy: text(presentation.pushPolicy, 'presentation.pushPolicy'), description: text(presentation.description, 'presentation.description') },
     activation: { requiredChecks: list(activation.requiredChecks, 'activation.requiredChecks', true), semanticReview: text(activation.semanticReview, 'activation.semanticReview'), assemblyCompatibility: text(activation.assemblyCompatibility, 'activation.assemblyCompatibility'), holderProof: text(activation.holderProof, 'activation.holderProof'), rollout: one(activation.rollout, ['dark', 'dry-run', 'active'] as const, 'activation.rollout') } }) as ScheduledWorkManifest;
+  ensure(utf8Bytes(take(canonical(decoded)).bytes) <= SCHEDULED_MANIFEST_LIMITS.manifestBytes,
+    'manifest exceeds encoded byte budget after canonical normalization');
+  return decoded;
 }
 
 export function decoder(preserved: string): Result<VersionedDecoder<ScheduledWorkManifest, BoundaryContext>> {
