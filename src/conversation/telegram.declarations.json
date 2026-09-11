@@ -1,0 +1,70 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "telegram-conversation-adapter",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "telegram.mode.long-poll.default",
+        "telegram.mode.webhook.signed-choice-only",
+        "telegram.identity.fresh-authenticated-probe",
+        "telegram.cursor.consecutive-durable-receipts",
+        "telegram.operation.ordinary-reply.supported",
+        "telegram.operation.media.inhibited",
+        "telegram.operation.reaction.inhibited",
+        "telegram.operation.typing.inhibited",
+        "telegram.operation.delete.inhibited",
+        "telegram.operation.edit.inhibited",
+        "telegram.operation.aggregate.inhibited",
+        "public.IntakePort.receive",
+        "public.EffectDoorway.handoff"
+      ],
+      "gate": { "test": "P4-NF-06", "deadline": 1893456000000 }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "external",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": { "kind": "no" }
+    },
+    "standards": [4, 14, 28, 29, 42, 46, 77, 89, 105],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "telegram-intake-v1",
+    "kind": "parsers",
+    "status": "live",
+    "requiredFacts": {
+      "fixture": "P4-NF-06",
+      "authenticationClass": [
+        { "stimulusType": "message", "class": "channel-attested" },
+        { "stimulusType": "stop", "class": "channel-attested" }
+      ],
+      "eventIdAuthority": {
+        "mintedBy": "Telegram provider update_id",
+        "uniquenessScope": "verified bot instance and authenticated chat",
+        "replayWindow": 0,
+        "fallbackFingerprint": { "policy": "none", "basis": "provider update_id is required" }
+      },
+      "ackPolicy": "never"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": { "kind": "no" }
+    },
+    "standards": [28, 29, 36, 42, 46, 110],
+    "holds": []
+  }
+]

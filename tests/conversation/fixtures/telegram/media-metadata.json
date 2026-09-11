@@ -1,0 +1,11 @@
+{
+  "update_id": 105,
+  "message": {
+    "message_id": 505,
+    "from": { "id": 7, "is_bot": false, "first_name": "Media sender" },
+    "chat": { "id": 123, "type": "private" },
+    "date": 1700000006,
+    "caption": "voice metadata only",
+    "voice": { "duration": 4, "mime_type": "audio/ogg", "file_id": "fixture-file-id", "file_unique_id": "fixture-unique-id", "file_size": 321 }
+  }
+}
