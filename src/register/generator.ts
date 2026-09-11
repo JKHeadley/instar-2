@@ -7,8 +7,8 @@ import { decodeDeclaration } from './declarations.js';
 import { decodeShape } from './shape.js';
 import { resolveFact } from './fact-schema.js';
 
-const loaded = new WeakMap<object, () => boolean>();
-export const wasVerified = (register: GeneratedRegister): register is VerifiedRegister => loaded.get(register)?.() === true;
+const loaded = new WeakMap<object, (now?: Clock) => boolean>();
+export const wasVerified = (register: GeneratedRegister, now?: Clock): register is VerifiedRegister => loaded.get(register)?.(now) === true;
 
 function reference<N extends 'FactEnvelope' | 'FactPositionVector'>(input: Json, name: N) {
   const r = object(input); exact(r, ['owner', 'name', 'id']);
@@ -151,9 +151,14 @@ export function loadRegister(input: unknown, expected: RegisterGeneration, conte
     requireThat(encoding(rebuilt).bytes === encoding(v).bytes, 'loaded register does not match complete declaration/reference validation');
     requireThat(v.authority === 'shape-only', 'register bytes may not self-assert authority');
     const result = { type: 'GeneratedRegister', schemaVersion: 1, commit: text(v.commit, 'commit'), extract, shape, entries: decoded, authority: 'shape-only' } as unknown as VerifiedRegister;
-    loaded.set(result, () => {
-      if (!spine.revalidateLoaded) return true;
-      return consumeResult(spine.revalidateLoaded(extract, expected, now), { Success: value => value === true, Refused: () => false });
+    loaded.set(result, current => {
+      const at = current ?? now;
+      if (spine.revalidateLoaded) return consumeResult(spine.revalidateLoaded(extract, expected, at), { Success: value => value === true, Refused: () => false });
+      return consumeResult(spine.verifyExtract(extract), { Success: () => consumeResult(spine.enteringForce(expected), {
+        Success: record => encoding(record.generation).bytes === encoding(expected).bytes && consumeResult(spine.isCurrent(extract.vector, at), {
+          Success: value => value === true, Refused: () => false,
+        }), Refused: () => false,
+      }), Refused: () => false });
     });
     return result;
   });

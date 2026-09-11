@@ -5,13 +5,13 @@ import { schemas } from '../dist/index.js';
 const design = readFileSync('docs/05-the-types.md', 'utf8');
 const expected = new Set([...design.matchAll(/^\| (NF-\d+) \|/gm)].map(m => m[1]));
 const realUnlandedGrants = new Map([
-  ['part-nine:semantic-adequacy-of-held-edges', 'semantic adequacy of `held` edges'],
-  ['part-nine:runtime-freshness-holder', 'runtime freshness holder (part nine)'],
-  ['parts-nine-eleven:external-anchor-for-protected-artifact-enforcement', 'part nine (verification holders and'],
-].filter(([, citation]) => design.includes(citation)));
-const grantedSkip = name => {
+  ['part-nine:semantic-adequacy-of-held-edges', { citation: 'semantic adequacy of `held` edges', checks: new Set() }],
+  ['part-nine:runtime-freshness-holder', { citation: 'runtime freshness holder (part nine)', checks: new Set() }],
+  ['parts-nine-eleven:external-anchor-for-protected-artifact-enforcement', { citation: 'part nine (verification holders and', checks: new Set() }],
+].filter(([, grant]) => design.includes(grant.citation)));
+const grantedSkip = (name, id) => {
   const match = name.match(/SKIPPED:\s*GRANT:([a-z0-9-]+(?::[a-z0-9-]+)+)\s*$/);
-  return match !== null && realUnlandedGrants.has(match[1]);
+  return match !== null && realUnlandedGrants.get(match[1])?.checks.has(id) === true;
 };
 const inventory = [...design.matchAll(/^\| ([^|]+) \| (?:core|supporting) \|/gm)].map(m => m[1].trim().replace(/^Result \(.+\)$/, 'Result')).sort();
 if (JSON.stringify(inventory) !== JSON.stringify(Object.keys(schemas).sort())) throw new Error('built schema inventory differs from approved design');
@@ -29,8 +29,10 @@ for (const id of expected) {
   const rows = map.get(id);
   if (!rows?.length) throw new Error(`missing actual test for ${id}`);
   if (rows.some(row => !['passed', 'pending', 'skipped'].includes(row.status))) throw new Error(`${id}: test failed`);
+  if (rows.some(row => ['pending', 'skipped'].includes(row.status) && !grantedSkip(row.name, id)))
+    throw new Error(`${id}: pending test arm has no exact design grant for this check`);
   if (!rows.some(row => row.status === 'passed')
-    && !rows.some(row => ['pending', 'skipped'].includes(row.status) && grantedSkip(row.name)))
+    && !rows.some(row => ['pending', 'skipped'].includes(row.status) && grantedSkip(row.name, id)))
     throw new Error(`${id}: neither passed nor skipped under an exact unlanded design grant`);
 }
 console.log('| Check | Actual test file | Status |');

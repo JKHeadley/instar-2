@@ -1,4 +1,4 @@
-import type { Clock, Scope, VerifiedPrincipal } from '../index.js';
+import type { Clock, Result, Scope, VerifiedPrincipal } from '../index.js';
 import type { GeneratedRegister, RegisterContext, StandingContext, EnforcementBoundary, CheckRunRecord } from './types.js';
 import type { ConstructObservation, GovernedStateObservation } from './governance.js';
 import type { CheckCatalog } from '../rulegraph/graph.js';
@@ -18,7 +18,12 @@ export interface WorkflowChecks {
   readonly separations: readonly { site: string; record: string; execution: StandingContext; writer: VerifiedPrincipal; scope: Scope; action: string }[];
   readonly bootstrapRules: readonly { number: number; declarationHash: string; owner: string }[];
 }
-export function runRegisterChecks(register: GeneratedRegister, checks: WorkflowChecks, context: RegisterContext) {
+export interface NormalWorkflowEvidencePort {
+  readonly verifyRecord: (reference: Readonly<{ id: string; kind: string }>, expected: unknown) => Result<boolean>;
+  readonly verifySemanticReview: (review: CheckCatalog['semanticReviews'][number]) => Result<boolean>;
+}
+export function runRegisterChecks(register: GeneratedRegister, checks: WorkflowChecks, context: RegisterContext,
+  evidence?: NormalWorkflowEvidencePort) {
   return checked('RegisterWorkflowChecks', { register, checks }, context, () => {
     requireThat(['bootstrap', 'normal', 'replay'].includes(checks.mode), 'unknown build mode');
     requireThat(checks.mode !== 'normal' || checks.bootstrapRules.length === 0, 'normal build cannot suspend policy prerequisites');
@@ -53,6 +58,13 @@ export function runRegisterChecks(register: GeneratedRegister, checks: WorkflowC
         take(checkSeparation(separation.execution, separation.writer, separation.scope, separation.action,
           { ...context, types: context.authorityTypes ?? context.types }));
       }
+    }
+    if (checks.mode === 'normal') {
+      requireThat(checks.runs.length === 0 || evidence !== undefined, 'normal check runs require the signed Part Two record verifier');
+      for (const run of checks.runs) take(evidence!.verifyRecord({ id: run.id, kind: 'check-run-record' }, run));
+      requireThat(checks.catalog.semanticReviews.length === 0 || evidence !== undefined,
+        'normal semantic reviews require the signed Part Two record verifier');
+      for (const review of checks.catalog.semanticReviews) take(evidence!.verifySemanticReview(review));
     }
     const graph = take(buildRuleGraph(register, checks.branch, checks.runs, checks.catalog, context, checks.bootstrapRules));
     take(checkDeadlines(graph, register, checks.landedParts, checks.now, context));

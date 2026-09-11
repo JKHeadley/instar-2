@@ -1,12 +1,14 @@
 import { consumeResult, decodeMeasurement } from '../index.js';
-import type { Clock, DecodeContext, Json, Result } from '../index.js';
-import type { FactSnapshot, FactStatus, FactStorePort } from '../facts/index.js';
+import type { Clock, DecodeContext, Json, Result, Scope } from '../index.js';
+import { decodeVersion, walkVersions } from '../facts/index.js';
+import type { FactContext, FactSnapshot, FactStatus, FactStorePort, GovernedVersion, LandingReadPort } from '../facts/index.js';
 import { foldProjection, readProjection } from '../projections/index.js';
 import type { KnownLineage, ProjectedView, ProjectionDefinition } from '../projections/index.js';
 import type { FactPositionVectorReference, FactReference, GenerationRecord, RegisterContext, SpineReadPort,
   VersionRowInput } from './types.js';
 import type { WorkflowChecks } from './workflow.js';
 import type { ShapeChangeBinding } from './shape-authority.js';
+import type { CheckCatalog } from '../rulegraph/graph.js';
 import { checked, encoding, exact, object, requireThat, take, text } from './boundary.js';
 import { decodeGenerationRecord } from './generator.js';
 
@@ -14,10 +16,17 @@ import { decodeGenerationRecord } from './generator.js';
 export interface PartTwoRegisterAuthorityPort {
   readonly owner: 'part-two';
   readonly vector: FactPositionVectorReference;
-  readonly verifyVersionRow: (row: VersionRowInput, snapshot: FactSnapshot) => Result<Readonly<{
-    since: FactReference; approval: FactReference; landing: FactReference;
-  }>>;
+  readonly verifyExtract: (rows: readonly VersionRowInput[], snapshot: FactSnapshot) => Result<FactPositionVectorReference>;
   readonly verifyShapeChange: (binding: ShapeChangeBinding, snapshot: FactSnapshot) => Result<FactReference>;
+}
+export interface PartTwoRegisterAuthorityOptions {
+  readonly vector: FactPositionVectorReference;
+  readonly facts: FactContext;
+  readonly scope: Scope;
+  readonly landing: LandingReadPort;
+  readonly versions: readonly unknown[];
+  readonly shapeChanges?: readonly unknown[];
+  readonly context: RegisterContext;
 }
 export interface PartTwoRegisterHorizon {
   readonly lineages: Readonly<Record<string, KnownLineage>>;
@@ -34,9 +43,13 @@ export interface PartTwoRegisterProviderOptions {
 export type PartTwoRegisterProvider = SpineReadPort & Readonly<{
   verifyShapeChange(binding: ShapeChangeBinding): Result<FactReference>;
   resolveReference(reference: Readonly<{ provider: string; id: string; kind?: string }>): Result<boolean>;
+  verifyRecord(reference: Readonly<{ id: string; kind: string }>, expected: unknown): Result<boolean>;
+  verifySemanticReview(review: CheckCatalog['semanticReviews'][number]): Result<boolean>;
   types?: DecodeContext;
   separations?: WorkflowChecks['separations'];
 }>;
+
+const producedAuthorities = new WeakSet<object>();
 
 function healthy(status: FactStatus): boolean { return status.taint.length === 0 && status.conflicts.length === 0; }
 function projection(snapshot: FactSnapshot, horizon: PartTwoRegisterHorizon, context: RegisterContext) {
@@ -58,16 +71,15 @@ function retracted(id: string, snapshot: FactSnapshot, view: ProjectedView, visi
   });
 }
 function active(status: FactStatus, snapshot: FactSnapshot, view: ProjectedView): boolean {
-  return healthy(status) && !retracted(status.fact.id, snapshot, view)
-    && !view.corrections.some(row => row.original === status.fact.id);
+  if (!healthy(status) || retracted(status.fact.id, snapshot, view)
+    || view.corrections.some(row => row.original === status.fact.id)) return false;
+  const target = object(status.body).corrects;
+  return typeof target !== 'string' || view.corrections.some(row => row.original === target && row.replacement === status.fact.id);
 }
 function activeStatus(id: string, snapshot: FactSnapshot, view: ProjectedView): FactStatus {
   const matches = snapshot.entries.filter(status => status.fact.id === id && active(status, snapshot, view));
   requireThat(matches.length === 1, `Part Two record ${id} is absent, retracted, corrected, conflicted, or duplicated`);
   return matches[0]!;
-}
-function factReference(status: FactStatus): FactReference {
-  return { owner: 'part-two', name: 'FactEnvelope', id: status.fact.id };
 }
 function exactFactReference(reference: FactReference, field: string): void {
   const value = object(reference); exact(value, ['owner', 'name', 'id']);
@@ -81,9 +93,73 @@ function recordBody(status: FactStatus): Json {
   }
   return status.body;
 }
+
+function versionContext(options: PartTwoRegisterAuthorityOptions, snapshot: FactSnapshot): FactContext {
+  const facts = new Map(options.facts.facts.map(fact => [fact.id, fact]));
+  for (const status of snapshot.entries) facts.set(status.fact.id, status.fact);
+  return { ...options.facts, facts: [...facts.values()] };
+}
+function decodeVersions(inputs: readonly unknown[], options: PartTwoRegisterAuthorityOptions,
+  snapshot: FactSnapshot): readonly GovernedVersion[] {
+  const context = versionContext(options, snapshot);
+  const pending = [...inputs].sort((a, b) => encoding(a).bytes < encoding(b).bytes ? -1 : 1);
+  const decoded: GovernedVersion[] = [];
+  while (pending.length) {
+    let progressed = false;
+    for (let i = 0; i < pending.length;) {
+      const result = consumeResult(decodeVersion(pending[i], context, options.scope, decoded, options.landing), {
+        Success: value => value,
+        Refused: () => undefined,
+      });
+      if (result) { decoded.push(result); pending.splice(i, 1); progressed = true; }
+      else i++;
+    }
+    if (!progressed) take(decodeVersion(pending[0], context, options.scope, decoded, options.landing));
+  }
+  const walked = walkVersions(decoded);
+  requireThat(walked.conflicts.length === 0 && walked.duplicates.length === 0,
+    'Part Two governed-version history is conflicted or duplicated');
+  return decoded;
+}
+
+/** The normal provider accepts only this landed Part Two version-chain adapter. */
+export function createPartTwoRegisterAuthority(options: PartTwoRegisterAuthorityOptions): PartTwoRegisterAuthorityPort {
+  requireThat(options.vector.owner === 'part-two' && options.vector.name === 'FactPositionVector'
+    && options.vector.id.length > 0, 'Part Two authority requires its current vector');
+  const authority: PartTwoRegisterAuthorityPort = Object.freeze({
+    owner: 'part-two', vector: options.vector,
+    verifyExtract: (rows: readonly VersionRowInput[], snapshot: FactSnapshot) => checked<FactPositionVectorReference, RegisterContext>('PartTwoVersionExtract', rows, options.context, () => {
+      const versions = decodeVersions(options.versions, options, snapshot); const current = new Set(walkVersions(versions).current.map(v => v.id));
+      const expected = versions.map(version => {
+        const content = object(version.content); const declared = content.status;
+        requireThat(typeof declared === 'string', 'governed register content needs its declaration status');
+        requireThat(version.landedIn !== null, 'register version requires its verified repository landing');
+        return { id: version.subject, version: version.id,
+          status: current.has(version.id) ? (declared === 'retired' ? 'retired' : 'live') : 'superseded',
+          since: version.since, supersedes: version.supersedes,
+          approvedIn: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: version.approvedIn.id },
+          landedIn: version.landedIn, base: version.base, contentHash: version.contentHash };
+      }).sort((a, b) => a.version < b.version ? -1 : a.version > b.version ? 1 : 0);
+      requireThat(encoding(rows).bytes === encoding(expected).bytes,
+        'P3-NF-23: extract is not the complete current Part Two version-chain answer');
+      return options.vector;
+    }),
+    verifyShapeChange: (binding: ShapeChangeBinding, snapshot: FactSnapshot) => checked<FactReference, RegisterContext>('PartTwoShapeVersion', binding, options.context, () => {
+      requireThat(binding.approval !== undefined, 'P3-NF-09: governed shape change requires approval');
+      const versions = decodeVersions(options.shapeChanges ?? [], options, snapshot);
+      const current = walkVersions(versions).current.filter(version => encoding(version.content).bytes === encoding(binding).bytes
+        && version.approvedIn.id === binding.approval.id);
+      requireThat(current.length === 1, 'P3-NF-09: no unique current governed version approves this exact shape change');
+      return { owner: 'part-two', name: 'FactEnvelope', id: current[0]!.approvedIn.id };
+    }),
+  });
+  producedAuthorities.add(authority); return authority;
+}
 // Every call re-reads the verified FactStore. Workflow JSON can therefore
 // neither assert authority nor keep a once-verified answer alive after repair.
 export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOptions): PartTwoRegisterProvider {
+  requireThat(producedAuthorities.has(options.authority),
+    'normal register authority must come from createPartTwoRegisterAuthority and the landed Part Two version-chain decoder');
   requireThat(options.authority.owner === 'part-two', 'register authority seam must be owned by part two');
   requireThat(options.authority.vector.owner === 'part-two' && options.authority.vector.name === 'FactPositionVector'
     && options.authority.vector.id.length > 0, 'Part Two must supply its own FactPositionVector reference');
@@ -96,20 +172,13 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
     ...(options.types ? { types: options.types } : {}),
     ...(options.separations ? { separations: options.separations } : {}),
     verifyExtract: extract => checked<FactPositionVectorReference, RegisterContext>('PartTwoRegisterExtractVerification', extract, options.context, () => {
-      const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
+      const snapshot = read(); projection(snapshot, options.horizon, options.context);
       requireThat(encoding(extract.vector).bytes === encoding(options.authority.vector).bytes,
         'P3-NF-23: extract vector is not the current owner-produced P2 vector');
-      for (const row of extract.rows) {
-        const witnesses = take(options.authority.verifyVersionRow(row, snapshot));
-        exactFactReference(witnesses.since, 'version-row since witness');
-        exactFactReference(witnesses.approval, 'version-row approval witness');
-        exactFactReference(witnesses.landing, 'version-row landing witness');
-        exactFactReference(row.approvedIn, 'extract approval');
-        requireThat(row.since === witnesses.since.id && row.approvedIn.id === witnesses.approval.id
-          && row.landedIn === witnesses.landing.id, 'P3-NF-23: Part Two witnesses differ from the extract row');
-        for (const witness of [witnesses.since, witnesses.approval, witnesses.landing]) activeStatus(witness.id, snapshot, view);
-      }
-      return options.authority.vector;
+      const answer = take(options.authority.verifyExtract(extract.rows, snapshot));
+      requireThat(encoding(answer).bytes === encoding(options.authority.vector).bytes,
+        'P3-NF-23: Part Two extract resolver returned a different vector');
+      return answer;
     }),
     enteringForce: generation => checked<GenerationRecord, RegisterContext>('PartTwoRegisterEnteringForce', generation, options.context, () => {
       const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
@@ -139,15 +208,15 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
         take(provider.verifyExtract(extract)); take(provider.enteringForce(generation));
         requireThat(take(provider.isCurrent(extract.vector, now)), 'loaded register vector is no longer current');
         return true;
-      }),
+    }),
     verifyShapeChange: binding => checked<FactReference, RegisterContext>('PartTwoShapeChangeApproval', binding, options.context, () => {
-      const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
+      const snapshot = read(); projection(snapshot, options.horizon, options.context);
       requireThat(binding.approval !== undefined, 'P3-NF-09: governed shape change requires a Part Two approval reference');
       exactFactReference(binding.approval, 'shape approval');
       const approval = take(options.authority.verifyShapeChange(binding, snapshot)); exactFactReference(approval, 'shape approval witness');
       requireThat(encoding(approval).bytes === encoding(binding.approval).bytes,
         'P3-NF-09: Part Two approval resolver returned a different record');
-      return factReference(activeStatus(approval.id, snapshot, view));
+      return approval;
     }),
     resolveReference: reference => checked<boolean, RegisterContext>('PartTwoRegisterReference', reference, options.context, raw => {
       const requested = object(raw); exact(requested, ['provider', 'id', 'kind']);
@@ -156,6 +225,23 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
       const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
       const status = activeStatus(id, snapshot, view);
       if (requested.kind !== undefined) requireThat(status.fact.kind === text(requested.kind, 'reference.kind'), 'record reference kind differs');
+      return true;
+    }),
+    verifyRecord: (reference, expected) => checked<boolean, RegisterContext>('PartTwoRegisterRecord', { reference, expected }, options.context, () => {
+      const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
+      const status = activeStatus(reference.id, snapshot, view);
+      requireThat(status.fact.kind === reference.kind, 'record reference kind differs');
+      requireThat(encoding(recordBody(status)).bytes === encoding(expected).bytes, 'signed record body differs from workflow evidence');
+      return true;
+    }),
+    verifySemanticReview: review => checked<boolean, RegisterContext>('PartTwoSemanticReview', review, options.context, () => {
+      const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
+      const status = activeStatus(review.record, snapshot, view);
+      requireThat(status.fact.kind === 'verification-SemanticReviewRecord', 'semantic review reference kind differs');
+      const body = object(recordBody(status));
+      requireThat(body.type === 'SemanticReviewRecord' && body.generation === review.generation
+        && body.edge === `rule:${review.rule}->${review.holder}` && body.verdict === 'adequate',
+      'signed semantic review does not approve this exact holder/rule/generation');
       return true;
     }),
   };

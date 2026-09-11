@@ -228,12 +228,44 @@
   {
     "type": "Declaration",
     "schemaVersion": 1,
+    "id": "register-workflow-evidence-integration",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "tests/integration/register-workflow-evidence-round3.test.ts",
+      "why": "Part-three normal workflow evidence composition requires operator approval; external enforcement is owned by parts nine and eleven.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
     "id": "register-shape-change-e2e",
     "kind": "protected artifacts",
     "status": "live",
     "requiredFacts": {
       "pattern": "tests/e2e/register-shape-change.test.ts",
       "why": "Part-three shape-change fixtures require operator approval; external enforcement is owned by parts nine and eleven.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "register-normal-restart-e2e",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "tests/e2e/register-normal-restart*",
+      "why": "Part-three normal-mode crash recovery fixtures require operator approval; external enforcement is owned by parts nine and eleven.",
       "surface": "repository review approval"
     },
     "standards": [

@@ -40,7 +40,8 @@ export function decodeShape(input: unknown, context: BoundaryContext) {
         const format = text(f.format, 'format'); requireThat(['text', 'number', 'boolean', 'array', 'object', 'scalar'].includes(format), 'unknown field format');
         requireThat(typeof f.required === 'boolean' && typeof f.reference === 'boolean', 'field required/reference must be boolean');
         return { name: text(f.name, 'field.name'), format: format as FieldShape['format'], required: f.required,
-          values: strings(f.values, 'values'), reference: f.reference, terms: strings(f.terms, 'terms'), ...(f.schema ? { schema: parseFactSchema(f.schema) } : {}) };
+          values: strings(f.values, 'values'), reference: f.reference, terms: strings(f.terms, 'terms'),
+          ...(Object.hasOwn(f, 'schema') ? { schema: parseFactSchema(f.schema!) } : {}) };
       });
       requireThat(new Set(fields.map(f => f.name)).size === fields.length, 'duplicate field name');
       const enforceable = list(k.enforceable, 'enforceable').map(v => number(v, 'rule number'));

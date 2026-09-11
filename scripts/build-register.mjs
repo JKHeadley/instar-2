@@ -171,7 +171,7 @@ export function build(root, commit, options = {}) {
       residual: ['reflection', 'computed ids', 'plugins', 'configuration-loaded routes', ...wiring.residual.map(r => r.reason)] })),
     claims: workflow.claims ?? context.shape.kinds.map(k => ({ kind: k.name, complete: false })),
     bootstrapRules: converting ? anchor.rules : [] };
-  const checked = value(runRegisterChecks(register, checks, context));
+  const checked = value(runRegisterChecks(register, checks, context, options.provider));
   const generation = value(generationOf(register, context));
   const outputs = value(renderRegister(register, generation, checked.terms, checked.graph, context));
   return { input, register, generation, outputs, completion, conversion, graph: checked.graph,

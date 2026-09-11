@@ -31,7 +31,7 @@ export function generateAgainstParent(input: unknown, parent: VerifiedRegister, 
     if (encoding(candidate).hash !== encoding(parent.shape).hash) {
       requireThat(change && change.parent === parentGeneration.id && change.candidateShape === encoding(candidate).hash
         && change.document.path.length > 0 && /^sha256:[a-f0-9]{64}$/.test(change.document.hash), 'P3-NF-09: shape change lacks exact parent/document binding');
-      const governed = change.approval !== undefined || change.document.path.startsWith('register-source/shape-changes/');
+      const governed = change.approval !== undefined;
       if (governed) {
         requireThat(document && change.approval !== undefined, 'P3-NF-09: governed shape change requires its approved document');
         requireThat(change.document.hash === encoding(document).hash, 'P3-NF-09: supplied shape-change document bytes differ from binding');

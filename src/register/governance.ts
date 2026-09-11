@@ -9,7 +9,8 @@ import { boundaryRungs } from './rungs.js';
 export type GovernedConstruct = RegisterValue<'GovernedConstruct'> & Readonly<{ kind: string; declaration: Reference }>;
 export function readRegisterEntry(id: string, register: VerifiedRegister, context: RegisterContext) {
   return checked('RegisterEntryRead', { id }, context, () => {
-    requireThat(wasVerified(register), 'register consumer must use loadRegister with entering-force and extract verification');
+    requireThat(wasVerified(register, context.authorityTypes?.now ?? context.types.now),
+      'register consumer must use loadRegister with current entering-force and extract verification');
     const entry = register.entries.find(e => e.declaration.id === id);
     requireThat(entry, `unresolved register entry ${id}`); return entry;
   });

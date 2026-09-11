@@ -25,7 +25,7 @@ describe('round-two contract-map checker regressions', () => {
           testResults: [{ name: item.file, assertionResults: ids.map(id => ({ fullName: id,
             title: `${id} SKIPPED: non-executable-until-invented-not-in-any-design`, status: 'pending' })) }] }));
         expect(() => execFileSync(process.execPath, [item.script], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }))
-          .toThrow(/neither passed|test failed/);
+          .toThrow(/pending test arm has no exact design grant|neither passed|test failed/);
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
