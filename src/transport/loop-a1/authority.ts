@@ -341,12 +341,15 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
       const attempt = previous.attemptLog.find(value => value.id === input.attempt);
       ensure(attempt, 'contributing loop attempt is absent');
       ensure(atOrAfter(now, attempt.admittedAt), 'outcome clock precedes its admission');
+      if ((previous.closureSubmission
+        && encoded(previous.closureSubmission).bytes === encoded(input).bytes)
+        || (previous.evidenceSubmission
+          && encoded(previous.evidenceSubmission).bytes === encoded(input).bytes)) {
+        sharedLoopEvidence(previous, history, spine.context, host);
+        return previous;
+      }
       const completeRestoration = input.restoration.filter(reference => restorationReferenceComplete(reference,
         history, spine.context, now, previous.pressureKey, previous.operationFamily, host));
-      if (previous.closureSubmission
-        && encoded(previous.closureSubmission).bytes === encoded(input).bytes) return previous;
-      if (previous.evidenceSubmission
-        && encoded(previous.evidenceSubmission).bytes === encoded(input).bytes) return previous;
       const existing = previous.outcomeLog.find(value => value.attempt === input.attempt);
       if (existing) {
         ensure(existing.kind === input.kind && existing.failureClass === input.failureClass
@@ -367,8 +370,9 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
           && previous.halfOpenSucceeded >= previous.policy.halfOpenTrials
           && closureEvidence.length > previous.closureEvidence.length;
         if (!mayClose) {
-          ensure(input.kind === 'accepted' && completeRestoration.length === 0
-            && previous.state === 'half-open',
+          ensure(input.kind === 'accepted' && previous.state === 'half-open'
+            && (completeRestoration.length === 0 || previous.pendingAttempts.length > 0
+              || previous.halfOpenSucceeded < previous.policy.halfOpenTrials),
           'loop outcome changed after admission without new complete restoration');
           const retained = freeze({
             ...withoutSubmission(previous),
@@ -378,6 +382,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
             sourceVector: previous.sourceVector,
             policyGeneration: current.generation,
             outcomeLog,
+            closureEvidence,
             failureCount: failureCountAt(previous.policy, currentOutcomes),
             outcomeWindowDigest: encoded(currentOutcomes).hash,
             evidenceSubmission: freeze({ ...input }),

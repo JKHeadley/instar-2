@@ -86,6 +86,10 @@ export const transportSeamEvidence = [
   ['SLB-A1-PARTIAL-ONLY-117', 'integration', 'V17 partial-only evidence is retained without closure across restart cuts'],
   ['SLB-A1-REPAIR18-E2E-118', 'e2e', 'fresh processes replay late closure and partial-only retention exactly'],
   ['SLB-A1-EVIDENCE-SUBMISSION-119', 'unit', 'signed partial-evidence successor is closed and replay-validated'],
+  ['SLB-A1-COMPLETE-REPLAY-120', 'unit', 'V15 complete evidence retention is recomputed during signed replay'],
+  ['SLB-A1-COMPLETE-RETENTION-121', 'integration', 'V15 complete evidence survives durable restart cuts until trials finish'],
+  ['SLB-A1-EXPIRED-RETRY-122', 'integration', 'V17 and V24 exact durable close retries survive expiry and lost acknowledgment'],
+  ['SLB-A1-REPAIR19-E2E-123', 'e2e', 'fresh processes replay V15 complete retention and V17 expired close retry'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

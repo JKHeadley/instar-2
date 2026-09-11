@@ -849,8 +849,11 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
       ? submission.restoration.filter(reference => restorationReferenceComplete(reference, evidenceFacts, context,
         record.transitionAt, record.pressureKey, record.operationFamily, host, false))
       : submission.restoration.filter(reference => record.closureEvidence.some(value => value.id === reference.id));
-    ensure(completeRestoration.length === 0,
-      'complete restoration evidence must use the closing transition');
+    ensure(completeRestoration.length === 0 || previous.pendingAttempts.length > 0
+      || previous.halfOpenSucceeded < previous.policy.halfOpenTrials,
+    'complete restoration evidence must use the closing transition');
+    const closureEvidence = freeze([...new Map([...previous.closureEvidence, ...completeRestoration]
+      .map(value => [value.id, value])).values()]);
     const restoration = freeze([...new Map([...existing.restoration, ...submission.restoration]
       .map(value => [value.id, value])).values()]);
     ensure(restoration.length > existing.restoration.length,
@@ -871,6 +874,7 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
       sourceVector: previous.sourceVector,
       policyGeneration: record.policyGeneration,
       outcomeLog,
+      closureEvidence,
       failureCount: failureCountAt(record.policy, currentOutcomes),
       outcomeWindowDigest: encoded(currentOutcomes).hash,
       evidenceSubmission: submission,
