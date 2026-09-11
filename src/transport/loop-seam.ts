@@ -18,25 +18,22 @@ const policyFields = { ...common, id: txt, maxAttempts: int, minDelay: int, maxD
   countedFailureClasses: { kind: 'array', maxLength: 64, items: txt } as OwnedShape,
   acceptedOutcomeWindow: int, breakerCooldown: int, maxOpenDuration: int,
   halfOpenTrials: int, halfOpenConcurrency: int, closeEvidence: txt, reopenEvidence: txt,
-  parentDuty: reference, budgetWindow: int, parentAttemptBudget: int, parentResourceBudget: int };
-const sharedPolicyFields = ['initialDelay', 'maxDelay', 'backoffMultiplier', 'jitterMinPermille', 'jitterMaxPermille',
-  'failureThreshold', 'countedFailureClasses', 'acceptedOutcomeWindow', 'breakerCooldown', 'maxOpenDuration',
-  'halfOpenTrials', 'halfOpenConcurrency', 'closeEvidence', 'reopenEvidence', 'parentDuty', 'budgetWindow',
-  'parentAttemptBudget', 'parentResourceBudget'];
-const policy: OwnedShape = { kind: 'object', fields: policyFields };
-export const compatibleLoopPolicyShape: OwnedShape = { kind: 'object', fields: policyFields, optional: sharedPolicyFields };
-const loopAttempt: OwnedShape = { kind: 'object', fields: { id: txt, holderFamily: txt, worker: txt, machine: txt,
-  episode: txt, admittedAt: clock, resource: int, mode: txt, sourceVector } };
+  parentDuty: reference, budgetWindow: int, parentAttemptBudget: int, parentResourceBudget: int,
+  resourceBudget: int, attemptBudget: int, cursor: txt, scanCursor: reference, cursorKind: txt };
+const policy: OwnedShape = { kind: 'object', fields: policyFields,
+  optional: ['parentDuty', 'budgetWindow', 'parentAttemptBudget', 'parentResourceBudget',
+    'resourceBudget', 'attemptBudget', 'cursor', 'scanCursor', 'cursorKind'] };
+const loopAttempt: OwnedShape = { kind: 'object', fields: { id: txt, episode: txt, admittedAt: clock, mode: txt } };
 const loopOutcome: OwnedShape = { kind: 'object', fields: { attempt: txt, kind: txt, failureClass: txt,
   observedAt: clock, completion: constitutionalResult, jitterPermille: int,
-  restoration: { kind: 'array', maxLength: 64, items: reference }, sourceVector } };
+  restoration: { kind: 'array', maxLength: 64, items: reference } } };
 const managedLoopFields = {
-  parentDuty: reference, currentOwnerRun: reference, policyGeneration: reference, pressureBinding: reference,
+  currentOwnerRun: reference, policyGeneration: reference, pressureBinding: reference,
   operationFamily: txt,
   pressureScope: { kind: 'object', fields: { target: txt, conversation: txt, machine: txt, pool: txt } } as OwnedShape,
   pressureKey: txt, episodeKey: txt, transition: txt, transitionAt: clock, nextEligible: clock,
-  clockBasis: txt, sourceVector, episodeAttempts: int, totalFailures: int, failureCount: int,
-  rollingAttempts: int, rollingResource: int, breakerHasOpened: int, breakerOpenCount: int, breakerFirstOpened: clock,
+  clockBasis: txt, sourceVector, totalFailures: int, failureCount: int,
+  breakerHasOpened: int, breakerOpenCount: int, breakerFirstOpened: clock,
   halfOpenAdmitted: int, halfOpenSucceeded: int,
   pendingAttempts: { kind: 'array', maxLength: 4096, items: txt } as OwnedShape,
   attemptLog: { kind: 'array', maxLength: 4096, items: loopAttempt } as OwnedShape,
@@ -47,12 +44,28 @@ const managedLoopFields = {
 export const sharedLoopRecordShape: OwnedShape = { kind: 'object', fields: { ...row, run: txt, episode: txt, policy,
   attempts: int, started: int, nextWake: int, state: txt, pending: txt, ...managedLoopFields } };
 export const transportSeamShapes: Readonly<Record<string, OwnedShape>> = freeze({
+  SharedBreakerLoopPolicy: policy,
   SharedLoopRecord: sharedLoopRecordShape,
 });
-export const sharedLoopPolicyOwnedName = 'LoopPolicy';
+export const sharedLoopPolicyOwnedName = 'SharedBreakerLoopPolicy';
 export const sharedLoopRecordOwnedName = 'SharedLoopRecord';
 export const sharedLoopRecordFactKind = 'transport-SharedLoopRecord';
+export type StoredSharedLoopPolicy = Omit<SharedBreakerLoopPolicy, 'type'> & { readonly type: 'SharedBreakerLoopPolicy' };
 export type StoredSharedLoopRecord = Omit<SharedLoopRecord, 'type'> & { readonly type: 'SharedLoopRecord' };
+
+export function isStoredSharedLoopPolicy(input: unknown): input is StoredSharedLoopPolicy {
+  return input !== null && typeof input === 'object' && !Array.isArray(input)
+    && (input as { type?: unknown }).type === 'SharedBreakerLoopPolicy'
+    && (input as { breaker?: unknown }).breaker === 'shared-circuit-v1';
+}
+
+export function storeSharedLoopPolicy(policy: SharedBreakerLoopPolicy): StoredSharedLoopPolicy {
+  return freeze({ ...policy, type: 'SharedBreakerLoopPolicy' as const });
+}
+
+export function loadSharedLoopPolicy(policy: StoredSharedLoopPolicy): SharedBreakerLoopPolicy {
+  return freeze({ ...policy, type: 'LoopPolicy' as const }) as SharedBreakerLoopPolicy;
+}
 
 export function seamShapeCheck(v: unknown, shape: OwnedShape): void {
   if (shape.kind === 'text') { ensure(typeof v === 'string' && v.length <= shape.maxLength, 'bounded text required'); return; }
@@ -65,9 +78,11 @@ export function seamShapeCheck(v: unknown, shape: OwnedShape): void {
   }
   ensure(shape.kind === 'object' && v !== null && typeof v === 'object' && !Array.isArray(v), 'closed object required');
   const record = v as Record<string, unknown>;
-  ensure(Object.keys(record).length === Object.keys(shape.fields).length, 'undeclared or missing field');
+  const required = Object.keys(shape.fields).filter(key => !shape.optional?.includes(key));
+  ensure(required.every(key => Object.hasOwn(record, key))
+    && Object.keys(record).every(key => Object.hasOwn(shape.fields, key)), 'undeclared or missing field');
   for (const [key, field] of Object.entries(shape.fields)) {
-    ensure(Object.hasOwn(record, key), `missing ${key}`); seamShapeCheck(record[key], field);
+    if (Object.hasOwn(record, key)) seamShapeCheck(record[key], field);
   }
 }
 
@@ -97,6 +112,7 @@ export function loadSharedLoopRecord(record: StoredSharedLoopRecord): SharedLoop
 }
 
 export function sharedPolicyCheck(p: SharedBreakerLoopPolicy): void {
+  rejectUnsupportedSliceA1Fields(p);
   seamShapeCheck(p, policy);
   ensure(p.type === 'LoopPolicy' && p.schemaVersion === 1 && p.id.length > 0, 'policy identity');
   ensure(p.maxAttempts >= 0 && p.maxDuration >= 0 && p.minDelay > 0 && p.timeout > 0,
@@ -112,29 +128,30 @@ export function sharedPolicyCheck(p: SharedBreakerLoopPolicy): void {
   ensure(p.acceptedOutcomeWindow > 0 && p.breakerCooldown > 0 && p.maxOpenDuration >= p.breakerCooldown
     && p.halfOpenTrials >= 0 && p.halfOpenConcurrency >= 0 && p.halfOpenConcurrency <= p.halfOpenTrials,
   'invalid breaker window, cooldown, or half-open bounds');
-  ensure(p.halfOpenConcurrency <= p.concurrency, 'half-open concurrency exceeds total concurrent-work cap');
+  ensure(p.halfOpenConcurrency <= p.concurrency, 'half-open concurrency exceeds concurrency');
   ensure(p.closeEvidence === 'part-nine-restoration' && p.reopenEvidence === 'counted-failure',
     'unsupported breaker evidence contract');
-  ensure(p.parentDuty.owner === 'part-five' && p.parentDuty.name === 'Run' && p.parentDuty.id.length > 0,
-    'persistent parent duty reference required');
-  ensure(p.budgetWindow > 0 && p.parentAttemptBudget >= 0 && p.parentAttemptBudget <= 4096 && p.parentResourceBudget >= 0,
-    'invalid shared parent budget');
+}
+
+const forbiddenSliceA1Fields = new Set([
+  'parentDuty', 'budgetWindow', 'parentAttemptBudget', 'parentResourceBudget',
+  'resourceBudget', 'attemptBudget', 'cursor', 'scanCursor', 'cursorKind',
+]);
+export function rejectUnsupportedSliceA1Fields(input: unknown): void {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return;
+  ensure(!Object.keys(input).some(key => forbiddenSliceA1Fields.has(key)), 'unsupported-in-slice-a1');
+}
+
+export function rejectSliceA1TransitionExtensions(input: unknown): void {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return;
+  const keys = Object.keys(input);
+  ensure(!keys.some(key => ['sourceVector', 'holderFamily', 'worker', 'machine', 'resource'].includes(key)),
+    'unsupported-in-slice-a1');
 }
 
 function referenceCheck(value: { readonly owner: string; readonly name: string; readonly id: string }, owner: string, name: string): void {
   ensure(value.owner === owner && value.name === name && value.id.length > 0, `${name} reference owner`);
 }
-const compareBytes = (left: string, right: string) => Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'));
-
-export function sourceVectorCheck(vector: SharedLoopRecord['sourceVector']): void {
-  seamShapeCheck(vector, sourceVector);
-  ensure(vector.length > 0, 'source vector population is empty');
-  ensure(new Set(vector.map(entry => entry.machine)).size === vector.length, 'source vector has duplicate machine');
-  ensure(vector.every(entry => entry.machine.length > 0 && entry.epoch >= 0 && entry.position >= 0), 'invalid source vector position');
-  ensure(vector.every((entry, index) => index === 0 || compareBytes(vector[index - 1]!.machine, entry.machine) < 0),
-    'source vector must be machine-sorted');
-}
-
 export function sharedLoopRecordCheck(shared: SharedLoopRecord): void {
   seamShapeCheck(shared, sharedLoopRecordShape);
   ensure(shared.type === 'LoopRecord' && shared.schemaVersion === 1 && shared.run.length > 0 && shared.episode.length > 0,
@@ -143,10 +160,9 @@ export function sharedLoopRecordCheck(shared: SharedLoopRecord): void {
   ensure(['scheduled', 'running', 'restoring', 'waiting', 'open-breaker', 'half-open', 'stopped', 'closed'].includes(shared.state)
     && ['scheduled', 'attempt-admitted', 'outcome-recorded', 'opened', 'half-opened', 'reopened', 'closed', 'stopped'].includes(shared.transition),
   'unknown shared loop state or transition');
-  referenceCheck(shared.parentDuty, 'part-five', 'Run'); referenceCheck(shared.currentOwnerRun, 'part-five', 'Run');
+  referenceCheck(shared.currentOwnerRun, 'part-five', 'Run');
   referenceCheck(shared.policyGeneration, 'part-three', 'RegisterGeneration');
   referenceCheck(shared.pressureBinding, 'part-two', 'FactEnvelope');
-  ensure(encoded(shared.parentDuty).bytes === encoded(shared.policy.parentDuty).bytes, 'parent duty changed from policy');
   ensure(shared.run === shared.currentOwnerRun.id, 'shared loop run differs from its witnessed current owner');
   ensure(shared.operationFamily.length > 0 && Object.values(shared.pressureScope).every(value => value.length > 0)
     && shared.pressureKey === `pressure:${encoded([shared.operationFamily, shared.pressureScope]).hash}`,
@@ -156,10 +172,8 @@ export function sharedLoopRecordCheck(shared: SharedLoopRecord): void {
   ensure(shared.clockBasis === shared.transitionAt.subject.instance
     && shared.nextEligible.subject.instance === shared.clockBasis
     && shared.breakerFirstOpened.subject.instance === shared.clockBasis, 'incomparable shared loop time');
-  sourceVectorCheck(shared.sourceVector);
-  ensure(shared.attempts === shared.attemptLog.length && shared.episodeAttempts >= 0
-    && shared.episodeAttempts <= shared.policy.maxAttempts && shared.totalFailures >= shared.failureCount
-    && shared.rollingAttempts >= 0 && shared.rollingResource >= 0, 'shared loop counters disagree');
+  ensure(shared.attempts === shared.attemptLog.length && shared.attempts <= shared.policy.maxAttempts
+    && shared.totalFailures >= shared.failureCount, 'shared loop counters disagree');
   ensure(shared.breakerHasOpened === 0 || shared.breakerHasOpened === 1, 'invalid breaker-open marker');
   ensure(shared.breakerOpenCount >= shared.breakerHasOpened, 'invalid breaker-open count');
   ensure(new Set(shared.pendingAttempts).size === shared.pendingAttempts.length
@@ -174,9 +188,7 @@ export function sharedLoopRecordCheck(shared: SharedLoopRecord): void {
     .map(attempt => attempt.id);
   ensure(encoded(shared.pendingAttempts).bytes === encoded(unfinished).bytes,
     'pending attempts do not equal admitted attempts minus completed attempts');
-  for (const attempt of shared.attemptLog) { sourceVectorCheck(attempt.sourceVector); ensure(attempt.resource >= 0, 'negative attempt resource'); }
   for (const outcome of shared.outcomeLog) {
-    sourceVectorCheck(outcome.sourceVector);
     ensure(outcome.jitterPermille >= shared.policy.jitterMinPermille
       && outcome.jitterPermille <= shared.policy.jitterMaxPermille, 'outcome jitter outside pinned policy');
     ensure(outcome.kind === 'accepted' || outcome.kind === 'failed', 'unknown loop outcome');

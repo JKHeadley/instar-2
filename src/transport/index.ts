@@ -1,6 +1,6 @@
 export type * from './contracts.js';
 export { createBoundedDueScanPort, createTransportAuthority, createTransportSpine } from './authority.js';
-export { decodeLoopPolicy, decodeLoopRecord, decodeScanCursor,
+export { decodeLoopPolicy,
   registerTransportBodies, registerTransportSeamBodies, transportSchemas, transportSeamSchemas,
   transportShapes, transportSeamShapes } from './records.js';
 export { telegramReferenceAdapter } from './telegram.js';

@@ -9,6 +9,7 @@ import { recordReferences, recordWire } from '../../src/rungraph/records.js';
 import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, registerTransportBodies,
   registerTransportSeamBodies, transportSchemas, transportSeamSchemas } from '../../src/transport/index.js';
 import type { FenceToken, ReserveInput, SharedBreakerLoopPolicy, SharedLoopRecord, TransportFact, TransportHost } from '../../src/transport/index.js';
+import { storeSharedLoopPolicy } from '../../src/transport/loop-seam.js';
 import { deriveVerificationAssessment, registerVerificationBodies, verificationSchemas } from '../../src/verification/index.js';
 import type { VerificationAssessment, VerificationPlan, VerificationRequest } from '../../src/verification/index.js';
 import { verificationInput } from '../verification/fixture.js';
@@ -214,16 +215,16 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     backoffMultiplier: 2, jitterMinPermille: 500, jitterMaxPermille: 1000,
     failureThreshold: 2, countedFailureClasses: ['transport', 'timeout'], acceptedOutcomeWindow: 500,
     breakerCooldown: 20, maxOpenDuration: 200, halfOpenTrials: 2, halfOpenConcurrency: 1,
-    closeEvidence: 'part-nine-restoration', reopenEvidence: 'counted-failure', parentDuty,
-    budgetWindow: 500, parentAttemptBudget: 20, parentResourceBudget: 100 } as const, rg.c)) as SharedBreakerLoopPolicy;
+    closeEvidence: 'part-nine-restoration', reopenEvidence: 'counted-failure' } as const, rg.c)) as SharedBreakerLoopPolicy;
   const append = (kind: string, body: Json, required: readonly string[] = []) => value(authorAndAppend({ kind, body, required,
     schemaVersion: 1, machine: host.machine, principal: json(host.principal), provenance: json(host.principal.provenance),
     at: json(rg.clock(now)) }, ctx, store, privateKey));
   const registerPolicy = (policy: SharedBreakerLoopPolicy = sharedPolicy) => {
-    const existing = value(store.read()).find(fact => fact.kind === 'transport-LoopPolicy'
+    const existing = value(store.read()).find(fact => fact.kind === 'transport-SharedBreakerLoopPolicy'
       && (fact.body as { policy?: { id?: unknown }; generation?: unknown }).policy?.id === policy.id
       && (fact.body as { generation?: unknown }).generation === generation);
-    return existing ?? append('transport-LoopPolicy', json({ policy, generation }), [value(rg.store.read()).at(-1)!.id]).fact;
+    return existing ?? append('transport-SharedBreakerLoopPolicy', json({ policy: storeSharedLoopPolicy(policy), generation }),
+      [value(rg.store.read()).at(-1)!.id]).fact;
   };
   registerPolicy();
   const vector = () => [...new Map(ctx.facts.map(fact => [fact.machine, fact])).values()]

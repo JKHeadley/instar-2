@@ -11,6 +11,7 @@ import { transportFixture } from './fixture.js';
 
 type Snapshot = Readonly<{
   policies: Record<string, unknown>;
+  ownedPolicy: Record<string, unknown>;
   scheduleMalformedPolicy: unknown;
   legacyPriority: Record<string, unknown>;
   mutations: Record<string, unknown>;
@@ -48,6 +49,18 @@ function snapshot(): Snapshot {
   });
   const scheduleMalformedPolicy = resultValue(fixture.api.schedule('differential-malformed', token,
     fixture.run, { ...fixture.policy, extra: true } as never));
+  const ownedPolicy: Record<string, unknown> = {};
+  const carrierWire = (fixture.storage.read() as any[])[0];
+  const carrierContext = { ...fixture.ctx, schemas: [...fixture.ctx.schemas, { ...fixture.ctx.schemas[0]!,
+    kind: 'legacy-policy-carrier', fields: { policy: { kind: 'owned' as const, owner: 'part-six', name: 'LoopPolicy' } } }] };
+  for (const [name, candidate] of Object.entries({ valid: fixture.policy, extra: { ...fixture.policy, extra: 1 },
+    initialDelay: { ...fixture.policy, initialDelay: 1 }, breakerCooldown: { ...fixture.policy, breakerCooldown: 1 },
+    parentDuty: { ...fixture.policy, parentDuty: { owner: 'part-five', name: 'Run', id: 'x' } } })) {
+    const altered = signEnvelope({ ...carrierWire, kind: 'legacy-policy-carrier', body: { policy: candidate } }, privateKey);
+    ownedPolicy[name] = resultValue(decodeHistoricalBody(consumeResult(decodeEnvelope(altered, carrierContext, 'replication'), {
+      Success: accepted => accepted, Refused: refused => { throw new Error(refused.detail); },
+    }), carrierContext, carrierContext.decode));
+  }
   const priorityFixture = transportFixture();
   priorityFixture.prepared();
   const facts = consumeResult(priorityFixture.store.read(), {
@@ -104,12 +117,12 @@ function snapshot(): Snapshot {
           Refused: refused => { throw new Error(refused.detail); },
         }), context, context.decode));
     }
-  return { policies, scheduleMalformedPolicy, legacyPriority, mutations };
+  return { policies, ownedPolicy, scheduleMalformedPolicy, legacyPriority, mutations };
 }
 
-it('SLB-LEGACY-MUTATION-72 SLB-LEGACY-PRIORITY-76 SLB-LEGACY-FULL-837-81 permanently compares all 837 signed legacy mutations against main 6148c28', () => {
+it('SLB-LEGACY-MUTATION-72 SLB-LEGACY-PRIORITY-76 SLB-LEGACY-FULL-837-81 permanently compares all 837 signed legacy mutations against main 923e01ad', () => {
   const directory = mkdtempSync(join(tmpdir(), 'transport-main-differential-'));
-  const archive = spawnSync('git', ['archive', '--format=tar', '6148c28', 'src', 'tests/transport/fixture.ts',
+  const archive = spawnSync('git', ['archive', '--format=tar', '923e01ad0d75ab1c63fd8d96f608581ba1cee31f', 'src', 'tests/transport/fixture.ts',
     'tests/facts/fixtures.ts', 'tests/fixtures.ts', 'scripts/transport-file-storage.mjs'],
   { cwd: resolve('.'), encoding: null, maxBuffer: 128 * 1024 * 1024 });
   expect(archive.status, archive.stderr?.toString()).toBe(0);
@@ -145,6 +158,17 @@ it('captures main legacy mutation results', () => {
     Success: accepted => accepted, Refused: refused => { throw new Error(refused.detail); } });
   const scheduleMalformedPolicy = resultValue(fixture.api.schedule('differential-malformed', token,
     fixture.run, { ...fixture.policy, extra: true }));
+  const ownedPolicy = {}, carrierWire = fixture.storage.read()[0];
+  const carrierContext = { ...fixture.ctx, schemas: [...fixture.ctx.schemas, { ...fixture.ctx.schemas[0],
+    kind: 'legacy-policy-carrier', fields: { policy: { kind: 'owned', owner: 'part-six', name: 'LoopPolicy' } } }] };
+  for (const [name, candidate] of Object.entries({ valid: fixture.policy, extra: { ...fixture.policy, extra: 1 },
+    initialDelay: { ...fixture.policy, initialDelay: 1 }, breakerCooldown: { ...fixture.policy, breakerCooldown: 1 },
+    parentDuty: { ...fixture.policy, parentDuty: { owner: 'part-five', name: 'Run', id: 'x' } } })) {
+    const altered = signEnvelope({ ...carrierWire, kind: 'legacy-policy-carrier', body: { policy: candidate } }, privateKey);
+    const frame = consumeResult(decodeEnvelope(altered, carrierContext, 'replication'), { Success: accepted => accepted,
+      Refused: refused => { throw new Error(refused.detail); } });
+    ownedPolicy[name] = resultValue(decodeHistoricalBody(frame, carrierContext, carrierContext.decode));
+  }
   const priorityFixture = transportFixture();
   priorityFixture.prepared();
   const facts = consumeResult(priorityFixture.store.read(), { Success: accepted => accepted,
@@ -186,7 +210,7 @@ it('captures main legacy mutation results', () => {
       Refused: refused => { throw new Error(refused.detail); } });
     mutations[name + '/' + outer] = resultValue(decodeHistoricalBody(frame, context, context.decode));
   }
-  writeFileSync(${JSON.stringify(output)}, JSON.stringify({ policies, scheduleMalformedPolicy, legacyPriority, mutations }));
+  writeFileSync(${JSON.stringify(output)}, JSON.stringify({ policies, ownedPolicy, scheduleMalformedPolicy, legacyPriority, mutations }));
 });
 `);
   const config = join(directory, 'vitest.config.mjs');

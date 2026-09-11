@@ -52,8 +52,6 @@ export interface SharedBreakerLoopPolicy extends Owned {
   readonly breakerCooldown: number; readonly maxOpenDuration: number;
   readonly halfOpenTrials: number; readonly halfOpenConcurrency: number;
   readonly closeEvidence: 'part-nine-restoration'; readonly reopenEvidence: 'counted-failure';
-  readonly parentDuty: RunReference; readonly budgetWindow: number;
-  readonly parentAttemptBudget: number; readonly parentResourceBudget: number;
 }
 export type LoopPolicy = StubLoopPolicy | SharedBreakerLoopPolicy;
 export interface LegacyLoopRecord extends Row, Owned {
@@ -65,16 +63,12 @@ export interface LegacyLoopRecord extends Row, Owned {
 export type LoopSourceVector = readonly Readonly<{ machine: string; epoch: number; position: number }>[];
 export type LoopPressureScope = Readonly<{ target: string; conversation: string; machine: string; pool: string }>;
 export type LoopAttempt = Readonly<{
-  id: string; holderFamily: string; worker: string; machine: string; episode: string;
-  admittedAt: Clock;
-  /** Exact resource-credit unit consumed by AdmissionReservation.charge for this attempt. */
-  resource: number; mode: 'closed' | 'half-open'; sourceVector: LoopSourceVector;
+  id: string; episode: string; admittedAt: Clock; mode: 'closed' | 'half-open';
 }>;
 export type LoopOutcome = Readonly<{
   attempt: string; kind: 'accepted' | 'failed'; failureClass: string; observedAt: Clock;
   completion: ConstitutionalReference<'Outcome'>;
   jitterPermille: number; restoration: readonly OwnedReference<'part-nine', 'VerificationAssessment'>[];
-  sourceVector: LoopSourceVector;
 }>;
 export interface SharedLoopRecord extends Row, Owned {
   readonly type: 'LoopRecord'; readonly run: string; readonly episode: string;
@@ -82,15 +76,14 @@ export interface SharedLoopRecord extends Row, Owned {
   readonly nextWake: number;
   readonly state: 'scheduled' | 'running' | 'restoring' | 'waiting' | 'open-breaker' | 'half-open' | 'stopped' | 'closed';
   readonly pending: string;
-  readonly parentDuty: RunReference; readonly currentOwnerRun: RunReference;
+  readonly currentOwnerRun: RunReference;
   readonly policyGeneration: RegisterGenerationReference;
   readonly pressureBinding: FactEnvelopeReference;
   readonly operationFamily: string; readonly pressureScope: LoopPressureScope; readonly pressureKey: string;
   readonly episodeKey: string; readonly transition: 'scheduled' | 'attempt-admitted' | 'outcome-recorded' | 'opened' | 'half-opened' | 'reopened' | 'closed' | 'stopped';
   readonly transitionAt: Clock; readonly nextEligible: Clock; readonly clockBasis: string;
   readonly sourceVector: LoopSourceVector;
-  readonly episodeAttempts: number; readonly totalFailures: number; readonly failureCount: number;
-  readonly rollingAttempts: number; readonly rollingResource: number;
+  readonly totalFailures: number; readonly failureCount: number;
   readonly breakerHasOpened: 0 | 1; readonly breakerOpenCount: number; readonly breakerFirstOpened: Clock;
   readonly halfOpenAdmitted: number; readonly halfOpenSucceeded: number;
   readonly pendingAttempts: readonly string[]; readonly attemptLog: readonly LoopAttempt[];
@@ -227,8 +220,7 @@ export interface LoopEpisodeInput {
 }
 export interface LoopAttemptInput {
   readonly command: string; readonly fence: FenceToken; readonly episode: OwnedReference<'part-six', 'LoopRecord'>;
-  readonly attempt: string; readonly holderFamily: string; readonly worker: string; readonly machine: string;
-  readonly resource: number; readonly sourceVector: LoopSourceVector;
+  readonly attempt: string;
 }
 export interface LoopOutcomeInput {
   readonly command: string; readonly fence: FenceToken; readonly episode: OwnedReference<'part-six', 'LoopRecord'>;
@@ -236,7 +228,6 @@ export interface LoopOutcomeInput {
   readonly completion: ConstitutionalReference<'Outcome'>;
   readonly jitterPermille: number;
   readonly restoration: readonly OwnedReference<'part-nine', 'VerificationAssessment'>[];
-  readonly sourceVector: LoopSourceVector;
 }
 export interface TransportAuthority<S = never> {
   inspect(): Result<readonly TransportFact[]>;
