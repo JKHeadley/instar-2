@@ -42,7 +42,7 @@
     "kind": "parsers",
     "status": "live",
     "requiredFacts": {
-      "fixture": "P4-NF-06",
+      "fixture": "P12-TELEGRAM-REPLY-CAPTURE",
       "authenticationClass": [
         { "stimulusType": "message", "class": "channel-attested" },
         { "stimulusType": "stop", "class": "channel-attested" }

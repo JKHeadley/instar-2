@@ -30,7 +30,7 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
     ...JSON.parse(readFileSync('src/conversation/telegram.declarations.json', 'utf8')) as object[],
   ];
   Object.assign(intake.r.context, { references: [...intake.r.context.references ?? [],
-    { provider: 'fixture', id: 'P4-NF-06', kind: 'captured-bytes' }] });
+    { provider: 'fixture', id: 'P12-TELEGRAM-REPLY-CAPTURE', kind: 'captured-bytes' }] });
   for (const candidate of declarations) consumeResult(decodeDeclaration(candidate, intake.r.context), {
     Success: () => undefined,
     Refused: refusal => { throw new Error(`${String((candidate as { id?: unknown }).id)}: ${refusal.detail}`); },
