@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { consumeResult } from '../../src/index.js';
 import { decodeScheduledCapacityMeasurement, readScheduledBusinessDisposition } from '../../src/scheduled/index.js';
 import { scheduledFixture } from './fixture.js';
-import { setup, completedRun, value } from '../rungraph/fixtures.js';
+import { closeUnreachable } from '../rungraph/closure-fixtures.js';
+import { setup, value } from '../rungraph/fixtures.js';
 
 describe('Part Fifteen consumes landed owner ports without replacing authority', () => {
   it('P15-NF-06 only a Part Five terminal exit supplies the durable business disposition', () => {
-    const f = completedRun();
-    expect(f.completed.state).toBe('completed');
-    expect(value(readScheduledBusinessDisposition(f.graph, { owner: 'part-five', name: 'Run', id: f.id })).exit.kind).toBe('completed');
+    const f = closeUnreachable();
+    expect(value(f.graph.read(f.id)).state).toBe('unreachable');
+    expect(value(readScheduledBusinessDisposition(f.graph, { owner: 'part-five', name: 'Run', id: f.id })).exit.kind).toBe('unreachable');
     for (const falseOutcome of [
       { type: 'spawn', id: f.id }, { type: 'queue', id: f.id }, { type: 'Lease', id: f.id }, { type: 'receipt', id: f.id },
     ]) expect(consumeResult(readScheduledBusinessDisposition(f.graph, falseOutcome), { Success: () => 'accepted', Refused: () => 'refused' })).toBe('refused');
@@ -20,6 +21,19 @@ describe('Part Fifteen consumes landed owner ports without replacing authority',
     forged.state = 'completed'; forged.head = 'forged:last-run';
     const reread = value(f.graph.read(f.id));
     expect(reread.state).toBe('ready'); expect(reread.head).not.toBe(forged.head);
+  });
+
+  it('P15-NF-38 P15-NF-45 limits local evidence to signed Part Five retention and closure reads', () => {
+    const open = setup(); value(open.graph.open(open.run));
+    expect(value(open.graph.read(open.id)).state).toBe('ready');
+    expect(consumeResult(open.graph.readExit({ owner: 'part-five', name: 'Run', id: open.id }),
+      { Success: () => 'accepted', Refused: () => 'refused' })).toBe('refused');
+    const terminal = closeUnreachable();
+    const first = value(readScheduledBusinessDisposition(terminal.graph,
+      { owner: 'part-five', name: 'Run', id: terminal.id }));
+    const second = value(readScheduledBusinessDisposition(terminal.graph,
+      { owner: 'part-five', name: 'Run', id: terminal.id }));
+    expect(first).toEqual(second); expect(first.exit.kind).toBe('unreachable');
   });
 
   it('P15-NF-29 refuses malformed or foreign capacity measurements through Part One', () => {

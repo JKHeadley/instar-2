@@ -8,7 +8,7 @@ const executable = {
   1: 'Architecture test proves Part Fifteen introduces no duplicate core type and imports every consumed owner through its public index.',
   2: 'Governance test inventories every governed Rule and all 52 distinct fixture identifiers; this checker binds the inventory to the actual run.',
   3: 'Package-resource admission delegates decoding and current signed-history selection to the public Part Ten owner paths.',
-  6: 'Full-port RunGraph evidence proves narrow control observations cannot replace the Part Five terminal business disposition.',
+  6: 'The landed Part Five closure and read ports resolve a signed terminal unreachable exit; the permissive completedRun test fixture is not accepted as Part Nine evidence.',
   8: 'Closed manifest decoding, required-field omission, duplicate identity, canonical bytes, Part Ten package/body pinning and cold reconstruction execute at all three tiers.',
   9: 'The local cron-v1 grammar and normalization arm executes; pinned zone/calendar expansion remains held at its named adapter seam.',
   10: 'An invalid manifest is surfaced while an independent valid signed package and constitutional canonical boundary remain usable.',
@@ -23,10 +23,10 @@ const executable = {
   31: 'Local capacity evidence range, freshness and unknown-evidence classification executes; an actual capacity-inhibited launch remains held.',
   33: 'Local quota-wall validation executes; launch through a pinned allocated candidate remains held.',
   34: 'Local unobservable-evidence classification executes; finite-exposure allocation and route policy remain held.',
-  38: 'Landed unresolved accounting and terminal unreachable exits execute; only the production shutdown-driver arm remains held.',
+  38: 'The landed Part Five port preserves an unresolved Run and resolves a signed terminal unreachable exit; resource release and production shutdown remain held at their owners.',
   39: 'The closed manifest keeps priority separate from authority and budget; real resource admission remains held at Part Six.',
-  45: 'Generic durable Part Five Run retention and session-independent reconstruction execute; shutdown and model-learning arms remain held.',
-  51: 'One-way source preservation, omitted-model default, execution-mode learning and machine-local placement conversion execute; launch remains held.',
+  45: 'Local Part Five reconstruction from signed facts executes without claiming a process cut or a real Part Six admission witness; shutdown and model-learning arms remain held.',
+  51: 'One-way source preservation, omitted-model default, execution-mode learning and unwitnessed-locality inhibition execute; launch remains held.',
 };
 
 const held = {
@@ -59,7 +59,7 @@ const held = {
   35: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-loop-followup.md-and-seam-response-judgment.md-rows-27-32',
   36: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-judgment.md-row-27-and-seam-response-intake-followup.md-row-49',
   37: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-rows-36-37-and-seam-response-facts-followup.md-row-37',
-  38: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver',
+  38: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver',
   39: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-resource-admission-arm',
   40: 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md',
   41: 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md',
@@ -87,29 +87,43 @@ export function p15Dispositions(design = readFileSync('docs/19-scheduled-work/09
   });
 }
 
-const proofFiles = ['tests/scheduled/review-round3.test.ts', 'tests/integration/scheduled-round3.test.ts',
-  'tests/e2e/scheduled-round3.test.ts'];
+const proofFiles = [
+  { file: 'tests/scheduled/review-round3.test.ts', tokens: ['exerciseP15Round3Proof()', 'expect('] },
+  { file: 'tests/integration/scheduled-round3.test.ts', tokens: ['exerciseP15Round3Proof()', 'expect('] },
+  { file: 'tests/e2e/scheduled-round3.test.ts', tokens: ['spawnSync(', 'SIGKILL', 'expect('] },
+];
 const laneDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.instar/lanes');
 const calendarRequest = 'design-19-scheduled-work-seam-request-calendar-adapter.md';
 const dependencyFiles = value => value.match(/(?:SEAM-LEDGER|seam-response-[a-z0-9-]+|design-19-[a-z0-9-]+)\.md/g) ?? [];
 
 export function checkP15Architecture(dispositions = p15Dispositions()) {
-  for (const file of proofFiles) {
+  for (const proof of proofFiles) {
+    const { file } = proof;
     if (!existsSync(file)) throw new Error(`missing required P15 proof file: ${file}`);
     const source = readFileSync(file, 'utf8');
-    if (!source.includes('exerciseP15Round3Proof()') || !source.includes('expect('))
-      throw new Error(`${file}: required proof must execute the shared real-owner exercise and assertions`);
+    if (proof.tokens.some(token => !source.includes(token)))
+      throw new Error(`${file}: required proof is missing an executable assertion or process boundary`);
   }
   const proofSource = readFileSync('tests/scheduled/round3-proof.ts', 'utf8');
   for (const token of ['runtime.record(', 'inspectCurrent(', 'decodeScheduledCapacityMeasurement(',
-    'importLegacyScheduledJob(', 'graph.read(', 'readExit(', 'closeUnreachable(']) {
+    'importLegacyScheduledJob(']) {
     if (!proofSource.includes(token)) throw new Error(`round-three proof is missing real owner operation ${token}`);
   }
+  const ownerProofSource = readFileSync('tests/scheduled/owner-ports.integration.test.ts', 'utf8');
+  if (/\bcompletedRun\b/.test(ownerProofSource))
+    throw new Error('P15-NF-06 must not count the permissive completedRun fixture as Part Nine validation');
+  for (const token of ['closeUnreachable(', 'readScheduledBusinessDisposition(', 'graph.readExit(']) {
+    if (!ownerProofSource.includes(token)) throw new Error(`owner-port proof is missing ${token}`);
+  }
+  if (proofSource.includes('const durable: unknown[]') || proofSource.includes('const admissions = new Set<string>()'))
+    throw new Error('round-three proof must not present retained process-local arrays or admission sets as restart evidence');
   const ledgerPath = resolve(laneDirectory, 'SEAM-LEDGER.md');
   if (!existsSync(ledgerPath)) throw new Error(`missing authoritative seam ledger: ${ledgerPath}`);
   const ledger = readFileSync(ledgerPath, 'utf8');
   const allowed = new Set([...Object.values(held).flatMap(dependencyFiles)]);
   for (const row of dispositions) {
+    if (row.held !== held[row.number] || row.executable !== Boolean(executable[row.number]))
+      throw new Error(`${row.id}: disposition does not match its design-bound validation obligation`);
     if (!row.held) continue;
     const files = dependencyFiles(row.held);
     if (!files.length) throw new Error(`${row.id}: held disposition has no existing grant/request evidence`);
@@ -131,7 +145,7 @@ export function checkP15Architecture(dispositions = p15Dispositions()) {
         throw new Error(`${row.id}: ledger row ${number} is absent or not granted`);
     }
   }
-  return { proofFiles };
+  return { proofFiles: proofFiles.map(proof => proof.file) };
 }
 
 function validateReportedTest(fileName, title) {

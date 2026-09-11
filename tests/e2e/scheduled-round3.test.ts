@@ -1,15 +1,29 @@
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { exerciseP15Round3Proof } from '../scheduled/round3-proof.js';
 
-it('P15-NF-10 P15-NF-17 P15-NF-29 P15-NF-31 P15-NF-33 P15-NF-34 P15-NF-38 P15-NF-45 P15-NF-51 round-three lifecycle proof executes real owner paths', () => {
-  const proof = exerciseP15Round3Proof();
-  expect(proof.currentNeighbor).toBe('accepted');
-  expect(proof.signedCollisions).toEqual(['refused', 'refused']);
-  expect(proof.planeAfterRefusal).toBe('accepted');
-  expect(proof.freshCapacity).toBe('accepted');
-  expect(proof.staleCapacity).toBe('refused');
-  expect(proof.unknownCapacity).toBe('refused');
-  expect(proof.legacyOmittedModel).toBe('sonnet');
-  expect(proof.retainedRun).toBe('ready');
-  expect(proof.unreachableExit).toBe('unreachable');
-});
+it('P15-NF-08 P15-NF-16 P15-NF-17 P15-NF-51 lifecycle proof crosses real killed-process package and import boundaries', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'p15-round4-cuts-'));
+  const run = (mode: string) => spawnSync(process.execPath,
+    ['--loader', './scripts/slice-ts-loader.mjs', './scripts/slice-scheduled-package.mjs', directory, mode],
+    { encoding: 'utf8', timeout: 30_000 });
+  try {
+    const packageCut = run('round4-conflicts-seed-cut');
+    expect(packageCut.signal).toBe('SIGKILL');
+    const packageRecovery = run('round4-conflicts-recover');
+    expect(packageRecovery.status, packageRecovery.stderr).toBe(0);
+    expect(JSON.parse(packageRecovery.stdout)).toEqual({
+      cross: ['refused', 'refused'], same: ['refused', 'refused'],
+    });
+
+    const importCut = run('legacy-learning-seed-cut');
+    expect(importCut.signal).toBe('SIGKILL');
+    const importRecovery = run('legacy-recover');
+    expect(importRecovery.status, importRecovery.stderr).toBe(0);
+    expect(JSON.parse(importRecovery.stdout)).toMatchObject({
+      postCompletionLearning: 'required', livingSkills: { enabled: true }, integrationGate: true,
+    });
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+}, 30_000);

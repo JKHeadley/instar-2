@@ -76,7 +76,7 @@ function decodeShape(input: Json, expectedVersion: 1 | 2, context: BoundaryConte
     'schedule.timeZoneDataVersion: expected a pinned tzdb release reference');
   ensure(/^calendar:[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9]\d*$/.test(decodedSchedule.calendarPolicyVersion),
     'schedule.calendarPolicyVersion: expected a pinned calendar policy reference');
-  if (decodedSchedule.kind === 'recurring') ensure(/^[A-Z][A-Za-z0-9_+-]*(?:\/[A-Z][A-Za-z0-9_+-]*)+$/.test(decodedSchedule.timeZone),
+  if (decodedSchedule.kind === 'recurring') ensure(/^[A-Za-z][A-Za-z0-9._+-]*(?:\/[A-Za-z][A-Za-z0-9._+-]*)*$/.test(decodedSchedule.timeZone),
     'schedule.timeZone: expected a canonical named-zone reference');
 
   const work = object(root.work, 'work'); fields(work, ['entryPoint', 'bodyDigest', 'resultDestination', 'groundingContract', 'predecessors'], 'work');

@@ -5,9 +5,6 @@ import { hashBytes } from '../../src/facts/index.js';
 import { decodeScheduledCapacityMeasurement, createScheduledWorkPackagePort, importLegacyScheduledJob,
   parseRfc3339Offset } from '../../src/scheduled/index.js';
 import type { Result } from '../../src/index.js';
-import type { SegmentStoragePort } from '../../src/facts/index.js';
-import { closeUnreachable } from '../rungraph/closure-fixtures.js';
-import { setup } from '../rungraph/fixtures.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { activeScheduledFixture, clone, scheduledFixture, value } from './fixture.js';
 
@@ -72,17 +69,6 @@ export function exerciseP15Round3Proof() {
   const legacyOmitted = outcome(importLegacyScheduledJob(omitted, fixture.context));
   const arbitraryModel = outcome(importLegacyScheduledJob(captured.replace('"haiku"', '"not-a-1x-model"'), fixture.context));
 
-  const durable: unknown[] = [];
-  const storage = (fallback: SegmentStoragePort): SegmentStoragePort => ({ owner: 'part-ten', read: () => durable,
-    append: (bytes, expected) => { const result = fallback.append(bytes, expected); durable.push(JSON.parse(bytes)); return result; } });
-  const admissions = new Set<string>(); const recovery = { admissions, witness: (_id: string) => {}, worker: 'w', harness: 'h',
-    lease: 'lease:1', message: 'request bytes' };
-  const beforeRestart = setup(storage, recovery); value(beforeRestart.graph.open(beforeRestart.run));
-  const afterRestart = setup(storage, recovery); const retained = outcome(afterRestart.graph.read(beforeRestart.id));
-  const unresolved = outcome(afterRestart.graph.readExit({ owner: 'part-five', name: 'Run', id: beforeRestart.id }));
-  const unreachableFixture = closeUnreachable();
-  const unreachable = outcome(unreachableFixture.graph.readExit({ owner: 'part-five', name: 'Run', id: unreachableFixture.id }));
-
   return {
     currentNeighbor: currentNeighbor.status, invalidJob: invalid.status, planeAfterRefusal: planeAfterRefusal.status,
     signedCollisions: [firstCollision.status, secondCollision.status], freshCapacity: freshCapacity.status,
@@ -94,8 +80,6 @@ export function exerciseP15Round3Proof() {
       duration: legacyCaptured.value.expectedDurationMinutes, model: legacyCaptured.value.model,
     } : { sourceKind: 'refused' },
     legacyOmittedModel: legacyOmitted.status === 'accepted' ? legacyOmitted.value.model : 'refused',
-    arbitraryModel: arbitraryModel.status, retainedRun: retained.status === 'accepted' ? retained.value.state : retained.status,
-    retainedDetail: retained.status === 'refused' ? retained.detail : '',
-    unresolvedExit: unresolved.status, unreachableExit: unreachable.status === 'accepted' ? unreachable.value.exit.kind : unreachable.status,
+    arbitraryModel: arbitraryModel.status,
   };
 }

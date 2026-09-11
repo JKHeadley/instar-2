@@ -15,5 +15,13 @@ it('P15-CONTRACT-MAP rejects a held disposition naming an invented grant or ledg
   const dispositions = p15Dispositions();
   const altered = dispositions.map((row: { number: number }) => row.number === 7 ? { ...row,
     held: 'NON-EXECUTABLE-UNTIL-invented-grant.md-row-999', status: 'NON-EXECUTABLE-UNTIL-invented-grant.md-row-999' } : row);
-  expect(() => checkP15Architecture(altered)).toThrow(/(?:held disposition has no existing|unrecognized held disposition)/);
+  expect(() => checkP15Architecture(altered)).toThrow(/(?:design-bound validation obligation|held disposition has no existing|unrecognized held disposition)/);
+});
+
+it('P15-CONTRACT-MAP rejects a real grant attached to the wrong validation obligation', () => {
+  const dispositions = p15Dispositions();
+  const wrong = 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69';
+  const altered = dispositions.map((row: { number: number }) => row.number === 4
+    ? { ...row, held: wrong, status: wrong, reason: wrong } : row);
+  expect(() => checkP15Architecture(altered)).toThrow(/design-bound validation obligation/);
 });

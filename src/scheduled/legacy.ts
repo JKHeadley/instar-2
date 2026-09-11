@@ -18,6 +18,8 @@ export interface LegacyScheduledImportPlan {
   readonly model: typeof legacyModels[number];
   readonly placement: 'global-once' | 'every-eligible-machine';
   readonly postCompletionLearning: 'off' | 'required';
+  readonly livingSkills?: Readonly<{ readonly enabled: boolean }>;
+  readonly integrationGate?: boolean;
   readonly activation: 'eligible' | 'inhibited';
   readonly residue: readonly string[];
 }
@@ -42,7 +44,7 @@ function slug(value: unknown): string {
 function actualDeclaration(value: Record<string, unknown>, sourceBytes: string): LegacyScheduledImportPlan {
   const required = ['slug', 'origin', 'schedule', 'priority', 'expectedDurationMinutes', 'enabled', 'execute'];
   const optional = ['model', 'tags', 'topicId', 'telegramNotify', 'machines', 'gate', 'unrestrictedTools', 'manifestVersion',
-    'perMachineIndependent', 'mcpAccess', 'disabledAtBodyHash'];
+    'perMachineIndependent', 'mcpAccess', 'disabledAtBodyHash', 'livingSkills', 'integrationGate'];
   exact(value, required, optional, 'legacy job declaration');
   const id = slug(value.slug);
   ensure(value.origin === 'instar' || value.origin === 'user', 'legacy origin is unknown');
@@ -70,12 +72,23 @@ function actualDeclaration(value: Record<string, unknown>, sourceBytes: string):
   ensure(value.unrestrictedTools === undefined || typeof value.unrestrictedTools === 'boolean', 'legacy unrestrictedTools must be boolean');
   ensure(value.manifestVersion === undefined || Number.isSafeInteger(value.manifestVersion) && Number(value.manifestVersion) >= 0, 'legacy manifestVersion is invalid');
   ensure(value.disabledAtBodyHash === undefined || typeof value.disabledAtBodyHash === 'string', 'legacy disabledAtBodyHash must be text');
+  const living = value.livingSkills;
+  ensure(living === undefined || living !== null && typeof living === 'object' && !Array.isArray(living)
+    && Object.keys(living).length === 1 && typeof (living as Record<string, unknown>).enabled === 'boolean',
+  'legacy livingSkills must contain only enabled');
+  ensure(value.integrationGate === undefined || typeof value.integrationGate === 'boolean',
+    'legacy integrationGate must be boolean when supplied');
   const importedModel = model(value.model);
   const residue = value.perMachineIndependent === true ? ['per-machine work is not proven machine-local'] : [];
+  const script = execution.type === 'script';
+  const postCompletionLearning = !script && (living as { enabled?: boolean } | undefined)?.enabled === true
+    && value.integrationGate !== false ? 'required' as const : 'off' as const;
   const plan: LegacyScheduledImportPlan = { slug: id, sourceBytes, sourceDigest: hashBytes(sourceBytes),
     sourceKind: 'legacy-job-declaration', schedule: value.schedule as string,
     priority: value.priority as typeof legacyPriorities[number], expectedDurationMinutes: value.expectedDurationMinutes as number,
-    model: importedModel, placement: 'global-once', postCompletionLearning: 'off',
+    model: importedModel, placement: 'global-once', postCompletionLearning,
+    ...(living === undefined ? {} : { livingSkills: freeze({ enabled: (living as { enabled: boolean }).enabled }) }),
+    ...(value.integrationGate === undefined ? {} : { integrationGate: value.integrationGate as boolean }),
     activation: residue.length ? 'inhibited' : 'eligible', residue: freeze(residue) };
   return freeze(plan);
 }
@@ -108,12 +121,14 @@ function compatibilityEnvelope(value: Record<string, unknown>, sourceBytes: stri
     if (value.serverComposition === 'model-session-without-integration-gate') residue.push('explicit post-completion learning choice required');
     else if ((living as Record<string, boolean>).enabled && value.integrationGate !== false) postCompletionLearning = 'required';
   }
-  if (value.perMachineIndependent && !value.machineLocalEffects) residue.push('per-machine work is not proven machine-local');
+  if (value.perMachineIndependent) residue.push('per-machine work is not proven machine-local by an owner witness');
   return freeze({ slug: id, sourceBytes, sourceDigest: hashBytes(sourceBytes), sourceKind: 'compatibility-policy-envelope',
     ...(value.schedule === undefined ? {} : { schedule: value.schedule as string }),
     ...(value.priority === undefined ? {} : { priority: value.priority as typeof legacyPriorities[number] }),
     ...(value.expectedDurationMinutes === undefined ? {} : { expectedDurationMinutes: value.expectedDurationMinutes as number }),
-    model: importedModel, placement: value.perMachineIndependent && value.machineLocalEffects ? 'every-eligible-machine' : 'global-once',
+    model: importedModel, placement: 'global-once',
+    livingSkills: freeze({ enabled: (living as { enabled: boolean }).enabled }),
+    ...(value.integrationGate === undefined ? {} : { integrationGate: value.integrationGate as boolean }),
     postCompletionLearning, activation: residue.length ? 'inhibited' : 'eligible', residue: freeze(residue) } as LegacyScheduledImportPlan);
 }
 

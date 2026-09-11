@@ -40,8 +40,9 @@ describe('Part Fifteen 1.x one-way compatibility policy import', () => {
     expect(noGate.activation).toBe('inhibited'); expect(noGate.residue).toContain('explicit post-completion learning choice required');
     const unsafe = value(importLegacyScheduledJob(source({ perMachineIndependent: true }), context));
     expect(unsafe.activation).toBe('inhibited'); expect(unsafe.placement).toBe('global-once');
-    const safe = value(importLegacyScheduledJob(source({ perMachineIndependent: true, machineLocalEffects: true }), context));
-    expect(safe.activation).toBe('eligible'); expect(safe.placement).toBe('every-eligible-machine');
+    const assertedOnly = value(importLegacyScheduledJob(source({ perMachineIndependent: true, machineLocalEffects: true }), context));
+    expect(assertedOnly.activation).toBe('inhibited'); expect(assertedOnly.placement).toBe('global-once');
+    expect(assertedOnly.residue).toContain('per-machine work is not proven machine-local by an owner witness');
     expect(consumeResult(importLegacyScheduledJob(source({ unknown: true }), context), { Success: () => 'accepted', Refused: () => 'refused' })).toBe('refused');
   });
 });

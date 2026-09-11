@@ -9,6 +9,11 @@ function decimal(value: string, path: string): number {
   const parsed = Number(value); ensure(Number.isSafeInteger(parsed), `${path}: integer out of range`); return parsed;
 }
 
+function positiveLiteral(value: string, path: string): bigint {
+  ensure(/^[0-9]+$/.test(value), `${path}: expected unsigned decimal`);
+  const parsed = BigInt(value); ensure(parsed > 0n, `${path}: step must be positive`); return parsed;
+}
+
 function parseField(source: string, index: number): readonly number[] {
   const [minimum, maximum] = domains[index]!;
   ensure(source.length > 0 && !/\s/.test(source), `cron field ${index + 1}: empty or whitespace`);
@@ -16,8 +21,8 @@ function parseField(source: string, index: number): readonly number[] {
   for (const atom of source.split(',')) {
     ensure(atom.length > 0, `cron field ${index + 1}: empty list member`);
     const stepParts = atom.split('/'); ensure(stepParts.length <= 2, `cron field ${index + 1}: malformed step`);
-    const base = stepParts[0]!; const step = stepParts[1] === undefined ? 1 : decimal(stepParts[1], `cron field ${index + 1} step`);
-    ensure(step > 0, `cron field ${index + 1}: step must be positive`);
+    const base = stepParts[0]!; const step = stepParts[1] === undefined
+      ? 1n : positiveLiteral(stepParts[1], `cron field ${index + 1} step`);
     let start: number; let end: number;
     if (base === '*') { start = minimum; end = maximum; }
     else if (base.includes('-')) {
@@ -30,7 +35,8 @@ function parseField(source: string, index: number): readonly number[] {
       start = decimal(base, `cron field ${index + 1}`); end = start;
     }
     ensure(start >= minimum && end <= maximum, `cron field ${index + 1}: value outside ${minimum}..${maximum}`);
-    for (let value = start; value <= end; value += step) selected.add(value);
+    const numericStep = step > BigInt(end - start + 1) ? end - start + 1 : Number(step);
+    for (let value = start; value <= end; value += numericStep) selected.add(value);
   }
   return freeze([...selected].sort((a, b) => a - b));
 }

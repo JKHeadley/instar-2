@@ -3,10 +3,12 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createScheduledWorkPackagePort, importLegacyScheduledJob } from '../src/scheduled/index.ts';
-import { consumeResult } from '../src/index.ts';
+import { canonical, consumeResult } from '../src/index.ts';
+import { decodeLocalCapabilityPackage } from '../src/assembly/index.ts';
+import { hashBytes } from '../src/facts/index.ts';
 import { assemblyRuntimeFixture } from '../tests/assembly/runtime-fixture.ts';
 import { assemblyInput } from '../tests/assembly/fixture.ts';
-import { activeScheduledFixture, scheduledFixture, value } from '../tests/scheduled/fixture.ts';
+import { activeScheduledFixture, clone, scheduledFixture, value } from '../tests/scheduled/fixture.ts';
 
 const [directory, mode, kind] = process.argv.slice(2); const durable = join(directory, 'scheduled-package-cut.json');
 if (mode === 'seed-cut') {
@@ -33,6 +35,14 @@ if (mode === 'recover') {
 if (mode === 'legacy-seed-cut') {
   const sourceBytes = readFileSync('tests/scheduled/fixtures/legacy-health-check.json', 'utf8');
   const descriptor = openSync(durable, 'w'); writeSync(descriptor, sourceBytes); fsyncSync(descriptor); closeSync(descriptor);
+  process.kill(process.pid, 'SIGKILL');
+}
+if (mode === 'legacy-learning-seed-cut') {
+  const source = JSON.parse(readFileSync('tests/scheduled/fixtures/legacy-health-check.json', 'utf8'));
+  source.execute = { type: 'prompt', value: 'Observe' };
+  source.livingSkills = { enabled: true };
+  source.integrationGate = true;
+  const descriptor = openSync(durable, 'w'); writeSync(descriptor, JSON.stringify(source)); fsyncSync(descriptor); closeSync(descriptor);
   process.kill(process.pid, 'SIGKILL');
 }
 if (mode === 'owner-seed-cut') {
@@ -79,6 +89,52 @@ if (mode === 'owner-cuts') {
     }
   }
   process.stdout.write(JSON.stringify(rows));
+}
+if (mode === 'round4-conflicts-seed-cut') {
+  const active = activeScheduledFixture(); const current = value(active.assembly.runtime.inspectCurrent());
+  const firstTransition = current.find(row => row.record.id === 'transition:scheduled:active');
+  const crossManifest = clone(active.manifest);
+  crossManifest.identity.contentDigest = active.h('d'); crossManifest.schedule.at = '2027-01-02T00:00:00Z';
+  const crossBytes = value(canonical(crossManifest)).bytes;
+  const crossInput = clone(active.package);
+  Object.assign(crossInput, { id: 'package:cross', namespace: 'alice.cross', contentDigest: active.h('d') });
+  crossInput.entrypoints[0].digest = hashBytes(crossBytes);
+  const crossPackage = value(active.assembly.runtime.record('LocalCapabilityPackage',
+    value(decodeLocalCapabilityPackage(crossInput, active.context))));
+  value(active.assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+    id: 'transition:cross:active', dependencyFacts: [firstTransition.fact.id], package: crossPackage.namespace,
+    manifestDigest: crossPackage.contentDigest, observedArtifactDigest: crossPackage.contentDigest }));
+
+  const sameManifest = clone(active.manifest);
+  Object.assign(sameManifest.identity, { jobId: 'job:same', contentDigest: active.h('e') });
+  const sameSecond = clone(sameManifest); sameSecond.schedule.at = '2027-01-03T00:00:00Z';
+  const sameBytes = value(canonical(sameManifest)).bytes, sameSecondBytes = value(canonical(sameSecond)).bytes;
+  const sameInput = clone(active.package);
+  Object.assign(sameInput, { id: 'package:same', namespace: 'alice.same', contentDigest: active.h('e'),
+    declarationIds: ['job:same'] });
+  sameInput.entrypoints[0].digest = hashBytes(sameBytes);
+  sameInput.entrypoints.splice(1, 0, { id: 'second-manifest', path: 'scheduled/second.json', digest: hashBytes(sameSecondBytes) });
+  const samePackage = value(active.assembly.runtime.record('LocalCapabilityPackage',
+    value(decodeLocalCapabilityPackage(sameInput, active.context))));
+  value(active.assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+    id: 'transition:same:active', package: samePackage.namespace,
+    manifestDigest: samePackage.contentDigest, observedArtifactDigest: samePackage.contentDigest }));
+  const payload = { tail: active.assembly.raw.slice(active.baselineLength), package: active.package,
+    manifestBytes: active.manifestBytes, crossPackage, crossBytes, samePackage, sameBytes, sameSecondBytes };
+  const descriptor = openSync(durable, 'w'); writeSync(descriptor, JSON.stringify(payload)); fsyncSync(descriptor); closeSync(descriptor);
+  process.kill(process.pid, 'SIGKILL');
+}
+if (mode === 'round4-conflicts-recover') {
+  const persisted = JSON.parse(readFileSync(durable, 'utf8')); const s = scheduledFixture(); const assembly = assemblyRuntimeFixture();
+  assembly.raw.push(...persisted.tail); const port = createScheduledWorkPackagePort();
+  const context = { ...assembly.c, register: { ...assembly.c.register,
+    entries: [...new Set([...assembly.c.register.entries, ...s.context.register.entries])] } };
+  const admit = (pkg, path, bytes) => consumeResult(port.admitPackageResource({ package: pkg, manifestPath: path,
+    manifestBytes: bytes, existingManifests: [] }, context), { Success: () => 'accepted', Refused: () => 'refused' });
+  process.stdout.write(JSON.stringify({ cross: [admit(persisted.package, 'scheduled/manifest.json', persisted.manifestBytes),
+    admit(persisted.crossPackage, 'scheduled/manifest.json', persisted.crossBytes)],
+  same: [admit(persisted.samePackage, 'scheduled/manifest.json', persisted.sameBytes),
+    admit(persisted.samePackage, 'scheduled/second.json', persisted.sameSecondBytes)] }));
 }
 if (mode === 'legacy-recover') {
   const sourceBytes = readFileSync(durable, 'utf8'); const context = scheduledFixture().context;
