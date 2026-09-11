@@ -67,7 +67,8 @@ describe('round-three provider review regressions', () => {
       isCurrent: () => f.success(current) };
     const legacyLoaded = value(loadRegister(register, generation, s.context, legacy, f.now));
     current = false;
-    expect(detail(readRegisterEntry('store', legacyLoaded, s.context))).toContain('current entering-force');
+    expect(detail(readRegisterEntry('store', legacyLoaded, { ...s.context, types: { ...s.context.types, now: f.clock(201) } })))
+      .toContain('current entering-force');
   });
 
   it('P3-NF-02 refuses a present null nested schema instead of silently dropping it', () => {

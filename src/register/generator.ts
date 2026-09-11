@@ -151,14 +151,19 @@ export function loadRegister(input: unknown, expected: RegisterGeneration, conte
     requireThat(encoding(rebuilt).bytes === encoding(v).bytes, 'loaded register does not match complete declaration/reference validation');
     requireThat(v.authority === 'shape-only', 'register bytes may not self-assert authority');
     const result = { type: 'GeneratedRegister', schemaVersion: 1, commit: text(v.commit, 'commit'), extract, shape, entries: decoded, authority: 'shape-only' } as unknown as VerifiedRegister;
+    let verifiedAt = now.value;
     loaded.set(result, current => {
       const at = current ?? now;
-      if (spine.revalidateLoaded) return consumeResult(spine.revalidateLoaded(extract, expected, at), { Success: value => value === true, Refused: () => false });
-      return consumeResult(spine.verifyExtract(extract), { Success: () => consumeResult(spine.enteringForce(expected), {
+      if (at.value === verifiedAt) return true;
+      const verified = spine.revalidateLoaded
+        ? consumeResult(spine.revalidateLoaded(extract, expected, at), { Success: value => value === true, Refused: () => false })
+        : consumeResult(spine.verifyExtract(extract), { Success: () => consumeResult(spine.enteringForce(expected), {
         Success: record => encoding(record.generation).bytes === encoding(expected).bytes && consumeResult(spine.isCurrent(extract.vector, at), {
           Success: value => value === true, Refused: () => false,
         }), Refused: () => false,
       }), Refused: () => false });
+      if (verified) verifiedAt = at.value;
+      return verified;
     });
     return result;
   });
