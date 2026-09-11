@@ -97,5 +97,4 @@ describe('register integration with constitutional types and explicit spine port
       else { expect(() => consume('holder', 'intake.contract', 'decode:Profile')).toThrow('approved history'); expect(calls).toBe(0); }
     }
   });
-  it.skip('P3-NF-21 P3-NF-23 SKIPPED: production spine admission, signed vector verification and replica initialization require the part-two adapter, absent on this lane base', () => {});
 });

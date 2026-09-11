@@ -13,6 +13,16 @@ export type ShapeEntries = RegisterValue<'ShapeEntries'> & Readonly<{ kinds: rea
   factSchemas: readonly Readonly<{ kind: string; owner: 'part-three'; bodyType: string; schemaVersion: 1;
     decoder: 'decodeGenerationRecord' | 'decodeCheckRun'; requiredFields: readonly string[] }>[];
   parts: readonly number[]; derivedFrom: Readonly<Record<'critical' | 'significant' | 'userFacing' | 'irreversible', ProfileExpression>> }>;
+export type ShapeChangeEntry = Readonly<{
+  operation: 'add' | 'remove' | 'replace'; path: string; before?: Json; after?: Json;
+}>;
+export type OwnerReferenceEnrollment = Readonly<{
+  part: number; owner: string; manifest: Readonly<{ path: string; hash: Hash }>;
+}>;
+export type ShapeChangeDocument = RegisterValue<'ShapeChangeDocument'> & Readonly<{
+  id: string; parent: Hash; candidateShape: Hash; changes: readonly ShapeChangeEntry[];
+  ownerReferences: readonly OwnerReferenceEnrollment[]; approvedIn: FactReference;
+}>;
 export type CanFailEvidence = Readonly<{ kind: 'fixture' | 'probe' | 'sentinel'; id: string; stage: string }>;
 export type Hold = Readonly<{ rule: number }> & (
   | Readonly<{ class: 'held'; evidence: CanFailEvidence; semanticallyReviewed: string }>

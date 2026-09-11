@@ -30,21 +30,32 @@ const exact = (v, keys) => {
   if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !keys.includes(k)) || keys.some(k => !Object.hasOwn(v, k)))
     throw new Error('invalid owner reference manifest fields');
 };
-export function loadOwnerReferences(root, input) {
+export function loadOwnerReferences(root, input, enrollments = []) {
   const result = { references: [], catalog: { fixtures: [], probes: [] }, decoders: [], documents: [], artifacts: {} };
   const seen = new Set();
-  for (const path of Object.keys(input.sources)) if (path.startsWith('register-source/owner-references/') && !ownerManifestPaths.includes(path))
+  const enrolledPaths = enrollments.map(row => row.manifest.path);
+  if (new Set([...ownerManifestPaths, ...enrolledPaths]).size !== ownerManifestPaths.length + enrolledPaths.length)
+    throw new Error('owner enrollment duplicates a closed owner manifest');
+  const admittedPaths = [...ownerManifestPaths, ...enrolledPaths];
+  for (const path of Object.keys(input.sources)) if (path.startsWith('register-source/owner-references/') && !admittedPaths.includes(path))
     throw new Error('unknown owner manifest path ' + path);
-  for (const manifestPath of ownerManifestPaths) {
+  for (const manifestPath of admittedPaths) {
   const raw = input.sources[manifestPath]; if (raw === undefined) continue;
   const manifest = JSON.parse(raw);
   exact(manifest, ['schemaVersion', 'owner', 'fixtures', 'probes', 'decoders', 'documents']);
-  if (manifest.schemaVersion !== 1 || typeof manifest.owner !== 'string' || !Object.hasOwn(contracts, manifest.owner)) throw new Error('unknown reference owner/version');
+  const enrollment = enrollments.find(row => row.manifest.path === manifestPath);
+  if (enrollment && (hash(manifest) !== enrollment.manifest.hash || manifest.owner !== enrollment.owner))
+    throw new Error('governed owner enrollment differs from committed manifest');
+  if (manifest.schemaVersion !== 1 || typeof manifest.owner !== 'string' || !Object.hasOwn(contracts, manifest.owner) && !enrollment)
+    throw new Error('unknown reference owner/version');
   if (manifestPath !== ownerManifestPath && manifestPath !== `register-source/owner-references/${manifest.owner}.json`)
     throw new Error('owner manifest path disagrees with declared owner');
   if (seen.has(manifest.owner)) throw new Error('duplicate owner manifest'); seen.add(manifest.owner);
-  const contract = contracts[manifest.owner];
+  const contract = contracts[manifest.owner] ?? { decoders: {}, fixture: () => true, probe: () => true,
+    test: (_kind, path) => typeof path === 'string' && path.startsWith('tests/') && path.endsWith('.test.ts') };
   for (const field of ['fixtures', 'probes', 'decoders', 'documents']) if (!Array.isArray(manifest[field])) throw new Error('owner reference list required');
+  if (enrollment && (manifest.decoders.length || manifest.documents.length))
+    throw new Error('new per-part enrollment admits fixture/probe evidence only');
   const artifact = (a, path) => {
     exact(a, ['path', 'hash']);
     if (a.path !== path || !input.files.includes(path)) throw new Error('wrong-owner or missing artifact: ' + path);

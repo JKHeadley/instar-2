@@ -7,6 +7,7 @@ import { decodeShape } from '../dist/register/index.js';
 
 export const value = result => consumeResult(result, { Success: value => value, Refused: refusal => { throw new Error(refusal.detail); } });
 export const bytes = input => value(canonical(input)).bytes;
+const hash = input => value(canonical(input)).hash;
 // A sidecar does not get to author declaredBy. Resolve its adjacent source and
 // literal core construct through the same symbol-aware sweep used by the gates.
 export function bindColocatedDeclarations(sources, constructs) {
@@ -32,6 +33,23 @@ export function readCommit(root, commit) {
   const sources = Object.fromEntries(selected.sort().map(p => [p, git(['show', `${commit}:${p}`]).replaceAll('\r\n', '\n')]));
   const code = Object.fromEntries(files.filter(p => p.startsWith('src/') && p.endsWith('.ts')).map(p => [p, git(['show', `${commit}:${p}`])]));
   return { commit, sources, files, code };
+}
+export function loadParentGeneration(root, candidateCommit, parent) {
+  const git = args => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).trim();
+  const ancestry = git(['rev-list', '--parents', '-n', '1', candidateCommit]).split(' ');
+  if (ancestry.length !== 2 || ancestry[1] !== parent.commit) throw new Error('P3-NF-23: workflow parent is not the candidate source commit parent');
+  const read = path => {
+    try { return JSON.parse(git(['show', `${parent.commit}:${path}`])); }
+    catch { throw new Error(`P3-NF-23: parent generation artifact missing or invalid: ${path}`); }
+  };
+  const register = read(parent.register), source = read(parent.source), conversion = read(parent.conversion);
+  if (!source || source.authority !== 'shape-only' || !['bootstrap', 'normal', 'replay'].includes(source.mode)
+    || !/^[a-f0-9]{40}$/.test(source.commit) || !/^sha256:[a-f0-9]{64}$/.test(source.generation)
+    || hash(register) !== source.generation || register.commit !== source.commit
+    || register.extract?.vector?.owner !== 'part-two' || register.extract?.vector?.name !== 'FactPositionVector')
+    throw new Error('P3-NF-21: parent commit does not carry one internally consistent generated register');
+  return { register, generation: { type: 'RegisterGeneration', schemaVersion: 1, id: source.generation,
+    commit: source.commit, vector: register.extract.vector }, conversion };
 }
 export function bootstrapDeclarations(documents, shape) {
   const sources = []; const glossary = documents['docs/03-the-glossary.md'];

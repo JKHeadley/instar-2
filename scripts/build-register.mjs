@@ -4,8 +4,9 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { decodeMeasurement, canonical, schemas } from '../dist/index.js';
 import { generateRegister, generationOf, renderRegister, invariantCoverage, implementedInvariants, decodeCheckRun,
-  decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion } from '../dist/register/index.js';
-import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, value, bytes } from './register-source.mjs';
+  decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion,
+  decodeShapeChangeDocument, decodeNormalRegisterWorkflow } from '../dist/register/index.js';
+import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, loadParentGeneration, value, bytes } from './register-source.mjs';
 import { checkWiring, scanSources } from './check-register-wiring.mjs';
 import { loadOwnerReferences, mergeOwnerReferences } from './register-owner-references.mjs';
 import { ownerDocuments } from '../dist/register/owner-contracts.js';
@@ -49,7 +50,21 @@ export function build(root, commit, options = {}) {
     if (!p.startsWith('register-source/') || !p.endsWith('.json')) return false;
     try { return bytes(JSON.parse(content)) === bytes(workflow); } catch { return false; }
   })) throw new Error('workflow/check inputs must match committed source bytes');
-  const owner = loadOwnerReferences(root, input);
+  let parentInput;
+  let shapeDocument;
+  if (mode === 'normal' && (workflow.type === 'RegisterWorkflow' || options.requireWorkflowSchema)) {
+    const boundary = buildContext(shapeInput, [], commit, nowValue);
+    workflow = value(decodeNormalRegisterWorkflow(workflow, boundary));
+    parentInput = loadParentGeneration(root, commit, workflow.parent);
+    const binding = workflow.shapeChange?.document;
+    if (binding) {
+      const raw = input.sources[binding.path];
+      if (!raw) throw new Error('P3-NF-09: shape-change document is not committed with the candidate');
+      if (hash(JSON.parse(raw)) !== binding.hash) throw new Error('P3-NF-09: shape-change document bytes do not match approval binding');
+      shapeDocument = value(decodeShapeChangeDocument(JSON.parse(raw), boundary));
+    }
+  }
+  const owner = loadOwnerReferences(root, input, shapeDocument?.ownerReferences ?? []);
   // Check explicit workflow presence before adding committed defaults.
   if (!converting) for (const field of ['catalog', 'references'])
     if (!Object.hasOwn(workflow, field)) throw new Error(`normal workflow missing explicit ${field}`);
@@ -73,9 +88,9 @@ export function build(root, commit, options = {}) {
     } else if (options.provider) throw new Error('Replay is an offline shape verdict, not a provider-backed bootstrap transition');
     sources = bootstrapDeclarations(input.sources, shapeInput);
   } else {
-    for (const field of ['branch', 'catalog', 'runs', 'landedParts', 'references', 'claims', 'extract', 'parent', 'conversion'])
+    for (const field of ['branch', 'catalog', 'runs', 'landedParts', 'references', 'claims', 'extract', 'parent'])
       if (!Object.hasOwn(workflow, field)) throw new Error(`normal workflow missing explicit ${field}`);
-    const conversion = workflow.conversion;
+    const conversion = parentInput ? parentInput.conversion : workflow.conversion;
     if (!conversion || bytes(conversion.documents) !== bytes(corpus(input.sources)) || !Array.isArray(conversion.sources))
       throw new Error('Normal build requires committed conversion bound to source documents');
     sources = [...conversion.sources, ...Object.entries(input.sources).filter(([p]) => p.endsWith('.declarations.json'))
@@ -117,13 +132,14 @@ export function build(root, commit, options = {}) {
   if (converting) register = value(generateRegister(buildInput, context));
   else {
     const provider = options.provider;
-    const parentGeneration = value(decodeGeneration(workflow.parent?.generation, context));
-    const parent = value(loadRegister(workflow.parent?.register, parentGeneration, context, provider, now));
+    const parentGeneration = value(decodeGeneration(parentInput ? parentInput.generation : workflow.parent?.generation, context));
+    const parent = value(loadRegister(parentInput ? parentInput.register : workflow.parent?.register, parentGeneration, context, provider, now));
     const e = value(decodeExtract(extract, context)); value(provider.verifyExtract(e));
     if (!value(provider.isCurrent(e.vector, now))) throw new Error('P3-NF-23: current extract is stale');
-    const change = workflow.shapeChange ?? null;
-    if (change && hash(input.sources[change.document.path]) !== change.document.hash) throw new Error('P3-NF-09: shape-change document bytes do not match approval binding');
-    register = value(generateAgainstParent(buildInput, parent, context.shape, change, provider, context));
+    const change = shapeDocument ? { parent: shapeDocument.parent, candidateShape: shapeDocument.candidateShape,
+      document: workflow.shapeChange.document, approval: shapeDocument.approvedIn } : workflow.shapeChange ?? null;
+    if (change && !shapeDocument && hash(input.sources[change.document.path]) !== change.document.hash) throw new Error('P3-NF-09: shape-change document bytes do not match approval binding');
+    register = value(generateAgainstParent(buildInput, parent, context.shape, change, provider, context, shapeDocument));
     if (mode === 'completion') {
       if (!provider.landingStanding) throw new Error('completion requires live system standing provider');
       completion = value(planLandingCompletion(workflow.pending, extract, provider.landingStanding, provider,
@@ -169,7 +185,7 @@ export async function run(args, root = process.cwd()) {
   if (selectedModes.length > 1 || selectedModes.length && workflow?.mode && workflow.mode !== selectedModes[0][1]) throw new Error('ambiguous bootstrap/replay/normal workflow');
   const provider = flag('--provider') ? (await import(pathToFileURL(resolve(root, flag('--provider'))))).provider : undefined;
   const mode = selectedModes[0]?.[1] ?? workflow?.mode ?? (!workflow ? recorded.mode : undefined);
-  const result = build(root, commit, { mode, workflow, provider, ...(flag('--now') ? { now: Number(flag('--now')) } : {}) });
+  const result = build(root, commit, { mode, workflow, provider, requireWorkflowSchema: mode === 'normal', ...(flag('--now') ? { now: Number(flag('--now')) } : {}) });
   const tracked = execFileSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).trim().split('\n');
   const live = tracked.filter(p => Object.hasOwn(result.input.sources, p) || p.startsWith('docs/rules/') && p.endsWith('.md')
     || p.endsWith('.declarations.json') || p.startsWith('register-source/') && p.endsWith('.json')).sort();

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { defineDecoder, consumeResult } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
-import { decodeShape, generateRegister, generationOf, decodeGenerationRecord, loadRegister, generateAgainstParent, runRegisterChecks, decodeDeclaration } from '../../src/register/index.js';
+import { decodeShape, generateRegister, generationOf, decodeGenerationRecord, loadRegister, generateAgainstParent, runRegisterChecks, decodeDeclaration,
+  decodeShapeChangeDocument, shapeDifferences } from '../../src/register/index.js';
 import type { RegisterContext, SpineReadPort, FactReference, WorkflowChecks } from '../../src/register/index.js';
 import { checkProtectedTests } from '../../scripts/check-register-protection.mjs';
 import { readFileSync } from 'node:fs';
@@ -11,6 +12,11 @@ function reply<T>(payload: T, context: RegisterContext): Result<T> {
   return value(defineDecoder<T, RegisterContext>({ name: 'WorkflowFixtureReply', owner: 'test-only', currentVersion: 1,
     versions: { 1: { validate: input => ({ ok: true, value: input }) } }, migrations: {}, decodeCurrent: () => ({ ok: true, value: payload }) }, context.preserved))
     .decode(json('WorkflowFixtureReply', {}), context);
+}
+function changeDocument(parent: ReturnType<typeof setup>['context']['shape'], candidate: ReturnType<typeof setup>['context']['shape'],
+  parentGeneration: string, fact: FactReference, context: RegisterContext, id = 'fixture-change') {
+  return value(decodeShapeChangeDocument(json('ShapeChangeDocument', { id, parent: parentGeneration, candidateShape: hash(candidate),
+    changes: shapeDifferences(parent, candidate), ownerReferences: [], approvedIn: fact }), context));
 }
 describe('repair workflow composition', () => {
   it.each(['loosening', 'tightening', 'incompatible tightening', 'required field', 'missing required field'])('P3-NF-09 N1 approved %s is loadable or refuses before publication', variant => {
@@ -32,8 +38,9 @@ describe('repair workflow composition', () => {
     else if (variant.includes('tightening')) storeShape.fields.find(f => f.name === 'growth')!.values = [variant.startsWith('incompatible') ? 'summarizes' : 'compacts'];
     else storeShape.fields.find(f => f.name === 'retentionLabel')!.required = true;
     const candidate = value(decodeShape(raw, context));
-    const binding = { parent: generation.id, candidateShape: hash(candidate), document: { path: 'approved-change.json', hash: hash(variant) } };
-    const result = generateAgainstParent(input, parent, candidate, binding, provider, context);
+    const document = changeDocument(parent.shape, candidate, generation.id, fact, context, variant);
+    const binding = { parent: generation.id, candidateShape: hash(candidate), document: { path: 'approved-change.json', hash: hash(document) }, approval: fact };
+    const result = generateAgainstParent(input, parent, candidate, binding, provider, context, document);
     if (variant.startsWith('incompatible') || variant.startsWith('missing')) {
       expect(detail(result)).toMatch(/closed list|retentionLabel/); return;
     }
@@ -55,16 +62,18 @@ describe('repair workflow composition', () => {
     changed.kinds.find(k => k.name === 'stores')!.invariants = [];
     const candidate = value(decodeShape(changed, s.context));
     expect(detail(generateAgainstParent(s.input(), parent, candidate, null, provider, s.context))).toContain('P3-NF-09');
-    const binding = { parent: generation.id, candidateShape: hash(candidate), document: { path: 'register-source/shape-change.json', hash: hash({ change: 'fixture-approved' }) } };
+    const document = changeDocument(parent.shape, candidate, generation.id, fact, s.context);
+    const binding = { parent: generation.id, candidateShape: hash(candidate), document: { path: 'register-source/shape-change.json', hash: hash(document) }, approval: fact };
     const bad = { ...s.declaration(), requiredFacts: { ...s.declaration().requiredFacts, growth: 'deletes' } };
-    expect(detail(generateAgainstParent(s.input([bad]), parent, candidate, binding, provider, s.context))).toContain('P3-NF-20');
-    expect(value(generateAgainstParent(s.input(), parent, candidate, binding, provider, s.context)).shape).toEqual(candidate);
+    expect(detail(generateAgainstParent(s.input([bad]), parent, candidate, binding, provider, s.context, document))).toContain('P3-NF-20');
+    expect(value(generateAgainstParent(s.input(), parent, candidate, binding, provider, s.context, document)).shape).toEqual(candidate);
     expect(approvals).toEqual([binding, binding]);
     changed.kinds.find(k => k.name === 'stores')!.fields.find(f => f.name === 'growth')!.values.push('invented');
     const widened = value(decodeShape(changed, s.context));
-    expect(detail(generateAgainstParent(s.input(), parent, widened, binding, provider, s.context))).toContain('binding');
-    const newBinding = { ...binding, candidateShape: hash(widened) };
-    expect(detail(generateAgainstParent(s.input([{ ...bad, requiredFacts: { ...bad.requiredFacts, growth: 'invented' } }]), parent, widened, newBinding, provider, s.context))).toContain('closed list');
+    expect(detail(generateAgainstParent(s.input(), parent, widened, binding, provider, s.context, document))).toContain('binding');
+    const widenedDocument = changeDocument(parent.shape, widened, generation.id, fact, s.context, 'widened');
+    const newBinding = { ...binding, candidateShape: hash(widened), document: { ...binding.document, hash: hash(widenedDocument) } };
+    expect(detail(generateAgainstParent(s.input([{ ...bad, requiredFacts: { ...bad.requiredFacts, growth: 'invented' } }]), parent, widened, newBinding, provider, s.context, widenedDocument))).toContain('closed list');
   });
   it('P3-NF-13 P3-NF-15 P3-NF-24 P3-NF-27 P3-NF-29 R1 full ladder is callable without a production spine', () => {
     const s = setup(); const checks: WorkflowChecks = { mode: 'normal', branch: 'main', runs: [], catalog: { fixtures: [], probes: [], sentinels: [], semanticReviews: [] },

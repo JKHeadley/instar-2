@@ -10,6 +10,26 @@ import { installOwnerFixture, ownerDecoders } from './owner-fixture.js';
 import { hash } from './fixtures.js';
 
 describe('P3-P5 committed owner reference resolver', () => {
+  it('P3-NF-09 admits a new per-part manifest only through the exact governed enrollment', () => {
+    const root = mkdtempSync(join(tmpdir(), 'p3-owner-enrollment-'));
+    try {
+      mkdirSync(join(root, 'register-source/owner-references'), { recursive: true });
+      mkdirSync(join(root, 'tests/sentinel-holders'), { recursive: true });
+      const fixturePath = 'tests/sentinel-holders/core.test.ts'; writeFileSync(join(root, fixturePath), 'export const enrolled = true;\n');
+      const manifestPath = 'register-source/owner-references/part-fourteen.json';
+      const manifest = { schemaVersion: 1, owner: 'part-fourteen', fixtures: [{ id: 'P14-NF-50', stage: 'build',
+        artifact: { path: fixturePath, hash: hash('export const enrolled = true;\n') } }], probes: [], decoders: [], documents: [] };
+      writeFileSync(join(root, manifestPath), JSON.stringify(manifest));
+      const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8' }).trim();
+      git('init'); git('add', '.'); git('commit', '-qm', 'enrolled owner');
+      const commit = git('rev-parse', 'HEAD'), files = git('ls-tree', '-r', '--name-only', commit).split('\n');
+      const input = { commit, files, sources: { [manifestPath]: JSON.stringify(manifest) } };
+      expect(() => loadOwnerReferences(root, input)).toThrow('unknown owner manifest path');
+      const enrollment = { part: 14, owner: 'part-fourteen', manifest: { path: manifestPath, hash: hash(manifest) } };
+      expect(loadOwnerReferences(root, input, [enrollment]).catalog.fixtures.map(row => row.id)).toEqual(['P14-NF-50']);
+      expect(() => loadOwnerReferences(root, input, [{ ...enrollment, manifest: { ...enrollment.manifest, hash: hash({}) } }])).toThrow('enrollment differs');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
   it('resolves pinned fixtures/probes/documents and refuses hostile owner/hash/name inputs', () => {
     const root = mkdtempSync(join(tmpdir(), 'p3-owner-catalog-'));
     try {
