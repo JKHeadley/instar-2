@@ -172,7 +172,7 @@ it('R5-F4 P13-NF-05 P13-NF-25 P13-NF-29 current Part Ten observation generation 
     .toMatchObject({ disposition: 'refused', reason: expect.stringContaining('non-current register generation') });
 });
 
-it('R5-F8 P13-NF-31 P13-NF-34 output custody and P13-NF-51 resume confirmation are NON-EXECUTABLE-UNTIL-slice-A2', () => {
+it('R5-F8 P13-NF-31 P13-NF-34 output custody and resume confirmation are NON-EXECUTABLE-UNTIL-slice-A2', () => {
   const f = harnessFixture();
   const output = witnessedEvent(f, 'output-chunk');
   expect(f.port.admitObservation(output, [], 2)).toMatchObject({
