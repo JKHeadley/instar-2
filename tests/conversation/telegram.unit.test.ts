@@ -56,7 +56,7 @@ it('P12-NF-16 P12-NF-17 exact bot/chat/topic identity classifies every captured 
   const reply = rows[0]![1];
   expect(reply).toMatchObject({
     route: {
-      channel: 'telegram:v1:bot:9001:chat:-1001:topic:42',
+      channel: 'telegram:v1:bot:9001:chat:-1000000001001:topic:42',
       sender: 'telegram:v1:user:7',
       identityEpoch: 'telegram:v1:bot:9001:epoch:installation-1',
       eventId: '100',
@@ -66,7 +66,7 @@ it('P12-NF-16 P12-NF-17 exact bot/chat/topic identity classifies every captured 
   expect(JSON.stringify(reply)).not.toContain('888');
   expect(JSON.stringify(reply)).not.toContain('999');
   expect(rows[3]![1].principal).toEqual({ id: 'telegram:v1:channel:-200', kind: 'system' });
-  expect(rows[4]![1].conversation).toBe('telegram:v1:bot:9001:chat:-1001:general');
+  expect(rows[4]![1].conversation).toBe('telegram:v1:bot:9001:chat:-1000000001001:general');
   expect(rows[2]![1].conversation).toBe('telegram:v1:bot:9001:chat:123:direct');
 });
 
@@ -77,8 +77,8 @@ it('P12-NF-16 canonical topic forms reject drift and keep bot identity in every 
   expect(normalizeTelegramTopic(true, 1)).toBe('general');
   expect(normalizeTelegramTopic(true, 42)).toBe('topic:42');
   expect(telegramAccount('9001')).toBe('telegram:v1:bot:9001');
-  expect(telegramConversation('9001', { chatId: '-1001', forum: true, messageThreadId: 42 }))
-    .toBe('telegram:v1:bot:9001:chat:-1001:topic:42');
+  expect(telegramConversation('9001', { chatId: '-1000000001001', forum: true, messageThreadId: 42 }))
+    .toBe('telegram:v1:bot:9001:chat:-1000000001001:topic:42');
   expect(() => normalizeTelegramTopic(false, 42)).toThrow('non-forum');
 });
 

@@ -27,6 +27,7 @@ const replyOperationBindings = new WeakMap<object, Array<Readonly<{
   definition: OperationDefinition; host: EffectHost; spine: EffectSpine;
   inhibitedOperations: ReadonlySet<string>;
 }>>>();
+const deliveryStatusHistories = new WeakMap<BoundaryContext, Set<EffectSpine>>();
 const serviceKeys = Object.freeze([
   'new_chat_members', 'left_chat_member', 'new_chat_title', 'new_chat_photo', 'delete_chat_photo',
   'group_chat_created', 'supergroup_chat_created', 'channel_chat_created', 'message_auto_delete_timer_changed',
@@ -176,15 +177,28 @@ function resolveTelegramSender(sender: TelegramSenderEvidence, destination: Reco
     : { id: `telegram:v1:user:${sourceId}`, kind: 'person' };
 }
 
+function validateTelegramDestination(id: number, type: string): void {
+  if (type === 'private') {
+    ensure(id > 0, 'a private Telegram destination requires a positive user chat id');
+    return;
+  }
+  ensure(id < 0, 'a non-private Telegram destination requires a negative chat id');
+  const isChannelRepresentation = id <= -1_000_000_000_000;
+  ensure(type === 'group' ? !isChannelRepresentation : isChannelRepresentation,
+    `${type} Telegram destination has an inconsistent chat id representation`);
+}
+
 function extractTelegramUpdateUnchecked(raw: string, declaration: TelegramBotDeclaration): TelegramExtractedUpdate {
   const update = record(JSON.parse(raw) as unknown, 'Telegram update');
   const updateId = integer(update.update_id, 'provider update_id'); ensure(updateId >= 0, 'provider update_id must be nonnegative');
   const selected = updateEvent(update);
   const chat = record(selected.event.chat, 'authenticated chat');
-  const chatId = String(integer(chat.id, 'authenticated chat id'));
+  const numericChatId = integer(chat.id, 'authenticated chat id');
   const chatType = nonempty(chat.type, 'authenticated chat type');
   ensure(['private', 'group', 'supergroup', 'channel'].includes(chatType),
     'authenticated chat type is outside the Telegram closed set');
+  validateTelegramDestination(numericChatId, chatType);
+  const chatId = String(numericChatId);
   ensure(chat.is_forum === undefined || typeof chat.is_forum === 'boolean',
     'Telegram chat is_forum discriminator must be boolean when present');
   const forum = chat.is_forum === true;
@@ -663,6 +677,22 @@ export function renderTelegramDeliveryStatus(input: Readonly<{
     ensure(observation.type === 'OperationObservation' && observation.schemaVersion === 1
       && observation.stage === 'response' && observation.attestation === 'local-recorder',
     'Telegram platform-acceptance status requires a response-stage operation observation');
+    ensure(typeof observation.id === 'string' && observation.id.length > 0,
+      'Telegram platform-acceptance status requires a recorded observation identity');
+    const histories = deliveryStatusHistories.get(context);
+    ensure(histories && histories.size > 0,
+      'Telegram platform-acceptance status requires registered Part Eight history');
+    const recorded = [...histories].flatMap(spine => take(spine.store.readForProjection()).entries
+      .filter(entry => entry.fact.kind === 'effect-OperationObservation'
+        && (entry.fact.body as { record?: { id?: string } }).record?.id === observation.id)
+      .map(entry => {
+        ensure(entry.taint.length === 0 && entry.conflicts.length === 0,
+          'Telegram platform-acceptance observation history is tainted or contested');
+        return record(record(entry.fact.body, 'recorded effect observation body').record,
+          'recorded effect observation') as unknown as OperationObservation;
+      }));
+    ensure(recorded.length === 1 && encode(recorded[0]) === encode(observation),
+      'Telegram platform-acceptance status requires the exact recorded operation observation');
     const evidence = input.evidence;
     ensure(evidence.type === 'Evidence' && evidence.schemaVersion === 1,
       'Telegram platform-acceptance status requires typed evidence');
@@ -845,6 +875,9 @@ export function installTelegramReplyOperation(input: Readonly<{
     const existing = replyOperationBindings.get(input.admitted) ?? [];
     replyOperationBindings.set(input.admitted, [...existing.filter(row => row.definition.id !== installed.id),
       freeze({ definition: installed, host, spine, inhibitedOperations })]);
+    const histories = deliveryStatusHistories.get(host.boundary) ?? new Set<EffectSpine>();
+    histories.add(spine);
+    deliveryStatusHistories.set(host.boundary, histories);
     return installed;
   });
 }

@@ -59,7 +59,7 @@ it('P12-NF-06 P12-NF-12 P12-NF-13 P12-NF-17 round3 routable unsupported and over
   const unsupported = conversationFixture();
   const unsupportedWire = wireTelegram(unsupported);
   unsupported.queue(JSON.stringify({ update_id: 100,
-    chat_boost: { chat: { id: -1001, type: 'supergroup' }, boost: { boost_id: 'b' } } }));
+    chat_boost: { chat: { id: -1000000001001, type: 'supergroup' }, boost: { boost_id: 'b' } } }));
   const unsupportedCycle = value(unsupportedWire.ingress.pollOnce());
   expect(unsupportedCycle.captured[0]).toMatchObject({ updateId: 100, kind: 'unsupported', intake: 'owned-refusal' });
   expect(value(unsupportedWire.facts.read()).filter(row => row.kind === 'intake-receipt')).toHaveLength(1);

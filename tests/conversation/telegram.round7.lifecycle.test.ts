@@ -33,7 +33,7 @@ it('P12-NF-07 P12-NF-16 P12-NF-17 P12-NF-18 P12-NF-48 round7 restart retains rea
   const ingress = createTelegramIngress({ boundary: f.admissionDependencies.boundary,
     admitted: f.admitted, api: f.api, intake, facts, observer: f.intake.deps.author.principal.id });
   f.queue(JSON.stringify({ update_id: 100, message_reaction: {
-    chat: { id: -1001, type: 'supergroup' }, message_id: 700,
+    chat: { id: -1000000001001, type: 'supergroup' }, message_id: 700,
     actor_chat: { id: -200, type: 'channel' }, date: 1_700_000_000,
     old_reaction: [], new_reaction: [{ type: 'emoji', emoji: '👍' }],
   } }));

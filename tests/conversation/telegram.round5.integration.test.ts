@@ -27,7 +27,7 @@ it.each(['chat', 'topic', 'sender'] as const)(
     const wire = wireTelegram(f);
     const raw = telegramUpdate(100);
     const route = { ...extractTelegramUpdate(raw, f.declaration).route };
-    if (field === 'chat') route.channel = route.channel.replace('-1001', '-9999');
+    if (field === 'chat') route.channel = route.channel.replace('-1000000001001', '-9999');
     if (field === 'topic') route.channel = route.channel.replace('topic:42', 'topic:43');
     if (field === 'sender') route.sender = 'telegram:v1:user:999';
     expect(wire.intake.receive(raw, route).kind).toBe('Refused');

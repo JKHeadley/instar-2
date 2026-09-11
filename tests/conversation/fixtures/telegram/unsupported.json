@@ -1,7 +1,7 @@
 {
   "update_id": 106,
   "chat_join_request": {
-    "chat": { "id": -300, "type": "supergroup", "title": "Join target" },
+    "chat": { "id": -1000000000300, "type": "supergroup", "title": "Join target" },
     "from": { "id": 9, "is_bot": false, "first_name": "Applicant" },
     "user_chat_id": 901,
     "date": 1700000007,

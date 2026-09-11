@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/conversation/fixtures/telegram/reply.json",
-        "hash": "sha256:afc6f4d8fccc8d2e88827dbf3bcafa38c3dbfc31640956ac13d229dbb10e3738"
+        "hash": "sha256:073c68317e076c099ce4de0570e7af8094cce492fac9473923b1078dba059aac"
       }
     }
   ],

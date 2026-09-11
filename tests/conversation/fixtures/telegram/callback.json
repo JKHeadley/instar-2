@@ -6,7 +6,7 @@
     "message": {
       "message_id": 501,
       "message_thread_id": 42,
-      "chat": { "id": -1001, "type": "supergroup", "is_forum": true },
+      "chat": { "id": -1000000001001, "type": "supergroup", "is_forum": true },
       "date": 1700000001,
       "text": "button source"
     },

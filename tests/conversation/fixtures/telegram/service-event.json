@@ -3,7 +3,7 @@
   "message": {
     "message_id": 504,
     "from": { "id": 7, "is_bot": false, "first_name": "Topic creator" },
-    "chat": { "id": -1001, "type": "supergroup", "is_forum": true },
+    "chat": { "id": -1000000001001, "type": "supergroup", "is_forum": true },
     "date": 1700000005,
     "forum_topic_created": { "name": "General-like event", "icon_color": 7322096 }
   }

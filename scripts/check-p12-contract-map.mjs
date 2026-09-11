@@ -30,7 +30,7 @@ const partial = {
   20: 'PARTIAL: Slack fault/redelivery is Slice B and non-executable-until-seam-response-intake-followup.md rows 18, 46 and 57 plus seam-response-judgment.md row 35.',
   21: 'PARTIAL: WhatsApp is Slice B.', 22: 'PARTIAL: WhatsApp is Slice B; named payloads remain unsupported.',
   23: 'PARTIAL: iMessage is Slice B.', 24: 'PARTIAL: iMessage is Slice B.', 25: 'PARTIAL: web is Slice B.',
-  26: 'PARTIAL: cross-platform alias/migration is Slice B and remains owner-governed.',
+  26: 'PARTIAL: the landed Telegram rename/forward identity arm is executable; cross-platform alias and legacy migration remain Slice B and owner-governed.',
   28: 'PARTIAL: public prepare/dispatch, the final concrete current-state recheck and nine real local outbound process cuts are executable; the production real-model chain awaits its named owner integrations.',
   29: 'PARTIAL: exact HTML plus source-bounded word and registered accessible emoji status forms are executable; broader advisory review remains owner scope.',
   30: 'PARTIAL: fitting or explicit refusal is executable; aggregate output is non-executable-until-seam-response-effects-payloads.md.',
@@ -79,7 +79,7 @@ for (const file of report.testResults) for (const test of file.assertionResults)
 const landedArms = new Set([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
   27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 41, 42, 45, 46,
-  47, 48, 49, 50, 51,
+  26, 47, 48, 49, 50, 51,
 ]);
 for (const row of expected) {
   const reason = executable[row.number] ?? partial[row.number];
@@ -98,6 +98,20 @@ for (const tier of ['telegram.unit.test.ts', 'telegram.integration.test.ts', 'te
 // the review-identified local execution holes without pretending static source inspection is
 // live-provider evidence.
 const concreteConsumers = [
+  { id: 'P12-NF-16', file: 'tests/conversation/telegram.round8.integration.test.ts',
+    anchors: ["{ id: -123, type: 'private' }", "{ id: 123, type: 'group' }",
+      "{ id: -1000000000123, type: 'group' }", "{ id: -123, type: 'supergroup' }", "{ id: -123, type: 'channel' }"] },
+  { id: 'P12-NF-17', file: 'tests/conversation/telegram.round8.integration.test.ts',
+    anchors: ["sender_chat = { id: -1000000000200, type: 'channel' }", "filter(row => row.kind === 'intake-receipt')"] },
+  { id: 'P12-NF-18', file: 'tests/conversation/telegram.round8.integration.test.ts',
+    anchors: ['wired.ingress.pollOnce()', 'wired.ingress.currentOffset()', "toBe('Refused')", 'toHaveLength(0)'] },
+  { id: 'P12-NF-26', file: 'tests/conversation/telegram.round8.integration.test.ts',
+    anchors: ['f.bind(extractTelegramUpdate(original', 'sameChatRenamed', 'otherChatSameTitle',
+      "toEqual(['admitted', 'admitted', 'admitted'])", "expect(bindings[2]).toBe('none')", "['requester', 'requester', 'requester']"] },
+  { id: 'P12-NF-29', file: 'tests/conversation/telegram.round8.integration.test.ts',
+    anchors: ['renderTelegramDeliveryStatus(', "account: 'telegram:v1:bot:9002'", "request: 'request:unrelated'", 'delete incomplete.id'] },
+  { id: 'P12-NF-34', file: 'tests/conversation/telegram.round8.integration.test.ts',
+    anchors: ["predicate: 'operation-occurred'", 'observation.capture', "claim: 'claim:unrelated'", 'delete incomplete.id'] },
   { id: 'P12-NF-29', file: 'tests/conversation/telegram.round7.unit.test.ts',
     anchors: ['renderTelegramDeliveryStatus(', 'now: f.effects.clock(100)', "status: 'accepted-by-platform'", "form: 'emoji'", "['delivered', 'read']"] },
   { id: 'P12-NF-34', file: 'tests/conversation/telegram.round7.unit.test.ts',

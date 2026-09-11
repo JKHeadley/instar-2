@@ -9,7 +9,7 @@ import { conversationFixture } from './fixture.js';
 
 it('P12-NF-27 P12-NF-28 P12-NF-33 P12-NF-34 P12-NF-42 registered Telegram reply consumes Part Six claim once and records exact response evidence', () => {
   const telegram = conversationFixture();
-  const target = { chatId: '-1001', forum: true, messageThreadId: 42 } as const;
+  const target = { chatId: '-1000000001001', forum: true, messageThreadId: 42 } as const;
   const conversation = telegramConversation(telegram.declaration.bot.id, target);
   const effects = effectFixture();
   const registerEntries = effects.host.boundary.register.entries as string[];
@@ -65,7 +65,7 @@ it('P12-NF-27 P12-NF-28 P12-NF-33 P12-NF-34 P12-NF-42 registered Telegram reply 
   expect(telegram.calls.send).toEqual([{
     token: telegram.declaration.token,
     apiVersion: '9.2',
-    chatId: '-1001',
+    chatId: '-1000000001001',
     messageThreadId: 42,
     text: message.text,
     parseMode: 'HTML',

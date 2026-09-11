@@ -16,14 +16,14 @@ function callbackUpdate(chatType: 'private' | 'supergroup' | 'channel'): string 
   return JSON.stringify({ update_id: 100, callback_query: {
     id: 'query:100', from: { id: 7, is_bot: false, first_name: 'Caller' },
     message: { message_id: 700, date: 1_700_000_000,
-      chat: { id: chatType === 'private' ? 123 : -1001, type: chatType }, text: 'Select an option' },
+      chat: { id: chatType === 'private' ? 123 : -1000000001001, type: chatType }, text: 'Select an option' },
     chat_instance: 'chat-instance-1', data: 'choice:one',
   } });
 }
 
 function reactionUpdate(actor: 'user7' | 'user8' | 'channel200' | 'channel201' | 'invalid-user'): string {
   return JSON.stringify({ update_id: 100, message_reaction: {
-    chat: { id: -1001, type: 'supergroup' }, message_id: 700,
+    chat: { id: -1000000001001, type: 'supergroup' }, message_id: 700,
     ...(actor.startsWith('channel')
       ? { actor_chat: { id: actor === 'channel200' ? -200 : -201, type: 'channel', title: 'Actor' } }
       : { user: { id: actor === 'user7' ? 7 : 8, is_bot: actor === 'invalid-user' ? 'false' : false, first_name: 'Caller' } }),

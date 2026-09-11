@@ -100,7 +100,7 @@ if (mode === 'write') {
   if (phase.startsWith('mismatch-')) {
     const route = { ...extractTelegramUpdate(raw, fixture.declaration).route };
     const field = phase.slice('mismatch-'.length);
-    if (field === 'chat') route.channel = route.channel.replace('-1001', '-9999');
+    if (field === 'chat') route.channel = route.channel.replace('-1000000001001', '-9999');
     if (field === 'topic') route.channel = route.channel.replace('topic:42', 'topic:43');
     if (field === 'sender') route.sender = 'telegram:v1:user:999';
     durable(join(directory, 'refusal.json'), intake.receive(raw, route));

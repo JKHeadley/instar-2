@@ -4,7 +4,7 @@
     "message_id": 500,
     "message_thread_id": 42,
     "from": { "id": 7, "is_bot": false, "first_name": "Verified sender" },
-    "chat": { "id": -1001, "type": "supergroup", "is_forum": true, "title": "Forum" },
+    "chat": { "id": -1000000001001, "type": "supergroup", "is_forum": true, "title": "Forum" },
     "date": 1700000000,
     "text": "hello from the forum",
     "forward_origin": { "type": "user", "sender_user": { "id": 888, "first_name": "Untrusted forward" } },
