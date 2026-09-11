@@ -196,6 +196,39 @@ export function continuityFixture(storageFactory?: (fallback: SegmentStoragePort
     addressedResultFact, addressedResultReference, addressedWork, accounting };
 }
 
+export type AlteredGroundingMode = 'coverage' | 'binding' | 'pending' | 'receipt' | 'policy' | 'valid';
+
+/** A signed and owner-witnessed grounding copy whose selected semantic field can
+ * disagree with the actual run history. Continuity consumers must resolve and
+ * validate the referenced record, not trust its signature or witness alone. */
+export function alteredGroundingContinuityFixture(mode: AlteredGroundingMode,
+  storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort) {
+  const f = continuityFixture(storageFactory);
+  const original = recordFromWire((f.groundingFact.body as { record: Json }).record) as Record<string, Json>;
+  const grounding: Record<string, Json> = { ...original, id: 'review19:grounding' };
+  if (mode === 'coverage') grounding.messages = [];
+  if (mode === 'binding') grounding.binding = { ...(grounding.binding as Record<string, Json>),
+    id: 'another-conversation' };
+  if (mode === 'pending') grounding.pendingOperations = ['invented-operation'];
+  if (mode === 'receipt') grounding.consumption = ref(f.opening);
+  if (mode === 'policy') grounding.threshold = 1;
+  const groundingFact = f.append('session-grounding', json({ run: f.id,
+    record: recordWire(grounding as never) })).fact;
+  f.admissions.add(groundingFact.id);
+  const firstReply = { operation: 'review19:reply', digest: digest('review19:reply') };
+  const proposal = f.append('continuity-reply-proposal', json({ run: f.id, expected: f.ready.head,
+    grounding: groundingFact.id, inbound: f.opening.id, ...firstReply,
+    status: 'proposed', permission: 'none' })).fact;
+  const disclosure = f.append('continuity-disclosure', json({ run: f.id, grounding: groundingFact.id,
+    inbound: f.opening.id, ...firstReply }), [proposal.id]).fact;
+  const accounting = { ...f.accounting, id: 'review19:continuity',
+    grounding: { ...f.accounting.grounding, id: String(grounding.id), fact: ref(groundingFact) },
+    firstReply, disclosure: ref(disclosure), disposition: { kind: 'pending' as const,
+      work: ref(f.opening), reason: 'original inbound remains pending' } };
+  return { ...f, alteredGrounding: grounding, alteredGroundingFact: groundingFact,
+    alteredProposal: proposal, alteredDisclosure: disclosure, alteredAccounting: accounting };
+}
+
 export function continuityDirectiveFixture() {
   const base = closureSetup(undefined, true);
   const graph = value(createRunClosureGraph(base.deps));

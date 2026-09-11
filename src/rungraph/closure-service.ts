@@ -5,7 +5,7 @@ import type { AppendReceipt, ConflictClass, FactEnvelope } from '../facts/index.
 import { foldProjection } from '../projections/index.js';
 import { boundary, encoded, freeze, json, need, object, same, take } from './boundary.js';
 import {
-  clockDifference, factRef, runProjection, statePairs, validateTransition,
+  clockDifference, factRef, runProjection, statePairs, validateGrounding, validateTransition,
 } from './graph.js';
 import { createRunGraph } from './service.js';
 import {
@@ -144,6 +144,12 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       'continuity grounding belongs to another run, head, or start reason');
       need(same(take(dependencies.admission.verify(factRef(groundingFact))), factRef(groundingFact)),
         'SessionGrounding admission witness missing');
+      need(grounding.threshold === dependencies.groundingPolicy.threshold
+        && same(grounding.briefingClasses, dependencies.groundingPolicy.briefingClasses),
+      'continuity grounding changed governed coverage policy');
+      if (record.prePauseCapture.status === 'unavailable')
+        validateUnavailableGrounding(grounding, view, record, current);
+      else validateGrounding(grounding, view.run, view.head, view.pending, current);
     };
     const groundingCaptureCarrier = (fact: FactEnvelope, current: RunDecodeContext): FactEnvelope => {
       const schema = current.facts.schemas.find(candidate => candidate.kind === fact.kind
@@ -525,6 +531,7 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
             need(same(freshRecord, record), `${record.type} changed during conditional admission`);
             const freshView = record.type === 'ContinuityAccounting'
               ? continuityView(record, fresh) : read(record.run);
+            need(!freshView.conflicts.length, 'conflicted head inhibits closure record admission');
             if (record.type === 'ExhaustionRecord') {
               need(record.expected === freshView.head, 'run changed during exhaustion append');
               const age = clockDifference(dependencies.clock(), record.at, fresh);
