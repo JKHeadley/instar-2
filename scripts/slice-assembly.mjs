@@ -79,11 +79,25 @@ export function bootProductionSliceAssembly(input) {
   const coordinator = take(bootProductionAssembly({ ...assembly, production }, manifest, scope));
   const rebuildCurrent = () => {
     const definitions = coordinator.handles.folds.map(row => row.definition);
+    const sourceFacts = slice.facts();
     const rows = take(coordinator.handles.replay.rebuild({ definitions,
-      facts: slice.facts(), generation: slice.generation().reference.id }));
+      facts: sourceFacts, generation: slice.generation().reference.id }));
     if (!Array.isArray(rows) || rows.length !== definitions.length || definitions.some(definition =>
       rows.filter(row => row?.projection === definition.id && row.equal === 'equal').length !== 1))
       throw new Error('production source-only replay did not rebuild each required projection');
+    const expectedVector = Object.create(null);
+    for (const fact of sourceFacts) {
+      const previous = expectedVector[fact.machine], position = fact.segment;
+      if (!previous || position.epoch > previous.epoch
+        || (position.epoch === previous.epoch && position.position > previous.position))
+        expectedVector[fact.machine] = { epoch: position.epoch, position: position.position };
+    }
+    for (const row of rows) {
+      if (typeof row.hash !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(row.hash)
+        || row.resumedHash !== row.hash || !row.vector || typeof row.vector !== 'object'
+        || Array.isArray(row.vector) || bytesOf(row.vector) !== bytesOf(expectedVector))
+        throw new Error('production replay equality lacks matching digests at the current source vector');
+    }
     return rows;
   };
   const dependencyKinds = Object.freeze({
@@ -1211,7 +1225,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
         const actProofInput = proof(actPayload, { id: alice.id, kind: 'person' }, 'approval', false, 'surface:phone',
           clockAt(challenge.issuedAt), true);
         const actProof = take(decode('Provenance', actProofInput, { ...decodeContext, preserved: challenge.request }));
-        const act = decision === 'decline' ? null : take(decode('Authorization', {
+        const act = decision === 'decline' || challenge.audience === 'independent-emergency-stop' ? null : take(decode('Authorization', {
           type: 'Authorization', schemaVersion: 1, ...actPayload, explicitYes: actProof,
         }, { ...decodeContext, provenance: actProof, currentBase: challenge.base, artifact: challenge.artifact,
           now: now(), actAt: now() }));
@@ -1233,7 +1247,14 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     const verificationView = { ...verification, probeBound: () => result(() => false) };
     const surface = take(createOperatorSurface({ id: 'surface:phone', boundary: boundaryContext, history, verifier,
       intake: { owner: 'part-four', operation: 'admitVerifiedAct', port: intake },
-      emergencyStop: { owner: 'part-four', stop: () => result(() => factRef(ensureOperatorRequest())) },
+      emergencyStop: { owner: 'part-four', stop: input => result(() => {
+        const disposition = take(intake.receive(JSON.stringify({ schemaVersion: 1, kind: 'stop', command: '/stop' }), {
+          channel: config.channel, sender: config.sender, identityEpoch: config.identityEpoch,
+          eventId: `verified-stop:${input.challenge}`,
+        }));
+        if (disposition.kind !== 'stopped') throw new Error('independently verified production stop was not durably admitted by Part Four');
+        return disposition.fact;
+      }) },
       broker: { owner: 'part-nine', install: () => result(() => { throw new Error('restart broker mutation is unavailable'); }),
         query: () => result(() => null), posture: () => result(() => 'unprotected') },
       verification: verificationView, requestKind: 'authorization-request', terminalKinds: ['intake-verified-act'],

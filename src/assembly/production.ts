@@ -276,6 +276,8 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
     requireMethod(production.lifecycle.recover, 'AssemblyPrerequisiteLifecyclePort.recover');
 
     const witness = production.deliveryWitness;
+    ensure(typeof witness.platform === 'string' && witness.platform.trim().length > 0,
+      'platform delivery witness must name a non-empty platform');
     ensure(witness.owner === 'part-nine' && witness.administration === 'independent'
       && witness.id === binding.deliveryWitness.implementation && witness.identity === binding.deliveryWitness.identity
       && witness.platform === binding.deliveryWitness.platform,
