@@ -45,9 +45,9 @@ export function addSecondGrant(x: ReturnType<typeof scheduledRepair6Setup>) {
 export function admissionWithSecondGrant() {
   const x=scheduledRepair6Setup(),admitted:any=value(x.f.port().receiveScheduledTick(x.input));
   const original=x.f.frames.pop() as any; addSecondGrant(x);
-  const context=scheduledOwnerContext(x.f),appended=value(authorAndAppend({ kind:original.kind,schemaVersion:1,
+  const context=scheduledOwnerContext(x.f),appended=authorAndAppend({ kind:original.kind,schemaVersion:1,
     machine:'machine-a',principal:json(original.principal),provenance:json(original.provenance),at:json(original.at),
     body:original.body,required:original.predecessors.required },context,createFactStore(context,x.f.storage),
-  x.f.deps.author.privateKey));
+  x.f.deps.author.privateKey);
   return { ...x,admitted,original,context,appended };
 }

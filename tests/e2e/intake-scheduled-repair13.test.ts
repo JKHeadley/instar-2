@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect,it } from 'vitest';
 import { createFactStore,prepareSnapshot } from '../../src/facts/index.js';
-import { createIntakePort } from '../../src/intake/index.js';
+import { createIntakePort } from '../../src/intake/scheduled-a/index.js';
 import { json,message,refused,route,value } from '../intake/fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';
 import { scheduledOwnerContext } from '../intake/scheduled-repair6-fixtures.js';

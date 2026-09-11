@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
-import { scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
+import { scheduledIntakeWorkRegistration } from '../../src/intake/scheduled-a/index.js';
 import { json, refused, value } from './fixtures.js';
 import { scheduledFixture } from './scheduled-fixtures.js';
 import { scheduledRunHarness } from './scheduled-run-fixtures.js';

@@ -24,10 +24,12 @@ it.each(['none','wrong-principal','wrong-binding'] as const)
   if(saved) x.f.f.captures[x.pin.reference]=saved;
 });
 
-it('P4-ST-77 V154/V155 F3 uses a deterministic live grant and the admission\'s referenced grant',()=>{
-  const live=scheduledRepair6Setup(); addSecondGrant(live);
-  expect(value(live.f.port().receiveScheduledTick(live.input)).kind).toBe('scheduled-admitted');
+it('P4-ST-77 V154/V155 F3 refuses multi-grant selection as unsupported in slice A',()=>{
+  const live=scheduledRepair6Setup(); addSecondGrant(live); const before=live.f.frames.length;
+  refused(live.f.port().receiveScheduledTick(live.input),'unsupported-in-slice-a');
+  expect(live.f.frames.slice(before).map((fact:any)=>fact.kind)).toEqual(['intake-receipt']);
   const x=admissionWithSecondGrant();
+  refused(x.appended,'unsupported-in-slice-a');
   expect(value(x.f.port().pendingScheduledAdmissions({ owner:x.admitted.owner,frontier:x.f.frontier(),limit:10,after:null })).admissions)
-    .toEqual([{ owner:'part-two',name:'FactEnvelope',id:x.appended.fact.id }]);
+    .toEqual([]);
 });

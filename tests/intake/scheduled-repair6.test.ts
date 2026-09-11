@@ -2,7 +2,7 @@ import { expect,it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { authorAndAppend,createFactStore } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
-import { createIntakePort } from '../../src/intake/index.js';
+import { createIntakePort } from '../../src/intake/scheduled-a/index.js';
 import { json,refused,value } from './fixtures.js';
 import { changedScheduledRoute,missingScheduledPrincipalHistory,scheduledFactRef,scheduledOwnerContext,
   scheduledRepair6Setup } from './scheduled-repair6-fixtures.js';

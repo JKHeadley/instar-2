@@ -1,15 +1,12 @@
 import type { Authorization,CaptureInput,Clock,FactEnvelopeReference,Hash,Intent,Provenance,ProvenanceInput,
   RegisterGenerationReference,Result,Revocation,Scope,StandingGrant,VerifiedPrincipal } from '../index.js';
-import type { CausalFrontier,FactContext,SegmentStoragePort } from '../facts/index.js';
+import type { FactContext,SegmentStoragePort } from '../facts/index.js';
 import type { VerifiedRegister,RegisterContext } from '../register/index.js';
 import type { ProjectionGeneration } from '../projections/index.js';
 
 // The adapter supplies transport metadata, never fields extracted from message prose.
 // Sender is always part of the dedup key, even for provider-global event ids.
 export interface InboundRoute {
-  // Scheduled ingress carries the adapter in the route. Conversation callers
-  // may omit it because their port instance already fixes the adapter.
-  readonly adapter?: string;
   readonly channel: string; readonly sender: string; readonly identityEpoch: string;
   readonly eventId: string|null;
 }
@@ -51,32 +48,10 @@ export interface IntakeDependencies {
 }
 export type IntakeDisposition=Readonly<
   |{ kind: 'admitted'; logicalId: string; lastInboundId: string; intent: Intent; fact: FactEnvelopeReference; owner: string; blockedOn: 'run-admission'; standing: 'requester'; boundOperator: boolean; flags: readonly 'cannot-decide'[] }
-  |ScheduledIntakeDisposition
   |{ kind: 'duplicate'; logicalId: string; original: FactEnvelopeReference }
   |{ kind: 'stopped'; logicalId: string; fact: FactEnvelopeReference; scope: Scope; fencingOwner: 'part-six' }
   |{ kind: 'stop-signal'; logicalId: string; fact: FactEnvelopeReference; priority: 'highest'; halts: false }
 >;
-export type ConstitutionalReference<N extends string>=Readonly<{
-  readonly type: N; readonly id: string; readonly fact: FactEnvelopeReference; readonly field: string;
-}>;
-export type ScheduledIntakeDisposition=Readonly<{
-  readonly kind: 'scheduled-admitted'; readonly logicalId: string;
-  readonly fact: FactEnvelopeReference; readonly owner: string; readonly blockedOn: 'run-admission';
-  readonly principal: ConstitutionalReference<'VerifiedPrincipal'>;
-  readonly standing: ConstitutionalReference<'StandingGrant'>;
-  readonly scheduledIdentity: Readonly<{ readonly jobInstance: string; readonly scheduledInstant: Clock }>;
-}>;
-export interface ScheduledTickAdmission {
-  readonly raw: string; readonly route: InboundRoute; readonly discovery: FactEnvelopeReference;
-}
-export interface PendingScheduledAdmissionsInput {
-  readonly owner: string; readonly frontier: CausalFrontier; readonly limit: number;
-  readonly after: FactEnvelopeReference|null;
-}
-export type PendingScheduledAdmissions=Readonly<{
-  readonly admissions: readonly FactEnvelopeReference[];
-  readonly next: FactEnvelopeReference|null;
-}>;
 export type VerifiedAuthorityAct=Authorization|StandingGrant|Revocation;
 export interface VerifiedActAdmission {
   readonly request: FactEnvelopeReference;
@@ -95,8 +70,6 @@ export type VerifiedActDisposition=Readonly<{
 }>;
 export interface IntakePort {
   receive(raw: string,route: InboundRoute): Result<IntakeDisposition>;
-  receiveScheduledTick(input: ScheduledTickAdmission): Result<IntakeDisposition>;
-  pendingScheduledAdmissions(input: PendingScheduledAdmissionsInput): Result<PendingScheduledAdmissions>;
   // Reprocess a durable receipt; route, bytes and original clock come from the ledger.
   recover(receiptId: string): Result<IntakeDisposition>;
   // A package-authenticated maintenance operation; the scheduler calls this same port.

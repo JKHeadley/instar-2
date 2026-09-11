@@ -56,7 +56,7 @@ it('P4-PRESERVE-01 keeps every pre-existing Part Four public behavior byte-for-b
   expect(refused(mismatch).detail).toContain('different arrival bytes');
 });
 
-it('P4-PRESERVE-03 generates the 32e5961-vs-HEAD legacy-field preservation harness', () => {
+it('supporting preservation source inventory stays byte-identical to 32e5961', () => {
   const base=execFileSync('git',['show','32e5961:src/intake/records.ts'],{ encoding:'utf8' });
   const head=readFileSync(new URL('../../src/intake/records.ts',import.meta.url),'utf8');
   expect(head).toBe(base);

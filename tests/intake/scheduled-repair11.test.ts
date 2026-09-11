@@ -1,7 +1,7 @@
 import { expect,it } from 'vitest';
 import { decode } from '../../src/index.js';
 import { authorAndAppend,createFactStore,verifyAndAdmit } from '../../src/facts/index.js';
-import { createIntakePort,intakeWorkRegistration } from '../../src/intake/index.js';
+import { createIntakePort,intakeWorkRegistration } from '../../src/intake/scheduled-a/index.js';
 import { intakeFixture,json,message,refused,route,value } from './fixtures.js';
 import { scheduledOwnerContext,scheduledRepair6Setup } from './scheduled-repair6-fixtures.js';
 import { scheduledEvidenceBundle } from './scheduled-repair9-fixtures.js';

@@ -1,6 +1,6 @@
 import { expect,it } from 'vitest';
 import { verifyAndAdmit } from '../../src/facts/index.js';
-import { scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
+import { scheduledIntakeWorkRegistration } from '../../src/intake/scheduled-a/index.js';
 import { json,refused,value } from './fixtures.js';
 import { changedRecorderCandidate,mixedPersonThenScheduled,packageRecorderPersonAdmission } from './scheduled-repair13-fixtures.js';
 

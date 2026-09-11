@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { canonical, decode, consumeResult } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
 import { authorAndAppend, createFactStore, signEnvelope, verifyAndAdmit, prepareSnapshot } from '../../src/facts/index.js';
-import { createIntakePort } from '../../src/intake/index.js';
+import { createIntakePort } from '../../src/intake/scheduled-a/index.js';
 import { scheduledRepair6Setup, scheduledOwnerContext } from './scheduled-repair6-fixtures.js';
 import { scheduledRunHarness } from './scheduled-run-fixtures.js';
 import { intakeFixture, json, message, route, value, refused } from './fixtures.js';

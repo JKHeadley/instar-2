@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
-import { createIntakePort } from '../../src/intake/index.js';
-import type { ScheduledIntakeDisposition } from '../../src/intake/index.js';
-import { json, value } from '../intake/fixtures.js';
+import { createIntakePort } from '../../src/intake/scheduled-a/index.js';
+import type { ScheduledIntakeDisposition } from '../../src/intake/scheduled-a/index.js';
+import { json, refused, value } from '../intake/fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';
 import { scheduledRunHarness } from '../intake/scheduled-run-fixtures.js';
 
@@ -29,7 +29,7 @@ it('P4-ST-06 real P2 facts from two machines converge on one P4 admission and on
 });
 
 it.each(['grant', 'discovery'])
-('P4-ST-25 V53 matching %s witness introduced at the resolution/admission boundary remains admissible', kind => {
+('P4-ST-25 V53 re-resolves a %s witness introduced at the resolution/admission boundary', kind => {
   const f = scheduledFixture(); const grant = f.grant(), tick = f.tick(), discovery = f.discovery(tick.eventId);
   const original = f.storage.append.bind(f.storage); let injected = false;
   const storage = { ...f.storage, append(bytes: string, expected: string | null) {
@@ -47,9 +47,15 @@ it.each(['grant', 'discovery'])
     }
     return result;
   } };
-  const admitted = value(value(createIntakePort({ ...f.deps, storage })).receiveScheduledTick({
+  const result=value(createIntakePort({ ...f.deps, storage })).receiveScheduledTick({
     raw: tick.raw, route: tick.route, discovery: { owner: 'part-two', name: 'FactEnvelope', id: discovery.fact.id },
-  }));
-  expect(injected).toBe(true); expect(admitted.kind).toBe('scheduled-admitted');
-  expect(f.facts().filter(fact => fact.kind === 'intake-admitted')).toHaveLength(1);
+  });
+  expect(injected).toBe(true);
+  if(kind==='grant') {
+    refused(result,'unsupported-in-slice-a');
+    expect(f.facts().filter(fact => fact.kind === 'intake-admitted')).toHaveLength(0);
+  } else {
+    expect(value(result).kind).toBe('scheduled-admitted');
+    expect(f.facts().filter(fact => fact.kind === 'intake-admitted')).toHaveLength(1);
+  }
 });

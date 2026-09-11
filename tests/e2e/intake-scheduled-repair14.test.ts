@@ -34,11 +34,12 @@ it('P4-ST-82 V149/V153 F2 durable replication refuses a known bad resolution des
   expect(restarted.facts().some(fact=>fact.id===x.signed.id)).toBe(false);
 });
 
-it('P4-ST-83 V156 F3 restart keeps the explicitly referenced grant when another valid grant exists',()=>{
+it('P4-ST-83 V156 F3 restart cannot resurrect a refused multi-grant admission',()=>{
   const x=admissionWithSecondGrant(),d=durableClone(x);
+  refused(x.appended,'unsupported-in-slice-a');
   for(const fact of x.f.frames as any[]) value(d.store.append(json(fact),{ peer:fact.machine }));
   const restarted=scheduledFixture({ directory:d.directory }); restarted.installSchemas();
   Object.assign(restarted.context,{ schemas:x.f.context.schemas });
   expect(value(restarted.port().pendingScheduledAdmissions({ owner:x.admitted.owner,frontier:restarted.frontier(),limit:10,after:null })).admissions)
-    .toEqual([{ owner:'part-two',name:'FactEnvelope',id:x.appended.fact.id }]);
+    .toEqual([]);
 });

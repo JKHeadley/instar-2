@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { decode } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
-import type { ScheduledIntakeDisposition } from '../../src/intake/index.js';
+import type { ScheduledIntakeDisposition } from '../../src/intake/scheduled-a/index.js';
 import { json, refused, value } from '../intake/fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';
 import { recoverScheduledDisposition, scheduledRunHarness } from '../intake/scheduled-run-fixtures.js';

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { expect,it } from 'vitest';
 import { authorAndAppend,createFactStore } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
-import { scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
+import { scheduledIntakeWorkRegistration } from '../../src/intake/scheduled-a/index.js';
 import { json,refused,value } from '../intake/fixtures.js';
 import { missingScheduledPrincipalHistory } from '../intake/scheduled-repair6-fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';

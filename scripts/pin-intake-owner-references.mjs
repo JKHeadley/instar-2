@@ -8,7 +8,7 @@ const hash = path => consumeResult(canonical(readFileSync(path, 'utf8')), {
 const artifact = path => ({ path, hash: hash(path) });
 const decoders = [
   ...['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration', 'intakeVerifiedActRegistration'].map(id => [id, 'src/intake/index.ts', 'src/intake/records.ts']),
-  ['scheduledIntakeWorkRegistration', 'src/intake/index.ts', 'src/intake/scheduled-records.ts'],
+  ['scheduledIntakeWorkRegistration', 'src/intake/scheduled-a/index.ts', 'src/intake/scheduled-records.ts'],
   ['readProjection', 'src/projections/index.ts', 'src/projections/fold.ts'],
   ['authorAndAppend', 'src/facts/index.ts', 'src/facts/store.ts'],
   ['decode:Provenance', 'src/index.ts', 'src/decode/decode.ts'],
@@ -71,9 +71,12 @@ const manifest = { schemaVersion: 1, owner: 'part-four',
     ...Array.from({ length: 3 }, (_, i) => ({ id: `P4-ST-${String(i + 75).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/intake/scheduled-repair14.test.ts') })),
     ...Array.from({ length: 3 }, (_, i) => ({ id: `P4-ST-${String(i + 78).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/integration/intake-scheduled-repair14.test.ts') })),
     ...Array.from({ length: 3 }, (_, i) => ({ id: `P4-ST-${String(i + 81).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/e2e/intake-scheduled-repair14.test.ts') })),
+    ...Array.from({ length: 3 }, (_, i) => ({ id: `P4-ST-${String(i + 84).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/intake/scheduled-repair15.test.ts') })),
+    ...Array.from({ length: 2 }, (_, i) => ({ id: `P4-ST-${String(i + 87).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/integration/intake-scheduled-repair15.test.ts') })),
+    ...Array.from({ length: 2 }, (_, i) => ({ id: `P4-ST-${String(i + 89).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/e2e/intake-scheduled-repair15.test.ts') })),
     { id: 'P4-PRESERVE-01', stage: 'build', artifact: artifact('tests/intake/preexisting-preservation.test.ts') },
     { id: 'P4-PRESERVE-02', stage: 'build', artifact: artifact('tests/e2e/intake-scheduled-repair7.test.ts') },
-    { id: 'P4-PRESERVE-03', stage: 'build', artifact: artifact('tests/e2e/intake-scheduled-repair10.test.ts') },
+    { id: 'P4-PRESERVE-03', stage: 'build', artifact: artifact('tests/intake/scheduled-legacy-differential.test.ts') },
   ],
   probes: [], decoders, documents: [{ id: 'intake.contract', artifact: artifact('docs/08-the-intake.md') }] };
 mkdirSync('register-source/owner-references', { recursive: true });

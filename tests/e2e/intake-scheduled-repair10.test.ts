@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { expect,it } from 'vitest';
 import { decode } from '../../src/index.js';
 import { authorAndAppend,createFactStore } from '../../src/facts/index.js';
-import { createIntakePort } from '../../src/intake/index.js';
+import { createIntakePort } from '../../src/intake/scheduled-a/index.js';
 import { intakeFixture,json,message,refused,route,value } from '../intake/fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';
 import { scheduledOwnerContext,scheduledRepair6Setup } from '../intake/scheduled-repair6-fixtures.js';
@@ -20,7 +20,7 @@ function declarations(f:ReturnType<typeof intakeFixture>,mode:'plain'|'dual') {
 
 it.each(['intake-receipt','intake-resolved'].flatMap(kind=>
   (['plain','dual'] as const).map(mode=>({ kind,mode }))))
-('P4-PRESERVE-03 V114 durable ordinary recovery preserves the legacy path after $kind with $mode adapter',({ kind,mode })=>{
+('V114 supporting preservation: durable ordinary recovery preserves the legacy path after $kind with $mode adapter',({ kind,mode })=>{
   const directory=mkdtempSync(join(tmpdir(),'instar-p4-repair10-v114-')),source=intakeFixture({ directory });
   const append=source.storage.append.bind(source.storage); let hit=false;
   const storage={ ...source.storage,append(bytes:string,expected:string|null) {

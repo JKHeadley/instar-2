@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canonical, consumeResult, decode } from '../../src/index.js';
 import { authorAndAppend, createFactStore, prepareSnapshot } from '../../src/facts/index.js';
-import { createIntakePort, scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
-import type { IntakeDisposition, ScheduledIntakeDisposition } from '../../src/intake/index.js';
+import { createIntakePort, scheduledIntakeWorkRegistration } from '../../src/intake/scheduled-a/index.js';
+import type { IntakeDisposition, ScheduledIntakeDisposition } from '../../src/intake/scheduled-a/index.js';
 import { intakeFixture, json, refused, value } from './fixtures.js';
 import { scheduledFixture } from './scheduled-fixtures.js';
 import { recoverScheduledDisposition, scheduledRunHarness } from './scheduled-run-fixtures.js';
@@ -76,7 +76,7 @@ it('P4-ST-12 V25 identical redelivery returns the original after discovery fresh
   expect(value(x.f.port().receiveScheduledTick(x.input))).toMatchObject({ kind: 'duplicate', original: admitted.fact });
 });
 
-it('P4-ST-13 V30 matching signed witnesses count as one immutable grant identity', () => {
+it('P4-ST-13 V30 multiple covering grants are unsupported in slice A', () => {
   const x = setup(), previous = x.f.frames.at(-1) as any;
   const repeated = x.f.f.next(previous, { kind: 'scheduled-system-grant', principal: x.f.f.alice,
     provenance: x.grant.grant.source, body: json({ grant: x.grant.grant }) },
@@ -86,7 +86,9 @@ it('P4-ST-13 V30 matching signed witnesses count as one immutable grant identity
     .filter(row => row.fact.id === x.grant.fact.id || row.fact.id === repeated.id);
   expect(rows.every(row => row.taint.length === 0 && row.conflicts.length === 0)).toBe(true);
   expect(rows[0]!.historical[0]!.view).toEqual(rows[1]!.historical[0]!.view);
-  expect(value(x.f.port().receiveScheduledTick(x.input)).kind).toBe('scheduled-admitted');
+  const before = x.f.frames.length;
+  refused(x.f.port().receiveScheduledTick(x.input), 'unsupported-in-slice-a');
+  expect(x.f.frames.slice(before).map((row: any) => row.kind)).toEqual(['intake-receipt']);
 });
 
 it('P4-ST-14 V32 conversation-only construction accepts the pre-scheduled schema roster', () => {

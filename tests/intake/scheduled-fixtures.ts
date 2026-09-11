@@ -4,8 +4,8 @@ import { canonical, decode, decodeMeasurement } from '../../src/index.js';
 import type { Clock, Json, ProvenanceInput, Scope } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import type { CausalFrontier, FactEnvelope, FactSchema } from '../../src/facts/index.js';
-import { bindIntakeOwnerRegister,createIntakePort,scheduledIntakeFactSchemas } from '../../src/intake/index.js';
-import type { InboundRoute, IntakeDependencies } from '../../src/intake/index.js';
+import { bindIntakeOwnerRegister,createIntakePort,scheduledIntakeFactSchemas } from '../../src/intake/scheduled-a/index.js';
+import type { InboundRoute, IntakeDependencies } from '../../src/intake/scheduled-a/index.js';
 import { intakeFixture, json, value } from './fixtures.js';
 
 const peerPrivateKey = createPrivateKey({ key: Buffer.from('302e020100300506032b657004220420' + '22'.repeat(32), 'hex'),

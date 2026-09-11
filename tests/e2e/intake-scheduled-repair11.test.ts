@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { expect,it } from 'vitest';
 import { decode } from '../../src/index.js';
 import { authorAndAppend,createFactStore } from '../../src/facts/index.js';
-import { createIntakePort } from '../../src/intake/index.js';
+import { createIntakePort } from '../../src/intake/scheduled-a/index.js';
 import { intakeFixture,json,message,refused,route,value } from '../intake/fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';
 import { scheduledOwnerContext,scheduledRepair6Setup } from '../intake/scheduled-repair6-fixtures.js';

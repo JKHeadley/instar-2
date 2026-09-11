@@ -19,9 +19,9 @@ it('P4-ST-79 V147/V153 F2 rechecks known dependencies when the receipt capture i
     .some(row=>row.fact.id===x.signed.id)).toBe(false);
 });
 
-it('P4-ST-80 V154/V155 F3 pending resolution ignores an unrelated second live grant',()=>{
+it('P4-ST-80 V154/V155 F3 refuses replay that would select among multiple grants',()=>{
   const x=admissionWithSecondGrant();
+  refused(x.appended,'unsupported-in-slice-a');
   const pending=x.f.port().pendingScheduledAdmissions({ owner:x.admitted.owner,frontier:x.f.frontier(),limit:10,after:null });
-  expect(value(pending).admissions).toEqual([{ owner:'part-two',name:'FactEnvelope',id:x.appended.fact.id }]);
-  expect(x.appended.taint).toEqual([]);
+  expect(value(pending).admissions).toEqual([]);
 });

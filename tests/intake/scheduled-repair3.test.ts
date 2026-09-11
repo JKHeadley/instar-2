@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { canonical, consumeResult, decode } from '../../src/index.js';
 import { authorAndAppend, createFactStore, prepareSnapshot, verifyAndAdmit } from '../../src/facts/index.js';
-import { createIntakePort, scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
+import { createIntakePort, scheduledIntakeWorkRegistration } from '../../src/intake/scheduled-a/index.js';
 import { json, refused, value } from './fixtures.js';
 import { scheduledFixture } from './scheduled-fixtures.js';
 

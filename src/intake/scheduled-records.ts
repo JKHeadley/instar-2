@@ -1,10 +1,11 @@
 import type { BoundaryContext,Clock,DecodeContext,Evidence,HistoricalRead,Inventory,Json,RegisterReadPort,Scope,VerifiedPrincipal } from '../index.js';
 import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readHistorical,readHistoricalEvidence,scopeIncludes } from '../index.js';
 import { causalCone,causalStanding,decodeHistoricalBody,hashBytes,registerOwnedBody } from '../facts/index.js';
+import { decodeOwnedBody } from '../facts/owned.js';
 import type { FactContext,FactEnvelope,FactSchema,OwnedBodyContext,OwnedBodyRegistration } from '../facts/index.js';
 import type { Result } from '../index.js';
 import { IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
-import { intakeArrival,intakeScopesOverlap } from './records.js';
+import { intakeArrival,intakeWorkRegistration } from './records.js';
 import { readRegisterEntry } from '../register/index.js';
 import type { RegisterContext,VerifiedRegister } from '../register/index.js';
 
@@ -162,19 +163,23 @@ export function resolveScheduledDiscoveryWitness(histories: readonly ScheduledHi
   witnessRequired: ReadonlySet<string>=required) {
   const candidates=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
     required.has(row.fact.id)&&row.record.view.type==='Evidence'&&row.record.view.source===row.fact.machine);
-  const unavailable=candidates.filter(row => row.record.captureStatus!=='available');
-  const unavailableWitnesses=unavailable.filter(row => witnessRequired.has(row.fact.id));
-  const matching=candidates.flatMap(row => consumeResult(readHistoricalEvidence(row.record,causalNow,preserved),{
-    Success: claim => claim.subject===eventId&&claim.predicate==='scheduled-discovery'&&claim.value===true?[row]:[],
-    Refused: () => [],
-  }));
-  requireIntake(matching.length<=1,'unsupported-in-slice-a: exactly one discovery Evidence witness is required','integrity');
-  const witness=matching[0]??(mode==='historical'&&unavailableWitnesses.length===1?unavailableWitnesses[0]:undefined);
-  requireIntake(witness,'unsupported-in-slice-a: discovery Evidence witness is missing or mismatched','integrity');
-  const identityCopies=candidates.filter(row => row.record.view.id===witness.record.view.id);
-  requireIntake(identityCopies.length===1&&same(identityCopies[0]!.record.view,witness.record.view),
-    'unsupported-in-slice-a: discovery Evidence witness is copied or conflicted','integrity');
+  // The signed claim remains independently checkable when its external capture
+  // is unavailable. Treat every event- or predicate-related record as a named
+  // discovery candidate before consulting capture availability so missing bytes
+  // cannot erase a mismatch or a second witness.
+  const named=candidates.filter(row => row.record.view.claim.subject===eventId
+    ||row.record.view.claim.predicate==='scheduled-discovery');
+  requireIntake(named.length===1&&witnessRequired.has(named[0]!.fact.id),
+    'unsupported-in-slice-a: exactly one discovery Evidence witness is required','integrity');
+  const witness=named[0]!;
+  const recorded=witness.record.view;
+  requireIntake(recorded.claim.subject===eventId&&recorded.claim.predicate==='scheduled-discovery'
+    &&recorded.claim.value===true&&causalNow.value>=recorded.observedAt.value
+    &&causalNow.value<=recorded.observedAt.value+recorded.freshFor,
+  'unsupported-in-slice-a: discovery Evidence witness is stale or mismatched','integrity');
   if(witness.record.captureStatus!=='available') {
+    requireIntake(mode==='historical',
+      'unsupported-in-slice-a: discovery Evidence witness is unavailable at append','integrity');
     return { ...witness,partial: true };
   }
   const claim=take(readHistoricalEvidence(witness.record,causalNow,preserved));
@@ -254,17 +259,14 @@ function validateScheduledIntakeWork(input: Json,c: OwnedBodyContext,registeredS
   const causalNow=causalStanding(c.origin,historicalContext,false).now;
   const discovery=resolveScheduledDiscoveryWitness(histories,required,eventId,causalNow,c.preserved,c.facts.decode,c.mode,
     new Set(resolution.predecessors.required));
-  const historicalGrants=grants.filter(row => coneIds.has(row.factId)&&required.has(row.factId)
+  const historicalGrants=grants.filter(row => coneIds.has(row.factId)
     &&row.grant.view.grantee.id===principal.id&&row.grant.view.grantee.kind==='system'
     &&row.grant.view.standing==='delegate'&&row.grant.view.actions.includes('work')
     &&scopeIncludes(take(decode('Scope',row.grant.view.scope,c.facts.decode)),
       c.facts.schemas.find(schema => schema.kind===c.origin.kind&&schema.version===c.origin.schemaVersion)!.scope));
-  const grantIds=[...new Set(historicalGrants.map(row => row.grant.view.id))].sort();
-  requireIntake(grantIds.length>=1,
-    'unsupported-in-slice-a: a referenced live package-system grant is required','standing');
-  const selectedGrantId=grantIds[0]!,selectedGrants=historicalGrants.filter(row => row.grant.view.id===selectedGrantId);
-  requireIntake(selectedGrants.every(row => same(row.grant.view,selectedGrants[0]!.grant.view)),
-    'unsupported-in-slice-a: referenced package-system grant is conflicted','standing');
+  requireIntake(historicalGrants.length===1&&required.has(historicalGrants[0]!.factId),
+    'unsupported-in-slice-a: exactly one referenced live package-system grant witness is required','standing');
+  const selectedGrants=historicalGrants,selectedGrantId=selectedGrants[0]!.grant.view.id;
   if(c.mode==='origin'||selectedGrants[0]!.grant.captureStatus==='available') requireIntake(
     selectedGrants.every(row => row.grant.captureStatus==='available')
       &&take(historicalGrantLiveness(selectedGrants[0]!.grant,revocations.filter(row => coneIds.has(row.factId)
@@ -294,49 +296,22 @@ function validateScheduledIntakeWork(input: Json,c: OwnedBodyContext,registeredS
 export function scheduledIntakeWorkRegistration(context: BoundaryContext,observerId: string,
   register: VerifiedRegister): Result<OwnedBodyRegistration> {
   const registeredScheduledAdapters=registeredScheduledIntakeAdapters(register,context.register);
+  const legacy=take(intakeWorkRegistration(context,observerId));
   return registerOwnedBody({
     name: 'IntakeWork',owner: 'part-four',currentVersion: 1,migrations: {},
     versions: { 1: { validate: value => ({ ok: true,value }) } },
     decodeCurrent: (input,c) => {
       try {
-        // This is the byte-identical 32e5961 validation sequence. It runs before
-        // the scheduled arm while the exported legacy registration stays untouched.
-        const w=object(input);
-        requireIntake(c.origin.principal.id===observerId&&c.origin.principal.kind==='system'&&c.origin.provenance.class==='verified',
-          'P4-NF-09/12: work must be recorded by the configured verified intake observer');
-        text(w.owner,'P4-NF-12: work owner');
-        requireIntake(w.blockedOn==='run-admission'&&w.standing==='requester','P4-NF-12: owned requester work must wait on run admission');
-        requireIntake(w.deliveryFlag===undefined||w.deliveryFlag==='cannot-decide','P4-NF-13: unknown delivery signal');
-        const body=object(c.origin.body),intent=object(body.intent!);
-        const receipt=c.facts.facts.find(f => f.id===body.receipt&&f.kind==='intake-receipt');
-        requireIntake(receipt&&c.origin.predecessors.required.includes(receipt.id),'P4-NF-01/12: work requires its durable receipt');
-        requireIntake(intent.id===body.logicalId&&intent.raw===body.rawHash&&object(receipt.body).rawHash===body.rawHash,
-          'P4-NF-01/12: work changed its preserved input identity');
-        const cone=causalCone(c.origin,c.facts.facts),arrival=intakeArrival(receipt,observerId);
-        requireIntake(arrival,'P4-NF-02/03: receipt is not an eligible observer arrival');
-        requireIntake(arrival.logicalId===body.logicalId&&arrival.adapter===body.adapter&&intent.via===arrival.adapter,
-          'P4-NF-01/03: work changed receipt route/event identity');
-        for(const key of ['channel','sender','identityEpoch','eventId'] as const)
-          requireIntake(same(arrival.route[key],body[key]),'P4-NF-01: work changed ingress');
-        const arrivals=cone.filter(f => intakeArrival(f,observerId)?.logicalId===body.logicalId),first=arrivals[0]??receipt;
-        requireIntake(object(first.body).rawHash===body.rawHash,'P4-NF-03/08: arrival hash commitment changed');
-        requireIntake(same(intent.receivedAt,first.at),'P4-NF-10: work changed original arrival clock');
-        requireIntake(!cone.some(f => f.kind==='intake-admitted'&&object(f.body).logicalId===body.logicalId),
-          'P4-NF-03: event already admitted in causal history');
-        const intakeScope=c.facts.schemas.find(s => s.kind===c.origin.kind&&s.version===c.origin.schemaVersion)!.scope;
-        requireIntake(!cone.some(f => f.kind==='intake-stop'
-          &&intakeScopesOverlap(take(decode('Scope',object(f.body).scope,c.facts.decode)),intakeScope)),
-        'P4-NF-14: in-cone stop inhibits overlapping work');
-        const directives=cone.flatMap(f => c.facts.schemas.filter(s => s.kind===f.kind&&s.version===f.schemaVersion)
-          .flatMap(s => Object.entries(s.fields).filter(([,v]) => v.kind==='constitutional'&&v.type==='Directive')
-            .map(([field]) => object(object(f.body)[field]!))));
-        const superseded=new Set(directives.map(d => d.supersedes));
-        const expected=directives.filter(d => !d.closedBy&&!superseded.has(d.id)
-          &&scopeIncludes(take(decode('Scope',d.scope,c.facts.decode)),intakeScope)).map(d => text(d.id,'directive id'));
-        requireIntake(same([...new Set(expected)].sort(),intent.under),'P4-NF-25: intent omits or changes in-cone directives');
+        // The actual 32e5961 registration is the first dispatch. Its opaque,
+        // registered runner performs the legacy shape and semantic validation;
+        // only a legacy-valid record can reach the additive scheduled arm.
+        const legacyResult=decodeOwnedBody('part-four','IntakeWork',input,c.origin,c.mode,
+          { ...c.facts,ownedBodies: [
+            ...c.facts.ownedBodies?.filter(candidate => !(candidate.owner==='part-four'&&candidate.name==='IntakeWork'))??[],legacy
+          ] });
         if(isScheduledIntakeAdmission(c.origin,c.facts.facts,observerId,registeredScheduledAdapters,c.facts))
           validateScheduledIntakeWork(input,c,registeredScheduledAdapters);
-        return { ok: true,value: input };
+        return { ok: true,value: legacyResult.value };
       } catch(e) { return { ok: false,detail: e instanceof Error? e.message:'unsupported-in-slice-a' }; }
     },
   },{

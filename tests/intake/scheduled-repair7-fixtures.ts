@@ -1,6 +1,6 @@
 import { canonical,decode } from '../../src/index.js';
 import { authorAndAppend,createFactStore } from '../../src/facts/index.js';
-import { createIntakePort } from '../../src/intake/index.js';
+import { createIntakePort } from '../../src/intake/scheduled-a/index.js';
 import { intakeFixture,json,value } from './fixtures.js';
 import { scheduledFixture } from './scheduled-fixtures.js';
 import { scheduledOwnerContext } from './scheduled-repair6-fixtures.js';

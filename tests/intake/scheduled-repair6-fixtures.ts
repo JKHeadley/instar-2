@@ -2,7 +2,7 @@ import { canonical } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
-import { scheduledIntakeWorkRegistration } from '../../src/intake/index.js';
+import { scheduledIntakeWorkRegistration } from '../../src/intake/scheduled-a/index.js';
 import { json, value } from './fixtures.js';
 import { scheduledFixture } from './scheduled-fixtures.js';
 

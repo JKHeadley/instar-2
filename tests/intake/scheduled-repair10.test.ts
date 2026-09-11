@@ -1,7 +1,7 @@
 import { expect,it } from 'vitest';
 import { canonical,consumeResult,decode } from '../../src/index.js';
 import { authorAndAppend,createFactStore,prepareSnapshot,signEnvelope,verifyAndAdmit } from '../../src/facts/index.js';
-import { createIntakePort,intakeWorkRegistration } from '../../src/intake/index.js';
+import { createIntakePort,intakeWorkRegistration } from '../../src/intake/scheduled-a/index.js';
 import { intakeFixture,json,message,refused,route,value } from './fixtures.js';
 import { scheduledRepair6Setup,scheduledOwnerContext } from './scheduled-repair6-fixtures.js';
 import { extraScheduledEvidence,scheduledEvidenceBundle,scheduledFactReference } from './scheduled-repair9-fixtures.js';
@@ -21,7 +21,7 @@ it.each(['single','identical','different-identity'] as const)
 });
 
 it.each(['plain','dual'] as const)
-('P4-PRESERVE-03 V110 classifies ordinary input by stimulus rather than adapter capability (%s)',mode=>{
+('V110 supporting preservation: classifies ordinary input by stimulus rather than adapter capability (%s)',mode=>{
   const f=intakeFixture(),declared=structuredClone(f.registerInput.sources.map(source=>source.declaration)) as any[];
   if(mode==='dual') {
     const host=declared.find(declaration=>declaration.id==='host')!;
@@ -91,7 +91,7 @@ it.each(['single-missing','extra-available','extra-missing'] as const)
 });
 
 it.each(['plain','dual'] as const)
-('P4-PRESERVE-03 V113 signed ordinary receipt/resolution/admission replay on a multi-stimulus adapter (%s)',mode=>{
+('V113 supporting preservation: signed ordinary replay on a multi-stimulus adapter (%s)',mode=>{
   const source=intakeFixture(),sourceDeclarations=structuredClone(source.registerInput.sources.map(row=>row.declaration)) as any[];
   if(mode==='dual') (sourceDeclarations.find(row=>row.id==='host')!.requiredFacts.authenticationClass as unknown[])
     .push({ stimulusType:'scheduled-tick',class:'verified' });

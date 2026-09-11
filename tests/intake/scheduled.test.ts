@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { ProvenanceInput, Result } from '../../src/index.js';
-import { createIntakePort } from '../../src/intake/index.js';
-import type { IntakeDisposition } from '../../src/intake/index.js';
+import { createIntakePort } from '../../src/intake/scheduled-a/index.js';
+import type { IntakeDisposition } from '../../src/intake/scheduled-a/index.js';
 import { refused, value } from './fixtures.js';
 import { scheduledAdapterId, scheduledFixture } from './scheduled-fixtures.js';
 
