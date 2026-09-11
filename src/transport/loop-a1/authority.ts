@@ -17,11 +17,13 @@ import type {
 import {
   atOrAfter,
   checkLoopA1Fence,
+  collapseSignedFactHistory,
   currentRestorationReferences,
   failureCountAt,
   latestSharedLoopByParent,
   registerLoopA1Bodies,
   resolvePolicyFact,
+  resolveLoopOutcomeFact,
   resolvePressureBinding,
   resolveRunReference,
   restorationReferenceComplete,
@@ -88,8 +90,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
     const snapshot = take(spine.store.readForProjection());
     ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length),
       'tainted or conflicted fact prefix');
-    return [...new Map([...spine.context.facts, ...snapshot.entries.map(entry => entry.fact)]
-      .map(fact => [fact.id, fact])).values()];
+    return collapseSignedFactHistory([...spine.context.facts, ...snapshot.entries.map(entry => entry.fact)]);
   };
   const read = (): readonly LoopA1TransportFact[] => {
     const all = rowsA1(evidenceFacts(), host.domain);
@@ -435,8 +436,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
       ensure(Number.isSafeInteger(input.jitterPermille)
         && input.jitterPermille >= previous.policy.jitterMinPermille
         && input.jitterPermille <= previous.policy.jitterMaxPermille, 'jitter outside pinned policy');
-      const completionFact = history.find(fact => fact.id === input.completion.fact.id);
-      ensure(completionFact, 'Outcome fact is absent');
+      const completionFact = resolveLoopOutcomeFact(input.completion, history, spine.context);
       const actualOutcome = (completionFact.body as Record<string, unknown>)[input.completion.field] as {
         kind?: unknown;
       } | undefined;

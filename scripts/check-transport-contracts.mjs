@@ -100,6 +100,8 @@ export const transportSeamEvidence = [
   ['SLB-A1-FACT-REFERENCE-CONFLICT-131', 'integration', 'V23 physical fact references expose every conflicting logical assessment'],
   ['SLB-A1-COMMAND-SHAPE-132', 'integration', 'empty, wrong-type and oversized command identifiers refuse before repeated-request lookup; valid neighbors remain accepted'],
   ['SLB-A1-EQUIVALENT-WITNESSES-133', 'integration', 'identical policy and assessment copies preserve signed witnesses; conflicting values still refuse'],
+  ['SLB-A1-SUPPORT-WITNESSES-134', 'integration', 'identical Run, plan, request and Evidence copies preserve signed support and later admission'],
+  ['SLB-A1-COPY-INVARIANCE-135', 'integration', 'every signed A1 record kind collapses identical copies across all operations and refuses a mutated copy'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

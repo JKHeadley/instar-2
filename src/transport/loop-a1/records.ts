@@ -83,13 +83,58 @@ export function loopA1Schemas(host: TransportHost): readonly FactSchema[] {
   ];
 }
 
+type SignedCopyDetails = Readonly<{
+  absent: string;
+  conflict: string;
+  outside?: string;
+}>;
+
+/**
+ * Resolve one immutable signed identity without making physical multiplicity
+ * meaningful. Every candidate participates in the value-conflict check, while
+ * historical replay may constrain selection to the witnesses it actually signed.
+ */
+function collapseSignedRecordCopies(candidates: readonly FactEnvelope[],
+  value: (fact: FactEnvelope) => Json, details: SignedCopyDetails,
+  required?: readonly string[], preferredId?: string): FactEnvelope {
+  ensure(candidates.length > 0, details.absent);
+  if (candidates.length > 1) {
+    ensure(new Set(candidates.map(fact => encoded(value(fact)).bytes)).size === 1, details.conflict);
+    ensure(new Set(candidates.map(fact => encoded([
+      fact.kind, fact.schemaVersion, fact.principal, fact.provenance, fact.predecessors.required,
+    ]).bytes)).size === 1, details.conflict);
+  }
+  const requiredSet = required ? new Set(required) : undefined;
+  const witnessed = requiredSet ? candidates.filter(fact => requiredSet.has(fact.id)) : [...candidates];
+  ensure(witnessed.length > 0, details.outside ?? 'owner evidence is outside the signed required-reference set');
+  const preferred = preferredId ? candidates.find(fact => fact.id === preferredId) : undefined;
+  ensure(!preferred || !requiredSet || requiredSet.has(preferred.id),
+    details.outside ?? 'owner evidence is outside the signed required-reference set');
+  return preferred ?? [...witnessed].sort((left, right) => {
+    const machine = Buffer.compare(Buffer.from(left.segment.machine, 'utf8'), Buffer.from(right.segment.machine, 'utf8'));
+    if (machine !== 0) return machine;
+    if (left.segment.epoch !== right.segment.epoch) return left.segment.epoch < right.segment.epoch ? -1 : 1;
+    if (left.segment.position !== right.segment.position) return left.segment.position < right.segment.position ? -1 : 1;
+    return Buffer.compare(Buffer.from(left.id, 'utf8'), Buffer.from(right.id, 'utf8'));
+  })[0]!;
+}
+
 export function rowsA1(facts: readonly FactEnvelope[], domain: string): LoopA1TransportFact[] {
   const legacy = new Map(legacyRows(facts, domain).map(row => [row.fact.id, row]));
-  const seen = new Set<string>();
+  const seen = new Map<string, FactEnvelope>();
   const rows: LoopA1TransportFact[] = [];
+  const sharedCopies = new Map<string, { index: number; facts: FactEnvelope[] }>();
   for (const fact of facts) {
-    if (seen.has(fact.id)) continue;
-    seen.add(fact.id);
+    const sameId = seen.get(fact.id);
+    if (sameId) {
+      if (sameId.kind === sharedLoopRecordFactKind || fact.kind === sharedLoopRecordFactKind) {
+        collapseSignedRecordCopies([sameId, fact], candidate => candidate as unknown as Json, {
+          absent: 'shared loop envelope is absent', conflict: 'shared loop envelope is conflicted',
+        });
+      }
+      continue;
+    }
+    seen.set(fact.id, fact);
     const base = legacy.get(fact.id);
     if (base) {
       rows.push(base);
@@ -99,7 +144,24 @@ export function rowsA1(facts: readonly FactEnvelope[], domain: string): LoopA1Tr
     const stored = (fact.body as { record?: unknown }).record;
     if (!isStoredSharedLoopRecord(stored)) continue;
     const record = loadSharedLoopRecord(stored);
-    if (record.domain === domain) rows.push({ fact, record });
+    if (record.domain !== domain) continue;
+    const key = `${record.domain}\u0000${record.command}`;
+    const copies = sharedCopies.get(key);
+    if (copies) {
+      copies.facts.push(fact);
+      const selected = collapseSignedRecordCopies(copies.facts,
+        candidate => (candidate.body as { record: Json }).record, {
+          absent: 'shared loop history is absent',
+          conflict: 'shared loop history is conflicted',
+        });
+      rows[copies.index] = {
+        fact: selected,
+        record: loadSharedLoopRecord((selected.body as { record: never }).record),
+      };
+    } else {
+      sharedCopies.set(key, { index: rows.length, facts: [fact] });
+      rows.push({ fact, record });
+    }
   }
   return rows;
 }
@@ -113,14 +175,27 @@ function schemaOwns(context: FactContext, fact: FactEnvelope, field: string, own
   return fieldShape?.kind === 'owned' && fieldShape.owner === owner && fieldShape.name === name;
 }
 function allFacts(facts: readonly FactEnvelope[]): readonly FactEnvelope[] {
-  return [...new Map(facts.map(fact => [fact.id, fact])).values()];
+  const unique = new Map<string, FactEnvelope>();
+  const conflicting = new Map<string, FactEnvelope[]>();
+  for (const fact of facts) {
+    const existing = unique.get(fact.id);
+    if (!existing) {
+      unique.set(fact.id, fact);
+      continue;
+    }
+    if (existing === fact
+      || existing.contentHash === fact.contentHash && existing.signature === fact.signature) continue;
+    conflicting.set(fact.id, [...conflicting.get(fact.id) ?? [existing], fact]);
+  }
+  for (const [id, group] of conflicting) {
+    unique.set(id, collapseSignedRecordCopies(group, fact => fact as unknown as Json, {
+      absent: 'signed fact is absent', conflict: 'signed fact envelope is conflicted',
+    }));
+  }
+  return [...unique.values()];
 }
-function recordedWitnesses(facts: readonly FactEnvelope[], required?: readonly string[]): readonly FactEnvelope[] {
-  if (!required) return facts;
-  const requiredSet = new Set(required);
-  const witnessed = facts.filter(fact => requiredSet.has(fact.id));
-  ensure(witnessed.length > 0, 'owner evidence is outside the signed required-reference set');
-  return witnessed;
+export function collapseSignedFactHistory(facts: readonly FactEnvelope[]): readonly FactEnvelope[] {
+  return allFacts(facts);
 }
 function requireUsableFacts(facts: readonly FactEnvelope[], context: FactContext,
   history: readonly FactEnvelope[] = context.facts): void {
@@ -132,24 +207,26 @@ function requireUsableFacts(facts: readonly FactEnvelope[], context: FactContext
 }
 
 export function resolveRunReference(reference: RunReference, facts: readonly FactEnvelope[], context: FactContext,
-  status = true, allowTerminal = false): FactEnvelope {
+  status = true, allowTerminal = false, required?: readonly string[]): FactEnvelope {
   referenceCheck(reference, 'part-five', 'Run');
   const candidates = allFacts(facts).filter(fact => schemaOwns(context, fact, 'record', 'part-five', 'Run'))
     .filter(fact => {
       const body = fact.body as { run?: unknown; record?: { type?: unknown; id?: unknown } };
       return body.run === reference.id && body.record?.type === 'Run' && body.record.id === reference.id;
     });
-  ensure(candidates.length > 0, 'Run admission is absent');
-  ensure(new Set(candidates.map(fact => encoded((fact.body as { record: Json }).record).bytes)).size === 1,
-    'Run admission is conflicted');
-  const fact = candidates.at(-1)!;
+  const fact = collapseSignedRecordCopies(candidates,
+    candidate => (candidate.body as { record: Json }).record, {
+      absent: 'Run admission is absent', conflict: 'Run admission is conflicted',
+    }, required);
   const terminal = allFacts(facts).some(value => schemaOwns(context, value, 'record', 'part-five', 'RunTransition')
     && (value.body as { run?: unknown; record?: { run?: unknown; to?: unknown } }).run === reference.id
     && ['completed', 'cancelled', 'unreachable'].includes(String((value.body as { record?: { to?: unknown } }).record?.to)));
   ensure(allowTerminal || !terminal, 'Run admission is terminal');
   const openingId = (fact.body as { record: { opening?: { id?: string } } }).record.opening?.id;
-  const opening = allFacts(facts).find(value => value.id === openingId);
-  ensure(opening, 'Run opening evidence is absent');
+  const opening = collapseSignedRecordCopies(allFacts(facts).filter(value => value.id === openingId),
+    candidate => candidate as unknown as Json, {
+      absent: 'Run opening evidence is absent', conflict: 'Run opening evidence is conflicted',
+    });
   if (status) requireUsableFacts([fact, opening], context, facts);
   return fact;
 }
@@ -165,14 +242,19 @@ export function resolvePolicyFact(policyValue: SharedBreakerLoopPolicy, generati
   const values = candidates.map(fact => loadSharedLoopPolicy((fact.body as { policy: never }).policy));
   ensure(values.some(value => encoded(value).bytes === encoded(policyValue).bytes),
     'governed loop policy differs from the pinned value');
-  ensure(new Set(values.map(value => encoded(value).bytes)).size === 1, 'governed loop policy is conflicted');
+  const fact = collapseSignedRecordCopies(candidates,
+    candidate => (candidate.body as { policy: Json }).policy, {
+      absent: 'governed loop policy fact is absent for the pinned generation',
+      conflict: 'governed loop policy is conflicted',
+    }, required);
   if (status) requireUsableFacts(candidates, context, facts);
-  return recordedWitnesses(candidates, required).at(-1)!;
+  return fact;
 }
 
 export function resolvePressureBinding(record: Pick<SharedLoopRecord,
   'currentOwnerRun' | 'operationFamily' | 'pressureScope' | 'pressureKey' | 'pressureBinding'>,
-facts: readonly FactEnvelope[], context: FactContext, host: LoopA1Host, status = true): FactEnvelope {
+facts: readonly FactEnvelope[], context: FactContext, host: LoopA1Host, status = true,
+required?: readonly string[]): FactEnvelope {
   referenceCheck(record.pressureBinding, 'part-two', 'FactEnvelope');
   ensure(host.loopScopeBinding?.owner === 'part-three', 'governed loop pressure binding unavailable');
   const resolved = take(host.loopScopeBinding.resolve({
@@ -184,8 +266,16 @@ facts: readonly FactEnvelope[], context: FactContext, host: LoopA1Host, status =
     && encoded(resolved.pressureScope).bytes === encoded(record.pressureScope).bytes
     && encoded(resolved.witness).bytes === encoded(record.pressureBinding).bytes,
   'governed loop pressure binding changed');
-  const fact = allFacts(facts).find(value => value.id === record.pressureBinding.id);
-  ensure(fact?.kind === 'loop-pressure-binding', 'governed loop pressure binding fact is absent or wrong-kind');
+  const candidates = allFacts(facts).filter(value => value.kind === 'loop-pressure-binding')
+    .filter(value => {
+      const body = value.body as { parentDuty?: unknown; operationFamily?: unknown; pressureScopeBytes?: unknown };
+      return body.parentDuty === record.currentOwnerRun.id && body.operationFamily === record.operationFamily
+        && body.pressureScopeBytes === encoded(record.pressureScope).bytes;
+    });
+  const fact = collapseSignedRecordCopies(candidates, candidate => candidate.body, {
+    absent: 'governed loop pressure binding fact is absent or wrong-kind',
+    conflict: 'governed loop pressure binding fact is conflicted',
+  }, required, record.pressureBinding.id);
   const body = fact.body as { parentDuty?: unknown; operationFamily?: unknown; pressureScopeBytes?: unknown };
   ensure(body.parentDuty === record.currentOwnerRun.id && body.operationFamily === record.operationFamily
     && body.pressureScopeBytes === encoded(record.pressureScope).bytes
@@ -217,24 +307,26 @@ function restorationAssessmentCandidates(facts: readonly FactEnvelope[], context
     return typeof identity === 'string' && identities.has(identity);
   });
 }
-function uniqueOwnerRecord(facts: readonly FactEnvelope[], context: FactContext, name: string, id: string): FactEnvelope {
+function uniqueOwnerRecord(facts: readonly FactEnvelope[], context: FactContext, name: string, id: string,
+  required?: readonly string[]): FactEnvelope {
   const candidates = ownerRecordCandidates(facts, context, name, id);
-  ensure(candidates.length > 0, `${name} evidence is absent`);
-  ensure(new Set(candidates.map(fact => encoded((fact.body as { record: Json }).record).bytes)).size === 1,
-    `${name} evidence is conflicted`);
-  return candidates.at(-1)!;
+  return collapseSignedRecordCopies(candidates,
+    fact => (fact.body as { record: Json }).record, {
+      absent: `${name} evidence is absent`, conflict: `${name} evidence is conflicted`,
+    }, required);
 }
-function evidenceFact(id: string, facts: readonly FactEnvelope[], context: FactContext): FactEnvelope {
+function evidenceFact(id: string, facts: readonly FactEnvelope[], context: FactContext,
+  required?: readonly string[]): FactEnvelope {
   const candidates = allFacts(facts).filter(fact => Object.entries(fact.body as Readonly<Record<string, Json>>).some(([field, value]) => {
     const candidate = context.schemas.find(schema => schema.kind === fact.kind && schema.version === fact.schemaVersion)?.fields[field];
     const constitutional = value as { type?: unknown; id?: unknown } | undefined;
     return candidate?.kind === 'constitutional' && candidate.type === 'Evidence'
       && constitutional?.type === 'Evidence' && constitutional.id === id;
   }));
-  ensure(candidates.length > 0, 'VerificationAssessment predicate Evidence is absent');
-  ensure(new Set(candidates.map(fact => encoded(fact.body).bytes)).size === 1,
-    'VerificationAssessment predicate Evidence is conflicted');
-  return candidates.at(-1)!;
+  return collapseSignedRecordCopies(candidates, fact => fact.body, {
+    absent: 'VerificationAssessment predicate Evidence is absent',
+    conflict: 'VerificationAssessment predicate Evidence is conflicted',
+  }, required);
 }
 function restorationAssessmentComplete(record: Readonly<{
   missingEvidence?: unknown;
@@ -259,14 +351,11 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
   required?: readonly string[]): readonly FactEnvelope[] {
   referenceCheck(reference, 'part-nine', 'VerificationAssessment');
   const candidates = restorationAssessmentCandidates(facts, context, reference.id);
-  ensure(candidates.length > 0, 'VerificationAssessment evidence is absent');
-  ensure(new Set(candidates.map(fact => encoded((fact.body as { record: Json }).record).bytes)).size === 1,
-    'VerificationAssessment evidence is conflicted');
-  const witnessed = recordedWitnesses(candidates, required);
-  const addressed = candidates.find(fact => fact.id === reference.id);
-  ensure(!addressed || !required || required.includes(addressed.id),
-    'owner evidence is outside the signed required-reference set');
-  const fact = addressed ?? witnessed.at(-1)!;
+  const fact = collapseSignedRecordCopies(candidates,
+    candidate => (candidate.body as { record: Json }).record, {
+      absent: 'VerificationAssessment evidence is absent',
+      conflict: 'VerificationAssessment evidence is conflicted',
+    }, required, reference.id);
   const record = (fact.body as { record: {
     request?: unknown;
     predecessors?: unknown;
@@ -293,8 +382,8 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
   ensure(typeof record.request === 'string' && typeof record.attempt === 'string'
     && typeof record.barVersion === 'string' && Array.isArray(record.predecessors) && Array.isArray(record.evidence),
   'VerificationAssessment support bindings are incomplete');
-  const predecessors = record.predecessors as unknown[];
-  const requestFact = uniqueOwnerRecord(facts, context, 'VerificationRequest', record.request);
+  const predecessors = record.predecessors as string[];
+  const requestFact = uniqueOwnerRecord(facts, context, 'VerificationRequest', record.request, predecessors);
   const request = (requestFact.body as { record: {
     predecessors?: unknown;
     operation?: unknown;
@@ -306,7 +395,7 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
   } }).record;
   ensure(Array.isArray(request.predecessors) && typeof request.plan === 'string'
     && predecessors.includes(requestFact.id), 'VerificationAssessment request lineage is absent');
-  const planFact = uniqueOwnerRecord(facts, context, 'VerificationPlan', request.plan);
+  const planFact = uniqueOwnerRecord(facts, context, 'VerificationPlan', request.plan, request.predecessors);
   const plan = (planFact.body as { record: {
     subject?: { generation?: unknown; governed?: unknown };
     bar?: { version?: unknown };
@@ -323,11 +412,10 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
   const evidenceIds = [...new Set([...record.evidence as unknown[], ...predicateEvidence])];
   ensure(evidenceIds.every(id => typeof id === 'string' && id.length > 0),
     'VerificationAssessment predicate Evidence reference is invalid');
-  const evidenceFacts = evidenceIds.map(id => evidenceFact(id as string, facts, context));
+  const evidenceFacts = evidenceIds.map(id => evidenceFact(id as string, facts, context, predecessors));
   const superseded = typeof record.supersedes === 'string' && record.supersedes.length > 0
-    ? [uniqueOwnerRecord(facts, context, 'VerificationAssessment', record.supersedes)] : [];
-  const support = [...new Map([...witnessed, requestFact, planFact, ...evidenceFacts, ...superseded]
-    .map(value => [value.id, value])).values()];
+    ? [uniqueOwnerRecord(facts, context, 'VerificationAssessment', record.supersedes, predecessors)] : [];
+  const support = allFacts([fact, requestFact, planFact, ...evidenceFacts, ...superseded]);
   ensure([requestFact, ...evidenceFacts, ...superseded].every(value => predecessors.includes(value.id)),
     'VerificationAssessment support is outside its signed predecessor set');
   if (requireComplete) ensure(restorationAssessmentComplete(record),
@@ -368,10 +456,12 @@ export function currentRestorationReferences(references: SharedLoopRecord['closu
   return freeze(references.filter(reference => {
     referenceCheck(reference, 'part-nine', 'VerificationAssessment');
     const candidates = restorationAssessmentCandidates(facts, context, reference.id);
-    ensure(candidates.length > 0, 'VerificationAssessment evidence is absent');
-    ensure(new Set(candidates.map(fact => encoded((fact.body as { record: Json }).record).bytes)).size === 1,
-      'VerificationAssessment evidence is conflicted');
-    const validity = (candidates.at(-1)!.body as {
+    const fact = collapseSignedRecordCopies(candidates,
+      candidate => (candidate.body as { record: Json }).record, {
+        absent: 'VerificationAssessment evidence is absent',
+        conflict: 'VerificationAssessment evidence is conflicted',
+      }, undefined, reference.id);
+    const validity = (fact.body as {
       record: { validFrom?: unknown; validUntil?: unknown };
     }).record;
     ensure(Number.isSafeInteger(validity.validFrom) && Number.isSafeInteger(validity.validUntil),
@@ -400,13 +490,33 @@ function constitutionalFact(reference: {
   readonly fact: { readonly owner: string; readonly name: string; readonly id: string };
   readonly field: string;
 }, expected: 'Result' | 'Outcome', facts: readonly FactEnvelope[], context: FactContext,
-status = true): FactEnvelope {
-  const fact = allFacts(facts).find(value => value.id === reference.fact.id);
-  ensure(fact, `${expected} fact is absent`);
-  const schema = context.schemas.find(value => value.kind === fact.kind && value.version === fact.schemaVersion);
+status = true, required?: readonly string[]): FactEnvelope {
+  const addressed = allFacts(facts).find(value => value.id === reference.fact.id);
+  ensure(addressed, `${expected} fact is absent`);
+  const schema = context.schemas.find(value => value.kind === addressed.kind && value.version === addressed.schemaVersion);
   const field = schema?.fields[reference.field];
   ensure(reference.type === expected && field?.kind === 'constitutional' && field.type === expected,
     `reference is not an owner ${expected} field`);
+  const addressedBinding = (addressed.body as { loopAttemptBinding?: unknown }).loopAttemptBinding;
+  const addressedValue = (addressed.body as Record<string, Json>)[reference.field];
+  const candidates = allFacts(facts).filter(candidate => {
+    const candidateSchema = context.schemas.find(value => value.kind === candidate.kind
+      && value.version === candidate.schemaVersion);
+    const candidateField = candidateSchema?.fields[reference.field];
+    const candidateValue = (candidate.body as Record<string, unknown>)[reference.field] as {
+      type?: unknown; id?: unknown;
+    } | undefined;
+    return candidateField?.kind === 'constitutional' && candidateField.type === expected
+      && candidateValue?.type === expected
+      && (candidateValue.id === reference.id
+        || candidateValue.id === undefined && (candidate.id === reference.fact.id
+          || expected === 'Outcome' && typeof addressedBinding === 'string'
+            && (candidate.body as { loopAttemptBinding?: unknown }).loopAttemptBinding === addressedBinding
+            && encoded(candidateValue as unknown as Json).bytes === encoded(addressedValue).bytes));
+  });
+  const fact = collapseSignedRecordCopies(candidates, candidate => candidate.body, {
+    absent: `${expected} fact is absent`, conflict: `${expected} evidence is conflicted`,
+  }, required, reference.fact.id);
   const owned = (fact.body as Record<string, unknown>)[reference.field] as { type?: unknown; id?: unknown } | undefined;
   ensure(owned?.type === expected && (owned.id === undefined || owned.id === reference.id),
     `${expected} reference names another subject`);
@@ -415,8 +525,9 @@ status = true): FactEnvelope {
 }
 
 function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: LoopOutcome,
-  facts: readonly FactEnvelope[], context: FactContext, status = true): FactEnvelope {
-  const fact = constitutionalFact(outcome.completion, 'Outcome', facts, context, status);
+  facts: readonly FactEnvelope[], context: FactContext, status = true,
+  required?: readonly string[]): FactEnvelope {
+  const fact = constitutionalFact(outcome.completion, 'Outcome', facts, context, status, required);
   const actual = (fact.body as Record<string, unknown>)[outcome.completion.field] as { kind?: unknown } | undefined;
   const derivedKind = actual?.kind === 'happened' ? 'accepted' : 'failed';
   ensure(actual && ['happened', 'did-not-happen', 'uncertain'].includes(String(actual.kind))
@@ -432,15 +543,16 @@ function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: LoopOut
       const candidateRecord = loadSharedLoopRecord(stored);
       return candidateRecord.pressureKey === record.pressureKey
         && candidateRecord.operationFamily === record.operationFamily
-        && candidateRecord.attemptLog.some(attempt => attempt.id === outcome.attempt);
+        && ['attempt-admitted', 'half-opened'].includes(candidateRecord.transition)
+        && candidateRecord.attemptLog.at(-1)?.id === outcome.attempt;
     });
-  const witnessedAttempts = attemptFacts.filter(candidate => fact.predecessors.required.includes(candidate.id));
-  ensure(witnessedAttempts.length > 0, 'Outcome completion does not witness its admitted loop attempt');
-  ensure(new Set(witnessedAttempts.map(candidate => {
-    const admitted = loadSharedLoopRecord((candidate.body as { record: never }).record);
-    return encoded([admitted.policy, admitted.policyGeneration]).bytes;
-  })).size === 1, 'Outcome completion has conflicting admitted policy generations');
-  const admitted = loadSharedLoopRecord((witnessedAttempts.at(-1)!.body as { record: never }).record);
+  const admittedFact = collapseSignedRecordCopies(attemptFacts,
+    candidate => (candidate.body as { record: Json }).record, {
+      absent: 'Outcome completion does not witness its admitted loop attempt',
+      conflict: 'Outcome completion has conflicting admitted policy generations',
+      outside: 'Outcome completion does not witness its admitted loop attempt',
+    }, fact.predecessors.required);
+  const admitted = loadSharedLoopRecord((admittedFact.body as { record: never }).record);
   const expectedPolicy = encoded([admitted.policy.id, admitted.policyGeneration.id,
     admitted.policy.countedFailureClasses]).hash;
   ensure(typeof signedClass === 'string' && signedClass === outcome.failureClass
@@ -452,10 +564,31 @@ function resolveLoopOutcomeCompletion(record: SharedLoopRecord, outcome: LoopOut
   return fact;
 }
 
+export function resolveLoopOutcomeFact(reference: LoopOutcome['completion'],
+  facts: readonly FactEnvelope[], context: FactContext): FactEnvelope {
+  return constitutionalFact(reference, 'Outcome', facts, context);
+}
+
 function restorationIntroductionAt(record: SharedLoopRecord, outcome: LoopOutcome,
   reference: SharedLoopRecord['closureEvidence'][number], history: readonly FactEnvelope[]): Clock {
-  const predecessor = history.find(fact => fact.id === record.predecessor);
-  ensure(predecessor, 'restoration introduction predecessor is absent');
+  const addressed = allFacts(history).find(fact => fact.id === record.predecessor);
+  ensure(addressed, 'restoration introduction predecessor is absent');
+  const addressedRecord = isStoredSharedLoopRecord((addressed.body as { record?: unknown }).record)
+    ? loadSharedLoopRecord((addressed.body as { record: never }).record) : undefined;
+  const predecessor = addressedRecord
+    ? collapseSignedRecordCopies(allFacts(history).filter(fact => {
+      const stored = (fact.body as { record?: unknown }).record;
+      return fact.kind === sharedLoopRecordFactKind && isStoredSharedLoopRecord(stored)
+        && loadSharedLoopRecord(stored).domain === addressedRecord.domain
+        && loadSharedLoopRecord(stored).command === addressedRecord.command;
+    }), fact => (fact.body as { record: Json }).record, {
+      absent: 'restoration introduction predecessor is absent',
+      conflict: 'restoration introduction predecessor is conflicted',
+    }, undefined, record.predecessor)
+    : collapseSignedRecordCopies([addressed], fact => fact as unknown as Json, {
+      absent: 'restoration introduction predecessor is absent',
+      conflict: 'restoration introduction predecessor is conflicted',
+    }, undefined, record.predecessor);
   const past = rowsA1([...causalCone(predecessor, history), predecessor], record.domain);
   for (const row of past) {
     if (!isA1Record(row.record) || row.record.episode !== record.episode) continue;
@@ -473,11 +606,11 @@ export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly Fac
   sharedLoopMeasurements(record, host);
   const dependencies: FactEnvelope[] = [
     resolvePolicyFact(record.policy, record.policyGeneration.id, history, context, false, required),
-    resolveRunReference(record.currentOwnerRun, history, context, false),
-    resolvePressureBinding(record, history, context, host, false),
+    resolveRunReference(record.currentOwnerRun, history, context, false, false, required),
+    resolvePressureBinding(record, history, context, host, false, required),
   ];
   for (const outcome of record.outcomeLog) {
-    dependencies.push(resolveLoopOutcomeCompletion(record, outcome, history, context, false));
+    dependencies.push(resolveLoopOutcomeCompletion(record, outcome, history, context, false, required));
     for (const reference of outcome.restoration) {
       dependencies.push(...resolveRestorationReference(reference, history, context,
         restorationIntroductionAt(record, outcome, reference, history),
@@ -494,7 +627,7 @@ export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly Fac
       record.transition === 'closed' ? record.transitionAt : contributedAt,
       record.pressureKey, record.operationFamily, host, false, true, required));
   }
-  const unique = [...new Map(dependencies.map(fact => [fact.id, fact])).values()];
+  const unique = allFacts(dependencies);
   requireUsableFacts(unique, context, history);
   return unique;
 }
@@ -1117,16 +1250,30 @@ export function registerLoopA1Bodies(host: LoopA1Host, context: BoundaryContext)
             ensure(name === sharedLoopRecordOwnedName && isStoredSharedLoopRecord(input), 'owned type mismatch');
             const record = loadSharedLoopRecord(input);
             sharedLoopRecordCheck(record);
+            const logicalCopies = allFacts([...decodeContext.facts.facts, decodeContext.origin])
+              .filter(fact => fact.kind === sharedLoopRecordFactKind)
+              .filter(fact => {
+                const stored = (fact.body as { record?: unknown }).record;
+                return isStoredSharedLoopRecord(stored)
+                  && loadSharedLoopRecord(stored).domain === record.domain
+                  && loadSharedLoopRecord(stored).command === record.command;
+              });
+            collapseSignedRecordCopies(logicalCopies,
+              fact => (fact.body as { record: Json }).record, {
+                absent: 'shared loop record is absent',
+                conflict: 'shared loop record is conflicted',
+              }, undefined, decodeContext.origin.id);
+            const duplicate = logicalCopies.some(fact => fact.id !== decodeContext.origin.id);
             const cone = causalCone(decodeContext.origin, decodeContext.facts.facts);
             const past = rowsA1(cone, host.domain);
             validateIssuer(host, decodeContext.origin, past);
             const candidate = !decodeContext.facts.facts.some(fact => fact.id === decodeContext.origin.id);
-            if (candidate) noteAccountingCandidate(host);
-            const admitting = decodeContext.mode === 'origin' && candidate;
-            validateA1Transition(record, past, host, admitting, cone, decodeContext.facts);
+            if (candidate && !duplicate) noteAccountingCandidate(host);
+            const admitting = decodeContext.mode === 'origin' && candidate && !duplicate;
+            if (!duplicate) validateA1Transition(record, past, host, admitting, cone, decodeContext.facts);
             resolveSharedLoopEvidence(record, decodeContext.origin,
               decodeContext.facts.facts, decodeContext.facts, host);
-            if (decodeContext.mode === 'origin') {
+            if (decodeContext.mode === 'origin' && !duplicate) {
               live(host);
               const now = host.monotonic();
               ensure(record.authority === host.authorityIncarnation && record.tick <= now
