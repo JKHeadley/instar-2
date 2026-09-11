@@ -90,7 +90,8 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
   requireThat(Number.isFinite(options.horizon.stalenessBound) && options.horizon.stalenessBound > 0,
     'Part Two register horizon needs a positive staleness bound');
   const read = () => take(options.store.readForProjection());
-  const provider: PartTwoRegisterProvider = {
+  let provider: PartTwoRegisterProvider;
+  provider = {
     owner: 'part-two',
     ...(options.types ? { types: options.types } : {}),
     ...(options.separations ? { separations: options.separations } : {}),
@@ -133,6 +134,12 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
         Refused: () => false,
       });
     }),
+    revalidateLoaded: (extract, generation, now) => checked<boolean, RegisterContext>('PartTwoLoadedRegisterRevalidation',
+      { extract, generation, now }, options.context, () => {
+        take(provider.verifyExtract(extract)); take(provider.enteringForce(generation));
+        requireThat(take(provider.isCurrent(extract.vector, now)), 'loaded register vector is no longer current');
+        return true;
+      }),
     verifyShapeChange: binding => checked<FactReference, RegisterContext>('PartTwoShapeChangeApproval', binding, options.context, () => {
       const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
       requireThat(binding.approval !== undefined, 'P3-NF-09: governed shape change requires a Part Two approval reference');

@@ -1,5 +1,5 @@
 import { consumeResult, decode, decodeMeasurement } from '../index.js';
-import type { Clock, Json, Result } from '../index.js';
+import type { Clock, Json } from '../index.js';
 import type { ChainExtract, Declaration, FactPositionVectorReference, FactReference, GeneratedRegister, GenerationRecord,
   RegisterContext, RegisterEntry, RegisterGeneration, SpineReadPort, VersionRowInput, VerifiedRegister } from './types.js';
 import { checked, encoding, exact, list, object, requireThat, strings, take, text, validated } from './boundary.js';
@@ -152,9 +152,8 @@ export function loadRegister(input: unknown, expected: RegisterGeneration, conte
     requireThat(v.authority === 'shape-only', 'register bytes may not self-assert authority');
     const result = { type: 'GeneratedRegister', schemaVersion: 1, commit: text(v.commit, 'commit'), extract, shape, entries: decoded, authority: 'shape-only' } as unknown as VerifiedRegister;
     loaded.set(result, () => {
-      const accepted = <T>(answer: Result<T>): boolean => consumeResult(answer, { Success: () => true, Refused: () => false });
-      return accepted(spine.verifyExtract(extract)) && accepted(spine.enteringForce(expected))
-        && consumeResult(spine.isCurrent(extract.vector, now), { Success: value => value === true, Refused: () => false });
+      if (!spine.revalidateLoaded) return true;
+      return consumeResult(spine.revalidateLoaded(extract, expected, now), { Success: value => value === true, Refused: () => false });
     });
     return result;
   });

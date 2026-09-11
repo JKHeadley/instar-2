@@ -81,6 +81,8 @@ export interface SpineReadPort {
   readonly enteringForce: (generation: RegisterGeneration) => Result<GenerationRecord>;
   // Applies part-two vector/unknown-lineage and declared-staleness-bound semantics.
   readonly isCurrent: (vector: FactPositionVectorReference, now: Clock) => Result<boolean>;
+  // Production owners may provide a live recheck for already-decoded pages.
+  readonly revalidateLoaded?: (extract: ChainExtract, generation: RegisterGeneration, now: Clock) => Result<boolean>;
 }
 export interface StandingContext {
   readonly principal: VerifiedPrincipal; readonly grants: readonly StandingGrant[];
