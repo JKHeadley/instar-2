@@ -28,7 +28,11 @@ function resolveBuildReferences(root, input, workflow, provider, shape, owner) {
       const entry = catalog?.find(e => e.id === reference.id);
       const artifact = entry?.artifact;
       if (!artifact || !input.files.includes(artifact.path)) throw new Error('unresolved captured source artifact for ' + reference.id);
-      const content = execFileSync('git', ['-C', root, 'show', `${input.commit}:${artifact.path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+      // Owner references were already resolved from this exact commit/path by
+      // loadOwnerReferences. Reuse those witnessed bytes while independently
+      // checking each catalog entry's declared hash below.
+      const content = owner.artifacts[artifact.path]
+        ?? execFileSync('git', ['-C', root, 'show', `${input.commit}:${artifact.path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
       if (hash(content) !== artifact.hash) throw new Error('reference artifact hash differs: ' + reference.id);
       if (reference.provider === 'probe' && !(entry.cadence > 0)) throw new Error('probe requires cadence');
     } else {

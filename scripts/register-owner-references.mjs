@@ -6,6 +6,15 @@ import { ownerDocuments } from '../dist/register/owner-contracts.js';
 
 export const ownerManifestPath = 'register-source/owner-references.json';
 const hash = input => value(canonical(input)).hash;
+// Owner artifacts are immutable at an exact commit. Repeated in-process builds
+// of that same commit can reuse the already verified bytes without weakening
+// the commit/path binding. Keep the cache bounded for long-lived callers.
+const committedArtifacts = new Map();
+const rememberArtifact = (key, artifact) => {
+  committedArtifacts.delete(key); committedArtifacts.set(key, artifact);
+  if (committedArtifacts.size > 512) committedArtifacts.delete(committedArtifacts.keys().next().value);
+  return artifact;
+};
 export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five'].map(owner => `register-source/owner-references/${owner}.json`)];
 const owned = (namespace, names) => Object.fromEntries(names.map(id => [id, { module: `src/${namespace}/index.ts`, artifact: `src/${namespace}/records.ts` }]));
 const contracts = {
@@ -45,10 +54,17 @@ export function loadOwnerReferences(root, input) {
     exact(a, ['path', 'hash']);
     if (a.path !== path || !input.files.includes(path)) throw new Error('wrong-owner or missing artifact: ' + path);
     if (!artifactContents.has(path)) {
-      const content=execFileSync('git', ['-C', root, 'show', `${input.commit}:${path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
-      artifactContents.set(path,{ content,digest:hash(content) });
+      const key = `${root}\0${input.commit}\0${path}`;
+      const committed = committedArtifacts.get(key);
+      if (committed) {
+        committedArtifacts.delete(key); committedArtifacts.set(key, committed);
+        artifactContents.set(path, committed);
+      } else {
+        const content = execFileSync('git', ['-C', root, 'show', `${input.commit}:${path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+        artifactContents.set(path, rememberArtifact(key, { content, digest: hash(content) }));
+      }
     }
-    const { content,digest }=artifactContents.get(path);
+    const { content, digest } = artifactContents.get(path);
     if (digest !== a.hash) throw new Error('reference artifact hash differs: ' + path);
     result.artifacts[path] = content;
   };
