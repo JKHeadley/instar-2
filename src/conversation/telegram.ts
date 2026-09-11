@@ -2,6 +2,7 @@ import { canonical, consumeResult } from '../index.js';
 import type { BoundaryContext, Clock, Json, Result } from '../index.js';
 import type { FactEnvelope } from '../facts/index.js';
 import { hashBytes } from '../facts/index.js';
+import type { AdapterConformance } from '../assembly/index.js';
 import type { InboundRoute, IntakeAdapterPort, IntakeDisposition } from '../intake/index.js';
 import { constructGoverned } from '../register/index.js';
 import type { OperationAdapterPort, OperationDefinition, EffectHost, EffectSpine } from '../effects/index.js';
@@ -17,6 +18,8 @@ import type {
 const admittedInstances = new WeakSet<object>();
 const admissionContexts = new WeakMap<object, BoundaryContext>();
 const admissionCustodians = new WeakMap<object, TelegramBotApiCustodianPort>();
+const activePolls = new WeakSet<object>();
+const replyInvocations = new WeakMap<object, Set<string>>();
 const replyOperationBindings = new WeakMap<object, Array<Readonly<{
   definition: OperationDefinition; host: EffectHost; spine: EffectSpine;
 }>>>();
@@ -53,7 +56,8 @@ export const telegramParserDeclarationId = 'telegram-intake-v1';
 export const telegramFeatureDeclarationId = 'telegram-conversation-adapter';
 
 export function telegramAccount(botId: string): string {
-  return `telegram:v1:bot:${nonempty(botId, 'bot id')}`;
+  ensure(/^[1-9][0-9]*$/.test(botId), 'bot id must be the canonical positive numeric Telegram id');
+  return `telegram:v1:bot:${botId}`;
 }
 
 export function normalizeTelegramTopic(forum: boolean, messageThreadId: number | null): string {
@@ -67,22 +71,34 @@ export function normalizeTelegramTopic(forum: boolean, messageThreadId: number |
 }
 
 export function telegramConversation(botId: string, target: TelegramConversationTarget): string {
-  ensure(/^-?[0-9]+$/.test(target.chatId), 'chat id must be the authenticated numeric Telegram id');
+  ensure(/^-?[1-9][0-9]*$/.test(target.chatId),
+    'chat id must be the canonical authenticated numeric Telegram id');
   return `${telegramAccount(botId)}:chat:${target.chatId}:${normalizeTelegramTopic(target.forum, target.messageThreadId)}`;
 }
 
 function updateEvent(update: RecordValue): { event: RecordValue; kind: TelegramUpdateKind; sender: RecordValue | null } {
-  const variants = ['callback_query', 'edited_message', 'edited_channel_post', 'channel_post', 'message',
+  const supported = ['callback_query', 'edited_message', 'edited_channel_post', 'channel_post', 'message',
     'chat_join_request', 'chat_member', 'my_chat_member', 'message_reaction', 'message_reaction_count']
     .filter(key => update[key] !== undefined);
-  ensure(variants.length === 1, 'Telegram update must contain exactly one supported routed variant');
+  ensure(supported.length <= 1, 'Telegram update must contain exactly one routed variant');
+  if (supported.length === 0) {
+    const routed = Object.entries(update).filter(([key, value]) => key !== 'update_id' && value !== null
+      && typeof value === 'object' && !Array.isArray(value)
+      && (value as Readonly<Record<string, unknown>>).chat !== undefined);
+    ensure(routed.length === 1, 'unsupported Telegram update has no unambiguous authenticated chat route');
+    const event = record(routed[0]![1], `unsupported ${routed[0]![0]}`);
+    const sender = event.sender_chat !== undefined || event.from === undefined
+      ? null : record(event.from, 'unsupported sender');
+    return { event, kind: 'unsupported', sender };
+  }
   if (update.callback_query !== undefined) {
     const callback = record(update.callback_query, 'callback query');
     return { event: record(callback.message, 'callback message'), kind: 'callback', sender: record(callback.from, 'callback sender') };
   }
   if (update.edited_message !== undefined || update.edited_channel_post !== undefined) {
     const event = record(update.edited_message ?? update.edited_channel_post, 'edited message');
-    return { event, kind: 'edit', sender: update.edited_message !== undefined ? record(event.from, 'edited sender') : null };
+    return { event, kind: 'edit', sender: update.edited_message !== undefined
+      && event.sender_chat === undefined && event.from !== undefined ? record(event.from, 'edited sender') : null };
   }
   if (update.channel_post !== undefined) {
     return { event: record(update.channel_post, 'channel post'), kind: 'channel-post', sender: null };
@@ -104,8 +120,7 @@ function updateEvent(update: RecordValue): { event: RecordValue; kind: TelegramU
   throw new Error('unsupported Telegram update has no authenticated chat route; it remains unacknowledged');
 }
 
-export function extractTelegramUpdate(raw: string, declaration: TelegramBotDeclaration): TelegramExtractedUpdate {
-  ensure(bytes(raw) <= declaration.limits.maxUpdateBytes, 'Telegram update exceeds declared capture bound');
+function extractTelegramUpdateUnchecked(raw: string, declaration: TelegramBotDeclaration): TelegramExtractedUpdate {
   const update = record(JSON.parse(raw) as unknown, 'Telegram update');
   const updateId = integer(update.update_id, 'provider update_id'); ensure(updateId >= 0, 'provider update_id must be nonnegative');
   const selected = updateEvent(update);
@@ -117,10 +132,13 @@ export function extractTelegramUpdate(raw: string, declaration: TelegramBotDecla
   const messageThreadId = forum ? thread : null;
   if (!forum) ensure(thread === null, 'non-forum update carries a topic id');
   const senderChat = selected.event.sender_chat === undefined ? null : record(selected.event.sender_chat, 'sender chat');
+  const botSender = selected.sender?.is_bot === true;
   const senderId = selected.sender === null
     ? `telegram:v1:channel:${String(integer(senderChat?.id ?? chat.id, 'channel sender id'))}`
-    : `telegram:v1:user:${String(positiveInteger(selected.sender.id, 'sender id'))}`;
-  const principal = selected.sender === null
+    : botSender
+      ? `telegram:v1:bot-sender:${String(positiveInteger(selected.sender.id, 'sender id'))}`
+      : `telegram:v1:user:${String(positiveInteger(selected.sender.id, 'sender id'))}`;
+  const principal = selected.sender === null || botSender
     ? { id: senderId, kind: 'system' as const }
     : { id: senderId, kind: 'person' as const };
   const target = { chatId, forum, messageThreadId };
@@ -132,6 +150,11 @@ export function extractTelegramUpdate(raw: string, declaration: TelegramBotDecla
     eventId: String(updateId),
   };
   return freeze({ updateId, kind: selected.kind, route, conversation, target, principal });
+}
+
+export function extractTelegramUpdate(raw: string, declaration: TelegramBotDeclaration): TelegramExtractedUpdate {
+  ensure(bytes(raw) <= declaration.limits.maxUpdateBytes, 'Telegram update exceeds declared capture bound');
+  return extractTelegramUpdateUnchecked(raw, declaration);
 }
 
 function partFourPayload(raw: string, declaration: TelegramBotDeclaration): Json {
@@ -161,6 +184,11 @@ function validateDeclaration(declaration: TelegramBotDeclaration): void {
   ensure(/^[1-9][0-9]*$/.test(declaration.bot.id), 'declared bot id must be a positive numeric Telegram id');
   ensure(/^@[A-Za-z0-9_]{5,}$/.test(declaration.bot.username), 'declared bot username must use canonical @name form');
   nonempty(declaration.bot.identityEpoch, 'bot identity epoch'); nonempty(declaration.apiVersion, 'Bot API version');
+  ensure(declaration.token !== null && typeof declaration.token === 'object' && !Array.isArray(declaration.token)
+    && Object.keys(declaration.token).length === 4
+    && ['type', 'schemaVersion', 'vault', 'name'].every(key => Object.hasOwn(declaration.token, key))
+    && declaration.token.type === 'SecretRef' && declaration.token.schemaVersion === 1,
+  'Telegram token reference must be the closed owned SecretRef shape');
   nonempty(declaration.token.vault, 'vault reference'); nonempty(declaration.token.name, 'token reference name');
   ensure(![declaration.token.vault, declaration.token.name].some(value => /^[0-9]+:[A-Za-z0-9_-]{20,}$/.test(value)),
     'credential field appears to contain token bytes instead of a vault reference');
@@ -329,8 +357,25 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
       ],
       testedAt: now.value, validUntil: now.value + deps.evidence.validFor, disposition: 'passed',
     };
-    const conformanceId = `telegram-conformance:${take(canonical(conformanceSeed)).hash}`;
-    const conformance = take(deps.assembly.record('AdapterConformance', { ...conformanceSeed, id: conformanceId }));
+    const priorConformance = current.filter((row): row is typeof row & { record: AdapterConformance } => row.record.type === 'AdapterConformance'
+      && row.record.contract === contract.id && row.record.artifact === deps.evidence.artifact
+      && row.record.platform === `telegram-bot-api:${declaration.apiVersion}` && row.record.mode === mode);
+    ensure(priorConformance.length <= 1, 'Telegram conformance identity is ambiguous');
+    let conformance;
+    if (priorConformance.length === 1) {
+      const prior = priorConformance[0]!;
+      ensure(prior.taint.length === 0 && prior.conflicts.length === 0,
+        'Telegram conformance history is unavailable or contested');
+      const expected = { ...conformanceSeed, id: prior.record.id,
+        testedAt: prior.record.testedAt, validUntil: prior.record.validUntil };
+      ensure(take(canonical(expected)).bytes === take(canonical(prior.record)).bytes
+        && prior.record.disposition === 'passed' && prior.record.validUntil >= now.value,
+      'existing Telegram conformance does not match the still-fresh admission evidence');
+      conformance = prior.record;
+    } else {
+      const conformanceId = `telegram-conformance:${take(canonical(conformanceSeed)).hash}`;
+      conformance = take(deps.assembly.record('AdapterConformance', { ...conformanceSeed, id: conformanceId }));
+    }
     const admitted = freeze({ id, account: telegramAccount(declaration.bot.id), mode, declaration, probe, contract, conformance });
     admittedInstances.add(admitted);
     admissionContexts.set(admitted, deps.boundary);
@@ -400,8 +445,12 @@ function durableUpdateIds(deps: TelegramIngressDependencies): number[] {
     if (body.adapter !== telegramParserDeclarationId || typeof body.ingress !== 'string') continue;
     try {
       const route = record(JSON.parse(body.ingress) as unknown, 'receipt route');
+      const capture = body.capture as Readonly<Record<string, Json>> | undefined;
       if (typeof route.channel !== 'string' || !route.channel.startsWith(`${deps.admitted.account}:chat:`)
-        || typeof route.eventId !== 'string' || !/^[0-9]+$/.test(route.eventId)) continue;
+        || route.identityEpoch !== `telegram:v1:bot:${deps.admitted.declaration.bot.id}:epoch:${deps.admitted.declaration.bot.identityEpoch}`
+        || typeof route.eventId !== 'string' || !/^(0|[1-9][0-9]*)$/.test(route.eventId)
+        || typeof body.rawHash !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(body.rawHash)
+        || capture?.hash !== body.rawHash || typeof capture.reference !== 'string' || capture.reference.length === 0) continue;
       const id = Number(route.eventId); if (Number.isSafeInteger(id)) ids.push(id);
     } catch { /* inert non-Telegram or malformed retained receipt */ }
   }
@@ -413,7 +462,6 @@ function intakeLabel(value: IntakeDisposition): TelegramIntakeOutcome['intake'] 
 export function createTelegramIngress(deps: TelegramIngressDependencies) {
   requireAdmission(deps.admitted, deps.api);
   ensure(deps.facts && deps.intake && deps.observer.trim().length > 0, 'Telegram ingress requires the public intake and fact-read ports');
-  let busy = false;
   const currentOffset = () => {
     const ids = durableUpdateIds(deps);
     let next = deps.admitted.declaration.cursor.initialOffset;
@@ -426,7 +474,9 @@ export function createTelegramIngress(deps: TelegramIngressDependencies) {
     return next;
   };
   const deliver = (raw: string): TelegramIntakeOutcome | null => {
-    const extracted = extractTelegramUpdate(raw, deps.admitted.declaration);
+    const extracted = bytes(raw) > deps.admitted.declaration.limits.maxUpdateBytes
+      ? extractTelegramUpdateUnchecked(raw, deps.admitted.declaration)
+      : extractTelegramUpdate(raw, deps.admitted.declaration);
     const intake = deps.intake.receive(raw, extracted.route);
     const receipt = receiptFor(take(deps.facts.read()), raw, extracted.route, telegramParserDeclarationId, deps.observer);
     if (!receipt) return null;
@@ -445,7 +495,8 @@ export function createTelegramIngress(deps: TelegramIngressDependencies) {
     pollOnce(): Result<TelegramPollCycle> {
       return boundary('TelegramLongPollCycle', null, deps.boundary, () => {
         ensure(deps.admitted.mode === 'long-poll', 'polling is unavailable for an admitted webhook instance');
-        ensure(!busy, 'only one long poll may run for an admitted bot'); busy = true;
+        ensure(!activePolls.has(deps.admitted), 'only one long poll may run for an admitted bot');
+        activePolls.add(deps.admitted);
         try {
           const requestedOffset = currentOffset();
           const batch = take(deps.api.poll({ token: deps.admitted.declaration.token,
@@ -459,7 +510,6 @@ export function createTelegramIngress(deps: TelegramIngressDependencies) {
           let blockedOnUpdate: number | null = null;
           let previousUpdateId = -1;
           for (const raw of batch.updates) {
-            ensure(bytes(raw) <= deps.admitted.declaration.limits.maxUpdateBytes, 'Telegram update exceeds declared capture bound');
             const shape = record(JSON.parse(raw) as unknown, 'Telegram update');
             const updateId = integer(shape.update_id, 'provider update_id');
             ensure(updateId >= 0 && updateId >= previousUpdateId, 'provider batch update ids must be nonnegative and ordered');
@@ -471,7 +521,7 @@ export function createTelegramIngress(deps: TelegramIngressDependencies) {
           const nextOffset = currentOffset();
           return { requestedOffset, committedThrough: nextOffset === deps.admitted.declaration.cursor.initialOffset
             ? null : nextOffset - 1, nextOffset, captured, blockedOnUpdate };
-        } finally { busy = false; }
+        } finally { activePolls.delete(deps.admitted); }
       });
     },
     receiveWebhook(raw: string): Result<TelegramWebhookOutcome> {
@@ -552,6 +602,17 @@ export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAd
         ensure(messages.length === 1 && encode(messages[0]!.record) === encode(input.message)
           && input.digest === take(canonical(input.message)).hash,
         'Telegram reply message is not the exact claim-bound recorded payload');
+        const acceptance = effect('OperationObservation').filter(row => row.record.operation === input.operation
+          && row.record.request === request.id && row.record.claim === input.claim && row.record.digest === input.digest
+          && row.record.account === admitted.account && row.record.conversation === conversation
+          && row.record.stage === 'executor-accepted');
+        ensure(acceptance.length === 1, 'Telegram reply requires one durable executor-acceptance observation');
+        ensure(!effect('OperationObservation').some(row => row.record.operation === input.operation
+          && (row.record.stage === 'response' || row.record.stage === 'unknown')),
+        'Telegram reply operation already has a conclusive or uncertain invocation observation');
+        const invoked = replyInvocations.get(admitted) ?? new Set<string>();
+        ensure(!invoked.has(input.operation), 'Telegram reply claim handoff was already used');
+        invoked.add(input.operation); replyInvocations.set(admitted, invoked);
         return take(api.sendMessage({ token: admitted.declaration.token, apiVersion: admitted.declaration.apiVersion,
           chatId: boundTarget.chatId, messageThreadId: boundTarget.messageThreadId, text: input.message.text,
           parseMode: 'HTML', timeout: admitted.declaration.limits.timeout, hiddenRetries: 0 }));
