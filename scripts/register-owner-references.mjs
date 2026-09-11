@@ -8,7 +8,7 @@ export const ownerManifestPath = 'register-source/owner-references.json';
 const hash = input => value(canonical(input)).hash;
 export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five'].map(owner => `register-source/owner-references/${owner}.json`)];
 const owned = (namespace, names) => Object.fromEntries(names.map(id => [id, { module: `src/${namespace}/index.ts`, artifact: `src/${namespace}/records.ts` }]));
-const closureOwned = Object.fromEntries(['decodeExhaustionRecord', 'decodeContinuityAccounting', 'decodeUnreachableRunExit']
+const closureOwned = Object.fromEntries(['decodeExhaustionRecord', 'decodeUnreachableRunExit']
   .map(id => [id, { module: 'src/rungraph/index.ts', artifact: 'src/rungraph/closure-records.ts' }]));
 const contracts = {
   'part-five': { decoders: { ...owned('rungraph', ['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit',

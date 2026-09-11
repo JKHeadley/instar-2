@@ -6,8 +6,8 @@ export { createRunGraph } from './service.js';
 export { foldRun, runProjection, statePairs } from './graph.js';
 export { decodeRunGraphRegistration } from './registration.js';
 export type * from './closure-types.js';
-export { decodeExhaustionRecord, decodeContinuityAccounting, decodeUnreachableRunExit,
+export { decodeExhaustionRecord, decodeUnreachableRunExit,
   runClosureFactSchemas, runClosureKinds, runClosureShapes, closureRecordWire,
   closureRecordReferences } from './closure-records.js';
-export { exhaustionAdmission, continuityAdmission, unreachableExitAdmission } from './closure.js';
+export { exhaustionAdmission, unreachableExitAdmission } from './closure.js';
 export { createRunClosureGraph } from './closure-service.js';

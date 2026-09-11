@@ -23,7 +23,7 @@ export function closureGovernanceFixture(
     { provider: 'fixture', id: 'P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION' },
     { provider: 'probe', id: 'P5-NF-55' },
     ...['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit', 'decodeSessionGrounding',
-      'decodeExhaustionRecord', 'decodeContinuityAccounting', 'decodeUnreachableRunExit']
+      'decodeExhaustionRecord', 'decodeUnreachableRunExit']
       .map(id => ({ provider: 'decoder', id })),
   ] };
   const input = s.input(declarations, { extract: { ...s.extract, rows: declarations.map(d => ({

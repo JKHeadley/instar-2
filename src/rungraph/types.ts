@@ -43,7 +43,7 @@ export type CompletedRunExit = RecordValue<'RunExit'> & Readonly<{
   result: ConstitutionalReference<'Result'>; settledOperations: readonly string[];
 }>;
 /** A reference to a record admitted through Part Five's additive owner boundary. */
-export type RunOwnedRecordReference<N extends 'Run' | 'RunStep' | 'SessionGrounding' | 'ExhaustionRecord' | 'ContinuityAccounting' | 'UnreachableRunExit'> = Readonly<{
+export type RunOwnedRecordReference<N extends 'Run' | 'RunStep' | 'ExhaustionRecord' | 'UnreachableRunExit'> = Readonly<{
   owner: 'part-five';
   name: N;
   id: string;

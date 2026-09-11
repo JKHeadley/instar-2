@@ -1,18 +1,7 @@
 import { expect, it } from 'vitest';
 import type { Json } from '../../src/index.js';
 import { decodeRunTransition, recordWire } from '../../src/rungraph/index.js';
-import { appendImpossibleHistoryAccounting, impossibleHistoryContinuityFixture } from './closure-fixtures.js';
 import { closingRun, json, refused } from './fixtures.js';
-
-it('P5-SEAM-RC-R6-V37-HISTORY-UNIT refuses impossible signed history on live append and duplicate read while retaining only the missing capture as pending', () => {
-  const f = impossibleHistoryContinuityFixture();
-  refused(f.graph.recordContinuity(f.invalidAccounting, f.lease), 'conflicted or tainted authority');
-
-  // A hostile/older writer can place correctly signed bytes on the spine. The
-  // public owner boundary must re-run the same graph validation on duplicate read.
-  appendImpossibleHistoryAccounting(f);
-  refused(f.graph.recordContinuity(f.invalidAccounting, f.lease), 'conflicted or tainted authority');
-});
 
 const legacyCases = [
   ['P5-SEAM-RC-R6-V40-LEGACY-EXITTEST', 'exitTest', 'missing required field exitTest'],

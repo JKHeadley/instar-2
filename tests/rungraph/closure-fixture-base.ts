@@ -1,5 +1,5 @@
 import { consumeResult, decode, decodeMeasurement } from '../../src/index.js';
-import type { FactEnvelopeReference, Json } from '../../src/index.js';
+import type { Json } from '../../src/index.js';
 import { authorAndAppend, createFactStore, factId, signEnvelope } from '../../src/facts/index.js';
 import type { FactContext, FactEnvelope, FactSchema, SegmentStoragePort } from '../../src/facts/index.js';
 import { createRunClosureGraph, recordWire, runClosureFactSchemas, runFactSchemas, runIdFor } from '../../src/rungraph/index.js';
@@ -152,13 +152,7 @@ export function setupClosure(extra: Readonly<Record<string, FactSchema['fields']
     } }, settlement: { owner: 'part-eight', read: () => { throw new Error('test must supply settlement evidence'); } },
     control: { owner: 'part-four', verify: () => f.success(ref(opening)) },
     exitCheck: { owner: 'part-nine', verify: exit => f.success(exit.check) } };
-  const sendWitnesses = new Set<string>();
-  const closureDeps = { ...deps, continuitySend: { owner: 'part-eight' as const,
-    verify: (send: FactEnvelopeReference) => {
-      if (!sendWitnesses.has(send.id)) throw new Error('send lacks effect-owner witness');
-      return f.success(send);
-    } } };
-  const graph = value(createRunClosureGraph(closureDeps));
+  const graph = value(createRunClosureGraph(deps));
   function start(view: RunView, ground: FactEnvelope, key = 'operation:1') {
     return { type: 'RunTransition', schemaVersion: 1, id: `start:${key}`, run: id, expected: view.head,
       trigger: ref(opening), kind: 'start', from: view.state, to: 'running', responsible: owner,
@@ -184,9 +178,9 @@ export function setupClosure(extra: Readonly<Record<string, FactSchema['fields']
       at: now, blockedOn: view.blockedOn, nextWake: run.nextWake, affectedStep: view.pending[0]!.id,
       outcome: { type: 'Outcome', id: `outcome:${fact.id}`, fact: ref(fact), field: 'outcome' } } as const;
   };
-  return { ...f, ctx, c, context, wire, store, append, deps: closureDeps, graph, run, id, owner, opening,
+  return { ...f, ctx, c, context, wire, store, append, deps, graph, run, id, owner, opening,
     directive, directiveFact, grantFact,
-    lease, start, observe, generation, admissions, sendWitnesses,
+    lease, start, observe, generation, admissions,
     setClock: (next: number) => { now = value(decodeMeasurement('clock', f.clockRaw(next), types)); },
     fence: () => { liveLease = 'lease:2'; execution = { ...execution, worker: 'replacement', harness: 'h2',
       ownership: { ...lease, id: liveLease } }; },

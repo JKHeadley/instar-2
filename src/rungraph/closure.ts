@@ -1,8 +1,8 @@
 import { constructGoverned, readRegisterEntry } from '../register/index.js';
 import type { Result } from '../index.js';
 import { boundary, need, take } from './boundary.js';
-import { decodeContinuityAccounting, decodeExhaustionRecord, decodeUnreachableRunExit } from './closure-records.js';
-import type { ContinuityAccounting, ExhaustionRecord } from './closure-types.js';
+import { decodeExhaustionRecord, decodeUnreachableRunExit } from './closure-records.js';
+import type { ExhaustionRecord } from './closure-types.js';
 import type { UnreachableRunExit } from './types.js';
 import type { RunDecodeContext, RunGovernance } from './types.js';
 
@@ -28,15 +28,6 @@ export function exhaustionAdmission(input: unknown, c: RunDecodeContext, g: RunG
     take(constructGoverned('blocking sites', 'rungraph.exhaustion', g.register, g.context));
     ownerRecordGate(g, 'rungraph.exhaustion');
     return take(decodeExhaustionRecord(input, c));
-  });
-}
-
-/** Continuity is recorded through Part Five; Part Eight separately admits send. */
-export function continuityAdmission(input: unknown, c: RunDecodeContext, g: RunGovernance): Result<ContinuityAccounting> {
-  return boundary('GovernedContinuityAdmission', null, c, () => {
-    take(constructGoverned('blocking sites', 'rungraph.continuity', g.register, g.context));
-    ownerRecordGate(g, 'rungraph.continuity');
-    return take(decodeContinuityAccounting(input, c));
   });
 }
 

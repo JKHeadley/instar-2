@@ -1,18 +1,16 @@
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { canonical, decode } from '../../src/index.js';
-import { closureRecordWire, decodeContinuityAccounting, decodeExhaustionRecord, decodeRun, decodeRunBudget,
+import { closureRecordWire, decodeExhaustionRecord, decodeRun, decodeRunBudget,
   decodeRunExit, decodeRunStep, decodeRunTransition, decodeSessionGrounding, decodeUnreachableRunExit,
   recordFromWire, recordWire, runClosureFactSchemas } from '../../src/rungraph/index.js';
-import { attemptedAvenue, avenueSetDecision, continuityFixture, exhaustionFixture } from './closure-fixtures.js';
+import { attemptedAvenue, avenueSetDecision, exhaustionFixture } from './closure-fixtures.js';
 import { closingRun, json, ref, refused, setup, value } from './fixtures.js';
 
-it('P5-SEAM-RC-A-F1-DECODERS P5-SEAM-RC-A-F7-CANCELLED-REFUSAL P5-NF-02 P5-NF-17 P5-NF-23 P5-NF-46 all new owner decoders are closed, versioned, and arm-exact', () => {
+it('P5-SEAM-RC-A-F1-DECODERS P5-SEAM-RC-A-F7-CANCELLED-REFUSAL P5-NF-02 P5-NF-17 P5-NF-23 all new owner decoders are closed, versioned, and arm-exact', () => {
   const unreachable = exhaustionFixture();
-  const continuity = continuityFixture();
   expect(value(decodeExhaustionRecord(unreachable.exhaustion, unreachable.context())).id).toBe('exhaustion:1');
   expect(value(decodeUnreachableRunExit(unreachable.exit, unreachable.context())).phase).toBe('proposal');
-  expect(value(decodeContinuityAccounting(continuity.accounting, continuity.context())).id).toBe('continuity:1');
   const ground = value(unreachable.graph.ground(unreachable.id, 'w', 'h', 'start', unreachable.lease));
   const running = value(unreachable.graph.transition(unreachable.start(unreachable.ready, ground)));
   const stepFact = value(unreachable.store.read()).at(-1)!, didNotHappen = attemptedAvenue(unreachable, running);
@@ -32,22 +30,18 @@ it('P5-SEAM-RC-A-F1-DECODERS P5-SEAM-RC-A-F7-CANCELLED-REFUSAL P5-NF-02 P5-NF-17
     avenues: [{ id: 'avenue:inapplicable', disposition: 'inapplicable', evidence: [ref(inapplicableFact)],
       decision: inapplicableReference }] } as const;
   expect(value(decodeExhaustionRecord(inapplicable, unreachable.context())).avenues[0]!.disposition).toBe('inapplicable');
-  const superseded = { ...continuity.accounting, id: 'continuity:superseded', disposition: { kind: 'superseded', input: ref(continuity.opening),
-    directive: { type: 'Directive', id: 'missing-directive', fact: ref(continuity.opening), field: 'intent' } } } as const;
-  refused(decodeContinuityAccounting(superseded, continuity.context()), 'superseding input is not a later admitted inbound');
   refused(decodeUnreachableRunExit({ ...unreachable.exit, result: unreachable.exit.standing }, unreachable.context()), 'unknown closure field');
   const completed = closingRun();
   const cancelledClaim = { ...completed.terminalExit, kind: 'cancelled' } as const;
   refused(decodeRunExit(cancelledClaim, completed.context()), 'unreachable/cancelled exit');
   refused(decodeExhaustionRecord({ ...unreachable.exhaustion, schemaVersion: 2 }, unreachable.context()), 'version');
-  refused(decodeContinuityAccounting({ ...continuity.accounting, secret: 'hidden' }, continuity.context()), 'unknown closure field');
 });
 
-it('P5-SEAM-RC-A-F2-OWNER-BOUNDARIES P5-NF-23 P5-NF-46 the two records are admitted only through registered public Part Five owner boundaries', () => {
+it('P5-SEAM-RC-A-F2-OWNER-BOUNDARIES P5-NF-23 the A-prime records are admitted only through registered public Part Five owner boundaries', () => {
   const e = exhaustionFixture();
   const registration = value(runClosureFactSchemas(e.context()));
-  expect(registration.registrations.map(row => row.name)).toEqual(expect.arrayContaining(['ExhaustionRecord', 'ContinuityAccounting']));
-  expect(registration.schemas.map(row => row.kind)).toEqual(expect.arrayContaining(['run-exhaustion', 'continuity-accounting']));
+  expect(registration.registrations.map(row => row.name)).toEqual(expect.arrayContaining(['ExhaustionRecord', 'UnreachableRunExit']));
+  expect(registration.schemas.map(row => row.kind)).toEqual(expect.arrayContaining(['run-exhaustion', 'run-unreachable-exit']));
   expect(e.admissions.has(e.exhaustionFact.id)).toBe(true);
 
   const bypass = { ...e.exhaustion, id: 'exhaustion:bypass' };
@@ -55,18 +49,6 @@ it('P5-SEAM-RC-A-F2-OWNER-BOUNDARIES P5-NF-23 P5-NF-46 the two records are admit
   expect(e.admissions.has(bypassFact.id)).toBe(false);
   const exit = { ...e.exit, id: 'exit:bypass', exhaustion: { ...e.exit.exhaustion, id: bypass.id, fact: ref(bypassFact) } };
   refused(e.graph.recordUnreachableExit({ ...exit, id: 'propose:bypass' }, e.lease), 'not admitted by six');
-
-  const c = continuityFixture();
-  const admitted = value(c.graph.recordContinuity(c.accounting, c.lease));
-  expect(admitted.kind).toBe('continuity-accounting');
-  expect(c.admissions.has(admitted.id)).toBe(true);
-  expect(value(c.graph.recordContinuity(c.accounting, c.lease))).toEqual(admitted);
-  const changedDisclosure = c.append('continuity-disclosure', json({ run: c.id, grounding: c.groundingFact.id, inbound: c.opening.id,
-    operation: c.accounting.firstReply.operation, digest: c.accounting.firstReply.digest }), [c.replyProposal.id]).fact;
-  const changedWork = c.append('continuity-addressed-work', json({ run: c.id, inbound: c.opening.id,
-    operation: c.accounting.firstReply.operation, digest: c.accounting.firstReply.digest, status: 'durable' }), [changedDisclosure.id]).fact;
-  const changed = { ...c.accounting, disclosure: ref(changedDisclosure), disposition: { kind: 'addressed', work: ref(changedWork) } } as const;
-  refused(c.graph.recordContinuity(changed, c.lease));
 });
 
 it.each(['queue-full', 'quota-wall', 'safety-ceiling', 'open-breaker', 'elapsed-clock', 'capacity-applied-result'])
@@ -119,22 +101,9 @@ it('P5-NF-02 every pre-existing Part Five value preserves its canonical bytes an
   expect(running.state).toBe('running');
 });
 
-it('P5-NF-46 unavailable pre-pause capture cannot be represented as addressed continuity', () => {
-  const f = continuityFixture();
-  refused(decodeContinuityAccounting({ ...f.accounting,
-    prePauseCapture: { ...f.accounting.prePauseCapture, status: 'unavailable' } }, f.context()), 'called unavailable');
-  const context = f.context(), existing = context.facts.captures['message:1']!;
-  const unavailable = { ...context, facts: { ...context.facts, captures: { ...context.facts.captures,
-    'message:1': { ...existing, bytes: null, status: 'missing' as const } } } };
-  const pending = { ...f.accounting, prePauseCapture: { ...f.accounting.prePauseCapture, status: 'unavailable' },
-    disposition: { kind: 'pending', work: ref(f.opening), reason: 'capture unavailable; repair remains open' } } as const;
-  expect(value(decodeContinuityAccounting(pending, unavailable)).disposition.kind).toBe('pending');
-  refused(decodeContinuityAccounting({ ...pending, disposition: f.accounting.disposition }, unavailable), 'must remain pending');
-});
-
-it('P5-NF-02 P5-NF-17 P5-NF-23 P5-NF-46 compile contract is part of the executable Part Five map', () => {
+it('P5-NF-02 P5-NF-17 P5-NF-23 compile contract is part of the executable Part Five map', () => {
   const source = readFileSync('tests/rungraph/contracts.compile.ts', 'utf8');
-  for (const name of ['CompletedRunExit', 'UnreachableRunExit', 'ExhaustionRecord', 'ContinuityAccounting'])
+  for (const name of ['CompletedRunExit', 'UnreachableRunExit', 'ExhaustionRecord'])
     expect(source).toContain(name);
-  expect(source.match(/@ts-expect-error/g)).toHaveLength(5);
+  expect(source.match(/@ts-expect-error/g)).toHaveLength(4);
 });

@@ -1,7 +1,6 @@
 import { decode } from '../../src/index.js';
 import type { FactEnvelopeReference, Json } from '../../src/index.js';
-import { closureRecordWire, createRunClosureGraph, createRunGraph, recordFromWire,
-  recordWire } from '../../src/rungraph/index.js';
+import { createRunClosureGraph, createRunGraph } from '../../src/rungraph/index.js';
 import type { RunView } from '../../src/rungraph/index.js';
 import { factId, signEnvelope } from '../../src/facts/index.js';
 import type { FactSchema, SegmentStoragePort } from '../../src/facts/index.js';
@@ -12,28 +11,19 @@ import { setupClosure } from './closure-fixture-base.js';
 
 const text = { kind: 'text', maxLength: 65_536 } as const;
 const semanticFields: Readonly<Record<string, FactSchema['fields']>> = {
-  'later-inbound': { capture: { kind: 'capture' } },
   'decision-record': { decision: { kind: 'constitutional', type: 'Decision' } },
   'grant-record': { grant: { kind: 'constitutional', type: 'StandingGrant' } },
-  'directive-record': { directive: { kind: 'constitutional', type: 'Directive' } },
   'run-exit-evaluation': { run: text, check: text, version: text, subject: text, acceptance: text, clauses: text, status: text },
   'run-capability-read': { run: text, subject: text, capability: text, status: text },
   'run-owned-identity-read': { run: text, principal: text, status: text },
   'run-dependency-observation': { run: text, blocker: text, status: text },
   'run-standing-constraint': { run: text, avenue: text, status: text },
   'run-observation-obligation': { run: text, blocker: text, due: text, owner: text },
-  'continuity-reply-proposal': { run: text, expected: text, grounding: text, inbound: text, operation: text, digest: text, status: text, permission: text },
-  'continuity-disclosure': { run: text, grounding: text, inbound: text, operation: text, digest: text },
-  'continuity-addressed-work': { run: text, inbound: text, operation: text, digest: text, status: text },
-  'continuity-pending-work': { run: text, inbound: text, status: text },
-  'continuity-superseding-input': { prior: text },
-  'continuity-first-reply-send': { run: text, accounting: text, operation: text, digest: text, disclosure: text,
-    dispositionKind: text, disposition: text, status: text },
   'run-pressure-event': { run: text, budget: text, basis: text, status: text },
 };
 
-function closureSetup(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort, withDirective = false) {
-  const f = setupClosure(semanticFields, storageFactory, withDirective);
+function closureSetup(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort) {
+  const f = setupClosure(semanticFields, storageFactory);
   const replicate = (kind: string, body: Json, required: readonly string[] = [],
     author: Readonly<{ principal: unknown; provenance: unknown }> = { principal: f.bob, provenance: f.bob.provenance }) => {
     const persisted = value(f.store.read()), previous = persisted.filter(row => row.machine === 'machine-a').at(-1)!;
@@ -43,15 +33,10 @@ function closureSetup(storageFactory?: (fallback: SegmentStoragePort) => Segment
       prevInSegment: previous.contentHash, predecessors: { inSegment: previous.id, frontier: {}, required }, body }, privateKey);
     return value(f.store.append(input, { peer: 'machine-a' }));
   };
-  const sendWitnesses = new Set<string>();
   const deps = { ...f.deps, governance: closureGovernanceFixture(f.c),
     control: { owner: 'part-four' as const, verify: () => f.success(ref(f.opening)) },
-    continuitySend: { owner: 'part-eight' as const, verify: (send: FactEnvelopeReference) => {
-      if (!sendWitnesses.has(send.id)) throw new Error('send lacks effect-owner witness');
-      return f.success(send);
-    } },
   };
-  return { ...f, deps, graph: value(createRunClosureGraph(deps)), replicate, sendWitnesses };
+  return { ...f, deps, graph: value(createRunClosureGraph(deps)), replicate };
 }
 
 type Fixture = ReturnType<typeof closureSetup>;
@@ -163,175 +148,6 @@ export function appendLegacyCompletion(f: ReturnType<typeof exhaustionFixture>) 
     exit: { ...exit, id: 'review18:completed-terminal', expected: proposal.id } } as const;
   value(legacy.transition(close));
   return { legacy, ready, checkFact, resultFact, proposal, close };
-}
-
-export function continuityFixture(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort) {
-  const base = closureSetup(storageFactory);
-  const deps = base.deps;
-  const graph = value(createRunClosureGraph(deps)), f = { ...base, deps, graph }, ready = value(graph.open(f.run));
-  const groundingFact = value(graph.ground(f.id, 'w', 'h', 'resume', f.lease));
-  const grounding = value(f.store.read()).find(fact => fact.id === groundingFact.id)!;
-  const capture = f.ctx.captures['message:1']!;
-  const firstReply = { operation: 'reply:1', digest: f.artifact } as const;
-  const replyProposal = f.append('continuity-reply-proposal', json({ run: f.id, expected: ready.head, grounding: groundingFact.id,
-    inbound: f.opening.id, operation: firstReply.operation, digest: firstReply.digest, status: 'proposed', permission: 'none' })).fact;
-  const disclosure = f.append('continuity-disclosure', json({ run: f.id, grounding: groundingFact.id, inbound: f.opening.id,
-    operation: firstReply.operation, digest: firstReply.digest }), [replyProposal.id]).fact;
-  const addressedResult = value(decode('Result', { type: 'Result', schemaVersion: 1, kind: 'Success',
-    value: 'durable answer for the pre-pause inbound', capacity: { kind: 'none' } }, f.ctx.decode));
-  const addressedResultFact = f.append('result-record', json({ result: addressedResult }), [disclosure.id]).fact;
-  const addressedResultReference = { type: 'Result' as const, id: 'result:continuity:1',
-    fact: ref(addressedResultFact), field: 'result' as const };
-  const addressedWork = f.append('continuity-addressed-work', json({ run: f.id, inbound: f.opening.id,
-    operation: firstReply.operation, digest: firstReply.digest, status: 'durable' }),
-  [disclosure.id, addressedResultFact.id]).fact;
-  const accounting = {
-    type: 'ContinuityAccounting', schemaVersion: 1, id: 'continuity:1', run: f.id, expected: ready.head,
-    grounding: { owner: 'part-five', name: 'SessionGrounding', id: 'ground:1', fact: ref(groundingFact) },
-    prePauseInbound: ref(f.opening), prePauseCapture: { reference: 'message:1', hash: capture.hash, status: 'available' },
-    firstReply, disclosure: ref(disclosure), disposition: { kind: 'addressed', work: ref(addressedWork),
-      result: addressedResultReference },
-  } as const;
-  return { ...f, ready, grounding, groundingFact, replyProposal, disclosure, addressedResult,
-    addressedResultFact, addressedResultReference, addressedWork, accounting };
-}
-
-export type AlteredGroundingMode = 'coverage' | 'binding' | 'pending' | 'receipt' | 'policy' | 'valid';
-
-/** A signed and owner-witnessed grounding copy whose selected semantic field can
- * disagree with the actual run history. Continuity consumers must resolve and
- * validate the referenced record, not trust its signature or witness alone. */
-export function alteredGroundingContinuityFixture(mode: AlteredGroundingMode,
-  storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort) {
-  const f = continuityFixture(storageFactory);
-  const original = recordFromWire((f.groundingFact.body as { record: Json }).record) as Record<string, Json>;
-  const grounding: Record<string, Json> = { ...original, id: 'review19:grounding' };
-  if (mode === 'coverage') grounding.messages = [];
-  if (mode === 'binding') grounding.binding = { ...(grounding.binding as Record<string, Json>),
-    id: 'another-conversation' };
-  if (mode === 'pending') grounding.pendingOperations = ['invented-operation'];
-  if (mode === 'receipt') grounding.consumption = ref(f.opening);
-  if (mode === 'policy') grounding.threshold = 1;
-  const groundingFact = f.append('session-grounding', json({ run: f.id,
-    record: recordWire(grounding as never) })).fact;
-  f.admissions.add(groundingFact.id);
-  const firstReply = { operation: 'review19:reply', digest: digest('review19:reply') };
-  const proposal = f.append('continuity-reply-proposal', json({ run: f.id, expected: f.ready.head,
-    grounding: groundingFact.id, inbound: f.opening.id, ...firstReply,
-    status: 'proposed', permission: 'none' })).fact;
-  const disclosure = f.append('continuity-disclosure', json({ run: f.id, grounding: groundingFact.id,
-    inbound: f.opening.id, ...firstReply }), [proposal.id]).fact;
-  const accounting = { ...f.accounting, id: 'review19:continuity',
-    grounding: { ...f.accounting.grounding, id: String(grounding.id), fact: ref(groundingFact) },
-    firstReply, disclosure: ref(disclosure), disposition: { kind: 'pending' as const,
-      work: ref(f.opening), reason: 'original inbound remains pending' } };
-  return { ...f, alteredGrounding: grounding, alteredGroundingFact: groundingFact,
-    alteredProposal: proposal, alteredDisclosure: disclosure, alteredAccounting: accounting };
-}
-
-export function continuityDirectiveFixture() {
-  const base = closureSetup(undefined, true);
-  const graph = value(createRunClosureGraph(base.deps));
-  const f = { ...base, graph };
-  const ready = value(graph.open(f.run));
-  const groundingFact = value(graph.ground(f.id, 'w', 'h', 'resume', f.lease));
-  const grounding = value(f.store.read()).find(fact => fact.id === groundingFact.id)!;
-  const capture = f.ctx.captures['message:1']!;
-  const firstReply = { operation: 'reply:directive', digest: digest('reply:directive') } as const;
-  const replyProposal = f.append('continuity-reply-proposal', json({ run: f.id, expected: ready.head,
-    grounding: groundingFact.id, inbound: f.opening.id, operation: firstReply.operation,
-    digest: firstReply.digest, status: 'proposed', permission: 'none' })).fact;
-  const disclosure = f.append('continuity-disclosure', json({ run: f.id, grounding: groundingFact.id,
-    inbound: f.opening.id, operation: firstReply.operation, digest: firstReply.digest }), [replyProposal.id]).fact;
-  const accounting = {
-    type: 'ContinuityAccounting', schemaVersion: 1, id: 'continuity:directive', run: f.id, expected: ready.head,
-    grounding: { owner: 'part-five', name: 'SessionGrounding', id: 'ground:1', fact: ref(groundingFact) },
-    prePauseInbound: ref(f.opening), prePauseCapture: { reference: 'message:1', hash: capture.hash, status: 'available' },
-    firstReply, disclosure: ref(disclosure), disposition: { kind: 'pending' as const, work: ref(f.opening),
-      reason: 'supersession not yet admitted' },
-  } as const;
-  return { ...f, ready, grounding, groundingFact, replyProposal, disclosure, accounting };
-}
-
-/** A correctly signed and six-witnessed, but semantically impossible, predecessor.
- * The missing capture is the only uncertainty continuity may retain as pending. */
-export function impossibleHistoryContinuityFixture(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort) {
-  const f = continuityFixture(storageFactory);
-  const invalidTransition = { type: 'RunTransition', schemaVersion: 1, id: 'repair6:invalid-transition',
-    run: f.id, expected: f.ready.head, trigger: ref(f.opening), kind: 'stop', from: 'completed', to: 'halted',
-    responsible: f.owner, standing: ref(f.opening), ownership: f.lease, generation: f.run.generation, at: f.now,
-    blockedOn: { kind: 'stop', reference: 'repair6:invalid-transition', owner: f.owner,
-      nextObservation: f.clock(1000) }, nextWake: f.run.nextWake } as const;
-  const transitionFact = f.append('run-transition', json({ run: f.id, record: recordWire(invalidTransition as never) })).fact;
-  f.admissions.add(transitionFact.id);
-  const originalGrounding = recordFromWire((f.groundingFact.body as { record: Json }).record) as Readonly<Record<string, Json>>;
-  const grounding = { ...originalGrounding, id: 'repair6:grounding', expected: invalidTransition.id };
-  const groundingFact = f.append('session-grounding', json({ run: f.id, record: recordWire(grounding as never) })).fact;
-  f.admissions.add(groundingFact.id);
-  const firstReply = { operation: 'repair6:first-reply', digest: digest('repair6:first-reply') };
-  const proposal = f.append('continuity-reply-proposal', json({ run: f.id, expected: invalidTransition.id,
-    grounding: groundingFact.id, inbound: f.opening.id, ...firstReply, status: 'proposed', permission: 'none' })).fact;
-  const disclosure = f.append('continuity-disclosure', json({ run: f.id, grounding: groundingFact.id,
-    inbound: f.opening.id, ...firstReply }), [proposal.id]).fact;
-  const accounting = { ...f.accounting, id: 'repair6:accounting', expected: invalidTransition.id,
-    grounding: { ...f.accounting.grounding, id: String(grounding.id), fact: ref(groundingFact) },
-    prePauseCapture: { ...f.accounting.prePauseCapture, status: 'unavailable' as const }, firstReply,
-    disclosure: ref(disclosure), disposition: { kind: 'pending' as const, work: ref(f.opening),
-      reason: 'capture unavailable; original work remains open' } };
-  Object.assign(f.ctx.captures['message:1']!, { status: 'missing', bytes: null });
-  return { ...f, invalidTransition, transitionFact, grounding, invalidGroundingFact: groundingFact,
-    invalidProposal: proposal, invalidDisclosure: disclosure, invalidAccounting: accounting };
-}
-
-export function appendImpossibleHistoryAccounting(f: ReturnType<typeof impossibleHistoryContinuityFixture>) {
-  const accountingFact = f.append('continuity-accounting', json({ run: f.id,
-    record: closureRecordWire(f.invalidAccounting as never) }), [f.transitionFact.id, f.invalidGroundingFact.id,
-    f.invalidDisclosure.id, f.opening.id]).fact;
-  f.admissions.add(accountingFact.id);
-  const send = f.append('continuity-first-reply-send', json({ run: f.id, accounting: accountingFact.id,
-    operation: f.invalidAccounting.firstReply.operation, digest: f.invalidAccounting.firstReply.digest,
-    disclosure: f.invalidDisclosure.id, dispositionKind: 'pending', disposition: f.opening.id, status: 'admitted' }),
-  [accountingFact.id, f.invalidDisclosure.id, f.opening.id]).fact;
-  f.sendWitnesses.add(send.id);
-  const reference = { owner: 'part-five' as const, name: 'ContinuityAccounting' as const,
-    id: f.invalidAccounting.id, fact: ref(accountingFact) };
-  return { accountingFact, send, reference };
-}
-
-export function continuityWithLaterInbound(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort,
-  duplicatePrior = false) {
-  const f = continuityFixture(storageFactory);
-  (f.c.stimulusKinds as string[]).push('later-inbound');
-  let priorGroundingCopy: ReturnType<typeof f.append>['fact'] | undefined;
-  if (duplicatePrior) {
-    priorGroundingCopy = f.append('session-grounding', json({ run: f.id,
-      record: (f.grounding.body as { record: Json }).record })).fact;
-    f.admissions.add(priorGroundingCopy.id);
-  }
-  const later = f.append('later-inbound', json({ capture: (f.opening.body as Readonly<Record<string, Json>>).capture })).fact;
-  const prior = recordFromWire((f.grounding.body as { record: Json }).record) as Readonly<Record<string, Json>>;
-  const messages = [...prior.messages as Json[], { fact: ref(later), sequence: later.segment.position,
-    capture: 'message:1', hash: f.accounting.prePauseCapture.hash }];
-  const consumption = f.append('consumption', json({ worker: 'w', harness: 'h',
-    hashes: JSON.stringify(messages.map(message => (message as { hash: string }).hash)),
-    classes: JSON.stringify(prior.briefingClasses) })).fact;
-  const groundingInput = { ...prior, id: 'ground:after-later-inbound', lastInbound: ref(later), messages,
-    frontier: { 'machine-a': { epoch: 0, position: consumption.segment.position } }, consumption: ref(consumption) };
-  const graph = value(createRunClosureGraph({ ...f.deps, grounding: { owner: 'part-ten', read: () => f.success(groundingInput) } }));
-  const groundingFact = value(graph.ground(f.id, 'w', 'h', 'resume', f.lease));
-  const firstReply = { operation: 'reply:after-later-inbound', digest: digest('first reply after pause') };
-  const proposal = f.append('continuity-reply-proposal', json({ run: f.id, expected: f.ready.head,
-    grounding: groundingFact.id, inbound: f.opening.id, ...firstReply, status: 'proposed', permission: 'none' })).fact;
-  const disclosure = f.append('continuity-disclosure', json({ run: f.id, grounding: groundingFact.id,
-    inbound: f.opening.id, ...firstReply }), [proposal.id]).fact;
-  const work = f.append('continuity-addressed-work', json({ run: f.id, inbound: f.opening.id,
-    ...firstReply, status: 'durable' }), [disclosure.id, f.addressedResultFact.id]).fact;
-  const accounting = { ...f.accounting, id: 'continuity:after-later-inbound',
-    grounding: { ...f.accounting.grounding, id: String(groundingInput.id), fact: ref(groundingFact) },
-    firstReply, disclosure: ref(disclosure), disposition: { kind: 'addressed' as const, work: ref(work),
-      result: f.addressedResultReference } };
-  return { ...f, graph, later, groundingInput, currentGroundingFact: groundingFact, proposal, currentDisclosure: disclosure,
-    work, currentAccounting: accounting, priorGroundingCopy };
 }
 
 export function completedFixture(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort) {

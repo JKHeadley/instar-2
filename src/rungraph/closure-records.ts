@@ -5,20 +5,17 @@ import type {
   Clock, Evidence, FactEnvelopeReference, HistoricalRead, Inventory, Json, Outcome, Result, Scope,
 } from '../index.js';
 import {
-  causalCone, causalStanding, decodeHistoricalBody, hashBytes, registerOwnedBody,
+  causalCone, causalStanding, decodeHistoricalBody, registerOwnedBody,
 } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import { boundary, encoded, freeze, json, need, object, same, take } from './boundary.js';
 import {
-  constitutional, decodeSessionGrounding, factReference, recordFromWire, recordWire, runKinds,
+  constitutional, factReference, recordFromWire, recordWire, runKinds,
 } from './records.js';
 import type {
-  ConstitutionalReference, RunDecodeContext, RunOwnedRecordReference, RunStep, SessionGrounding,
-  UnreachableRunExit,
+  ConstitutionalReference, RunDecodeContext, RunStep, UnreachableRunExit,
 } from './types.js';
-import type {
-  ContinuityAccounting, ExhaustionRecord, RunClosureRecord,
-} from './closure-types.js';
+import type { ExhaustionRecord, RunClosureRecord } from './closure-types.js';
 
 const text: OwnedShape = { kind: 'text', maxLength: 1024 };
 const integer: OwnedShape = { kind: 'integer' };
@@ -39,11 +36,6 @@ const exhaustionShape = shape({ ...base, run: text, expected: text, blocker: ref
   grants: list(constitutionalRef), capabilityReads: list(ref), identityReads: list(ref), goal: text,
   avenues: list(avenue), avenueSetDecisions: list(constitutionalRef), resources: list(measurement),
   dependencies: list(ref), outsideAction, conclusion: constitutionalRef, reason: constitutionalRef, recheck });
-const continuityShape = shape({ ...base, run: text, expected: text, grounding: ownedRef, prePauseInbound: ref,
-  prePauseCapture: shape({ reference: text, hash: text, status: text }),
-  firstReply: shape({ operation: text, digest: text }), disclosure: ref,
-  disposition: shape({ kind: text, work: ref, result: constitutionalRef, input: ref, directive: constitutionalRef,
-    reason: text }, ['work', 'result', 'input', 'directive', 'reason']) });
 const unreachableShape = shape({ ...base, run: text, expected: text, proposer: constitutionalRef, standing: ref, kind: text,
   frontier: { kind: 'text', maxLength: 65536 }, at: clock, phase: text, proposal: ownedRef,
   exhaustion: ownedRef, unsatisfiedClauses: list(text), externalDependency: outsideAction, recheck,
@@ -51,13 +43,11 @@ const unreachableShape = shape({ ...base, run: text, expected: text, proposer: c
 
 export const runClosureShapes: Readonly<Record<string, OwnedShape>> = freeze({
   ExhaustionRecord: exhaustionShape,
-  ContinuityAccounting: continuityShape,
   UnreachableRunExit: unreachableShape,
 });
 
 export const runClosureKinds = freeze({
   ExhaustionRecord: 'run-exhaustion',
-  ContinuityAccounting: 'continuity-accounting',
   UnreachableRunExit: 'run-unreachable-exit',
 } as const);
 
@@ -147,15 +137,12 @@ function runOpening(run: string, context: RunDecodeContext): { fact: FactEnvelop
   return { fact, record };
 }
 
-function ownedRecord(value: Json, name: 'RunStep' | 'SessionGrounding' | 'ExhaustionRecord'
-  | 'ContinuityAccounting' | 'UnreachableRunExit',
+function ownedRecord(value: Json, name: 'RunStep' | 'ExhaustionRecord' | 'UnreachableRunExit',
   context: RunDecodeContext): { fact: FactEnvelope; record: Record<string, Json> } {
   const candidate = object(value);
   need(candidate.owner === 'part-five' && candidate.name === name && typeof candidate.id === 'string',
     `${name} reference owner/name/id required`);
-  const kind = name === 'RunStep' ? runKinds.RunTransition
-    : name === 'SessionGrounding' ? runKinds.SessionGrounding
-      : runClosureKinds[name as keyof typeof runClosureKinds];
+  const kind = name === 'RunStep' ? runKinds.RunTransition : runClosureKinds[name];
   const fact = factReference(candidate.fact!, context);
   need(fact.kind === kind, `${name} reference fact kind differs`);
   const decoded = object(recordFromWire(object(fact.body).record!));
@@ -182,25 +169,6 @@ function validateRecheck(value: Json, from: Clock, context: RunDecodeContext, ru
   need(obligation.body.run === run && obligation.body.blocker === blocker
     && obligation.body.due === encoded(candidate.at).hash && obligation.body.owner === object(candidate.owner).id,
   'recheck obligation does not bind this run, blocker, owner, and due clock');
-}
-
-function captureBindingFact(fact: FactEnvelope, context: RunDecodeContext): FactEnvelope {
-  const schema = context.facts.schemas.find(candidate => candidate.kind === fact.kind && candidate.version === fact.schemaVersion);
-  need(schema, 'continuity capture not bound to the signed message capture field');
-  if (Object.values(schema.fields).some(policy => policy.kind === 'capture')) return fact;
-  const bearers = Object.entries(schema.fields).filter(([, policy]) => policy.kind === 'reference').map(([field]) => {
-    const id = object(fact.body)[field];
-    const ancestor = typeof id === 'string' ? context.facts.facts.find(candidate => candidate.id === id) : undefined;
-    const ancestorSchema = ancestor && context.facts.schemas.find(candidate => candidate.kind === ancestor.kind
-      && candidate.version === ancestor.schemaVersion);
-    need(ancestor && ancestorSchema, 'continuity capture ancestor missing or unverified');
-    return { ancestor, captureBearing: Object.values(ancestorSchema.fields).some(policy => policy.kind === 'capture') };
-  }).filter(candidate => candidate.captureBearing);
-  need(bearers.length === 1, 'continuity capture ancestor missing, ambiguous, or unverified');
-  const selected = bearers[0]!;
-  need(causalCone(fact, context.facts.facts).some(ancestor => ancestor.id === selected.ancestor.id),
-    'continuity capture ancestor missing or unverified');
-  return selected.ancestor;
 }
 
 function historicalEvidence(id: string, context: RunDecodeContext): HistoricalRead<Evidence> {
@@ -366,141 +334,6 @@ function validateExhaustion(input: Json, context: RunDecodeContext): ExhaustionR
   return freeze(value) as unknown as ExhaustionRecord;
 }
 
-function validatePendingContinuityWork(referenceValue: Json, run: string, inbound: FactEnvelope,
-  context: RunDecodeContext): void {
-  const submitted = factReference(referenceValue, context);
-  const matching = context.facts.facts.filter(fact => fact.kind === 'continuity-pending-work').filter(fact => {
-    const body = object(fact.body);
-    return body.run === run && body.inbound === inbound.id;
-  });
-  const current = matching.filter(candidate => !matching.some(other => other.id !== candidate.id
-    && causalCone(other, context.facts.facts).some(ancestor => ancestor.id === candidate.id)));
-  need(current.length <= 1, 'pending continuity work is conflicted for this run and inbound');
-  if (!current.length) {
-    need(submitted.id === inbound.id, 'pending continuity work does not retain the pre-pause inbound obligation');
-    return;
-  }
-  const observed = current[0]!;
-  const body = object(observed.body);
-  const ownerReference = runOpening(run, context).record.owner as unknown as ConstitutionalReference<'VerifiedPrincipal'>;
-  const owner = constitutional(ownerReference, 'VerifiedPrincipal', context).view;
-  need(body.status === 'open' && observed.principal.id === owner.id
-    && same(observed.principal.provenance, owner.provenance),
-  'pending continuity work is closed or has no accountable owner');
-  need(submitted.kind === 'continuity-pending-work' && submitted.id === observed.id,
-    'pending continuity work reference is stale or differs from the current inventory');
-}
-
-function validateContinuity(input: Json, context: RunDecodeContext): ContinuityAccounting {
-  const value = object(input);
-  need(value.type === 'ContinuityAccounting' && value.schemaVersion === 1, 'type or schema version unknown');
-  const groundingReference = ownedRecord(value.grounding!, 'SessionGrounding', context);
-  const grounding = take(decodeSessionGrounding(recordFromWire(object(groundingReference.fact.body).record!), context));
-  need(grounding.reason === 'resume', 'continuity requires post-compaction resume grounding');
-  need(grounding.run === value.run && grounding.expected === value.expected,
-    'continuity grounding belongs to another run or head');
-  const inbound = factReference(value.prePauseInbound!, context);
-  need(context.stimulusKinds.includes(inbound.kind), 'continuity pre-pause inbound is not an admitted stimulus');
-  if (grounding.lastInbound.id !== inbound.id) {
-    const witnesses = context.facts.facts.filter(fact => fact.kind === runKinds.SessionGrounding
-      && fact.id !== groundingReference.fact.id
-      && causalCone(groundingReference.fact, context.facts.facts).some(ancestor => ancestor.id === fact.id))
-      .map(fact => ({ fact, record: take(decodeSessionGrounding(recordFromWire(object(fact.body).record!), context)) }))
-      .filter(row => row.record.run === value.run && row.record.expected === value.expected
-        && row.record.reason === 'resume' && row.record.lastInbound.id === inbound.id);
-    const distinct = new Map(witnesses.map(row => [encoded(row.record).bytes, row]));
-    need(distinct.size === 1, 'continuity pre-pause inbound lacks a unique signed resume grounding witness');
-  }
-  const capture = object(value.prePauseCapture);
-  const stored = context.facts.captures[String(capture.reference)];
-  need(/^sha256:[a-f0-9]{64}$/.test(String(capture.hash))
-    && ['available', 'unavailable'].includes(String(capture.status)), 'continuity capture status or hash invalid');
-  const carrier = captureBindingFact(inbound, context);
-  const schema = context.facts.schemas.find(candidate => candidate.kind === carrier.kind
-    && candidate.version === carrier.schemaVersion);
-  need(schema && Object.entries(schema.fields).some(([field, policy]) => policy.kind === 'capture'
-    && same(object(carrier.body)[field], { reference: capture.reference, hash: capture.hash })),
-  'continuity capture is not bound to the pre-pause inbound');
-  if (capture.status === 'available')
-    need(stored?.status === 'available' && stored.bytes !== null && stored.hash === capture.hash
-      && hashBytes(stored.bytes) === capture.hash, 'continuity capture is not available');
-  else need(!stored || stored.status !== 'available', 'available pre-pause capture cannot be called unavailable');
-  const reply = object(value.firstReply);
-  need(/^sha256:[a-f0-9]{64}$/.test(String(reply.digest)), 'first reply requires exact operation digest');
-  const proposals = context.facts.facts.filter(fact => fact.kind === 'continuity-reply-proposal').filter(fact => {
-    const body = object(fact.body);
-    return body.run === value.run && body.expected === value.expected
-      && body.grounding === groundingReference.fact.id && body.inbound === inbound.id;
-  });
-  need(proposals.length > 0, 'first reply operation was not durably and uniquely proposed');
-  const identities = new Set(proposals.map(fact => {
-    const body = object(fact.body);
-    return encoded({ operation: body.operation, digest: body.digest, status: body.status, permission: body.permission }).bytes;
-  }));
-  need(identities.size === 1, 'first reply operation identity is conflicted for this grounding and inbound');
-  const proposal = proposals[0]!;
-  const proposalBody = object(proposal.body);
-  need(proposalBody.operation === reply.operation && proposalBody.digest === reply.digest
-    && proposalBody.status === 'proposed' && proposalBody.permission === 'none',
-  'first reply operation proposal does not bind the exact digest, grounding, inbound, and non-authorizing state');
-  const disclosure = semanticFact(value.disclosure!, 'continuity-disclosure', context);
-  need(disclosure.body.run === value.run && disclosure.body.operation === reply.operation
-    && disclosure.body.digest === reply.digest && disclosure.body.grounding === groundingReference.fact.id
-    && disclosure.body.inbound === inbound.id,
-  'compaction disclosure does not bind the actual first reply and inbound');
-  need(causalCone(disclosure.fact, context.facts.facts).some(fact => fact.id === proposal.id),
-    'compaction disclosure is not causally linked to the reply proposal');
-  const disposition = object(value.disposition);
-  if (disposition.kind === 'addressed') {
-    exactFields(disposition, ['kind', 'work', 'result'], 'addressed continuity fields differ');
-    const work = currentSemanticFact(disposition.work!, 'continuity-addressed-work',
-      ['run', 'inbound', 'operation', 'digest'], context);
-    need(work.body.run === value.run && work.body.inbound === inbound.id
-      && work.body.operation === reply.operation && work.body.digest === reply.digest
-      && work.body.status === 'durable', 'addressed work does not bind the actual inbound and first reply');
-    need(causalCone(work.fact, context.facts.facts).some(fact => fact.id === disclosure.fact.id),
-      'addressed work is not causally linked to the disclosure');
-    const resultReference = disposition.result as unknown as ConstitutionalReference<'Result'>;
-    const result = constitutional(resultReference, 'Result', context);
-    const resultFact = factReference(json(resultReference.fact), context);
-    const owner = constitutional(runOpening(String(value.run), context).record.owner as unknown as ConstitutionalReference<'VerifiedPrincipal'>,
-      'VerifiedPrincipal', context).view;
-    need(object(json(result.view)).kind === 'Success', 'addressed continuity result is not a usable durable answer or work result');
-    need(resultFact.principal.id === owner.id && same(resultFact.principal.provenance, owner.provenance),
-      'addressed continuity result lacks its accountable run owner witness');
-    need(work.fact.predecessors.required.includes(resultFact.id),
-      'addressed work does not explicitly witness this durable answer or work result');
-    need(causalCone(work.fact, context.facts.facts).some(fact => fact.id === resultFact.id),
-      'addressed work is not causally linked to its durable answer or work result');
-  } else if (disposition.kind === 'superseded') {
-    exactFields(disposition, ['kind', 'input', 'directive'], 'superseded continuity fields differ');
-    const later = factReference(disposition.input!, context);
-    need(context.stimulusKinds.includes(later.kind) && later.id !== inbound.id
-      && causalCone(later, context.facts.facts).some(fact => fact.id === inbound.id),
-    'superseding input is not a later admitted inbound');
-    const directive = constitutional(disposition.directive as unknown as ConstitutionalReference<'Directive'>,
-      'Directive', context).view;
-    const runRecord = runOpening(String(value.run), context).record;
-    const priorReference = (runRecord.directives as unknown as ConstitutionalReference<'Directive'>[])
-      .find(referenceValue => referenceValue.id === directive.supersedes);
-    need(directive.supersedes !== undefined && priorReference,
-      'superseding directive is outside the run directive lineage');
-    const prior = constitutional(priorReference, 'Directive', context).view;
-    const directiveFact = factReference(object(disposition.directive).fact!, context);
-    need(object(later.body).prior === inbound.id && directive.supersedes === prior.id
-      && later.principal.id === directive.principal.id
-      && scopeIncludes(directive.scope as Scope, take(decode('Scope', runRecord.scope, context.types)) as Scope)
-      && causalCone(later, context.facts.facts).some(fact => fact.id === directiveFact.id),
-    'superseding input does not bind this run, inbound, directive lineage, signer, and scope');
-  } else if (disposition.kind === 'pending') {
-    exactFields(disposition, ['kind', 'work', 'reason'], 'pending continuity fields differ');
-    validatePendingContinuityWork(disposition.work!, String(value.run), inbound, context);
-  } else need(false, 'unknown continuity disposition');
-  if (capture.status === 'unavailable') need(disposition.kind === 'pending',
-    'unavailable pre-pause capture must remain pending');
-  return freeze(value) as unknown as ContinuityAccounting;
-}
-
 function validateUnreachable(input: Json, context: RunDecodeContext): UnreachableRunExit {
   const value = object(input);
   need(value.type === 'UnreachableRunExit' && value.schemaVersion === 1, 'type or schema version unknown');
@@ -569,26 +402,42 @@ function hydrate(value: Json, context: RunDecodeContext): unknown {
   return value;
 }
 
+const unsupportedSliceKeys = new Set([
+  'grounding', 'prePauseInbound', 'prePauseCapture', 'firstReply', 'continuitySend',
+]);
+
+function carriesUnsupportedSliceAPrime(input: Json): boolean {
+  if (Array.isArray(input)) return input.some(carriesUnsupportedSliceAPrime);
+  if (input === null || typeof input !== 'object') return false;
+  const value = input as Record<string, Json>;
+  if (value.type === 'ContinuityAccounting' || value.type === 'SessionGrounding'
+    || value.name === 'ContinuityAccounting' || value.name === 'SessionGrounding'
+    || typeof value.kind === 'string' && value.kind.startsWith('continuity-')
+    || Object.keys(value).some(key => unsupportedSliceKeys.has(key))) return true;
+  const disposition = value.disposition;
+  if (disposition && typeof disposition === 'object' && !Array.isArray(disposition)
+    && ['addressed', 'superseded', 'pending'].includes(String((disposition as Record<string, Json>).kind))) return true;
+  return Object.values(value).some(carriesUnsupportedSliceAPrime);
+}
+
 function decodeClosure<T>(name: keyof typeof runClosureKinds, input: unknown,
   context: RunDecodeContext): Result<T> {
   return boundary(`Decode${name}`, input, context, safe => {
     const safeJson = json(safe);
+    need(!carriesUnsupportedSliceAPrime(safeJson), 'unsupported-in-slice-a-prime');
     const alreadyWire = name === 'UnreachableRunExit'
       && typeof object(safeJson).frontier === 'string';
     const wire = alreadyWire ? safeJson : closureRecordWire(safe as unknown as RunClosureRecord);
     checkShape(wire, runClosureShapes[name]!);
     const restored = recordFromWire(wire);
     const validated = name === 'ExhaustionRecord' ? validateExhaustion(restored, context)
-      : name === 'ContinuityAccounting' ? validateContinuity(restored, context)
-        : validateUnreachable(restored, context);
+      : validateUnreachable(restored, context);
     return hydrate(json(validated), context) as T;
   });
 }
 
 export const decodeExhaustionRecord = (input: unknown, context: RunDecodeContext): Result<ExhaustionRecord> =>
   decodeClosure('ExhaustionRecord', input, context);
-export const decodeContinuityAccounting = (input: unknown, context: RunDecodeContext): Result<ContinuityAccounting> =>
-  decodeClosure('ContinuityAccounting', input, context);
 export const decodeUnreachableRunExit = (input: unknown, context: RunDecodeContext): Result<UnreachableRunExit> =>
   decodeClosure('UnreachableRunExit', input, context);
 
@@ -624,8 +473,7 @@ export function runClosureFactSchemas(context: RunDecodeContext): Result<{
         const coneFacts = causalCone(current.origin, current.facts.facts);
         const local = { ...context, types: current.facts.decode, facts: { ...current.facts, facts: coneFacts } };
         const decoded = name === 'ExhaustionRecord' ? take(decodeExhaustionRecord(value, local))
-          : name === 'ContinuityAccounting' ? take(decodeContinuityAccounting(value, local))
-            : take(decodeUnreachableRunExit(value, local));
+          : take(decodeUnreachableRunExit(value, local));
         const cone = new Set(coneFacts.map(fact => fact.id));
         need(closureRecordReferences(json(decoded)).every(id => cone.has(id)),
           'closure record reference is outside signed causal cone');
@@ -651,24 +499,4 @@ export function runClosureFactSchemas(context: RunDecodeContext): Result<{
     }));
     return { schemas, registrations };
   });
-}
-
-export function validateContinuitySendWitness(accountingFact: FactEnvelope, accounting: ContinuityAccounting,
-  input: FactEnvelopeReference, now: Clock, freshFor: number, context: RunDecodeContext): FactEnvelope {
-  const send = currentSemanticFact(json(input), 'continuity-first-reply-send', ['run', 'accounting', 'operation'], context);
-  const body = send.body;
-  exactFields(body, ['run', 'accounting', 'operation', 'digest', 'disclosure', 'dispositionKind', 'disposition', 'status'],
-    'first-reply send record fields differ');
-  const disposition = accounting.disposition.kind === 'superseded'
-    ? accounting.disposition.input : accounting.disposition.work;
-  need(body.run === accounting.run && body.accounting === accountingFact.id
-    && body.operation === accounting.firstReply.operation && body.digest === accounting.firstReply.digest
-    && body.disclosure === accounting.disclosure.id && body.dispositionKind === accounting.disposition.kind
-    && body.disposition === disposition.id && body.status === 'admitted',
-  'first-reply send does not bind the exact accounting, payload, disclosure, and disposition');
-  const cone = causalCone(send.fact, context.facts.facts);
-  need([accountingFact.id, accounting.disclosure.id, disposition.id].every(id => cone.some(fact => fact.id === id)),
-    'first-reply send is missing its accounting, disclosure, or disposition causal link');
-  boundedCurrentFact(send.fact, now, freshFor, context);
-  return send.fact;
 }
