@@ -311,18 +311,22 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       required?: ReadonlySet<string>) {
       const { grants,revocations }=historicalRows(preserved);
       const candidates=grants.filter(({ row,grant }) => (!allowed||allowed.has(row.fact.id))&&(!required||required.has(row.fact.id))
-        &&!row.taint.length&&!row.conflicts.length
-        &&grant.captureStatus==='available'&&grant.view.grantee.id===principal.id&&grant.view.grantee.kind==='system'
+        &&(!row.taint.length||!!required&&row.taint.every(taint=>taint==='evidence-unavailable'))&&!row.conflicts.length
+        &&grant.view.grantee.id===principal.id&&grant.view.grantee.kind==='system'
         &&grant.view.standing==='delegate'&&grant.view.actions.includes('work')
-        &&scopeIncludes(take(decode('Scope',grant.view.scope,context(preserved).decode)),scope)
-        &&take(historicalGrantLiveness(grant,revocations.filter(r => r.view.grantId===grant.view.id
-          &&(!allowed||allowed.has(r.origin.id))),at,preserved))==='live');
+        &&scopeIncludes(take(decode('Scope',grant.view.scope,context(preserved).decode)),scope));
       const identities=[...new Set(candidates.map(candidate => candidate.grant.view.id))].sort();
       requireIntake(identities.length>=1,'unsupported-in-slice-a: a current covering package-system grant is required','standing');
       const selected=candidates.filter(candidate => candidate.grant.view.id===identities[0])
         .sort((left,right) => foldKey(left.row.fact)<foldKey(right.row.fact)?-1:foldKey(left.row.fact)>foldKey(right.row.fact)?1:0)[0]!;
+      const partial=selected.grant.captureStatus!=='available';
+      requireIntake(!partial||!!required,
+        'unsupported-in-slice-a: a current covering package-system grant is required','standing');
+      if(!partial) requireIntake(take(historicalGrantLiveness(selected.grant,revocations.filter(r =>
+        r.view.grantId===selected.grant.view.id&&(!allowed||allowed.has(r.origin.id))),at,preserved))==='live',
+      'unsupported-in-slice-a: a current covering package-system grant is required','standing');
       const field=constitutionalField(selected.row,'StandingGrant',selected.grant.view.id,preserved);
-      return { row: selected.row,grant: selected.grant,field };
+      return { row: selected.row,grant: selected.grant,field,partial };
     }
     function refuseSliceADirectives(rows: readonly FactStatus[],preserved: string,allowed: ReadonlySet<string>): void {
       const directiveBearing=rows.filter(row => allowed.has(row.fact.id)).some(row => {
@@ -423,6 +427,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       requireIntake(discoveryRow,'scheduled intake: discovery witness is not a signed dependency','integrity');
       if(discovery) constitutionalField(discoveryRow,'Evidence',discovery.record.view.id,preserved);
       const standing=scheduledStanding(principal,row.fact.at,preserved,cone,new Set(required));
+      partial ||= standing.partial;
       const standingRows=dependencies.filter(candidate => candidate.historical.some(record => record.view.type==='StandingGrant'
         &&record.origin.id===candidate.fact.id&&record.view.id===standing.grant.view.id&&same(record.view,standing.grant.view)));
       requireIntake(standingRows.length>0,'scheduled intake: standing witness is not a signed dependency','standing');

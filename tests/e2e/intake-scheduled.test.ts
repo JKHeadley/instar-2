@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 import { decode } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import type { ScheduledIntakeDisposition } from '../../src/intake/index.js';
-import { json, value } from '../intake/fixtures.js';
+import { json, refused, value } from '../intake/fixtures.js';
 import { scheduledFixture } from '../intake/scheduled-fixtures.js';
 import { recoverScheduledDisposition, scheduledRunHarness } from '../intake/scheduled-run-fixtures.js';
 
@@ -30,7 +30,7 @@ it('P4-ST-07 restart after scheduled admission enumerates the durable pending it
   expect(restarted.facts().filter(row => row.kind === 'run-opening')).toHaveLength(1);
 }));
 
-it('P4-ST-24 V51 durable restart resolves a signed directive without copying its live issuer or value', () => durableFixture(directory => {
+it('P4-ST-24 V51 durable restart refuses signed Directive history in Slice A', () => durableFixture(directory => {
   const before = scheduledFixture({ directory }); before.grant(); const tick = before.tick();
   const discovery = before.discovery(tick.eventId); before.bind();
   const directive = value(decode('Directive', before.f.directiveInput(), {
@@ -42,18 +42,16 @@ it('P4-ST-24 V51 durable restart resolves a signed directive without copying its
     principal: json(before.f.alice), provenance: json(before.f.alice.provenance), at: json(before.f.now),
     body: { directive: json(directive) }, required: [] }, before.context,
   createFactStore(before.context, before.storage), before.deps.author.privateKey)).fact;
-  const accepted = value(before.port().receiveScheduledTick({ raw: tick.raw, route: tick.route,
-    discovery: { owner: 'part-two', name: 'FactEnvelope', id: discovery.fact.id } }));
-  expect(accepted.kind).toBe('scheduled-admitted');
+  const input={ raw: tick.raw,route:tick.route,
+    discovery:{ owner:'part-two' as const,name:'FactEnvelope' as const,id:discovery.fact.id } };
+  refused(before.port().receiveScheduledTick(input),'unsupported-in-slice-a');
 
   const restarted = scheduledFixture({ directory }); restarted.installSchemas(); restarted.setTime(101);
   Object.assign(restarted.context, { schemas: structuredClone(before.context.schemas) });
   const pending = value(restarted.port().pendingScheduledAdmissions({ owner: restarted.deps.workOwner,
     frontier: restarted.frontier(), limit: 10, after: null }));
-  expect(pending.admissions).toEqual(accepted.kind === 'scheduled-admitted' ? [accepted.fact] : []);
-  expect(value(restarted.port().receiveScheduledTick({ raw: tick.raw, route: tick.route,
-    discovery: { owner: 'part-two', name: 'FactEnvelope', id: discovery.fact.id } })))
-    .toMatchObject({ kind: 'duplicate', original: accepted.kind === 'scheduled-admitted' ? accepted.fact : undefined });
+  expect(pending.admissions).toEqual([]);
+  refused(restarted.port().receiveScheduledTick(input),'unsupported-in-slice-a');
   expect(restarted.facts().some(fact => fact.id === directiveFact.id)).toBe(true);
 }));
 
