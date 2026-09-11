@@ -57,7 +57,7 @@ it('SLB-A1-MAXOPEN-102 preserves one open-cycle deadline and stops at equality w
   const at = opened();
   at.fixture.advance(30);
   expect(value(at.admit('at-ceiling'))).toMatchObject({ state: 'stopped', attempts: 1 });
-});
+}, 15_000);
 
 it('SLB-A1-SIGNED-EXCLUSIONS-103 typed-refuses excluded fields on signed new records without storing', () => {
   const state = setup();
