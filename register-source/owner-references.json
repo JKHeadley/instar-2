@@ -35,7 +35,7 @@
       "id": "decodeRun",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -46,7 +46,7 @@
       "id": "decodeRunStep",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -57,7 +57,7 @@
       "id": "decodeRunTransition",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -68,7 +68,7 @@
       "id": "decodeRunExit",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -79,7 +79,7 @@
       "id": "decodeSessionGrounding",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -90,33 +90,22 @@
       "id": "decodeExhaustionRecord",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
       },
       "artifact": {
         "path": "src/rungraph/closure-records.ts",
-        "hash": "sha256:b120e3548874dcc3422fe80667f9fc9399c1c1c044e5ffbe218454bbd8300a0f"
-      }
-    },
-    {
-      "id": "decodeContinuityAccounting",
-      "module": {
-        "path": "src/rungraph/index.ts",
-        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
-      },
-      "artifact": {
-        "path": "src/rungraph/closure-records.ts",
-        "hash": "sha256:b120e3548874dcc3422fe80667f9fc9399c1c1c044e5ffbe218454bbd8300a0f"
+        "hash": "sha256:c75b6cd509007b9306926ccbd0e02be3994d352457a7883a6c03084375ca2382"
       }
     },
     {
       "id": "decodeUnreachableRunExit",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:38fdf5193a50ab2ed6930f230a75ccf9754c5d4d1b1c93074ed3b5ddcc9b426a"
+        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
       },
       "artifact": {
         "path": "src/rungraph/closure-records.ts",
-        "hash": "sha256:b120e3548874dcc3422fe80667f9fc9399c1c1c044e5ffbe218454bbd8300a0f"
+        "hash": "sha256:c75b6cd509007b9306926ccbd0e02be3994d352457a7883a6c03084375ca2382"
       }
     }
   ],
