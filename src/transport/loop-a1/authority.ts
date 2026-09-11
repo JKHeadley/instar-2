@@ -35,7 +35,7 @@ import {
 } from './records.js';
 import {
   rejectTransitionExtensions,
-  rejectUnsupportedSliceA1Fields,
+  rejectRequestExtensions,
   requireOpaqueSourceReference,
   sharedLoopRecordFactKind,
   sharedPolicyCheck,
@@ -152,7 +152,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
     close: legacy.close,
     settle: legacy.settle,
     scheduleEpisode: input => checked('SharedLoopScheduleA1', input, () => {
-      rejectUnsupportedSliceA1Fields(input);
+      rejectRequestExtensions(input);
       closedInput(input, ['command', 'fence', 'currentOwnerRun', 'policy', 'episodeKey',
         'operationFamily', 'pressureScope', 'sourceVector'], 'closed A1 schedule input required');
       requireOpaqueSourceReference(input.sourceVector);

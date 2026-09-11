@@ -15,6 +15,7 @@ export {
   hasA1PolicyMarker,
   loopA1Shapes,
   rejectTransitionExtensions,
+  rejectRequestExtensions,
   rejectUnsupportedSliceA1Fields,
   requireOpaqueSourceReference,
   sharedLoopRecordFactKind,

@@ -34,13 +34,7 @@ const forbiddenFields = [
   'scanCursor',
   'cursorKind',
 ] as const;
-const recordForbiddenFields = [
-  'parentAttemptBudget',
-  'resourceBudget',
-  'cursorKind',
-  'scanCursor',
-  'concurrency',
-] as const;
+const requestAndRecordForbiddenFields = [...forbiddenFields, 'concurrency'] as const;
 const policyFields = {
   ...common,
   id: txt,
@@ -98,10 +92,10 @@ const loopOutcome: OwnedShape = {
 };
 export const sharedLoopRecordShape: OwnedShape = {
   kind: 'object',
-  optional: [...recordForbiddenFields],
+  optional: [...requestAndRecordForbiddenFields],
   fields: {
     ...row,
-    ...Object.fromEntries(recordForbiddenFields.map(field => [field, policyFields[field]])),
+    ...Object.fromEntries(requestAndRecordForbiddenFields.map(field => [field, policyFields[field]])),
     run: txt,
     episode: txt,
     policy,
@@ -213,10 +207,15 @@ export function rejectUnsupportedSliceA1Fields(input: unknown): void {
     'unsupported-in-slice-a1');
 }
 export function rejectTransitionExtensions(input: unknown): void {
-  rejectUnsupportedSliceA1Fields(input);
+  rejectRequestExtensions(input);
   if (input === null || typeof input !== 'object' || Array.isArray(input)) return;
   ensure(!Object.keys(input).some(key => ['sourceVector', 'holderFamily', 'worker', 'machine', 'resource'].includes(key)),
     'unsupported-in-slice-a1');
+}
+export function rejectRequestExtensions(input: unknown): void {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return;
+  ensure(!Object.keys(input).some(key => requestAndRecordForbiddenFields
+    .includes(key as typeof requestAndRecordForbiddenFields[number])), 'unsupported-in-slice-a1');
 }
 export function requireOpaqueSourceReference(input: unknown): asserts input is SharedLoopRecord['sourceVector'] {
   ensure(input !== null && typeof input === 'object' && !Array.isArray(input), 'unsupported-in-slice-a1');
@@ -252,7 +251,8 @@ function referenceCheck(value: { readonly owner: string; readonly name: string; 
   ensure(value.owner === owner && value.name === name && value.id.length > 0, `${name} reference owner`);
 }
 export function sharedLoopRecordCheck(shared: SharedLoopRecord): void {
-  ensure(!Object.keys(shared).some(key => recordForbiddenFields.includes(key as typeof recordForbiddenFields[number])),
+  ensure(!Object.keys(shared).some(key => requestAndRecordForbiddenFields
+    .includes(key as typeof requestAndRecordForbiddenFields[number])),
     'unsupported-in-slice-a1');
   shapeCheck(shared, sharedLoopRecordShape);
   ensure(shared.type === 'LoopRecord' && shared.schemaVersion === 1 && shared.run.length > 0 && shared.episode.length > 0,

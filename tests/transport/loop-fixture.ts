@@ -182,7 +182,7 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
             predicates: encoded(derived.predicates).bytes === encoded(support.assessment.predicates).bytes,
             evidence: encoded(derived.evidence).bytes === encoded(support.assessment.evidence).bytes,
             missing: encoded(derived.missingEvidence).bytes === encoded(support.assessment.missingEvidence).bytes,
-            time: now >= support.assessment.validFrom && now < support.assessment.validUntil,
+            time: input.at.value >= support.assessment.validFrom && input.at.value < support.assessment.validUntil,
           };
           if (Object.values(comparisons).some(value => !value))
             throw new Error(`assessment unavailable or no longer current: ${JSON.stringify(comparisons)}`);

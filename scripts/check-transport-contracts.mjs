@@ -71,6 +71,10 @@ export const transportSeamEvidence = [
   ['SLB-A1-MAXOPEN-102', 'integration', 'maximum-open deadline survives reopen and stops at equality'],
   ['SLB-A1-SIGNED-EXCLUSIONS-103', 'integration', 'typed refusal for excluded fields on signed new records'],
   ['SLB-A1-SHARED-PRESSURE-104', 'integration', 'two workers on two machines exercise one stable pressure identity'],
+  ['SLB-A1-PLAN-SUBJECT-105', 'integration', 'signed restoration plan is bound to the governed pressure subject'],
+  ['SLB-A1-EXCLUDED-INVENTORY-106', 'integration', 'every excluded field typed-refuses on requests and signed replay'],
+  ['SLB-A1-HISTORICAL-TIME-107', 'integration', 'historical restoration validity is judged at its witnessed transition'],
+  ['SLB-A1-SHARED-HISTORY-108', 'integration', 'one durable history contains both signed machine contributors across recovery'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

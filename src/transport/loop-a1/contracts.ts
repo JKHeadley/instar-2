@@ -135,6 +135,8 @@ export interface RestorationEvidencePort {
   readonly owner: 'part-nine';
   verify(input: Readonly<{
     reference: OwnedReference<'part-nine', 'VerificationAssessment'>;
+    /** Signed evaluation time; current dependency availability is still required. */
+    at: Clock;
     pressureKey: string;
     operationFamily: string;
   }>): Result<Readonly<{

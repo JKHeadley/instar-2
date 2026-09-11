@@ -280,13 +280,14 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
     && predecessors.includes(requestFact.id), 'VerificationAssessment request lineage is absent');
   const planFact = uniqueOwnerRecord(facts, context, 'VerificationPlan', request.plan);
   const plan = (planFact.body as { record: {
-    subject?: { generation?: unknown };
+    subject?: { generation?: unknown; governed?: unknown };
     bar?: { version?: unknown };
   } }).record;
   ensure(request.predecessors.includes(planFact.id)
     && request.operation === operationFamily && request.operationDigest === expectedDigest
     && request.attempt === record.attempt && request.barVersion === record.barVersion
-    && plan.bar?.version === request.barVersion && plan.subject?.generation === request.sourceGeneration,
+    && plan.bar?.version === request.barVersion && plan.subject?.generation === request.sourceGeneration
+    && plan.subject?.governed === pressureKey,
   'VerificationAssessment request, plan, or pressure subject differs');
   const predicateEvidence = (Array.isArray(record.predicates) ? record.predicates : [])
     .flatMap(value => value && typeof value === 'object' && Array.isArray((value as { evidence?: unknown }).evidence)
@@ -304,7 +305,7 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
   if (requireComplete) ensure(restorationAssessmentComplete(record),
     'VerificationAssessment does not establish complete restoration');
   ensure(host.restorationEvidence?.owner === 'part-nine', 'independent restoration evidence unavailable');
-  const verified = take(host.restorationEvidence.verify({ reference, pressureKey, operationFamily }));
+  const verified = take(host.restorationEvidence.verify({ reference, pressureKey, operationFamily, at }));
   ensure(encoded(verified.reference).bytes === encoded(reference).bytes
     && verified.operation === record.operation && verified.operationDigest === record.operationDigest
     && encoded(verified.missingEvidence).bytes === encoded(record.missingEvidence).bytes
