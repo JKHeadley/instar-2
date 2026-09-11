@@ -129,6 +129,24 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
         `${name} reference identity differs from fact`);
       const copies = immutableCopies(selected.run, selected.type, current, selected.id);
       need(copies.conflicts.length === 0, `conflicting immutable ${selected.type} identity`);
+      if (selected.type === 'ExhaustionRecord') {
+        const origins = new Set([
+          fact.id,
+          ...causalCone(fact, current.facts.facts).map(ancestor => ancestor.id),
+        ]);
+        const supported = acceptedFor(selected.run, selected.type, current).some(candidate =>
+          origins.has(candidate.fact.id) && same(candidate.record, selected) && consumeResult(
+            boundary('RevalidateExhaustionOrigin', candidate.fact, current, () => {
+              const prior = closureBefore(candidate.fact, current);
+              need(prior.conflicts.length === 0 && selected.expected === prior.head,
+                'referenced exhaustion predecessor differs from its signed admission history');
+              const age = clockDifference(candidate.fact.at, selected.at, current);
+              need(age >= 0 && age <= prior.run.exitTest.freshFor,
+                'referenced exhaustion clock is stale or from the future at admission');
+              return true;
+            }), { Success: value => value, Refused: () => false }));
+        need(supported, 'referenced exhaustion has no consistent signed admission origin');
+      }
       return { fact, record: selected };
     };
     const validateContinuityOwner = (record: ContinuityAccounting, view: RunView,
@@ -421,6 +439,31 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       need(take(dependencies.store.read()).some(fact => same(fact, receipt.fact)),
         'writer acknowledged without durable spine admission');
       return receipt;
+    };
+    // Rebuild a record's actual admission frontier, including earlier additive exits.
+    // Each recursive reference is strictly inside a prior causal cone.
+    const closureBefore = (origin: FactEnvelope, current: RunDecodeContext): RunView => {
+      const facts = causalCone(origin, current.facts.facts);
+      const frontier = frontierBefore(origin, current);
+      const historicalContext = { ...current, facts: { ...current.facts, facts: [] } };
+      const unavailable = (): never => { throw new Error('historical exhaustion validation is read-only'); };
+      const store = createFactStore(historicalContext.facts, {
+        owner: 'part-ten', read: () => facts, append: unavailable,
+      });
+      const generation = dependencies.generation();
+      const graph = take(createRunClosureGraph({
+        ...dependencies,
+        context: historicalContext,
+        store,
+        clock: () => origin.at,
+        generation: () => ({
+          ...generation,
+          lineages: Object.fromEntries(Object.entries(frontier)
+            .map(([machine, head]) => [machine, { head, observedAt: origin.at.value, closed: false }])),
+        }),
+        writer: { owner: 'part-ten', append: unavailable },
+      }));
+      return take(graph.read(String(object(origin.body).run)));
     };
     const legacyBefore = (origin: FactEnvelope, current: RunDecodeContext): RunView => {
       const facts = causalCone(origin, current.facts.facts);
