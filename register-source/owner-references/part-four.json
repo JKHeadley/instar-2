@@ -803,6 +803,30 @@
       }
     },
     {
+      "id": "P4-ST-91",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-repair16.test.ts",
+        "hash": "sha256:67ce77ab8cbdb704e62367b24a00d69859120d5d10b27d6b1467e1bb47ddd818"
+      }
+    },
+    {
+      "id": "P4-ST-92",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/integration/intake-scheduled-repair16.test.ts",
+        "hash": "sha256:b4934ee73bea8f4d588943ce1b2dfc3a40ac0688d85ac1b6c8166623b7ccc779"
+      }
+    },
+    {
+      "id": "P4-ST-93",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/e2e/intake-scheduled-repair16.test.ts",
+        "hash": "sha256:7dd789bd6f964a5625e84a217e135a45b1c45fa1dec3f83482cc75fdeaa5df4f"
+      }
+    },
+    {
       "id": "P4-PRESERVE-01",
       "stage": "build",
       "artifact": {
@@ -823,7 +847,15 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/scheduled-legacy-differential.test.ts",
-        "hash": "sha256:efa2b617ee4091ec5333d65b2930a867946dfe1aa8c448e0e6b91a0a65e57ed6"
+        "hash": "sha256:3b73bd9db9f87b53f250aeb3bbcb791354bdc03eea3f1323cb727aab5ddf0eb8"
+      }
+    },
+    {
+      "id": "P4-PRESERVE-04",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-legacy-differential.test.ts",
+        "hash": "sha256:3b73bd9db9f87b53f250aeb3bbcb791354bdc03eea3f1323cb727aab5ddf0eb8"
       }
     }
   ],
@@ -881,7 +913,7 @@
       },
       "artifact": {
         "path": "src/intake/scheduled-a/records.ts",
-        "hash": "sha256:c3fe46d7dd7342bdd53a911567ec8f59b12a263989c48b98128509450717d63a"
+        "hash": "sha256:a9d045907a4f474fbdd5267aef570f8b9747f4f44f251558d0e1054e777f184e"
       }
     },
     {

@@ -162,7 +162,7 @@ export function resolveScheduledDiscoveryWitness(histories: readonly ScheduledHi
   eventId: string,causalNow: Clock,preserved: string,decodeContext: DecodeContext,mode: 'origin'|'historical',
   witnessRequired: ReadonlySet<string>=required) {
   const candidates=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
-    required.has(row.fact.id)&&row.record.view.type==='Evidence'&&row.record.view.source===row.fact.machine);
+    required.has(row.fact.id)&&row.record.view.type==='Evidence');
   // The signed claim remains independently checkable when its external capture
   // is unavailable. Treat every event- or predicate-related record as a named
   // discovery candidate before consulting capture availability so missing bytes
@@ -180,6 +180,8 @@ export function resolveScheduledDiscoveryWitness(histories: readonly ScheduledHi
     'unsupported-in-slice-a: exactly one discovery Evidence witness is required','integrity');
   const witness=named[0]!.row;
   const recorded=named[0]!.evidence;
+  requireIntake(recorded.source===witness.fact.machine,
+    'unsupported-in-slice-a: discovery source differs from its signed history','integrity');
   const current=consumeResult(readEvidence(recorded,causalNow,preserved),{
     Success: claim => claim,Refused: () => undefined,
   });
