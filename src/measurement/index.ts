@@ -21,6 +21,7 @@ export {
   planProcessCensus,
   classifyProcesses,
   resourceTrend,
+  mergePeerMeasurements,
   classifyFeatureOutcome,
   evaluateBurn,
   renderBoundedRead,

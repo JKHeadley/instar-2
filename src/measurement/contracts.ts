@@ -168,6 +168,20 @@ export interface ResourceTrend {
   readonly reasons: readonly string[];
 }
 
+export interface PeerMeasurementInput {
+  readonly peer: string;
+  readonly state: 'admitted' | 'missing';
+  readonly lastFrontier: string | null;
+  readonly quantities: readonly ResolvedQuantity[];
+}
+
+export interface PeerMeasurementPool {
+  readonly state: 'complete' | 'partial';
+  readonly members: readonly string[];
+  readonly unresolved: readonly string[];
+  readonly missingPeers: readonly Readonly<{ peer: string; lastFrontier: string | null }>[];
+}
+
 export interface ProcessDescriptor {
   readonly processIncarnation: string;
   readonly pid: number;
@@ -238,6 +252,8 @@ export interface BurnEpisodeState {
   readonly recoveryCount: number;
   readonly notified: boolean;
   readonly investigation: string | null;
+  /** Last classified window, used only to make consecutive recovery replay-safe. */
+  readonly lastEvaluatedWindow?: string | null;
 }
 
 export interface BurnEvaluation {

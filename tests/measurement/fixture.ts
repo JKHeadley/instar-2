@@ -10,6 +10,8 @@ import { fixture, raw, value } from '../fixtures.js';
 export function measurementFixture() {
   const f = fixture();
   const types = { ...f.ctx, register: { ...f.ctx.register,
+    entries: [...f.ctx.register.entries, 'producer:model', 'usage-observed', 'burn:feature-a', 'feature-a', 'model-a',
+      'selection:model-exchange', 'selection:programmatic-event'],
     subjects: { ...f.ctx.register.subjects, 'model-token': ['tokens'], 'programmatic-count': ['tokens'],
       'process-resource': ['ms', 'bytes'], 'measurement-window-aggregate': ['tokens'] } } };
   const c: MeasurementDecodeContext = { site: 'types.decode', preserved: f.ctx.preserved, register: types.register, types };
@@ -52,10 +54,15 @@ export function measurementFixture() {
       quantities: [quantity('input', input, identity), quantity('output', output, identity)] };
   }
   function burnWindow(id: string, samples: readonly BurnSample[], overrides: Partial<BurnWindow> = {}): BurnWindow {
+    const uniqueSamples = [...new Map(samples.map(sample => [sample.identity, sample])).values()];
+    const suppliedAmount = uniqueSamples.reduce((sum, sample) => sum + sample.quantities.reduce((n, q) => n + (q.amount ?? 0), 0), 0);
+    const desiredAmount = overrides.comparisonScopeAmount ?? suppliedAmount;
+    const witnessedSamples = desiredAmount > suppliedAmount
+      ? [...samples, burnSample(`comparison:${id}`, desiredAmount - suppliedAmount, 0, `comparison:${id}`)] : [...samples];
     return { id, censusComplete: true, collectorsComplete: true, observedExchanges: samples.length,
       usageSupportedExchanges: samples.length, attemptedDispatches: samples.length, provenNoExchange: 0,
-      dispatchUncertain: 0, conflictedAttempts: 0, programmaticEvents: 0, samples,
-      comparisonScopeAmount: samples.reduce((sum, sample) => sum + sample.quantities.reduce((n, q) => n + (q.amount ?? 0), 0), 0), ...overrides };
+      dispatchUncertain: 0, conflictedAttempts: 0, programmaticEvents: 0, samples: witnessedSamples,
+      comparisonScopeAmount: suppliedAmount, ...overrides };
   }
   const closed: BurnEpisodeState = { state: 'closed', recoveryCount: 0, notified: false, investigation: null };
   const clock = (at: number): Clock => value(decodeMeasurement('clock', f.clockRaw(at), types));

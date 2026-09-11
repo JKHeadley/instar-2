@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { decode } from '../../src/index.js';
-import { prepareSnapshot, type FactContext, type FactSchema } from '../../src/facts/index.js';
 import {
   classifyFeatureOutcome, classifyProcesses, coalesceUnknownQuotaEpisodes, compareBurnPolicies,
   compareMeasurementProducerContracts, cpuUtilization, createBoundedReadCache, createMeasurementLedger,
@@ -13,6 +12,7 @@ import { decodeAssemblyRecord } from '../../src/assembly/index.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { factsFixture, refused, value } from '../facts/fixtures.js';
 import { measurementFixture } from './fixture.js';
+import { judgmentFixture } from '../judgment/fixture.js';
 
 describe('Part 16 foundation records and observational boundaries', () => {
   it('P16-NF-01 P16-NF-02 construction is closed, immutable, version-migrated, canonical, and exports no authority decision', () => {
@@ -32,38 +32,28 @@ describe('Part 16 foundation records and observational boundaries', () => {
 
   it('P16-NF-05 only named recorded execution is rendered as measured', () => {
     const f = measurementFixture();
-    expect(value(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'M1 Max', workload: 'release-corpus-v1', evidence: ['run:1'] }, f.c)))
+    const execution = value(decode('Evidence', f.evidenceInput({ id: 'execution:1', observedAt: f.now,
+      claim: { subject: 'execution:1', predicate: 'execution-observed', value: { hardware: 'M1 Max', workload: 'release-corpus-v1' } } }), f.types));
+    f.evidence.push(execution);
+    expect(value(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'M1 Max', workload: 'release-corpus-v1', evidence: [execution.id] }, f.c)))
       .toContain('measured execution');
     expect(value(renderMeasurementClaim({ kind: 'estimate', hardware: 'M1 Max', workload: 'release-corpus-v1', evidence: [] }, f.c)))
       .toBe('estimate: not measured');
     refused(renderMeasurementClaim({ kind: 'recorded-execution', hardware: null, workload: 'release-corpus-v1', evidence: ['run:1'] }, f.c), 'named hardware');
   });
 
-  it('P16-NF-12 P16-NF-13 attribution reads current signed Evidence and ignores usage self-labels', () => {
-    const f = factsFixture();
-    const attribute = value(decode('Evidence', f.evidenceInput({ id: 'attribution:1', observedAt: f.now, freshFor: 100,
-      claim: { subject: 'attempt:1', predicate: 'registered-measurement-attribution', value: { feature: 'feature:signed', model: 'model:signed', run: 'run:signed' } } }), f.ctx.decode));
-    f.evidence.push(attribute);
-    const schema: FactSchema = { kind: 'measurement-attribution', version: 1, fields: { evidence: { kind: 'constitutional', type: 'Evidence' } },
-      machineScope: 'shared', standing: 'requester', action: 'work', scope: f.scope, causallyBound: false, requiredReferences: [], authority: 'none' };
-    const context: FactContext = { ...f.ctx, schemas: [...f.ctx.schemas, schema], decode: { ...f.ctx.decode, evidence: f.evidence } };
-    const fact = f.fact({ kind: schema.kind, body: { evidence: attribute } }, context);
-    const snapshot = value(prepareSnapshot([fact], context));
-    const result = value(resolveAttribution({ attempt: 'attempt:1', claimed: { feature: 'forged', model: 'forged', machine: 'forged' },
-      evaluationClock: f.now, sourceHistory: snapshot, candidates: [{ attempt: 'attempt:1', factReferences: [fact.id] }] },
-    { site: f.c.site, preserved: f.c.preserved, register: f.c.register, types: f.ctx.decode }));
-    expect(result).toMatchObject({ state: 'attributed', feature: 'feature:signed', model: 'model:signed', machine: 'machine-a', run: 'run:signed' });
+  it('P16-NF-12 P16-NF-13 attribution joins the current Part Seven request, attempt, and decision', async () => {
+    const owner = judgmentFixture();
+    value(await owner.door.judge(owner.input, owner.start()));
+    const snapshot = value(owner.store.readForProjection());
+    const mf = measurementFixture();
+    const context = { ...mf.c, register: owner.ctx.decode.register, types: owner.ctx.decode };
+    const attempt = `attempt:${owner.input.id}:1`;
+    const result = value(resolveAttribution({ attempt, claimed: { feature: 'forged', model: 'forged', machine: 'forged' },
+      evaluationClock: owner.now, sourceHistory: snapshot, candidates: [] }, context));
+    expect(result).toMatchObject({ state: 'attributed', feature: 'judgment', model: 'model', machine: 'machine-a', run: owner.input.run.id });
     expect(value(resolveAttribution({ attempt: 'attempt:missing', claimed: { feature: 'forged', model: 'forged', machine: 'forged' },
-      evaluationClock: f.now, sourceHistory: snapshot, candidates: [] }, { site: f.c.site, preserved: f.c.preserved, register: f.c.register, types: f.ctx.decode }))).toMatchObject({ state: 'unattributed', feature: null });
-    const competing = value(decode('Evidence', f.evidenceInput({ id: 'attribution:2', observedAt: f.now, freshFor: 100,
-      claim: { subject: 'attempt:1', predicate: 'registered-measurement-attribution', value: { feature: 'feature:other', model: 'model:other', run: 'run:other' } } }), f.ctx.decode));
-    f.evidence.push(competing);
-    const competingFact = f.next(fact, { kind: schema.kind, body: { evidence: competing } }, context);
-    const conflicted = value(prepareSnapshot([fact, competingFact], context));
-    expect(value(resolveAttribution({ attempt: 'attempt:1', claimed: { feature: 'forged', model: 'forged', machine: 'forged' },
-      evaluationClock: f.now, sourceHistory: conflicted, candidates: [
-        { attempt: 'attempt:1', factReferences: [fact.id] }, { attempt: 'attempt:1', factReferences: [competingFact.id] },
-      ] }, { site: f.c.site, preserved: f.c.preserved, register: f.c.register, types: f.ctx.decode }))).toMatchObject({ state: 'conflicted', feature: null });
+      evaluationClock: owner.now, sourceHistory: snapshot, candidates: [] }, context))).toMatchObject({ state: 'unattributed', feature: null });
   });
 
   it('P16-NF-22 P16-NF-23 quota unknown stays unknown, coalesces, and exposes no scheduling operation', () => {
@@ -102,8 +92,13 @@ describe('Part 16 foundation records and observational boundaries', () => {
 
   it('P16-NF-30 feature outcomes keep calls, shed, failures, events, and unclassified evidence distinct', () => {
     const f = measurementFixture();
-    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: true, negativeProved: false, gradeOnly: false }, f.c))).toBe('fired');
-    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: false, negativeProved: true, gradeOnly: false }, f.c))).toBe('no-op');
+    const fired = value(decode('Evidence', f.evidenceInput({ id: 'action:fired', observedAt: f.now,
+      claim: { subject: 'feature-a', predicate: 'feature-action-observed', value: 'fired' } }), f.types));
+    const noOp = value(decode('Evidence', f.evidenceInput({ id: 'action:no-op', observedAt: f.now,
+      claim: { subject: 'feature-a', predicate: 'feature-action-observed', value: 'no-op' } }), f.types));
+    f.evidence.push(fired, noOp);
+    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: true, negativeProved: false, gradeOnly: false, evidence: fired }, f.c))).toBe('fired');
+    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: false, negativeProved: true, gradeOnly: false, evidence: noOp }, f.c))).toBe('no-op');
     expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'absent', actionProved: false, negativeProved: false, gradeOnly: false }, f.c))).toBe('unclassified');
     expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: true, negativeProved: false, gradeOnly: true }, f.c))).toBe('unclassified');
     for (const kind of ['shed', 'error', 'parser-failure', 'event'] as const)
@@ -125,7 +120,7 @@ describe('Part 16 foundation records and observational boundaries', () => {
     expect(incomplete.coverageDebt).toContain('census-incomplete');
     const legacy = { ...f.burnPolicyInput(), schemaVersion: 1, selection: f.selection('model-exchange', ['input', 'output']), minimumSamples: 1 } as Record<string, unknown>;
     delete legacy.selections; delete legacy.minimumEligibleSamples;
-    refused(decodeBurnPolicy(legacy, f.c), 'exactly one amount selection');
+    expect(value(decodeBurnPolicy(legacy, f.c)).selections).toHaveLength(1);
     expect(value(compareBurnPolicies(f.burnPolicyInput(), f.burnPolicyInput(), f.c))).toBe(true);
   });
 

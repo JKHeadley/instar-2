@@ -1,15 +1,18 @@
 import { compareMeasurements, decode, decodeMeasurement, readEvidence } from '../index.js';
-import type { BoundaryContext, Clock, Json, Result } from '../index.js';
+import type { BoundaryContext, Clock, Evidence, Json, Result } from '../index.js';
 import { deriveGrowthEpisodes } from '../assembly/index.js';
 import type { GrowthObservation, GrowthPolicy } from '../assembly/index.js';
+import { foldProjection } from '../projections/index.js';
 import type { ProjectionDefinition, ProjectionGeneration } from '../projections/index.js';
 import { boundary, encoding, ensure, freeze, json, take } from './boundary.js';
 import type { AggregateMeasurementsRequest, AttributionRequest, AttributionResult, BurnEpisodeState, BurnEvaluation,
   BurnPolicy, BurnSample, BurnWindow, ClassifiedFootprint, GrowthInvestigationLink, MeasurementAggregate,
   MeasurementProducerContract, MeasurementReadQuery, MeasurementReadResult, MeasurementReadRow, ProcessClassRule,
   ProcessDescriptor, QuantityOwnerResolution, QuantityWitness, QuantityWitnessInput, ResolvedQuantity, ResourcePoint,
-  ResourceTrend } from './contracts.js';
+  ResourceTrend, PeerMeasurementInput, PeerMeasurementPool } from './contracts.js';
 import type { MeasurementDecodeContext } from './decode.js';
+import { isDecodedAggregateMeasurementsPolicy, isDecodedBurnPolicy, isDecodedMeasurementProducerContract,
+  isDecodedMeasurementReadQuery } from './decode.js';
 
 const rowFields = ['identity', 'family', 'category', 'at', 'amount', 'unit', 'state', 'producer', 'sourceSample', 'feature', 'model', 'machine'];
 const finiteNonnegative = (value: unknown, field: string): number => {
@@ -17,11 +20,36 @@ const finiteNonnegative = (value: unknown, field: string): number => {
   return value;
 };
 const substantive = (value: string, field: string): void => ensure(value.trim().length > 0 && value.length <= 4096, `${field} must be bounded substantive text`);
+const issuedWitnesses = new WeakSet<object>();
+const issuedQuantities = new WeakSet<object>();
+const families = ['model-call', 'cumulative-model-session', 'quota', 'rate-limit-event', 'resource', 'package-cost'] as const;
+const quantityStates = ['reported', 'not-reported', 'unsupported', 'missing', 'failed', 'legacy-origin-lost', 'unattributed', 'conflicted'] as const;
+
+function admittedClock(input: Clock, context: MeasurementDecodeContext, field: string): Clock {
+  const decoded = take(decodeMeasurement('clock', input, context.types));
+  ensure(encoding(decoded).bytes === encoding(input).bytes, `${field} must be an admitted clock`);
+  return decoded;
+}
+
+function validateCurrentSourceHistory(sourceHistory: AttributionRequest['sourceHistory'], context: MeasurementDecodeContext): void {
+  const kinds = [...new Set(sourceHistory.entries.map(row => row.fact.kind))].sort();
+  const lineages = Object.fromEntries([...new Set(sourceHistory.entries.map(row => row.fact.machine))]
+    .sort().map(machine => {
+      const facts = sourceHistory.entries.filter(row => row.fact.machine === machine).map(row => row.fact);
+      const head = facts.map(row => row.segment).sort((a, b) => a.epoch - b.epoch || a.position - b.position).at(-1)!;
+      return [machine, { head, observedAt: null, closed: false }];
+    }));
+  const generation: ProjectionGeneration = { reference: context.register.generation, kinds, lineages };
+  const definition: ProjectionDefinition = { id: 'measurement.source-current-validation', class: 'informational',
+    stalenessBound: 1, retention: 'all-identities', decisions: Object.fromEntries(kinds.map(kind =>
+      [kind, { kind: 'ignores', reason: 'current-snapshot validation only' }])) };
+  take(foldProjection(definition, sourceHistory, generation, context));
+}
 
 export function createQuantityWitness(input: QuantityWitnessInput, context: MeasurementDecodeContext): Result<QuantityWitness> {
   return boundary('QuantityWitnessRead', input, context, () => {
     const contract = input.contract;
-    ensure(Object.isFrozen(contract) && contract.type === 'MeasurementProducerContract' && contract.schemaVersion === 2,
+    ensure(isDecodedMeasurementProducerContract(contract),
       'producer contract must come from its decoder');
     substantive(input.subjectInstance, 'subjectInstance'); substantive(input.sourceEvent, 'sourceEvent');
     if (contract.sourceSampleRequired) substantive(input.sourceSample, 'sourceSample');
@@ -38,12 +66,18 @@ export function createQuantityWitness(input: QuantityWitnessInput, context: Meas
     ensure(claim.subject === input.subjectInstance && claim.predicate === contract.evidencePredicate, 'evidence binding mismatch');
     if (input.state === 'reported') finiteNonnegative(measurement.value, 'measurement value');
     ensure(input.state === 'reported' || measurement.value === 0, 'unavailable quantity cannot carry an amount');
+    ensure(['partial', 'final', 'correction'].includes(input.phase), 'quantity witness phase outside closed set');
     ensure(new Set(input.predecessors).size === input.predecessors.length, 'duplicate witness predecessor');
+    ensure(input.predecessors.length === 0, 'witness predecessors require signed causal history');
+    if (input.state === 'reported') ensure(typeof claim.value === 'number' && Object.is(claim.value, measurement.value),
+      'measurement amount differs from evidence claim');
     const key = encoding({ family: contract.family, subject: input.subjectInstance, sourceSample: input.sourceSample,
       category: category.name, unit: category.unit, relation: category.relation, hardwareProfile: input.hardwareProfile }).hash;
-    return freeze({ key, sourceSample: input.sourceSample, category: category.name, relation: category.relation,
+    const witness = freeze({ key, sourceSample: input.sourceSample, category: category.name, relation: category.relation,
       measurement, evidence, producer: contract.producer, sourceEvent: input.sourceEvent, phase: input.phase,
       predecessors: [...input.predecessors].sort(), state: input.state, hardwareProfile: input.hardwareProfile });
+    issuedWitnesses.add(witness);
+    return witness;
   });
 }
 
@@ -66,16 +100,23 @@ export function resolveQuantity(witnesses: readonly QuantityWitness[], resolutio
   context: BoundaryContext): Result<ResolvedQuantity> {
   return boundary('QuantityResolution', resolution ? { witnesses, resolution } : { witnesses }, context, () => {
     ensure(witnesses.length > 0 && witnesses.length <= 1024, 'quantity needs a bounded witness set');
+    ensure(witnesses.every(row => issuedWitnesses.has(row)), 'quantity witness must come from its constructor');
     const canonical = [...new Map(witnesses.map(row => [row.sourceEvent, row])).values()];
     ensure(canonical.length === witnesses.length, 'duplicate observation key');
     const key = canonical[0]!.key;
     ensure(canonical.every(row => row.key === key), 'quantity witnesses use different quantity keys');
     const current = [...heads(canonical)].sort((a, b) => a.sourceEvent.localeCompare(b.sourceEvent));
     const reported = current.filter(row => row.state === 'reported');
-    if (!reported.length) return freeze({ key, amount: null, state: 'unavailable' as const, witnesses: canonical,
-      reason: current.map(row => row.state).sort().join(',') || 'missing' });
+    if (!reported.length) {
+      const result = freeze({ key, amount: null, state: 'unavailable' as const, witnesses: canonical,
+        reason: current.map(row => row.state).sort().join(',') || 'missing' });
+      issuedQuantities.add(result); return result;
+    }
     const amounts = [...new Set(reported.map(row => row.measurement.value))];
-    if (amounts.length === 1) return freeze({ key, amount: amounts[0]!, state: 'resolved' as const, witnesses: canonical, reason: 'compatible witnesses' });
+    if (amounts.length === 1) {
+      const result = freeze({ key, amount: amounts[0]!, state: 'resolved' as const, witnesses: canonical, reason: 'compatible witnesses' });
+      issuedQuantities.add(result); return result;
+    }
     if (resolution) {
       ensure(resolution.key === key && resolution.owner === reported[0]!.producer, 'quantity resolution owner or key mismatch');
       ensure(new Set(resolution.witnesses).size === resolution.witnesses.length
@@ -84,9 +125,16 @@ export function resolveQuantity(witnesses: readonly QuantityWitness[], resolutio
       finiteNonnegative(resolution.amount, 'resolved amount');
       const claim = take(readEvidence(resolution.evidence, resolution.evidence.observedAt, context.preserved));
       ensure(claim.subject === key && claim.predicate === 'quantity-resolved', 'owner resolution evidence mismatch');
-      return freeze({ key, amount: resolution.amount, state: 'resolved' as const, witnesses: canonical, reason: 'owner-produced resolution' });
+      ensure(claim.value !== null && typeof claim.value === 'object' && !Array.isArray(claim.value), 'owner resolution evidence omits witnesses');
+      const value = claim.value as Record<string, Json>;
+      ensure(Object.keys(value).length === 2 && value.amount === resolution.amount && Array.isArray(value.witnesses)
+        && encoding([...value.witnesses].sort()).bytes === encoding([...resolution.witnesses].sort()).bytes,
+      'owner resolution amount or witnesses differ from its evidence');
+      const result = freeze({ key, amount: resolution.amount, state: 'resolved' as const, witnesses: canonical, reason: 'owner-produced resolution' });
+      issuedQuantities.add(result); return result;
     }
-    return freeze({ key, amount: null, state: 'unresolved' as const, witnesses: canonical, reason: 'witness amounts disagree' });
+    const result = freeze({ key, amount: null, state: 'unresolved' as const, witnesses: canonical, reason: 'witness amounts disagree' });
+    issuedQuantities.add(result); return result;
   });
 }
 
@@ -97,18 +145,25 @@ function clockOrder(left: Clock, right: Clock, context: BoundaryContext): number
 export function aggregateMeasurements(request: AggregateMeasurementsRequest, context: MeasurementDecodeContext): Result<MeasurementAggregate> {
   return boundary('AggregateMeasurements', request, context, () => {
     const policy = request.policy;
-    ensure(Object.isFrozen(policy) && policy.schemaVersion === 2 && policy.aggregateKind === 'measurement-window-aggregate', 'aggregate policy must come from its decoder');
+    ensure(isDecodedAggregateMeasurementsPolicy(policy), 'aggregate policy must come from its decoder');
     ensure(policy.additiveUnits.includes(request.unit) && policy.categories.includes(request.category), 'unit or category is not additive');
     ensure(request.dimensions.length > 0 && new Set(request.dimensions).size === request.dimensions.length
       && request.dimensions.every(dimension => policy.dimensions.includes(dimension)), 'aggregate dimensions are not registered');
     ensure(policy.producer === request.producer && policy.scope === request.scope, 'producer or scope differs from registered aggregate');
+    admittedClock(request.start, context, 'aggregate start'); admittedClock(request.end, context, 'aggregate end');
+    admittedClock(request.evaluationClock, context, 'aggregate evaluation clock');
     ensure(clockOrder(request.start, request.end, context) < 0 && clockOrder(request.end, request.evaluationClock, context) <= 0, 'aggregate clocks are incomparable or inverted');
-    const members = [...new Set(request.quantities.filter(row => row.state === 'resolved').map(row => row.key))].sort();
-    ensure(members.length === request.quantities.filter(row => row.state === 'resolved').length, 'aggregate repeats a resolved quantity');
-    for (const row of request.quantities) if (row.witnesses[0]) {
+    ensure(request.quantities.every(row => issuedQuantities.has(row)), 'aggregate quantity must come from quantity resolution');
+    ensure(new Set(request.quantities.map(row => row.key)).size === request.quantities.length, 'aggregate repeats a quantity');
+    for (const row of request.quantities) {
+      ensure(row.witnesses.length > 0, 'aggregate quantity has no witnesses');
       ensure(row.witnesses.every(witness => witness.measurement.unit === request.unit && witness.producer === request.producer
-        && witness.category === request.category), 'aggregate member basis differs');
+        && witness.category === request.category && witness.measurement.subject.kind === policy.sourceKind), 'aggregate member basis differs');
+      ensure(row.witnesses.every(witness => clockOrder(request.start, witness.measurement.at as Clock, context) <= 0
+        && clockOrder(witness.measurement.at as Clock, request.end, context) < 0), 'aggregate member outside half-open window');
     }
+    const members = [...new Set(request.quantities.filter(row => row.state === 'resolved')
+      .flatMap(row => row.witnesses.map(witness => witness.sourceEvent)))].sort();
     const amount = request.quantities.reduce((sum, row) => row.state === 'resolved' ? sum + finiteNonnegative(row.amount, 'resolved amount') : sum, 0);
     ensure(Number.isSafeInteger(amount), 'aggregate amount overflow');
     const dimensions = request.dimensions.slice().sort();
@@ -119,30 +174,40 @@ export function aggregateMeasurements(request: AggregateMeasurementsRequest, con
       subject: { kind: 'measurement-window-aggregate', instance: identity }, value: amount, unit: request.unit,
       at: request.end, by: request.producer }, context.types));
     return freeze({ identity, measurement, amount, unit: request.unit,
-      category: request.category, dimensions, members, unresolved: request.quantities.filter(row => row.state !== 'resolved').map(row => row.key).sort(),
+      category: request.category, dimensions, members, unresolved: request.quantities.filter(row => row.state !== 'resolved')
+        .flatMap(row => row.witnesses.map(witness => witness.sourceEvent)).sort(),
       start: request.start, end: request.end, evaluationClock: request.evaluationClock, frontier: request.frontier });
   });
 }
 
 export function resolveAttribution(request: AttributionRequest, context: MeasurementDecodeContext): Result<AttributionResult> {
   return boundary('MeasurementAttribution', request, context, () => {
-    const entries = new Map(request.sourceHistory.entries.map(row => [row.fact.id, row]));
+    validateCurrentSourceHistory(request.sourceHistory, context);
     const found: { feature: string; model: string; run: string; machine: string; facts: string[] }[] = [];
-    for (const candidate of request.candidates.filter(row => row.attempt === request.attempt)) {
-      ensure(candidate.factReferences.length > 0 && new Set(candidate.factReferences).size === candidate.factReferences.length, 'attribution candidate facts incomplete');
-      const rows = candidate.factReferences.map(reference => entries.get(reference));
-      if (rows.some(row => !row || row.taint.length || row.conflicts.length)) continue;
-      for (const row of rows) for (const item of row!.constitutional) if (item.value.type === 'Evidence') {
-        const claim = take(readEvidence(item.value, request.evaluationClock, context.preserved));
-        if (claim.subject !== request.attempt || claim.predicate !== 'registered-measurement-attribution'
-          || !claim.value || typeof claim.value !== 'object' || Array.isArray(claim.value)) continue;
-        const value = claim.value as Record<string, Json>;
-        if (Object.keys(value).length !== 3 || !['feature', 'model', 'run'].every(field => typeof value[field] === 'string' && value[field]!.length > 0)) continue;
-        found.push({ feature: value.feature as string, model: value.model as string, run: value.run as string,
-          machine: row!.fact.machine, facts: candidate.factReferences.slice().sort() });
-      }
+    const clean = request.sourceHistory.entries.filter(row => !row.taint.length && !row.conflicts.length);
+    const records = clean.map(status => ({ status, record: (status.body as { readonly record?: Record<string, Json> }).record }))
+      .filter((row): row is typeof row & { readonly record: Record<string, Json> } => row.record !== undefined
+        && ['JudgmentRequest', 'JudgmentAttemptRecord', 'JudgmentResolution'].includes(row.record.type as string));
+    for (const attempt of records.filter(row => row.record.type === 'JudgmentAttemptRecord' && row.record.attempt === request.attempt)) {
+      const requestId = attempt.record.request;
+      if (typeof requestId !== 'string') continue;
+      const ownerRequest = records.find(row => row.record.type === 'JudgmentRequest' && row.record.id === requestId);
+      if (!ownerRequest || typeof ownerRequest.record.point !== 'string' || typeof ownerRequest.record.run !== 'string') continue;
+      const resolution = records.find(row => row.record.type === 'JudgmentResolution' && row.record.request === requestId);
+      const decisionInput = resolution && (resolution.status.body as { readonly decision?: unknown }).decision;
+      const decision = decisionInput ? take(decode('Decision', decisionInput, context.types)) : null;
+      const model = decision && 'model' in decision.by ? decision.by.model : null;
+      if (!resolution || typeof model !== 'string' || !model.length) continue;
+      found.push({ feature: ownerRequest.record.point, model, run: ownerRequest.record.run,
+        machine: attempt.status.fact.machine, facts: [ownerRequest.status.fact.id, attempt.status.fact.id, resolution.status.fact.id].sort() });
     }
-    const unique = [...new Map(found.map(row => [encoding(row).bytes, row])).values()];
+    const grouped = new Map<string, typeof found[number]>();
+    for (const row of found) {
+      const key = encoding({ feature: row.feature, model: row.model, run: row.run, machine: row.machine }).bytes;
+      const prior = grouped.get(key);
+      grouped.set(key, prior ? { ...row, facts: [...new Set([...prior.facts, ...row.facts])].sort() } : row);
+    }
+    const unique = [...grouped.values()];
     if (!unique.length) return freeze({ attempt: request.attempt, state: 'unattributed' as const, feature: null, model: null,
       machine: null, run: null, facts: [] });
     if (unique.length > 1) return freeze({ attempt: request.attempt, state: 'conflicted' as const, feature: null, model: null,
@@ -154,10 +219,16 @@ export function resolveAttribution(request: AttributionRequest, context: Measure
 }
 
 export function renderMeasurementClaim(input: Readonly<{ kind: 'recorded-execution' | 'target' | 'estimate' | 'configured-threshold';
-  hardware: string | null; workload: string | null; evidence: readonly string[] }>, context: BoundaryContext): Result<string> {
+  hardware: string | null; workload: string | null; evidence: readonly string[] }>, context: MeasurementDecodeContext): Result<string> {
   return boundary('MeasurementClaimRender', input, context, () => {
     if (input.kind !== 'recorded-execution') return `${input.kind}: not measured`;
     ensure(input.hardware?.trim() && input.workload?.trim() && input.evidence.length > 0, 'measured requires named hardware, workload, and execution evidence');
+    const expected = { hardware: input.hardware, workload: input.workload };
+    ensure(input.evidence.every(id => (context.types.evidence ?? []).some(evidence => {
+      if (evidence.id !== id) return false;
+      const claim = take(readEvidence(evidence, evidence.observedAt, context.preserved));
+      return claim.predicate === 'execution-observed' && encoding(claim.value).bytes === encoding(expected).bytes;
+    })), 'measured execution evidence is not admitted or does not bind the claim');
     return `measured execution on ${input.hardware} for ${input.workload}`;
   });
 }
@@ -174,6 +245,7 @@ export function coalesceUnknownQuotaEpisodes(keys: readonly string[], alreadyOpe
 export function cpuUtilization(point: ResourcePoint, wholeMachineCores: number, basis: 'one-core' | 'whole-machine', context: BoundaryContext): Result<number | null> {
   return boundary('CpuUtilization', point, context, () => {
     ensure(Number.isSafeInteger(wholeMachineCores) && wholeMachineCores > 0, 'named machine core count required');
+    ensure(basis === 'one-core' || basis === 'whole-machine', 'CPU basis outside closed set');
     if (point.state !== 'observed' || point.cpuTimeMs === null || point.monotonicIntervalMs === null) return null;
     finiteNonnegative(point.cpuTimeMs, 'cpu time');
     ensure(Number.isFinite(point.monotonicIntervalMs) && point.monotonicIntervalMs > 0, 'monotonic interval must be positive');
@@ -217,17 +289,35 @@ export function classifyProcesses(processes: readonly ProcessDescriptor[], rules
   });
 }
 
-export function resourceTrend(points: readonly ResourcePoint[], minimumSamples: number, context: BoundaryContext): Result<ResourceTrend> {
+export function resourceTrend(points: readonly ResourcePoint[], minimumSamples: number, context: MeasurementDecodeContext): Result<ResourceTrend> {
   return boundary('ResourceTrend', { points, minimumSamples }, context, () => {
     ensure(Number.isSafeInteger(minimumSamples) && minimumSamples >= 2, 'trend minimum must be at least two');
-    const ordered = points.slice().sort((a, b) => clockOrder(a.at, b.at, context));
     const reasons: string[] = [];
+    const bySample = new Map<string, ResourcePoint>();
+    for (const point of points) {
+      admittedClock(point.at, context, 'resource sample clock');
+      if (!point.id?.trim() || !point.machine?.trim() || !point.processIncarnation?.trim() || !point.sourceSample?.trim()
+        || !point.hardwareProfile?.trim() || !point.classifierGeneration?.trim()) reasons.push('invalid resource identity');
+      if (!['observed', 'missing', 'failed'].includes(point.state) || !['reported', 'unsupported', 'missing'].includes(point.heapState)) reasons.push('invalid resource state');
+      if (point.rssBytes !== null && (!Number.isFinite(point.rssBytes) || point.rssBytes < 0)) reasons.push('invalid RSS');
+      if (point.heapBytes !== null && (!Number.isFinite(point.heapBytes) || point.heapBytes < 0)) reasons.push('invalid heap');
+      if (point.cpuTimeMs !== null && (!Number.isFinite(point.cpuTimeMs) || point.cpuTimeMs < 0)) reasons.push('invalid CPU time');
+      if (point.monotonicIntervalMs !== null && (!Number.isFinite(point.monotonicIntervalMs) || point.monotonicIntervalMs <= 0)) reasons.push('invalid interval');
+      const prior = bySample.get(point.sourceSample);
+      if (!prior) bySample.set(point.sourceSample, point);
+      else {
+        const material = (row: ResourcePoint) => ({ ...row, id: '' });
+        if (encoding(material(prior)).bytes !== encoding(material(point)).bytes) reasons.push('conflicting source sample');
+        else if (point.id.localeCompare(prior.id) < 0) bySample.set(point.sourceSample, point);
+      }
+    }
+    const ordered = [...bySample.values()].sort((a, b) => clockOrder(a.at, b.at, context));
     if (ordered.length < minimumSamples) reasons.push('insufficient samples');
     if (ordered.some(row => row.state !== 'observed' || row.rssBytes === null)) reasons.push('missing tick');
     if (new Set(ordered.map(row => row.machine)).size > 1) reasons.push('machine changed');
     if (new Set(ordered.map(row => row.hardwareProfile)).size > 1) reasons.push('hardware changed');
     if (new Set(ordered.map(row => row.classifierGeneration)).size > 1) reasons.push('classifier changed');
-    if (new Set(ordered.map(row => row.sourceSample)).size !== ordered.length) reasons.push('duplicate source sample');
+    if (new Set(ordered.map(row => row.processIncarnation)).size > 1) reasons.push('process incarnation changed');
     for (let index = 1; index < ordered.length; index++) if (clockOrder(ordered[index - 1]!.at, ordered[index]!.at, context) >= 0) reasons.push('sample clocks not increasing');
     if (reasons.length) return freeze({ state: 'incomplete' as const, points: ordered, rssDeltaBytes: null, reasons: [...new Set(reasons)].sort() });
     const first = ordered[0]!.rssBytes!; const last = ordered.at(-1)!.rssBytes!;
@@ -235,22 +325,55 @@ export function resourceTrend(points: readonly ResourcePoint[], minimumSamples: 
   });
 }
 
+export function mergePeerMeasurements(peers: readonly PeerMeasurementInput[], context: BoundaryContext): Result<PeerMeasurementPool> {
+  return boundary('PeerMeasurementPool', peers, context, () => {
+    ensure(peers.length > 0 && peers.length <= 1024, 'peer measurement input must be bounded and nonempty');
+    ensure(new Set(peers.map(row => row.peer)).size === peers.length, 'peer measurement identity repeated');
+    const members = new Set<string>(); const unresolved = new Set<string>();
+    const missingPeers: { peer: string; lastFrontier: string | null }[] = [];
+    for (const peer of peers) {
+      substantive(peer.peer, 'peer identity');
+      ensure(peer.lastFrontier === null || typeof peer.lastFrontier === 'string' && peer.lastFrontier.length > 0, 'peer frontier invalid');
+      if (peer.state === 'missing') {
+        ensure(peer.quantities.length === 0, 'missing peer cannot contribute quantities');
+        missingPeers.push({ peer: peer.peer, lastFrontier: peer.lastFrontier }); continue;
+      }
+      ensure(peer.state === 'admitted' && peer.quantities.every(row => issuedQuantities.has(row)), 'peer quantities must be admitted resolutions');
+      for (const quantity of peer.quantities) for (const witness of quantity.witnesses)
+        (quantity.state === 'resolved' ? members : unresolved).add(witness.sourceEvent);
+    }
+    return freeze({ state: missingPeers.length ? 'partial' as const : 'complete' as const,
+      members: [...members].sort(), unresolved: [...unresolved].sort(), missingPeers: missingPeers.sort((a, b) => a.peer.localeCompare(b.peer)) });
+  });
+}
+
 export function classifyFeatureOutcome(input: Readonly<{ kind: 'exchange' | 'shed' | 'error' | 'parser-failure' | 'event';
-  classifier: 'complete' | 'absent' | 'incomplete' | 'conflicted'; actionProved: boolean; negativeProved: boolean; gradeOnly: boolean }>,
-  context: BoundaryContext): Result<'fired' | 'no-op' | 'unclassified' | 'shed' | 'error' | 'parser-failure' | 'event'> {
+  classifier: 'complete' | 'absent' | 'incomplete' | 'conflicted'; actionProved: boolean; negativeProved: boolean; gradeOnly: boolean;
+  evidence?: Evidence }>, context: MeasurementDecodeContext): Result<'fired' | 'no-op' | 'unclassified' | 'shed' | 'error' | 'parser-failure' | 'event'> {
   return boundary('FeatureOutcomeClassification', input, context, () => {
     if (input.kind !== 'exchange') return input.kind;
     if (input.classifier !== 'complete' || input.gradeOnly) return 'unclassified';
     ensure(!(input.actionProved && input.negativeProved), 'classifier evidence contradicts itself');
-    return input.actionProved ? 'fired' : input.negativeProved ? 'no-op' : 'unclassified';
+    if (!input.actionProved && !input.negativeProved) return 'unclassified';
+    if (!input.evidence || !(context.types.evidence ?? []).includes(input.evidence)) return 'unclassified';
+    const claim = take(readEvidence(input.evidence, input.evidence.observedAt, context.preserved));
+    const expected = input.actionProved ? 'fired' : 'no-op';
+    return claim.predicate === 'feature-action-observed' && claim.value === expected ? expected : 'unclassified';
   });
 }
 
 function selectedAmount(policy: BurnPolicy, sample: BurnSample): number | null {
   const selection = policy.selections.find(row => row.source === sample.source);
   if (!selection || selection.version !== sample.selectionVersion) return null;
-  const amounts = selection.categories.map(category => sample.quantities.find(row => row.state === 'resolved'
-    && row.witnesses[0]?.category === category)?.amount ?? null);
+  ensure(sample.quantities.every(row => issuedQuantities.has(row)), 'burn quantity must come from quantity resolution');
+  const expectedKind = sample.source === 'model-exchange' ? 'model-token' : 'programmatic-count';
+  const amounts = selection.categories.map(category => {
+    const matches = sample.quantities.filter(row => row.state === 'resolved' && row.witnesses.length > 0
+      && row.witnesses.every(witness => witness.category === category && witness.measurement.unit === policy.unit
+        && witness.measurement.subject.kind === expectedKind && witness.measurement.subject.instance === sample.identity));
+    ensure(matches.length <= 1, 'burn sample has competing category quantities');
+    return matches[0]?.amount ?? null;
+  });
   if (amounts.some(value => value === null)) return null;
   return amounts.reduce<number>((sum, value) => sum + (value ?? 0), 0);
 }
@@ -272,18 +395,48 @@ function windowAmount(policy: BurnPolicy, window: BurnWindow): Readonly<{ amount
   return { amount, count: identities.size - debt.filter(value => value.startsWith('unresolved:')).length, debt };
 }
 
+function comparisonAmount(policy: BurnPolicy, window: BurnWindow): number | null {
+  const identities = new Set<string>(); let amount = 0;
+  for (const sample of window.samples) {
+    if (identities.has(sample.identity)) continue;
+    identities.add(sample.identity);
+    const selected = selectedAmount(policy, sample);
+    if (selected === null) return null;
+    amount += selected;
+  }
+  return amount;
+}
+
 function adequate(policy: BurnPolicy, window: BurnWindow, amount: ReturnType<typeof windowAmount>): boolean {
   const coverage = window.observedExchanges === 0 ? null : window.usageSupportedExchanges / window.observedExchanges;
-  return window.censusComplete && window.collectorsComplete && amount.count >= policy.minimumEligibleSamples
+  return window.censusComplete && window.collectorsComplete && window.dispatchUncertain === 0 && window.conflictedAttempts === 0
+    && amount.count >= policy.minimumEligibleSamples
     && (coverage === null || coverage >= policy.minimumUsageCoverage);
 }
 
 export function evaluateBurn(policy: BurnPolicy, previous: BurnEpisodeState, current: BurnWindow,
   baselines: readonly BurnWindow[], context: BoundaryContext): Result<BurnEvaluation> {
   return boundary('BurnEvaluation', { policy, previous, current, baselines }, context, () => {
-    ensure(Object.isFrozen(policy) && policy.schemaVersion === 2, 'burn policy must come from its decoder');
+    ensure(isDecodedBurnPolicy(policy), 'burn policy must come from its decoder');
     ensure(baselines.length > 0, 'burn baseline cannot be empty');
+    for (const window of [current, ...baselines]) {
+      substantive(window.id, 'burn window identity');
+      for (const [name, count] of Object.entries({ observedExchanges: window.observedExchanges,
+        usageSupportedExchanges: window.usageSupportedExchanges, attemptedDispatches: window.attemptedDispatches,
+        provenNoExchange: window.provenNoExchange, dispatchUncertain: window.dispatchUncertain,
+        conflictedAttempts: window.conflictedAttempts, programmaticEvents: window.programmaticEvents }))
+        ensure(Number.isSafeInteger(count) && count >= 0, `${name} must be a nonnegative safe integer`);
+      ensure(window.usageSupportedExchanges <= window.observedExchanges, 'usage-supported exchanges exceed observed exchanges');
+      ensure(window.provenNoExchange + window.dispatchUncertain <= window.attemptedDispatches,
+        'dispatch classifications exceed attempted dispatches');
+      finiteNonnegative(window.comparisonScopeAmount, 'comparison scope amount');
+    }
     const currentResolved = windowAmount(policy, current); const baselineResolved = baselines.map(row => windowAmount(policy, row));
+    const currentComparison = comparisonAmount(policy, current);
+    const baselineComparisons = baselines.map(row => comparisonAmount(policy, row));
+    ensure(currentComparison !== null && current.comparisonScopeAmount === currentComparison
+      && baselines.every((row, index) => baselineComparisons[index] !== null && row.comparisonScopeAmount === baselineComparisons[index]),
+    'comparison denominator differs from its witnessed registered-selection population');
     const coverage = current.observedExchanges === 0 ? null : current.usageSupportedExchanges / current.observedExchanges;
     const debt = [...currentResolved.debt];
     if (!current.censusComplete) debt.push('census-incomplete');
@@ -303,36 +456,81 @@ export function evaluateBurn(policy: BurnPolicy, previous: BurnEpisodeState, cur
       ? 'incomplete' as const : completeInactive ? 'inactive' as const : confidence !== 'adequate'
         ? 'insufficient-evidence' as const : amount === 0 ? 'zero-metered-activity' as const : 'activity' as const;
     let next: BurnEpisodeState = previous; let notify = false; let openInvestigation = false;
-    if (completeInactive) next = freeze({ ...previous, state: 'closed' as const, recoveryCount: 0 });
+    if (classification === 'incomplete')
+      next = freeze({ ...previous, state: previous.state, recoveryCount: 0, lastEvaluatedWindow: current.id });
+    else if (completeInactive) next = freeze({ state: 'closed' as const, recoveryCount: 0, notified: false,
+      investigation: null, lastEvaluatedWindow: current.id });
+    else if (confidence === 'insufficient-evidence')
+      next = freeze({ ...previous, state: previous.state, recoveryCount: 0, lastEvaluatedWindow: current.id });
     else if (previous.state === 'closed') {
       if (confidence === 'adequate' && excess !== null && share !== null && excess >= policy.entryExcess && share >= policy.entryShare) {
-        notify = !previous.notified; openInvestigation = previous.investigation === null;
+        notify = true; openInvestigation = true;
         next = freeze({ state: 'open' as const, recoveryCount: 0, notified: true,
-          investigation: previous.investigation ?? `investigation:${policy.id}:${current.id}` });
+          investigation: `investigation:${policy.id}:${current.id}`, lastEvaluatedWindow: current.id });
       }
     } else if (confidence === 'adequate' && excess !== null && share !== null
       && excess <= policy.recoveryExcess && share <= policy.recoveryShare) {
-      const recoveryCount = previous.recoveryCount + 1;
+      const recoveryCount = previous.lastEvaluatedWindow === current.id ? previous.recoveryCount : previous.recoveryCount + 1;
       next = freeze({ ...previous, state: recoveryCount >= policy.recoveryWindows ? 'closed' as const : 'open' as const,
-        recoveryCount: recoveryCount >= policy.recoveryWindows ? 0 : recoveryCount });
-    } else next = freeze({ ...previous, recoveryCount: 0 });
+        recoveryCount: recoveryCount >= policy.recoveryWindows ? 0 : recoveryCount, lastEvaluatedWindow: current.id });
+    } else next = freeze({ ...previous, recoveryCount: 0, lastEvaluatedWindow: current.id });
     return freeze({ classification, confidence, currentAmount: amount, baselineAmount, excess, share,
       eligibleSampleCount: currentResolved.count, coverage, coverageDebt: [...new Set(debt)].sort(),
       culprit: amount !== null && currentResolved.count > 0 ? policy.feature : null, episode: next, notify, openInvestigation });
   });
 }
 
-function validateReadRow(row: MeasurementReadRow, context: BoundaryContext): void {
+function validateReadRow(row: MeasurementReadRow, context: MeasurementDecodeContext): void {
   ensure(row && typeof row === 'object' && Object.keys(row).length === rowFields.length && rowFields.every(field => Object.hasOwn(row, field)), 'read row has undeclared or missing field');
   for (const value of [row.identity, row.category, row.unit, row.producer, row.sourceSample, row.machine]) substantive(value, 'read metadata');
-  ensure(row.amount === null || Number.isFinite(row.amount), 'read amount must be finite or unknown');
-  ensure(clockOrder(row.at, row.at, context) === 0, 'read row clock invalid');
+  ensure(families.includes(row.family), 'read family outside closed set');
+  ensure(quantityStates.includes(row.state), 'read state outside closed set');
+  ensure(row.feature === null || typeof row.feature === 'string', 'read feature must be text or absent');
+  ensure(row.model === null || typeof row.model === 'string', 'read model must be text or absent');
+  if (row.feature !== null) substantive(row.feature, 'read feature');
+  if (row.model !== null) substantive(row.model, 'read model');
+  ensure(context.types.register.producers.includes(row.producer), 'read producer is not registered');
+  ensure(context.types.register.entries.includes(row.machine), 'read machine is not registered');
+  ensure(row.feature === null || context.types.register.entries.includes(row.feature), 'read feature is not registered');
+  ensure(row.model === null || context.types.register.entries.includes(row.model), 'read model is not registered');
+  ensure(row.amount === null || Number.isFinite(row.amount) && row.amount >= 0, 'read amount must be finite nonnegative or unknown');
+  ensure(row.state !== 'reported' || row.amount !== null, 'reported read row requires amount');
+  admittedClock(row.at, context, 'read row clock');
+}
+
+function cursorBinding(query: MeasurementReadQuery, source: readonly MeasurementReadRow[]): string {
+  const { cursor: _cursor, ...pinned } = query;
+  return encoding({ query: pinned, source: source.map(row => encoding(row).hash).sort() }).hash;
+}
+
+function encodeCursor(offset: number, binding: string): string {
+  return Buffer.from(encoding({ offset, binding }).bytes, 'utf8').toString('base64url');
+}
+
+function decodeCursor(cursor: string, binding: string): number {
+  let parsed: unknown;
+  try { parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')); } catch { ensure(false, 'cursor is not an admitted continuation'); }
+  ensure(parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed), 'cursor is not an admitted continuation');
+  const value = parsed as Record<string, unknown>;
+  ensure(Object.keys(value).length === 2 && Number.isSafeInteger(value.offset) && (value.offset as number) >= 0
+    && value.binding === binding, 'cursor belongs to another query or source');
+  return value.offset as number;
+}
+
+function sizedRead(result: Omit<MeasurementReadResult, 'exportBytes'>): MeasurementReadResult {
+  let exportBytes = 0;
+  for (let iteration = 0; iteration < 8; iteration++) {
+    const next = Buffer.byteLength(encoding({ ...result, exportBytes }).bytes);
+    if (next === exportBytes) return freeze({ ...result, exportBytes });
+    exportBytes = next;
+  }
+  return freeze({ ...result, exportBytes });
 }
 
 export function renderBoundedRead(query: MeasurementReadQuery, rows: readonly MeasurementReadRow[], timedOut: boolean,
-  context: BoundaryContext): Result<MeasurementReadResult> {
+  context: MeasurementDecodeContext): Result<MeasurementReadResult> {
   return boundary('MeasurementBoundedRead', query, context, () => {
-    ensure(Object.isFrozen(query) && query.type === 'MeasurementReadQuery' && query.schemaVersion === 2, 'query must come from its decoder');
+    ensure(isDecodedMeasurementReadQuery(query), 'query must come from its decoder');
     ensure(query.pageSize <= 500 && query.maxExportBytes <= 1_048_576 && query.detailHorizonMs <= 90 * 24 * 60 * 60 * 1000,
       'query exceeds registered bound');
     ensure(rows.length <= 100_000, 'read input exceeds hard cardinality bound'); rows.forEach(row => validateReadRow(row, context));
@@ -340,19 +538,24 @@ export function renderBoundedRead(query: MeasurementReadQuery, rows: readonly Me
       && query.evaluationClock.value - row.at.value <= query.detailHorizonMs);
     available.sort((a, b) => query.sort === 'identity' ? a.identity.localeCompare(b.identity)
       : clockOrder(a.at, b.at, context) || a.identity.localeCompare(b.identity));
-    const offset = query.cursor === null ? 0 : Number(query.cursor);
+    const binding = cursorBinding(query, rows);
+    const offset = query.cursor === null ? 0 : decodeCursor(query.cursor, binding);
     ensure(Number.isSafeInteger(offset) && offset >= 0 && offset <= available.length, 'cursor is outside result set');
-    const page: MeasurementReadRow[] = []; let exportBytes = 2;
-    for (const row of available.slice(offset, offset + query.pageSize)) {
-      const bytes = Buffer.byteLength(encoding(row).bytes) + (page.length ? 1 : 0);
-      if (exportBytes + bytes > query.maxExportBytes) break;
-      page.push(freeze({ ...row })); exportBytes += bytes;
+    const candidates = available.slice(offset, offset + query.pageSize);
+    let output: MeasurementReadResult | null = null;
+    for (let count = candidates.length; count >= 0; count--) {
+      const page = candidates.slice(0, count).map(row => freeze({ ...row }));
+      const next = offset + page.length;
+      const partial = timedOut || next < available.length;
+      const candidate = sizedRead({ query: query.id, rows: page, totalCount: available.length,
+        nextCursor: next < available.length ? encodeCursor(next, binding) : null, partial,
+        reason: timedOut ? 'timeout at pinned bounded horizon' : next < available.length ? 'page or export bound' : null,
+        evaluationClock: query.evaluationClock });
+      if (candidate.exportBytes <= query.maxExportBytes) { output = candidate; break; }
     }
-    const next = offset + page.length;
-    const partial = timedOut || next < available.length;
-    return freeze({ query: query.id, rows: page, totalCount: available.length, nextCursor: next < available.length ? String(next) : null,
-      partial, reason: timedOut ? 'timeout at pinned bounded horizon' : next < available.length ? 'page or export bound' : null,
-      evaluationClock: query.evaluationClock, exportBytes });
+    ensure(output, 'export bound cannot encode a response');
+    ensure(offset >= available.length || output.rows.length > 0, 'export bound cannot make forward progress');
+    return output;
   });
 }
 

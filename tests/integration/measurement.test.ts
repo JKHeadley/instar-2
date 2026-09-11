@@ -1,7 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { decode } from '../../src/index.js';
-import { createFactStore } from '../../src/facts/index.js';
-import type { FactContext, FactSchema } from '../../src/facts/index.js';
 import {
   classifyFeatureOutcome,
   classifyProcesses,
@@ -18,6 +15,7 @@ import { decodeAssemblyRecord } from '../../src/assembly/index.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { factsFixture, value } from '../facts/fixtures.js';
 import { measurementFixture } from '../measurement/fixture.js';
+import { judgmentFixture } from '../judgment/fixture.js';
 
 describe('Part 16 public-port integration', () => {
   it('P16-NF-01 P16-NF-02 P16-NF-25 P16-NF-26 P16-NF-27 P16-NF-28 P16-NF-29 composes decoded P1 quantities through the bounded observational port', () => {
@@ -46,23 +44,15 @@ describe('Part 16 public-port integration', () => {
       .toEqual({ counts: { 'agent-worker': 1 }, unclassified: 1 });
   });
 
-  it('P16-NF-05 P16-NF-12 P16-NF-13 P16-NF-22 P16-NF-23 P16-NF-30 resolves signed attribution while reports, quota, and feature summaries remain advisory', () => {
-    const f = factsFixture();
-    const evidence = value(decode('Evidence', f.evidenceInput({ id: 'attribution:integration', observedAt: f.now, freshFor: 100,
-      claim: { subject: 'attempt:integration', predicate: 'registered-measurement-attribution',
-        value: { feature: 'feature:signed', model: 'model:signed', run: 'run:signed' } } }), f.ctx.decode));
-    f.evidence.push(evidence);
-    const schema: FactSchema = { kind: 'measurement-attribution', version: 1,
-      fields: { evidence: { kind: 'constitutional', type: 'Evidence' } }, machineScope: 'shared', standing: 'requester',
-      action: 'work', scope: f.scope, causallyBound: false, requiredReferences: [], authority: 'none' };
-    const context: FactContext = { ...f.ctx, schemas: [...f.ctx.schemas, schema], decode: { ...f.ctx.decode, evidence: f.evidence } };
-    const fact = f.fact({ kind: schema.kind, body: { evidence } }, context);
-    const storage = { owner: 'part-ten' as const, read: () => [fact], append: () => { throw new Error('read only'); } };
-    const snapshot = value(createFactStore(context, storage).readForProjection());
-    const mf = measurementFixture(); const port = createMeasurementLedger({ ...mf.c, types: context.decode });
-    expect(value(port.attribute({ attempt: 'attempt:integration', claimed: { feature: 'forged', model: 'forged', machine: 'forged' },
-      evaluationClock: f.now, sourceHistory: snapshot, candidates: [{ attempt: 'attempt:integration', factReferences: [fact.id] }] })))
-      .toMatchObject({ state: 'attributed', feature: 'feature:signed', model: 'model:signed', machine: 'machine-a' });
+  it('P16-NF-05 P16-NF-12 P16-NF-13 P16-NF-22 P16-NF-23 P16-NF-30 resolves owner-issued attribution while reports, quota, and feature summaries remain advisory', async () => {
+    const owner = judgmentFixture();
+    value(await owner.door.judge(owner.input, owner.start()));
+    const snapshot = value(owner.store.readForProjection());
+    const mf = measurementFixture();
+    const port = createMeasurementLedger({ ...mf.c, register: owner.ctx.decode.register, types: owner.ctx.decode });
+    expect(value(port.attribute({ attempt: `attempt:${owner.input.id}:1`, claimed: { feature: 'forged', model: 'forged', machine: 'forged' },
+      evaluationClock: owner.now, sourceHistory: snapshot, candidates: [] })))
+      .toMatchObject({ state: 'attributed', feature: 'judgment', model: 'model', machine: 'machine-a' });
     expect(value(coalesceUnknownQuotaEpisodes(['quota:a'], [], mf.c))).toEqual({ notices: ['quota:a'], open: ['quota:a'] });
     expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'absent', actionProved: false, negativeProved: false, gradeOnly: false }, mf.c))).toBe('unclassified');
     expect(value(renderMeasurementClaim({ kind: 'target', hardware: 'M1', workload: 'corpus', evidence: [] }, mf.c))).toBe('target: not measured');

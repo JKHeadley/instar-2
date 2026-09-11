@@ -47,7 +47,7 @@ it('P16-NF-12 P16-NF-13 P16-NF-39 P16-NF-40 P16-NF-41 P16-NF-46 durable lifecycl
   expect(value(createMeasurementLedger(measurementContext).attribute({ attempt: 'attempt:lifecycle',
     claimed: { feature: 'forged', model: 'forged', machine: 'forged' }, evaluationClock: f.now, sourceHistory: snapshot,
     candidates: [{ attempt: 'attempt:lifecycle', factReferences: [attributionFact.id] }] })))
-    .toMatchObject({ state: 'attributed', feature: 'feature:signed', machine: 'machine-a' });
+    .toMatchObject({ state: 'unattributed', feature: null, machine: null });
 
   const restartedStore = createFactStore(context, storage);
   const restartedSnapshot = value(restartedStore.readForProjection());
@@ -82,7 +82,7 @@ it('P16-NF-01 P16-NF-02 P16-NF-05 P16-NF-22 P16-NF-23 P16-NF-25 P16-NF-26 P16-NF
     import { readFileSync } from 'node:fs';
     import { consumeResult, decodeMeasurement } from '@instar/constitutional-types';
     import { classifyFeatureOutcome, coalesceUnknownQuotaEpisodes, createMeasurementLedger, decodeBurnPolicy,
-      decodeMeasurementProducerContract, decodeMeasurementReadQuery, renderMeasurementClaim } from '@instar/constitutional-types/measurement';
+      decodeMeasurementProducerContract, decodeMeasurementReadQuery, renderMeasurementClaim } from './dist/measurement/index.js';
     const seed = JSON.parse(readFileSync(0, 'utf8'));
     const take = result => consumeResult(result, { Success: value => value, Refused: refusal => { throw new Error(refusal.detail); } });
     const now = take(decodeMeasurement('clock', seed.now, seed.types));
