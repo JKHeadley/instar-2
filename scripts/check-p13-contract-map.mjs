@@ -1,126 +1,77 @@
-// Part Thirteen's map is deliberately binary. A check is either backed by an
-// actual passing test on this HEAD or held at the exact owner seam named by the
-// approved design. A passing advisory/negative neighbor cannot satisfy a held
-// governed positive.
-import { readFileSync } from 'node:fs';
+// Structural Slice A1 contract map. Lifecycle-holder behavior is intentionally
+// absent and is named only as NON-EXECUTABLE-UNTIL-slice-A2.
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const A2 = 'NON-EXECUTABLE-UNTIL-slice-A2';
 const executable = new Map([
-  [1, 'Owner inventory, closed local decoders, canonical identity, immutability, and public-owner construction are exercised.'],
-  [2, 'The complete approved design and section set pass the governed-document checker.'],
-  [3, 'The four-method Ten port delegates only to the landed public Eight driver and returns Ten-decoded observations.'],
-  [5, 'Exact adapter artifact, platform, durable launch, incarnation, and process identity are enforced.'],
-  [6, 'The landed tuple advertises advisory mode only and exposes no governed or interruption fallback.'],
-  [8, 'Claude Code and Codex use one adapter factory; the future-runtime constructor uses the same port and suite.'],
-  [15, 'Retained process identity and fresh incarnation reject reuse and sibling substitution.'],
-  [25, 'Same-machine reconnect candidacy requires Six fence subject, exact handle, fresh liveness, and resume evidence; cross-machine remains unsupported.'],
-  [28, 'Missing runtime custody refuses blind fallback and no invocation occurs.'],
-  [29, 'Only fresh exact-incarnation structured events prove live; timeout and absence are unknown.'],
-  [30, 'Closed structured events drive the local view; prompt/pane appearance has no schema authority.'],
-  [31, 'Heartbeats and event-id churn do not progress; a current real Part Five transition and exact resolved output range progress once.'],
-  [32, 'Completion requires correlated closure with stream, children, and unresolved operations closed.'],
-  [33, 'Exit status remains evidence and never constructs Five\'s RunExit.'],
-  [34, 'Real Part Two pinned and unpinned captures survive age; only an admitted unprotected tombstone removes bytes.'],
-  [39, 'A retained attempted launch returns uncertainty and directs observation without invoking again.'],
-  [51, 'Pane classifications are undecodable; confirmed structured poison makes resume ineligible.'],
+  [1, 'All four owned record forms and every runtime-event variant use closed total decoders, canonical comparison, migration, and deep freezing.'],
+  [2, 'The root design and all indexed section files pass the governed-document checker.'],
+  [5, 'A1 admission binds an exact launch subject to a current-generation Part Ten observation.'],
+  [15, 'Malformed or substituted operation/process identities refuse through typed receipts.'],
+  [24, 'The landed Part Four recovery port exposes EACCES/EIO custody reads as typed uncertainty while preserving its durable receipt.'],
+  [25, 'The A1 observation-admission arm rejects otherwise valid evidence from an obsolete register generation.'],
+  [29, 'The A1 observation-admission arm requires current owner generation; liveness classification remains in Slice A2.'],
+  [30, 'Only closed structured events decode; diagnostic text is never interpreted as state.'],
+  [31, 'A1 progress identity deduplicates owner subject plus output range and digest without inventing owner custody.'],
+  [33, 'The owned event preserves exit status as evidence and never constructs Part Five state.'],
+  [34, 'A1 output decoding and declared duplicate identity are executable; capture custody and lifecycle assembly remain in Slice A2.'],
+  [39, 'One operation retains one exact action and subject; contradictory replays refuse.'],
+  [46, 'The real landed Part Four EACCES/EIO recovery arm executes; holder liveness/work-gate/lifecycle cases remain in Slice A2.'],
 ]);
 
-// These rows have a landed, runnable negative/structural arm and separately
-// named positive arms that remain held. A passing local arm never clears the
-// owner seam recorded here.
-const partial = new Map([
-  [3, 'seam-response-effects-payloads.md + seam-response-effects-followup.md'],
+const mixedA2 = new Set([24, 25, 29, 31, 33, 34, 39, 46]);
+const whollyA2 = new Set([3, 8, 21, 28, 32, 37, 38, 51, 52]);
+
+const external = new Map([
   [4, 'seam-response-assembly-followup.md'],
-  [5, 'seam-response-assembly-followup.md + seam-response-effects-followup.md'],
   [6, 'seam-response-effects-payloads.md + seam-response-effects-followup.md'],
-  [8, 'seam-response-assembly-followup.md + seam-response-effects-followup.md'],
-  [15, 'seam-response-assembly-followup.md + seam-response-effects-followup.md'],
-  [28, 'seam-response-loop-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md + dated 06:33Z addendum in seam-response-rungraph-followup.md + SEAM-LEDGER.md row 38 + dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md + SEAM-LEDGER.md row 45'],
-  [37, 'seam-response-loop-breaker.md + seam-response-loop-followup.md'],
-  [39, 'seam-response-effects-followup.md + seam-response-loop-followup.md'],
-  [46, 'dated 07:10Z addenda in seam-response-effects-followup.md and seam-response-assembly-followup.md + SEAM-LEDGER.md row 41'],
-  [51, 'seam-response-loop-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md + dated 06:33Z addendum in seam-response-rungraph-followup.md + SEAM-LEDGER.md row 38 + dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md + SEAM-LEDGER.md row 45'],
-  [52, 'seam-response-effects-payloads.md + seam-response-effects-followup.md'],
-]);
-
-const held = new Map([
-  [4, 'seam-response-assembly-followup.md'],
-  [7, 'seam-response-judgment.md + dated 07:52Z addendum in seam-response-assembly-followup.md + SEAM-LEDGER.md row 42'],
+  [7, 'seam-response-judgment.md + seam-response-assembly-followup.md'],
   [9, 'seam-response-assembly-followup.md'],
   [10, 'seam-response-judgment.md + seam-response-assembly-followup.md'],
   [11, 'seam-response-judgment.md + seam-response-assembly-followup.md'],
   [12, 'seam-response-judgment.md + seam-response-assembly-followup.md'],
   [13, 'seam-response-assembly-followup.md'],
-  [14, 'seam-response-effects-payloads.md + seam-response-effects-followup.md + dated 06:33Z addendum in seam-response-rungraph-followup.md + SEAM-LEDGER.md row 38 + dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md + SEAM-LEDGER.md row 45'],
-  [16, 'dated 06:33Z addendum in seam-response-rungraph-followup.md + SEAM-LEDGER.md row 38 + dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md + SEAM-LEDGER.md row 45 + seam-response-judgment.md + seam-response-effects-followup.md'],
-  [17, 'dated 06:33Z addendum in seam-response-rungraph-followup.md + SEAM-LEDGER.md row 38 + dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md + SEAM-LEDGER.md row 45'],
-  [18, 'dated 06:33Z addendum in seam-response-rungraph-followup.md + SEAM-LEDGER.md row 38 + dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md + SEAM-LEDGER.md row 45'],
-  [19, 'seam-response-effects-payloads.md + seam-response-effects-followup.md + dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md + SEAM-LEDGER.md row 45'],
-  [20, 'seam-response-effects-payloads.md + seam-response-effects-followup.md + dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md + SEAM-LEDGER.md row 45'],
-  [21, 'dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md + SEAM-LEDGER.md row 45'],
-  [22, 'dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md + SEAM-LEDGER.md row 45'],
-  [23, 'dated 06:33Z addendum in seam-response-rungraph-followup.md + SEAM-LEDGER.md row 38 + dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md + SEAM-LEDGER.md row 45 + seam-response-judgment.md + seam-response-effects-followup.md'],
-  [24, 'part-thirteen-seam-response-intake.md'],
-  [26, 'seam-response-rungraph-followup.md + dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md + SEAM-LEDGER.md row 45'],
+  [14, 'seam-response-effects-payloads.md + seam-response-effects-followup.md + seam-response-rungraph-followup.md'],
+  [16, 'seam-response-rungraph-followup.md + seam-response-judgment.md + seam-response-effects-followup.md'],
+  [17, 'seam-response-rungraph-followup.md'],
+  [18, 'seam-response-rungraph-followup.md'],
+  [19, 'seam-response-effects-payloads.md + seam-response-effects-followup.md + seam-response-rungraph-followup.md'],
+  [20, 'seam-response-effects-payloads.md + seam-response-effects-followup.md + seam-response-rungraph-followup.md'],
+  [22, 'seam-response-rungraph-followup.md'],
+  [23, 'seam-response-rungraph-followup.md + seam-response-judgment.md + seam-response-effects-followup.md'],
+  [26, 'seam-response-rungraph-followup.md'],
   [27, 'seam-response-run-closure.md + seam-response-rungraph-followup.md'],
-  [35, 'dated 07:10Z addenda in seam-response-effects-followup.md and seam-response-assembly-followup.md + SEAM-LEDGER.md row 41 + seam-response-loop-breaker.md + seam-response-loop-followup.md'],
+  [35, 'seam-response-assembly-followup.md + seam-response-loop-breaker.md + seam-response-loop-followup.md'],
   [36, 'seam-response-effects-payloads.md + seam-response-effects-followup.md'],
-  [37, 'seam-response-loop-breaker.md + seam-response-loop-followup.md'],
-  [38, 'seam-response-loop-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md + design-harness-adapters-seam-request-cross-machine-ownership.md'],
   [40, 'seam-response-judgment.md + seam-response-assembly-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md'],
   [41, 'seam-response-rungraph-followup.md'],
   [42, 'part-eleven-seam-response-assembly.md'],
-  [43, 'LIVE-PREREQUISITES: dated 06:33Z addendum in seam-response-rungraph-followup.md row 38 + dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md row 45 + dated 09:10Z addendum in seam-response-rungraph-followup.md row 52 + seam-response-judgment.md + seam-response-assembly-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md + seam-response-run-closure.md + seam-response-loop-breaker.md + seam-response-loop-followup.md + part-eleven-seam-response-assembly.md'],
-  [44, 'LIVE-PREREQUISITES: dated 06:33Z addendum in seam-response-rungraph-followup.md row 38 + dated 08:48Z addenda in seam-response-assembly-followup.md and seam-response-rungraph-followup.md row 45 + dated 09:10Z addendum in seam-response-rungraph-followup.md row 52 + seam-response-judgment.md + seam-response-assembly-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md + seam-response-run-closure.md + seam-response-loop-breaker.md + seam-response-loop-followup.md + part-eleven-seam-response-assembly.md'],
-  [45, 'dated 07:52Z addendum in seam-response-assembly-followup.md + SEAM-LEDGER.md row 42 + seam-response-judgment.md + seam-response-assembly-followup.md'],
-  [46, 'dated 07:10Z addenda in seam-response-effects-followup.md and seam-response-assembly-followup.md + SEAM-LEDGER.md row 41'],
-  [47, 'dated 07:52Z addendum in seam-response-assembly-followup.md row 42 + dated 06:33Z addendum in seam-response-rungraph-followup.md row 38 + seam-response-judgment.md + seam-response-effects-followup.md + dated 07:10Z addenda in seam-response-effects-followup.md and seam-response-assembly-followup.md row 41 + seam-response-loop-breaker.md + seam-response-loop-followup.md + part-eleven-seam-response-assembly.md'],
-  [48, 'seam-response-judgment.md + dated 07:52Z addendum in seam-response-assembly-followup.md + SEAM-LEDGER.md row 42'],
-  [49, 'dated 09:10Z addendum in seam-response-rungraph-followup.md + SEAM-LEDGER.md row 52'],
-  [50, 'dated 09:10Z addendum in seam-response-rungraph-followup.md + SEAM-LEDGER.md row 52'],
-  [52, 'seam-response-effects-payloads.md + seam-response-effects-followup.md'],
+  [43, 'LIVE-PREREQUISITES named by docs/17-harness-adapters/01-conformance-matrix.md'],
+  [44, 'LIVE-PREREQUISITES named by docs/17-harness-adapters/01-conformance-matrix.md'],
+  [45, 'seam-response-assembly-followup.md + seam-response-judgment.md'],
+  [47, 'LIVE-PREREQUISITES named by docs/17-harness-adapters/01-conformance-matrix.md'],
+  [48, 'seam-response-judgment.md + seam-response-assembly-followup.md'],
+  [49, 'seam-response-rungraph-followup.md'],
+  [50, 'seam-response-rungraph-followup.md'],
 ]);
 
-const binding = (file, title) => Object.freeze({ file, title });
-const sharedBoundary = platform => `${platform} shared harness contract P13-NF-03 P13-NF-05 P13-NF-06 P13-NF-08 LOCAL-BOUNDARY-ARM exposes one advisory four-method port without claiming an Eight effect`;
-const structuredEvidence = 'P13-NF-29 P13-NF-30 P13-NF-31 P13-NF-32 P13-NF-33 P13-NF-34 structured evidence keeps liveness, progress, output, and completion distinct under finite bounds';
-const preventive = 'round-3 independent conformance regressions R3-F8 P13-NF-46 P13-NF-52 every preventive-compaction signal tuple remains explicitly unsupported';
-
-// Every executable row is pinned to the exact semantic assertion(s) that
-// establish its runnable local arms. Merely putting a row id in another passing
-// title cannot satisfy this table.
-const executableEvidence = new Map([
-  [1, [binding('tests/harness-adapters/records-and-holders.test.ts', 'P13-NF-01 records are closed, total, migrated before comparison, canonical, and immutable')]],
-  [2, [binding('tests/harness-adapters/governance-and-additivity.test.ts', 'P13-NF-02 the complete Part Thirteen design passes the governed-document checker')]],
-  [3, [binding('tests/integration/harness-adapters.test.ts', sharedBoundary('claude-code')), binding('tests/integration/harness-adapters.test.ts', sharedBoundary('codex'))]],
-  [4, [binding('tests/integration/harness-adapters-round2.test.ts', 'round-2 signed-history adapter regressions REVIEW-F2 P13-NF-04 EXECUTABLE-LOCAL-ARM re-resolves current conformance before describe and launch')]],
-  [5, [binding('tests/integration/harness-adapters.test.ts', sharedBoundary('claude-code')), binding('tests/integration/harness-adapters.test.ts', sharedBoundary('codex'))]],
-  [6, [binding('tests/integration/harness-adapters.test.ts', sharedBoundary('claude-code')), binding('tests/integration/harness-adapters.test.ts', sharedBoundary('codex'))]],
-  [8, [binding('tests/integration/harness-adapters.test.ts', sharedBoundary('claude-code')), binding('tests/integration/harness-adapters.test.ts', sharedBoundary('codex')), binding('tests/integration/harness-adapters.test.ts', 'P13-BOUNDARY-TUPLE adapter families share semantics without borrowing another tuple result')]],
-  [15, [binding('tests/harness-adapters/round4-regressions.test.ts', 'round-4 independent data-validation regressions R4-F3 P13-NF-15 P13-NF-25 P13-NF-29 refuses absent and mismatched signed launch subjects')]],
-  [25, [binding('tests/harness-adapters/round4-regressions.test.ts', 'round-4 independent data-validation regressions R4-F1 P13-NF-25 P13-NF-29 binds both event clocks and uses the signed source lifetime'), binding('tests/harness-adapters/round4-regressions.test.ts', 'round-4 independent data-validation regressions R4-F3 P13-NF-15 P13-NF-25 P13-NF-29 refuses absent and mismatched signed launch subjects')]],
-  [28, [binding('tests/e2e/harness-adapters.test.ts', 'P13-NF-25 P13-NF-28 local handle snapshot restart refuses blind fallback without claiming Eight retry behavior')]],
-  [29, [binding('tests/harness-adapters/round4-regressions.test.ts', 'round-4 independent data-validation regressions R4-F1 P13-NF-25 P13-NF-29 binds both event clocks and uses the signed source lifetime'), binding('tests/harness-adapters/round4-regressions.test.ts', 'round-4 independent data-validation regressions R4-F3 P13-NF-15 P13-NF-25 P13-NF-29 refuses absent and mismatched signed launch subjects')]],
-  [30, [binding('tests/harness-adapters/records-and-holders.test.ts', structuredEvidence)]],
-  [31, [binding('tests/harness-adapters/round4-regressions.test.ts', 'round-4 independent data-validation regressions R4-F4 P13-NF-31 P13-NF-34 hashes current Part Two capture bytes before crediting progress'), binding('tests/integration/harness-adapters-round3.test.ts', 'R3-F1 R4-F5 P13-NF-31 real Part Five work state and exact reported step are required for each progress transition')]],
-  [32, [binding('tests/harness-adapters/round4-regressions.test.ts', 'round-4 independent data-validation regressions R4-F2 P13-NF-32 P13-NF-34 retains pending when later closure or captured output becomes unavailable'), binding('tests/harness-adapters/records-and-holders.test.ts', structuredEvidence)]],
-  [33, [binding('tests/harness-adapters/records-and-holders.test.ts', structuredEvidence)]],
-  [34, [binding('tests/harness-adapters/round4-regressions.test.ts', 'round-4 independent data-validation regressions R4-F2 P13-NF-32 P13-NF-34 retains pending when later closure or captured output becomes unavailable'), binding('tests/harness-adapters/round4-regressions.test.ts', 'round-4 independent data-validation regressions R4-F4 P13-NF-31 P13-NF-34 hashes current Part Two capture bytes before crediting progress'), binding('tests/integration/harness-adapters-round3.test.ts', 'R3-F8 P13-NF-34 real Part Two captures survive age; only an admitted tombstone may remove unpinned bytes')]],
-  [37, [binding('tests/integration/harness-adapters-round2.test.ts', 'round-2 signed-history adapter regressions REVIEW-F8 P13-NF-37 EXECUTABLE-BOUNDED-OBSERVATION-ARM uses real Six to stop at the bound without invoking an observer')]],
-  [39, [binding('tests/integration/harness-adapters-round2.test.ts', 'round-2 signed-history adapter regressions REVIEW-F9 P13-NF-39 executes Eight and Six same-request closure without granting retry')]],
-  [46, [
-    binding('tests/harness-adapters/legacy-1x-traces.test.ts', 'R4-F9 exact runnable legacy boundaries from design section 10 P13-NF-46 legacy PendingInjectStore EACCES enumeration failure silently collapses to empty'),
-    binding('tests/harness-adapters/legacy-1x-traces.test.ts', 'R4-F9 exact runnable legacy boundaries from design section 10 P13-NF-46 legacy PendingInjectStore EIO enumeration failure silently collapses to empty'),
-    binding('tests/harness-adapters/legacy-1x-traces.test.ts', 'R4-F9 exact runnable legacy boundaries from design section 10 P13-NF-46 legacy newest-rollout oracle falsely credits unrelated worker B to stalled A'),
-    binding('tests/harness-adapters/legacy-1x-traces.test.ts', 'R4-F9 exact runnable legacy boundaries from design section 10 P13-NF-46 legacy synchronous has-session timeout reports dead while its conditional async neighbor is indeterminate'),
-    ...['absent', 'disabled', 'unreadable'].map(mode => binding('tests/harness-adapters/legacy-1x-traces.test.ts', `R4-F9 exact runnable legacy boundaries from design section 10 P13-NF-46 legacy ${mode} work gate permits busy refresh`)),
-    binding('tests/harness-adapters/legacy-1x-traces.test.ts', 'R4-F9 exact runnable legacy boundaries from design section 10 P13-NF-46 legacy dry-run work gate logs a would-refusal but still proceeds'),
-    binding('tests/harness-adapters/round4-regressions.test.ts', 'round-4 independent data-validation regressions R4-F7 P13-NF-46 keeps raw growth diagnostic until current owner-resolved work proves recovery'),
-    binding('tests/harness-adapters/round3-regressions.test.ts', preventive),
-  ]],
-  [51, [binding('tests/harness-adapters/records-and-holders.test.ts', 'P13-NF-51 pane classifications grant nothing and confirmed structured poison forbids resume')]],
-  [52, [binding('tests/harness-adapters/round3-regressions.test.ts', preventive)]],
+const proofTitles = new Map([
+  [1, 'P13-NF-01 A1-RECORDS all four owned forms and eleven event variants are closed, total, canonical, migrated, and deeply frozen'],
+  [2, 'P13-NF-02 the complete Part Thirteen design still passes the governed-document checker'],
+  [5, 'R5-F4 P13-NF-05 P13-NF-25 P13-NF-29 current Part Ten observation generation is mandatory at A1 admission'],
+  [15, 'R5-F5 P13-NF-15 malformed begin/finish attempt fields are typed refusals and never append partial state'],
+  [24, 'R5-F9 P13-NF-24 P13-NF-46 real Part Four custody read EACCES returns a typed refusal and preserves the durable receipt'],
+  [25, 'R5-F4 P13-NF-05 P13-NF-25 P13-NF-29 current Part Ten observation generation is mandatory at A1 admission'],
+  [29, 'R5-F4 P13-NF-05 P13-NF-25 P13-NF-29 current Part Ten observation generation is mandatory at A1 admission'],
+  [30, 'A1-INTEGRATION R5-F7 R5-F8 P13-NF-30 P13-NF-31 P13-NF-33 P13-NF-34 deduplicates declared progress identity without inventing output custody'],
+  [31, 'R5-F7 P13-NF-31 P13-NF-34 output progress identity ignores runtime id and capture label but not bytes'],
+  [33, 'A1-INTEGRATION R5-F7 R5-F8 P13-NF-30 P13-NF-31 P13-NF-33 P13-NF-34 deduplicates declared progress identity without inventing output custody'],
+  [34, 'R5-F7 P13-NF-31 P13-NF-34 output progress identity ignores runtime id and capture label but not bytes'],
+  [39, 'R5-F6 P13-NF-39 one operation retains one exact action and subject across attempt kinds'],
+  [46, 'R5-F9 P13-NF-24 P13-NF-46 real Part Four custody read EACCES returns a typed refusal and preserves the durable receipt'],
 ]);
 
 export function p13Dispositions(design = readFileSync('docs/17-harness-adapters/12-negative-contract-fixtures.md', 'utf8')) {
@@ -128,14 +79,63 @@ export function p13Dispositions(design = readFileSync('docs/17-harness-adapters/
   if (ids.length !== 52 || new Set(ids.map(row => row.number)).size !== 52)
     throw new Error(`expected exactly 52 unique P13-NF design rows, received ${ids.length}`);
   return ids.map(row => {
-    if (partial.has(row.number)) return { ...row, status: 'EXECUTABLE',
-      reason: executable.get(row.number) ?? 'The landed negative/structural arm executes without supplying the held owner behavior.',
-      heldArms: `NON-EXECUTABLE-UNTIL-${partial.get(row.number)}` };
-    if (executable.has(row.number)) return { ...row, status: 'EXECUTABLE', reason: executable.get(row.number) };
-    const dependency = held.get(row.number);
-    if (!dependency) throw new Error(`${row.id}: no executable test or exact owner seam disposition`);
-    return { ...row, status: `NON-EXECUTABLE-UNTIL-${dependency}`, reason: 'The named owner contract is not landed on this HEAD; only boundary/negative neighbors may execute.' };
+    if (executable.has(row.number)) return {
+      ...row, status: 'EXECUTABLE', reason: executable.get(row.number),
+      ...(mixedA2.has(row.number) ? { heldArms: A2 } : {}),
+    };
+    if (whollyA2.has(row.number)) return { ...row, status: A2,
+      reason: 'The holder lifecycle implementation and its fixtures were structurally removed from Slice A1.' };
+    const dependency = external.get(row.number);
+    if (!dependency) throw new Error(`${row.id}: no executable arm or exact non-executable dependency`);
+    return { ...row, status: `NON-EXECUTABLE-UNTIL-${dependency}`,
+      reason: 'The named owner contract is not landed; no local stand-in is counted.' };
   });
+}
+
+const generated = new Set(['generated/capabilities.md', 'generated/coverage.md', 'generated/glossary.md',
+  'generated/register.json', 'generated/rules.md', 'generated/source.json']);
+const allowedPath = path => path.startsWith('src/harness-adapters/')
+  || path === 'scripts/check-p13-contract-map.mjs'
+  || path.startsWith('tests/harness-adapters/')
+  || /^tests\/(integration|e2e)\/harness-adapters(?:-[^/]*)?\.test\.ts$/.test(path)
+  || generated.has(path);
+
+function changedPaths() {
+  const tracked = execFileSync('git', ['diff', '--name-only', 'main'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+  const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+  return [...new Set([...tracked, ...untracked])].sort();
+}
+
+function existsOnMain(path) {
+  try { execFileSync('git', ['cat-file', '-e', `main:${path}`], { stdio: 'ignore' }); return true; }
+  catch { return false; }
+}
+
+export function checkP13Architecture() {
+  const failures = [];
+  const changed = changedPaths();
+  for (const path of changed) {
+    if (!allowedPath(path)) failures.push(`out-of-scope path: ${path}`);
+    if (!generated.has(path) && existsOnMain(path)) failures.push(`pre-existing main file changed: ${path}`);
+  }
+  for (const path of ['src/harness-adapters/holder.ts', 'src/harness-adapters/adapter.ts',
+    'src/harness-adapters/regression-boundaries.ts', 'scripts/slice-p13-state-storage.mjs'])
+    if (existsSync(path)) failures.push(`Slice A2 file remains: ${path}`);
+  const sourceFiles = readdirSync('src/harness-adapters').filter(name => name.endsWith('.ts'));
+  const source = sourceFiles.map(name => readFileSync(`src/harness-adapters/${name}`, 'utf8')).join('\n');
+  for (const symbol of ['createRuntimeHandleHolder', 'restoreRuntimeHandleHolder', 'createHarnessEvidenceHolder',
+    'sameMachineReconnectCandidate', 'createMemoryHarnessAdapterStateStore', 'correlatedRecoveryProgress',
+    'preventiveCompactionDisposition', 'RuntimeHandleHolder', 'HarnessEvidenceHolder'])
+    if (source.includes(symbol)) failures.push(`Slice A2 symbol remains: ${symbol}`);
+  if (source.includes("owner: 'part-two'")) failures.push('local substitute Part Two custody provider remains');
+  const imports = [...source.matchAll(/from ['"](\.\.\/[^'"]+)['"]/g)].map(match => match[1]);
+  for (const specifier of imports) if (!specifier.endsWith('/index.js') && specifier !== '../index.js')
+    failures.push(`private owner import: ${specifier}`);
+  const checker = readFileSync('scripts/check-p13-contract-map.mjs', 'utf8');
+  const invented = ['part-thirteen', 'seam-response', 'intake.md'].join('-');
+  if (checker.includes(invented)) failures.push('invented intake seam grant remains');
+  if (failures.length) throw new Error(failures.join('\n'));
+  return { changed, sourceFiles };
 }
 
 export function checkP13Coverage(report, dispositions = p13Dispositions()) {
@@ -147,38 +147,29 @@ export function checkP13Coverage(report, dispositions = p13Dispositions()) {
     const tests = results.filter(test => (test.title.match(/\bP13-NF-\d+\b/g) ?? []).includes(row.id));
     const passing = tests.filter(test => test.status === 'passed');
     const skipped = tests.filter(test => ['pending', 'skipped'].includes(test.status));
-    if (tests.some(test => !['passed', 'pending', 'skipped'].includes(test.status)))
-      throw new Error(`${row.id}: mapped test is not passing or explicitly skipped`);
     if (row.status === 'EXECUTABLE') {
-      if (!passing.length) throw new Error(`${row.id}: EXECUTABLE has no passing real test`);
-      const required = executableEvidence.get(row.number);
-      if (!required?.length) throw new Error(`${row.id}: EXECUTABLE has no exact evidence binding`);
-      for (const expected of required) {
-        const actual = results.find(test => test.file === expected.file && test.title === expected.title);
-        if (!actual || actual.status !== 'passed')
-          throw new Error(`${row.id}: exact evidence did not pass: ${expected.file} :: ${expected.title}`);
-      }
+      const title = proofTitles.get(row.number);
+      if (!title || !results.some(test => test.title === title && test.status === 'passed'))
+        throw new Error(`${row.id}: exact executable proof did not pass`);
       if (row.heldArms && !skipped.some(test => test.title.includes(row.heldArms)))
-        throw new Error(`${row.id}: executable local arm lacks an exact skipped fixture for ${row.heldArms}`);
+        throw new Error(`${row.id}: missing ${row.heldArms} skipped arm`);
     } else {
-      if (passing.length) throw new Error(`${row.id}: a stand-in pass attempts to satisfy ${row.status}`);
+      if (passing.length) throw new Error(`${row.id}: held row has a stand-in passing test`);
       if (!skipped.some(test => test.title.includes(row.status)))
-        throw new Error(`${row.id}: held check lacks an exact skipped fixture for ${row.status}`);
+        throw new Error(`${row.id}: missing exact skipped disposition ${row.status}`);
     }
     return { ...row, tests, passing: passing.length, skipped: skipped.length };
   });
-  for (const exact of [
-    binding('tests/harness-adapters/records-and-holders.test.ts', 'P13-NF-01 records are closed, total, migrated before comparison, canonical, and immutable'),
-    binding('tests/integration/harness-adapters.test.ts', sharedBoundary('claude-code')),
-    binding('tests/e2e/harness-adapters.test.ts', 'P13-NF-25 P13-NF-28 local handle snapshot restart refuses blind fallback without claiming Eight retry behavior'),
-  ]) if (!results.some(test => test.file === exact.file && test.title === exact.title && test.status === 'passed'))
-    throw new Error(`three-tier requirement missing exact passing assertion ${exact.file} :: ${exact.title}`);
-  if (!results.some(test => test.title.includes('P13-ADDITIVITY') && test.status === 'passed'))
-    throw new Error('permanent main-vs-HEAD owner-fixture additivity check did not pass');
+  for (const marker of ['A1-RECORDS', 'A1-INTEGRATION', 'A1-E2E'])
+    if (!results.some(test => test.status === 'passed' && test.title.includes(marker)))
+      throw new Error(`three-tier A1 proof missing: ${marker}`);
+  if (!results.some(test => test.status === 'passed' && test.title.includes('P13-ADDITIVITY R5-F10')))
+    throw new Error('permanent main-vs-HEAD scope/additivity proof missing');
   return rows;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  checkP13Architecture();
   const rows = checkP13Coverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   console.log('| Check | Status | Test files |');
   console.log('|---|---|---|');

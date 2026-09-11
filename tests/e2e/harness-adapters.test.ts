@@ -1,62 +1,15 @@
+import { execFileSync } from 'node:child_process';
 import { expect, it } from 'vitest';
-import {
-  createClaudeCodeHarnessAdapter,
-  createMemoryHarnessAdapterStateStore,
-  restoreRuntimeHandleHolder,
-} from '../../src/harness-adapters/index.js';
-import { refused, value } from '../facts/fixtures.js';
-import { assemblyInput } from '../assembly/fixture.js';
-import { adapterFixture } from '../harness-adapters/fixture.js';
 
-it('P13-NF-25 P13-NF-28 local handle snapshot restart refuses blind fallback without claiming Eight retry behavior', () => {
-  const seed = adapterFixture('claude-code');
-  value(seed.package.adapter.launch(seed.spec, 'operation:launch', 'claim:launch'));
-  const snapshot = value(seed.handles.snapshot('snapshot:after-launch', 30));
-  const durableBytes = JSON.stringify(snapshot);
-
-  const restoredHandles = restoreRuntimeHandleHolder({ snapshot: JSON.parse(durableBytes), adapter: seed.id,
-    machine: 'machine-a', maxHandles: 4, maxAttempts: 16, context: seed.f.c, state: seed.state });
-  const restarted = createClaudeCodeHarnessAdapter({
-    id: seed.id, artifact: seed.spec.artifactDigest, conformance: 'conformance:claude-code', machine: 'machine-a',
-    platform: 'claude-code',
-    driver: seed.driver, handles: restoredHandles, context: seed.f.c, clock: () => 50,
-    generation: () => 'generation:fixture',
+it('A1-E2E R5-F4 R5-F5 R5-F6 R5-F7 R5-F8 P13-NF-01 P13-NF-05 P13-NF-15 P13-NF-25 P13-NF-29 P13-NF-31 P13-NF-34 P13-NF-39 fresh process preserves the structural Slice A1 boundary', () => {
+  const output = execFileSync('node_modules/.bin/vite-node', ['tests/harness-adapters/fresh-process-probe.ts'],
+    { cwd: process.cwd(), encoding: 'utf8' });
+  const result = JSON.parse(output) as Record<string, any>;
+  expect(result).toMatchObject({
+    matchingGeneration: 'recorded', obsoleteGeneration: 'refused', malformedAttempt: 'refused',
+    contradictoryOperation: 'refused', emptyFinish: 'refused', repeatedOutput: 'duplicate', removed: [],
   });
-  const accepted = value(restarted.adapter.deliver({ launch: seed.spec.id, intake: seed.spec.input,
-    digest: seed.spec.inputDigest, incarnation: seed.spec.incarnation, operation: 'operation:deliver' }));
-  expect(accepted.phase).toBe('input-accepted');
-  value(seed.f.runtime.record('HarnessObservation', {
-    ...assemblyInput('HarnessObservation'), id: 'delivery:1', launch: seed.spec.id, run: seed.spec.run,
-    step: seed.spec.step, input: seed.spec.input, incarnation: seed.spec.incarnation,
-    phase: 'input-accepted', observedAt: 50,
-  }));
-  expect(seed.calls).toEqual({ launch: 1, deliver: 1, observe: 0 });
-
-  const secondSnapshot = value(restoredHandles.snapshot('snapshot:after-delivery', 60));
-  const resumedHandles = restoreRuntimeHandleHolder({ snapshot: JSON.parse(JSON.stringify(secondSnapshot)), adapter: seed.id,
-    machine: 'machine-a', maxHandles: 4, maxAttempts: 16, context: seed.f.c, state: seed.state });
-  const resumed = createClaudeCodeHarnessAdapter({
-    id: seed.id, artifact: seed.spec.artifactDigest, conformance: 'conformance:claude-code', machine: 'machine-a',
-    platform: 'claude-code',
-    driver: seed.driver, handles: resumedHandles, context: seed.f.c, clock: () => 70,
-    generation: () => 'generation:fixture',
+  expect(result.outputCustody).toMatchObject({
+    disposition: 'refused', reason: expect.stringContaining('NON-EXECUTABLE-UNTIL-slice-A2'),
   });
-  expect(value(resumed.adapter.observe({ launch: seed.spec.id, delivery: 'delivery:1', operation: 'operation:observe' })).phase)
-    .toBe('output-observed');
-  expect(seed.calls).toEqual({ launch: 1, deliver: 1, observe: 1 });
-
-  expect(() => restoreRuntimeHandleHolder({ snapshot: { ...secondSnapshot, handles: undefined }, adapter: seed.id,
-    machine: 'machine-a', maxHandles: 4, maxAttempts: 16, context: seed.f.c,
-    state: createMemoryHarnessAdapterStateStore('bad-snapshot') })).toThrow(/custody unknown/);
-  const empty = restoreRuntimeHandleHolder({ snapshot: { ...secondSnapshot, id: 'snapshot:empty', handles: [] }, adapter: seed.id,
-    machine: 'machine-a', maxHandles: 4, maxAttempts: 16, context: seed.f.c,
-    state: createMemoryHarnessAdapterStateStore('empty-snapshot') });
-  const withoutCustody = createClaudeCodeHarnessAdapter({
-    id: seed.id, artifact: seed.spec.artifactDigest, conformance: 'conformance:claude-code', machine: 'machine-a',
-    platform: 'claude-code',
-    driver: seed.driver, handles: empty, context: seed.f.c, clock: () => 80, generation: () => 'generation:fixture',
-  });
-  refused(withoutCustody.adapter.observe({ launch: seed.spec.id, delivery: 'delivery:1', operation: 'operation:blind' }),
-    'blind fallback');
-  expect(seed.calls.launch).toBe(1);
 });

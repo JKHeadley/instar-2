@@ -8,6 +8,7 @@ import type {
   HarnessAdapterRecordName,
   HarnessAdapterStateSnapshot,
   HarnessHandleSnapshot,
+  HarnessOperationAttempt,
   HarnessRuntimeEvent,
   HarnessRuntimeHandle,
 } from './contracts.js';
@@ -161,7 +162,7 @@ function validateSnapshot(value: unknown): HarnessHandleSnapshot {
   return deepFreeze({ ...snapshot, handles } as unknown as HarnessHandleSnapshot);
 }
 
-function validateAttempt(value: unknown) {
+function validateAttempt(value: unknown): HarnessOperationAttempt {
   const attempt = object(value, 'HarnessOperationAttempt');
   exact(attempt, ['kind', 'operation', 'launch', 'incarnation', 'subjectDigest', 'state', 'evidence', 'attemptedAt', 'observedAt'], 'HarnessOperationAttempt');
   one(attempt.kind, ['launch', 'delivery'] as const, 'attempt.kind');
@@ -177,7 +178,7 @@ function validateAttempt(value: unknown) {
     throw new Error('HarnessOperationAttempt: observed attempt requires evidence and time');
   if (observedAt !== null && observedAt < attemptedAt)
     throw new Error('HarnessOperationAttempt: observation cannot predate the attempted operation');
-  return deepFreeze(attempt);
+  return deepFreeze(attempt as unknown as HarnessOperationAttempt);
 }
 
 function validateStateSnapshot(value: unknown): HarnessAdapterStateSnapshot {
@@ -202,7 +203,7 @@ function validateStateSnapshot(value: unknown): HarnessAdapterStateSnapshot {
     || events.some(event => event.machine !== snapshot.machine || event.harness !== snapshot.adapter))
     throw new Error('journal entries: snapshot subject mismatch');
   if (new Set(handles.map(handle => handle.launch)).size !== handles.length) throw new Error('handles: duplicate launch');
-  if (new Set(attempts.map(attempt => `${attempt.kind}:${attempt.operation}`)).size !== attempts.length)
+  if (new Set(attempts.map(attempt => attempt.operation)).size !== attempts.length)
     throw new Error('attempts: duplicate operation');
   if (new Set(events.map(event => event.id)).size !== events.length)
     throw new Error('events: duplicate immutable event identity');
@@ -266,6 +267,30 @@ export const decodeHarnessHandleSnapshot = (input: unknown, context: HarnessAdap
   decodeHarnessAdapterRecord('HarnessHandleSnapshot', input, context);
 export const decodeHarnessAdapterStateSnapshot = (input: unknown, context: HarnessAdapterDecodeContext) =>
   decodeHarnessAdapterRecord('HarnessAdapterStateSnapshot', input, context);
+
+/** Total decoder for the nested package-local attempt record. */
+export function decodeHarnessOperationAttempt(input: unknown,
+  context: HarnessAdapterDecodeContext): Result<HarnessOperationAttempt> {
+  const definition = defineDecoder<HarnessOperationAttempt, HarnessAdapterDecodeContext>({
+    name: 'HarnessOperationAttempt', owner: 'part-thirteen', currentVersion: 1,
+    versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {},
+    decodeCurrent: value => {
+      try {
+        const envelope = object(value, 'HarnessOperationAttempt envelope');
+        exact(envelope, ['type', 'schemaVersion', 'attempt'], 'HarnessOperationAttempt envelope');
+        return { ok: true, value: validateAttempt(envelope.attempt) };
+      } catch (error) {
+        return { ok: false, detail: error instanceof Error ? error.message : 'attempt decode failed' };
+      }
+    },
+  }, context.preserved);
+  return consumeResult(definition, {
+    Refused: refusal => refusal,
+    Success: decoder => decoder.decode({
+      type: 'HarnessOperationAttempt', schemaVersion: 1, attempt: input,
+    }, context),
+  });
+}
 
 export function harnessAdapterLogicalKey(record: HarnessAdapterRecord): string {
   const tuple = (values: readonly string[]) => consumeResult(canonical(values), {

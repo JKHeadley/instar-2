@@ -1,12 +1,5 @@
-import type { BoundaryContext, Hash, Result } from '../index.js';
-import type {
-  AssemblyDecodeContext,
-  HarnessAdapterPort,
-  NativeHarnessDriverPort,
-} from '../assembly/index.js';
-import type { FenceToken, TransportAuthority } from '../transport/index.js';
-import type { RunGraphPort } from '../rungraph/index.js';
-import type { CapturedContent } from '../facts/index.js';
+import type { Hash, Result } from '../index.js';
+import type { AssemblyDecodeContext, AssemblyHost } from '../assembly/index.js';
 
 declare const harnessAdapterOwned: unique symbol;
 interface HarnessAdapterOwned { readonly [harnessAdapterOwned]: 'part-thirteen-implementation' }
@@ -33,10 +26,7 @@ export interface HarnessOutputRange {
   readonly truncated: boolean;
 }
 
-/**
- * Package-local, non-authoritative protocol evidence. This is deliberately not
- * a fact schema or a replacement for Ten's HarnessObservation.
- */
+/** Package-local protocol evidence. It is not a fact, permission, or owner state. */
 export interface HarnessRuntimeEvent extends HarnessAdapterOwned {
   readonly type: 'HarnessRuntimeEvent';
   readonly schemaVersion: 2;
@@ -68,7 +58,7 @@ export interface HarnessRuntimeEvent extends HarnessAdapterOwned {
   readonly diagnosticCode: string;
 }
 
-/** A process-local handle. It can reconnect one machine; it grants nothing. */
+/** A machine-local process handle record. It grants no authority. */
 export interface HarnessRuntimeHandle extends HarnessAdapterOwned {
   readonly type: 'HarnessRuntimeHandle';
   readonly schemaVersion: 1;
@@ -114,7 +104,7 @@ export interface HarnessOperationAttempt {
   readonly observedAt: number | null;
 }
 
-/** Package-local durable journal. It is not a core fact or an authority source. */
+/** Package-local journal image retained as an owned record for Slice A2. */
 export interface HarnessAdapterStateSnapshot extends HarnessAdapterOwned {
   readonly type: 'HarnessAdapterStateSnapshot';
   readonly schemaVersion: 1;
@@ -131,9 +121,9 @@ export interface HarnessAdapterStateSnapshot extends HarnessAdapterOwned {
   readonly events: readonly HarnessRuntimeEvent[];
 }
 
-export type HarnessAdapterRecord = HarnessRuntimeEvent | HarnessRuntimeHandle | HarnessHandleSnapshot | HarnessAdapterStateSnapshot;
+export type HarnessAdapterRecord = HarnessRuntimeEvent | HarnessRuntimeHandle |
+  HarnessHandleSnapshot | HarnessAdapterStateSnapshot;
 export type HarnessAdapterRecordName = HarnessAdapterRecord['type'];
-
 export interface HarnessAdapterDecodeContext extends AssemblyDecodeContext {}
 
 export interface HarnessAdapterIdentity {
@@ -151,135 +141,51 @@ export interface HarnessAdapterComparison {
   }>;
 }
 
-export interface HarnessHandleLookup {
-  readonly found: boolean;
-  readonly handle: HarnessRuntimeHandle | null;
-}
-
-export interface HarnessHandleWriteReceipt {
-  readonly disposition: 'stored' | 'duplicate' | 'refused';
+export interface HarnessAttemptAdmission {
+  readonly disposition: 'started' | 'existing' | 'observed' | 'duplicate' | 'refused';
   readonly reason: string;
-  readonly canonicalHash: Hash | null;
+  readonly attempt: HarnessOperationAttempt | null;
 }
 
-export interface RuntimeHandleHolder {
-  readonly owner: 'part-thirteen';
-  readonly machine: string;
-  readonly maxHandles: number;
-  readonly maxAttempts: number;
-  prepare(launch: string): Readonly<{ disposition: 'available' | 'existing' | 'refused'; reason: string }>;
-  beginAttempt(input: Readonly<Omit<HarnessOperationAttempt, 'state' | 'evidence' | 'observedAt'>>): Readonly<{
-    disposition: 'started' | 'existing' | 'refused'; reason: string; attempt: HarnessOperationAttempt | null;
-  }>;
-  finishAttempt(operation: string, evidence: string, observedAt: number): Readonly<{
-    disposition: 'observed' | 'duplicate' | 'refused'; reason: string; attempt: HarnessOperationAttempt | null;
-  }>;
-  put(handle: HarnessRuntimeHandle): HarnessHandleWriteReceipt;
-  lookup(launch: string): HarnessHandleLookup;
-  snapshot(id: string, capturedAt: number): Result<HarnessHandleSnapshot>;
+export interface HarnessProgressIdentity {
+  readonly disposition: 'advancing' | 'duplicate' | 'conflict' | 'non-progress';
+  readonly reason: string;
+  readonly key: string;
 }
 
-export interface HarnessEvidenceAdmission {
+export interface HarnessObservationAdmission {
   readonly disposition: 'recorded' | 'duplicate' | 'refused';
   readonly reason: string;
   readonly progress: boolean;
   readonly progressKey: string;
+  readonly event: HarnessRuntimeEvent | null;
 }
 
-export interface HarnessLivenessView {
-  readonly state: 'live' | 'dead' | 'unknown';
-  readonly reason: string;
-  readonly event: string;
-}
-
-export interface HarnessCompletionView {
-  readonly state: 'complete' | 'pending' | 'unknown';
-  readonly reason: string;
-  readonly event: string;
-}
-
-export interface HarnessResumeView {
-  readonly state: 'eligible' | 'poisoned' | 'unknown';
-  readonly reason: string;
-  readonly event: string;
-}
-
-export interface HarnessEvidenceHolder {
+/**
+ * Slice A1 is stateless: callers supply already retained records. Durable journal
+ * reading, rotation, and all lifecycle decisions belong to Slice A2.
+ */
+export interface HarnessAdmissionPort {
   readonly owner: 'part-thirteen';
-  readonly machine: string;
-  readonly maxEvents: number;
-  readonly maxCaptureBytes: number;
-  admit(event: HarnessRuntimeEvent): HarnessEvidenceAdmission;
-  liveness(handle: HarnessRuntimeHandle, now: number): HarnessLivenessView;
-  progress(handle: HarnessRuntimeHandle, now: number): HarnessProgressView;
-  completion(handle: HarnessRuntimeHandle, now: number): HarnessCompletionView;
-  resume(handle: HarnessRuntimeHandle, now: number): HarnessResumeView;
-  events(launch: string): readonly HarnessRuntimeEvent[];
+  beginAttempt(input: unknown, retained: readonly unknown[], maximum: number): HarnessAttemptAdmission;
+  finishAttempt(operation: unknown, evidence: unknown, observedAt: unknown,
+    retained: readonly unknown[]): HarnessAttemptAdmission;
+  admitObservation(event: unknown, retained: readonly unknown[], maximum: number): HarnessObservationAdmission;
+  progressIdentity(event: unknown, retained: readonly unknown[]): HarnessProgressIdentity;
 }
 
-export interface HarnessProgressView {
-  readonly state: 'progressed' | 'pending' | 'unknown';
-  readonly reason: string;
-  readonly event: string;
-}
-
-/** Current owner read for Part Two capture custody; copied maps are not evidence. */
-export interface HarnessCaptureReadPort {
-  readonly owner: 'part-two';
-  read(reference: string): Result<CapturedContent | null>;
-}
-
-export interface HarnessEvidenceOwnerPorts {
-  readonly work?: Pick<RunGraphPort, 'read'>;
-  readonly captures?: HarnessCaptureReadPort;
-  readonly handles?: Pick<RuntimeHandleHolder, 'owner' | 'machine' | 'lookup'>;
-}
-
-/** Exact-byte compare-and-swap storage for the package-local journal. */
-export interface HarnessAdapterStateStorePort {
-  readonly owner: 'part-thirteen';
-  readonly id: string;
-  load(): unknown | null;
-  save(expected: Hash | null, snapshot: HarnessAdapterStateSnapshot): void;
-}
-
-export interface SessionHarnessAdapterInput {
-  readonly id: string;
+export interface HarnessAdmissionInput {
+  readonly adapter: string;
   readonly artifact: Hash;
   readonly platform: string;
-  readonly conformance: string;
   readonly machine: string;
-  readonly driver: NativeHarnessDriverPort;
-  readonly handles: RuntimeHandleHolder;
-  readonly context: AssemblyDecodeContext;
-  readonly clock: () => number;
-  readonly generation: () => string;
-}
-
-export interface SessionHarnessAdapterPackage {
-  readonly owner: 'part-thirteen';
-  readonly family: string;
-  readonly adapter: HarnessAdapterPort;
+  readonly context: HarnessAdapterDecodeContext;
+  /** Part Ten's landed host read supplies the current register generation. */
+  readonly current: Pick<AssemblyHost, 'current'>;
 }
 
 export interface HarnessRuntimeEventDecoderPort {
   readonly owner: 'part-thirteen';
   readonly harness: string;
   decode(input: unknown, context: HarnessAdapterDecodeContext): Result<HarnessRuntimeEvent>;
-}
-
-export interface HarnessReconnectDecision {
-  readonly disposition: 'reconnect' | 'refused' | 'unsupported';
-  readonly reason: string;
-  readonly handle: HarnessRuntimeHandle | null;
-}
-
-export interface HarnessReconnectInput {
-  readonly launch: string;
-  readonly machine: string;
-  readonly incarnation: string;
-  readonly fence: FenceToken;
-  readonly now: number;
-  readonly evidence: HarnessEvidenceHolder;
-  readonly authority: Pick<TransportAuthority<unknown>, 'inspect' | 'admitWrite'>;
 }

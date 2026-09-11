@@ -1,12 +1,12 @@
 # Session harness adapters
 
-Part Thirteen implements Ten's `HarnessAdapterPort` for Claude Code, Codex, and
-future runtimes through one shared family. Its records are package-local
-protocol evidence and opaque machine-local handles; they are not core facts,
-permissions, effect settlements, run transitions, or lease authority.
+Part Thirteen Slice A1 owns only package-local adapter records, their total
+decoders, operation-attempt admission, signed-observation admission, and the
+declared progress identity. These values are not core facts, permissions,
+effect settlements, run transitions, capture custody, or lease authority.
 
-The landed surface supports advisory launch, original-input delivery,
-owner-resolved observation, bounded compact event evidence, and same-machine
-reconnect candidacy. Governed context delivery, provider routing, harness
-effects, full recovery, route-bound activation, and cross-machine replacement
-remain stopped at the exact owner seams named by the Part Thirteen design.
+The holder lifecycle is structurally absent. Durable journal reads and
+rotation, pending-work decisions, completion, liveness, reconnect, and resume
+confirmation are `NON-EXECUTABLE-UNTIL-slice-A2`. Output ranges decode and
+deduplicate in A1, but output cannot be credited as owner-resolved progress
+until Slice A2 binds a landed current Part Two capture-custody read.
