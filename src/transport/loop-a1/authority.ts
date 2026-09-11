@@ -330,6 +330,10 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
       closedInput(input, ['command', 'fence', 'episode', 'attempt', 'kind', 'failureClass',
         'completion', 'jitterPermille', 'restoration'], 'closed A1 outcome input required');
       closedInput(input.episode, ['owner', 'name', 'id'], 'closed LoopRecord reference required');
+      ensure(Array.isArray(input.restoration) && input.restoration.length <= 64,
+        'bounded restoration references required');
+      input.restoration.forEach(reference =>
+        closedInput(reference, ['owner', 'name', 'id'], 'closed restoration reference required'));
       const all = read();
       fence(all, input.fence);
       ensure(input.episode.owner === 'part-six' && input.episode.name === 'LoopRecord'

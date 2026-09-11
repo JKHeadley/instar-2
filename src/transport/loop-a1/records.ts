@@ -194,6 +194,21 @@ function ownerRecordCandidates(facts: readonly FactEnvelope[], context: FactCont
       return record?.type === name && record.id === id;
     });
 }
+function restorationAssessmentCandidates(facts: readonly FactEnvelope[], context: FactContext,
+  id: string): FactEnvelope[] {
+  const owned = allFacts(facts)
+    .filter(fact => schemaOwns(context, fact, 'record', 'part-nine', 'VerificationAssessment'));
+  const referenced = owned.filter(fact => fact.id === id
+    || (fact.body as { record?: { id?: unknown } }).record?.id === id);
+  const identities = new Set(referenced.flatMap(fact => {
+    const identity = (fact.body as { record?: { id?: unknown } }).record?.id;
+    return typeof identity === 'string' ? [identity] : [];
+  }));
+  return owned.filter(fact => {
+    const identity = (fact.body as { record?: { id?: unknown } }).record?.id;
+    return typeof identity === 'string' && identities.has(identity);
+  });
+}
 function uniqueOwnerRecord(facts: readonly FactEnvelope[], context: FactContext, name: string, id: string): FactEnvelope {
   const candidates = ownerRecordCandidates(facts, context, name, id);
   ensure(candidates.length > 0, `${name} evidence is absent`);
@@ -234,9 +249,7 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
   facts: readonly FactEnvelope[], context: FactContext, at: Clock, pressureKey: string,
   operationFamily: string, host: LoopA1Host, status = true, requireComplete = true): readonly FactEnvelope[] {
   referenceCheck(reference, 'part-nine', 'VerificationAssessment');
-  const candidates = allFacts(facts).filter(fact => schemaOwns(context, fact, 'record', 'part-nine', 'VerificationAssessment'))
-    .filter(fact => fact.id === reference.id
-      || (fact.body as { record?: { type?: unknown; id?: unknown } }).record?.id === reference.id);
+  const candidates = restorationAssessmentCandidates(facts, context, reference.id);
   ensure(candidates.length > 0, 'VerificationAssessment evidence is absent');
   ensure(new Set(candidates.map(fact => encoded((fact.body as { record: Json }).record).bytes)).size === 1,
     'VerificationAssessment evidence is conflicted');
@@ -300,7 +313,7 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
   const evidenceFacts = evidenceIds.map(id => evidenceFact(id as string, facts, context));
   const superseded = typeof record.supersedes === 'string' && record.supersedes.length > 0
     ? [uniqueOwnerRecord(facts, context, 'VerificationAssessment', record.supersedes)] : [];
-  const support = [...new Map([fact, requestFact, planFact, ...evidenceFacts, ...superseded]
+  const support = [...new Map([...candidates, requestFact, planFact, ...evidenceFacts, ...superseded]
     .map(value => [value.id, value])).values()];
   ensure([requestFact, ...evidenceFacts, ...superseded].every(value => predecessors.includes(value.id)),
     'VerificationAssessment support is outside its signed predecessor set');
@@ -341,7 +354,7 @@ export function currentRestorationReferences(references: SharedLoopRecord['closu
   operationFamily: string, host: LoopA1Host): SharedLoopRecord['closureEvidence'] {
   return freeze(references.filter(reference => {
     referenceCheck(reference, 'part-nine', 'VerificationAssessment');
-    const candidates = ownerRecordCandidates(facts, context, 'VerificationAssessment', reference.id);
+    const candidates = restorationAssessmentCandidates(facts, context, reference.id);
     ensure(candidates.length > 0, 'VerificationAssessment evidence is absent');
     ensure(new Set(candidates.map(fact => encoded((fact.body as { record: Json }).record).bytes)).size === 1,
       'VerificationAssessment evidence is conflicted');

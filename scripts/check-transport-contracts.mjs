@@ -95,6 +95,9 @@ export const transportSeamEvidence = [
   ['SLB-A1-CLOSED-REFERENCES-126', 'integration', 'V24 and V24b refuse undeclared fields in all new request references'],
   ['SLB-A1-CURRENT-PROOF-REPLAY-127', 'unit', 'signed replay derives the same current closure candidates as live append'],
   ['SLB-A1-ORDINARY-REPLAY-E2E-128', 'e2e', 'V31 fresh process returns the durable ordinary close after expiry'],
+  ['SLB-A1-FACT-REFERENCE-CONTINUITY-129', 'integration', 'V20 fact-addressed restoration remains valid for a later half-open trial'],
+  ['SLB-A1-REPEATED-REFERENCE-SHAPE-130', 'integration', 'V21 malformed repeated restoration references refuse before retry deduplication'],
+  ['SLB-A1-FACT-REFERENCE-CONFLICT-131', 'integration', 'V23 physical fact references expose every conflicting logical assessment'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {
