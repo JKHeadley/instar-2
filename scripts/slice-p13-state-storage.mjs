@@ -1,4 +1,4 @@
-import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { canonical, consumeResult } from '../src/index.js';
 
 function hash(value) {
@@ -20,11 +20,23 @@ export function createHarnessAdapterFileState(path) {
       const current = load();
       const actual = current === null ? null : hash(current);
       if (actual !== expected) throw new Error('harness adapter state compare-and-swap mismatch');
-      const temporary = `${path}.pending-${process.pid}`;
-      writeFileSync(temporary, `${JSON.stringify(snapshot)}\n`, { encoding: 'utf8', mode: 0o600 });
-      const descriptor = openSync(temporary, 'r');
-      try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
-      renameSync(temporary, path);
+      const lock = `${path}.lock`;
+      let lockDescriptor;
+      try { lockDescriptor = openSync(lock, 'wx', 0o600); }
+      catch { throw new Error('harness adapter state compare-and-swap mismatch'); }
+      try {
+        const lockedCurrent = load();
+        const lockedActual = lockedCurrent === null ? null : hash(lockedCurrent);
+        if (lockedActual !== expected) throw new Error('harness adapter state compare-and-swap mismatch');
+        const temporary = `${path}.pending-${process.pid}`;
+        writeFileSync(temporary, `${JSON.stringify(snapshot)}\n`, { encoding: 'utf8', mode: 0o600 });
+        const descriptor = openSync(temporary, 'r');
+        try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
+        renameSync(temporary, path);
+      } finally {
+        closeSync(lockDescriptor);
+        unlinkSync(lock);
+      }
     },
   });
 }

@@ -15,6 +15,7 @@ export {
   createRuntimeHandleHolder,
   restoreRuntimeHandleHolder,
   sameMachineReconnectCandidate,
+  harnessRuntimeEventWitness,
 } from './holder.js';
 export {
   createClaudeCodeHarnessAdapter,
@@ -23,3 +24,5 @@ export {
   createHarnessRuntimeEventDecoder,
   createSessionHarnessAdapter,
 } from './adapter.js';
+export { correlatedRecoveryProgress, preventiveCompactionDisposition } from './regression-boundaries.js';
+export type { CorrelatedGrowthObservation, PreventiveCompactionSignals } from './regression-boundaries.js';

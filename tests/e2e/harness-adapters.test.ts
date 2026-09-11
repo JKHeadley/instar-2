@@ -5,6 +5,7 @@ import {
   restoreRuntimeHandleHolder,
 } from '../../src/harness-adapters/index.js';
 import { refused, value } from '../facts/fixtures.js';
+import { assemblyInput } from '../assembly/fixture.js';
 import { adapterFixture } from '../harness-adapters/fixture.js';
 
 it('P13-NF-24 P13-NF-25 P13-NF-28 local handle snapshot restart refuses blind fallback without claiming Eight retry behavior', () => {
@@ -24,6 +25,11 @@ it('P13-NF-24 P13-NF-25 P13-NF-28 local handle snapshot restart refuses blind fa
   const accepted = value(restarted.adapter.deliver({ launch: seed.spec.id, intake: seed.spec.input,
     digest: seed.spec.inputDigest, incarnation: seed.spec.incarnation, operation: 'operation:deliver' }));
   expect(accepted.phase).toBe('input-accepted');
+  value(seed.f.runtime.record('HarnessObservation', {
+    ...assemblyInput('HarnessObservation'), id: 'delivery:1', launch: seed.spec.id, run: seed.spec.run,
+    step: seed.spec.step, input: seed.spec.input, incarnation: seed.spec.incarnation,
+    phase: 'input-accepted', observedAt: 50,
+  }));
   expect(seed.calls).toEqual({ launch: 1, deliver: 1, observe: 0 });
 
   const secondSnapshot = value(restoredHandles.snapshot('snapshot:after-delivery', 60));

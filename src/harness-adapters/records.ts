@@ -88,8 +88,9 @@ function validateEvent(value: unknown): HarnessRuntimeEvent {
     text(event[field], field);
   hash(event.artifactDigest, 'artifactDigest');
   const kind = one(event.kind, eventKinds, 'kind');
-  integer(event.sourceClock, 'sourceClock');
-  integer(event.observedAt, 'observedAt');
+  const sourceClock = integer(event.sourceClock, 'sourceClock');
+  const observedAt = integer(event.observedAt, 'observedAt');
+  if (observedAt < sourceClock) throw new Error('HarnessRuntimeEvent: local observation cannot predate its source clock');
   integer(event.freshFor, 'freshFor');
   const evidence = stringList(event.sourceEvidence, 'sourceEvidence');
   if (evidence.length === 0) throw new Error('sourceEvidence: witnessed event required');
@@ -168,12 +169,14 @@ function validateAttempt(value: unknown) {
   hash(attempt.subjectDigest, 'attempt.subjectDigest');
   one(attempt.state, ['pending', 'observed'] as const, 'attempt.state');
   text(attempt.evidence, 'attempt.evidence', true);
-  integer(attempt.attemptedAt, 'attempt.attemptedAt');
-  if (attempt.observedAt !== null) integer(attempt.observedAt, 'attempt.observedAt');
+  const attemptedAt = integer(attempt.attemptedAt, 'attempt.attemptedAt');
+  const observedAt = attempt.observedAt === null ? null : integer(attempt.observedAt, 'attempt.observedAt');
   if (attempt.state === 'pending' && (attempt.evidence !== '' || attempt.observedAt !== null))
     throw new Error('HarnessOperationAttempt: pending attempt cannot claim an observation');
   if (attempt.state === 'observed' && (attempt.evidence === '' || attempt.observedAt === null))
     throw new Error('HarnessOperationAttempt: observed attempt requires evidence and time');
+  if (observedAt !== null && observedAt < attemptedAt)
+    throw new Error('HarnessOperationAttempt: observation cannot predate the attempted operation');
   return deepFreeze(attempt);
 }
 
@@ -201,6 +204,8 @@ function validateStateSnapshot(value: unknown): HarnessAdapterStateSnapshot {
   if (new Set(handles.map(handle => handle.launch)).size !== handles.length) throw new Error('handles: duplicate launch');
   if (new Set(attempts.map(attempt => `${attempt.kind}:${attempt.operation}`)).size !== attempts.length)
     throw new Error('attempts: duplicate operation');
+  if (new Set(events.map(event => event.id)).size !== events.length)
+    throw new Error('events: duplicate immutable event identity');
   const captured = events.reduce((sum, event) => sum + (event.output?.byteCount ?? 0), 0);
   if (captured > maxCaptureBytes) throw new Error('events: capture capacity exceeded');
   return deepFreeze({ ...snapshot, handles, attempts, events } as unknown as HarnessAdapterStateSnapshot);
@@ -263,11 +268,15 @@ export const decodeHarnessAdapterStateSnapshot = (input: unknown, context: Harne
   decodeHarnessAdapterRecord('HarnessAdapterStateSnapshot', input, context);
 
 export function harnessAdapterLogicalKey(record: HarnessAdapterRecord): string {
+  const tuple = (values: readonly string[]) => consumeResult(canonical(values), {
+    Success: encoded => encoded.bytes,
+    Refused: refusal => { throw new Error(refusal.detail); },
+  });
   switch (record.type) {
-    case 'HarnessRuntimeEvent': return `runtime-event:${record.harness}:${record.artifactDigest}:${record.machine}:${record.id}`;
-    case 'HarnessRuntimeHandle': return `runtime-handle:${record.launch}:${record.machine}:${record.incarnation}:${record.processIdentity}`;
-    case 'HarnessHandleSnapshot': return `handle-snapshot:${record.adapter}:${record.machine}:${record.id}`;
-    case 'HarnessAdapterStateSnapshot': return `adapter-state:${record.adapter}:${record.machine}`;
+    case 'HarnessRuntimeEvent': return `runtime-event:${tuple([record.harness, record.artifactDigest, record.machine, record.id])}`;
+    case 'HarnessRuntimeHandle': return `runtime-handle:${tuple([record.launch, record.machine, record.incarnation, record.processIdentity])}`;
+    case 'HarnessHandleSnapshot': return `handle-snapshot:${tuple([record.adapter, record.machine, record.id])}`;
+    case 'HarnessAdapterStateSnapshot': return `adapter-state:${tuple([record.adapter, record.machine])}`;
   }
 }
 

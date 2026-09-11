@@ -8,13 +8,21 @@ import {
   createRuntimeHandleHolder,
   decodeHarnessRuntimeEvent,
   decodeHarnessRuntimeHandle,
+  harnessRuntimeEventWitness,
 } from '../../src/harness-adapters/index.js';
-import type { HarnessRuntimeEvent, SessionHarnessAdapterInput } from '../../src/harness-adapters/index.js';
+import type { HarnessEvidenceOwnerPorts, HarnessRuntimeEvent, SessionHarnessAdapterInput } from '../../src/harness-adapters/index.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 
 export const digest = (character: string): Hash => `sha256:${character.repeat(64)}` as Hash;
+const captures = new WeakMap<object, Record<string, { hash: Hash; bytes: string; status: 'available'; byteLength: number }>>();
+
+export function evidenceOwners(f: object, work?: HarnessEvidenceOwnerPorts['work']): HarnessEvidenceOwnerPorts {
+  let retained = captures.get(f);
+  if (!retained) { retained = {}; captures.set(f, retained); }
+  return { captures: retained, ...(work ? { work } : {}) };
+}
 
 export function handleInput(overrides: Record<string, unknown> = {}) {
   return {
@@ -87,5 +95,25 @@ export function decodedHandle(f: ReturnType<typeof assemblyRuntimeFixture>, over
 }
 
 export function decodedEvent(f: ReturnType<typeof assemblyRuntimeFixture>, kind: HarnessRuntimeEvent['kind'], overrides: Record<string, unknown> = {}) {
-  return value(decodeHarnessRuntimeEvent(eventInput(kind, overrides), f.c));
+  if (Object.hasOwn(overrides, 'sourceEvidence')) return value(decodeHarnessRuntimeEvent(eventInput(kind, overrides), f.c));
+  const preliminary = value(decodeHarnessRuntimeEvent(eventInput(kind, { ...overrides, sourceEvidence: ['witness:pending'] }), f.c));
+  const witness = harnessRuntimeEventWitness(preliminary);
+  const event = value(decodeHarnessRuntimeEvent({ ...preliminary, sourceEvidence: [witness] }, f.c));
+  const phases: Readonly<Record<HarnessRuntimeEvent['kind'], 'launched' | 'input-accepted' | 'context-consumed' | 'output-observed' | 'pause-observed' | 'exit-observed' | 'uncertain'>> = {
+    'process-started': 'launched', 'probe-live': 'launched', 'probe-failed': 'uncertain',
+    'input-accepted': 'input-accepted', 'context-consumed': 'context-consumed', heartbeat: 'launched',
+    'work-transition': 'output-observed', 'output-chunk': 'output-observed', 'turn-closed': 'output-observed',
+    'process-exited': 'exit-observed', diagnostic: 'pause-observed',
+  };
+  const prior = value(f.c.history!.lookup(witness));
+  if (!prior) value(f.runtime.record('HarnessObservation', {
+    ...assemblyInput('HarnessObservation'), id: witness, launch: event.launch, run: event.run,
+    step: event.step, input: event.input, incarnation: event.incarnation, phase: phases[event.kind],
+    observedAt: event.sourceClock, freshFor: event.freshFor, detail: witness,
+  }));
+  if (event.output) {
+    const retained = evidenceOwners(f).captures as Record<string, { hash: Hash; bytes: string; status: 'available'; byteLength: number }>;
+    retained[event.output.captureReference] = { hash: event.output.digest, bytes: 'data', status: 'available', byteLength: event.output.byteCount };
+  }
+  return event;
 }

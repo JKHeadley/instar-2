@@ -5,6 +5,13 @@ import { assemblyInput } from '../assembly/fixture.js';
 import { refused, value } from '../facts/fixtures.js';
 import { adapterFixture, digest } from '../harness-adapters/fixture.js';
 
+function deliveryObservation(h: ReturnType<typeof adapterFixture>, id = 'delivery:1') {
+  return value(h.f.runtime.record('HarnessObservation', {
+    ...assemblyInput('HarnessObservation'), id, launch: h.spec.id, run: h.spec.run, step: h.spec.step,
+    input: h.spec.input, incarnation: h.spec.incarnation, phase: 'input-accepted', observedAt: 20,
+  })) as HarnessObservation;
+}
+
 for (const platform of ['claude-code', 'codex'] as const) describe(`${platform} shared harness contract`, () => {
   it('P13-NF-03 P13-NF-05 P13-NF-06 P13-NF-08 LOCAL-BOUNDARY-ARM exposes one advisory four-method port without claiming an Eight effect', () => {
     const h = adapterFixture(platform);
@@ -53,8 +60,9 @@ for (const platform of ['claude-code', 'codex'] as const) describe(`${platform} 
   it('P13-NF-30 P13-NF-32 observation rejects terminal appearance and accepts only exact signed Ten consumption evidence', () => {
     const h = adapterFixture(platform);
     value(h.package.adapter.launch(h.spec, 'operation:launch', 'claim:launch'));
+    const delivery = deliveryObservation(h);
     h.observeAs('context-consumed', 'prompt:disappeared');
-    refused(h.package.adapter.observe({ launch: h.spec.id, delivery: 'delivery:1', operation: 'operation:observe' }),
+    refused(h.package.adapter.observe({ launch: h.spec.id, delivery: delivery.id, operation: 'operation:observe' }),
       'terminal appearance');
 
     const source = value(h.f.runtime.record('HarnessObservation', {
@@ -65,7 +73,7 @@ for (const platform of ['claude-code', 'codex'] as const) describe(`${platform} 
       phase: 'context-consumed', observedAt: 20,
     })) as HarnessObservation;
     h.observeAs('context-consumed', source.id);
-    const consumed = value(h.package.adapter.observe({ launch: h.spec.id, delivery: 'delivery:1', operation: 'operation:observe:2' }));
+    const consumed = value(h.package.adapter.observe({ launch: h.spec.id, delivery: delivery.id, operation: 'operation:observe:2' }));
     expect(consumed).toEqual(source);
   });
 });

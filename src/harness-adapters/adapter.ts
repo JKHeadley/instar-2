@@ -87,6 +87,18 @@ function resolveLaunch(input: SessionHarnessAdapterInput, reference: string): Ha
   return row.record;
 }
 
+function resolveObservation(input: SessionHarnessAdapterInput, reference: string, phase: HarnessObservation['phase']): HarnessObservation {
+  requireValue(reference && input.context.history, 'observation requires an exact durable delivery identity');
+  const row = take(input.context.history.lookup(reference));
+  requireValue(row?.record?.type === 'HarnessObservation' && row.record.phase === phase,
+    'delivery observation is absent from Ten signed assembly history');
+  requireValue(row.completeness === 'complete' && row.taint.length === 0 && row.conflicts.length === 0,
+    'delivery observation history is partial, tainted, or conflicted');
+  requireValue(take(input.context.history.resolve(row.record)).admitted,
+    'delivery observation history is not admitted');
+  return row.record;
+}
+
 function resolveConformance(input: SessionHarnessAdapterInput): AdapterConformance {
   requireValue(input.context.history, 'adapter binding requires Ten AssemblyHistoryReadPort');
   const row = take(input.context.history.lookup(input.conformance));
@@ -152,6 +164,8 @@ export function createSessionHarnessAdapter(input: SessionHarnessAdapterInput): 
         requireValue(spec.consumptionMode === 'advisory',
           'governed model-context mode is unsupported until the named grounding and runtime seams land');
         const durableSpec = resolveLaunch(input, spec.id);
+        requireValue(operation === durableSpec.processOperation,
+          'launch operation differs from the owner-resolved process operation');
         requireValue(assemblyIdentity(durableSpec).canonicalHash === assemblyIdentity(spec).canonicalHash,
           'launch input differs from Ten owner-resolved durable specification');
         const retainedAttempt = input.handles.lookup(spec.id).handle;
@@ -206,6 +220,7 @@ export function createSessionHarnessAdapter(input: SessionHarnessAdapterInput): 
     deliver(delivery: Readonly<{ launch: string; intake: string; digest: Hash; incarnation: string; operation: string }>): Result<HarnessObservation> {
       return boundary('SessionHarnessDeliver', delivery, input.context, () => {
         resolveConformance(input);
+        requireValue(delivery.operation, 'delivery requires an exact operation identity');
         const handle = checkedHandle(input, delivery.launch);
         const spec = resolveLaunch(input, delivery.launch);
         requireValue(handleMatchesSpec(handle, spec), 'durable handle and owner-resolved launch disagree');
@@ -242,9 +257,14 @@ export function createSessionHarnessAdapter(input: SessionHarnessAdapterInput): 
     observe(request: Readonly<{ launch: string; delivery: string; operation: string }>): Result<HarnessObservation> {
       return boundary('SessionHarnessObserve', request, input.context, () => {
         resolveConformance(input);
+        requireValue(request.operation && request.delivery, 'observation requires exact operation and delivery identities');
         const handle = checkedHandle(input, request.launch);
         const spec = resolveLaunch(input, request.launch);
         requireValue(handleMatchesSpec(handle, spec), 'durable handle and owner-resolved launch disagree');
+        const delivery = resolveObservation(input, request.delivery, 'input-accepted');
+        requireValue(delivery.launch === spec.id && delivery.run === spec.run && delivery.step === spec.step
+          && delivery.input === spec.input && delivery.incarnation === spec.incarnation,
+        'delivery observation names another launch, run, step, input, or incarnation');
         const observed = take(input.driver.observe({ operation: request.operation, processIdentity: handle.processIdentity }));
         if (observed.phase === 'context-consumed') {
           requireValue(input.context.history, 'context consumption requires Ten signed history');

@@ -25,6 +25,11 @@ const outcome = <T>(result: Result<T>): Outcome<T> => consumeResult<T, Outcome<T
 });
 
 function consumption(h: ReturnType<typeof adapterFixture>, id: string, changes: Record<string, unknown> = {}) {
+  const delivery = value(h.f.runtime.record('HarnessObservation', {
+    ...assemblyInput('HarnessObservation'), id: 'delivery:1', launch: h.spec.id, run: h.spec.run,
+    step: h.spec.step, input: h.spec.input, incarnation: h.spec.incarnation,
+    phase: 'input-accepted', observedAt: 20,
+  })) as HarnessObservation;
   return value(h.f.runtime.record('HarnessObservation', {
     ...assemblyInput('HarnessObservation'), id, launch: h.spec.id, run: h.spec.run, step: h.spec.step,
     input: h.spec.input, incarnation: h.spec.incarnation, sourceEvidence: ['provider:model-request:1'],

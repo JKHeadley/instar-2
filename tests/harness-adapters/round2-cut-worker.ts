@@ -6,7 +6,7 @@ import {
 } from '../../src/harness-adapters/index.js';
 import type { HarnessAdapterStateSnapshot, HarnessAdapterStateStorePort } from '../../src/harness-adapters/index.js';
 import { value } from '../facts/fixtures.js';
-import { adapterFixture, decodedEvent } from './fixture.js';
+import { adapterFixture, decodedEvent, evidenceOwners } from './fixture.js';
 // @ts-expect-error The exact-byte filesystem host is JavaScript outside pure core compilation.
 import { createHarnessAdapterFileState } from '../../scripts/slice-p13-state-storage.mjs';
 
@@ -28,8 +28,8 @@ function state(path: string, killRevision = -1): HarnessAdapterStateStorePort {
 
 if (cut === 'after-progress') {
   const evidence = createHarnessEvidenceHolder({ adapter: fixture.id, machine: 'machine-a', maxEvents: 8,
-    maxCaptureBytes: 32, context: fixture.f.c, state: state(`${directory}/evidence.json`, 1) });
-  const result = evidence.admit(decodedEvent(fixture.f, 'work-transition'));
+    maxCaptureBytes: 32, context: fixture.f.c, state: state(`${directory}/evidence.json`, 1), owners: evidenceOwners(fixture.f) });
+  const result = evidence.admit(decodedEvent(fixture.f, 'output-chunk'));
   note({ progressDisposition: result.disposition, progress: result.progress });
   if (mode === 'seed') die();
   process.exit(0);

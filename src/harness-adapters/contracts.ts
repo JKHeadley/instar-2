@@ -5,6 +5,8 @@ import type {
   NativeHarnessDriverPort,
 } from '../assembly/index.js';
 import type { FenceToken, TransportAuthority } from '../transport/index.js';
+import type { RunGraphPort } from '../rungraph/index.js';
+import type { CapturedContent } from '../facts/index.js';
 
 declare const harnessAdapterOwned: unique symbol;
 interface HarnessAdapterOwned { readonly [harnessAdapterOwned]: 'part-thirteen-implementation' }
@@ -209,9 +211,14 @@ export interface HarnessEvidenceHolder {
   readonly maxCaptureBytes: number;
   admit(event: HarnessRuntimeEvent): HarnessEvidenceAdmission;
   liveness(handle: HarnessRuntimeHandle, now: number): HarnessLivenessView;
-  completion(handle: HarnessRuntimeHandle): HarnessCompletionView;
-  resume(handle: HarnessRuntimeHandle): HarnessResumeView;
+  completion(handle: HarnessRuntimeHandle, now: number): HarnessCompletionView;
+  resume(handle: HarnessRuntimeHandle, now: number): HarnessResumeView;
   events(launch: string): readonly HarnessRuntimeEvent[];
+}
+
+export interface HarnessEvidenceOwnerPorts {
+  readonly work?: Pick<RunGraphPort, 'read'>;
+  readonly captures?: Readonly<Record<string, CapturedContent>>;
 }
 
 /** Exact-byte compare-and-swap storage for the package-local journal. */

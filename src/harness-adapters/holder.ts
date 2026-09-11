@@ -1,5 +1,6 @@
 import { canonical, consumeResult } from '../index.js';
 import type { Hash } from '../index.js';
+import type { HarnessObservation } from '../assembly/index.js';
 import type {
   HarnessAdapterDecodeContext,
   HarnessAdapterStateSnapshot,
@@ -7,6 +8,7 @@ import type {
   HarnessCompletionView,
   HarnessEvidenceAdmission,
   HarnessEvidenceHolder,
+  HarnessEvidenceOwnerPorts,
   HarnessHandleSnapshot,
   HarnessHandleWriteReceipt,
   HarnessOperationAttempt,
@@ -171,9 +173,28 @@ function exactSubject(event: HarnessRuntimeEvent): string {
 }
 function eventKey(event: HarnessRuntimeEvent): string {
   const subject = exactSubject(event);
-  if (event.kind === 'work-transition') return `work:${subject}:${event.workSubject}:${event.predecessor}:${event.workPhase}`;
+  if (event.kind === 'work-transition') return `work:${subject}:${event.workSubject}:${event.predecessor}`;
   if (event.kind === 'output-chunk' && event.output) return `output:${subject}:${event.output.start}:${event.output.end}:${event.output.digest}`;
   return `non-progress:${subject}:${event.kind}:${event.id}`;
+}
+
+const observationPhase: Readonly<Record<HarnessRuntimeEvent['kind'], HarnessObservation['phase']>> = Object.freeze({
+  'process-started': 'launched', 'probe-live': 'launched', 'probe-failed': 'uncertain',
+  'input-accepted': 'input-accepted', 'context-consumed': 'context-consumed', heartbeat: 'launched',
+  'work-transition': 'output-observed', 'output-chunk': 'output-observed', 'turn-closed': 'output-observed',
+  'process-exited': 'exit-observed', diagnostic: 'pause-observed',
+});
+
+/** Canonical closed claim carried by the current Part Ten observation. */
+export function harnessRuntimeEventWitness(event: HarnessRuntimeEvent): string {
+  const encoded = consumeResult(canonical({
+    id: event.id, subject: exactSubject(event), operation: event.operation, kind: event.kind,
+    sourceClock: event.sourceClock, predecessor: event.predecessor, workSubject: event.workSubject,
+    workPhase: event.workPhase, output: event.output, streamState: event.streamState,
+    childrenState: event.childrenState, unresolvedOperations: event.unresolvedOperations,
+    exitStatus: event.exitStatus, diagnosticCode: event.diagnosticCode,
+  }), { Success: value => value, Refused: refusal => { throw new Error(refusal.detail); } });
+  return `harness-runtime-event:${encoded.hash}`;
 }
 function outputCoverage(events: readonly HarnessRuntimeEvent[]): Readonly<{ end: number; complete: boolean }> {
   const ranges = events.filter(event => event.kind === 'output-chunk' && event.output)
@@ -201,7 +222,7 @@ function sameHandle(event: HarnessRuntimeEvent, handle: HarnessRuntimeHandle): b
 
 export function createHarnessEvidenceHolder(input: Readonly<{
   adapter: string; machine: string; maxEvents: number; maxCaptureBytes: number;
-  context: HarnessAdapterDecodeContext; state: HarnessAdapterStateStorePort;
+  context: HarnessAdapterDecodeContext; state: HarnessAdapterStateStorePort; owners?: HarnessEvidenceOwnerPorts;
 }>): HarnessEvidenceHolder {
   if (!input.adapter || !input.machine || !Number.isSafeInteger(input.maxEvents) || input.maxEvents < 1
     || !Number.isSafeInteger(input.maxCaptureBytes) || input.maxCaptureBytes < 1)
@@ -212,24 +233,49 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     freeze({ disposition, reason, progress, progressKey });
   const witnessFailure = (event: HarnessRuntimeEvent): string | null => {
     if (!input.context.history) return 'runtime evidence requires current signed-history resolution';
-    const references = [...event.sourceEvidence, ...(event.kind === 'work-transition' ? [event.workSubject, event.predecessor] : [])];
-    for (const reference of references) {
-      const row = consumeResult(input.context.history.lookup(reference), {
+    if (event.sourceEvidence.length !== 1) return 'runtime event requires one exact current Part Ten observation';
+    const reference = event.sourceEvidence[0]!;
+    const row = consumeResult(input.context.history.lookup(reference), {
+      Success: value => value,
+      Refused: refusal => { throw new Error(refusal.detail); },
+    });
+    if (!row?.record || row.record.type !== 'HarnessObservation' || row.completeness !== 'complete'
+      || row.taint.length || row.conflicts.length)
+      return `runtime evidence reference ${reference} is not a complete current Part Ten observation`;
+    const verdict = consumeResult(input.context.history.resolve(row.record), {
+      Success: value => value,
+      Refused: refusal => { throw new Error(refusal.detail); },
+    });
+    if (!verdict.admitted) return `runtime evidence reference ${reference} is rejected by its owner history`;
+    const observation = row.record;
+    if (observation.launch !== event.launch || observation.run !== event.run || observation.step !== event.step
+      || observation.input !== event.input || observation.incarnation !== event.incarnation
+      || observation.phase !== observationPhase[event.kind] || observation.observedAt !== event.sourceClock
+      || observation.detail !== harnessRuntimeEventWitness(event))
+      return `runtime evidence reference ${reference} does not witness the exact event subject, phase, clock, and claim`;
+    if (event.output) {
+      const capture = input.owners?.captures?.[event.output.captureReference];
+      if (!capture || capture.status !== 'available' || capture.bytes === null
+        || capture.hash !== event.output.digest
+        || Buffer.byteLength(capture.bytes) !== event.output.byteCount)
+        return `runtime output capture ${event.output.captureReference} is missing or disagrees with its admitted bytes`;
+    }
+    if (event.kind === 'work-transition') {
+      if (!input.owners?.work) return 'work transition requires the current Part Five run owner view';
+      const view = consumeResult(input.owners.work.read(event.run), {
         Success: value => value,
         Refused: refusal => { throw new Error(refusal.detail); },
       });
-      if (!row || row.completeness !== 'complete' || row.taint.length || row.conflicts.length)
-        return `runtime evidence reference ${reference} is missing, partial, tainted, or conflicted`;
-      if (row.record) {
-        const verdict = consumeResult(input.context.history.resolve(row.record), {
-          Success: value => value,
-          Refused: refusal => { throw new Error(refusal.detail); },
-        });
-        if (!verdict.admitted) return `runtime evidence reference ${reference} is rejected by its owner history`;
-      }
+      const step = view.pending.find(candidate => candidate.id === event.workSubject);
+      if (!step || step.expected !== event.predecessor || step.operation.key !== event.operation || view.state !== event.workPhase)
+        return 'work transition disagrees with the current Part Five subject, predecessor, operation, or phase';
     }
     return null;
   };
+  const currentEvents = (handle: HarnessRuntimeHandle, now: number) => state.current().events.filter(event => {
+    if (!sameHandle(event, handle) || event.observedAt > now || event.sourceClock > now) return false;
+    try { return witnessFailure(event) === null; } catch { return false; }
+  });
   const holder: HarnessEvidenceHolder = {
     owner: 'part-thirteen', machine: input.machine, maxEvents: input.maxEvents, maxCaptureBytes: input.maxCaptureBytes,
     admit(event) {
@@ -264,7 +310,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         : 'diagnostic, liveness, duplicate-state, or noncontiguous output evidence recorded without progress', progress, key);
     },
     liveness(handle, now) {
-      const correlated = state.current().events.filter(event => sameHandle(event, handle) && event.observedAt <= now);
+      const correlated = currentEvents(handle, now);
       const exited = correlated.filter(event => event.kind === 'process-exited').sort(latest)[0];
       if (exited) return freeze({ state: 'dead' as const, reason: 'explicit current correlated process-exit witness', event: exited.id });
       const live = correlated.filter(event => event.kind === 'process-started' || event.kind === 'probe-live' || event.kind === 'heartbeat').sort(latest)[0];
@@ -272,19 +318,20 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         return freeze({ state: 'live' as const, reason: 'fresh exact-incarnation owner-witnessed proof', event: live.id });
       return freeze({ state: 'unknown' as const, reason: 'no fresh exact-incarnation liveness witness; timeout or absence does not prove death', event: live?.id ?? '' });
     },
-    completion(handle) {
-      const correlated = state.current().events.filter(event => sameHandle(event, handle));
+    completion(handle, now) {
+      const correlated = currentEvents(handle, now);
       const closure = correlated.filter(event => event.kind === 'turn-closed').sort(latest)[0];
       if (!closure) return freeze({ state: 'unknown' as const, reason: 'no correlated structured turn closure', event: '' });
       const laterOpen = correlated.some(event => laterThan(closure, event) && (event.streamState === 'open'
-        || event.unresolvedOperations.length > 0 || event.kind === 'work-transition' || event.kind === 'output-chunk'));
+        || event.childrenState === 'pending' || event.unresolvedOperations.length > 0
+        || event.kind === 'work-transition' || event.kind === 'output-chunk'));
       if (closure.streamState !== 'closed' || !['none', 'closed'].includes(closure.childrenState)
         || closure.unresolvedOperations.length || laterOpen || !outputCoverage(correlated).complete)
         return freeze({ state: 'pending' as const, reason: 'turn closure retains later work, incomplete output coverage, an open stream, child, or unresolved operation', event: closure.id });
       return freeze({ state: 'complete' as const, reason: 'correlated lifecycle closure has contiguous output and closed streams, children, and operations', event: closure.id });
     },
-    resume(handle) {
-      const correlated = state.current().events.filter(event => sameHandle(event, handle) && event.kind === 'diagnostic').sort(latest);
+    resume(handle, now) {
+      const correlated = currentEvents(handle, now).filter(event => event.kind === 'diagnostic').sort(latest);
       const poison = correlated.find(event => event.diagnosticCode === 'transcript-poison-confirmed');
       if (poison) return freeze({ state: 'poisoned' as const, reason: 'owner-witnessed evidence confirms the runtime conversation cannot resume safely', event: poison.id });
       const compatible = correlated.find(event => event.diagnosticCode === 'transcript-resume-compatible');
@@ -314,7 +361,7 @@ export function sameMachineReconnectCandidate(input: HarnessReconnectInput, hold
   if (!currentFence) return freeze({ disposition: 'refused', reason: 'Part Six rejected the fence as non-current', handle: null });
   const liveness = input.evidence.liveness(handle, input.now);
   if (liveness.state !== 'live') return freeze({ disposition: 'refused', reason: 'same-machine reconnect requires fresh exact-process liveness', handle: null });
-  const resume = input.evidence.resume(handle);
+  const resume = input.evidence.resume(handle, input.now);
   if (resume.state !== 'eligible') return freeze({ disposition: 'refused', reason: resume.state === 'poisoned'
     ? 'confirmed poisoned runtime conversation cannot be resumed' : 'same-machine reconnect requires structured resume compatibility', handle: null });
   return freeze({ disposition: 'reconnect', reason: 'candidate retains exact machine, incarnation, current fence, handle, and owner-witnessed liveness', handle });

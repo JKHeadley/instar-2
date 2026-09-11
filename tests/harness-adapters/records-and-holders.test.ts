@@ -12,7 +12,7 @@ import {
 import { transportFixture } from '../transport/fixture.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { refused, value } from '../facts/fixtures.js';
-import { decodedEvent, decodedHandle, digest, eventInput, handleInput } from './fixture.js';
+import { decodedEvent, decodedHandle, digest, eventInput, evidenceOwners, handleInput } from './fixture.js';
 
 it('P13-NF-01 records are closed, total, migrated before comparison, canonical, and immutable', () => {
   const f = assemblyRuntimeFixture();
@@ -76,18 +76,18 @@ it('P13-NF-51 pane classifications grant nothing and confirmed structured poison
   const holder = createHarnessEvidenceHolder({ adapter: handle.harness, machine: 'machine-a', maxEvents: 4, maxCaptureBytes: 8,
     context: f.c, state: createMemoryHarnessAdapterStateStore('poison-evidence') });
   refused(decodeHarnessRuntimeEvent({ ...eventInput('diagnostic'), kind: 'pane-says-poisoned' }, f.c), 'unsupported value');
-  expect(holder.resume(handle).state).toBe('unknown');
+  expect(holder.resume(handle, 100).state).toBe('unknown');
   holder.admit(decodedEvent(f, 'diagnostic', { diagnosticCode: 'transcript-resume-compatible' }));
-  expect(holder.resume(handle).state).toBe('eligible');
+  expect(holder.resume(handle, 100).state).toBe('eligible');
   holder.admit(decodedEvent(f, 'diagnostic', { id: 'event:poison', observedAt: 20, diagnosticCode: 'transcript-poison-confirmed' }));
-  expect(holder.resume(handle).state).toBe('poisoned');
+  expect(holder.resume(handle, 100).state).toBe('poisoned');
 });
 
 it('P13-NF-29 P13-NF-30 P13-NF-31 P13-NF-32 P13-NF-33 P13-NF-34 structured evidence keeps liveness, progress, output, and completion distinct under finite bounds', () => {
   const f = assemblyRuntimeFixture();
   const handle = decodedHandle(f);
   const holder = createHarnessEvidenceHolder({ adapter: handle.harness, machine: 'machine-a', maxEvents: 8, maxCaptureBytes: 8,
-    context: f.c, state: createMemoryHarnessAdapterStateStore('structured-evidence') });
+    context: f.c, state: createMemoryHarnessAdapterStateStore('structured-evidence'), owners: evidenceOwners(f) });
   const heartbeat = decodedEvent(f, 'heartbeat');
   expect(holder.admit(heartbeat)).toMatchObject({ disposition: 'recorded', progress: false });
   expect(holder.liveness(handle, 20).state).toBe('live');
@@ -96,8 +96,7 @@ it('P13-NF-29 P13-NF-30 P13-NF-31 P13-NF-32 P13-NF-33 P13-NF-34 structured evide
   expect(holder.liveness(handle, 31).state).toBe('unknown');
 
   const work = decodedEvent(f, 'work-transition');
-  expect(holder.admit(work)).toMatchObject({ disposition: 'recorded', progress: true });
-  expect(holder.admit(decodedEvent(f, 'work-transition', { id: 'event:work-churn' }))).toMatchObject({ progress: false });
+  expect(holder.admit(work)).toMatchObject({ disposition: 'refused', progress: false });
   const chunk = decodedEvent(f, 'output-chunk');
   expect(holder.admit(chunk)).toMatchObject({ disposition: 'recorded', progress: true });
   expect(holder.admit(decodedEvent(f, 'output-chunk', { id: 'event:chunk-churn' }))).toMatchObject({ disposition: 'duplicate', progress: false });
@@ -105,11 +104,11 @@ it('P13-NF-29 P13-NF-30 P13-NF-31 P13-NF-32 P13-NF-33 P13-NF-34 structured evide
 
   const pending = decodedEvent(f, 'turn-closed', { id: 'event:pending', childrenState: 'pending' });
   holder.admit(pending);
-  expect(holder.completion(handle).state).toBe('pending');
+  expect(holder.completion(handle, 100).state).toBe('pending');
   const complete = decodedEvent(f, 'turn-closed', { id: 'event:complete', observedAt: 40 });
   holder.admit(complete);
-  expect(holder.completion(handle).state).toBe('complete');
+  expect(holder.completion(handle, 100).state).toBe('complete');
   holder.admit(decodedEvent(f, 'process-exited', { id: 'event:exit', observedAt: 50 }));
   expect(holder.liveness(handle, 50).state).toBe('dead');
-  expect(holder.events(handle.launch)).toHaveLength(8);
+  expect(holder.events(handle.launch)).toHaveLength(6);
 });
