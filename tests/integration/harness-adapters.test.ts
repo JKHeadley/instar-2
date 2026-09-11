@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { decodeHarnessRuntimeEvent } from '../../src/harness-adapters/index.js';
+import { createIntakePort } from '../../src/intake/index.js';
 import { intakeFixture, message, route, value } from '../intake/fixtures.js';
 import { attemptInput, digest, eventInput, harnessFixture, witnessedEvent } from '../harness-adapters/fixture.js';
 
@@ -34,10 +35,21 @@ it('A1-INTEGRATION R5-F7 R5-F8 P13-NF-30 P13-NF-31 P13-NF-33 P13-NF-34 deduplica
 });
 
 it('A1-INTEGRATION R5-F9 P13-NF-24 P13-NF-46 executes the landed Part Four custody-read failure arm without an invented grant', () => {
-  const f = intakeFixture(); f.bind(); const port = f.port(); value(port.receive(message(), route));
-  const receipt = f.facts().find(row => row.kind === 'intake-receipt')!;
+  const f = intakeFixture();
+  const interrupted = value(createIntakePort({ ...f.deps, storage: { ...f.storage,
+    append(bytes, head) {
+      const receipt = f.storage.append(bytes, head);
+      if ((JSON.parse(bytes) as { kind?: string }).kind === 'intake-receipt') throw new Error('cut-after-durable-receipt');
+      return receipt;
+    },
+  } }));
+  expect(interrupted.receive(message(), route).kind).toBe('Refused');
+  const receipt = f.facts()[0]!;
   const before = JSON.stringify(f.frames);
-  Object.assign(f.storage, { read: () => { const error = new Error('EACCES'); Object.assign(error, { code: 'EACCES' }); throw error; } });
-  expect(port.recover(receipt.id)).toMatchObject({ kind: 'Refused', preserved: receipt.id });
+  const broken = value(createIntakePort({ ...f.deps, storage: { ...f.storage,
+    read() { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); },
+  } }));
+  expect(broken.recover(receipt.id)).toMatchObject({ kind: 'Refused', preserved: receipt.id });
   expect(JSON.stringify(f.frames)).toBe(before);
+  expect(value(f.port().recover(receipt.id)).kind).toBe('admitted');
 });

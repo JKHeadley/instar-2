@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
+import { createIntakePort } from '../../src/intake/index.js';
 import {
   compareHarnessAdapterRecords,
   decodeHarnessAdapterRecord,
@@ -159,6 +160,7 @@ it('R5-F7 P13-NF-31 P13-NF-34 output progress identity ignores runtime id and ca
     id: 'event:changed', output: { ...original.output!, digest: digest('different'), captureReference: 'capture:three' },
   }), f.owner.c));
   expect(f.port.progressIdentity(original, [])).toMatchObject({ disposition: 'advancing' });
+  expect(f.port.admitObservation(original, [original], 1)).toMatchObject({ disposition: 'duplicate', progress: false });
   expect(f.port.progressIdentity(repeated, [original])).toMatchObject({ disposition: 'duplicate' });
   expect(f.port.admitObservation(repeated, [original], 1)).toMatchObject({ disposition: 'duplicate', progress: false });
   expect(f.port.progressIdentity(changed, [original])).toMatchObject({ disposition: 'conflict' });
@@ -185,14 +187,25 @@ it('R5-F8 P13-NF-31 P13-NF-34 output custody and resume confirmation are NON-EXE
 
 for (const code of ['EACCES', 'EIO']) {
   it(`R5-F9 P13-NF-24 P13-NF-46 real Part Four custody read ${code} returns a typed refusal and preserves the durable receipt`, () => {
-    const f = intakeFixture(); f.bind();
-    const port = f.port(); value(port.receive(message(), route));
+    const f = intakeFixture();
+    const interrupted = value(createIntakePort({ ...f.deps, storage: { ...f.storage,
+      append(bytes, head) {
+        const receipt = f.storage.append(bytes, head);
+        if ((JSON.parse(bytes) as { kind?: string }).kind === 'intake-receipt')
+          throw new Error('cut-after-durable-receipt');
+        return receipt;
+      },
+    } }));
+    expect(interrupted.receive(message(), route).kind).toBe('Refused');
+    const receipt = f.facts()[0]!;
     const before = JSON.stringify(f.frames);
-    const receipt = f.facts().find(row => row.kind === 'intake-receipt')!;
-    Object.assign(f.storage, { read: () => { const error = new Error(code); Object.assign(error, { code }); throw error; } });
-    const result = port.recover(receipt.id);
+    const broken = value(createIntakePort({ ...f.deps, storage: { ...f.storage,
+      read() { const error = new Error(code); Object.assign(error, { code }); throw error; },
+    } }));
+    const result = broken.recover(receipt.id);
     expect(result).toMatchObject({ kind: 'Refused', preserved: receipt.id });
     expect(JSON.stringify(f.frames)).toBe(before);
+    expect(value(f.port().recover(receipt.id)).kind).toBe('admitted');
   });
 }
 
