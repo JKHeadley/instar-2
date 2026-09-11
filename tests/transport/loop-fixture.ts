@@ -1,4 +1,5 @@
 import { mkdtempSync } from 'node:fs';
+import { createPrivateKey } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canonical, consumeResult, decode, defineDecoder, deriveThrough } from '../../src/index.js';
@@ -22,8 +23,14 @@ import { createTransportFileStorage } from '../../scripts/transport-file-storage
 export { value, refused };
 
 const encoded = (input: unknown) => value(canonical(input));
+const machineBPrivateKey = createPrivateKey({
+  key: Buffer.from(`302e020100300506032b657004220420${'22'.repeat(32)}`, 'hex'),
+  format: 'der',
+  type: 'pkcs8',
+}).export({ format: 'pem', type: 'pkcs8' }).toString();
 export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-loop-')),
-  incarnation = 'worker:1', authority = 'authority:1') {
+  incarnation = 'worker:1', authority = 'authority:1', machine = 'machine-a') {
+  const hostPrivateKey = machine === 'machine-b' ? machineBPrivateKey : privateKey;
   const rg = rungraphFixture();
   rg.grant({ id: 'g-loop-bob', grantee: rg.bob });
   const parentDuty = { owner: 'part-five' as const, name: 'Run' as const, id: rg.id };
@@ -150,7 +157,7 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     { target: 'target:shared', conversation: 'conversation:1', machine: 'fleet', pool: 'recovery' });
   witnessContext = { ...witnessContext, facts: [...witnessContext.facts, ...machineBFacts] };
 
-  const host: LoopA1Host = { domain: 'conversation:1', machine: 'machine-a', incarnation,
+  const host: LoopA1Host = { domain: 'conversation:1', machine, incarnation,
     authorityIncarnation: authority, principal: rg.bob, scope: rg.scope, maxLeaseTerm: 1000, budget: 100,
     loopClock: { owner: 'part-ten', now: () => rg.clock(now) },
     restorationEvidence: { owner: 'part-nine', verify: input => rg.success((assessmentFacts.has(input.reference.id))
@@ -212,7 +219,7 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
   const ctx: FactContext = { ...provisional, ownedBodies: [...provisional.ownedBodies ?? [],
     ...value(registerTransportBodies(host, rg.c)), ...value(registerLoopA1Bodies(host, rg.c))] };
   const store = createFactStore(ctx, storage);
-  const spine = createLoopA1Spine(host, { context: ctx, privateKey }, store);
+  const spine = createLoopA1Spine(host, { context: ctx, privateKey: hostPrivateKey }, store);
   const api = createLoopA1Authority(host, spine, rg.c);
   const sharedPolicy = value(decodeLoopPolicyA1({ type: 'LoopPolicy', schemaVersion: 1, id: 'shared-loop-policy:1',
     maxAttempts: 12, minDelay: 1, maxDuration: 1000, timeout: 10, concurrency: 1,
@@ -223,7 +230,7 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     closeEvidence: 'part-nine-restoration', reopenEvidence: 'counted-failure' } as const, rg.c)) as SharedBreakerLoopPolicy;
   const append = (kind: string, body: Json, required: readonly string[] = []) => value(authorAndAppend({ kind, body, required,
     schemaVersion: 1, machine: host.machine, principal: json(host.principal), provenance: json(host.principal.provenance),
-    at: json(rg.clock(now)) }, ctx, store, privateKey));
+    at: json(rg.clock(now)) }, ctx, store, hostPrivateKey));
   const registerPolicy = (policy: SharedBreakerLoopPolicy = sharedPolicy) => {
     const existing = value(store.read()).find(fact => fact.kind === 'transport-SharedBreakerLoopPolicy'
       && (fact.body as { policy?: { id?: unknown }; generation?: unknown }).policy?.id === policy.id

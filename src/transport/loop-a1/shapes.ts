@@ -34,6 +34,13 @@ const forbiddenFields = [
   'scanCursor',
   'cursorKind',
 ] as const;
+const recordForbiddenFields = [
+  'parentAttemptBudget',
+  'resourceBudget',
+  'cursorKind',
+  'scanCursor',
+  'concurrency',
+] as const;
 const policyFields = {
   ...common,
   id: txt,
@@ -91,8 +98,10 @@ const loopOutcome: OwnedShape = {
 };
 export const sharedLoopRecordShape: OwnedShape = {
   kind: 'object',
+  optional: [...recordForbiddenFields],
   fields: {
     ...row,
+    ...Object.fromEntries(recordForbiddenFields.map(field => [field, policyFields[field]])),
     run: txt,
     episode: txt,
     policy,
@@ -243,6 +252,8 @@ function referenceCheck(value: { readonly owner: string; readonly name: string; 
   ensure(value.owner === owner && value.name === name && value.id.length > 0, `${name} reference owner`);
 }
 export function sharedLoopRecordCheck(shared: SharedLoopRecord): void {
+  ensure(!Object.keys(shared).some(key => recordForbiddenFields.includes(key as typeof recordForbiddenFields[number])),
+    'unsupported-in-slice-a1');
   shapeCheck(shared, sharedLoopRecordShape);
   ensure(shared.type === 'LoopRecord' && shared.schemaVersion === 1 && shared.run.length > 0 && shared.episode.length > 0,
     'loop record identity');

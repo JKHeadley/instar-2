@@ -8,7 +8,7 @@ import { decodeLoopPolicy } from '../../src/transport/index.js';
 import { transportFixture } from './fixture.js';
 
 const MAIN_TIP = 'db15e137a259e7d56bf39be1b6839a1c56c33155';
-const GENERATED_CASE_COUNT = 860;
+const GENERATED_CASE_COUNT = 863;
 
 function resultValue(result: unknown): unknown {
   return consumeResult<unknown, unknown>(result as never, {
@@ -81,6 +81,13 @@ it('generates every signed legacy record field mutation', () => {
         fields: { record: { kind: 'owned', owner: 'part-six', name: kind } } }],
     };
     const cases = [['control', body]];
+    if (kind === 'LoopPolicy') {
+      for (const [field, value] of [
+        ['initialDelay', 1],
+        ['breakerCooldown', 1],
+        ['parentDuty', { owner: 'part-five', name: 'Run', id: 'run:1' }],
+      ]) cases.push(['V34:' + field, { ...body, [field]: value }]);
+    }
     for (const path of paths(shape)) for (const mode of
       ['missing', 'extra', 'wrong-type', 'negative', 'overflow', 'new-marker']) {
       const candidate = structuredClone(body);
@@ -125,7 +132,7 @@ function runProbe(targetRoot: string, output: string, directory: string): void {
   expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
 }
 
-it('SLB-LEGACY-ALL-KINDS-93 generates and compares all 860 main-vs-HEAD signed legacy mutations', () => {
+it('SLB-LEGACY-ALL-KINDS-93 generates and compares all 863 main-vs-HEAD signed legacy mutations', () => {
   const directory = mkdtempSync(join(tmpdir(), 'transport-full-main-differential-'));
   const mainRoot = join(directory, 'main');
   const archive = spawnSync('git', ['archive', '--format=tar', MAIN_TIP, 'src', 'tests',

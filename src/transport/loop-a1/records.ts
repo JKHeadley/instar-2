@@ -519,7 +519,7 @@ export function sharedAdmissionDecision(previous: SharedLoopRecord, now: Clock,
     || now.value - previous.started >= previous.policy.maxDuration;
   const openExhausted = (previous.state === 'open-breaker' || previous.state === 'half-open')
     && previous.breakerHasOpened === 1
-    && now.value - previous.breakerFirstOpened.value > previous.policy.maxOpenDuration;
+    && now.value - previous.breakerFirstOpened.value >= previous.policy.maxOpenDuration;
   if (episodeExhausted || openExhausted) {
     ensure(previous.pendingAttempts.length === 0, 'unfinished attempts retain loop ownership at the bound');
     return freeze({ kind: 'stopped' as const });
@@ -595,7 +595,7 @@ export function sharedOutcomeDecision(previous: SharedLoopRecord, added: LoopOut
     nextEligible = shifted(added.observedAt, policy.breakerCooldown);
     breakerOpenCount++;
     breakerHasOpened = 1;
-    breakerFirstOpened = added.observedAt;
+    breakerFirstOpened = previous.breakerFirstOpened;
     halfOpenAdmitted = 0;
     halfOpenSucceeded = 0;
   } else if (attempt.mode === 'half-open') {
@@ -704,7 +704,7 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
         || record.transitionAt.value - previous.started >= record.policy.maxDuration
         || (previous.state === 'open-breaker' || previous.state === 'half-open')
           && previous.breakerHasOpened === 1
-          && record.transitionAt.value - previous.breakerFirstOpened.value > record.policy.maxOpenDuration),
+          && record.transitionAt.value - previous.breakerFirstOpened.value >= record.policy.maxOpenDuration),
     'stopped transition lacks an exhausted bound');
     const expected = freeze({
       ...previous,

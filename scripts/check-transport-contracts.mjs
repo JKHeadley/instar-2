@@ -59,7 +59,7 @@ export const transportSeamEvidence = [
   ['SLB-A1-RESTART-90', 'integration', 'durable Part Two reconstruction'],
   ['SLB-A1-E2E-91', 'e2e', 'fresh-process reconstruction'],
   ['SLB-A1-MAP-92', 'unit', 'zero-test and per-fixture coverage refusal'],
-  ['SLB-LEGACY-ALL-KINDS-93', 'unit', 'generated 860-case legacy mutation differential over every legacy field'],
+  ['SLB-LEGACY-ALL-KINDS-93', 'unit', 'generated 863-case legacy mutation differential over every legacy field plus V34'],
   ['SLB-LEGACY-V2-94', 'unit', 'legacy breaker marker remains a byte-identical main refusal'],
   ['SLB-A1-PARENT-95', 'integration', 'second pressure and conflicting parent policy refusal'],
   ['SLB-A1-EXCLUSIONS-96', 'integration', 'all excluded A2 budget and cursor fields are refused'],
@@ -68,6 +68,9 @@ export const transportSeamEvidence = [
   ['SLB-A1-FRONTIER-99', 'integration', 'locale-independent equal-clock ordering and reverse replay'],
   ['SLB-LEGACY-BYTES-100', 'unit', 'all main-owned transport sources and tests are byte-identical'],
   ['SLB-A1-CUTS-101', 'e2e', 'every A1 transition cut reconstructs in a fresh process'],
+  ['SLB-A1-MAXOPEN-102', 'integration', 'maximum-open deadline survives reopen and stops at equality'],
+  ['SLB-A1-SIGNED-EXCLUSIONS-103', 'integration', 'typed refusal for excluded fields on signed new records'],
+  ['SLB-A1-SHARED-PRESSURE-104', 'integration', 'two workers on two machines exercise one stable pressure identity'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

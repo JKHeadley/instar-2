@@ -15,8 +15,8 @@ const verdict = (result: unknown): { readonly kind: string; readonly value: unkn
   Refused: refused => ({ kind: 'refused', value: refused }),
 });
 
-function setup(overrides: Partial<SharedBreakerLoopPolicy> = {}, sourceVector?: SharedLoopRecord['sourceVector']) {
-  const fixture = transportLoopFixture();
+function setup(overrides: Partial<SharedBreakerLoopPolicy> = {}, sourceVector?: SharedLoopRecord['sourceVector'],
+  fixture = transportLoopFixture()) {
   const policy = value(decodeLoopPolicyA1({ ...fixture.sharedPolicy, id: 'a1-policy', ...overrides }, fixture.c)) as SharedBreakerLoopPolicy;
   fixture.registerPolicy(policy);
   let token = value(fixture.api.acquire('a1-lease', '', 1000));
@@ -32,6 +32,108 @@ function setup(overrides: Partial<SharedBreakerLoopPolicy> = {}, sourceVector?: 
   return { fixture, policy, get token() { return token; }, set token(value: FenceToken) { token = value; },
     get loop() { return loop; }, set loop(value: SharedLoopRecord) { loop = value; }, admit, finish };
 }
+
+it('SLB-A1-MAXOPEN-102 preserves one open-cycle deadline and stops at equality without admitting another trial', () => {
+  const opened = () => {
+    const state = setup({ failureThreshold: 1, halfOpenTrials: 1, halfOpenConcurrency: 1, maxOpenDuration: 30 });
+    state.fixture.advance(1);
+    state.loop = value(state.admit('initial-failure'));
+    state.loop = value(state.finish('initial-failure', 'failed'));
+    return state;
+  };
+
+  const reopened = opened();
+  const firstOpened = reopened.loop.breakerFirstOpened;
+  reopened.fixture.advance(20);
+  reopened.loop = value(reopened.admit('failed-trial'));
+  reopened.loop = value(reopened.finish('failed-trial', 'failed'));
+  expect(reopened.loop.breakerFirstOpened).toEqual(firstOpened);
+  reopened.fixture.advance(20);
+  expect(value(reopened.admit('after-original-ceiling'))).toMatchObject({ state: 'stopped', attempts: 2 });
+
+  const below = opened();
+  below.fixture.advance(29);
+  expect(value(below.admit('below-ceiling'))).toMatchObject({ state: 'half-open', attempts: 2 });
+  const at = opened();
+  at.fixture.advance(30);
+  expect(value(at.admit('at-ceiling'))).toMatchObject({ state: 'stopped', attempts: 1 });
+});
+
+it('SLB-A1-SIGNED-EXCLUSIONS-103 typed-refuses excluded fields on signed new records without storing', () => {
+  const state = setup();
+  const wires = state.fixture.storage.read() as any[];
+  const original = wires.at(-1)!;
+  const facts = value(state.fixture.store.read());
+  const context = { ...state.fixture.ctx, facts: [...state.fixture.ctx.facts, ...facts.slice(0, -1)] };
+  for (const [field, supplied] of [
+    ['parentAttemptBudget', 1],
+    ['resourceBudget', 1],
+    ['cursorKind', 'new-cursor'],
+    ['scanCursor', { owner: 'part-six', name: 'ScanCursor', id: 'new' }],
+    ['concurrency', 1],
+  ] as const) {
+    const altered = signEnvelope({ ...original, body: { record: {
+      ...original.body.record, [field]: supplied,
+    } } }, privateKey);
+    expect(detail(decodeHistoricalBody(value(decodeEnvelope(altered, context, 'replication')),
+      context, context.decode))).toBe('unsupported-in-slice-a1');
+    const prefix = wires.slice(0, -1);
+    const before = JSON.stringify(prefix);
+    const store = createFactStore(state.fixture.ctx, { owner: 'part-ten', read: () => prefix,
+      append: (bytes, expected) => state.fixture.result(() => {
+        expect(prefix.at(-1)?.contentHash ?? null).toBe(expected);
+        prefix.push(JSON.parse(bytes));
+        return { kind: 'local-durable' as const };
+      }) });
+    expect(detail(store.append(altered, { peer: state.fixture.host.machine }))).toBe('unsupported-in-slice-a1');
+    expect(JSON.stringify(prefix)).toBe(before);
+  }
+  expect(state.fixture.storage.read()).toEqual(wires);
+});
+
+it('SLB-A1-SHARED-PRESSURE-104 exercises two worker and machine identities under one stable pressure identity', () => {
+  const policy = { failureThreshold: 1, halfOpenTrials: 1, halfOpenConcurrency: 1 } as const;
+  const machineA = setup(policy, undefined,
+    transportLoopFixture(undefined, 'worker:machine-a', 'authority:machine-a', 'machine-a'));
+  const machineB = setup(policy, undefined,
+    transportLoopFixture(undefined, 'worker:machine-b', 'authority:machine-b', 'machine-b'));
+  expect(machineB.loop.pressureKey).toBe(machineA.loop.pressureKey);
+  expect(machineB.loop.episode).toBe(machineA.loop.episode);
+
+  for (const state of [machineA, machineB]) {
+    state.fixture.advance(1);
+    state.loop = value(state.admit(`${state.fixture.host.machine}:failure`));
+    state.loop = value(state.finish(`${state.fixture.host.machine}:failure`, 'failed'));
+    const beforeCooldown = JSON.stringify(state.fixture.storage.read());
+    expect(detail(state.admit(`${state.fixture.host.machine}:cooldown`))).toContain('cooldown');
+    expect(JSON.stringify(state.fixture.storage.read())).toBe(beforeCooldown);
+    state.fixture.advance(20);
+    state.loop = value(state.admit(`${state.fixture.host.machine}:failed-trial`));
+    expect(state.loop).toMatchObject({ state: 'half-open', halfOpenAdmitted: 1 });
+    expect(detail(state.admit(`${state.fixture.host.machine}:bounded-extra`))).toContain('bound exhausted');
+    state.loop = value(state.finish(`${state.fixture.host.machine}:failed-trial`, 'failed'));
+    expect(state.loop.state).toBe('open-breaker');
+    state.fixture.advance(20);
+    state.loop = value(state.admit(`${state.fixture.host.machine}:passing-trial`));
+    state.loop = value(state.finish(`${state.fixture.host.machine}:passing-trial`, 'accepted',
+      [state.fixture.restorationReference('assessment:witnessed-review')]));
+    expect(state.loop.state).toBe('closed');
+  }
+
+  const contributions = [machineA, machineB].map(state => {
+    const rows = value(state.fixture.api.inspect());
+    const lease = rows.find(row => row.record.type === 'Lease')!;
+    const admission = rows.find(row => row.record.type === 'LoopRecord'
+      && 'transition' in row.record && row.record.transition === 'attempt-admitted')!;
+    return { machine: admission.fact.machine,
+      worker: lease.record.type === 'Lease' ? lease.record.incarnation : '',
+      pressure: admission.record.type === 'LoopRecord' && 'pressureKey' in admission.record
+        ? admission.record.pressureKey : '' };
+  });
+  expect(new Set(contributions.map(value => value.machine)).size).toBe(2);
+  expect(new Set(contributions.map(value => value.worker)).size).toBe(2);
+  expect(new Set(contributions.map(value => value.pressure))).toEqual(new Set([machineA.loop.pressureKey]));
+}, 20_000);
 
 it('SLB-A1-CYCLE-86 opens once, refuses cooldown contenders, reopens a failed trial, and closes only with independent restoration', () => {
   const state = setup({ failureThreshold: 1, halfOpenTrials: 1, halfOpenConcurrency: 1 });
