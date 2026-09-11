@@ -20,6 +20,8 @@ export {
   reconcileProcessIncarnation,
   planProcessCensus,
   classifyProcesses,
+  summarizeRateLimitEvents,
+  classifyLegacyResourceObservation,
   resourceTrend,
   mergePeerMeasurements,
   classifyFeatureOutcome,

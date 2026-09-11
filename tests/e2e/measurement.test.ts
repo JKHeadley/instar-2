@@ -56,9 +56,9 @@ it('P16-NF-12 P16-NF-13 P16-NF-39 P16-NF-40 P16-NF-41 P16-NF-46 durable lifecycl
 
   const cachePolicy = value(decodeReadCachePolicy({ type: 'ReadCachePolicy', schemaVersion: 2, id: 'cache:lifecycle',
     maxRows: 2, maxBytes: 100, maxAgeMs: 20, evictionBatch: 1 }, mf.c));
-  const cache = createBoundedReadCache(cachePolicy, mf.c);
+  const cache = value(createBoundedReadCache(cachePolicy, mf.c));
   value(cache.put({ key: 'old', createdAt: mf.clock(100), bytes: 'disposable', byteLength: 10 }));
-  expect(value(createBoundedReadCache(cachePolicy, mf.c).inspect())).toEqual([]);
+  expect(value(value(createBoundedReadCache(cachePolicy, mf.c)).inspect())).toEqual([]);
 
   const later = f.next(note, { kind: 'note', body: { identity: 'one', amount: '5' } }, context);
   value(restartedStore.append(later));
@@ -97,7 +97,8 @@ it('P16-NF-01 P16-NF-02 P16-NF-05 P16-NF-22 P16-NF-23 P16-NF-25 P16-NF-26 P16-NF
       unit: 'tokens', state: 'reported', producer: 'probe', sourceSample: 'one', feature: null, model: null, machine: 'machine-a' }]));
     console.log(JSON.stringify({ owner: port.owner, operations: Object.keys(port).sort(), producer: producer.id, policy: policy.id,
       rows: read.totalCount, unknown: take(coalesceUnknownQuotaEpisodes(['quota:one'], [], context)).notices.length,
-      outcome: take(classifyFeatureOutcome({ kind: 'exchange', classifier: 'absent', actionProved: false, negativeProved: false, gradeOnly: false }, context)),
+      outcome: take(classifyFeatureOutcome({ kind: 'exchange', classifier: 'absent', actionProved: false, negativeProved: false, gradeOnly: false,
+        feature: 'feature-a', action: 'feature-action-observed', evaluationClock: now }, context)),
       claim: take(renderMeasurementClaim({ kind: 'estimate', hardware: null, workload: null, evidence: [] }, context)) }));
   `;
   const output = execFileSync(process.execPath, ['--input-type=module', '-e', code], { input: JSON.stringify({

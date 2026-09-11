@@ -1,14 +1,15 @@
 import { expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { exerciseP16MixedRuntimeProof } from '../measurement/mixed-runtime-proof.js';
+import { exerciseP16MixedRuntimeProof, verifyP16MixedRuntimeProof } from '../measurement/mixed-runtime-proof.js';
 
 it('P16-NF-16 P16-NF-24 P16-NF-33 P16-NF-36 P16-NF-37 P16-NF-38 P16-NF-46 P16-NF-47 P16-NF-48 P16-NF-50 P16-NF-53 MIXED-RUNTIME-PROOF lifecycle executes owner snapshots, same-ms events, aggregation, and partial peers', () => {
-  const result = exerciseP16MixedRuntimeProof();
-  expect(result.projection).toBe('1');
-  expect(result.copiedSnapshotRefused).toBe(true);
-  expect(result.sameMillisecondEventIds).toEqual(['rate:a', 'rate:b']);
-  expect(result.aggregateMembers).toBe(2);
+  const result = verifyP16MixedRuntimeProof(exerciseP16MixedRuntimeProof());
+  expect(result.sourceHistory).toEqual({ initial: '1', staleAfterAdvance: true, fresh: '2', persistedFacts: 2 });
+  expect(result.rateEvents).toMatchObject({ ids: ['rate:a', 'rate:b'], collisionRefused: true });
+  expect(result.aggregation).toEqual({ amount: 100, members: 2 });
   expect(result.peerPool).toMatchObject({ state: 'partial', members: [expect.any(String)], missingPeers: [{ peer: 'offline' }] });
+  expect(result).toMatchObject({ burn: { currentAmount: 120 }, read: { privacyRefused: true },
+    resource: { state: 'complete' }, observerCost: { amount: 5 }, growth: { observations: 1 }, cacheRows: 1 });
 });
 
 it('P16-NF-40 P16-NF-41 P16-NF-50 real SIGKILL cuts preserve signed source uncertainty and rebuild an empty disposable cache', () => {

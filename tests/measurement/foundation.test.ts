@@ -52,6 +52,8 @@ describe('Part 16 foundation records and observational boundaries', () => {
     const result = value(resolveAttribution({ attempt, claimed: { feature: 'forged', model: 'forged', machine: 'forged' },
       evaluationClock: owner.now, sourceHistory: snapshot, candidates: [] }, context));
     expect(result).toMatchObject({ state: 'attributed', feature: 'judgment', model: 'model', machine: 'machine-a', run: owner.input.run.id });
+    const requestRecord = value(owner.door.inspect()).find(row => row.record.type === 'JudgmentRequest')!.record;
+    refused(owner.spine.append({ ...requestRecord, point: 'incompatible-second-feature' } as never));
     expect(value(resolveAttribution({ attempt: 'attempt:missing', claimed: { feature: 'forged', model: 'forged', machine: 'forged' },
       evaluationClock: owner.now, sourceHistory: snapshot, candidates: [] }, context))).toMatchObject({ state: 'unattributed', feature: null });
   });
@@ -82,7 +84,7 @@ describe('Part 16 foundation records and observational boundaries', () => {
   it('P16-NF-29 resource trends keep distinct sample times and reject gaps or basis changes', () => {
     const f = measurementFixture(); const first = f.resourcePoint('p1', 100, 100 * 1024 * 1024); const second = f.resourcePoint('p2', 160, 110 * 1024 * 1024);
     expect(value(resourceTrend([second, first], 2, f.c))).toMatchObject({ state: 'complete', rssDeltaBytes: 10 * 1024 * 1024 });
-    expect(value(resourceTrend([first, { ...second, state: 'missing', rssBytes: null }], 2, f.c))).toMatchObject({ state: 'incomplete', rssDeltaBytes: null });
+    expect(value(resourceTrend([first, f.resourcePoint('p2', 160, null)], 2, f.c))).toMatchObject({ state: 'incomplete', rssDeltaBytes: null });
     expect(value(resourceTrend([first, { ...second, hardwareProfile: 'hardware:other' }], 2, f.c)).reasons).toContain('hardware changed');
     const equalA = f.witness('input', 100, { sourceEvent: 'witness:a' }); const equalB = f.witness('input', 100, { sourceEvent: 'witness:b' });
     expect(value(resolveQuantity([equalA, equalB], undefined, f.c))).toMatchObject({ amount: 100, state: 'resolved' });
@@ -97,12 +99,14 @@ describe('Part 16 foundation records and observational boundaries', () => {
     const noOp = value(decode('Evidence', f.evidenceInput({ id: 'action:no-op', observedAt: f.now,
       claim: { subject: 'feature-a', predicate: 'feature-action-observed', value: 'no-op' } }), f.types));
     f.evidence.push(fired, noOp);
-    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: true, negativeProved: false, gradeOnly: false, evidence: fired }, f.c))).toBe('fired');
-    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: false, negativeProved: true, gradeOnly: false, evidence: noOp }, f.c))).toBe('no-op');
-    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'absent', actionProved: false, negativeProved: false, gradeOnly: false }, f.c))).toBe('unclassified');
-    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: true, negativeProved: false, gradeOnly: true }, f.c))).toBe('unclassified');
+    const action = { feature: 'feature-a', action: 'feature-action-observed' as const, evaluationClock: f.now };
+    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: true, negativeProved: false, gradeOnly: false, evidence: fired, ...action }, f.c))).toBe('fired');
+    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: false, negativeProved: true, gradeOnly: false, evidence: noOp, ...action }, f.c))).toBe('no-op');
+    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'absent', actionProved: false, negativeProved: false, gradeOnly: false, ...action }, f.c))).toBe('unclassified');
+    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: true, negativeProved: false, gradeOnly: true, ...action }, f.c))).toBe('unclassified');
     for (const kind of ['shed', 'error', 'parser-failure', 'event'] as const)
-      expect(value(classifyFeatureOutcome({ kind, classifier: 'complete', actionProved: false, negativeProved: false, gradeOnly: false }, f.c))).toBe(kind);
+      expect(value(classifyFeatureOutcome({ kind, classifier: 'complete', actionProved: false, negativeProved: false, gradeOnly: false,
+        feature: null, action: null, evaluationClock: null }, f.c))).toBe(kind);
   });
 
   it('P16-NF-33 P16-NF-34 burn selection counts one exchange once, applies coverage boundaries, and never blames absent instrumentation', () => {
@@ -134,7 +138,7 @@ describe('Part 16 foundation records and observational boundaries', () => {
       requiredAssessments: [], dispositions: [], activeDisputes: [], releasesPin: 'assessment-pin:case:1' } as never)).toEqual([]);
     const policy = value(decodeReadCachePolicy({ type: 'ReadCachePolicy', schemaVersion: 2, id: 'cache:1', maxRows: 2, maxBytes: 100,
       maxAgeMs: 20, evictionBatch: 1 }, f.c));
-    const cache = createBoundedReadCache(policy, f.c); value(cache.put({ key: 'a', createdAt: f.clock(100), bytes: 'one', byteLength: 3 }));
+    const cache = value(createBoundedReadCache(policy, f.c)); value(cache.put({ key: 'a', createdAt: f.clock(100), bytes: 'one', byteLength: 3 }));
     value(cache.put({ key: 'b', createdAt: f.clock(110), bytes: 'two', byteLength: 3 }));
     expect(value(cache.planEviction(f.clock(130)))).toEqual(['a']); expect(value(cache.applyEviction(['a']))).toBe(1);
     expect(value(cache.inspect()).map(row => row.key)).toEqual(['b']);

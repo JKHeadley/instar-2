@@ -12,6 +12,7 @@ const categoryRelations = ['standalone', 'subset-of-input', 'independent-billed'
 const families = ['model-call', 'cumulative-model-session', 'quota', 'rate-limit-event', 'resource', 'package-cost'] as const;
 const issuedProducerContracts = new WeakSet<object>();
 const issuedAggregatePolicies = new WeakSet<object>();
+const decodedProducerContracts = new Set<MeasurementProducerContract>();
 const issuedBurnPolicies = new WeakSet<object>();
 const issuedReadQueries = new WeakSet<object>();
 const issuedCachePolicies = new WeakSet<object>();
@@ -63,6 +64,7 @@ const producerDecoder = <C extends MeasurementDecodeContext>(preserved: string) 
       ensure(units && decoded.categories.every(row => units.includes(row.unit)), 'measurement subject kind or category unit is not registered');
       ensure(context.register.entries.includes(decoded.evidencePredicate), 'measurement evidence predicate is not registered');
       issuedProducerContracts.add(decoded);
+      decodedProducerContracts.add(decoded as unknown as MeasurementProducerContract);
       return { ok: true, value: decoded as unknown as MeasurementProducerContract };
     } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'producer contract refused' }; }
   },
@@ -155,9 +157,53 @@ export function decodeAggregateMeasurementsPolicy(input: unknown, context: Measu
     const decoded = freeze({ type: 'AggregateMeasurementsPolicy' as const, schemaVersion: 2 as const, id: text(v.id, 'id'), sourceKind: text(v.sourceKind, 'sourceKind'),
       aggregateKind: 'measurement-window-aggregate' as const, additiveUnits, categories, dimensions,
       producer: text(v.producer, 'producer'), scope: text(v.scope, 'scope') }) as unknown as AggregateMeasurementsPolicy;
+    ensure(context.register.entries.includes(decoded.id), 'aggregate policy is not registered');
+    ensure(context.register.entries.includes(decoded.scope), 'aggregate scope is not registered');
+    ensure(context.types.register.producers.includes(decoded.producer), 'aggregate producer is not registered');
+    const sourceUnits = context.types.register.subjects[decoded.sourceKind];
+    const aggregateUnits = context.types.register.subjects[decoded.aggregateKind];
+    ensure(sourceUnits && aggregateUnits && decoded.additiveUnits.every(unit => sourceUnits.includes(unit) && aggregateUnits.includes(unit)),
+      'aggregate subject kind or additive unit is not registered');
+    ensure(decoded.dimensions.every(dimension => ['family', 'category', 'feature', 'model', 'machine'].includes(dimension)),
+      'aggregate dimension is not registered');
+    ensure(decodedProducerContracts.size > 0 && [...decodedProducerContracts].some(contract =>
+      isCurrentMeasurementProducerContract(contract, context) && contract.subjectKind === decoded.sourceKind
+      && contract.producer === decoded.producer && decoded.categories.every(name => contract.categories.some(category => name === category.name
+        && decoded.additiveUnits.includes(category.unit)))), 'aggregate category has no current registered producer contract');
     issuedAggregatePolicies.add(decoded);
     return decoded;
   });
+}
+
+export function isCurrentMeasurementProducerContract(contract: MeasurementProducerContract,
+  context: MeasurementDecodeContext): boolean {
+  if (!isDecodedMeasurementProducerContract(contract)) return false;
+  const units = context.types.register.subjects[contract.subjectKind];
+  return context.register.entries.includes(contract.id)
+    && context.register.entries.includes(contract.evidencePredicate)
+    && context.types.register.producers.includes(contract.producer)
+    && !!units && contract.categories.every(category => units.includes(category.unit));
+}
+
+export function isCurrentAggregateMeasurementsPolicy(policy: AggregateMeasurementsPolicy,
+  context: MeasurementDecodeContext): boolean {
+  if (!isDecodedAggregateMeasurementsPolicy(policy)) return false;
+  const sourceUnits = context.types.register.subjects[policy.sourceKind];
+  const aggregateUnits = context.types.register.subjects[policy.aggregateKind];
+  return context.register.entries.includes(policy.id) && context.register.entries.includes(policy.scope)
+    && context.types.register.producers.includes(policy.producer) && !!sourceUnits && !!aggregateUnits
+    && policy.additiveUnits.every(unit => sourceUnits.includes(unit) && aggregateUnits.includes(unit))
+    && [...decodedProducerContracts].some(contract => isCurrentMeasurementProducerContract(contract, context)
+      && contract.subjectKind === policy.sourceKind && contract.producer === policy.producer
+      && policy.categories.every(name => contract.categories.some(category => name === category.name
+        && policy.additiveUnits.includes(category.unit))));
+}
+
+export function isCurrentMeasurementTuple(family: string, category: string, unit: string, producer: string,
+  context: MeasurementDecodeContext): boolean {
+  return [...decodedProducerContracts].some(contract => isCurrentMeasurementProducerContract(contract, context)
+    && contract.family === family && contract.producer === producer
+    && contract.categories.some(entry => entry.name === category && entry.unit === unit));
 }
 
 export function decodeMeasurementReadQuery(input: unknown, context: MeasurementDecodeContext): Result<MeasurementReadQuery> {

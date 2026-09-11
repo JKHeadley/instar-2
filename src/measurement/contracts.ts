@@ -199,6 +199,46 @@ export interface ClassifiedFootprint {
   readonly unclassified: number;
 }
 
+export interface RateLimitEventObservation {
+  readonly id: string;
+  readonly source: 'breaker' | 'session-sentinel';
+  readonly kind: 'circuit-open' | 'circuit-recover' | 'throttle' | 'quota' | '529';
+  readonly at: Clock;
+}
+
+export interface RateLimitEventSummary {
+  readonly events: readonly RateLimitEventObservation[];
+  readonly counts: Readonly<Record<string, number>>;
+  readonly breakerTripsPerHour: number;
+}
+
+export interface LegacyResourceObservation {
+  readonly id: string;
+  readonly source: 'own-resource-read' | 'pid-batch' | 'footprint-census' | 'origin-lost';
+  readonly state: 'observed' | 'read-failed';
+  readonly value: number | null;
+  readonly originalNumeric: boolean;
+}
+
+export interface ClassifiedLegacyResourceObservation {
+  readonly id: string;
+  readonly state: 'reported' | 'missing' | 'failed' | 'legacy-origin-lost';
+  readonly amount: number | null;
+  readonly reason: string;
+}
+
+export interface FeatureOutcomeClassificationRequest {
+  readonly kind: 'exchange' | 'shed' | 'error' | 'parser-failure' | 'event';
+  readonly classifier: 'complete' | 'absent' | 'incomplete' | 'conflicted';
+  readonly actionProved: boolean;
+  readonly negativeProved: boolean;
+  readonly gradeOnly: boolean;
+  readonly feature: string | null;
+  readonly action: 'feature-action-observed' | null;
+  readonly evaluationClock: Clock | null;
+  readonly evidence?: Evidence;
+}
+
 export interface BurnAmountSelection {
   readonly id: string;
   readonly version: string;

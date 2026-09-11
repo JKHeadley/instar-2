@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 // @ts-expect-error Executable repository contract checker is intentionally JavaScript.
 import { checkP16Architecture, p16Dispositions } from '../../scripts/check-p16-contract-map.mjs';
-import { exerciseP16MixedRuntimeProof } from './mixed-runtime-proof.js';
+import { exerciseP16MixedRuntimeProof, verifyP16MixedRuntimeProof } from './mixed-runtime-proof.js';
 
 it('P16-NF-52 P16-NF-53 contract map keeps all 53 fixtures and distinguishes mixed runnable arms from exact follow-ons', () => {
   const rows = p16Dispositions() as { id: string; status: string; dependencies: string[] }[];
@@ -18,12 +18,19 @@ it('P16-NF-52 P16-NF-53 contract map keeps all 53 fixtures and distinguishes mix
   expect(rows.filter(row => row.status.startsWith('NON-EXECUTABLE-'))).toHaveLength(24);
   expect(rows.filter(row => row.status !== 'EXECUTABLE').every(row => row.dependencies.length > 0)).toBe(true);
   expect(checkP16Architecture()).toMatchObject({ declarations: 2 });
-  expect(exerciseP16MixedRuntimeProof()).toMatchObject({ copiedSnapshotRefused: true, aggregateAmount: 100,
-    peerPool: { state: 'partial' } });
+  expect(verifyP16MixedRuntimeProof(exerciseP16MixedRuntimeProof())).toMatchObject({ sourceHistory: { staleAfterAdvance: true, persistedFacts: 2 },
+    aggregation: { amount: 100 }, peerPool: { state: 'partial' } });
 });
 
 it('P16-NF-16 P16-NF-24 P16-NF-33 P16-NF-36 P16-NF-37 P16-NF-38 P16-NF-46 P16-NF-47 P16-NF-48 P16-NF-50 P16-NF-53 MIXED-RUNTIME-PROOF unit executes every runnable mixed arm', () => {
-  expect(exerciseP16MixedRuntimeProof()).toMatchObject({ projection: '1', copiedSnapshotRefused: true,
-    sameMillisecondEventIds: ['rate:a', 'rate:b'], aggregateAmount: 100,
-    peerPool: { state: 'partial', missingPeers: [{ peer: 'offline' }] } });
+  expect(verifyP16MixedRuntimeProof(exerciseP16MixedRuntimeProof())).toMatchObject({
+    sourceHistory: { initial: '1', staleAfterAdvance: true, fresh: '2', persistedFacts: 2 },
+    rateEvents: { ids: ['rate:a', 'rate:b'], counts: { 'circuit-open': 1, '529': 1 }, breakerTripsPerHour: 1,
+      collisionRefused: true },
+    aggregation: { amount: 100, members: 2 }, peerPool: { state: 'partial', missingPeers: [{ peer: 'offline' }] },
+    burn: { classification: 'activity', currentAmount: 120 }, read: { rows: 2, partial: true, privacyRefused: true },
+    resource: { state: 'complete', rssDeltaBytes: 10,
+      legacyOrigins: ['reported', 'reported', 'reported', 'legacy-origin-lost'] },
+    observerCost: { state: 'resolved', amount: 5 }, growth: { observations: 1 }, cacheRows: 1,
+  });
 });

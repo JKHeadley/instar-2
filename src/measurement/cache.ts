@@ -7,12 +7,13 @@ import { isDecodedReadCachePolicy } from './decode.js';
 
 const fields = ['key', 'createdAt', 'bytes', 'byteLength'];
 
-export function createBoundedReadCache(policy: ReadCachePolicy, context: MeasurementDecodeContext): BoundedReadCache {
-  ensure(isDecodedReadCachePolicy(policy), 'cache policy must come from its decoder');
-  const entries = new Map<string, ReadCacheEntry>();
-  const inspect = () => freeze([...entries.values()].sort((a, b) => a.key.localeCompare(b.key)));
-  const totalBytes = () => [...entries.values()].reduce((sum, row) => sum + row.byteLength, 0);
-  return Object.freeze({ owner: 'part-sixteen' as const,
+export function createBoundedReadCache(policy: ReadCachePolicy, context: MeasurementDecodeContext): Result<BoundedReadCache> {
+  return boundary('MeasurementReadCacheConstruction', policy, context, () => {
+    ensure(isDecodedReadCachePolicy(policy), 'cache policy must come from its decoder');
+    const entries = new Map<string, ReadCacheEntry>();
+    const inspect = () => freeze([...entries.values()].sort((a, b) => a.key.localeCompare(b.key)));
+    const totalBytes = () => [...entries.values()].reduce((sum, row) => sum + row.byteLength, 0);
+    return Object.freeze({ owner: 'part-sixteen' as const,
     put(entry: ReadCacheEntry): Result<void> {
       return boundary('MeasurementReadCachePut', entry, context, () => {
         ensure(entry && typeof entry === 'object' && Object.keys(entry).length === fields.length && fields.every(field => Object.hasOwn(entry, field)), 'cache entry has undeclared or missing field');
@@ -60,5 +61,6 @@ export function createBoundedReadCache(policy: ReadCachePolicy, context: Measure
     inspect(): Result<readonly ReadCacheEntry[]> {
       return boundary('MeasurementReadCacheInspect', null, context, inspect);
     },
+    });
   });
 }

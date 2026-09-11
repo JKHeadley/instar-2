@@ -74,14 +74,16 @@ describe('Part 16 round-two independent data-validation reproductions', { timeou
     const evidence = value(decode('Evidence', f.evidenceInput({ id: 'quantity:resolution', observedAt: f.now,
       claim: { subject: a.key, predicate: 'quantity-resolved', value: 105 } }), f.types));
     refused(resolveQuantity([a, b], { owner: 'probe', key: a.key, witnesses: ['quantity:a', 'quantity:b'], amount: 999, evidence }, f.c),
-      'omits witnesses');
+      'signed-history reference');
   });
 
   it('R2-F04 aggregates require issued compatible witnesses in the half-open window and retain witness ids', () => {
     const f = measurementFixture(); const quantity = f.quantity('input', 100);
     refused(aggregateMeasurements(aggregate(f, [{ key: 'invented', amount: 999, state: 'resolved', witnesses: [], reason: 'invented' } as never]), f.c), 'resolution');
     refused(aggregateMeasurements(aggregate(f, [{ ...quantity, amount: 999 }]), f.c), 'resolution');
-    refused(aggregateMeasurements(aggregate(f, [quantity], { policy: aggregatePolicy(f, 'other-source-kind') }), f.c), 'basis differs');
+    refused(decodeAggregateMeasurementsPolicy({ type: 'AggregateMeasurementsPolicy', schemaVersion: 2, id: 'aggregate:input',
+      sourceKind: 'other-source-kind', aggregateKind: 'measurement-window-aggregate', additiveUnits: ['tokens'], categories: ['input'],
+      dimensions: ['feature'], producer: 'probe', scope: 'scope:ordinary' }, f.c), 'subject kind');
     refused(aggregateMeasurements(aggregate(f, [quantity], { end: f.clock(100) }), f.c), 'half-open');
     expect(value(aggregateMeasurements(aggregate(f, [quantity]), f.c)).members).toEqual([quantity.witnesses[0]!.sourceEvent]);
   });
@@ -134,7 +136,7 @@ describe('Part 16 round-two independent data-validation reproductions', { timeou
     const f = measurementFixture();
     refused(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'invented', workload: 'invented', evidence: ['never-executed'] }, f.c), 'not admitted');
     expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: true,
-      negativeProved: false, gradeOnly: false }, f.c))).toBe('unclassified');
+      negativeProved: false, gradeOnly: false, feature: 'feature-a', action: 'feature-action-observed', evaluationClock: f.now }, f.c))).toBe('unclassified');
   });
 
   it('R2-F10 default reads refuse invalid enums, negative amounts, and nested private values', () => {
@@ -157,7 +159,7 @@ describe('Part 16 round-two independent data-validation reproductions', { timeou
   it('R2-F12 resource arithmetic closes basis/state/incarnation and coalesces equal sample witnesses', () => {
     const f = measurementFixture();
     refused(cpuUtilization(f.resourcePoint('one', 100, 100), 4, 'invented' as never, f.c), 'closed set');
-    expect(value(resourceTrend([f.resourcePoint('one', 100, -1), f.resourcePoint('two', 160, 110)], 2, f.c)).state).toBe('incomplete');
+    refused(resourceTrend([f.resourcePoint('one', 100, -1), f.resourcePoint('two', 160, 110)], 2, f.c), 'RSS bytes');
     expect(value(resourceTrend([f.resourcePoint('one', 100, 100), f.resourcePoint('two', 160, 110, {
       processIncarnation: 'other' })], 2, f.c)).state).toBe('incomplete');
     const a = f.resourcePoint('a', 100, 100); const b = { ...a, id: 'peer:b' }; const c = f.resourcePoint('c', 160, 110);
@@ -167,7 +169,7 @@ describe('Part 16 round-two independent data-validation reproductions', { timeou
   it('R2-F13 cache clocks must be complete admitted measurements', () => {
     const f = measurementFixture(); const policy = value(decodeReadCachePolicy({ type: 'ReadCachePolicy', schemaVersion: 2,
       id: 'cache:review', maxRows: 2, maxBytes: 100, maxAgeMs: 20, evictionBatch: 1 }, f.c));
-    const cache = createBoundedReadCache(policy, f.c);
+    const cache = value(createBoundedReadCache(policy, f.c));
     refused(cache.put({ key: 'a', createdAt: { value: 100 } as never, bytes: 'row', byteLength: 3 }));
     value(cache.put({ key: 'a', createdAt: f.clock(100), bytes: 'row', byteLength: 3 }));
     refused(cache.planEviction({ value: 121 } as never));

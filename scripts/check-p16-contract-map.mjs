@@ -64,7 +64,7 @@ export function checkP16Architecture() {
   const files = readdirSync('src/measurement').filter(file => file.endsWith('.ts'));
   const source = files.map(file => readFileSync(`src/measurement/${file}`, 'utf8')).join('\n');
   const imports = [...source.matchAll(/from ['"](\.\.\/[^'"]+)['"]/g)].map(match => match[1]);
-  const allowed = new Set(['../index.js', '../facts/index.js', '../projections/index.js', '../assembly/index.js']);
+  const allowed = new Set(['../index.js', '../facts/index.js', '../projections/index.js', '../assembly/index.js', '../judgment/index.js']);
   const privateImports = imports.filter(path => !allowed.has(path));
   if (privateImports.length) throw new Error(`P16 private earlier-part imports: ${[...new Set(privateImports)].join(', ')}`);
   if (/\b(?:canRun|place|throttle|allow|retry|unfreeze|invokeEffect)\s*:/.test(readFileSync('src/measurement/service.ts', 'utf8')))
@@ -77,12 +77,21 @@ export function checkP16Architecture() {
   const proofIds = [...mixed, 53].map(number => `P16-NF-${String(number).padStart(2, '0')}`);
   for (const file of proofFiles) {
     const proof = readFileSync(file, 'utf8');
-    if (!proof.includes('exerciseP16MixedRuntimeProof()') || !proofIds.every(id => proof.includes(id)))
+    if (!proof.includes('verifyP16MixedRuntimeProof(exerciseP16MixedRuntimeProof())') || !proofIds.every(id => proof.includes(id)))
       throw new Error(`${file}: mixed-arm coverage must execute the shared runtime proof and name every mapped arm`);
   }
   const runtime = readFileSync('tests/measurement/mixed-runtime-proof.ts', 'utf8');
-  for (const operation of ['foldProjection(', 'createQuantityWitness(', 'aggregateMeasurements(', 'mergePeerMeasurements('])
+  if (!runtime.includes('p16MixedRuntimeReceiptMap') || !proofIds.every(id => runtime.includes(`'${id}'`)))
+    throw new Error('mixed runtime proof lacks its per-row executable receipt map');
+  for (const operation of ['createTransportFileStorage(', 'foldProjection(', 'summarizeRateLimitEvents(', 'createQuantityWitness(',
+    'aggregateMeasurements(', 'mergePeerMeasurements(', 'evaluateBurn(', 'renderBoundedRead(', 'resourceTrend(',
+    'classifyLegacyResourceObservation(', 'growthInvestigationLink(', 'createBoundedReadCache('])
     if (!runtime.includes(operation)) throw new Error(`mixed runtime proof omits ${operation}`);
+  for (const receipt of ['sourceHistory:', 'rateEvents:', 'aggregation:', 'peerPool,', 'burn:', 'read:', 'resource:',
+    'observerCost:', 'growth:', 'cacheRows:']) if (!runtime.includes(receipt)) throw new Error(`mixed runtime proof omits receipt ${receipt}`);
+  const foundation = readFileSync('tests/measurement/foundation.test.ts', 'utf8');
+  if (!foundation.includes("owner.spine.append({ ...requestRecord, point: 'incompatible-second-feature'")
+    || !foundation.includes('resolveAttribution(')) throw new Error('P16-NF-13 omits its owner-issued incompatible multi-match neighbor');
   return { sourceFiles: files.length, imports: [...new Set(imports)].sort(), declarations: declarations.length, proofFiles: proofFiles.length };
 }
 

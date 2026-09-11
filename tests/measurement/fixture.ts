@@ -11,7 +11,8 @@ export function measurementFixture() {
   const f = fixture();
   const types = { ...f.ctx, register: { ...f.ctx.register,
     entries: [...f.ctx.register.entries, 'producer:model', 'usage-observed', 'burn:feature-a', 'feature-a', 'model-a',
-      'selection:model-exchange', 'selection:programmatic-event'],
+      'selection:model-exchange', 'selection:programmatic-event', 'aggregate:input', 'scope:ordinary',
+      'hardware:m1', 'hardware:other', 'classifier:v1', 'agent-worker'],
     subjects: { ...f.ctx.register.subjects, 'model-token': ['tokens'], 'programmatic-count': ['tokens'],
       'process-resource': ['ms', 'bytes'], 'measurement-window-aggregate': ['tokens'] } } };
   const c: MeasurementDecodeContext = { site: 'types.decode', preserved: f.ctx.preserved, register: types.register, types };
@@ -80,7 +81,7 @@ export function measurementFixture() {
     return { id, machine: 'machine-a', processIncarnation: 'process:1', sourceSample: `sample:${at}`, at: clock(at),
       hardwareProfile: 'hardware:m1', classifierGeneration: 'classifier:v1', state: rssBytes === null ? 'missing' : 'observed',
       cpuTimeMs: rssBytes === null ? null : 50, monotonicIntervalMs: rssBytes === null ? null : 100,
-      rssBytes, heapBytes: null, heapState: 'unsupported', ...overrides };
+      rssBytes, heapBytes: null, heapState: rssBytes === null ? 'missing' : 'unsupported', ...overrides };
   }
   return { ...f, types, c, producerInput, producer, witness, quantity, selection, burnPolicyInput, burnPolicy,
     burnSample, burnWindow, closed, clock, queryInput, query, readRow, resourcePoint };

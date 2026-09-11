@@ -29,7 +29,7 @@ const definition = value(measurementProjectionDefinition(generation,
   { note: { identity: 'identity', value: 'amount', merge: 'additive' } }, f.c));
 const view = value(foldProjection(definition, snapshot, generation, f.c));
 const mf = measurementFixture();
-const cache = createBoundedReadCache(value(decodeReadCachePolicy({ type: 'ReadCachePolicy', schemaVersion: 2,
-  id: 'cache:restart-cut', maxRows: 2, maxBytes: 100, maxAgeMs: 20, evictionBatch: 1 }, mf.c)), mf.c);
+const cache = value(createBoundedReadCache(value(decodeReadCachePolicy({ type: 'ReadCachePolicy', schemaVersion: 2,
+  id: 'cache:restart-cut', maxRows: 2, maxBytes: 100, maxAgeMs: 20, evictionBatch: 1 }, mf.c)), mf.c));
 console.log(JSON.stringify({ facts: snapshot.entries.length, values: view.values, cache: value(cache.inspect()),
   abandonedLock: fs.existsSync(`${directory}/append.lock`), pending: fs.existsSync(`${directory}/facts.pending`) }));

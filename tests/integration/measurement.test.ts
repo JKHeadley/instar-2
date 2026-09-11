@@ -54,7 +54,8 @@ describe('Part 16 public-port integration', () => {
       evaluationClock: owner.now, sourceHistory: snapshot, candidates: [] })))
       .toMatchObject({ state: 'attributed', feature: 'judgment', model: 'model', machine: 'machine-a' });
     expect(value(coalesceUnknownQuotaEpisodes(['quota:a'], [], mf.c))).toEqual({ notices: ['quota:a'], open: ['quota:a'] });
-    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'absent', actionProved: false, negativeProved: false, gradeOnly: false }, mf.c))).toBe('unclassified');
+    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'absent', actionProved: false, negativeProved: false, gradeOnly: false,
+      feature: 'feature-a', action: 'feature-action-observed', evaluationClock: mf.now }, mf.c))).toBe('unclassified');
     expect(value(renderMeasurementClaim({ kind: 'target', hardware: 'M1', workload: 'corpus', evidence: [] }, mf.c))).toBe('target: not measured');
     expect(Object.keys(port).join(' ')).not.toMatch(/allow|place|throttle|freeze|invoke/i);
   });
@@ -68,7 +69,7 @@ describe('Part 16 public-port integration', () => {
     expect(value(port.read(f.query, rows))).toMatchObject({ totalCount: 2, nextCursor: null, partial: false });
     const cachePolicy = value(decodeReadCachePolicy({ type: 'ReadCachePolicy', schemaVersion: 2, id: 'cache:integration',
       maxRows: 1, maxBytes: 100, maxAgeMs: 20, evictionBatch: 1 }, f.c));
-    const cache = createBoundedReadCache(cachePolicy, f.c);
+    const cache = value(createBoundedReadCache(cachePolicy, f.c));
     value(cache.put({ key: 'read:one', createdAt: f.clock(100), bytes: 'row', byteLength: 3 }));
     expect(value(cache.get('read:one'))?.bytes).toBe('row');
     expect(value(cache.planEviction(f.clock(121)))).toEqual(['read:one']);

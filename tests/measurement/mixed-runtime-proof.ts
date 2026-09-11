@@ -1,57 +1,145 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { consumeResult, decode } from '../../src/index.js';
 import { createFactStore } from '../../src/facts/index.js';
 import { foldProjection } from '../../src/projections/index.js';
+import { decodeAssemblyRecord } from '../../src/assembly/index.js';
 import {
-  aggregateMeasurements, createQuantityWitness, decodeAggregateMeasurementsPolicy, decodeMeasurementProducerContract,
-  measurementProjectionDefinition, mergePeerMeasurements, resolveQuantity,
+  aggregateMeasurements, classifyLegacyResourceObservation, createBoundedReadCache, createQuantityWitness,
+  decodeAggregateMeasurementsPolicy, decodeMeasurementProducerContract, decodeReadCachePolicy, evaluateBurn,
+  growthInvestigationLink, measurementProjectionDefinition, mergePeerMeasurements, renderBoundedRead, resolveQuantity,
+  resourceTrend, summarizeRateLimitEvents,
 } from '../../src/measurement/index.js';
+import { assemblyInput } from '../assembly/fixture.js';
 import { factsFixture, value } from '../facts/fixtures.js';
 import { measurementFixture } from './fixture.js';
+// @ts-expect-error Reference Part Ten persistence adapter is executable JavaScript.
+import { createTransportFileStorage } from '../../scripts/transport-file-storage.mjs';
 
 export function exerciseP16MixedRuntimeProof() {
-  const owner = factsFixture();
-  const fact = owner.fact({ kind: 'note', body: { identity: 'mixed-proof', amount: '1' } }, owner.ctx);
-  const storage = { owner: 'part-ten' as const, read: () => [fact], append: () => { throw new Error('proof storage is read-only'); } };
-  const snapshot = value(createFactStore(owner.ctx, storage).readForProjection());
-  const generation = { reference: owner.c.register.generation, kinds: ['note'],
-    lineages: { 'machine-a': { head: fact.segment, observedAt: 100, closed: false } } };
-  const mf = measurementFixture();
-  const definition = value(measurementProjectionDefinition(generation,
-    { note: { identity: 'identity', value: 'amount', merge: 'additive' } }, mf.c));
-  const projection = value(foldProjection(definition, snapshot, generation, owner.c));
-  const copiedSnapshotRefused = consumeResult(foldProjection(definition, { ...snapshot, entries: [...snapshot.entries] } as never,
-    generation, owner.c), { Success: () => false, Refused: () => true });
+  const directory = mkdtempSync(join(tmpdir(), 'p16-mixed-proof-'));
+  try {
+    const owner = factsFixture();
+    const fact = owner.fact({ kind: 'note', body: { identity: 'mixed-proof', amount: '1' } }, owner.ctx);
+    const storage = createTransportFileStorage(directory, (run: () => unknown) => owner.success(run()));
+    value(storage.append(JSON.stringify(fact), null));
+    const store = createFactStore(owner.ctx, storage);
+    const snapshot = value(store.readForProjection());
+    const generation = { reference: owner.c.register.generation, kinds: ['note'],
+      lineages: { 'machine-a': { head: fact.segment, observedAt: 100, closed: false } } };
+    const mf = measurementFixture();
+    const definition = value(measurementProjectionDefinition(generation,
+      { note: { identity: 'identity', value: 'amount', merge: 'additive' } }, mf.c));
+    const projection = value(foldProjection(definition, snapshot, generation, owner.c));
+    const next = owner.next(fact, { body: { identity: 'mixed-proof-next', amount: '2' } }, owner.ctx);
+    value(storage.append(JSON.stringify(next), fact.contentHash));
+    const staleAfterAdvance = consumeResult(foldProjection(definition, snapshot, generation, owner.c),
+      { Success: () => false, Refused: () => true });
+    const freshSnapshot = value(store.readForProjection());
+    const freshGeneration = { ...generation, lineages: { 'machine-a': { head: next.segment, observedAt: 100, closed: false } } };
+    const freshDefinition = value(measurementProjectionDefinition(freshGeneration,
+      { note: { identity: 'identity', value: 'amount', merge: 'additive' } }, mf.c));
+    const freshProjection = value(foldProjection(freshDefinition, freshSnapshot, freshGeneration, owner.c));
 
-  const rateTypes = { ...mf.types, register: { ...mf.types.register,
-    entries: [...mf.types.register.entries, 'producer:rate', 'rate-event-observed'],
-    subjects: { ...mf.types.register.subjects, 'rate-event': ['count'] } } };
-  const rateContext = { ...mf.c, register: rateTypes.register, types: rateTypes };
-  const contract = value(decodeMeasurementProducerContract({ type: 'MeasurementProducerContract', schemaVersion: 2,
-    id: 'producer:rate', family: 'rate-limit-event', subjectKind: 'rate-event', producer: 'probe',
-    categories: [{ name: 'event', unit: 'count', relation: 'standalone' }], evidencePredicate: 'rate-event-observed',
-    sourceSampleRequired: true, hardwareProfileRequired: false }, rateContext));
-  const rate = (id: string) => value(createQuantityWitness({ contract, subjectInstance: id, sourceSample: id, category: 'event',
-    measurement: { type: 'Measurement', schemaVersion: 1, subject: { kind: 'rate-event', instance: id }, value: 1,
-      unit: 'count', at: mf.now, by: 'probe' },
-    evidence: mf.evidenceInput({ id, observedAt: mf.now, claim: { subject: id, predicate: 'rate-event-observed', value: 1 } }),
-    sourceEvent: id, phase: 'final', predecessors: [], state: 'reported', hardwareProfile: null }, rateContext));
-  const sameMillisecondEvents = [value(resolveQuantity([rate('rate:a')], undefined, rateContext)),
-    value(resolveQuantity([rate('rate:b')], undefined, rateContext))];
+    const rateEvents = value(summarizeRateLimitEvents([
+      { id: 'rate:a', source: 'breaker', kind: 'circuit-open', at: mf.clock(100) },
+      { id: 'rate:b', source: 'session-sentinel', kind: '529', at: mf.clock(100) },
+      { id: 'rate:a', source: 'breaker', kind: 'circuit-open', at: mf.clock(100) },
+    ], mf.clock(0), mf.clock(3_600_000), mf.c));
+    const rateCollisionRefused = consumeResult(summarizeRateLimitEvents([
+      { id: 'collision', source: 'breaker', kind: 'circuit-open', at: mf.clock(100) },
+      { id: 'collision', source: 'breaker', kind: 'quota', at: mf.clock(100) },
+    ], mf.clock(0), mf.clock(200), mf.c), { Success: () => false, Refused: () => true });
 
-  const first = mf.quantity('input', 40, 'exchange:a'); const second = mf.quantity('input', 60, 'exchange:b');
-  const aggregatePolicy = value(decodeAggregateMeasurementsPolicy({ type: 'AggregateMeasurementsPolicy', schemaVersion: 2,
-    id: 'aggregate:input', sourceKind: 'model-token', aggregateKind: 'measurement-window-aggregate', additiveUnits: ['tokens'],
-    categories: ['input'], dimensions: ['feature'], producer: 'probe', scope: 'scope:ordinary' }, mf.c));
-  const aggregate = value(aggregateMeasurements({ policy: aggregatePolicy, quantities: [first, second], unit: 'tokens', category: 'input',
-    dimensions: ['feature'], producer: 'probe', scope: 'scope:ordinary', start: mf.clock(0), end: mf.clock(200),
-    evaluationClock: mf.clock(200), frontier: 'frontier:mixed-proof' }, mf.c));
-  const peerPool = value(mergePeerMeasurements([
-    { peer: 'local', state: 'admitted', lastFrontier: 'frontier:local', quantities: [first] },
-    { peer: 'offline', state: 'missing', lastFrontier: 'frontier:old', quantities: [] },
-  ], mf.c));
-  const admittedEvidence = value(decode('Evidence', mf.evidenceInput({ id: 'mixed-proof:evidence' }), mf.types));
+    const first = mf.quantity('input', 40, 'exchange:a'); const second = mf.quantity('input', 60, 'exchange:b');
+    const aggregatePolicy = value(decodeAggregateMeasurementsPolicy({ type: 'AggregateMeasurementsPolicy', schemaVersion: 2,
+      id: 'aggregate:input', sourceKind: 'model-token', aggregateKind: 'measurement-window-aggregate', additiveUnits: ['tokens'],
+      categories: ['input'], dimensions: ['feature'], producer: 'probe', scope: 'scope:ordinary' }, mf.c));
+    const aggregate = value(aggregateMeasurements({ policy: aggregatePolicy, quantities: [first, second], unit: 'tokens', category: 'input',
+      dimensions: ['feature'], producer: 'probe', scope: 'scope:ordinary', start: mf.clock(0), end: mf.clock(200),
+      evaluationClock: mf.clock(200), frontier: 'frontier:mixed-proof' }, mf.c));
+    const peerPool = value(mergePeerMeasurements([
+      { peer: 'local', state: 'admitted', lastFrontier: 'frontier:local', quantities: [first] },
+      { peer: 'offline', state: 'missing', lastFrontier: 'frontier:old', quantities: [] },
+    ], mf.c));
+    const baseline = mf.burnWindow('baseline', [mf.burnSample('baseline', 20, 0)]);
+    const burn = value(evaluateBurn(mf.burnPolicy, mf.closed,
+      mf.burnWindow('current', [mf.burnSample('current', 100, 20)]), [baseline], mf.c));
+    const page = value(renderBoundedRead(mf.query, [mf.readRow('one'), mf.readRow('two', 110)], true, mf.c));
+    const privacyRefused = consumeResult(renderBoundedRead(mf.query, [{ ...mf.readRow('private'), prompt: 'secret' } as never], false, mf.c),
+      { Success: () => false, Refused: () => true });
+    const trend = value(resourceTrend([mf.resourcePoint('p1', 100, 100), mf.resourcePoint('p2', 160, 110)], 2, mf.c));
+    const legacyOrigins = ['own-resource-read', 'pid-batch', 'footprint-census', 'origin-lost'].map((source, index) =>
+      value(classifyLegacyResourceObservation({ id: `legacy:${index}`, source: source as never,
+        state: source === 'origin-lost' ? 'read-failed' : 'observed', value: source === 'origin-lost' ? null : index,
+        originalNumeric: source !== 'origin-lost' }, mf.c)).state);
 
-  return { projection: projection.values['note:mixed-proof'], copiedSnapshotRefused,
-    sameMillisecondEventIds: sameMillisecondEvents.flatMap(row => row.witnesses.map(witness => witness.sourceEvent)),
-    aggregateAmount: aggregate.amount, aggregateMembers: aggregate.members.length, peerPool, admittedEvidence: admittedEvidence.id };
+    const observerTypes = { ...mf.types, register: { ...mf.types.register,
+      entries: [...mf.types.register.entries, 'producer:observer', 'observer-cost-observed'],
+      subjects: { ...mf.types.register.subjects, 'observer-run': ['ms'] } } };
+    const observerContext = { ...mf.c, register: observerTypes.register, types: observerTypes };
+    const observerContract = value(decodeMeasurementProducerContract({ type: 'MeasurementProducerContract', schemaVersion: 2,
+      id: 'producer:observer', family: 'package-cost', subjectKind: 'observer-run', producer: 'probe',
+      categories: [{ name: 'scan-duration', unit: 'ms', relation: 'standalone' }], evidencePredicate: 'observer-cost-observed',
+      sourceSampleRequired: true, hardwareProfileRequired: false }, observerContext));
+    const observerMeasurement = value(decode('Measurement', { type: 'Measurement', schemaVersion: 1,
+      subject: { kind: 'observer-run', instance: 'scan:1' }, value: 5, unit: 'ms', at: mf.now, by: 'probe' }, observerTypes));
+    const observerWitness = value(createQuantityWitness({ contract: observerContract, subjectInstance: 'scan:1', sourceSample: 'scan:1',
+      category: 'scan-duration', measurement: observerMeasurement, evidence: mf.evidenceInput({ id: 'observer:1',
+        claim: { subject: 'scan:1', predicate: 'observer-cost-observed', value: 5 } }), sourceEvent: 'observer:1', phase: 'final',
+      predecessors: [], state: 'reported', hardwareProfile: null }, observerContext));
+    const observerCost = value(resolveQuantity([observerWitness], undefined, observerContext));
+    const assemblyContext = factsFixture();
+    const growthPolicy = value(decodeAssemblyRecord('GrowthPolicy', assemblyInput('GrowthPolicy'), assemblyContext.c));
+    const growthObservation = value(decodeAssemblyRecord('GrowthObservation', { ...assemblyInput('GrowthObservation'),
+      comparisons: [{ subject: 'genesis-replay-duration', kind: 'measured', value: 15, threshold: 10, result: 'soft-breach' }] }, assemblyContext.c));
+    const growth = value(growthInvestigationLink(growthPolicy, [growthObservation, growthObservation], mf.c));
+    const cachePolicy = value(decodeReadCachePolicy({ type: 'ReadCachePolicy', schemaVersion: 2, id: 'cache:mixed', maxRows: 1,
+      maxBytes: 100, maxAgeMs: 20, evictionBatch: 1 }, mf.c));
+    const cache = value(createBoundedReadCache(cachePolicy, mf.c));
+    value(cache.put({ key: 'page', createdAt: mf.clock(100), bytes: 'bounded', byteLength: 7 }));
+
+    return {
+      sourceHistory: { initial: projection.values['note:mixed-proof'], staleAfterAdvance,
+        fresh: freshProjection.values['note:mixed-proof-next'], persistedFacts: freshSnapshot.entries.length },
+      rateEvents: { ids: rateEvents.events.map(row => row.id), counts: rateEvents.counts,
+        breakerTripsPerHour: rateEvents.breakerTripsPerHour, collisionRefused: rateCollisionRefused },
+      aggregation: { amount: aggregate.amount, members: aggregate.members.length }, peerPool,
+      burn: { classification: burn.classification, currentAmount: burn.currentAmount },
+      read: { rows: page.rows.length, partial: page.partial, privacyRefused },
+      resource: { state: trend.state, rssDeltaBytes: trend.rssDeltaBytes, legacyOrigins },
+      observerCost: { state: observerCost.state, amount: observerCost.amount },
+      growth: { key: growth?.key, observations: growth?.observations.length }, cacheRows: value(cache.inspect()).length,
+    };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+export const p16MixedRuntimeReceiptMap = Object.freeze({
+  'P16-NF-16': ['sourceHistory'], 'P16-NF-24': ['rateEvents', 'resource'], 'P16-NF-33': ['aggregation', 'burn'],
+  'P16-NF-36': ['aggregation'], 'P16-NF-37': ['burn'], 'P16-NF-38': ['burn'],
+  'P16-NF-46': ['observerCost', 'growth'], 'P16-NF-47': ['read'], 'P16-NF-48': ['read'],
+  'P16-NF-50': ['sourceHistory', 'peerPool'], 'P16-NF-53': ['cacheRows'],
+} as const);
+
+export function verifyP16MixedRuntimeProof(result: ReturnType<typeof exerciseP16MixedRuntimeProof>) {
+  const receipts: Record<keyof typeof p16MixedRuntimeReceiptMap, boolean> = {
+    'P16-NF-16': result.sourceHistory.initial === '1' && result.sourceHistory.staleAfterAdvance
+      && result.sourceHistory.fresh === '2' && result.sourceHistory.persistedFacts === 2,
+    'P16-NF-24': result.rateEvents.ids.join(',') === 'rate:a,rate:b' && result.rateEvents.collisionRefused
+      && result.rateEvents.breakerTripsPerHour === 1 && result.resource.legacyOrigins.join(',') === 'reported,reported,reported,legacy-origin-lost',
+    'P16-NF-33': result.aggregation.amount === 100 && result.burn.currentAmount === 120,
+    'P16-NF-36': result.aggregation.members === 2,
+    'P16-NF-37': result.burn.classification === 'activity',
+    'P16-NF-38': result.burn.currentAmount === 120,
+    'P16-NF-46': result.observerCost.amount === 5 && result.growth.observations === 1,
+    'P16-NF-47': result.read.rows === 2 && result.read.partial,
+    'P16-NF-48': result.read.privacyRefused,
+    'P16-NF-50': result.peerPool.state === 'partial' && result.sourceHistory.persistedFacts === 2,
+    'P16-NF-53': result.cacheRows === 1,
+  };
+  for (const [id, passed] of Object.entries(receipts)) if (!passed) throw new Error(`${id}: executable mixed-arm receipt failed`);
+  return result;
 }
