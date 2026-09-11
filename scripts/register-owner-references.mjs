@@ -6,7 +6,7 @@ import { ownerDocuments } from '../dist/register/owner-contracts.js';
 
 export const ownerManifestPath = 'register-source/owner-references.json';
 const hash = input => value(canonical(input)).hash;
-export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five'].map(owner => `register-source/owner-references/${owner}.json`)];
+export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five', 'part-twelve'].map(owner => `register-source/owner-references/${owner}.json`)];
 const owned = (namespace, names) => Object.fromEntries(names.map(id => [id, { module: `src/${namespace}/index.ts`, artifact: `src/${namespace}/records.ts` }]));
 const contracts = {
   'part-five': { decoders: owned('rungraph', ['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit', 'decodeSessionGrounding']),
@@ -20,6 +20,9 @@ const contracts = {
     'createFactStore.append': { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', symbol: 'createFactStore', requires: 'intakeWorkRegistration' } },
     fixture: id => /^P4-NF-(0[1-9]|1[0-9]|2[0-9])$/.test(id), probe: id => id === 'P4-NF-29',
     test: (_kind, path) => /^tests\/intake\/[a-z][a-z0-9-]*\.test\.ts$/.test(path) },
+  'part-twelve': { decoders: {},
+    fixture: id => id === 'P12-TELEGRAM-REPLY-CAPTURE', probe: () => false,
+    test: (kind, path) => kind === 'fixture' && path === 'tests/conversation/fixtures/telegram/reply.json' },
 };
 const exact = (v, keys) => {
   if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !keys.includes(k)) || keys.some(k => !Object.hasOwn(v, k)))
@@ -59,7 +62,8 @@ export function loadOwnerReferences(root, input) {
         throw new Error('unknown owner fixture/probe or invalid CI cadence');
       if (!contract.test(kind, row.artifact?.path)) throw new Error('wrong-owner inspection artifact');
       artifact(row.artifact, row.artifact.path);
-      result.catalog[kind + 's'].push(row); result.references.push({ provider: kind, id: row.id });
+      result.catalog[kind + 's'].push(row); result.references.push({ provider: kind, id: row.id,
+        ...(manifest.owner === 'part-twelve' && kind === 'fixture' ? { kind: 'captured-bytes' } : {}) });
     }
   }
   unique(manifest.decoders, 'decoder');
