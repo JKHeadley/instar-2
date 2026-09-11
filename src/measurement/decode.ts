@@ -6,15 +6,33 @@ import type { AggregateMeasurementsPolicy, BurnAmountSelection, BurnPolicy, Meas
 
 export interface MeasurementDecodeContext extends BoundaryContext {
   readonly types: DecodeContext;
+  readonly registeredContracts: Readonly<Record<string, Json>>;
 }
 
 const categoryRelations = ['standalone', 'subset-of-input', 'independent-billed'] as const;
-const families = ['model-call', 'cumulative-model-session', 'quota', 'rate-limit-event', 'resource', 'package-cost'] as const;
+const families = ['model-call', 'cumulative-model-session', 'quota', 'rate-limit-event', 'resource', 'package-cost', 'programmatic-event'] as const;
 const issuedProducerContracts = new WeakSet<object>();
 const issuedAggregatePolicies = new WeakSet<object>();
 const issuedBurnPolicies = new WeakSet<object>();
 const issuedReadQueries = new WeakSet<object>();
 const issuedCachePolicies = new WeakSet<object>();
+
+const subjectForFamily = {
+  'model-call': 'model-token',
+  'cumulative-model-session': 'cumulative-model-session',
+  quota: 'quota',
+  'rate-limit-event': 'rate-limit-event',
+  resource: 'process-resource',
+  'package-cost': 'observer-run',
+  'programmatic-event': 'programmatic-count',
+} as const;
+
+function requireRegisteredContent(value: Readonly<{ id: string }>, context: MeasurementDecodeContext, label: string): void {
+  const registered = context.registeredContracts[value.id];
+  ensure(registered !== undefined, `${label} content is not registered`);
+  ensure(encoding(registered).bytes === encoding(value).bytes,
+    `${label} identity is not bound to its current registered content`);
+}
 
 export const isDecodedMeasurementProducerContract = (value: unknown): value is MeasurementProducerContract =>
   typeof value === 'object' && value !== null && issuedProducerContracts.has(value);
@@ -59,16 +77,18 @@ const producerDecoder = <C extends MeasurementDecodeContext>(preserved: string) 
       ensure(family === 'resource' || !decoded.hardwareProfileRequired, 'only resource producers may require a hardware profile');
       ensure(family !== 'resource' || decoded.sourceSampleRequired && decoded.hardwareProfileRequired
         && decoded.subjectKind === 'process-resource', 'resource producer requires its sample, hardware, and resource subject identity');
-      const familySubject = { 'model-call': 'model-token', 'cumulative-model-session': 'cumulative-model-session',
-        quota: 'quota', 'rate-limit-event': 'rate-limit-event', resource: 'process-resource', 'package-cost': 'observer-run' }[family];
+      const familySubject = subjectForFamily[family];
       ensure(decoded.subjectKind === familySubject, 'producer subject kind is not registered for its family');
       ensure(family !== 'model-call' || decoded.sourceSampleRequired && !decoded.hardwareProfileRequired,
         'model-call producer contract is not registered for its family');
+      ensure(family !== 'programmatic-event' || decoded.sourceSampleRequired && !decoded.hardwareProfileRequired,
+        'programmatic-event producer contract is not registered for its family');
       ensure(context.register.entries.includes(decoded.id), 'producer contract is not registered');
       ensure(context.types.register.producers.includes(decoded.producer), 'measurement producer is not registered');
       const units = context.types.register.subjects[decoded.subjectKind];
       ensure(units && decoded.categories.every(row => units.includes(row.unit)), 'measurement subject kind or category unit is not registered');
       ensure(context.register.entries.includes(decoded.evidencePredicate), 'measurement evidence predicate is not registered');
+      requireRegisteredContent(decoded, context, 'producer contract');
       issuedProducerContracts.add(decoded);
       return { ok: true, value: decoded as unknown as MeasurementProducerContract };
     } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'producer contract refused' }; }
@@ -128,6 +148,7 @@ const burnDecoder = <C extends MeasurementDecodeContext>(preserved: string) => t
         const subject = row.source === 'model-exchange' ? 'model-token' : 'programmatic-count';
         return context.types.register.subjects[subject]?.includes(decoded.unit);
       }), 'burn policy unit is not registered for every selected activity source');
+      requireRegisteredContent(decoded, context, 'burn policy');
       issuedBurnPolicies.add(decoded);
       return { ok: true, value: decoded as unknown as BurnPolicy };
     } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'burn policy refused' }; }
@@ -176,6 +197,7 @@ export function decodeAggregateMeasurementsPolicy(input: unknown, context: Measu
     ensure(decoded.dimensions.every(dimension => ['family', 'category', 'feature', 'model', 'machine'].includes(dimension)),
       'aggregate dimension is not registered');
     ensure(decoded.categories.every(name => name.trim().length > 0), 'aggregate category is malformed');
+    requireRegisteredContent(decoded, context, 'aggregate policy');
     issuedAggregatePolicies.add(decoded);
     return decoded;
   });
@@ -191,9 +213,11 @@ export function isCurrentMeasurementProducerContract(contract: MeasurementProduc
     && !!units && contract.categories.every(category => units.includes(category.unit))
     && (contract.family !== 'resource' || contract.sourceSampleRequired && contract.hardwareProfileRequired
       && contract.subjectKind === 'process-resource')
-    && contract.subjectKind === ({ 'model-call': 'model-token', 'cumulative-model-session': 'cumulative-model-session',
-      quota: 'quota', 'rate-limit-event': 'rate-limit-event', resource: 'process-resource', 'package-cost': 'observer-run' } as const)[contract.family]
-    && (contract.family !== 'model-call' || contract.sourceSampleRequired && !contract.hardwareProfileRequired);
+    && contract.subjectKind === subjectForFamily[contract.family]
+    && (contract.family !== 'model-call' || contract.sourceSampleRequired && !contract.hardwareProfileRequired)
+    && (contract.family !== 'programmatic-event' || contract.sourceSampleRequired && !contract.hardwareProfileRequired)
+    && context.registeredContracts[contract.id] !== undefined
+    && encoding(context.registeredContracts[contract.id]).bytes === encoding(contract).bytes;
 }
 
 export function isCurrentAggregateMeasurementsPolicy(policy: AggregateMeasurementsPolicy,
@@ -203,19 +227,25 @@ export function isCurrentAggregateMeasurementsPolicy(policy: AggregateMeasuremen
   const aggregateUnits = context.types.register.subjects[policy.aggregateKind];
   return context.register.entries.includes(policy.id) && context.register.entries.includes(policy.scope)
     && context.types.register.producers.includes(policy.producer) && !!sourceUnits && !!aggregateUnits
-    && policy.additiveUnits.every(unit => sourceUnits.includes(unit) && aggregateUnits.includes(unit));
+    && policy.additiveUnits.every(unit => sourceUnits.includes(unit) && aggregateUnits.includes(unit))
+    && context.registeredContracts[policy.id] !== undefined
+    && encoding(context.registeredContracts[policy.id]).bytes === encoding(policy).bytes;
 }
 
 export function isCurrentMeasurementTuple(family: string, category: string, unit: string, producer: string,
   context: MeasurementDecodeContext): boolean {
-  const expectedKind = family === 'model-call' ? 'model-token'
-    : family === 'resource' ? 'process-resource'
-      : family === 'rate-limit-event' ? 'rate-limit-event'
-        : family === 'cumulative-model-session' ? 'cumulative-model-session'
-          : family === 'quota' ? 'quota' : 'observer-run';
+  if (!families.includes(family as typeof families[number])) return false;
+  const expectedKind = subjectForFamily[family as typeof families[number]];
   return context.types.register.producers.includes(producer)
     && context.types.register.subjects[expectedKind]?.includes(unit) === true
-    && category.trim().length > 0;
+    && Object.values(context.registeredContracts).some(value => {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+      const candidate = value as Record<string, Json>;
+      if (candidate.type !== 'MeasurementProducerContract' || candidate.schemaVersion !== 2 || candidate.family !== family
+        || candidate.subjectKind !== expectedKind || candidate.producer !== producer || !Array.isArray(candidate.categories)) return false;
+      return candidate.categories.some(entry => entry !== null && typeof entry === 'object' && !Array.isArray(entry)
+        && (entry as Record<string, Json>).name === category && (entry as Record<string, Json>).unit === unit);
+    });
 }
 
 export function isCurrentBurnPolicy(policy: BurnPolicy, context: MeasurementDecodeContext): boolean {
@@ -223,7 +253,9 @@ export function isCurrentBurnPolicy(policy: BurnPolicy, context: MeasurementDeco
   return context.register.entries.includes(policy.id) && context.register.entries.includes(policy.feature)
     && policy.selections.every(selection => context.register.entries.includes(selection.id)
       && selection.outputUnit === policy.unit
-      && context.types.register.subjects[selection.source === 'model-exchange' ? 'model-token' : 'programmatic-count']?.includes(policy.unit));
+      && context.types.register.subjects[selection.source === 'model-exchange' ? 'model-token' : 'programmatic-count']?.includes(policy.unit))
+    && context.registeredContracts[policy.id] !== undefined
+    && encoding(context.registeredContracts[policy.id]).bytes === encoding(policy).bytes;
 }
 
 export function decodeMeasurementReadQuery(input: unknown, context: MeasurementDecodeContext): Result<MeasurementReadQuery> {
@@ -258,6 +290,7 @@ export function decodeReadCachePolicy(input: unknown, context: MeasurementDecode
     const policy = freeze({ type: 'ReadCachePolicy' as const, schemaVersion: 2 as const, id: text(v.id, 'id'), maxRows: integer(v.maxRows, 'maxRows', 1),
       maxBytes: integer(v.maxBytes, 'maxBytes', 1), maxAgeMs: integer(v.maxAgeMs, 'maxAgeMs', 1), evictionBatch: integer(v.evictionBatch, 'evictionBatch', 1) });
     ensure(policy.evictionBatch <= policy.maxRows, 'eviction batch exceeds row bound');
+    requireRegisteredContent(policy, context, 'read cache policy');
     issuedCachePolicies.add(policy);
     return policy as ReadCachePolicy;
   });

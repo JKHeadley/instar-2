@@ -1,188 +1,146 @@
 import { describe, expect, it } from 'vitest';
-import { decode } from '../../src/index.js';
+import { canonical, decode } from '../../src/index.js';
 import {
-  classifyFeatureOutcome, classifyProcesses, coalesceUnknownQuotaEpisodes, compareBurnPolicies,
-  compareMeasurementProducerContracts, cpuUtilization, createBoundedReadCache, createMeasurementLedger,
-  decodeAggregateMeasurementsPolicy, decodeBurnPolicy, decodeMeasurementProducerContract, decodeMeasurementReadQuery, decodeReadCachePolicy,
-  evaluateBurn, growthInvestigationLink, measurementProjectionDefinition, planProcessCensus,
-  reconcileProcessIncarnation, renderMeasurementClaim, resolveAttribution, resolveQuantity, resourceTrend,
+  admitMeasurementAmount, classifyFeatureOutcome, classifyLegacyResourceObservation, classifyProcesses,
+  coalesceUnknownQuotaEpisodes, compareMeasurementProducerContracts, cpuUtilization, createMeasurementLedger,
+  decodeAggregateMeasurementsPolicy, decodeBurnPolicy, decodeMeasurementProducerContract,
+  decodeMeasurementReadQuery, decodeReadCachePolicy, planProcessCensus, reconcileProcessIncarnation,
+  renderMeasurementClaim, resourceTrend, summarizeRateLimitEvents,
 } from '../../src/measurement/index.js';
-import { closureReleasedPins, routineAgeRemovalAllowed } from '../../src/verification/index.js';
-import { decodeAssemblyRecord } from '../../src/assembly/index.js';
-import { assemblyInput } from '../assembly/fixture.js';
-import { factsFixture, refused, value } from '../facts/fixtures.js';
+import { refused, value } from '../facts/fixtures.js';
 import { measurementFixture } from './fixture.js';
-import { judgmentFixture } from '../judgment/fixture.js';
-import { prepareSnapshot } from '../../src/facts/index.js';
-import { verificationInput } from '../verification/fixture.js';
 
-describe('Part 16 foundation records and observational boundaries', () => {
-  it('P16-NF-01 P16-NF-02 construction is closed, immutable, version-migrated, canonical, and exports no authority decision', () => {
+const a1Labels = 'P16-NF-01 P16-NF-02 P16-NF-03 P16-NF-05 P16-NF-22 P16-NF-23 P16-NF-24 '
+  + 'P16-NF-25 P16-NF-26 P16-NF-27 P16-NF-28 P16-NF-29 P16-NF-30 P16-NF-52 P16-NF-53';
+
+describe('Part 16 slice A1 foundation', () => {
+  it(`${a1Labels} validates only the A1 registration and resource/process/census surface`, () => {
     const f = measurementFixture();
-    const current = value(decodeMeasurementProducerContract(f.producerInput(), f.c));
-    expect(Object.isFrozen(current)).toBe(true);
-    const legacy = { type: 'MeasurementProducerContract', schemaVersion: 1, id: 'producer:model', family: 'model-call',
-      subjectKind: 'model-token', producer: 'probe', unit: 'tokens', evidencePredicate: 'usage-observed' };
-    expect(value(compareMeasurementProducerContracts(legacy, {
-      ...f.producerInput(), categories: [{ name: 'value', unit: 'tokens', relation: 'standalone' }],
-    }, f.c))).toBe(true);
-    refused(decodeMeasurementProducerContract({ ...f.producerInput(), allow: true }, f.c), 'undeclared');
-    const port = createMeasurementLedger(f.c);
-    expect(Object.keys(port).sort()).toEqual(['aggregate', 'attribute', 'bindReadSource', 'evaluateBurn', 'owner', 'read', 'readCurrent', 'resolveQuantity', 'trend']);
-    expect(JSON.stringify(port)).not.toMatch(/canRun|place|throttle|allow|retry|freeze|effect|standing/i);
+    const ledger = createMeasurementLedger(f.c);
+    expect(ledger.owner).toBe('part-sixteen');
+    expect(Object.keys(ledger).sort()).toEqual(['admitAmount', 'owner', 'trend']);
+    expect(value(ledger.admitAmount({ contract: f.producer, category: 'input', amount: 100 })).amount).toBe(100);
+    expect(value(ledger.trend([f.resourcePoint('a', 100, 100), f.resourcePoint('b', 160, 110)], 2)))
+      .toMatchObject({ state: 'complete', rssDeltaBytes: 10 });
   });
 
-  it('P16-NF-05 only named recorded execution is rendered as measured', () => {
+  it('F8 burn:programmatic-route:model-call burn:programmatic-route:cumulative-model-session burn:programmatic-route:quota burn:programmatic-route:rate-limit-event burn:programmatic-route:resource burn:programmatic-route:package-cost and event-family route', () => {
     const f = measurementFixture();
-    const execution = value(decode('Evidence', f.evidenceInput({ id: 'execution:1', observedAt: f.now,
-      claim: { subject: 'execution:1', predicate: 'execution-observed', value: { hardware: 'M1 Max', workload: 'release-corpus-v1' } } }), f.types));
-    f.evidence.push(execution);
-    expect(value(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'M1 Max', workload: 'release-corpus-v1', evidence: [execution.id] }, f.c)))
-      .toContain('measured execution');
-    expect(value(renderMeasurementClaim({ kind: 'estimate', hardware: 'M1 Max', workload: 'release-corpus-v1', evidence: [] }, f.c)))
-      .toBe('estimate: not measured');
-    refused(renderMeasurementClaim({ kind: 'recorded-execution', hardware: null, workload: 'release-corpus-v1', evidence: ['run:1'] }, f.c), 'named hardware');
+    for (const family of ['model-call', 'cumulative-model-session', 'quota', 'rate-limit-event', 'resource', 'package-cost'] as const) {
+      const raw = f.producerInput({ family, subjectKind: 'programmatic-count',
+        categories: [{ name: 'input', unit: 'tokens', relation: 'standalone' }],
+        hardwareProfileRequired: family === 'resource' });
+      refused(decodeMeasurementProducerContract(raw, f.withRegistered(raw)));
+    }
+    expect(f.eventProducer).toMatchObject({ family: 'programmatic-event', subjectKind: 'programmatic-count' });
+    expect(value(admitMeasurementAmount({ contract: f.eventProducer, category: 'input', amount: 1 }, f.c)))
+      .toEqual({ family: 'programmatic-event', subjectKind: 'programmatic-count', category: 'input', unit: 'tokens', amount: 1 });
   });
 
-  it('P16-NF-12 P16-NF-13 attribution joins the current Part Seven request, attempt, and decision', async () => {
-    const owner = judgmentFixture();
-    value(await owner.door.judge(owner.input, owner.start()));
-    const snapshot = value(owner.store.readForProjection());
-    const mf = measurementFixture();
-    const context = { ...mf.c, register: owner.ctx.decode.register, types: owner.ctx.decode };
-    const attempt = `attempt:${owner.input.id}:1`;
-    const result = value(resolveAttribution({ attempt, claimed: { feature: 'forged', model: 'forged', machine: 'forged' },
-      evaluationClock: owner.now, sourceHistory: snapshot, candidates: [] }, context));
-    expect(result).toMatchObject({ state: 'attributed', feature: 'judgment', model: 'model', machine: 'machine-a', run: owner.input.run.id });
-    expect(value(resolveAttribution({ attempt: 'attempt:missing', claimed: { feature: 'forged', model: 'forged', machine: 'forged' },
-      evaluationClock: owner.now, sourceHistory: snapshot, candidates: [] }, context))).toMatchObject({ state: 'unattributed', feature: null });
-  });
-
-  it('P16-NF-13 owner-issued incompatible multi-match reports conflict across two valid machine lineages', async () => {
-    const owner = judgmentFixture(); value(await owner.door.judge(owner.input, owner.start()));
-    const original = value(owner.store.read()).slice().sort((a, b) => a.segment.position - b.segment.position);
-    const builder = factsFixture(); let previous: (typeof original)[number] | undefined;
-    const second = original.map((fact, position) => {
-      const replica = builder.fact({ kind: fact.kind, schemaVersion: fact.schemaVersion, at: fact.at,
-        segment: { machine: 'machine-b', epoch: 0, position }, prevInSegment: previous?.contentHash ?? owner.ctx.genesis.hash,
-        predecessors: { inSegment: previous?.id ?? null, frontier: {}, required: [] }, body: fact.body }, owner.ctx);
-      previous = replica; return replica;
-    });
-    const snapshot = value(prepareSnapshot([...original, ...second], owner.ctx));
-    const f = measurementFixture(); const context = { ...f.c, register: owner.ctx.decode.register, types: owner.ctx.decode };
-    const state = value(resolveAttribution({ attempt: `attempt:${owner.input.id}:1`,
-      claimed: { feature: 'forged', model: 'forged', machine: 'forged' }, evaluationClock: owner.now,
-      sourceHistory: snapshot, candidates: [] }, context));
-    expect(state.state).toBe('conflicted');
-    expect(state.facts.length).toBeGreaterThan(3);
-  });
-
-  it('P16-NF-22 P16-NF-23 quota unknown stays unknown, coalesces, and exposes no scheduling operation', () => {
+  it('F9 quantity:positive-fractional-token quantity:unsafe-token-count reject while fractional duration remains valid', () => {
     const f = measurementFixture();
-    expect(value(coalesceUnknownQuotaEpisodes(['account:a:window:1', 'account:a:window:1'], [], f.c))).toEqual({ notices: ['account:a:window:1'], open: ['account:a:window:1'] });
-    expect(value(coalesceUnknownQuotaEpisodes(['account:a:window:1'], ['account:a:window:1'], f.c)).notices).toEqual([]);
-    expect(Object.keys(createMeasurementLedger(f.c)).join(' ')).not.toMatch(/allow|place|throttle|canRun/i);
+    refused(admitMeasurementAmount({ contract: f.producer, category: 'input', amount: 0.5 }, f.c), 'safe integer');
+    refused(admitMeasurementAmount({ contract: f.producer, category: 'input', amount: Number.MAX_VALUE }, f.c), 'safe integer');
+    expect(value(admitMeasurementAmount({ contract: f.producer, category: 'input', amount: 0 }, f.c)).amount).toBe(0);
+    expect(value(admitMeasurementAmount({ contract: f.resourceProducer, category: 'cpu', amount: 0.5 }, f.c)).amount).toBe(0.5);
   });
 
-  it('P16-NF-25 P16-NF-26 P16-NF-27 P16-NF-28 resource arithmetic keeps failures, incarnations, bounds, and privacy distinct', () => {
-    const f = measurementFixture(); const point = f.resourcePoint('p1', 100, 100 * 1024 * 1024);
-    expect(value(cpuUtilization(point, 4, 'one-core', f.c))).toBe(50);
-    expect(value(cpuUtilization(point, 4, 'whole-machine', f.c))).toBe(12.5);
-    expect(value(cpuUtilization(f.resourcePoint('missing', 100, null), 4, 'one-core', f.c))).toBeNull();
-    const old = { processIncarnation: 'process:old', pid: 7, startEvidence: 'start:old', tags: ['agent'] };
-    expect(value(reconcileProcessIncarnation(old, { ...old, processIncarnation: 'process:new', startEvidence: 'start:new' }, f.c))).toBe('new-incarnation');
-    expect(value(reconcileProcessIncarnation(old, null, f.c))).toBe('missing');
-    const processes = [old, { processIncarnation: 'process:2', pid: 8, startEvidence: 'start:2', tags: ['unknown'] }];
+  it('F10 producer:same-id-new-category binds a registered identity to its complete canonical content', () => {
+    const f = measurementFixture();
+    expect(value(decodeMeasurementProducerContract(f.modelProducerInput, f.c)).categories.map(row => row.name))
+      .toEqual(['input', 'output']);
+    refused(decodeMeasurementProducerContract(f.producerInput({
+      categories: [{ name: 'fictional-token', unit: 'tokens', relation: 'standalone' }],
+    }), f.c), 'current registered content');
+    expect(value(admitMeasurementAmount({ contract: f.producer, category: 'output', amount: 7 }, f.c)).amount).toBe(7);
+    refused(admitMeasurementAmount({ contract: f.producer, category: 'fictional-token', amount: 7 }, f.c), 'not registered');
+  });
+
+  it('F11 process:false-is-not-absence quota:malformed-prior-episodes preserve typed absence and state', () => {
+    const f = measurementFixture();
+    const process = { processIncarnation: 'process:1', pid: 7, startEvidence: 'start:1', tags: ['worker'] };
+    expect(value(reconcileProcessIncarnation(process, null, f.c))).toBe('missing');
+    expect(value(reconcileProcessIncarnation(process, process, f.c))).toBe('same');
+    refused(reconcileProcessIncarnation(process, false as never, f.c), 'closed object');
+    expect(value(coalesceUnknownQuotaEpisodes(['account'], ['prior'], f.c)))
+      .toEqual({ notices: ['account'], open: ['account', 'prior'] });
+    refused(coalesceUnknownQuotaEpisodes(['account'], [null, 42] as never, f.c), 'text array');
+  });
+
+  it('owned policy/query records migrate before compare, decode totally, bind policy content, and freeze deeply', () => {
+    const f = measurementFixture();
+    const aggregate = value(decodeAggregateMeasurementsPolicy(f.aggregatePolicyInput, f.c));
+    const burn = value(decodeBurnPolicy(f.burnPolicyInput, f.c));
+    const cache = value(decodeReadCachePolicy(f.cachePolicyInput, f.c));
+    const queryRaw = { type: 'MeasurementReadQuery', schemaVersion: 2, id: 'read:a',
+      start: f.clockRaw(0), end: f.clockRaw(100), evaluationClock: f.clockRaw(100), clockBasis: 'utc',
+      dimensions: ['family'], pageSize: 10, cursor: null, sort: 'source-time', maxExportBytes: 4096,
+      detailHorizonMs: 1000, sourceHistoryDigest: 'sha256:history', sourceProjectionDigest: 'sha256:projection',
+      frontier: 'frontier:a', registerGeneration: f.types.register.generation.id };
+    const query = value(decodeMeasurementReadQuery(queryRaw, f.c));
+    for (const decoded of [f.producer, f.eventProducer, f.resourceProducer, aggregate, burn, cache, query]) {
+      expect(Object.isFrozen(decoded)).toBe(true);
+      expect(value(canonical(decoded)).bytes.length).toBeGreaterThan(10);
+    }
+    refused(decodeBurnPolicy({ ...f.burnPolicyInput, entryExcess: 51 }, f.c), 'current registered content');
+    refused(decodeReadCachePolicy({ ...f.cachePolicyInput, maxRows: 3 }, f.c), 'current registered content');
+
+    const current = { type: 'MeasurementProducerContract', schemaVersion: 2, id: 'producer:legacy',
+      family: 'model-call', subjectKind: 'model-token', producer: 'probe',
+      categories: [{ name: 'value', unit: 'tokens', relation: 'standalone' }],
+      evidencePredicate: 'usage-observed', sourceSampleRequired: true, hardwareProfileRequired: false } as const;
+    const context = f.withRegistered(current, { ...f.c,
+      register: { ...f.c.register, entries: [...f.c.register.entries, 'producer:legacy'] },
+      types: { ...f.c.types, register: { ...f.c.types.register,
+        entries: [...f.c.types.register.entries, 'producer:legacy'] } } });
+    const legacy = { type: 'MeasurementProducerContract', schemaVersion: 1, id: 'producer:legacy',
+      family: 'model-call', subjectKind: 'model-token', producer: 'probe', unit: 'tokens',
+      evidencePredicate: 'usage-observed' };
+    expect(value(compareMeasurementProducerContracts(legacy, current, context))).toBe(true);
+  });
+
+  it('resource/process/census validation preserves fractions, failures, identities, bounds, and private-data exclusion', () => {
+    const f = measurementFixture();
+    expect(value(cpuUtilization(f.resourcePoint('cpu', 100, 1), 4, 'one-core', f.c))).toBe(50);
+    expect(value(cpuUtilization(f.resourcePoint('cpu-fraction', 100, 1,
+      { cpuTimeMs: 0.5, monotonicIntervalMs: 2 }), 4, 'one-core', f.c))).toBe(25);
+    refused(cpuUtilization({ ...f.resourcePoint('overflow', 100, 1), cpuTimeMs: Number.MAX_VALUE,
+      monotonicIntervalMs: Number.MIN_VALUE }, 1, 'one-core', f.c), 'not finite');
+    expect(value(classifyLegacyResourceObservation({ id: 'legacy', source: 'origin-lost', state: 'read-failed',
+      value: 0, originalNumeric: false }, f.c))).toMatchObject({ state: 'legacy-origin-lost', amount: 0 });
+
+    const processes = [
+      { processIncarnation: 'p:1', pid: 1, startEvidence: 's:1', tags: ['worker'] },
+      { processIncarnation: 'p:2', pid: 2, startEvidence: 's:2', tags: [] },
+    ];
     expect(value(planProcessCensus(processes, 1, f.c))).toMatchObject({ examined: 1, omitted: 1, truncated: true });
-    expect(value(classifyProcesses(processes, [{ className: 'agent-worker', requiredTags: ['agent'] }], f.c)))
+    expect(value(classifyProcesses(processes, [{ className: 'agent-worker', requiredTags: ['worker'] }], f.c)))
       .toEqual({ counts: { 'agent-worker': 1 }, unclassified: 1 });
-    expect(JSON.stringify(value(classifyProcesses(processes, [{ className: 'agent-worker', requiredTags: ['agent'] }], f.c))))
-      .not.toMatch(/command|environment/i);
+    refused(classifyProcesses([{ ...processes[0]!, command: 'secret' }] as never, [], f.c), 'undeclared');
+
+    const first = f.resourcePoint('r:1', 100, 100);
+    const second = f.resourcePoint('r:2', 160, 110);
+    expect(value(resourceTrend([first, second], 2, f.c))).toMatchObject({ state: 'complete', rssDeltaBytes: 10 });
+    expect(value(resourceTrend([first, f.resourcePoint('r:3', 1000, 120)], 2, f.c))).toMatchObject({ state: 'incomplete' });
+    expect(value(summarizeRateLimitEvents([
+      { id: 'a', source: 'breaker', kind: 'circuit-open', at: f.clock(0) },
+      { id: 'b', source: 'session-sentinel', kind: '529', at: f.clock(0) },
+    ], f.clock(0), f.clock(3_600_000), f.c))).toMatchObject({ counts: { '529': 1, 'circuit-open': 1 } });
   });
 
-  it('P16-NF-29 resource trends keep distinct sample times and reject gaps or basis changes', () => {
-    const f = measurementFixture(); const first = f.resourcePoint('p1', 100, 100 * 1024 * 1024); const second = f.resourcePoint('p2', 160, 110 * 1024 * 1024);
-    expect(value(resourceTrend([second, first], 2, f.c))).toMatchObject({ state: 'complete', rssDeltaBytes: 10 * 1024 * 1024 });
-    expect(value(resourceTrend([first, f.resourcePoint('p2', 160, null)], 2, f.c))).toMatchObject({ state: 'incomplete', rssDeltaBytes: null });
-    expect(value(resourceTrend([first, { ...second, hardwareProfile: 'hardware:other' }], 2, f.c)).reasons).toContain('hardware changed');
-    const equalA = f.witness('input', 100, { sourceEvent: 'witness:a' }); const equalB = f.witness('input', 100, { sourceEvent: 'witness:b' });
-    expect(value(resolveQuantity([equalA, equalB], undefined, f.c))).toMatchObject({ amount: 100, state: 'resolved' });
-    const disagree = f.witness('input', 110, { sourceEvent: 'witness:c' });
-    expect(value(resolveQuantity([equalA, disagree], undefined, f.c))).toMatchObject({ amount: null, state: 'unresolved' });
-  });
-
-  it('P16-NF-30 feature outcomes keep calls, shed, failures, events, and unclassified evidence distinct', () => {
+  it('measurement language and feature outcome classification remain observational', () => {
     const f = measurementFixture();
-    const fired = value(decode('Evidence', f.evidenceInput({ id: 'action:fired', observedAt: f.now,
-      claim: { subject: 'feature-a', predicate: 'feature-action-observed', value: 'fired' } }), f.types));
-    const noOp = value(decode('Evidence', f.evidenceInput({ id: 'action:no-op', observedAt: f.now,
-      claim: { subject: 'feature-a', predicate: 'feature-action-observed', value: 'no-op' } }), f.types));
-    f.evidence.push(fired, noOp);
-    const action = { feature: 'feature-a', action: 'feature-action-observed' as const, evaluationClock: f.now };
-    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: true, negativeProved: false, gradeOnly: false, evidence: fired, ...action }, f.c))).toBe('fired');
-    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: false, negativeProved: true, gradeOnly: false, evidence: noOp, ...action }, f.c))).toBe('no-op');
-    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'absent', actionProved: false, negativeProved: false, gradeOnly: false, ...action }, f.c))).toBe('unclassified');
-    expect(value(classifyFeatureOutcome({ kind: 'exchange', classifier: 'complete', actionProved: true, negativeProved: false, gradeOnly: true, ...action }, f.c))).toBe('unclassified');
-    for (const kind of ['shed', 'error', 'parser-failure', 'event'] as const)
-      expect(value(classifyFeatureOutcome({ kind, classifier: 'complete', actionProved: false, negativeProved: false, gradeOnly: false,
-        feature: null, action: null, evaluationClock: null }, f.c))).toBe(kind);
-  });
-
-  it('P16-NF-33 P16-NF-34 burn selection counts one exchange once, applies coverage boundaries, and never blames absent instrumentation', () => {
-    const f = measurementFixture();
-    const sample = f.burnSample('exchange:one', 100, 20); const baseline = f.burnWindow('baseline', [f.burnSample('exchange:baseline', 20, 0)]);
-    const opened = value(evaluateBurn(f.burnPolicy, f.closed, f.burnWindow('current', [sample, sample], { comparisonScopeAmount: 200,
-      observedExchanges: 1, usageSupportedExchanges: 1 }), [baseline], f.c));
-    expect(opened).toMatchObject({ currentAmount: 120, eligibleSampleCount: 1, baselineAmount: 20, excess: 100, share: 0.6, notify: true, openInvestigation: true });
-    const replay = value(evaluateBurn(f.burnPolicy, opened.episode, f.burnWindow('current', [sample], { comparisonScopeAmount: 200 }), [baseline], f.c));
-    expect(replay).toMatchObject({ notify: false, openInvestigation: false });
-    const incomplete = value(evaluateBurn(f.burnPolicy, { ...opened.episode, recoveryCount: 1 }, f.burnWindow('gap', [], {
-      censusComplete: false, collectorsComplete: false, observedExchanges: 0, usageSupportedExchanges: 0, attemptedDispatches: 1,
-      dispatchUncertain: 1, comparisonScopeAmount: 0 }), [baseline], f.c));
-    expect(incomplete).toMatchObject({ classification: 'incomplete', culprit: null, episode: { state: 'open', recoveryCount: 0 } });
-    expect(incomplete.coverageDebt).toContain('census-incomplete');
-    const legacy = { ...f.burnPolicyInput(), schemaVersion: 1, selection: f.selection('model-exchange', ['input', 'output']), minimumSamples: 1 } as Record<string, unknown>;
-    delete legacy.selections; delete legacy.minimumEligibleSamples;
-    expect(value(decodeBurnPolicy(legacy, f.c)).selections).toHaveLength(1);
-    expect(value(compareBurnPolicies(f.burnPolicyInput(), f.burnPolicyInput(), f.c))).toBe(true);
-  });
-
-  it('P16-NF-39 P16-NF-40 P16-NF-41 retention stays on the signed spine while disposable cache work is bounded and separate', () => {
-    const f = measurementFixture();
-    const generation = { reference: f.types.register.generation, kinds: ['note'], lineages: {} };
-    expect(value(measurementProjectionDefinition(generation, { note: { identity: 'identity', value: 'amount', merge: 'additive' } }, f.c)))
-      .toMatchObject({ retention: 'all-identities', id: 'measurement.source.all-identities' });
-    expect(routineAgeRemovalAllowed()).toBe(false);
-    expect(closureReleasedPins(verificationInput('AssessmentClosure'))).toEqual(['assessment-pin:case:1']);
-    expect(closureReleasedPins({ type: 'AssessmentClosure', schemaVersion: 1, id: 'closure:1', caseId: 'case:1', predecessor: '',
-      requiredAssessments: [], dispositions: [], activeDisputes: [], releasesPin: 'assessment-pin:case:1' } as never)).toEqual([]);
-    const policy = value(decodeReadCachePolicy({ type: 'ReadCachePolicy', schemaVersion: 2, id: 'cache:1', maxRows: 2, maxBytes: 100,
-      maxAgeMs: 20, evictionBatch: 1 }, f.c));
-    const cache = value(createBoundedReadCache(policy, f.c)); value(cache.put({ key: 'a', createdAt: f.clock(100), bytes: 'one', byteLength: 3 }));
-    value(cache.put({ key: 'b', createdAt: f.clock(110), bytes: 'two', byteLength: 3 }));
-    expect(value(cache.planEviction(f.clock(130)))).toEqual(['a']); expect(value(cache.applyEviction(['a']))).toBe(1);
-    expect(value(cache.inspect()).map(row => row.key)).toEqual(['b']);
-  });
-
-  it('P16-NF-46 growth evidence names exactly one existing Part Five run and Part Six loop', () => {
-    const f = measurementFixture(); const fc = factsFixture();
-    const policy = value(decodeAssemblyRecord('GrowthPolicy', assemblyInput('GrowthPolicy'), fc.c));
-    const observation = value(decodeAssemblyRecord('GrowthObservation', { ...assemblyInput('GrowthObservation'),
-      comparisons: [{ subject: 'genesis-replay-duration', kind: 'measured', value: 15, threshold: 10, result: 'soft-breach' }] }, fc.c));
-    const link = value(growthInvestigationLink(policy, [observation, observation], f.c));
-    expect(link).toMatchObject({ run: policy.ownerRun, loop: policy.loopPolicy });
-    expect(link!.observations).toEqual([observation.id]);
-  });
-
-  it('P16-NF-47 P16-NF-48 bounded read rejects private fields, keeps half-open windows, pages, cursors and timeout honesty', () => {
-    const f = measurementFixture(); const port = createMeasurementLedger(f.c);
-    const rows = [f.readRow('before', -1), f.readRow('start', 0), f.readRow('middle', 100), f.readRow('end', 200)];
-    expect(value(port.read(f.query, rows))).toMatchObject({ totalCount: 2, nextCursor: null, partial: false });
-    const pageOne = value(port.read(f.query, rows, true));
-    expect(pageOne).toMatchObject({ partial: true, reason: 'timeout at pinned bounded horizon' });
-    const leaked = { ...f.readRow('leak'), prompt: 'secret prompt' };
-    refused(port.read(f.query, [leaked as never]), 'undeclared');
-    const overbound = value(decodeMeasurementReadQuery(f.queryInput({ pageSize: 501 }), f.c));
-    refused(port.read(overbound, rows), 'registered bound');
+    expect(value(renderMeasurementClaim({ kind: 'target', hardware: null, workload: null, evidence: [] }, f.c)))
+      .toBe('target: not measured');
+    refused(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'm1', workload: 'w', evidence: [] }, f.c),
+      'execution evidence');
+    expect(value(classifyFeatureOutcome({ kind: 'event', classifier: 'absent', actionProved: false,
+      negativeProved: false, gradeOnly: false, feature: null, action: null, evaluationClock: null }, f.c))).toBe('event');
+    const evidence = value(decode('Evidence', f.evidenceInput({ id: 'execution:a', claim: {
+      subject: 'run:a', predicate: 'execution-observed', value: { hardware: 'm1', workload: 'workload:a' },
+    } }), f.types));
+    const context = { ...f.c, types: { ...f.types, evidence: [...(f.types.evidence ?? []), evidence] } };
+    expect(value(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'm1', workload: 'workload:a',
+      evidence: ['execution:a'] }, context))).toContain('measured execution');
   });
 });

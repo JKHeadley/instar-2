@@ -14,7 +14,7 @@ type PackageValue<N extends string> = MeasurementPackageBrand<N> & Readonly<{
 }>;
 
 export type MeasurementFamily = 'model-call' | 'cumulative-model-session' | 'quota' |
-  'rate-limit-event' | 'resource' | 'package-cost';
+  'rate-limit-event' | 'resource' | 'package-cost' | 'programmatic-event';
 export type QuantityState = 'reported' | 'not-reported' | 'unsupported' | 'missing' | 'failed' | 'legacy-origin-lost';
 export type CategoryRelation = 'standalone' | 'subset-of-input' | 'independent-billed';
 
@@ -34,6 +34,21 @@ export interface MeasurementProducerContract extends PackageValue<'MeasurementPr
   readonly evidencePredicate: string;
   readonly sourceSampleRequired: boolean;
   readonly hardwareProfileRequired: boolean;
+}
+
+/** A1 validates category arithmetic without claiming A2 evidence/history membership. */
+export interface MeasurementAmountInput {
+  readonly contract: MeasurementProducerContract;
+  readonly category: string;
+  readonly amount: number;
+}
+
+export interface AdmittedMeasurementAmount {
+  readonly family: MeasurementFamily;
+  readonly subjectKind: string;
+  readonly category: string;
+  readonly unit: string;
+  readonly amount: number;
 }
 
 /** Disposable normalized evidence used by reads. The P1 values remain authoritative. */
@@ -422,14 +437,8 @@ export interface GrowthInvestigationLink {
 
 export interface MeasurementLedgerPort {
   readonly owner: 'part-sixteen';
-  resolveQuantity(witnesses: readonly QuantityWitness[], resolution?: QuantityOwnerResolution): Result<ResolvedQuantity>;
-  aggregate(request: AggregateMeasurementsRequest): Result<MeasurementAggregate>;
-  attribute(request: AttributionRequest): Result<AttributionResult>;
-  evaluateBurn(policy: BurnPolicy, previous: BurnEpisodeState, current: BurnWindow, baselines: readonly BurnWindow[]): Result<BurnEvaluation>;
+  admitAmount(input: MeasurementAmountInput): Result<AdmittedMeasurementAmount>;
   trend(points: readonly ResourcePoint[], minimumSamples: number): Result<ResourceTrend>;
-  read(query: MeasurementReadQuery, rows: readonly MeasurementReadRow[], timedOut?: boolean): Result<MeasurementReadResult>;
-  bindReadSource(request: MeasurementReadSourceRequest): Result<MeasurementReadSourceBinding>;
-  readCurrent(request: CurrentMeasurementReadRequest): Result<MeasurementReadResult>;
 }
 
 export interface MeasurementPackageInputs {

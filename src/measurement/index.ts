@@ -10,10 +10,7 @@ export {
   decodeReadCachePolicy,
 } from './decode.js';
 export {
-  createQuantityWitness,
-  resolveQuantity,
-  aggregateMeasurements,
-  resolveAttribution,
+  admitMeasurementAmount,
   renderMeasurementClaim,
   coalesceUnknownQuotaEpisodes,
   cpuUtilization,
@@ -23,15 +20,6 @@ export {
   summarizeRateLimitEvents,
   classifyLegacyResourceObservation,
   resourceTrend,
-  mergePeerMeasurements,
   classifyFeatureOutcome,
-  createBurnWindow,
-  evaluateBurn,
-  renderBoundedRead,
-  bindMeasurementReadSource,
-  renderCurrentMeasurementRead,
-  measurementProjectionDefinition,
-  growthInvestigationLink,
 } from './operations.js';
-export { createBoundedReadCache } from './cache.js';
 export { createMeasurementLedger } from './service.js';
