@@ -1,0 +1,59 @@
+import { compareMeasurements } from '../index.js';
+import type { Clock, Result } from '../index.js';
+import { boundary, ensure, freeze, take } from './boundary.js';
+import type { BoundedReadCache, ReadCacheEntry, ReadCachePolicy } from './contracts.js';
+import type { MeasurementDecodeContext } from './decode.js';
+
+const fields = ['key', 'createdAt', 'bytes', 'byteLength'];
+
+export function createBoundedReadCache(policy: ReadCachePolicy, context: MeasurementDecodeContext): BoundedReadCache {
+  ensure(Object.isFrozen(policy) && policy.type === 'ReadCachePolicy' && policy.schemaVersion === 2, 'cache policy must come from its decoder');
+  const entries = new Map<string, ReadCacheEntry>();
+  const inspect = () => freeze([...entries.values()].sort((a, b) => a.key.localeCompare(b.key)));
+  const totalBytes = () => [...entries.values()].reduce((sum, row) => sum + row.byteLength, 0);
+  return Object.freeze({ owner: 'part-sixteen' as const,
+    put(entry: ReadCacheEntry): Result<void> {
+      return boundary('MeasurementReadCachePut', entry, context, () => {
+        ensure(entry && typeof entry === 'object' && Object.keys(entry).length === fields.length && fields.every(field => Object.hasOwn(entry, field)), 'cache entry has undeclared or missing field');
+        ensure(entry.key.trim().length > 0 && Number.isSafeInteger(entry.byteLength) && entry.byteLength === Buffer.byteLength(entry.bytes), 'cache entry identity or byte count invalid');
+        const existing = entries.get(entry.key);
+        if (existing) ensure(existing.bytes === entry.bytes && existing.byteLength === entry.byteLength
+          && take(compareMeasurements(existing.createdAt, entry.createdAt, context.preserved)) === 0, 'cache identity replayed with different bytes');
+        if (!existing) {
+          ensure(entries.size + 1 <= policy.maxRows && totalBytes() + entry.byteLength <= policy.maxBytes, 'cache bound requires off-path eviction');
+          entries.set(entry.key, freeze({ ...entry }));
+        }
+      });
+    },
+    get(key: string): Result<ReadCacheEntry | null> {
+      return boundary('MeasurementReadCacheGet', key, context, () => entries.get(key) ?? null);
+    },
+    planEviction(evaluationClock: Clock): Result<readonly string[]> {
+      return boundary('MeasurementReadCacheEvictionPlan', evaluationClock, context, () => {
+        const ordered = [...entries.values()].sort((a, b) => take(compareMeasurements(a.createdAt, b.createdAt, context.preserved)) || a.key.localeCompare(b.key));
+        const selected: string[] = [];
+        let projectedRows = entries.size; let projectedBytes = totalBytes();
+        for (const row of ordered) {
+          const age = evaluationClock.value - row.createdAt.value;
+          ensure(age >= 0, 'cache evaluation clock precedes entry');
+          if (age > policy.maxAgeMs || projectedRows > policy.maxRows || projectedBytes > policy.maxBytes) {
+            selected.push(row.key); projectedRows--; projectedBytes -= row.byteLength;
+          }
+          if (selected.length === policy.evictionBatch) break;
+        }
+        return freeze(selected);
+      });
+    },
+    applyEviction(keys: readonly string[]): Result<number> {
+      return boundary('MeasurementReadCacheEvictionApply', keys, context, () => {
+        ensure(keys.length <= policy.evictionBatch && new Set(keys).size === keys.length, 'eviction application exceeds bounded plan');
+        let removed = 0;
+        for (const key of keys) if (entries.delete(key)) removed++;
+        return removed;
+      });
+    },
+    inspect(): Result<readonly ReadCacheEntry[]> {
+      return boundary('MeasurementReadCacheInspect', null, context, inspect);
+    },
+  });
+}

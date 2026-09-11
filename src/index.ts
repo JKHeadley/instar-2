@@ -16,3 +16,6 @@ export type { AssemblyRecordName, AssemblyRecord, AssemblyManifest, AssemblyAdmi
   HarnessObservation, AdapterEvidenceContract, AdapterConformance, StoreCustodyPolicy, StorageAccessObservation,
   LocalCapabilityPackage, PackageTransition, GrowthPolicy, GrowthObservation, HarnessAdapterPort,
   PersistenceAdapterPort, AssemblyRuntimePort } from './assembly/contracts.js';
+export type { MeasurementLedgerPort, MeasurementProducerContract, MeasurementReadQuery, MeasurementReadResult,
+  MeasurementReadRow, BurnPolicy, BurnWindow, BurnEpisodeState, BurnEvaluation, QuantityWitness,
+  ResolvedQuantity, ResourcePoint, ResourceTrend } from './measurement/contracts.js';
