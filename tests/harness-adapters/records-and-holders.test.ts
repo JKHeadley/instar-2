@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import {
   compareHarnessAdapterRecords,
   createHarnessEvidenceHolder,
+  createMemoryHarnessAdapterStateStore,
   createRuntimeHandleHolder,
   decodeHarnessRuntimeEvent,
   decodeHarnessRuntimeHandle,
@@ -35,7 +36,8 @@ it('P13-NF-01 records are closed, total, migrated before comparison, canonical, 
 
 it('P13-NF-15 P13-NF-24 P13-NF-25 P13-NF-28 machine-local custody is bounded, conflict-safe, restartable, and grants no remote adoption', () => {
   const f = assemblyRuntimeFixture();
-  const holder = createRuntimeHandleHolder({ adapter: 'adapter:claude-code', machine: 'machine-a', maxHandles: 1, context: f.c });
+  const holder = createRuntimeHandleHolder({ adapter: 'adapter:claude-code', machine: 'machine-a', maxHandles: 1,
+    maxAttempts: 4, context: f.c, state: createMemoryHarnessAdapterStateStore() });
   const handle = decodedHandle(f);
   expect(holder.put(handle).disposition).toBe('stored');
   expect(holder.put(handle).disposition).toBe('duplicate');
@@ -45,26 +47,34 @@ it('P13-NF-15 P13-NF-24 P13-NF-25 P13-NF-28 machine-local custody is bounded, co
 
   const six = transportFixture();
   const fence = value(six.api.acquire('acquire', '', 500));
+  const remoteEvidence = createHarnessEvidenceHolder({ adapter: handle.harness, machine: handle.machine, maxEvents: 4,
+    maxCaptureBytes: 8, context: f.c, state: createMemoryHarnessAdapterStateStore('remote-evidence') });
   expect(sameMachineReconnectCandidate({ launch: handle.launch, machine: 'machine-b', incarnation: handle.incarnation,
-    fence, liveness: { state: 'live', reason: 'fixture', event: 'event:live' },
-    resume: { state: 'eligible', reason: 'fixture', event: 'event:resume' } }, holder)).toMatchObject({
+    fence, now: 20, evidence: remoteEvidence, authority: six.api }, holder)).toMatchObject({
     disposition: 'unsupported', handle: null,
   });
   expect(sameMachineReconnectCandidate({ launch: handle.launch, machine: handle.machine, incarnation: handle.incarnation,
-    fence, liveness: { state: 'unknown', reason: 'timeout', event: '' },
-    resume: { state: 'eligible', reason: 'fixture', event: 'event:resume' } }, holder).disposition).toBe('refused');
-  const exactHolder = createRuntimeHandleHolder({ adapter: 'adapter:claude-code', machine: 'machine-a', maxHandles: 1, context: f.c });
-  const exact = decodedHandle(f, { incarnation: fence.incarnation });
+    fence, now: 20, evidence: remoteEvidence, authority: six.api }, holder).disposition).toBe('refused');
+  const exactSix = transportFixture();
+  const exactFence = value(exactSix.api.acquire('acquire', '', 500));
+  const exactHolder = createRuntimeHandleHolder({ adapter: 'adapter:claude-code', machine: 'machine-a', maxHandles: 1,
+    maxAttempts: 4, context: f.c, state: createMemoryHarnessAdapterStateStore('exact-handles') });
+  const exact = decodedHandle(f, { incarnation: exactFence.incarnation });
   exactHolder.put(exact);
+  const exactEvidence = createHarnessEvidenceHolder({ adapter: exact.harness, machine: exact.machine, maxEvents: 4,
+    maxCaptureBytes: 8, context: f.c, state: createMemoryHarnessAdapterStateStore('exact-evidence') });
+  exactEvidence.admit(decodedEvent(f, 'heartbeat', { incarnation: exact.incarnation }));
+  exactEvidence.admit(decodedEvent(f, 'diagnostic', { id: 'event:resume', incarnation: exact.incarnation,
+    diagnosticCode: 'transcript-resume-compatible' }));
   expect(sameMachineReconnectCandidate({ launch: exact.launch, machine: exact.machine, incarnation: exact.incarnation,
-    fence, liveness: { state: 'live', reason: 'fresh probe', event: 'event:live' },
-    resume: { state: 'eligible', reason: 'structured compatibility', event: 'event:resume' } }, exactHolder).disposition).toBe('reconnect');
+    fence: exactFence, now: 20, evidence: exactEvidence, authority: exactSix.api }, exactHolder).disposition).toBe('reconnect');
 });
 
 it('P13-NF-51 pane classifications grant nothing and confirmed structured poison forbids resume', () => {
   const f = assemblyRuntimeFixture();
   const handle = decodedHandle(f);
-  const holder = createHarnessEvidenceHolder({ machine: 'machine-a', maxEvents: 4, maxCaptureBytes: 8 });
+  const holder = createHarnessEvidenceHolder({ adapter: handle.harness, machine: 'machine-a', maxEvents: 4, maxCaptureBytes: 8,
+    context: f.c, state: createMemoryHarnessAdapterStateStore('poison-evidence') });
   refused(decodeHarnessRuntimeEvent({ ...eventInput('diagnostic'), kind: 'pane-says-poisoned' }, f.c), 'unsupported value');
   expect(holder.resume(handle).state).toBe('unknown');
   holder.admit(decodedEvent(f, 'diagnostic', { diagnosticCode: 'transcript-resume-compatible' }));
@@ -76,7 +86,8 @@ it('P13-NF-51 pane classifications grant nothing and confirmed structured poison
 it('P13-NF-29 P13-NF-30 P13-NF-31 P13-NF-32 P13-NF-33 P13-NF-34 structured evidence keeps liveness, progress, output, and completion distinct under finite bounds', () => {
   const f = assemblyRuntimeFixture();
   const handle = decodedHandle(f);
-  const holder = createHarnessEvidenceHolder({ machine: 'machine-a', maxEvents: 8, maxCaptureBytes: 8 });
+  const holder = createHarnessEvidenceHolder({ adapter: handle.harness, machine: 'machine-a', maxEvents: 8, maxCaptureBytes: 8,
+    context: f.c, state: createMemoryHarnessAdapterStateStore('structured-evidence') });
   const heartbeat = decodedEvent(f, 'heartbeat');
   expect(holder.admit(heartbeat)).toMatchObject({ disposition: 'recorded', progress: false });
   expect(holder.liveness(handle, 20).state).toBe('live');

@@ -2,6 +2,7 @@ export type * from './contracts.js';
 export {
   compareHarnessAdapterRecords,
   decodeHarnessAdapterRecord,
+  decodeHarnessAdapterStateSnapshot,
   decodeHarnessHandleSnapshot,
   decodeHarnessRuntimeEvent,
   decodeHarnessRuntimeHandle,
@@ -10,6 +11,7 @@ export {
 } from './records.js';
 export {
   createHarnessEvidenceHolder,
+  createMemoryHarnessAdapterStateStore,
   createRuntimeHandleHolder,
   restoreRuntimeHandleHolder,
   sameMachineReconnectCandidate,

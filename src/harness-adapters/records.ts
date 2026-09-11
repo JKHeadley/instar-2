@@ -6,6 +6,7 @@ import type {
   HarnessAdapterIdentity,
   HarnessAdapterRecord,
   HarnessAdapterRecordName,
+  HarnessAdapterStateSnapshot,
   HarnessHandleSnapshot,
   HarnessRuntimeEvent,
   HarnessRuntimeHandle,
@@ -74,6 +75,10 @@ const eventFields = [
   'workSubject', 'workPhase', 'output', 'streamState', 'childrenState',
   'unresolvedOperations', 'exitStatus', 'diagnosticCode',
 ] as const;
+const eventV1Fields: readonly string[] = [
+  ...eventFields.filter(field => !['sourceClock', 'observedAt', 'freshFor'].includes(field)),
+  'at',
+];
 
 function validateEvent(value: unknown): HarnessRuntimeEvent {
   const event = object(value, 'HarnessRuntimeEvent');
@@ -117,9 +122,7 @@ function validateEvent(value: unknown): HarnessRuntimeEvent {
     if (typeof output.truncated !== 'boolean') throw new Error('output.truncated: boolean required');
   } else if (event.output !== null) throw new Error('output: only output-chunk may carry a range');
 
-  if (kind === 'process-exited' && event.exitStatus === null) throw new Error('process-exited: explicit status required');
   if (kind !== 'process-exited' && event.exitStatus !== null) throw new Error('exitStatus: only process-exited may carry status');
-  if (kind === 'turn-closed' && event.streamState === 'open') throw new Error('turn-closed: stream cannot remain open');
   return deepFreeze(event as unknown as HarnessRuntimeEvent);
 }
 
@@ -157,6 +160,52 @@ function validateSnapshot(value: unknown): HarnessHandleSnapshot {
   return deepFreeze({ ...snapshot, handles } as unknown as HarnessHandleSnapshot);
 }
 
+function validateAttempt(value: unknown) {
+  const attempt = object(value, 'HarnessOperationAttempt');
+  exact(attempt, ['kind', 'operation', 'launch', 'incarnation', 'subjectDigest', 'state', 'evidence', 'attemptedAt', 'observedAt'], 'HarnessOperationAttempt');
+  one(attempt.kind, ['launch', 'delivery'] as const, 'attempt.kind');
+  for (const field of ['operation', 'launch', 'incarnation'] as const) text(attempt[field], `attempt.${field}`);
+  hash(attempt.subjectDigest, 'attempt.subjectDigest');
+  one(attempt.state, ['pending', 'observed'] as const, 'attempt.state');
+  text(attempt.evidence, 'attempt.evidence', true);
+  integer(attempt.attemptedAt, 'attempt.attemptedAt');
+  if (attempt.observedAt !== null) integer(attempt.observedAt, 'attempt.observedAt');
+  if (attempt.state === 'pending' && (attempt.evidence !== '' || attempt.observedAt !== null))
+    throw new Error('HarnessOperationAttempt: pending attempt cannot claim an observation');
+  if (attempt.state === 'observed' && (attempt.evidence === '' || attempt.observedAt === null))
+    throw new Error('HarnessOperationAttempt: observed attempt requires evidence and time');
+  return deepFreeze(attempt);
+}
+
+function validateStateSnapshot(value: unknown): HarnessAdapterStateSnapshot {
+  const snapshot = object(value, 'HarnessAdapterStateSnapshot');
+  exact(snapshot, ['type', 'schemaVersion', 'id', 'adapter', 'machine', 'revision', 'maxHandles', 'maxAttempts',
+    'maxEvents', 'maxCaptureBytes', 'handles', 'attempts', 'events'], 'HarnessAdapterStateSnapshot');
+  if (snapshot.type !== 'HarnessAdapterStateSnapshot' || snapshot.schemaVersion !== 1)
+    throw new Error('HarnessAdapterStateSnapshot: type/version');
+  text(snapshot.id, 'id'); text(snapshot.adapter, 'adapter'); text(snapshot.machine, 'machine');
+  integer(snapshot.revision, 'revision');
+  const maxHandles = integer(snapshot.maxHandles, 'maxHandles');
+  const maxAttempts = integer(snapshot.maxAttempts, 'maxAttempts');
+  const maxEvents = integer(snapshot.maxEvents, 'maxEvents');
+  const maxCaptureBytes = integer(snapshot.maxCaptureBytes, 'maxCaptureBytes');
+  if (!Array.isArray(snapshot.handles) || snapshot.handles.length > maxHandles) throw new Error('handles: capacity exceeded');
+  if (!Array.isArray(snapshot.attempts) || snapshot.attempts.length > maxAttempts) throw new Error('attempts: capacity exceeded');
+  if (!Array.isArray(snapshot.events) || snapshot.events.length > maxEvents) throw new Error('events: capacity exceeded');
+  const handles = snapshot.handles.map(validateHandle);
+  const attempts = snapshot.attempts.map(validateAttempt);
+  const events = snapshot.events.map(validateEvent);
+  if (handles.some(handle => handle.machine !== snapshot.machine || handle.harness !== snapshot.adapter)
+    || events.some(event => event.machine !== snapshot.machine || event.harness !== snapshot.adapter))
+    throw new Error('journal entries: snapshot subject mismatch');
+  if (new Set(handles.map(handle => handle.launch)).size !== handles.length) throw new Error('handles: duplicate launch');
+  if (new Set(attempts.map(attempt => `${attempt.kind}:${attempt.operation}`)).size !== attempts.length)
+    throw new Error('attempts: duplicate operation');
+  const captured = events.reduce((sum, event) => sum + (event.output?.byteCount ?? 0), 0);
+  if (captured > maxCaptureBytes) throw new Error('events: capture capacity exceeded');
+  return deepFreeze({ ...snapshot, handles, attempts, events } as unknown as HarnessAdapterStateSnapshot);
+}
+
 function decoderFor<N extends HarnessAdapterRecordName>(name: N, context: HarnessAdapterDecodeContext): VersionedDecoder<Extract<HarnessAdapterRecord, { type: N }>, HarnessAdapterDecodeContext> {
   const versions = name === 'HarnessRuntimeEvent'
     ? {
@@ -167,6 +216,7 @@ function decoderFor<N extends HarnessAdapterRecordName>(name: N, context: Harnes
   const migrations = name === 'HarnessRuntimeEvent'
     ? { 1: (input: Json) => {
         const prior = object(input, 'HarnessRuntimeEvent v1');
+        exact(prior, eventV1Fields, 'HarnessRuntimeEvent v1');
         const { at, ...rest } = prior;
         return { ...rest, schemaVersion: 2, sourceClock: integer(at, 'at'), observedAt: integer(at, 'at'), freshFor: 0 } as Json;
       } }
@@ -181,7 +231,8 @@ function decoderFor<N extends HarnessAdapterRecordName>(name: N, context: Harnes
       try {
         const record = name === 'HarnessRuntimeEvent' ? validateEvent(value)
           : name === 'HarnessRuntimeHandle' ? validateHandle(value)
-          : validateSnapshot(value);
+          : name === 'HarnessHandleSnapshot' ? validateSnapshot(value)
+            : validateStateSnapshot(value);
         return { ok: true, value: record as Extract<HarnessAdapterRecord, { type: N }> };
       } catch (error) {
         return { ok: false, detail: error instanceof Error ? error.message : 'harness adapter decode failed' };
@@ -208,12 +259,15 @@ export const decodeHarnessRuntimeHandle = (input: unknown, context: HarnessAdapt
   decodeHarnessAdapterRecord('HarnessRuntimeHandle', input, context);
 export const decodeHarnessHandleSnapshot = (input: unknown, context: HarnessAdapterDecodeContext) =>
   decodeHarnessAdapterRecord('HarnessHandleSnapshot', input, context);
+export const decodeHarnessAdapterStateSnapshot = (input: unknown, context: HarnessAdapterDecodeContext) =>
+  decodeHarnessAdapterRecord('HarnessAdapterStateSnapshot', input, context);
 
 export function harnessAdapterLogicalKey(record: HarnessAdapterRecord): string {
   switch (record.type) {
     case 'HarnessRuntimeEvent': return `runtime-event:${record.harness}:${record.artifactDigest}:${record.machine}:${record.id}`;
     case 'HarnessRuntimeHandle': return `runtime-handle:${record.launch}:${record.machine}:${record.incarnation}:${record.processIdentity}`;
     case 'HarnessHandleSnapshot': return `handle-snapshot:${record.adapter}:${record.machine}:${record.id}`;
+    case 'HarnessAdapterStateSnapshot': return `adapter-state:${record.adapter}:${record.machine}`;
   }
 }
 

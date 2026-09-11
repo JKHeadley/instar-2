@@ -6,7 +6,7 @@ import { refused, value } from '../facts/fixtures.js';
 import { adapterFixture, digest } from '../harness-adapters/fixture.js';
 
 for (const platform of ['claude-code', 'codex'] as const) describe(`${platform} shared harness contract`, () => {
-  it('P13-NF-03 P13-NF-05 P13-NF-06 P13-NF-08 exposes one advisory four-method port with exact package binding', () => {
+  it('P13-NF-03 P13-NF-05 P13-NF-06 P13-NF-08 LOCAL-BOUNDARY-ARM exposes one advisory four-method port without claiming an Eight effect', () => {
     const h = adapterFixture(platform);
     expect(h.package).toMatchObject({ owner: 'part-thirteen', family: 'session-harness' });
     expect(h.package.adapter.owner).toBe('part-ten');
@@ -20,7 +20,7 @@ for (const platform of ['claude-code', 'codex'] as const) describe(`${platform} 
     expect(h.calls.launch).toBe(0);
   });
 
-  it('P13-NF-15 launch invokes only after owner-resolved durable specification and retains exact process identity', () => {
+  it('P13-NF-15 LOCAL-BOUNDARY-ARM retains the driver-returned process identity without claiming process-origin conformance', () => {
     const h = adapterFixture(platform);
     const launched = value(h.package.adapter.launch(h.spec, 'operation:launch', 'claim:launch'));
     expect(launched.phase).toBe('launched');
@@ -62,11 +62,11 @@ for (const platform of ['claude-code', 'codex'] as const) describe(`${platform} 
       run: h.spec.run, step: h.spec.step, input: h.spec.input, incarnation: h.spec.incarnation,
       sourceEvidence: ['provider:model-request:1'], boundaryEvidence: 'provider:model-request:1',
       contextDigests: h.spec.contextManifest.map(row => row.digest), generation: 'generation:fixture',
-      phase: 'context-consumed', observedAt: 30,
+      phase: 'context-consumed', observedAt: 20,
     })) as HarnessObservation;
     h.observeAs('context-consumed', source.id);
     const consumed = value(h.package.adapter.observe({ launch: h.spec.id, delivery: 'delivery:1', operation: 'operation:observe:2' }));
-    expect(consumed).toMatchObject({ phase: 'context-consumed', boundaryEvidence: source.id });
+    expect(consumed).toEqual(source);
   });
 });
 

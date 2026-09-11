@@ -4,6 +4,7 @@ import {
   createClaudeCodeHarnessAdapter,
   createCodexHarnessAdapter,
   createFutureHarnessAdapter,
+  createMemoryHarnessAdapterStateStore,
   createRuntimeHandleHolder,
   decodeHarnessRuntimeEvent,
   decodeHarnessRuntimeHandle,
@@ -33,8 +34,8 @@ export function eventInput(kind: HarnessRuntimeEvent['kind'], overrides: Record<
     type: 'HarnessRuntimeEvent', schemaVersion: 2, id: `event:${kind}`, harness: 'adapter:claude-code',
     artifactDigest: digest('4'), platform: 'claude-code', machine: 'machine-a', launch: 'launch:1',
     run: 'run:1', step: 'step:1', input: 'intake:1', incarnation: 'incarnation:1', processIdentity: 'process:1',
-    operation: 'operation:1', kind, sourceClock: 10, observedAt: 10, freshFor: 20, sourceEvidence: ['protocol:event:1'],
-    predecessor: kind === 'work-transition' ? 'work:before' : '', workSubject: kind === 'work-transition' ? 'model:attempt:1' : '',
+    operation: 'operation:1', kind, sourceClock: 10, observedAt: 10, freshFor: 20, sourceEvidence: ['check-run:context'],
+    predecessor: kind === 'work-transition' ? 'check:unit' : '', workSubject: kind === 'work-transition' ? 'check:integration' : '',
     workPhase: kind === 'work-transition' ? 'submitted' : '', output, streamState: kind === 'turn-closed' ? 'closed' : 'unknown',
     childrenState: kind === 'turn-closed' ? 'none' : 'unknown', unresolvedOperations: [],
     exitStatus: kind === 'process-exited' ? 0 : null, diagnosticCode: '', ...overrides,
@@ -64,17 +65,19 @@ export function adapterFixture(platform: 'claude-code' | 'codex' | 'future' = 'c
     deliver: () => f.success((calls.deliver++, 'protocol:input-accepted:1')),
     observe: () => f.success((calls.observe++, { phase, evidence, detail: 'structured runtime event' })),
   });
-  const handles = createRuntimeHandleHolder({ adapter: id, machine: 'machine-a', maxHandles: 4, context: f.c });
-  const shared: Omit<SessionHarnessAdapterInput, 'platform'> = {
+  const state = createMemoryHarnessAdapterStateStore(`state:${platform}`);
+  const handles = createRuntimeHandleHolder({ adapter: id, machine: 'machine-a', maxHandles: 4, maxAttempts: 16, context: f.c, state });
+  const shared: SessionHarnessAdapterInput = {
     id, artifact: digest('4'), conformance: conformance.id, machine: 'machine-a',
+    platform: runtimePlatform,
     driver, handles, context: f.c, clock: () => 20 + calls.launch + calls.deliver + calls.observe,
     generation: () => 'generation:fixture',
   };
   const packageValue = platform === 'claude-code' ? createClaudeCodeHarnessAdapter(shared)
     : platform === 'codex' ? createCodexHarnessAdapter(shared)
-      : createFutureHarnessAdapter({ ...shared, platform: runtimePlatform });
+      : createFutureHarnessAdapter(shared);
   return {
-    f, id, spec, driver, handles, calls, package: packageValue,
+    f, id, spec, driver, handles, state, calls, package: packageValue,
     observeAs(nextPhase: typeof phase, nextEvidence: string) { phase = nextPhase; evidence = nextEvidence; },
   };
 }

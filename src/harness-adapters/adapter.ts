@@ -94,9 +94,11 @@ function resolveConformance(input: SessionHarnessAdapterInput): AdapterConforman
   requireValue(row.completeness === 'complete' && row.taint.length === 0 && row.conflicts.length === 0,
     'adapter conformance history is partial, tainted, or conflicted');
   requireValue(take(input.context.history.resolve(row.record)).admitted, 'adapter conformance history is not admitted');
+  const now = input.clock();
   requireValue(row.record.adapter === input.id && row.record.artifact === input.artifact
     && row.record.platform === input.platform && row.record.mode === 'advisory'
-    && row.record.disposition === 'passed',
+    && row.record.disposition === 'passed' && row.record.generation === input.generation()
+    && row.record.testedAt <= now && now <= row.record.validUntil,
   'adapter conformance does not pass for the exact adapter, artifact, platform, and advisory mode');
   return row.record;
 }
@@ -128,18 +130,22 @@ export function createSessionHarnessAdapter(input: SessionHarnessAdapterInput): 
   const adapter = Object.freeze({
     owner: 'part-ten' as const,
     id: input.id,
-    describe: () => Object.freeze({
-      artifact: input.artifact,
-      platform: input.platform,
-      contextModes: Object.freeze(['advisory']),
-      outputModes: Object.freeze(['framed']),
-      interruptionModes: Object.freeze([]),
-      custodyModes: Object.freeze(['machine-local-scoped-handles']),
-      observationModes: Object.freeze(['instrumented-boundary']),
-      conformance: input.conformance,
-    }),
+    describe: () => {
+      resolveConformance(input);
+      return Object.freeze({
+        artifact: input.artifact,
+        platform: input.platform,
+        contextModes: Object.freeze(['advisory']),
+        outputModes: Object.freeze(['framed']),
+        interruptionModes: Object.freeze([]),
+        custodyModes: Object.freeze(['machine-local-scoped-handles']),
+        observationModes: Object.freeze(['instrumented-boundary']),
+        conformance: input.conformance,
+      });
+    },
     launch(spec: HarnessLaunchSpec, operation: string, claim: string): Result<HarnessObservation> {
       return boundary('SessionHarnessLaunch', { spec, operation, claim }, input.context, () => {
+        resolveConformance(input);
         requireValue(operation && claim, 'launch requires the existing admitted operation and claim identities');
         requireValue(spec.harness === input.id && spec.artifactDigest === input.artifact
           && spec.machine === input.machine, 'launch targets another exact adapter artifact or machine');
@@ -158,6 +164,19 @@ export function createSessionHarnessAdapter(input: SessionHarnessAdapterInput): 
         }
         requireValue(input.handles.prepare(spec.id).disposition === 'available',
           'runtime handle capacity unavailable before invocation');
+        const attemptedAt = input.clock();
+        const attempt = input.handles.beginAttempt({
+          kind: 'launch', operation, launch: spec.id, incarnation: spec.incarnation,
+          subjectDigest: hash({ spec: assemblyIdentity(spec).canonicalHash, operation, claim }),
+          attemptedAt,
+        });
+        requireValue(attempt.disposition !== 'refused', attempt.reason);
+        if (attempt.disposition === 'existing') {
+          requireValue(attempt.attempt?.subjectDigest === hash({ spec: assemblyIdentity(spec).canonicalHash, operation, claim }),
+            'retained launch attempt differs in specification, operation, or claim');
+          return observation(input, spec, 'uncertain', attempt.attempt.evidence,
+            'launch may already have been invoked under this durable operation journal; observe the original attempt before any next action', attemptedAt);
+        }
         const processIdentity = take(input.driver.launch({
           operation, claim, artifact: spec.artifactDigest, incarnation: spec.incarnation,
           workingScope: spec.workingScope, handles: spec.portHandles,
@@ -178,45 +197,75 @@ export function createSessionHarnessAdapter(input: SessionHarnessAdapterInput): 
         if (retained.disposition === 'refused')
           return observation(input, spec, 'uncertain', processIdentity,
             `process invocation occurred but handle custody is uncertain: ${retained.reason}`, at);
+        const finished = input.handles.finishAttempt(operation, processIdentity, at);
+        requireValue(finished.disposition !== 'refused', finished.reason);
         return observation(input, spec, 'launched', processIdentity,
           'actual process launch observed and machine-local handle retained', at);
       });
     },
     deliver(delivery: Readonly<{ launch: string; intake: string; digest: Hash; incarnation: string; operation: string }>): Result<HarnessObservation> {
       return boundary('SessionHarnessDeliver', delivery, input.context, () => {
+        resolveConformance(input);
         const handle = checkedHandle(input, delivery.launch);
         const spec = resolveLaunch(input, delivery.launch);
         requireValue(handleMatchesSpec(handle, spec), 'durable handle and owner-resolved launch disagree');
         requireValue(delivery.incarnation === handle.incarnation, 'delivery targets a stale process incarnation');
         requireValue(delivery.intake === spec.input && delivery.digest === spec.inputDigest,
           'landed Ten port can deliver only the immutable original launch input');
+        const attemptedAt = input.clock();
+        const subjectDigest = hash(delivery);
+        const attempt = input.handles.beginAttempt({
+          kind: 'delivery', operation: delivery.operation, launch: delivery.launch,
+          incarnation: delivery.incarnation, subjectDigest, attemptedAt,
+        });
+        requireValue(attempt.disposition !== 'refused', attempt.reason);
+        if (attempt.disposition === 'existing') {
+          requireValue(attempt.attempt?.subjectDigest === subjectDigest, 'retained delivery attempt names changed input or target');
+          const phase = attempt.attempt.state === 'observed' ? 'input-accepted' : 'uncertain';
+          return observation(input, spec, phase, attempt.attempt.evidence,
+            attempt.attempt.state === 'observed'
+              ? 'original delivery observation restored from durable operation custody'
+              : 'delivery may already have occurred; observe the original operation before any repeat',
+            attempt.attempt.observedAt ?? attempt.attempt.attemptedAt);
+        }
         const accepted = take(input.driver.deliver({
           operation: delivery.operation, processIdentity: handle.processIdentity,
           intake: delivery.intake, digest: delivery.digest, incarnation: delivery.incarnation,
         }));
+        const at = input.clock();
+        const finished = input.handles.finishAttempt(delivery.operation, accepted, at);
+        requireValue(finished.disposition !== 'refused', finished.reason);
         return observation(input, spec, 'input-accepted', accepted,
-          'driver witnessed input acceptance; consumption is not inferred', input.clock());
+          'driver witnessed input acceptance; consumption is not inferred', at);
       });
     },
     observe(request: Readonly<{ launch: string; delivery: string; operation: string }>): Result<HarnessObservation> {
       return boundary('SessionHarnessObserve', request, input.context, () => {
+        resolveConformance(input);
         const handle = checkedHandle(input, request.launch);
         const spec = resolveLaunch(input, request.launch);
         requireValue(handleMatchesSpec(handle, spec), 'durable handle and owner-resolved launch disagree');
         const observed = take(input.driver.observe({ operation: request.operation, processIdentity: handle.processIdentity }));
         if (observed.phase === 'context-consumed') {
-          requireValue(observed.evidence.startsWith('model-context:'), 'terminal appearance cannot prove context consumption');
           requireValue(input.context.history, 'context consumption requires Ten signed history');
           const source = take(input.context.history.lookup(observed.evidence));
           requireValue(source?.record?.type === 'HarnessObservation'
             && source.record.phase === 'context-consumed'
             && source.record.launch === spec.id && source.record.run === spec.run
-            && source.record.input === spec.input && source.record.incarnation === spec.incarnation
+            && source.record.step === spec.step && source.record.input === spec.input
+            && source.record.incarnation === spec.incarnation
+            && source.record.generation === input.generation()
+            && hash(source.record.contextDigests) === hash(spec.contextManifest.map(row => row.digest))
             && source.conflicts.length === 0 && source.taint.length === 0
             && source.completeness === 'complete',
-          'context consumption source is missing, unavailable, conflicted, or names another subject');
+          'terminal appearance or unresolved evidence cannot prove consumption; source is missing, unavailable, conflicted, or names another subject');
           requireValue(take(input.context.history.resolve(source.record)).admitted,
             'context consumption source history is not admitted');
+          const now = input.clock();
+          requireValue(source.record.freshFor > 0 && now >= source.record.observedAt
+            && now <= source.record.observedAt + source.record.freshFor,
+          'context consumption source is stale or future-dated');
+          return source.record;
         }
         return observation(input, spec, observed.phase, observed.evidence, observed.detail, input.clock());
       });
@@ -226,12 +275,12 @@ export function createSessionHarnessAdapter(input: SessionHarnessAdapterInput): 
   return Object.freeze({ owner: 'part-thirteen' as const, family: 'session-harness', adapter });
 }
 
-export function createClaudeCodeHarnessAdapter(input: Omit<SessionHarnessAdapterInput, 'platform'>): SessionHarnessAdapterPackage {
-  return createSessionHarnessAdapter({ ...input, platform: 'claude-code' });
+export function createClaudeCodeHarnessAdapter(input: SessionHarnessAdapterInput): SessionHarnessAdapterPackage {
+  return createSessionHarnessAdapter(input);
 }
 
-export function createCodexHarnessAdapter(input: Omit<SessionHarnessAdapterInput, 'platform'>): SessionHarnessAdapterPackage {
-  return createSessionHarnessAdapter({ ...input, platform: 'codex' });
+export function createCodexHarnessAdapter(input: SessionHarnessAdapterInput): SessionHarnessAdapterPackage {
+  return createSessionHarnessAdapter(input);
 }
 
 export function createFutureHarnessAdapter(input: SessionHarnessAdapterInput): SessionHarnessAdapterPackage {

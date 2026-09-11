@@ -27,6 +27,21 @@ const executable = new Map([
   [51, 'Pane classifications are undecodable; confirmed structured poison makes resume ineligible.'],
 ]);
 
+// These rows have a landed, runnable negative/structural arm and separately
+// named positive arms that remain held. A passing local arm never clears the
+// owner seam recorded here.
+const partial = new Map([
+  [3, 'seam-response-effects-payloads.md + seam-response-effects-followup.md'],
+  [4, 'seam-response-assembly-followup.md'],
+  [5, 'seam-response-assembly-followup.md + seam-response-effects-followup.md'],
+  [6, 'seam-response-effects-payloads.md + seam-response-effects-followup.md'],
+  [8, 'seam-response-assembly-followup.md + seam-response-effects-followup.md'],
+  [15, 'seam-response-assembly-followup.md + seam-response-effects-followup.md'],
+  [37, 'seam-response-loop-breaker.md + seam-response-loop-followup.md'],
+  [46, 'dated 07:10Z addenda in seam-response-effects-followup.md and seam-response-assembly-followup.md + SEAM-LEDGER.md row 41'],
+  [52, 'seam-response-effects-payloads.md + seam-response-effects-followup.md'],
+]);
+
 const held = new Map([
   [4, 'seam-response-assembly-followup.md'],
   [7, 'seam-response-judgment.md + dated 07:52Z addendum in seam-response-assembly-followup.md + SEAM-LEDGER.md row 42'],
@@ -69,6 +84,9 @@ export function p13Dispositions(design = readFileSync('docs/17-harness-adapters/
   if (ids.length !== 52 || new Set(ids.map(row => row.number)).size !== 52)
     throw new Error(`expected exactly 52 unique P13-NF design rows, received ${ids.length}`);
   return ids.map(row => {
+    if (partial.has(row.number)) return { ...row, status: 'EXECUTABLE',
+      reason: executable.get(row.number) ?? 'The landed negative/structural arm executes without supplying the held owner behavior.',
+      heldArms: `NON-EXECUTABLE-UNTIL-${partial.get(row.number)}` };
     if (executable.has(row.number)) return { ...row, status: 'EXECUTABLE', reason: executable.get(row.number) };
     const dependency = held.get(row.number);
     if (!dependency) throw new Error(`${row.id}: no executable test or exact owner seam disposition`);
@@ -89,6 +107,8 @@ export function checkP13Coverage(report, dispositions = p13Dispositions()) {
       throw new Error(`${row.id}: mapped test is not passing or explicitly skipped`);
     if (row.status === 'EXECUTABLE') {
       if (!passing.length) throw new Error(`${row.id}: EXECUTABLE has no passing real test`);
+      if (row.heldArms && !skipped.some(test => test.title.includes(row.heldArms)))
+        throw new Error(`${row.id}: executable local arm lacks an exact skipped fixture for ${row.heldArms}`);
     } else {
       if (passing.length) throw new Error(`${row.id}: a stand-in pass attempts to satisfy ${row.status}`);
       if (!skipped.some(test => test.title.includes(row.status)))
@@ -107,6 +127,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const rows = checkP13Coverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   console.log('| Check | Status | Test files |');
   console.log('|---|---|---|');
-  for (const row of rows) console.log(`| ${row.id} | ${row.status} | ${[...new Set(row.tests.map(test => test.file))].join('; ') || '—'} |`);
-  console.log(`${rows.length} P13 checks mapped: ${rows.filter(row => row.status === 'EXECUTABLE').length} EXECUTABLE, ${rows.filter(row => row.status !== 'EXECUTABLE').length} held at exact named owner seams.`);
+  for (const row of rows) console.log(`| ${row.id} | ${row.heldArms ? `${row.status}; ${row.heldArms}` : row.status} | ${[...new Set(row.tests.map(test => test.file))].join('; ') || '—'} |`);
+  console.log(`${rows.length} P13 checks mapped: ${rows.filter(row => row.status === 'EXECUTABLE').length} with executable arms, ${rows.filter(row => row.heldArms).length} partial rows, ${rows.filter(row => row.status !== 'EXECUTABLE').length} wholly held rows.`);
 }
