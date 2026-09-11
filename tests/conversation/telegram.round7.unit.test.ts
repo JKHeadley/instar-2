@@ -72,15 +72,20 @@ it('P12-NF-29 P12-NF-34 round7 renders word and accessible emoji forms from the 
     capture: observation.capture, strength: 'proof',
   }), { ...f.effects.ctx.decode, captures: decodeCaptures(f.effects.ctx.captures) }));
   expect(value(renderTelegramDeliveryStatus({ observation, evidence,
+    now: f.effects.clock(100),
     status: 'accepted-by-platform', form: 'words' }, f.effects.host.boundary))).toBe('Accepted by platform');
   const emoji = value(renderTelegramDeliveryStatus({ observation, evidence,
+    now: f.effects.clock(100),
     status: 'accepted-by-platform', form: 'emoji' }, f.effects.host.boundary));
   expect(emoji).toContain('📨 Accepted by platform');
   expect(emoji).toContain('📨 means accepted by platform');
   for (const status of ['delivered', 'read'] as const) {
-    const stronger = renderTelegramDeliveryStatus({ observation, evidence, status, form: 'words' }, f.effects.host.boundary);
+    const stronger = renderTelegramDeliveryStatus({ observation, evidence,
+      now: f.effects.clock(100), status, form: 'words' }, f.effects.host.boundary);
     expect(stronger.kind, status).toBe('Refused');
   }
+  expect(renderTelegramDeliveryStatus({ observation, evidence,
+    now: f.effects.clock(201), status: 'accepted-by-platform', form: 'words' }, f.effects.host.boundary).kind).toBe('Refused');
 });
 
 it('P12-NF-34 round7 refuses status evidence that is not bound to the response observation', () => {
@@ -93,5 +98,6 @@ it('P12-NF-34 round7 refuses status evidence that is not bound to the response o
     capture: observation.capture, strength: 'proof',
   }), { ...f.effects.ctx.decode, captures: decodeCaptures(f.effects.ctx.captures) }));
   expect(renderTelegramDeliveryStatus({ observation, evidence,
+    now: f.effects.clock(100),
     status: 'accepted-by-platform', form: 'words' }, f.effects.host.boundary).kind).toBe('Refused');
 });

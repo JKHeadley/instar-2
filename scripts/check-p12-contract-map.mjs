@@ -99,9 +99,9 @@ for (const tier of ['telegram.unit.test.ts', 'telegram.integration.test.ts', 'te
 // live-provider evidence.
 const concreteConsumers = [
   { id: 'P12-NF-29', file: 'tests/conversation/telegram.round7.unit.test.ts',
-    anchors: ['renderTelegramDeliveryStatus(', "status: 'accepted-by-platform'", "form: 'emoji'", "['delivered', 'read']"] },
+    anchors: ['renderTelegramDeliveryStatus(', 'now: f.effects.clock(100)', "status: 'accepted-by-platform'", "form: 'emoji'", "['delivered', 'read']"] },
   { id: 'P12-NF-34', file: 'tests/conversation/telegram.round7.unit.test.ts',
-    anchors: ['renderTelegramDeliveryStatus(', "predicate: 'operation-occurred'", 'observation.capture', "['delivered', 'read']"] },
+    anchors: ['renderTelegramDeliveryStatus(', 'now: f.effects.clock(100)', "predicate: 'operation-occurred'", 'observation.capture', "['delivered', 'read']"] },
   { id: 'P12-NF-28', file: 'tests/conversation/telegram.round3.integration.test.ts',
     anchors: ['transport.consume(', 'adapter.invoke(', "row.kind === 'effect-OperationObservation'", 'calls.send'] },
   { id: 'P12-NF-37', file: 'tests/conversation/telegram.round3.lifecycle.test.ts',

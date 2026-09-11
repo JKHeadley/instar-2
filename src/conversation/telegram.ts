@@ -1,4 +1,4 @@
-import { canonical, consumeResult, decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../index.js';
+import { canonical, consumeResult, decode, decodeMeasurement, grantLiveness, readEvidence, scopeIncludes } from '../index.js';
 import type { BoundaryContext, Clock, Evidence, Json, Result } from '../index.js';
 import type { FactEnvelope } from '../facts/index.js';
 import { hashBytes, walkVersions } from '../facts/index.js';
@@ -654,6 +654,7 @@ export function renderTelegramHtml(source: string, declaration: TelegramBotDecla
 export function renderTelegramDeliveryStatus(input: Readonly<{
   observation: OperationObservation;
   evidence: Evidence;
+  now: Clock;
   status: 'accepted-by-platform' | 'delivered' | 'read';
   form: 'words' | 'emoji';
 }>, context: BoundaryContext): Result<string> {
@@ -663,10 +664,12 @@ export function renderTelegramDeliveryStatus(input: Readonly<{
       && observation.stage === 'response' && observation.attestation === 'local-recorder',
     'Telegram platform-acceptance status requires a response-stage operation observation');
     const evidence = input.evidence;
-    ensure(evidence.type === 'Evidence' && evidence.schemaVersion === 1
-      && evidence.claim.subject === observation.operation && evidence.claim.predicate === 'operation-occurred',
+    ensure(evidence.type === 'Evidence' && evidence.schemaVersion === 1,
+      'Telegram platform-acceptance status requires typed evidence');
+    const evidenceClaim = take(readEvidence(evidence, input.now, context.preserved));
+    ensure(evidenceClaim.subject === observation.operation && evidenceClaim.predicate === 'operation-occurred',
     'Telegram platform-acceptance status requires source-bounded occurrence evidence');
-    const claim = record(evidence.claim.value, 'Telegram platform-acceptance evidence claim');
+    const claim = record(evidenceClaim.value, 'Telegram platform-acceptance evidence claim');
     ensure(claim.digest === observation.digest && evidence.capture.reference === observation.capture.reference
       && evidence.capture.hash === observation.capture.hash,
     'Telegram platform-acceptance evidence does not bind the observed provider response');
