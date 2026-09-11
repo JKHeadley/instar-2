@@ -11,15 +11,15 @@ import {
   correlatedRecoveryProgress,
   sameMachineReconnectCandidate,
 } from '../../src/harness-adapters/index.js';
-import { inspectPendingInputCustody } from '../../src/intake/pending-custody.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { refused, value } from '../facts/fixtures.js';
 import { transportFixture } from '../transport/fixture.js';
-import { adapterFixture, decodedEvent, decodedHandle, digest, eventInput, evidenceOwners, handleInput } from './fixture.js';
+import { adapterFixture, decodedEvent, decodedHandle, digest, eventInput, evidenceOwners, handleInput, removeCapture } from './fixture.js';
 
 function holder(f: ReturnType<typeof assemblyRuntimeFixture>, state = createMemoryHarnessAdapterStateStore('round3')) {
-  return createHarnessEvidenceHolder({ adapter: 'adapter:claude-code', machine: 'machine-a', maxEvents: 20,
+  return createHarnessEvidenceHolder({ adapter: 'adapter:claude-code', artifact: digest('4'), platform: 'claude-code',
+    machine: 'machine-a', maxEvents: 20,
     maxCaptureBytes: 100, context: f.c, state, owners: evidenceOwners(f) });
 }
 
@@ -50,7 +50,7 @@ describe('round-3 independent conformance regressions', () => {
     const missing = decodedEvent(f, 'output-chunk', { id: 'unresolved:captured-bytes', output: {
       ...eventInput('output-chunk').output as object, captureReference: 'capture:missing',
     } });
-    delete (evidenceOwners(f).captures as Record<string, unknown>)['capture:missing'];
+    removeCapture(f, 'capture:missing');
     expect(evidence.admit(missing)).toMatchObject({ disposition: 'refused', progress: false });
 
     const six = transportFixture(), fence = value(six.api.acquire('acquire', '', 500));
@@ -75,7 +75,7 @@ describe('round-3 independent conformance regressions', () => {
     for (const current of [evidence, holder(f, state)]) {
       expect(current.events(handle.launch)).toHaveLength(3);
       expect(current.liveness(handle, 20).state).toBe('unknown');
-      expect(current.completion(handle, 20).state).toBe('unknown');
+      expect(current.completion(handle, 20).state).toBe('pending');
       expect(current.resume(handle, 20).state).toBe('unknown');
     }
   });
@@ -129,15 +129,9 @@ describe('round-3 independent conformance regressions', () => {
     expect(result).toEqual({ equal: false });
   });
 
-  it('R3-F8 P13-NF-24 P13-NF-46 makes EACCES/EIO custody unknown and correlates recovery growth to worker A', () => {
-    for (const code of ['EACCES', 'EIO']) {
-      const view = inspectPendingInputCustody({ owner: 'part-four', enumerate: () => { throw new Error(code); } }, ['input:pending']);
-      expect(view).toMatchObject({ state: 'unknown', pending: ['input:pending'], permitsNextAction: false });
-    }
-    expect(inspectPendingInputCustody({ owner: 'part-four', enumerate: () => ['input:pending'] }, []))
-      .toMatchObject({ state: 'readable', pending: ['input:pending'], permitsNextAction: false });
+  it('R3-F8 P13-NF-46 does not credit another worker\'s raw growth to worker A', () => {
     expect(correlatedRecoveryProgress('worker:A', [{ worker: 'worker:B', before: 100, after: 200 }]).state).toBe('pending');
-    expect(correlatedRecoveryProgress('worker:A', [{ worker: 'worker:A', before: 100, after: 101 }]).state).toBe('progressed');
+    expect(correlatedRecoveryProgress('worker:A', [{ worker: 'worker:A', before: 100, after: 101 }]).state).toBe('pending');
   });
 
   it('R3-F8 P13-NF-46 P13-NF-52 every preventive-compaction signal tuple remains explicitly unsupported', () => {

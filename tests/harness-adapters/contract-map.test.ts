@@ -6,7 +6,7 @@ it('P13-CONTRACT-MAP assigns every approved check exactly one executable or exac
   const rows = p13Dispositions();
   expect(rows).toHaveLength(52);
   expect(new Set(rows.map((row: { id: string }) => row.id)).size).toBe(52);
-  expect(rows.filter((row: { status: string }) => row.status === 'EXECUTABLE')).toHaveLength(22);
+  expect(rows.filter((row: { status: string }) => row.status === 'EXECUTABLE')).toHaveLength(21);
   expect(rows.filter((row: { heldArms?: string }) => row.heldArms)).toHaveLength(12);
   for (const row of rows) expect(row.status).toMatch(/^(EXECUTABLE|NON-EXECUTABLE-UNTIL-\S.+)$/);
 });

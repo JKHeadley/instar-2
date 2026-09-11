@@ -6,10 +6,11 @@ import {
 } from '../../src/harness-adapters/index.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { refused, value } from '../facts/fixtures.js';
-import { decodedEvent, decodedHandle, eventInput, evidenceOwners } from './fixture.js';
+import { decodedEvent, decodedHandle, digest, eventInput, evidenceOwners } from './fixture.js';
 
 function evidence(f: ReturnType<typeof assemblyRuntimeFixture>, id: string, maxEvents = 20) {
-  return createHarnessEvidenceHolder({ adapter: 'adapter:claude-code', machine: 'machine-a', maxEvents,
+  return createHarnessEvidenceHolder({ adapter: 'adapter:claude-code', artifact: digest('4'), platform: 'claude-code',
+    machine: 'machine-a', maxEvents,
     maxCaptureBytes: 100, context: f.c, state: createMemoryHarnessAdapterStateStore(id), owners: evidenceOwners(f) });
 }
 
@@ -38,7 +39,8 @@ describe('round-2 owner-witness and uncertainty regressions', () => {
   it('REVIEW-F5 binds output to the exact subject, advances only contiguous coverage, and durably deduplicates progress', () => {
     const f = assemblyRuntimeFixture();
     const state = createMemoryHarnessAdapterStateStore('f5');
-    const make = () => createHarnessEvidenceHolder({ adapter: 'adapter:claude-code', machine: 'machine-a', maxEvents: 20,
+    const make = () => createHarnessEvidenceHolder({ adapter: 'adapter:claude-code', artifact: digest('4'), platform: 'claude-code',
+      machine: 'machine-a', maxEvents: 20,
       maxCaptureBytes: 100, context: f.c, state, owners: evidenceOwners(f) });
     const holder = make();
     expect(holder.admit(decodedEvent(f, 'output-chunk'))).toMatchObject({ disposition: 'recorded', progress: true });
@@ -53,15 +55,15 @@ describe('round-2 owner-witness and uncertainty regressions', () => {
 
     const foreign = holder.admit(decodedEvent(f, 'output-chunk', { id: 'output:foreign',
       processIdentity: 'process:foreign', incarnation: 'incarnation:foreign' }));
-    expect(foreign).toMatchObject({ disposition: 'recorded', progress: true });
+    expect(foreign).toMatchObject({ disposition: 'refused', progress: false });
 
     const contiguous = evidence(f, 'f5-contiguous');
     contiguous.admit(decodedEvent(f, 'output-chunk'));
     contiguous.admit(decodedEvent(f, 'output-chunk', { id: 'output:next', output: {
       ...eventInput('output-chunk').output as object, start: 4, end: 8, captureReference: 'capture:next',
     } }));
-    contiguous.admit(decodedEvent(f, 'turn-closed', { observedAt: 30 }));
-    expect(contiguous.completion(decodedHandle(f), 100).state).toBe('complete');
+    contiguous.admit(decodedEvent(f, 'turn-closed', { sourceClock: 20, observedAt: 20 }));
+    expect(contiguous.completion(decodedHandle(f), 25).state).toBe('complete');
   });
 
   it('REVIEW-F6 rejects all 33 malformed v1 fields before migration while clean neighbors migrate', () => {

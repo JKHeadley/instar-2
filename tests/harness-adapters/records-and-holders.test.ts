@@ -12,7 +12,7 @@ import {
 import { transportFixture } from '../transport/fixture.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { refused, value } from '../facts/fixtures.js';
-import { decodedEvent, decodedHandle, digest, eventInput, evidenceOwners, handleInput } from './fixture.js';
+import { decodedEvent, decodedHandle, digest, eventInput, evidenceOwners, handleInput, setCapture } from './fixture.js';
 
 it('P13-NF-01 records are closed, total, migrated before comparison, canonical, and immutable', () => {
   const f = assemblyRuntimeFixture();
@@ -34,7 +34,7 @@ it('P13-NF-01 records are closed, total, migrated before comparison, canonical, 
   });
 });
 
-it('P13-NF-15 P13-NF-24 P13-NF-25 P13-NF-28 machine-local custody is bounded, conflict-safe, restartable, and grants no remote adoption', () => {
+it('P13-NF-15 P13-NF-25 P13-NF-28 machine-local custody is bounded, conflict-safe, restartable, and grants no remote adoption', () => {
   const f = assemblyRuntimeFixture();
   const holder = createRuntimeHandleHolder({ adapter: 'adapter:claude-code', machine: 'machine-a', maxHandles: 1,
     maxAttempts: 4, context: f.c, state: createMemoryHarnessAdapterStateStore() });
@@ -47,8 +47,10 @@ it('P13-NF-15 P13-NF-24 P13-NF-25 P13-NF-28 machine-local custody is bounded, co
 
   const six = transportFixture();
   const fence = value(six.api.acquire('acquire', '', 500));
-  const remoteEvidence = createHarnessEvidenceHolder({ adapter: handle.harness, machine: handle.machine, maxEvents: 4,
-    maxCaptureBytes: 8, context: f.c, state: createMemoryHarnessAdapterStateStore('remote-evidence') });
+  const remoteEvidence = createHarnessEvidenceHolder({ adapter: handle.harness, artifact: handle.artifactDigest,
+    platform: handle.platform, machine: handle.machine, maxEvents: 4,
+    maxCaptureBytes: 8, context: f.c, state: createMemoryHarnessAdapterStateStore('remote-evidence'),
+    owners: evidenceOwners(f, undefined, holder) });
   expect(sameMachineReconnectCandidate({ launch: handle.launch, machine: 'machine-b', incarnation: handle.incarnation,
     fence, now: 20, evidence: remoteEvidence, authority: six.api }, holder)).toMatchObject({
     disposition: 'unsupported', handle: null,
@@ -57,14 +59,17 @@ it('P13-NF-15 P13-NF-24 P13-NF-25 P13-NF-28 machine-local custody is bounded, co
     fence, now: 20, evidence: remoteEvidence, authority: six.api }, holder).disposition).toBe('refused');
   const exactSix = transportFixture();
   const exactFence = value(exactSix.api.acquire('acquire', '', 500));
+  const exactAssembly = assemblyRuntimeFixture();
   const exactHolder = createRuntimeHandleHolder({ adapter: 'adapter:claude-code', machine: 'machine-a', maxHandles: 1,
-    maxAttempts: 4, context: f.c, state: createMemoryHarnessAdapterStateStore('exact-handles') });
-  const exact = decodedHandle(f, { incarnation: exactFence.incarnation });
+    maxAttempts: 4, context: exactAssembly.c, state: createMemoryHarnessAdapterStateStore('exact-handles') });
+  const exact = decodedHandle(exactAssembly, { incarnation: exactFence.incarnation });
   exactHolder.put(exact);
-  const exactEvidence = createHarnessEvidenceHolder({ adapter: exact.harness, machine: exact.machine, maxEvents: 4,
-    maxCaptureBytes: 8, context: f.c, state: createMemoryHarnessAdapterStateStore('exact-evidence') });
-  exactEvidence.admit(decodedEvent(f, 'heartbeat', { incarnation: exact.incarnation }));
-  exactEvidence.admit(decodedEvent(f, 'diagnostic', { id: 'event:resume', incarnation: exact.incarnation,
+  const exactEvidence = createHarnessEvidenceHolder({ adapter: exact.harness, artifact: exact.artifactDigest,
+    platform: exact.platform, machine: exact.machine, maxEvents: 4,
+    maxCaptureBytes: 8, context: exactAssembly.c, state: createMemoryHarnessAdapterStateStore('exact-evidence'),
+    owners: evidenceOwners(exactAssembly, undefined, exactHolder) });
+  exactEvidence.admit(decodedEvent(exactAssembly, 'heartbeat', { incarnation: exact.incarnation }));
+  exactEvidence.admit(decodedEvent(exactAssembly, 'diagnostic', { id: 'event:resume', incarnation: exact.incarnation,
     diagnosticCode: 'transcript-resume-compatible' }));
   expect(sameMachineReconnectCandidate({ launch: exact.launch, machine: exact.machine, incarnation: exact.incarnation,
     fence: exactFence, now: 20, evidence: exactEvidence, authority: exactSix.api }, exactHolder).disposition).toBe('reconnect');
@@ -73,20 +78,22 @@ it('P13-NF-15 P13-NF-24 P13-NF-25 P13-NF-28 machine-local custody is bounded, co
 it('P13-NF-51 pane classifications grant nothing and confirmed structured poison forbids resume', () => {
   const f = assemblyRuntimeFixture();
   const handle = decodedHandle(f);
-  const holder = createHarnessEvidenceHolder({ adapter: handle.harness, machine: 'machine-a', maxEvents: 4, maxCaptureBytes: 8,
-    context: f.c, state: createMemoryHarnessAdapterStateStore('poison-evidence') });
+  const holder = createHarnessEvidenceHolder({ adapter: handle.harness, artifact: handle.artifactDigest,
+    platform: handle.platform, machine: 'machine-a', maxEvents: 4, maxCaptureBytes: 8,
+    context: f.c, state: createMemoryHarnessAdapterStateStore('poison-evidence'), owners: evidenceOwners(f) });
   refused(decodeHarnessRuntimeEvent({ ...eventInput('diagnostic'), kind: 'pane-says-poisoned' }, f.c), 'unsupported value');
   expect(holder.resume(handle, 100).state).toBe('unknown');
   holder.admit(decodedEvent(f, 'diagnostic', { diagnosticCode: 'transcript-resume-compatible' }));
-  expect(holder.resume(handle, 100).state).toBe('eligible');
-  holder.admit(decodedEvent(f, 'diagnostic', { id: 'event:poison', observedAt: 20, diagnosticCode: 'transcript-poison-confirmed' }));
-  expect(holder.resume(handle, 100).state).toBe('poisoned');
+  expect(holder.resume(handle, 20).state).toBe('eligible');
+  holder.admit(decodedEvent(f, 'diagnostic', { id: 'event:poison', sourceClock: 20, observedAt: 20, diagnosticCode: 'transcript-poison-confirmed' }));
+  expect(holder.resume(handle, 20).state).toBe('poisoned');
 });
 
 it('P13-NF-29 P13-NF-30 P13-NF-31 P13-NF-32 P13-NF-33 P13-NF-34 structured evidence keeps liveness, progress, output, and completion distinct under finite bounds', () => {
   const f = assemblyRuntimeFixture();
   const handle = decodedHandle(f);
-  const holder = createHarnessEvidenceHolder({ adapter: handle.harness, machine: 'machine-a', maxEvents: 8, maxCaptureBytes: 8,
+  const holder = createHarnessEvidenceHolder({ adapter: handle.harness, artifact: handle.artifactDigest,
+    platform: handle.platform, machine: 'machine-a', maxEvents: 8, maxCaptureBytes: 8,
     context: f.c, state: createMemoryHarnessAdapterStateStore('structured-evidence'), owners: evidenceOwners(f) });
   const heartbeat = decodedEvent(f, 'heartbeat');
   expect(holder.admit(heartbeat)).toMatchObject({ disposition: 'recorded', progress: false });
@@ -101,14 +108,16 @@ it('P13-NF-29 P13-NF-30 P13-NF-31 P13-NF-32 P13-NF-33 P13-NF-34 structured evide
   expect(holder.admit(chunk)).toMatchObject({ disposition: 'recorded', progress: true });
   expect(holder.admit(decodedEvent(f, 'output-chunk', { id: 'event:chunk-churn' }))).toMatchObject({ disposition: 'duplicate', progress: false });
   expect(holder.admit(decodedEvent(f, 'output-chunk', { id: 'event:chunk-conflict', output: { ...eventInput('output-chunk').output as object, digest: digest('c') } })).disposition).toBe('refused');
+  setCapture(f, chunk.output!.captureReference,
+    { hash: chunk.output!.digest, bytes: 'data', status: 'available', byteLength: chunk.output!.byteCount });
 
-  const pending = decodedEvent(f, 'turn-closed', { id: 'event:pending', childrenState: 'pending' });
+  const pending = decodedEvent(f, 'turn-closed', { id: 'event:pending', sourceClock: 15, observedAt: 15, childrenState: 'pending' });
   holder.admit(pending);
-  expect(holder.completion(handle, 100).state).toBe('pending');
-  const complete = decodedEvent(f, 'turn-closed', { id: 'event:complete', observedAt: 40 });
+  expect(holder.completion(handle, 20).state).toBe('pending');
+  const complete = decodedEvent(f, 'turn-closed', { id: 'event:complete', sourceClock: 20, observedAt: 20 });
   holder.admit(complete);
-  expect(holder.completion(handle, 100).state).toBe('complete');
-  holder.admit(decodedEvent(f, 'process-exited', { id: 'event:exit', observedAt: 50 }));
-  expect(holder.liveness(handle, 50).state).toBe('dead');
+  expect(holder.completion(handle, 25).state).toBe('complete');
+  holder.admit(decodedEvent(f, 'process-exited', { id: 'event:exit', sourceClock: 25, observedAt: 25 }));
+  expect(holder.liveness(handle, 25).state).toBe('dead');
   expect(holder.events(handle.launch)).toHaveLength(6);
 });

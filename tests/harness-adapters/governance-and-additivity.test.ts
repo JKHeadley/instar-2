@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { expect, it } from 'vitest';
 
@@ -7,20 +8,14 @@ it('P13-NF-02 the complete Part Thirteen design passes the governed-document che
   })).toContain('governed-document check OK');
 });
 
-it('P13-ADDITIVITY keeps all legacy owner fixtures consumed through public ports byte-identical to main', () => {
+it('P13-ADDITIVITY keeps every pre-existing test/fixture byte-identical and confines source to the Part Thirteen package', () => {
   const base = execFileSync('git', ['merge-base', 'main', 'HEAD'], { encoding: 'utf8' }).trim();
-  const ownerFixtures = [
-    'tests/fixtures.ts',
-    'tests/decode',
-    'tests/transport',
-    'tests/effects',
-    'tests/assembly',
-    'tests/integration/transport.test.ts',
-    'tests/integration/effects.test.ts',
-    'tests/integration/assembly.test.ts',
-    'tests/e2e/transport.test.ts',
-    'tests/e2e/effects.test.ts',
-    'tests/e2e/assembly.test.ts',
-  ];
-  expect(execFileSync('git', ['diff', '--name-only', base, '--', ...ownerFixtures], { encoding: 'utf8' })).toBe('');
+  const legacyTests = execFileSync('git', ['ls-tree', '-r', '--name-only', base, '--', 'tests'], { encoding: 'utf8' })
+    .trim().split('\n').filter(Boolean);
+  expect(execFileSync('git', ['diff', '--name-only', base, '--', ...legacyTests], { encoding: 'utf8' })).toBe('');
+
+  const changedSource = execFileSync('git', ['diff', '--name-only', base, '--', 'src'], { encoding: 'utf8' })
+    .trim().split('\n').filter(Boolean);
+  expect(changedSource.every(path => path.startsWith('src/harness-adapters/'))).toBe(true);
+  expect(existsSync('src/intake/pending-custody.ts')).toBe(false);
 });

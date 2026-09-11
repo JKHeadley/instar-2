@@ -8,7 +8,7 @@ import { refused, value } from '../facts/fixtures.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { adapterFixture } from '../harness-adapters/fixture.js';
 
-it('P13-NF-24 P13-NF-25 P13-NF-28 local handle snapshot restart refuses blind fallback without claiming Eight retry behavior', () => {
+it('P13-NF-25 P13-NF-28 local handle snapshot restart refuses blind fallback without claiming Eight retry behavior', () => {
   const seed = adapterFixture('claude-code');
   value(seed.package.adapter.launch(seed.spec, 'operation:launch', 'claim:launch'));
   const snapshot = value(seed.handles.snapshot('snapshot:after-launch', 30));

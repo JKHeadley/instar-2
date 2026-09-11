@@ -27,7 +27,8 @@ function state(path: string, killRevision = -1): HarnessAdapterStateStorePort {
 }
 
 if (cut === 'after-progress') {
-  const evidence = createHarnessEvidenceHolder({ adapter: fixture.id, machine: 'machine-a', maxEvents: 8,
+  const evidence = createHarnessEvidenceHolder({ adapter: fixture.id, artifact: fixture.spec.artifactDigest,
+    platform: 'claude-code', machine: 'machine-a', maxEvents: 8,
     maxCaptureBytes: 32, context: fixture.f.c, state: state(`${directory}/evidence.json`, 1), owners: evidenceOwners(fixture.f) });
   const result = evidence.admit(decodedEvent(fixture.f, 'output-chunk'));
   note({ progressDisposition: result.disposition, progress: result.progress });

@@ -19,9 +19,19 @@ export interface CorrelatedGrowthObservation {
   readonly after: number;
 }
 
-export function correlatedRecoveryProgress(worker: string, observations: readonly CorrelatedGrowthObservation[]): Readonly<{
+export interface CorrelatedRecoveryProof {
+  readonly holder: import('./contracts.js').HarnessEvidenceHolder;
+  readonly handle: import('./contracts.js').HarnessRuntimeHandle;
+  readonly now: number;
+}
+
+export function correlatedRecoveryProgress(worker: string, observations: readonly CorrelatedGrowthObservation[], proof?: CorrelatedRecoveryProof): Readonly<{
   state: 'progressed' | 'pending'; evidence: readonly CorrelatedGrowthObservation[];
 }> {
-  const evidence = Object.freeze(observations.filter(row => row.worker === worker && row.after > row.before));
-  return Object.freeze({ state: evidence.length ? 'progressed' : 'pending', evidence });
+  const evidence = Object.freeze(observations.filter(row => row.worker === worker
+    && Number.isSafeInteger(row.before) && row.before >= 0
+    && Number.isSafeInteger(row.after) && row.after > row.before));
+  const witnessed = proof && proof.handle.processIdentity === worker
+    && proof.holder.progress(proof.handle, proof.now).state === 'progressed';
+  return Object.freeze({ state: evidence.length && witnessed ? 'progressed' : 'pending', evidence });
 }

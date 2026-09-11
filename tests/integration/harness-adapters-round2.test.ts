@@ -14,9 +14,10 @@ import {
 } from '../../src/harness-adapters/index.js';
 import { effectFixture } from '../effects/fixture.js';
 import { assemblyInput } from '../assembly/fixture.js';
+import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { refused, value } from '../facts/fixtures.js';
 import { transportFixture } from '../transport/fixture.js';
-import { adapterFixture, decodedEvent, decodedHandle, digest } from '../harness-adapters/fixture.js';
+import { adapterFixture, decodedEvent, decodedHandle, digest, evidenceOwners } from '../harness-adapters/fixture.js';
 
 type Outcome<T> = Readonly<{ status: 'accepted'; value: T } | { status: 'refused'; detail: string }>;
 const outcome = <T>(result: Result<T>): Outcome<T> => consumeResult<T, Outcome<T>>(result, {
@@ -83,8 +84,9 @@ describe('round-2 signed-history adapter regressions', () => {
     const handle = decodedHandle(h.f, { incarnation: fence.incarnation });
     expect(h.handles.put(handle).disposition).toBe('stored');
     const state = createMemoryHarnessAdapterStateStore('f4-evidence');
-    const evidence = createHarnessEvidenceHolder({ adapter: handle.harness, machine: handle.machine, maxEvents: 8,
-      maxCaptureBytes: 32, context: h.f.c, state });
+    const evidence = createHarnessEvidenceHolder({ adapter: handle.harness, artifact: handle.artifactDigest,
+      platform: handle.platform, machine: handle.machine, maxEvents: 8,
+      maxCaptureBytes: 32, context: h.f.c, state, owners: evidenceOwners(h.f, undefined, h.handles) });
     const other = { incarnation: 'incarnation:other', processIdentity: 'process:other' };
     evidence.admit(decodedEvent(h.f, 'heartbeat', other));
     evidence.admit(decodedEvent(h.f, 'diagnostic', { ...other, id: 'resume:other', diagnosticCode: 'transcript-resume-compatible' }));
@@ -99,14 +101,17 @@ describe('round-2 signed-history adapter regressions', () => {
       fence, now: 20, evidence, authority: six.api }, h.handles)).toMatchObject({ disposition: 'refused', handle: null });
 
     const neighbor = transportFixture(), current = value(neighbor.api.acquire('acquire', '', 500));
-    const exactHandle = decodedHandle(h.f, { id: 'handle:neighbor', incarnation: current.incarnation });
+    const exactAssembly = assemblyRuntimeFixture();
+    const exactHandle = decodedHandle(exactAssembly, { id: 'handle:neighbor', incarnation: current.incarnation });
     const exactHandles = createRuntimeHandleHolder({ adapter: exactHandle.harness, machine: exactHandle.machine,
-      maxHandles: 1, maxAttempts: 2, context: h.f.c, state: createMemoryHarnessAdapterStateStore('f4-handles') });
+      maxHandles: 1, maxAttempts: 2, context: exactAssembly.c, state: createMemoryHarnessAdapterStateStore('f4-handles') });
     exactHandles.put(exactHandle);
-    const exactEvidence = createHarnessEvidenceHolder({ adapter: exactHandle.harness, machine: exactHandle.machine,
-      maxEvents: 4, maxCaptureBytes: 8, context: h.f.c, state: createMemoryHarnessAdapterStateStore('f4-neighbor') });
-    exactEvidence.admit(decodedEvent(h.f, 'heartbeat', { id: 'live:neighbor', incarnation: exactHandle.incarnation }));
-    exactEvidence.admit(decodedEvent(h.f, 'diagnostic', { id: 'resume:neighbor', incarnation: exactHandle.incarnation,
+    const exactEvidence = createHarnessEvidenceHolder({ adapter: exactHandle.harness, artifact: exactHandle.artifactDigest,
+      platform: exactHandle.platform, machine: exactHandle.machine,
+      maxEvents: 4, maxCaptureBytes: 8, context: exactAssembly.c, state: createMemoryHarnessAdapterStateStore('f4-neighbor'),
+      owners: evidenceOwners(exactAssembly, undefined, exactHandles) });
+    exactEvidence.admit(decodedEvent(exactAssembly, 'heartbeat', { id: 'live:neighbor', incarnation: exactHandle.incarnation }));
+    exactEvidence.admit(decodedEvent(exactAssembly, 'diagnostic', { id: 'resume:neighbor', incarnation: exactHandle.incarnation,
       diagnosticCode: 'transcript-resume-compatible' }));
     expect(sameMachineReconnectCandidate({ launch: exactHandle.launch, machine: exactHandle.machine,
       incarnation: exactHandle.incarnation, fence: current, now: 20, evidence: exactEvidence,

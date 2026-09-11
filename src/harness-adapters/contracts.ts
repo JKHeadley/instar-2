@@ -211,14 +211,28 @@ export interface HarnessEvidenceHolder {
   readonly maxCaptureBytes: number;
   admit(event: HarnessRuntimeEvent): HarnessEvidenceAdmission;
   liveness(handle: HarnessRuntimeHandle, now: number): HarnessLivenessView;
+  progress(handle: HarnessRuntimeHandle, now: number): HarnessProgressView;
   completion(handle: HarnessRuntimeHandle, now: number): HarnessCompletionView;
   resume(handle: HarnessRuntimeHandle, now: number): HarnessResumeView;
   events(launch: string): readonly HarnessRuntimeEvent[];
 }
 
+export interface HarnessProgressView {
+  readonly state: 'progressed' | 'pending' | 'unknown';
+  readonly reason: string;
+  readonly event: string;
+}
+
+/** Current owner read for Part Two capture custody; copied maps are not evidence. */
+export interface HarnessCaptureReadPort {
+  readonly owner: 'part-two';
+  read(reference: string): Result<CapturedContent | null>;
+}
+
 export interface HarnessEvidenceOwnerPorts {
   readonly work?: Pick<RunGraphPort, 'read'>;
-  readonly captures?: Readonly<Record<string, CapturedContent>>;
+  readonly captures?: HarnessCaptureReadPort;
+  readonly handles?: Pick<RuntimeHandleHolder, 'owner' | 'machine' | 'lookup'>;
 }
 
 /** Exact-byte compare-and-swap storage for the package-local journal. */

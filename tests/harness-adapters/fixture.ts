@@ -1,4 +1,5 @@
 import type { Hash } from '../../src/index.js';
+import { hashBytes } from '../../src/facts/index.js';
 import type { HarnessLaunchSpec, NativeHarnessDriverPort } from '../../src/assembly/index.js';
 import {
   createClaudeCodeHarnessAdapter,
@@ -16,12 +17,39 @@ import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 
 export const digest = (character: string): Hash => `sha256:${character.repeat(64)}` as Hash;
-const captures = new WeakMap<object, Record<string, { hash: Hash; bytes: string; status: 'available'; byteLength: number }>>();
+type CaptureRow = { hash: Hash; bytes: string; status: 'available'; byteLength: number };
+const captures = new WeakMap<object, Record<string, CaptureRow>>();
+const capturePorts = new WeakMap<object, NonNullable<HarnessEvidenceOwnerPorts['captures']>>();
+const handlePorts = new WeakMap<object, NonNullable<HarnessEvidenceOwnerPorts['handles']>>();
 
-export function evidenceOwners(f: object, work?: HarnessEvidenceOwnerPorts['work']): HarnessEvidenceOwnerPorts {
+export function evidenceOwners(f: ReturnType<typeof assemblyRuntimeFixture>, work?: HarnessEvidenceOwnerPorts['work'],
+  suppliedHandles?: HarnessEvidenceOwnerPorts['handles']): HarnessEvidenceOwnerPorts {
   let retained = captures.get(f);
   if (!retained) { retained = {}; captures.set(f, retained); }
-  return { captures: retained, ...(work ? { work } : {}) };
+  let port = capturePorts.get(f);
+  if (!port) {
+    port = Object.freeze({ owner: 'part-two' as const, read: (reference: string) => f.success(retained?.[reference] ?? null) });
+    capturePorts.set(f, port);
+  }
+  let handles = suppliedHandles ?? handlePorts.get(f);
+  if (!handles) {
+    const stored = createRuntimeHandleHolder({ adapter: 'adapter:claude-code', machine: 'machine-a', maxHandles: 8,
+      maxAttempts: 8, context: f.c, state: createMemoryHarnessAdapterStateStore('fixture:evidence-handles') });
+    stored.put(decodedHandle(f));
+    handles = stored;
+    handlePorts.set(f, handles);
+  }
+  return { captures: port, handles, ...(work ? { work } : {}) };
+}
+
+export function removeCapture(f: ReturnType<typeof assemblyRuntimeFixture>, reference: string): void {
+  delete captures.get(f)?.[reference];
+}
+
+export function setCapture(f: ReturnType<typeof assemblyRuntimeFixture>, reference: string, row: CaptureRow): void {
+  let retained = captures.get(f);
+  if (!retained) { retained = {}; captures.set(f, retained); }
+  retained[reference] = row;
 }
 
 export function handleInput(overrides: Record<string, unknown> = {}) {
@@ -36,7 +64,7 @@ export function handleInput(overrides: Record<string, unknown> = {}) {
 
 export function eventInput(kind: HarnessRuntimeEvent['kind'], overrides: Record<string, unknown> = {}) {
   const output = kind === 'output-chunk'
-    ? { start: 0, end: 4, byteCount: 4, digest: digest('b'), captureReference: 'capture:event:1', truncated: false }
+    ? { start: 0, end: 4, byteCount: 4, digest: hashBytes('data'), captureReference: 'capture:event:1', truncated: false }
     : null;
   return {
     type: 'HarnessRuntimeEvent', schemaVersion: 2, id: `event:${kind}`, harness: 'adapter:claude-code',
@@ -91,12 +119,15 @@ export function adapterFixture(platform: 'claude-code' | 'codex' | 'future' = 'c
 }
 
 export function decodedHandle(f: ReturnType<typeof assemblyRuntimeFixture>, overrides: Record<string, unknown> = {}) {
-  return value(decodeHarnessRuntimeHandle(handleInput(overrides), f.c));
+  const handle = value(decodeHarnessRuntimeHandle(handleInput(overrides), f.c));
+  if (handle.launch === 'launch:1') ensureLaunch(f, handle);
+  return handle;
 }
 
 export function decodedEvent(f: ReturnType<typeof assemblyRuntimeFixture>, kind: HarnessRuntimeEvent['kind'], overrides: Record<string, unknown> = {}) {
   if (Object.hasOwn(overrides, 'sourceEvidence')) return value(decodeHarnessRuntimeEvent(eventInput(kind, overrides), f.c));
   const preliminary = value(decodeHarnessRuntimeEvent(eventInput(kind, { ...overrides, sourceEvidence: ['witness:pending'] }), f.c));
+  ensureLaunch(f, preliminary);
   const witness = harnessRuntimeEventWitness(preliminary);
   const event = value(decodeHarnessRuntimeEvent({ ...preliminary, sourceEvidence: [witness] }, f.c));
   const phases: Readonly<Record<HarnessRuntimeEvent['kind'], 'launched' | 'input-accepted' | 'context-consumed' | 'output-observed' | 'pause-observed' | 'exit-observed' | 'uncertain'>> = {
@@ -109,11 +140,23 @@ export function decodedEvent(f: ReturnType<typeof assemblyRuntimeFixture>, kind:
   if (!prior) value(f.runtime.record('HarnessObservation', {
     ...assemblyInput('HarnessObservation'), id: witness, launch: event.launch, run: event.run,
     step: event.step, input: event.input, incarnation: event.incarnation, phase: phases[event.kind],
-    observedAt: event.sourceClock, freshFor: event.freshFor, detail: witness,
+    observedAt: event.sourceClock, freshFor: event.freshFor, boundaryEvidence: event.processIdentity, detail: witness,
   }));
   if (event.output) {
-    const retained = evidenceOwners(f).captures as Record<string, { hash: Hash; bytes: string; status: 'available'; byteLength: number }>;
-    retained[event.output.captureReference] = { hash: event.output.digest, bytes: 'data', status: 'available', byteLength: event.output.byteCount };
+    setCapture(f, event.output.captureReference,
+      { hash: event.output.digest, bytes: 'data', status: 'available', byteLength: event.output.byteCount });
   }
   return event;
+}
+
+function ensureLaunch(f: ReturnType<typeof assemblyRuntimeFixture>, subject: Readonly<{
+  launch: string; harness: string; artifactDigest: Hash; machine: string; run: string; step: string; input: string; incarnation: string;
+}>): void {
+  const existing = value(f.c.history!.lookup(subject.launch));
+  if (existing) return;
+  value(f.runtime.record('HarnessLaunchSpec', {
+    ...assemblyInput('HarnessLaunchSpec'), id: subject.launch, harness: subject.harness,
+    artifactDigest: subject.artifactDigest, machine: subject.machine, run: subject.run, step: subject.step,
+    input: subject.input, incarnation: subject.incarnation,
+  }));
 }

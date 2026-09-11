@@ -17,7 +17,7 @@ function child(directory: string, who: string): Promise<{ status: string; detail
   });
 }
 
-it('R3-F3 P13-NF-24 two filesystem writers cannot both acknowledge one journal predecessor', async () => {
+it('R3-F3 two filesystem writers cannot both acknowledge one journal predecessor', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'p13-cas-'));
   const path = join(directory, 'state.json');
   writeFileSync(path, JSON.stringify({ type: 'HarnessAdapterStateSnapshot', schemaVersion: 1, id: 'state:race',
