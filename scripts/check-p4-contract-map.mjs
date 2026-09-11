@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { relative } from 'node:path';
 const expected = new Set([...readFileSync('docs/08-the-intake.md', 'utf8').matchAll(/^\| (P4-NF-\d+) \|/gm)].map(m => m[1]));
 for (let i = 1; i <= 9; i++) expected.add(`P4-VA-${String(i).padStart(2, '0')}`);
-for (let i = 1; i <= 102; i++) expected.add(`P4-ST-${String(i).padStart(2, '0')}`);
+for (let i = 1; i <= 105; i++) expected.add(`P4-ST-${String(i).padStart(2, '0')}`);
 for (let i = 1; i <= 5; i++) expected.add(`P4-PRESERVE-${String(i).padStart(2, '0')}`);
 const report = JSON.parse(readFileSync('.test-results.json', 'utf8'));
 if (!report.success) throw new Error('test suite failed');

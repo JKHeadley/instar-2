@@ -276,6 +276,22 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
         'unsupported-in-slice-a: Directive-bearing scheduled history belongs to Slice B','standing');
     }
 
+    function refuseScheduledDirectiveInput(input: ScheduledTickAdmission): void {
+      const pending: unknown[]=[input];
+      try { pending.push(JSON.parse(input.raw)); }
+      catch { /* The existing canonical tick decoder owns malformed JSON. */ }
+      while(pending.length) {
+        const value=pending.pop();
+        if(!value||typeof value!=='object') continue;
+        if(Array.isArray(value)) { pending.push(...value); continue; }
+        const fields=value as Record<string,unknown>;
+        requireIntake(fields.type!=='Directive'&&!Object.keys(fields).some(key =>
+          ['directive','directives','under'].includes(key.toLowerCase())),
+        'unsupported-in-slice-a: scheduled input cannot carry Directive fields');
+        pending.push(...Object.values(fields));
+      }
+    }
+
     function isScheduledAdmission(fact: FactEnvelope,facts: readonly FactEnvelope[],preserved: string): boolean {
       try {
         return isScheduledIntakeAdmission(
@@ -433,6 +449,91 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
       return { evidence,provenance,principal };
     }
 
+    // This is the single post-preservation admission gate. It is deliberately
+    // read-only: every Slice A input/witness refusal is decided here before the
+    // caller may append a mismatch, collapse, resolution, principal or admission.
+    function admitScheduledReceipt(input: ScheduledTickAdmission,receipt: FactEnvelope,
+      captured: Readonly<{ hash: string }>,at: Clock,preserved: string) {
+      refuseScheduledDirectiveInput(input);
+      exact(object(json(input)),['raw','route','discovery'],
+        'unsupported-in-slice-a: scheduled input accepts only raw, route and discovery');
+      const supplied=object(json(input.route??null));
+      exact(supplied,['adapter','channel','sender','identityEpoch','eventId'],
+        'scheduled intake: route shape is malformed');
+      const routeAdapter=text(supplied.adapter,'scheduled adapter');
+      const channel=text(supplied.channel,'scheduled channel');
+      const sender=text(supplied.sender,'scheduled sender');
+      const identityEpoch=text(supplied.identityEpoch,'signed identity epoch');
+      const eventId=text(supplied.eventId,'scheduled event id');
+      const logicalId=take(canonical([
+        routeAdapter,channel,sender,identityEpoch,eventId,
+      ])).hash;
+      const common={
+        logicalId,receipt: receipt.id,rawHash: captured.hash,adapter: routeAdapter,
+        channel,sender,identityEpoch,eventId,
+      };
+      requireIntake(intakeArrival(receipt,author.principal.id),
+        'scheduled intake: preserved receipt has invalid route identity','integrity');
+      scheduledRoute(routeAdapter,channel);
+      const authenticated=authenticateScheduled(
+        input.raw,{ channel,sender,identityEpoch,eventId },at,preserved);
+      requireIntake(identityEpoch===authenticated.provenance.record.hash,
+        'scheduled intake: route identity epoch is not bound to the signed package identity','standing');
+      const principal=authenticated.principal;
+      validateScheduledIntakeRoute(routeAdapter,channel,sender,identityEpoch,json(principal),
+        context(preserved).decode,registeredScheduledAdapters);
+      requireIntake(principal.id===author.principal.id&&same(principal.provenance,author.provenance),
+        'scheduled intake: configured author is not the authenticated package system principal','standing');
+
+      const facts=read(preserved);
+      const priorRows=statuses(preserved).filter(row =>
+        isScheduledAdmission(row.fact,facts,preserved)&&object(row.body).logicalId===logicalId);
+      requireIntake(priorRows.length<=1,
+        'scheduled intake: scheduled admission identity is conflicted','standing');
+      const prior=priorRows[0]?resolveScheduledAdmission(priorRows[0],facts,preserved):undefined;
+      requireIntake(!prior||prior.kind==='valid',
+        'scheduled intake: original admission evidence is unavailable','integrity');
+      const discoveryReference=object(json(input.discovery));
+      exact(discoveryReference,['owner','name','id'],
+        'unsupported-in-slice-a: discovery accepts only one fact reference');
+      const originalDiscovery=prior?.kind==='valid'&&prior.row.fact.predecessors.required.includes(
+        text(discoveryReference.id,'scheduled discovery reference'));
+      const historyBoundary=originalDiscovery&&prior?.kind==='valid'
+        ?new Set(causalCone(prior.row.fact,facts).map(fact => fact.id)):undefined;
+      const discovery=scheduledDiscovery(input.discovery,eventId,
+        originalDiscovery&&prior?.kind==='valid'?prior.row.fact.at:at,preserved,historyBoundary);
+      const history=historicalRows(preserved);
+      refuseSliceADirectives(history.rows,preserved,new Set([
+        discovery.row.fact.id,...causalCone(discovery.row.fact,history.facts).map(fact => fact.id),
+      ]));
+      const arrivals=facts.filter(fact => intakeArrival(fact,author.principal.id)?.logicalId===logicalId);
+      const original=arrivals[0]!;
+      if(object(original.body).rawHash!==captured.hash)
+        return { kind:'mismatch' as const,common,logicalId,original };
+      if(prior?.kind==='valid')
+        return { kind:'duplicate' as const,common,logicalId,prior };
+
+      checkDedup(at,preserved);
+      const tick=decodeScheduledTickBody(input.raw,eventId,context(preserved).decode);
+      const standing=scheduledStanding(principal,at,preserved);
+      const sliceAFacts=read(preserved),sliceARows=statuses(preserved);
+      refuseSliceADirectives(sliceARows,preserved,
+        new Set(causalCone(receipt,sliceAFacts).map(fact => fact.id)));
+      const principalIdentityScope=take(decode('Scope',{
+        type: 'Scope',schemaVersion: 1,kind: 'organization',
+      },context(preserved).decode));
+      const scheduledPrincipalSchema=scheduledIntakeFactSchemas(principalIdentityScope)[0]!;
+      requireIntake(context(preserved).schemas.some(schema => same(schema,scheduledPrincipalSchema)),
+        'P4-NF-06/12: required scheduled owner schema changed or missing: intake-scheduled-principal');
+      const principalWitnesses=resolveScheduledPrincipalWitness(
+        witnessHistories(sliceARows),principal,'zero-or-one','origin');
+      return {
+        kind:'admit' as const,common,logicalId,eventId,principal,discovery,standing,original,
+        tick:tick.tick,jobInstance:tick.jobInstance,scheduledInstant:tick.scheduledInstant,
+        principalWitnesses,
+      };
+    }
+
     function receiveScheduledTick(input: ScheduledTickAdmission) {
       let preserved=initial.preserved;
       return boundary('IntakeScheduledReceive',{ ...b,preserved },() => {
@@ -455,44 +556,10 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
           requireIntake(!busy,'P4-NF-01: overlapping scheduled arrival durably queued','integrity');
           busy=true;
           try {
-            exact(object(json(input)),['raw','route','discovery'],
-              'unsupported-in-slice-a: scheduled input accepts only raw, route and discovery');
-            exact(supplied,['adapter','channel','sender','identityEpoch','eventId'],
-              'scheduled intake: route shape is malformed');
-            const routeAdapter=text(supplied.adapter,'scheduled adapter');
-            const channel=text(supplied.channel,'scheduled channel');
-            const sender=text(supplied.sender,'scheduled sender');
-            const identityEpoch=text(supplied.identityEpoch,'signed identity epoch');
-            const eventId=text(supplied.eventId,'scheduled event id');
-            const logicalId=take(canonical([
-              routeAdapter,channel,sender,identityEpoch,eventId,
-            ])).hash;
-            const common={
-              logicalId,receipt: receipt.id,rawHash: captured.hash,adapter: routeAdapter,
-              channel,sender,identityEpoch,eventId,
-            };
-            requireIntake(intakeArrival(receipt,author.principal.id),
-              'scheduled intake: preserved receipt has invalid route identity','integrity');
-
-            // Route syntax is validated, but entry into Slice A is selected only
-            // after the adapter's signed package-system evidence is verified.
-            scheduledRoute(routeAdapter,channel);
-            const authenticated=authenticateScheduled(
-              input.raw,{ channel,sender,identityEpoch,eventId },at,preserved);
-            requireIntake(identityEpoch===authenticated.provenance.record.hash,
-              'scheduled intake: route identity epoch is not bound to the signed package identity','standing');
-            const principal=authenticated.principal;
-            validateScheduledIntakeRoute(routeAdapter,channel,sender,identityEpoch,json(principal),
-              context(preserved).decode,registeredScheduledAdapters);
-            requireIntake(principal.id===author.principal.id&&same(principal.provenance,author.provenance),
-              'scheduled intake: configured author is not the authenticated package system principal','standing');
-
-            const arrivals=read(preserved).filter(fact =>
-              intakeArrival(fact,author.principal.id)?.logicalId===logicalId);
-            const original=arrivals[0]!;
-            if(object(original.body).rawHash!==captured.hash) {
-              const signal=append('intake-mismatch',{ ...common,original: original.id },
-                at,preserved,[receipt.id,original.id]);
+            const admission=admitScheduledReceipt(input,receipt,captured,at,preserved);
+            if(admission.kind==='mismatch') {
+              const signal=append('intake-mismatch',{ ...admission.common,original: admission.original.id },
+                at,preserved,[receipt.id,admission.original.id]);
               return take(boundary('IntakeScheduledMismatch',{ ...b,preserved: signal.id },() => {
                 throw new IntakeFailure(
                   'P4-NF-03/08: same scheduled event id, different arrival bytes; attack signal recorded',
@@ -500,43 +567,18 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
               }));
             }
 
-            const priorFacts=read(preserved);
-            const priorRows=statuses(preserved).filter(row =>
-              isScheduledAdmission(row.fact,priorFacts,preserved)
-              &&object(row.body).logicalId===logicalId);
-            requireIntake(priorRows.length<=1,
-              'scheduled intake: scheduled admission identity is conflicted','standing');
-            if(priorRows.length===1) {
-              const prior=resolveScheduledAdmission(priorRows[0]!,read(preserved),preserved);
-              requireIntake(prior.kind==='valid',
-                'scheduled intake: original admission evidence is unavailable','integrity');
-              const suppliedDiscovery=object(json(input.discovery));
-              const originalDiscovery=prior.row.fact.predecessors.required.includes(
-                text(suppliedDiscovery.id,'scheduled discovery reference'));
-              scheduledDiscovery(input.discovery,eventId,originalDiscovery?prior.row.fact.at:at,preserved,
-                originalDiscovery?new Set(causalCone(prior.row.fact,read(preserved)).map(fact => fact.id)):undefined);
-              append('intake-collapse',{ ...common,original: prior.row.fact.id },
-                at,preserved,[receipt.id,prior.row.fact.id]);
-              return { kind: 'duplicate' as const,logicalId,original: reference(prior.row.fact) };
+            if(admission.kind==='duplicate') {
+              append('intake-collapse',{ ...admission.common,original: admission.prior.row.fact.id },
+                at,preserved,[receipt.id,admission.prior.row.fact.id]);
+              return {
+                kind: 'duplicate' as const,logicalId:admission.logicalId,
+                original: reference(admission.prior.row.fact),
+              };
             }
 
-            checkDedup(at,preserved);
-            const { tick,jobInstance,scheduledInstant }=decodeScheduledTickBody(
-              input.raw,eventId,context(preserved).decode);
-            const discovery=scheduledDiscovery(input.discovery,eventId,at,preserved);
-            const standing=scheduledStanding(principal,at,preserved);
-            const sliceAFacts=read(preserved),sliceARows=statuses(preserved);
-            refuseSliceADirectives(sliceARows,preserved,
-              new Set(causalCone(receipt,sliceAFacts).map(fact => fact.id)));
-            const principalIdentityScope=take(decode('Scope',{
-              type: 'Scope',schemaVersion: 1,kind: 'organization',
-            },context(preserved).decode));
-            const scheduledPrincipalSchema=scheduledIntakeFactSchemas(principalIdentityScope)[0]!;
-            requireIntake(context(preserved).schemas.some(schema => same(schema,scheduledPrincipalSchema)),
-              'P4-NF-06/12: required scheduled owner schema changed or missing: intake-scheduled-principal');
-            const existingPrincipals=resolveScheduledPrincipalWitness(
-              witnessHistories(sliceARows),principal,'zero-or-one','origin');
-            const principalFact=existingPrincipals[0]?.fact??append('intake-scheduled-principal',
+            const { common,logicalId,eventId,principal,discovery,standing,original,
+              tick,jobInstance,scheduledInstant,principalWitnesses }=admission;
+            const principalFact=principalWitnesses[0]?.fact??append('intake-scheduled-principal',
               { principal: json(principal) },at,preserved,[standing.row.fact.id],principal);
             const resolved=append('intake-resolved',{
               ...common,principalId: principal.id,
