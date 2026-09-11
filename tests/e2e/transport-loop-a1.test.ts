@@ -1,18 +1,47 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
 
-it('SLB-A1-E2E-91 rebuilds the one A1 breaker episode in a fresh process', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'transport-loop-a1-e2e-'));
-  const vitest = resolve('node_modules/vitest/vitest.mjs');
-  for (const mode of ['produce', 'recover']) {
-    const run = spawnSync(process.execPath, [vitest, 'run', '--config',
-      'tests/fixtures/transport-loop-a1-e2e.config.mjs', '--reporter=verbose'], {
-      encoding: 'utf8', timeout: 60_000,
-      env: { ...process.env, SLB_A1_E2E_MODE: mode, SLB_A1_E2E_DIR: directory },
+type Wire = Readonly<{ body?: { record?: { policy?: { breaker?: unknown }; transition?: unknown; state?: unknown } } }>;
+
+const runChild = (mode: string, directory: string) => spawnSync(process.execPath,
+  [resolve('node_modules/vitest/vitest.mjs'), 'run', '--config',
+    'tests/fixtures/transport-loop-a1-e2e.config.mjs', '--reporter=dot'], {
+    encoding: 'utf8', timeout: 90_000,
+    env: { ...process.env, SLB_A1_E2E_MODE: mode, SLB_A1_E2E_DIR: directory },
+  });
+
+it('SLB-A1-E2E-91 SLB-A1-CUTS-101 reconstructs all 20 persisted A1 transition cuts in fresh processes', () => {
+  const expected = {
+    primary: ['scheduled/scheduled', 'attempt-admitted/running', 'opened/open-breaker',
+      'half-opened/half-open', 'reopened/open-breaker', 'half-opened/half-open', 'closed/closed'],
+    waiting: ['scheduled/scheduled', 'attempt-admitted/running', 'outcome-recorded/waiting'],
+    stopped: ['scheduled/scheduled', 'attempt-admitted/running', 'outcome-recorded/waiting', 'stopped/stopped'],
+    evidence: ['scheduled/scheduled', 'attempt-admitted/running', 'opened/open-breaker',
+      'half-opened/half-open', 'outcome-recorded/half-open', 'closed/closed'],
+  } as const;
+  let cuts = 0;
+  for (const [scenario, expectedTransitions] of Object.entries(expected)) {
+    const produced = mkdtempSync(join(tmpdir(), `transport-loop-a1-${scenario}-`));
+    const producer = runChild(`produce-${scenario}`, produced);
+    expect(producer.status, `${producer.stdout}\n${producer.stderr}`).toBe(0);
+    const wires = JSON.parse(readFileSync(join(produced, 'facts.json'), 'utf8')) as Wire[];
+    const indexes = wires.flatMap((wire, index) => wire.body?.record?.policy?.breaker === 'shared-circuit-v1'
+      ? [index] : []);
+    const transitions = indexes.map(index => {
+      const record = wires[index]!.body!.record!;
+      return `${record.transition}/${record.state}`;
     });
-    expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
+    expect(transitions).toEqual(expectedTransitions);
+    for (const index of indexes) {
+      const cut = mkdtempSync(join(tmpdir(), `transport-loop-a1-${scenario}-cut-`));
+      writeFileSync(join(cut, 'facts.json'), JSON.stringify(wires.slice(0, index + 1)));
+      const recovery = runChild('recover', cut);
+      expect(recovery.status, `${scenario} cut ${index}\n${recovery.stdout}\n${recovery.stderr}`).toBe(0);
+      cuts++;
+    }
   }
-}, 130_000);
+  expect(cuts).toBe(20);
+}, 240_000);

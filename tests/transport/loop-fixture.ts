@@ -6,10 +6,12 @@ import type { Clock, Evidence, Json, Result, RunReference } from '../../src/inde
 import { authorAndAppend, createFactStore, factId, signEnvelope, verifyAndAdmit } from '../../src/facts/index.js';
 import type { FactContext, FactEnvelope, FactSchema, SegmentStoragePort } from '../../src/facts/index.js';
 import { recordReferences, recordWire } from '../../src/rungraph/records.js';
-import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, registerTransportBodies,
-  registerTransportSeamBodies, transportSchemas, transportSeamSchemas } from '../../src/transport/index.js';
-import type { FenceToken, ReserveInput, SharedBreakerLoopPolicy, SharedLoopRecord, TransportFact, TransportHost } from '../../src/transport/index.js';
-import { storeSharedLoopPolicy } from '../../src/transport/loop-seam.js';
+import { registerTransportBodies, transportSchemas } from '../../src/transport/index.js';
+import type { FenceToken, ReserveInput } from '../../src/transport/index.js';
+import { createLoopA1Authority, createLoopA1Spine, decodeLoopPolicyA1, loopA1Schemas,
+  registerLoopA1Bodies, storeSharedLoopPolicy } from '../../src/transport/loop-a1/index.js';
+import type { LoopA1Host, LoopA1TransportFact, SharedBreakerLoopPolicy,
+  SharedLoopRecord } from '../../src/transport/loop-a1/index.js';
 import { deriveVerificationAssessment, registerVerificationBodies, verificationSchemas } from '../../src/verification/index.js';
 import type { VerificationAssessment, VerificationPlan, VerificationRequest } from '../../src/verification/index.js';
 import { verificationInput } from '../verification/fixture.js';
@@ -142,11 +144,13 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
   };
   witnessedAssessment('assessment:witnessed-review', 'recovery',
     { target: 'target:review', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' });
+  witnessedAssessment('assessment:witnessed-review-cycle-2', 'recovery',
+    { target: 'target:review', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' });
   witnessedAssessment('assessment:restored-holder', 'holder-recovery',
     { target: 'target:shared', conversation: 'conversation:1', machine: 'fleet', pool: 'recovery' });
   witnessContext = { ...witnessContext, facts: [...witnessContext.facts, ...machineBFacts] };
 
-  const host: TransportHost = { domain: 'conversation:1', machine: 'machine-a', incarnation,
+  const host: LoopA1Host = { domain: 'conversation:1', machine: 'machine-a', incarnation,
     authorityIncarnation: authority, principal: rg.bob, scope: rg.scope, maxLeaseTerm: 1000, budget: 100,
     loopClock: { owner: 'part-ten', now: () => rg.clock(now) },
     restorationEvidence: { owner: 'part-nine', verify: input => rg.success((assessmentFacts.has(input.reference.id))
@@ -203,14 +207,15 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     return deriveThrough(decoder, { type: 'FileReceipt', schemaVersion: 1 }, rg.c);
   };
   const storage: SegmentStoragePort = createTransportFileStorage(directory, result);
-  const provisional = { ...witnessContext, schemas: [...witnessContext.schemas, ...transportSchemas(host), ...transportSeamSchemas(host)] };
+  const provisional = { ...witnessContext,
+    schemas: [...witnessContext.schemas, ...transportSchemas(host), ...loopA1Schemas(host)] };
   const ctx: FactContext = { ...provisional, ownedBodies: [...provisional.ownedBodies ?? [],
-    ...value(registerTransportBodies(host, rg.c)), ...value(registerTransportSeamBodies(host, rg.c))] };
+    ...value(registerTransportBodies(host, rg.c)), ...value(registerLoopA1Bodies(host, rg.c))] };
   const store = createFactStore(ctx, storage);
-  const spine = createTransportSpine(host, { context: ctx, privateKey }, store);
-  const api = createTransportAuthority(host, spine, rg.c);
-  const sharedPolicy = value(decodeLoopPolicy({ type: 'LoopPolicy', schemaVersion: 1, id: 'shared-loop-policy:1',
-    maxAttempts: 12, minDelay: 1, maxDuration: 1000, timeout: 10, concurrency: 2,
+  const spine = createLoopA1Spine(host, { context: ctx, privateKey }, store);
+  const api = createLoopA1Authority(host, spine, rg.c);
+  const sharedPolicy = value(decodeLoopPolicyA1({ type: 'LoopPolicy', schemaVersion: 1, id: 'shared-loop-policy:1',
+    maxAttempts: 12, minDelay: 1, maxDuration: 1000, timeout: 10, concurrency: 1,
     failDirection: 'closed', breaker: 'shared-circuit-v1', initialDelay: 1, maxDelay: 40,
     backoffMultiplier: 2, jitterMinPermille: 500, jitterMaxPermille: 1000,
     failureThreshold: 2, countedFailureClasses: ['transport', 'timeout'], acceptedOutcomeWindow: 500,
@@ -227,9 +232,7 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
       [value(rg.store.read()).at(-1)!.id]).fact;
   };
   registerPolicy();
-  const vector = () => [...new Map(ctx.facts.map(fact => [fact.machine, fact])).values()]
-    .map(fact => ({ machine: fact.machine, epoch: fact.segment.epoch, position: fact.segment.position }))
-    .sort((a, b) => Buffer.compare(Buffer.from(a.machine, 'utf8'), Buffer.from(b.machine, 'utf8')));
+  const vector = factRef(peerFrontier);
   let outcomeCounter = 0;
   const appendOutcome = (kind: 'accepted' | 'failed', attempt: string,
     failureClass = kind === 'failed' ? 'transport' : '') => {
@@ -242,7 +245,7 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
       if (row.record.type !== 'LoopRecord' || row.record.policy.breaker !== 'shared-circuit-v1') return false;
       const record = row.record as SharedLoopRecord;
       return record.policy.breaker === 'shared-circuit-v1' && record.attemptLog.some(value => value.id === attempt);
-    }).at(-1) as (TransportFact & { record: SharedLoopRecord }) | undefined;
+    }).at(-1) as (LoopA1TransportFact & { record: SharedLoopRecord }) | undefined;
     if (!admitted) throw new Error(`attempt admission unavailable: ${attempt}`);
     const loopAttemptBinding = encoded([admitted.record.pressureKey, admitted.record.operationFamily, attempt]).hash;
     const loopFailurePolicy = encoded([admitted.record.policy.id, admitted.record.policyGeneration.id,
@@ -260,7 +263,7 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
   const detail = <T>(r: Result<T>) => consumeResult(r, { Success: () => '', Refused: refusal => refusal.detail });
   return { ...rg, host, ctx, storage, store, spine, api, directory, result, sharedPolicy, parentDuty, run: parentDuty,
     appendOutcome, input, head, detail,
-    get vector() { return vector(); }, advance: (n: number) => { now += n; }, time: (n: number) => { now = n; },
+    vector, advance: (n: number) => { now += n; }, time: (n: number) => { now = n; },
     stop: () => { stopped = true; }, generation: (value: string) => { generation = value; },
     revalidatePolicy: () => registerPolicy(), registerPolicy, assessmentFact: (id: string) => assessmentFacts.get(id),
     restorationReference: (id: string) => {

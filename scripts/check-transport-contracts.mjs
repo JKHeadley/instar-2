@@ -59,7 +59,15 @@ export const transportSeamEvidence = [
   ['SLB-A1-RESTART-90', 'integration', 'durable Part Two reconstruction'],
   ['SLB-A1-E2E-91', 'e2e', 'fresh-process reconstruction'],
   ['SLB-A1-MAP-92', 'unit', 'zero-test and per-fixture coverage refusal'],
-  ['SLB-LEGACY-FULL-837-81', 'unit', 'generated 837-case legacy mutation differential plus owned-policy V34 shapes'],
+  ['SLB-LEGACY-ALL-KINDS-93', 'unit', 'generated 860-case legacy mutation differential over every legacy field'],
+  ['SLB-LEGACY-V2-94', 'unit', 'legacy breaker marker remains a byte-identical main refusal'],
+  ['SLB-A1-PARENT-95', 'integration', 'second pressure and conflicting parent policy refusal'],
+  ['SLB-A1-EXCLUSIONS-96', 'integration', 'all excluded A2 budget and cursor fields are refused'],
+  ['SLB-A1-OPAQUE-SHAPE-97', 'integration', 'opaque vector reference accepted and coordinates refused'],
+  ['SLB-A1-LATER-CYCLE-98', 'integration', 'later same-episode cycle requires fresh closure evidence'],
+  ['SLB-A1-FRONTIER-99', 'integration', 'locale-independent equal-clock ordering and reverse replay'],
+  ['SLB-LEGACY-BYTES-100', 'unit', 'all main-owned transport sources and tests are byte-identical'],
+  ['SLB-A1-CUTS-101', 'e2e', 'every A1 transition cut reconstructs in a fresh process'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {
@@ -106,7 +114,9 @@ export function inspectTransportCore(sources) {
   return issues;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const sources = Object.fromEntries(readdirSync('src/transport').filter(p => p.endsWith('.ts')).map(p => [`src/transport/${p}`, readFileSync(`src/transport/${p}`, 'utf8')]));
+  const sources = Object.fromEntries(readdirSync('src/transport', { recursive: true })
+    .filter(p => typeof p === 'string' && p.endsWith('.ts'))
+    .map(p => [`src/transport/${p}`, readFileSync(`src/transport/${p}`, 'utf8')]));
   const issues = inspectTransportCore(sources); if (issues.length) throw new Error(issues.join('\n'));
   const report = JSON.parse(readFileSync('.test-results.json', 'utf8'));
   const rows = checkTransportCoverage(report);

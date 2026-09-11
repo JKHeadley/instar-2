@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { consumeResult } from '../../src/index.js';
 import { decodeEnvelope, decodeHistoricalBody, signEnvelope } from '../../src/facts/index.js';
 import * as transport from '../../src/transport/index.js';
-import { decodeLoopPolicy } from '../../src/transport/index.js';
+import { decodeLoopPolicyA1 } from '../../src/transport/loop-a1/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { transportLoopFixture } from './loop-fixture.js';
 
@@ -14,10 +14,13 @@ const verdict = (result: unknown): Verdict => consumeResult(result as never, {
 
 it('SLB-A1-POLICY-84 accepts the closed breaker policy and typed-refuses every excluded A2 field', () => {
   const fixture = transportLoopFixture();
-  expect(verdict(decodeLoopPolicy(fixture.sharedPolicy, fixture.c)).kind).toBe('accepted');
-  for (const field of ['budgetWindow', 'parentAttemptBudget', 'parentResourceBudget', 'parentDuty', 'cursorKind']) {
-    const result = verdict(decodeLoopPolicy({ ...fixture.sharedPolicy, [field]: field === 'parentDuty'
-      ? fixture.run : 1 }, fixture.c));
+  expect(verdict(decodeLoopPolicyA1(fixture.sharedPolicy, fixture.c)).kind).toBe('accepted');
+  for (const [field, input] of [
+    ['budgetWindow', 1], ['parentAttemptBudget', 1], ['parentResourceBudget', 1], ['resourceBudget', 1],
+    ['parentDuty', fixture.run], ['cursorKind', 'scan'],
+    ['scanCursor', { owner: 'part-six', name: 'ScanCursor', id: 'cursor:1' }], ['concurrency', 2],
+  ] as const) {
+    const result = verdict(decodeLoopPolicyA1({ ...fixture.sharedPolicy, [field]: input }, fixture.c));
     expect(result).toEqual({ kind: 'refused', detail: 'unsupported-in-slice-a1' });
   }
 
