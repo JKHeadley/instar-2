@@ -1,11 +1,11 @@
 import { canonical, consumeResult } from '../index.js';
 import type { BoundaryContext, Clock, Json, Result } from '../index.js';
 import type { FactEnvelope } from '../facts/index.js';
-import { hashBytes } from '../facts/index.js';
+import { hashBytes, walkVersions } from '../facts/index.js';
 import type { AdapterConformance } from '../assembly/index.js';
 import type { InboundRoute, IntakeAdapterPort, IntakeDisposition } from '../intake/index.js';
 import { constructGoverned } from '../register/index.js';
-import type { OperationAdapterPort, OperationDefinition, EffectHost, EffectSpine } from '../effects/index.js';
+import type { EffectValidation, OperationAdapterPort, OperationDefinition, EffectHost, EffectSpine } from '../effects/index.js';
 import { installOperationDefinition } from '../effects/index.js';
 import { boundary, ensure, freeze, json, take } from './boundary.js';
 import type {
@@ -78,14 +78,14 @@ export function telegramConversation(botId: string, target: TelegramConversation
 }
 
 function updateEvent(update: RecordValue): { event: RecordValue; kind: TelegramUpdateKind; sender: RecordValue | null } {
+  const variants = Object.entries(update).filter(([key]) => key !== 'update_id');
+  ensure(variants.length === 1, 'Telegram update must contain exactly one routed variant');
   const supported = ['callback_query', 'edited_message', 'edited_channel_post', 'channel_post', 'message',
     'chat_join_request', 'chat_member', 'my_chat_member', 'message_reaction', 'message_reaction_count']
     .filter(key => update[key] !== undefined);
   const unsupportedRouted = Object.entries(update).filter(([key, value]) => key !== 'update_id'
     && !supported.includes(key) && value !== null && typeof value === 'object' && !Array.isArray(value)
     && (value as Readonly<Record<string, unknown>>).chat !== undefined);
-  ensure(supported.length + unsupportedRouted.length <= 1,
-    'Telegram update must contain exactly one routed variant');
   if (supported.length === 0) {
     ensure(unsupportedRouted.length === 1, 'unsupported Telegram update has no unambiguous authenticated chat route');
     const event = record(unsupportedRouted[0]![1], `unsupported ${unsupportedRouted[0]![0]}`);
@@ -465,9 +465,8 @@ function durableUpdateIds(deps: TelegramIngressDependencies): number[] {
         || capture?.hash !== body.rawHash || typeof capture.reference !== 'string' || capture.reference.length === 0) continue;
       const capturedBytes = take(deps.api.readCapture(capture.reference));
       if (hashBytes(capturedBytes) !== body.rawHash) continue;
-      const capturedUpdate = record(JSON.parse(capturedBytes) as unknown, 'captured Telegram update');
-      const capturedId = integer(capturedUpdate.update_id, 'captured provider update_id');
-      if (capturedId < 0 || String(capturedId) !== route.eventId) continue;
+      const captured = extractTelegramUpdateUnchecked(capturedBytes, deps.admitted.declaration);
+      if (encode(captured.route) !== encode(route)) continue;
       const id = Number(route.eventId); if (Number.isSafeInteger(id)) ids.push(id);
     } catch { /* inert non-Telegram or malformed retained receipt */ }
   }
@@ -630,6 +629,28 @@ export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAd
         ensure(!effect('OperationObservation').some(row => row.record.operation === input.operation
           && (row.record.stage === 'response' || row.record.stage === 'unknown')),
         'Telegram reply operation already has a conclusive or uncertain invocation observation');
+        const state = binding.host.current();
+        ensure(!state.stopped, 'stop inhibits Telegram reply');
+        const versions = walkVersions(state.versions);
+        ensure(versions.conflicts.length === 0, 'Telegram reply operation definition is contested');
+        const currentDefinition = versions.current.find(version => version.id === binding.definition.version
+          && version.subject === binding.definition.feature);
+        ensure(currentDefinition && encode(currentDefinition.content) === encode(binding.definition)
+          && state.decode.register.entries.includes(binding.definition.feature)
+          && state.decode.register.entries.includes(binding.definition.adapter)
+          && binding.definition.generation === state.decode.register.generation.id
+          && binding.definition.adapter === admitted.id
+          && binding.definition.account === admitted.account
+          && binding.definition.conversation === conversation,
+        'Telegram reply operation definition or adapter binding is not current');
+        const validations = effect('EffectValidation').filter(row => row.record.request === request.id
+          && row.record.definition === binding.definition.id && row.record.digest === input.digest
+          && row.record.phase === 'dispatch');
+        const validation = validations.at(-1)?.record as unknown as EffectValidation | undefined;
+        ensure(validation && validation.expires > state.clock.value
+          && validation.generation === state.decode.register.generation.id
+          && encode(validation.authority) === encode(state.authority),
+        'Telegram reply dispatch validation is expired or no longer current');
         const invoked = replyInvocations.get(admitted) ?? new Set<string>();
         ensure(!invoked.has(input.operation), 'Telegram reply claim handoff was already used');
         invoked.add(input.operation); replyInvocations.set(admitted, invoked);

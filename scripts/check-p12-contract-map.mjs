@@ -18,30 +18,30 @@ const executable = {
 const partial = {
   1: 'PARTIAL: the whole-part governed documentation inventory is executable as a retained build input; non-Telegram platform implementation remains Slice B.',
   2: 'PARTIAL: the retained 1.x audit digest is executable build evidence, not a Slice A runtime consumer.',
-  6: 'PARTIAL: non-secret capture-before-receipt is executable; secret-shaped production intake is non-executable-until-seam-response-intake-followup.md-and-seam-response-assembly-followup.md.',
+  6: 'PARTIAL: non-secret capture-before-receipt, exact-route cursor reconstruction and six real local process cuts are executable; secret-shaped production intake is non-executable-until-seam-response-intake-followup.md-and-seam-response-assembly-followup.md.',
   9: 'PARTIAL: byte-identical admitted redelivery is owner-provided; real attempt-metadata redelivery is non-executable-until-seam-response-intake-followup.md rows 46 and 57.',
   11: 'PARTIAL: protocol custody acknowledgment is executable; conversational policy enforcement is non-executable-until-seam-response-intake-followup.md row 60.',
   12: 'PARTIAL: oversize/non-secret custody is executable; secret custody is non-executable-until-seam-response-intake-followup.md-and-seam-response-assembly-followup.md.',
   13: 'PARTIAL: single-arrival owned holds are executable; held redelivery/recovery is non-executable-until-seam-response-intake-followup.md row 46.',
   14: 'PARTIAL: verified binding selection is delegated to landed Part Four; the full first-sender negative matrix is not rebuilt here.',
   15: 'PARTIAL: binding conflict semantics remain Part Four-owned and are not claimed by the Telegram adapter.',
-  18: 'PARTIAL: capture-before-offset and signed webhook choice are executable; reminder positive is non-executable-until-seam-response-operator-followup.md row 59.',
+  18: 'PARTIAL: capture-before-offset, exact-route fresh-process reconstruction and signed webhook choice are executable; reminder positive is non-executable-until-seam-response-operator-followup.md row 59.',
   19: 'PARTIAL: Slack identity/admission is Slice B and additionally depends on seam-response-intake-followup.md rows 18, 46 and 57 plus seam-response-judgment.md row 35.',
   20: 'PARTIAL: Slack fault/redelivery is Slice B and non-executable-until-seam-response-intake-followup.md rows 18, 46 and 57 plus seam-response-judgment.md row 35.',
   21: 'PARTIAL: WhatsApp is Slice B.', 22: 'PARTIAL: WhatsApp is Slice B; named payloads remain unsupported.',
   23: 'PARTIAL: iMessage is Slice B.', 24: 'PARTIAL: iMessage is Slice B.', 25: 'PARTIAL: web is Slice B.',
   26: 'PARTIAL: cross-platform alias/migration is Slice B and remains owner-governed.',
-  28: 'PARTIAL: the landed reserve/claim/consume path, durable executor acceptance, direct-replay refusal, prepared recovery and specific uncertain-cut neighbors are executable; the complete production crash matrix and real-model chain await their named owner integrations.',
+  28: 'PARTIAL: public prepare/dispatch, the final concrete current-state recheck and nine real local outbound process cuts are executable; the production real-model chain awaits its named owner integrations.',
   29: 'PARTIAL: exact HTML bytes are executable; registered accessible emoji/tone review is not built in Slice A.',
   30: 'PARTIAL: fitting or explicit refusal is executable; aggregate output is non-executable-until-seam-response-effects-payloads.md.',
   31: 'PARTIAL: no adapter retry/fallback is executable; unchanged-digest successor handling remains non-executable-until-seam-response-effects-followup.md-and-seam-response-loop-followup.md.',
   32: 'PARTIAL: unsupported effects are declared inhibited; typed optional effects are non-executable-until-seam-response-effects-payloads.md.',
-  33: 'PARTIAL: Eight persists request/claim before send and the fsync-backed prepared outbox reconstructs through the existing Four/Six/Eight/Ten contracts; the complete production crash matrix awaits Part Eleven assembly integration.',
+  33: 'PARTIAL: Eight persists request/claim before send and the fsync-backed prepared outbox reconstructs across nine real local process cuts through the existing Six/Eight/Ten contracts; the production crash matrix awaits Part Eleven assembly integration.',
   34: 'PARTIAL: response-stage provider bytes are captured without delivery/read inflation; independent delivery witness/emoji arms are not built.',
   35: 'PARTIAL: no adapter self-grade or fake settlement; real settlement is non-executable-until-seam-response-effects-followup.md.',
   36: 'PARTIAL: stable lookup is explicitly unsupported and cannot prove non-occurrence; the full recovery schedule is owner scope.',
   37: 'PARTIAL: a Part Six bounded observation wake performs one read-only Telegram lookup attempt with zero additional invocation; successor retry is non-executable-until-seam-response-effects-followup.md-and-seam-response-loop-followup.md.',
-  38: 'PARTIAL: fsync-backed intake cursor rebuild and prepared ordinary-reply outbox reconstruction are executable; held-receipt continuation is non-executable-until-seam-response-intake-followup.md row 46.',
+  38: 'PARTIAL: fsync-backed intake and ordinary-reply reconstruction run across fifteen real local process cuts plus three mismatched-route neighbors; held-receipt continuation is non-executable-until-seam-response-intake-followup.md row 46.',
   39: 'PARTIAL: expiry, repeated expiry and reconstruction retain the original capture, receipt, hold and terminal; fleet-scale retention horizons remain activation evidence rather than a named unlanded owner seam.',
   40: 'PARTIAL: route-service fairness is non-executable-until-seam-response-loop-followup.md row 43.',
   41: 'PARTIAL: adapter refusals remain explicit with zero send; the broader advisory/notice owner matrix is not built.',
@@ -51,7 +51,7 @@ const partial = {
   45: 'PARTIAL: no later platform activates; later platform parity is Slice B.',
   46: 'PARTIAL: fresh authenticated identity and captured outbound response are executable with fixtures; real live-provider inbound/outbound proof is not claimed.',
   47: 'PARTIAL: the Part Ten consumer accepts a named hardware workload record and refuses target/estimate references or omitted failed samples represented as complete measurement; live hardware measurements remain activation evidence.',
-  48: 'PARTIAL: three local tiers execute, but real-model positive is non-executable-until-seam-response-judgment.md-and-seam-response-effects-followup.md and production assembly/custody owner grants integrate.',
+  48: 'PARTIAL: three local tiers execute with public prepare/dispatch and real SIGKILL/restart coverage, but the real-model positive is non-executable-until-seam-response-judgment.md-and-seam-response-effects-followup.md and production assembly/custody owner grants integrate.',
   49: 'PARTIAL: mode/API changes are exercised as distinct or inhibited conformance subjects and the generated active-generation briefing is checked for exact current modes, operations and public doorways; live cross-version provider replay remains activation evidence.',
   50: 'PARTIAL: runtime admission records current check-run/probe references, but activation remains dark without the missing owner positives.',
   51: 'PARTIAL: media metadata enters Four owned hold with zero fetch/provider/send; media custody beyond metadata is Slice B and successful media is non-executable-until-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md.',
@@ -95,7 +95,7 @@ for (const tier of ['telegram.unit.test.ts', 'telegram.integration.test.ts', 'te
 // High-risk executable arms are not established by a check id in a title alone.
 // Require the passing focused consumer and the concrete owner-port calls/assertion
 // subjects that make the case executable. This is intentionally narrow: it guards
-// the five review-identified holes without pretending static source inspection is
+// the review-identified local execution holes without pretending static source inspection is
 // live-provider evidence.
 const concreteConsumers = [
   { id: 'P12-NF-28', file: 'tests/conversation/telegram.round3.integration.test.ts',
@@ -112,6 +112,30 @@ const concreteConsumers = [
     anchors: ["runtime.record('GrowthObservation'", 'configured-target:not-a-measurement', 'success-only', 'estimate:not-a-measurement'] },
   { id: 'P12-NF-49', file: 'tests/conversation/telegram.round3.lifecycle.test.ts',
     anchors: ["mode: 'webhook'", "apiVersion: '9.3'", "generated/source.json", "generated/capabilities.md"] },
+  { id: 'P12-NF-06', file: 'tests/conversation/telegram.round5.lifecycle.test.ts',
+    anchors: ['spawnSync(', "'SIGKILL'", "'before-capture'", "'after-receipt'", "'mismatch-chat'"],
+    supporting: [{ file: 'tests/conversation/telegram.round5.intake-child.ts',
+      anchors: ['createIntakePort(', 'intake.recover(', 'ingress.currentOffset()', "process.kill(process.pid, 'SIGKILL')"] }] },
+  { id: 'P12-NF-18', file: 'tests/conversation/telegram.round5.lifecycle.test.ts',
+    anchors: ["'after-capture'", "'after-admit'", "'after-poll-return'", "'after-next-poll'"],
+    supporting: [{ file: 'tests/conversation/telegram.round5.intake-child.ts',
+      anchors: ['createTelegramIngress(', 'fixture.queue(raw)', 'offsetAfterRecovery: value(ingress.currentOffset())'] }] },
+  { id: 'P12-NF-28', file: 'tests/conversation/telegram.round5.integration.test.ts',
+    anchors: ['telegramPreparedOutbound()', 'doorway.dispatch(', 'f.adapter.invoke(', "'definition-removed'"],
+    supporting: [{ file: 'tests/conversation/round5-fixture.ts', anchors: ['doorway.prepare('] }] },
+  { id: 'P12-NF-28', file: 'tests/conversation/telegram.round5.lifecycle.test.ts',
+    anchors: ["'prepared'", "'claimed'", "'claim-durable'", "'consumed'", "'acceptance'",
+      "'acceptance-durable'", "'before-provider'", "'after-provider'", "'response'"],
+    supporting: [{ file: 'tests/conversation/telegram.round5.outbound-child.ts',
+      anchors: ['telegramPreparedOutbound()', 'createEffectDoorway(', "process.kill(process.pid, 'SIGKILL')"] }] },
+  { id: 'P12-NF-33', file: 'tests/conversation/telegram.round5.lifecycle.test.ts',
+    anchors: ['cutAndRecover(outboundChild', 'reservations', 'observations', 'settlements'],
+    supporting: [{ file: 'tests/conversation/telegram.round5.outbound-child.ts',
+      anchors: ['createFactStore(', 'createTransportAuthority(', 'installTelegramReplyOperation('] }] },
+  { id: 'P12-NF-38', file: 'tests/conversation/telegram.round5.lifecycle.test.ts',
+    anchors: ['cutAndRecover(intakeChild', 'cutAndRecover(outboundChild', 'offsetAfterRecovery', 'admissionsAfter'] },
+  { id: 'P12-NF-48', file: 'tests/conversation/telegram.round5.lifecycle.test.ts',
+    anchors: ['build({ entryPoints:', 'spawnSync(', "toBe('SIGKILL')", 'reader.status'] },
 ];
 for (const consumer of concreteConsumers) {
   if (!(tests.get(consumer.id) ?? []).some(test => test.file === consumer.file))
@@ -119,6 +143,11 @@ for (const consumer of concreteConsumers) {
   const source = readFileSync(consumer.file, 'utf8');
   for (const anchor of consumer.anchors) if (!source.includes(anchor))
     throw new Error(`${consumer.id}: focused consumer omits executable anchor ${anchor}`);
+  for (const supporting of consumer.supporting ?? []) {
+    const supportingSource = readFileSync(supporting.file, 'utf8');
+    for (const anchor of supporting.anchors) if (!supportingSource.includes(anchor))
+      throw new Error(`${consumer.id}: supporting consumer ${supporting.file} omits executable anchor ${anchor}`);
+  }
 }
 const capabilities = readFileSync('generated/capabilities.md', 'utf8');
 for (const required of ['telegram-conversation-adapter: dark', 'telegram.mode.long-poll.default',
