@@ -221,7 +221,6 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
       'JudgmentDoorway.readAnswer': production.judgment.port.readAnswer,
       'JudgmentDoorway.inspect': production.judgment.port.inspect,
       'EffectDoorway.prepare': production.effect.port.prepare,
-      'EffectDoorway.adopt': production.effect.port.adopt,
       'EffectDoorway.handoff': production.effect.port.handoff,
       'EffectDoorway.observe': production.effect.port.observe,
       'EffectDoorway.settle': production.effect.port.settle,

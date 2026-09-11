@@ -27,7 +27,6 @@ const requiredMethods = [
   ['judgment', 'readAnswer', 'JudgmentDoorway.readAnswer'],
   ['judgment', 'inspect', 'JudgmentDoorway.inspect'],
   ['effect', 'prepare', 'EffectDoorway.prepare'],
-  ['effect', 'adopt', 'EffectDoorway.adopt'],
   ['effect', 'dispatch', 'EffectDoorway.dispatch'],
   ['effect', 'handoff', 'EffectDoorway.handoff'],
   ['effect', 'observe', 'EffectDoorway.observe'],
