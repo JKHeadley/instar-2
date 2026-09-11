@@ -4,3 +4,5 @@ dist/
 .test-results.json
 .fixture-build/
 .provider-test/
+.ci-local-result.json
+p2-output.json
