@@ -9,7 +9,7 @@ import {
   admitTelegramAdapter, extractTelegramUpdate, telegramParserDeclarationId,
 } from '../../src/conversation/index.js';
 import type {
-  TelegramBotApiCustodianPort, TelegramBotDeclaration, TelegramIdentityProbe,
+  AdmittedTelegramAdapter, TelegramBotApiCustodianPort, TelegramBotDeclaration, TelegramIdentityProbe,
 } from '../../src/conversation/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
@@ -23,7 +23,8 @@ export function telegramRaw(name: TelegramFixtureName): string {
   return readFileSync(`tests/conversation/fixtures/telegram/${name}.json`, 'utf8');
 }
 
-export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; botId?: string; initialOffset?: number } = {}) {
+export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; botId?: string;
+  initialOffset?: number; skipInitialAdmission?: boolean } = {}) {
   const intake = intakeFixture();
   const assembly = assemblyRuntimeFixture(undefined, { verifiedProbes: true });
   const botId = options.botId ?? '9001';
@@ -101,8 +102,10 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
     id: 'telegram-bot-api-custodian:fixture',
     identity(input: Parameters<TelegramBotApiCustodianPort['identity']>[0]) { calls.identity.push(input); return intake.f.success(probe); },
     readCapture(reference: string) {
-      if (reference !== identityCaptureReference) throw new Error('capture absent from Telegram custodian');
-      return intake.f.success(identityCaptureBytes);
+      if (reference === identityCaptureReference) return intake.f.success(identityCaptureBytes);
+      const captured = intake.context.captures[reference];
+      if (captured?.status === 'available' && typeof captured.bytes === 'string') return intake.f.success(captured.bytes);
+      throw new Error('capture absent from Telegram custodian');
     },
     authenticate(input: Parameters<TelegramBotApiCustodianPort['authenticate']>[0]) {
       calls.authenticate.push({ token: input.token, apiVersion: input.apiVersion, route: input.route });
@@ -154,7 +157,8 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
     },
   } as const;
   const admit = (candidate: TelegramBotDeclaration = declaration) => admitTelegramAdapter(candidate, admissionDependencies);
-  const admitted = value(admit());
+  const admitted: AdmittedTelegramAdapter = options.skipInitialAdmission
+    ? undefined as unknown as AdmittedTelegramAdapter : value(admit());
 
   function bind(route: InboundRoute): FactEnvelope {
     const extracted = extractTelegramUpdate(telegramRaw('reply'), declaration);

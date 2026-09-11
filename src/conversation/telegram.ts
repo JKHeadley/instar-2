@@ -18,10 +18,11 @@ import type {
 const admittedInstances = new WeakSet<object>();
 const admissionContexts = new WeakMap<object, BoundaryContext>();
 const admissionCustodians = new WeakMap<object, TelegramBotApiCustodianPort>();
-const activePolls = new WeakSet<object>();
+const activePolls = new Set<string>();
 const replyInvocations = new WeakMap<object, Set<string>>();
 const replyOperationBindings = new WeakMap<object, Array<Readonly<{
   definition: OperationDefinition; host: EffectHost; spine: EffectSpine;
+  inhibitedOperations: ReadonlySet<string>;
 }>>>();
 const serviceKeys = Object.freeze([
   'new_chat_members', 'left_chat_member', 'new_chat_title', 'new_chat_photo', 'delete_chat_photo',
@@ -80,13 +81,14 @@ function updateEvent(update: RecordValue): { event: RecordValue; kind: TelegramU
   const supported = ['callback_query', 'edited_message', 'edited_channel_post', 'channel_post', 'message',
     'chat_join_request', 'chat_member', 'my_chat_member', 'message_reaction', 'message_reaction_count']
     .filter(key => update[key] !== undefined);
-  ensure(supported.length <= 1, 'Telegram update must contain exactly one routed variant');
+  const unsupportedRouted = Object.entries(update).filter(([key, value]) => key !== 'update_id'
+    && !supported.includes(key) && value !== null && typeof value === 'object' && !Array.isArray(value)
+    && (value as Readonly<Record<string, unknown>>).chat !== undefined);
+  ensure(supported.length + unsupportedRouted.length <= 1,
+    'Telegram update must contain exactly one routed variant');
   if (supported.length === 0) {
-    const routed = Object.entries(update).filter(([key, value]) => key !== 'update_id' && value !== null
-      && typeof value === 'object' && !Array.isArray(value)
-      && (value as Readonly<Record<string, unknown>>).chat !== undefined);
-    ensure(routed.length === 1, 'unsupported Telegram update has no unambiguous authenticated chat route');
-    const event = record(routed[0]![1], `unsupported ${routed[0]![0]}`);
+    ensure(unsupportedRouted.length === 1, 'unsupported Telegram update has no unambiguous authenticated chat route');
+    const event = record(unsupportedRouted[0]![1], `unsupported ${unsupportedRouted[0]![0]}`);
     const sender = event.sender_chat !== undefined || event.from === undefined
       ? null : record(event.from, 'unsupported sender');
     return { event, kind: 'unsupported', sender };
@@ -132,6 +134,8 @@ function extractTelegramUpdateUnchecked(raw: string, declaration: TelegramBotDec
   const messageThreadId = forum ? thread : null;
   if (!forum) ensure(thread === null, 'non-forum update carries a topic id');
   const senderChat = selected.event.sender_chat === undefined ? null : record(selected.event.sender_chat, 'sender chat');
+  if (selected.sender !== null) ensure(typeof selected.sender.is_bot === 'boolean',
+    'Telegram sender must carry a boolean is_bot discriminator');
   const botSender = selected.sender?.is_bot === true;
   const senderId = selected.sender === null
     ? `telegram:v1:channel:${String(integer(senderChat?.id ?? chat.id, 'channel sender id'))}`
@@ -193,6 +197,7 @@ function validateDeclaration(declaration: TelegramBotDeclaration): void {
   ensure(![declaration.token.vault, declaration.token.name].some(value => /^[0-9]+:[A-Za-z0-9_-]{20,}$/.test(value)),
     'credential field appears to contain token bytes instead of a vault reference');
   const mode = selectedMode(declaration);
+  ensure(mode === 'long-poll' || mode === 'webhook', 'Telegram intake mode must be long-poll or webhook');
   if (mode === 'webhook') {
     const choice = declaration.recordedEndpointChoice!;
     ensure(choice.signedChoice.owner === 'part-two' && choice.signedChoice.name === 'FactEnvelope' && choice.signedChoice.id,
@@ -200,6 +205,8 @@ function validateDeclaration(declaration: TelegramBotDeclaration): void {
     ensure(choice.endpointAvailabilityEvidence.length > 0 && choice.captureBeforeResponseEvidence.length > 0,
       'webhook requires endpoint availability and capture-before-response evidence');
   }
+  ensure(declaration.cursor.contractVersion === 'telegram-update-offset:v1',
+    'Telegram cursor contract must be telegram-update-offset:v1');
   for (const value of [declaration.cursor.initialOffset, declaration.cursor.maxBatchItems,
     declaration.cursor.maxPollSeconds, declaration.limits.maxUpdateBytes, declaration.limits.maxReplyBytes,
     declaration.limits.maxEntities, declaration.limits.maxCharge, declaration.limits.timeout])
@@ -261,8 +268,11 @@ function validateIdentityProbe(declaration: TelegramBotDeclaration, deps: Telegr
   'Telegram identity probe record does not bind the exact capture and declared bot');
 }
 
-function contractInput(declaration: TelegramBotDeclaration, deps: TelegramAdmissionDependencies, mode: 'long-poll' | 'webhook', id: string) {
+function contractInput(declaration: TelegramBotDeclaration, deps: TelegramAdmissionDependencies,
+  mode: 'long-poll' | 'webhook', probe: AdmittedTelegramAdapter['probe'], id: string) {
   const evidence = deps.evidence;
+  const evidenceRevision = hashBytes(encode({ reference: probe.reference, capture: probe.capture,
+    observedAt: probe.observedAt }));
   const capability = (name: 'application-stage' | 'prerequisite-durability', source: string, predicate: string) => ({
     name, support: 'supported', source, predicate,
     subjectBinding: 'operation+claim+account+conversation+digest', horizon: 'exact captured attempt', budget: 1,
@@ -302,7 +312,7 @@ function contractInput(declaration: TelegramBotDeclaration, deps: TelegramAdmiss
       { name: 'final-charge', support: 'unsupported', source: '', predicate: '', subjectBinding: '', horizon: '', budget: 0, conformance: '', reason: 'Bot API response does not prove a final charge' },
       capability('prerequisite-durability', 'Part Two append receipts through Part Ten custody', 'exact required facts satisfy the operation durability demand'),
     ],
-    contractVersion: `telegram:${declaration.apiVersion}:${mode}:v1`,
+    contractVersion: `telegram:${declaration.apiVersion}:${mode}:v1:evidence:${evidenceRevision}`,
   };
 }
 
@@ -318,6 +328,8 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
     ensure(deps.evidence.stages.length > 0 && deps.evidence.fixtureDigests.length > 0
       && deps.evidence.positiveFixtures.length > 0 && deps.evidence.negativeFixtures.length > 0,
       'Telegram admission requires substantive positive and negative conformance evidence');
+    ensure(deps.evidence.parserDeclaration === telegramParserDeclarationId,
+      'Telegram evidence parser declaration must match telegram-intake-v1');
     const mode = selectedMode(declaration);
     const id = `telegram:v1:bot:${declaration.bot.id}`;
     const current = take(deps.assembly.inspectCurrent());
@@ -336,7 +348,7 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
     ensure(/^sha256:[a-f0-9]{64}$/.test(probe.capture.hash) && probe.capture.reference.length > 0 && probe.reference.length > 0,
       'Telegram identity probe lacks capture-backed evidence');
     validateIdentityProbe(declaration, deps, probe);
-    const contractSeed = contractInput(declaration, deps, mode, 'pending');
+    const contractSeed = contractInput(declaration, deps, mode, probe, 'pending');
     const contractId = `telegram-contract:${take(canonical(contractSeed)).hash}`;
     const contract = take(deps.assembly.record('AdapterEvidenceContract', { ...contractSeed, id: contractId }));
     const conformanceSeed = {
@@ -451,6 +463,11 @@ function durableUpdateIds(deps: TelegramIngressDependencies): number[] {
         || typeof route.eventId !== 'string' || !/^(0|[1-9][0-9]*)$/.test(route.eventId)
         || typeof body.rawHash !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(body.rawHash)
         || capture?.hash !== body.rawHash || typeof capture.reference !== 'string' || capture.reference.length === 0) continue;
+      const capturedBytes = take(deps.api.readCapture(capture.reference));
+      if (hashBytes(capturedBytes) !== body.rawHash) continue;
+      const capturedUpdate = record(JSON.parse(capturedBytes) as unknown, 'captured Telegram update');
+      const capturedId = integer(capturedUpdate.update_id, 'captured provider update_id');
+      if (capturedId < 0 || String(capturedId) !== route.eventId) continue;
       const id = Number(route.eventId); if (Number.isSafeInteger(id)) ids.push(id);
     } catch { /* inert non-Telegram or malformed retained receipt */ }
   }
@@ -495,8 +512,9 @@ export function createTelegramIngress(deps: TelegramIngressDependencies) {
     pollOnce(): Result<TelegramPollCycle> {
       return boundary('TelegramLongPollCycle', null, deps.boundary, () => {
         ensure(deps.admitted.mode === 'long-poll', 'polling is unavailable for an admitted webhook instance');
-        ensure(!activePolls.has(deps.admitted), 'only one long poll may run for an admitted bot');
-        activePolls.add(deps.admitted);
+        const pollIdentity = deps.admitted.account;
+        ensure(!activePolls.has(pollIdentity), 'only one long poll may run for an admitted bot');
+        activePolls.add(pollIdentity);
         try {
           const requestedOffset = currentOffset();
           const batch = take(deps.api.poll({ token: deps.admitted.declaration.token,
@@ -521,7 +539,7 @@ export function createTelegramIngress(deps: TelegramIngressDependencies) {
           const nextOffset = currentOffset();
           return { requestedOffset, committedThrough: nextOffset === deps.admitted.declaration.cursor.initialOffset
             ? null : nextOffset - 1, nextOffset, captured, blockedOnUpdate };
-        } finally { activePolls.delete(deps.admitted); }
+        } finally { activePolls.delete(pollIdentity); }
       });
     },
     receiveWebhook(raw: string): Result<TelegramWebhookOutcome> {
@@ -578,6 +596,8 @@ export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAd
         });
         ensure(candidates.length === 1, 'Telegram reply operation is not registered for this admitted adapter');
         const binding = candidates[0]!;
+        ensure(!binding.inhibitedOperations.has(input.operation),
+          'Telegram reply has pre-existing executor acceptance and remains uncertain; observe only');
         const snapshot = take(binding.spine.store.readForProjection());
         ensure(snapshot.entries.every(entry => entry.taint.length === 0 && entry.conflicts.length === 0),
           'Telegram reply claim history is tainted or contested');
@@ -643,10 +663,29 @@ export function installTelegramReplyOperation(input: Readonly<{
       maxCharge: input.admitted.declaration.limits.maxCharge, timeout: input.admitted.declaration.limits.timeout,
       verificationBar: input.verificationBar,
     };
-    const installed = take(installOperationDefinition(definition, host, spine));
+    const snapshot = take(spine.store.readForProjection());
+    const recorded = snapshot.entries.filter(entry => entry.fact.kind === 'effect-OperationDefinition'
+      && (entry.fact.body as { record?: { id?: string } }).record?.id === definition.id);
+    ensure(recorded.length <= 1, 'Telegram reply operation definition is ambiguous');
+    let installed: OperationDefinition;
+    if (recorded.length === 1) {
+      const existing = recorded[0]!;
+      ensure(existing.taint.length === 0 && existing.conflicts.length === 0,
+        'Telegram reply operation definition is tainted or contested');
+      const existingDefinition = (existing.fact.body as unknown as { record: OperationDefinition }).record;
+      ensure(encode(existingDefinition) === encode(definition), 'immutable effect identity already exists with different content');
+      installed = existingDefinition;
+    } else installed = take(installOperationDefinition(definition, host, spine));
+    const requestIds = new Set(snapshot.entries.filter(entry => entry.fact.kind === 'effect-EffectRequest'
+      && (entry.fact.body as { record?: { definition?: string } }).record?.definition === installed.id)
+      .map(entry => (entry.fact.body as { record: { id: string } }).record.id));
+    const inhibitedOperations = new Set(snapshot.entries.filter(entry => entry.fact.kind === 'effect-OperationObservation')
+      .map(entry => (entry.fact.body as { record: { request?: string; operation?: string; stage?: string } }).record)
+      .filter(row => row.stage === 'executor-accepted' && row.request && requestIds.has(row.request))
+      .map(row => row.operation!).filter(Boolean));
     const existing = replyOperationBindings.get(input.admitted) ?? [];
     replyOperationBindings.set(input.admitted, [...existing.filter(row => row.definition.id !== installed.id),
-      freeze({ definition: installed, host, spine })]);
+      freeze({ definition: installed, host, spine, inhibitedOperations })]);
     return installed;
   });
 }
