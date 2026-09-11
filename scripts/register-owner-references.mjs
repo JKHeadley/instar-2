@@ -28,7 +28,7 @@ const exact = (v, keys) => {
 };
 export function loadOwnerReferences(root, input) {
   const result = { references: [], catalog: { fixtures: [], probes: [] }, decoders: [], documents: [], artifacts: {} };
-  const seen = new Set();
+  const seen = new Set(), artifactContents = new Map();
   for (const path of Object.keys(input.sources)) if (path.startsWith('register-source/owner-references/') && !ownerManifestPaths.includes(path))
     throw new Error('unknown owner manifest path ' + path);
   for (const manifestPath of ownerManifestPaths) {
@@ -44,8 +44,12 @@ export function loadOwnerReferences(root, input) {
   const artifact = (a, path) => {
     exact(a, ['path', 'hash']);
     if (a.path !== path || !input.files.includes(path)) throw new Error('wrong-owner or missing artifact: ' + path);
-    const content = execFileSync('git', ['-C', root, 'show', `${input.commit}:${path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
-    if (hash(content) !== a.hash) throw new Error('reference artifact hash differs: ' + path);
+    if (!artifactContents.has(path)) {
+      const content=execFileSync('git', ['-C', root, 'show', `${input.commit}:${path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+      artifactContents.set(path,{ content,digest:hash(content) });
+    }
+    const { content,digest }=artifactContents.get(path);
+    if (digest !== a.hash) throw new Error('reference artifact hash differs: ' + path);
     result.artifacts[path] = content;
   };
   const unique = (rows, name) => {
