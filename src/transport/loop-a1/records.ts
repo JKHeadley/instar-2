@@ -336,6 +336,26 @@ export function restorationReferenceComplete(reference: SharedLoopRecord['closur
   }).record);
 }
 
+export function currentRestorationReferences(references: SharedLoopRecord['closureEvidence'],
+  facts: readonly FactEnvelope[], context: FactContext, at: Clock, pressureKey: string,
+  operationFamily: string, host: LoopA1Host): SharedLoopRecord['closureEvidence'] {
+  return freeze(references.filter(reference => {
+    referenceCheck(reference, 'part-nine', 'VerificationAssessment');
+    const candidates = ownerRecordCandidates(facts, context, 'VerificationAssessment', reference.id);
+    ensure(candidates.length > 0, 'VerificationAssessment evidence is absent');
+    ensure(new Set(candidates.map(fact => encoded((fact.body as { record: Json }).record).bytes)).size === 1,
+      'VerificationAssessment evidence is conflicted');
+    const validity = (candidates.at(-1)!.body as {
+      record: { validFrom?: unknown; validUntil?: unknown };
+    }).record;
+    ensure(Number.isSafeInteger(validity.validFrom) && Number.isSafeInteger(validity.validUntil),
+      'VerificationAssessment validity is incomplete');
+    if (at.value < (validity.validFrom as number) || at.value >= (validity.validUntil as number)) return false;
+    resolveRestorationReference(reference, facts, context, at, pressureKey, operationFamily, host, false);
+    return true;
+  }));
+}
+
 function sharedLoopMeasurements(record: SharedLoopRecord, host: LoopA1Host): void {
   const values = [record.transitionAt, record.nextEligible, record.breakerFirstOpened,
     ...record.attemptLog.map(value => value.admittedAt),
@@ -734,6 +754,10 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
         record.closureSubmission?.attempt ?? record.evidenceSubmission?.attempt))),
   'shared pressure history reset or changed');
   ensure(previous.state !== 'stopped', 'terminal loop episode cannot transition');
+  const currentClosureEvidence = evidenceFacts && context
+    ? currentRestorationReferences(previous.closureEvidence, evidenceFacts, context, record.transitionAt,
+      record.pressureKey, record.operationFamily, host)
+    : previous.closureEvidence;
   const unchangedAttempts = encoded(record.attemptLog).bytes === encoded(previous.attemptLog).bytes;
   const unchangedOutcomes = encoded(record.outcomeLog).bytes === encoded(previous.outcomeLog).bytes;
   if (record.transition === 'stopped') {
@@ -852,7 +876,7 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
     ensure(completeRestoration.length === 0 || previous.pendingAttempts.length > 0
       || previous.halfOpenSucceeded < previous.policy.halfOpenTrials,
     'complete restoration evidence must use the closing transition');
-    const closureEvidence = freeze([...new Map([...previous.closureEvidence, ...completeRestoration]
+    const closureEvidence = freeze([...new Map([...currentClosureEvidence, ...completeRestoration]
       .map(value => [value.id, value])).values()]);
     const restoration = freeze([...new Map([...existing.restoration, ...submission.restoration]
       .map(value => [value.id, value])).values()]);
@@ -907,9 +931,9 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
       ? submission.restoration.filter(reference => restorationReferenceComplete(reference, evidenceFacts, context,
         record.transitionAt, record.pressureKey, record.operationFamily, host, false))
       : submission.restoration.filter(reference => record.closureEvidence.some(value => value.id === reference.id));
-    const closureEvidence = freeze([...new Map([...previous.closureEvidence, ...completeRestoration]
+    const closureEvidence = freeze([...new Map([...currentClosureEvidence, ...completeRestoration]
       .map(value => [value.id, value])).values()]);
-    ensure(completeRestoration.length > 0 && closureEvidence.length > previous.closureEvidence.length,
+    ensure(completeRestoration.some(reference => !previous.closureEvidence.some(old => old.id === reference.id)),
       'evidence-only closure lacks new complete restoration support');
     const restoration = freeze([...new Map([...existing.restoration, ...submission.restoration]
       .map(value => [value.id, value])).values()]);
@@ -992,7 +1016,8 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
     ? added.restoration.filter(reference => restorationReferenceComplete(reference, evidenceFacts, context,
       record.transitionAt, record.pressureKey, record.operationFamily, host, false))
     : added.restoration.filter(reference => record.closureEvidence.some(value => value.id === reference.id));
-  const expected = sharedOutcomeDecision(previous, added, record.transitionAt, completeRestoration);
+  const expected = sharedOutcomeDecision({ ...previous, closureEvidence: currentClosureEvidence },
+    added, record.transitionAt, completeRestoration);
   const successor = freeze({
     ...withoutSubmission(previous),
     schemaVersion: record.schemaVersion,

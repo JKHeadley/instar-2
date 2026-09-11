@@ -90,6 +90,11 @@ export const transportSeamEvidence = [
   ['SLB-A1-COMPLETE-RETENTION-121', 'integration', 'V15 complete evidence survives durable restart cuts until trials finish'],
   ['SLB-A1-EXPIRED-RETRY-122', 'integration', 'V17 and V24 exact durable close retries survive expiry and lost acknowledgment'],
   ['SLB-A1-REPAIR19-E2E-123', 'e2e', 'fresh processes replay V15 complete retention and V17 expired close retry'],
+  ['SLB-A1-ORDINARY-REPLAY-124', 'integration', 'V18 ordinary outcome replay survives evidence expiry and both append cuts'],
+  ['SLB-A1-CURRENT-PROOF-125', 'integration', 'V20 and V34 use only current closure candidates while retaining outcomes'],
+  ['SLB-A1-CLOSED-REFERENCES-126', 'integration', 'V24 and V24b refuse undeclared fields in all new request references'],
+  ['SLB-A1-CURRENT-PROOF-REPLAY-127', 'unit', 'signed replay derives the same current closure candidates as live append'],
+  ['SLB-A1-ORDINARY-REPLAY-E2E-128', 'e2e', 'V31 fresh process returns the durable ordinary close after expiry'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

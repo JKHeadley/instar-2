@@ -17,6 +17,7 @@ import type {
 import {
   atOrAfter,
   checkLoopA1Fence,
+  currentRestorationReferences,
   failureCountAt,
   latestSharedLoopByParent,
   registerLoopA1Bodies,
@@ -160,6 +161,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
       rejectRequestExtensions(input);
       closedInput(input, ['command', 'fence', 'currentOwnerRun', 'policy', 'episodeKey',
         'operationFamily', 'pressureScope', 'sourceVector'], 'closed A1 schedule input required');
+      closedInput(input.currentOwnerRun, ['owner', 'name', 'id'], 'closed Run reference required');
       requireOpaqueSourceReference(input.sourceVector);
       const all = read();
       fence(all, input.fence);
@@ -257,6 +259,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
     admitLoopAttempt: input => checked('SharedLoopAttemptAdmissionA1', input, () => {
       rejectTransitionExtensions(input);
       closedInput(input, ['command', 'fence', 'episode', 'attempt'], 'closed A1 attempt input required');
+      closedInput(input.episode, ['owner', 'name', 'id'], 'closed LoopRecord reference required');
       const all = read();
       fence(all, input.fence);
       ensure(input.episode.owner === 'part-six' && input.episode.name === 'LoopRecord'
@@ -326,6 +329,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
       rejectTransitionExtensions(input);
       closedInput(input, ['command', 'fence', 'episode', 'attempt', 'kind', 'failureClass',
         'completion', 'jitterPermille', 'restoration'], 'closed A1 outcome input required');
+      closedInput(input.episode, ['owner', 'name', 'id'], 'closed LoopRecord reference required');
       const all = read();
       fence(all, input.fence);
       ensure(input.episode.owner === 'part-six' && input.episode.name === 'LoopRecord'
@@ -348,9 +352,16 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
         sharedLoopEvidence(previous, history, spine.context, host);
         return previous;
       }
+      const existing = previous.outcomeLog.find(value => value.attempt === input.attempt);
+      if (existing && existing.kind === input.kind && existing.failureClass === input.failureClass
+        && existing.jitterPermille === input.jitterPermille
+        && encoded(existing.completion).bytes === encoded(input.completion).bytes
+        && encoded(existing.restoration).bytes === encoded(input.restoration).bytes) {
+        sharedLoopEvidence(previous, history, spine.context, host);
+        return previous;
+      }
       const completeRestoration = input.restoration.filter(reference => restorationReferenceComplete(reference,
         history, spine.context, now, previous.pressureKey, previous.operationFamily, host));
-      const existing = previous.outcomeLog.find(value => value.attempt === input.attempt);
       if (existing) {
         ensure(existing.kind === input.kind && existing.failureClass === input.failureClass
           && existing.jitterPermille === input.jitterPermille
@@ -363,12 +374,14 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
         const outcomeLog = freeze(previous.outcomeLog.map(value => value.attempt === existing.attempt
           ? freeze({ ...value, restoration } as LoopOutcome) : value));
         const currentOutcomes = windowAt({ policy: previous.policy, outcomeLog }, now);
-        const closureEvidence = freeze([...new Map([...previous.closureEvidence, ...completeRestoration]
+        const currentClosureEvidence = currentRestorationReferences(previous.closureEvidence, history,
+          spine.context, now, previous.pressureKey, previous.operationFamily, host);
+        const closureEvidence = freeze([...new Map([...currentClosureEvidence, ...completeRestoration]
           .map(value => [value.id, value])).values()]);
         const mayClose = input.kind === 'accepted' && completeRestoration.length > 0
           && previous.state === 'half-open' && previous.pendingAttempts.length === 0
           && previous.halfOpenSucceeded >= previous.policy.halfOpenTrials
-          && closureEvidence.length > previous.closureEvidence.length;
+          && completeRestoration.some(reference => !previous.closureEvidence.some(old => old.id === reference.id));
         if (!mayClose) {
           ensure(input.kind === 'accepted' && previous.state === 'half-open'
             && (completeRestoration.length === 0 || previous.pendingAttempts.length > 0
@@ -432,7 +445,10 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
       } as LoopOutcome);
       ensure(atOrAfter(outcome.observedAt, attempt.admittedAt) && atOrAfter(now, outcome.observedAt),
         'outcome evidence or receipt clock precedes its admission');
-      const decision = sharedOutcomeDecision(previous, outcome, now, completeRestoration);
+      const currentClosureEvidence = currentRestorationReferences(previous.closureEvidence, history,
+        spine.context, now, previous.pressureKey, previous.operationFamily, host);
+      const decision = sharedOutcomeDecision({ ...previous, closureEvidence: currentClosureEvidence },
+        outcome, now, completeRestoration);
       const record = freeze({
         ...withoutSubmission(previous),
         ...meta(all, input.command),
