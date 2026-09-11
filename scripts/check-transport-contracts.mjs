@@ -99,6 +99,7 @@ export const transportSeamEvidence = [
   ['SLB-A1-REPEATED-REFERENCE-SHAPE-130', 'integration', 'V21 malformed repeated restoration references refuse before retry deduplication'],
   ['SLB-A1-FACT-REFERENCE-CONFLICT-131', 'integration', 'V23 physical fact references expose every conflicting logical assessment'],
   ['SLB-A1-COMMAND-SHAPE-132', 'integration', 'empty, wrong-type and oversized command identifiers refuse before repeated-request lookup; valid neighbors remain accepted'],
+  ['SLB-A1-EQUIVALENT-WITNESSES-133', 'integration', 'identical policy and assessment copies preserve signed witnesses; conflicting values still refuse'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

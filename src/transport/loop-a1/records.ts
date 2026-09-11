@@ -115,6 +115,13 @@ function schemaOwns(context: FactContext, fact: FactEnvelope, field: string, own
 function allFacts(facts: readonly FactEnvelope[]): readonly FactEnvelope[] {
   return [...new Map(facts.map(fact => [fact.id, fact])).values()];
 }
+function recordedWitnesses(facts: readonly FactEnvelope[], required?: readonly string[]): readonly FactEnvelope[] {
+  if (!required) return facts;
+  const requiredSet = new Set(required);
+  const witnessed = facts.filter(fact => requiredSet.has(fact.id));
+  ensure(witnessed.length > 0, 'owner evidence is outside the signed required-reference set');
+  return witnessed;
+}
 function requireUsableFacts(facts: readonly FactEnvelope[], context: FactContext,
   history: readonly FactEnvelope[] = context.facts): void {
   const population = allFacts([...context.facts, ...history]);
@@ -148,7 +155,8 @@ export function resolveRunReference(reference: RunReference, facts: readonly Fac
 }
 
 export function resolvePolicyFact(policyValue: SharedBreakerLoopPolicy, generation: string,
-  facts: readonly FactEnvelope[], context: FactContext, status = true): FactEnvelope {
+  facts: readonly FactEnvelope[], context: FactContext, status = true,
+  required?: readonly string[]): FactEnvelope {
   const candidates = allFacts(facts).filter(fact => fact.kind === `transport-${sharedLoopPolicyOwnedName}`
     && schemaOwns(context, fact, 'policy', 'part-six', sharedLoopPolicyOwnedName))
     .filter(fact => (fact.body as { policy?: { id?: unknown }; generation?: unknown }).policy?.id === policyValue.id
@@ -159,7 +167,7 @@ export function resolvePolicyFact(policyValue: SharedBreakerLoopPolicy, generati
     'governed loop policy differs from the pinned value');
   ensure(new Set(values.map(value => encoded(value).bytes)).size === 1, 'governed loop policy is conflicted');
   if (status) requireUsableFacts(candidates, context, facts);
-  return candidates.at(-1)!;
+  return recordedWitnesses(candidates, required).at(-1)!;
 }
 
 export function resolvePressureBinding(record: Pick<SharedLoopRecord,
@@ -247,13 +255,18 @@ function restorationAssessmentComplete(record: Readonly<{
 
 export function resolveRestorationReference(reference: SharedLoopRecord['closureEvidence'][number],
   facts: readonly FactEnvelope[], context: FactContext, at: Clock, pressureKey: string,
-  operationFamily: string, host: LoopA1Host, status = true, requireComplete = true): readonly FactEnvelope[] {
+  operationFamily: string, host: LoopA1Host, status = true, requireComplete = true,
+  required?: readonly string[]): readonly FactEnvelope[] {
   referenceCheck(reference, 'part-nine', 'VerificationAssessment');
   const candidates = restorationAssessmentCandidates(facts, context, reference.id);
   ensure(candidates.length > 0, 'VerificationAssessment evidence is absent');
   ensure(new Set(candidates.map(fact => encoded((fact.body as { record: Json }).record).bytes)).size === 1,
     'VerificationAssessment evidence is conflicted');
-  const fact = candidates.at(-1)!;
+  const witnessed = recordedWitnesses(candidates, required);
+  const addressed = candidates.find(fact => fact.id === reference.id);
+  ensure(!addressed || !required || required.includes(addressed.id),
+    'owner evidence is outside the signed required-reference set');
+  const fact = addressed ?? witnessed.at(-1)!;
   const record = (fact.body as { record: {
     request?: unknown;
     predecessors?: unknown;
@@ -313,7 +326,7 @@ export function resolveRestorationReference(reference: SharedLoopRecord['closure
   const evidenceFacts = evidenceIds.map(id => evidenceFact(id as string, facts, context));
   const superseded = typeof record.supersedes === 'string' && record.supersedes.length > 0
     ? [uniqueOwnerRecord(facts, context, 'VerificationAssessment', record.supersedes)] : [];
-  const support = [...new Map([...candidates, requestFact, planFact, ...evidenceFacts, ...superseded]
+  const support = [...new Map([...witnessed, requestFact, planFact, ...evidenceFacts, ...superseded]
     .map(value => [value.id, value])).values()];
   ensure([requestFact, ...evidenceFacts, ...superseded].every(value => predecessors.includes(value.id)),
     'VerificationAssessment support is outside its signed predecessor set');
@@ -455,11 +468,11 @@ function restorationIntroductionAt(record: SharedLoopRecord, outcome: LoopOutcom
 }
 
 export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly FactEnvelope[], context: FactContext,
-  host: LoopA1Host): readonly FactEnvelope[] {
+  host: LoopA1Host, required?: readonly string[]): readonly FactEnvelope[] {
   const history = allFacts(facts);
   sharedLoopMeasurements(record, host);
   const dependencies: FactEnvelope[] = [
-    resolvePolicyFact(record.policy, record.policyGeneration.id, history, context, false),
+    resolvePolicyFact(record.policy, record.policyGeneration.id, history, context, false, required),
     resolveRunReference(record.currentOwnerRun, history, context, false),
     resolvePressureBinding(record, history, context, host, false),
   ];
@@ -468,7 +481,7 @@ export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly Fac
     for (const reference of outcome.restoration) {
       dependencies.push(...resolveRestorationReference(reference, history, context,
         restorationIntroductionAt(record, outcome, reference, history),
-        record.pressureKey, record.operationFamily, host, false, false));
+        record.pressureKey, record.operationFamily, host, false, false, required));
     }
   }
   for (const reference of record.closureEvidence) {
@@ -479,7 +492,7 @@ export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly Fac
       : record.transitionAt;
     dependencies.push(...resolveRestorationReference(reference, history, context,
       record.transition === 'closed' ? record.transitionAt : contributedAt,
-      record.pressureKey, record.operationFamily, host, false));
+      record.pressureKey, record.operationFamily, host, false, true, required));
   }
   const unique = [...new Map(dependencies.map(fact => [fact.id, fact])).values()];
   requireUsableFacts(unique, context, history);
@@ -488,7 +501,7 @@ export function sharedLoopEvidence(record: SharedLoopRecord, facts: readonly Fac
 
 function resolveSharedLoopEvidence(record: SharedLoopRecord, origin: FactEnvelope,
   facts: readonly FactEnvelope[], context: FactContext, host: LoopA1Host): readonly string[] {
-  const dependencies = sharedLoopEvidence(record, facts, context, host);
+  const dependencies = sharedLoopEvidence(record, facts, context, host, origin.predecessors.required);
   requiredBy(origin, dependencies);
   return dependencies.map(fact => fact.id);
 }
