@@ -1,0 +1,12 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "scheduled-work.contract", "kind": "governed documents", "status": "dark",
+    "requiredFacts": { "location": "docs/19-scheduled-work.md", "changelog": "git-history:docs/19-scheduled-work.md" },
+    "standards": [], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "scheduled-work.source", "kind": "protected artifacts", "status": "dark",
+    "requiredFacts": { "pattern": "src/scheduled/**", "why": "Scheduled package resources and occurrence planning must preserve canonical identity and stop at unlanded owner seams.", "surface": "repository review approval" },
+    "standards": [], "holds": []
+  }
+]
