@@ -5,17 +5,16 @@
 // must never depend on them. What a single machine genuinely cannot reproduce (the two-
 // architecture compare) is reported as such — never as a pass.
 //
-//   node scripts/ci-local.mjs [--skip-install] [--out .ci-local-result.json]
+//   node scripts/ci-local.mjs [--out .ci-local-result.json]
 //
-// Exit status is 0 only when at least one required step executed and passed and none failed.
-// --skip-install records both workflow `npm ci` steps as skipped-by-flag (verdict
-// 'passed-with-skipped-installs', never 'passed'); a run with no verified checks is 'failed'.
+// There is deliberately no shortcut flag: every run is the full parity run, including both
+// workflow `npm ci` steps. Exit status is 0 only when at least one required step executed and
+// passed and none failed; a run with no verified checks is 'failed' (no-verified-checks).
 import { spawnSync } from 'node:child_process';
 import { writeFileSync, existsSync } from 'node:fs';
 import { hostname } from 'node:os';
 
 const args = process.argv.slice(2);
-const skipInstall = args.includes('--skip-install');
 const outIdx = args.indexOf('--out');
 const outPath = outIdx >= 0 ? args[outIdx + 1] : '.ci-local-result.json';
 
@@ -29,10 +28,6 @@ function run(id, workflow, title, cmd, { required = true, shell = true } = {}) {
   steps.push({ id, workflow, title, cmd, required, status, exit: r.status, startedAt, elapsedMs: Date.now() - t0 });
   process.stdout.write(`=== ${status.toUpperCase()} (${((Date.now() - t0) / 1000).toFixed(1)}s)\n`);
   return r.status === 0;
-}
-function skippedByFlag(id, workflow, title, cmd) {
-  steps.push({ id, workflow, title, cmd, required: true, status: 'skipped-by-flag', reason: '--skip-install was passed; this step ran in neither form' });
-  process.stdout.write(`\n=== [${workflow}] ${title}\n=== SKIPPED BY --skip-install (recorded, not passed)\n`);
 }
 function skip(id, workflow, title, reason) {
   steps.push({ id, workflow, title, required: false, status: 'not-reproducible-locally', reason });
@@ -53,8 +48,7 @@ run('doc-4', 'document-checks', 'no whitespace errors',
   'git diff --check origin/main...HEAD || git diff --check HEAD~1');
 
 // types-checks.yml — contract job (this machine's architecture)
-if (skipInstall) skippedByFlag('types-0', 'constitutional-types', 'npm ci (contract job)', 'npm ci');
-else run('types-0', 'constitutional-types', 'npm ci (contract job)', 'npm ci');
+run('types-0', 'constitutional-types', 'npm ci (contract job)', 'npm ci');
 run('types-1', 'constitutional-types', 'npm run test:all', 'npm run test:all');
 run('types-2', 'constitutional-types', `architecture is ${process.arch}`,
   `node -e "if (process.arch !== '${process.arch}') process.exit(1)"`);
@@ -63,27 +57,25 @@ skip('types-4', 'constitutional-types', 'cross-architecture compare of p2-output
   `only ${process.arch} is available on this machine; GitHub compares x64 against arm64`);
 skip('types-5', 'constitutional-types', 'P3-NF-07 register.json compare across architectures',
   `only ${process.arch} is available on this machine; generated/register.json ${existsSync('generated/register.json') ? 'was produced' : 'is missing'}`);
-if (skipInstall) skippedByFlag('types-6a', 'constitutional-types', 'npm ci (p3-body-seam job)', 'npm ci');
-else run('types-6a', 'constitutional-types', 'npm ci (p3-body-seam job)', 'npm ci');
+run('types-6a', 'constitutional-types', 'npm ci (p3-body-seam job)', 'npm ci');
 run('types-6', 'constitutional-types', 'p3 body seam (npm run build && test-p3-body-seam)',
   'npm run build && node scripts/test-p3-body-seam.mjs .');
 
 const failed = steps.filter((s) => s.required && s.status === 'failed');
 const passedRequired = steps.filter((s) => s.required && s.status === 'passed');
-const skippedByFlagSteps = steps.filter((s) => s.status === 'skipped-by-flag');
 // A verdict is only ever 'passed' when at least one required step actually executed and passed;
-// a run consisting solely of skipped / not-reproducible steps is 'failed' (reason below), never a pass.
-let verdict = failed.length > 0 ? 'failed' : passedRequired.length === 0 ? 'failed' : skippedByFlagSteps.length > 0 ? 'passed-with-skipped-installs' : 'passed';
-const verdictReason = failed.length > 0 ? `${failed.length} required step(s) failed` : passedRequired.length === 0 ? 'no-verified-checks: no required step executed and passed' : skippedByFlagSteps.length > 0 ? `${skippedByFlagSteps.length} install step(s) skipped by --skip-install; not a full parity run` : 'every reproducible required step passed';
+// a run consisting solely of not-reproducible steps is 'failed' (reason below), never a pass.
+const verdict = failed.length > 0 ? 'failed' : passedRequired.length === 0 ? 'failed' : 'passed';
+const verdictReason = failed.length > 0 ? `${failed.length} required step(s) failed` : passedRequired.length === 0 ? 'no-verified-checks: no required step executed and passed' : 'every reproducible required step passed';
 const result = {
   schema: 'ci-local/1',
   head, arch: process.arch, node: nodeVersion, machine: hostname(),
   finishedAt: new Date().toISOString(),
   verdict, verdictReason,
-  passedRequiredCount: passedRequired.length, skippedByFlagCount: skippedByFlagSteps.length,
+  passedRequiredCount: passedRequired.length,
   reproducedWorkflows: ['document-checks', 'constitutional-types (single architecture)'],
   steps,
 };
 writeFileSync(outPath, JSON.stringify(result, null, 2) + '\n');
-process.stdout.write(`\n=== ci-local ${result.verdict.toUpperCase()} (${verdictReason}) at ${head.slice(0, 8)} (${process.arch}, node ${nodeVersion}); ${passedRequired.length} passed, ${failed.length} failed, ${skippedByFlagSteps.length} skipped by flag, ${steps.filter((s) => s.status === 'not-reproducible-locally').length} not reproducible locally -> ${outPath}\n`);
+process.stdout.write(`\n=== ci-local ${result.verdict.toUpperCase()} (${verdictReason}) at ${head.slice(0, 8)} (${process.arch}, node ${nodeVersion}); ${passedRequired.length} passed, ${failed.length} failed, ${steps.filter((s) => s.status === 'not-reproducible-locally').length} not reproducible locally -> ${outPath}\n`);
 process.exit(verdict === 'failed' ? 1 : 0);
