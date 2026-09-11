@@ -10,11 +10,8 @@ import {
 import { refused, value } from '../facts/fixtures.js';
 import { measurementFixture } from './fixture.js';
 
-const a1Labels = 'P16-NF-01 P16-NF-02 P16-NF-03 P16-NF-05 P16-NF-22 P16-NF-23 P16-NF-24 '
-  + 'P16-NF-25 P16-NF-26 P16-NF-27 P16-NF-28 P16-NF-29 P16-NF-30 P16-NF-52 P16-NF-53';
-
 describe('Part 16 slice A1 foundation', () => {
-  it(`${a1Labels} validates only the A1 registration and resource/process/census surface`, () => {
+  it('P16-NF-23 [behavior:observational-port] validates only the observational A1 holder surface', () => {
     const f = measurementFixture();
     const ledger = createMeasurementLedger(f.c);
     expect(ledger.owner).toBe('part-sixteen');
@@ -51,12 +48,12 @@ describe('Part 16 slice A1 foundation', () => {
       .toEqual(['input', 'output']);
     refused(decodeMeasurementProducerContract(f.producerInput({
       categories: [{ name: 'fictional-token', unit: 'tokens', relation: 'standalone' }],
-    }), f.c), 'current registered content');
+    }), f.c), 'content binding');
     expect(value(admitMeasurementAmount({ contract: f.producer, category: 'output', amount: 7 }, f.c)).amount).toBe(7);
     refused(admitMeasurementAmount({ contract: f.producer, category: 'fictional-token', amount: 7 }, f.c), 'not registered');
   });
 
-  it('F11 process:false-is-not-absence quota:malformed-prior-episodes preserve typed absence and state', () => {
+  it('P16-NF-26 [behavior:process-incarnation] F11 process:false-is-not-absence preserves typed absence and state', () => {
     const f = measurementFixture();
     const process = { processIncarnation: 'process:1', pid: 7, startEvidence: 'start:1', tags: ['worker'] };
     expect(value(reconcileProcessIncarnation(process, null, f.c))).toBe('missing');
@@ -82,24 +79,21 @@ describe('Part 16 slice A1 foundation', () => {
       expect(Object.isFrozen(decoded)).toBe(true);
       expect(value(canonical(decoded)).bytes.length).toBeGreaterThan(10);
     }
-    refused(decodeBurnPolicy({ ...f.burnPolicyInput, entryExcess: 51 }, f.c), 'current registered content');
-    refused(decodeReadCachePolicy({ ...f.cachePolicyInput, maxRows: 3 }, f.c), 'current registered content');
+    refused(decodeBurnPolicy({ ...f.burnPolicyInput, entryExcess: 51 }, f.c), 'content binding');
+    refused(decodeReadCachePolicy({ ...f.cachePolicyInput, maxRows: 3 }, f.c), 'content binding');
 
     const current = { type: 'MeasurementProducerContract', schemaVersion: 2, id: 'producer:legacy',
       family: 'model-call', subjectKind: 'model-token', producer: 'probe',
       categories: [{ name: 'value', unit: 'tokens', relation: 'standalone' }],
       evidencePredicate: 'usage-observed', sourceSampleRequired: true, hardwareProfileRequired: false } as const;
-    const context = f.withRegistered(current, { ...f.c,
-      register: { ...f.c.register, entries: [...f.c.register.entries, 'producer:legacy'] },
-      types: { ...f.c.types, register: { ...f.c.types.register,
-        entries: [...f.c.types.register.entries, 'producer:legacy'] } } });
+    const context = f.withRegistered(current);
     const legacy = { type: 'MeasurementProducerContract', schemaVersion: 1, id: 'producer:legacy',
       family: 'model-call', subjectKind: 'model-token', producer: 'probe', unit: 'tokens',
       evidencePredicate: 'usage-observed' };
     expect(value(compareMeasurementProducerContracts(legacy, current, context))).toBe(true);
   });
 
-  it('resource/process/census validation preserves fractions, failures, identities, bounds, and private-data exclusion', () => {
+  it('P16-NF-24 [behavior:rate-event-populations] resource/rate validation keeps source populations distinct', () => {
     const f = measurementFixture();
     expect(value(cpuUtilization(f.resourcePoint('cpu', 100, 1), 4, 'one-core', f.c))).toBe(50);
     expect(value(cpuUtilization(f.resourcePoint('cpu-fraction', 100, 1,
@@ -128,7 +122,7 @@ describe('Part 16 slice A1 foundation', () => {
     ], f.clock(0), f.clock(3_600_000), f.c))).toMatchObject({ counts: { '529': 1, 'circuit-open': 1 } });
   });
 
-  it('measurement language and feature outcome classification remain observational', () => {
+  it('P16-NF-05 [behavior:measured-claim] measurement language requires real execution evidence', () => {
     const f = measurementFixture();
     expect(value(renderMeasurementClaim({ kind: 'target', hardware: null, workload: null, evidence: [] }, f.c)))
       .toBe('target: not measured');

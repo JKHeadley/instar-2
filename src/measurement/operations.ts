@@ -1,6 +1,6 @@
-import { compareMeasurements, decodeMeasurement, readEvidence } from '../index.js';
+import { compareMeasurements, decode, decodeMeasurement, readEvidence } from '../index.js';
 import type { BoundaryContext, Clock, Result } from '../index.js';
-import { boundary, encoding, ensure, freeze, take } from './boundary.js';
+import { boundary, contentRegistrationId, encoding, ensure, freeze, take } from './boundary.js';
 import type {
   AdmittedMeasurementAmount, ClassifiedFootprint, ClassifiedLegacyResourceObservation,
   FeatureOutcomeClassificationRequest, LegacyResourceObservation, MeasurementAmountInput,
@@ -59,8 +59,8 @@ export function admitMeasurementAmount(input: MeasurementAmountInput,
     const category = input.contract.categories.find(row => row.name === input.category);
     ensure(category !== undefined, 'measurement category is not registered by this producer contract');
     const amount = finiteNonnegative(input.amount, 'measurement amount');
-    if (category.unit === 'tokens')
-      ensure(Number.isSafeInteger(amount), 'token quantity must be a nonnegative safe integer');
+    if (category.unit === 'tokens' || category.unit === 'bytes')
+      ensure(Number.isSafeInteger(amount), `${category.unit} quantity must be a nonnegative safe integer`);
     return freeze({ family: input.contract.family, subjectKind: input.contract.subjectKind,
       category: category.name, unit: category.unit, amount });
   });
@@ -98,8 +98,14 @@ export function renderMeasurementClaim(input: Readonly<{
 export function coalesceUnknownQuotaEpisodes(keys: readonly string[], alreadyOpen: readonly string[],
   context: BoundaryContext): Result<Readonly<{ notices: readonly string[]; open: readonly string[] }>> {
   return boundary('QuotaUnknownEpisodeCoalescing', { keys, alreadyOpen }, context, () => {
-    const admittedKeys = exactTextArray(keys, 'quota episode keys');
-    const admittedOpen = exactTextArray(alreadyOpen, 'open quota episode keys');
+    const admitRepeated = (input: unknown, field: string): readonly string[] => {
+      ensure(Array.isArray(input) && input.length <= 1024
+        && input.every(value => typeof value === 'string' && value.trim().length > 0 && value.length <= 4096),
+      `${field} must be a bounded substantive text array`);
+      return input;
+    };
+    const admittedKeys = admitRepeated(keys, 'quota episode keys');
+    const admittedOpen = admitRepeated(alreadyOpen, 'open quota episode keys');
     const open = [...new Set([...admittedOpen, ...admittedKeys])].sort();
     const prior = new Set(admittedOpen);
     return freeze({ notices: [...new Set(admittedKeys)].filter(key => !prior.has(key)).sort(), open });
@@ -195,6 +201,8 @@ export function planProcessCensus(processes: readonly ProcessDescriptor[], limit
     processes.forEach(validateProcessDescriptor);
     const identities = processes.map(row => row.processIncarnation);
     ensure(new Set(identities).size === identities.length, 'process incarnations must be unique');
+    ensure(new Set(processes.map(row => row.pid)).size === processes.length,
+      'one census cannot contain several incarnations for one PID');
     const batch = processes.slice(0, limit);
     return freeze({ batch, examined: batch.length, omitted: Math.max(0, processes.length - limit),
       truncated: processes.length > limit });
@@ -202,7 +210,7 @@ export function planProcessCensus(processes: readonly ProcessDescriptor[], limit
 }
 
 export function classifyProcesses(processes: readonly ProcessDescriptor[], rules: readonly ProcessClassRule[],
-  context: BoundaryContext): Result<ClassifiedFootprint> {
+  context: MeasurementDecodeContext): Result<ClassifiedFootprint> {
   return boundary('ProcessFootprintClassification', { processes, rules }, context, () => {
     ensure(Array.isArray(processes) && Array.isArray(rules), 'processes and rules must be arrays');
     processes.forEach(validateProcessDescriptor);
@@ -214,6 +222,8 @@ export function classifyProcesses(processes: readonly ProcessDescriptor[], rules
       ensure(context.register.entries.includes(rule.className), 'process class is not registered');
       exactTextArray(rule.requiredTags, 'required process tags', 256);
       ensure(rule.requiredTags.length > 0, 'process class requires at least one tag');
+      ensure(context.register.entries.includes(contentRegistrationId(rule)),
+        'process class rule content binding is not registered');
     }
     ensure(new Set(rules.map(row => row.className)).size === rules.length, 'duplicate process class');
     const counts: Record<string, number> = Object.fromEntries(rules.map(row => [row.className, 0]));
@@ -299,10 +309,12 @@ export function resourceTrend(points: readonly ResourcePoint[], minimumSamples: 
       'trend minimum must be at least two');
     const reasons: string[] = [];
     const bySample = new Map<string, ResourcePoint[]>();
+    const witnessIds = new Set<string>();
     for (const raw of points) {
       const point = validateResourcePoint(raw, context);
+      ensure(!witnessIds.has(point.id), 'resource witness identity repeated');
+      witnessIds.add(point.id);
       const witnesses = bySample.get(point.sourceSample) ?? [];
-      ensure(!witnesses.some(prior => prior.id === point.id), 'resource witness identity repeated');
       witnesses.push(point); bySample.set(point.sourceSample, witnesses);
     }
     const samples = [...bySample.values()].map(witnesses => {
@@ -343,21 +355,38 @@ export function classifyFeatureOutcome(input: FeatureOutcomeClassificationReques
       'feature classifier outside closed set');
     ensure(typeof input.actionProved === 'boolean' && typeof input.negativeProved === 'boolean'
       && typeof input.gradeOnly === 'boolean', 'feature classifier flags must be boolean');
+    ensure(!(input.actionProved && input.negativeProved), 'classifier evidence contradicts itself');
+    const hasEvidence = Object.hasOwn(input, 'evidence');
+    const decodedEvidence = hasEvidence ? take(decode('Evidence', input.evidence, context.types)) : undefined;
+    if (decodedEvidence)
+      ensure(encoding(decodedEvidence).bytes === encoding(input.evidence).bytes,
+        'feature evidence must be an admitted Evidence record');
     if (input.kind !== 'exchange') {
       ensure(input.feature === null && input.action === null && input.evaluationClock === null
-        && input.evidence === undefined, 'non-exchange outcome cannot carry action-classifier authority');
+        && !hasEvidence, 'non-exchange outcome cannot carry action-classifier authority');
       return input.kind;
     }
-    substantive(input.feature, 'feature identity');
-    ensure(context.register.entries.includes(input.feature as string), 'feature identity is not registered');
-    ensure(input.action === 'feature-action-observed', 'feature action predicate is not registered');
-    ensure(input.evaluationClock !== null, 'feature classification requires an explicit evaluation clock');
-    const evaluationClock = admittedClock(input.evaluationClock, context, 'feature evaluation clock');
+    if (input.feature !== null) {
+      substantive(input.feature, 'feature identity');
+      ensure(context.register.entries.includes(input.feature), 'feature identity is not registered');
+    }
+    ensure(input.action === null || input.action === 'feature-action-observed',
+      'feature action predicate is not registered');
+    const evaluationClock = input.evaluationClock === null ? null
+      : admittedClock(input.evaluationClock, context, 'feature evaluation clock');
+    if (input.classifier === 'absent') {
+      ensure(!input.actionProved && !input.negativeProved && input.action === null,
+        'absent classifier cannot carry an action conclusion');
+      return 'unclassified';
+    }
     if (input.classifier !== 'complete' || input.gradeOnly) return 'unclassified';
-    ensure(!(input.actionProved && input.negativeProved), 'classifier evidence contradicts itself');
+    ensure(input.feature !== null, 'complete classifier requires a registered feature identity');
+    ensure(input.action === 'feature-action-observed', 'feature action predicate is not registered');
+    ensure(evaluationClock !== null, 'feature classification requires an explicit evaluation clock');
     if (!input.actionProved && !input.negativeProved) return 'unclassified';
-    if (!input.evidence || !(context.types.evidence ?? []).includes(input.evidence)) return 'unclassified';
-    const claim = take(readEvidence(input.evidence, evaluationClock, context.preserved));
+    if (!decodedEvidence || !(context.types.evidence ?? []).includes(input.evidence!)) return 'unclassified';
+    take(compareMeasurements(decodedEvidence.observedAt, evaluationClock, context.preserved));
+    const claim = take(readEvidence(decodedEvidence, evaluationClock, context.preserved));
     const expected = input.actionProved ? 'fired' : 'no-op';
     return claim.subject === input.feature && claim.predicate === input.action && claim.value === expected
       ? expected : 'unclassified';

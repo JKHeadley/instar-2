@@ -28,6 +28,11 @@ export function encoding(value: unknown): Readonly<{ bytes: string; hash: `sha25
   return take(canonical(value));
 }
 
+/** Current Part Three entries bind package-owned record content by canonical digest. */
+export function contentRegistrationId(value: unknown): string {
+  return `measurement-content:${encoding(value).hash}`;
+}
+
 export function json(value: unknown): Json {
   return JSON.parse(encoding(value).bytes) as Json;
 }

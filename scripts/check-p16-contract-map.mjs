@@ -1,5 +1,6 @@
 // Slice A1 maps only owned record/registration and resource/process/census
 // validation. Every A2 semantic row is named exactly as structurally deferred.
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +8,23 @@ import { fileURLToPath } from 'node:url';
 const executable = new Set([1, 2, 5, 22, 23, 25, 26, 27, 28, 29, 30, 52]);
 const mixed = new Set([3, 24]);
 const sliceA2 = new Set([4, 12, 13, 14, 16, 33, 34, 36, 37, 38, 39, 40, 41, 47, 48, 50]);
+const behaviors = new Map(Object.entries({
+  1: ['contract-inventory', 'p16Dispositions'],
+  2: ['architecture-boundary', 'checkP16Architecture'],
+  3: ['registration-current-content', 'decodeMeasurementProducerContract'],
+  5: ['measured-claim', 'renderMeasurementClaim'],
+  22: ['quota-coalescing', 'coalesceUnknownQuotaEpisodes'],
+  23: ['observational-port', 'createMeasurementLedger'],
+  24: ['rate-event-populations', 'summarizeRateLimitEvents'],
+  25: ['cpu-and-byte', 'cpuUtilization'],
+  26: ['process-incarnation', 'reconcileProcessIncarnation'],
+  27: ['limit-plus-one-census', 'planProcessCensus'],
+  28: ['classified-and-unclassified', 'classifyProcesses'],
+  29: ['resource-trend', 'resourceTrend'],
+  30: ['fired-and-no-op', 'classifyFeatureOutcome'],
+  52: ['non-executable-exclusion', 'p16Dispositions'],
+  53: ['legacy-additivity', 'check-p16-additivity'],
+}).map(([number, value]) => [Number(number), value]));
 const dependencies = {
   3: ['seam-response-intake-followup.md', 'seam-response-assembly-followup.md',
     'seam-response-judgment.md', 'SEAM-LEDGER.md row 64'],
@@ -65,6 +83,17 @@ export function p16Dispositions(design = readFileSync(
 }
 
 export function checkP16Architecture() {
+  const changed = execFileSync('git', ['diff', '--name-only', 'main'], { encoding: 'utf8' })
+    .trim().split('\n').filter(Boolean);
+  const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { encoding: 'utf8' })
+    .trim().split('\n').filter(Boolean);
+  const allowedGenerated = new Set(['generated/capabilities.md', 'generated/coverage.md', 'generated/glossary.md',
+    'generated/register.json', 'generated/rules.md', 'generated/source.json']);
+  const allowedExact = new Set(['scripts/check-p16-additivity.mjs', 'scripts/check-p16-contract-map.mjs',
+    'tests/integration/measurement.test.ts', 'tests/e2e/measurement.test.ts']);
+  const outsideScope = [...new Set([...changed, ...untracked])].filter(file => !file.startsWith('src/measurement/')
+    && !file.startsWith('tests/measurement/') && !allowedGenerated.has(file) && !allowedExact.has(file));
+  if (outsideScope.length) throw new Error(`P16 changed-file scope exceeded: ${outsideScope.join(', ')}`);
   const files = readdirSync('src/measurement').filter(file => file.endsWith('.ts'));
   const source = files.map(file => readFileSync(`src/measurement/${file}`, 'utf8')).join('\n');
   const imports = [...source.matchAll(/from ['"](\.\.\/[^'"]+)['"]/g)].map(match => match[1]);
@@ -91,13 +120,22 @@ export function checkP16Architecture() {
   if (!Array.isArray(declarations) || !declarations.length
     || declarations.some(row => row.status !== 'dark' || row.holds?.length))
     throw new Error('P16 A1 declarations must remain dark and hold-free');
-  const proofFiles = ['tests/measurement/foundation.test.ts', 'tests/integration/measurement.test.ts',
-    'tests/e2e/measurement.test.ts'];
+  const proofFiles = [
+    ...readdirSync('tests/measurement').filter(file => file.endsWith('.test.ts')).map(file => `tests/measurement/${file}`),
+    'tests/integration/measurement.test.ts', 'tests/e2e/measurement.test.ts',
+  ];
   const proofIds = [...executable, ...mixed, 53].map(number => `P16-NF-${String(number).padStart(2, '0')}`);
-  for (const file of proofFiles) {
-    const proof = readFileSync(file, 'utf8');
-    if (!proofIds.every(id => proof.includes(id)))
-      throw new Error(`${file}: A1 coverage does not name every executable/mixed row`);
+  const tierFiles = [proofFiles.filter(file => file.startsWith('tests/measurement/')),
+    proofFiles.filter(file => file.startsWith('tests/integration/')),
+    proofFiles.filter(file => file.startsWith('tests/e2e/'))];
+  for (const filesForTier of tierFiles) {
+    const proof = filesForTier.map(file => readFileSync(file, 'utf8')).join('\n');
+    for (const id of proofIds) {
+      const number = Number(id.slice(-2)); const [marker, operation] = behaviors.get(number) ?? [];
+      if (!marker || !operation || !proof.includes(id) || !proof.includes(`[behavior:${marker}]`)
+        || !proof.includes(operation))
+        throw new Error(`${filesForTier[0]}: ${id} lacks its executed behavior binding`);
+    }
   }
   return { sourceFiles: files.length, imports: [...new Set(imports)].sort(), declarations: declarations.length,
     proofFiles: proofFiles.length, executable: executable.size, mixed: mixed.size, sliceA2: sliceA2.size };
@@ -110,7 +148,9 @@ export function checkP16Coverage(report, dispositions = p16Dispositions()) {
     const tests = report.testResults.flatMap(file => file.assertionResults
       .filter(test => (test.fullName.match(/\bP16-NF-\d+\b/g) ?? []).includes(row.id))
       .map(test => ({ file: relative(process.cwd(), file.name), title: test.title, status: test.status })));
-    const passing = tests.filter(test => test.status === 'passed');
+    const behavior = behaviors.get(row.number);
+    const passing = tests.filter(test => test.status === 'passed'
+      && behavior !== undefined && test.title.includes(`[behavior:${behavior[0]}]`));
     if (row.status === 'EXECUTABLE' || row.status.startsWith('MIXED-EXECUTABLE-')
       || row.status.startsWith('SUPPLEMENTAL-EXECUTABLE-')) {
       for (const tier of tiers) if (!passing.some(test => test.file.startsWith(tier)))
