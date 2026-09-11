@@ -26,7 +26,8 @@ export interface ShapeApprovalPort {
 export function generateAgainstParent(input: unknown, parent: VerifiedRegister, candidate: ShapeEntries,
   change: ShapeChangeBinding | null, approvals: ShapeApprovalPort, context: RegisterContext, document?: ShapeChangeDocument) {
   return checked<GeneratedRegister, RegisterContext>('ParentShapeBuild', { input, parent, candidate, change }, context, () => {
-    requireThat(wasVerified(parent), 'P3-NF-09: parent requires verified entering-force generation');
+    requireThat(wasVerified(parent, context.authorityTypes?.now ?? context.types.now),
+      'P3-NF-09: parent requires verified entering-force generation');
     const parentGeneration = take(generationOf(parent, context));
     if (encoding(candidate).hash !== encoding(parent.shape).hash) {
       requireThat(change && change.parent === parentGeneration.id && change.candidateShape === encoding(candidate).hash

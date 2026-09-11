@@ -61,10 +61,12 @@ export function runRegisterChecks(register: GeneratedRegister, checks: WorkflowC
     }
     if (checks.mode === 'normal') {
       requireThat(checks.runs.length === 0 || evidence !== undefined, 'normal check runs require the signed Part Two record verifier');
-      for (const run of checks.runs) take(evidence!.verifyRecord({ id: run.id, kind: 'check-run-record' }, run));
+      for (const run of checks.runs) requireThat(take(evidence!.verifyRecord({ id: run.id, kind: 'check-run-record' }, run)),
+        `P3-NF-28: Part Two rejected check-run evidence ${run.id}`);
       requireThat(checks.catalog.semanticReviews.length === 0 || evidence !== undefined,
         'normal semantic reviews require the signed Part Two record verifier');
-      for (const review of checks.catalog.semanticReviews) take(evidence!.verifySemanticReview(review));
+      for (const review of checks.catalog.semanticReviews) requireThat(take(evidence!.verifySemanticReview(review)),
+        `P3-NF-28: Part Nine rejected semantic-review evidence ${review.record}`);
     }
     const graph = take(buildRuleGraph(register, checks.branch, checks.runs, checks.catalog, context, checks.bootstrapRules));
     take(checkDeadlines(graph, register, checks.landedParts, checks.now, context));

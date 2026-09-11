@@ -5,24 +5,15 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { build } from '../../scripts/build-register.mjs';
 import { canonical, decode } from '../../src/index.js';
-import type { Json } from '../../src/index.js';
-import { createFactStore, factId, registerOwnedBody } from '../../src/facts/index.js';
-import type { FactSchema, OwnedShape } from '../../src/facts/index.js';
+import { createFactStore, factId } from '../../src/facts/index.js';
 import { createPartTwoRegisterAuthority, createPartTwoRegisterProvider, decodeGeneration } from '../../src/register/index.js';
 import type { FactReference, ShapeChangeBinding } from '../../src/register/index.js';
 import { factsFixture } from '../facts/fixtures.js';
 import { hash, json, setup, value } from '../register/fixtures.js';
+import { generationRegistration, ownedSchema, versionSchema } from '../register/normal-provider-fixture.js';
 
 const emittedModule = '../../dist/index.js';
 const { decode: emittedDecode } = await import(emittedModule) as typeof import('../../src/index.js');
-function policy(input: Json): OwnedShape {
-  if (input === null) return { kind: 'null' };
-  if (typeof input === 'string') return { kind: 'text', maxLength: Math.max(1, input.length) };
-  if (typeof input === 'number') return { kind: 'integer' };
-  if (typeof input === 'boolean') return { kind: 'boolean' };
-  if (Array.isArray(input)) return { kind: 'array', maxLength: Math.max(1, input.length), items: input.length ? policy(input[0]!) : { kind: 'null' } };
-  return { kind: 'object', fields: Object.fromEntries(Object.entries(input).map(([key, value]) => [key, policy(value)])) };
-}
 
 describe('normal-mode shape-change CLI composition', () => {
   it('P3-NF-07/09/21/23/24 adds part 14 and its owner manifest, and refuses missing, tampered, or stale authority', () => {
@@ -70,7 +61,7 @@ describe('normal-mode shape-change CLI composition', () => {
         candidateShape: hash(shape), changes: [{ operation: 'add', path: `/parts/${parentRegister.shape.parts.length}`, after: 14 }],
         ownerReferences: [enrollment], approvedIn: approval };
       writeFileSync(join(root, documentPath), JSON.stringify(document, null, 2) + '\n');
-      const ownerVersions: unknown[] = [];
+      const ownerVersions: Record<string, unknown>[] = [];
       const ownerRows = parentRegister.entries.filter((entry: { declaration: { kind: string } }) => entry.declaration.kind === 'governed documents')
         .map(({ declaration }: { declaration: Record<string, unknown> }) => {
           const { declaredBy: _site, ...authored } = declaration;
@@ -83,7 +74,9 @@ describe('normal-mode shape-change CLI composition', () => {
             approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: approved.id }, landedIn: landingId,
             base: ownerBase, contentHash: hash(authored) };
         });
-      parentRegister.extract = { ...parentRegister.extract, rows: ownerRows };
+      const vectorId = factId({ machine: 'machine-a', epoch: 0, position: 2 + ownerVersions.length });
+      parentRegister.extract = { ...parentRegister.extract,
+        vector: { owner: 'part-two', name: 'FactPositionVector', id: vectorId }, rows: ownerRows };
       parentRegister.entries = parentRegister.entries.map((entry: Record<string, unknown>) => {
         const declaration = entry.declaration as { id: string };
         const history = ownerRows.filter((row: { id: string }) => row.id === declaration.id);
@@ -121,19 +114,14 @@ describe('normal-mode shape-change CLI composition', () => {
         producers: [...new Set([...s.f.ctx.register.producers, 'register.generator'])] });
       const generation = value(decodeGeneration({ type: 'RegisterGeneration', schemaVersion: 1, id: parentSource.generation,
         commit: parentSource.commit, vector: parentRegister.extract.vector }, s.context));
-      const generationRecord = JSON.parse(JSON.stringify(json('GenerationRecord', { generation, at: f.now }))) as Json;
-      const registration = value(registerOwnedBody({ owner: 'part-three', name: 'GenerationRecord', currentVersion: 1,
-        versions: { 1: { validate: input => ({ ok: true as const, value: input }) } }, migrations: {},
-        decodeCurrent: input => ({ ok: true as const, value: input }) }, policy(generationRecord), f.c));
-      const generationSchema: FactSchema = { kind: 'generation-record', version: 1,
-        fields: { record: { kind: 'owned', owner: 'part-three', name: 'GenerationRecord' } }, machineScope: 'shared',
-        standing: 'requester', action: 'work', scope: f.scope, causallyBound: false, requiredReferences: [], authority: 'none' };
-      const factContext = { ...f.ctx, schemas: [f.schema, generationSchema], ownedBodies: [registration] };
+      const generationRecord = JSON.parse(JSON.stringify(json('GenerationRecord', { generation, at: f.now })));
+      const registration = generationRegistration(generationRecord, s.context, f);
+      const factContext = { ...f.ctx, facts: [], schemas: [f.schema,
+        versionSchema('register-version-record', f.scope), versionSchema('register-shape-version-record', f.scope),
+        ownedSchema('generation-record', 'part-three', 'GenerationRecord', f.scope)], ownedBodies: [registration] };
       const rootFact = f.fact({}, factContext), sinceFact = f.next(rootFact, {}, factContext);
       const landingFact = f.next(sinceFact, {}, factContext);
-      const enteringForceFact = f.next(landingFact, { kind: 'generation-record', body: { record: generationRecord } }, factContext);
       expect([rootFact.id, sinceFact.id, landingFact.id]).toEqual([rootId, sinceId, landingId]);
-      const durableFacts = [rootFact, sinceFact, landingFact, enteringForceFact];
       const principal = (id: string, kind: 'person' | 'system') => {
         const proof = s.f.proof({ id, kind }, { id, kind }, 'identity');
         return value((emittedDecode as unknown as typeof decode)('VerifiedPrincipal', json('VerifiedPrincipal', { id, kind }),
@@ -149,15 +137,24 @@ describe('normal-mode shape-change CLI composition', () => {
       const shapeApproval = f.authorize({ id: approval.id, artifact: shapeEncoded.hash, base: parentCommit });
       const shapeVersion = { id: 'shape:part-fourteen:v1', subject: 'register-shape:part-fourteen', content: expectedBinding,
         contentHash: shapeEncoded.hash, since: sinceId, supersedes: [], approvedIn: shapeApproval.id, base: parentCommit, landedIn: null };
-      const authority = createPartTwoRegisterAuthority({ vector: generation.vector,
-        facts: { ...factContext, facts: [rootFact, sinceFact, landingFact], grants: [{ factId: rootFact.id, grant: f.g }] },
+      let previous = landingFact;
+      const versionFacts = ownerVersions.map(version => {
+        const fact = f.next(previous, { kind: 'register-version-record', body: { record: JSON.stringify(version) } }, factContext);
+        previous = fact; return fact;
+      });
+      expect(previous.id).toBe(vectorId);
+      const shapeVersionFact = f.next(previous, { kind: 'register-shape-version-record', body: { record: JSON.stringify(shapeVersion) } }, factContext);
+      const enteringForceFact = f.next(shapeVersionFact, { kind: 'generation-record', body: { record: generationRecord } }, factContext);
+      const durableFacts = [rootFact, sinceFact, landingFact, ...versionFacts, shapeVersionFact, enteringForceFact];
+      const authority = createPartTwoRegisterAuthority({
+        facts: { ...factContext, grants: [{ factId: rootFact.id, grant: f.g }] },
         scope: f.scope, landing: { owner: 'part-ten', merges: [{ commit: landingId, onMain: true, parentCount: 2, reviewedBase: ownerBase }] },
-        versions: ownerVersions, shapeChanges: [shapeVersion], context: s.context });
+        context: s.context });
       const makeProvider = (observedAt = f.now.value) => createPartTwoRegisterProvider({
         store: createFactStore(factContext, { owner: 'part-ten', read: () => JSON.parse(JSON.stringify(durableFacts)),
           append: () => f.success({ kind: 'local-durable' as const }) }),
         authority,
-        horizon: { lineages: { 'machine-a': { head: { epoch: 0, position: 3 }, observedAt, closed: false } }, stalenessBound: 100 },
+        horizon: { lineages: { 'machine-a': { head: { epoch: 0, position: enteringForceFact.segment.position }, observedAt, closed: false } }, stalenessBound: 100 },
         context: s.context, separations,
       });
       const provider = makeProvider();

@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { canonical } from '../../src/index.js';
+import { factId } from '../../src/facts/index.js';
+import { value } from '../register/fixtures.js';
 
 const script = resolve('scripts/build-register.mjs');
 const worker = resolve('tests/e2e/register-normal-restart-worker.mjs');
@@ -33,8 +36,16 @@ describe('round-three normal writer restart lifecycle', () => {
         Object.assign(source.declaration.requiredFacts, { deadline: 1000, owner: 'fixture-operator', overdueAction: 'surface' });
       writeFileSync(conversionPath, JSON.stringify(conversion));
       git('add', 'generated'); git('commit', '-qm', 'witnessed parent generation');
-      const parentCommit = git('rev-parse', 'HEAD');
+      let parentCommit = git('rev-parse', 'HEAD');
       const parentRegister = JSON.parse(readFileSync(join(root, 'generated/register.json'), 'utf8'));
+      const parentSource = JSON.parse(readFileSync(join(root, 'generated/source.json'), 'utf8'));
+      parentRegister.extract.vector = { owner: 'part-two', name: 'FactPositionVector',
+        id: factId({ machine: 'machine-a', epoch: 0, position: 0 }) };
+      parentSource.generation = value(canonical(parentRegister)).hash;
+      writeFileSync(join(root, 'generated/register.json'), JSON.stringify(parentRegister));
+      writeFileSync(join(root, 'generated/source.json'), JSON.stringify(parentSource));
+      git('add', 'generated/register.json', 'generated/source.json'); git('commit', '--amend', '-qm', 'witnessed parent generation');
+      parentCommit = git('rev-parse', 'HEAD');
       const workflowPath = 'register-source/workflows/restart-round3.json';
       mkdirSync(join(root, 'register-source/workflows'), { recursive: true });
       const workflow = { type: 'RegisterWorkflow', schemaVersion: 1, mode: 'normal', branch: 'restart-round-three',
@@ -44,21 +55,36 @@ describe('round-three normal writer restart lifecycle', () => {
       writeFileSync(join(root, workflowPath), JSON.stringify(workflow));
       git('add', workflowPath); git('commit', '-qm', 'normal candidate');
       const candidate = git('rev-parse', 'HEAD');
-      const parentSource = JSON.parse(readFileSync(join(root, 'generated/source.json'), 'utf8'));
       const generation = { type: 'RegisterGeneration', schemaVersion: 1, id: parentSource.generation,
         commit: parentSource.commit, vector: parentRegister.extract.vector };
       const providerPath = join(root, 'restart-provider.mjs');
-      writeFileSync(providerPath, `import { consumeResult, defineDecoder } from ${JSON.stringify(emitted)};
-const context={preserved:'restart fixture',site:'types.decode',register:{generation:{owner:'part-three',name:'RegisterGeneration',id:'restart-fixture'},sites:{'types.decode':'closed'}}};
-const decoder=consumeResult(defineDecoder({name:'RestartReply',owner:'test-only',currentVersion:1,
-  versions:{1:{validate:value=>({ok:true,value})}},migrations:{},decodeCurrent:value=>({ok:true,value:value.payload})},context.preserved),
-  {Success:value=>value,Refused:error=>{throw new Error(error.detail)}});
-const reply=payload=>decoder.decode({type:'RestartReply',schemaVersion:1,payload},context);
+      writeFileSync(providerPath, `import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import ts from ${JSON.stringify(resolve('node_modules/typescript/lib/typescript.js'))};
+import {consumeResult} from ${JSON.stringify(emitted)};
+import {createFactStore,registerOwnedBody} from ${JSON.stringify(pathToFileURL(resolve('dist/facts/index.js')).href)};
+import {createPartTwoRegisterAuthority,createPartTwoRegisterProvider,decodeRegisteredFact} from ${JSON.stringify(pathToFileURL(resolve('dist/register/index.js')).href)};
+async function fixture(path,root){let js=ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+ if(js.includes("'../fixtures.js'"))js=js.replace("'../fixtures.js'",JSON.stringify(await fixture(resolve(root,'tests/fixtures.ts'),root)));
+ js=js.replace(/(['"])(?:\\.\\.\\/)+src\\/([^'"]+)\\1/g,(_a,_q,suffix)=>JSON.stringify(pathToFileURL(resolve(root,'dist',suffix)).href));
+ js=js.replace("'register-source/bootstrap-shape.json'",JSON.stringify(resolve(root,'register-source/bootstrap-shape.json')));
+ return 'data:text/javascript;base64,'+Buffer.from(js).toString('base64');}
+const original=${JSON.stringify(resolve('.'))};
+const {factsFixture}=await import(await fixture(resolve(original,'tests/facts/fixtures.ts'),original));
+const {setup}=await import(await fixture(resolve(original,'tests/register/fixtures.ts'),original));
+const f=factsFixture(),s=setup();s.f.ctx.register.entries.push('build-machine');s.f.ctx.register.producers.push('register.generator');
+const take=r=>consumeResult(r,{Success:v=>v,Refused:r=>{throw new Error(r.detail);}});
 const generation=${JSON.stringify(generation)};
-const at={type:'Measurement',schemaVersion:1,subject:{kind:'clock',instance:'build-machine'},value:100,unit:'unix-ms',at:100,by:'register.generator'};
-export const provider={owner:'part-two',verifyExtract:extract=>reply(extract.vector),
-  enteringForce:()=>reply({type:'GenerationRecord',schemaVersion:1,generation,at}),isCurrent:()=>reply(true),
-  resolveReference:()=>reply(true)};
+const record={type:'GenerationRecord',schemaVersion:1,generation,at:f.now};
+const policy=v=>v===null?{kind:'null'}:typeof v==='string'?{kind:'text',maxLength:1000}:typeof v==='number'?{kind:'integer'}:typeof v==='boolean'?{kind:'boolean'}:Array.isArray(v)?{kind:'array',maxLength:1000,items:policy(v[0])}:{kind:'object',fields:Object.fromEntries(Object.entries(v).map(([k,v])=>[k,policy(v)]))};
+const registration=take(registerOwnedBody({owner:'part-three',name:'GenerationRecord',currentVersion:1,versions:{1:{validate:input=>({ok:true,value:input})}},migrations:{},decodeCurrent:input=>consumeResult(decodeRegisteredFact('generation-record',input,s.context),{Success:value=>({ok:true,value}),Refused:r=>({ok:false,reason:r.reason,detail:r.detail})})},policy(record),f.c));
+const schema={...f.schema,kind:'generation-record',fields:{record:{kind:'owned',owner:'part-three',name:'GenerationRecord'}}};
+const facts={...f.ctx,facts:[],schemas:[f.schema,schema],ownedBodies:[registration]};
+const rootFact=f.fact({},facts),force=f.next(rootFact,{kind:'generation-record',body:{record}},facts);
+const store=createFactStore(facts,{owner:'part-ten',read:()=>[rootFact,force],append:()=>{throw new Error('read-only provider, no append claimed');}});
+const authority=createPartTwoRegisterAuthority({facts,scope:f.scope,landing:{owner:'part-ten',merges:[]},context:s.context});
+export const provider=createPartTwoRegisterProvider({store,authority,horizon:{lineages:{'machine-a':{head:{epoch:0,position:1},observedAt:100,closed:false}},stalenessBound:100},context:s.context});
 `);
       const control = join(root, 'control');
       const normal = spawnSync(process.execPath, [script, '--workflow', workflowPath, '--provider', providerPath,

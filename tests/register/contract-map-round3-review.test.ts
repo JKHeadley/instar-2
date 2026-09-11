@@ -52,4 +52,22 @@ describe('round-three contract-map checker regressions', () => {
       } finally { rmSync(root, { recursive: true, force: true }); }
     }
   });
+
+  it('P3-NF-07 excludes only the exact restored main legacy row, never a lookalike or made-up grant', () => {
+    const item = cases[0]!, root = fixture();
+    try {
+      const ids = [...readFileSync(join(root, item.design), 'utf8').matchAll(item.expression)].map(match => match[1]!);
+      const assertions = ids.map(id => ({ fullName: id, title: `${id} executable`, status: 'passed' }));
+      assertions.push({ fullName: 'P3-NF-21 P3-NF-23',
+        title: 'P3-NF-21 P3-NF-23 SKIPPED: production spine admission, signed vector verification and replica initialization require the part-two adapter, absent on this lane base',
+        status: 'pending' });
+      writeFileSync(join(root, '.test-results.json'), JSON.stringify({ success: true, numPassedTests: ids.length, numPendingTests: 1,
+        testResults: [{ name: 'tests/integration/register.test.ts', assertionResults: assertions }] }));
+      expect(run(root, item.script)).not.toThrow();
+      assertions.at(-1)!.title = 'P3-NF-21 P3-NF-23 SKIPPED: GRANT:invented-owner:invented-grant';
+      writeFileSync(join(root, '.test-results.json'), JSON.stringify({ success: true, numPassedTests: ids.length, numPendingTests: 1,
+        testResults: [{ name: 'tests/integration/register.test.ts', assertionResults: assertions }] }));
+      expect(run(root, item.script)).toThrow(/pending test arm has no exact design grant/);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
 });

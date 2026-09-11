@@ -17,7 +17,7 @@ function reference<N extends 'FactEnvelope' | 'FactPositionVector'>(input: Json,
 }
 function row(input: Json): VersionRowInput {
   const r = object(input); exact(r, ['id', 'version', 'status', 'since', 'supersedes', 'approvedIn', 'landedIn', 'base', 'contentHash']);
-  requireThat(['live', 'retired', 'superseded'].includes(String(r.status)), 'invalid version status');
+  requireThat(typeof r.status === 'string' && ['live', 'retired', 'superseded'].includes(r.status), 'invalid version status');
   const hash = text(r.contentHash, 'contentHash'); requireThat(/^sha256:[a-f0-9]{64}$/.test(hash), 'invalid content hash');
   return { id: text(r.id, 'row.id'), version: text(r.version, 'version'), status: r.status as VersionRowInput['status'],
     since: text(r.since, 'since'), supersedes: strings(r.supersedes, 'supersedes'), approvedIn: reference(r.approvedIn!, 'FactEnvelope'),
@@ -151,10 +151,8 @@ export function loadRegister(input: unknown, expected: RegisterGeneration, conte
     requireThat(encoding(rebuilt).bytes === encoding(v).bytes, 'loaded register does not match complete declaration/reference validation');
     requireThat(v.authority === 'shape-only', 'register bytes may not self-assert authority');
     const result = { type: 'GeneratedRegister', schemaVersion: 1, commit: text(v.commit, 'commit'), extract, shape, entries: decoded, authority: 'shape-only' } as unknown as VerifiedRegister;
-    let verifiedAt = now.value;
     loaded.set(result, current => {
       const at = current ?? now;
-      if (at.value === verifiedAt) return true;
       const verified = spine.revalidateLoaded
         ? consumeResult(spine.revalidateLoaded(extract, expected, at), { Success: value => value === true, Refused: () => false })
         : consumeResult(spine.verifyExtract(extract), { Success: () => consumeResult(spine.enteringForce(expected), {
@@ -162,7 +160,6 @@ export function loadRegister(input: unknown, expected: RegisterGeneration, conte
           Success: value => value === true, Refused: () => false,
         }), Refused: () => false,
       }), Refused: () => false });
-      if (verified) verifiedAt = at.value;
       return verified;
     });
     return result;

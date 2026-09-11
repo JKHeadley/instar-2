@@ -19,4 +19,16 @@ describe('permanent Part Three additivity gate', () => {
     expect(paths).toEqual(expect.arrayContaining([...mainEraExemptions.keys()]));
     expect(changed, `main-vs-HEAD additivity changed: ${changed.join(', ')}`).toEqual([]);
   });
+
+  it('P3-NF-09 confines protected decoder changes to the normal provider seam', () => {
+    const differs = (path: string) => !readFileSync(path).equals(execFileSync('git', ['show', `main:${path}`]));
+    const unchanged = ['src/terms/resolver.ts', 'src/rulegraph/graph.ts', 'src/decode/canonical.ts'];
+    expect(unchanged.filter(differs)).toEqual([]);
+    expect(['tests/integration/register.test.ts', 'tests/register/owner-references.test.ts', 'tests/register/workflow.test.ts']
+      .filter(differs)).toEqual([]);
+    // generator.ts owns the live provider revalidation hook; declarations.ts
+    // owns the total nested decode exercised through generateAgainstParent.
+    expect(['src/register/generator.ts', 'src/register/declarations.ts']
+      .filter(path => !differs(path))).toEqual([]);
+  });
 });

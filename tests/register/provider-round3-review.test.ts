@@ -1,20 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { Json } from '../../src/index.js';
-import { createFactStore, registerOwnedBody } from '../../src/facts/index.js';
-import type { FactSchema, OwnedShape } from '../../src/facts/index.js';
+import { createFactStore } from '../../src/facts/index.js';
 import { foldProjection } from '../../src/projections/index.js';
 import { createPartTwoRegisterAuthority, createPartTwoRegisterProvider, decodeShape, generationOf, loadRegister, readRegisterEntry } from '../../src/register/index.js';
 import { factsFixture } from '../facts/fixtures.js';
 import { clone, detail, json, setup, value } from './fixtures.js';
-
-function policy(input: Json): OwnedShape {
-  if (input === null) return { kind: 'null' };
-  if (typeof input === 'string') return { kind: 'text', maxLength: Math.max(1, input.length) };
-  if (typeof input === 'number') return { kind: 'integer' };
-  if (typeof input === 'boolean') return { kind: 'boolean' };
-  if (Array.isArray(input)) return { kind: 'array', maxLength: Math.max(1, input.length), items: input.length ? policy(input[0]!) : { kind: 'null' } };
-  return { kind: 'object', fields: Object.fromEntries(Object.entries(input).map(([key, child]) => [key, policy(child)])) };
-}
+import { generationRegistration, ownedSchema, vectorAt } from './normal-provider-fixture.js';
 
 describe('round-three provider review regressions', () => {
   it('P3-NF-23 follows Part Two correction selection and refuses a superseded correction', () => {
@@ -31,8 +21,8 @@ describe('round-three provider review regressions', () => {
       retention: 'all-identities', decisions: { note: { kind: 'folds', merge: 'additive', identity: 'identity', value: 'amount' } } },
     snapshot, { reference: s.context.types.register.generation, kinds: ['note'], lineages }, s.context));
     expect(owner.corrections).toEqual([{ original: original.id, replacement: latest.id }]);
-    const authority = createPartTwoRegisterAuthority({ vector: s.build().extract.vector, facts: context, scope: f.scope,
-      landing: { owner: 'part-ten', merges: [] }, versions: [], context: s.context });
+    const authority = createPartTwoRegisterAuthority({ facts: context, scope: f.scope,
+      landing: { owner: 'part-ten', merges: [] }, context: s.context });
     const provider = createPartTwoRegisterProvider({ store, authority, horizon: { lineages, stalenessBound: 100 }, context: s.context });
     expect(detail(provider.resolveReference({ provider: 'record', id: original.id, kind: 'note' }))).toContain('corrected');
     expect(detail(provider.resolveReference({ provider: 'record', id: first.id, kind: 'note' }))).toContain('corrected');
@@ -40,19 +30,17 @@ describe('round-three provider review regressions', () => {
   });
 
   it('P3-NF-23 rechecks an already loaded register with the consumer clock, including a legacy spine port', () => {
-    const f = factsFixture(), s = setup(); const register = s.build(); const generation = value(generationOf(register, s.context));
-    const record = JSON.parse(JSON.stringify(json('GenerationRecord', { generation, at: f.now }))) as Json;
-    const registration = value(registerOwnedBody({ owner: 'part-three', name: 'GenerationRecord', currentVersion: 1,
-      versions: { 1: { validate: input => ({ ok: true as const, value: input }) } }, migrations: {},
-      decodeCurrent: input => ({ ok: true as const, value: input }) }, policy(record), f.c));
-    const schema: FactSchema = { kind: 'generation-record', version: 1,
-      fields: { record: { kind: 'owned', owner: 'part-three', name: 'GenerationRecord' } }, machineScope: 'shared',
-      standing: 'requester', action: 'work', scope: f.scope, causallyBound: false, requiredReferences: [], authority: 'none' };
-    const facts = { ...f.ctx, schemas: [f.schema, schema], ownedBodies: [registration] };
-    const first = f.fact({}, facts); const force = f.next(first, { kind: 'generation-record', body: { record } }, facts);
+    const f = factsFixture(), s = setup(); const first = f.fact();
+    const vector = vectorAt(first); const register = s.build(undefined, { extract: { ...s.extract, vector } });
+    const generation = value(generationOf(register, s.context));
+    const record = json('GenerationRecord', { generation, at: f.now });
+    const registration = generationRegistration(record, s.context, f);
+    const facts = { ...f.ctx, schemas: [f.schema, ownedSchema('generation-record', 'part-three', 'GenerationRecord', f.scope)],
+      ownedBodies: [registration] };
+    const force = f.next(first, { kind: 'generation-record', body: { record } }, facts);
     const store = createFactStore(facts, { owner: 'part-ten', read: () => [first, force], append: () => f.success({ kind: 'local-durable' }) });
-    const authority = createPartTwoRegisterAuthority({ vector: generation.vector, facts, scope: f.scope,
-      landing: { owner: 'part-ten', merges: [] }, versions: [], context: s.context });
+    const authority = createPartTwoRegisterAuthority({ facts, scope: f.scope,
+      landing: { owner: 'part-ten', merges: [] }, context: s.context });
     const provider = createPartTwoRegisterProvider({ store, authority, horizon: {
       lineages: { 'machine-a': { head: { epoch: 0, position: 1 }, observedAt: 100, closed: false } }, stalenessBound: 100,
     }, context: s.context });
