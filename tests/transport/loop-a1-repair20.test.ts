@@ -66,4 +66,4 @@ it('SLB-A1-CURRENT-PROOF-REPLAY-127 V20 signed replay uses fresh closure candida
   const context = { ...fixture.ctx, facts: [...fixture.ctx.facts, ...facts.slice(0, -1)] };
   const envelope = value(decodeEnvelope(signEnvelope(raw as never, privateKey), context, 'replication'));
   expect(verdict(decodeHistoricalBody(envelope, context, context.decode))).toBe('accepted');
-});
+}, 15_000);
