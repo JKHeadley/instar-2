@@ -355,6 +355,11 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
       const histories=snapshot.flatMap(candidate => candidate.historical
         .filter(record => record.origin.id===candidate.fact.id)
         .map(record => ({ fact: candidate.fact,record,status: candidate })));
+      const principalCopies=histories.filter(candidate => cone.has(candidate.fact.id)
+        &&candidate.fact.kind==='intake-scheduled-principal'
+        &&candidate.record.view.type==='VerifiedPrincipal'&&candidate.record.view.id===principal.id);
+      requireIntake(principalCopies.length===1,
+        'unsupported-in-slice-a: multiple principal witness copies belong to Slice B','standing');
       const principalCandidates=dependencies.filter(candidate => candidate.fact.kind==='intake-scheduled-principal')
         .flatMap(candidate => candidate.historical.filter(record => record.origin.id===candidate.fact.id
           &&record.view.type==='VerifiedPrincipal')
@@ -546,6 +551,11 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
             const admissionRows=statuses(preserved);
             const admissionDiscovery=scheduledDiscovery(input.discovery,eventId,at,preserved);
             const admissionStanding=scheduledStanding(principal,at,preserved);
+            const principalCopies=admissionRows.flatMap(row => row.fact.kind==='intake-scheduled-principal'
+              ?row.historical.filter(record => record.origin.id===row.fact.id
+                &&record.view.type==='VerifiedPrincipal'&&record.view.id===principal.id):[]);
+            requireIntake(principalCopies.length===1,
+              'unsupported-in-slice-a: multiple principal witness copies belong to Slice B','standing');
             const admissionPrincipal=admissionRows.find(row => row.fact.id===principalFact.id
               &&row.fact.kind==='intake-scheduled-principal'&&!row.taint.length&&!row.conflicts.length
               &&row.historical.some((record): record is HistoricalRead<VerifiedPrincipal> =>

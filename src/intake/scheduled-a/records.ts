@@ -250,6 +250,10 @@ function validateScheduledIntakeWork(input: Json,c: OwnedBodyContext,registeredS
   requireIntake(directiveFields.length===0,
     'unsupported-in-slice-a: Directive-bearing scheduled history belongs to Slice B','standing');
 
+  const principalCopies=histories.filter(row => row.fact.kind==='intake-scheduled-principal'
+    &&row.record.view.type==='VerifiedPrincipal'&&row.record.view.id===principal.id);
+  requireIntake(principalCopies.length===1,
+    'unsupported-in-slice-a: multiple principal witness copies belong to Slice B','standing');
   const principalFacts=cone.filter(fact => required.has(fact.id)&&fact.kind==='intake-scheduled-principal');
   const principalCandidates=principalFacts.flatMap(fact => histories.filter(row => row.fact.id===fact.id
     &&row.record.view.type==='VerifiedPrincipal')) as readonly { fact: FactEnvelope; record: HistoricalRead<VerifiedPrincipal> }[];

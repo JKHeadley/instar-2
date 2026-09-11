@@ -827,6 +827,30 @@
       }
     },
     {
+      "id": "P4-ST-94",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-repair17.test.ts",
+        "hash": "sha256:e53269ef0850d44ee1750f865236d7897035c6d315592c9de6e9bc577cee24d1"
+      }
+    },
+    {
+      "id": "P4-ST-95",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/integration/intake-scheduled-repair17.test.ts",
+        "hash": "sha256:af72430f1c32a4f8f33a1ab584bc04fb57a323ddbff3ef0c3c3fbe0b6f3f42a3"
+      }
+    },
+    {
+      "id": "P4-ST-96",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/e2e/intake-scheduled-repair17.test.ts",
+        "hash": "sha256:5f7919b7de81771580a1c3453bef2ddec5b91cb0d01e8d6c16899e532865e7fd"
+      }
+    },
+    {
       "id": "P4-PRESERVE-01",
       "stage": "build",
       "artifact": {
@@ -847,7 +871,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/scheduled-legacy-differential.test.ts",
-        "hash": "sha256:c5277d8f9a9c97e9bbd01c6915fac5a96f245b17f0d3a8bdd4d2cef2092aceac"
+        "hash": "sha256:84e0de5bb4e4e37407af559390a1691b680c5e10eb0340cb80b7e8adb1e6b5c6"
       }
     },
     {
@@ -855,7 +879,15 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/scheduled-legacy-differential.test.ts",
-        "hash": "sha256:c5277d8f9a9c97e9bbd01c6915fac5a96f245b17f0d3a8bdd4d2cef2092aceac"
+        "hash": "sha256:84e0de5bb4e4e37407af559390a1691b680c5e10eb0340cb80b7e8adb1e6b5c6"
+      }
+    },
+    {
+      "id": "P4-PRESERVE-05",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/scheduled-legacy-differential.test.ts",
+        "hash": "sha256:84e0de5bb4e4e37407af559390a1691b680c5e10eb0340cb80b7e8adb1e6b5c6"
       }
     }
   ],
@@ -913,7 +945,7 @@
       },
       "artifact": {
         "path": "src/intake/scheduled-a/records.ts",
-        "hash": "sha256:a9d045907a4f474fbdd5267aef570f8b9747f4f44f251558d0e1054e777f184e"
+        "hash": "sha256:3f278d29fe0df73378ab5f384dc8a5ff23542ba2bf78092cac360ecdbea01be7"
       }
     },
     {

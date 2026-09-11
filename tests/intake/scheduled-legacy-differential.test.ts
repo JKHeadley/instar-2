@@ -167,9 +167,10 @@ type DifferentialEvidence=Readonly<{
   fixturePaths: ReadonlyMap<LegacyFixtureId,ReadonlySet<string>>;
 }>;
 
-let cachedEvidence: DifferentialEvidence|undefined;
-function differentialEvidence(): DifferentialEvidence {
-  if(cachedEvidence) return cachedEvidence;
+const fixtureEvidence=new Map<LegacyFixtureId,DifferentialEvidence>();
+function evidenceForFixture(fixtureId: LegacyFixtureId,kind: LegacyKind): DifferentialEvidence {
+  const cached=fixtureEvidence.get(fixtureId);
+  if(cached) return cached;
   const comparisons: Array<Readonly<{
     fixtureId: LegacyFixtureId;kind: LegacyKind;path: string;mode: MutationMode;base: unknown;head: unknown;
   }>>=[];
@@ -178,19 +179,18 @@ function differentialEvidence(): DifferentialEvidence {
   }>>=[];
   const fixturePaths=new Map<LegacyFixtureId,ReadonlySet<string>>();
   const coveredMutationFields=new Set<string>();
-  for(const [fixtureId,kind] of legacyFixtures) {
-    const base=setup(false,fixtureId,kind),head=setup(true,fixtureId,kind);
-    expect(head.fact).toEqual(base.fact);
-    const baseControl=wire(verifyAndAdmit(json(base.fact),'machine-a',base.context));
-    const headControl=wire(verifyAndAdmit(json(head.fact),'machine-a',head.context));
-    controls.push({ fixtureId,kind,base:baseControl,head:headControl });
-    const fields=paths(base.fact.body);
-    fixturePaths.set(fixtureId,new Set(fields.map(path=>path.join('.'))));
-    for(const path of fields) {
-      const field=`${kind}:${path.join('.')}`;
-      if(coveredMutationFields.has(field)) continue;
-      coveredMutationFields.add(field);
-      for(const mode of modes) {
+  const base=setup(false,fixtureId,kind),head=setup(true,fixtureId,kind);
+  expect(head.fact).toEqual(base.fact);
+  const baseControl=wire(verifyAndAdmit(json(base.fact),'machine-a',base.context));
+  const headControl=wire(verifyAndAdmit(json(head.fact),'machine-a',head.context));
+  controls.push({ fixtureId,kind,base:baseControl,head:headControl });
+  const fields=paths(base.fact.body);
+  fixturePaths.set(fixtureId,new Set(fields.map(path=>path.join('.'))));
+  for(const path of fields) {
+    const field=`${fixtureId}:${kind}:${path.join('.')}`;
+    if(coveredMutationFields.has(field)) continue;
+    coveredMutationFields.add(field);
+    for(const mode of modes) {
       const baseSigned=signEnvelope({ ...base.fact,body: mutate(base.fact.body,path,mode) },
         base.f.deps.author.privateKey);
       const headSigned=signEnvelope({ ...head.fact,body: mutate(head.fact.body,path,mode) },
@@ -198,14 +198,34 @@ function differentialEvidence(): DifferentialEvidence {
       const baseResult=wire(verifyAndAdmit(baseSigned,'machine-a',base.context));
       const headResult=wire(verifyAndAdmit(headSigned,'machine-a',head.context));
       comparisons.push({ fixtureId,kind,path: path.join('.'),mode,base: baseResult,head: headResult });
-      }
     }
   }
-  cachedEvidence={ comparisons,controls,fieldCount:coveredMutationFields.size,fixturePaths };
-  return cachedEvidence;
+  const evidence={ comparisons,controls,fieldCount:coveredMutationFields.size,fixturePaths };
+  fixtureEvidence.set(fixtureId,evidence);
+  return evidence;
 }
 
-it('P4-PRESERVE-03 generated 32e5961-vs-HEAD mutation Results cover every legacy fixture field and mutation class',()=>{
+function differentialEvidence(): DifferentialEvidence {
+  const evidence=legacyFixtures.map(([fixtureId,kind])=>evidenceForFixture(fixtureId,kind));
+  return {
+    comparisons:evidence.flatMap(row=>row.comparisons),
+    controls:evidence.flatMap(row=>row.controls),
+    fieldCount:evidence.reduce((count,row)=>count+row.fieldCount,0),
+    fixturePaths:new Map(evidence.flatMap(row=>[...row.fixturePaths])),
+  };
+}
+
+for(const [fixtureId,kind] of legacyFixtures) it(
+  `P4-PRESERVE-03 V189 ${fixtureId} executes every field mutation against 32e5961 behavior`,()=>{
+    const { comparisons,controls,fieldCount }=evidenceForFixture(fixtureId,kind);
+    expect(comparisons).toHaveLength(fieldCount*modes.length);
+    expect(controls).toHaveLength(1);
+    expect(controls.filter(row=>value(canonical(row.base)).bytes!==value(canonical(row.head)).bytes)).toEqual([]);
+    expect(comparisons.filter(row=>value(canonical(row.base)).bytes!==value(canonical(row.head)).bytes))
+      .toEqual([]);
+  },120_000);
+
+it('P4-PRESERVE-03 V189 generated mutation Results cover every legacy fixture field and mutation class',()=>{
   const { comparisons,controls,fieldCount }=differentialEvidence();
   expect(new Set(legacyFixtures.map(([,kind])=>kind))).toEqual(new Set([
     'intake-receipt','intake-resolved','intake-admitted','intake-held','intake-expired',
@@ -221,8 +241,8 @@ it('P4-PRESERVE-03 generated 32e5961-vs-HEAD mutation Results cover every legacy
   console.log(`P4-PRESERVE-03 differential cases=${comparisons.length+controls.length}; fields=${fieldCount}; fixtures=${controls.length}`);
 },120_000);
 
-it('P4-PRESERVE-04 V178 fixture-wide inventory includes every accepted legacy optional-field variant',()=>{
-  const { fixturePaths }=differentialEvidence();
+it('P4-PRESERVE-04 P4-PRESERVE-05 V178/V184 fixture-wide inventory executes every accepted legacy fixture mutation',()=>{
+  const { fixturePaths,comparisons }=differentialEvidence();
   const expectedFixtureIds: readonly LegacyFixtureId[]=[
     'receipt-message','receipt-stop','receipt-held','resolved-requester','resolved-bound-operator',
     'admitted-requester','admitted-bound-operator','admitted-cannot-decide','held-binding-request',
@@ -233,6 +253,10 @@ it('P4-PRESERVE-04 V178 fixture-wide inventory includes every accepted legacy op
   expect(legacyFixtures.map(([id])=>id)).toEqual(expectedFixtureIds);
   expect(new Set(expectedFixtureIds).size).toBe(expectedFixtureIds.length);
   expect([...fixturePaths.keys()]).toEqual(expectedFixtureIds);
+  for(const fixtureId of expectedFixtureIds) {
+    expect(new Set(comparisons.filter(row=>row.fixtureId===fixtureId).map(row=>row.path)))
+      .toEqual(fixturePaths.get(fixtureId));
+  }
   expect(fixturePaths.get('admitted-cannot-decide')).toContain('work.deliveryFlag');
   expect(fixturePaths.get('admitted-requester')).not.toContain('work.deliveryFlag');
   expect(fixturePaths.get('conversation-binding-superseding')).toContain('supersedes');
