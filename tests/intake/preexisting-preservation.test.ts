@@ -1,4 +1,6 @@
 import { expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { canonical, consumeResult } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
 import { classifySlicePayload, intakeFactSchemas, intakeKinds } from '../../src/intake/index.js';
@@ -52,4 +54,27 @@ it('P4-PRESERVE-01 keeps every pre-existing Part Four public behavior byte-for-b
   const encoded = value(canonical(transcript));
   expect(encoded.hash).toBe('sha256:24592c925169b89b306f1c42376ed44de7c53ad8d2384e27500512cb49d583aa');
   expect(refused(mismatch).detail).toContain('different arrival bytes');
+});
+
+it('P4-PRESERVE-03 generates the 32e5961-vs-HEAD legacy-field preservation harness', () => {
+  const base=execFileSync('git',['show','32e5961:src/intake/records.ts'],{ encoding:'utf8' });
+  const head=readFileSync(new URL('../../src/intake/records.ts',import.meta.url),'utf8');
+  expect(head).toBe(base);
+
+  const f=intakeFixture(); value(f.port().receive(message('field-mutation-seed'),route));
+  const paths=f.facts().flatMap(fact=>Object.keys(fact.body as Record<string,unknown>)
+    .map(field=>`${fact.kind}.body.${field}`)).sort();
+  // This list is generated from the signed legacy transcript, so newly added or
+  // removed legacy fields change the harness even if a hand-maintained list does not.
+  expect(paths).toEqual([
+    'intake-admitted.body.adapter','intake-admitted.body.binding','intake-admitted.body.channel',
+    'intake-admitted.body.eventId','intake-admitted.body.identityEpoch','intake-admitted.body.intent',
+    'intake-admitted.body.logicalId','intake-admitted.body.rawHash','intake-admitted.body.receipt',
+    'intake-admitted.body.sender','intake-admitted.body.work','intake-receipt.body.adapter',
+    'intake-receipt.body.capture','intake-receipt.body.ingress','intake-receipt.body.rawHash',
+    'intake-resolved.body.adapter','intake-resolved.body.authentication','intake-resolved.body.binding',
+    'intake-resolved.body.channel','intake-resolved.body.eventId','intake-resolved.body.identityEpoch',
+    'intake-resolved.body.logicalId','intake-resolved.body.principalId','intake-resolved.body.rawHash',
+    'intake-resolved.body.receipt','intake-resolved.body.sender',
+  ]);
 });

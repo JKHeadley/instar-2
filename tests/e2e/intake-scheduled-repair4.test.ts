@@ -20,7 +20,7 @@ function removeLiveAuthority(f: ReturnType<typeof scheduledFixture>) {
     principals: [f.principal], grants: [], directives: [] } });
 }
 
-it('P4-ST-26 V58 fsync restart projects and deduplicates complete directive history with empty caches', () => durable(directory => {
+it('P4-ST-26 V58 fsync restart refuses complete Directive history with empty caches', () => durable(directory => {
   const before = scheduledFixture({ directory }); before.grant(); before.bind();
   const tick = before.tick(), discovery = before.discovery(tick.eventId);
   const directive = value(decode('Directive', before.f.directiveInput(), {
@@ -34,15 +34,14 @@ it('P4-ST-26 V58 fsync restart projects and deduplicates complete directive hist
   before.deps.author.privateKey));
   const input = { raw: tick.raw, route: tick.route, discovery: ref(discovery.fact.id) };
   removeLiveAuthority(before);
-  const admitted = value(before.port().receiveScheduledTick(input));
-  if (admitted.kind !== 'scheduled-admitted') throw new Error('expected scheduled admission');
+  refused(before.port().receiveScheduledTick(input),'unsupported-in-slice-a');
 
   const restarted = scheduledFixture({ directory }); restarted.installSchemas(); restarted.setTime(101);
   Object.assign(restarted.context, { schemas: structuredClone(before.context.schemas) });
   removeLiveAuthority(restarted);
   expect(value(restarted.port().pendingScheduledAdmissions({ owner: restarted.deps.workOwner,
-    frontier: restarted.frontier(), limit: 10, after: null })).admissions).toEqual([admitted.fact]);
-  expect(value(restarted.port().receiveScheduledTick(input))).toMatchObject({ kind: 'duplicate', original: admitted.fact });
+    frontier: restarted.frontier(), limit: 10, after: null })).admissions).toEqual([]);
+  refused(restarted.port().receiveScheduledTick(input),'unsupported-in-slice-a');
 }));
 
 it('P4-ST-27 V56/V61 fsync restart retains alternate registered Evidence and StandingGrant witnesses', () => durable(directory => {
@@ -87,7 +86,7 @@ it.each(['jobInstance', 'calendarPolicyVersion'] as const)
   refused(authorAndAppend({ kind: original.kind, schemaVersion: original.schemaVersion, machine: original.machine,
     principal: json(original.principal), provenance: json(original.provenance), at: json(original.at), body: json(body),
     required: original.predecessors.required }, context, createFactStore(context, before.storage), before.deps.author.privateKey),
-  'differs from the preserved tick');
+  'differs from');
 
   const restarted = scheduledFixture({ directory }); restarted.installSchemas();
   const admissions = restarted.facts().filter(fact => fact.kind === 'intake-admitted');

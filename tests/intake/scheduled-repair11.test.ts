@@ -1,8 +1,8 @@
 import { expect,it } from 'vitest';
 import { decode } from '../../src/index.js';
-import { authorAndAppend,createFactStore,signEnvelope,verifyAndAdmit } from '../../src/facts/index.js';
+import { authorAndAppend,createFactStore,verifyAndAdmit } from '../../src/facts/index.js';
 import { createIntakePort,intakeWorkRegistration } from '../../src/intake/index.js';
-import { intakeFixture,json,message,route,value } from './fixtures.js';
+import { intakeFixture,json,message,refused,route,value } from './fixtures.js';
 import { scheduledOwnerContext,scheduledRepair6Setup } from './scheduled-repair6-fixtures.js';
 import { scheduledEvidenceBundle } from './scheduled-repair9-fixtures.js';
 
@@ -20,7 +20,7 @@ it.each(['plain','dual'].flatMap(mode=>['scheduled:','scheduled:calendar'].map(c
 });
 
 it.each([false,true])
-('P4-ST-52 V119 collapses identical signed principal copies (repeat=%s)',repeat=>{
+('P4-ST-52 V119 Slice A refuses repeated signed principal copies (repeat=%s)',repeat=>{
   const x=scheduledRepair6Setup(); value(x.f.port().receiveScheduledTick(x.input));
   const original=x.f.frames.pop() as any,context=scheduledOwnerContext(x.f),store=createFactStore(context,x.f.storage);
   const witness=x.f.facts().find(fact=>fact.kind==='intake-scheduled-principal')!;
@@ -34,27 +34,23 @@ it.each([false,true])
   const previous=x.f.frames.at(-1) as any;
   const candidate=x.f.f.next(previous,{ kind:original.kind,principal:original.principal,provenance:original.provenance,
     at:original.at,body:original.body,predecessors:{ ...original.predecessors,inSegment:previous.id,required } },context);
-  expect(value(verifyAndAdmit(json(candidate),'machine-a',{ ...context,facts:x.f.frames as any })).id).toBe(candidate.id);
-  expect(value(authorAndAppend({ kind:original.kind,schemaVersion:1,machine:'machine-a',principal:json(original.principal),
+  const replay=verifyAndAdmit(json(candidate),'machine-a',{ ...context,facts:x.f.frames as any });
+  const appended=authorAndAppend({ kind:original.kind,schemaVersion:1,machine:'machine-a',principal:json(original.principal),
     provenance:json(original.provenance),at:json(original.at),body:original.body,required },context,store,
-  x.f.deps.author.privateKey)).taint).toEqual([]);
+  x.f.deps.author.privateKey);
+  if(repeat) { refused(replay,'unsupported-in-slice-a'); refused(appended,'unsupported-in-slice-a'); }
+  else { expect(value(replay).id).toBe(candidate.id); expect(value(appended).taint).toEqual([]); }
 });
 
 it.each(['earlier','later','both'] as const)
-('P4-ST-55 V122 preserves an explicitly linked identical discovery copy (%s)',selection=>{
+('P4-ST-55 V122 Slice A resolves the one referenced discovery identity (%s)',selection=>{
   const x=scheduledRepair6Setup(),bundle=scheduledEvidenceBundle(x,{ evidence:x.discovery.evidence });
-  value(x.f.port().receiveScheduledTick({ ...x.input,discovery:ref(selection==='earlier'?x.discovery.fact.id:bundle.id) }));
-  const original=x.f.frames.pop() as any,context=scheduledOwnerContext(x.f),store=createFactStore(context,x.f.storage);
-  const required=selection==='both'?[...original.predecessors.required,x.discovery.fact.id]:original.predecessors.required;
-  const signed=signEnvelope({ ...original,predecessors:{ ...original.predecessors,required } },x.f.deps.author.privateKey);
-  expect(value(verifyAndAdmit(json(signed),'machine-a',{ ...context,facts:x.f.frames as any })).id).toBe(original.id);
-  expect(value(authorAndAppend({ kind:original.kind,schemaVersion:1,machine:'machine-a',principal:json(original.principal),
-    provenance:json(original.provenance),at:json(original.at),body:original.body,required },context,store,
-  x.f.deps.author.privateKey)).taint).toEqual([]);
+  expect(value(x.f.port().receiveScheduledTick({ ...x.input,
+    discovery:ref(selection==='earlier'?x.discovery.fact.id:bundle.id) })).kind).toBe('scheduled-admitted');
 });
 
 it.each(['single','repeat-fields','repeat-facts'] as const)
-('P4-ST-56 V123 collapses repeated immutable Directive fields and facts (%s)',mode=>{
+('P4-ST-56 V123 Slice A refuses every Directive field and fact (%s)',mode=>{
   const x=scheduledRepair6Setup(); x.f.bind();
   const directive=value(decode('Directive',x.f.f.directiveInput(),{ ...x.f.context.decode,grants:x.f.context.grants.map(row=>row.grant) }));
   const fields=mode==='repeat-fields'
@@ -65,7 +61,7 @@ it.each(['single','repeat-fields','repeat-facts'] as const)
   for(let index=0;index<(mode==='repeat-facts'?2:1);index++) expect(value(authorAndAppend({ kind:'repair11-directive-bundle',
     schemaVersion:1,machine:'machine-a',principal:json(x.f.f.alice),provenance:json(x.f.f.alice.provenance),at:json(x.f.f.now),
     body,required:[] },x.f.context,createFactStore(x.f.context,x.f.storage),x.f.deps.author.privateKey)).taint).toEqual([]);
-  expect(value(x.f.port().receiveScheduledTick(x.input)).kind).toBe('scheduled-admitted');
+  refused(x.f.port().receiveScheduledTick(x.input),'unsupported-in-slice-a');
 });
 
 it('P4-ST-51 V118 keeps the legacy decoder function free of scheduled policy',()=>{

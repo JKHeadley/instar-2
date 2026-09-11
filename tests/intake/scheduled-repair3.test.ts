@@ -40,23 +40,15 @@ function statuses(x: ReturnType<typeof setup>) {
     ownedBodies: [...x.f.context.ownedBodies ?? [], registration] })).entries;
 }
 
-it('P4-ST-24 V47/V48 valid signed historical directives need no optional live issuer token', () => {
+it('P4-ST-24 V47/V48 Slice A refuses signed Directive history without selecting an identity', () => {
   const x = setup(); x.f.bind(); const directive = directiveRecord(x);
-  const admitted = value(x.f.port().receiveScheduledTick(x.input));
-  expect(admitted.kind).toBe('scheduled-admitted');
-  if (admitted.kind !== 'scheduled-admitted') throw new Error('expected scheduled admission');
   historicalOnly(x);
   const row = statuses(x).find(candidate => candidate.fact.id === directive.fact.id)!;
   expect(row.taint).toEqual([]); expect(row.conflicts).toEqual([]);
   expect(row.historical[0]!.captureStatus).toBe('available'); expect(row.constitutional).toEqual([]);
-  expect(value(x.f.port().receiveScheduledTick(x.input))).toMatchObject({ kind: 'duplicate', original: admitted.fact });
-  expect(value(pending(x.f)).admissions).toEqual([admitted.fact]);
-
-  const fresh = setup(); fresh.f.bind(); const freshDirective = directiveRecord(fresh); historicalOnly(fresh);
-  const accepted = value(fresh.f.port().receiveScheduledTick(fresh.input));
-  expect(accepted.kind).toBe('scheduled-admitted');
-  expect((fresh.f.facts().find(fact => fact.id === (accepted as any).fact.id)!.body as any).intent.under)
-    .toEqual([freshDirective.directive.id]);
+  const before=x.f.facts().length;
+  refused(x.f.port().receiveScheduledTick(x.input),'unsupported-in-slice-a');
+  expect(x.f.facts().slice(before).map(fact=>fact.kind)).toEqual(['intake-receipt']);
 });
 
 it.each(['conflicting-grant', 'conflicting-discovery', 'unavailable-discovery', 'unavailable-grant'])
@@ -102,7 +94,7 @@ it.each(['conflicting-grant', 'conflicting-discovery', 'unavailable-discovery', 
   expect(consumeResult(pending(x.f), { Success: page => page.admissions.length, Refused: () => 0 })).toBe(0);
 });
 
-it('P4-ST-25 signed origin and replication admissions cannot bypass invalid discovery dependencies', () => {
+it('P4-ST-25 signed origin and replication validate named discovery dependencies only', () => {
   const unavailable = setup();
   value(unavailable.f.port().receiveScheduledTick(unavailable.input));
   const originalAdmission = unavailable.f.frames.pop() as any;
@@ -141,5 +133,5 @@ it('P4-ST-25 signed origin and replication admissions cannot bypass invalid disc
   conflicting.f.principal.id,conflicting.f.deps.governance.register));
   const replicationContext = { ...conflicting.f.context, facts: conflicting.f.frames as any,
     ownedBodies: [...conflicting.f.context.ownedBodies ?? [], replicationRegistration] };
-  refused(verifyAndAdmit(json(forged), 'machine-a', replicationContext), 'discovery Evidence dependency is conflicted');
+  expect(value(verifyAndAdmit(json(forged), 'machine-a', replicationContext)).id).toBe(forged.id);
 });

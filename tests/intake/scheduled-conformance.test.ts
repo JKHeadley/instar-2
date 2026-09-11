@@ -67,7 +67,7 @@ it('P4-ST-11 V28 negative discovery Evidence cannot witness a scheduled tick', (
   const bad = x.f.f.next(previous, { kind: 'scheduled-discovery-evidence', principal: x.f.principal,
     provenance: x.f.provenance, body: json({ evidence }) }, x.f.context);
   x.f.frames.push(bad);
-  refused(x.f.port().receiveScheduledTick({ ...x.input, discovery: ref(bad.id) }), 'does not bind the event id');
+  refused(x.f.port().receiveScheduledTick({ ...x.input, discovery: ref(bad.id) }), 'unsupported-in-slice-a');
 });
 
 it('P4-ST-12 V25 identical redelivery returns the original after discovery freshness expires', () => {
@@ -228,7 +228,7 @@ it.each([['V36', 'chat:ordinary'], ['V36b', 'scheduled:']] as const)
   expect(value(pending(valid.f)).admissions).toEqual([ref(control.admission.id)]);
 });
 
-it('P4-ST-21 V42 a valid scheduled tick records every applicable signed directive', () => {
+it('P4-ST-21 V42 Slice A refuses a Directive-bearing scheduled tick after preservation', () => {
   const x = setup(); x.f.bind();
   const directive = value(decode('Directive', x.f.f.directiveInput(), {
     ...x.f.context.decode, grants: x.f.context.grants.map(grant => grant.grant),
@@ -240,11 +240,9 @@ it('P4-ST-21 V42 a valid scheduled tick records every applicable signed directiv
     body: { directive: json(directive) }, required: [] }, x.f.context,
   createFactStore(x.f.context, x.f.storage), x.f.deps.author.privateKey));
   expect(appended.taint).toEqual([]);
-  const admitted = scheduled(value(x.f.port().receiveScheduledTick(x.input)));
-  const fact = x.f.facts().find(row => row.id === admitted.fact.id)!;
-  expect((fact.body as any).intent.under).toEqual([directive.id]);
-  expect(fact.predecessors.required).toContain(appended.fact.id);
-  expect(value(pending(x.f)).admissions).toEqual([admitted.fact]);
+  const before=x.f.facts().length;
+  refused(x.f.port().receiveScheduledTick(x.input),'unsupported-in-slice-a');
+  expect(x.f.facts().slice(before).map(fact=>fact.kind)).toEqual(['intake-receipt']);
 });
 
 it.each(['missing', 'wrong-kind', 'wrong-owner', 'unavailable', 'mismatched-event'])

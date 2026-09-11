@@ -17,7 +17,7 @@ function removeLiveAuthority(f: ReturnType<typeof scheduledFixture>) {
     principals: [f.principal], grants: [], directives: [] } });
 }
 
-it('P4-ST-26 V55 signed origin and replication use complete directive history without cache authority', () => {
+it('P4-ST-26 V55 Slice A refuses complete Directive history without cache authority', () => {
   const f = scheduledFixture(); f.grant(); f.bind(); const tick = f.tick(), discovery = f.discovery(tick.eventId);
   const directive = value(decode('Directive', f.f.directiveInput(), {
     ...f.context.decode, grants: f.context.grants.map(row => row.grant),
@@ -29,12 +29,10 @@ it('P4-ST-26 V55 signed origin and replication use complete directive history wi
     body: json({ directive }), required: [] }, f.context, createFactStore(f.context, f.storage),
   f.deps.author.privateKey));
   removeLiveAuthority(f);
-  const admitted = value(f.port().receiveScheduledTick({ raw: tick.raw, route: tick.route, discovery: ref(discovery.fact.id) }));
-  expect(admitted.kind).toBe('scheduled-admitted');
-  const signedAdmission = f.frames.pop() as any;
-  const context = { ...f.context, facts: f.frames as any,
-    ownedBodies: [...f.context.ownedBodies ?? [], registration(f)] };
-  expect(value(verifyAndAdmit(json(signedAdmission), 'machine-a', context)).id).toBe(signedAdmission.id);
+  const before=f.frames.length;
+  refused(f.port().receiveScheduledTick({ raw: tick.raw, route: tick.route, discovery: ref(discovery.fact.id) }),
+    'unsupported-in-slice-a');
+  expect(f.frames.slice(before).map((fact: any)=>fact.kind)).toEqual(['intake-receipt']);
 });
 
 it('P4-ST-27 V56/V61 alternate constitutional schemas survive the signed replication decoder', () => {
@@ -76,7 +74,7 @@ it.each(['jobInstance', 'calendarPolicyVersion'] as const)
   refused(authorAndAppend({ kind: original.kind, schemaVersion: original.schemaVersion, machine: original.machine,
     principal: json(original.principal), provenance: json(original.provenance), at: json(original.at), body: json(body),
     required: original.predecessors.required }, context, createFactStore(context, f.storage), f.deps.author.privateKey),
-  'differs from the preserved tick');
+  'differs from');
   expect(f.facts().filter(fact => fact.kind === 'run-opening')).toEqual([]);
   const valid = value(f.port().receiveScheduledTick(input));
   if (valid.kind !== 'scheduled-admitted') throw new Error('expected valid scheduled admission');

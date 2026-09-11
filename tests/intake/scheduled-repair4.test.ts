@@ -54,36 +54,27 @@ function durable<T>(run: (directory: string) => T): T {
   try { return run(directory); } finally { rmSync(directory, { recursive: true, force: true }); }
 }
 
-it.each(['new', 'pending', 'duplicate'])
-('P4-ST-26 V55 %s resolves a complete signed directive without live grant/principal caches', operation => {
+it('P4-ST-26 V55 Slice A refuses a complete signed Directive without live caches', () => {
   const x = setup(); x.f.bind(); const directive = directiveRecord(x);
-  const admitted = operation === 'new' ? null : admit(x.f, x.input);
   removeLiveAuthority(x.f);
   const rows = statuses(x.f);
   expect(rows.every(row => !row.taint.length && !row.conflicts.length)).toBe(true);
   expect(rows.find(row => row.fact.id === directive.fact.id)!.historical[0]!.captureStatus).toBe('available');
-  if (operation === 'pending') expect(value(pending(x.f)).admissions).toEqual([admitted!.fact]);
-  else {
-    const result = x.f.port().receiveScheduledTick(x.input);
-    if (operation === 'new') expect(value(result).kind).toBe('scheduled-admitted');
-    else expect(value(result)).toMatchObject({ kind: 'duplicate', original: admitted!.fact });
-  }
+  refused(x.f.port().receiveScheduledTick(x.input),'unsupported-in-slice-a');
 });
 
-it.each(['pending', 'duplicate'])
-('P4-ST-26 V58 durable cold-reader %s resolves complete signed directive history without caches', operation => durable(directory => {
+it('P4-ST-26 V58 durable cold-reader refuses complete signed Directive history', () => durable(directory => {
   const f = scheduledFixture({ directory }), grant = f.grant(), tick = f.tick(), discovery = f.discovery(tick.eventId);
   const input = { raw: tick.raw, route: tick.route, discovery: ref(discovery.fact.id) };
   const x = { f, grant, tick, discovery, input };
-  f.bind(); const directive = directiveRecord(x); const admitted = admit(f, input);
+  f.bind(); const directive = directiveRecord(x);
   const restarted = scheduledFixture({ directory }); restarted.installSchemas(); restarted.setTime(101);
   Object.assign(restarted.context, { schemas: structuredClone(f.context.schemas) });
   removeLiveAuthority(restarted);
   const rows = statuses(restarted);
   expect(rows.every(row => !row.taint.length && !row.conflicts.length)).toBe(true);
   expect(rows.find(row => row.fact.id === directive.fact.id)!.historical[0]!.captureStatus).toBe('available');
-  if (operation === 'pending') expect(value(pending(restarted)).admissions).toEqual([admitted.fact]);
-  else expect(value(restarted.port().receiveScheduledTick(input))).toMatchObject({ kind: 'duplicate', original: admitted.fact });
+  refused(restarted.port().receiveScheduledTick(input),'unsupported-in-slice-a');
 }));
 
 function appendConstitutional(f: ReturnType<typeof scheduledFixture>, kind: string,
@@ -156,7 +147,7 @@ it.each(['jobInstance', 'calendarPolicyVersion'] as const)
   refused(authorAndAppend({ kind: original.kind, schemaVersion: original.schemaVersion, machine: original.machine,
     principal: json(original.principal), provenance: json(original.provenance), at: json(original.at), body: json(body),
     required: original.predecessors.required }, context, createFactStore(context, x.f.storage), x.f.deps.author.privateKey),
-  'differs from the preserved tick');
+  'unsupported-in-slice-a');
   expect(x.f.facts().filter(fact => fact.kind === 'intake-admitted')).toEqual([]);
   expect(() => recoverScheduledDisposition(x.f, original.id)).toThrow('durable scheduled admission absent');
 });

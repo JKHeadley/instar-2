@@ -9,15 +9,15 @@ import { extraScheduledEvidence,scheduledEvidenceBundle,scheduledFactReference }
 const ref=scheduledFactReference;
 
 it.each(['single','identical','different-identity'] as const)
-('P4-ST-47 V109 counts immutable discovery identities, not repeated constitutional fields (%s)',mode=>{
+('P4-ST-47 V109 Slice A requires one discovery witness field (%s)',mode=>{
   const x=scheduledRepair6Setup();
   const second=mode==='identical'?x.discovery.evidence:extraScheduledEvidence(x,'evidence:second',{
     subject:x.tick.eventId,predicate:'scheduled-discovery',value:true,
   });
   const fact=scheduledEvidenceBundle(x,mode==='single'?{ a:x.discovery.evidence }:{ entrer:x.discovery.evidence,again:second });
   const result=x.f.port().receiveScheduledTick({ ...x.input,discovery:ref(fact.id) });
-  if(mode==='different-identity') refused(result,'one signed discovery Evidence dependency');
-  else expect(value(result).kind).toBe('scheduled-admitted');
+  if(mode==='single') expect(value(result).kind).toBe('scheduled-admitted');
+  else refused(result,'unsupported-in-slice-a');
 });
 
 it.each(['plain','dual'] as const)
@@ -125,21 +125,10 @@ it.each([91,92,1000])
 });
 
 it.each(['single','identical'] as const)
-('P4-ST-47 V117 owner append and signed replay accept repeated fields with one immutable identity (%s)',mode=>{
+('P4-ST-47 V117 live intake refuses every copied discovery identity in Slice A (%s)',mode=>{
   const x=scheduledRepair6Setup(),bundle=scheduledEvidenceBundle(x,mode==='single'
     ?{ a:x.discovery.evidence }:{ a:x.discovery.evidence,b:x.discovery.evidence });
-  value(x.f.port().receiveScheduledTick(x.input));
-  const original=x.f.frames.pop() as any,resolution=x.f.frames.pop() as any;
-  const context=scheduledOwnerContext(x.f),store=createFactStore(context,x.f.storage);
-  const replacement=value(authorAndAppend({ kind:resolution.kind,schemaVersion:1,machine:'machine-a',principal:json(resolution.principal),
-    provenance:json(resolution.provenance),at:json(resolution.at),body:resolution.body,
-    required:resolution.predecessors.required.map((id:string)=>id===x.discovery.fact.id?bundle.id:id) },context,store,
-  x.f.deps.author.privateKey)).fact;
-  const required=original.predecessors.required.map((id:string)=>id===x.discovery.fact.id?bundle.id:id===resolution.id?replacement.id:id);
-  const signed=signEnvelope({ ...original,predecessors:{ ...original.predecessors,required,inSegment:replacement.id },
-    prevInSegment:replacement.contentHash },x.f.deps.author.privateKey);
-  expect(value(verifyAndAdmit(json(signed),'machine-a',{ ...context,facts:x.f.frames as any })).id).toBe(original.id);
-  expect(value(authorAndAppend({ kind:original.kind,schemaVersion:1,machine:'machine-a',principal:json(original.principal),
-    provenance:json(original.provenance),at:json(original.at),body:original.body,required },context,store,
-  x.f.deps.author.privateKey)).taint).toEqual([]);
+  const result=x.f.port().receiveScheduledTick({ ...x.input,discovery:ref(bundle.id) });
+  if(mode==='single') expect(value(result).kind).toBe('scheduled-admitted');
+  else refused(result,'unsupported-in-slice-a');
 });

@@ -7,23 +7,16 @@ import { scheduledOwnerContext } from '../intake/scheduled-repair6-fixtures.js';
 
 const ref=(id:string)=>({ owner:'part-two' as const,name:'FactEnvelope' as const,id });
 
-it('P4-ST-63 V128 replays and consumes an admission with two Directive identities',()=>{
-  const x=distinctDirectiveAdmission(),original=x.f.frames.pop() as FactEnvelope,context=scheduledOwnerContext(x.f);
-  expect(value(verifyAndAdmit(json(original),'machine-a',{ ...context,facts:x.f.frames as any })).id).toBe(original.id);
-  expect(value(createFactStore(context,x.f.storage).append(json(original),{ peer:'machine-a' })).taint).toEqual([]);
-  expect(value(x.f.port().pendingScheduledAdmissions({ owner:x.admitted.owner,frontier:x.f.frontier(),limit:10,after:null })).admissions)
-    .toEqual([ref(original.id)]);
+it('P4-ST-63 V128 refuses an admission with two Directive identities',()=>{
+  expect(()=>distinctDirectiveAdmission()).toThrow('unsupported-in-slice-a');
 });
 
 it('P4-ST-64 V134 refuses a mismatched resolution when the principal link is absent',()=>{
   const x=missingRecognitionAdmission(true);
   refused(verifyAndAdmit(json(x.candidate),'machine-a',{ ...x.context,facts:x.f.frames as any }),
-    'package-system principal dependency is missing');
+    'unsupported-in-slice-a');
 });
 
-it('P4-ST-65 V130 consumes the admission that names only the later identical Directive copy',()=>{
-  const x=laterDirectiveCopyAdmission(),context=scheduledOwnerContext(x.f);
-  expect(value(createFactStore(context,x.f.storage).append(json(x.candidate),{ peer:'machine-a' })).taint).toEqual([]);
-  expect(value(x.f.port().pendingScheduledAdmissions({ owner:x.owner,frontier:x.f.frontier(),limit:10,after:null })).admissions)
-    .toEqual([ref(x.candidate.id)]);
+it('P4-ST-65 V130 refuses an admission naming a later identical Directive copy',()=>{
+  expect(()=>laterDirectiveCopyAdmission()).toThrow('unsupported-in-slice-a');
 });

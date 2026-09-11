@@ -1,7 +1,7 @@
 import { expect,it } from 'vitest';
 import { decode } from '../../src/index.js';
 import { authorAndAppend,createFactStore,signEnvelope,verifyAndAdmit } from '../../src/facts/index.js';
-import { json,value } from '../intake/fixtures.js';
+import { json,refused,value } from '../intake/fixtures.js';
 import { scheduledOwnerContext,scheduledRepair6Setup } from '../intake/scheduled-repair6-fixtures.js';
 import { extraScheduledEvidence,scheduledEvidenceBundle } from '../intake/scheduled-repair9-fixtures.js';
 
@@ -46,8 +46,15 @@ it.each(['single','identical'] as const)
   const required=original.predecessors.required.map((id:string)=>id===x.discovery.fact.id?bundle.id:id===resolution.id?replacement.id:id);
   const signed=signEnvelope({ ...original,predecessors:{ ...original.predecessors,required,inSegment:replacement.id },
     prevInSegment:replacement.contentHash },x.f.deps.author.privateKey);
-  expect(value(verifyAndAdmit(json(signed),'machine-a',{ ...context,facts:x.f.frames as any })).id).toBe(original.id);
-  expect(value(authorAndAppend({ kind:original.kind,schemaVersion:1,machine:'machine-a',principal:json(original.principal),
+  const replay=verifyAndAdmit(json(signed),'machine-a',{ ...context,facts:x.f.frames as any });
+  const appended=authorAndAppend({ kind:original.kind,schemaVersion:1,machine:'machine-a',principal:json(original.principal),
     provenance:json(original.provenance),at:json(original.at),body:original.body,required },context,store,
-  x.f.deps.author.privateKey)).taint).toEqual([]);
+  x.f.deps.author.privateKey);
+  if(mode==='single') {
+    expect(value(replay).id).toBe(original.id);
+    expect(value(appended).taint).toEqual([]);
+  } else {
+    refused(replay,'unsupported-in-slice-a');
+    refused(appended,'unsupported-in-slice-a');
+  }
 });

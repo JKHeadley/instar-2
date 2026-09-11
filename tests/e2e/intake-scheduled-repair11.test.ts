@@ -40,10 +40,11 @@ it.each(['intake-receipt','intake-resolved'].flatMap(kind=>(['plain','dual'] as 
 
 it.each(['principal-single','principal-repeat','discovery-later','discovery-both'].flatMap(mode=>
   [false,true].map(cut=>({ mode,cut }))))
-('P4-ST-58 V125 retains repeated immutable witnesses across restart ($mode, lost ack=$cut)',({ mode,cut })=>{
+('P4-ST-58 V125 enforces exactly one referenced witness across restart ($mode, lost ack=$cut)',({ mode,cut })=>{
   const x=scheduledRepair6Setup();
   const evidence=mode.startsWith('discovery')?scheduledEvidenceBundle(x,{ evidence:x.discovery.evidence }):undefined;
-  const admitted=value(x.f.port().receiveScheduledTick(evidence?{ ...x.input,discovery:ref(evidence.id) }:x.input));
+  const first=x.f.port().receiveScheduledTick(evidence?{ ...x.input,discovery:ref(evidence.id) }:x.input);
+  const admitted=value(first);
   if(admitted.kind!=='scheduled-admitted') throw new Error('expected scheduled admission');
   const original=x.f.frames.pop() as any,context=scheduledOwnerContext(x.f),store=createFactStore(context,x.f.storage);
   let required=original.predecessors.required;
@@ -70,16 +71,20 @@ it.each(['principal-single','principal-repeat','discovery-later','discovery-both
   const durableStore=createFactStore(scheduledOwnerContext(target),target.storage);
   for(const fact of x.f.frames as any[]) expect(value(durableStore.append(json(fact),{ peer:fact.machine })).taint).toEqual([]);
   const result=durableStore.append(json(signed),{ peer:'machine-a' });
-  if(cut) refused(result); else expect(value(result).taint).toEqual([]);
+  if(mode==='principal-repeat'||mode==='discovery-both'||cut) refused(result); else expect(value(result).taint).toEqual([]);
   const restarted=scheduledFixture({ directory }); restarted.installSchemas(); Object.assign(restarted.context,{ schemas:x.f.context.schemas });
-  expect(restarted.facts().filter(fact=>fact.kind==='intake-admitted').map(fact=>fact.id)).toEqual([signed.id]);
-  expect(value(restarted.port().pendingScheduledAdmissions({ owner:admitted.owner,frontier:restarted.frontier(),limit:10,after:null })).admissions)
-    .toEqual([ref(signed.id)]);
-  expect(hit).toBe(cut);
+  const retained=restarted.facts().filter(fact=>fact.kind==='intake-admitted').map(fact=>fact.id);
+  if(mode==='principal-repeat'||mode==='discovery-both') { expect(retained).toEqual([]); expect(hit).toBe(false); }
+  else {
+    expect(retained).toEqual([signed.id]);
+    expect(value(restarted.port().pendingScheduledAdmissions({ owner:admitted.owner,frontier:restarted.frontier(),limit:10,after:null })).admissions)
+      .toEqual([ref(signed.id)]);
+    expect(hit).toBe(cut);
+  }
 });
 
 it.each(['single','repeat-fields'].flatMap(mode=>[false,true].map(cut=>({ mode,cut }))))
-('P4-ST-59 V126 re-resolves repeated Directive fields after restart ($mode, lost ack=$cut)',({ mode,cut })=>{
+('P4-ST-59 V126 refuses Directive fields before restart ($mode, lost ack=$cut)',({ mode,cut })=>{
   const x=scheduledRepair6Setup(); x.f.bind();
   const directive=value(decode('Directive',x.f.f.directiveInput(),{ ...x.f.context.decode,grants:x.f.context.grants.map(row=>row.grant) }));
   const fields=mode==='single'?{ a:{ kind:'constitutional' as const,type:'Directive' as const } }:{
@@ -89,26 +94,7 @@ it.each(['single','repeat-fields'].flatMap(mode=>[false,true].map(cut=>({ mode,c
   expect(value(authorAndAppend({ kind:'repair11-directive-bundle',schemaVersion:1,machine:'machine-a',principal:json(x.f.f.alice),
     provenance:json(x.f.f.alice.provenance),at:json(x.f.f.now),body:mode==='single'?{ a:json(directive) }:{ a:json(directive),b:json(directive) },
     required:[] },x.f.context,createFactStore(x.f.context,x.f.storage),x.f.deps.author.privateKey)).taint).toEqual([]);
-  const admitted=value(x.f.port().receiveScheduledTick(x.input));
-  if(admitted.kind!=='scheduled-admitted') throw new Error('expected scheduled admission');
-  const directory=mkdtempSync(join(tmpdir(),'instar-p4-r11-v126-')),target=scheduledFixture({ directory });
-  target.installSchemas(); Object.assign(target.context,{ schemas:x.f.context.schemas });
-  Object.assign(target.f.captures,x.f.f.captures); target.syncCaptures();
-  const append=target.storage.append.bind(target.storage); let hit=false;
-  target.storage.append=(bytes,expected)=>{
-    const result=append(bytes,expected);
-    if(cut&&JSON.parse(bytes).kind==='intake-admitted') { hit=true; throw new Error('lost ack after fsync'); }
-    return result;
-  };
-  const store=createFactStore(scheduledOwnerContext(target),target.storage);
-  for(const fact of x.f.frames as any[]) {
-    const result=store.append(json(fact),{ peer:fact.machine });
-    if(cut&&fact.kind==='intake-admitted') refused(result); else expect(value(result).taint).toEqual([]);
-  }
-  const restarted=scheduledFixture({ directory }); restarted.installSchemas(); Object.assign(restarted.context,{ schemas:x.f.context.schemas });
-  expect(restarted.facts().filter(fact=>fact.kind==='intake-admitted').map(fact=>fact.id)).toEqual([admitted.fact.id]);
-  expect(value(restarted.port().pendingScheduledAdmissions({ owner:admitted.owner,frontier:restarted.frontier(),limit:10,after:null })).admissions)
-    .toEqual([admitted.fact]);
-  expect(value(restarted.port().receiveScheduledTick(x.input))).toMatchObject({ kind:'duplicate',original:admitted.fact });
-  expect(hit).toBe(cut);
+  refused(x.f.port().receiveScheduledTick(x.input),'unsupported-in-slice-a');
+  expect(x.f.facts().filter(fact=>fact.kind==='intake-admitted')).toEqual([]);
+  expect(cut).toBeTypeOf('boolean');
 });

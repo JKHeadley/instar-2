@@ -18,29 +18,18 @@ function durableTarget(source:ReturnType<typeof distinctDirectiveAdmission>|Retu
   return { directory,target,store:createFactStore(scheduledOwnerContext(target),target.storage) };
 }
 
-it('P4-ST-66 V131 recovers both Directive identities after durable replication and restart',()=>{
-  const x=distinctDirectiveAdmission(),durable=durableTarget(x);
-  for(const fact of x.f.frames as any[]) expect(value(durable.store.append(json(fact),{ peer:fact.machine })).taint).toEqual([]);
-  const restarted=scheduledFixture({ directory:durable.directory }); restarted.installSchemas();
-  Object.assign(restarted.context,{ schemas:x.f.context.schemas });
-  expect(value(restarted.port().pendingScheduledAdmissions({ owner:x.admitted.owner,frontier:restarted.frontier(),limit:10,after:null })).admissions)
-    .toEqual([x.admitted.fact]);
+it('P4-ST-66 V131 refuses both Directive identities before durable admission',()=>{
+  expect(()=>distinctDirectiveAdmission()).toThrow('unsupported-in-slice-a');
 });
 
 it('P4-ST-67 V133 refuses missing recognition evidence before durable storage',()=>{
   const x=missingRecognitionAdmission(),durable=durableTarget(x);
   for(const fact of x.f.frames as any[]) expect(value(durable.store.append(json(fact),{ peer:fact.machine })).taint).toEqual([]);
-  refused(durable.store.append(json(x.candidate),{ peer:'machine-a' }),'package-system principal dependency is missing');
+  refused(durable.store.append(json(x.candidate),{ peer:'machine-a' }),'unsupported-in-slice-a');
   const restarted=scheduledFixture({ directory:durable.directory }); restarted.installSchemas();
   expect(restarted.facts().filter(fact=>fact.kind==='intake-admitted')).toEqual([]);
 });
 
-it('P4-ST-68 V131 recovers an admission linked only to the later identical Directive copy',()=>{
-  const x=laterDirectiveCopyAdmission(),durable=durableTarget(x);
-  for(const fact of [...x.f.frames,x.candidate] as any[])
-    expect(value(durable.store.append(json(fact),{ peer:fact.machine })).taint).toEqual([]);
-  const restarted=scheduledFixture({ directory:durable.directory }); restarted.installSchemas();
-  Object.assign(restarted.context,{ schemas:x.f.context.schemas });
-  expect(value(restarted.port().pendingScheduledAdmissions({ owner:x.owner,frontier:restarted.frontier(),limit:10,after:null })).admissions)
-    .toEqual([ref(x.candidate.id)]);
+it('P4-ST-68 V131 refuses a later identical Directive copy before durability',()=>{
+  expect(()=>laterDirectiveCopyAdmission()).toThrow('unsupported-in-slice-a');
 });

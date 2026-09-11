@@ -2,7 +2,7 @@ import { expect,it } from 'vitest';
 import { decode } from '../../src/index.js';
 import { authorAndAppend,createFactStore } from '../../src/facts/index.js';
 import { createIntakePort,intakeWorkRegistration } from '../../src/intake/index.js';
-import { intakeFixture,json,message,route,value } from '../intake/fixtures.js';
+import { intakeFixture,json,message,refused,route,value } from '../intake/fixtures.js';
 import { scheduledRepair6Setup } from '../intake/scheduled-repair6-fixtures.js';
 
 it.each(['plain','dual'].flatMap(mode=>['scheduled:','scheduled:calendar'].map(channel=>({ mode,channel }))))
@@ -26,7 +26,7 @@ it.each(['plain','dual'].flatMap(mode=>['scheduled:','scheduled:calendar'].map(c
 });
 
 it.each(['pending','duplicate'] as const)
-('P4-ST-57 V124 re-resolves repeated Directive fields for %s lookup',operation=>{
+('P4-ST-57 V124 refuses repeated Directive fields for %s lookup in Slice A',operation=>{
   const x=scheduledRepair6Setup(); x.f.bind();
   const directive=value(decode('Directive',x.f.f.directiveInput(),{ ...x.f.context.decode,grants:x.f.context.grants.map(row=>row.grant) }));
   Object.assign(x.f.context,{ schemas:[...x.f.context.schemas,{ ...x.f.f.schema,kind:'repair11-directive-bundle',fields:{
@@ -35,9 +35,6 @@ it.each(['pending','duplicate'] as const)
   expect(value(authorAndAppend({ kind:'repair11-directive-bundle',schemaVersion:1,machine:'machine-a',principal:json(x.f.f.alice),
     provenance:json(x.f.f.alice.provenance),at:json(x.f.f.now),body:{ a:json(directive),b:json(directive) },required:[] },
   x.f.context,createFactStore(x.f.context,x.f.storage),x.f.deps.author.privateKey)).taint).toEqual([]);
-  const admitted=value(x.f.port().receiveScheduledTick(x.input));
-  if(admitted.kind!=='scheduled-admitted') throw new Error('expected scheduled admission');
-  if(operation==='pending') expect(value(x.f.port().pendingScheduledAdmissions({ owner:admitted.owner,
-    frontier:x.f.frontier(),limit:10,after:null })).admissions).toEqual([admitted.fact]);
-  else expect(value(x.f.port().receiveScheduledTick(x.input))).toMatchObject({ kind:'duplicate',original:admitted.fact });
+  refused(x.f.port().receiveScheduledTick(x.input),'unsupported-in-slice-a');
+  expect(operation).toMatch(/pending|duplicate/);
 });
