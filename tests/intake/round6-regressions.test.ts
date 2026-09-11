@@ -14,7 +14,9 @@ it('R6-F1 V48/V51/V52 ordinary receive and recovery keep the additive verified-a
 });
 
 function standingGrantDisposition(expiresAt: number) {
-  const f = intakeFixture(), verified = f.verifiedAct();
+  const f = intakeFixture();
+  const prior = f.verifiedAct({ request: { requestId: 'request:prior-standing-grant', recurrence: '[]' } });
+  const verified = f.verifiedAct({ request: { recurrence: JSON.stringify([prior.request.id]) } });
   const raw = f.f.grant({ id: `grant:selected:${expiresAt}`, grantee: f.f.bob, standing: 'delegate',
     actions: ['work'], scope: f.f.scope, expiresAt });
   const fields = Object.fromEntries(Object.entries(raw).filter(([key]) => !['type', 'schemaVersion', 'source'].includes(key)));
