@@ -134,6 +134,12 @@ const seamEvidence = new Map([
     .map(id => [`P5-SEAM-RC-R19-${id}-INTEGRATION`, 'tests/integration/rungraph-closure-review19.test.ts']),
   ...['V43', 'V59', 'V60', 'V61', 'V62', 'V63', 'V64', 'V68', 'V69', 'V70', 'V71']
     .map(id => [`P5-SEAM-RC-R19-${id}-E2E`, 'tests/e2e/rungraph-closure-review19.test.ts']),
+  ...['F1-ENVELOPE', 'F1-SEND', 'F2-ANCESTOR', 'F2-EQUAL-COPY', 'F3-PROPOSAL', 'F3-CLOSE']
+    .map(id => [`P5-SEAM-RC-R20-${id}-UNIT`, 'tests/rungraph/review20-conformance.test.ts']),
+  ...['F1', 'F2', 'F3-PROPOSAL', 'F3-CLOSE']
+    .map(id => [`P5-SEAM-RC-R20-${id}-INTEGRATION`, 'tests/integration/rungraph-closure-review20.test.ts']),
+  ...['F1-V49-V50', 'F2-V51-V52', 'F3-V53-V54', 'F3-V55-V56']
+    .map(id => [`P5-SEAM-RC-R20-${id}-E2E`, 'tests/e2e/rungraph-closure-review20.test.ts']),
 ]);
 
 const map = new Map();

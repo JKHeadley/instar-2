@@ -161,6 +161,8 @@ function ownedRecord(value: Json, name: 'RunStep' | 'SessionGrounding' | 'Exhaus
   const decoded = object(recordFromWire(object(fact.body).record!));
   const record = name === 'RunStep' ? object(decoded.step!) : decoded;
   need(record.id === candidate.id, `${name} reference identity differs from fact`);
+  need(decoded.run === object(fact.body).run && record.run === decoded.run,
+    `${name} reference envelope and record run differ`);
   return { fact, record };
 }
 

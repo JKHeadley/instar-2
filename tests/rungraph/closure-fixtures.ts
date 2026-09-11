@@ -298,9 +298,16 @@ export function appendImpossibleHistoryAccounting(f: ReturnType<typeof impossibl
   return { accountingFact, send, reference };
 }
 
-export function continuityWithLaterInbound(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort) {
+export function continuityWithLaterInbound(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort,
+  duplicatePrior = false) {
   const f = continuityFixture(storageFactory);
   (f.c.stimulusKinds as string[]).push('later-inbound');
+  let priorGroundingCopy: ReturnType<typeof f.append>['fact'] | undefined;
+  if (duplicatePrior) {
+    priorGroundingCopy = f.append('session-grounding', json({ run: f.id,
+      record: (f.grounding.body as { record: Json }).record })).fact;
+    f.admissions.add(priorGroundingCopy.id);
+  }
   const later = f.append('later-inbound', json({ capture: (f.opening.body as Readonly<Record<string, Json>>).capture })).fact;
   const prior = recordFromWire((f.grounding.body as { record: Json }).record) as Readonly<Record<string, Json>>;
   const messages = [...prior.messages as Json[], { fact: ref(later), sequence: later.segment.position,
@@ -324,7 +331,7 @@ export function continuityWithLaterInbound(storageFactory?: (fallback: SegmentSt
     firstReply, disclosure: ref(disclosure), disposition: { kind: 'addressed' as const, work: ref(work),
       result: f.addressedResultReference } };
   return { ...f, graph, later, groundingInput, currentGroundingFact: groundingFact, proposal, currentDisclosure: disclosure,
-    work, currentAccounting: accounting };
+    work, currentAccounting: accounting, priorGroundingCopy };
 }
 
 export function completedFixture(storageFactory?: (fallback: SegmentStoragePort) => SegmentStoragePort) {

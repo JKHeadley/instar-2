@@ -144,6 +144,20 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
       'continuity grounding belongs to another run, head, or start reason');
       need(same(take(dependencies.admission.verify(factRef(groundingFact))), factRef(groundingFact)),
         'SessionGrounding admission witness missing');
+      if (grounding.lastInbound.id !== record.prePauseInbound.id) {
+        const witnessed = causalCone(groundingFact, current.facts.facts).some(fact =>
+          fact.kind === runKinds.SessionGrounding && object(fact.body).run === record.run
+          && consumeResult(boundary('VerifyPrePauseGrounding', fact, current, () => {
+            const prior = take(decodeSessionGrounding(recordFromWire(object(fact.body).record!), current));
+            need(prior.run === record.run && prior.expected === record.expected
+              && prior.reason === 'resume' && prior.lastInbound.id === record.prePauseInbound.id,
+            'pre-pause grounding subject differs');
+            need(same(take(dependencies.admission.verify(factRef(fact))), factRef(fact)),
+              'pre-pause grounding admission witness differs');
+            return true;
+          }), { Success: value => value, Refused: () => false }));
+        need(witnessed, 'pre-pause grounding admission witness missing');
+      }
       need(grounding.threshold === dependencies.groundingPolicy.threshold
         && same(grounding.briefingClasses, dependencies.groundingPolicy.briefingClasses),
       'continuity grounding changed governed coverage policy');
@@ -496,6 +510,9 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
           if (sameIdentity.length && record.type === 'UnreachableRunExit') {
             need(same(sameIdentity[0]!.record, record),
               `immutable ${record.type} identity changed or conflicted`);
+            exactAdmitted(record.exhaustion, 'ExhaustionRecord', current);
+            if (record.phase === 'close')
+              exactAdmitted(record.proposal!, 'UnreachableRunExit', current);
             return sameIdentity[0]!.fact;
           }
           const view = record.type === 'ContinuityAccounting'
