@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const executable = new Set([1, 2, 5, 22, 23, 25, 26, 27, 28, 29, 30, 52]);
 const mixed = new Set([3, 24]);
@@ -82,6 +83,30 @@ export function p16Dispositions(design = readFileSync(
   });
 }
 
+const forbiddenPermissionExports = new Set(['allow', 'canRun', 'place', 'throttle']);
+
+export function findForbiddenMeasurementPermissionExports(sources) {
+  const found = new Set();
+  for (const [file, source] of Object.entries(sources)) {
+    const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    for (const statement of parsed.statements) {
+      if (ts.isExportDeclaration(statement) && statement.exportClause
+        && ts.isNamedExports(statement.exportClause)) {
+        for (const element of statement.exportClause.elements)
+          if (forbiddenPermissionExports.has(element.name.text)) found.add(element.name.text);
+      }
+      const exported = statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword);
+      if (!exported) continue;
+      if ('name' in statement && statement.name && ts.isIdentifier(statement.name)
+        && forbiddenPermissionExports.has(statement.name.text)) found.add(statement.name.text);
+      if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations)
+        if (ts.isIdentifier(declaration.name) && forbiddenPermissionExports.has(declaration.name.text))
+          found.add(declaration.name.text);
+    }
+  }
+  return [...found].sort();
+}
+
 export function checkP16Architecture() {
   const changed = execFileSync('git', ['diff', '--name-only', 'main'], { encoding: 'utf8' })
     .trim().split('\n').filter(Boolean);
@@ -95,7 +120,13 @@ export function checkP16Architecture() {
     && !file.startsWith('tests/measurement/') && !allowedGenerated.has(file) && !allowedExact.has(file));
   if (outsideScope.length) throw new Error(`P16 changed-file scope exceeded: ${outsideScope.join(', ')}`);
   const files = readdirSync('src/measurement').filter(file => file.endsWith('.ts'));
-  const source = files.map(file => readFileSync(`src/measurement/${file}`, 'utf8')).join('\n');
+  const sources = Object.fromEntries(files.map(file => [
+    `src/measurement/${file}`, readFileSync(`src/measurement/${file}`, 'utf8'),
+  ]));
+  const source = Object.values(sources).join('\n');
+  const forbiddenExports = findForbiddenMeasurementPermissionExports(sources);
+  if (forbiddenExports.length)
+    throw new Error(`P16 forbidden measurement permission exports: ${forbiddenExports.join(', ')}`);
   const imports = [...source.matchAll(/from ['"](\.\.\/[^'"]+)['"]/g)].map(match => match[1]);
   const allowed = new Set(['../index.js', '../facts/index.js', '../projections/index.js', '../assembly/index.js']);
   const privateImports = imports.filter(path => !allowed.has(path));
@@ -149,13 +180,14 @@ export function checkP16Coverage(report, dispositions = p16Dispositions()) {
       .filter(test => (test.fullName.match(/\bP16-NF-\d+\b/g) ?? []).includes(row.id))
       .map(test => ({ file: relative(process.cwd(), file.name), title: test.title, status: test.status })));
     const behavior = behaviors.get(row.number);
+    const passed = tests.filter(test => test.status === 'passed');
     const passing = tests.filter(test => test.status === 'passed'
       && behavior !== undefined && test.title.includes(`[behavior:${behavior[0]}]`));
     if (row.status === 'EXECUTABLE' || row.status.startsWith('MIXED-EXECUTABLE-')
       || row.status.startsWith('SUPPLEMENTAL-EXECUTABLE-')) {
       for (const tier of tiers) if (!passing.some(test => test.file.startsWith(tier)))
         throw new Error(`${row.id}: A1 row lacks a passing ${tier} fixture`);
-    } else if (passing.length) throw new Error(`${row.id}: non-executable row was counted as a pass`);
+    } else if (passed.length) throw new Error(`${row.id}: non-executable row was counted as a pass`);
     return { ...row, tests, passing: passing.length };
   });
 }

@@ -3,12 +3,12 @@ import { expect, it } from 'vitest';
 import { decode, decodeMeasurement } from '../../src/index.js';
 import {
   admitMeasurementAmount, classifyFeatureOutcome, classifyProcesses, coalesceUnknownQuotaEpisodes,
-  cpuUtilization, createMeasurementLedger, decodeMeasurementProducerContract, decodeReadCachePolicy,
+  cpuUtilization, createMeasurementLedger, decodeBurnPolicy, decodeMeasurementProducerContract, decodeReadCachePolicy,
   planProcessCensus, reconcileProcessIncarnation, renderMeasurementClaim, resourceTrend,
   summarizeRateLimitEvents,
 } from '../../src/measurement/index.js';
 // @ts-expect-error Repository contract checker is intentionally JavaScript.
-import { checkP16Architecture, p16Dispositions } from '../../scripts/check-p16-contract-map.mjs';
+import { checkP16Architecture, checkP16Coverage, findForbiddenMeasurementPermissionExports, p16Dispositions } from '../../scripts/check-p16-contract-map.mjs';
 import { refused, value } from '../facts/fixtures.js';
 import { measurementFixture } from '../measurement/fixture.js';
 
@@ -36,6 +36,12 @@ it('P16-NF-03 [behavior:registration-current-content] enforces current identity 
     types: { ...f.types, register } });
   refused(decodeMeasurementProducerContract({ ...sampled, sourceSampleRequired: false }, sampledContext),
     'source sample identity');
+  for (const [id, recoveryExcess, recoveryShare] of [
+    ['burn:equal-excess', 50, 0.49], ['burn:equal-share', 49, 0.5], ['burn:equal-both', 50, 0.5],
+  ] as const) {
+    const raw = { ...f.burnPolicyInput, id, recoveryExcess, recoveryShare };
+    refused(decodeBurnPolicy(raw, f.withRegistered(raw)), 'strictly lower');
+  }
 });
 
 it('P16-NF-05 [behavior:measured-claim] requires admitted named execution evidence', () => {
@@ -48,6 +54,12 @@ it('P16-NF-05 [behavior:measured-claim] requires admitted named execution eviden
   const context = { ...f.c, types: { ...f.types, evidence: [evidence] } };
   expect(value(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'm1', workload: 'w1',
     evidence: [evidence.id] }, context))).toContain('measured execution');
+  refused(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'm1', workload: 'w1',
+    evidence: [evidence.id] }, { ...f.c, types: { ...f.types, evidence: [structuredClone(evidence)] } }));
+  const incomplete = { id: evidence.id, observedAt: { value: 100 }, freshFor: 10,
+    claim: { predicate: 'execution-observed', value: { hardware: 'm1', workload: 'w1' } } };
+  refused(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'm1', workload: 'w1',
+    evidence: [evidence.id] }, { ...f.c, types: { ...f.types, evidence: [incomplete as never] } }));
 });
 
 it('P16-NF-22 [behavior:quota-coalescing] coalesces repeated valid missing-state observations', () => {
@@ -59,6 +71,10 @@ it('P16-NF-22 [behavior:quota-coalescing] coalesces repeated valid missing-state
 
 it('P16-NF-23 [behavior:observational-port] exposes no allow, place, or throttle operation', () => {
   expect(Object.keys(createMeasurementLedger(measurementFixture().c)).sort()).toEqual(['admitAmount', 'owner', 'trend']);
+  expect(findForbiddenMeasurementPermissionExports({
+    'src/measurement/permission.ts': 'export function allow() { return true; }',
+    'src/measurement/index.ts': "export { allow } from './permission.js';",
+  })).toEqual(['allow']);
 });
 
 it('P16-NF-24 [behavior:rate-event-populations] keeps breaker and session populations distinct', () => {
@@ -103,6 +119,7 @@ it('P16-NF-28 [behavior:classified-and-unclassified] counts matched and unmatche
   ];
   expect(value(classifyProcesses(rows, [f.processRuleInput], f.c)))
     .toEqual({ counts: { 'agent-worker': 1 }, unclassified: 1 });
+  refused(classifyProcesses([rows[0]!, { ...rows[1]!, pid: 7 }], [f.processRuleInput], f.c), 'one PID');
   refused(classifyProcesses(rows, [{ className: 'agent-worker', requiredTags: ['changed'] }], f.c), 'content binding');
 });
 
@@ -133,11 +150,30 @@ it('P16-NF-30 [behavior:fired-and-no-op] executes positive, negative, absent, an
   const foreignClock = value(decodeMeasurement('clock', f.clockRaw(100, 'machine-b'), f.types));
   refused(classifyFeatureOutcome({ ...base, evaluationClock: foreignClock, evidence: fired }, { ...f.c,
     types: { ...f.types, evidence: [fired] } }), 'mismatch');
+  const withdrawn = { ...f.types.register,
+    entries: f.types.register.entries.filter(id => id !== 'feature-action-observed') };
+  refused(classifyFeatureOutcome({ ...base, evidence: fired }, { ...f.c, register: withdrawn,
+    types: { ...f.types, register: withdrawn, evidence: [fired] } }), 'predicate is not registered');
 });
 
 it('P16-NF-52 [behavior:non-executable-exclusion] keeps every A2 row outside passing acceptance', () => {
-  const rows = p16Dispositions() as { status: string }[];
+  const rows = p16Dispositions() as { id: string; number: number; status: string }[];
   expect(rows.filter(row => row.status === 'NON-EXECUTABLE-UNTIL-slice-A2')).toHaveLength(16);
+  const markers: Record<number, string> = { 1: 'contract-inventory', 2: 'architecture-boundary',
+    3: 'registration-current-content', 5: 'measured-claim', 22: 'quota-coalescing', 23: 'observational-port',
+    24: 'rate-event-populations', 25: 'cpu-and-byte', 26: 'process-incarnation',
+    27: 'limit-plus-one-census', 28: 'classified-and-unclassified', 29: 'resource-trend',
+    30: 'fired-and-no-op', 52: 'non-executable-exclusion', 53: 'legacy-additivity' };
+  const assertions = rows.filter(row => !row.status.startsWith('NON-EXECUTABLE')).map(row => ({
+    fullName: `${row.id} [behavior:${markers[row.number]}]`,
+    title: `${row.id} [behavior:${markers[row.number]}]`, status: 'passed',
+  }));
+  assertions.push({ fullName: 'P16-NF-04 falsely passed', title: 'ordinary passing assertion', status: 'passed' });
+  const report = { success: true, testResults: ['measurement', 'integration', 'e2e'].map(tier => ({
+    name: `${process.cwd()}/tests/${tier === 'measurement' ? 'measurement/foundation' : tier + '/measurement'}.test.ts`,
+    assertionResults: assertions,
+  })) };
+  expect(() => checkP16Coverage(report)).toThrow('non-executable row was counted as a pass');
 });
 
 it('P16-NF-53 [behavior:legacy-additivity] keeps all pre-existing test files byte-identical to main', () => {

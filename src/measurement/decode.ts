@@ -132,7 +132,8 @@ const burnDecoder = <C extends MeasurementDecodeContext>(preserved: string) => t
         minimumUsageCoverage: finite(v.minimumUsageCoverage, 'minimumUsageCoverage', 0, 1), entryExcess: finite(v.entryExcess, 'entryExcess'),
         entryShare: finite(v.entryShare, 'entryShare', 0, 1), recoveryExcess: finite(v.recoveryExcess, 'recoveryExcess'),
         recoveryShare: finite(v.recoveryShare, 'recoveryShare', 0, 1), recoveryWindows: integer(v.recoveryWindows, 'recoveryWindows', 1) });
-      ensure(decoded.recoveryExcess <= decoded.entryExcess && decoded.recoveryShare <= decoded.entryShare, 'recovery thresholds must not exceed entry thresholds');
+      ensure(decoded.recoveryExcess < decoded.entryExcess && decoded.recoveryShare < decoded.entryShare,
+        'recovery thresholds must be strictly lower than entry thresholds');
       ensure(context.register.entries.includes(decoded.id) && context.register.entries.includes(decoded.feature), 'burn policy or feature is not registered');
       ensure(decoded.selections.every(row => context.register.entries.includes(row.id)), 'burn selection is not registered');
       ensure(decoded.selections.every(row => {

@@ -1,4 +1,4 @@
-import { compareMeasurements, decode, decodeMeasurement, readEvidence } from '../index.js';
+import { compare, compareMeasurements, decode, decodeMeasurement, readEvidence } from '../index.js';
 import type { BoundaryContext, Clock, Result } from '../index.js';
 import { boundary, contentRegistrationId, encoding, ensure, freeze, take } from './boundary.js';
 import type {
@@ -87,7 +87,15 @@ export function renderMeasurementClaim(input: Readonly<{
     const expected = { hardware: input.hardware, workload: input.workload };
     ensure(input.evidence.every(id => (context.types.evidence ?? []).some(evidence => {
       if (evidence.id !== id) return false;
-      const claim = take(readEvidence(evidence, evidence.observedAt, context.preserved));
+      const decoded = take(decode('Evidence', evidence, context.types));
+      ensure(encoding(decoded).bytes === encoding(evidence).bytes,
+        'measured execution evidence must retain its admitted bytes');
+      const organization = take(decode('Scope', {
+        type: 'Scope', schemaVersion: 1, kind: 'organization',
+      }, context.types));
+      ensure(take(compare('Evidence', evidence, decoded, 'value', organization, context.preserved)) === true,
+        'measured execution evidence must be an admitted Evidence record');
+      const claim = take(readEvidence(decoded, decoded.observedAt, context.preserved));
       return claim.predicate === 'execution-observed'
         && encoding(claim.value).bytes === encoding(expected).bytes;
     })), 'measured execution evidence is not admitted or does not bind the claim');
@@ -213,9 +221,7 @@ export function classifyProcesses(processes: readonly ProcessDescriptor[], rules
   context: MeasurementDecodeContext): Result<ClassifiedFootprint> {
   return boundary('ProcessFootprintClassification', { processes, rules }, context, () => {
     ensure(Array.isArray(processes) && Array.isArray(rules), 'processes and rules must be arrays');
-    processes.forEach(validateProcessDescriptor);
-    ensure(new Set(processes.map(row => row.processIncarnation)).size === processes.length,
-      'process incarnation appears more than once');
+    const census = take(planProcessCensus(processes, Math.max(1, processes.length), context));
     for (const rule of rules) {
       exactObject(rule, ['className', 'requiredTags']);
       substantive(rule.className, 'process class');
@@ -228,7 +234,7 @@ export function classifyProcesses(processes: readonly ProcessDescriptor[], rules
     ensure(new Set(rules.map(row => row.className)).size === rules.length, 'duplicate process class');
     const counts: Record<string, number> = Object.fromEntries(rules.map(row => [row.className, 0]));
     let unclassified = 0;
-    for (const descriptor of processes) {
+    for (const descriptor of census.batch) {
       const matches = rules.filter(rule => rule.requiredTags.every((tag: string) => descriptor.tags.includes(tag)));
       ensure(matches.length <= 1, 'process matches several registered classes');
       if (matches[0]) counts[matches[0].className] = (counts[matches[0].className] ?? 0) + 1;
@@ -370,8 +376,10 @@ export function classifyFeatureOutcome(input: FeatureOutcomeClassificationReques
       substantive(input.feature, 'feature identity');
       ensure(context.register.entries.includes(input.feature), 'feature identity is not registered');
     }
-    ensure(input.action === null || input.action === 'feature-action-observed',
-      'feature action predicate is not registered');
+    ensure(input.action === null || input.action === 'feature-action-observed'
+      && context.register.entries.includes(input.action)
+      && context.types.register.entries.includes(input.action),
+    'feature action predicate is not registered');
     const evaluationClock = input.evaluationClock === null ? null
       : admittedClock(input.evaluationClock, context, 'feature evaluation clock');
     if (input.classifier === 'absent') {

@@ -55,6 +55,7 @@ export function measurementFixture() {
       'usage-observed', 'event-observed', 'resource-observed', 'burn:feature-a', 'feature-a',
       'selection:model-exchange', 'selection:programmatic-event', 'aggregate:input', 'scope:ordinary',
       'cache:fixture', 'hardware:m1', 'hardware:other', 'classifier:v1', 'agent-worker',
+      'feature-action-observed',
       ...registeredInputs.map(binding), binding(processRuleInput)],
     subjects: { ...f.ctx.register.subjects, 'model-token': ['tokens'], 'programmatic-count': ['tokens'],
       'process-resource': ['ms', 'bytes'], 'measurement-window-aggregate': ['tokens'] } } };
