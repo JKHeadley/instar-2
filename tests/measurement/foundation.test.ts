@@ -13,6 +13,8 @@ import { assemblyInput } from '../assembly/fixture.js';
 import { factsFixture, refused, value } from '../facts/fixtures.js';
 import { measurementFixture } from './fixture.js';
 import { judgmentFixture } from '../judgment/fixture.js';
+import { prepareSnapshot } from '../../src/facts/index.js';
+import { verificationInput } from '../verification/fixture.js';
 
 describe('Part 16 foundation records and observational boundaries', () => {
   it('P16-NF-01 P16-NF-02 construction is closed, immutable, version-migrated, canonical, and exports no authority decision', () => {
@@ -26,7 +28,7 @@ describe('Part 16 foundation records and observational boundaries', () => {
     }, f.c))).toBe(true);
     refused(decodeMeasurementProducerContract({ ...f.producerInput(), allow: true }, f.c), 'undeclared');
     const port = createMeasurementLedger(f.c);
-    expect(Object.keys(port).sort()).toEqual(['aggregate', 'attribute', 'evaluateBurn', 'owner', 'read', 'resolveQuantity', 'trend']);
+    expect(Object.keys(port).sort()).toEqual(['aggregate', 'attribute', 'bindReadSource', 'evaluateBurn', 'owner', 'read', 'readCurrent', 'resolveQuantity', 'trend']);
     expect(JSON.stringify(port)).not.toMatch(/canRun|place|throttle|allow|retry|freeze|effect|standing/i);
   });
 
@@ -52,10 +54,27 @@ describe('Part 16 foundation records and observational boundaries', () => {
     const result = value(resolveAttribution({ attempt, claimed: { feature: 'forged', model: 'forged', machine: 'forged' },
       evaluationClock: owner.now, sourceHistory: snapshot, candidates: [] }, context));
     expect(result).toMatchObject({ state: 'attributed', feature: 'judgment', model: 'model', machine: 'machine-a', run: owner.input.run.id });
-    const requestRecord = value(owner.door.inspect()).find(row => row.record.type === 'JudgmentRequest')!.record;
-    refused(owner.spine.append({ ...requestRecord, point: 'incompatible-second-feature' } as never));
     expect(value(resolveAttribution({ attempt: 'attempt:missing', claimed: { feature: 'forged', model: 'forged', machine: 'forged' },
       evaluationClock: owner.now, sourceHistory: snapshot, candidates: [] }, context))).toMatchObject({ state: 'unattributed', feature: null });
+  });
+
+  it('P16-NF-13 owner-issued incompatible multi-match reports conflict across two valid machine lineages', async () => {
+    const owner = judgmentFixture(); value(await owner.door.judge(owner.input, owner.start()));
+    const original = value(owner.store.read()).slice().sort((a, b) => a.segment.position - b.segment.position);
+    const builder = factsFixture(); let previous: (typeof original)[number] | undefined;
+    const second = original.map((fact, position) => {
+      const replica = builder.fact({ kind: fact.kind, schemaVersion: fact.schemaVersion, at: fact.at,
+        segment: { machine: 'machine-b', epoch: 0, position }, prevInSegment: previous?.contentHash ?? owner.ctx.genesis.hash,
+        predecessors: { inSegment: previous?.id ?? null, frontier: {}, required: [] }, body: fact.body }, owner.ctx);
+      previous = replica; return replica;
+    });
+    const snapshot = value(prepareSnapshot([...original, ...second], owner.ctx));
+    const f = measurementFixture(); const context = { ...f.c, register: owner.ctx.decode.register, types: owner.ctx.decode };
+    const state = value(resolveAttribution({ attempt: `attempt:${owner.input.id}:1`,
+      claimed: { feature: 'forged', model: 'forged', machine: 'forged' }, evaluationClock: owner.now,
+      sourceHistory: snapshot, candidates: [] }, context));
+    expect(state.state).toBe('conflicted');
+    expect(state.facts.length).toBeGreaterThan(3);
   });
 
   it('P16-NF-22 P16-NF-23 quota unknown stays unknown, coalesces, and exposes no scheduling operation', () => {
@@ -134,6 +153,7 @@ describe('Part 16 foundation records and observational boundaries', () => {
     expect(value(measurementProjectionDefinition(generation, { note: { identity: 'identity', value: 'amount', merge: 'additive' } }, f.c)))
       .toMatchObject({ retention: 'all-identities', id: 'measurement.source.all-identities' });
     expect(routineAgeRemovalAllowed()).toBe(false);
+    expect(closureReleasedPins(verificationInput('AssessmentClosure'))).toEqual(['assessment-pin:case:1']);
     expect(closureReleasedPins({ type: 'AssessmentClosure', schemaVersion: 1, id: 'closure:1', caseId: 'case:1', predecessor: '',
       requiredAssessments: [], dispositions: [], activeDisputes: [], releasesPin: 'assessment-pin:case:1' } as never)).toEqual([]);
     const policy = value(decodeReadCachePolicy({ type: 'ReadCachePolicy', schemaVersion: 2, id: 'cache:1', maxRows: 2, maxBytes: 100,

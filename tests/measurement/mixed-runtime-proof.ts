@@ -6,9 +6,9 @@ import { createFactStore } from '../../src/facts/index.js';
 import { foldProjection } from '../../src/projections/index.js';
 import { decodeAssemblyRecord } from '../../src/assembly/index.js';
 import {
-  aggregateMeasurements, classifyLegacyResourceObservation, createBoundedReadCache, createQuantityWitness,
-  decodeAggregateMeasurementsPolicy, decodeMeasurementProducerContract, decodeReadCachePolicy, evaluateBurn,
-  growthInvestigationLink, measurementProjectionDefinition, mergePeerMeasurements, renderBoundedRead, resolveQuantity,
+  aggregateMeasurements, bindMeasurementReadSource, classifyLegacyResourceObservation, createBoundedReadCache, createQuantityWitness,
+  decodeAggregateMeasurementsPolicy, decodeMeasurementProducerContract, decodeMeasurementReadQuery, decodeReadCachePolicy, evaluateBurn,
+  growthInvestigationLink, measurementProjectionDefinition, mergePeerMeasurements, renderBoundedRead, renderCurrentMeasurementRead, resolveQuantity,
   resourceTrend, summarizeRateLimitEvents,
 } from '../../src/measurement/index.js';
 import { assemblyInput } from '../assembly/fixture.js';
@@ -41,6 +41,14 @@ export function exerciseP16MixedRuntimeProof() {
     const freshDefinition = value(measurementProjectionDefinition(freshGeneration,
       { note: { identity: 'identity', value: 'amount', merge: 'additive' } }, mf.c));
     const freshProjection = value(foldProjection(freshDefinition, freshSnapshot, freshGeneration, owner.c));
+    const sourceRequest = { sourceHistory: freshSnapshot, sourceDefinition: freshDefinition, sourceGeneration: freshGeneration };
+    const sourceBinding = value(bindMeasurementReadSource(sourceRequest, mf.c));
+    const historicalQuery = value(decodeMeasurementReadQuery(mf.queryInput({ ...sourceBinding }), mf.c));
+    const historicalRows = [mf.readRow('historical:one', 100, {}, sourceBinding)];
+    const historicalFirst = value(renderCurrentMeasurementRead({ ...sourceRequest, query: historicalQuery,
+      rows: historicalRows, timedOut: false }, mf.c));
+    const historicalSecond = value(renderCurrentMeasurementRead({ ...sourceRequest, query: historicalQuery,
+      rows: historicalRows, timedOut: false }, mf.c));
 
     const rateEvents = value(summarizeRateLimitEvents([
       { id: 'rate:a', source: 'breaker', kind: 'circuit-open', at: mf.clock(100) },
@@ -59,10 +67,18 @@ export function exerciseP16MixedRuntimeProof() {
     const aggregate = value(aggregateMeasurements({ policy: aggregatePolicy, quantities: [first, second], unit: 'tokens', category: 'input',
       dimensions: ['feature'], producer: 'probe', scope: 'scope:ordinary', start: mf.clock(0), end: mf.clock(200),
       evaluationClock: mf.clock(200), frontier: 'frontier:mixed-proof' }, mf.c));
-    const peerPool = value(mergePeerMeasurements([
+    const peerUnion = value(mergePeerMeasurements([
+      { peer: 'local', state: 'admitted', lastFrontier: 'frontier:shared', quantities: [first] },
+      { peer: 'remote', state: 'admitted', lastFrontier: 'frontier:shared', quantities: [first, second] },
+    ], mf.c));
+    const missingPeer = value(mergePeerMeasurements([
       { peer: 'local', state: 'admitted', lastFrontier: 'frontier:local', quantities: [first] },
       { peer: 'offline', state: 'missing', lastFrontier: 'frontier:old', quantities: [] },
     ], mf.c));
+    const skewRefused = consumeResult(mergePeerMeasurements([
+      { peer: 'local', state: 'admitted', lastFrontier: 'frontier:local', quantities: [first] },
+      { peer: 'remote', state: 'admitted', lastFrontier: 'frontier:skewed', quantities: [second] },
+    ], mf.c), { Success: () => false, Refused: () => true });
     const baseline = mf.burnWindow('baseline', [mf.burnSample('baseline', 20, 0)]);
     const burn = value(evaluateBurn(mf.burnPolicy, mf.closed,
       mf.burnWindow('current', [mf.burnSample('current', 100, 20)]), [baseline], mf.c));
@@ -103,9 +119,12 @@ export function exerciseP16MixedRuntimeProof() {
     return {
       sourceHistory: { initial: projection.values['note:mixed-proof'], staleAfterAdvance,
         fresh: freshProjection.values['note:mixed-proof-next'], persistedFacts: freshSnapshot.entries.length },
+      historicalRead: { binding: sourceBinding, rows: historicalFirst.rows.length,
+        deterministic: JSON.stringify(historicalFirst) === JSON.stringify(historicalSecond) },
       rateEvents: { ids: rateEvents.events.map(row => row.id), counts: rateEvents.counts,
         breakerTripsPerHour: rateEvents.breakerTripsPerHour, collisionRefused: rateCollisionRefused },
-      aggregation: { amount: aggregate.amount, members: aggregate.members.length }, peerPool,
+      aggregation: { amount: aggregate.amount, members: aggregate.members.length }, peerUnion: peerUnion,
+      missingPeer: { ...missingPeer, skewRefused },
       burn: { classification: burn.classification, currentAmount: burn.currentAmount },
       read: { rows: page.rows.length, partial: page.partial, privacyRefused },
       resource: { state: trend.state, rssDeltaBytes: trend.rssDeltaBytes, legacyOrigins },
@@ -119,9 +138,9 @@ export function exerciseP16MixedRuntimeProof() {
 
 export const p16MixedRuntimeReceiptMap = Object.freeze({
   'P16-NF-16': ['sourceHistory'], 'P16-NF-24': ['rateEvents', 'resource'], 'P16-NF-33': ['aggregation', 'burn'],
-  'P16-NF-36': ['aggregation'], 'P16-NF-37': ['burn'], 'P16-NF-38': ['burn'],
+  'P16-NF-36': ['historicalRead'], 'P16-NF-37': ['peerUnion'], 'P16-NF-38': ['missingPeer'],
   'P16-NF-46': ['observerCost', 'growth'], 'P16-NF-47': ['read'], 'P16-NF-48': ['read'],
-  'P16-NF-50': ['sourceHistory', 'peerPool'], 'P16-NF-53': ['cacheRows'],
+  'P16-NF-50': ['sourceHistory', 'historicalRead'], 'P16-NF-53': ['cacheRows'],
 } as const);
 
 export function verifyP16MixedRuntimeProof(result: ReturnType<typeof exerciseP16MixedRuntimeProof>) {
@@ -131,13 +150,13 @@ export function verifyP16MixedRuntimeProof(result: ReturnType<typeof exerciseP16
     'P16-NF-24': result.rateEvents.ids.join(',') === 'rate:a,rate:b' && result.rateEvents.collisionRefused
       && result.rateEvents.breakerTripsPerHour === 1 && result.resource.legacyOrigins.join(',') === 'reported,reported,reported,legacy-origin-lost',
     'P16-NF-33': result.aggregation.amount === 100 && result.burn.currentAmount === 120,
-    'P16-NF-36': result.aggregation.members === 2,
-    'P16-NF-37': result.burn.classification === 'activity',
-    'P16-NF-38': result.burn.currentAmount === 120,
+    'P16-NF-36': result.historicalRead.rows === 1 && result.historicalRead.deterministic,
+    'P16-NF-37': result.peerUnion.state === 'complete' && result.peerUnion.members.length === 2,
+    'P16-NF-38': result.missingPeer.state === 'partial' && result.missingPeer.missingPeers.length === 1 && result.missingPeer.skewRefused,
     'P16-NF-46': result.observerCost.amount === 5 && result.growth.observations === 1,
     'P16-NF-47': result.read.rows === 2 && result.read.partial,
     'P16-NF-48': result.read.privacyRefused,
-    'P16-NF-50': result.peerPool.state === 'partial' && result.sourceHistory.persistedFacts === 2,
+    'P16-NF-50': result.historicalRead.deterministic && result.sourceHistory.persistedFacts === 2,
     'P16-NF-53': result.cacheRows === 1,
   };
   for (const [id, passed] of Object.entries(receipts)) if (!passed) throw new Error(`${id}: executable mixed-arm receipt failed`);

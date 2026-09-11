@@ -25,8 +25,11 @@ export {
   resourceTrend,
   mergePeerMeasurements,
   classifyFeatureOutcome,
+  createBurnWindow,
   evaluateBurn,
   renderBoundedRead,
+  bindMeasurementReadSource,
+  renderCurrentMeasurementRead,
   measurementProjectionDefinition,
   growthInvestigationLink,
 } from './operations.js';

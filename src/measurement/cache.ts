@@ -30,12 +30,20 @@ export function createBoundedReadCache(policy: ReadCachePolicy, context: Measure
       });
     },
     get(key: string): Result<ReadCacheEntry | null> {
-      return boundary('MeasurementReadCacheGet', key, context, () => entries.get(key) ?? null);
+      return boundary('MeasurementReadCacheGet', key, context, () => {
+        ensure(typeof key === 'string' && key.trim().length > 0 && key.length <= 4096, 'cache lookup key must be bounded substantive text');
+        return entries.get(key) ?? null;
+      });
     },
     planEviction(evaluationClock: Clock): Result<readonly string[]> {
       return boundary('MeasurementReadCacheEvictionPlan', evaluationClock, context, () => {
         const admittedEvaluation = take(decodeMeasurement('clock', evaluationClock, context.types));
         ensure(encoding(admittedEvaluation).bytes === encoding(evaluationClock).bytes, 'cache evaluation clock must be admitted');
+        for (const row of entries.values()) {
+          ensure(row.createdAt.subject.instance === admittedEvaluation.subject.instance
+            && row.createdAt.unit === admittedEvaluation.unit && row.createdAt.by === admittedEvaluation.by,
+          'cache evaluation clock identity differs from entry clock');
+        }
         const ordered = [...entries.values()].sort((a, b) => take(compareMeasurements(a.createdAt, b.createdAt, context.preserved)) || a.key.localeCompare(b.key));
         const selected: string[] = [];
         let projectedRows = entries.size; let projectedBytes = totalBytes();
@@ -52,6 +60,8 @@ export function createBoundedReadCache(policy: ReadCachePolicy, context: Measure
     },
     applyEviction(keys: readonly string[]): Result<number> {
       return boundary('MeasurementReadCacheEvictionApply', keys, context, () => {
+        ensure(Array.isArray(keys) && keys.every(key => typeof key === 'string' && key.trim().length > 0 && key.length <= 4096),
+          'eviction keys must be bounded substantive text');
         ensure(keys.length <= policy.evictionBatch && new Set(keys).size === keys.length, 'eviction application exceeds bounded plan');
         let removed = 0;
         for (const key of keys) if (entries.delete(key)) removed++;

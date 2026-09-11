@@ -12,7 +12,6 @@ const categoryRelations = ['standalone', 'subset-of-input', 'independent-billed'
 const families = ['model-call', 'cumulative-model-session', 'quota', 'rate-limit-event', 'resource', 'package-cost'] as const;
 const issuedProducerContracts = new WeakSet<object>();
 const issuedAggregatePolicies = new WeakSet<object>();
-const decodedProducerContracts = new Set<MeasurementProducerContract>();
 const issuedBurnPolicies = new WeakSet<object>();
 const issuedReadQueries = new WeakSet<object>();
 const issuedCachePolicies = new WeakSet<object>();
@@ -58,13 +57,19 @@ const producerDecoder = <C extends MeasurementDecodeContext>(preserved: string) 
         evidencePredicate: text(v.evidencePredicate, 'evidencePredicate'), sourceSampleRequired: bool(v.sourceSampleRequired, 'sourceSampleRequired'),
         hardwareProfileRequired: bool(v.hardwareProfileRequired, 'hardwareProfileRequired') });
       ensure(family === 'resource' || !decoded.hardwareProfileRequired, 'only resource producers may require a hardware profile');
+      ensure(family !== 'resource' || decoded.sourceSampleRequired && decoded.hardwareProfileRequired
+        && decoded.subjectKind === 'process-resource', 'resource producer requires its sample, hardware, and resource subject identity');
+      const familySubject = { 'model-call': 'model-token', 'cumulative-model-session': 'cumulative-model-session',
+        quota: 'quota', 'rate-limit-event': 'rate-limit-event', resource: 'process-resource', 'package-cost': 'observer-run' }[family];
+      ensure(decoded.subjectKind === familySubject, 'producer subject kind is not registered for its family');
+      ensure(family !== 'model-call' || decoded.sourceSampleRequired && !decoded.hardwareProfileRequired,
+        'model-call producer contract is not registered for its family');
       ensure(context.register.entries.includes(decoded.id), 'producer contract is not registered');
       ensure(context.types.register.producers.includes(decoded.producer), 'measurement producer is not registered');
       const units = context.types.register.subjects[decoded.subjectKind];
       ensure(units && decoded.categories.every(row => units.includes(row.unit)), 'measurement subject kind or category unit is not registered');
       ensure(context.register.entries.includes(decoded.evidencePredicate), 'measurement evidence predicate is not registered');
       issuedProducerContracts.add(decoded);
-      decodedProducerContracts.add(decoded as unknown as MeasurementProducerContract);
       return { ok: true, value: decoded as unknown as MeasurementProducerContract };
     } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'producer contract refused' }; }
   },
@@ -119,6 +124,10 @@ const burnDecoder = <C extends MeasurementDecodeContext>(preserved: string) => t
       ensure(decoded.recoveryExcess <= decoded.entryExcess && decoded.recoveryShare <= decoded.entryShare, 'recovery thresholds must not exceed entry thresholds');
       ensure(context.register.entries.includes(decoded.id) && context.register.entries.includes(decoded.feature), 'burn policy or feature is not registered');
       ensure(decoded.selections.every(row => context.register.entries.includes(row.id)), 'burn selection is not registered');
+      ensure(decoded.selections.every(row => {
+        const subject = row.source === 'model-exchange' ? 'model-token' : 'programmatic-count';
+        return context.types.register.subjects[subject]?.includes(decoded.unit);
+      }), 'burn policy unit is not registered for every selected activity source');
       issuedBurnPolicies.add(decoded);
       return { ok: true, value: decoded as unknown as BurnPolicy };
     } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'burn policy refused' }; }
@@ -166,10 +175,7 @@ export function decodeAggregateMeasurementsPolicy(input: unknown, context: Measu
       'aggregate subject kind or additive unit is not registered');
     ensure(decoded.dimensions.every(dimension => ['family', 'category', 'feature', 'model', 'machine'].includes(dimension)),
       'aggregate dimension is not registered');
-    ensure(decodedProducerContracts.size > 0 && [...decodedProducerContracts].some(contract =>
-      isCurrentMeasurementProducerContract(contract, context) && contract.subjectKind === decoded.sourceKind
-      && contract.producer === decoded.producer && decoded.categories.every(name => contract.categories.some(category => name === category.name
-        && decoded.additiveUnits.includes(category.unit)))), 'aggregate category has no current registered producer contract');
+    ensure(decoded.categories.every(name => name.trim().length > 0), 'aggregate category is malformed');
     issuedAggregatePolicies.add(decoded);
     return decoded;
   });
@@ -182,7 +188,12 @@ export function isCurrentMeasurementProducerContract(contract: MeasurementProduc
   return context.register.entries.includes(contract.id)
     && context.register.entries.includes(contract.evidencePredicate)
     && context.types.register.producers.includes(contract.producer)
-    && !!units && contract.categories.every(category => units.includes(category.unit));
+    && !!units && contract.categories.every(category => units.includes(category.unit))
+    && (contract.family !== 'resource' || contract.sourceSampleRequired && contract.hardwareProfileRequired
+      && contract.subjectKind === 'process-resource')
+    && contract.subjectKind === ({ 'model-call': 'model-token', 'cumulative-model-session': 'cumulative-model-session',
+      quota: 'quota', 'rate-limit-event': 'rate-limit-event', resource: 'process-resource', 'package-cost': 'observer-run' } as const)[contract.family]
+    && (contract.family !== 'model-call' || contract.sourceSampleRequired && !contract.hardwareProfileRequired);
 }
 
 export function isCurrentAggregateMeasurementsPolicy(policy: AggregateMeasurementsPolicy,
@@ -192,23 +203,33 @@ export function isCurrentAggregateMeasurementsPolicy(policy: AggregateMeasuremen
   const aggregateUnits = context.types.register.subjects[policy.aggregateKind];
   return context.register.entries.includes(policy.id) && context.register.entries.includes(policy.scope)
     && context.types.register.producers.includes(policy.producer) && !!sourceUnits && !!aggregateUnits
-    && policy.additiveUnits.every(unit => sourceUnits.includes(unit) && aggregateUnits.includes(unit))
-    && [...decodedProducerContracts].some(contract => isCurrentMeasurementProducerContract(contract, context)
-      && contract.subjectKind === policy.sourceKind && contract.producer === policy.producer
-      && policy.categories.every(name => contract.categories.some(category => name === category.name
-        && policy.additiveUnits.includes(category.unit))));
+    && policy.additiveUnits.every(unit => sourceUnits.includes(unit) && aggregateUnits.includes(unit));
 }
 
 export function isCurrentMeasurementTuple(family: string, category: string, unit: string, producer: string,
   context: MeasurementDecodeContext): boolean {
-  return [...decodedProducerContracts].some(contract => isCurrentMeasurementProducerContract(contract, context)
-    && contract.family === family && contract.producer === producer
-    && contract.categories.some(entry => entry.name === category && entry.unit === unit));
+  const expectedKind = family === 'model-call' ? 'model-token'
+    : family === 'resource' ? 'process-resource'
+      : family === 'rate-limit-event' ? 'rate-limit-event'
+        : family === 'cumulative-model-session' ? 'cumulative-model-session'
+          : family === 'quota' ? 'quota' : 'observer-run';
+  return context.types.register.producers.includes(producer)
+    && context.types.register.subjects[expectedKind]?.includes(unit) === true
+    && category.trim().length > 0;
+}
+
+export function isCurrentBurnPolicy(policy: BurnPolicy, context: MeasurementDecodeContext): boolean {
+  if (!isDecodedBurnPolicy(policy)) return false;
+  return context.register.entries.includes(policy.id) && context.register.entries.includes(policy.feature)
+    && policy.selections.every(selection => context.register.entries.includes(selection.id)
+      && selection.outputUnit === policy.unit
+      && context.types.register.subjects[selection.source === 'model-exchange' ? 'model-token' : 'programmatic-count']?.includes(policy.unit));
 }
 
 export function decodeMeasurementReadQuery(input: unknown, context: MeasurementDecodeContext): Result<MeasurementReadQuery> {
   return boundaryResult('MeasurementReadQueryDecode', context, () => {
-    const v = record(json(input), ['type', 'schemaVersion', 'id', 'start', 'end', 'evaluationClock', 'clockBasis', 'dimensions', 'pageSize', 'cursor', 'sort', 'maxExportBytes', 'detailHorizonMs']);
+    const v = record(json(input), ['type', 'schemaVersion', 'id', 'start', 'end', 'evaluationClock', 'clockBasis', 'dimensions', 'pageSize', 'cursor', 'sort', 'maxExportBytes', 'detailHorizonMs',
+      'sourceHistoryDigest', 'sourceProjectionDigest', 'frontier', 'registerGeneration']);
     ensure(v.type === 'MeasurementReadQuery' && v.schemaVersion === 2, 'read query identity/version');
     const start = take(decodeMeasurement('clock', v.start, context.types));
     const end = take(decodeMeasurement('clock', v.end, context.types));
@@ -221,7 +242,10 @@ export function decodeMeasurementReadQuery(input: unknown, context: MeasurementD
     const decoded = freeze({ type: 'MeasurementReadQuery' as const, schemaVersion: 2 as const, id: text(v.id, 'id'), start, end, evaluationClock,
       clockBasis: choice(v.clockBasis, ['utc'] as const, 'clockBasis'), dimensions, pageSize: integer(v.pageSize, 'pageSize', 1),
       cursor: v.cursor as string | null, sort: choice(v.sort, ['source-time', 'identity'] as const, 'sort'), maxExportBytes: integer(v.maxExportBytes, 'maxExportBytes', 1),
-      detailHorizonMs: integer(v.detailHorizonMs, 'detailHorizonMs', 1) }) as unknown as MeasurementReadQuery;
+      detailHorizonMs: integer(v.detailHorizonMs, 'detailHorizonMs', 1), sourceHistoryDigest: text(v.sourceHistoryDigest, 'sourceHistoryDigest'),
+      sourceProjectionDigest: text(v.sourceProjectionDigest, 'sourceProjectionDigest'), frontier: text(v.frontier, 'frontier'),
+      registerGeneration: text(v.registerGeneration, 'registerGeneration') }) as unknown as MeasurementReadQuery;
+    ensure(decoded.registerGeneration === context.register.generation.id, 'read query register generation is not current');
     issuedReadQueries.add(decoded);
     return decoded;
   });

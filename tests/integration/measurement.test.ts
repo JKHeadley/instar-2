@@ -79,6 +79,6 @@ describe('Part 16 public-port integration', () => {
     const observation = value(decodeAssemblyRecord('GrowthObservation', { ...assemblyInput('GrowthObservation'),
       comparisons: [{ subject: 'genesis-replay-duration', kind: 'measured', value: 15, threshold: 10, result: 'soft-breach' }] }, ff.c));
     expect(value(growthInvestigationLink(growthPolicy, [observation, observation], f.c))?.observations).toEqual([observation.id]);
-    expect(Object.keys(port).sort()).toEqual(['aggregate', 'attribute', 'evaluateBurn', 'owner', 'read', 'resolveQuantity', 'trend']);
+    expect(Object.keys(port).sort()).toEqual(['aggregate', 'attribute', 'bindReadSource', 'evaluateBurn', 'owner', 'read', 'readCurrent', 'resolveQuantity', 'trend']);
   });
 });

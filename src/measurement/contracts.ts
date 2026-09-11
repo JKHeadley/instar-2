@@ -153,6 +153,8 @@ export interface ResourcePoint {
   readonly at: Clock;
   readonly hardwareProfile: string;
   readonly classifierGeneration: string;
+  /** Declared maximum interval between consecutive samples in one complete trend window. */
+  readonly cadenceMs: number;
   readonly state: 'observed' | 'missing' | 'failed';
   readonly cpuTimeMs: number | null;
   readonly monotonicIntervalMs: number | null;
@@ -274,6 +276,10 @@ export interface BurnSample {
 
 export interface BurnWindow {
   readonly id: string;
+  readonly start: Clock;
+  readonly end: Clock;
+  readonly evidenceHorizon: Clock;
+  readonly populationEvidence: Evidence;
   readonly censusComplete: boolean;
   readonly collectorsComplete: boolean;
   readonly observedExchanges: number;
@@ -294,6 +300,8 @@ export interface BurnEpisodeState {
   readonly investigation: string | null;
   /** Last classified window, used only to make consecutive recovery replay-safe. */
   readonly lastEvaluatedWindow?: string | null;
+  /** Canonical owner-observation identity; relabeling a window cannot advance recovery. */
+  readonly lastEvaluatedObservation?: string | null;
 }
 
 export interface BurnEvaluation {
@@ -324,6 +332,10 @@ export interface MeasurementReadQuery extends PackageValue<'MeasurementReadQuery
   readonly sort: 'source-time' | 'identity';
   readonly maxExportBytes: number;
   readonly detailHorizonMs: number;
+  readonly sourceHistoryDigest: string;
+  readonly sourceProjectionDigest: string;
+  readonly frontier: string;
+  readonly registerGeneration: string;
 }
 
 export interface MeasurementReadRow {
@@ -339,6 +351,7 @@ export interface MeasurementReadRow {
   readonly feature: string | null;
   readonly model: string | null;
   readonly machine: string;
+  readonly evidence: Evidence;
 }
 
 export interface MeasurementReadResult {
@@ -350,6 +363,30 @@ export interface MeasurementReadResult {
   readonly reason: string | null;
   readonly evaluationClock: Clock;
   readonly exportBytes: number;
+  readonly sourceHistoryDigest: string;
+  readonly sourceProjectionDigest: string;
+  readonly frontier: string;
+  readonly registerGeneration: string;
+}
+
+/** Exact current Part Two snapshot plus the data-only source fold used by a historical presentation. */
+export interface MeasurementReadSourceRequest {
+  readonly sourceHistory: FactSnapshot;
+  readonly sourceDefinition: ProjectionDefinition;
+  readonly sourceGeneration: ProjectionGeneration;
+}
+
+export interface MeasurementReadSourceBinding {
+  readonly sourceHistoryDigest: string;
+  readonly sourceProjectionDigest: string;
+  readonly frontier: string;
+  readonly registerGeneration: string;
+}
+
+export interface CurrentMeasurementReadRequest extends MeasurementReadSourceRequest {
+  readonly query: MeasurementReadQuery;
+  readonly rows: readonly MeasurementReadRow[];
+  readonly timedOut: boolean;
 }
 
 export interface ReadCachePolicy extends PackageValue<'ReadCachePolicy'> {
@@ -391,6 +428,8 @@ export interface MeasurementLedgerPort {
   evaluateBurn(policy: BurnPolicy, previous: BurnEpisodeState, current: BurnWindow, baselines: readonly BurnWindow[]): Result<BurnEvaluation>;
   trend(points: readonly ResourcePoint[], minimumSamples: number): Result<ResourceTrend>;
   read(query: MeasurementReadQuery, rows: readonly MeasurementReadRow[], timedOut?: boolean): Result<MeasurementReadResult>;
+  bindReadSource(request: MeasurementReadSourceRequest): Result<MeasurementReadSourceBinding>;
+  readCurrent(request: CurrentMeasurementReadRequest): Result<MeasurementReadResult>;
 }
 
 export interface MeasurementPackageInputs {

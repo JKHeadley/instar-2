@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const executable = new Set([1, 2, 5, 12, 13, 22, 23, 25, 26, 27, 28, 29, 30, 34, 39, 40, 41, 52, 53]);
+const executable = new Set([1, 2, 5, 12, 13, 22, 23, 25, 26, 27, 28, 29, 30, 34, 39, 40, 41, 52]);
 const mixed = new Set([16, 24, 33, 36, 37, 38, 46, 47, 48, 50]);
 const dependencies = {
   3: ['seam-response-intake-followup.md', 'seam-response-assembly-followup.md', 'seam-response-judgment.md', 'SEAM-LEDGER.md row 64'],
@@ -50,8 +50,11 @@ export function p16Dispositions(design = readFileSync('docs/20-measurement-ledge
   const ids = [...design.matchAll(/^\| (P16-NF-(\d+)) \|/gm)].map(match => ({ id: match[1], number: Number(match[2]) }));
   if (ids.length !== 52 || ids.some((row, index) => row.number !== index + 1))
     throw new Error('Part Sixteen design must contain exactly one contiguous P16-NF-01..52 table');
-  const rows = [...ids, { id: 'P16-NF-53', number: 53 }];
+  // The governing design intentionally ends at 52. Keep the historic harness label visible,
+  // but never present it as an invented design acceptance rule.
+  const rows = [...ids, { id: 'P16-NF-53', number: 53, supplemental: true }];
   return rows.map(row => {
+    if (row.number === 53) return { ...row, status: 'SUPPLEMENTAL-EXECUTABLE-NON-GOVERNING', dependencies: [] };
     if (executable.has(row.number)) return { ...row, status: 'EXECUTABLE', dependencies: [] };
     const blocked = dependencies[row.number];
     if (!blocked?.length) throw new Error(`${row.id}: non-executable row has no exact grant dependency`);
@@ -83,15 +86,16 @@ export function checkP16Architecture() {
   const runtime = readFileSync('tests/measurement/mixed-runtime-proof.ts', 'utf8');
   if (!runtime.includes('p16MixedRuntimeReceiptMap') || !proofIds.every(id => runtime.includes(`'${id}'`)))
     throw new Error('mixed runtime proof lacks its per-row executable receipt map');
-  for (const operation of ['createTransportFileStorage(', 'foldProjection(', 'summarizeRateLimitEvents(', 'createQuantityWitness(',
+  for (const operation of ['createTransportFileStorage(', 'foldProjection(', 'bindMeasurementReadSource(', 'renderCurrentMeasurementRead(',
+    'summarizeRateLimitEvents(', 'createQuantityWitness(',
     'aggregateMeasurements(', 'mergePeerMeasurements(', 'evaluateBurn(', 'renderBoundedRead(', 'resourceTrend(',
     'classifyLegacyResourceObservation(', 'growthInvestigationLink(', 'createBoundedReadCache('])
     if (!runtime.includes(operation)) throw new Error(`mixed runtime proof omits ${operation}`);
-  for (const receipt of ['sourceHistory:', 'rateEvents:', 'aggregation:', 'peerPool,', 'burn:', 'read:', 'resource:',
+  for (const receipt of ['sourceHistory:', 'historicalRead:', 'rateEvents:', 'aggregation:', 'peerUnion:', 'missingPeer:', 'burn:', 'read:', 'resource:',
     'observerCost:', 'growth:', 'cacheRows:']) if (!runtime.includes(receipt)) throw new Error(`mixed runtime proof omits receipt ${receipt}`);
   const foundation = readFileSync('tests/measurement/foundation.test.ts', 'utf8');
-  if (!foundation.includes("owner.spine.append({ ...requestRecord, point: 'incompatible-second-feature'")
-    || !foundation.includes('resolveAttribution(')) throw new Error('P16-NF-13 omits its owner-issued incompatible multi-match neighbor');
+  if (!foundation.includes('P16-NF-13 owner-issued incompatible multi-match')
+    || !foundation.includes("state).toBe('conflicted')")) throw new Error('P16-NF-13 omits its owner-issued incompatible multi-match neighbor');
   return { sourceFiles: files.length, imports: [...new Set(imports)].sort(), declarations: declarations.length, proofFiles: proofFiles.length };
 }
 
@@ -103,7 +107,7 @@ export function checkP16Coverage(report, dispositions = p16Dispositions()) {
       .filter(test => (test.fullName.match(/\bP16-NF-\d+\b/g) ?? []).includes(row.id))
       .map(test => ({ file: relative(process.cwd(), file.name), title: test.title, status: test.status })));
     const passing = tests.filter(test => test.status === 'passed');
-    if (row.status === 'EXECUTABLE' || row.status.startsWith('MIXED-EXECUTABLE-')) {
+    if (row.status === 'EXECUTABLE' || row.status.startsWith('MIXED-EXECUTABLE-') || row.status.startsWith('SUPPLEMENTAL-EXECUTABLE-')) {
       for (const tier of tiers) if (!passing.some(test => test.file.startsWith(tier)))
         throw new Error(`${row.id}: executable foundation row lacks a passing ${tier} fixture`);
     } else if (passing.length) throw new Error(`${row.id}: follow-on row was counted as an executable pass`);
@@ -117,5 +121,5 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   console.log('| Check | Status | Passing test files |');
   console.log('|---|---|---|');
   for (const row of rows) console.log(`| ${row.id} | ${row.status} | ${[...new Set(row.tests.map(test => test.file))].join('; ') || '—'} |`);
-  console.log(`${rows.length} P16 checks mapped: ${rows.filter(row => row.status === 'EXECUTABLE').length} wholly executable; ${rows.filter(row => row.status.startsWith('MIXED-EXECUTABLE-')).length} mixed; ${rows.filter(row => row.status.startsWith('NON-EXECUTABLE-')).length} wholly excluded until exact named grants.`);
+  console.log(`${rows.length} labels mapped: ${rows.filter(row => row.status === 'EXECUTABLE').length} governing wholly executable; ${rows.filter(row => row.status.startsWith('MIXED-EXECUTABLE-')).length} governing mixed; ${rows.filter(row => row.status.startsWith('NON-EXECUTABLE-')).length} governing wholly excluded until exact named grants; 1 supplemental non-governing harness label.`);
 }

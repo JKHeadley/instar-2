@@ -1,8 +1,10 @@
 import type { AggregateMeasurementsRequest, AttributionRequest, BurnEpisodeState, BurnPolicy, BurnWindow,
-  MeasurementLedgerPort, MeasurementReadQuery, MeasurementReadRow, QuantityOwnerResolution, QuantityWitness,
+  CurrentMeasurementReadRequest, MeasurementLedgerPort, MeasurementReadQuery, MeasurementReadRow, MeasurementReadSourceRequest,
+  QuantityOwnerResolution, QuantityWitness,
   ResourcePoint } from './contracts.js';
 import type { MeasurementDecodeContext } from './decode.js';
-import { aggregateMeasurements, evaluateBurn, renderBoundedRead, resolveAttribution, resolveQuantity, resourceTrend } from './operations.js';
+import { aggregateMeasurements, bindMeasurementReadSource, evaluateBurn, renderBoundedRead, renderCurrentMeasurementRead,
+  resolveAttribution, resolveQuantity, resourceTrend } from './operations.js';
 
 export function createMeasurementLedger(context: MeasurementDecodeContext): MeasurementLedgerPort {
   return Object.freeze({
@@ -13,5 +15,7 @@ export function createMeasurementLedger(context: MeasurementDecodeContext): Meas
     evaluateBurn: (policy: BurnPolicy, previous: BurnEpisodeState, current: BurnWindow, baselines: readonly BurnWindow[]) => evaluateBurn(policy, previous, current, baselines, context),
     trend: (points: readonly ResourcePoint[], minimumSamples: number) => resourceTrend(points, minimumSamples, context),
     read: (query: MeasurementReadQuery, rows: readonly MeasurementReadRow[], timedOut = false) => renderBoundedRead(query, rows, timedOut, context),
+    bindReadSource: (request: MeasurementReadSourceRequest) => bindMeasurementReadSource(request, context),
+    readCurrent: (request: CurrentMeasurementReadRequest) => renderCurrentMeasurementRead(request, context),
   });
 }

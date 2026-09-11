@@ -73,8 +73,8 @@ describe('Part 16 round-three independent review regressions', () => {
     const baseline = f.burnWindow('baseline', [f.burnSample('baseline', 20, 0)]);
     const open = { state: 'open' as const, recoveryCount: 1, notified: true, investigation: 'prior' };
     refused(evaluateBurn(f.burnPolicy, open, { ...high, observedExchanges: 0, usageSupportedExchanges: 0,
-      attemptedDispatches: 0 }, [baseline], f.c), 'census');
-    refused(evaluateBurn(f.burnPolicy, f.closed, { ...high, censusComplete: 'false' as never }, [baseline], f.c), 'boolean');
+      attemptedDispatches: 0 }, [baseline], f.c), 'constructor');
+    refused(evaluateBurn(f.burnPolicy, f.closed, { ...high, censusComplete: 'false' as never }, [baseline], f.c), 'constructor');
     refused(evaluateBurn(f.burnPolicy, { state: 'open', notified: true, investigation: 'prior' } as never,
       high, [baseline], f.c), 'undeclared');
   });
@@ -82,22 +82,18 @@ describe('Part 16 round-three independent review regressions', () => {
   it('R3-F06 retains conflicts, unresolved evidence, empty baselines, and coverage debt', () => {
     const f = measurementFixture(); const baseline = f.burnWindow('baseline', [f.burnSample('baseline', 20, 0)]);
     const open = { state: 'open' as const, recoveryCount: 1, notified: true, investigation: 'prior' };
-    const conflict = { ...f.burnWindow('conflict', [f.burnSample('dupe', 100, 20)]),
-      samples: [f.burnSample('dupe', 100, 20), f.burnSample('dupe', 999, 20)] };
-    expect(value(evaluateBurn(f.burnPolicy, open, conflict, [baseline], f.c))).toMatchObject({ classification: 'incomplete',
-      confidence: 'insufficient-evidence', episode: { state: 'open' } });
+    const conflict = f.burnWindow('conflict', [f.burnSample('dupe', 100, 20), f.burnSample('dupe', 999, 20)]);
+    refused(evaluateBurn(f.burnPolicy, open, conflict, [baseline], f.c), 'comparison population');
     const a = f.witness('input', 100, { sourceEvent: 'a' }); const b = f.witness('input', 110, { sourceEvent: 'b' });
     const unresolved = value(resolveQuantity([a, b], undefined, f.c));
-    const incomplete = { ...f.burnWindow('incomplete', []), observedExchanges: 1, usageSupportedExchanges: 1,
-      attemptedDispatches: 1, samples: [{ identity: 'exchange:1', feature: 'feature-a', source: 'model-exchange' as const,
-        selectionVersion: 'v1', quantities: [unresolved, f.quantity('output', 20)] }] };
-    expect(value(evaluateBurn(f.burnPolicy, open, incomplete, [baseline], f.c))).toMatchObject({ episode: { state: 'open' },
-      confidence: 'insufficient-evidence' });
+    const incomplete = f.burnWindow('incomplete', [{ identity: 'exchange:1', feature: 'feature-a', source: 'model-exchange' as const,
+      selectionVersion: 'v1', quantities: [unresolved, f.quantity('output', 20)] }]);
+    refused(evaluateBurn(f.burnPolicy, open, incomplete, [baseline], f.c), 'comparison population');
     expect(value(evaluateBurn(f.burnPolicy, open, f.burnWindow('current', [f.burnSample('current', 100, 20)]), [], f.c)).confidence)
       .toBe('insufficient-evidence');
     const policy = value(decodeBurnPolicy(f.burnPolicyInput({ minimumUsageCoverage: 0.8 }), f.c));
-    const lowCoverage = { ...f.burnWindow('coverage', [f.burnSample('one', 10, 0)]), observedExchanges: 4,
-      usageSupportedExchanges: 3, attemptedDispatches: 4, provenNoExchange: 0 };
+    const lowCoverage = f.burnWindow('coverage', [f.burnSample('one', 10, 0)], { observedExchanges: 4,
+      usageSupportedExchanges: 3, attemptedDispatches: 4, provenNoExchange: 0 });
     expect(value(evaluateBurn(policy, open, lowCoverage, [baseline], f.c)).coverageDebt).toContain('usage-coverage-floor');
   });
 
@@ -163,8 +159,8 @@ describe('Part 16 round-three independent review regressions', () => {
       { id: 'a', source: 'breaker', kind: 'circuit-open', at: same },
     ], f.clock(0), f.clock(3_600_000), f.c));
     expect(summary).toMatchObject({ counts: { 'circuit-open': 1, '529': 1 }, breakerTripsPerHour: 1 });
-    refused(summarizeRateLimitEvents([{ id: 'a', source: 'breaker', kind: '529', at: same },
-      { id: 'a', source: 'breaker', kind: 'quota', at: same }], f.clock(0), f.clock(200), f.c), 'conflicting');
+    refused(summarizeRateLimitEvents([{ id: 'a', source: 'breaker', kind: 'circuit-open', at: same },
+      { id: 'a', source: 'breaker', kind: 'circuit-recover', at: same }], f.clock(0), f.clock(200), f.c), 'conflicting');
     expect(value(classifyLegacyResourceObservation({ id: 'own', source: 'own-resource-read', state: 'read-failed',
       value: null, originalNumeric: false }, f.c)).state).toBe('failed');
     expect(value(classifyLegacyResourceObservation({ id: 'pid', source: 'pid-batch', state: 'read-failed',

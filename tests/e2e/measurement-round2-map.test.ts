@@ -7,9 +7,11 @@ it('P16-NF-16 P16-NF-24 P16-NF-33 P16-NF-36 P16-NF-37 P16-NF-38 P16-NF-46 P16-NF
   expect(result.sourceHistory).toEqual({ initial: '1', staleAfterAdvance: true, fresh: '2', persistedFacts: 2 });
   expect(result.rateEvents).toMatchObject({ ids: ['rate:a', 'rate:b'], collisionRefused: true });
   expect(result.aggregation).toEqual({ amount: 100, members: 2 });
-  expect(result.peerPool).toMatchObject({ state: 'partial', members: [expect.any(String)], missingPeers: [{ peer: 'offline' }] });
+  expect(result.peerUnion).toMatchObject({ state: 'complete', members: [expect.any(String), expect.any(String)] });
+  expect(result.missingPeer).toMatchObject({ state: 'partial', members: [expect.any(String)], missingPeers: [{ peer: 'offline' }], skewRefused: true });
   expect(result).toMatchObject({ burn: { currentAmount: 120 }, read: { privacyRefused: true },
-    resource: { state: 'complete' }, observerCost: { amount: 5 }, growth: { observations: 1 }, cacheRows: 1 });
+    resource: { state: 'complete' }, historicalRead: { rows: 1, deterministic: true },
+    observerCost: { amount: 5 }, growth: { observations: 1 }, cacheRows: 1 });
 });
 
 it('P16-NF-40 P16-NF-41 P16-NF-50 real SIGKILL cuts preserve signed source uncertainty and rebuild an empty disposable cache', () => {

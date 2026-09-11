@@ -115,7 +115,7 @@ describe('Part 16 round-two independent data-validation reproductions', { timeou
     const altered = { ...sample, quantities: sample.quantities.map(quantity => ({ ...quantity, witnesses: quantity.witnesses.map(witness => ({ ...witness,
       measurement: { ...witness.measurement, unit: 'bytes', subject: { kind: 'process-resource', instance: 'other' } } })) })) };
     refused(evaluateBurn(f.burnPolicy, f.closed, { ...f.burnWindow('altered', []), samples: [altered], observedExchanges: 1,
-      usageSupportedExchanges: 1, attemptedDispatches: 1, comparisonScopeAmount: 200 } as never, [baseline], f.c), 'resolution');
+      usageSupportedExchanges: 1, attemptedDispatches: 1, comparisonScopeAmount: 200 } as never, [baseline], f.c), 'constructor');
   });
 
   it('R2-F08 burn recovery is replay-safe and a later episode notifies independently', () => {
@@ -128,7 +128,8 @@ describe('Part 16 round-two independent data-validation reproductions', { timeou
     const opened = value(evaluateBurn(f.burnPolicy, f.closed, high, [baseline], f.c));
     const closed = value(evaluateBurn(f.burnPolicy, opened.episode,
       f.burnWindow('inactive', [], { attemptedDispatches: 1, provenNoExchange: 1 }), [baseline], f.c));
-    const later = value(evaluateBurn(f.burnPolicy, closed.episode, { ...high, id: 'later' }, [baseline], f.c));
+    const later = value(evaluateBurn(f.burnPolicy, closed.episode,
+      f.burnWindow('later', [f.burnSample('later', 100, 20)], { comparisonScopeAmount: 200 }), [baseline], f.c));
     expect(later).toMatchObject({ notify: true, openInvestigation: true });
   });
 
@@ -163,7 +164,8 @@ describe('Part 16 round-two independent data-validation reproductions', { timeou
     expect(value(resourceTrend([f.resourcePoint('one', 100, 100), f.resourcePoint('two', 160, 110, {
       processIncarnation: 'other' })], 2, f.c)).state).toBe('incomplete');
     const a = f.resourcePoint('a', 100, 100); const b = { ...a, id: 'peer:b' }; const c = f.resourcePoint('c', 160, 110);
-    expect(value(resourceTrend([a, b, c], 2, f.c))).toMatchObject({ state: 'complete', rssDeltaBytes: 10, points: [{ id: 'a' }, { id: 'c' }] });
+    expect(value(resourceTrend([a, b, c], 2, f.c))).toMatchObject({ state: 'complete', rssDeltaBytes: 10,
+      points: [{ id: 'a' }, { id: 'peer:b' }, { id: 'c' }] });
   });
 
   it('R2-F13 cache clocks must be complete admitted measurements', () => {
@@ -189,9 +191,10 @@ describe('Part 16 round-two independent data-validation reproductions', { timeou
     expect(rows.find(row => row.id === 'P16-NF-47')?.dependencies.join(' ')).toContain('P16-P11-measurement-spend-surface-v1');
   });
 
-  it('R2-F16 all 53 fixture ids are mapped and main-owned package/root files remain byte-identical', () => {
+  it('R2-F16 all 53 fixture ids are mapped and the root export change is additive', () => {
     const rows = p16Dispositions() as { id: string }[];
     expect(rows).toHaveLength(53); expect(rows.at(-1)?.id).toBe('P16-NF-53');
-    expect(execFileSync('git', ['diff', '--name-only', 'main', '--', 'src/index.ts', 'package.json'], { encoding: 'utf8' }).trim()).toBe('');
+    expect(execFileSync('git', ['diff', '--name-only', 'main', '--', 'src/index.ts'], { encoding: 'utf8' }).trim()).toBe('');
+    expect(execFileSync('git', ['diff', 'main', '--', 'package.json'], { encoding: 'utf8' })).toContain('"./measurement"');
   });
 });

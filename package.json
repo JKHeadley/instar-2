@@ -13,8 +13,9 @@
     "./transport": { "types": "./dist/transport/index.d.ts", "default": "./dist/transport/index.js" },
     "./judgment": { "types": "./dist/judgment/index.d.ts", "default": "./dist/judgment/index.js" },
     "./effects": { "types": "./dist/effects/index.d.ts", "default": "./dist/effects/index.js" },
-    "./verification": { "types": "./dist/verification/index.d.ts", "default": "./dist/verification/index.js" }
-    ,"./assembly": { "types": "./dist/assembly/index.d.ts", "default": "./dist/assembly/index.js" }
+    "./verification": { "types": "./dist/verification/index.d.ts", "default": "./dist/verification/index.js" },
+    "./assembly": { "types": "./dist/assembly/index.d.ts", "default": "./dist/assembly/index.js" },
+    "./measurement": { "types": "./dist/measurement/index.d.ts", "default": "./dist/measurement/index.js" }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

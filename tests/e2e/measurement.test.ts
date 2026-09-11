@@ -3,21 +3,28 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { decode } from '../../src/index.js';
+import { consumeResult, decode, readHistorical, readHistoricalEvidence } from '../../src/index.js';
 import { createFactStore } from '../../src/facts/index.js';
 import type { FactContext, FactSchema } from '../../src/facts/index.js';
 import { checkpoint, foldProjection, readProjection, verifyRebuild } from '../../src/projections/index.js';
 import {
   createBoundedReadCache,
   createMeasurementLedger,
+  classifyProcesses,
+  cpuUtilization,
   decodeReadCachePolicy,
   growthInvestigationLink,
   measurementProjectionDefinition,
+  planProcessCensus,
+  resourceTrend,
 } from '../../src/measurement/index.js';
+import { closureReleasedPins } from '../../src/verification/index.js';
+import { verificationInput } from '../verification/fixture.js';
 import { decodeAssemblyRecord } from '../../src/assembly/index.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { factsFixture, refused, value } from '../facts/fixtures.js';
 import { measurementFixture } from '../measurement/fixture.js';
+import { fixture } from '../fixtures.js';
 // @ts-expect-error The physical file adapter is an executable JavaScript boundary.
 import { createTransportFileStorage } from '../../scripts/transport-file-storage.mjs';
 
@@ -78,11 +85,13 @@ it('P16-NF-12 P16-NF-13 P16-NF-39 P16-NF-40 P16-NF-41 P16-NF-46 durable lifecycl
 
 it('P16-NF-01 P16-NF-02 P16-NF-05 P16-NF-22 P16-NF-23 P16-NF-25 P16-NF-26 P16-NF-27 P16-NF-28 P16-NF-29 P16-NF-30 P16-NF-33 P16-NF-34 P16-NF-47 P16-NF-48 P16-NF-52 fresh process exposes only bounded observational measurement operations', () => {
   const f = measurementFixture();
+  const row = f.readRow('one', 0, { amount: 1, feature: null, model: null });
   const code = `
     import { readFileSync } from 'node:fs';
     import { consumeResult, decodeMeasurement } from '@instar/constitutional-types';
-    import { classifyFeatureOutcome, coalesceUnknownQuotaEpisodes, createMeasurementLedger, decodeBurnPolicy,
-      decodeMeasurementProducerContract, decodeMeasurementReadQuery, renderMeasurementClaim } from './dist/measurement/index.js';
+    import { classifyFeatureOutcome, classifyProcesses, coalesceUnknownQuotaEpisodes, cpuUtilization, createMeasurementLedger,
+      decodeBurnPolicy, decodeMeasurementProducerContract, decodeMeasurementReadQuery, planProcessCensus,
+      renderMeasurementClaim, resourceTrend } from './dist/measurement/index.js';
     const seed = JSON.parse(readFileSync(0, 'utf8'));
     const take = result => consumeResult(result, { Success: value => value, Refused: refusal => { throw new Error(refusal.detail); } });
     const now = take(decodeMeasurement('clock', seed.now, seed.types));
@@ -92,19 +101,51 @@ it('P16-NF-01 P16-NF-02 P16-NF-05 P16-NF-22 P16-NF-23 P16-NF-25 P16-NF-26 P16-NF
     const policy = take(decodeBurnPolicy(seed.burnPolicy, context));
     const query = take(decodeMeasurementReadQuery(seed.query, context));
     const port = createMeasurementLedger(context);
-    const start = take(decodeMeasurement('clock', seed.start, types));
-    const read = take(port.read(query, [{ identity: 'one', family: 'model-call', category: 'input', at: start, amount: 1,
-      unit: 'tokens', state: 'reported', producer: 'probe', sourceSample: 'one', feature: null, model: null, machine: 'machine-a' }]));
+    const row = { ...seed.row, evidence: types.evidence.find(candidate => candidate.id === seed.row.evidence.id) };
+    const read = take(port.read(query, [row]));
+    const cpu = take(cpuUtilization(seed.points[0], 4, 'one-core', context));
+    const census = take(planProcessCensus(seed.processes, 1, context));
+    const classes = take(classifyProcesses(seed.processes, [{ className: 'agent-worker', requiredTags: ['worker'] }], context));
+    const trend = take(resourceTrend(seed.points, 2, context));
     console.log(JSON.stringify({ owner: port.owner, operations: Object.keys(port).sort(), producer: producer.id, policy: policy.id,
       rows: read.totalCount, unknown: take(coalesceUnknownQuotaEpisodes(['quota:one'], [], context)).notices.length,
+      cpu, census: { examined: census.examined, omitted: census.omitted }, classes, trend: { state: trend.state, delta: trend.rssDeltaBytes },
       outcome: take(classifyFeatureOutcome({ kind: 'exchange', classifier: 'absent', actionProved: false, negativeProved: false, gradeOnly: false,
         feature: 'feature-a', action: 'feature-action-observed', evaluationClock: now }, context)),
       claim: take(renderMeasurementClaim({ kind: 'estimate', hardware: null, workload: null, evidence: [] }, context)) }));
   `;
   const output = execFileSync(process.execPath, ['--input-type=module', '-e', code], { input: JSON.stringify({
-    types: f.types, preserved: f.c.preserved, now: f.clock(200), start: f.clock(0), producer: f.producerInput(),
-    burnPolicy: f.burnPolicyInput(), query: f.queryInput(),
+    types: f.types, preserved: f.c.preserved, now: f.clock(200), producer: f.producerInput(),
+    burnPolicy: f.burnPolicyInput(), query: f.queryInput(), row,
+    points: [f.resourcePoint('resource:one', 100, 100), f.resourcePoint('resource:two', 160, 110)],
+    processes: [{ processIncarnation: 'process:1', pid: 7, startEvidence: 'start:1', tags: ['worker'] },
+      { processIncarnation: 'process:2', pid: 8, startEvidence: 'start:2', tags: ['unknown'] }],
   }), encoding: 'utf8' });
-  expect(JSON.parse(output)).toEqual({ owner: 'part-sixteen', operations: ['aggregate', 'attribute', 'evaluateBurn', 'owner', 'read', 'resolveQuantity', 'trend'],
-    producer: 'producer:model', policy: 'burn:feature-a', rows: 1, unknown: 1, outcome: 'unclassified', claim: 'estimate: not measured' });
+  expect(JSON.parse(output)).toEqual({ owner: 'part-sixteen', operations: ['aggregate', 'attribute', 'bindReadSource', 'evaluateBurn', 'owner', 'read', 'readCurrent', 'resolveQuantity', 'trend'],
+    producer: 'producer:model', policy: 'burn:feature-a', rows: 1, unknown: 1, cpu: 50,
+    census: { examined: 1, omitted: 1 }, classes: { counts: { 'agent-worker': 1 }, unclassified: 1 },
+    trend: { state: 'complete', delta: 10 }, outcome: 'unclassified', claim: 'estimate: not measured' });
+});
+
+it('P16-NF-40 retains a pinned capture until a complete owner closure, then presents its lawful tombstone', () => {
+  const f = fixture(); const pin = f.historyPin(f.e);
+  const base = { register: f.ctx.register, captures: f.captures, preserved: 'capture:p16-retention', now: f.now };
+  const available = value(readHistorical('Evidence', f.e, pin, { ...base,
+    captureStatuses: { 'capture:evidence': 'available' } }));
+  expect(value(readHistoricalEvidence(available, f.now, base.preserved)).predicate).toBe('exists');
+  const closure = verificationInput('AssessmentClosure');
+  expect(closureReleasedPins(closure)).toEqual(['assessment-pin:case:1']);
+  const tombstoned = value(readHistorical('Evidence', f.e, pin, { ...base,
+    captureStatuses: { 'capture:evidence': 'tombstoned' } }));
+  expect(tombstoned.captureStatus).toBe('tombstoned');
+  expect(consumeResult(readHistoricalEvidence(tombstoned, f.now, base.preserved),
+    { Success: () => false, Refused: refusal => refusal.detail.includes('evidence-unavailable') })).toBe(true);
+});
+
+it('R4-F14 package subpath exports the public measurement port in a fresh process', () => {
+  const output = execFileSync(process.execPath, ['--input-type=module', '-e', `
+    import { createMeasurementLedger, createBurnWindow, renderCurrentMeasurementRead } from '@instar/constitutional-types/measurement';
+    console.log(JSON.stringify([createMeasurementLedger, createBurnWindow, renderCurrentMeasurementRead].map(value => typeof value)));
+  `], { encoding: 'utf8' });
+  expect(JSON.parse(output)).toEqual(['function', 'function', 'function']);
 });
