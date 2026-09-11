@@ -154,9 +154,6 @@ rule that says *every X* applies to it — which is a gap to fix, not an exempti
 **Store.** Any place state outlives the process that wrote it: a file, a database, a keychain
 entry, a remote service the system writes to. In-memory state is not a store. (Rules 7, 32, 33.)
 
-**Incarnation.** One process lifetime of a worker. A restart begins a new incarnation; a new
-grounding or context-consumption boundary inside the same still-running process does not.
-
 **Feature.** A capability the system offers that has a name a person could ask for. A module is
 not a feature; "private views" is. The test: could it appear in the agent's own briefing as
 something it can do? (Rules 34, 39, 62, 72, 76.)
