@@ -44,7 +44,8 @@ it('P12-NF-07 P12-NF-18 P12-NF-46 round6 signed plan freshness cannot be extende
   const priorProbe = f.admitted.probe;
   const basePlan = verificationInput('VerificationPlan');
   const plan = { ...basePlan, id: 'plan:telegram-round6-freshness',
-    subject: { ...basePlan.subject, governed: f.admitted.account },
+    subject: { ...basePlan.subject, governed: f.admitted.account,
+      generation: f.admissionDependencies.generation },
     bar: { ...basePlan.bar, freshness: 50 },
     scheduling: { ...basePlan.scheduling, freshnessWindow: 50 },
   };

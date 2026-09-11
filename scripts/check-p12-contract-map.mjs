@@ -32,12 +32,12 @@ const partial = {
   23: 'PARTIAL: iMessage is Slice B.', 24: 'PARTIAL: iMessage is Slice B.', 25: 'PARTIAL: web is Slice B.',
   26: 'PARTIAL: cross-platform alias/migration is Slice B and remains owner-governed.',
   28: 'PARTIAL: public prepare/dispatch, the final concrete current-state recheck and nine real local outbound process cuts are executable; the production real-model chain awaits its named owner integrations.',
-  29: 'PARTIAL: exact HTML bytes are executable; registered accessible emoji/tone review is not built in Slice A.',
+  29: 'PARTIAL: exact HTML plus source-bounded word and registered accessible emoji status forms are executable; broader advisory review remains owner scope.',
   30: 'PARTIAL: fitting or explicit refusal is executable; aggregate output is non-executable-until-seam-response-effects-payloads.md.',
   31: 'PARTIAL: no adapter retry/fallback is executable; unchanged-digest successor handling remains non-executable-until-seam-response-effects-followup.md-and-seam-response-loop-followup.md.',
   32: 'PARTIAL: reaction, typing, read-receipt, delete, edit, media and single-member shapes are refused through the public prepare port with no provider or public-text fallback; typed optional-effect positives are non-executable-until their named grants land.',
   33: 'PARTIAL: Eight persists request/claim before send and the fsync-backed prepared outbox reconstructs across nine real local process cuts through the existing Six/Eight/Ten contracts; the production crash matrix awaits Part Eleven assembly integration.',
-  34: 'PARTIAL: response-stage provider bytes are captured without delivery/read inflation; independent delivery witness/emoji arms are not built.',
+  34: 'PARTIAL: response-stage provider bytes and source-bounded word/emoji status forms are executable without delivery/read inflation; the independent live witness remains activation evidence.',
   35: 'PARTIAL: no adapter self-grade or fake settlement; real settlement is non-executable-until-seam-response-effects-followup.md.',
   36: 'PARTIAL: stable lookup is explicitly unsupported and cannot prove non-occurrence; the full recovery schedule is owner scope.',
   37: 'PARTIAL: a Part Six bounded observation wake performs one read-only Telegram lookup attempt with zero additional invocation; successor retry is non-executable-until-seam-response-effects-followup.md-and-seam-response-loop-followup.md.',
@@ -98,6 +98,10 @@ for (const tier of ['telegram.unit.test.ts', 'telegram.integration.test.ts', 'te
 // the review-identified local execution holes without pretending static source inspection is
 // live-provider evidence.
 const concreteConsumers = [
+  { id: 'P12-NF-29', file: 'tests/conversation/telegram.round7.unit.test.ts',
+    anchors: ['renderTelegramDeliveryStatus(', "status: 'accepted-by-platform'", "form: 'emoji'", "['delivered', 'read']"] },
+  { id: 'P12-NF-34', file: 'tests/conversation/telegram.round7.unit.test.ts',
+    anchors: ['renderTelegramDeliveryStatus(', "predicate: 'operation-occurred'", 'observation.capture', "['delivered', 'read']"] },
   { id: 'P12-NF-28', file: 'tests/conversation/telegram.round3.integration.test.ts',
     anchors: ['transport.consume(', 'adapter.invoke(', "row.kind === 'effect-OperationObservation'", 'calls.send'] },
   { id: 'P12-NF-37', file: 'tests/conversation/telegram.round3.lifecycle.test.ts',

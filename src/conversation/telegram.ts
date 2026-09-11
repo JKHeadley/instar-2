@@ -1,5 +1,5 @@
-import { canonical, consumeResult } from '../index.js';
-import type { BoundaryContext, Clock, Json, Result } from '../index.js';
+import { canonical, consumeResult, decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../index.js';
+import type { BoundaryContext, Clock, Evidence, Json, Result } from '../index.js';
 import type { FactEnvelope } from '../facts/index.js';
 import { hashBytes, walkVersions } from '../facts/index.js';
 import type { AdapterConformance } from '../assembly/index.js';
@@ -7,7 +7,8 @@ import type { InboundRoute, IntakeAdapterPort, IntakeDisposition } from '../inta
 import { constructGoverned } from '../register/index.js';
 import { mergeVerificationRecords, verificationLogicalKey } from '../verification/index.js';
 import type { ProbeRecord, VerificationPlan } from '../verification/index.js';
-import type { EffectValidation, OperationAdapterPort, OperationDefinition, EffectHost, EffectSpine } from '../effects/index.js';
+import type { EffectValidation, OperationAdapterPort, OperationDefinition, EffectHost, EffectSpine,
+  OperationObservation } from '../effects/index.js';
 import { installOperationDefinition } from '../effects/index.js';
 import { boundary, ensure, freeze, json, take } from './boundary.js';
 import type {
@@ -80,7 +81,19 @@ export function telegramConversation(botId: string, target: TelegramConversation
   return `${telegramAccount(botId)}:chat:${target.chatId}:${normalizeTelegramTopic(target.forum, target.messageThreadId)}`;
 }
 
-function updateEvent(update: RecordValue): { event: RecordValue; kind: TelegramUpdateKind; sender: RecordValue | null } {
+type TelegramSenderEvidence =
+  | Readonly<{ kind: 'user'; value: RecordValue; role: 'author' | 'actor'; label: string }>
+  | Readonly<{ kind: 'chat'; value: RecordValue; role: 'author' | 'actor'; label: string }>
+  | Readonly<{ kind: 'channel-post'; role: 'author'; label: string }>
+  | Readonly<{ kind: 'unresolved'; role: 'actor'; label: string }>;
+
+function senderFromEvent(event: RecordValue, role: 'author' | 'actor', label: string): TelegramSenderEvidence {
+  if (event.sender_chat !== undefined) return { kind: 'chat', value: record(event.sender_chat, `${label} sender chat`), role, label };
+  if (event.from !== undefined) return { kind: 'user', value: record(event.from, `${label} sender`), role, label };
+  return { kind: 'unresolved', role: 'actor', label };
+}
+
+function updateEvent(update: RecordValue): { event: RecordValue; kind: TelegramUpdateKind; sender: TelegramSenderEvidence } {
   const variants = Object.entries(update).filter(([key]) => key !== 'update_id');
   ensure(variants.length === 1, 'Telegram update must contain exactly one routed variant');
   const supported = ['callback_query', 'edited_message', 'edited_channel_post', 'channel_post', 'message',
@@ -92,37 +105,75 @@ function updateEvent(update: RecordValue): { event: RecordValue; kind: TelegramU
   if (supported.length === 0) {
     ensure(unsupportedRouted.length === 1, 'unsupported Telegram update has no unambiguous authenticated chat route');
     const event = record(unsupportedRouted[0]![1], `unsupported ${unsupportedRouted[0]![0]}`);
-    const sender = event.sender_chat !== undefined || event.from === undefined
-      ? null : record(event.from, 'unsupported sender');
-    return { event, kind: 'unsupported', sender };
+    return { event, kind: 'unsupported', sender: senderFromEvent(event, 'actor', `unsupported-${unsupportedRouted[0]![0]}`) };
   }
   if (update.callback_query !== undefined) {
     const callback = record(update.callback_query, 'callback query');
-    return { event: record(callback.message, 'callback message'), kind: 'callback', sender: record(callback.from, 'callback sender') };
+    return { event: record(callback.message, 'callback message'), kind: 'callback',
+      sender: { kind: 'user', value: record(callback.from, 'callback sender'), role: 'actor', label: 'callback' } };
   }
   if (update.edited_message !== undefined || update.edited_channel_post !== undefined) {
     const event = record(update.edited_message ?? update.edited_channel_post, 'edited message');
     return { event, kind: 'edit', sender: update.edited_message !== undefined
-      && event.sender_chat === undefined && event.from !== undefined ? record(event.from, 'edited sender') : null };
+      ? senderFromEvent(event, 'author', 'edited-message')
+      : event.sender_chat !== undefined
+        ? { kind: 'chat', value: record(event.sender_chat, 'edited channel-post sender chat'), role: 'author', label: 'edited-channel-post' }
+        : { kind: 'channel-post', role: 'author', label: 'edited-channel-post' } };
   }
   if (update.channel_post !== undefined) {
-    return { event: record(update.channel_post, 'channel post'), kind: 'channel-post', sender: null };
+    const event = record(update.channel_post, 'channel post');
+    return { event, kind: 'channel-post', sender: event.sender_chat !== undefined
+      ? { kind: 'chat', value: record(event.sender_chat, 'channel-post sender chat'), role: 'author', label: 'channel-post' }
+      : { kind: 'channel-post', role: 'author', label: 'channel-post' } };
   }
   if (update.message !== undefined) {
     const event = record(update.message, 'message');
     const kind: TelegramUpdateKind = serviceKeys.some(key => event[key] !== undefined) ? 'service-event'
       : mediaKeys.some(key => event[key] !== undefined) ? 'media-metadata' : 'reply';
-    return { event, kind, sender: event.sender_chat !== undefined || event.from === undefined
-      ? null : record(event.from, 'message sender') };
+    return { event, kind, sender: senderFromEvent(event, 'author', 'message') };
   }
   for (const key of ['chat_join_request', 'chat_member', 'my_chat_member', 'message_reaction', 'message_reaction_count'] as const) {
     if (update[key] !== undefined) {
       const event = record(update[key], `unsupported ${key}`);
-      const sender = event.from === undefined ? null : record(event.from, 'unsupported sender');
-      return { event, kind: 'unsupported', sender };
+      if (key === 'message_reaction') {
+        const hasUser = event.user !== undefined, hasActorChat = event.actor_chat !== undefined;
+        ensure(hasUser !== hasActorChat, 'Telegram reaction must carry exactly one user or actor_chat sender');
+        return { event, kind: 'unsupported', sender: hasUser
+          ? { kind: 'user', value: record(event.user, 'reaction user'), role: 'actor', label: 'message-reaction' }
+          : { kind: 'chat', value: record(event.actor_chat, 'reaction actor chat'), role: 'actor', label: 'message-reaction' } };
+      }
+      return { event, kind: 'unsupported', sender: key === 'message_reaction_count'
+        ? { kind: 'unresolved', role: 'actor', label: 'message-reaction-count' }
+        : senderFromEvent(event, 'actor', key) };
     }
   }
   throw new Error('unsupported Telegram update has no authenticated chat route; it remains unacknowledged');
+}
+
+function resolveTelegramSender(sender: TelegramSenderEvidence, destination: RecordValue,
+  destinationType: string): Readonly<{ id: string; kind: 'person' | 'system' }> {
+  if (sender.kind === 'unresolved') {
+    return { id: `telegram:v1:unresolved-sender:${sender.label}`, kind: 'system' };
+  }
+  if (sender.kind === 'channel-post') {
+    ensure(destinationType === 'channel', 'a channel-post source requires a channel destination');
+    sender = { kind: 'chat', value: destination, role: sender.role, label: sender.label };
+  }
+  if (sender.kind === 'chat') {
+    const sourceType = nonempty(sender.value.type, `${sender.label} chat type`);
+    ensure(['group', 'supergroup', 'channel'].includes(sourceType),
+      `${sender.label} chat type is outside the non-human Telegram source set`);
+    const sourceId = integer(sender.value.id, `${sender.label} chat id`);
+    ensure(sourceId < 0, `${sender.label} chat id must be a canonical negative Telegram chat id`);
+    return { id: `telegram:v1:channel:${String(sourceId)}`, kind: 'system' };
+  }
+  ensure(typeof sender.value.is_bot === 'boolean', 'Telegram sender must carry a boolean is_bot discriminator');
+  ensure(sender.role !== 'author' || destinationType !== 'channel',
+    'a Telegram channel post cannot supply a human message author');
+  const sourceId = String(positiveInteger(sender.value.id, `${sender.label} sender id`));
+  return sender.value.is_bot
+    ? { id: `telegram:v1:bot-sender:${sourceId}`, kind: 'system' }
+    : { id: `telegram:v1:user:${sourceId}`, kind: 'person' };
 }
 
 function extractTelegramUpdateUnchecked(raw: string, declaration: TelegramBotDeclaration): TelegramExtractedUpdate {
@@ -142,20 +193,8 @@ function extractTelegramUpdateUnchecked(raw: string, declaration: TelegramBotDec
   const thread = threadValue === undefined ? null : positiveInteger(threadValue, 'message_thread_id');
   const messageThreadId = forum ? thread : null;
   if (!forum) ensure(thread === null, 'non-forum update carries a topic id');
-  const senderChat = selected.event.sender_chat === undefined ? null : record(selected.event.sender_chat, 'sender chat');
-  ensure(chatType !== 'channel' || selected.sender === null,
-    'a Telegram channel chat cannot supply a human message sender');
-  if (selected.sender !== null) ensure(typeof selected.sender.is_bot === 'boolean',
-    'Telegram sender must carry a boolean is_bot discriminator');
-  const botSender = selected.sender?.is_bot === true;
-  const senderId = selected.sender === null
-    ? `telegram:v1:channel:${String(integer(senderChat?.id ?? chat.id, 'channel sender id'))}`
-    : botSender
-      ? `telegram:v1:bot-sender:${String(positiveInteger(selected.sender.id, 'sender id'))}`
-      : `telegram:v1:user:${String(positiveInteger(selected.sender.id, 'sender id'))}`;
-  const principal = selected.sender === null || botSender
-    ? { id: senderId, kind: 'system' as const }
-    : { id: senderId, kind: 'person' as const };
+  const principal = resolveTelegramSender(selected.sender, chat, chatType);
+  const senderId = principal.id;
   const target = { chatId, forum, messageThreadId };
   const conversation = telegramConversation(declaration.bot.id, target);
   const route: InboundRoute = {
@@ -294,7 +333,8 @@ function validateIdentityProbe(declaration: TelegramBotDeclaration, deps: Telegr
   const plan = exactPlanBodies[0]!;
   const planArm = plan.arms.filter(arm => arm.id === recorded.arm);
   ensure(plan.bar.complete === true && plan.bar.version === recorded.planVersion && planArm.length === 1
-    && planArm[0]!.required === true && plan.subject.governed === telegramAccount(declaration.bot.id),
+    && planArm[0]!.required === true && plan.subject.governed === telegramAccount(declaration.bot.id)
+    && plan.subject.generation === deps.generation,
   'Telegram identity probe does not bind its complete recorded verification plan');
   ensure(Number.isSafeInteger(plan.scheduling.freshnessWindow) && plan.scheduling.freshnessWindow > 0,
     'Telegram identity probe plan has no positive recorded freshness window');
@@ -611,6 +651,50 @@ export function renderTelegramHtml(source: string, declaration: TelegramBotDecla
   });
 }
 
+export function renderTelegramDeliveryStatus(input: Readonly<{
+  observation: OperationObservation;
+  evidence: Evidence;
+  status: 'accepted-by-platform' | 'delivered' | 'read';
+  form: 'words' | 'emoji';
+}>, context: BoundaryContext): Result<string> {
+  return boundary('TelegramDeliveryStatusRender', input, context, () => {
+    const observation = input.observation;
+    ensure(observation.type === 'OperationObservation' && observation.schemaVersion === 1
+      && observation.stage === 'response' && observation.attestation === 'local-recorder',
+    'Telegram platform-acceptance status requires a response-stage operation observation');
+    const evidence = input.evidence;
+    ensure(evidence.type === 'Evidence' && evidence.schemaVersion === 1
+      && evidence.claim.subject === observation.operation && evidence.claim.predicate === 'operation-occurred',
+    'Telegram platform-acceptance status requires source-bounded occurrence evidence');
+    const claim = record(evidence.claim.value, 'Telegram platform-acceptance evidence claim');
+    ensure(claim.digest === observation.digest && evidence.capture.reference === observation.capture.reference
+      && evidence.capture.hash === observation.capture.hash,
+    'Telegram platform-acceptance evidence does not bind the observed provider response');
+    ensure(input.status === 'accepted-by-platform',
+      'Telegram provider acceptance cannot be rendered as delivered or read');
+    ensure(input.form === 'words' || input.form === 'emoji', 'Telegram delivery status form is unsupported');
+    return input.form === 'words'
+      ? 'Accepted by platform'
+      : '📨 Accepted by platform — 📨 means accepted by platform';
+  });
+}
+
+function ensureCurrentReplyStanding(host: EffectHost, state: ReturnType<EffectHost['current']>): void {
+  const principal = take(decode('VerifiedPrincipal', host.principal,
+    { ...state.decode, provenance: host.principal.provenance }));
+  const now = take(decodeMeasurement('clock', state.clock, state.decode));
+  const scope = take(decode('Scope', host.scope, state.decode));
+  ensure((state.decode.grants ?? []).some(raw => {
+    try {
+      const grant = take(decode('StandingGrant', raw, { ...state.decode, provenance: raw.source }));
+      return grant.grantee.id === principal.id
+        && grantLiveness(grant, state.decode.revocations ?? [], now) === 'live'
+        && scopeIncludes(grant.scope, scope)
+        && (grant.standing === 'operator' || grant.actions.includes('work'));
+    } catch { return false; }
+  }), 'current standing does not cover reply');
+}
+
 export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAdapter,
   api: TelegramBotApiCustodianPort, target: TelegramConversationTarget,
   context: BoundaryContext): OperationAdapterPort {
@@ -634,8 +718,14 @@ export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAd
           'Telegram reply exceeds declared platform limits');
         const candidates = (replyOperationBindings.get(admitted) ?? []).filter(binding => {
           const snapshot = take(binding.spine.store.readForProjection());
-          return snapshot.entries.some(entry => entry.fact.kind === 'transport-AdmissionReservation'
-            && (entry.fact.body as { record?: { operation?: string } }).record?.operation === input.operation);
+          const reservation = snapshot.entries.filter(entry => entry.fact.kind === 'transport-AdmissionReservation'
+            && (entry.fact.body as { record?: { operation?: string } }).record?.operation === input.operation).at(-1);
+          const requestId = (reservation?.fact.body as { record?: { request?: string } } | undefined)?.record?.request;
+          return typeof requestId === 'string' && snapshot.entries.some(entry => entry.fact.kind === 'effect-EffectRequest'
+            && (entry.fact.body as { record?: { id?: string; definition?: string } }).record?.id === requestId
+            && (entry.fact.body as { record?: { id?: string; definition?: string } }).record?.definition === binding.definition.id)
+            && binding.definition.account === input.message.account
+            && binding.definition.conversation === input.message.conversation;
         });
         ensure(candidates.length === 1, 'Telegram reply operation is not registered for this admitted adapter');
         const binding = candidates[0]!;
@@ -675,6 +765,7 @@ export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAd
         'Telegram reply operation already has a conclusive or uncertain invocation observation');
         const state = binding.host.current();
         ensure(!state.stopped, 'stop inhibits Telegram reply');
+        ensureCurrentReplyStanding(binding.host, state);
         const versions = walkVersions(state.versions);
         ensure(versions.conflicts.length === 0, 'Telegram reply operation definition is contested');
         const currentDefinition = versions.current.find(version => version.id === binding.definition.version
