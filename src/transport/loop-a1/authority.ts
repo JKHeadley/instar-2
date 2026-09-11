@@ -67,6 +67,11 @@ function closedInput(input: unknown, allowed: readonly string[], detail: string)
   const keys = Object.keys(input);
   ensure(keys.length === allowed.length && keys.every(key => allowed.includes(key))
     && allowed.every(key => Object.hasOwn(input, key)), detail);
+  if (allowed.includes('command')) {
+    const command = (input as Record<string, unknown>).command;
+    ensure(typeof command === 'string' && command.length > 0 && command.length <= 256,
+      'bounded nonempty A1 command required');
+  }
 }
 
 export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1Spine,
