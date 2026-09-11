@@ -77,6 +77,15 @@ export function bootProductionSliceAssembly(input) {
     effect: Object.freeze({ ...supplied.effect, port: slice.effects }),
   });
   const coordinator = take(bootProductionAssembly({ ...assembly, production }, manifest, scope));
+  const rebuildCurrent = () => {
+    const definitions = coordinator.handles.folds.map(row => row.definition);
+    const rows = take(coordinator.handles.replay.rebuild({ definitions,
+      facts: slice.facts(), generation: slice.generation().reference.id }));
+    if (!Array.isArray(rows) || rows.length !== definitions.length || definitions.some(definition =>
+      rows.filter(row => row?.projection === definition.id && row.equal === 'equal').length !== 1))
+      throw new Error('production source-only replay did not rebuild each required projection');
+    return rows;
+  };
   const dependencyKinds = Object.freeze({
     'local-facts': 'fact-local-durable-segment', register: 'register-generation-record', 'identity-keys': 'identity-key-set',
     clock: 'clock-source', lease: 'transport-Lease', fence: 'transport-FenceToken',
@@ -139,7 +148,7 @@ export function bootProductionSliceAssembly(input) {
       // not a lease on future availability. Re-enter the public live-admission
       // port inside every drive, after Part Four has preserved the input and
       // before any run/effect work can begin.
-      const report = await slice.drive(admitCurrentDependencies);
+      const report = await slice.drive(admitCurrentDependencies, rebuildCurrent);
       const assemblyBoot = Object.freeze({ owner: coordinator.owner, admission: coordinator.admission.id,
         scope: coordinator.scope, references: coordinator.references.map(row => Object.freeze({ name: row.name,
           fact: row.fact.id, completeness: row.completeness })) });
@@ -215,7 +224,7 @@ export function bootProductionSliceAssembly(input) {
       // The witness append advances the durable vector after `drive`'s initial
       // rebuild. Return rebuild evidence pinned to the same current history that
       // supplied the displayed Part Nine record.
-      const rebuilds = slice.rebuildAll();
+      const rebuilds = rebuildCurrent();
       return Object.freeze({ ...report,
         rebuilds,
         assemblyBoot,
@@ -1412,7 +1421,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     operation: fields.operation, blocker: fields.blocker ?? 'none', semanticMessage: fields.semanticMessage,
     state: fields.state, owner: fields.owner, exposure: String(fields.exposure ?? 0), detail: fields.detail ?? '' }, fields.required ?? []);
 
-  async function drive(admitRequiredDependencies) {
+  async function drive(admitRequiredDependencies, rebuild = rebuildAll) {
     install(); restoreGrants(); restoreEvidence();
 
     // ---- 1. preserve, authenticate, resolve standing, admit -----------------
@@ -1443,7 +1452,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
             state: 'owned-pending-prerequisite-outage', owner: 'part-ten', exposure: 0,
             detail: `live dependency admission refused after durable intake preservation: ${admission.detail}` });
         record('prerequisites', 'refused', { dependency: admission.name, detail: admission.detail });
-        return report(rebuildAll());
+        return report(rebuild());
       }
       if (prior?.body.state === 'owned-pending-prerequisite-outage')
         obligation({ operation: prior.body.operation, blocker: 'none', semanticMessage: prior.body.semanticMessage,
@@ -1511,7 +1520,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     if (factOfKind('slice-reply-source') && opening) driveOutbound(opening);
 
     // ---- 8. rebuild every resulting projection from facts -------------------
-    const rebuilds = rebuildAll();
+    const rebuilds = rebuild();
     return report(rebuilds);
   }
 

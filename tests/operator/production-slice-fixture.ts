@@ -49,6 +49,7 @@ export function productionOperatorSlice(options: {
     verification: { id: fixtureComposition.verification.id, port: verification.runtime },
     verificationClock: { owner: 'part-nine', administration: 'independent', id: 'verification:clock',
       current: () => assembly.success(verification.host.current().clock) },
+    replay: { ...fixtureComposition.replay, rebuild: () => assembly.success(runtime!.rebuildAll()) },
     deliveryWitness: witness,
   };
   runtime = bootProductionSliceAssembly({ assembly: { ...assembly.composition, production }, manifest: installed.manifest.id,

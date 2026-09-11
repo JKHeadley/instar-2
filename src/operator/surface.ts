@@ -3,6 +3,7 @@ import type { FactEnvelopeReference, Hash, Json, Result, Scope, VerifiedPrincipa
 import { causalCone, hashBytes } from '../facts/index.js';
 import type { FactSnapshot, FactStatus } from '../facts/index.js';
 import type { ProbeRecord, ProtectionJournalEntry } from '../verification/index.js';
+import { resolveAuthorizationRequestRecurrence } from '../intake/index.js';
 import { constructGoverned } from '../register/index.js';
 import type { GeneratedRegister, RegisterContext } from '../register/index.js';
 import { operatorBoundary, requireOperator, take } from './boundary.js';
@@ -121,12 +122,15 @@ function requestView(composition: OperatorSurfaceComposition, reference: string)
   const expiresAt = integer(body.expiresAt, 'expiresAt');
   const action = text(body.action, 'action'), audience = text(body.audience, 'audience');
   const consequence = text(body.consequence, 'consequence'), reversibility = text(body.reversibility, 'reversibility');
-  const recurrence = strings(body.recurrence, 'recurrence');
+  const assertedRecurrence = strings(body.recurrence, 'recurrence');
+  const recurrenceResolution = resolveAuthorizationRequestRecurrence(current, resolved.status);
+  const recurrence = recurrenceResolution.valid ? recurrenceResolution.references : Object.freeze([] as string[]);
   const grantExpiresAt = integer(body.grantExpiresAt, 'grantExpiresAt');
   return Object.freeze({ fact: resolved.status.fact.id, requestId: text(body.requestId, 'requestId'), requestDigest,
     action, scope, audience, artifact, base: text(body.base, 'base'), expiresAt, approver, requestedBy,
     consequence, reversibility, blockedWork: presentText(body.blockedWork, 'blockedWork'), recurrence,
-    standingGrantCandidate: recurrence.length ? Object.freeze({ actions: Object.freeze([action]), scope, expiresAt: grantExpiresAt }) : null,
+    standingGrantCandidate: assertedRecurrence.length && recurrence.length
+      ? Object.freeze({ actions: Object.freeze([action]), scope, expiresAt: grantExpiresAt }) : null,
     currentGeneration: composition.history.generation(), completeness: resolved.completeness, missing: resolved.missing,
     primaryActions: Object.freeze(['approve', 'decline'] as const), plainLanguageEffect: effectLanguage(action, scope, audience, consequence, reversibility),
     requesterText: Object.freeze({ label: 'UNTRUSTED REQUESTER TEXT' as const, text: presentText(body.requesterProse, 'requesterProse') }),
@@ -196,6 +200,13 @@ function bindingView(composition: OperatorSurfaceComposition, input: Readonly<{ 
 }
 
 function protectionView(composition: OperatorSurfaceComposition, operation: string, path: string): ProtectionReceiptView {
+  const uncertainty: string[] = [];
+  function readEvidence<T>(result: Result<T>, fallback: T, label: string): T {
+    return consumeResult(result, {
+      Success: value => value,
+      Refused: refusal => { uncertainty.push(`${label}-unavailable:${refusal.detail}`); return fallback; },
+    });
+  }
   type BrokerRead = Readonly<{ ok: true; receipt: ProtectionJournalEntry | null }> | Readonly<{ ok: false; detail: string }>;
   const brokerRead = consumeResult<ProtectionJournalEntry | null, BrokerRead>(composition.broker.query(operation), {
     Success: receipt => ({ ok: true, receipt }),
@@ -207,19 +218,24 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
     Refused: refusal => ({ posture: 'unprotected' as const, detail: refusal.detail }),
   });
   const brokerPosture = postureRead.posture;
-  const rows = take(composition.verification.inspectCurrent());
+  const rows = readEvidence(composition.verification.inspectCurrent(), [], 'independent-inventory');
   const probes = rows.filter((row): row is typeof row & { record: ProbeRecord } => row.record.type === 'ProbeRecord'
     && row.record.operation === operation && row.record.subject === path && row.taint.length === 0 && row.conflicts.length === 0);
   const probe = [...probes].sort((a, b) => b.record.completedAt - a.record.completedAt)[0];
   const clock = composition.history.clock(), now = clock.value;
-  const evaluated = probe ? take(composition.verification.posture(probe.record.plan, clock)) : null;
-  const exactWitness = probe ? take(composition.verification.probeBound(probe.fact.id, clock)) : false;
+  const evaluated = probe ? readEvidence(composition.verification.posture(probe.record.plan, clock), null, 'independent-posture') : null;
+  const exactWitness = probe ? readEvidence(composition.verification.probeBound(probe.fact.id, clock), false, 'independent-probe') : false;
   const witnessFresh = !!probe && evaluated?.plan === probe.record.plan && evaluated.evaluatedAt === now
     && evaluated.posture === 'healthy' && probe.record.disposition === 'passed' && probe.record.completedAt <= now
     && now - probe.record.completedAt <= composition.witnessFreshness && exactWitness;
-  const isolationLive = take(composition.isolation.live(path));
+  const isolationLive = readEvidence(composition.isolation.live(path), false, 'isolation-proof');
   const receiptMatches = !!receipt && receipt.operation === operation && receipt.path === path;
-  const uncertainty: string[] = [];
+  const plan = probe ? rows.find(row => row.record.type === 'VerificationPlan'
+    && row.record.id === probe.record.plan && row.record.bar.version === probe.record.planVersion
+    && row.taint.length === 0 && row.conflicts.length === 0) : null;
+  const effectiveDigestWitnessed = !!receipt && receiptMatches && plan?.record.type === 'VerificationPlan'
+    && plan.record.bar.subjectDigest === receipt.effectiveHash;
+  if (receiptMatches && !effectiveDigestWitnessed) uncertainty.push('independent-probe-effective-digest-mismatch');
   if (postureRead.detail !== null) uncertainty.push(`broker-posture-unavailable:${postureRead.detail}`);
   if (!brokerRead.ok) uncertainty.push(`broker-evidence-unavailable:${brokerRead.detail}`);
   if (!receipt) uncertainty.push('broker-receipt-missing');
@@ -230,7 +246,8 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
   if (evaluated && evaluated.posture !== 'healthy') uncertainty.push(`independent-posture-${evaluated.posture}`);
   if (!isolationLive) uncertainty.push('isolation-proof-missing');
   if (brokerPosture !== 'protected') uncertainty.push('broker-posture-unprotected');
-  const protectedNow = brokerPosture === 'protected' && receiptMatches && receipt?.disposition === 'committed' && witnessFresh && isolationLive;
+  const protectedNow = brokerPosture === 'protected' && receiptMatches && receipt?.disposition === 'committed'
+    && witnessFresh && isolationLive && effectiveDigestWitnessed;
   return Object.freeze({ operation, posture: protectedNow ? 'protected' as const : 'unprotected' as const,
     brokerReceipt: receiptMatches ? receipt.attestation : null, effectiveDigest: receiptMatches ? receipt.effectiveHash : null,
     effectiveBase: receiptMatches ? receipt.base : null,

@@ -4,7 +4,7 @@ import { value } from '../fixtures.js';
 import { operatorFixture } from './fixture.js';
 
 it('R6-F2 V35/V37 presents the exact request-derived standing-grant candidate term', () => {
-  const x = operatorFixture(), view = value(x.surface().render(x.request.id));
+  const x = operatorFixture({ recurrence: true }), view = value(x.surface().render(x.request.id));
   expect(view.standingGrantCandidate).toEqual({ actions: ['work'], scope: x.f.scope, expiresAt: 400 });
 });
 

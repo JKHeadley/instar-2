@@ -103,10 +103,12 @@ describe('separate independently-verified operator-act admission', () => {
   });
 
   it.each([
-    ['P11-V46 R5 refuses a standing grant without recurrence evidence', '[]', 'refused'],
-    ['P11-V47 accepts the same exact standing grant with durable recurrence evidence', '["same bounded request recurred"]', 'approved'],
-  ])('%s', (_name, recurrence, expected) => {
-    const f = intakeFixture(), v = f.verifiedAct({ request: { recurrence } });
+    ['P11-V46 R5 refuses a standing grant without recurrence evidence', false, 'refused'],
+    ['P11-V47 accepts the same exact standing grant with matching durable recurrence evidence', true, 'approved'],
+  ])('%s', (_name, recurring, expected) => {
+    const f = intakeFixture();
+    const prior = recurring ? f.verifiedAct({ request: { requestId: 'request:prior', recurrence: '[]' } }) : null;
+    const v = f.verifiedAct({ request: { recurrence: prior ? JSON.stringify([prior.request.id]) : '[]' } });
     const rawGrant = f.f.grant({ id: 'grant:operator-selected', grantee: f.f.bob, standing: 'delegate',
       actions: ['work'], scope: f.f.scope, expiresAt: 400 });
     const grantFields = Object.fromEntries(Object.entries(rawGrant).filter(([key]) => !['type', 'schemaVersion', 'source'].includes(key)));

@@ -155,10 +155,11 @@ function independentlyEvaluatedProtection(unwitnessed = false, staleGeneration =
   if (staleGeneration) verification.setGeneration('generation:2');
   x.setClock(21);
   const owner = value(verification.runtime.posture(plan.id, verification.clock(21)));
+  const witnessedDigest = plan.bar.subjectDigest as `sha256:${string}`;
   const broker = { ...x.composition.broker, posture: () => x.f.success('protected' as const), query: () => x.f.success({
     operation: probe.operation, path: wrongReceiptPath ? 'other-path' : probe.subject,
-    requestDigest: x.f.authorization.requestDigest, base: 'base:1', proposedHash: x.f.artifact,
-    authorization: 'authorization:1', priorHash: x.f.artifact, effectiveHash: x.f.artifact,
+    requestDigest: x.f.authorization.requestDigest, base: 'base:1', proposedHash: witnessedDigest,
+    authorization: 'authorization:1', priorHash: witnessedDigest, effectiveHash: witnessedDigest,
     disposition: 'committed' as const, attestation: 'broker-receipt',
   }) };
   const verificationPort = { ...verification.runtime, probeBound: (fact: string, at: ReturnType<typeof verification.clock>) => {

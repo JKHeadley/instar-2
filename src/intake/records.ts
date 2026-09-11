@@ -119,6 +119,9 @@ type VerifiedActRecord=Readonly<{
   artifact: Hash; base: string; issuedAt: number; expiresAt: number; emergency: boolean;
 }>;
 export type VerifiedActResolution=Readonly<{ record: VerifiedActRecord; proof: Provenance; emergency: boolean }>;
+export type AuthorizationRequestRecurrenceResolution=Readonly<{
+  valid: boolean; references: readonly string[]; detail: string|null;
+}>;
 
 function exact(v: Record<string,Json>,keys: readonly string[],detail: string): void {
   requireIntake(Object.keys(v).length===keys.length&&Object.keys(v).every(k => keys.includes(k)),detail,'standing');
@@ -130,6 +133,54 @@ function hash(v: Json|undefined,name: string): Hash {
   requireIntake(typeof v==='string'&&/^sha256:[a-f0-9]{64}$/.test(v),`verified act: ${name} must be SHA-256`,'standing'); return v as Hash;
 }
 function body(status: FactStatus): Record<string,Json> { return object(status.body); }
+
+/**
+ * Additive Part Four recurrence resolver. Request text only nominates durable
+ * history; it never proves recurrence. Every nominated fact must be a clean,
+ * causally prior authorization request for the same registered operation class,
+ * requester, and exact scope.
+ */
+export function resolveAuthorizationRequestRecurrence(snapshot: FactSnapshot,current: FactStatus): AuthorizationRequestRecurrenceResolution {
+  let references: readonly string[]=[];
+  try {
+    requireIntake(current.fact.kind==='authorization-request','recurrence evidence: current fact is not an authorization request','standing');
+    const currentBody=body(current);
+    let parsed: Json;
+    try { parsed=JSON.parse(text(currentBody.recurrence,'request.recurrence')) as Json; }
+    catch { parsed=null; }
+    requireIntake(Array.isArray(parsed)&&parsed.length>0&&parsed.length<=100
+      &&parsed.every(item => typeof item==='string'&&item.trim().length>0),
+    'recurrence evidence: request must name bounded durable history references','standing');
+    references=Object.freeze(parsed as string[]);
+    requireIntake(new Set(references).size===references.length&&!references.includes(current.fact.id),
+      'recurrence evidence: references must be distinct prior requests','standing');
+    const facts=snapshot.entries.map(row => row.fact);
+    const cone=new Set(causalCone(current.fact,facts).map(row => row.id));
+    for(const reference of references) {
+      const matches=snapshot.entries.filter(row => row.fact.id===reference);
+      requireIntake(matches.length===1,'recurrence evidence: referenced history is missing or ambiguous','standing');
+      const prior=matches[0]!;
+      requireIntake(prior.fact.kind==='authorization-request','recurrence evidence: referenced history has the wrong kind','standing');
+      requireIntake(cone.has(prior.fact.id)&&prior.fact.at.value<=current.fact.at.value,
+        'recurrence evidence: referenced request is not causally prior','standing');
+      requireIntake(prior.taint.length===0&&prior.conflicts.length===0,
+        'recurrence evidence: referenced request is tainted or conflicted','integrity');
+      for(const dependency of prior.fact.predecessors.required) {
+        const row=snapshot.entries.find(candidate => candidate.fact.id===dependency);
+        requireIntake(row&&cone.has(row.fact.id)&&row.taint.length===0&&row.conflicts.length===0,
+          'recurrence evidence: prior request dependencies are incomplete or contested','integrity');
+      }
+      const priorBody=body(prior);
+      requireIntake(priorBody.action===currentBody.action&&priorBody.requestedById===currentBody.requestedById
+        &&same(priorBody.scope,currentBody.scope),
+      'recurrence evidence: prior request has a different operation classification, requester, or scope','standing');
+    }
+    return Object.freeze({ valid: true,references,detail: null });
+  } catch(error) {
+    return Object.freeze({ valid: false,references,detail: error instanceof Error? error.message:'recurrence evidence is unavailable' });
+  }
+}
+
 function historyValues(snapshot: FactSnapshot) {
   return snapshot.entries.flatMap(r => r.historical);
 }
@@ -297,12 +348,9 @@ export function resolveVerifiedActRecord(raw: Json,c: FactContext,now: Clock,exp
       'verified act: current historical standing does not authorize approval','standing');
     } else if(type==='StandingGrant') {
       const grantScope=take(decode('Scope',a.scope,c.decode)),grantee=object(a.grantee!);
-      let recurrence: Json;
-      try { recurrence=JSON.parse(text(q.recurrence,'request.recurrence')) as Json; }
-      catch { recurrence=null; }
-      requireIntake(Array.isArray(recurrence)&&recurrence.length>0&&recurrence.length<=100
-        &&recurrence.every(item => typeof item==='string'&&item.trim().length>0),
-      'verified act: StandingGrant requires bounded recurrence evidence from the durable request','standing');
+      const recurrence=resolveAuthorizationRequestRecurrence(snapshot,request);
+      requireIntake(recurrence.valid&&recurrence.references.length>0,
+        `verified act: StandingGrant requires matching durable recurrence evidence (${recurrence.detail??'none'})`,'standing');
       const grantExpiresAt=integer(q.grantExpiresAt,'request.grantExpiresAt');
       requireIntake(same(grantScope,scopeValue)&&grantee.id===requestedBy&&integer(a.expiresAt,'StandingGrant.expiresAt')===grantExpiresAt,
         'verified act: StandingGrant scope, grantee, or term differs from the durable request-derived candidate','standing');

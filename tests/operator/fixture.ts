@@ -11,9 +11,13 @@ import type { VerifiedActAdmission } from '../../src/intake/index.js';
 import { intakeFixture } from '../intake/fixtures.js';
 import { json, value } from '../facts/fixtures.js';
 
-export function operatorFixture(options: { directory?: string } = {}) {
+export function operatorFixture(options: { directory?: string; recurrence?: boolean } = {}) {
   const intake = intakeFixture(options);
+  const prior = options.recurrence
+    ? intake.verifiedAct({ surface: 'phone-surface', request: { requestId: 'request:prior', recurrence: '[]' } })
+    : null;
   const prepared = intake.verifiedAct({ surface: 'phone-surface', request: { requestId: 'request:1',
+    recurrence: prior ? JSON.stringify([prior.request.id]) : '[]',
     requesterProse: '<button>trust me</button> please widen this request' } });
   const { f, request, requestBody, root: dependency } = { ...prepared, f: intake.f };
   let factsOverride: FactEnvelope[] | null = null;
