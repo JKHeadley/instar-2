@@ -157,6 +157,31 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     { target: 'target:review', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' });
   witnessedAssessment('assessment:restored-holder', 'holder-recovery',
     { target: 'target:shared', conversation: 'conversation:1', machine: 'fleet', pool: 'recovery' });
+  const honestlyPartialAssessment = (alias: string, source = 'assessment:witnessed-review') => {
+    const base = restorationSupport.get(source);
+    if (!base) throw new Error(`assessment support unavailable: ${source}`);
+    const evidence = base.evidence.filter(item => item.claim.predicate === 'operation-occurred');
+    const assessment = value(deriveVerificationAssessment({
+      request: base.request,
+      plan: base.plan,
+      evidence,
+      observer: base.assessment.observer,
+      vectorDigest: base.assessment.vectorDigest,
+      knownLineages: base.assessment.knownLineages,
+      captureStatuses: evidence.map(item => ({ reference: item.capture.reference, status: 'available' as const })),
+      taints: [],
+      now: rg.clock(now),
+      predecessors: base.assessment.predecessors,
+      decode: { ...rg.ctx.decode, evidence },
+    }, rg.c));
+    const record = { ...assessment, id: alias } as VerificationAssessment;
+    const fact = appendMachineB('verification-VerificationAssessment', json({ record }), record.predecessors);
+    assessmentFacts.set(alias, fact); assessmentFacts.set(record.id, fact); assessmentFacts.set(fact.id, fact);
+    const support = { plan: base.plan, request: base.request, assessment: record, evidence };
+    restorationSupport.set(alias, support); restorationSupport.set(record.id, support); restorationSupport.set(fact.id, support);
+    return fact;
+  };
+  honestlyPartialAssessment('assessment:e2e-repair17-partial');
   witnessContext = { ...witnessContext, facts: [...witnessContext.facts, ...machineBFacts] };
 
   const host: LoopA1Host = { domain: 'conversation:1', machine, incarnation,
@@ -283,6 +308,7 @@ export function transportLoopFixture(directory = mkdtempSync(join(tmpdir(), 'p6-
     appendOutcome, input, head, detail,
     addAssessment: (alias: string) => witnessedAssessment(alias, 'recovery',
       { target: 'target:review', conversation: 'conversation:1', machine: 'fleet', pool: 'holders' }),
+    addPartialAssessment: honestlyPartialAssessment,
     vector, advance: (n: number) => { now += n; }, time: (n: number) => { now = n; },
     stop: () => { stopped = true; }, generation: (value: string) => { generation = value; },
     revalidatePolicy: () => registerPolicy(), registerPolicy, assessmentFact: (id: string) => assessmentFacts.get(id),

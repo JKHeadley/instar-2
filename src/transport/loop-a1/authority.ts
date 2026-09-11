@@ -113,6 +113,10 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
   };
   const outcomeDigest = (policy: SharedLoopRecord['policy'], outcomes: readonly LoopOutcome[], now: Clock) =>
     encoded(windowAt({ policy, outcomeLog: outcomes }, now)).hash;
+  const withoutSubmission = (record: SharedLoopRecord): SharedLoopRecord => {
+    const { stoppedSubmission: _stopped, closureSubmission: _closure, ...rest } = record;
+    return rest as SharedLoopRecord;
+  };
   const fence = (all: readonly LoopA1TransportFact[], token: FenceToken) =>
     checkLoopA1Fence(all, token, host, tick());
   const managedWrite = (all: readonly LoopA1TransportFact[], record: SharedLoopRecord): SharedLoopRecord => {
@@ -265,6 +269,8 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
         && atOrAfter(now, previous.transitionAt), 'incomparable or backward shared pressure time');
       resolvePolicyFact(previous.policy, current.generation.id, history, spine.context);
       resolveRunReference(previous.currentOwnerRun, history, spine.context);
+      if (previous.stoppedSubmission
+        && encoded(previous.stoppedSubmission).bytes === encoded(input).bytes) return previous;
       const existing = previous.attemptLog.find(attempt => attempt.id === input.attempt);
       if (existing) return previous;
       const decision = sharedAdmissionDecision(previous, now,
@@ -272,7 +278,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
       if (decision.kind === 'stopped') {
         const currentOutcomes = windowAt(previous, now);
         const stopped = freeze({
-          ...previous,
+          ...withoutSubmission(previous),
           ...meta(all, input.command),
           nextWake: now.value,
           state: 'stopped',
@@ -284,6 +290,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
           policyGeneration: current.generation,
           failureCount: failureCountAt(previous.policy, currentOutcomes),
           outcomeWindowDigest: outcomeDigest(previous.policy, previous.outcomeLog, now),
+          stoppedSubmission: freeze({ ...input }),
         } as SharedLoopRecord);
         return managedWrite(all, stopped);
       }
@@ -291,7 +298,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
       const pendingAttempts = [...previous.pendingAttempts, input.attempt];
       const currentOutcomes = windowAt(previous, now);
       const record = freeze({
-        ...previous,
+        ...withoutSubmission(previous),
         ...meta(all, input.command),
         attempts: attemptLog.length,
         nextWake: now.value,
@@ -335,6 +342,8 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
       ensure(atOrAfter(now, attempt.admittedAt), 'outcome clock precedes its admission');
       const completeRestoration = input.restoration.filter(reference => restorationReferenceComplete(reference,
         history, spine.context, now, previous.pressureKey, previous.operationFamily, host));
+      if (previous.closureSubmission
+        && encoded(previous.closureSubmission).bytes === encoded(input).bytes) return previous;
       const existing = previous.outcomeLog.find(value => value.attempt === input.attempt);
       if (existing) {
         ensure(existing.kind === input.kind && existing.failureClass === input.failureClass
@@ -349,9 +358,13 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
           && previous.halfOpenSucceeded >= previous.policy.halfOpenTrials
           && closureEvidence.length > previous.closureEvidence.length,
         'loop outcome changed after admission without new complete restoration');
-        const currentOutcomes = windowAt(previous, now);
+        const restoration = freeze([...new Map([...existing.restoration, ...input.restoration]
+          .map(value => [value.id, value])).values()]);
+        const outcomeLog = freeze(previous.outcomeLog.map(value => value.attempt === existing.attempt
+          ? freeze({ ...value, restoration } as LoopOutcome) : value));
+        const currentOutcomes = windowAt({ policy: previous.policy, outcomeLog }, now);
         const closed = freeze({
-          ...previous,
+          ...withoutSubmission(previous),
           ...meta(all, input.command),
           nextWake: now.value,
           state: 'closed',
@@ -361,9 +374,11 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
           nextEligible: now,
           sourceVector: previous.sourceVector,
           policyGeneration: current.generation,
+          outcomeLog,
           closureEvidence,
           failureCount: failureCountAt(previous.policy, currentOutcomes),
           outcomeWindowDigest: encoded(currentOutcomes).hash,
+          closureSubmission: freeze({ ...input }),
         } as SharedLoopRecord);
         return managedWrite(all, closed);
       }
@@ -393,7 +408,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
         'outcome evidence or receipt clock precedes its admission');
       const decision = sharedOutcomeDecision(previous, outcome, now, completeRestoration);
       const record = freeze({
-        ...previous,
+        ...withoutSubmission(previous),
         ...meta(all, input.command),
         nextWake: decision.nextEligible.value,
         state: decision.state,

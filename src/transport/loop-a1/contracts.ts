@@ -119,6 +119,10 @@ export interface SharedLoopRecord extends Owned {
   readonly outcomeLog: readonly LoopOutcome[];
   readonly outcomeWindowDigest: Hash;
   readonly closureEvidence: readonly OwnedReference<'part-nine', 'VerificationAssessment'>[];
+  /** Present only when an exhausted-bound admission records the refused submission. */
+  readonly stoppedSubmission?: LoopAttemptInput;
+  /** Present only when an existing accepted outcome is closed by later restoration evidence. */
+  readonly closureSubmission?: LoopOutcomeInput;
 }
 
 export type StoredSharedLoopPolicy = Omit<SharedBreakerLoopPolicy, 'type'> & {

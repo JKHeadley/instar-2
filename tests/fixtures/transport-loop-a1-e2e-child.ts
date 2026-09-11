@@ -1,9 +1,10 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { decodeLoopPolicyA1, storeSharedLoopRecord } from '../../src/transport/loop-a1/index.js';
 import type { SharedBreakerLoopPolicy, SharedLoopRecord } from '../../src/transport/loop-a1/index.js';
+import type { LoopAttemptInput, LoopOutcomeInput } from '../../src/transport/loop-a1/index.js';
 import { transportLoopFixture, value } from '../transport/loop-fixture.js';
 
 const mode = process.env.SLB_A1_E2E_MODE;
@@ -64,7 +65,41 @@ it.skipIf(!mode?.startsWith('produce-'))('A1 producer persists the requested tra
       failureClass: '', completion, jitterPermille: 1000,
       restoration: [state.fixture.restorationReference('assessment:witnessed-review')] }));
     expect(closed.state).toBe('closed');
+  } else if (mode === 'produce-retry-evidence') {
+    const state = producer({ failureThreshold: 1, halfOpenTrials: 1, halfOpenConcurrency: 1 });
+    state.fixture.advance(1); state.admit('failure'); state.finish('failure', 'failed');
+    state.fixture.advance(20); state.admit('passing-trial');
+    const completion = state.finish('passing-trial', 'accepted');
+    const partial = state.fixture.restorationReference('assessment:e2e-repair17-partial');
+    const complete = state.fixture.restorationReference('assessment:witnessed-review');
+    const closed = value(state.fixture.api.recordLoopOutcome({ command: 'a1-e2e-repair17-close',
+      fence: state.token, episode: reference(state.loop), attempt: 'passing-trial', kind: 'accepted',
+      failureClass: '', completion, jitterPermille: 1000, restoration: [partial, complete] }));
+    expect(closed).toMatchObject({ state: 'closed', closureEvidence: [complete] });
+    expect(closed.outcomeLog.at(-1)!.restoration).toEqual([partial, complete]);
+    writeFileSync(join(directory, 'request.json'), JSON.stringify(closed.closureSubmission));
+  } else if (mode === 'produce-retry-stopped') {
+    const state = producer({ maxAttempts: 0 });
+    state.fixture.advance(1); state.admit('beyond-bound');
+    expect(state.loop).toMatchObject({ state: 'stopped', attempts: 0 });
+    writeFileSync(join(directory, 'request.json'), JSON.stringify(state.loop.stoppedSubmission));
   } else throw new Error(`unknown producer mode: ${mode}`);
+});
+
+it.skipIf(!mode?.startsWith('retry-'))('A1 retry process returns the signed original without another transition', () => {
+  const file = join(directory, 'facts.json');
+  const before = readFileSync(file, 'utf8');
+  const fixture = transportLoopFixture(directory);
+  const original = value(fixture.api.inspect()).filter(row => row.record.type === 'LoopRecord'
+    && row.record.policy.breaker === 'shared-circuit-v1').at(-1)!.record as SharedLoopRecord;
+  fixture.time(original.transitionAt.value);
+  const submission = JSON.parse(readFileSync(join(directory, 'request.json'), 'utf8'));
+  const retry = mode === 'retry-evidence'
+    ? value(fixture.api.recordLoopOutcome(submission as LoopOutcomeInput))
+    : value(fixture.api.admitLoopAttempt(submission as LoopAttemptInput));
+  expect(value(canonical(storeSharedLoopRecord(retry))).bytes)
+    .toBe(value(canonical(storeSharedLoopRecord(original))).bytes);
+  expect(readFileSync(file, 'utf8')).toBe(before);
 });
 
 it.skipIf(mode !== 'recover')('A1 fresh process reconstructs the exact last record without rewriting history', () => {

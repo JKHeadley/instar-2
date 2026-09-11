@@ -11,6 +11,20 @@ const constitutionalOutcome: OwnedShape = {
   kind: 'object',
   fields: { type: txt, id: txt, fact: reference, field: txt },
 };
+const fence: OwnedShape = {
+  kind: 'object',
+  fields: {
+    ...common,
+    domain: txt,
+    epoch: int,
+    assignment: txt,
+    holder: txt,
+    machine: txt,
+    incarnation: txt,
+    authority: txt,
+    generation: txt,
+  },
+};
 const clock: OwnedShape = {
   kind: 'object',
   fields: {
@@ -91,9 +105,27 @@ const loopOutcome: OwnedShape = {
     restoration: { kind: 'array', maxLength: 64, items: reference },
   },
 };
+const stoppedSubmission: OwnedShape = {
+  kind: 'object',
+  fields: { command: txt, fence, episode: reference, attempt: txt },
+};
+const closureSubmission: OwnedShape = {
+  kind: 'object',
+  fields: {
+    command: txt,
+    fence,
+    episode: reference,
+    attempt: txt,
+    kind: txt,
+    failureClass: txt,
+    completion: constitutionalOutcome,
+    jitterPermille: int,
+    restoration: { kind: 'array', maxLength: 64, items: reference },
+  },
+};
 export const sharedLoopRecordShape: OwnedShape = {
   kind: 'object',
-  optional: [...loopA1ExcludedRecordFields],
+  optional: [...loopA1ExcludedRecordFields, 'stoppedSubmission', 'closureSubmission'],
   fields: {
     ...row,
     ...Object.fromEntries(loopA1ExcludedRecordFields.map(field => [field, policyFields[field]])),
@@ -129,6 +161,8 @@ export const sharedLoopRecordShape: OwnedShape = {
     outcomeLog: { kind: 'array', maxLength: 4096, items: loopOutcome },
     outcomeWindowDigest: txt,
     closureEvidence: { kind: 'array', maxLength: 64, items: reference },
+    stoppedSubmission,
+    closureSubmission,
   },
 };
 
@@ -319,4 +353,19 @@ export function sharedLoopRecordCheck(shared: SharedLoopRecord): void {
   }
   ensure(/^sha256:[a-f0-9]{64}$/.test(shared.outcomeWindowDigest), 'invalid outcome window digest');
   shared.closureEvidence.forEach(value => referenceCheck(value, 'part-nine', 'VerificationAssessment'));
+  ensure(!(shared.stoppedSubmission && shared.closureSubmission), 'shared loop record has conflicting submissions');
+  if (shared.stoppedSubmission) {
+    ensure(shared.transition === 'stopped' && shared.stoppedSubmission.command === shared.command,
+      'stopped submission differs from its transition');
+    referenceCheck(shared.stoppedSubmission.episode, 'part-six', 'LoopRecord');
+    ensure(shared.stoppedSubmission.episode.id === shared.episode && shared.stoppedSubmission.attempt.length > 0,
+      'stopped submission names another episode or empty attempt');
+  }
+  if (shared.closureSubmission) {
+    ensure(shared.transition === 'closed' && shared.closureSubmission.command === shared.command,
+      'closure submission differs from its transition');
+    referenceCheck(shared.closureSubmission.episode, 'part-six', 'LoopRecord');
+    ensure(shared.closureSubmission.episode.id === shared.episode && shared.closureSubmission.attempt.length > 0,
+      'closure submission names another episode or empty attempt');
+  }
 }

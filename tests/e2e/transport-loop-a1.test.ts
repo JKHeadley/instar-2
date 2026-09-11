@@ -45,3 +45,13 @@ it('SLB-A1-E2E-91 SLB-A1-CUTS-101 reconstructs all 20 persisted A1 transition cu
   }
   expect(cuts).toBe(20);
 }, 240_000);
+
+it('SLB-A1-REPAIR17-E2E-114 V27 V28 returns exact mixed-evidence close and stopped results after process restart', () => {
+  for (const scenario of ['retry-evidence', 'retry-stopped']) {
+    const directory = mkdtempSync(join(tmpdir(), `transport-loop-a1-${scenario}-`));
+    const producer = runChild(`produce-${scenario}`, directory);
+    expect(producer.status, `${producer.stdout}\n${producer.stderr}`).toBe(0);
+    const retry = runChild(scenario, directory);
+    expect(retry.status, `${retry.stdout}\n${retry.stderr}`).toBe(0);
+  }
+}, 120_000);

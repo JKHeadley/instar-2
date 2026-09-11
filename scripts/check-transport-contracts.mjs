@@ -78,6 +78,10 @@ export const transportSeamEvidence = [
   ['SLB-A1-RESTORATION-TRANSITION-109', 'integration', 'V18 and V27 transition-time restoration with forged-time and expired replay controls'],
   ['SLB-A1-EXCLUSION-PRESENCE-110', 'integration', 'every top-level and nested excluded field presence typed-refuses before value interpretation'],
   ['SLB-LEGACY-TEXT-RANGES-111', 'unit', 'empty, exact-limit, over-limit, non-ASCII and whitespace values for every legacy text field'],
+  ['SLB-A1-LOST-ACK-IDEMPOTENCY-112', 'integration', 'exact evidence-close and stopped submissions return their original durable results'],
+  ['SLB-A1-PARTIAL-RETENTION-113', 'integration', 'honestly partial evidence remains referenced without closure promotion'],
+  ['SLB-A1-REPAIR17-E2E-114', 'e2e', 'fresh processes repeat mixed-evidence close and stopped commands without another transition'],
+  ['SLB-A1-SUBMISSION-SHAPE-115', 'unit', 'optional signed submission evidence preserves old records and refuses inconsistency'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

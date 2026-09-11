@@ -652,6 +652,21 @@ function exactPrefix<T>(prior: readonly T[], next: readonly T[]): boolean {
   return prior.every((value, index) => encoded(value as never).bytes === encoded(next[index] as never).bytes);
 }
 
+function withoutSubmission(record: SharedLoopRecord): SharedLoopRecord {
+  const { stoppedSubmission: _stopped, closureSubmission: _closure, ...rest } = record;
+  return rest as SharedLoopRecord;
+}
+
+function priorOutcomePreserved(previous: LoopOutcome, next: LoopOutcome,
+  closureAttempt?: string): boolean {
+  if (encoded(previous).bytes === encoded(next).bytes) return true;
+  if (previous.attempt !== closureAttempt || next.attempt !== closureAttempt) return false;
+  const { restoration: previousRestoration, ...previousCore } = previous;
+  const { restoration: nextRestoration, ...nextCore } = next;
+  return encoded(previousCore).bytes === encoded(nextCore).bytes
+    && exactPrefix(previousRestoration, nextRestoration);
+}
+
 function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA1TransportFact[],
   host: LoopA1Host, origin: boolean, evidenceFacts?: readonly FactEnvelope[], context?: FactContext): void {
   sharedLoopRecordCheck(record);
@@ -694,7 +709,8 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
   ensure(record.attempts >= previous.attempts && record.totalFailures >= previous.totalFailures
     && record.breakerOpenCount >= previous.breakerOpenCount
     && exactPrefix(previous.attemptLog, record.attemptLog)
-    && previous.outcomeLog.every(value => record.outcomeLog.some(next => encoded(next).bytes === encoded(value).bytes)),
+    && previous.outcomeLog.every(value => record.outcomeLog.some(next =>
+      priorOutcomePreserved(value, next, record.closureSubmission?.attempt))),
   'shared pressure history reset or changed');
   ensure(previous.state !== 'stopped', 'terminal loop episode cannot transition');
   const unchangedAttempts = encoded(record.attemptLog).bytes === encoded(previous.attemptLog).bytes;
@@ -710,8 +726,19 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
           && previous.breakerHasOpened === 1
           && record.transitionAt.value - previous.breakerFirstOpened.value >= record.policy.maxOpenDuration),
     'stopped transition lacks an exhausted bound');
+    if (record.stoppedSubmission) {
+      const lease = latestLease(all as readonly TransportFact[])!.record;
+      const expectedSubmission = freeze({
+        command: record.command,
+        fence: fenceFor(all as readonly TransportFact[], lease),
+        episode: { owner: 'part-six' as const, name: 'LoopRecord' as const, id: record.episode },
+        attempt: record.stoppedSubmission.attempt,
+      });
+      ensure(encoded(record.stoppedSubmission).bytes === encoded(expectedSubmission).bytes,
+        'stopped transition has an inconsistent command submission');
+    }
     const expected = freeze({
-      ...previous,
+      ...(record.stoppedSubmission ? withoutSubmission(previous) : previous),
       schemaVersion: record.schemaVersion,
       domain: record.domain,
       command: record.command,
@@ -728,6 +755,7 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
       policyGeneration: record.policyGeneration,
       failureCount: failureCountAt(record.policy, currentOutcomes),
       outcomeWindowDigest: encoded(currentOutcomes).hash,
+      ...(record.stoppedSubmission ? { stoppedSubmission: record.stoppedSubmission } : {}),
     } as SharedLoopRecord);
     ensure(encoded(record).bytes === encoded(expected).bytes,
       'stopped transition differs from the complete policy calculation');
@@ -747,7 +775,7 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
     ensure(decision.kind === 'admitted', 'attempt admission differs from the complete policy calculation');
     const currentOutcomes = windowAt(previous, record.transitionAt);
     const expected = freeze({
-      ...previous,
+      ...withoutSubmission(previous),
       schemaVersion: record.schemaVersion,
       domain: record.domain,
       command: record.command,
@@ -777,6 +805,65 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
       'attempt admission differs from the complete policy calculation');
     return;
   }
+  if (record.transition === 'closed' && record.closureSubmission) {
+    const submission = record.closureSubmission;
+    const existing = previous.outcomeLog.find(value => value.attempt === submission.attempt);
+    ensure(existing && previous.state === 'half-open' && previous.pendingAttempts.length === 0
+      && previous.halfOpenSucceeded >= previous.policy.halfOpenTrials,
+    'evidence-only closure lacks completed trials or its submitted outcome');
+    const lease = latestLease(all as readonly TransportFact[])!.record;
+    const expectedSubmission = freeze({
+      command: record.command,
+      fence: fenceFor(all as readonly TransportFact[], lease),
+      episode: { owner: 'part-six' as const, name: 'LoopRecord' as const, id: record.episode },
+      attempt: existing.attempt,
+      kind: existing.kind,
+      failureClass: existing.failureClass,
+      completion: existing.completion,
+      jitterPermille: existing.jitterPermille,
+      restoration: submission.restoration,
+    });
+    ensure(encoded(submission).bytes === encoded(expectedSubmission).bytes,
+      'evidence-only closure submission differs from its recorded outcome');
+    const completeRestoration = evidenceFacts && context
+      ? submission.restoration.filter(reference => restorationReferenceComplete(reference, evidenceFacts, context,
+        record.transitionAt, record.pressureKey, record.operationFamily, host, false))
+      : submission.restoration.filter(reference => record.closureEvidence.some(value => value.id === reference.id));
+    const closureEvidence = freeze([...new Map([...previous.closureEvidence, ...completeRestoration]
+      .map(value => [value.id, value])).values()]);
+    ensure(completeRestoration.length > 0 && closureEvidence.length > previous.closureEvidence.length,
+      'evidence-only closure lacks new complete restoration support');
+    const restoration = freeze([...new Map([...existing.restoration, ...submission.restoration]
+      .map(value => [value.id, value])).values()]);
+    const outcomeLog = freeze(previous.outcomeLog.map(value => value.attempt === existing.attempt
+      ? freeze({ ...value, restoration } as LoopOutcome) : value));
+    const currentOutcomes = windowAt({ policy: previous.policy, outcomeLog }, record.transitionAt);
+    const expected = freeze({
+      ...withoutSubmission(previous),
+      schemaVersion: record.schemaVersion,
+      domain: record.domain,
+      command: record.command,
+      predecessor: record.predecessor,
+      authority: record.authority,
+      tick: record.tick,
+      nextWake: record.transitionAt.value,
+      state: 'closed' as const,
+      pending: '',
+      transition: 'closed' as const,
+      transitionAt: record.transitionAt,
+      nextEligible: record.transitionAt,
+      sourceVector: previous.sourceVector,
+      policyGeneration: record.policyGeneration,
+      outcomeLog,
+      closureEvidence,
+      failureCount: failureCountAt(record.policy, currentOutcomes),
+      outcomeWindowDigest: encoded(currentOutcomes).hash,
+      closureSubmission: submission,
+    } as SharedLoopRecord);
+    ensure(encoded(record).bytes === encoded(expected).bytes,
+      'evidence-only closure changed the submitted evidence or breaker history');
+    return;
+  }
   if (record.transition === 'closed' && unchangedAttempts && unchangedOutcomes) {
     ensure(previous.state === 'half-open' && previous.pendingAttempts.length === 0
       && previous.halfOpenSucceeded >= previous.policy.halfOpenTrials
@@ -785,7 +872,7 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
     'evidence-only closure lacks completed trials or new restoration support');
     const currentOutcomes = windowAt(previous, record.transitionAt);
     const expected = freeze({
-      ...previous,
+      ...withoutSubmission(previous),
       schemaVersion: record.schemaVersion,
       domain: record.domain,
       command: record.command,
@@ -829,7 +916,7 @@ function validateSharedLoopHistory(record: SharedLoopRecord, all: readonly LoopA
     : added.restoration.filter(reference => record.closureEvidence.some(value => value.id === reference.id));
   const expected = sharedOutcomeDecision(previous, added, record.transitionAt, completeRestoration);
   const successor = freeze({
-    ...previous,
+    ...withoutSubmission(previous),
     schemaVersion: record.schemaVersion,
     domain: record.domain,
     command: record.command,
