@@ -418,7 +418,10 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       'unsupported-in-slice-a: principal witness is unavailable or mismatched','standing');
       const principalRow=dependencies.find(candidate => candidate.fact.id===principalCandidates[0]!.fact.id)!;
       constitutionalField(principalRow,'VerifiedPrincipal',principal.id,preserved);
-      const discovery=resolveScheduledDiscoveryWitness(histories,new Set(required),arrival.route.eventId,row.fact.at,preserved,c.decode,'historical');
+      const resolved=dependencies.filter(candidate => candidate.fact.kind==='intake-resolved');
+      requireIntake(resolved.length===1,'scheduled intake: one resolved-principal witness is required','integrity');
+      const discovery=resolveScheduledDiscoveryWitness(histories,new Set(required),arrival.route.eventId,row.fact.at,preserved,
+        c.decode,'historical',new Set(resolved[0]!.fact.predecessors.required));
       partial ||= !discovery||discovery.partial;
       const evidenceRows=dependencies.filter(candidate => candidate.historical.some(record => record.origin.id===candidate.fact.id
         &&record.view.type==='Evidence'));
@@ -433,8 +436,6 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       requireIntake(standingRows.length>0,'scheduled intake: standing witness is not a signed dependency','standing');
       for(const standingRow of standingRows) constitutionalField(standingRow,'StandingGrant',standing.grant.view.id,preserved);
 
-      const resolved=dependencies.filter(candidate => candidate.fact.kind==='intake-resolved');
-      requireIntake(resolved.length===1,'scheduled intake: one resolved-principal witness is required','integrity');
       const resolvedBody=object(resolved[0]!.body);
       requireIntake(resolvedBody.logicalId===body.logicalId&&resolvedBody.receipt===receipt.fact.id
         &&resolvedBody.rawHash===body.rawHash&&resolvedBody.adapter===body.adapter&&resolvedBody.channel===body.channel

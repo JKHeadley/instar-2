@@ -158,23 +158,23 @@ export function validateScheduledIntakeRoute(adapterInput: Json,channelInput: Js
 // among copies. Historical unavailability is honest partiality; every known
 // mismatch and every additional matching copy is still refused.
 export function resolveScheduledDiscoveryWitness(histories: readonly ScheduledHistoryRow[],required: ReadonlySet<string>,
-  eventId: string,causalNow: Clock,preserved: string,decodeContext: DecodeContext,mode: 'origin'|'historical') {
+  eventId: string,causalNow: Clock,preserved: string,decodeContext: DecodeContext,mode: 'origin'|'historical',
+  witnessRequired: ReadonlySet<string>=required) {
   const candidates=histories.filter((row): row is { fact: FactEnvelope; record: HistoricalRead<Evidence> } =>
     required.has(row.fact.id)&&row.record.view.type==='Evidence'&&row.record.view.source===row.fact.machine);
-  const matching=candidates.filter(row => row.record.view.claim.subject===eventId
-    &&row.record.view.claim.predicate==='scheduled-discovery'&&row.record.view.claim.value===true);
+  const unavailable=candidates.filter(row => row.record.captureStatus!=='available');
+  const unavailableWitnesses=unavailable.filter(row => witnessRequired.has(row.fact.id));
+  const matching=candidates.flatMap(row => consumeResult(readHistoricalEvidence(row.record,causalNow,preserved),{
+    Success: claim => claim.subject===eventId&&claim.predicate==='scheduled-discovery'&&claim.value===true?[row]:[],
+    Refused: () => [],
+  }));
   requireIntake(matching.length<=1,'unsupported-in-slice-a: exactly one discovery Evidence witness is required','integrity');
-  requireIntake(matching.length===1,
-    'unsupported-in-slice-a: discovery Evidence witness is missing or mismatched','integrity');
-  const witness=matching[0]!;
+  const witness=matching[0]??(mode==='historical'&&unavailableWitnesses.length===1?unavailableWitnesses[0]:undefined);
+  requireIntake(witness,'unsupported-in-slice-a: discovery Evidence witness is missing or mismatched','integrity');
   const identityCopies=candidates.filter(row => row.record.view.id===witness.record.view.id);
   requireIntake(identityCopies.length===1&&same(identityCopies[0]!.record.view,witness.record.view),
     'unsupported-in-slice-a: discovery Evidence witness is copied or conflicted','integrity');
-  const observedAt=take(decodeMeasurement('clock',witness.record.view.observedAt,decodeContext));
-  requireIntake(causalNow.value>=observedAt.value&&causalNow.value<=observedAt.value+witness.record.view.freshFor,
-    'unsupported-in-slice-a: discovery Evidence witness is stale or mismatched','integrity');
   if(witness.record.captureStatus!=='available') {
-    requireIntake(mode==='historical','unsupported-in-slice-a: discovery Evidence witness is unavailable','integrity');
     return { ...witness,partial: true };
   }
   const claim=take(readHistoricalEvidence(witness.record,causalNow,preserved));
@@ -199,7 +199,7 @@ function scheduledHistories(c: OwnedBodyContext) {
   }
   const histories: ScheduledHistoryRow[]=cone.flatMap(fact => {
     const decoded=take(decodeHistoricalBody(fact,historicalContext,causalStanding(fact,historicalContext,false).decode));
-    return decoded.records.map(record => ({ fact,record }));
+    return decoded.records.filter(record => record.origin.id===fact.id).map(record => ({ fact,record }));
   });
   return { cone,coneIds,grants,revocations,historicalContext,histories };
 }
@@ -248,8 +248,12 @@ function validateScheduledIntakeWork(input: Json,c: OwnedBodyContext,registeredS
   requireIntake(same(principalWitness.record.view,principal),
     'unsupported-in-slice-a: Intent principal disagrees with its signed identity','standing');
 
+  const resolutions=cone.filter(fact => required.has(fact.id)&&fact.kind==='intake-resolved');
+  requireIntake(resolutions.length===1,'unsupported-in-slice-a: exactly one resolved-principal witness is required','integrity');
+  const resolution=resolutions[0]!;
   const causalNow=causalStanding(c.origin,historicalContext,false).now;
-  const discovery=resolveScheduledDiscoveryWitness(histories,required,eventId,causalNow,c.preserved,c.facts.decode,c.mode);
+  const discovery=resolveScheduledDiscoveryWitness(histories,required,eventId,causalNow,c.preserved,c.facts.decode,c.mode,
+    new Set(resolution.predecessors.required));
   const historicalGrants=grants.filter(row => coneIds.has(row.factId)&&required.has(row.factId)
     &&row.grant.view.grantee.id===principal.id&&row.grant.view.grantee.kind==='system'
     &&row.grant.view.standing==='delegate'&&row.grant.view.actions.includes('work')
@@ -267,9 +271,7 @@ function validateScheduledIntakeWork(input: Json,c: OwnedBodyContext,registeredS
         &&row.revocation.view.grantId===selectedGrantId).map(row => row.revocation),causalNow,c.preserved))==='live',
     'unsupported-in-slice-a: referenced package-system grant is unavailable or not live','standing');
 
-  const resolutions=cone.filter(fact => required.has(fact.id)&&fact.kind==='intake-resolved');
-  requireIntake(resolutions.length===1,'unsupported-in-slice-a: exactly one resolved-principal witness is required','integrity');
-  const resolution=resolutions[0]!,resolved=object(resolution.body),principalProvenance=object(json(principal.provenance));
+  const resolved=object(resolution.body),principalProvenance=object(json(principal.provenance));
   requireIntake(resolution.principal.id===principal.id&&same(json(resolution.principal),json(principal))
     &&same(json(resolution.provenance),principalProvenance)&&same(json(resolution.at),json(c.origin.at)),
   'unsupported-in-slice-a: resolved principal disagrees with the signed identity','standing');
