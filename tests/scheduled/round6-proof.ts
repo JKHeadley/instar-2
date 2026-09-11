@@ -5,7 +5,7 @@ import { hashBytes } from '../../src/facts/index.js';
 import { createScheduledWorkPackagePort } from '../../src/scheduled/index.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
-import { activeScheduledFixture, clone, scheduledFixture, value } from './fixture.js';
+import { activeScheduledFixture, clone, packageArchive, scheduledFixture, value } from './fixture.js';
 
 const status = <T>(result: Result<T>) => consumeResult(result, {
   Success: () => 'accepted' as const,
@@ -32,18 +32,21 @@ function competingAdmission(state: 'recorded' | 'staged' | 'active' | 'retired' 
     }));
   }
   return status(createScheduledWorkPackagePort().admitPackageResource({ package: f.package,
-    manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [] }, f.context));
+    archive: f.archive, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [] }, f.context));
 }
 
 function supportAdmission(path: string) {
   const scheduled = scheduledFixture(); const assembly = assemblyRuntimeFixture();
   const input = clone(scheduled.package) as any;
-  input.entrypoints.push({ id: 'support-data', path, digest: hashBytes('{"threshold":3}') });
+  const supportBytes = '{"threshold":3}';
+  input.entrypoints.push({ id: 'support-data', path, digest: hashBytes(supportBytes) });
   const pkg = value(assembly.runtime.record('LocalCapabilityPackage', value(decodeLocalCapabilityPackage(input, assembly.c))));
   value(assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'), id: `transition:support:${path}`,
     operation: `operation:support:${path}`, package: pkg.namespace, manifestDigest: pkg.contentDigest,
     observedArtifactDigest: pkg.contentDigest }));
   return status(createScheduledWorkPackagePort().admitPackageResource({ package: pkg,
+    archive: packageArchive(pkg, { 'scheduled/manifest.json': scheduled.manifestBytes,
+      'dist/maintenance.js': scheduled.bodyBytes, [path]: supportBytes }),
     manifestPath: 'scheduled/manifest.json', manifestBytes: scheduled.manifestBytes, existingManifests: [] }, assembly.c));
 }
 
@@ -57,10 +60,12 @@ function twoManifestAdmissions() {
     operation: 'operation:two-manifests:round6', package: pkg.namespace, manifestDigest: pkg.contentDigest,
     observedArtifactDigest: pkg.contentDigest }));
   const port = createScheduledWorkPackagePort();
+  const archive = packageArchive(pkg, { 'scheduled/manifest.json': scheduled.manifestBytes,
+    'data/second.json': secondBytes, 'dist/maintenance.js': scheduled.bodyBytes });
   return [
-    status(port.admitPackageResource({ package: pkg, manifestPath: 'scheduled/manifest.json',
+    status(port.admitPackageResource({ package: pkg, archive, manifestPath: 'scheduled/manifest.json',
       manifestBytes: scheduled.manifestBytes, existingManifests: [] }, assembly.c)),
-    status(port.admitPackageResource({ package: pkg, manifestPath: 'data/second.json',
+    status(port.admitPackageResource({ package: pkg, archive, manifestPath: 'data/second.json',
       manifestBytes: secondBytes, existingManifests: [] }, assembly.c)),
   ];
 }

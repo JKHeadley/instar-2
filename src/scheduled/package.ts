@@ -1,7 +1,7 @@
 import { canonical, consumeResult, decodeMeasurement } from '../index.js';
 import type { BoundaryContext, Clock, Hash } from '../index.js';
 import { hashBytes } from '../facts/index.js';
-import { decodeLocalCapabilityPackage, resolveActivePackage, safePackagePath } from '../assembly/index.js';
+import { decodeLocalCapabilityPackage, resolveActivePackage, safePackagePath, stageLocalCapability } from '../assembly/index.js';
 import type { AssemblyDecodeContext, CurrentAssemblyFact } from '../assembly/index.js';
 import type { RunExit, RunExitReadPort } from '../rungraph/index.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
@@ -11,6 +11,28 @@ import { canonicalInstant, parseRfc3339Offset } from './time.js';
 import type { ScheduledOccurrencePlan, ScheduledWorkPackagePort } from './contracts.js';
 
 function encoded(value: unknown): Readonly<{ bytes: string; hash: Hash }> { return take(canonical(value)); }
+
+function ownerValidatedActivePackages(current: readonly CurrentAssemblyFact[], context: AssemblyDecodeContext) {
+  const namespaces = new Set(current.flatMap(row => row.record.type === 'LocalCapabilityPackage'
+    ? [row.record.namespace] : []));
+  return [...namespaces].flatMap(namespace => consumeResult(resolveActivePackage(namespace, current, context), {
+    Success: value => [value],
+    Refused: () => [],
+  }));
+}
+
+function isAdditionalScheduledManifest(bytes: string, context: BoundaryContext): boolean {
+  let parsed: unknown;
+  try { parsed = parseUnambiguousJson(bytes); } catch { return false; }
+  return consumeResult(decodeScheduledWorkManifest(parsed, context), {
+    Success: () => true,
+    Refused: refusal => {
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        && (parsed as Record<string, unknown>).type === 'ScheduledWorkManifest') throw new Error(refusal.detail);
+      return false;
+    },
+  });
+}
 
 function authoritativeCollision(manifestJobId: string, namespace: string, context: AssemblyDecodeContext): string | undefined {
   ensure(context.history, 'complete authoritative Part Ten package comparison is unavailable');
@@ -59,15 +81,23 @@ export function createScheduledWorkPackagePort(): ScheduledWorkPackagePort {
       return boundary('ScheduledPackageResourceAdmission', input, context, () => {
         const candidate = input as unknown as Record<string, unknown>;
         ensure(candidate && typeof candidate === 'object' && !Array.isArray(candidate), 'package admission input must be an object');
-        ensure(Object.keys(candidate).every(key => ['package', 'manifestPath', 'manifestBytes', 'existingManifests'].includes(key))
-          && ['package', 'manifestPath', 'manifestBytes', 'existingManifests'].every(key => Object.hasOwn(candidate, key)), 'package admission input has missing or unexpected fields');
+        ensure(Object.keys(candidate).every(key => ['package', 'archive', 'manifestPath', 'manifestBytes', 'existingManifests'].includes(key))
+          && ['package', 'archive', 'manifestPath', 'manifestBytes', 'existingManifests'].every(key => Object.hasOwn(candidate, key)), 'package admission input has missing or unexpected fields');
         const supplied = take(decodeLocalCapabilityPackage(input.package, context as AssemblyDecodeContext));
-        const active = take(resolveActivePackage(supplied.namespace, [], context as AssemblyDecodeContext));
+        const assemblyContext = context as AssemblyDecodeContext;
+        ensure(assemblyContext.history, 'complete authoritative Part Ten package comparison is unavailable');
+        const current = take(assemblyContext.history.current());
+        const active = take(resolveActivePackage(supplied.namespace, current, assemblyContext));
         ensure(encoded(active).bytes === encoded(supplied).bytes, 'supplied package differs from current Part Ten package');
+        ensure(Array.isArray(input.archive), 'complete Part Ten package archive must be supplied');
+        const staged = take(stageLocalCapability(active, input.archive,
+          ownerValidatedActivePackages(current, assemblyContext), assemblyContext));
         ensure(safePackagePath(input.manifestPath), 'manifest path is not a safe Part Ten package path');
         const manifestEntry = active.entrypoints.find(entry => entry.path === input.manifestPath);
         ensure(manifestEntry && manifestEntry.digest === hashBytes(input.manifestBytes), 'manifest bytes differ from the Part Ten package entry');
-        const parsed = parseUnambiguousJson(input.manifestBytes);
+        const verifiedManifestEntry = staged.entries.find(entry => entry.path === input.manifestPath);
+        ensure(verifiedManifestEntry?.bytes === input.manifestBytes, 'manifest bytes differ from the validated Part Ten archive');
+        const parsed = parseUnambiguousJson(verifiedManifestEntry.bytes);
         const manifest = take(decodeScheduledWorkManifest(parsed, context));
         ensure(manifest.identity.accountableOwner === active.ownerPrincipal, 'manifest owner differs from Part Ten package owner');
         ensure(manifest.identity.packageVersion === active.version && manifest.identity.contentDigest === active.contentDigest,
@@ -79,10 +109,9 @@ export function createScheduledWorkPackagePort(): ScheduledWorkPackagePort {
         ensure(!collision, collision === manifest.identity.jobId ? 'duplicate scheduled job id' : 'case-folded scheduled job identity collision');
         const body = active.entrypoints.find(entry => entry.id === manifest.work.entryPoint);
         ensure(body && body.digest === manifest.work.bodyDigest, 'manifest body differs from immutable Part Ten entry point');
-        const unclassifiedResources = active.entrypoints.filter(entry => entry.path !== input.manifestPath
-          && entry.id !== manifest.work.entryPoint);
-        ensure(unclassifiedResources.length === 0,
-          'complete package resource validation requires a Part Ten owner-issued resource view');
+        const additionalManifest = staged.entries.find(entry => entry.path !== input.manifestPath
+          && isAdditionalScheduledManifest(entry.bytes, context));
+        ensure(!additionalManifest, 'package contains multiple scheduled work manifests');
         const packageChecks = new Set([...active.checks.unit, ...active.checks.integration, ...active.checks.lifecycle]);
         ensure(manifest.activation.requiredChecks.every(check => packageChecks.has(check)), 'manifest requires a check absent from the Part Ten package');
         return manifest;

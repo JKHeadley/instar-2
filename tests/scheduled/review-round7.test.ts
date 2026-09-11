@@ -6,13 +6,13 @@ it('P15-NF-07 P15-NF-08 P15-NF-10 round-seven resource ids are not type discrimi
   expect(proof.resources.manifest).toEqual({ status: 'accepted' });
   expect(proof.resources['job-definition']).toEqual({ status: 'accepted' });
   expect(proof.resources['schedule-resource']).toEqual({ status: 'accepted' });
-  expect(proof.resources.support).toEqual({ status: 'refused',
-    detail: 'complete package resource validation requires a Part Ten owner-issued resource view' });
+  expect(proof.resources.support).toEqual({ status: 'accepted' });
 }, 15_000);
 
-it('round-seven multi-resource content classification remains held for a Part Ten resource view', () => {
+it('round-seven owner-validated resource bytes distinguish support from a second manifest', () => {
   const proof = exerciseP15Round7Proof();
-  expect(proof.resources['hidden-second']).toEqual(proof.resources.support);
+  expect(proof.resources['hidden-second']).toEqual({ status: 'refused',
+    detail: 'package contains multiple scheduled work manifests' });
 });
 
 it('round-seven inactive package history remains held for a Part Ten typed activity result', () => {
@@ -21,5 +21,5 @@ it('round-seven inactive package history remains held for a Part Ten typed activ
     expect(proof.activity[state]).toEqual({ status: 'refused',
       detail: 'competing package activity requires a Part Ten owner-issued activity resolution' });
   }
-  expect(proof.activity.active).toEqual({ status: 'refused', detail: 'duplicate scheduled job id' });
+  expect(proof.activity.active).toEqual({ status: 'refused', detail: 'package declaration namespace collision' });
 });

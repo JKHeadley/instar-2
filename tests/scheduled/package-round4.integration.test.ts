@@ -5,7 +5,7 @@ import { hashBytes } from '../../src/facts/index.js';
 import { createScheduledWorkPackagePort } from '../../src/scheduled/index.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
-import { activeScheduledFixture, clone, scheduledFixture, value } from './fixture.js';
+import { activeScheduledFixture, clone, packageArchive, scheduledFixture, value } from './fixture.js';
 
 const status = <T>(result: import('../../src/index.js').Result<T>) => consumeResult(result, {
   Success: () => 'accepted' as const, Refused: () => 'refused' as const,
@@ -28,12 +28,14 @@ describe('Part Fifteen round-four authoritative package conflicts', () => {
     expect(status(resolveActivePackage(f.package.namespace, [], f.context))).toBe('accepted');
     expect(status(resolveActivePackage(pkg.namespace, [], f.context))).toBe('accepted');
     const admit = (candidate: typeof pkg, manifestBytes: string) => port.admitPackageResource({ package: candidate,
+      archive: packageArchive(candidate, { 'scheduled/manifest.json': manifestBytes,
+        'dist/maintenance.js': f.bodyBytes }),
       manifestPath: 'scheduled/manifest.json', manifestBytes, existingManifests: [] }, f.context);
     expect(status(admit(f.package, f.manifestBytes))).toBe('refused');
     expect(status(admit(pkg, bytes))).toBe('refused');
   });
 
-  it('holds multi-resource manifest classification until Part Ten returns the verified resource bodies', () => {
+  it('refuses multiple manifests after Part Ten validates and returns the complete archive', () => {
     const s = scheduledFixture(); const a = assemblyRuntimeFixture(); const port = createScheduledWorkPackagePort();
     const second = clone(s.manifest) as any; second.schedule.at = '2027-01-02T00:00:00Z';
     const secondBytes = value(canonical(second)).bytes; const input = clone(s.package) as any;
@@ -41,9 +43,11 @@ describe('Part Fifteen round-four authoritative package conflicts', () => {
     const pkg = value(a.runtime.record('LocalCapabilityPackage', value(decodeLocalCapabilityPackage(input, a.c))));
     value(a.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'), id: 'transition:two-manifests:active',
       package: pkg.namespace, manifestDigest: pkg.contentDigest, observedArtifactDigest: pkg.contentDigest }));
-    expect(status(port.admitPackageResource({ package: pkg, manifestPath: 'scheduled/manifest.json',
+    const archive = packageArchive(pkg, { 'scheduled/manifest.json': s.manifestBytes,
+      'scheduled/second.json': secondBytes, 'dist/maintenance.js': s.bodyBytes });
+    expect(status(port.admitPackageResource({ package: pkg, archive, manifestPath: 'scheduled/manifest.json',
       manifestBytes: s.manifestBytes, existingManifests: [] }, a.c))).toBe('refused');
-    expect(status(port.admitPackageResource({ package: pkg, manifestPath: 'scheduled/second.json',
+    expect(status(port.admitPackageResource({ package: pkg, archive, manifestPath: 'scheduled/second.json',
       manifestBytes: secondBytes, existingManifests: [] }, a.c))).toBe('refused');
   });
 });

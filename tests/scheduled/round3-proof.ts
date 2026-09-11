@@ -6,7 +6,7 @@ import { decodeScheduledCapacityMeasurement, createScheduledWorkPackagePort, imp
   parseRfc3339Offset } from '../../src/scheduled/index.js';
 import type { Result } from '../../src/index.js';
 import { assemblyInput } from '../assembly/fixture.js';
-import { activeScheduledFixture, clone, scheduledFixture, value } from './fixture.js';
+import { activeScheduledFixture, clone, packageArchive, scheduledFixture, value } from './fixture.js';
 
 type Outcome<T> = { status: 'accepted'; value: T } | { status: 'refused'; detail: string };
 const outcome = <T>(result: Result<T>): Outcome<T> => consumeResult<T, Outcome<T>>(result, {
@@ -17,7 +17,7 @@ const outcome = <T>(result: Result<T>): Outcome<T> => consumeResult<T, Outcome<T
 export function exerciseP15Round3Proof() {
   const port = createScheduledWorkPackagePort();
   const active = activeScheduledFixture();
-  const admission = { package: active.package, manifestPath: 'scheduled/manifest.json',
+  const admission = { package: active.package, archive: active.archive, manifestPath: 'scheduled/manifest.json',
     manifestBytes: active.manifestBytes, existingManifests: [] };
   const currentNeighbor = outcome(port.admitPackageResource(admission, active.context));
   const invalid = outcome(port.decode({ ...active.manifest, surprise: true }, active.context));
@@ -36,7 +36,10 @@ export function exerciseP15Round3Proof() {
     id: 'transition:second:active', package: other.namespace, manifestDigest: other.contentDigest,
     observedArtifactDigest: other.contentDigest }));
   const firstCollision = outcome(port.admitPackageResource(admission, active.context));
-  const secondCollision = outcome(port.admitPackageResource({ ...admission, package: recorded, manifestBytes: otherBytes }, active.context));
+  const otherArchive = packageArchive(recorded, { 'scheduled/manifest.json': otherBytes,
+    'dist/maintenance.js': active.bodyBytes });
+  const secondCollision = outcome(port.admitPackageResource({ ...admission, package: recorded,
+    archive: otherArchive, manifestBytes: otherBytes }, active.context));
 
   const fixture = scheduledFixture();
   const capacityContext = { ...fixture.core.ctx, site: 'types.decode', actAt: fixture.core.clock(1_000_000),

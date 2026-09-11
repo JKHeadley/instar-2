@@ -8,7 +8,7 @@ import { hashBytes } from '../../src/facts/index.js';
 import { createScheduledWorkPackagePort } from '../../src/scheduled/index.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
-import { activeScheduledFixture, clone, scheduledFixture, value } from '../scheduled/fixture.js';
+import { activeScheduledFixture, clone, packageArchive, scheduledFixture, value } from '../scheduled/fixture.js';
 
 const status = <T>(result: import('../../src/index.js').Result<T>) => consumeResult(result, {
   Success: () => 'accepted' as const, Refused: () => 'refused' as const,
@@ -30,19 +30,20 @@ describe('Part Fifteen round-five owner-port integration', () => {
       manifestDigest: competing.contentDigest, observedArtifactDigest: competing.contentDigest,
     }));
     expect(status(resolveActivePackage(competing.namespace, [], f.context))).toBe('refused');
-    expect(status(port.admitPackageResource({ package: f.package, manifestPath: 'scheduled/manifest.json',
+    expect(status(port.admitPackageResource({ package: f.package, archive: f.archive, manifestPath: 'scheduled/manifest.json',
       manifestBytes: f.manifestBytes, existingManifests: [] }, f.context))).toBe('refused');
 
     const clean = activeScheduledFixture();
-    expect(status(port.admitPackageResource({ package: clean.package, manifestPath: 'scheduled/manifest.json',
+    expect(status(port.admitPackageResource({ package: clean.package, archive: clean.archive, manifestPath: 'scheduled/manifest.json',
       manifestBytes: clean.manifestBytes, existingManifests: [] }, clean.context))).toBe('accepted');
   });
 
-  it('holds extra package resources while still admitting the ordinary and extra-declaration neighbors', () => {
+  it('accepts owner-validated support resources and the ordinary and extra-declaration neighbors', () => {
     const scheduled = scheduledFixture(); const port = createScheduledWorkPackagePort();
     for (const mode of ['ordinary', 'extra-entrypoint', 'extra-declaration'] as const) {
       const assembly = assemblyRuntimeFixture(); const input = clone(scheduled.package) as any;
-      if (mode === 'extra-entrypoint') input.entrypoints.push({ id: 'support-library', path: 'dist/support.js', digest: scheduled.h('d') });
+      const supportBytes = 'export const support = true;\n';
+      if (mode === 'extra-entrypoint') input.entrypoints.push({ id: 'support-library', path: 'dist/support.js', digest: hashBytes(supportBytes) });
       if (mode === 'extra-declaration') input.declarationIds.push('capability:support');
       const pkg = value(assembly.runtime.record('LocalCapabilityPackage',
         value(decodeLocalCapabilityPackage(input, assembly.c))));
@@ -50,9 +51,11 @@ describe('Part Fifteen round-five owner-port integration', () => {
         id: `transition:${mode}`, operation: `operation:${mode}`, package: pkg.namespace,
         manifestDigest: pkg.contentDigest, observedArtifactDigest: pkg.contentDigest }));
       expect(status(resolveActivePackage(pkg.namespace, [], assembly.c))).toBe('accepted');
-      expect(status(port.admitPackageResource({ package: pkg, manifestPath: 'scheduled/manifest.json',
+      const archive = packageArchive(pkg, { 'scheduled/manifest.json': scheduled.manifestBytes,
+        'dist/maintenance.js': scheduled.bodyBytes, ...(mode === 'extra-entrypoint' ? { 'dist/support.js': supportBytes } : {}) });
+      expect(status(port.admitPackageResource({ package: pkg, archive, manifestPath: 'scheduled/manifest.json',
         manifestBytes: scheduled.manifestBytes, existingManifests: [] }, assembly.c)))
-        .toBe(mode === 'extra-entrypoint' ? 'refused' : 'accepted');
+        .toBe('accepted');
     }
   });
 
@@ -77,7 +80,7 @@ describe('Part Fifteen round-five owner-port integration', () => {
         value(assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
           id: 'transition:replacement', operation: 'operation:replacement', package: pkg.namespace,
           manifestDigest: pkg.contentDigest, observedArtifactDigest: pkg.contentDigest }));
-        const manifest = value(port.admitPackageResource({ package: pkg, manifestPath: 'scheduled/manifest.json',
+        const manifest = value(port.admitPackageResource({ package: pkg, archive: scheduled.archive, manifestPath: 'scheduled/manifest.json',
           manifestBytes: scheduled.manifestBytes, existingManifests: [] }, assembly.c));
         admitted.push(value(canonical(manifest)).bytes);
       }

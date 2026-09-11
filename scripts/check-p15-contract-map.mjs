@@ -7,17 +7,17 @@ import { fileURLToPath } from 'node:url';
 const executable = {
   1: 'Architecture test proves Part Fifteen introduces no duplicate core type and imports every consumed owner through its public index.',
   2: 'Governance test inventories every governed Rule and all 52 distinct fixture identifiers; this checker binds the inventory to the actual run.',
-  3: 'Selected-resource admission delegates decoding, active signed-history selection and package/body binding to public Part Ten owner paths.',
-  7: 'Arbitrary selected-resource ids and paths preserve byte-identical scheduled admission; complete multi-resource and pinned-calendar replacement remain held.',
-  8: 'Closed manifest decoding, required-field omission, duplicate identity, canonical bytes and selected Part Ten package/body pinning execute at all three tiers.',
+  3: 'Package admission delegates active-history selection plus complete archive and dependency validation to public Part Ten owner paths.',
+  7: 'Arbitrary resource ids and paths preserve byte-identical decisions after public Part Ten archive validation; pinned-calendar replacement remains held.',
+  8: 'Closed manifest decoding, required-field omission, duplicate identity, canonical bytes, dependency checks and complete Part Ten archive binding execute at all three tiers.',
   9: 'The local cron-v1 grammar and normalization arm executes; pinned zone/calendar expansion remains held at its named adapter seam.',
-  10: 'An invalid selected manifest is surfaced while an independent valid signed package and constitutional canonical boundary remain usable.',
+  10: 'Invalid manifests, inconsistent dependencies and duplicate scheduled resources are surfaced while independent valid signed packages and support resources remain usable.',
   11: 'All authority, bounds, supervision and proof groups are mandatory closed fields and bind the immutable body digest.',
   14: 'The absolute one-shot due/cutoff arm executes; missed-group disposition remains held at the named calendar and loop seams.',
   16: 'Part Ten current-package resolution refuses missing or half-staged authority; scheduled Run boundary behavior remains held at Four.',
   17: 'Part Ten decoding, signed namespace/source selection and selected-package retirement re-resolution execute; inactive competitor classification remains owner-held.',
   18: 'Local every-machine instance identity expansion executes; authenticated cross-epoch admission and long-history arms remain held.',
-  19: 'Part Ten active-package resolution refuses a conflicting active definition; inactive/unresolved distinction, complete resource inventory and calendar expansion remain held.',
+  19: 'Part Ten archive validation distinguishes support from a competing manifest and active-package resolution refuses a conflicting active definition; inactive/unresolved activity and calendar expansion remain held.',
   27: 'The future one-shot boundary executes; full outage coverage remains held at the named loop and calendar seams.',
   29: 'Closed percent range, explicit-action-clock freshness and unknown-evidence refusal execute through Part One; resource allocation remains separately held.',
   31: 'Local capacity evidence range, freshness and unknown-evidence classification executes; an actual capacity-inhibited launch remains held.',
@@ -27,14 +27,12 @@ const executable = {
 };
 
 const held = {
-  3: 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69-and-Part-Ten-production-wiring-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md',
+  3: 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69-and-Part-Ten-production-wiring',
   4: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49',
   5: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-loop-followup.md-row-36',
   6: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
-  7: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md',
-  8: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md',
+  7: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   9: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
-  10: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md',
   12: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-confined-production-driver',
   13: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   14: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
@@ -93,6 +91,9 @@ const proofFiles = [
   { file: 'tests/scheduled/review-round3.test.ts', tokens: ['exerciseP15Round3Proof()', 'expect('] },
   { file: 'tests/integration/scheduled-round3.test.ts', tokens: ['exerciseP15Round3Proof()', 'expect('] },
   { file: 'tests/e2e/scheduled-round3.test.ts', tokens: ['spawnSync(', 'SIGKILL', 'expect('] },
+  { file: 'tests/scheduled/review-round8.test.ts', tokens: ['exerciseP15Round8Proof()', 'expect('] },
+  { file: 'tests/integration/scheduled-round8.test.ts', tokens: ['exerciseP15Round8Proof()', 'expect('] },
+  { file: 'tests/e2e/scheduled-round8.test.ts', tokens: ['spawnSync(', 'SIGKILL', 'expect('] },
 ];
 const laneDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.instar/lanes');
 const calendarRequest = 'design-19-scheduled-work-seam-request-calendar-adapter.md';
@@ -121,6 +122,10 @@ export function checkP15Architecture(dispositions = p15Dispositions()) {
   }
   if (/P15-NF-(?:06|22|38|45)\b/.test(ownerProofSource))
     throw new Error('isolated Part Five fixtures must not be attributed as independently witnessed P15 owner-composition positives');
+  const packageSource = readFileSync('src/scheduled/package.ts', 'utf8');
+  for (const token of ['stageLocalCapability(', 'input.archive', 'staged.entries']) {
+    if (!packageSource.includes(token)) throw new Error(`scheduled package admission is missing public Part Ten archive validation ${token}`);
+  }
   if (proofSource.includes('const durable: unknown[]') || proofSource.includes('const admissions = new Set<string>()'))
     throw new Error('round-three proof must not present retained process-local arrays or admission sets as restart evidence');
   const ledgerPath = resolve(laneDirectory, 'SEAM-LEDGER.md');

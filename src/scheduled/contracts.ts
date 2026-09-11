@@ -1,5 +1,5 @@
 import type { BoundaryContext, Clock, Hash, Result } from '../index.js';
-import type { LocalCapabilityPackage } from '../assembly/index.js';
+import type { LocalCapabilityPackage, PackageArchiveEntry } from '../assembly/index.js';
 
 declare class ScheduledManifestBrand {
   private readonly scheduledManifest: 'part-fifteen-decoder';
@@ -96,7 +96,8 @@ export interface ScheduledWorkPackagePort {
   identity(input: unknown, context: BoundaryContext): Result<ScheduledManifestIdentity>;
   compare(left: unknown, right: unknown, context: BoundaryContext): Result<'equal' | 'different'>;
   admitPackageResource(input: Readonly<{
-    package: LocalCapabilityPackage; manifestPath: string; manifestBytes: string;
+    package: LocalCapabilityPackage; archive: readonly PackageArchiveEntry[];
+    manifestPath: string; manifestBytes: string;
     existingManifests: readonly ScheduledWorkManifest[];
   }>, context: BoundaryContext): Result<ScheduledWorkManifest>;
   planOccurrence(input: Readonly<{

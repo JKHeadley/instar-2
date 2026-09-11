@@ -2,6 +2,7 @@ import { canonical, consumeResult } from '../../src/index.js';
 import type { BoundaryContext, Hash, Result } from '../../src/index.js';
 import { hashBytes } from '../../src/facts/index.js';
 import { decodeLocalCapabilityPackage } from '../../src/assembly/index.js';
+import type { LocalCapabilityPackage, PackageArchiveEntry } from '../../src/assembly/index.js';
 import { decodeScheduledWorkManifest } from '../../src/scheduled/index.js';
 import { fixture as coreFixture } from '../fixtures.js';
 import { assemblyInput } from '../assembly/fixture.js';
@@ -13,15 +14,25 @@ export function value<T>(result: Result<T>): T {
 export function clone<T>(input: T): T { return JSON.parse(JSON.stringify(input)) as T; }
 const h = (character: string) => `sha256:${character.repeat(64)}` as Hash;
 
+export function packageArchive(pkg: LocalCapabilityPackage, bytesByPath: Readonly<Record<string, string>>): readonly PackageArchiveEntry[] {
+  return pkg.entrypoints.map(entry => {
+    const bytes = bytesByPath[entry.path];
+    if (bytes === undefined) throw new Error(`missing fixture archive bytes for ${entry.path}`);
+    return { kind: 'file' as const, path: entry.path, bytes, digest: hashBytes(bytes) };
+  });
+}
+
 export function scheduledFixture() {
   const core = coreFixture();
+  const bodyBytes = 'export const maintenance = 1;\n';
+  const bodyDigest = hashBytes(bodyBytes);
   const context: BoundaryContext = { ...core.ctx, preserved: 'capture:scheduled-manifest', site: 'types.decode' };
   const manifestInput = {
     type: 'ScheduledWorkManifest', schemaVersion: 2,
     identity: { jobId: 'job:maintenance', displayName: 'Maintenance', accountableOwner: 'alice', packageVersion: '1.0.0', contentDigest: h('a') },
     schedule: { kind: 'one-shot', at: '2027-01-01T00:00:00Z', activationInstant: '2026-12-01T00:00:00Z',
       timeZoneDataVersion: 'tzdb:2027a', calendarPolicyVersion: 'calendar:earlier-v1', currentLatenessCutoffMs: 300_000 },
-    work: { entryPoint: 'maintenance', bodyDigest: h('b'), resultDestination: 'result:maintenance', groundingContract: 'grounding:maintenance', predecessors: [] },
+    work: { entryPoint: 'maintenance', bodyDigest, resultDestination: 'result:maintenance', groundingContract: 'grounding:maintenance', predecessors: [] },
     authority: { systemPrincipal: 'principal:scheduler', standingGrant: 'grant:scheduler', scope: 'scope:installation', operationClasses: ['observe'], authorizations: [] },
     bounds: { runBudget: 'budget:maintenance', exitTest: 'exit:maintenance', durationMs: 60_000, attempts: 1, concurrency: 1, tokens: 0, money: 0, bytes: 4096, notifications: 1 },
     admission: { priority: 'maintenance', eligibleAssemblies: ['assembly:darwin'], eligibleMachines: ['machine-a', 'machine-b'], requiredCapabilities: ['filesystem:read'], capacityEvidencePolicy: 'capacity:unknown-bounded', placement: 'global-once', catchUp: 'latest',
@@ -36,12 +47,13 @@ export function scheduledFixture() {
   const manifestBytes = value(canonical(manifest)).bytes;
   const packageInput = { type: 'LocalCapabilityPackage', schemaVersion: 1, id: 'package:scheduled', predecessors: [], dependencyFacts: [],
     namespace: 'alice.scheduled-maintenance', ownerPrincipal: 'alice', version: '1.0.0', contentDigest: h('a'), sourceDigest: h('c'), parent: '', upstream: '', priorPackage: '',
-    portRequirements: [], dependencies: [], entrypoints: [{ id: 'manifest', path: 'scheduled/manifest.json', digest: hashBytes(manifestBytes) }, { id: 'maintenance', path: 'dist/maintenance.js', digest: h('b') }],
+    portRequirements: [], dependencies: [], entrypoints: [{ id: 'manifest', path: 'scheduled/manifest.json', digest: hashBytes(manifestBytes) }, { id: 'maintenance', path: 'dist/maintenance.js', digest: bodyDigest }],
     declarationIds: ['job:maintenance'], dataScopes: ['installation'], custodyScopes: [], grants: ['grant:scheduler'], resources: [{ resource: 'cpu-ms', limit: 60_000 }], platforms: ['darwin-arm64'], modes: ['dark'], migrationCompatibility: ['none'], rollbackCompatibility: ['1.0.0'],
     checks: { unit: ['P15-NF-08'], integration: ['P15-NF-11'], lifecycle: ['P15-NF-08'] }, maturation: ['dark'], probes: ['probe:schedule'], awarenessSource: 'scheduled.maintenance',
   };
   const pkg = value(decodeLocalCapabilityPackage(packageInput, context));
-  return { core, context, manifest, manifestBytes, package: pkg, h };
+  const archive = packageArchive(pkg, { 'scheduled/manifest.json': manifestBytes, 'dist/maintenance.js': bodyBytes });
+  return { core, context, manifest, manifestBytes, bodyBytes, archive, package: pkg, h };
 }
 
 export function activeScheduledFixture() {

@@ -17,10 +17,11 @@ it('P15-NF-03 P15-NF-07 P15-NF-08 P15-NF-10 round-seven owner boundaries survive
     const proof = JSON.parse(recovered.stdout);
     expect(Object.fromEntries(Object.entries(proof.resources).map(([key, value]: [string, any]) => [key, value.status])))
       .toEqual({ manifest: 'accepted', 'job-definition': 'accepted', 'schedule-resource': 'accepted',
-        support: 'refused', 'hidden-second': 'refused' });
-    expect(proof.resources.support).toEqual(proof.resources['hidden-second']);
+        support: 'accepted', 'hidden-second': 'refused' });
+    expect(proof.resources['hidden-second']).toEqual({ status: 'refused',
+      detail: 'package contains multiple scheduled work manifests' });
     for (const state of ['recorded', 'staged', 'retired', 'inhibited']) expect(proof.activity[state]).toEqual({
       status: 'refused', detail: 'competing package activity requires a Part Ten owner-issued activity resolution' });
-    expect(proof.activity.active).toEqual({ status: 'refused', detail: 'duplicate scheduled job id' });
+    expect(proof.activity.active).toEqual({ status: 'refused', detail: 'package declaration namespace collision' });
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }, 30_000);

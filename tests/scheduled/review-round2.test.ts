@@ -5,7 +5,7 @@ import { hashBytes } from '../../src/facts/index.js';
 import { createScheduledWorkPackagePort, normalizeCronV1 } from '../../src/scheduled/index.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
-import { activeScheduledFixture, clone, scheduledFixture, value } from './fixture.js';
+import { activeScheduledFixture, clone, packageArchive, scheduledFixture, value } from './fixture.js';
 
 const status = (result: unknown) => consumeResult(result as Parameters<typeof consumeResult>[0], {
   Success: () => 'accepted' as const, Refused: () => 'refused' as const,
@@ -14,12 +14,12 @@ const status = (result: unknown) => consumeResult(result as Parameters<typeof co
 describe('Part Fifteen independent review round 2 regressions', () => {
   it('P15-NF-03 P15-NF-16 P15-NF-17 re-resolves the owner-decoded current signed package', () => {
     const absent = scheduledFixture(); const port = createScheduledWorkPackagePort();
-    const admission = { package: absent.package, manifestPath: 'scheduled/manifest.json', manifestBytes: absent.manifestBytes, existingManifests: [] };
+    const admission = { package: absent.package, archive: absent.archive, manifestPath: 'scheduled/manifest.json', manifestBytes: absent.manifestBytes, existingManifests: [] };
     expect(status(resolveActivePackage(absent.package.namespace, [], absent.context))).toBe('refused');
     expect(status(port.admitPackageResource(admission, absent.context))).toBe('refused');
 
     const active = activeScheduledFixture();
-    const activeAdmission = { ...admission, package: active.package, manifestBytes: active.manifestBytes };
+    const activeAdmission = { ...admission, package: active.package, archive: active.archive, manifestBytes: active.manifestBytes };
     expect(status(resolveActivePackage(active.package.namespace, [], active.context))).toBe('accepted');
     expect(status(port.admitPackageResource(activeAdmission, active.context))).toBe('accepted');
     const current = value(active.assembly.runtime.inspectCurrent());
@@ -37,7 +37,7 @@ describe('Part Fifteen independent review round 2 regressions', () => {
 
   it('P15-NF-08 refuses malformed Part Ten package copies before consuming their fields', () => {
     const f = activeScheduledFixture(); const port = createScheduledWorkPackagePort();
-    const admission = { package: f.package, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [] };
+    const admission = { package: f.package, archive: f.archive, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [] };
     const mutations: Array<(value: Record<string, unknown>) => void> = [
       value => { value.type = 'NotAPackage'; }, value => { value.schemaVersion = 999; },
       value => { delete value.namespace; }, value => { delete value.sourceDigest; }, value => { value.unexpected = true; },
@@ -96,7 +96,9 @@ describe('Part Fifteen independent review round 2 regressions', () => {
     const pkg = value(decodeLocalCapabilityPackage(candidate, s.context)); value(assembly.runtime.record('LocalCapabilityPackage', pkg));
     value(assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'), id: 'transition:scheduled-duplicate:active',
       package: pkg.namespace, manifestDigest: pkg.contentDigest, observedArtifactDigest: pkg.contentDigest }));
-    expect(status(port.admitPackageResource({ package: pkg, manifestPath: 'scheduled/manifest.json', manifestBytes: duplicateBytes,
+    expect(status(port.admitPackageResource({ package: pkg,
+      archive: packageArchive(pkg, { 'scheduled/manifest.json': duplicateBytes, 'dist/maintenance.js': s.bodyBytes }),
+      manifestPath: 'scheduled/manifest.json', manifestBytes: duplicateBytes,
       existingManifests: [] }, assembly.c))).toBe('refused');
     const canonicalBytes = value(canonical(s.manifest)).bytes; const canonicalCandidate = clone(candidate) as Record<string, any>;
     canonicalCandidate.namespace = 'alice.scheduled-canonical'; canonicalCandidate.id = 'package:scheduled-canonical';
@@ -105,7 +107,9 @@ describe('Part Fifteen independent review round 2 regressions', () => {
     value(assembly.runtime.record('LocalCapabilityPackage', canonicalPackage));
     value(assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'), id: 'transition:scheduled-canonical:active',
       package: canonicalPackage.namespace, manifestDigest: canonicalPackage.contentDigest, observedArtifactDigest: canonicalPackage.contentDigest }));
-    expect(status(port.admitPackageResource({ package: canonicalPackage, manifestPath: 'scheduled/manifest.json', manifestBytes: canonicalBytes,
+    expect(status(port.admitPackageResource({ package: canonicalPackage,
+      archive: packageArchive(canonicalPackage, { 'scheduled/manifest.json': canonicalBytes, 'dist/maintenance.js': s.bodyBytes }),
+      manifestPath: 'scheduled/manifest.json', manifestBytes: canonicalBytes,
       existingManifests: [] }, assembly.c))).toBe('refused');
   });
 

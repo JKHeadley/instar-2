@@ -6,17 +6,17 @@ import { activeScheduledFixture, clone, scheduledFixture, value } from './fixtur
 describe('Part Fifteen full public package-port integration', () => {
   it('P15-NF-08 binds manifest and body bytes to the landed Part Ten package contract', () => {
     const f = activeScheduledFixture(); const port = createScheduledWorkPackagePort();
-    expect(value(port.admitPackageResource({ package: f.package, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [] }, f.context)).identity.jobId).toBe('job:maintenance');
+    expect(value(port.admitPackageResource({ package: f.package, archive: f.archive, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [] }, f.context)).identity.jobId).toBe('job:maintenance');
     const changed = f.manifestBytes.replace('Maintenance', 'Forged');
-    expect(consumeResult(port.admitPackageResource({ package: f.package, manifestPath: 'scheduled/manifest.json', manifestBytes: changed, existingManifests: [] }, f.context), { Success: () => '', Refused: item => item.detail })).toContain('bytes differ');
-    expect(consumeResult(port.admitPackageResource({ package: f.package, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [f.manifest] }, f.context), { Success: () => '', Refused: item => item.detail })).toContain('carries no authority');
+    expect(consumeResult(port.admitPackageResource({ package: f.package, archive: f.archive, manifestPath: 'scheduled/manifest.json', manifestBytes: changed, existingManifests: [] }, f.context), { Success: () => '', Refused: item => item.detail })).toContain('bytes differ');
+    expect(consumeResult(port.admitPackageResource({ package: f.package, archive: f.archive, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [f.manifest] }, f.context), { Success: () => '', Refused: item => item.detail })).toContain('carries no authority');
   });
 
   it('P15-NF-10 refuses one invalid job while an independent package resource remains usable', () => {
     const f = activeScheduledFixture(); const port = createScheduledWorkPackagePort(); const invalid = { ...f.manifest, surprise: true };
     const surfaced = consumeResult(port.decode(invalid, f.context), { Success: () => '', Refused: refusal => refusal.detail });
     expect(surfaced).toContain('unexpected field');
-    expect(value(port.admitPackageResource({ package: f.package, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [] }, f.context)).identity.jobId).toBe('job:maintenance');
+    expect(value(port.admitPackageResource({ package: f.package, archive: f.archive, manifestPath: 'scheduled/manifest.json', manifestBytes: f.manifestBytes, existingManifests: [] }, f.context)).identity.jobId).toBe('job:maintenance');
     expect(value(f.assembly.runtime.inspectCurrent()).some(row => row.record.type === 'LocalCapabilityPackage')).toBe(true);
   });
 
