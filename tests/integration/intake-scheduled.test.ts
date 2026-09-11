@@ -51,11 +51,6 @@ it.each(['grant', 'discovery'])
     raw: tick.raw, route: tick.route, discovery: { owner: 'part-two', name: 'FactEnvelope', id: discovery.fact.id },
   });
   expect(injected).toBe(true);
-  if(kind==='grant') {
-    refused(result,'unsupported-in-slice-a');
-    expect(f.facts().filter(fact => fact.kind === 'intake-admitted')).toHaveLength(0);
-  } else {
-    expect(value(result).kind).toBe('scheduled-admitted');
-    expect(f.facts().filter(fact => fact.kind === 'intake-admitted')).toHaveLength(1);
-  }
+  refused(result,'unsupported-in-slice-a');
+  expect(f.facts().filter(fact => fact.kind === 'intake-admitted')).toHaveLength(0);
 });

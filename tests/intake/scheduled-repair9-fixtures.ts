@@ -8,7 +8,7 @@ export const scheduledFactReference=(id: string) =>
   ({ owner: 'part-two' as const,name: 'FactEnvelope' as const,id });
 
 export function extraScheduledEvidence(x: ReturnType<typeof scheduledRepair6Setup>,id: string,
-  claim: { subject: string; predicate: string; value: boolean },freshFor=1000) {
+  claim: ReturnType<typeof scheduledRepair6Setup>['discovery']['evidence']['claim'],freshFor=1000) {
   return value(decode('Evidence',{ ...json(x.discovery.evidence) as any,id,claim,freshFor },x.f.context.decode));
 }
 
@@ -26,8 +26,9 @@ export function bundledScheduledCandidate(order: 'discovery-first'|'unrelated-fi
   const x=scheduledRepair6Setup();
   const unrelated=extraScheduledEvidence(x,'evidence:unrelated',
     { subject: 'other',predicate: 'unrelated-observation',value: true });
+  const matching=extraScheduledEvidence(x,'evidence:bundled-discovery',x.discovery.evidence.claim);
   const bundle=scheduledEvidenceBundle(x,order==='discovery-first'
-    ?{ a: x.discovery.evidence,b: unrelated }:{ a: unrelated,b: x.discovery.evidence });
+    ?{ a: matching,b: unrelated }:{ a: unrelated,b: matching });
   const admitted:any=value(x.f.port().receiveScheduledTick(x.input));
   const original=x.f.frames.pop() as any,resolution=x.f.frames.pop() as any;
   const context=scheduledOwnerContext(x.f),store=createFactStore(context,x.f.storage);

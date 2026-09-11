@@ -9,15 +9,14 @@ import { extraScheduledEvidence,scheduledEvidenceBundle,scheduledFactReference }
 const ref=scheduledFactReference;
 
 it.each(['single','identical','different-identity'] as const)
-('P4-ST-47 V109 Slice A requires one discovery witness field (%s)',mode=>{
+('P4-ST-47 V109 Slice A refuses a copied discovery bundle (%s)',mode=>{
   const x=scheduledRepair6Setup();
   const second=mode==='identical'?x.discovery.evidence:extraScheduledEvidence(x,'evidence:second',{
     subject:x.tick.eventId,predicate:'scheduled-discovery',value:true,
   });
   const fact=scheduledEvidenceBundle(x,mode==='single'?{ a:x.discovery.evidence }:{ entrer:x.discovery.evidence,again:second });
   const result=x.f.port().receiveScheduledTick({ ...x.input,discovery:ref(fact.id) });
-  if(mode==='single') expect(value(result).kind).toBe('scheduled-admitted');
-  else refused(result,'unsupported-in-slice-a');
+  refused(result,'unsupported-in-slice-a');
 });
 
 it.each(['plain','dual'] as const)
@@ -129,6 +128,5 @@ it.each(['single','identical'] as const)
   const x=scheduledRepair6Setup(),bundle=scheduledEvidenceBundle(x,mode==='single'
     ?{ a:x.discovery.evidence }:{ a:x.discovery.evidence,b:x.discovery.evidence });
   const result=x.f.port().receiveScheduledTick({ ...x.input,discovery:ref(bundle.id) });
-  if(mode==='single') expect(value(result).kind).toBe('scheduled-admitted');
-  else refused(result,'unsupported-in-slice-a');
+  refused(result,'unsupported-in-slice-a');
 });

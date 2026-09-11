@@ -43,10 +43,10 @@ it.each([false,true])
 });
 
 it.each(['earlier','later','both'] as const)
-('P4-ST-55 V122 Slice A resolves the one referenced discovery identity (%s)',selection=>{
+('P4-ST-55 V122 Slice A refuses copied discovery identities regardless of selected reference (%s)',selection=>{
   const x=scheduledRepair6Setup(),bundle=scheduledEvidenceBundle(x,{ evidence:x.discovery.evidence });
-  expect(value(x.f.port().receiveScheduledTick({ ...x.input,
-    discovery:ref(selection==='earlier'?x.discovery.fact.id:bundle.id) })).kind).toBe('scheduled-admitted');
+  refused(x.f.port().receiveScheduledTick({ ...x.input,
+    discovery:ref(selection==='earlier'?x.discovery.fact.id:bundle.id) }),'unsupported-in-slice-a');
 });
 
 it.each(['single','repeat-fields','repeat-facts'] as const)

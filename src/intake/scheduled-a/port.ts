@@ -21,9 +21,10 @@ import {
 } from '../records.js';
 import {
   bindIntakeOwnerRegister,decodeScheduledTickBody,isScheduledIntakeAdmission,
-  registeredScheduledIntakeAdapters,resolveScheduledDiscoveryWitness,scheduledIntakeFactSchemas,
+  registeredScheduledIntakeAdapters,resolveScheduledDiscoveryWitness,resolveScheduledPrincipalWitness,scheduledIntakeFactSchemas,
   scheduledIntakeWorkRegistration,validateScheduledIntakeRoute,
 } from './records.js';
+import type { ScheduledHistoryRow } from './records.js';
 import type {
   ConstitutionalReference,InboundRoute,PendingScheduledAdmissions,PendingScheduledAdmissionsInput,
   ScheduledIntakeDependencies,ScheduledIntakePort,ScheduledTickAdmission,
@@ -127,6 +128,12 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
       return { facts,rows,grants,revocations };
     }
 
+    function witnessHistories(rows: readonly FactStatus[]): readonly ScheduledHistoryRow[] {
+      return rows.flatMap(status => status.historical
+        .filter(record => record.origin.id===status.fact.id)
+        .map(record => ({ fact:status.fact,record,status })));
+    }
+
     function append(kind: string,body: Json,at: Clock,preserved: string,
       required: readonly string[]=[],principal?: VerifiedPrincipal,historicalAdmission=false): FactEnvelope {
       if(kind==='intake-admitted') {
@@ -214,7 +221,8 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
         'scheduled intake: channel must name its installation','decode');
     }
 
-    function scheduledDiscovery(referenceInput: FactEnvelopeReference,eventId: string,at: Clock,preserved: string) {
+    function scheduledDiscovery(referenceInput: FactEnvelopeReference,eventId: string,at: Clock,preserved: string,
+      historyBoundary?: ReadonlySet<string>) {
       const referenceValue=object(json(referenceInput));
       exact(referenceValue,['owner','name','id'],
         'scheduled intake: discovery must be one Part Two fact reference');
@@ -224,9 +232,8 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
       const row=rows.find(candidate => candidate.fact.id===referenceValue.id);
       requireIntake(row&&!row.taint.length&&!row.conflicts.length,
         'scheduled intake: discovery Evidence is missing or contested','integrity');
-      const histories=rows.flatMap(candidate => candidate.historical
-        .filter(record => record.origin.id===candidate.fact.id)
-        .map(record => ({ fact: candidate.fact,record,status: candidate })));
+      const histories=witnessHistories(rows)
+        .filter(candidate => !historyBoundary||historyBoundary.has(candidate.fact.id));
       const selected=resolveScheduledDiscoveryWitness(
         histories,new Set([row.fact.id]),eventId,at,preserved,context(preserved).decode,'origin');
       requireIntake(selected.record.captureStatus==='available',
@@ -352,33 +359,21 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
       validateScheduledIntakeRoute(arrival.adapter,arrival.route.channel,arrival.route.sender,
         arrival.route.identityEpoch,json(principal),current.decode,registeredScheduledAdapters);
 
-      const histories=snapshot.flatMap(candidate => candidate.historical
-        .filter(record => record.origin.id===candidate.fact.id)
-        .map(record => ({ fact: candidate.fact,record,status: candidate })));
-      const principalCopies=histories.filter(candidate => cone.has(candidate.fact.id)
-        &&candidate.fact.kind==='intake-scheduled-principal'
-        &&candidate.record.view.type==='VerifiedPrincipal'&&candidate.record.view.id===principal.id);
-      requireIntake(principalCopies.length===1,
-        'unsupported-in-slice-a: multiple principal witness copies belong to Slice B','standing');
-      const principalCandidates=dependencies.filter(candidate => candidate.fact.kind==='intake-scheduled-principal')
-        .flatMap(candidate => candidate.historical.filter(record => record.origin.id===candidate.fact.id
-          &&record.view.type==='VerifiedPrincipal')
-          .map(record => ({ fact: candidate.fact,record,status: candidate })));
-      requireIntake(principalCandidates.length===1,
+      const histories=witnessHistories(snapshot);
+      const principalFacts=dependencies.filter(candidate => candidate.fact.kind==='intake-scheduled-principal');
+      requireIntake(principalFacts.length===1,
         'unsupported-in-slice-a: exactly one signed principal witness fact is required','standing');
-      const principalIdentity=principalCandidates.filter(candidate =>
-        candidate.record.view.type==='VerifiedPrincipal'&&candidate.record.view.id===principal.id);
-      requireIntake(principalIdentity.length===1,
-        'unsupported-in-slice-a: principal witness is copied or conflicted','standing');
-      partial ||= principalCandidates[0]!.record.captureStatus!=='available';
-      requireIntake(same(principalCandidates[0]!.record.view,principal),
-        'unsupported-in-slice-a: principal witness is unavailable or mismatched','standing');
-      const principalRow=dependencies.find(candidate => candidate.fact.id===principalCandidates[0]!.fact.id)!;
+      const principalWitness=resolveScheduledPrincipalWitness(
+        histories.filter(candidate => cone.has(candidate.fact.id)),principal,'exactly-one','historical')[0]!;
+      requireIntake(required.includes(principalWitness.fact.id),
+        'unsupported-in-slice-a: exactly one signed principal witness fact is required','standing');
+      partial ||= principalWitness.record.captureStatus!=='available';
+      const principalRow=dependencies.find(candidate => candidate.fact.id===principalWitness.fact.id)!;
       constitutionalField(principalRow,'VerifiedPrincipal',principal.id,preserved);
       const resolved=dependencies.filter(candidate => candidate.fact.kind==='intake-resolved');
       requireIntake(resolved.length===1,
         'scheduled intake: one resolved-principal witness is required','integrity');
-      const discovery=resolveScheduledDiscoveryWitness(histories,new Set(required),
+      const discovery=resolveScheduledDiscoveryWitness(histories.filter(candidate => cone.has(candidate.fact.id)),new Set(required),
         arrival.route.eventId,row.fact.at,preserved,current.decode,'historical',
         new Set(resolved[0]!.fact.predecessors.required));
       partial ||= discovery.partial;
@@ -516,7 +511,8 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
               const suppliedDiscovery=object(json(input.discovery));
               const originalDiscovery=prior.row.fact.predecessors.required.includes(
                 text(suppliedDiscovery.id,'scheduled discovery reference'));
-              scheduledDiscovery(input.discovery,eventId,originalDiscovery?prior.row.fact.at:at,preserved);
+              scheduledDiscovery(input.discovery,eventId,originalDiscovery?prior.row.fact.at:at,preserved,
+                originalDiscovery?new Set(causalCone(prior.row.fact,read(preserved)).map(fact => fact.id)):undefined);
               append('intake-collapse',{ ...common,original: prior.row.fact.id },
                 at,preserved,[receipt.id,prior.row.fact.id]);
               return { kind: 'duplicate' as const,logicalId,original: reference(prior.row.fact) };
@@ -536,11 +532,9 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
             const scheduledPrincipalSchema=scheduledIntakeFactSchemas(principalIdentityScope)[0]!;
             requireIntake(context(preserved).schemas.some(schema => same(schema,scheduledPrincipalSchema)),
               'P4-NF-06/12: required scheduled owner schema changed or missing: intake-scheduled-principal');
-            const existingPrincipals=read(preserved).filter(fact =>
-              fact.kind==='intake-scheduled-principal'&&same(object(fact.body).principal,principal));
-            requireIntake(existingPrincipals.length<=1,
-              'unsupported-in-slice-a: multiple principal witness copies belong to Slice B','standing');
-            const principalFact=existingPrincipals[0]??append('intake-scheduled-principal',
+            const existingPrincipals=resolveScheduledPrincipalWitness(
+              witnessHistories(sliceARows),principal,'zero-or-one','origin');
+            const principalFact=existingPrincipals[0]?.fact??append('intake-scheduled-principal',
               { principal: json(principal) },at,preserved,[standing.row.fact.id],principal);
             const resolved=append('intake-resolved',{
               ...common,principalId: principal.id,
@@ -551,18 +545,11 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
             const admissionRows=statuses(preserved);
             const admissionDiscovery=scheduledDiscovery(input.discovery,eventId,at,preserved);
             const admissionStanding=scheduledStanding(principal,at,preserved);
-            const principalCopies=admissionRows.flatMap(row => row.fact.kind==='intake-scheduled-principal'
-              ?row.historical.filter(record => record.origin.id===row.fact.id
-                &&record.view.type==='VerifiedPrincipal'&&record.view.id===principal.id):[]);
-            requireIntake(principalCopies.length===1,
-              'unsupported-in-slice-a: multiple principal witness copies belong to Slice B','standing');
-            const admissionPrincipal=admissionRows.find(row => row.fact.id===principalFact.id
-              &&row.fact.kind==='intake-scheduled-principal'&&!row.taint.length&&!row.conflicts.length
-              &&row.historical.some((record): record is HistoricalRead<VerifiedPrincipal> =>
-                record.view.type==='VerifiedPrincipal'&&record.captureStatus==='available'
-                &&same(record.view,principal)));
-            requireIntake(admissionPrincipal,
+            const admissionPrincipalWitness=resolveScheduledPrincipalWitness(
+              witnessHistories(admissionRows),principal,'exactly-one','origin')[0]!;
+            requireIntake(admissionPrincipalWitness.fact.id===principalFact.id&&admissionPrincipalWitness.status,
               'scheduled intake: current signed principal witness is unavailable or contested','standing');
+            const admissionPrincipal=admissionPrincipalWitness.status;
             constitutionalField(admissionPrincipal,'VerifiedPrincipal',principal.id,preserved);
             const intent: Json={
               type: 'Intent',schemaVersion: 1,id: logicalId,principal: json(principal),

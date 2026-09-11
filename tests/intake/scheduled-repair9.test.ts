@@ -22,7 +22,8 @@ function evidenceFact(x:any,body:any){
 it.each(['discovery-first','unrelated-first','no-matching-claim'])('P4-ST-44 V100 live discovery resolves matching claim in a signed multi-Evidence fact (%s)',variant=>{
  const x=scheduledRepair6Setup();
  const unrelated=extraEvidence(x,'evidence:unrelated',{subject:'other',predicate:'unrelated-observation',value:true});
- const body=variant==='discovery-first'?{a:x.discovery.evidence,b:unrelated}:variant==='unrelated-first'?{a:unrelated,b:x.discovery.evidence}:{a:unrelated};
+ const matching=extraEvidence(x,'evidence:bundled-discovery',x.discovery.evidence.claim);
+ const body=variant==='discovery-first'?{a:matching,b:unrelated}:variant==='unrelated-first'?{a:unrelated,b:matching}:{a:unrelated};
  const fact=evidenceFact(x,body),before=x.f.frames.length;
  const result=observe('V100-'+variant,x.f.port().receiveScheduledTick({...x.input,discovery:ref(fact.id)}));
  if(variant==='no-matching-claim'){refused(result);expect(x.f.facts().slice(before).map(f=>f.kind)).toEqual(['intake-receipt']);}
@@ -45,7 +46,8 @@ it.each(['fresh-unrelated','stale-unrelated','stale-matching'])('P4-ST-45 V101 p
 
 function bundledCandidate(order:string){
  const x=scheduledRepair6Setup(),unrelated=extraEvidence(x,'evidence:unrelated',{subject:'other',predicate:'unrelated-observation',value:true});
- const bundle=evidenceFact(x,order==='discovery-first'?{a:x.discovery.evidence,b:unrelated}:{a:unrelated,b:x.discovery.evidence});
+ const matching=extraEvidence(x,'evidence:bundled-discovery',x.discovery.evidence.claim);
+ const bundle=evidenceFact(x,order==='discovery-first'?{a:matching,b:unrelated}:{a:unrelated,b:matching});
  const admitted:any=value(x.f.port().receiveScheduledTick(x.input));
  const original=x.f.frames.pop() as any,resolution=x.f.frames.pop() as any,c=scheduledOwnerContext(x.f),store=createFactStore(c,x.f.storage);
  const replacement=value(authorAndAppend({kind:resolution.kind,schemaVersion:1,machine:'machine-a',principal:json(resolution.principal),provenance:json(resolution.provenance),at:json(resolution.at),body:resolution.body,required:resolution.predecessors.required.map((id:string)=>id===x.discovery.fact.id?bundle.id:id)},c,store,x.f.deps.author.privateKey)).fact;

@@ -2,7 +2,7 @@ import type { BoundaryContext,Clock,DecodeContext,Evidence,HistoricalRead,Invent
 import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readEvidence,readHistorical,readHistoricalEvidence,scopeIncludes } from '../../index.js';
 import { causalCone,causalStanding,decodeHistoricalBody,hashBytes,registerOwnedBody } from '../../facts/index.js';
 import { decodeOwnedBody } from '../../facts/owned.js';
-import type { FactContext,FactEnvelope,FactSchema,OwnedBodyContext,OwnedBodyRegistration } from '../../facts/index.js';
+import type { FactContext,FactEnvelope,FactSchema,FactStatus,OwnedBodyContext,OwnedBodyRegistration } from '../../facts/index.js';
 import type { Result } from '../../index.js';
 import { IntakeFailure,json,object,requireIntake,same,take,text } from '../boundary.js';
 import { intakeArrival,intakeWorkRegistration } from '../records.js';
@@ -96,7 +96,51 @@ export function decodeScheduledTickBody(raw: string,eventId: string,context: Dec
 export type ScheduledHistoryRow=Readonly<{
   fact: FactEnvelope;
   record: HistoricalRead<Inventory[keyof Inventory]>;
+  status?: FactStatus;
 }>;
+
+type SliceAWitness=Evidence|VerifiedPrincipal;
+type SliceAWitnessHistoryRow=Readonly<{
+  fact: FactEnvelope;
+  record: HistoricalRead<SliceAWitness>;
+  status?: FactStatus;
+}>;
+
+// One inventory rule serves live intake, owner decoding, signed replay and
+// pending reconstruction. Callers choose the causal boundary, but never the
+// matching records within it: every independently decoded witness with the
+// selected immutable identity participates before availability is consulted.
+export function resolveSliceAWitnessHistory(histories: readonly ScheduledHistoryRow[],input: Readonly<{
+  type: 'Evidence'|'VerifiedPrincipal'; id: string; expected: SliceAWitness;
+  factKind?: string; cardinality: 'zero-or-one'|'exactly-one';
+  availability: 'required'|'partial'; status: 'strict'|'allow-evidence-unavailable';
+  detail: string; reason: 'integrity'|'standing';
+}>): readonly SliceAWitnessHistoryRow[] {
+  const matches=histories.filter((row): row is SliceAWitnessHistoryRow =>
+    (!input.factKind||row.fact.kind===input.factKind)
+      &&row.record.view.type===input.type&&row.record.view.id===input.id);
+  requireIntake(input.cardinality==='zero-or-one'?matches.length<=1:matches.length===1,
+    input.detail,input.reason);
+  requireIntake(matches.every(row => same(row.record.view,input.expected)),input.detail,input.reason);
+  requireIntake(matches.every(row => !row.status||row.status.conflicts.length===0
+    &&(input.status==='strict'?row.status.taint.length===0
+      :row.status.taint.every(taint => taint==='evidence-unavailable'))),input.detail,input.reason);
+  requireIntake(input.availability==='partial'
+    ||matches.every(row => row.record.captureStatus==='available'),input.detail,input.reason);
+  return matches;
+}
+
+export function resolveScheduledPrincipalWitness(histories: readonly ScheduledHistoryRow[],principal: VerifiedPrincipal,
+  cardinality: 'zero-or-one'|'exactly-one',mode: 'origin'|'historical') {
+  return resolveSliceAWitnessHistory(histories,{
+    type:'VerifiedPrincipal',id:principal.id,expected:principal,factKind:'intake-scheduled-principal',cardinality,
+    availability:mode==='origin'?'required':'partial',status:mode==='origin'?'strict':'allow-evidence-unavailable',
+    detail:'unsupported-in-slice-a: principal witness is copied, unavailable or mismatched',reason:'standing',
+  }) as readonly Readonly<{
+    fact: FactEnvelope; record: HistoricalRead<VerifiedPrincipal>;
+    status?: FactStatus;
+  }>[];
+}
 
 function signedPrincipals(input: Json,fact: FactEnvelope,path: readonly string[],context: FactContext): readonly HistoricalRead<VerifiedPrincipal>[] {
   const originBytes=take(canonical(fact)).bytes,originReference=`origin:${fact.id}`;
@@ -180,6 +224,11 @@ export function resolveScheduledDiscoveryWitness(histories: readonly ScheduledHi
     'unsupported-in-slice-a: exactly one discovery Evidence witness is required','integrity');
   const witness=named[0]!.row;
   const recorded=named[0]!.evidence;
+  resolveSliceAWitnessHistory(histories,{
+    type:'Evidence',id:recorded.id,expected:recorded,cardinality:'exactly-one',availability:'partial',
+    status:mode==='origin'?'strict':'allow-evidence-unavailable',
+    detail:'unsupported-in-slice-a: multiple discovery witness copies belong to Slice B',reason:'integrity',
+  });
   requireIntake(recorded.source===witness.fact.machine,
     'unsupported-in-slice-a: discovery source differs from its signed history','integrity');
   const current=consumeResult(readEvidence(recorded,causalNow,preserved),{
@@ -250,23 +299,12 @@ function validateScheduledIntakeWork(input: Json,c: OwnedBodyContext,registeredS
   requireIntake(directiveFields.length===0,
     'unsupported-in-slice-a: Directive-bearing scheduled history belongs to Slice B','standing');
 
-  const principalCopies=histories.filter(row => row.fact.kind==='intake-scheduled-principal'
-    &&row.record.view.type==='VerifiedPrincipal'&&row.record.view.id===principal.id);
-  requireIntake(principalCopies.length===1,
-    'unsupported-in-slice-a: multiple principal witness copies belong to Slice B','standing');
   const principalFacts=cone.filter(fact => required.has(fact.id)&&fact.kind==='intake-scheduled-principal');
-  const principalCandidates=principalFacts.flatMap(fact => histories.filter(row => row.fact.id===fact.id
-    &&row.record.view.type==='VerifiedPrincipal')) as readonly { fact: FactEnvelope; record: HistoricalRead<VerifiedPrincipal> }[];
-  requireIntake(principalFacts.length===1&&principalCandidates.length===1,
+  requireIntake(principalFacts.length===1,
     'unsupported-in-slice-a: exactly one signed principal witness fact is required','standing');
-  const principalWitness=principalCandidates[0]!;
-  const principalIdentity=principalCandidates.filter(row => row.record.view.id===principal.id);
-  requireIntake(principalIdentity.length===1,
-    'unsupported-in-slice-a: principal witness is copied or conflicted','standing');
-  requireIntake(c.mode==='historical'||principalWitness.record.captureStatus==='available',
-    'unsupported-in-slice-a: principal witness is unavailable','integrity');
-  requireIntake(same(principalWitness.record.view,principal),
-    'unsupported-in-slice-a: Intent principal disagrees with its signed identity','standing');
+  const principalWitness=resolveScheduledPrincipalWitness(histories,principal,'exactly-one',c.mode)[0]!;
+  requireIntake(required.has(principalWitness.fact.id),
+    'unsupported-in-slice-a: exactly one signed principal witness fact is required','standing');
 
   const resolutions=cone.filter(fact => required.has(fact.id)&&fact.kind==='intake-resolved');
   requireIntake(resolutions.length===1,'unsupported-in-slice-a: exactly one resolved-principal witness is required','integrity');

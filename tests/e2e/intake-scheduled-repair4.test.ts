@@ -58,9 +58,11 @@ it('P4-ST-27 V56/V61 fsync restart retains alternate registered Evidence and Sta
   createFactStore(grantContext, before.storage), before.deps.author.privateKey));
   const tick = before.tick(), originalDiscovery = before.discovery(tick.eventId);
   const evidenceContext = { ...before.context, decode: { ...before.context.decode, provenance: before.provenance } };
+  const alternate=value(decode('Evidence',{ ...json(originalDiscovery.evidence) as Record<string,unknown>,
+    id:'durable-alternate-discovery' },before.context.decode));
   const discovery = value(authorAndAppend({ kind: evidenceSchema.kind, schemaVersion: 1, machine: 'machine-a',
     principal: json(before.principal), provenance: json(before.provenance), at: json(before.f.now),
-    body: json({ evidence: originalDiscovery.evidence }), required: [] }, evidenceContext,
+    body: json({ evidence: alternate }), required: [] }, evidenceContext,
   createFactStore(evidenceContext, before.storage), before.deps.author.privateKey)).fact;
   const admitted = value(before.port().receiveScheduledTick({ raw: tick.raw, route: tick.route, discovery: ref(discovery.id) }));
   if (admitted.kind !== 'scheduled-admitted') throw new Error('expected scheduled admission');

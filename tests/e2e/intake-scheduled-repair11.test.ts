@@ -43,7 +43,14 @@ it.each(['principal-single','principal-repeat','discovery-later','discovery-both
 ('P4-ST-58 V125 enforces exactly one referenced witness across restart ($mode, lost ack=$cut)',({ mode,cut })=>{
   const x=scheduledRepair6Setup();
   const evidence=mode.startsWith('discovery')?scheduledEvidenceBundle(x,{ evidence:x.discovery.evidence }):undefined;
+  const before=x.f.facts().length;
   const first=x.f.port().receiveScheduledTick(evidence?{ ...x.input,discovery:ref(evidence.id) }:x.input);
+  if(mode.startsWith('discovery')) {
+    refused(first,'unsupported-in-slice-a');
+    expect(x.f.facts().slice(before).map(fact=>fact.kind)).toEqual(['intake-receipt']);
+    expect(x.f.facts().filter(fact=>fact.kind==='intake-admitted')).toEqual([]);
+    return;
+  }
   const admitted=value(first);
   if(admitted.kind!=='scheduled-admitted') throw new Error('expected scheduled admission');
   const original=x.f.frames.pop() as any,context=scheduledOwnerContext(x.f),store=createFactStore(context,x.f.storage);

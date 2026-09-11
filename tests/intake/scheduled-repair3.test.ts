@@ -94,7 +94,7 @@ it.each(['conflicting-grant', 'conflicting-discovery', 'unavailable-discovery', 
   expect(consumeResult(pending(x.f), { Success: page => page.admissions.length, Refused: () => 0 })).toBe(0);
 });
 
-it('P4-ST-25 signed origin and replication validate named discovery dependencies only', () => {
+it('P4-ST-25 signed origin and replication count omitted discovery copies', () => {
   const unavailable = setup();
   value(unavailable.f.port().receiveScheduledTick(unavailable.input));
   const originalAdmission = unavailable.f.frames.pop() as any;
@@ -133,5 +133,5 @@ it('P4-ST-25 signed origin and replication validate named discovery dependencies
   conflicting.f.principal.id,conflicting.f.deps.governance.register));
   const replicationContext = { ...conflicting.f.context, facts: conflicting.f.frames as any,
     ownedBodies: [...conflicting.f.context.ownedBodies ?? [], replicationRegistration] };
-  expect(value(verifyAndAdmit(json(forged), 'machine-a', replicationContext)).id).toBe(forged.id);
+  refused(verifyAndAdmit(json(forged), 'machine-a', replicationContext),'unsupported-in-slice-a');
 });

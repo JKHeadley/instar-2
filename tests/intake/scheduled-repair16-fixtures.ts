@@ -24,9 +24,10 @@ export function mismatchedSourceDiscoveryBundle(f: ReturnType<typeof scheduledFi
 }
 
 export function mismatchedSourceSignedAdmission() {
-  const x=scheduledRepair6Setup(),bundle=mismatchedSourceDiscoveryBundle(x.f,x.discovery);
+  const x=scheduledRepair6Setup();
   value(x.f.port().receiveScheduledTick(x.input));
   const admission=x.f.frames.pop() as any,resolution=x.f.frames.pop() as any;
+  const bundle=mismatchedSourceDiscoveryBundle(x.f,x.discovery);
   const context=scheduledOwnerContext(x.f);
   const replacement=value(authorAndAppend({
     kind:resolution.kind,schemaVersion:1,machine:'machine-a',principal:json(resolution.principal),

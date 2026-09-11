@@ -91,7 +91,9 @@ function appendConstitutional(f: ReturnType<typeof scheduledFixture>, kind: stri
 it.each(['new', 'duplicate'])
 ('P4-ST-27 V56 %s accepts signed Evidence from another registered constitutional schema', operation => {
   const x = setup(); const admitted = operation === 'duplicate' ? admit(x.f, x.input) : null;
-  const evidence = appendConstitutional(x.f, 'other-discovery-evidence', 'evidence', 'Evidence', x.discovery.evidence);
+  const alternate=value(decode('Evidence',{ ...json(x.discovery.evidence) as Record<string,unknown>,
+    id:'alternate-schema-discovery' },x.f.context.decode));
+  const evidence = appendConstitutional(x.f, 'other-discovery-evidence', 'evidence', 'Evidence', alternate);
   const result = x.f.port().receiveScheduledTick({ ...x.input, discovery: ref(evidence.id) });
   if (operation === 'new') expect(value(result).kind).toBe('scheduled-admitted');
   else expect(value(result)).toMatchObject({ kind: 'duplicate', original: admitted!.fact });
@@ -128,7 +130,9 @@ it('P4-ST-27 wrong constitutional type cannot witness scheduled discovery', () =
 it('P4-ST-27 wrong constitutional type cannot witness scheduled standing', () => {
   const f = scheduledFixture(); f.installSchemas();
   const tick = f.tick(), discovery = f.discovery(tick.eventId);
-  appendConstitutional(f, 'wrong-grant-type', 'evidence', 'Evidence', discovery.evidence);
+  const unrelated=value(decode('Evidence',{ ...json(discovery.evidence) as Record<string,unknown>,
+    id:'wrong-grant-evidence',claim:{ subject:'other',predicate:'unrelated-observation',value:true } },f.context.decode));
+  appendConstitutional(f, 'wrong-grant-type', 'evidence', 'Evidence', unrelated);
   const before = f.frames.length;
   refused(f.port().receiveScheduledTick({ raw: tick.raw, route: tick.route, discovery: ref(discovery.fact.id) }),
     'current covering package-system grant');
@@ -160,7 +164,9 @@ it('P4-ST-28 V63 an unmodified signed scheduled admission opens exactly one Run'
 
 it('P4-ST-29 NF-66 alternate-schema Evidence must be fresh at owner admission', () => {
   const x = setup();
-  const alternate = appendConstitutional(x.f, 'other-stale-discovery-evidence', 'evidence', 'Evidence', x.discovery.evidence);
+  const evidence=value(decode('Evidence',{ ...json(x.discovery.evidence) as Record<string,unknown>,
+    id:'alternate-stale-discovery' },x.f.context.decode));
+  const alternate = appendConstitutional(x.f, 'other-stale-discovery-evidence', 'evidence', 'Evidence', evidence);
   x.f.setTime(1101);
   const before = x.f.frames.length;
   refused(x.f.port().receiveScheduledTick({ ...x.input, discovery: ref(alternate.id) }));

@@ -49,9 +49,11 @@ it('P4-ST-27 V56/V61 alternate constitutional schemas survive the signed replica
   createFactStore(grantContext, f.storage), f.deps.author.privateKey));
   const tick = f.tick(), discovery = f.discovery(tick.eventId);
   const evidenceContext = { ...f.context, decode: { ...f.context.decode, provenance: f.provenance } };
+  const alternate=value(decode('Evidence',{ ...json(discovery.evidence) as Record<string,unknown>,
+    id:'integration-alternate-discovery' },f.context.decode));
   const evidence = value(authorAndAppend({ kind: evidenceSchema.kind, schemaVersion: 1, machine: 'machine-a',
     principal: json(f.principal), provenance: json(f.provenance), at: json(f.f.now),
-    body: json({ evidence: discovery.evidence }), required: [] }, evidenceContext,
+    body: json({ evidence: alternate }), required: [] }, evidenceContext,
   createFactStore(evidenceContext, f.storage), f.deps.author.privateKey)).fact;
   const admitted = value(f.port().receiveScheduledTick({ raw: tick.raw, route: tick.route, discovery: ref(evidence.id) }));
   expect(admitted.kind).toBe('scheduled-admitted');
