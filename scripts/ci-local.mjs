@@ -57,9 +57,8 @@ skip('types-4', 'constitutional-types', 'cross-architecture compare of p2-output
   `only ${process.arch} is available on this machine; GitHub compares x64 against arm64`);
 skip('types-5', 'constitutional-types', 'P3-NF-07 register.json compare across architectures',
   `only ${process.arch} is available on this machine; generated/register.json ${existsSync('generated/register.json') ? 'was produced' : 'is missing'}`);
-run('types-6a', 'constitutional-types', 'npm ci (p3-body-seam job)', 'npm ci');
-run('types-6', 'constitutional-types', 'p3 body seam (npm run build && test-p3-body-seam)',
-  'npm run build && node scripts/test-p3-body-seam.mjs .');
+run('types-6a', 'constitutional-types', 'p3-body-seam job: npm ci && npm run build', 'npm ci && npm run build');
+run('types-6', 'constitutional-types', 'p3-body-seam job: test-p3-body-seam', 'node scripts/test-p3-body-seam.mjs .');
 
 const failed = steps.filter((s) => s.required && s.status === 'failed');
 const passedRequired = steps.filter((s) => s.required && s.status === 'passed');
