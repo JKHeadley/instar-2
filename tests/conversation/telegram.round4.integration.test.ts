@@ -65,7 +65,8 @@ it('P12-NF-18 P12-NF-38 P12-NF-46 P12-NF-49 round4 newer fully witnessed matchin
   const old = f.admitted.probe;
   const prior = value(f.admissionDependencies.history.lookup(old.reference))!;
   const probeRecord = { ...(prior.fact.body as any).record,
-    id: 'probe:telegram:get-me:9001:9.2:fresh101', startedAt: 100, completedAt: 101 };
+    id: 'probe:telegram:get-me:9001:9.2:fresh101', attempt: 'attempt:telegram:9001:9.2:fresh101',
+    startedAt: 100, completedAt: 101 };
   value(authorAndAppend({ kind: 'verification-ProbeRecord', schemaVersion: 1,
     machine: f.assembly.host.machine, principal: asJson(f.assembly.alice),
     provenance: asJson(f.assembly.alice.provenance), at: asJson(f.assembly.clock(101)),

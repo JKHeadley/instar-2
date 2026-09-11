@@ -5,6 +5,8 @@ import { hashBytes, walkVersions } from '../facts/index.js';
 import type { AdapterConformance } from '../assembly/index.js';
 import type { InboundRoute, IntakeAdapterPort, IntakeDisposition } from '../intake/index.js';
 import { constructGoverned } from '../register/index.js';
+import { mergeVerificationRecords, verificationLogicalKey } from '../verification/index.js';
+import type { ProbeRecord, VerificationPlan } from '../verification/index.js';
 import type { EffectValidation, OperationAdapterPort, OperationDefinition, EffectHost, EffectSpine } from '../effects/index.js';
 import { installOperationDefinition } from '../effects/index.js';
 import { boundary, ensure, freeze, json, take } from './boundary.js';
@@ -62,6 +64,7 @@ export function telegramAccount(botId: string): string {
 }
 
 export function normalizeTelegramTopic(forum: boolean, messageThreadId: number | null): string {
+  ensure(typeof forum === 'boolean', 'forum discriminator must be boolean');
   if (!forum) {
     ensure(messageThreadId === null, 'a non-forum conversation cannot carry a topic id');
     return 'direct';
@@ -128,12 +131,20 @@ function extractTelegramUpdateUnchecked(raw: string, declaration: TelegramBotDec
   const selected = updateEvent(update);
   const chat = record(selected.event.chat, 'authenticated chat');
   const chatId = String(integer(chat.id, 'authenticated chat id'));
+  const chatType = nonempty(chat.type, 'authenticated chat type');
+  ensure(['private', 'group', 'supergroup', 'channel'].includes(chatType),
+    'authenticated chat type is outside the Telegram closed set');
+  ensure(chat.is_forum === undefined || typeof chat.is_forum === 'boolean',
+    'Telegram chat is_forum discriminator must be boolean when present');
   const forum = chat.is_forum === true;
+  ensure(!forum || chatType === 'supergroup', 'only a Telegram supergroup can declare forum routing');
   const threadValue = selected.event.message_thread_id;
   const thread = threadValue === undefined ? null : positiveInteger(threadValue, 'message_thread_id');
   const messageThreadId = forum ? thread : null;
   if (!forum) ensure(thread === null, 'non-forum update carries a topic id');
   const senderChat = selected.event.sender_chat === undefined ? null : record(selected.event.sender_chat, 'sender chat');
+  ensure(chatType !== 'channel' || selected.sender === null,
+    'a Telegram channel chat cannot supply a human message sender');
   if (selected.sender !== null) ensure(typeof selected.sender.is_bot === 'boolean',
     'Telegram sender must carry a boolean is_bot discriminator');
   const botSender = selected.sender?.is_bot === true;
@@ -248,7 +259,7 @@ function validateWebhookChoice(declaration: TelegramBotDeclaration, deps: Telegr
 }
 
 function validateIdentityProbe(declaration: TelegramBotDeclaration, deps: TelegramAdmissionDependencies,
-  probe: AdmittedTelegramAdapter['probe']): void {
+  probe: AdmittedTelegramAdapter['probe'], now: Clock): void {
   const captureBytes = take(deps.api.readCapture(probe.capture.reference));
   ensure(hashBytes(captureBytes) === probe.capture.hash, 'Telegram identity capture bytes do not match the probe');
   const response = record(JSON.parse(captureBytes) as unknown, 'Telegram getMe capture');
@@ -256,15 +267,46 @@ function validateIdentityProbe(declaration: TelegramBotDeclaration, deps: Telegr
   ensure(response.ok === true && bot.is_bot === true && String(integer(bot.id, 'captured bot id')) === declaration.bot.id
     && `@${nonempty(bot.username, 'captured bot username')}` === declaration.bot.username,
   'Telegram identity capture does not match the declared bot');
-  const witness = resolvedHistory(deps, probe.reference, 'Telegram identity probe');
-  const body = record(witness.fact.body, 'Telegram identity probe fact');
-  const recorded = record(body.record, 'Telegram identity ProbeRecord');
-  ensure(witness.fact.kind === 'verification-ProbeRecord' && recorded.type === 'ProbeRecord'
-    && recorded.id === probe.reference && recorded.disposition === 'passed' && recorded.captureStatus === 'available'
+  ensure(deps.verification.owner === 'part-nine', 'Telegram probe history must remain in Part Nine custody');
+  const rows = take(deps.verification.inspect());
+  const referenced = rows.filter((row): row is typeof row & { record: ProbeRecord } =>
+    row.record.type === 'ProbeRecord' && row.record.id === probe.reference);
+  ensure(referenced.length > 0, 'Telegram identity probe does not resolve to signed Part Nine history');
+  const logicalKeys = new Set(referenced.map(row => verificationLogicalKey(row.record)));
+  const identityRows = rows.filter((row): row is typeof row & { record: ProbeRecord } =>
+    row.record.type === 'ProbeRecord' && (row.record.id === probe.reference
+      || logicalKeys.has(verificationLogicalKey(row.record))));
+  for (const row of identityRows) resolvedHistory(deps, row.fact.id, 'Telegram identity probe source');
+  const mergedProbe = mergeVerificationRecords(identityRows.map(row => row.record));
+  ensure(mergedProbe.conflicts.length === 0, 'Telegram identity probe identity is ambiguous or contested');
+  const exactProbeBodies = [...new Map(referenced.map(row => [encode(row.record), row.record])).values()];
+  ensure(exactProbeBodies.length === 1, 'Telegram identity probe reference is ambiguous');
+  const recorded = exactProbeBodies[0]!;
+
+  const planRows = rows.filter((row): row is typeof row & { record: VerificationPlan } =>
+    row.record.type === 'VerificationPlan' && row.record.id === recorded.plan);
+  ensure(planRows.length > 0, 'Telegram identity probe plan is missing');
+  for (const row of planRows) resolvedHistory(deps, row.fact.id, 'Telegram identity probe plan source');
+  const mergedPlan = mergeVerificationRecords(planRows.map(row => row.record));
+  ensure(mergedPlan.conflicts.length === 0, 'Telegram identity probe plan is ambiguous or contested');
+  const exactPlanBodies = [...new Map(planRows.map(row => [encode(row.record), row.record])).values()];
+  ensure(exactPlanBodies.length === 1, 'Telegram identity probe plan is ambiguous');
+  const plan = exactPlanBodies[0]!;
+  const planArm = plan.arms.filter(arm => arm.id === recorded.arm);
+  ensure(plan.bar.complete === true && plan.bar.version === recorded.planVersion && planArm.length === 1
+    && planArm[0]!.required === true && plan.subject.governed === telegramAccount(declaration.bot.id),
+  'Telegram identity probe does not bind its complete recorded verification plan');
+  ensure(Number.isSafeInteger(plan.scheduling.freshnessWindow) && plan.scheduling.freshnessWindow > 0,
+    'Telegram identity probe plan has no positive recorded freshness window');
+  const validUntil = recorded.completedAt + plan.scheduling.freshnessWindow;
+  ensure(Number.isSafeInteger(validUntil) && recorded.completedAt <= now.value && now.value < validUntil,
+    'Telegram identity probe is stale under its recorded verification plan');
+
+  ensure(recorded.disposition === 'passed' && recorded.captureStatus === 'available'
     && recorded.subject === telegramAccount(declaration.bot.id)
     && recorded.operation === `telegram-bot-api:getMe:${declaration.apiVersion}`
     && recorded.challengeDigest === probe.capture.hash && recorded.completedAt === probe.observedAt
-    && Array.isArray(recorded.witnesses) && recorded.witnesses.includes(probe.capture.reference),
+    && recorded.witnesses.includes(probe.capture.reference),
   'Telegram identity probe record does not bind the exact capture and declared bot');
 }
 
@@ -342,12 +384,14 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
     ensure(probe.authenticated === true && probe.botId === declaration.bot.id
       && probe.username === declaration.bot.username && probe.apiVersion === declaration.apiVersion,
       'fresh authenticated Telegram identity probe does not match the declaration');
-    ensure(Number.isSafeInteger(probe.observedAt) && Number.isSafeInteger(probe.freshFor) && probe.freshFor > 0
-      && probe.observedAt <= now.value && probe.observedAt + probe.freshFor >= now.value,
+    ensure(Number.isSafeInteger(probe.observedAt) && Number.isSafeInteger(probe.freshFor) && probe.freshFor > 0,
+      'Telegram identity probe freshness wrapper is malformed');
+    const reportedValidUntil = probe.observedAt + probe.freshFor;
+    ensure(Number.isSafeInteger(reportedValidUntil) && probe.observedAt <= now.value && now.value < reportedValidUntil,
       'Telegram identity probe is stale or retimestamped');
     ensure(/^sha256:[a-f0-9]{64}$/.test(probe.capture.hash) && probe.capture.reference.length > 0 && probe.reference.length > 0,
       'Telegram identity probe lacks capture-backed evidence');
-    validateIdentityProbe(declaration, deps, probe);
+    validateIdentityProbe(declaration, deps, probe, now);
     const contractSeed = contractInput(declaration, deps, mode, probe, 'pending');
     const contractId = `telegram-contract:${take(canonical(contractSeed)).hash}`;
     const contract = take(deps.assembly.record('AdapterEvidenceContract', { ...contractSeed, id: contractId }));

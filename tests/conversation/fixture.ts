@@ -5,6 +5,8 @@ import { authorAndAppend, createFactStore, hashBytes } from '../../src/facts/ind
 import type { FactEnvelope } from '../../src/facts/index.js';
 import type { InboundRoute } from '../../src/intake/index.js';
 import { decodeDeclaration } from '../../src/register/index.js';
+import { createVerificationRuntime, createVerificationSpine, decodeVerificationPlan } from '../../src/verification/index.js';
+import type { VerificationHost } from '../../src/verification/index.js';
 import {
   admitTelegramAdapter, extractTelegramUpdate, telegramParserDeclarationId,
 } from '../../src/conversation/index.js';
@@ -84,7 +86,16 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
   const identityCaptureReference = `capture:telegram:get-me:${botId}`;
   const identityCaptureBytes = JSON.stringify({ ok: true, result: { id: Number(botId), username: 'fixture_bot', is_bot: true } });
   const identityCaptureHash = hashBytes(identityCaptureBytes);
+  const identityPlan = value(decodeVerificationPlan({ ...verificationInput('VerificationPlan'),
+    subject: { ...verificationInput('VerificationPlan').subject,
+      governed: `telegram:v1:bot:${botId}`, generation: 'generation:fixture' },
+    bar: { ...verificationInput('VerificationPlan').bar, freshness: 50 },
+    scheduling: { ...verificationInput('VerificationPlan').scheduling, freshnessWindow: 50 },
+  }, assembly.c));
+  appendAssemblyFact('verification-VerificationPlan', { record: identityPlan });
   const identityProbeRecord = { ...verificationInput('ProbeRecord'), id: `probe:telegram:get-me:${botId}:${apiVersion}`,
+    plan: identityPlan.id, planVersion: identityPlan.bar.version,
+    slot: `slot:telegram:${botId}`, attempt: `attempt:telegram:${botId}:${apiVersion}`,
     subject: `telegram:v1:bot:${botId}`, challengeDigest: identityCaptureHash,
     operation: `telegram-bot-api:getMe:${apiVersion}`, startedAt: 99, completedAt: 100,
     witnesses: [identityCaptureReference], comparison: 'Result:pass', disposition: 'passed' as const,
@@ -133,12 +144,22 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
       return intake.f.success(sendResult);
     },
   });
+  const verificationHost: VerificationHost = {
+    machine: assembly.host.machine, principal: assembly.host.principal, scope: assembly.host.scope,
+    boundary: assembly.c,
+    current: () => ({ decode: assembly.context.decode, clock: intake.f.clock(100), generation: 'generation:fixture',
+      stopped: false, facts: assembly.context, evidence: assembly.context.decode.evidence ?? [] }),
+  };
+  const verificationSpine = createVerificationSpine(verificationHost,
+    { context: assembly.context, privateKey }, assembly.store);
+  const verification = createVerificationRuntime(verificationHost, verificationSpine);
   const fixtureDigests = fixtureNames.map(name => hashBytes(telegramRaw(name)));
   const admissionDependencies = {
     boundary: { ...intake.f.c, register: runtimeRegister },
     governance: governed.governance,
     assembly: assembly.runtime,
     history: assembly.c.history!,
+    verification,
     api,
     clock: () => intake.f.clock(100),
     generation: 'generation:fixture',
@@ -194,7 +215,7 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
 
   return {
     intake, assembly, declarations, governed, runtimeRegister, declaration, api, admitted, calls,
-    fixtureNames, admissionDependencies, admit,
+    fixtureNames, admissionDependencies, admit, verification,
     queue: (...updates: string[]) => { batches.push(updates); },
     setProbe: (value: TelegramIdentityProbe) => { probe = value; },
     setSendResult: (value: string) => { sendResult = value; },

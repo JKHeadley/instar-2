@@ -5,6 +5,7 @@ import type { AdapterConformance, AdapterEvidenceContract, AssemblyHistoryReadPo
 import type { FactStorePort } from '../facts/index.js';
 import type { InboundRoute, IntakePort } from '../intake/index.js';
 import type { RegisterContext, VerifiedRegister } from '../register/index.js';
+import type { VerificationRuntimePort } from '../verification/index.js';
 
 export type TelegramIngressMode = 'long-poll' | 'webhook';
 export type TelegramUpdateKind = 'reply' | 'callback' | 'edit' | 'channel-post' |
@@ -92,6 +93,7 @@ export interface TelegramAdmissionDependencies {
   readonly governance: Readonly<{ register: VerifiedRegister; context: RegisterContext }>;
   readonly assembly: AssemblyRuntimePort;
   readonly history: AssemblyHistoryReadPort;
+  readonly verification: VerificationRuntimePort;
   readonly api: TelegramBotApiCustodianPort;
   readonly clock: () => Clock;
   readonly generation: string;
