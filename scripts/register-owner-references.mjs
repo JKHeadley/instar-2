@@ -8,10 +8,15 @@ export const ownerManifestPath = 'register-source/owner-references.json';
 const hash = input => value(canonical(input)).hash;
 export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five'].map(owner => `register-source/owner-references/${owner}.json`)];
 const owned = (namespace, names) => Object.fromEntries(names.map(id => [id, { module: `src/${namespace}/index.ts`, artifact: `src/${namespace}/records.ts` }]));
+const closureOwned = Object.fromEntries(['decodeExhaustionRecord', 'decodeUnreachableRunExit']
+  .map(id => [id, { module: 'src/rungraph/index.ts', artifact: 'src/rungraph/closure-records.ts' }]));
 const contracts = {
-  'part-five': { decoders: owned('rungraph', ['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit', 'decodeSessionGrounding']),
-    fixture: id => id === 'P5-NF-54', probe: id => id === 'P5-NF-55',
-    test: (kind, path) => path === (kind === 'fixture' ? 'tests/rungraph/governance.test.ts' : 'tests/rungraph/scope.test.ts') },
+  'part-five': { decoders: { ...owned('rungraph', ['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit',
+    'decodeSessionGrounding']), ...closureOwned },
+    fixture: id => id === 'P5-NF-54' || id === 'P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION', probe: id => id === 'P5-NF-55',
+    test: (kind, path) => kind === 'fixture'
+      ? path === 'tests/rungraph/governance.test.ts' || path === 'tests/rungraph/closure-registration-additivity.test.ts'
+      : path === 'tests/rungraph/scope.test.ts' },
   'part-four': { decoders: { ...owned('intake', ['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration']),
     'decode:Provenance': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
     'decode:VerifiedPrincipal': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
