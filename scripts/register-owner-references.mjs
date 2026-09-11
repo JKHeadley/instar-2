@@ -13,7 +13,7 @@ const contracts = {
     fixture: id => id === 'P5-NF-54', probe: id => id === 'P5-NF-55',
     test: (kind, path) => path === (kind === 'fixture' ? 'tests/rungraph/governance.test.ts' : 'tests/rungraph/scope.test.ts') },
   'part-four': { decoders: { ...owned('intake', ['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration', 'intakeVerifiedActRegistration']),
-    scheduledIntakeWorkRegistration: { module: 'src/intake/scheduled-a/index.ts', artifact: 'src/intake/scheduled-records.ts' },
+    scheduledIntakeWorkRegistration: { module: 'src/intake/scheduled-a/index.ts', artifact: 'src/intake/scheduled-a/records.ts' },
     'decode:Provenance': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
     'decode:VerifiedPrincipal': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
     readProjection: { module: 'src/projections/index.ts', artifact: 'src/projections/fold.ts', requires: 'intakeDedupDefinition' },

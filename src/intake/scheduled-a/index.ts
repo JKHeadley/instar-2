@@ -10,7 +10,7 @@ export {
   scheduledIntakeKinds,
   scheduledIntakeWorkRegistration,
   validateScheduledIntakeRoute,
-} from '../scheduled-records.js';
+} from './records.js';
 export {
   intakeDedupDefinition,
   intakeFactSchemas,

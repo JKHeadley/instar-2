@@ -1,13 +1,13 @@
-import type { BoundaryContext,Clock,DecodeContext,Evidence,HistoricalRead,Inventory,Json,RegisterReadPort,Scope,VerifiedPrincipal } from '../index.js';
-import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readHistorical,readHistoricalEvidence,scopeIncludes } from '../index.js';
-import { causalCone,causalStanding,decodeHistoricalBody,hashBytes,registerOwnedBody } from '../facts/index.js';
-import { decodeOwnedBody } from '../facts/owned.js';
-import type { FactContext,FactEnvelope,FactSchema,OwnedBodyContext,OwnedBodyRegistration } from '../facts/index.js';
-import type { Result } from '../index.js';
-import { IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
-import { intakeArrival,intakeWorkRegistration } from './records.js';
-import { readRegisterEntry } from '../register/index.js';
-import type { RegisterContext,VerifiedRegister } from '../register/index.js';
+import type { BoundaryContext,Clock,DecodeContext,Evidence,HistoricalRead,Inventory,Json,RegisterReadPort,Scope,VerifiedPrincipal } from '../../index.js';
+import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readHistorical,readHistoricalEvidence,scopeIncludes } from '../../index.js';
+import { causalCone,causalStanding,decodeHistoricalBody,hashBytes,registerOwnedBody } from '../../facts/index.js';
+import { decodeOwnedBody } from '../../facts/owned.js';
+import type { FactContext,FactEnvelope,FactSchema,OwnedBodyContext,OwnedBodyRegistration } from '../../facts/index.js';
+import type { Result } from '../../index.js';
+import { IntakeFailure,json,object,requireIntake,same,take,text } from '../boundary.js';
+import { intakeArrival,intakeWorkRegistration } from '../records.js';
+import { readRegisterEntry } from '../../register/index.js';
+import type { RegisterContext,VerifiedRegister } from '../../register/index.js';
 
 export const scheduledIntakeKinds=Object.freeze(['intake-scheduled-principal'] as const);
 

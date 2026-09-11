@@ -8,7 +8,7 @@ const hash = path => consumeResult(canonical(readFileSync(path, 'utf8')), {
 const artifact = path => ({ path, hash: hash(path) });
 const decoders = [
   ...['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration', 'intakeVerifiedActRegistration'].map(id => [id, 'src/intake/index.ts', 'src/intake/records.ts']),
-  ['scheduledIntakeWorkRegistration', 'src/intake/scheduled-a/index.ts', 'src/intake/scheduled-records.ts'],
+  ['scheduledIntakeWorkRegistration', 'src/intake/scheduled-a/index.ts', 'src/intake/scheduled-a/records.ts'],
   ['readProjection', 'src/projections/index.ts', 'src/projections/fold.ts'],
   ['authorAndAppend', 'src/facts/index.ts', 'src/facts/store.ts'],
   ['decode:Provenance', 'src/index.ts', 'src/decode/decode.ts'],

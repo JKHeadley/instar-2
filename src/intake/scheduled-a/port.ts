@@ -23,7 +23,7 @@ import {
   bindIntakeOwnerRegister,decodeScheduledTickBody,isScheduledIntakeAdmission,
   registeredScheduledIntakeAdapters,resolveScheduledDiscoveryWitness,scheduledIntakeFactSchemas,
   scheduledIntakeWorkRegistration,validateScheduledIntakeRoute,
-} from '../scheduled-records.js';
+} from './records.js';
 import type {
   ConstitutionalReference,InboundRoute,PendingScheduledAdmissions,PendingScheduledAdmissionsInput,
   ScheduledIntakeDependencies,ScheduledIntakePort,ScheduledTickAdmission,
@@ -40,8 +40,6 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
     // This is deliberately first: all construction and every legacy operation
     // retain the exact 32e5961 implementation and Result behavior.
     const legacy=take(createLegacyIntakePort(deps));
-    take(constructGoverned('features','intake-slice',deps.governance.register,deps.governance.context));
-    take(constructGoverned('parsers',deps.adapter.id,deps.governance.register,deps.governance.context));
     const declaration=deps.governance.register.entries.find(entry => entry.declaration.id===deps.adapter.id)?.declaration;
     requireIntake(declaration?.status==='live','P4-NF-06: intake adapter must be live');
     const contract=object(json(declaration.requiredFacts));

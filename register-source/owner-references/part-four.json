@@ -877,11 +877,11 @@
       "id": "scheduledIntakeWorkRegistration",
       "module": {
         "path": "src/intake/scheduled-a/index.ts",
-        "hash": "sha256:176ecc0cd1d172a89b0388520105d7fee623ca4f7335b69a099349ce5fedef93"
+        "hash": "sha256:1cc9b8f20929a0f973214057039f13d10fb19689cbd58340906e2cd8e3bc42d7"
       },
       "artifact": {
-        "path": "src/intake/scheduled-records.ts",
-        "hash": "sha256:e03d494f715739099fd4689cd31af57877b6d1e4fe69b7178c6d6bfbcdf53c2b"
+        "path": "src/intake/scheduled-a/records.ts",
+        "hash": "sha256:ea0dfb0bcf0f30edab08403fba771b54ee2477b3ff62fa561833c151bf32f3b4"
       }
     },
     {
