@@ -26,11 +26,27 @@ const invariants: Readonly<Record<string, (facts: Readonly<Record<string, Json>>
     }
   },
   'term-shape': facts => {
-    if (facts.kind === 'adjective') object(facts.derivedFrom!);
+    if (facts.kind === 'adjective') profileExpression(facts.derivedFrom!);
     if (facts.kind === 'field') requireThat(list(facts.allowedValues, 'allowedValues').length > 0, 'field needs allowedValues');
   },
   'judgment-floor': (facts, _status, _profile, context) => { take(decode('ActionFloor', facts.floor, context.types)); },
 };
+function profileExpression(input: Json, depth = 0): void {
+  requireThat(depth < 32, 'derived adjective expression exceeds depth');
+  const value = object(input);
+  if (Object.hasOwn(value, 'field')) {
+    exact(value, ['field', 'in']);
+    requireThat(['consequence', 'reversibility', 'reach', 'surface'].includes(text(value.field, 'derivedFrom.field')),
+      'unknown derived adjective profile field');
+    requireThat(strings(value.in, 'derivedFrom.in').length > 0, 'derived adjective expression needs values');
+    return;
+  }
+  const keys = ['any', 'all'].filter(key => Object.hasOwn(value, key));
+  requireThat(keys.length === 1, 'derived adjective expression needs exactly one operator');
+  exact(value, keys); const children = list(value[keys[0]!], `derivedFrom.${keys[0]}`);
+  requireThat(children.length > 0, 'derived adjective expression needs children');
+  for (const child of children) profileExpression(child, depth + 1);
+}
 export function invariantCoverage(shape: ShapeEntries, implemented: readonly string[], context: RegisterContext) {
   return checked('InvariantCoverage', { expected: shape.kinds.flatMap(k => k.invariants), implemented }, context, input => {
     const v = object(input); const actual = strings(v.implemented, 'implemented');
@@ -84,8 +100,18 @@ export function decodeDeclaration(input: unknown, context: RegisterContext) {
       requireThat(matches, `P3-NF-05: ${kind}.${field.name} wrong format`);
       requireThat(field.values.length === 0 || (typeof value === 'string' && field.values.includes(value)),
         `P3-NF-${kind === 'terms' && field.name === 'kind' ? '12' : '05'}: ${kind}.${field.name} outside closed list`);
+      if (field.format === 'array' && field.reference) strings(value, `${kind}.${field.name}`);
     }
     exact(facts, shape.fields.map(f => f.name));
+    if (kind === 'rules') {
+      const rule = number(facts.number, 'rules.number');
+      requireThat(Number.isSafeInteger(rule) && rule > 0, 'rules.number must be a positive integer');
+      if (facts.parent !== 'root') {
+        const parent = number(facts.parent, 'rules.parent');
+        requireThat(Number.isSafeInteger(parent) && parent > 0, 'rules.parent must be root or a positive integer');
+      }
+      strings(facts.termRefs, 'rules.termRefs');
+    }
     requireThat(!shape.profile || v.profile !== undefined, 'P3-NF-06: five-fact profile required');
     // P1's decoder resolves bound ids in the explicit tree horizon. P3 generation
     // subsequently verifies the target is a live, paired critical-outcome entry.

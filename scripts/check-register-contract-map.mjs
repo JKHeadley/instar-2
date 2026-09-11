@@ -3,6 +3,15 @@ import { relative } from 'node:path';
 import { checkProtectedTests } from './check-register-protection.mjs';
 const design = readFileSync('docs/07-the-declarations.md', 'utf8');
 const expected = new Set([...design.matchAll(/^\| (P3-NF-\d+) \|/gm)].map(m => m[1]));
+const realUnlandedGrants = new Map([
+  ['part-nine:semantic-adequacy-of-held-edges', 'semantic adequacy of `held` edges'],
+  ['part-nine:runtime-freshness-holder', 'runtime freshness holder (part nine)'],
+  ['parts-nine-eleven:external-anchor-for-protected-artifact-enforcement', 'external anchor for protected-artifact enforcement (parts nine and eleven'],
+].filter(([, citation]) => design.includes(citation)));
+const grantedSkip = name => {
+  const match = name.match(/SKIPPED:\s*GRANT:([a-z0-9-]+(?::[a-z0-9-]+)+)\s*$/);
+  return match !== null && realUnlandedGrants.has(match[1]);
+};
 const report = JSON.parse(readFileSync('.test-results.json', 'utf8')); const map = new Map();
 for (const file of report.testResults) for (const test of file.assertionResults) for (const id of test.fullName.match(/\bP3-NF-\d+\b/g) ?? []) {
   if (!expected.has(id)) throw new Error(`unknown P3 contract ${id}`);
@@ -13,7 +22,10 @@ checkProtectedTests(JSON.parse(readFileSync('generated/register.json', 'utf8')),
 console.log('| Check | Executed test file | Status |'); console.log('|---|---|---|');
 for (const id of [...expected].sort()) {
   const rows = map.get(id); if (!rows?.length) throw new Error(`missing actual test for ${id}`);
-  for (const row of rows) if (row.status !== 'passed' && !(['pending', 'skipped'].includes(row.status) && /SKIPPED:.+/.test(row.name))) throw new Error(`${id}: neither passed nor explicitly skipped with reason`);
+  if (rows.some(row => !['passed', 'pending', 'skipped'].includes(row.status))) throw new Error(`${id}: test failed`);
+  if (!rows.some(row => row.status === 'passed')
+    && !rows.some(row => ['pending', 'skipped'].includes(row.status) && grantedSkip(row.name)))
+    throw new Error(`${id}: neither passed nor skipped under an exact unlanded design grant`);
   console.log(`| ${id} | ${[...new Set(rows.map(r => r.file))].join('; ')} | ${[...new Set(rows.map(r => r.status))].join(', ')} |`);
 }
 console.log(`${expected.size} P3 contracts mapped to actual run results.`);

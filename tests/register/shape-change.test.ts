@@ -7,7 +7,7 @@ describe('governed shape-change document', () => {
     const s = setup();
     const workflow = json('RegisterWorkflow', { mode: 'normal', branch: 'shape-change', parent: { commit: 'a'.repeat(40),
       register: 'generated/register.json', source: 'generated/source.json', conversion: 'generated/conversion.json' },
-      extract: s.extract, runs: [], catalog: {}, landedParts: [], references: [], claims: [],
+      extract: s.extract, runs: [], catalog: { fixtures: [], probes: [], sentinels: [], semanticReviews: [] }, landedParts: [], references: [], claims: [],
       shapeChange: { document: { path: 'register-source/shape-changes/part-fourteen.json', hash: hash({ approved: true }) } } });
     expect(value(decodeNormalRegisterWorkflow(workflow, s.context)).parent.commit).toBe('a'.repeat(40));
     expect(detail(decodeNormalRegisterWorkflow({ ...workflow, conversion: {} }, s.context))).toContain('undeclared field');

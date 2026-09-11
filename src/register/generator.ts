@@ -1,5 +1,5 @@
-import { decode, decodeMeasurement } from '../index.js';
-import type { Clock, Json } from '../index.js';
+import { consumeResult, decode, decodeMeasurement } from '../index.js';
+import type { Clock, Json, Result } from '../index.js';
 import type { ChainExtract, Declaration, FactPositionVectorReference, FactReference, GeneratedRegister, GenerationRecord,
   RegisterContext, RegisterEntry, RegisterGeneration, SpineReadPort, VersionRowInput, VerifiedRegister } from './types.js';
 import { checked, encoding, exact, list, object, requireThat, strings, take, text, validated } from './boundary.js';
@@ -7,8 +7,8 @@ import { decodeDeclaration } from './declarations.js';
 import { decodeShape } from './shape.js';
 import { resolveFact } from './fact-schema.js';
 
-const loaded = new WeakSet<object>();
-export const wasVerified = (register: GeneratedRegister): register is VerifiedRegister => loaded.has(register);
+const loaded = new WeakMap<object, () => boolean>();
+export const wasVerified = (register: GeneratedRegister): register is VerifiedRegister => loaded.get(register)?.() === true;
 
 function reference<N extends 'FactEnvelope' | 'FactPositionVector'>(input: Json, name: N) {
   const r = object(input); exact(r, ['owner', 'name', 'id']);
@@ -151,7 +151,12 @@ export function loadRegister(input: unknown, expected: RegisterGeneration, conte
     requireThat(encoding(rebuilt).bytes === encoding(v).bytes, 'loaded register does not match complete declaration/reference validation');
     requireThat(v.authority === 'shape-only', 'register bytes may not self-assert authority');
     const result = { type: 'GeneratedRegister', schemaVersion: 1, commit: text(v.commit, 'commit'), extract, shape, entries: decoded, authority: 'shape-only' } as unknown as VerifiedRegister;
-    loaded.add(result); return result;
+    loaded.set(result, () => {
+      const accepted = <T>(answer: Result<T>): boolean => consumeResult(answer, { Success: () => true, Refused: () => false });
+      return accepted(spine.verifyExtract(extract)) && accepted(spine.enteringForce(expected))
+        && consumeResult(spine.isCurrent(extract.vector, now), { Success: value => value === true, Refused: () => false });
+    });
+    return result;
   });
 }
 // The vector and envelope reference imports above intentionally remain owned by P2.

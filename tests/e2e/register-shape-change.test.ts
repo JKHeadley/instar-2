@@ -46,11 +46,13 @@ describe('normal-mode shape-change CLI composition', () => {
         decoders: [], documents: [] };
       const manifestPath = 'register-source/owner-references/part-fourteen.json';
       writeFileSync(join(root, manifestPath), JSON.stringify(manifest, null, 2) + '\n');
+      const enrollment = { part: 14, owner: 'part-fourteen', manifest: { path: manifestPath, hash: hash(manifest) } };
+      writeFileSync(join(root, 'register-source/owner-enrollments.json'), JSON.stringify({ schemaVersion: 1, enrollments: [enrollment] }, null, 2) + '\n');
       const approval: FactReference = { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:shape-change-approval' };
       const documentPath = 'register-source/shape-changes/part-fourteen.json'; mkdirSync(join(root, 'register-source/shape-changes'), { recursive: true });
       const document = { type: 'ShapeChangeDocument', schemaVersion: 1, id: 'part-fourteen-owner-enrollment', parent: parentSource.generation,
         candidateShape: hash(shape), changes: [{ operation: 'add', path: `/parts/${parentRegister.shape.parts.length}`, after: 14 }],
-        ownerReferences: [{ part: 14, owner: 'part-fourteen', manifest: { path: manifestPath, hash: hash(manifest) } }], approvedIn: approval };
+        ownerReferences: [enrollment], approvedIn: approval };
       writeFileSync(join(root, documentPath), JSON.stringify(document, null, 2) + '\n');
       const ownerRows = parentRegister.entries.filter((entry: { declaration: { kind: string } }) => entry.declaration.kind === 'governed documents')
         .map(({ declaration }: { declaration: Record<string, unknown> }) => {

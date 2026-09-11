@@ -5,12 +5,17 @@ import { value } from './register-source.mjs';
 import { ownerDocuments } from '../dist/register/owner-contracts.js';
 
 export const ownerManifestPath = 'register-source/owner-references.json';
+export const ownerEnrollmentPath = 'register-source/owner-enrollments.json';
 const hash = input => value(canonical(input)).hash;
 export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five'].map(owner => `register-source/owner-references/${owner}.json`)];
 const owned = (namespace, names) => Object.fromEntries(names.map(id => [id, { module: `src/${namespace}/index.ts`, artifact: `src/${namespace}/records.ts` }]));
 const closureOwned = Object.fromEntries(['decodeExhaustionRecord', 'decodeUnreachableRunExit']
   .map(id => [id, { module: 'src/rungraph/index.ts', artifact: 'src/rungraph/closure-records.ts' }]));
 const contracts = {
+  'part-fourteen': { decoders: {},
+    fixture: id => id === 'P14-NF-50',
+    probe: id => /^sentinel-holders\.(?:package-loop-policy|guard-posture\.loop-policy|silent-stop|session-watchdog|helper-watchdog|orphaned-work|clean-worktree-reclamation|framework-prompt|context-wedge|compaction|presence|promise|dated-check-in-reminder|crash-loop|budget-overrun|moving-worker-silence|stranded-conversation|session-reaper|process-population-reaper|guard-posture)\.probe$/.test(id),
+    test: (kind, path) => kind === 'fixture' ? path === 'tests/e2e/sentinel-holders.test.ts' : path === 'tests/sentinel-holders/core.test.ts' },
   'part-five': { decoders: { ...owned('rungraph', ['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit',
     'decodeSessionGrounding']), ...closureOwned },
     fixture: id => id === 'P5-NF-54' || id === 'P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION', probe: id => id === 'P5-NF-55',
@@ -30,10 +35,32 @@ const exact = (v, keys) => {
   if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !keys.includes(k)) || keys.some(k => !Object.hasOwn(v, k)))
     throw new Error('invalid owner reference manifest fields');
 };
+export function retainedOwnerEnrollments(input) {
+  const raw = input.sources[ownerEnrollmentPath];
+  if (raw === undefined) return [];
+  const value = JSON.parse(raw); exact(value, ['schemaVersion', 'enrollments']);
+  if (value.schemaVersion !== 1 || !Array.isArray(value.enrollments)) throw new Error('invalid owner enrollment ledger');
+  const seen = new Set();
+  return value.enrollments.map(row => {
+    exact(row, ['part', 'owner', 'manifest']); exact(row.manifest, ['path', 'hash']);
+    if (!Number.isSafeInteger(row.part) || row.part <= 0 || typeof row.owner !== 'string'
+      || row.manifest.path !== `register-source/owner-references/${row.owner}.json`
+      || !/^sha256:[a-f0-9]{64}$/.test(row.manifest.hash)) throw new Error('invalid retained owner enrollment');
+    if (seen.has(row.part) || seen.has(row.owner) || seen.has(row.manifest.path)) throw new Error('duplicate retained owner enrollment');
+    seen.add(row.part); seen.add(row.owner); seen.add(row.manifest.path); return row;
+  });
+}
 export function loadOwnerReferences(root, input, enrollments = []) {
   const result = { references: [], catalog: { fixtures: [], probes: [] }, decoders: [], documents: [], artifacts: {} };
   const seen = new Set();
-  const enrolledPaths = enrollments.map(row => row.manifest.path);
+  const retained = retainedOwnerEnrollments(input);
+  const merged = [...retained];
+  for (const row of enrollments) {
+    const prior = merged.find(item => item.part === row.part || item.owner === row.owner || item.manifest.path === row.manifest.path);
+    if (prior && hash(prior) !== hash(row)) throw new Error('owner enrollment conflicts with retained grant');
+    if (!prior) merged.push(row);
+  }
+  const enrolledPaths = merged.map(row => row.manifest.path);
   if (new Set([...ownerManifestPaths, ...enrolledPaths]).size !== ownerManifestPaths.length + enrolledPaths.length)
     throw new Error('owner enrollment duplicates a closed owner manifest');
   const admittedPaths = [...ownerManifestPaths, ...enrolledPaths];
@@ -43,7 +70,7 @@ export function loadOwnerReferences(root, input, enrollments = []) {
   const raw = input.sources[manifestPath]; if (raw === undefined) continue;
   const manifest = JSON.parse(raw);
   exact(manifest, ['schemaVersion', 'owner', 'fixtures', 'probes', 'decoders', 'documents']);
-  const enrollment = enrollments.find(row => row.manifest.path === manifestPath);
+  const enrollment = merged.find(row => row.manifest.path === manifestPath);
   if (enrollment && (hash(manifest) !== enrollment.manifest.hash || manifest.owner !== enrollment.owner))
     throw new Error('governed owner enrollment differs from committed manifest');
   if (manifest.schemaVersion !== 1 || typeof manifest.owner !== 'string' || !Object.hasOwn(contracts, manifest.owner) && !enrollment)
@@ -51,8 +78,8 @@ export function loadOwnerReferences(root, input, enrollments = []) {
   if (manifestPath !== ownerManifestPath && manifestPath !== `register-source/owner-references/${manifest.owner}.json`)
     throw new Error('owner manifest path disagrees with declared owner');
   if (seen.has(manifest.owner)) throw new Error('duplicate owner manifest'); seen.add(manifest.owner);
-  const contract = contracts[manifest.owner] ?? { decoders: {}, fixture: () => true, probe: () => true,
-    test: (_kind, path) => typeof path === 'string' && path.startsWith('tests/') && path.endsWith('.test.ts') };
+  const contract = contracts[manifest.owner];
+  if (!contract) throw new Error('enrolled owner has no closed artifact contract');
   for (const field of ['fixtures', 'probes', 'decoders', 'documents']) if (!Array.isArray(manifest[field])) throw new Error('owner reference list required');
   if (enrollment && (manifest.decoders.length || manifest.documents.length))
     throw new Error('new per-part enrollment admits fixture/probe evidence only');

@@ -5,7 +5,7 @@ export { generateAgainstParent } from './shape-authority.js';
 export type { ShapeApprovalPort, ShapeChangeBinding } from './shape-authority.js';
 export { decodeShapeChangeDocument, shapeDifferences, validateShapeChangeDocument } from './shape-change.js';
 export { createPartTwoRegisterProvider } from './provider.js';
-export type { PartTwoRegisterProvider, PartTwoRegisterProviderOptions, PartTwoRegisterHorizon } from './provider.js';
+export type { PartTwoRegisterAuthorityPort, PartTwoRegisterProvider, PartTwoRegisterProviderOptions, PartTwoRegisterHorizon } from './provider.js';
 export { decodeNormalRegisterWorkflow } from './workflow-input.js';
 export type { NormalRegisterWorkflow, ParentGenerationSource } from './workflow-input.js';
 export { runRegisterChecks } from './workflow.js';

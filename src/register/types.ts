@@ -77,7 +77,7 @@ export interface RegisterContext extends BoundaryContext {
 export interface SpineReadPort {
   readonly owner: 'part-two';
   // Provider verifies canonical extract rows against its verified spine at this vector.
-  readonly verifyExtract: (extract: ChainExtract) => Result<FactReference>;
+  readonly verifyExtract: (extract: ChainExtract) => Result<FactReference | FactPositionVectorReference>;
   readonly enteringForce: (generation: RegisterGeneration) => Result<GenerationRecord>;
   // Applies part-two vector/unknown-lineage and declared-staleness-bound semantics.
   readonly isCurrent: (vector: FactPositionVectorReference, now: Clock) => Result<boolean>;

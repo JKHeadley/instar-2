@@ -8,7 +8,7 @@ import { generateRegister, generationOf, renderRegister, invariantCoverage, impl
   decodeShapeChangeDocument, decodeNormalRegisterWorkflow } from '../dist/register/index.js';
 import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, loadParentGeneration, value, bytes } from './register-source.mjs';
 import { checkWiring, scanSources } from './check-register-wiring.mjs';
-import { loadOwnerReferences, mergeOwnerReferences } from './register-owner-references.mjs';
+import { loadOwnerReferences, mergeOwnerReferences, retainedOwnerEnrollments } from './register-owner-references.mjs';
 import { ownerDocuments } from '../dist/register/owner-contracts.js';
 
 const hash = input => value(canonical(input)).hash;
@@ -63,6 +63,15 @@ export function build(root, commit, options = {}) {
       if (hash(JSON.parse(raw)) !== binding.hash) throw new Error('P3-NF-09: shape-change document bytes do not match approval binding');
       shapeDocument = value(decodeShapeChangeDocument(JSON.parse(raw), boundary));
     }
+  }
+  const retainedEnrollments = retainedOwnerEnrollments(input);
+  if (mode === 'normal' && parentInput) {
+    const previous = retainedOwnerEnrollments(readCommit(root, workflow.parent.commit));
+    for (const row of previous) if (!retainedEnrollments.some(next => bytes(next) === bytes(row)))
+      throw new Error('retained owner enrollment may not be removed or changed');
+    const additions = retainedEnrollments.filter(row => !previous.some(old => bytes(old) === bytes(row)));
+    if (bytes(additions) !== bytes(shapeDocument?.ownerReferences ?? []))
+      throw new Error('P3-NF-09: owner enrollment ledger changes require the exact current shape-change document');
   }
   const owner = loadOwnerReferences(root, input, shapeDocument?.ownerReferences ?? []);
   // Check explicit workflow presence before adding committed defaults.

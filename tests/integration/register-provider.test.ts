@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Json } from '../../src/index.js';
 import { canonical } from '../../src/index.js';
-import { createFactStore, factId, registerOwnedBody } from '../../src/facts/index.js';
+import { createFactStore, registerOwnedBody } from '../../src/facts/index.js';
 import type { FactSchema, OwnedShape } from '../../src/facts/index.js';
-import { createPartTwoRegisterProvider, decodeExtract, generationOf } from '../../src/register/index.js';
-import type { ShapeChangeBinding } from '../../src/register/index.js';
+import { createPartTwoRegisterProvider, decodeExtract, generationOf, loadRegister, readRegisterEntry } from '../../src/register/index.js';
+import type { FactPositionVectorReference, PartTwoRegisterAuthorityPort, ShapeChangeBinding } from '../../src/register/index.js';
 import { factsFixture } from '../facts/fixtures.js';
 import { detail, json, setup, value } from '../register/fixtures.js';
 
@@ -18,44 +18,59 @@ function policy(input: Json): OwnedShape {
 }
 
 describe('Part Two register provider', () => {
-  it('P3-NF-21/23 reads current extract, entering force, and exact shape approval from a real FactStore', () => {
+  it('P3-NF-09 P3-NF-21 P3-NF-23 uses owner-resolved witnesses, live repair state, exact namespaces, clocks, and position vectors', () => {
     const f = factsFixture(), s = setup();
     const generation = value(generationOf(s.build(), s.context));
-    const approvalId = factId({ machine: 'machine-a', epoch: 0, position: 2 });
+    const record = JSON.parse(JSON.stringify(json('GenerationRecord', { generation, at: f.now }))) as Json;
+    const registration = value(registerOwnedBody({ owner: 'part-three', name: 'GenerationRecord', currentVersion: 1,
+      versions: { 1: { validate: input => ({ ok: true as const, value: input }) } }, migrations: {},
+      decodeCurrent: input => ({ ok: true as const, value: input }) }, policy(record), f.c));
+    const generationSchema: FactSchema = { kind: 'generation-record', version: 1,
+      fields: { record: { kind: 'owned', owner: 'part-three', name: 'GenerationRecord' } }, machineScope: 'shared',
+      standing: 'requester', action: 'work', scope: f.scope, causallyBound: false, requiredReferences: [], authority: 'none' };
+    const retractionSchema: FactSchema = { kind: 'retraction', version: 1,
+      fields: { target: { kind: 'text', maxLength: 256 }, reason: { kind: 'text', maxLength: 256 } }, machineScope: 'shared',
+      standing: 'requester', action: 'work', scope: f.scope, causallyBound: false, requiredReferences: [], authority: 'none' };
+    const factContext = { ...f.ctx, schemas: [f.schema, generationSchema, retractionSchema], ownedBodies: [registration] };
+    const approvalFact = f.fact({}, factContext);
+    const generationFact = f.next(approvalFact, { kind: 'generation-record', body: { record } }, factContext);
+    const records = [approvalFact, generationFact];
+    const storage = { owner: 'part-ten' as const, read: () => records,
+      append: () => f.success({ kind: 'local-durable' as const }) };
+    const store = createFactStore(factContext, storage);
+    const vector: FactPositionVectorReference = generation.vector;
     const binding: ShapeChangeBinding = { parent: generation.id, candidateShape: value(canonical(s.context.shape)).hash,
       document: { path: 'register-source/shape-changes/part-fourteen.json', hash: value(canonical({ approved: true })).hash },
-      approval: { owner: 'part-two', name: 'FactEnvelope', id: approvalId } };
-    const lineages = { 'machine-a': { head: { epoch: 0, position: 2 }, observedAt: f.now.value, closed: false } };
-    const vector = { owner: 'part-two', name: 'FactPositionVector', id: value(canonical({ type: 'FactPositionVector', schemaVersion: 1,
-      foldedThrough: { 'machine-a': { epoch: 0, position: 2 } }, knownLineages: lineages })).hash };
+      approval: { owner: 'part-two', name: 'FactEnvelope', id: approvalFact.id } };
+    const authority: PartTwoRegisterAuthorityPort = { owner: 'part-two', vector,
+      verifyVersionRow: () => f.success({ since: binding.approval!, approval: binding.approval!, landing: binding.approval! }),
+      verifyShapeChange: candidate => f.success(value(canonical(candidate)).bytes === value(canonical(binding)).bytes
+        ? binding.approval! : { owner: 'part-two', name: 'FactEnvelope', id: 'missing:approval' }) };
+    const makeProvider = (observedAt: number, position = records.length - 1) => createPartTwoRegisterProvider({ store, authority,
+      horizon: { lineages: { 'machine-a': { head: { epoch: 0, position }, observedAt, closed: false } }, stalenessBound: 100 }, context: s.context });
     const extract = value(decodeExtract(json('ChainExtract', { vector, rows: [] }), s.context));
-    const record = (input: unknown): Json => JSON.parse(JSON.stringify(input)) as Json;
-    const records: readonly { kind: string; name: string; value: Json }[] = [
-      { kind: 'chain-extract-record', name: 'ChainExtractRecord', value: record(json('ChainExtractRecord', { extract })) },
-      { kind: 'generation-record', name: 'GenerationRecord', value: record(json('GenerationRecord', { generation, at: f.now })) },
-      { kind: 'shape-change-approval', name: 'ShapeChangeApproval', value: record(json('ShapeChangeApproval', { binding })) },
-    ];
-    const registrations = records.map(row => value(registerOwnedBody({ owner: 'part-three', name: row.name, currentVersion: 1,
-      versions: { 1: { validate: input => ({ ok: true as const, value: input }) } }, migrations: {},
-      decodeCurrent: input => ({ ok: true as const, value: input }) }, policy(row.value), f.c)));
-    const schemas: FactSchema[] = records.map(row => ({ kind: row.kind, version: 1,
-      fields: { record: { kind: 'owned', owner: 'part-three', name: row.name } }, machineScope: 'shared', standing: 'requester',
-      action: 'work', scope: f.scope, causallyBound: false, requiredReferences: [], authority: 'none' }));
-    const context = { ...f.ctx, schemas, ownedBodies: registrations };
-    const [extractRecord, generationRecord, approvalRecord] = records;
-    const first = f.fact({ kind: extractRecord!.kind, body: { record: extractRecord!.value } }, context);
-    const second = f.next(first, { kind: generationRecord!.kind, body: { record: generationRecord!.value } }, context);
-    const third = f.next(second, { kind: approvalRecord!.kind, body: { record: approvalRecord!.value } }, context);
-    const storage = { owner: 'part-ten' as const, read: () => [first, second, third], append: () => f.success({ kind: 'local-durable' as const }) };
-    const provider = createPartTwoRegisterProvider({ store: createFactStore(context, storage), horizon: { lineages, stalenessBound: 100 }, context: s.context });
-    expect(value(provider.verifyExtract(extract)).id).toBe(first.id);
+    const provider = makeProvider(f.now.value);
+
+    expect(value(provider.verifyExtract(extract))).toEqual(vector);
     expect(value(provider.enteringForce(generation)).generation).toEqual(generation);
-    expect(value(provider.verifyShapeChange(binding)).id).toBe(third.id);
-    expect(value(provider.isCurrent(extract.vector, f.now))).toBe(true);
-    expect(value(provider.resolveReference({ provider: 'record', id: binding.approval.id }))).toBe(true);
-    expect(value(provider.isCurrent(extract.vector, f.clock(201)))).toBe(false);
-    const stale = value(decodeExtract(json('ChainExtract', { vector: { ...vector, id: value(canonical({ stale: true })).hash }, rows: [] }), s.context));
-    expect(detail(provider.verifyExtract(stale))).toContain('current verified P2 vector');
-    expect(detail(provider.verifyShapeChange({ ...binding, document: { ...binding.document, hash: value(canonical({ tampered: true })).hash } }))).toContain('no current Part Two approval');
+    expect(value(provider.verifyShapeChange(binding)).id).toBe(approvalFact.id);
+    expect(value(provider.isCurrent(vector, f.now))).toBe(true);
+    expect(value(provider.resolveReference({ provider: 'record', id: approvalFact.id, kind: 'note' }))).toBe(true);
+    const loaded = value(loadRegister(s.build(), generation, s.context, provider, f.now));
+    expect(value(readRegisterEntry('store', loaded, s.context)).declaration.id).toBe('store');
+    expect(detail(provider.resolveReference({ provider: 'completely-foreign-owner', id: approvalFact.id }))).toContain('namespace');
+    expect(detail(provider.isCurrent(vector, { value: 100 } as never))).toMatch(/clock|object|field/);
+    expect(detail(provider.isCurrent(vector, { ...f.now, value: 'not-a-clock' } as never))).toMatch(/finite|number/);
+    expect(value(makeProvider(f.now.value + 1).isCurrent(vector, f.clock(f.now.value + 1)))).toBe(true);
+    expect(detail(provider.verifyShapeChange({ ...binding, document: { ...binding.document, hash: value(canonical({ tampered: true })).hash } }))).toContain('different record');
+
+    const retractApproval = f.next(generationFact, { kind: 'retraction', body: { target: approvalFact.id, reason: 'withdrawn' } }, factContext);
+    const retractGeneration = f.next(retractApproval, { kind: 'retraction', body: { target: generationFact.id, reason: 'superseded' } }, factContext);
+    records.push(retractApproval, retractGeneration);
+    const repaired = makeProvider(f.now.value, 3);
+    expect(detail(repaired.verifyShapeChange(binding))).toContain('retracted');
+    expect(detail(repaired.enteringForce(generation))).toContain('no unique current');
+    expect(detail(repaired.resolveReference({ provider: 'record', id: approvalFact.id }))).toContain('retracted');
+    expect(detail(readRegisterEntry('store', loaded, s.context))).toContain('loadRegister');
   });
 });
