@@ -12,34 +12,6 @@ import type { ScheduledOccurrencePlan, ScheduledWorkPackagePort } from './contra
 
 function encoded(value: unknown): Readonly<{ bytes: string; hash: Hash }> { return take(canonical(value)); }
 
-function ownerProvesPackageInactive(namespace: string, current: readonly CurrentAssemblyFact[], context: AssemblyDecodeContext): boolean {
-  ensure(context.history, 'complete authoritative Part Ten package comparison is unavailable');
-  const packages = current.filter(row => row.record.type === 'LocalCapabilityPackage' && row.record.namespace === namespace);
-  if (packages.length === 0 || packages.some(row => row.conflicts.length > 0 || row.taint.length > 0)) return false;
-  if (packages.some(row => !consumeResult(context.history!.resolve(row.record), {
-    Success: verdict => verdict.admitted,
-    Refused: () => false,
-  }))) return false;
-  const transitions = current.filter((row): row is CurrentAssemblyFact & {
-    record: import('../assembly/index.js').PackageTransition;
-  } => row.record.type === 'PackageTransition' && row.record.package === namespace);
-  if (transitions.length === 0) return true;
-  const superseded = new Set(transitions.flatMap(row => [...row.record.predecessors, ...row.record.dependencyFacts]));
-  const heads = transitions.filter(row => !superseded.has(row.fact.id));
-  if (heads.length !== 1 || heads[0]!.record.to === 'active' || heads[0]!.conflicts.length > 0 || heads[0]!.taint.length > 0) return false;
-  return consumeResult(context.history.resolve(heads[0]!.record), {
-    Success: verdict => verdict.admitted,
-    Refused: () => false,
-  });
-}
-
-function isScheduledManifestResource(entrypointId: string): boolean {
-  // Part Ten owns this immutable entrypoint identity. Scheduling does not infer a
-  // resource role from its path; the package must name manifest resources as
-  // `manifest` or with the closed `*-manifest` role suffix.
-  return entrypointId === 'manifest' || entrypointId.endsWith('-manifest');
-}
-
 function authoritativeCollision(manifestJobId: string, namespace: string, context: AssemblyDecodeContext): string | undefined {
   ensure(context.history, 'complete authoritative Part Ten package comparison is unavailable');
   const current = take(context.history.current());
@@ -52,17 +24,15 @@ function authoritativeCollision(manifestJobId: string, namespace: string, contex
       && row.record.namespace === competingNamespace
       && row.record.declarationIds.some(id => id.toLowerCase() === manifestJobId.toLowerCase()));
     if (!potentiallyConflicting) continue;
-    // A namespace which may own this job resolves through Part Ten. A typed,
-    // owner-resolved inactive lifecycle is not an active competitor; every
-    // ambiguous, conflicted or tainted refusal remains fail-closed.
+    // Part Ten's current public resolver returns an active package or one generic
+    // refusal. Only the owner may distinguish proved-inactive history from an
+    // unresolved, conflicted, tainted, or ambiguous lifecycle.
     const competing = consumeResult(resolveActivePackage(competingNamespace, current, context), {
       Success: value => value,
       Refused: () => undefined,
     });
     if (!competing) {
-      ensure(ownerProvesPackageInactive(competingNamespace, current, context),
-        'competing package activity is unresolved');
-      continue;
+      ensure(false, 'competing package activity requires a Part Ten owner-issued activity resolution');
     }
     const jobId = competing.declarationIds.find(id => id.toLowerCase() === manifestJobId.toLowerCase());
     if (jobId) return jobId;
@@ -109,10 +79,10 @@ export function createScheduledWorkPackagePort(): ScheduledWorkPackagePort {
         ensure(!collision, collision === manifest.identity.jobId ? 'duplicate scheduled job id' : 'case-folded scheduled job identity collision');
         const body = active.entrypoints.find(entry => entry.id === manifest.work.entryPoint);
         ensure(body && body.digest === manifest.work.bodyDigest, 'manifest body differs from immutable Part Ten entry point');
-        ensure(isScheduledManifestResource(manifestEntry.id), 'selected package resource is not declared as a scheduled manifest');
-        const otherScheduledManifest = active.entrypoints.find(entry => entry.path !== input.manifestPath
-          && isScheduledManifestResource(entry.id));
-        ensure(!otherScheduledManifest, 'package declares another scheduled manifest resource');
+        const unclassifiedResources = active.entrypoints.filter(entry => entry.path !== input.manifestPath
+          && entry.id !== manifest.work.entryPoint);
+        ensure(unclassifiedResources.length === 0,
+          'complete package resource validation requires a Part Ten owner-issued resource view');
         const packageChecks = new Set([...active.checks.unit, ...active.checks.integration, ...active.checks.lifecycle]);
         ensure(manifest.activation.requiredChecks.every(check => packageChecks.has(check)), 'manifest requires a check absent from the Part Ten package');
         return manifest;

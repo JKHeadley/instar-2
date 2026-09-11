@@ -237,6 +237,66 @@ if (mode === 'round6-validation-recover') {
   process.stdout.write(JSON.stringify({ retired: recover(persisted.retired), support: recover(persisted.support),
     doubled: recover(persisted.doubled) }));
 }
+if (mode === 'round7-validation-seed-cut') {
+  const resourceCases = {};
+  for (const resourceKind of ['manifest', 'job-definition', 'schedule-resource', 'support', 'hidden-second']) {
+    const scheduled = scheduledFixture(); const assembly = assemblyRuntimeFixture(); const input = clone(scheduled.package);
+    if (resourceKind === 'job-definition' || resourceKind === 'schedule-resource') input.entrypoints[0].id = resourceKind;
+    if (resourceKind === 'support') input.entrypoints.push({ id: 'dependency-manifest', path: 'data/dependencies.json',
+      digest: hashBytes('{"dependencies":[]}') });
+    if (resourceKind === 'hidden-second') {
+      const second = clone(scheduled.manifest); second.schedule.at = '2027-01-02T00:00:00Z';
+      input.entrypoints.push({ id: 'job-definition-2', path: 'data/second.json',
+        digest: hashBytes(value(canonical(second)).bytes) });
+    }
+    const pkg = value(assembly.runtime.record('LocalCapabilityPackage', value(decodeLocalCapabilityPackage(input, assembly.c))));
+    value(assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+      id: `transition:round7:${resourceKind}`, operation: `operation:round7:${resourceKind}`,
+      package: pkg.namespace, manifestDigest: pkg.contentDigest, observedArtifactDigest: pkg.contentDigest }));
+    resourceCases[resourceKind] = { raw: assembly.raw, package: pkg, bytes: scheduled.manifestBytes };
+  }
+  const activityCases = {};
+  for (const state of ['recorded', 'staged', 'active', 'retired', 'inhibited']) {
+    const active = activeScheduledFixture(); const input = clone(active.package);
+    Object.assign(input, { id: `package:round7-competitor:${state}`,
+      namespace: `alice.round7-competitor-${state}`, contentDigest: active.h('d') });
+    const competing = value(active.assembly.runtime.record('LocalCapabilityPackage',
+      value(decodeLocalCapabilityPackage(input, active.context))));
+    if (state !== 'recorded') {
+      const first = value(active.assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+        id: `transition:round7-competitor:${state}:first`, operation: `operation:round7-competitor:${state}:first`,
+        package: competing.namespace, manifestDigest: competing.contentDigest,
+        observedArtifactDigest: competing.contentDigest,
+        ...(state === 'staged' ? { from: 'none', to: 'staged' } : {}) }));
+      if (state === 'retired' || state === 'inhibited') {
+        const firstRow = value(active.assembly.runtime.inspectCurrent()).find(row => row.record.id === first.id);
+        value(active.assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+          id: `transition:round7-competitor:${state}:terminal`, operation: `operation:round7-competitor:${state}:terminal`,
+          predecessors: [firstRow.fact.id], package: competing.namespace,
+          manifestDigest: competing.contentDigest, observedArtifactDigest: competing.contentDigest,
+          from: 'active', to: state }));
+      }
+    }
+    activityCases[state] = { raw: active.assembly.raw, package: active.package, bytes: active.manifestBytes };
+  }
+  const descriptor = openSync(durable, 'w'); writeSync(descriptor, JSON.stringify({ resourceCases, activityCases }));
+  fsyncSync(descriptor); closeSync(descriptor); process.kill(process.pid, 'SIGKILL');
+}
+if (mode === 'round7-validation-recover') {
+  const persisted = JSON.parse(readFileSync(durable, 'utf8')); const port = createScheduledWorkPackagePort();
+  const recover = data => {
+    const assembly = assemblyRuntimeFixture(); assembly.raw.splice(0, assembly.raw.length, ...data.raw);
+    return consumeResult(port.admitPackageResource({ package: data.package, manifestPath: 'scheduled/manifest.json',
+      manifestBytes: data.bytes, existingManifests: [] }, assembly.c), {
+      Success: () => ({ status: 'accepted' }),
+      Refused: refusal => ({ status: 'refused', detail: refusal.detail }),
+    });
+  };
+  process.stdout.write(JSON.stringify({
+    resources: Object.fromEntries(Object.entries(persisted.resourceCases).map(([key, data]) => [key, recover(data)])),
+    activity: Object.fromEntries(Object.entries(persisted.activityCases).map(([key, data]) => [key, recover(data)])),
+  }));
+}
 if (mode === 'legacy-recover') {
   const sourceBytes = readFileSync(durable, 'utf8'); const context = scheduledFixture().context;
   process.stdout.write(JSON.stringify(value(importLegacyScheduledJob(sourceBytes, context))));

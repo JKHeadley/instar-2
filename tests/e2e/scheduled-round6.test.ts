@@ -14,6 +14,6 @@ it('P15-NF-07 P15-NF-08 P15-NF-10 P15-NF-17 P15-NF-19 round-six package decision
     expect(cut.signal).toBe('SIGKILL');
     const recovered = run('round6-validation-recover');
     expect(recovered.status, recovered.stderr).toBe(0);
-    expect(JSON.parse(recovered.stdout)).toEqual({ retired: 'accepted', support: 'accepted', doubled: ['refused', 'refused'] });
+    expect(JSON.parse(recovered.stdout)).toEqual({ retired: 'refused', support: 'refused', doubled: ['refused', 'refused'] });
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }, 30_000);

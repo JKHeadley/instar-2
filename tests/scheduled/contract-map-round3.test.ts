@@ -47,6 +47,19 @@ it('P15-CONTRACT-MAP keeps real RunAdmissionPort production wiring on its exact 
   expect(() => checkP15Architecture(altered)).toThrow(/design-bound validation obligation/);
 });
 
+it('P15-CONTRACT-MAP keeps package resource inventory and inactive activity on the exact Part Ten request', () => {
+  const dispositions = p15Dispositions();
+  for (const number of [3, 7, 8, 10, 17, 19]) {
+    expect(dispositions.find((row: { number: number }) => row.number === number)?.held)
+      .toContain('UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md');
+  }
+  const altered = dispositions.map((row: { number: number }) => row.number === 19
+    ? { ...row, held: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md',
+      status: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md',
+      reason: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md' } : row);
+  expect(() => checkP15Architecture(altered)).toThrow(/design-bound validation obligation/);
+});
+
 it('P15-CONTRACT-MAP does not credit quota decoding as scheduled-work check 33 placement evidence', () => {
   const row = p15Dispositions().find((candidate: { number: number }) => candidate.number === 33);
   expect(row).toMatchObject({ executable: false, held: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36' });

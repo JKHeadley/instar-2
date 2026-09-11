@@ -7,17 +7,17 @@ import { fileURLToPath } from 'node:url';
 const executable = {
   1: 'Architecture test proves Part Fifteen introduces no duplicate core type and imports every consumed owner through its public index.',
   2: 'Governance test inventories every governed Rule and all 52 distinct fixture identifiers; this checker binds the inventory to the actual run.',
-  3: 'Package-resource admission delegates decoding and current signed-history selection to the public Part Ten owner paths.',
-  7: 'Package storage replacement executes through the same public Part Two and Part Ten operations with byte-identical scheduled admission; pinned calendar replacement remains held.',
-  8: 'Closed manifest decoding, required-field omission, duplicate identity, canonical bytes, Part Ten package/body pinning and cold reconstruction execute at all three tiers.',
+  3: 'Selected-resource admission delegates decoding, active signed-history selection and package/body binding to public Part Ten owner paths.',
+  7: 'Arbitrary selected-resource ids and paths preserve byte-identical scheduled admission; complete multi-resource and pinned-calendar replacement remain held.',
+  8: 'Closed manifest decoding, required-field omission, duplicate identity, canonical bytes and selected Part Ten package/body pinning execute at all three tiers.',
   9: 'The local cron-v1 grammar and normalization arm executes; pinned zone/calendar expansion remains held at its named adapter seam.',
-  10: 'An invalid manifest is surfaced while an independent valid signed package and constitutional canonical boundary remain usable.',
+  10: 'An invalid selected manifest is surfaced while an independent valid signed package and constitutional canonical boundary remain usable.',
   11: 'All authority, bounds, supervision and proof groups are mandatory closed fields and bind the immutable body digest.',
   14: 'The absolute one-shot due/cutoff arm executes; missed-group disposition remains held at the named calendar and loop seams.',
   16: 'Part Ten current-package resolution refuses missing or half-staged authority; scheduled Run boundary behavior remains held at Four.',
-  17: 'Part Ten decoding, signed namespace/source selection and retirement re-resolution execute without a schedule-surface dependency.',
+  17: 'Part Ten decoding, signed namespace/source selection and selected-package retirement re-resolution execute; inactive competitor classification remains owner-held.',
   18: 'Local every-machine instance identity expansion executes; authenticated cross-epoch admission and long-history arms remain held.',
-  19: 'Part Ten package-history resolution refuses a potentially conflicting active definition, including an unresolved competing namespace; calendar-boundary expansion remains held.',
+  19: 'Part Ten active-package resolution refuses a conflicting active definition; inactive/unresolved distinction, complete resource inventory and calendar expansion remain held.',
   27: 'The future one-shot boundary executes; full outage coverage remains held at the named loop and calendar seams.',
   29: 'Closed percent range, explicit-action-clock freshness and unknown-evidence refusal execute through Part One; resource allocation remains separately held.',
   31: 'Local capacity evidence range, freshness and unknown-evidence classification executes; an actual capacity-inhibited launch remains held.',
@@ -27,19 +27,22 @@ const executable = {
 };
 
 const held = {
-  3: 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69-and-Part-Ten-production-wiring',
+  3: 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69-and-Part-Ten-production-wiring-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md',
   4: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49',
   5: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-loop-followup.md-row-36',
   6: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
-  7: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  7: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md',
+  8: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md',
   9: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  10: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md',
   12: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-confined-production-driver',
   13: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   14: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   15: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-operator-followup.md-row-69',
   16: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49',
+  17: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md',
   18: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-facts-followup.md-row-47-and-seam-response-rungraph-followup.md-row-48-and-seam-response-intake-followup.md-row-49',
-  19: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  19: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md',
   20: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   21: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-facts-followup.md-row-47-and-seam-response-rungraph-followup.md-row-48-and-seam-response-intake-followup.md-row-49',
   22: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
@@ -94,6 +97,7 @@ const proofFiles = [
 const laneDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.instar/lanes');
 const calendarRequest = 'design-19-scheduled-work-seam-request-calendar-adapter.md';
 const runAdmissionRequest = 'design-19-scheduled-work-seam-request-run-admission-production.md';
+const packageResourceRequest = 'design-19-scheduled-work-seam-request-package-resource-and-activity.md';
 const dependencyFiles = value => value.match(/(?:SEAM-LEDGER|seam-response-[a-z0-9-]+|design-19-[a-z0-9-]+)\.md/g) ?? [];
 
 export function checkP15Architecture(dispositions = p15Dispositions()) {
@@ -134,11 +138,13 @@ export function checkP15Architecture(dispositions = p15Dispositions()) {
       const path = resolve(laneDirectory, file);
       if (!existsSync(path)) throw new Error(`${row.id}: held disposition names nonexistent ${file}`);
       const source = readFileSync(path, 'utf8');
-      if (file === calendarRequest || file === runAdmissionRequest) {
+      if (file === calendarRequest || file === runAdmissionRequest || file === packageResourceRequest) {
         if (!row.held.includes(`UNGRANTED-REQUEST-${file}`) || !/^Status: REQUESTED/m.test(source))
           throw new Error(`${row.id}: ${file} must be labelled as an UNGRANTED REQUEST`);
         if (file === runAdmissionRequest && !/RunAdmissionPort/.test(source))
           throw new Error(`${row.id}: run-admission request does not name the missing owner contract`);
+        if (file === packageResourceRequest && !/owner-issued package-activity result/.test(source))
+          throw new Error(`${row.id}: package-resource request does not name the missing owner activity contract`);
       } else if (file !== 'SEAM-LEDGER.md' && !/GRANTED/i.test(source.slice(0, 2500))) {
         throw new Error(`${row.id}: ${file} does not establish a granted dependency`);
       }

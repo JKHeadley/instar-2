@@ -38,7 +38,7 @@ describe('Part Fifteen round-five owner-port integration', () => {
       manifestBytes: clean.manifestBytes, existingManifests: [] }, clean.context))).toBe('accepted');
   });
 
-  it('P15-NF-08 P15-NF-10 P15-NF-11 admits valid packages with independent declarations or support entry points', () => {
+  it('holds extra package resources while still admitting the ordinary and extra-declaration neighbors', () => {
     const scheduled = scheduledFixture(); const port = createScheduledWorkPackagePort();
     for (const mode of ['ordinary', 'extra-entrypoint', 'extra-declaration'] as const) {
       const assembly = assemblyRuntimeFixture(); const input = clone(scheduled.package) as any;
@@ -51,7 +51,8 @@ describe('Part Fifteen round-five owner-port integration', () => {
         manifestDigest: pkg.contentDigest, observedArtifactDigest: pkg.contentDigest }));
       expect(status(resolveActivePackage(pkg.namespace, [], assembly.c))).toBe('accepted');
       expect(status(port.admitPackageResource({ package: pkg, manifestPath: 'scheduled/manifest.json',
-        manifestBytes: scheduled.manifestBytes, existingManifests: [] }, assembly.c))).toBe('accepted');
+        manifestBytes: scheduled.manifestBytes, existingManifests: [] }, assembly.c)))
+        .toBe(mode === 'extra-entrypoint' ? 'refused' : 'accepted');
     }
   });
 
