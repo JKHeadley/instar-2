@@ -1,6 +1,11 @@
 import type { BoundaryContext, Clock, Hash, Result } from '../index.js';
 import type { LocalCapabilityPackage } from '../assembly/index.js';
 
+declare class ScheduledManifestBrand {
+  private readonly scheduledManifest: 'part-fifteen-decoder';
+  private constructor();
+}
+
 export type ScheduledPriority = 'low' | 'maintenance' | 'medium' | 'high' | 'critical';
 export type ScheduledPlacement = 'global-once' | 'every-eligible-machine';
 export type ScheduledCatchUp = 'none' | 'latest';
@@ -20,7 +25,7 @@ export type ScheduledCalendar = Readonly<{
 }>;
 
 // This is a Part Ten package resource, not a new constitutional record or fact kind.
-export interface ScheduledWorkManifest {
+export interface ScheduledWorkManifest extends ScheduledManifestBrand {
   readonly type: 'ScheduledWorkManifest';
   readonly schemaVersion: 2;
   readonly identity: Readonly<{

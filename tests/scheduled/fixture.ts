@@ -2,8 +2,10 @@ import { canonical, consumeResult } from '../../src/index.js';
 import type { BoundaryContext, Hash, Result } from '../../src/index.js';
 import { hashBytes } from '../../src/facts/index.js';
 import { decodeLocalCapabilityPackage } from '../../src/assembly/index.js';
-import type { ScheduledWorkManifest } from '../../src/scheduled/index.js';
+import { decodeScheduledWorkManifest } from '../../src/scheduled/index.js';
 import { fixture as coreFixture } from '../fixtures.js';
+import { assemblyInput } from '../assembly/fixture.js';
+import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 
 export function value<T>(result: Result<T>): T {
   return consumeResult(result, { Success: item => item, Refused: refusal => { throw new Error(refusal.detail); } });
@@ -13,9 +15,8 @@ const h = (character: string) => `sha256:${character.repeat(64)}` as Hash;
 
 export function scheduledFixture() {
   const core = coreFixture();
-  const context: BoundaryContext = { preserved: 'capture:scheduled-manifest', site: 'types.decode',
-    register: { generation: core.ctx.register.generation, sites: core.ctx.register.sites, entries: core.ctx.register.entries } };
-  const manifest: ScheduledWorkManifest = {
+  const context: BoundaryContext = { ...core.ctx, preserved: 'capture:scheduled-manifest', site: 'types.decode' };
+  const manifestInput = {
     type: 'ScheduledWorkManifest', schemaVersion: 2,
     identity: { jobId: 'job:maintenance', displayName: 'Maintenance', accountableOwner: 'alice', packageVersion: '1.0.0', contentDigest: h('a') },
     schedule: { kind: 'one-shot', at: '2027-01-01T00:00:00Z', activationInstant: '2026-12-01T00:00:00Z',
@@ -30,7 +31,8 @@ export function scheduledFixture() {
     recovery: { parentDuty: 'loop:maintenance', rollingBudget: 'budget:rolling', loopPolicy: 'loop:bounded', backoffPolicy: 'backoff:bounded', breakerOutcomeWindow: 'window:causal-cohort', recoveryPolicy: 'recovery:observe', maxOverdueAgeMs: 86_400_000, exhaustionDestination: 'result:exhausted' },
     presentation: { destination: 'surface:schedule', pushPolicy: 'pull-first', description: 'Runs bounded maintenance.' },
     activation: { requiredChecks: ['P15-NF-08', 'P15-NF-11'], semanticReview: 'review:scheduled', assemblyCompatibility: 'assembly:darwin', holderProof: 'holder:challenge', rollout: 'dark' },
-  };
+  } as const;
+  const manifest = value(decodeScheduledWorkManifest(manifestInput, context));
   const manifestBytes = value(canonical(manifest)).bytes;
   const packageInput = { type: 'LocalCapabilityPackage', schemaVersion: 1, id: 'package:scheduled', predecessors: [], dependencyFacts: [],
     namespace: 'alice.scheduled-maintenance', ownerPrincipal: 'alice', version: '1.0.0', contentDigest: h('a'), sourceDigest: h('c'), parent: '', upstream: '', priorPackage: '',
@@ -40,4 +42,13 @@ export function scheduledFixture() {
   };
   const pkg = value(decodeLocalCapabilityPackage(packageInput, context));
   return { core, context, manifest, manifestBytes, package: pkg, h };
+}
+
+export function activeScheduledFixture() {
+  const scheduled = scheduledFixture(); const assembly = assemblyRuntimeFixture();
+  const baselineLength = assembly.raw.length;
+  const pkg = value(assembly.runtime.record('LocalCapabilityPackage', scheduled.package));
+  value(assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'), id: 'transition:scheduled:active',
+    package: pkg.namespace, manifestDigest: pkg.contentDigest, observedArtifactDigest: pkg.contentDigest }));
+  return { ...scheduled, assembly, package: pkg, context: assembly.c, baselineLength };
 }

@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { consumeResult } from '../../src/index.js';
+import { decodeScheduledCapacityMeasurement, readScheduledBusinessDisposition } from '../../src/scheduled/index.js';
+import { scheduledFixture } from './fixture.js';
 import { setup, completedRun, value } from '../rungraph/fixtures.js';
 
 describe('Part Fifteen consumes landed owner ports without replacing authority', () => {
   it('P15-NF-06 only a Part Five terminal exit supplies the durable business disposition', () => {
     const f = completedRun();
     expect(f.completed.state).toBe('completed');
-    expect(value(f.graph.readExit({ owner: 'part-five', name: 'Run', id: f.id })).exit.kind).toBe('completed');
+    expect(value(readScheduledBusinessDisposition(f.graph, { owner: 'part-five', name: 'Run', id: f.id })).exit.kind).toBe('completed');
+    for (const falseOutcome of [
+      { type: 'spawn', id: f.id }, { type: 'queue', id: f.id }, { type: 'Lease', id: f.id }, { type: 'receipt', id: f.id },
+    ]) expect(consumeResult(readScheduledBusinessDisposition(f.graph, falseOutcome), { Success: () => 'accepted', Refused: () => 'refused' })).toBe('refused');
   });
 
   it('P15-NF-22 ignores a mutable Run view and reconstructs current state through RunGraphPort', () => {
@@ -14,5 +20,20 @@ describe('Part Fifteen consumes landed owner ports without replacing authority',
     forged.state = 'completed'; forged.head = 'forged:last-run';
     const reread = value(f.graph.read(f.id));
     expect(reread.state).toBe('ready'); expect(reread.head).not.toBe(forged.head);
+  });
+
+  it('P15-NF-29 refuses malformed or foreign capacity measurements through Part One', () => {
+    const f = scheduledFixture(); const context = { ...f.core.ctx, site: 'types.decode', register: { ...f.core.ctx.register,
+      entries: [...f.core.ctx.register.entries, 'account:a', 'account:b'],
+      subjects: { ...f.core.ctx.register.subjects, 'quota-utilization': ['percent'] } } };
+    const measurement = { type: 'Measurement', schemaVersion: 1, subject: { kind: 'quota-utilization', instance: 'account:a' },
+      value: 50, unit: 'percent', at: f.core.clock(100), by: 'probe' };
+    expect(consumeResult(decodeScheduledCapacityMeasurement('quota-utilization', 'account:a', measurement, context),
+      { Success: () => 'accepted', Refused: () => 'refused' })).toBe('accepted');
+    for (const malformed of [
+      { ...measurement, value: Number.NaN }, { ...measurement, value: '50' }, { ...measurement, by: 'unregistered' },
+      { ...measurement, subject: { ...measurement.subject, instance: 'account:b' } }, { ...measurement, configuredTarget: 50 },
+    ]) expect(consumeResult(decodeScheduledCapacityMeasurement('quota-utilization', 'account:a', malformed, context),
+      { Success: () => 'accepted', Refused: () => 'refused' })).toBe('refused');
   });
 });

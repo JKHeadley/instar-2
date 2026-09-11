@@ -5,7 +5,7 @@ import type { NormalizedCronV1 } from './contracts.js';
 const domains = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 6]] as const;
 
 function decimal(value: string, path: string): number {
-  ensure(/^(0|[1-9][0-9]*)$/.test(value), `${path}: expected unsigned canonical decimal`);
+  ensure(/^[0-9]+$/.test(value), `${path}: expected unsigned decimal`);
   const parsed = Number(value); ensure(Number.isSafeInteger(parsed), `${path}: integer out of range`); return parsed;
 }
 
@@ -45,5 +45,8 @@ export function parseCronV1(source: string): NormalizedCronV1 {
 }
 
 export function normalizeCronV1(source: unknown, context: BoundaryContext): Result<NormalizedCronV1> {
-  return boundary('CronV1Normalization', source, context, () => parseCronV1(String(source)));
+  return boundary('CronV1Normalization', source, context, () => {
+    ensure(typeof source === 'string', 'cron-v1 expression must be text');
+    return parseCronV1(source);
+  });
 }

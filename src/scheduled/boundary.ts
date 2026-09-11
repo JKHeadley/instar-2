@@ -1,5 +1,5 @@
 import { canonical, consumeResult, defineDecoder, deriveThrough } from '../index.js';
-import type { BoundaryContext, Json, Refused, Result } from '../index.js';
+import type { BoundaryContext, Refused, Result } from '../index.js';
 
 class Inherited extends Error {
   constructor(readonly refusal: Refused) { super(refusal.detail); }
@@ -24,10 +24,6 @@ export function freeze<T>(value: T): T {
   return value;
 }
 
-export function json(value: unknown): Json {
-  return JSON.parse(take(canonical(value)).bytes) as Json;
-}
-
 export function boundary<T>(name: string, input: unknown, context: BoundaryContext, run: () => T): Result<T> {
   let inherited: Refused | undefined;
   const definition = defineDecoder<T, BoundaryContext>({
@@ -45,7 +41,10 @@ export function boundary<T>(name: string, input: unknown, context: BoundaryConte
     },
   }, context.preserved);
   const result = consumeResult(definition, {
-    Success: decoder => deriveThrough(decoder, { type: name, schemaVersion: 1, input: json(input) }, context),
+    // Keep the caller value inside the framework-owned snapshot. Unsupported
+    // JSON values are therefore converted to the same typed refusal as every
+    // other decoder boundary instead of escaping before deriveThrough runs.
+    Success: decoder => deriveThrough(decoder, { type: name, schemaVersion: 1, input }, context),
     Refused: refusal => refusal,
   });
   return inherited ?? result;
