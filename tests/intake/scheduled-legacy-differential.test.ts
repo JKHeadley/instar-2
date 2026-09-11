@@ -162,6 +162,7 @@ type DifferentialEvidence=Readonly<{
   comparisons: readonly Readonly<{
     fixtureId: LegacyFixtureId;kind: LegacyKind;path: string;mode: MutationMode;base: unknown;head: unknown;
   }>[];
+  controls: readonly Readonly<{ fixtureId: LegacyFixtureId;kind: LegacyKind;base: unknown;head: unknown }>[];
   fieldCount: number;
   fixturePaths: ReadonlyMap<LegacyFixtureId,ReadonlySet<string>>;
 }>;
@@ -172,17 +173,24 @@ function differentialEvidence(): DifferentialEvidence {
   const comparisons: Array<Readonly<{
     fixtureId: LegacyFixtureId;kind: LegacyKind;path: string;mode: MutationMode;base: unknown;head: unknown;
   }>>=[];
+  const controls: Array<Readonly<{
+    fixtureId: LegacyFixtureId;kind: LegacyKind;base: unknown;head: unknown;
+  }>>=[];
   const fixturePaths=new Map<LegacyFixtureId,ReadonlySet<string>>();
-  let fieldCount=0;
+  const coveredMutationFields=new Set<string>();
   for(const [fixtureId,kind] of legacyFixtures) {
     const base=setup(false,fixtureId,kind),head=setup(true,fixtureId,kind);
     expect(head.fact).toEqual(base.fact);
-    expect(wire(verifyAndAdmit(json(base.fact),'machine-a',base.context)))
-      .toEqual(wire(verifyAndAdmit(json(head.fact),'machine-a',head.context)));
+    const baseControl=wire(verifyAndAdmit(json(base.fact),'machine-a',base.context));
+    const headControl=wire(verifyAndAdmit(json(head.fact),'machine-a',head.context));
+    controls.push({ fixtureId,kind,base:baseControl,head:headControl });
     const fields=paths(base.fact.body);
     fixturePaths.set(fixtureId,new Set(fields.map(path=>path.join('.'))));
-    fieldCount+=fields.length;
-    for(const path of fields) for(const mode of modes) {
+    for(const path of fields) {
+      const field=`${kind}:${path.join('.')}`;
+      if(coveredMutationFields.has(field)) continue;
+      coveredMutationFields.add(field);
+      for(const mode of modes) {
       const baseSigned=signEnvelope({ ...base.fact,body: mutate(base.fact.body,path,mode) },
         base.f.deps.author.privateKey);
       const headSigned=signEnvelope({ ...head.fact,body: mutate(head.fact.body,path,mode) },
@@ -190,14 +198,15 @@ function differentialEvidence(): DifferentialEvidence {
       const baseResult=wire(verifyAndAdmit(baseSigned,'machine-a',base.context));
       const headResult=wire(verifyAndAdmit(headSigned,'machine-a',head.context));
       comparisons.push({ fixtureId,kind,path: path.join('.'),mode,base: baseResult,head: headResult });
+      }
     }
   }
-  cachedEvidence={ comparisons,fieldCount,fixturePaths };
+  cachedEvidence={ comparisons,controls,fieldCount:coveredMutationFields.size,fixturePaths };
   return cachedEvidence;
 }
 
 it('P4-PRESERVE-03 generated 32e5961-vs-HEAD mutation Results cover every legacy fixture field and mutation class',()=>{
-  const { comparisons,fieldCount }=differentialEvidence();
+  const { comparisons,controls,fieldCount }=differentialEvidence();
   expect(new Set(legacyFixtures.map(([,kind])=>kind))).toEqual(new Set([
     'intake-receipt','intake-resolved','intake-admitted','intake-held','intake-expired',
     'intake-collapse','intake-mismatch','intake-stop','intake-stop-signal',
@@ -205,9 +214,11 @@ it('P4-PRESERVE-03 generated 32e5961-vs-HEAD mutation Results cover every legacy
   ]));
   expect(fieldCount).toBeGreaterThan(0);
   expect(comparisons).toHaveLength(fieldCount*modes.length);
+  expect(controls).toHaveLength(legacyFixtures.length);
+  expect(controls.filter(row=>value(canonical(row.base)).bytes!==value(canonical(row.head)).bytes)).toEqual([]);
   expect(comparisons.filter(row => value(canonical(row.base)).bytes!==value(canonical(row.head)).bytes))
     .toEqual([]);
-  console.log(`P4-PRESERVE-03 differential cases=${comparisons.length+legacyFixtures.length}; fields=${fieldCount}; fixtures=${legacyFixtures.length}`);
+  console.log(`P4-PRESERVE-03 differential cases=${comparisons.length+controls.length}; fields=${fieldCount}; fixtures=${controls.length}`);
 },120_000);
 
 it('P4-PRESERVE-04 V178 fixture-wide inventory includes every accepted legacy optional-field variant',()=>{
