@@ -3,7 +3,6 @@ import { causalCone,causalStanding,decodeHistoricalBody,foldKey,hashBytes,regist
 import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readHistorical,readHistoricalEvidence,scopeIncludes } from '../index.js';
 import { prepareSnapshot } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactSchema,FactSnapshot,FactStatus,OwnedBodyContext,OwnedBodyRegistration,OwnedShape } from '../facts/index.js';
-import { decodeFrame } from '../facts/envelope.js';
 import type { Result } from '../index.js';
 import { IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
 import type { ProjectionDefinition } from '../projections/index.js';
@@ -109,14 +108,25 @@ export function isScheduledIntakeAdmission(fact: FactEnvelope,facts: readonly Fa
         &&capture.hash===receiptBody.rawHash&&hashBytes(capture.bytes)===capture.hash,
       'scheduled intake: preserved stimulus capture is missing or changed','integrity');
       const intent=object(body.intent!),principalInput=object(intent.principal!);
-      const checked=take(decodeFrame(fact,context)),originBytes=take(canonical(fact)).bytes,originReference=`origin:${fact.id}`;
+      const originBytes=take(canonical(fact)).bytes,originReference=`origin:${fact.id}`;
       const captures={ ...context.decode.captures,[originReference]: originBytes };
       const captureStatuses=Object.fromEntries(Object.entries(context.captures).map(([reference,value]) => [reference,value.status]));
-      const principal=take(readHistorical('VerifiedPrincipal',principalInput,{
-        origin: { owner:'part-two',name:'FactEnvelope',id:fact.id },
-        capture: { reference:originReference,hash:hashBytes(originBytes) },machineKeyId:checked.keyId,
-        path: ['body','intent','principal']
-      },{ ...context.decode,preserved:fact.id,captures,captureStatuses })).view;
+      const signedPrincipals=Object.keys(context.decode.register.keys).flatMap(machineKeyId =>
+        consumeResult(readHistorical('VerifiedPrincipal',principalInput,{
+          origin: { owner:'part-two',name:'FactEnvelope',id:fact.id },
+          capture: { reference:originReference,hash:hashBytes(originBytes) },machineKeyId,
+          path: ['body','intent','principal']
+        },{ ...context.decode,preserved:fact.id,captures,captureStatuses }),{
+          Success: value => [value],Refused: () => []
+        }));
+      // Key rotation or replicated register entries may legitimately verify the
+      // same immutable signed field more than once. Collapse equal reads and
+      // reject only a genuinely absent or disagreeing identity.
+      const distinctPrincipals=[...new Map(signedPrincipals.map(candidate =>
+        [take(canonical(candidate.view)).hash,candidate] as const)).values()];
+      requireIntake(distinctPrincipals.length===1,
+        'scheduled intake: signed stimulus identity is missing or conflicted','integrity');
+      const principal=distinctPrincipals[0]!.view;
       if(principal.kind!=='system') return false;
       let canonicalTick=false;
       try { decodeScheduledTickBody(capture.bytes,arrival.route.eventId,context.decode); canonicalTick=true; }
