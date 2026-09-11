@@ -182,6 +182,61 @@ if (mode === 'round5-validation-recover') {
     additionalContent: recover(persisted.extraTail, persisted.extraPackage, persisted.extraManifestBytes),
   }));
 }
+if (mode === 'round6-validation-seed-cut') {
+  const retired = activeScheduledFixture();
+  const competingInput = clone(retired.package);
+  Object.assign(competingInput, { id: 'package:round6-competitor', namespace: 'alice.round6-competitor', contentDigest: retired.h('d') });
+  const competitor = value(retired.assembly.runtime.record('LocalCapabilityPackage',
+    value(decodeLocalCapabilityPackage(competingInput, retired.context))));
+  value(retired.assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+    id: 'transition:round6-competitor:active', operation: 'operation:round6-competitor:active',
+    package: competitor.namespace, manifestDigest: competitor.contentDigest, observedArtifactDigest: competitor.contentDigest }));
+  const activeHead = value(retired.assembly.runtime.inspectCurrent())
+    .find(row => row.record.id === 'transition:round6-competitor:active');
+  value(retired.assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+    id: 'transition:round6-competitor:retired', operation: 'operation:round6-competitor:retired',
+    predecessors: [activeHead.fact.id], package: competitor.namespace, manifestDigest: competitor.contentDigest,
+    observedArtifactDigest: competitor.contentDigest, from: 'active', to: 'retired' }));
+
+  const scheduled = scheduledFixture(); const resources = assemblyRuntimeFixture();
+  const resourceInput = clone(scheduled.package);
+  resourceInput.entrypoints.push({ id: 'support-data', path: 'scheduled/support.json', digest: hashBytes('{"threshold":3}') });
+  const resourcePackage = value(resources.runtime.record('LocalCapabilityPackage',
+    value(decodeLocalCapabilityPackage(resourceInput, resources.c))));
+  value(resources.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+    id: 'transition:round6-resources', operation: 'operation:round6-resources', package: resourcePackage.namespace,
+    manifestDigest: resourcePackage.contentDigest, observedArtifactDigest: resourcePackage.contentDigest }));
+
+  const doubled = assemblyRuntimeFixture(); const doubledInput = clone(scheduled.package);
+  const secondManifest = clone(scheduled.manifest); secondManifest.schedule.at = '2027-01-02T00:00:00Z';
+  const secondBytes = value(canonical(secondManifest)).bytes;
+  doubledInput.entrypoints.push({ id: 'another-manifest', path: 'data/second.json', digest: hashBytes(secondBytes) });
+  const doubledPackage = value(doubled.runtime.record('LocalCapabilityPackage',
+    value(decodeLocalCapabilityPackage(doubledInput, doubled.c))));
+  value(doubled.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+    id: 'transition:round6-doubled', operation: 'operation:round6-doubled', package: doubledPackage.namespace,
+    manifestDigest: doubledPackage.contentDigest, observedArtifactDigest: doubledPackage.contentDigest }));
+
+  const payload = { retired: { raw: retired.assembly.raw, package: retired.package, bytes: retired.manifestBytes },
+    support: { raw: resources.raw, package: resourcePackage, bytes: scheduled.manifestBytes },
+    doubled: { raw: doubled.raw, package: doubledPackage, firstBytes: scheduled.manifestBytes, secondBytes } };
+  const descriptor = openSync(durable, 'w'); writeSync(descriptor, JSON.stringify(payload)); fsyncSync(descriptor); closeSync(descriptor);
+  process.kill(process.pid, 'SIGKILL');
+}
+if (mode === 'round6-validation-recover') {
+  const persisted = JSON.parse(readFileSync(durable, 'utf8')); const port = createScheduledWorkPackagePort();
+  const recover = data => {
+    const assembly = assemblyRuntimeFixture(); assembly.raw.splice(0, assembly.raw.length, ...data.raw);
+    const admit = (path, bytes) => consumeResult(port.admitPackageResource({ package: data.package,
+      manifestPath: path, manifestBytes: bytes, existingManifests: [] }, assembly.c),
+    { Success: () => 'accepted', Refused: () => 'refused' });
+    return data.secondBytes
+      ? [admit('scheduled/manifest.json', data.firstBytes), admit('data/second.json', data.secondBytes)]
+      : admit('scheduled/manifest.json', data.bytes);
+  };
+  process.stdout.write(JSON.stringify({ retired: recover(persisted.retired), support: recover(persisted.support),
+    doubled: recover(persisted.doubled) }));
+}
 if (mode === 'legacy-recover') {
   const sourceBytes = readFileSync(durable, 'utf8'); const context = scheduledFixture().context;
   process.stdout.write(JSON.stringify(value(importLegacyScheduledJob(sourceBytes, context))));

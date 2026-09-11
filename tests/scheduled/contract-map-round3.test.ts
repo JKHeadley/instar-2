@@ -34,3 +34,20 @@ it('P15-CONTRACT-MAP rejects a real grant attached to the wrong validation oblig
     ? { ...row, held: wrong, status: wrong, reason: wrong } : row);
   expect(() => checkP15Architecture(altered)).toThrow(/design-bound validation obligation/);
 });
+
+it('P15-CONTRACT-MAP keeps real RunAdmissionPort production wiring on its exact ungranted request', () => {
+  const dispositions = p15Dispositions();
+  for (const number of [6, 22, 38, 45]) {
+    expect(dispositions.find((row: { number: number }) => row.number === number)?.held)
+      .toContain('UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md');
+  }
+  const unrelated = 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-real-Part-Six-RunAdmissionPort-production-wiring';
+  const altered = dispositions.map((row: { number: number }) => row.number === 6
+    ? { ...row, held: unrelated, status: unrelated, reason: unrelated } : row);
+  expect(() => checkP15Architecture(altered)).toThrow(/design-bound validation obligation/);
+});
+
+it('P15-CONTRACT-MAP does not credit quota decoding as the P15-NF-33 placement decision', () => {
+  const row = p15Dispositions().find((candidate: { number: number }) => candidate.number === 33);
+  expect(row).toMatchObject({ executable: false, held: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36' });
+});

@@ -21,7 +21,6 @@ const executable = {
   27: 'The future one-shot boundary executes; full outage coverage remains held at the named loop and calendar seams.',
   29: 'Closed percent range, explicit-action-clock freshness and unknown-evidence refusal execute through Part One; resource allocation remains separately held.',
   31: 'Local capacity evidence range, freshness and unknown-evidence classification executes; an actual capacity-inhibited launch remains held.',
-  33: 'Local quota-wall validation executes; launch through a pinned allocated candidate remains held.',
   34: 'Local unobservable-evidence classification executes; finite-exposure allocation and route policy remain held.',
   39: 'The closed manifest keeps priority separate from authority and budget; real resource admission remains held at Part Six.',
   51: 'One-way source preservation, omitted-model default, execution-mode learning and unwitnessed-locality inhibition execute; launch remains held.',
@@ -31,7 +30,7 @@ const held = {
   3: 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69-and-Part-Ten-production-wiring',
   4: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49',
   5: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-loop-followup.md-row-36',
-  6: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-real-Part-Six-RunAdmissionPort-production-wiring',
+  6: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
   7: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   9: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   12: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-confined-production-driver',
@@ -43,7 +42,7 @@ const held = {
   19: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   20: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   21: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-facts-followup.md-row-47-and-seam-response-rungraph-followup.md-row-48-and-seam-response-intake-followup.md-row-49',
-  22: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-real-Part-Six-RunAdmissionPort-production-wiring',
+  22: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
   23: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-loop-followup.md-and-seam-response-judgment.md-row-32',
   24: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   25: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
@@ -59,14 +58,14 @@ const held = {
   35: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-loop-followup.md-and-seam-response-judgment.md-rows-27-32',
   36: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-judgment.md-row-27-and-seam-response-intake-followup.md-row-49',
   37: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-rows-36-37-and-seam-response-facts-followup.md-row-37',
-  38: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-real-Part-Six-RunAdmissionPort-and-shutdown-driver',
+  38: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
   39: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-resource-admission-arm',
   40: 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md',
   41: 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md',
   42: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-judgment.md-row-23',
   43: 'NON-EXECUTABLE-UNTIL-seam-response-judgment.md-row-27-and-seam-response-assembly-followup.md-row-30',
   44: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-judgment.md-row-23',
-  45: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-real-Part-Six-RunAdmissionPort-and-shutdown-driver-and-seam-response-judgment.md-row-23',
+  45: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver-and-seam-response-judgment.md-row-23-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
   46: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33',
   47: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33',
   48: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-seam-response-operator-followup.md-row-69',
@@ -94,6 +93,7 @@ const proofFiles = [
 ];
 const laneDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.instar/lanes');
 const calendarRequest = 'design-19-scheduled-work-seam-request-calendar-adapter.md';
+const runAdmissionRequest = 'design-19-scheduled-work-seam-request-run-admission-production.md';
 const dependencyFiles = value => value.match(/(?:SEAM-LEDGER|seam-response-[a-z0-9-]+|design-19-[a-z0-9-]+)\.md/g) ?? [];
 
 export function checkP15Architecture(dispositions = p15Dispositions()) {
@@ -134,9 +134,11 @@ export function checkP15Architecture(dispositions = p15Dispositions()) {
       const path = resolve(laneDirectory, file);
       if (!existsSync(path)) throw new Error(`${row.id}: held disposition names nonexistent ${file}`);
       const source = readFileSync(path, 'utf8');
-      if (file === calendarRequest) {
+      if (file === calendarRequest || file === runAdmissionRequest) {
         if (!row.held.includes(`UNGRANTED-REQUEST-${file}`) || !/^Status: REQUESTED/m.test(source))
-          throw new Error(`${row.id}: calendar adapter must be labelled as an UNGRANTED REQUEST`);
+          throw new Error(`${row.id}: ${file} must be labelled as an UNGRANTED REQUEST`);
+        if (file === runAdmissionRequest && !/RunAdmissionPort/.test(source))
+          throw new Error(`${row.id}: run-admission request does not name the missing owner contract`);
       } else if (file !== 'SEAM-LEDGER.md' && !/GRANTED/i.test(source.slice(0, 2500))) {
         throw new Error(`${row.id}: ${file} does not establish a granted dependency`);
       }
