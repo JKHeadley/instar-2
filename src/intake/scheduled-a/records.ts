@@ -1,5 +1,5 @@
 import type { BoundaryContext,Clock,DecodeContext,Evidence,HistoricalRead,Inventory,Json,RegisterReadPort,Scope,VerifiedPrincipal } from '../../index.js';
-import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readHistorical,readHistoricalEvidence,scopeIncludes } from '../../index.js';
+import { canonical,consumeResult,decode,decodeMeasurement,historicalGrantLiveness,readEvidence,readHistorical,readHistoricalEvidence,scopeIncludes } from '../../index.js';
 import { causalCone,causalStanding,decodeHistoricalBody,hashBytes,registerOwnedBody } from '../../facts/index.js';
 import { decodeOwnedBody } from '../../facts/owned.js';
 import type { FactContext,FactEnvelope,FactSchema,OwnedBodyContext,OwnedBodyRegistration } from '../../facts/index.js';
@@ -167,15 +167,24 @@ export function resolveScheduledDiscoveryWitness(histories: readonly ScheduledHi
   // is unavailable. Treat every event- or predicate-related record as a named
   // discovery candidate before consulting capture availability so missing bytes
   // cannot erase a mismatch or a second witness.
-  const named=candidates.filter(row => row.record.view.claim.subject===eventId
-    ||row.record.view.claim.predicate==='scheduled-discovery');
-  requireIntake(named.length===1&&witnessRequired.has(named[0]!.fact.id),
+  const signed=candidates.map(row => {
+    // HistoricalRead<Evidence> is already the owner-decoded signed value. Its
+    // brand is intentionally erased from `view`'s public type, so restore only
+    // that proven generic here and still consume its claim through readEvidence.
+    const evidence=row.record.view as Evidence;
+    return { row,evidence,claim: take(readEvidence(evidence,evidence.observedAt,preserved)) };
+  });
+  const named=signed.filter(candidate => candidate.claim.subject===eventId
+    ||candidate.claim.predicate==='scheduled-discovery');
+  requireIntake(named.length===1&&witnessRequired.has(named[0]!.row.fact.id),
     'unsupported-in-slice-a: exactly one discovery Evidence witness is required','integrity');
-  const witness=named[0]!;
-  const recorded=witness.record.view;
-  requireIntake(recorded.claim.subject===eventId&&recorded.claim.predicate==='scheduled-discovery'
-    &&recorded.claim.value===true&&causalNow.value>=recorded.observedAt.value
-    &&causalNow.value<=recorded.observedAt.value+recorded.freshFor,
+  const witness=named[0]!.row;
+  const recorded=named[0]!.evidence;
+  const current=consumeResult(readEvidence(recorded,causalNow,preserved),{
+    Success: claim => claim,Refused: () => undefined,
+  });
+  requireIntake(current?.subject===eventId&&current.predicate==='scheduled-discovery'
+    &&current.value===true,
   'unsupported-in-slice-a: discovery Evidence witness is stale or mismatched','integrity');
   if(witness.record.captureStatus!=='available') {
     requireIntake(mode==='historical',
