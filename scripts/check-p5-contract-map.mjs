@@ -7,6 +7,13 @@ const report = JSON.parse(readFileSync('.test-results.json', 'utf8'));
 if (!report.success) throw new Error('test suite failed');
 
 const requiredSeamEvidence = new Map([
+  ['P5-SEAM-RC-A-PRIME-PRESSURE-STATES', 'tests/rungraph/closure-pressure-states.test.ts'],
+  ['P5-SEAM-RC-A-PRIME-R23-F1-UNIT', 'tests/rungraph/review23-a-prime.test.ts'],
+  ['P5-SEAM-RC-A-PRIME-R23-F1-INTEGRATION', 'tests/integration/rungraph-closure-review23.test.ts'],
+  ['P5-SEAM-RC-A-PRIME-R23-F1-E2E', 'tests/e2e/rungraph-closure-review23.test.ts'],
+  ['P5-SEAM-RC-A-PRIME-R23-F2-UNIT', 'tests/rungraph/review23-a-prime.test.ts'],
+  ['P5-SEAM-RC-A-PRIME-R23-F2-INTEGRATION', 'tests/integration/rungraph-closure-review23.test.ts'],
+  ['P5-SEAM-RC-A-PRIME-R23-F2-E2E', 'tests/e2e/rungraph-closure-review23.test.ts'],
   ['P5-SEAM-RC-A-F1-DECODERS', 'tests/rungraph/closure.test.ts'],
   ['P5-SEAM-RC-A-F2-OWNER-BOUNDARIES', 'tests/rungraph/closure.test.ts'],
   ['P5-SEAM-RC-A-F2-INTEGRATION', 'tests/integration/rungraph-closure.test.ts'],

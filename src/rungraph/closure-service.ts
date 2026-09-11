@@ -308,6 +308,16 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
           const copies = immutableCopies(record.run, record.type, current, record.id);
           need(copies.conflicts.length === 0, `conflicting immutable ${record.type} identity`);
           const sameIdentity = copies.records;
+          if (sameIdentity.length && record.type === 'ExhaustionRecord') {
+            need(same(sameIdentity[0]!.record, record),
+              `immutable ${record.type} identity changed or conflicted`);
+            exactAdmitted({
+              owner: 'part-five',
+              name: 'ExhaustionRecord',
+              id: record.id,
+              fact: factRef(sameIdentity[0]!.fact),
+            }, 'ExhaustionRecord', current);
+          }
           if (sameIdentity.length && record.type === 'UnreachableRunExit') {
             need(same(sameIdentity[0]!.record, record),
               `immutable ${record.type} identity changed or conflicted`);
@@ -318,6 +328,7 @@ export function createRunClosureGraph(dependencies: RunClosureGraphDependencies)
             validateUnreachableOwner(record, closureBefore(origin, current), current, origin);
             return origin;
           }
+          if (sameIdentity.length && record.type === 'ExhaustionRecord') return sameIdentity[0]!.fact;
           const view = read(record.run);
           need(!view.conflicts.length, 'conflicted head inhibits closure record admission');
           if (record.type === 'ExhaustionRecord') {
