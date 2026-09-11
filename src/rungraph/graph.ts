@@ -6,7 +6,7 @@ import { foldProjection, readProjection } from '../projections/index.js';
 import type { ProjectionDefinition, ProjectionGeneration } from '../projections/index.js';
 import { boundary, encoded, freeze, json, need, object, same, take } from './boundary.js';
 import { constitutional, decodeRun, decodeRunExit, decodeRunTransition, decodeSessionGrounding, factReference, recordFromWire, runKinds } from './records.js';
-import type { Run, RunDecodeContext, RunExit, RunStep, RunTransition, RunView, SessionGrounding, RunReplayPort } from './types.js';
+import type { CompletedRunExit, Run, RunDecodeContext, RunStep, RunTransition, RunView, SessionGrounding, RunReplayPort } from './types.js';
 import { checkIdentities, identityIndex } from './identity.js';
 
 export const clockDifference = (left: Clock, right: Clock, c: RunDecodeContext): number => take(compareMeasurements<'clock'>(left, right, c.preserved));
@@ -55,7 +55,7 @@ export function settled(t: RunTransition, step: RunStep, c: RunDecodeContext): b
     const v = object(claim.value); return v.digest === step.operation.digest && v.chargeSettled === true && v.claimClosed === true;
   });
 }
-export function validateExit(exit: RunExit, run: Run, head: string, pending: readonly RunStep[], settledKeys: readonly string[], now: Clock, c: RunDecodeContext): void {
+export function validateExit(exit: CompletedRunExit, run: Run, head: string, pending: readonly RunStep[], settledKeys: readonly string[], now: Clock, c: RunDecodeContext): void {
   need(exit.run === run.id && exit.expected === head && same(exit.proposer, run.owner), 'exit run/head/proposer mismatch');
   need(pending.length === 0 && same([...exit.settledOperations].sort(), [...settledKeys].sort()), 'exit has unsettled operations or incomplete settlement manifest');
   need(same(exit.exitTest, run.exitTest), 'exit test changed; cannot lower the completion bar');
