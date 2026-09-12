@@ -85,8 +85,6 @@ export function p16Dispositions(design = readFileSync(
 
 const forbiddenPermissionExports = new Set(['allow', 'canRun', 'place', 'throttle']);
 
-const hasModifier = (node, kind) => node.modifiers?.some(modifier => modifier.kind === kind) ?? false;
-
 export function findForbiddenMeasurementPermissionExports(sources) {
   const found = new Set();
   const virtual = new Map(Object.entries(sources).map(([file, source]) => [resolve(file), source]));
@@ -108,7 +106,7 @@ export function findForbiddenMeasurementPermissionExports(sources) {
   const program = ts.createProgram([...virtual.keys()], options, host);
   const checker = program.getTypeChecker();
   const isVirtual = node => node && virtual.has(resolve(node.getSourceFile().fileName));
-  const seenNodes = new Set(); const seenSymbols = new Set(); const seenTypes = new Set();
+  const seenTypes = new Set();
 
   const unalias = symbol => symbol && (symbol.flags & ts.SymbolFlags.Alias)
     ? checker.getAliasedSymbol(symbol) : symbol;
@@ -116,20 +114,21 @@ export function findForbiddenMeasurementPermissionExports(sources) {
   const callable = type => type && (checker.getSignaturesOfType(type, ts.SignatureKind.Call).length > 0
     || checker.getSignaturesOfType(type, ts.SignatureKind.Construct).length > 0);
 
-  const staticString = (expression, stack = new Set()) => {
+  const staticString = (expression, environment = new Map(), stack = new Set()) => {
     if (ts.isStringLiteral(expression) || ts.isNumericLiteral(expression)
       || ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
     if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
       || ts.isSatisfiesExpression(expression) || ts.isNonNullExpression(expression)
-      || ts.isTypeAssertionExpression(expression)) return staticString(expression.expression, stack);
+      || ts.isTypeAssertionExpression(expression)) return staticString(expression.expression, environment, stack);
     if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-      const left = staticString(expression.left, stack); const right = staticString(expression.right, stack);
+      const left = staticString(expression.left, environment, stack);
+      const right = staticString(expression.right, environment, stack);
       return left === undefined || right === undefined ? undefined : left + right;
     }
     if (ts.isTemplateExpression(expression)) {
       let value = expression.head.text;
       for (const span of expression.templateSpans) {
-        const part = staticString(span.expression, stack);
+        const part = staticString(span.expression, environment, stack);
         if (part === undefined) return undefined;
         value += part + span.literal.text;
       }
@@ -139,9 +138,13 @@ export function findForbiddenMeasurementPermissionExports(sources) {
       const symbol = unalias(checker.getSymbolAtLocation(expression));
       if (!symbol || stack.has(symbol)) return undefined;
       stack.add(symbol);
+      const bound = environment.get(symbol);
       const declaration = symbol.valueDeclaration ?? symbol.declarations?.find(ts.isVariableDeclaration);
-      const value = declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
-        ? staticString(declaration.initializer, stack) : undefined;
+      const value = bound ? staticString(bound, environment, stack)
+        : declaration && (ts.isVariableDeclaration(declaration) || ts.isParameter(declaration))
+          && declaration.initializer ? staticString(declaration.initializer, environment, stack)
+          : declaration && ts.isEnumMember(declaration) && declaration.initializer
+            ? staticString(declaration.initializer, environment, stack) : undefined;
       stack.delete(symbol);
       return value;
     }
@@ -151,15 +154,36 @@ export function findForbiddenMeasurementPermissionExports(sources) {
       const symbol = unalias(checker.getSymbolAtLocation(ts.isPropertyAccessExpression(expression)
         ? expression.name : expression.argumentExpression));
       const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
-      if (declaration && ts.isPropertyAssignment(declaration)) return staticString(declaration.initializer, stack);
+      if (declaration && ts.isPropertyAssignment(declaration))
+        return staticString(declaration.initializer, environment, stack);
+      if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
+        const index = Number(staticString(expression.argumentExpression, environment, stack));
+        const base = resolveInitializer(expression.expression, environment);
+        if (Number.isInteger(index) && base && ts.isArrayLiteralExpression(base) && base.elements[index])
+          return staticString(base.elements[index], environment, stack);
+      }
+    }
+    if (ts.isCallExpression(expression) && ts.isPropertyAccessExpression(expression.expression)) {
+      const method = expression.expression.name.text;
+      if (method === 'join') {
+        const separator = expression.arguments[0]
+          ? staticString(expression.arguments[0], environment, stack) : ',';
+        const split = expression.expression.expression;
+        if (separator !== undefined && ts.isCallExpression(split)
+          && ts.isPropertyAccessExpression(split.expression) && split.expression.name.text === 'split') {
+          const value = staticString(split.expression.expression, environment, stack);
+          const delimiter = split.arguments[0] ? staticString(split.arguments[0], environment, stack) : undefined;
+          if (value !== undefined && delimiter !== undefined) return value.split(delimiter).join(separator);
+        }
+      }
     }
     return undefined;
   };
-  const propertyName = name => {
+  const propertyName = (name, environment = new Map()) => {
     if (!name) return undefined;
     if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)
       || ts.isNoSubstitutionTemplateLiteral(name)) return name.text;
-    return ts.isComputedPropertyName(name) ? staticString(name.expression) : undefined;
+    return ts.isComputedPropertyName(name) ? staticString(name.expression, environment) : undefined;
   };
 
   const inspectType = (type, location) => {
@@ -188,13 +212,117 @@ export function findForbiddenMeasurementPermissionExports(sources) {
     if (!ts.isBlock(body)) { visit(body); return; }
     const walk = node => {
       if (ts.isReturnStatement(node)) { if (node.expression) visit(node.expression); return; }
+      if (ts.isYieldExpression(node)) { if (node.expression) visit(node.expression); return; }
       if (node !== body && (ts.isFunctionLike(node) || ts.isClassLike(node))) return;
       ts.forEachChild(node, walk);
     };
     walk(body);
   };
 
-  const inspectSymbol = symbol => {
+  const resolveInitializer = (expression, environment) => {
+    while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+      || ts.isSatisfiesExpression(expression) || ts.isNonNullExpression(expression)
+      || ts.isTypeAssertionExpression(expression)) expression = expression.expression;
+    if (!ts.isIdentifier(expression)) return expression;
+    const symbol = unalias(checker.getSymbolAtLocation(expression));
+    const bound = symbol && environment.get(symbol);
+    if (bound) return resolveInitializer(bound, environment);
+    const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.find(ts.isVariableDeclaration);
+    return declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+      ? resolveInitializer(declaration.initializer, environment) : expression;
+  };
+
+  const valueDeclaration = expression => {
+    if (ts.isFunctionExpression(expression) || ts.isArrowFunction(expression)
+      || ts.isClassExpression(expression)) return expression;
+    if (!ts.isIdentifier(expression)) return undefined;
+    const symbol = unalias(checker.getSymbolAtLocation(expression));
+    const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.find(declaration =>
+      ts.isFunctionDeclaration(declaration) || ts.isClassDeclaration(declaration));
+    if (declaration && (ts.isFunctionDeclaration(declaration) || ts.isClassDeclaration(declaration)))
+      return declaration;
+    if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer)
+      return valueDeclaration(declaration.initializer);
+    return undefined;
+  };
+
+  const bindName = (name, argument, environment) => {
+    if (ts.isIdentifier(name)) {
+      const symbol = unalias(checker.getSymbolAtLocation(name));
+      if (symbol && argument) environment.set(symbol, argument);
+      return;
+    }
+    const resolved = argument && resolveInitializer(argument, environment);
+    for (let index = 0; index < name.elements.length; index++) {
+      const element = name.elements[index];
+      if (ts.isOmittedExpression(element)) continue;
+      let selected;
+      if (resolved && ts.isObjectLiteralExpression(resolved)) {
+        const key = propertyName(element.propertyName ?? element.name, environment);
+        const property = [...resolved.properties].reverse().find(candidate =>
+          !ts.isSpreadAssignment(candidate) && propertyName(candidate.name, environment) === key);
+        if (property && ts.isPropertyAssignment(property)) selected = property.initializer;
+        else if (property && ts.isShorthandPropertyAssignment(property)) selected = property.name;
+      } else if (resolved && ts.isArrayLiteralExpression(resolved)) selected = resolved.elements[index];
+      bindName(element.name, selected ?? element.initializer, environment);
+    }
+  };
+
+  const bindParameters = (parameters, argumentsList, parentEnvironment) => {
+    const environment = new Map(parentEnvironment);
+    for (let index = 0; index < parameters.length; index++) {
+      const parameter = parameters[index];
+      bindName(parameter.name, argumentsList[index] ?? parameter.initializer, environment);
+    }
+    return environment;
+  };
+
+  const sameSymbol = (expression, symbol) => {
+    if (!ts.isIdentifier(expression)) return false;
+    return unalias(checker.getSymbolAtLocation(expression)) === symbol;
+  };
+
+  const assignmentProperty = (left, symbol, environment) => {
+    if (ts.isPropertyAccessExpression(left) && sameSymbol(left.expression, symbol)) return left.name.text;
+    if (ts.isElementAccessExpression(left) && sameSymbol(left.expression, symbol)
+      && left.argumentExpression) return staticString(left.argumentExpression, environment);
+    return undefined;
+  };
+
+  const inspectMutations = (symbol, declaration, environment, inspectExpression) => {
+    const scope = (() => {
+      let current = declaration.parent;
+      while (current && !ts.isSourceFile(current) && !ts.isFunctionLike(current)) current = current.parent;
+      return current && ts.isFunctionLike(current) ? current.body : current;
+    })();
+    if (!scope) return;
+    const walk = node => {
+      if (node !== scope && (ts.isFunctionLike(node) || ts.isClassLike(node))) return;
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        const name = assignmentProperty(node.left, symbol, environment);
+        if (name !== undefined) {
+          if (forbiddenPermissionExports.has(name) && callable(checker.getTypeAtLocation(node.right))) found.add(name);
+          inspectExpression(node.right, environment);
+        }
+      }
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+        && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === 'Reflect'
+        && node.expression.name.text === 'set' && node.arguments[0]
+        && sameSymbol(node.arguments[0], symbol)) {
+        const name = node.arguments[1] && staticString(node.arguments[1], environment);
+        const value = node.arguments[2];
+        if (name && value) {
+          if (forbiddenPermissionExports.has(name) && callable(checker.getTypeAtLocation(value))) found.add(name);
+          inspectExpression(value, environment);
+        }
+      }
+      ts.forEachChild(node, walk);
+    };
+    walk(scope);
+  };
+
+  const seenSymbols = new Set();
+  const inspectSymbol = (symbol, environment, inspectExpression) => {
     const target = unalias(symbol);
     if (!target || seenSymbols.has(target)) return;
     seenSymbols.add(target);
@@ -202,125 +330,264 @@ export function findForbiddenMeasurementPermissionExports(sources) {
       const location = symbolLocation(target);
       if (location) {
         inspectType(checker.getTypeOfSymbolAtLocation(target, location), location);
-        for (const declaration of target.declarations ?? []) if (isVirtual(declaration)) inspectNode(declaration);
+        for (const declaration of target.declarations ?? []) if (isVirtual(declaration)) {
+          if (ts.isVariableDeclaration(declaration)) {
+            if (declaration.initializer) inspectExpression(declaration.initializer, environment);
+            inspectMutations(target, declaration, environment, inspectExpression);
+          } else if (ts.isExportAssignment(declaration)) inspectExpression(declaration.expression, environment);
+          else inspectExpression(declaration, environment);
+        }
       }
     }
     if (target.flags & ts.SymbolFlags.Module)
-      for (const nested of checker.getExportsOfModule(target)) inspectExport(nested);
+      for (const nested of checker.getExportsOfModule(target)) inspectExport(nested, environment, inspectExpression);
   };
 
-  const inspectBindingName = name => {
-    if (ts.isIdentifier(name)) {
-      if (forbiddenPermissionExports.has(name.text)) found.add(name.text);
-      inspectSymbol(checker.getSymbolAtLocation(name));
-      return;
+  const inspectProxy = (handler, environment) => {
+    const resolved = resolveInitializer(handler, environment);
+    if (!resolved || !ts.isObjectLiteralExpression(resolved)) return;
+    for (const property of resolved.properties) {
+      if (!ts.isMethodDeclaration(property) || propertyName(property.name, environment) !== 'get') continue;
+      const keyParameter = property.parameters[1]?.name;
+      const keySymbol = keyParameter && ts.isIdentifier(keyParameter)
+        ? unalias(checker.getSymbolAtLocation(keyParameter)) : undefined;
+      let callableReturn = false; const keys = new Set();
+      returnedValues(property.body, expression => {
+        if (callable(checker.getTypeAtLocation(expression))) callableReturn = true;
+      });
+      const walk = node => {
+        if (ts.isBinaryExpression(node) && (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+          || node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken)) {
+          if (keySymbol && ts.isIdentifier(node.left)
+            && unalias(checker.getSymbolAtLocation(node.left)) === keySymbol) {
+            const key = staticString(node.right, environment); if (key) keys.add(key);
+          }
+          if (keySymbol && ts.isIdentifier(node.right)
+            && unalias(checker.getSymbolAtLocation(node.right)) === keySymbol) {
+            const key = staticString(node.left, environment); if (key) keys.add(key);
+          }
+        }
+        ts.forEachChild(node, walk);
+      };
+      if (property.body) walk(property.body);
+      if (callableReturn) for (const key of keys) if (forbiddenPermissionExports.has(key)) found.add(key);
     }
-    for (const element of name.elements) if (!ts.isOmittedExpression(element)) inspectBindingName(element.name);
   };
 
-  const inspectNode = node => {
-    if (!node || seenNodes.has(node) || !isVirtual(node)) return;
-    seenNodes.add(node);
+  const inspectDescriptor = (name, descriptor, environment, inspectExpression) => {
+    const resolved = resolveInitializer(descriptor, environment);
+    if (!resolved || !ts.isObjectLiteralExpression(resolved)) return;
+    for (const property of resolved.properties) {
+      const descriptorName = propertyName(property.name, environment);
+      if (descriptorName === 'value' && ts.isPropertyAssignment(property)) {
+        if (forbiddenPermissionExports.has(name) && callable(checker.getTypeAtLocation(property.initializer)))
+          found.add(name);
+        inspectExpression(property.initializer, environment);
+      } else if (descriptorName === 'get'
+        && (ts.isMethodDeclaration(property) || ts.isPropertyAssignment(property))) {
+        const getter = ts.isPropertyAssignment(property) ? property.initializer : property;
+        const declaration = valueDeclaration(getter) ?? getter;
+        const signature = checker.getSignatureFromDeclaration(declaration);
+        if (forbiddenPermissionExports.has(name) && signature
+          && callable(checker.getReturnTypeOfSignature(signature))) found.add(name);
+        inspectExpression(getter, environment);
+      }
+    }
+  };
+
+  const inspectEntries = (entries, environment, inspectExpression) => {
+    const resolved = resolveInitializer(entries, environment);
+    if (!resolved || !ts.isArrayLiteralExpression(resolved)) return;
+    for (const entry of resolved.elements) {
+      const tuple = resolveInitializer(ts.isSpreadElement(entry) ? entry.expression : entry, environment);
+      if (!tuple || !ts.isArrayLiteralExpression(tuple) || tuple.elements.length < 2) continue;
+      const name = staticString(tuple.elements[0], environment);
+      const value = tuple.elements[1];
+      if (name && forbiddenPermissionExports.has(name) && callable(checker.getTypeAtLocation(value))) found.add(name);
+      inspectExpression(value, environment);
+    }
+  };
+
+  const inspectThisMutations = (body, environment, inspectExpression) => {
+    if (!body) return;
+    const walk = node => {
+      if (node !== body && (ts.isFunctionLike(node) || ts.isClassLike(node))) return;
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
+        && node.left.expression.kind === ts.SyntaxKind.ThisKeyword) {
+        const name = ts.isPropertyAccessExpression(node.left) ? node.left.name.text
+          : node.left.argumentExpression ? staticString(node.left.argumentExpression, environment) : undefined;
+        if (name && forbiddenPermissionExports.has(name) && callable(checker.getTypeAtLocation(node.right)))
+          found.add(name);
+        inspectExpression(node.right, environment);
+      }
+      ts.forEachChild(node, walk);
+    };
+    walk(body);
+  };
+
+  const inspectExpression = (node, environment = new Map(), stack = new Set()) => {
+    if (!node || !isVirtual(node) || stack.has(node)) return;
+    stack.add(node);
     if (ts.isVariableDeclaration(node)) {
-      inspectBindingName(node.name);
-      if (node.initializer) inspectNode(node.initializer);
-      return;
+      if (node.initializer) inspectExpression(node.initializer, environment, stack);
+      stack.delete(node); return;
     }
-    if (ts.isIdentifier(node)) { inspectSymbol(checker.getSymbolAtLocation(node)); return; }
+    if (ts.isExportAssignment(node)) {
+      inspectExpression(node.expression, environment, stack); stack.delete(node); return;
+    }
+    if (ts.isIdentifier(node)) {
+      const symbol = unalias(checker.getSymbolAtLocation(node));
+      const bound = symbol && environment.get(symbol);
+      if (bound) inspectExpression(bound, environment, stack);
+      else inspectSymbol(symbol, environment, inspectExpression);
+      stack.delete(node); return;
+    }
     if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)
       || ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node)) {
-      const name = propertyName(node.name);
-      if (name && forbiddenPermissionExports.has(name) && !ts.isGetAccessorDeclaration(node)) found.add(name);
-      returnedValues(node.body, inspectNode);
-      return;
+      if (ts.isFunctionExpression(node) && node.name && forbiddenPermissionExports.has(node.name.text))
+        found.add(node.name.text);
+      const withDefaults = bindParameters(node.parameters, [], environment);
+      returnedValues(node.body, expression => inspectExpression(expression, withDefaults));
+      stack.delete(node); return;
     }
     if (ts.isObjectLiteralExpression(node)) {
       for (const property of node.properties) {
-        if (ts.isSpreadAssignment(property)) { inspectNode(property.expression); continue; }
-        const name = propertyName(property.name);
+        if (ts.isSpreadAssignment(property)) { inspectExpression(property.expression, environment); continue; }
+        if (property.name && ts.isPrivateIdentifier(property.name)) continue;
+        const name = propertyName(property.name, environment);
         if (ts.isMethodDeclaration(property) && name && forbiddenPermissionExports.has(name)) found.add(name);
         if (ts.isPropertyAssignment(property)) {
           const type = checker.getTypeAtLocation(property.initializer);
           if (name && forbiddenPermissionExports.has(name) && callable(type)) found.add(name);
-          inspectNode(property.initializer);
-        } else if (ts.isShorthandPropertyAssignment(property)) inspectNode(property.name);
-        else if (ts.isMethodDeclaration(property) || ts.isGetAccessorDeclaration(property)) inspectNode(property);
+          inspectExpression(property.initializer, environment);
+        } else if (ts.isShorthandPropertyAssignment(property)) {
+          if (name && forbiddenPermissionExports.has(name)
+            && callable(checker.getTypeAtLocation(property.name))) found.add(name);
+          inspectExpression(property.name, environment);
+        } else if (ts.isGetAccessorDeclaration(property)) {
+          const signature = checker.getSignatureFromDeclaration(property);
+          if (name && forbiddenPermissionExports.has(name) && signature
+            && callable(checker.getReturnTypeOfSignature(signature))) found.add(name);
+          inspectExpression(property, environment);
+        } else if (ts.isMethodDeclaration(property)) inspectExpression(property, environment);
       }
-      return;
+      stack.delete(node); return;
     }
     if (ts.isArrayLiteralExpression(node)) {
       for (const element of node.elements) if (!ts.isOmittedExpression(element))
-        inspectNode(ts.isSpreadElement(element) ? element.expression : element);
-      return;
+        inspectExpression(ts.isSpreadElement(element) ? element.expression : element, environment);
+      stack.delete(node); return;
     }
     if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
-      for (const clause of node.heritageClauses ?? []) for (const type of clause.types) inspectNode(type.expression);
-      for (const member of node.members) inspectNode(member);
-      return;
+      for (const clause of node.heritageClauses ?? []) for (const type of clause.types)
+        inspectExpression(type.expression, environment);
+      for (const member of node.members) {
+        if (member.name && ts.isPrivateIdentifier(member.name)) continue;
+        if (ts.isConstructorDeclaration(member)) {
+          const constructorEnvironment = bindParameters(member.parameters, [], environment);
+          inspectThisMutations(member.body, constructorEnvironment, inspectExpression);
+          continue;
+        }
+        const name = propertyName(member.name, environment);
+        if (name && forbiddenPermissionExports.has(name)) {
+          if (ts.isMethodDeclaration(member)) found.add(name);
+          else if (ts.isPropertyDeclaration(member) && member.initializer
+            && callable(checker.getTypeAtLocation(member.initializer))) found.add(name);
+          else if (ts.isGetAccessorDeclaration(member)) {
+            const signature = checker.getSignatureFromDeclaration(member);
+            if (signature && callable(checker.getReturnTypeOfSignature(signature))) found.add(name);
+          }
+        }
+        inspectExpression(member, environment);
+      }
+      stack.delete(node); return;
     }
     if (ts.isPropertyDeclaration(node)) {
-      const name = propertyName(node.name);
-      if (node.initializer) {
-        if (name && forbiddenPermissionExports.has(name) && callable(checker.getTypeAtLocation(node.initializer)))
-          found.add(name);
-        inspectNode(node.initializer);
-      }
-      return;
+      if (node.initializer) inspectExpression(node.initializer, environment, stack);
+      stack.delete(node); return;
     }
     if (ts.isConstructorDeclaration(node)) {
-      ts.forEachChild(node, child => {
-        if (ts.isBinaryExpression(child) && child.operatorToken.kind === ts.SyntaxKind.EqualsToken
-          && (ts.isPropertyAccessExpression(child.left) || ts.isElementAccessExpression(child.left))) {
-          const name = ts.isPropertyAccessExpression(child.left) ? child.left.name.text
-            : child.left.argumentExpression ? staticString(child.left.argumentExpression) : undefined;
-          if (name && forbiddenPermissionExports.has(name) && callable(checker.getTypeAtLocation(child.right)))
-            found.add(name);
-          inspectNode(child.right);
-        }
-      });
-      return;
+      inspectThisMutations(node.body, bindParameters(node.parameters, [], environment), inspectExpression);
+      stack.delete(node); return;
     }
-    if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
-      inspectNode(node.expression);
-      for (const argument of node.arguments ?? []) inspectNode(argument);
-      const signature = checker.getResolvedSignature(node);
-      if (signature) inspectType(checker.getReturnTypeOfSignature(signature), node);
-      return;
+    if (ts.isCallExpression(node)) {
+      const target = node.expression;
+      const owner = ts.isPropertyAccessExpression(target) && ts.isIdentifier(target.expression)
+        ? target.expression.text : undefined;
+      const method = ts.isPropertyAccessExpression(target) ? target.name.text : undefined;
+      if (owner === 'Object' && method === 'fromEntries' && node.arguments[0])
+        inspectEntries(node.arguments[0], environment, inspectExpression);
+      else if (owner === 'Object' && method === 'defineProperty' && node.arguments.length >= 3) {
+        inspectExpression(node.arguments[0], environment);
+        const name = staticString(node.arguments[1], environment);
+        if (name) inspectDescriptor(name, node.arguments[2], environment, inspectExpression);
+      } else if (owner === 'Object' && method === 'defineProperties' && node.arguments.length >= 2) {
+        inspectExpression(node.arguments[0], environment);
+        const descriptors = resolveInitializer(node.arguments[1], environment);
+        if (descriptors && ts.isObjectLiteralExpression(descriptors)) for (const property of descriptors.properties) {
+          const name = !ts.isSpreadAssignment(property) && propertyName(property.name, environment);
+          if (name && ts.isPropertyAssignment(property))
+            inspectDescriptor(name, property.initializer, environment, inspectExpression);
+        }
+      } else if (owner === 'Object' && method === 'assign') {
+        for (const argument of node.arguments) inspectExpression(argument, environment);
+      } else if (owner === 'Promise' && method === 'resolve' && node.arguments[0]) {
+        inspectExpression(node.arguments[0], environment);
+      } else {
+        const declaration = valueDeclaration(target);
+        if (declaration && ts.isFunctionLike(declaration)) {
+          const callEnvironment = bindParameters(declaration.parameters, node.arguments, environment);
+          returnedValues(declaration.body, expression => inspectExpression(expression, callEnvironment));
+        }
+      }
+      inspectType(checker.getTypeAtLocation(node), node);
+      stack.delete(node); return;
+    }
+    if (ts.isNewExpression(node)) {
+      const constructor = ts.isIdentifier(node.expression) ? node.expression.text : undefined;
+      if (constructor === 'Map' && node.arguments?.[0])
+        inspectEntries(node.arguments[0], environment, inspectExpression);
+      else if (constructor === 'Set' && node.arguments?.[0])
+        inspectExpression(node.arguments[0], environment);
+      else if (constructor === 'Proxy' && node.arguments) {
+        if (node.arguments[0]) inspectExpression(node.arguments[0], environment);
+        if (node.arguments[1]) inspectProxy(node.arguments[1], environment);
+      } else {
+        const declaration = valueDeclaration(node.expression);
+        if (declaration) inspectExpression(declaration, environment);
+      }
+      inspectType(checker.getTypeAtLocation(node), node);
+      stack.delete(node); return;
     }
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
-      inspectNode(node.expression);
-      inspectSymbol(checker.getSymbolAtLocation(ts.isPropertyAccessExpression(node)
-        ? node.name : node.argumentExpression));
-      return;
+      inspectType(checker.getTypeAtLocation(node), node);
+      stack.delete(node); return;
     }
     if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node)
       || ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node)
       || ts.isTypeAssertionExpression(node) || ts.isSpreadElement(node)) {
-      inspectNode(node.expression);
-      return;
+      inspectExpression(node.expression, environment, stack);
+      stack.delete(node); return;
     }
-    ts.forEachChild(node, inspectNode);
+    if (ts.isConditionalExpression(node)) {
+      inspectExpression(node.whenTrue, environment); inspectExpression(node.whenFalse, environment);
+      stack.delete(node); return;
+    }
+    inspectType(checker.getTypeAtLocation(node), node);
+    stack.delete(node);
   };
 
-  const inspectExport = symbol => {
+  const inspectExport = (symbol, environment = new Map()) => {
+    const target = unalias(symbol);
+    if (!target || !(target.flags & (ts.SymbolFlags.Value | ts.SymbolFlags.Module))) return;
     if (forbiddenPermissionExports.has(symbol.getName())) found.add(symbol.getName());
-    inspectSymbol(symbol);
+    inspectSymbol(symbol, environment, inspectExpression);
   };
-  const roots = program.getSourceFiles().filter(source => virtual.has(resolve(source.fileName)));
-  for (const source of roots) {
+  const publicEntries = program.getSourceFiles().filter(source => virtual.has(resolve(source.fileName)));
+  for (const source of publicEntries) {
     const module = checker.getSymbolAtLocation(source);
     if (module) for (const exported of checker.getExportsOfModule(module)) inspectExport(exported);
-    for (const statement of source.statements) {
-      if (ts.isExportAssignment(statement)) inspectNode(statement.expression);
-      if (ts.isExportDeclaration(statement) && statement.exportClause) {
-        if (ts.isNamedExports(statement.exportClause)) for (const element of statement.exportClause.elements) {
-          if (forbiddenPermissionExports.has(element.name.text)) found.add(element.name.text);
-          inspectSymbol(checker.getSymbolAtLocation(element.name));
-        }
-        if (ts.isNamespaceExport(statement.exportClause)
-          && forbiddenPermissionExports.has(statement.exportClause.name.text)) found.add(statement.exportClause.name.text);
-      } else if (hasModifier(statement, ts.SyntaxKind.ExportKeyword)) inspectNode(statement);
-    }
   }
   return [...found].sort();
 }

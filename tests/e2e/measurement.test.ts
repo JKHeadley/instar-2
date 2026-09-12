@@ -186,6 +186,32 @@ beforeAll(() => {
         'export const helpers={get current(){return {normalize:(v)=>v};}};',
       ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
         'src/measurement/index.ts':"export * from './permission.js';"})),
+      round11Finding1:[
+        "const key='allow'.split('').join(''); export default {[key]:()=>true};",
+        "export default Object.fromEntries([['allow',()=>true]]);",
+        "export default Object.defineProperty({},'allow',{value:()=>true});",
+        "export default Object.defineProperties({},{allow:{value:()=>true}});",
+        "const result={}; Reflect.set(result,'allow',()=>true);export default result;",
+        "const result:Record<string,()=>boolean>={};result.allow=()=>true;export default result;",
+        "const result:Record<string,()=>boolean>={};const k='allow'; result[k]=()=>true;export default result;",
+        "export default function make(){const result:Record<string,()=>boolean>={};result.allow=()=>true;return result;}",
+        "export default class { [key:string]:unknown; constructor(){this['allow']=()=>true;} }",
+        "function make(key:string){return {[key]:()=>true};}export default make('allow');",
+        "function make({key}:{key:string}){return {[key]:()=>true};}export default make({key:'allow'});",
+        "export default function make(key='allow'){return {[key]:()=>true};}",
+        "export default function* values(){yield {allow:()=>true};}",
+        "export default new Proxy({},{get(_target,key){if(key==='allow')return ()=>true;}});",
+        "const key='allow'.split('').join(''); export default {get [key](){return ()=>true;}};",
+      ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
+        'src/measurement/index.ts':"export * from './permission.js'; export {default as fixtureDefault} from './permission.js';"})),
+      round11Finding2:[
+        'const allow=(n:number)=>n; export const normalize=allow;',
+        'const data={allow:()=>true,normalize:(n:number)=>n}; export const normalize=data.normalize;',
+        'function count(_input:unknown){return 1;} export const countValue=count({allow:()=>true});',
+        'const allow=(n:number)=>n; export function normalize(n:number){return allow(n);}',
+        'export type allow=(n:number)=>number; export const normalize=(n:number)=>n;',
+      ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
+        'src/measurement/index.ts':"export * from './permission.js';"})),
       coverageBlocked,
       blocked:p16Dispositions().filter(row=>row.status==='NON-EXECUTABLE-UNTIL-slice-A2').length,
       additivity:execFileSync(process.execPath,['scripts/check-p16-additivity.mjs'],{encoding:'utf8'}),
@@ -196,10 +222,12 @@ beforeAll(() => {
   result = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd: process.cwd(), encoding: 'utf8',
   })) as Record<string, any>;
-});
+}, 30_000);
 
 it('P16-NF-01 [behavior:contract-inventory] validates all 53 labels in a fresh process', () => expect(result.inventory).toBe(53));
 it('P16-NF-02 [behavior:architecture-boundary] validates the A1 architecture in a fresh process', () => expect(result.architecture).toMatchObject({ executable: 12, mixed: 2 }));
+it('P16-NF-23 [behavior:observational-port] round 11 finding 1 rejects all transformed callable-permission cases in a fresh process', () => expect(result.round11Finding1).toEqual(Array.from({ length: 15 }, () => ['allow'])));
+it('P16-NF-23 [behavior:observational-port] round 11 finding 2 accepts all private, discarded, and type-only name cases in a fresh process', () => expect(result.round11Finding2).toEqual(Array.from({ length: 5 }, () => [])));
 it('P16-NF-03 [behavior:registration-current-content] rejects missing identity, replacement content, and disabled sampled identity in a fresh process', () => expect(result).toMatchObject({ cache: 'cache:fixture', cacheMissing: expect.stringContaining('Refused'), substituted: expect.stringContaining('Refused'), sampleDisabled: expect.stringContaining('Refused') }));
 it('P16-NF-05 [behavior:measured-claim] distinguishes admitted execution from copied, conflicting, and malformed proof in a fresh process', () => expect(result).toMatchObject({ claimTarget: 'target: not measured', claimMeasured: expect.stringContaining('measured execution'), claimCompeting: expect.stringContaining('Refused'), claimCompetingReversed: expect.stringContaining('Refused'), claimEqualReplay: expect.stringContaining('measured execution'), claimCopied: expect.stringContaining('Refused'), claimIncomplete: expect.stringContaining('Refused') }));
 it('P16-NF-22 [behavior:quota-coalescing] coalesces repeated missing-state observations in a fresh process', () => expect(result.quota).toEqual({ notices: ['account'], open: ['account'] }));

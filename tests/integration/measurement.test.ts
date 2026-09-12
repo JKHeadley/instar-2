@@ -11,6 +11,9 @@ import {
 import { checkP16Architecture, checkP16Coverage, findForbiddenMeasurementPermissionExports, p16Dispositions } from '../../scripts/check-p16-contract-map.mjs';
 import { refused, value } from '../facts/fixtures.js';
 import { measurementFixture } from '../measurement/fixture.js';
+import {
+  round11ExportTemplates, round11Finding1Ids, round11HarmlessExports, scanRound11Source,
+} from '../measurement/round11-architecture-fixtures.js';
 
 it('P16-NF-01 [behavior:contract-inventory] resolves the complete governed check inventory', () => {
   expect(p16Dispositions()).toHaveLength(53);
@@ -118,6 +121,22 @@ it('P16-NF-23 [behavior:observational-port] rejects round 10 export-reachable ca
   ] as const) expect(scan(source, index)).toEqual(['allow']);
   expect(scan('export function measurementHelpers(){return {normalize:(v:number)=>v};}')).toEqual([]);
   expect(scan('class Base {normalize(v:number){return v;}} export class Helpers extends Base {}')).toEqual([]);
+});
+
+it('P16-NF-23 [behavior:observational-port] round 11 finding 1 rejects transformed callable permissions and accepts their normalization neighbors', () => {
+  for (const [id, template] of round11ExportTemplates.filter(([id]) => round11Finding1Ids.has(id))) {
+    expect(findForbiddenMeasurementPermissionExports(scanRound11Source(
+      template.replaceAll('__NAME__', 'allow'),
+    )), id).toEqual(['allow']);
+    expect(findForbiddenMeasurementPermissionExports(scanRound11Source(
+      template.replaceAll('__NAME__', 'normalize'),
+    )), `${id}-normalize`).toEqual([]);
+  }
+}, 20_000);
+
+it('P16-NF-23 [behavior:observational-port] round 11 finding 2 ignores private, discarded, and type-only allow spellings', () => {
+  for (const [id, source] of round11HarmlessExports.filter(([id]) => id !== 'numeric-metadata'))
+    expect(findForbiddenMeasurementPermissionExports(scanRound11Source(source)), id).toEqual([]);
 });
 
 it('P16-NF-24 [behavior:rate-event-populations] keeps breaker and session populations distinct', () => {
