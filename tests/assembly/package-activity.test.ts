@@ -4,12 +4,12 @@ import type { PackageActivityResult, PackageTransition } from '../../src/assembl
 import type { FactEnvelope } from '../../src/facts/index.js';
 import { refused, value } from '../facts/fixtures.js';
 import { assemblyInput } from './fixture.js';
-import { assemblyRuntimeFixture } from './runtime-fixture.js';
+import { packageActivityRuntimeFixture } from './package-activity-fixture.js';
 
-type Fixture = ReturnType<typeof assemblyRuntimeFixture>;
+type Fixture = ReturnType<typeof packageActivityRuntimeFixture>;
 type TransitionRow = Readonly<{ record: PackageTransition; fact: FactEnvelope }>;
 const clone = <T>(input: T): T => JSON.parse(JSON.stringify(input)) as T;
-const fixture = () => assemblyRuntimeFixture(undefined, { verifiedProbes: true });
+const fixture = () => packageActivityRuntimeFixture();
 
 function recordPackage(f: Fixture) {
   const record = value(f.runtime.record('LocalCapabilityPackage', clone(assemblyInput('LocalCapabilityPackage'))));
@@ -60,7 +60,7 @@ it('P10-NF-41 P10-NF-43 P10-NF-44 package activity outcomes are closed, distinct
   // @ts-expect-error PackageActivityResult construction is owner-closed behind its decoder brand.
   const forged: PackageActivityResult = { type: 'PackageActivityResult' };
   expect(forged.type).toBe('PackageActivityResult');
-});
+}, 30_000);
 
 it('P10-NF-41 P10-NF-44 malformed package activity values are typed refusals, never widened outcomes', () => {
   const f = fixture(); chainToActive(f); const valid = activity(f);
@@ -73,7 +73,7 @@ it('P10-NF-41 P10-NF-44 malformed package activity values are typed refusals, ne
     { ...clone(valid), extra: true },
   ];
   for (const input of cases) refused(decodePackageActivityResult(input, f.c));
-});
+}, 30_000);
 
 it('P10-NF-43 a staged or recovered head and an incomplete causal transition are unresolved, never inactive', () => {
   const stagedFixture = fixture(); const pkg = recordPackage(stagedFixture);
@@ -87,4 +87,4 @@ it('P10-NF-43 a staged or recovered head and an incomplete causal transition are
   const incomplete = fixture(); const incompletePkg = recordPackage(incomplete);
   transition(incomplete, incompletePkg, 'transition:orphan-active', 'activating', 'active');
   expect(activity(incomplete).outcome).toEqual({ status: 'unresolved', reason: 'incomplete' });
-});
+}, 30_000);

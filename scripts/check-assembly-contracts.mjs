@@ -4,11 +4,35 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
-export const assemblyDispositions = Array.from({ length: 57 }, (_, index) => ({
-  id: `P10-NF-${String(index + 1).padStart(2, '0')}`,
-  status: 'partial',
-  reason: 'Executable unit/full-port/lifecycle reference behavior is present; protected deployment activation and independently administered platform evidence remain deliberately dark.',
-}));
+const packageActivityChecks = new Set([8, 30, 41, 43, 44]);
+const dependencyFor = number => {
+  if (number <= 9) return 'docs-14-the-assembly.md-governed-production-assembly-approval';
+  if (number <= 16) return 'design-harness-adapters-seam-request-part-ten-context-update.md';
+  if (number <= 21) return 'design-sentinel-holders-seam-request-assembly.md';
+  if (number <= 25) return 'docs-14-the-assembly.md-adapter-evidence-contract-grant';
+  if (number <= 27 || number === 57) return 'design-conversation-adapters-seam-request-model-provider-effect.md';
+  if (number <= 36) return 'docs-14-the-assembly.md-persistence-and-custody-grant';
+  if (number <= 39) return 'docs-14-the-assembly.md-verified-host-review-origin-grant';
+  if (number === 40) return 'docs-14-the-assembly.md-all-four-production-traces-grant';
+  if (number <= 45) return 'docs-14-the-assembly.md-full-package-self-hosting-lifecycle-grant';
+  if (number <= 50) return 'design-measurement-ledgers-seam-request-resource-observation.md';
+  return 'part-eleven-seam-request-assembly.md';
+};
+const fixtureDescriptions = new Map([...readFileSync('docs/14-the-assembly.md', 'utf8')
+  .matchAll(/^\| P10-NF-(\d+) \| [^|]+ \| ([^|]+) \|$/gm)]
+  .map(match => [Number(match[1]), match[2].trim()]));
+
+export const assemblyDispositions = Array.from({ length: 57 }, (_, index) => {
+  const number = index + 1; const id = `P10-NF-${String(number).padStart(2, '0')}`;
+  const dependency = `NON-EXECUTABLE-UNTIL-${dependencyFor(number)}`;
+  const exactCase = fixtureDescriptions.get(number);
+  if (!exactCase) throw new Error(`${id}: design fixture description missing`);
+  return packageActivityChecks.has(number)
+    ? { id, status: 'EXECUTABLE', heldArms: dependency,
+      reason: `The row-80 package-activity arm executes through mapped owner tests; every other arm remains ${dependency}. Exact design case: ${exactCase}` }
+    : { id, status: dependency,
+      reason: `Tagged tests name narrower landed assertions only and do not execute this whole row. Exact residual design case: ${exactCase}` };
+});
 
 export const packageActivityContractMap = Object.freeze([
   { operation: 'resolvePackageActivity', check: 'P10-NF-41', tier: 'unit', status: 'executable',
@@ -35,6 +59,18 @@ export const packageActivityContractMap = Object.freeze([
     file: 'tests/e2e/package-activity.test.ts', title: 'missing prefixes and changed signed bytes refuse after durable restart' },
   { operation: 'resolvePackageActivity', check: 'P10-NF-44', tier: 'lifecycle', status: 'executable',
     file: 'tests/e2e/package-activity.test.ts', title: 'real SIGKILL before and after every durable package boundary reconstructs the same witnessed activity' },
+  { operation: 'resolvePackageActivity', check: 'P10-NF-08', tier: 'integration', status: 'executable',
+    file: 'tests/integration/package-activity-round3.test.ts', title: 'stale-clean-snapshot copied-snapshot-taint-stripped and prefix-read-capture-loss stay unresolved' },
+  { operation: 'decodePackageActivityResult', check: 'P10-NF-44', tier: 'integration', status: 'executable',
+    file: 'tests/integration/package-activity-round3.test.ts', title: 'invented-equal-frontier and stale-frontier-unrelated-append are refused against current owner history' },
+  { operation: 'decodePackageActivityResult', check: 'P10-NF-43', tier: 'integration', status: 'executable',
+    file: 'tests/integration/package-activity-round3.test.ts', title: 'ancestor-wrong-owner-roundtrip accepts owner unresolved and ancestor-wrong-owner-forged-active refuses' },
+  { operation: 'decodePackageActivityResult', check: 'P10-NF-44', tier: 'integration', status: 'executable',
+    file: 'tests/integration/package-activity-round3.test.ts', title: 'fabricated-frontier-moved-no-owner is refused' },
+  { operation: 'resolvePackageActivity', check: 'P10-NF-30', tier: 'integration', status: 'executable',
+    file: 'tests/integration/package-activity-round3.test.ts', title: 'duplicate-canonical-transition is replay-equivalent while a distinct fork remains multi-head' },
+  { operation: 'resolvePackageActivity', check: 'P10-NF-41', tier: 'integration', status: 'executable',
+    file: 'tests/integration/package-activity-round3.test.ts', title: 'positive-check-run-owner uses complete records accepted by Part Three and the activity port' },
 ]);
 
 export const packageActivityNonExecutable = Object.freeze([
@@ -47,7 +83,8 @@ export function checkPackageActivityCoverage(report, rows = packageActivityContr
   if (!report.success) throw new Error('package activity mapping requires a successful actual test run');
   const tiers = new Set(), checks = new Set();
   for (const row of rows) {
-    if (row.status !== 'executable' || row.operation !== 'resolvePackageActivity') throw new Error(`invalid package activity executable claim: ${row.check}`);
+    if (row.status !== 'executable' || !['resolvePackageActivity', 'decodePackageActivityResult'].includes(row.operation))
+      throw new Error(`invalid package activity executable claim: ${row.check}`);
     if (!/^P10-NF-(08|30|41|43|44)$/.test(row.check)) throw new Error(`ungranted package activity check: ${row.check}`);
     const tests = report.testResults.flatMap(file => (file.assertionResults ?? []).filter(test =>
       file.name.endsWith(row.file) && test.status === 'passed' && test.fullName.includes(row.check) && test.fullName.includes(row.title)));
@@ -63,15 +100,26 @@ export function checkPackageActivityCoverage(report, rows = packageActivityContr
   return rows;
 }
 
-const PART_TEN_ADDITIVITY_BASE = 'dcd7c0fbbd91a5d568f7ee988d8f219dc6f2b3f8';
-export function checkPartTenAdditivity(base = PART_TEN_ADDITIVITY_BASE) {
-  const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', base, '--', 'tests'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean)
-    .filter(path => /P10-NF-|src\/assembly|\/assembly\//.test(execFileSync('git', ['show', `${base}:${path}`], { encoding: 'utf8' })));
+function currentMainRef() {
+  for (const ref of ['origin/main', 'main']) try {
+    execFileSync('git', ['rev-parse', '--verify', ref], { stdio: 'ignore' }); return ref;
+  } catch { /* try the next ordinary checkout shape */ }
+  throw new Error('current main reference is unavailable');
+}
+
+export function partTenAdditivityPaths(base) {
+  return execFileSync('git', ['ls-tree', '-r', '--name-only', base, '--', 'tests'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+}
+
+export function checkPartTenAdditivity(mainRef = currentMainRef()) {
+  const baseline = execFileSync('git', ['rev-parse', mainRef], { encoding: 'utf8' }).trim();
+  const mergeBase = execFileSync('git', ['merge-base', 'HEAD', baseline], { encoding: 'utf8' }).trim();
+  const paths = partTenAdditivityPaths(mergeBase);
   if (!paths.length) throw new Error('Part Ten additivity baseline contains no tests or fixtures');
   const changed = paths.filter(path => !existsSync(path)
-    || !readFileSync(path).equals(execFileSync('git', ['show', `${base}:${path}`])));
+    || !readFileSync(path).equals(execFileSync('git', ['show', `${baseline}:${path}`])));
   if (changed.length) throw new Error(`Part Ten additivity violated; pre-existing tests/fixtures changed: ${changed.join(', ')}`);
-  return Object.freeze({ base, checked: paths.length, changed: 0 });
+  return Object.freeze({ baseline, mergeBase, checked: paths.length, changed: 0 });
 }
 
 export function checkAssemblyCoverage(report, dispositions = assemblyDispositions) {
@@ -79,7 +127,13 @@ export function checkAssemblyCoverage(report, dispositions = assemblyDisposition
   if (dispositions.length !== 57 || new Set(dispositions.map(row => row.id)).size !== 57) throw new Error('missing or duplicate P10 disposition');
   const tiers = new Set();
   const rows = dispositions.map(row => {
-    if (row.status !== 'partial' || !row.reason) throw new Error(`invented held or unexplained P10 disposition: ${row.id}`);
+    if ((row.status !== 'EXECUTABLE' && !row.status.startsWith('NON-EXECUTABLE-UNTIL-')) || !row.reason)
+      throw new Error(`invented executable or unexplained P10 disposition: ${row.id}`);
+    if (row.status === 'EXECUTABLE' && (!packageActivityChecks.has(Number(row.id.slice(-2)))
+      || !row.heldArms?.startsWith('NON-EXECUTABLE-UNTIL-')))
+      throw new Error(`P10 executable row lacks its exact residual grant: ${row.id}`);
+    if (row.status.startsWith('NON-EXECUTABLE-UNTIL-') && !row.reason.includes('Exact residual design case:'))
+      throw new Error(`P10 non-executable row lacks its exact design case: ${row.id}`);
     const tests = report.testResults.flatMap(file => (file.assertionResults ?? []).filter(test =>
       (test.fullName.match(/\bP10-NF-\d+\b/g) ?? []).includes(row.id)).map(test => ({ file: file.name, title: test.fullName, status: test.status })));
     if (!tests.length || tests.some(test => test.status !== 'passed')) throw new Error(`missing executed passing fixture: ${row.id}`);
@@ -90,7 +144,9 @@ export function checkAssemblyCoverage(report, dispositions = assemblyDisposition
     }
     return { ...row, tests };
   });
-  for (const tier of ['unit', 'integration', 'lifecycle']) if (!tiers.has(tier)) throw new Error(`P10 has no executed ${tier} tier`);
+  for (const tier of ['unit', 'integration', 'lifecycle']) if (!tiers.has(tier)) throw new Error(`P10 has no tagged passing ${tier} tier`);
+  for (const number of [18, 57]) if (!rows[number - 1].status.startsWith('NON-EXECUTABLE-UNTIL-'))
+    throw new Error(`P10-NF-${number}: unrelated tagged tests may not establish executability`);
   return rows;
 }
 
@@ -135,5 +191,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const additive = checkPartTenAdditivity();
   for (const row of rows) console.log(`${row.id}: ${row.status}; ${row.tests.length} executed fixtures; ${row.reason}`);
   console.log(`resolvePackageActivity: ${packageRows.length} executable map rows; ${packageActivityNonExecutable.length} non-executable consumer row`);
-  console.log(`Part Ten additivity: ${additive.checked}/${additive.checked} pre-existing tests/fixtures byte-identical to ${additive.base}; changed=${additive.changed}`);
+  console.log(`Part Ten additivity baseline: ${additive.baseline} (merge-base ${additive.mergeBase})`);
+  console.log(`Part Ten additivity: ${additive.checked}/${additive.checked} pre-existing tests/fixtures byte-identical to current main; changed=${additive.changed}`);
 }

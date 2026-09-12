@@ -6,12 +6,12 @@ import { expect, it } from 'vitest';
 import type { PackageTransition } from '../../src/assembly/index.js';
 import { value } from '../facts/fixtures.js';
 import { assemblyInput } from '../assembly/fixture.js';
-import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+import { packageActivityRuntimeFixture } from '../assembly/package-activity-fixture.js';
 
 const clone = <T>(input: T): T => JSON.parse(JSON.stringify(input)) as T;
 
 function seedBundle(directory: string) {
-  const f = assemblyRuntimeFixture(undefined, { verifiedProbes: true });
+  const f = packageActivityRuntimeFixture();
   const baseCount = f.raw.length;
   const pkg = value(f.runtime.record('LocalCapabilityPackage', clone(assemblyInput('LocalCapabilityPackage'))));
   const packageFact = value(f.runtime.inspect()).find(row => row.record.id === pkg.id)!.fact;

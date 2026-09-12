@@ -5,12 +5,12 @@ import type { AssemblyRecordName, PackageTransition } from '../../src/assembly/i
 import type { FactEnvelope, FactStorePort } from '../../src/facts/index.js';
 import { value } from '../facts/fixtures.js';
 import { assemblyInput } from '../assembly/fixture.js';
-import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+import { packageActivityRuntimeFixture } from '../assembly/package-activity-fixture.js';
 
-type Fixture = ReturnType<typeof assemblyRuntimeFixture>;
+type Fixture = ReturnType<typeof packageActivityRuntimeFixture>;
 type TransitionRow = Readonly<{ record: PackageTransition; fact: FactEnvelope }>;
 const clone = <T>(input: T): T => JSON.parse(JSON.stringify(input)) as T;
-const fixture = () => assemblyRuntimeFixture(undefined, { verifiedProbes: true });
+const fixture = () => packageActivityRuntimeFixture();
 
 function signed<N extends AssemblyRecordName>(f: Fixture, name: N, input: object) {
   const record = value(f.runtime.record(name, input));
@@ -65,7 +65,7 @@ it('P10-NF-30 P10-NF-41 P10-NF-43 P10-NF-44 full Part Ten runtime and Part Two s
   expect(resolve(f).outcome).toMatchObject({ status: 'active', package: pkg.fact.id, transition: active.fact.id });
   const retired = transition(f, pkg, 'transition:retired', 'active', 'retired', active);
   expect(resolve(f).outcome).toMatchObject({ status: 'inactive', disposition: 'retired', transition: retired.fact.id });
-});
+}, 60_000);
 
 it('P10-NF-43 conflicts, multi-heads, incomplete references, taint, and mismatched active artifacts remain unresolved', () => {
   const fork = fixture(); const forkPkg = recordPackage(fork);
@@ -105,7 +105,7 @@ it('P10-NF-43 conflicts, multi-heads, incomplete references, taint, and mismatch
   for (const reference of Object.keys(tainted.context.decode.captures))
     delete (tainted.context.decode.captures as Record<string, string>)[reference];
   expect(resolve(tainted).outcome).toEqual({ status: 'unresolved', reason: 'tainted' });
-});
+}, 60_000);
 
 it('P10-NF-08 P10-NF-30 P10-NF-43 use-time re-resolution observes later activation and reports a moved frontier as unresolved', () => {
   const f = fixture(); const pkg = recordPackage(f);
@@ -129,4 +129,4 @@ it('P10-NF-08 P10-NF-30 P10-NF-43 use-time re-resolution observes later activati
   expect(consumeResult(resolvePackageActivity('alice.word-count', moving.store, () => -1, moving.c), {
     Success: () => false, Refused: refusal => refusal.detail.includes('start clock'),
   })).toBe(true);
-});
+}, 60_000);

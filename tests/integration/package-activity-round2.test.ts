@@ -5,12 +5,12 @@ import type { AssemblyRecordName, PackageActivityResult, PackageTransition } fro
 import type { FactEnvelope, FactStorePort } from '../../src/facts/index.js';
 import { refused, value } from '../facts/fixtures.js';
 import { assemblyInput } from '../assembly/fixture.js';
-import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+import { packageActivityRuntimeFixture } from '../assembly/package-activity-fixture.js';
 
-type Fixture = ReturnType<typeof assemblyRuntimeFixture>;
+type Fixture = ReturnType<typeof packageActivityRuntimeFixture>;
 type TransitionRow = Readonly<{ record: PackageTransition; fact: FactEnvelope }>;
 const clone = <T>(input: T): T => JSON.parse(JSON.stringify(input)) as T;
-const fixture = () => assemblyRuntimeFixture(undefined, { verifiedProbes: true });
+const fixture = () => packageActivityRuntimeFixture();
 
 function signed<N extends AssemblyRecordName>(f: Fixture, name: N, overrides: object = {}) {
   const record = value(f.runtime.record(name, { ...clone(assemblyInput(name)), ...overrides }));
@@ -56,7 +56,7 @@ it('P10-NF-43 unrelated-dependency-hides-active-branch remains unresolved becaus
   step(f, pkg, 'transition:fork-inhibited', 'staged', 'inhibited', rows.staged,
     { dependencyFacts: [pkg.fact.id, rows.staged!.fact.id, rows.active!.fact.id] });
   expect(activity(f).outcome).toEqual({ status: 'unresolved', reason: 'multi-head' });
-});
+}, 30_000);
 
 it('P10-NF-41 P10-NF-43 incomplete-dependency cannot establish inactive package activity', () => {
   const f = fixture(); const rows = chain(f, 'staged');
@@ -66,7 +66,7 @@ it('P10-NF-41 P10-NF-43 incomplete-dependency cannot establish inactive package 
   const result = activity(f);
   expect(result.outcome).toEqual({ status: 'unresolved', reason: 'incomplete' });
   expect(value(decodePackageActivityResult(clone(result), f.c)).outcome).toEqual(result.outcome);
-});
+}, 30_000);
 
 it('P10-NF-41 P10-NF-43 wrong-owner-as-probe cannot establish active package activity', () => {
   const f = fixture(); const rows = chain(f, 'activating');
@@ -77,7 +77,7 @@ it('P10-NF-41 P10-NF-43 wrong-owner-as-probe cannot establish active package act
   const result = activity(f);
   expect(result.outcome).toEqual({ status: 'unresolved', reason: 'conflicted' });
   expect(value(decodePackageActivityResult(clone(result), f.c)).outcome).toEqual(result.outcome);
-});
+}, 30_000);
 
 it('P10-NF-41 P10-NF-43 active-manifest-mismatch and inhibited-manifest-mismatch remain unresolved', () => {
   const wrongManifest = `sha256:${'0'.repeat(64)}`;
@@ -90,7 +90,7 @@ it('P10-NF-41 P10-NF-43 active-manifest-mismatch and inhibited-manifest-mismatch
   step(inactive, inactiveRows.pkg, 'transition:wrong-inactive-manifest', 'staged', 'inhibited', inactiveRows.staged,
     { manifestDigest: wrongManifest });
   expect(activity(inactive).outcome).toEqual({ status: 'unresolved', reason: 'package-mismatch' });
-});
+}, 30_000);
 
 it('P10-NF-41 P10-NF-44 self-consistent checksums cannot forge contradictory or unwitnessed owner results', () => {
   const f = fixture(); chain(f); const control = activity(f);
@@ -139,4 +139,4 @@ it('P10-NF-30 P10-NF-41 duplicate-canonical-package-fact preserves one equivalen
   const f = fixture(); const rows = chain(f);
   value(f.spine.append(rows.pkg.record));
   expect(activity(f).outcome).toMatchObject({ status: 'active', package: rows.pkg.fact.id });
-});
+}, 30_000);

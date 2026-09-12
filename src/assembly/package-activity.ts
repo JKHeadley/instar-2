@@ -1,9 +1,11 @@
 import { consumeResult, defineDecoder } from '../index.js';
+import type { DecodeContext } from '../index.js';
 import type { CausalFrontier, FactEnvelope, FactSnapshot, FactStorePort } from '../facts/index.js';
+import { decodeCheckRun } from '../register/index.js';
+import type { RegisterContext } from '../register/index.js';
+import { decodeProbeRecord } from '../verification/index.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
-import { currentAssemblyRows } from './history.js';
-import { assemblyIdentity, assemblyReferences, assemblyRowForReference,
-  factReferenceAliases, referenceHasExpectedKind } from './records.js';
+import { assemblyIdentity, assemblyReferences, referenceHasExpectedKind } from './records.js';
 import type { AssemblyDecodeContext, AssemblyRecord, CurrentAssemblyFact, PackageActivityOutcome,
   PackageActivityResult, PackageActivityUnresolvedReason, LocalCapabilityPackage, PackageTransition } from './contracts.js';
 
@@ -148,13 +150,12 @@ function frontierOfFacts(facts: readonly FactEnvelope[]): CausalFrontier {
   return freeze(frontier);
 }
 
-function snapshotFingerprint(snapshot: FactSnapshot): string {
-  return encoded(snapshot.entries.map(entry => ({ id: entry.fact.id, hash: entry.fact.contentHash,
-    taint: entry.taint, conflicts: entry.conflicts }))).hash;
-}
-
 function factFingerprint(facts: readonly FactEnvelope[]): string {
   return encoded(facts.map(fact => ({ id: fact.id, hash: fact.contentHash }))).hash;
+}
+
+function rowFingerprint(rows: readonly CurrentAssemblyFact[]): string {
+  return encoded(rows.map(row => ({ id: row.fact.id, hash: row.fact.contentHash, taint: row.taint, conflicts: row.conflicts }))).hash;
 }
 
 function snapshotFactFingerprint(snapshot: FactSnapshot): string {
@@ -168,50 +169,62 @@ function referenceOwnerMismatch(record: AssemblyRecord, reference: ReturnType<ty
   return !reference.expected && !!resolved && reference.field !== 'predecessors' && reference.field !== 'dependencyFacts';
 }
 
-function historyIssue(record: AssemblyRecord, rows: readonly CurrentAssemblyFact[], snapshot: FactSnapshot): 'conflicted' | 'tainted' | 'incomplete' | undefined {
-  const seed = rows.find(row => row.record.type === record.type && assemblyIdentity(row.record).canonicalHash === assemblyIdentity(record).canonicalHash);
-  if (!seed) return 'incomplete';
-  const byId = new Map(snapshot.entries.map(entry => [entry.fact.id, entry]));
-  const queue = [seed.fact.id]; const visited = new Set<string>();
-  while (queue.length) {
-    const id = queue.shift()!; if (visited.has(id)) continue; visited.add(id);
-    const status = byId.get(id); if (!status) return 'incomplete';
-    if (status.conflicts.length) return 'conflicted';
-    if (status.taint.length) return 'tainted';
-    const owned = rows.find(row => row.fact.id === id);
-    if (owned) {
-      if (owned.conflicts.length) return 'conflicted';
-      if (owned.taint.length) return 'tainted';
-      if (owned.record.type === 'GrowthObservation' && owned.record.completion === 'incomplete') return 'incomplete';
-      for (const reference of assemblyReferences(owned.record)) {
-        const resolved = assemblyRowForReference(reference.id, rows);
-        const referenced = resolved ? byId.get(resolved.fact.id) : byId.get(reference.id)
-          ?? snapshot.entries.find(entry => factReferenceAliases(entry.fact).includes(reference.id));
-        if (referenced) {
-          if (!referenceHasExpectedKind(reference, referenced.fact, resolved?.record)
-            || referenceOwnerMismatch(owned.record, reference, referenced.fact, resolved?.record)) return 'conflicted';
-          queue.push(referenced.fact.id);
-        } else if (reference.requiredWhenSigned || /^[^:]+:\d+:\d+$/.test(reference.id)) return 'incomplete';
-      }
+function registerContext(context: AssemblyDecodeContext): RegisterContext {
+  const register = context.register as DecodeContext['register'];
+  return {
+    ...context,
+    register,
+    types: { register, preserved: context.preserved, captures: {} },
+    shape: { factSchemas: [] } as unknown as RegisterContext['shape'],
+    provenance: {} as RegisterContext['provenance'],
+    source: { path: 'owner-history://check-run-record', symbol: 'decodeCheckRun' },
+  };
+}
+
+function evidenceBody(fact: FactEnvelope): unknown {
+  const body = fact.body as Readonly<Record<string, unknown>>;
+  return body.record ?? body;
+}
+
+function ownerEvidenceIssue(record: AssemblyRecord, context: AssemblyDecodeContext): 'conflicted' | 'tainted' | 'incomplete' | undefined {
+  ensure(context.history?.owner === 'part-ten', 'signed history resolver required');
+  for (const reference of assemblyReferences(record)) {
+    const status = take(context.history.lookup(reference.id));
+    if (!status) {
+      if (reference.requiredWhenSigned || /^[^:]+:\d+:\d+$/.test(reference.id)) return 'incomplete';
+      continue;
     }
-    for (const dependency of status.fact.predecessors.required) queue.push(dependency);
+    if (status.completeness !== 'complete') return 'incomplete';
+    if (status.conflicts.length > 0) return 'conflicted';
+    if (status.taint.length > 0) return 'tainted';
+    if (!referenceHasExpectedKind(reference, status.fact, status.record)
+      || referenceOwnerMismatch(record, reference, status.fact, status.record)) return 'conflicted';
+    try {
+      if (record.type === 'PackageTransition' && reference.field === 'testEvidence')
+        take(decodeCheckRun(evidenceBody(status.fact), registerContext(context)));
+      if (record.type === 'PackageTransition' && reference.field === 'probeEvidence')
+        take(decodeProbeRecord(evidenceBody(status.fact), context));
+    } catch {
+      return 'conflicted';
+    }
   }
   return undefined;
 }
 
-function portHistoryIssue(seed: CurrentAssemblyFact, context: AssemblyDecodeContext): 'conflicted' | 'tainted' | 'incomplete' | undefined {
+function portHistoryIssues(context: AssemblyDecodeContext) {
   ensure(context.history, 'signed history resolver required');
-  if (seed.record.type === 'PackageTransition') for (const reference of assemblyReferences(seed.record)) {
-    if (reference.field !== 'testEvidence' && reference.field !== 'probeEvidence') continue;
-    const status = take(context.history.lookup(reference.id));
-    if (!status || status.completeness !== 'complete') return 'incomplete';
-    if (status.conflicts.length > 0 || referenceOwnerMismatch(seed.record, reference, status.fact, status.record)) return 'conflicted';
-    if (status.taint.length > 0) return 'tainted';
-  }
-  const verdict = take(context.history.resolve(seed.record));
-  if (verdict.conflicts.length > 0) return 'conflicted';
-  if (verdict.completeness !== 'complete' || verdict.missing.length > 0 || !verdict.admitted) return 'incomplete';
-  return undefined;
+  const cache = new Map<string, 'conflicted' | 'tainted' | 'incomplete' | null>();
+  return (seed: CurrentAssemblyFact): 'conflicted' | 'tainted' | 'incomplete' | undefined => {
+    const key = `${seed.record.type}:${assemblyIdentity(seed.record).canonicalHash}`;
+    if (cache.has(key)) return cache.get(key) ?? undefined;
+    const evidenceIssue = ownerEvidenceIssue(seed.record, context);
+    if (evidenceIssue) { cache.set(key, evidenceIssue); return evidenceIssue; }
+    const verdict = take(context.history!.resolve(seed.record));
+    const issue = verdict.conflicts.length > 0 ? 'conflicted' as const
+      : verdict.completeness !== 'complete' || verdict.missing.length > 0 || !verdict.admitted ? 'incomplete' as const : undefined;
+    cache.set(key, issue ?? null);
+    return issue;
+  };
 }
 
 function lifecycleIssue(transitions: readonly (CurrentAssemblyFact & { record: PackageTransition })[]): 'conflicted' | 'incomplete' | undefined {
@@ -233,9 +246,16 @@ function deriveFromRows(namespace: string, rows: readonly CurrentAssemblyFact[],
   issueFor: (row: CurrentAssemblyFact) => 'conflicted' | 'tainted' | 'incomplete' | undefined): Readonly<{
   outcome: PackageActivityOutcome; evidence: PackageActivityResult['evidence'];
 }> {
-  const packages = rows.filter((row): row is CurrentAssemblyFact & { record: LocalCapabilityPackage } =>
+  const byContent = new Map<string, CurrentAssemblyFact>();
+  for (const row of [...rows].sort((left, right) => left.fact.segment.epoch - right.fact.segment.epoch
+    || left.fact.segment.position - right.fact.segment.position || left.fact.machine.localeCompare(right.fact.machine))) {
+    const key = `${row.record.type}:${assemblyIdentity(row.record).canonicalHash}`;
+    if (!byContent.has(key)) byContent.set(key, row);
+  }
+  const uniqueRows = [...byContent.values()];
+  const packages = uniqueRows.filter((row): row is CurrentAssemblyFact & { record: LocalCapabilityPackage } =>
     row.record.type === 'LocalCapabilityPackage' && row.record.namespace === namespace);
-  const transitions = rows.filter((row): row is CurrentAssemblyFact & { record: PackageTransition } =>
+  const transitions = uniqueRows.filter((row): row is CurrentAssemblyFact & { record: PackageTransition } =>
     row.record.type === 'PackageTransition' && row.record.package === namespace);
   const packageFacts = packages.map(row => row.fact.id).sort();
   const transitionFacts = transitions.map(row => row.fact.id).sort();
@@ -269,11 +289,11 @@ function deriveFromRows(namespace: string, rows: readonly CurrentAssemblyFact[],
   return unresolved('nonterminal-head');
 }
 
-function deriveOutcome(namespace: string, snapshot: FactSnapshot, context: AssemblyDecodeContext): Readonly<{
+function deriveOwnerOutcome(namespace: string, context: AssemblyDecodeContext): Readonly<{
   outcome: PackageActivityOutcome; evidence: PackageActivityResult['evidence'];
 }> {
-  const rows = currentAssemblyRows(snapshot, { ...context, validateReferences: false });
-  return deriveFromRows(namespace, rows, row => historyIssue(row.record, rows, snapshot));
+  ensure(context.history?.owner === 'part-ten', 'package activity requires Part Ten signed history');
+  return deriveFromRows(namespace, take(context.history.current()), portHistoryIssues(context));
 }
 
 function withinFrontier(reference: string, frontier: CausalFrontier): boolean {
@@ -286,24 +306,31 @@ function withinFrontier(reference: string, frontier: CausalFrontier): boolean {
 }
 
 function validateResultSemantics(value: Omit<PackageActivityResult, 'id' | 'identity'>, context: AssemblyDecodeContext): void {
+  ensure(context.history?.owner === 'part-ten', 'package activity result requires Part Ten signed history');
   const sameFrontier = encoded(value.frontier).bytes === encoded(value.confirmedFrontier).bytes;
-  if (value.outcome.status !== 'unresolved' || value.outcome.reason !== 'frontier-moved')
-    ensure(sameFrontier, 'settled package activity result has mismatched frontiers');
+  const moved = value.outcome.status === 'unresolved' && value.outcome.reason === 'frontier-moved';
+  ensure(moved ? !sameFrontier : sameFrontier,
+    moved ? 'frontier-moved result requires distinct witnessed frontiers' : 'settled package activity result has mismatched frontiers');
   const allEvidence = [...value.evidence.packages, ...value.evidence.transitions, ...value.evidence.heads];
   ensure(allEvidence.every(reference => withinFrontier(reference, value.frontier)),
     'package activity evidence lies outside the pinned frontier');
   ensure(value.evidence.heads.every(reference => value.evidence.transitions.includes(reference)),
     'package activity head is not transition evidence');
-  if (value.outcome.status === 'unresolved' && value.outcome.reason === 'frontier-moved') return;
-  ensure(context.history?.owner === 'part-ten', 'package activity result requires Part Ten signed history');
-  const rows = take(context.history.current());
-  const transitions = rows.filter(row => row.record.type === 'PackageTransition' && row.record.package === value.namespace);
-  const superseded = new Set(transitions.flatMap(row => row.record.predecessors));
-  const heads = new Set(transitions.filter(row => !superseded.has(row.fact.id)).map(row => row.fact.id));
-  const expected = deriveFromRows(value.namespace, rows, row => heads.has(row.fact.id) ? portHistoryIssue(row, context) : undefined);
+  const firstRows = take(context.history.current());
+  const currentFrontier = frontierOfFacts(firstRows.map(row => row.fact));
+  const expected = deriveFromRows(value.namespace, firstRows, portHistoryIssues(context));
+  const secondRows = take(context.history.current());
+  ensure(factFingerprint(firstRows.map(row => row.fact)) === factFingerprint(secondRows.map(row => row.fact)),
+    'package activity owner history moved during result admission');
+  ensure(encoded(currentFrontier).bytes === encoded(frontierOfFacts(secondRows.map(row => row.fact))).bytes,
+    'package activity owner frontier moved during result admission');
+  ensure(encoded(moved ? value.confirmedFrontier : value.frontier).bytes === encoded(currentFrontier).bytes,
+    'package activity frontier differs from current owner history');
+  if (moved) ensure(firstRows.some(row => row.record.type === 'LocalCapabilityPackage' && row.record.namespace === value.namespace),
+    'frontier movement has no witnessed package namespace owner');
   ensure(encoded(expected.evidence).bytes === encoded(value.evidence).bytes,
     'package activity evidence differs from current owner history');
-  ensure(encoded(expected.outcome).bytes === encoded(value.outcome).bytes,
+  if (!moved) ensure(encoded(expected.outcome).bytes === encoded(value.outcome).bytes,
     'package activity outcome differs from current owner evidence');
 }
 
@@ -326,22 +353,31 @@ export function resolvePackageActivity(namespace: string, store: FactStorePort, 
     ensure(store && typeof store.readForProjection === 'function', 'Part Two fact store is required');
     ensure(typeof clock === 'function', 'package activity clock is required');
     const startedAt = clock(); nonnegativeInteger(startedAt, 'package activity start clock must be a nonnegative integer');
-    const first = take(store.readForProjection()); const frontier = frontierOf(first); const fingerprint = snapshotFingerprint(first);
-    const derived = deriveOutcome(namespace, first, context);
+    ensure(context.history?.owner === 'part-ten', 'package activity requires Part Ten signed history');
+    const first = take(store.readForProjection()); const frontier = frontierOf(first);
+    const rawFirst = take(store.read()); const prefixFirst = take(store.verifiedPrefix());
+    const ownerRowsFirst = take(context.history.current());
     const second = take(store.readForProjection());
     const completedAt = clock(); nonnegativeInteger(completedAt, 'package activity completion clock must be a nonnegative integer');
     ensure(completedAt >= startedAt, 'package activity clock interval is inverted');
-    const final = take(store.readForProjection());
     const raw = take(store.read()); const prefix = take(store.verifiedPrefix());
     const confirmedFrontier = frontierOfFacts(prefix.facts);
-    const stable = fingerprint === snapshotFingerprint(second) && fingerprint === snapshotFingerprint(final)
+    const confirmed = deriveOwnerOutcome(namespace, context);
+    const ownerRowsFinal = take(context.history.current());
+    const stable = snapshotFactFingerprint(first) === snapshotFactFingerprint(second)
       && encoded(frontier).bytes === encoded(frontierOf(second)).bytes
-      && encoded(frontier).bytes === encoded(frontierOf(final)).bytes
-      && snapshotFactFingerprint(final) === factFingerprint(raw)
-      && factFingerprint(raw) === factFingerprint(prefix.facts);
-    if (!stable)
-      return issue(namespace, frontier, confirmedFrontier, startedAt, completedAt,
-        freeze({ status: 'unresolved', reason: 'frontier-moved' }), derived.evidence, context);
-    return issue(namespace, frontier, confirmedFrontier, startedAt, completedAt, derived.outcome, derived.evidence, context);
+      && factFingerprint(rawFirst) === factFingerprint(prefixFirst.facts)
+      && factFingerprint(rawFirst) === factFingerprint(raw)
+      && snapshotFactFingerprint(second) === factFingerprint(raw)
+      && factFingerprint(raw) === factFingerprint(prefix.facts)
+      && rowFingerprint(ownerRowsFirst) === rowFingerprint(ownerRowsFinal);
+    if (!stable) {
+      const frontierMoved = encoded(frontier).bytes !== encoded(confirmedFrontier).bytes;
+      const outcome = frontierMoved ? freeze({ status: 'unresolved' as const, reason: 'frontier-moved' as const })
+        : confirmed.outcome.status === 'unresolved' ? confirmed.outcome
+          : freeze({ status: 'unresolved' as const, reason: 'incomplete' as const });
+      return issue(namespace, frontier, confirmedFrontier, startedAt, completedAt, outcome, confirmed.evidence, context);
+    }
+    return issue(namespace, frontier, confirmedFrontier, startedAt, completedAt, confirmed.outcome, confirmed.evidence, context);
   });
 }
