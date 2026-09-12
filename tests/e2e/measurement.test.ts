@@ -168,6 +168,24 @@ beforeAll(() => {
         'export default [function throttle(){return true;}];',
       ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
         'src/measurement/index.ts':"export * from './permission.js';"})),
+      round10PermissionExports:[
+        "const key='allow'; export const decisions={[key]:()=>true};",
+        'export function measurementDecisions(){return {allow:()=>true};}',
+        'export const measurementDecisions=()=>({allow:()=>true});',
+        'class Base {allow(){return true;}} export class Decisions extends Base {}',
+        'export const decisions={get current(){return {allow:()=>true};}};',
+        'export const decisions=()=>()=>({allow:()=>true});',
+      ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
+        'src/measurement/index.ts':"export * from './permission.js';"})),
+      round10DefaultSpread:findForbiddenMeasurementPermissionExports({
+        'src/measurement/permission.ts':'const decisions=[{allow:()=>true}]; export default [...decisions];',
+        'src/measurement/index.ts':"export {default as decisions} from './permission.js';"}),
+      round10HelperExports:[
+        'export function measurementHelpers(){return {normalize:(v)=>v};}',
+        'class Base {normalize(v){return v;}} export class Helpers extends Base {}',
+        'export const helpers={get current(){return {normalize:(v)=>v};}};',
+      ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
+        'src/measurement/index.ts':"export * from './permission.js';"})),
       coverageBlocked,
       blocked:p16Dispositions().filter(row=>row.status==='NON-EXECUTABLE-UNTIL-slice-A2').length,
       additivity:execFileSync(process.execPath,['scripts/check-p16-additivity.mjs'],{encoding:'utf8'}),
@@ -186,6 +204,7 @@ it('P16-NF-03 [behavior:registration-current-content] rejects missing identity, 
 it('P16-NF-05 [behavior:measured-claim] distinguishes admitted execution from copied, conflicting, and malformed proof in a fresh process', () => expect(result).toMatchObject({ claimTarget: 'target: not measured', claimMeasured: expect.stringContaining('measured execution'), claimCompeting: expect.stringContaining('Refused'), claimCompetingReversed: expect.stringContaining('Refused'), claimEqualReplay: expect.stringContaining('measured execution'), claimCopied: expect.stringContaining('Refused'), claimIncomplete: expect.stringContaining('Refused') }));
 it('P16-NF-22 [behavior:quota-coalescing] coalesces repeated missing-state observations in a fresh process', () => expect(result.quota).toEqual({ notices: ['account'], open: ['account'] }));
 it('P16-NF-23 [behavior:observational-port] exposes only the observational holder port in a fresh process', () => expect(result).toMatchObject({ port: ['admitAmount', 'owner', 'trend'], permissionExport: ['allow'], destructuredPermissionExports: [['allow'], ['allow'], ['allow'], ['allow'], ['allow']], containerPermissionExports: [['allow'], ['allow'], ['canRun'], ['place'], ['throttle']] }));
+it('P16-NF-23 [behavior:observational-port] rejects round 10 reachable permissions in a fresh process', () => expect(result).toMatchObject({ round10PermissionExports: [['allow'], ['allow'], ['allow'], ['allow'], ['allow'], ['allow']], round10DefaultSpread: ['allow'], round10HelperExports: [[], [], []] }));
 it('P16-NF-24 [behavior:rate-event-populations] executes breaker and session rate populations in a fresh process', () => expect(result.rate).toEqual({ 'circuit-open': 1, quota: 1 }));
 it('P16-NF-25 [behavior:cpu-and-byte] executes CPU normalization and byte admission in a fresh process', () => expect(result).toMatchObject({ cpu: [50, 12.5], fractionalBytes: expect.stringContaining('Refused') }));
 it('P16-NF-26 [behavior:process-incarnation] executes typed absence and malformed process input in a fresh process', () => expect(result.process).toEqual(['missing', expect.stringContaining('Refused')]));

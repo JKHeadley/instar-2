@@ -100,6 +100,26 @@ it('P16-NF-23 [behavior:observational-port] exposes no allow, place, or throttle
   ] as const)) expect(scan(source)).toEqual([permission]);
 });
 
+it('P16-NF-23 [behavior:observational-port] rejects round 10 export-reachable callable permissions', () => {
+  const scan = (source: string, index = "export * from './permission.js';") =>
+    findForbiddenMeasurementPermissionExports({
+      'src/measurement/permission.ts': source,
+      'src/measurement/index.ts': index,
+    });
+  for (const [source, index] of [
+    ["const key='allow'; export const decisions={[key]:()=>true};", undefined],
+    ['export function measurementDecisions(){return {allow:()=>true};}', undefined],
+    ['export const measurementDecisions=()=>({allow:()=>true});', undefined],
+    ['const decisions=[{allow:()=>true}]; export default [...decisions];',
+      "export {default as decisions} from './permission.js';"],
+    ['class Base {allow(){return true;}} export class Decisions extends Base {}', undefined],
+    ['export const decisions={get current(){return {allow:()=>true};}};', undefined],
+    ['export const decisions=()=>()=>({allow:()=>true});', undefined],
+  ] as const) expect(scan(source, index)).toEqual(['allow']);
+  expect(scan('export function measurementHelpers(){return {normalize:(v:number)=>v};}')).toEqual([]);
+  expect(scan('class Base {normalize(v:number){return v;}} export class Helpers extends Base {}')).toEqual([]);
+});
+
 it('P16-NF-24 [behavior:rate-event-populations] keeps breaker and session populations distinct', () => {
   const f = measurementFixture();
   expect(value(summarizeRateLimitEvents([
