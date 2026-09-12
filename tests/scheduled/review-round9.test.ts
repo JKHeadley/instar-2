@@ -38,5 +38,5 @@ it('P15-CONTRACT-MAP accepts only the row-80 conditional package-activity grant 
   const wrongName = 'NON-EXECUTABLE-UNTIL-P15-P10-package-resource-and-activity-v2';
   const altered = dispositions.map((row: { number: number }) => row.number === 17
     ? { ...row, held: wrongName, status: `EXECUTABLE-ARMS; ${wrongName}`, reason: wrongName } : row);
-  expect(() => checkP15Architecture(altered)).toThrow(/design-bound validation obligation|unrecognized conditional grant/);
+  expect(() => checkP15Architecture(altered)).toThrow(/consistent disposition|unrecognized conditional grant/);
 });

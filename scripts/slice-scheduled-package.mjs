@@ -9,8 +9,21 @@ import { hashBytes } from '../src/facts/index.ts';
 import { assemblyRuntimeFixture } from '../tests/assembly/runtime-fixture.ts';
 import { assemblyInput } from '../tests/assembly/fixture.ts';
 import { activeScheduledFixture, clone, packageArchive, scheduledFixture, value } from '../tests/scheduled/fixture.ts';
+import { buildP15Round16ZoneCase, recoverP15Round16ZoneCase } from '../tests/scheduled/round16-proof.ts';
 
 const [directory, mode, kind] = process.argv.slice(2); const durable = join(directory, 'scheduled-package-cut.json');
+if (mode === 'round16-zone-seed-cut') {
+  mkdirSync(directory, { recursive: true });
+  const cases = Object.fromEntries(['Mars/Olympus_Mons', 'America/New_York']
+    .map(zone => [zone, buildP15Round16ZoneCase(zone)]));
+  const descriptor = openSync(durable, 'w'); writeSync(descriptor, JSON.stringify(cases));
+  fsyncSync(descriptor); closeSync(descriptor); process.kill(process.pid, 'SIGKILL');
+}
+if (mode === 'round16-zone-recover') {
+  const cases = JSON.parse(readFileSync(durable, 'utf8'));
+  process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(cases)
+    .map(([zone, saved]) => [zone, recoverP15Round16ZoneCase(saved)]))));
+}
 if (mode === 'seed-cut') {
   const f = activeScheduledFixture(); const port = createScheduledWorkPackagePort();
   const admitted = value(port.admitPackageResource({ package: f.package, archive: f.archive, manifestPath: 'scheduled/manifest.json',

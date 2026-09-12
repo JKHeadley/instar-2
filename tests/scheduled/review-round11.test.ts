@@ -40,7 +40,7 @@ it('P15-CONTRACT-MAP rejects the reviewer NF-10 evidence when the service-contin
   const complete = p15Dispositions().find((row: { number: number }) => row.number === 10)!;
   expect(complete).toMatchObject({
     executable: true,
-    held: 'NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md-and-impl-part-eleven-and-Part-Ten-production-minimal-plane-wiring',
+    held: 'NON-EXECUTABLE-UNTIL-impl-part-eleven-and-Part-Ten-production-minimal-plane-wiring; NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
   });
   const partial = [{ ...complete, held: undefined, status: 'EXECUTABLE' }];
   const report = { success: true, testResults: [{
@@ -48,5 +48,5 @@ it('P15-CONTRACT-MAP rejects the reviewer NF-10 evidence when the service-contin
     assertionResults: [{ fullName: title, title, status: 'passed' }],
   }] };
   expect(() => checkP15Coverage(report, [complete])).not.toThrow();
-  expect(() => checkP15Coverage(report, partial)).toThrow(/disposition does not match its design-bound validation obligation/);
+  expect(() => checkP15Coverage(report, partial)).toThrow(/consistent disposition/);
 });

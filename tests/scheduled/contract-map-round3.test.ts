@@ -24,7 +24,7 @@ it('P15-CONTRACT-MAP rejects a held disposition naming an invented grant or ledg
   const dispositions = p15Dispositions();
   const altered = dispositions.map((row: { number: number }) => row.number === 7 ? { ...row,
     held: 'NON-EXECUTABLE-UNTIL-invented-grant.md-row-999', status: 'NON-EXECUTABLE-UNTIL-invented-grant.md-row-999' } : row);
-  expect(() => checkP15Architecture(altered)).toThrow(/(?:design-bound validation obligation|held disposition has no existing|unrecognized held disposition)/);
+  expect(() => checkP15Architecture(altered)).toThrow(/(?:consistent disposition|held disposition has no existing|unrecognized held disposition)/);
 });
 
 it('P15-CONTRACT-MAP rejects a real grant attached to the wrong validation obligation', () => {
@@ -32,19 +32,19 @@ it('P15-CONTRACT-MAP rejects a real grant attached to the wrong validation oblig
   const wrong = 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69';
   const altered = dispositions.map((row: { number: number }) => row.number === 4
     ? { ...row, held: wrong, status: wrong, reason: wrong } : row);
-  expect(() => checkP15Architecture(altered)).toThrow(/design-bound validation obligation/);
+  expect(() => checkP15Architecture(altered)).toThrow(/consistent disposition/);
 });
 
-it('P15-CONTRACT-MAP keeps real RunAdmissionPort production wiring on its exact ungranted request', () => {
+it('P15-CONTRACT-MAP keeps real RunAdmissionPort production wiring on its exact granted row-83 dependency', () => {
   const dispositions = p15Dispositions();
   for (const number of [6, 22, 38, 45]) {
     expect(dispositions.find((row: { number: number }) => row.number === number)?.held)
-      .toContain('UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md');
+      .toContain('NON-EXECUTABLE-UNTIL-row-83-run-admission-production');
   }
   const unrelated = 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-real-Part-Six-RunAdmissionPort-production-wiring';
   const altered = dispositions.map((row: { number: number }) => row.number === 6
     ? { ...row, held: unrelated, status: unrelated, reason: unrelated } : row);
-  expect(() => checkP15Architecture(altered)).toThrow(/design-bound validation obligation/);
+  expect(() => checkP15Architecture(altered)).toThrow(/consistent disposition/);
 });
 
 it('P15-CONTRACT-MAP executes resource validation and keeps only inactive activity on the exact Part Ten grant', () => {
@@ -61,7 +61,7 @@ it('P15-CONTRACT-MAP executes resource validation and keeps only inactive activi
     ? { ...row, held: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md',
       status: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md',
       reason: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md' } : row);
-  expect(() => checkP15Architecture(altered)).toThrow(/design-bound validation obligation/);
+  expect(() => checkP15Architecture(altered)).toThrow(/consistent disposition/);
 });
 
 it('P15-CONTRACT-MAP does not credit quota decoding as scheduled-work check 33 placement evidence', () => {

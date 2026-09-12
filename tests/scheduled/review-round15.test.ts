@@ -12,16 +12,20 @@ const result = (run: () => unknown) => {
   catch (error) { return { accepted: false, detail: error instanceof Error ? error.message : String(error) }; }
 };
 
-it('P15 round-fifteen F1 every contract-map entry point refuses request-only deferral evidence', () => {
+it('P15 round-fifteen F1 every contract-map entry point refuses stale request-only deferral evidence', () => {
   const rows = p15Dispositions();
   for (const number of [6, 13, 22]) {
     const row = rows.find((candidate: { number: number }) => candidate.number === number)!;
-    const architecture = result(() => checkP15Architecture([row]));
-    const coverage = result(() => checkP15Coverage({ success: true, testResults: [] }, [row]));
+    const stale = `NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-${number === 13 ? 'calendar-adapter' : 'run-admission-production'}.md`;
+    const staleRow = { ...row, held: stale, status: stale, reason: stale };
+    const architecture = result(() => checkP15Architecture([staleRow]));
+    const coverage = result(() => checkP15Coverage({ success: true, testResults: [] }, [staleRow]));
     expect(architecture).toMatchObject({ accepted: false });
     expect(coverage).toMatchObject({ accepted: false });
-    expect(architecture.detail).toMatch(/REQUESTED dependency is not granted check-map evidence/);
+    expect(architecture.detail).toMatch(/consistent disposition/);
     expect(coverage.detail).toBe(architecture.detail);
+    expect(() => checkP15Architecture([row])).not.toThrow();
+    expect(() => checkP15Coverage({ success: true, testResults: [] }, [row])).not.toThrow();
   }
   const grantedControl = rows.find((candidate: { number: number }) => candidate.number === 4)!;
   expect(() => checkP15Architecture([grantedControl])).not.toThrow();

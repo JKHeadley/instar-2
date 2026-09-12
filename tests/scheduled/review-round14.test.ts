@@ -6,13 +6,18 @@ import { checkP15Architecture, checkP15RequestedDependencies, p15Dispositions } 
 // @ts-expect-error The executable additivity checker intentionally ships as an ESM script without declarations.
 import { checkP15Additivity, p15AdditivityBaseline } from '../../scripts/check-p15-additivity.mjs';
 
-it('P15 round-fourteen map-strict reviewer cases refuse REQUESTED records as grant evidence', () => {
+it('P15 round-fourteen map-strict reviewer cases refuse stale REQUESTED records after their grants', () => {
   const rows = p15Dispositions();
-  for (const number of [6, 13, 22]) {
+  for (const [number, dependency] of [[6, 'NON-EXECUTABLE-UNTIL-row-83-run-admission-production'],
+    [13, 'NON-EXECUTABLE-UNTIL-row-84-calendar-adapter'],
+    [22, 'NON-EXECUTABLE-UNTIL-row-83-run-admission-production']] as const) {
     const row = rows.find((candidate: { number: number }) => candidate.number === number)!;
-    expect(row.held).toMatch(/^NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-/);
-    expect(() => checkP15Architecture([row])).toThrow(/REQUESTED dependency is not granted check-map evidence/);
-    expect(() => checkP15RequestedDependencies([row])).not.toThrow();
+    expect(row.held).toBe(dependency);
+    expect(() => checkP15Architecture([row])).not.toThrow();
+    expect(() => checkP15RequestedDependencies([row])).toThrow(/request-only disposition/);
+    const stale = `NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-${number === 13 ? 'calendar-adapter' : 'run-admission-production'}.md`;
+    expect(() => checkP15Architecture([{ ...row, held: stale, status: stale, reason: stale }]))
+      .toThrow(/consistent disposition/);
   }
   expect(() => checkP15Architecture([rows.find((row: { number: number }) => row.number === 4)!])).not.toThrow();
 });

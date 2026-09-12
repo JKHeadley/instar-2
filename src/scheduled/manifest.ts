@@ -14,6 +14,7 @@ export const SCHEDULED_MANIFEST_LIMITS = Object.freeze({
   manifestBytes: 32_768,
 });
 const utf8Bytes = (value: string): number => new TextEncoder().encode(value).byteLength;
+const supportedTimeZones = new Set(Intl.supportedValuesOf('timeZone'));
 
 function object(value: unknown, path: string): Obj {
   ensure(value !== null && typeof value === 'object' && !Array.isArray(value), `${path}: expected object`); return value as Obj;
@@ -45,6 +46,20 @@ function list(value: unknown, path: string, nonempty = false, ordered = false): 
 function one<T extends string>(value: unknown, allowed: readonly T[], path: string): T {
   const result = text(value, path); ensure(allowed.includes(result as T), `${path}: unknown value ${result}`); return result as T;
 }
+function namedTimeZone(value: unknown, path: string): string {
+  const result = text(value, path);
+  ensure(/^[A-Za-z][A-Za-z0-9._+-]*(?:\/[A-Za-z][A-Za-z0-9._+-]*)*$/.test(result),
+    `${path}: expected a canonical named-zone reference`);
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: result });
+    formatter.format(0);
+    ensure(supportedTimeZones.has(result) || formatter.resolvedOptions().timeZone.length > 0,
+      `${path}: unsupported IANA named zone ${result}`);
+  } catch {
+    ensure(false, `${path}: unsupported IANA named zone ${result}`);
+  }
+  return result;
+}
 
 const groups = ['type', 'schemaVersion', 'identity', 'schedule', 'work', 'authority', 'bounds', 'admission',
   'intelligence', 'effectsAndProof', 'recovery', 'presentation', 'activation'] as const;
@@ -69,16 +84,13 @@ function decodeShape(input: Json, expectedVersion: 1 | 2, context: BoundaryConte
     currentLatenessCutoffMs: number(schedule.currentLatenessCutoffMs, 'schedule.currentLatenessCutoffMs') };
   const decodedSchedule = kind === 'recurring'
     ? freeze({ kind, expression: parseCronV1(text(schedule.expression, 'schedule.expression')).expression,
-      timeZone: text(schedule.timeZone, 'schedule.timeZone'), ...common })
+      timeZone: namedTimeZone(schedule.timeZone, 'schedule.timeZone'), ...common })
     : freeze({ kind, at: text(schedule.at, 'schedule.at'), ...common });
   if (decodedSchedule.kind === 'one-shot') parseRfc3339Offset(decodedSchedule.at);
   ensure(/^tzdb:\d{4}[a-z]$/.test(decodedSchedule.timeZoneDataVersion),
     'schedule.timeZoneDataVersion: expected a pinned tzdb release reference');
   ensure(/^calendar:[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9]\d*$/.test(decodedSchedule.calendarPolicyVersion),
     'schedule.calendarPolicyVersion: expected a pinned calendar policy reference');
-  if (decodedSchedule.kind === 'recurring') ensure(/^[A-Za-z][A-Za-z0-9._+-]*(?:\/[A-Za-z][A-Za-z0-9._+-]*)*$/.test(decodedSchedule.timeZone),
-    'schedule.timeZone: expected a canonical named-zone reference');
-
   const work = object(root.work, 'work'); fields(work, ['entryPoint', 'bodyDigest', 'resultDestination', 'groundingContract', 'predecessors'], 'work');
   const authority = object(root.authority, 'authority'); fields(authority, ['systemPrincipal', 'standingGrant', 'scope', 'operationClasses', 'authorizations'], 'authority');
   const bounds = object(root.bounds, 'bounds'); fields(bounds, ['runBudget', 'exitTest', 'durationMs', 'attempts', 'concurrency', 'tokens', 'money', 'bytes', 'notifications'], 'bounds');

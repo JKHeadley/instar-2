@@ -30,27 +30,27 @@ const held = {
   3: 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69-and-Part-Ten-production-wiring',
   4: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49',
   5: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-loop-followup.md-row-36',
-  6: 'NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
-  7: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
-  9: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
-  10: 'NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md-and-impl-part-eleven-and-Part-Ten-production-minimal-plane-wiring',
+  6: 'NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
+  7: 'NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
+  9: 'NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
+  10: 'NON-EXECUTABLE-UNTIL-impl-part-eleven-and-Part-Ten-production-minimal-plane-wiring; NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
   12: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-confined-production-driver',
-  13: 'NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
-  14: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  13: 'NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
+  14: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
   15: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-operator-followup.md-row-69',
   16: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49',
   17: 'NON-EXECUTABLE-UNTIL-P15-P10-package-resource-and-activity-v1',
   18: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-facts-followup.md-row-47-and-seam-response-rungraph-followup.md-row-48-and-seam-response-intake-followup.md-row-49',
-  19: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md-and-P15-P10-package-resource-and-activity-v1',
-  20: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  19: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-P15-P10-package-resource-and-activity-v1; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
+  20: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
   21: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-facts-followup.md-row-47-and-seam-response-rungraph-followup.md-row-48-and-seam-response-intake-followup.md-row-49',
-  22: 'NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
+  22: 'NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
   23: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-loop-followup.md-and-seam-response-judgment.md-row-32',
-  24: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
-  25: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
-  26: 'NON-EXECUTABLE-UNTIL-SEAM-LEDGER.md-rows-37-44-47-48-49-54-66-67-68',
-  27: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
-  28: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  24: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
+  25: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
+  26: 'NON-EXECUTABLE-UNTIL-SEAM-LEDGER.md-rows-37-44-47-48-49-54-66-67-68; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
+  27: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
+  28: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
   29: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-resource-allocation-and-launch-arm',
   30: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36',
   31: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36',
@@ -60,21 +60,21 @@ const held = {
   35: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-loop-followup.md-and-seam-response-judgment.md-rows-27-32',
   36: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-judgment.md-row-27-and-seam-response-intake-followup.md-row-49',
   37: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-rows-36-37-and-seam-response-facts-followup.md-row-37',
-  38: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
+  38: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver; NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
   39: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-resource-admission-arm',
   40: 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md',
   41: 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md',
   42: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-judgment.md-row-23',
   43: 'NON-EXECUTABLE-UNTIL-seam-response-judgment.md-row-27-and-seam-response-assembly-followup.md-row-30',
   44: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-judgment.md-row-23',
-  45: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver-and-seam-response-judgment.md-row-23-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
+  45: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver-and-seam-response-judgment.md-row-23; NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
   46: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33',
   47: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33',
   48: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-seam-response-operator-followup.md-row-69',
   49: 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md',
   50: 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69-and-Part-Ten-production-wiring',
   51: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-judgment.md-row-27-and-seam-response-intake-followup.md-row-49',
-  52: 'NON-EXECUTABLE-UNTIL-SEAM-LEDGER.md-rows-23-27-37-44-47-48-49-54-66-67-68-69-and-Part-Ten-production-wiring; measured-or-benchmark-supported-route-arm-also-requires-SEAM-LEDGER.md-row-30',
+  52: 'NON-EXECUTABLE-UNTIL-SEAM-LEDGER.md-rows-23-27-37-44-47-48-49-54-66-67-68-69-and-Part-Ten-production-wiring; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter; measured-or-benchmark-supported-route-arm-also-requires-SEAM-LEDGER.md-row-30',
 };
 
 const round12Case = {
@@ -129,6 +129,16 @@ const dependencyFiles = value => value.match(/(?:SEAM-LEDGER|seam-response-[a-z0
 const namedConditionalGrants = new Map([['P15-P10-package-resource-and-activity-v1', {
   request: packageResourceRequest, response: 'seam-response-assembly-followup.md', row: '80',
 }]]);
+const exactConditionalRowGrants = new Map([
+  ['NON-EXECUTABLE-UNTIL-row-83-run-admission-production', {
+    row: '83', request: runAdmissionRequest, grantId: 'P15-P6-run-admission-production-v1',
+    responses: ['seam-response-loop-followup.md', 'seam-response-assembly-followup.md'],
+  }],
+  ['NON-EXECUTABLE-UNTIL-row-84-calendar-adapter', {
+    row: '84', request: calendarRequest, grantId: 'P15-P10-calendar-adapter',
+    responses: ['seam-response-assembly-followup.md'],
+  }],
+]);
 const dependencyGrantIds = value => value.match(/P\d+-P\d+-[a-z0-9-]+-v\d+/g) ?? [];
 const ungrantedRequestFiles = new Set([calendarRequest, runAdmissionRequest]);
 const isRequestOnlyDisposition = row => {
@@ -138,8 +148,32 @@ const isRequestOnlyDisposition = row => {
     && dependencyGrantIds(row.held).length === 0 && !/row(?:s)?-[0-9]/.test(row.held);
 };
 
+function expectedDisposition(number) {
+  const local = executable[number]; const dependency = held[number];
+  if (!local && !dependency) throw new Error(`P15-NF-${String(number).padStart(2, '0')}: unknown check number`);
+  return {
+    id: `P15-NF-${String(number).padStart(2, '0')}`,
+    status: local ? dependency ? `EXECUTABLE-ARMS; ${dependency}` : 'EXECUTABLE' : dependency,
+    reason: local ?? dependency,
+    executable: Boolean(local),
+    held: dependency || undefined,
+  };
+}
+
+function validateDispositionIdentity(row) {
+  if (!Number.isInteger(row.number) || row.number < 1 || row.number > 52)
+    throw new Error(`${row.id}: unknown P15 check number ${row.number}`);
+  const expected = expectedDisposition(row.number);
+  if (row.id !== expected.id)
+    throw new Error(`${row.id}: check identity must be ${expected.id} for number ${row.number}`);
+  if (row.status !== expected.status || row.reason !== expected.reason
+    || row.executable !== expected.executable || row.held !== expected.held)
+    throw new Error(`${row.id}: status, reason, executable and held fields must describe one consistent disposition`);
+}
+
 export function checkP15RequestedDependencies(dispositions = p15Dispositions().filter(isRequestOnlyDisposition)) {
   for (const row of dispositions) {
+    validateDispositionIdentity(row);
     if (row.held !== held[row.number] || !isRequestOnlyDisposition(row))
       throw new Error(`${row.id}: request-only disposition does not match its exact unmet owner dependency`);
     for (const file of dependencyFiles(row.held)) {
@@ -153,8 +187,7 @@ export function checkP15RequestedDependencies(dispositions = p15Dispositions().f
 
 export function checkP15Architecture(dispositions = p15Dispositions()) {
   for (const row of dispositions) {
-    if (row.held !== held[row.number] || row.executable !== Boolean(executable[row.number]))
-      throw new Error(`${row.id}: disposition does not match its design-bound validation obligation`);
+    validateDispositionIdentity(row);
   }
   for (const proof of proofFiles) {
     const { file } = proof;
@@ -192,7 +225,23 @@ export function checkP15Architecture(dispositions = p15Dispositions()) {
       throw new Error(`${row.id}: REQUESTED dependency is not granted check-map evidence: ${row.held}`);
     const files = dependencyFiles(row.held);
     const grantIds = dependencyGrantIds(row.held);
-    if (!files.length && !grantIds.length) throw new Error(`${row.id}: held disposition has no existing grant/request evidence`);
+    const conditionalRowGrants = [...exactConditionalRowGrants.entries()]
+      .filter(([name]) => row.held.includes(name));
+    if (!files.length && !grantIds.length && !conditionalRowGrants.length)
+      throw new Error(`${row.id}: held disposition has no existing grant evidence`);
+    for (const [name, grant] of conditionalRowGrants) {
+      const request = readFileSync(resolve(laneDirectory, grant.request), 'utf8');
+      const ledgerRow = ledger.split('\n').find(line => line.startsWith(`| ${grant.row} |`));
+      if (!/^Status: GRANTED CONDITIONAL\b/m.test(request)
+        || !ledgerRow?.includes(grant.request) || !/\| GRANTED CONDITIONAL\b/.test(ledgerRow))
+        throw new Error(`${row.id}: ${name} is not granted by ledger row ${grant.row}`);
+      for (const responseFile of grant.responses) {
+        const response = readFileSync(resolve(laneDirectory, responseFile), 'utf8');
+        if (!response.includes(`row ${grant.row}`) || !response.includes('GRANTED CONDITIONAL')
+          || !response.includes(grant.grantId))
+          throw new Error(`${row.id}: ${name} is missing its exact ${responseFile} grant addendum`);
+      }
+    }
     for (const file of files) {
       if (!allowed.has(file)) throw new Error(`${row.id}: unrecognized held disposition ${file}`);
       const path = resolve(laneDirectory, file);
@@ -241,6 +290,7 @@ function validateReportedTest(fileName, title) {
 
 export function checkP15Coverage(report, dispositions = p15Dispositions()) {
   if (!report.success) throw new Error('P15 mapping requires a successful actual test run');
+  for (const row of dispositions) validateDispositionIdentity(row);
   const requestOnly = dispositions.filter(isRequestOnlyDisposition);
   checkP15RequestedDependencies(requestOnly);
   const mapped = dispositions.map(row => {
