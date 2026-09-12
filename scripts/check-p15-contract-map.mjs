@@ -11,7 +11,7 @@ const executable = {
   7: 'Arbitrary resource ids and paths preserve byte-identical decisions after public Part Ten archive validation; pinned-calendar replacement remains held.',
   8: 'Closed manifest decoding, required-field omission, duplicate identity, canonical bytes, dependency checks and complete Part Ten archive binding execute at all three tiers.',
   9: 'The local cron-v1 grammar and normalization arm executes; pinned zone/calendar expansion remains held at its named adapter seam.',
-  10: 'Invalid manifests, inconsistent dependencies and duplicate scheduled resources are surfaced while independent valid signed packages and support resources remain usable.',
+  10: 'The executable package-validation arm surfaces invalid manifests, inconsistent dependencies and duplicate scheduled resources while independent valid signed package resources remain usable; it does not claim job execution or minimal-plane service liveness.',
   11: 'All authority, bounds, supervision and proof groups are mandatory closed fields and bind the immutable body digest.',
   14: 'The absolute one-shot due/cutoff arm executes; missed-group disposition remains held at the named calendar and loop seams.',
   16: 'Part Ten current-package resolution refuses missing or half-staged authority; scheduled Run boundary behavior remains held at Four.',
@@ -33,6 +33,7 @@ const held = {
   6: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
   7: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   9: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  10: 'NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md-and-impl-part-eleven-and-Part-Ten-production-minimal-plane-wiring',
   12: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-confined-production-driver',
   13: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   14: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
@@ -75,6 +76,11 @@ const held = {
   51: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-judgment.md-row-27-and-seam-response-intake-followup.md-row-49',
   52: 'NON-EXECUTABLE-UNTIL-SEAM-LEDGER.md-rows-23-27-37-44-47-48-49-54-66-67-68-69-and-Part-Ten-production-wiring; measured-or-benchmark-supported-route-arm-also-requires-SEAM-LEDGER.md-row-30',
 };
+
+const requiredExecutableCases = new Map([[10, [{
+  file: 'tests/scheduled/review-round11.test.ts',
+  title: 'P15-NF-10 package validation remains usable without claiming service continuation',
+}]]]);
 
 export function p15Dispositions(design = readFileSync('docs/19-scheduled-work/09-negative-contract-fixtures.md', 'utf8')) {
   const ids = [...design.matchAll(/^\| (P15-NF-(\d+)) \|/gm)].map(match => ({ id: match[1], number: Number(match[2]) }));
@@ -203,6 +209,10 @@ export function checkP15Coverage(report, dispositions = p15Dispositions()) {
       .map(test => ({ file: validateReportedTest(file.name, test.title), title: test.title, status: test.status })));
     if (row.executable) {
       if (!tests.length || tests.some(test => test.status !== 'passed')) throw new Error(`${row.id}: EXECUTABLE without exclusively passing real tests`);
+      for (const required of requiredExecutableCases.get(row.number) ?? []) {
+        if (!tests.some(test => test.file === required.file && test.title === required.title && test.status === 'passed'))
+          throw new Error(`${row.id}: incomplete executable evidence; missing ${required.file} :: ${required.title}`);
+      }
     } else if (tests.length) throw new Error(`${row.id}: held owner arm is falsely labelled by a local passing test`);
     return { ...row, tests };
   });
