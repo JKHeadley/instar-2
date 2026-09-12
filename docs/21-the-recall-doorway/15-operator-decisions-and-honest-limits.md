@@ -152,6 +152,17 @@ in section 14; executable versus inhibited checks are in section 12. Proposed sp
 exceptions and operating thresholds require recorded owner/operator disposition. They are not
 silently enabled by accepting the research or merging a documentation branch.
 
+The owner integration decisions for Echo have the following fixed evidence basis. They are
+not choices to assume missing code into existence; their implementation assignments must retain
+the named inhibited consumers until owner evidence arrives.
+
+| Seam decision | Verified disposition and required dependency |
+|---|---|
+| Full-history startup versus compaction continuity | SessionGrounding is landed within its limits (`src/rungraph/types.ts:70`, `src/rungraph/graph.ts:98–110`). Complete compaction accounting remains NON-EXECUTABLE-UNTIL-RUNGRAPH-CONTINUITY; multiple-lineage startup remains NON-EXECUTABLE-UNTIL-RUNGRAPH-MULTILINEAGE-GROUNDING. Closure's explicit continuity rejection is at `src/rungraph/closure-records.ts:405–419`. |
+| Context assembly versus carrier and operator consumption | Carrier landed (`src/assembly/contracts.ts:33–49`); P21 principal submission binding remains NON-EXECUTABLE-UNTIL-JUDGMENT-RECALL-CONSUMER and ASSEMBLY-CURRENT-CONTEXT. Operator inspection/recovery remains NON-EXECUTABLE-UNTIL-OPERATOR-CONTEXT-CONSUMERS. |
+| Coherence measurements and comparisons | A1 admission landed, A2 pending (`src/measurement/README.md:3–11`). Production totals remain NON-EXECUTABLE-UNTIL-MEASUREMENT-A2-COHERENCE; comparisons additionally await MEASUREMENT-BENCHMARK-COMPATIBILITY. |
+| New recall-specific joins and lifecycle | The remaining scope, custody, resource, scheduled-work, outgoing and production-composition contracts in section 14 are requested owner duties, not existing grants. Each affected positive remains inhibited until all its named owners integrate. |
+
 **Value — honest limits.** The design has source-grounded mechanisms, three measured installed
 method failures, a prepared synthetic corpus and explicit experiments. It has no production
 memory-coherence measurement, no Dawn runtime verdict, no diagnosis of the four private incidents,
