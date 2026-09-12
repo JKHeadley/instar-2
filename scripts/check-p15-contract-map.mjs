@@ -30,12 +30,12 @@ const held = {
   3: 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69-and-Part-Ten-production-wiring',
   4: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49',
   5: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-loop-followup.md-row-36',
-  6: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
+  6: 'NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
   7: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   9: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   10: 'NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md-and-impl-part-eleven-and-Part-Ten-production-minimal-plane-wiring',
   12: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-confined-production-driver',
-  13: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
+  13: 'NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   14: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   15: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-operator-followup.md-row-69',
   16: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49',
@@ -44,7 +44,7 @@ const held = {
   19: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md-and-P15-P10-package-resource-and-activity-v1',
   20: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   21: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-facts-followup.md-row-47-and-seam-response-rungraph-followup.md-row-48-and-seam-response-intake-followup.md-row-49',
-  22: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
+  22: 'NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
   23: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-loop-followup.md-and-seam-response-judgment.md-row-32',
   24: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   25: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
@@ -130,8 +130,32 @@ const namedConditionalGrants = new Map([['P15-P10-package-resource-and-activity-
   request: packageResourceRequest, response: 'seam-response-assembly-followup.md', row: '80',
 }]]);
 const dependencyGrantIds = value => value.match(/P\d+-P\d+-[a-z0-9-]+-v\d+/g) ?? [];
+const ungrantedRequestFiles = new Set([calendarRequest, runAdmissionRequest]);
+const isRequestOnlyDisposition = row => {
+  if (!row.held || row.executable) return false;
+  const files = dependencyFiles(row.held);
+  return files.length > 0 && files.every(file => ungrantedRequestFiles.has(file))
+    && dependencyGrantIds(row.held).length === 0 && !/row(?:s)?-[0-9]/.test(row.held);
+};
+
+export function checkP15RequestedDependencies(dispositions = p15Dispositions().filter(isRequestOnlyDisposition)) {
+  for (const row of dispositions) {
+    if (row.held !== held[row.number] || !isRequestOnlyDisposition(row))
+      throw new Error(`${row.id}: request-only disposition does not match its exact unmet owner dependency`);
+    for (const file of dependencyFiles(row.held)) {
+      const source = readFileSync(resolve(laneDirectory, file), 'utf8');
+      if (!row.held.includes(`UNGRANTED-REQUEST-${file}`) || !/^Status: REQUESTED/m.test(source))
+        throw new Error(`${row.id}: ${file} is not an exact ungranted request`);
+    }
+  }
+  return dispositions.map(row => ({ id: row.id, held: row.held }));
+}
 
 export function checkP15Architecture(dispositions = p15Dispositions()) {
+  for (const row of dispositions) {
+    if (row.held !== held[row.number] || row.executable !== Boolean(executable[row.number]))
+      throw new Error(`${row.id}: disposition does not match its design-bound validation obligation`);
+  }
   for (const proof of proofFiles) {
     const { file } = proof;
     if (!existsSync(file)) throw new Error(`missing required P15 proof file: ${file}`);
@@ -163,9 +187,9 @@ export function checkP15Architecture(dispositions = p15Dispositions()) {
   const ledger = readFileSync(ledgerPath, 'utf8');
   const allowed = new Set([...Object.values(held).flatMap(dependencyFiles)]);
   for (const row of dispositions) {
-    if (row.held !== held[row.number] || row.executable !== Boolean(executable[row.number]))
-      throw new Error(`${row.id}: disposition does not match its design-bound validation obligation`);
     if (!row.held) continue;
+    if (isRequestOnlyDisposition(row))
+      throw new Error(`${row.id}: REQUESTED dependency is not granted check-map evidence: ${row.held}`);
     const files = dependencyFiles(row.held);
     const grantIds = dependencyGrantIds(row.held);
     if (!files.length && !grantIds.length) throw new Error(`${row.id}: held disposition has no existing grant/request evidence`);
@@ -217,7 +241,9 @@ function validateReportedTest(fileName, title) {
 
 export function checkP15Coverage(report, dispositions = p15Dispositions()) {
   if (!report.success) throw new Error('P15 mapping requires a successful actual test run');
-  checkP15Architecture(dispositions);
+  const requestOnly = dispositions.filter(isRequestOnlyDisposition);
+  checkP15RequestedDependencies(requestOnly);
+  checkP15Architecture(dispositions.filter(row => !isRequestOnlyDisposition(row)));
   return dispositions.map(row => {
     const tests = report.testResults.flatMap(file => file.assertionResults.filter(test => (test.title.match(/\bP15-NF-\d+\b/g) ?? []).includes(row.id))
       .map(test => ({ file: validateReportedTest(file.name, test.title), title: test.title, status: test.status })));

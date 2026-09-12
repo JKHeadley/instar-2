@@ -34,7 +34,7 @@ it('P15-CONTRACT-MAP accepts only the row-80 conditional package-activity grant 
     expect(dispositions.find((row: { number: number }) => row.number === number)?.held)
       .toContain('P15-P10-package-resource-and-activity-v1');
   }
-  expect(() => checkP15Architecture(dispositions)).not.toThrow();
+  expect(() => checkP15Architecture(dispositions.filter((row: { number: number }) => ![6, 13, 22].includes(row.number)))).not.toThrow();
   const wrongName = 'NON-EXECUTABLE-UNTIL-P15-P10-package-resource-and-activity-v2';
   const altered = dispositions.map((row: { number: number }) => row.number === 17
     ? { ...row, held: wrongName, status: `EXECUTABLE-ARMS; ${wrongName}`, reason: wrongName } : row);
