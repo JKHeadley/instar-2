@@ -51,7 +51,9 @@ interface ResolvedReference {
 function snapshot(history: OperatorHistoryPort): FactSnapshot {
   requireOperator(history.owner === 'part-two', 'P11-NF-03: operator history must be supplied by Part Two');
   const current = take(history.current());
-  requireOperator(take(history.isCurrent(current)), 'P11-NF-08: operator history must be a current Part Two-issued snapshot', 'stale-base');
+  const currentStatus = take(history.isCurrent(current));
+  requireOperator(typeof currentStatus === 'boolean', 'P11-NF-08: history currency must be a boolean', 'stale-base');
+  requireOperator(currentStatus === true, 'P11-NF-08: operator history must be a current Part Two-issued snapshot', 'stale-base');
   return current;
 }
 
@@ -124,7 +126,9 @@ function requestView(composition: OperatorSurfaceComposition, reference: string)
   const consequence = text(body.consequence, 'consequence'), reversibility = text(body.reversibility, 'reversibility');
   const assertedRecurrence = strings(body.recurrence, 'recurrence');
   const recurrenceResolution = resolveAuthorizationRequestRecurrence(current, resolved.status);
-  const recurrence = recurrenceResolution.valid ? recurrenceResolution.references : Object.freeze([] as string[]);
+  requireOperator(typeof recurrenceResolution.valid === 'boolean',
+    'P11-NF-06/08: recurrence validity must be a boolean', 'standing');
+  const recurrence = recurrenceResolution.valid === true ? recurrenceResolution.references : Object.freeze([] as string[]);
   const grantExpiresAt = integer(body.grantExpiresAt, 'grantExpiresAt');
   return Object.freeze({ fact: resolved.status.fact.id, requestId: text(body.requestId, 'requestId'), requestDigest,
     action, scope, audience, artifact, base: text(body.base, 'base'), expiresAt, approver, requestedBy,
@@ -236,10 +240,12 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
   const clock = composition.history.clock(), now = clock.value;
   const evaluated = probe ? readEvidence(composition.verification.posture(probe.record.plan, clock), null, 'independent-posture') : null;
   const exactWitness = probe ? readEvidence(composition.verification.probeBound(probe.fact.id, clock), false, 'independent-probe') : false;
+  requireOperator(typeof exactWitness === 'boolean', 'P11-NF-10/13: independent probe result must be a boolean');
   const witnessFresh = !!probe && evaluated?.plan === probe.record.plan && evaluated.evaluatedAt === now
     && evaluated.posture === 'healthy' && probe.record.disposition === 'passed' && probe.record.completedAt <= now
-    && now - probe.record.completedAt <= composition.witnessFreshness && exactWitness;
+    && now - probe.record.completedAt <= composition.witnessFreshness && exactWitness === true;
   const isolationLive = readEvidence(composition.isolation.live(path), false, 'isolation-proof');
+  requireOperator(typeof isolationLive === 'boolean', 'P11-NF-10/12: isolation result must be a boolean');
   const receiptMatches = !!receipt && receipt.operation === operation && receipt.path === path;
   const plan = probe ? rows.find(row => row.record.type === 'VerificationPlan'
     && row.record.id === probe.record.plan && row.record.bar.version === probe.record.planVersion
@@ -255,10 +261,10 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
   if (!probe) uncertainty.push('independent-probe-missing');
   else if (!witnessFresh) uncertainty.push('independent-probe-stale-or-failed');
   if (evaluated && evaluated.posture !== 'healthy') uncertainty.push(`independent-posture-${evaluated.posture}`);
-  if (!isolationLive) uncertainty.push('isolation-proof-missing');
+  if (isolationLive === false) uncertainty.push('isolation-proof-missing');
   if (brokerPosture !== 'protected') uncertainty.push('broker-posture-unprotected');
   const protectedNow = brokerPosture === 'protected' && receiptMatches && receipt?.disposition === 'committed'
-    && witnessFresh && isolationLive && effectiveDigestWitnessed;
+    && witnessFresh && isolationLive === true && effectiveDigestWitnessed;
   return Object.freeze({ operation, posture: protectedNow ? 'protected' as const : 'unprotected' as const,
     brokerReceipt: receiptMatches ? receipt.attestation : null, effectiveDigest: receiptMatches ? receipt.effectiveHash : null,
     effectiveBase: receiptMatches ? receipt.base : null,
@@ -335,11 +341,14 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
           const view = requestView(composition, request), now = composition.history.clock();
           requireOperator(view.completeness === 'complete' && now.value <= view.expiresAt, 'P11-NF-09: incomplete or expired request cannot be challenged', 'stale-base');
           const renderingDigest = requestRenderingDigest(composition, view.fact);
-          return take(composition.verifier.issue({ request: view.fact, requestDigest: view.requestDigest, renderingDigest,
+          const challenge = take(composition.verifier.issue({ request: view.fact, requestDigest: view.requestDigest, renderingDigest,
             action: view.action, scope: view.scope, audience: view.audience, operator: view.approver.id,
             requestedBy: view.requestedBy.id, artifact: view.artifact, base: view.base, issuedAt: now.value,
             expiresAt: Math.min(view.expiresAt, now.value + composition.challengeLifetime), singleUse: true,
             surface: composition.id, generation: composition.history.generation() }));
+          requireOperator(typeof challenge.singleUse === 'boolean' && challenge.singleUse === true,
+            'P11-NF-09: issued challenge single-use state must be boolean true', 'standing');
+          return challenge;
         });
       },
       confirm(input: Readonly<{ challenge: SurfaceChallenge; proof: string; decision: 'approve' | 'decline' }>): Result<FactEnvelopeReference> {
@@ -356,7 +365,8 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
             && input.challenge.renderingDigest === requestRenderingDigest(composition, view.fact)
             && input.challenge.audience === view.audience && input.challenge.operator === view.approver.id,
           'P11-NF-08/09: challenge subject or rendering moved', 'standing');
-          requireOperator(now.value <= input.challenge.expiresAt && input.challenge.singleUse, 'P11-NF-09: challenge expired', 'stale-base');
+          requireOperator(typeof input.challenge.singleUse === 'boolean', 'P11-NF-09: challenge single-use state must be a boolean', 'standing');
+          requireOperator(now.value <= input.challenge.expiresAt && input.challenge.singleUse === true, 'P11-NF-09: challenge expired', 'stale-base');
           const proof = take(composition.verifier.verify(input.challenge, input.proof, input.decision));
           requireOperator(proof.challenge === input.challenge.id && proof.principal.id === view.approver.id
             && take(canonical(proof.principal)).hash === take(canonical(view.approver)).hash
@@ -383,11 +393,14 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
           const scope = take(decode('Scope', input.scope, composition.history.decode()));
           const digest = take(canonical(stopSubject(composition, principal.id, scope))).hash;
           const now = composition.history.clock();
-          return take(composition.verifier.issue({ request: composition.id, requestDigest: digest, renderingDigest: digest,
+          const challenge = take(composition.verifier.issue({ request: composition.id, requestDigest: digest, renderingDigest: digest,
             action: 'emergency-stop', scope, audience: 'independent-emergency-stop', operator: principal.id,
             requestedBy: principal.id, artifact: digest, base: composition.id, issuedAt: now.value,
             expiresAt: now.value + composition.challengeLifetime, singleUse: true,
             surface: composition.id, generation: composition.history.generation() }));
+          requireOperator(typeof challenge.singleUse === 'boolean' && challenge.singleUse === true,
+            'P11-NF-22: issued stop challenge single-use state must be boolean true', 'standing');
+          return challenge;
         });
       },
       stop(input: Readonly<{ challenge: SurfaceChallenge; proof: string; scope: Scope }>): Result<FactEnvelopeReference> {
@@ -400,9 +413,11 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
           requireOperator(principal, 'P11-NF-22/39: emergency stop operator is not independently verified', 'standing');
           const scope = take(decode('Scope', input.scope, composition.history.decode()));
           const digest = take(canonical(stopSubject(composition, principal.id, scope))).hash;
+          requireOperator(typeof input.challenge.singleUse === 'boolean',
+            'P11-NF-22: emergency-stop challenge single-use state must be a boolean', 'standing');
           requireOperator(input.challenge.request === composition.id && input.challenge.requestDigest === digest
             && input.challenge.renderingDigest === digest && input.challenge.audience === 'independent-emergency-stop'
-            && input.challenge.singleUse && composition.history.clock().value <= input.challenge.expiresAt,
+            && input.challenge.singleUse === true && composition.history.clock().value <= input.challenge.expiresAt,
           'P11-NF-22: emergency-stop challenge moved, expired, or changed generation', 'stale-base');
           const proof = take(composition.verifier.verify(input.challenge, input.proof, 'approve'));
           requireOperator(proof.challenge === input.challenge.id && proof.principal.id === principal.id
