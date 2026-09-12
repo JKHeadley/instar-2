@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createScheduledWorkPackagePort, importLegacyScheduledJob } from '../src/scheduled/index.ts';
 import { canonical, consumeResult } from '../src/index.ts';
-import { decodeLocalCapabilityPackage } from '../src/assembly/index.ts';
+import { decodeLocalCapabilityPackage, resolveActivePackage } from '../src/assembly/index.ts';
 import { hashBytes } from '../src/facts/index.ts';
 import { assemblyRuntimeFixture } from '../tests/assembly/runtime-fixture.ts';
 import { assemblyInput } from '../tests/assembly/fixture.ts';
@@ -413,6 +413,71 @@ if (mode === 'round8-validation-recover') {
     resources: Object.fromEntries(Object.entries(persisted.resourceCases).map(([key, data]) => [key, recover(data)])),
     activity: Object.fromEntries(Object.entries(persisted.activityCases).map(([key, data]) => [key, recover(data)])),
   }));
+}
+if (mode === 'round9-validation-seed-cut') {
+  mkdirSync(directory, { recursive: true });
+  const scheduled = scheduledFixture(); const raw = []; const factsPath = join(directory, 'facts.jsonl');
+  const facts = openSync(factsPath, 'w');
+  const assembly = assemblyRuntimeFixture(core => ({ owner: 'part-ten', read: () => raw,
+    append(bytes, expected) {
+      if ((raw.at(-1)?.contentHash ?? null) !== expected) throw new Error('head mismatch');
+      writeSync(facts, `${bytes}\n`); fsyncSync(facts); raw.push(JSON.parse(bytes));
+      return core.success({ kind: 'local-durable' });
+    } }));
+  const input = clone(scheduled.package); const resources = {
+    'scheduled/manifest.json': scheduled.manifestBytes, 'dist/maintenance.js': scheduled.bodyBytes,
+  };
+  if (['support', 'normal-second', 'repeated-type', 'repeated-type-overridden', 'repeated-display-name', 'repeated-at'].includes(kind)) {
+    const second = clone(scheduled.manifest); second.schedule.at = '2027-01-02T00:00:00Z';
+    let extra = value(canonical(second)).bytes;
+    if (kind === 'support') extra = '{"dependencies":[]}';
+    if (kind === 'repeated-type') extra = extra.replace('"type":"ScheduledWorkManifest"',
+      '"type":"ScheduledWorkManifest","type":"ScheduledWorkManifest"');
+    if (kind === 'repeated-type-overridden') extra = extra.replace('"type":"ScheduledWorkManifest"',
+      '"type":"ScheduledWorkManifest","type":"support"');
+    if (kind === 'repeated-display-name') extra = extra.replace('"displayName":"Maintenance"',
+      '"displayName":"Old","displayName":"Maintenance"');
+    if (kind === 'repeated-at') extra = extra.replace('"at":"2027-01-02T00:00:00Z"',
+      '"at":"2027-01-03T00:00:00Z","at":"2027-01-02T00:00:00Z"');
+    resources['data/extra.json'] = extra;
+    input.entrypoints.push({ id: 'unrecognized-resource', path: 'data/extra.json', digest: hashBytes(extra) });
+  }
+  const pkg = value(assembly.runtime.record('LocalCapabilityPackage', value(decodeLocalCapabilityPackage(input, assembly.c))));
+  value(assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+    id: `transition:round9:${kind}`, operation: `operation:round9:${kind}`, package: pkg.namespace,
+    manifestDigest: pkg.contentDigest, observedArtifactDigest: pkg.contentDigest }));
+  const admission = { package: pkg, archive: packageArchive(pkg, resources), manifestPath: 'scheduled/manifest.json',
+    manifestBytes: scheduled.manifestBytes, existingManifests: [] };
+  const original = assembly.c.history; let reads = 0;
+  const context = { ...assembly.c, history: { ...original, current() {
+    reads++;
+    if (kind.startsWith('retire-read-') && reads === Number(kind.slice('retire-read-'.length))) {
+      const head = value(assembly.runtime.inspectCurrent()).find(row => row.record.id === `transition:round9:${kind}`);
+      value(assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+        id: `transition:round9:${kind}:retired`, operation: `operation:round9:${kind}:retired`,
+        predecessors: [head.fact.id], package: pkg.namespace, manifestDigest: pkg.contentDigest,
+        observedArtifactDigest: pkg.contentDigest, from: 'active', to: 'retired' }));
+    }
+    return original.current();
+  } } };
+  const before = consumeResult(createScheduledWorkPackagePort().admitPackageResource(admission, context), {
+    Success: () => ({ status: 'accepted' }), Refused: refusal => ({ status: 'refused', detail: refusal.detail }),
+  });
+  const inputs = openSync(join(directory, 'inputs.json'), 'w');
+  writeSync(inputs, JSON.stringify({ admission, before, reads })); fsyncSync(inputs); closeSync(inputs); closeSync(facts);
+  process.kill(process.pid, 'SIGKILL');
+}
+if (mode === 'round9-validation-recover') {
+  const saved = JSON.parse(readFileSync(join(directory, 'inputs.json'), 'utf8'));
+  const assembly = assemblyRuntimeFixture();
+  assembly.raw.splice(0, assembly.raw.length, ...readFileSync(join(directory, 'facts.jsonl'), 'utf8').trim().split('\n').map(JSON.parse));
+  const decide = result => consumeResult(result, { Success: () => ({ status: 'accepted' }),
+    Refused: refusal => ({ status: 'refused', detail: refusal.detail }) });
+  const after = decide(createScheduledWorkPackagePort().admitPackageResource(saved.admission, assembly.c));
+  const owner = decide(resolveActivePackage(saved.admission.package.namespace,
+    value(assembly.runtime.inspectCurrent()), assembly.c));
+  process.stdout.write(JSON.stringify({ before: saved.before, after, owner, reads: saved.reads,
+    facts: assembly.raw.length }));
 }
 if (mode === 'legacy-recover') {
   const sourceBytes = readFileSync(durable, 'utf8'); const context = scheduledFixture().context;

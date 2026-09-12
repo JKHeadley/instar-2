@@ -1,7 +1,7 @@
 import { ensure } from './boundary.js';
 
-/** Parse JSON while refusing repeated object members before JSON.parse can erase them. */
-export function parseUnambiguousJson(source: string): unknown {
+function scanJson(source: string, rejectRepeatedMembers: boolean,
+  onTopLevelMember?: (member: string, value: unknown) => void): void {
   ensure(typeof source === 'string', 'JSON resource must be text');
   let cursor = 0;
   const whitespace = () => { while (/\s/u.test(source[cursor] ?? '')) cursor++; };
@@ -24,32 +24,48 @@ export function parseUnambiguousJson(source: string): unknown {
     }
     throw new Error('unterminated JSON string');
   };
-  const value = (): void => {
+  const value = (depth: number): unknown => {
     whitespace(); const character = source[cursor];
     if (character === '{') {
       cursor++; whitespace(); const members = new Set<string>();
-      if (source[cursor] === '}') { cursor++; return; }
+      if (source[cursor] === '}') { cursor++; return undefined; }
       for (;;) {
         whitespace(); ensure(source[cursor] === '"', 'JSON object member must be a string');
-        const member = string(); ensure(!members.has(member), `ambiguous JSON repeats member ${member}`); members.add(member);
-        whitespace(); ensure(source[cursor++] === ':', 'JSON object member is missing colon'); value(); whitespace();
-        if (source[cursor] === '}') { cursor++; return; }
+        const member = string();
+        ensure(!rejectRepeatedMembers || !members.has(member), `ambiguous JSON repeats member ${member}`); members.add(member);
+        whitespace(); ensure(source[cursor++] === ':', 'JSON object member is missing colon');
+        const memberValue = value(depth + 1); if (depth === 0) onTopLevelMember?.(member, memberValue); whitespace();
+        if (source[cursor] === '}') { cursor++; return undefined; }
         ensure(source[cursor++] === ',', 'JSON object members must be comma-separated');
       }
     }
     if (character === '[') {
-      cursor++; whitespace(); if (source[cursor] === ']') { cursor++; return; }
+      cursor++; whitespace(); if (source[cursor] === ']') { cursor++; return undefined; }
       for (;;) {
-        value(); whitespace(); if (source[cursor] === ']') { cursor++; return; }
+        value(depth + 1); whitespace(); if (source[cursor] === ']') { cursor++; return undefined; }
         ensure(source[cursor++] === ',', 'JSON array members must be comma-separated');
       }
     }
-    if (character === '"') { string(); return; }
+    if (character === '"') return string();
     const remaining = source.slice(cursor);
     const token = /^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(remaining)?.[0];
-    ensure(token, 'invalid JSON value'); cursor += token.length;
+    ensure(token, 'invalid JSON value'); cursor += token.length; return JSON.parse(token) as unknown;
   };
-  value(); whitespace(); ensure(cursor === source.length, 'unexpected data after JSON value');
+  value(0); whitespace(); ensure(cursor === source.length, 'unexpected data after JSON value');
+}
+
+/** Parse JSON while refusing repeated object members before JSON.parse can erase them. */
+export function parseUnambiguousJson(source: string): unknown {
+  scanJson(source, true);
   try { return JSON.parse(source) as unknown; }
   catch { throw new Error('manifest resource is not JSON'); }
+}
+
+/** Decode every top-level string value for one member without erasing repeats. */
+export function topLevelJsonStringMemberValues(source: string, expectedMember: string): readonly string[] {
+  const values: string[] = [];
+  scanJson(source, false, (member, value) => {
+    if (member === expectedMember && typeof value === 'string') values.push(value);
+  });
+  return Object.freeze(values);
 }

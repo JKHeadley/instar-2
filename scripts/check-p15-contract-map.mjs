@@ -38,9 +38,9 @@ const held = {
   14: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   15: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-operator-followup.md-row-69',
   16: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49',
-  17: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md',
+  17: 'NON-EXECUTABLE-UNTIL-P15-P10-package-resource-and-activity-v1',
   18: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-facts-followup.md-row-47-and-seam-response-rungraph-followup.md-row-48-and-seam-response-intake-followup.md-row-49',
-  19: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-package-resource-and-activity.md',
+  19: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md-and-P15-P10-package-resource-and-activity-v1',
   20: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-calendar-adapter.md',
   21: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-facts-followup.md-row-47-and-seam-response-rungraph-followup.md-row-48-and-seam-response-intake-followup.md-row-49',
   22: 'UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-run-admission-production.md',
@@ -94,12 +94,19 @@ const proofFiles = [
   { file: 'tests/scheduled/review-round8.test.ts', tokens: ['exerciseP15Round8Proof()', 'expect('] },
   { file: 'tests/integration/scheduled-round8.test.ts', tokens: ['exerciseP15Round8Proof()', 'expect('] },
   { file: 'tests/e2e/scheduled-round8.test.ts', tokens: ['spawnSync(', 'SIGKILL', 'expect('] },
+  { file: 'tests/scheduled/review-round9.test.ts', tokens: ['exerciseP15Round9Proof()', 'expect('] },
+  { file: 'tests/integration/scheduled-round9.test.ts', tokens: ['exerciseP15Round9Proof()', 'expect('] },
+  { file: 'tests/e2e/scheduled-round9.test.ts', tokens: ['spawnSync(', 'SIGKILL', 'expect('] },
 ];
 const laneDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.instar/lanes');
 const calendarRequest = 'design-19-scheduled-work-seam-request-calendar-adapter.md';
 const runAdmissionRequest = 'design-19-scheduled-work-seam-request-run-admission-production.md';
 const packageResourceRequest = 'design-19-scheduled-work-seam-request-package-resource-and-activity.md';
 const dependencyFiles = value => value.match(/(?:SEAM-LEDGER|seam-response-[a-z0-9-]+|design-19-[a-z0-9-]+)\.md/g) ?? [];
+const namedConditionalGrants = new Map([['P15-P10-package-resource-and-activity-v1', {
+  request: packageResourceRequest, response: 'seam-response-assembly-followup.md', row: '80',
+}]]);
+const dependencyGrantIds = value => value.match(/P\d+-P\d+-[a-z0-9-]+-v\d+/g) ?? [];
 
 export function checkP15Architecture(dispositions = p15Dispositions()) {
   for (const proof of proofFiles) {
@@ -137,22 +144,32 @@ export function checkP15Architecture(dispositions = p15Dispositions()) {
       throw new Error(`${row.id}: disposition does not match its design-bound validation obligation`);
     if (!row.held) continue;
     const files = dependencyFiles(row.held);
-    if (!files.length) throw new Error(`${row.id}: held disposition has no existing grant/request evidence`);
+    const grantIds = dependencyGrantIds(row.held);
+    if (!files.length && !grantIds.length) throw new Error(`${row.id}: held disposition has no existing grant/request evidence`);
     for (const file of files) {
       if (!allowed.has(file)) throw new Error(`${row.id}: unrecognized held disposition ${file}`);
       const path = resolve(laneDirectory, file);
       if (!existsSync(path)) throw new Error(`${row.id}: held disposition names nonexistent ${file}`);
       const source = readFileSync(path, 'utf8');
-      if (file === calendarRequest || file === runAdmissionRequest || file === packageResourceRequest) {
+      if (file === calendarRequest || file === runAdmissionRequest) {
         if (!row.held.includes(`UNGRANTED-REQUEST-${file}`) || !/^Status: REQUESTED/m.test(source))
           throw new Error(`${row.id}: ${file} must be labelled as an UNGRANTED REQUEST`);
         if (file === runAdmissionRequest && !/RunAdmissionPort/.test(source))
           throw new Error(`${row.id}: run-admission request does not name the missing owner contract`);
-        if (file === packageResourceRequest && !/owner-issued package-activity result/.test(source))
-          throw new Error(`${row.id}: package-resource request does not name the missing owner activity contract`);
       } else if (file !== 'SEAM-LEDGER.md' && !/GRANTED/i.test(source.slice(0, 2500))) {
         throw new Error(`${row.id}: ${file} does not establish a granted dependency`);
       }
+    }
+    for (const grantId of grantIds) {
+      const grant = namedConditionalGrants.get(grantId);
+      if (!grant) throw new Error(`${row.id}: unrecognized conditional grant ${grantId}`);
+      const request = readFileSync(resolve(laneDirectory, grant.request), 'utf8');
+      const response = readFileSync(resolve(laneDirectory, grant.response), 'utf8');
+      const ledgerRow = ledger.split('\n').find(line => line.startsWith(`| ${grant.row} |`));
+      if (!request.includes(`Request id: \`${grantId}\``)
+        || !ledgerRow?.includes(grant.request) || !/\| GRANTED CONDITIONAL\b/.test(ledgerRow)
+        || !response.includes(`row ${grant.row} GRANTED CONDITIONAL: ${grantId}`))
+        throw new Error(`${row.id}: ${grantId} is not the exact conditional grant recorded in its request, ledger and addendum`);
     }
     for (const match of row.held.matchAll(/row(?:s)?-([0-9-]+)/g)) for (const number of match[1].split('-').filter(Boolean)) {
       const ledgerRow = ledger.split('\n').find(line => line.startsWith(`| ${number} |`));

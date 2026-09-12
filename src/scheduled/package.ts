@@ -5,7 +5,7 @@ import { decodeLocalCapabilityPackage, resolveActivePackage, safePackagePath, st
 import type { AssemblyDecodeContext, CurrentAssemblyFact } from '../assembly/index.js';
 import type { RunExit, RunExitReadPort } from '../rungraph/index.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
-import { parseUnambiguousJson } from './json.js';
+import { parseUnambiguousJson, topLevelJsonStringMemberValues } from './json.js';
 import { canonicalManifest, decodeScheduledWorkManifest } from './manifest.js';
 import { canonicalInstant, parseRfc3339Offset } from './time.js';
 import type { ScheduledOccurrencePlan, ScheduledWorkPackagePort } from './contracts.js';
@@ -23,7 +23,18 @@ function ownerValidatedActivePackages(current: readonly CurrentAssemblyFact[], c
 
 function isAdditionalScheduledManifest(bytes: string, context: BoundaryContext): boolean {
   let parsed: unknown;
-  try { parsed = parseUnambiguousJson(bytes); } catch { return false; }
+  try { parsed = parseUnambiguousJson(bytes); } catch (error) {
+    // A repeated member is a resource-encoding refusal, not evidence that the
+    // resource has ceased to be a scheduled manifest. Decode every top-level
+    // type value without erasing repeats; the ambiguous bytes are never admitted.
+    try {
+      if (topLevelJsonStringMemberValues(bytes, 'type').includes('ScheduledWorkManifest')) throw error;
+    } catch (classificationError) {
+      if (classificationError === error) throw error;
+      return false;
+    }
+    return false;
+  }
   return consumeResult(decodeScheduledWorkManifest(parsed, context), {
     Success: () => true,
     Refused: refusal => {
@@ -87,33 +98,37 @@ export function createScheduledWorkPackagePort(): ScheduledWorkPackagePort {
         const assemblyContext = context as AssemblyDecodeContext;
         ensure(assemblyContext.history, 'complete authoritative Part Ten package comparison is unavailable');
         const current = take(assemblyContext.history.current());
-        const active = take(resolveActivePackage(supplied.namespace, current, assemblyContext));
-        ensure(encoded(active).bytes === encoded(supplied).bytes, 'supplied package differs from current Part Ten package');
         ensure(Array.isArray(input.archive), 'complete Part Ten package archive must be supplied');
-        const staged = take(stageLocalCapability(active, input.archive,
+        const staged = take(stageLocalCapability(supplied, input.archive,
           ownerValidatedActivePackages(current, assemblyContext), assemblyContext));
         ensure(safePackagePath(input.manifestPath), 'manifest path is not a safe Part Ten package path');
-        const manifestEntry = active.entrypoints.find(entry => entry.path === input.manifestPath);
+        const manifestEntry = supplied.entrypoints.find(entry => entry.path === input.manifestPath);
         ensure(manifestEntry && manifestEntry.digest === hashBytes(input.manifestBytes), 'manifest bytes differ from the Part Ten package entry');
         const verifiedManifestEntry = staged.entries.find(entry => entry.path === input.manifestPath);
         ensure(verifiedManifestEntry?.bytes === input.manifestBytes, 'manifest bytes differ from the validated Part Ten archive');
         const parsed = parseUnambiguousJson(verifiedManifestEntry.bytes);
         const manifest = take(decodeScheduledWorkManifest(parsed, context));
-        ensure(manifest.identity.accountableOwner === active.ownerPrincipal, 'manifest owner differs from Part Ten package owner');
-        ensure(manifest.identity.packageVersion === active.version && manifest.identity.contentDigest === active.contentDigest,
+        ensure(manifest.identity.accountableOwner === supplied.ownerPrincipal, 'manifest owner differs from Part Ten package owner');
+        ensure(manifest.identity.packageVersion === supplied.version && manifest.identity.contentDigest === supplied.contentDigest,
           'manifest package version or content digest differs from Part Ten authority');
-        ensure(active.declarationIds.includes(manifest.identity.jobId), 'matching Part Ten feature declaration is absent');
+        ensure(supplied.declarationIds.includes(manifest.identity.jobId), 'matching Part Ten feature declaration is absent');
         ensure(Array.isArray(input.existingManifests), 'caller manifest collision copy must be a list');
         ensure(input.existingManifests.length === 0, 'caller manifest collision copy carries no authority');
-        const collision = authoritativeCollision(manifest.identity.jobId, active.namespace, context as AssemblyDecodeContext);
+        const collision = authoritativeCollision(manifest.identity.jobId, supplied.namespace, context as AssemblyDecodeContext);
         ensure(!collision, collision === manifest.identity.jobId ? 'duplicate scheduled job id' : 'case-folded scheduled job identity collision');
-        const body = active.entrypoints.find(entry => entry.id === manifest.work.entryPoint);
+        const body = supplied.entrypoints.find(entry => entry.id === manifest.work.entryPoint);
         ensure(body && body.digest === manifest.work.bodyDigest, 'manifest body differs from immutable Part Ten entry point');
         const additionalManifest = staged.entries.find(entry => entry.path !== input.manifestPath
           && isAdditionalScheduledManifest(entry.bytes, context));
         ensure(!additionalManifest, 'package contains multiple scheduled work manifests');
-        const packageChecks = new Set([...active.checks.unit, ...active.checks.integration, ...active.checks.lifecycle]);
+        const packageChecks = new Set([...supplied.checks.unit, ...supplied.checks.integration, ...supplied.checks.lifecycle]);
         ensure(manifest.activation.requiredChecks.every(check => packageChecks.has(check)), 'manifest requires a check absent from the Part Ten package');
+        // This is deliberately the final history-dependent operation. Any
+        // retirement recorded while archive, dependency, collision, or
+        // manifest validation ran must inhibit this admission rather than let
+        // an earlier package read escape into the returned decision.
+        const active = take(resolveActivePackage(supplied.namespace, current, assemblyContext));
+        ensure(encoded(active).bytes === encoded(supplied).bytes, 'supplied package differs from current Part Ten package');
         return manifest;
       });
     },
