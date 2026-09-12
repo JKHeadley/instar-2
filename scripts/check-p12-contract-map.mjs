@@ -148,7 +148,7 @@ const concreteConsumers = [
       anchors: ['createTelegramIngress(', 'fixture.queue(raw)', 'offsetAfterRecovery: value(ingress.currentOffset())'] }] },
   { id: 'P12-NF-28', file: 'tests/conversation/telegram.round5.integration.test.ts',
     anchors: ['telegramPreparedOutbound()', 'doorway.dispatch(', 'f.adapter.invoke(', "'definition-removed'"],
-    supporting: [{ file: 'tests/conversation/round5-fixture.ts', anchors: ['doorway.prepare('] }] },
+    supporting: [{ file: 'tests/conversation/round5-fixture.ts', anchors: ['adapter.prepare(doorway, prepareInput)'] }] },
   { id: 'P12-NF-32', file: 'tests/conversation/telegram.round6.integration.test.ts',
     anchors: ['doorway.prepare(', "['reaction'", "['typing'", "['read-receipt'", "['delete-message'",
       "['edit'", "['media'", "['single-member-audience'", 'calls.send', "toBe('Refused')"] },
@@ -174,7 +174,8 @@ const concreteConsumers = [
     ] }] },
   { id: 'P12-NF-30', file: 'tests/conversation/telegram.round10.integration.test.ts',
     anchors: ["['one-zero', '<b>Hello</b>', 0, 0]", "['two-one', '<b>Hello</b> <i>World</i>', 1, 0]",
-      "['hundred-one'", 'telegramPreparedOutbound(false, text, limit)', 'calls.send',
+      "['hundred-one'", 'telegramUnpreparedOutbound(false, text, limit)', 'const prepared = f.prepare()',
+      "prepared.kind, name).toBe('Refused')", "row.record.type === 'AdmissionReservation'", 'calls.send',
       'toHaveLength(expectedCalls)'],
     supporting: [{ file: 'src/conversation/telegram.ts', anchors: [
       'validateTelegramReplyText(input.message.text, admitted.declaration)',
