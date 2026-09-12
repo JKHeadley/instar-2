@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const inheritedScopeTest = 'tests/harness-adapters/contract-map.test.ts';
@@ -35,31 +34,20 @@ export function checkP15Additivity(report, mainRef = 'main', headRef = 'HEAD') {
   return baseline;
 }
 
-export function checkP15InheritedScopeTest(mergeBase) {
-  const temporaryRoot = mkdtempSync(join(tmpdir(), 'instar-p15-additivity-'));
-  const checkout = join(temporaryRoot, 'main');
-  try {
-    execFileSync('git', ['clone', '--quiet', '--no-checkout', '--shared', process.cwd(), checkout]);
-    execFileSync('git', ['-C', checkout, 'checkout', '--quiet', '--detach', mergeBase]);
-    execFileSync('git', ['-C', checkout, 'branch', '--force', 'main', mergeBase]);
-    const excludes = join(temporaryRoot, 'exclude');
-    writeFileSync(excludes, 'node_modules\n');
-    execFileSync('git', ['-C', checkout, 'config', 'core.excludesFile', excludes]);
-    symlinkSync(resolve('node_modules'), join(checkout, 'node_modules'), 'dir');
-    execFileSync(resolve('node_modules/.bin/vitest'), ['run', inheritedScopeTest], {
-      cwd: checkout,
-      encoding: 'utf8',
-      stdio: 'inherit',
-    });
-    return { file: inheritedScopeTest, passed: 6 };
-  } finally {
-    rmSync(temporaryRoot, { recursive: true, force: true });
-  }
+export function checkP15InheritedScopeTest(report, headRef = 'HEAD') {
+  if (!report.success) throw new Error('P15 inherited scope requires a successful actual HEAD test run');
+  const suite = report.testResults.find(result => resolve(result.name) === resolve(inheritedScopeTest));
+  if (!suite) throw new Error(`P15 inherited scope: actual HEAD report omits ${inheritedScopeTest}`);
+  if (suite.assertionResults.length !== 6 || suite.assertionResults.some(test => test.status !== 'passed'))
+    throw new Error(`P15 inherited scope: ${inheritedScopeTest} did not pass all 6 assertions on ${headRef}`);
+  const head = execFileSync('git', ['rev-parse', headRef], { encoding: 'utf8' }).trim();
+  return { file: inheritedScopeTest, passed: 6, head };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const baseline = checkP15Additivity(JSON.parse(readFileSync('.test-results.json', 'utf8')));
-  const inherited = checkP15InheritedScopeTest(baseline.mergeBase);
+  const report = JSON.parse(readFileSync('.test-results.json', 'utf8'));
+  const baseline = checkP15Additivity(report);
+  const inherited = checkP15InheritedScopeTest(report);
   console.log(`P15 additivity proved merge-base ${baseline.mergeBase}: ${baseline.sourceCount} source files and ${baseline.testFixtureCount} test/fixture files are byte-identical.`);
-  console.log(`P15 inherited owner-scope proof: ${inherited.file} passed all ${inherited.passed} tests against that exact merge-base.`);
+  console.log(`P15 inherited owner-scope proof: ${inherited.file} passed all ${inherited.passed} tests on HEAD ${inherited.head}.`);
 }

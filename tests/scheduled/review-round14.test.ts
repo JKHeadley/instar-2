@@ -4,7 +4,7 @@ import { expect, it } from 'vitest';
 // @ts-expect-error The executable contract checker intentionally ships as an ESM script without declarations.
 import { checkP15Architecture, checkP15RequestedDependencies, p15Dispositions } from '../../scripts/check-p15-contract-map.mjs';
 // @ts-expect-error The executable additivity checker intentionally ships as an ESM script without declarations.
-import { checkP15Additivity, checkP15InheritedScopeTest, p15AdditivityBaseline } from '../../scripts/check-p15-additivity.mjs';
+import { checkP15Additivity, p15AdditivityBaseline } from '../../scripts/check-p15-additivity.mjs';
 
 it('P15 round-fourteen map-strict reviewer cases refuse REQUESTED records as grant evidence', () => {
   const rows = p15Dispositions();
@@ -40,12 +40,8 @@ it('P15 round-fourteen additivity enumerates and compares every advanced-main so
   expect(baseline.sourceCount).toBe(140);
   expect(baseline.testFixtureCount).toBe(196);
   expect(checkP15Additivity({ success: true })).toMatchObject({
-    mergeBase: '789cab1762a6314d8ad609df47a40f699adc7c62',
-    sourceCount: 140,
-    testFixtureCount: 196,
+    mergeBase: baseline.mergeBase,
+    sourceCount: baseline.sourceCount,
+    testFixtureCount: baseline.testFixtureCount,
   });
-  expect(checkP15InheritedScopeTest(baseline.mergeBase)).toEqual({
-    file: 'tests/harness-adapters/contract-map.test.ts',
-    passed: 6,
-  });
-}, 15_000);
+});

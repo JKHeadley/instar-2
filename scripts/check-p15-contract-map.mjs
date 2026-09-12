@@ -243,8 +243,7 @@ export function checkP15Coverage(report, dispositions = p15Dispositions()) {
   if (!report.success) throw new Error('P15 mapping requires a successful actual test run');
   const requestOnly = dispositions.filter(isRequestOnlyDisposition);
   checkP15RequestedDependencies(requestOnly);
-  checkP15Architecture(dispositions.filter(row => !isRequestOnlyDisposition(row)));
-  return dispositions.map(row => {
+  const mapped = dispositions.map(row => {
     const tests = report.testResults.flatMap(file => file.assertionResults.filter(test => (test.title.match(/\bP15-NF-\d+\b/g) ?? []).includes(row.id))
       .map(test => ({ file: validateReportedTest(file.name, test.title), title: test.title, status: test.status })));
     if (row.executable) {
@@ -256,6 +255,8 @@ export function checkP15Coverage(report, dispositions = p15Dispositions()) {
     } else if (tests.length) throw new Error(`${row.id}: held owner arm is falsely labelled by a local passing test`);
     return { ...row, tests };
   });
+  checkP15Architecture(dispositions);
+  return mapped;
 }
 
 if (process.argv[1]?.endsWith('check-p15-contract-map.mjs')) {
