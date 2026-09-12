@@ -2,7 +2,7 @@ import { canonical, consumeResult, decodeMeasurement } from '../index.js';
 import type { BoundaryContext, Clock, Hash } from '../index.js';
 import { hashBytes } from '../facts/index.js';
 import { decodeLocalCapabilityPackage, resolveActivePackage, safePackagePath, stageLocalCapability } from '../assembly/index.js';
-import type { AssemblyDecodeContext, CurrentAssemblyFact } from '../assembly/index.js';
+import type { AssemblyDecodeContext, CurrentAssemblyFact, LocalCapabilityPackage } from '../assembly/index.js';
 import type { RunExit, RunExitReadPort } from '../rungraph/index.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import { parseUnambiguousJson, topLevelJsonStringMemberValues } from './json.js';
@@ -11,14 +11,35 @@ import { canonicalInstant, parseRfc3339Offset } from './time.js';
 import type { ScheduledOccurrencePlan, ScheduledWorkPackagePort } from './contracts.js';
 
 function encoded(value: unknown): Readonly<{ bytes: string; hash: Hash }> { return take(canonical(value)); }
+function compareText(left: string, right: string): number { return left < right ? -1 : left > right ? 1 : 0; }
 
-function ownerValidatedActivePackages(current: readonly CurrentAssemblyFact[], context: AssemblyDecodeContext) {
+type PackageResolution = ReturnType<typeof resolveActivePackage>;
+
+function packageResolutions(current: readonly CurrentAssemblyFact[], context: AssemblyDecodeContext) {
   const namespaces = new Set(current.flatMap(row => row.record.type === 'LocalCapabilityPackage'
     ? [row.record.namespace] : []));
-  return [...namespaces].flatMap(namespace => consumeResult(resolveActivePackage(namespace, current, context), {
+  return new Map([...namespaces].sort().map(namespace => [namespace,
+    resolveActivePackage(namespace, current, context)]));
+}
+
+function ownerValidatedActivePackages(resolutions: ReadonlyMap<string, PackageResolution>) {
+  return [...resolutions.values()].flatMap(result => consumeResult(result, {
     Success: value => [value],
     Refused: () => [],
   }));
+}
+
+function assemblyFrontier(rows: readonly CurrentAssemblyFact[]): Hash {
+  return encoded([...rows].map(row => ({
+    fact: row.fact.id,
+    content: row.fact.contentHash,
+    segment: row.fact.segment,
+    predecessors: row.fact.predecessors,
+    taint: [...row.taint].sort(),
+    conflicts: [...row.conflicts].map(conflict => ({ ...conflict, facts: [...conflict.facts].sort() }))
+      .sort((left, right) => compareText(`${left.key}:${left.kind}:${left.facts.join(',')}`,
+        `${right.key}:${right.kind}:${right.facts.join(',')}`)),
+  })).sort((left, right) => compareText(left.fact, right.fact))).hash;
 }
 
 function isAdditionalScheduledManifest(bytes: string, context: BoundaryContext): boolean {
@@ -45,9 +66,8 @@ function isAdditionalScheduledManifest(bytes: string, context: BoundaryContext):
   });
 }
 
-function authoritativeCollision(manifestJobId: string, namespace: string, context: AssemblyDecodeContext): string | undefined {
-  ensure(context.history, 'complete authoritative Part Ten package comparison is unavailable');
-  const current = take(context.history.current());
+function authoritativeCollision(manifestJobId: string, namespace: string, current: readonly CurrentAssemblyFact[],
+  resolutions: ReadonlyMap<string, PackageResolution>): string | undefined {
   const competingNamespaces = new Set(current.filter((row): row is CurrentAssemblyFact & {
     record: import('../assembly/index.js').LocalCapabilityPackage;
   } => row.record.type === 'LocalCapabilityPackage' && row.record.namespace !== namespace)
@@ -60,7 +80,9 @@ function authoritativeCollision(manifestJobId: string, namespace: string, contex
     // Part Ten's current public resolver returns an active package or one generic
     // refusal. Only the owner may distinguish proved-inactive history from an
     // unresolved, conflicted, tainted, or ambiguous lifecycle.
-    const competing = consumeResult(resolveActivePackage(competingNamespace, current, context), {
+    const resolution = resolutions.get(competingNamespace);
+    ensure(resolution, 'competing package activity requires a Part Ten owner-issued activity resolution');
+    const competing = consumeResult(resolution, {
       Success: value => value,
       Refused: () => undefined,
     });
@@ -98,9 +120,11 @@ export function createScheduledWorkPackagePort(): ScheduledWorkPackagePort {
         const assemblyContext = context as AssemblyDecodeContext;
         ensure(assemblyContext.history, 'complete authoritative Part Ten package comparison is unavailable');
         const current = take(assemblyContext.history.current());
+        const initialFrontier = assemblyFrontier(current);
+        const resolutions = packageResolutions(current, assemblyContext);
         ensure(Array.isArray(input.archive), 'complete Part Ten package archive must be supplied');
         const staged = take(stageLocalCapability(supplied, input.archive,
-          ownerValidatedActivePackages(current, assemblyContext), assemblyContext));
+          ownerValidatedActivePackages(resolutions), assemblyContext));
         ensure(safePackagePath(input.manifestPath), 'manifest path is not a safe Part Ten package path');
         const manifestEntry = supplied.entrypoints.find(entry => entry.path === input.manifestPath);
         ensure(manifestEntry && manifestEntry.digest === hashBytes(input.manifestBytes), 'manifest bytes differ from the Part Ten package entry');
@@ -114,7 +138,7 @@ export function createScheduledWorkPackagePort(): ScheduledWorkPackagePort {
         ensure(supplied.declarationIds.includes(manifest.identity.jobId), 'matching Part Ten feature declaration is absent');
         ensure(Array.isArray(input.existingManifests), 'caller manifest collision copy must be a list');
         ensure(input.existingManifests.length === 0, 'caller manifest collision copy carries no authority');
-        const collision = authoritativeCollision(manifest.identity.jobId, supplied.namespace, context as AssemblyDecodeContext);
+        const collision = authoritativeCollision(manifest.identity.jobId, supplied.namespace, current, resolutions);
         ensure(!collision, collision === manifest.identity.jobId ? 'duplicate scheduled job id' : 'case-folded scheduled job identity collision');
         const body = supplied.entrypoints.find(entry => entry.id === manifest.work.entryPoint);
         ensure(body && body.digest === manifest.work.bodyDigest, 'manifest body differs from immutable Part Ten entry point');
@@ -123,11 +147,26 @@ export function createScheduledWorkPackagePort(): ScheduledWorkPackagePort {
         ensure(!additionalManifest, 'package contains multiple scheduled work manifests');
         const packageChecks = new Set([...supplied.checks.unit, ...supplied.checks.integration, ...supplied.checks.lifecycle]);
         ensure(manifest.activation.requiredChecks.every(check => packageChecks.has(check)), 'manifest requires a check absent from the Part Ten package');
-        // This is deliberately the final history-dependent operation. Any
-        // retirement recorded while archive, dependency, collision, or
-        // manifest validation ran must inhibit this admission rather than let
-        // an earlier package read escape into the returned decision.
-        const active = take(resolveActivePackage(supplied.namespace, current, assemblyContext));
+        const observedFrontier = assemblyFrontier(take(assemblyContext.history.current()));
+        // Pin one owner history frontier only after every earlier validation.
+        // If history moved during any owner read, the caller must retry from a
+        // fresh complete validation instead of combining facts from two views.
+        const pinned = take(assemblyContext.history.current());
+        const { history: _liveHistory, ...pinnedContext } = assemblyContext;
+        // Preserve the selected package owner's narrower retirement refusal
+        // when the final snapshot already proves that specific terminal state.
+        const active: LocalCapabilityPackage = take(resolveActivePackage(supplied.namespace, pinned,
+          { ...pinnedContext, validateReferences: false }));
+        ensure(observedFrontier === initialFrontier && assemblyFrontier(pinned) === initialFrontier,
+          'package admission history frontier moved');
+        // Recheck every history-consequential predicate against that one
+        // unchanged snapshot without another current-history read.
+        const pinnedActive = ownerValidatedActivePackages(resolutions);
+        take(stageLocalCapability(supplied, input.archive, pinnedActive,
+          { ...pinnedContext, validateReferences: false }));
+        const pinnedCollision = authoritativeCollision(manifest.identity.jobId, supplied.namespace, pinned, resolutions);
+        ensure(!pinnedCollision, pinnedCollision === manifest.identity.jobId
+          ? 'duplicate scheduled job id' : 'case-folded scheduled job identity collision');
         ensure(encoded(active).bytes === encoded(supplied).bytes, 'supplied package differs from current Part Ten package');
         return manifest;
       });

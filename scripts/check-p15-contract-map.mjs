@@ -97,6 +97,9 @@ const proofFiles = [
   { file: 'tests/scheduled/review-round9.test.ts', tokens: ['exerciseP15Round9Proof()', 'expect('] },
   { file: 'tests/integration/scheduled-round9.test.ts', tokens: ['exerciseP15Round9Proof()', 'expect('] },
   { file: 'tests/e2e/scheduled-round9.test.ts', tokens: ['spawnSync(', 'SIGKILL', 'expect('] },
+  { file: 'tests/scheduled/review-round10.test.ts', tokens: ['exerciseP15Round10Proof()', 'expect('] },
+  { file: 'tests/integration/scheduled-round10.test.ts', tokens: ['exerciseP15Round10Proof()', 'expect('] },
+  { file: 'tests/e2e/scheduled-round10.test.ts', tokens: ['spawnSync(', 'SIGKILL', 'expect('] },
 ];
 const laneDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.instar/lanes');
 const calendarRequest = 'design-19-scheduled-work-seam-request-calendar-adapter.md';

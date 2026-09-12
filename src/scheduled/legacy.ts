@@ -58,8 +58,10 @@ function actualDeclaration(value: Record<string, unknown>, sourceBytes: string):
   ensure(execute !== null && typeof execute === 'object' && !Array.isArray(execute), 'legacy execute must be an object');
   const execution = execute as Record<string, unknown>;
   exact(execution, ['type'], ['value', 'args'], 'legacy execute');
-  ensure(['skill', 'prompt', 'script', 'agentmd'].includes(String(execution.type)), 'legacy execute type is unknown');
-  if (execution.type === 'agentmd') ensure(execution.value === undefined, 'legacy agentmd execute value must be absent');
+  const executionType = execution.type;
+  ensure(typeof executionType === 'string' && ['skill', 'prompt', 'script', 'agentmd'].includes(executionType),
+    'legacy execute type is unknown');
+  if (executionType === 'agentmd') ensure(execution.value === undefined, 'legacy agentmd execute value must be absent');
   else ensure(typeof execution.value === 'string' && execution.value.length > 0, 'legacy execute value must be nonempty text');
   ensure(execution.args === undefined || typeof execution.args === 'string', 'legacy execute args must be text');
   ensure(value.perMachineIndependent === undefined || typeof value.perMachineIndependent === 'boolean', 'legacy perMachineIndependent must be boolean');
@@ -80,7 +82,7 @@ function actualDeclaration(value: Record<string, unknown>, sourceBytes: string):
     'legacy integrationGate must be boolean when supplied');
   const importedModel = model(value.model);
   const residue = value.perMachineIndependent === true ? ['per-machine work is not proven machine-local'] : [];
-  const script = execution.type === 'script';
+  const script = executionType === 'script';
   const postCompletionLearning = !script && (living as { enabled?: boolean } | undefined)?.enabled === true
     && value.integrationGate !== false ? 'required' as const : 'off' as const;
   const plan: LegacyScheduledImportPlan = { slug: id, sourceBytes, sourceDigest: hashBytes(sourceBytes),

@@ -483,3 +483,97 @@ if (mode === 'legacy-recover') {
   const sourceBytes = readFileSync(durable, 'utf8'); const context = scheduledFixture().context;
   process.stdout.write(JSON.stringify(value(importLegacyScheduledJob(sourceBytes, context))));
 }
+if (mode === 'round10-validation-seed-cut') {
+  mkdirSync(directory, { recursive: true });
+  const decide = result => consumeResult(result, {
+    Success: item => ({ status: 'accepted', ...(item.postCompletionLearning
+      ? { learning: item.postCompletionLearning, activation: item.activation } : {}) }),
+    Refused: refusal => ({ status: 'refused', detail: refusal.detail }),
+  });
+  if (kind.startsWith('legacy-')) {
+    const source = JSON.parse(readFileSync('tests/scheduled/fixtures/legacy-health-check.json', 'utf8'));
+    source.livingSkills = { enabled: true };
+    const executionKind = kind === 'legacy-array-script' ? ['script']
+      : kind === 'legacy-unknown' ? 'not-an-executor' : 'script';
+    source.execute = { type: executionKind, value: 'registered-work' };
+    const bytes = JSON.stringify(source);
+    const sourceFile = openSync(join(directory, 'source.json'), 'w');
+    writeSync(sourceFile, bytes); fsyncSync(sourceFile); closeSync(sourceFile);
+    const beforeFile = openSync(join(directory, 'before.json'), 'w');
+    writeSync(beforeFile, JSON.stringify(decide(importLegacyScheduledJob(bytes, scheduledFixture().context))));
+    fsyncSync(beforeFile); closeSync(beforeFile); process.kill(process.pid, 'SIGKILL');
+  }
+  const [raceKind, cutText] = kind.split('-'); const cut = Number(cutText);
+  const scheduled = scheduledFixture(); const raw = []; const facts = openSync(join(directory, 'facts.jsonl'), 'w');
+  const assembly = assemblyRuntimeFixture(core => ({ owner: 'part-ten', read: () => raw,
+    append(bytes, expected) {
+      if ((raw.at(-1)?.contentHash ?? null) !== expected) throw new Error('head mismatch');
+      writeSync(facts, `${bytes}\n`); fsyncSync(facts); raw.push(JSON.parse(bytes));
+      return core.success({ kind: 'local-durable' });
+    } }));
+  const activate = (pkg, id, extra = {}) => value(assembly.runtime.record('PackageTransition', {
+    ...assemblyInput('PackageTransition'), id, operation: `operation:${id}`, package: pkg.namespace,
+    manifestDigest: pkg.contentDigest, observedArtifactDigest: pkg.contentDigest, ...extra }));
+  let dependency; const selectedInput = clone(scheduled.package);
+  if (raceKind === 'dependency') {
+    const dependencyInput = clone(scheduled.package);
+    Object.assign(dependencyInput, { id: 'package:round10:dependency', namespace: 'alice.round10-dependency',
+      contentDigest: scheduled.h('d'), declarationIds: ['capability:dependency'] });
+    dependency = value(assembly.runtime.record('LocalCapabilityPackage',
+      value(decodeLocalCapabilityPackage(dependencyInput, assembly.c))));
+    activate(dependency, 'transition:round10:dependency:active');
+    selectedInput.dependencies = [{ package: dependency.namespace, digest: dependency.contentDigest,
+      contract: 'support:v1' }];
+  }
+  const selected = value(assembly.runtime.record('LocalCapabilityPackage',
+    value(decodeLocalCapabilityPackage(selectedInput, assembly.c))));
+  activate(selected, 'transition:round10:selected:active');
+  const original = assembly.c.history; let reads = 0; let changed = false;
+  const change = () => {
+    if (raceKind === 'collision') {
+      const competitorInput = clone(scheduled.package);
+      Object.assign(competitorInput, { id: 'package:round10:competitor', namespace: 'alice.round10-competitor',
+        contentDigest: scheduled.h('d') });
+      const competitor = value(assembly.runtime.record('LocalCapabilityPackage',
+        value(decodeLocalCapabilityPackage(competitorInput, assembly.c))));
+      activate(competitor, 'transition:round10:competitor:active');
+    } else {
+      const head = value(assembly.runtime.inspectCurrent())
+        .find(row => row.record.id === 'transition:round10:dependency:active');
+      activate(dependency, 'transition:round10:dependency:retired', { predecessors: [head.fact.id],
+        from: 'active', to: 'retired' });
+    }
+    changed = true;
+  };
+  const context = { ...assembly.c, history: { ...original, current() {
+    reads++; if (reads === cut) change(); return original.current();
+  } } };
+  const archive = packageArchive(selected, { 'scheduled/manifest.json': scheduled.manifestBytes,
+    'dist/maintenance.js': scheduled.bodyBytes });
+  const request = { package: selected, archive, manifestPath: 'scheduled/manifest.json',
+    manifestBytes: scheduled.manifestBytes, existingManifests: [] };
+  const before = decide(createScheduledWorkPackagePort().admitPackageResource(request, context));
+  const inputFile = openSync(join(directory, 'inputs.json'), 'w');
+  writeSync(inputFile, JSON.stringify({ request, before, reads, changed })); fsyncSync(inputFile); closeSync(inputFile);
+  closeSync(facts); process.kill(process.pid, 'SIGKILL');
+}
+if (mode === 'round10-validation-recover') {
+  const decide = result => consumeResult(result, {
+    Success: item => ({ status: 'accepted', ...(item.postCompletionLearning
+      ? { learning: item.postCompletionLearning, activation: item.activation } : {}) }),
+    Refused: refusal => ({ status: 'refused', detail: refusal.detail }),
+  });
+  if (kind.startsWith('legacy-')) {
+    const bytes = readFileSync(join(directory, 'source.json'), 'utf8');
+    process.stdout.write(JSON.stringify({ before: JSON.parse(readFileSync(join(directory, 'before.json'), 'utf8')),
+      after: decide(importLegacyScheduledJob(bytes, scheduledFixture().context)) }));
+  } else {
+    const saved = JSON.parse(readFileSync(join(directory, 'inputs.json'), 'utf8'));
+    const assembly = assemblyRuntimeFixture();
+    assembly.raw.splice(0, assembly.raw.length, ...readFileSync(join(directory, 'facts.jsonl'), 'utf8')
+      .trim().split('\n').map(JSON.parse));
+    process.stdout.write(JSON.stringify({ before: saved.before,
+      after: decide(createScheduledWorkPackagePort().admitPackageResource(saved.request, assembly.c)),
+      reads: saved.reads, changed: saved.changed, facts: assembly.raw.length }));
+  }
+}
