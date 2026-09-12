@@ -352,5 +352,37 @@
       82
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "register-round-eight-integration",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "tests/integration/register-*-round8.test.ts",
+      "why": "Part-three round-eight signed owner-enrollment regressions require operator approval; external enforcement is owned by parts nine and eleven.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "register-round-eight-e2e",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "tests/e2e/register-*-round8.test.ts",
+      "why": "Part-three round-eight normal-build signed enrollment regressions require operator approval; external enforcement is owned by parts nine and eleven.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
   }
 ]
