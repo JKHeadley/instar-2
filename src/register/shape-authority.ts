@@ -24,25 +24,36 @@ export interface ShapeApprovalPort {
   readonly verifyShapeChange: (binding: ShapeChangeBinding) => Result<FactReference>;
 }
 
+export interface OwnerReferenceEnrollmentApproval {
+  readonly binding: GovernedShapeChangeBinding;
+  readonly document: ShapeChangeDocument;
+}
+
 export function resolveOwnerReferenceEnrollments(enrollments: readonly OwnerReferenceEnrollment[],
   parent: VerifiedRegister, candidate: ShapeEntries, change: ShapeChangeBinding | null,
-  approvals: ShapeApprovalPort, context: RegisterContext, document?: ShapeChangeDocument) {
+  approvals: ShapeApprovalPort, context: RegisterContext, document?: ShapeChangeDocument,
+  enrollmentApprovals: readonly OwnerReferenceEnrollmentApproval[] = []) {
   return checked<readonly OwnerReferenceEnrollment[], RegisterContext>('OwnerReferenceEnrollments',
     { enrollments, parent, candidate, change }, context, () => {
       requireThat(wasVerified(parent, context.authorityTypes?.now ?? context.types.now),
         'P3-NF-09: owner enrollments require the witnessed parent generation');
-      const introduced = enrollments.filter(row => !parent.shape.parts.includes(row.part));
-      if (introduced.length > 0) {
-        requireThat(change !== null && change.approval !== undefined && document !== undefined,
+      const current = change !== null && change.approval !== undefined && document !== undefined
+        ? [{ binding: change as GovernedShapeChangeBinding, document }] : [];
+      const evidence = [...current, ...enrollmentApprovals].filter((row, index, rows) =>
+        rows.findIndex(candidate => encoding(candidate.binding).bytes === encoding(row.binding).bytes) === index);
+      for (const enrollment of enrollments) {
+        requireThat(candidate.parts.includes(enrollment.part),
           'P3-NF-09: owner enrollment for a part absent from the parent requires the exact current signed shape-change document');
-        requireThat(encoding(introduced).bytes === encoding(document.ownerReferences).bytes,
-          'P3-NF-09: owner enrollment ledger differs from the exact current shape-change document');
-        requireThat(change.document.hash === encoding(document).hash
-          && document.parent === change.parent && document.candidateShape === change.candidateShape
-          && encoding(document.approvedIn).bytes === encoding(change.approval).bytes,
+        const witnessed = evidence.filter(row => row.document.ownerReferences
+          .some(reference => encoding(reference).bytes === encoding(enrollment).bytes));
+        requireThat(witnessed.length === 1,
+          'P3-NF-09: owner enrollment requires one exact signed shape-change document for its part, owner, manifest path, and hash');
+        const { binding, document: approvedDocument } = witnessed[0]!;
+        requireThat(binding.document.hash === encoding(approvedDocument).hash
+          && approvedDocument.parent === binding.parent && approvedDocument.candidateShape === binding.candidateShape
+          && encoding(approvedDocument.approvedIn).bytes === encoding(binding.approval).bytes,
         'P3-NF-09: owner enrollment shape-change binding differs');
-        validateShapeChangeDocument(parent.shape, candidate, document, context);
-        take(approvals.verifyShapeChange(change));
+        take(approvals.verifyShapeChange(binding));
       }
       return enrollments;
     });

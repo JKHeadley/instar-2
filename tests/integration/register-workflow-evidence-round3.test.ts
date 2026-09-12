@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { consumeResult } from '../../src/index.js';
-import type { Json, Result } from '../../src/index.js';
-import type { Validation } from '../../src/decode/framework.js';
+import type { Json, Result, Validation } from '../../src/index.js';
 import { authorAndAppend, registerOwnedBody } from '../../src/facts/index.js';
 import type { FactSchema, OwnedBodyRegistration } from '../../src/facts/index.js';
 import { createPartTwoRegisterAuthority, createPartTwoRegisterProvider, runRegisterChecks,

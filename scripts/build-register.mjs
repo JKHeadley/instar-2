@@ -18,6 +18,17 @@ const emptyCatalog = { fixtures: [], probes: [], sentinels: [], semanticReviews:
 // 52772ae. The candidate's anchor is evidence to compare, never authority. An
 // amendment to this pin is a protected-toolchain change, not a shape-data edit.
 const approvedConversion = 'sha256:3987aa9d4cca99796f1b19decaf2c3235235ef28bbd63ab763e4c66f88471015';
+function enrollmentApprovalEvidence(input, enrollments, context) {
+  return Object.entries(input.sources).filter(([path, raw]) => path.startsWith('register-source/shape-changes/')
+    && path.endsWith('.json') && enrollments.some(enrollment => {
+      try { return JSON.parse(raw).ownerReferences?.some(reference => bytes(reference) === bytes(enrollment)); }
+      catch { return false; }
+    })).map(([path, raw]) => {
+      const document = value(decodeShapeChangeDocument(JSON.parse(raw), context));
+      return { document, binding: { parent: document.parent, candidateShape: document.candidateShape,
+        document: { path, hash: hash(document) }, approval: document.approvedIn } };
+    });
+}
 function resolveBuildReferences(root, input, workflow, provider, shape, owner) {
   return (workflow.references ?? []).map(reference => {
     if (reference.provider === 'decoder') {
@@ -85,11 +96,11 @@ export function build(root, commit, options = {}) {
   }
   if (mode === 'normal' && parentInput) {
     const previous = retainedOwnerEnrollments(readCommit(root, workflow.parent.commit));
-    const witnessed = previous.filter(row => parent.shape.parts.includes(row.part));
-    for (const row of witnessed) if (!retainedEnrollments.some(next => bytes(next) === bytes(row)))
+    for (const row of previous) if (!retainedEnrollments.some(next => bytes(next) === bytes(row)))
       throw new Error('retained owner enrollment may not be removed or changed');
+    const enrollmentApprovals = enrollmentApprovalEvidence(input, retainedEnrollments, boundary);
     value(resolveOwnerReferenceEnrollments(retainedEnrollments, parent, boundary.shape, change,
-      options.provider, boundary, shapeDocument));
+      options.provider, boundary, shapeDocument, enrollmentApprovals));
   }
   const owner = loadOwnerReferences(root, input, retainedEnrollments);
   // Check explicit workflow presence before adding committed defaults.

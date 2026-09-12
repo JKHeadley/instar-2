@@ -2,7 +2,7 @@ export type * from './types.js';
 export { decodeShape } from './shape.js';
 export { registeredFactSchemas, decodeRegisteredFact } from './records.js';
 export { generateAgainstParent, resolveOwnerReferenceEnrollments } from './shape-authority.js';
-export type { ShapeApprovalPort, ShapeChangeBinding } from './shape-authority.js';
+export type { OwnerReferenceEnrollmentApproval, ShapeApprovalPort, ShapeChangeBinding } from './shape-authority.js';
 export { resolveOwnerReferenceIdentity, decodeShapeChangeDocument, shapeDifferences, validateShapeChangeDocument } from './shape-change.js';
 export { createPartTwoRegisterAuthority, createPartTwoRegisterProvider } from './provider.js';
 export type { PartTwoRegisterAuthorityOptions, PartTwoRegisterAuthorityPort, PartTwoRegisterProvider, PartTwoRegisterProviderOptions, PartTwoRegisterHorizon } from './provider.js';

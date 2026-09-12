@@ -1,6 +1,5 @@
-import type { Json, Result, Scope } from '../../src/index.js';
+import type { Json, Result, Scope, Validation } from '../../src/index.js';
 import { consumeResult } from '../../src/index.js';
-import type { Validation } from '../../src/decode/framework.js';
 import { registerOwnedBody } from '../../src/facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedShape } from '../../src/facts/index.js';
 import { decodeRegisteredFact } from '../../src/register/index.js';
