@@ -508,10 +508,11 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
       ]));
       const arrivals=facts.filter(fact => intakeArrival(fact,author.principal.id)?.logicalId===logicalId);
       const original=arrivals[0]!;
-      if(object(original.body).rawHash!==captured.hash)
-        return { kind:'mismatch' as const,common,logicalId,original };
-      if(prior?.kind==='valid')
+      const mismatched=object(original.body).rawHash!==captured.hash;
+      if(prior?.kind==='valid') {
+        if(mismatched) return { kind:'mismatch' as const,common,logicalId,original };
         return { kind:'duplicate' as const,common,logicalId,prior };
+      }
 
       checkDedup(at,preserved);
       const tick=decodeScheduledTickBody(input.raw,eventId,context(preserved).decode);
@@ -527,6 +528,7 @@ export function createScheduledIntakePort(deps: ScheduledIntakeDependencies): Re
         'P4-NF-06/12: required scheduled owner schema changed or missing: intake-scheduled-principal');
       const principalWitnesses=resolveScheduledPrincipalWitness(
         witnessHistories(sliceARows),principal,'zero-or-one','origin');
+      if(mismatched) return { kind:'mismatch' as const,common,logicalId,original };
       return {
         kind:'admit' as const,common,logicalId,eventId,principal,discovery,standing,original,
         tick:tick.tick,jobInstance:tick.jobInstance,scheduledInstant:tick.scheduledInstant,
