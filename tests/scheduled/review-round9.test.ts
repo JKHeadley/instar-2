@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 // @ts-expect-error The executable contract checker intentionally ships as an ESM script without declarations.
-import { checkP15Architecture, p15Dispositions } from '../../scripts/check-p15-contract-map.mjs';
+import { auditP15ArchitectureRows, checkP15Architecture, p15Dispositions } from '../../scripts/check-p15-contract-map.mjs';
 import { exerciseP15Round9Proof } from './round9-proof.js';
 
 it('P15-NF-16 P15-NF-17 re-resolves package retirement after every earlier validation read', () => {
@@ -34,7 +34,7 @@ it('P15-CONTRACT-MAP accepts only the row-80 conditional package-activity grant 
     expect(dispositions.find((row: { number: number }) => row.number === number)?.held)
       .toContain('P15-P10-package-resource-and-activity-v1');
   }
-  expect(() => checkP15Architecture(dispositions.filter((row: { number: number }) => ![6, 13, 22].includes(row.number)))).not.toThrow();
+  expect(() => auditP15ArchitectureRows(dispositions.filter((row: { number: number }) => ![6, 13, 22].includes(row.number)))).not.toThrow();
   const wrongName = 'NON-EXECUTABLE-UNTIL-P15-P10-package-resource-and-activity-v2';
   const altered = dispositions.map((row: { number: number }) => row.number === 17
     ? { ...row, held: wrongName, status: `EXECUTABLE-ARMS; ${wrongName}`, reason: wrongName } : row);

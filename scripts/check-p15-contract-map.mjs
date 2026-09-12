@@ -171,6 +171,31 @@ function validateDispositionIdentity(row) {
     throw new Error(`${row.id}: status, reason, executable and held fields must describe one consistent disposition`);
 }
 
+function requiredP15CheckIds(
+  design = readFileSync('docs/19-scheduled-work/08-non-functional-checks-and-activation.md', 'utf8'),
+) {
+  const range = /P15-NF-(\d+)\s+through\s+P15-NF-(\d+)\s+are distinct\s+contract checks\./.exec(design);
+  if (!range) throw new Error('P15 check inventory: section 8 does not declare the required check range');
+  const first = Number(range[1]); const last = Number(range[2]);
+  if (first !== 1 || last !== 52) throw new Error(`P15 check inventory: unsupported design range ${first} through ${last}`);
+  return Array.from({ length: last - first + 1 }, (_, index) =>
+    `P15-NF-${String(first + index).padStart(2, '0')}`);
+}
+
+function validateDispositionInventory(dispositions) {
+  const required = requiredP15CheckIds();
+  const ids = dispositions.map(row => row?.id);
+  const distinct = new Set(ids);
+  const missing = required.filter(id => !distinct.has(id));
+  const extra = [...distinct].filter(id => !required.includes(id));
+  const duplicates = [...distinct].filter(id => ids.filter(candidate => candidate === id).length > 1);
+  if (dispositions.length !== required.length || distinct.size !== required.length || missing.length || extra.length) {
+    throw new Error(`P15 check inventory must contain exactly ${required.length} distinct design identities; `
+      + `found ${dispositions.length} rows/${distinct.size} distinct; missing=${missing.join(',') || 'none'}; `
+      + `extra=${extra.join(',') || 'none'}; duplicate=${duplicates.join(',') || 'none'}`);
+  }
+}
+
 export function checkP15RequestedDependencies(dispositions = p15Dispositions().filter(isRequestOnlyDisposition)) {
   for (const row of dispositions) {
     validateDispositionIdentity(row);
@@ -185,7 +210,7 @@ export function checkP15RequestedDependencies(dispositions = p15Dispositions().f
   return dispositions.map(row => ({ id: row.id, held: row.held }));
 }
 
-export function checkP15Architecture(dispositions = p15Dispositions()) {
+export function auditP15ArchitectureRows(dispositions) {
   for (const row of dispositions) {
     validateDispositionIdentity(row);
   }
@@ -276,6 +301,11 @@ export function checkP15Architecture(dispositions = p15Dispositions()) {
   return { proofFiles: proofFiles.map(proof => proof.file) };
 }
 
+export function checkP15Architecture(dispositions = p15Dispositions()) {
+  validateDispositionInventory(dispositions);
+  return auditP15ArchitectureRows(dispositions);
+}
+
 function validateReportedTest(fileName, title) {
   const path = realpathSync(fileName);
   const testsRoot = `${realpathSync(resolve(process.cwd(), 'tests'))}/`;
@@ -288,7 +318,7 @@ function validateReportedTest(fileName, title) {
   return relative(process.cwd(), path);
 }
 
-export function checkP15Coverage(report, dispositions = p15Dispositions()) {
+export function auditP15CoverageRows(report, dispositions) {
   if (!report.success) throw new Error('P15 mapping requires a successful actual test run');
   for (const row of dispositions) validateDispositionIdentity(row);
   const requestOnly = dispositions.filter(isRequestOnlyDisposition);
@@ -305,8 +335,13 @@ export function checkP15Coverage(report, dispositions = p15Dispositions()) {
     } else if (tests.length) throw new Error(`${row.id}: held owner arm is falsely labelled by a local passing test`);
     return { ...row, tests };
   });
-  checkP15Architecture(dispositions);
+  auditP15ArchitectureRows(dispositions);
   return mapped;
+}
+
+export function checkP15Coverage(report, dispositions = p15Dispositions()) {
+  validateDispositionInventory(dispositions);
+  return auditP15CoverageRows(report, dispositions);
 }
 
 if (process.argv[1]?.endsWith('check-p15-contract-map.mjs')) {

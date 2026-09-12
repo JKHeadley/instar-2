@@ -4,7 +4,7 @@ import { expect, it } from 'vitest';
 import { consumeResult } from '../../src/index.js';
 import { createScheduledWorkPackagePort } from '../../src/scheduled/index.js';
 // @ts-expect-error The executable contract checker intentionally ships as an ESM script without declarations.
-import { checkP15Architecture, checkP15Coverage, p15Dispositions } from '../../scripts/check-p15-contract-map.mjs';
+import { auditP15ArchitectureRows, auditP15CoverageRows, checkP15Architecture, checkP15Coverage, p15Dispositions } from '../../scripts/check-p15-contract-map.mjs';
 import { scheduledFixture } from './fixture.js';
 import { recurringScheduledManifest } from './round16-proof.js';
 
@@ -45,8 +45,8 @@ it('P15 round-sixteen F1 refuses all 12 identifier/status mismatch probes and th
     ['unknown-check-id', { ...ordinary, id: 'P15-NF-99' }, 'refused'],
   ] as const;
   for (const [id, row, expected] of cases) for (const [entry, run] of [
-    ['architecture', () => checkP15Architecture([row])],
-    ['coverage', () => checkP15Coverage({ success: true, testResults: [] }, [row])],
+    ['architecture', () => auditP15ArchitectureRows([row])],
+    ['coverage', () => auditP15CoverageRows({ success: true, testResults: [] }, [row])],
   ] as const) expect(capture(run), `${id}/${entry}`).toMatchObject({ status: expected });
 
   const donor = rows.find((row: { number: number }) => row.number === 4)!;
@@ -72,7 +72,7 @@ it('P15 round-sixteen F2 resolves only the exact row-83 and row-84 granted depen
   expect(rows.some((row: { held?: string }) => row.held?.includes('UNGRANTED-REQUEST'))).toBe(false);
   const nf13 = rows.find((row: { number: number }) => row.number === 13)!;
   const misspelled = 'NON-EXECUTABLE-UNTIL-row-84-calendar-expansion-adapter';
-  expect(() => checkP15Architecture([{ ...nf13, held: misspelled, status: misspelled, reason: misspelled }]))
+  expect(() => auditP15ArchitectureRows([{ ...nf13, held: misspelled, status: misspelled, reason: misspelled }]))
     .toThrow(/consistent disposition/);
   expect(() => checkP15Architecture(rows)).not.toThrow();
 });

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 // @ts-expect-error The executable contract checker intentionally ships as an ESM script without declarations.
-import { checkP15Architecture, checkP15RequestedDependencies, p15Dispositions } from '../../scripts/check-p15-contract-map.mjs';
+import { auditP15ArchitectureRows, checkP15RequestedDependencies, p15Dispositions } from '../../scripts/check-p15-contract-map.mjs';
 // @ts-expect-error The executable additivity checker intentionally ships as an ESM script without declarations.
 import { checkP15Additivity, p15AdditivityBaseline } from '../../scripts/check-p15-additivity.mjs';
 
@@ -13,13 +13,13 @@ it('P15 round-fourteen map-strict reviewer cases refuse stale REQUESTED records 
     [22, 'NON-EXECUTABLE-UNTIL-row-83-run-admission-production']] as const) {
     const row = rows.find((candidate: { number: number }) => candidate.number === number)!;
     expect(row.held).toBe(dependency);
-    expect(() => checkP15Architecture([row])).not.toThrow();
+    expect(() => auditP15ArchitectureRows([row])).not.toThrow();
     expect(() => checkP15RequestedDependencies([row])).toThrow(/request-only disposition/);
     const stale = `NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-${number === 13 ? 'calendar-adapter' : 'run-admission-production'}.md`;
-    expect(() => checkP15Architecture([{ ...row, held: stale, status: stale, reason: stale }]))
+    expect(() => auditP15ArchitectureRows([{ ...row, held: stale, status: stale, reason: stale }]))
       .toThrow(/consistent disposition/);
   }
-  expect(() => checkP15Architecture([rows.find((row: { number: number }) => row.number === 4)!])).not.toThrow();
+  expect(() => auditP15ArchitectureRows([rows.find((row: { number: number }) => row.number === 4)!])).not.toThrow();
 });
 
 it('P15 round-fourteen inventory contains exactly the 52 governed checks and no invented NF-53', () => {

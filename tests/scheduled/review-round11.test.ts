@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { consumeResult } from '../../src/index.js';
 import { createScheduledWorkPackagePort } from '../../src/scheduled/index.js';
 // @ts-expect-error The executable contract checker intentionally ships as an ESM script without declarations.
-import { checkP15Coverage, p15Dispositions } from '../../scripts/check-p15-contract-map.mjs';
+import { auditP15CoverageRows, p15Dispositions } from '../../scripts/check-p15-contract-map.mjs';
 import { activeScheduledFixture } from './fixture.js';
 
 const title = 'P15-NF-10 package validation remains usable without claiming service continuation';
@@ -47,6 +47,6 @@ it('P15-CONTRACT-MAP rejects the reviewer NF-10 evidence when the service-contin
     name: `${process.cwd()}/tests/scheduled/review-round11.test.ts`,
     assertionResults: [{ fullName: title, title, status: 'passed' }],
   }] };
-  expect(() => checkP15Coverage(report, [complete])).not.toThrow();
-  expect(() => checkP15Coverage(report, partial)).toThrow(/consistent disposition/);
+  expect(() => auditP15CoverageRows(report, [complete])).not.toThrow();
+  expect(() => auditP15CoverageRows(report, partial)).toThrow(/consistent disposition/);
 });

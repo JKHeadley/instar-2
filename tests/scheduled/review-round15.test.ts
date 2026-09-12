@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, it } from 'vitest';
 // @ts-expect-error The executable contract checker intentionally ships as an ESM script without declarations.
-import { checkP15Architecture, checkP15Coverage, p15Dispositions } from '../../scripts/check-p15-contract-map.mjs';
+import { auditP15ArchitectureRows, auditP15CoverageRows, p15Dispositions } from '../../scripts/check-p15-contract-map.mjs';
 // @ts-expect-error The executable additivity checker intentionally ships as an ESM script without declarations.
 import { checkP15InheritedScopeTest } from '../../scripts/check-p15-additivity.mjs';
 
@@ -18,18 +18,18 @@ it('P15 round-fifteen F1 every contract-map entry point refuses stale request-on
     const row = rows.find((candidate: { number: number }) => candidate.number === number)!;
     const stale = `NON-EXECUTABLE-UNTIL-UNGRANTED-REQUEST-design-19-scheduled-work-seam-request-${number === 13 ? 'calendar-adapter' : 'run-admission-production'}.md`;
     const staleRow = { ...row, held: stale, status: stale, reason: stale };
-    const architecture = result(() => checkP15Architecture([staleRow]));
-    const coverage = result(() => checkP15Coverage({ success: true, testResults: [] }, [staleRow]));
+    const architecture = result(() => auditP15ArchitectureRows([staleRow]));
+    const coverage = result(() => auditP15CoverageRows({ success: true, testResults: [] }, [staleRow]));
     expect(architecture).toMatchObject({ accepted: false });
     expect(coverage).toMatchObject({ accepted: false });
     expect(architecture.detail).toMatch(/consistent disposition/);
     expect(coverage.detail).toBe(architecture.detail);
-    expect(() => checkP15Architecture([row])).not.toThrow();
-    expect(() => checkP15Coverage({ success: true, testResults: [] }, [row])).not.toThrow();
+    expect(() => auditP15ArchitectureRows([row])).not.toThrow();
+    expect(() => auditP15CoverageRows({ success: true, testResults: [] }, [row])).not.toThrow();
   }
   const grantedControl = rows.find((candidate: { number: number }) => candidate.number === 4)!;
-  expect(() => checkP15Architecture([grantedControl])).not.toThrow();
-  expect(() => checkP15Coverage({ success: true, testResults: [] }, [grantedControl])).not.toThrow();
+  expect(() => auditP15ArchitectureRows([grantedControl])).not.toThrow();
+  expect(() => auditP15CoverageRows({ success: true, testResults: [] }, [grantedControl])).not.toThrow();
 });
 
 it('P15 round-fifteen F2 validates inherited assertions from the actual HEAD report without a baseline checkout', () => {
