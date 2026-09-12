@@ -37,8 +37,8 @@ it('P15 round-fourteen additivity enumerates and compares every advanced-main so
     'tests/harness-adapters/fixture.ts',
     'tests/assembly/fixture.ts',
   ]));
-  expect(baseline.sourceCount).toBe(140);
-  expect(baseline.testFixtureCount).toBe(196);
+  expect(baseline.sourceCount).toBe(independentlyListed.filter(file => file.startsWith('src/')).length);
+  expect(baseline.testFixtureCount).toBe(independentlyListed.filter(file => file.startsWith('tests/')).length);
   expect(checkP15Additivity({ success: true })).toMatchObject({
     mergeBase: baseline.mergeBase,
     sourceCount: baseline.sourceCount,
