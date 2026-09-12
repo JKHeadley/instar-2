@@ -195,7 +195,7 @@ export function checkP13Architecture() {
   try { checkP13DependencyCitations(); }
   catch (error) { failures.push(error instanceof Error ? error.message : 'dependency citation validation failed'); }
   if (failures.length) throw new Error(failures.join('\n'));
-  return { changed, sourceFiles };
+  return { changed: p13SliceChanged ? changed : [], sourceFiles };
 }
 
 export function checkP13Coverage(report, dispositions = p13Dispositions()) {
