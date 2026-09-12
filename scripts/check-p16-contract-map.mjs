@@ -85,23 +85,37 @@ export function p16Dispositions(design = readFileSync(
 
 const forbiddenPermissionExports = new Set(['allow', 'canRun', 'place', 'throttle']);
 
+function collectBindingNames(name, found) {
+  if (ts.isIdentifier(name)) {
+    if (forbiddenPermissionExports.has(name.text)) found.add(name.text);
+    return;
+  }
+  for (const element of name.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    collectBindingNames(element.name, found);
+  }
+}
+
 export function findForbiddenMeasurementPermissionExports(sources) {
   const found = new Set();
   for (const [file, source] of Object.entries(sources)) {
     const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     for (const statement of parsed.statements) {
-      if (ts.isExportDeclaration(statement) && statement.exportClause
-        && ts.isNamedExports(statement.exportClause)) {
-        for (const element of statement.exportClause.elements)
-          if (forbiddenPermissionExports.has(element.name.text)) found.add(element.name.text);
+      if (ts.isExportDeclaration(statement) && statement.exportClause) {
+        if (ts.isNamedExports(statement.exportClause)) {
+          for (const element of statement.exportClause.elements)
+            if (forbiddenPermissionExports.has(element.name.text)) found.add(element.name.text);
+        } else if (ts.isNamespaceExport(statement.exportClause)
+          && forbiddenPermissionExports.has(statement.exportClause.name.text)) {
+          found.add(statement.exportClause.name.text);
+        }
       }
       const exported = statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword);
       if (!exported) continue;
       if ('name' in statement && statement.name && ts.isIdentifier(statement.name)
         && forbiddenPermissionExports.has(statement.name.text)) found.add(statement.name.text);
       if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations)
-        if (ts.isIdentifier(declaration.name) && forbiddenPermissionExports.has(declaration.name.text))
-          found.add(declaration.name.text);
+        collectBindingNames(declaration.name, found);
     }
   }
   return [...found].sort();

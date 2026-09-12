@@ -393,6 +393,12 @@ export function classifyFeatureOutcome(input: FeatureOutcomeClassificationReques
     ensure(evaluationClock !== null, 'feature classification requires an explicit evaluation clock');
     if (!input.actionProved && !input.negativeProved) return 'unclassified';
     if (!decodedEvidence || !(context.types.evidence ?? []).includes(input.evidence!)) return 'unclassified';
+    const organization = take(decode('Scope', {
+      type: 'Scope', schemaVersion: 1, kind: 'organization',
+    }, context.types));
+    ensure(take(compare('Evidence', input.evidence!, decodedEvidence, 'value', organization,
+      context.preserved)) === true,
+    'feature outcome evidence must be an admitted Evidence record');
     take(compareMeasurements(decodedEvidence.observedAt, evaluationClock, context.preserved));
     const claim = take(readEvidence(decodedEvidence, evaluationClock, context.preserved));
     const expected = input.actionProved ? 'fired' : 'no-op';

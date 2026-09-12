@@ -71,10 +71,18 @@ it('P16-NF-22 [behavior:quota-coalescing] coalesces repeated valid missing-state
 
 it('P16-NF-23 [behavior:observational-port] exposes no allow, place, or throttle operation', () => {
   expect(Object.keys(createMeasurementLedger(measurementFixture().c)).sort()).toEqual(['admitAmount', 'owner', 'trend']);
-  expect(findForbiddenMeasurementPermissionExports({
-    'src/measurement/permission.ts': 'export function allow() { return true; }',
-    'src/measurement/index.ts': "export { allow } from './permission.js';",
-  })).toEqual(['allow']);
+  const scan = (source: string) => findForbiddenMeasurementPermissionExports({
+    'src/measurement/permission.ts': source,
+    'src/measurement/index.ts': "export * from './permission.js';",
+  });
+  expect(scan('export const { normalize } = { normalize: (value: number) => value };')).toEqual([]);
+  for (const source of [
+    'export const { allow } = { allow: () => true };',
+    'export const { admit: allow } = { admit: () => true };',
+    'export const [allow] = [() => true];',
+    'const x = () => true; export { x as allow };',
+    "export * as allow from './nested.js';",
+  ]) expect(scan(source)).toEqual(['allow']);
 });
 
 it('P16-NF-24 [behavior:rate-event-populations] keeps breaker and session populations distinct', () => {
@@ -144,6 +152,15 @@ it('P16-NF-30 [behavior:fired-and-no-op] executes positive, negative, absent, an
     types: { ...f.types, evidence: [fired] } }))).toBe('fired');
   expect(value(classifyFeatureOutcome({ ...base, actionProved: false, negativeProved: true, evidence: noOp },
     { ...f.c, types: { ...f.types, evidence: [noOp] } }))).toBe('no-op');
+  const copied = structuredClone(fired);
+  refused(classifyFeatureOutcome({ ...base, evidence: copied }, { ...f.c,
+    types: { ...f.types, evidence: [copied] } }), 'comparison domain');
+  const altered = { ...copied, claim: { ...copied.claim, value: 'no-op' } };
+  refused(classifyFeatureOutcome({ ...base, actionProved: false, negativeProved: true,
+    evidence: altered as never }, { ...f.c, types: { ...f.types, evidence: [altered as never] } }),
+  'comparison domain');
+  expect(value(classifyFeatureOutcome({ ...base, evidence: copied }, { ...f.c,
+    types: { ...f.types, evidence: [fired] } }))).toBe('unclassified');
   expect(value(classifyFeatureOutcome({ ...base, classifier: 'absent', actionProved: false, action: null }, f.c)))
     .toBe('unclassified');
   refused(classifyFeatureOutcome({ ...base, evidence: false } as never, f.c));
