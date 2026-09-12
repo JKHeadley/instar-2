@@ -102,6 +102,10 @@ export const transportSeamEvidence = [
   ['SLB-A1-EQUIVALENT-WITNESSES-133', 'integration', 'identical policy and assessment copies preserve signed witnesses; conflicting values still refuse'],
   ['SLB-A1-SUPPORT-WITNESSES-134', 'integration', 'identical Run, plan, request and Evidence copies preserve signed support and later admission'],
   ['SLB-A1-COPY-INVARIANCE-135', 'integration', 'every signed A1 record kind collapses identical copies across all operations and refuses a mutated copy'],
+  ['SLB-A1-DUPLICATE-VALIDATION-136', 'integration', 'V2/V25 invalid signed transitions validate before copy collapse while valid duplicates retain one history'],
+  ['SLB-A1-EXACT-BINDING-137', 'integration', 'V3 exact missing, wrong-kind and wrong-subject pressure witnesses refuse without substitution or append'],
+  ['SLB-A1-EQUIVALENT-BINDING-138', 'integration', 'V30 equivalent current binding selection preserves the exact recorded valid witness'],
+  ['SLB-A1-DUPLICATE-RESTART-139', 'e2e', 'V29 fresh-process durable replay refuses duplicated invalid transitions and retains the valid neighbor'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {
