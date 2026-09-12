@@ -111,6 +111,8 @@ export const transportSeamEvidence = [
   ['SLB-A1-COMMAND-RESULT-142', 'integration', 'V16, V17, V25 and V27 preserve original command results and refuse cross-operation command reuse'],
   ['SLB-A1-DEPENDENCY-SET-143', 'integration', 'V29 signed dependency sets collapse across every permutation while changed content still conflicts'],
   ['SLB-A1-COMMAND-RESTART-144', 'e2e', 'V25 fresh-process replay returns original schedule and admission results without appending'],
+  ['SLB-A1-OUTCOME-COMMAND-145', 'integration', 'V2 returns the original outcome after later work; both V3 rows refuse schedule/admission command reuse; exact and unused equivalent neighbors pass'],
+  ['SLB-A1-OUTCOME-COMMAND-RESTART-146', 'e2e', 'V21 fresh-process replay returns the original outcome and refuses schedule/admission command reuse'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

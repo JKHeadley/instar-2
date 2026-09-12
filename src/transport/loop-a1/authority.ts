@@ -11,7 +11,11 @@ import type {
   LoopA1Host,
   LoopA1Spine,
   LoopA1TransportFact,
+  LoopAttemptInput,
+  LoopEpisodeInput,
   LoopOutcome,
+  LoopOutcomeInput,
+  LoopPressureScope,
   SharedLoopRecord,
 } from './contracts.js';
 import {
@@ -148,6 +152,75 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
     ensure(current?.command === record.command, 'shared pressure moved to another episode');
     return record;
   };
+  type SubmittedCommand =
+    | Readonly<{
+      operation: 'schedule';
+      input: LoopEpisodeInput;
+      binding: Readonly<{ operationFamily: string; pressureScope: LoopPressureScope }>;
+    }>
+    | Readonly<{ operation: 'attempt'; input: LoopAttemptInput }>
+    | Readonly<{ operation: 'outcome'; input: LoopOutcomeInput }>;
+  const outcomeMatches = (record: SharedLoopRecord, input: LoopOutcomeInput,
+    before: SharedLoopRecord | undefined): boolean => {
+    const submission = record.closureSubmission ?? record.evidenceSubmission;
+    if (submission) return encoded(submission).bytes === encoded(input).bytes;
+    const outcome = record.outcomeLog.find(value => value.attempt === input.attempt);
+    const introduced = outcome && !before?.outcomeLog.some(value => value.attempt === input.attempt);
+    return Boolean(introduced && outcome.kind === input.kind
+      && outcome.failureClass === input.failureClass
+      && outcome.jitterPermille === input.jitterPermille
+      && encoded(outcome.completion).bytes === encoded(input.completion).bytes
+      && encoded(outcome.restoration).bytes === encoded(input.restoration).bytes);
+  };
+  const resolveSubmittedCommand = (all: readonly LoopA1TransportFact[],
+    history: ReturnType<typeof evidenceFacts>, submitted: SubmittedCommand): SharedLoopRecord | undefined => {
+    const candidates = all.map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.record.command === submitted.input.command);
+    if (candidates.length === 0) return undefined;
+    const matches = ({ row, index }: typeof candidates[number]) => {
+      const record = row.record;
+      if (record.type !== 'LoopRecord' || !('transition' in record)
+        || !('policy' in record) || record.policy.breaker !== 'shared-circuit-v1') return false;
+      if (submitted.operation === 'schedule') {
+        return record.transition === 'scheduled'
+          && record.run === submitted.input.currentOwnerRun.id
+          && encoded(record.currentOwnerRun).bytes === encoded(submitted.input.currentOwnerRun).bytes
+          && encoded(record.policy).bytes === encoded(submitted.input.policy).bytes
+          && record.episodeKey === submitted.input.episodeKey
+          && record.operationFamily === submitted.binding.operationFamily
+          && encoded(record.pressureScope).bytes === encoded(submitted.binding.pressureScope).bytes
+          && encoded(record.sourceVector).bytes === encoded(submitted.input.sourceVector).bytes;
+      }
+      if (submitted.operation === 'attempt') {
+        return record.episode === submitted.input.episode.id
+          && (record.stoppedSubmission
+            ? encoded(record.stoppedSubmission).bytes === encoded(submitted.input).bytes
+            : ['attempt-admitted', 'half-opened'].includes(record.transition)
+              && record.attemptLog.at(-1)?.id === submitted.input.attempt);
+      }
+      return record.episode === submitted.input.episode.id
+        && outcomeMatches(record, submitted.input,
+          latestSharedLoopByParent(all.slice(0, index), record.run));
+    };
+    const changedOutcome = submitted.operation === 'outcome'
+      && candidates.some(({ row }) => row.record.type === 'LoopRecord' && 'outcomeLog' in row.record
+        && row.record.episode === submitted.input.episode.id
+        && row.record.outcomeLog.some(value => value.attempt === submitted.input.attempt));
+    const changedStoppedAttempt = submitted.operation === 'attempt'
+      && candidates.every(({ row }) => row.record.type === 'LoopRecord' && 'transition' in row.record
+        && row.record.transition === 'stopped' && row.record.episode === submitted.input.episode.id);
+    const mismatch = changedOutcome
+      ? 'loop outcome changed after admission'
+      : changedStoppedAttempt
+        ? 'terminal loop episode cannot transition'
+        : 'command reused for a different loop operation';
+    ensure(candidates.every(matches), mismatch);
+    ensure(new Set(candidates.map(({ row }) => encoded(row.record).bytes)).size === 1,
+      'command reused for a different loop operation');
+    const original = candidates[0]!.row.record as SharedLoopRecord;
+    sharedLoopEvidence(original, history, spine.context, host);
+    return original;
+  };
 
   const api: LoopA1Authority<S> = {
     legacy,
@@ -219,17 +292,11 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
           'unsupported-in-slice-a1');
         ensure(parent.clockBasis === now.subject.instance, 'incomparable shared pressure time');
       }
-      const priorCommands = all.filter(row => row.record.command === input.command).map(row => row.record);
-      if (priorCommands.length > 0) {
-        ensure(parent && priorCommands.every(prior => prior.type === 'LoopRecord'
-          && 'transition' in prior && prior.transition === 'scheduled'
-          && prior.episode === parent.episode), 'command reused for a different loop operation');
-        ensure(new Set(priorCommands.map(prior => encoded(prior).bytes)).size === 1,
-          'command reused for a different loop operation');
-        const prior = priorCommands[0] as SharedLoopRecord;
-        sharedLoopEvidence(prior, history, spine.context, host);
-        return prior;
-      }
+      const replay = resolveSubmittedCommand(all, history, {
+        operation: 'schedule', input,
+        binding: { operationFamily: binding.operationFamily, pressureScope: binding.pressureScope },
+      });
+      if (replay) return replay;
       if (parent) return parent;
       const episode = `loop:${encoded([pressureKey, input.episodeKey]).hash}`;
       ensure(!all.some(row => row.record.type === 'LoopRecord'
@@ -293,23 +360,8 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
         && atOrAfter(now, previous.transitionAt), 'incomparable or backward shared pressure time');
       resolvePolicyFact(previous.policy, current.generation.id, history, spine.context);
       resolveRunReference(previous.currentOwnerRun, history, spine.context);
-      if (previous.stoppedSubmission
-        && encoded(previous.stoppedSubmission).bytes === encoded(input).bytes) return previous;
-      const priorCommands = all.filter(row => row.record.command === input.command).map(row => row.record);
-      const originalStoppedCommand = priorCommands.length > 0 && priorCommands.every(prior =>
-        prior.type === 'LoopRecord' && 'transition' in prior && prior.transition === 'stopped'
-        && prior.episode === previous.episode);
-      if (priorCommands.length > 0 && !originalStoppedCommand) {
-        ensure(priorCommands.every(prior => prior.type === 'LoopRecord' && 'transition' in prior
-          && ['attempt-admitted', 'half-opened'].includes(prior.transition)
-          && prior.episode === previous.episode && prior.attemptLog.at(-1)?.id === input.attempt),
-        'command reused for a different loop operation');
-        ensure(new Set(priorCommands.map(prior => encoded(prior).bytes)).size === 1,
-          'command reused for a different loop operation');
-        const prior = priorCommands[0] as SharedLoopRecord;
-        sharedLoopEvidence(prior, history, spine.context, host);
-        return prior;
-      }
+      const replay = resolveSubmittedCommand(all, history, { operation: 'attempt', input });
+      if (replay) return replay;
       const existing = previous.attemptLog.find(attempt => attempt.id === input.attempt);
       if (existing) return previous;
       const decision = sharedAdmissionDecision(previous, now,
@@ -381,6 +433,8 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
         && atOrAfter(now, previous.transitionAt), 'incomparable or backward shared pressure time');
       resolvePolicyFact(previous.policy, current.generation.id, history, spine.context);
       resolveRunReference(previous.currentOwnerRun, history, spine.context);
+      const replay = resolveSubmittedCommand(all, history, { operation: 'outcome', input });
+      if (replay) return replay;
       const attempt = previous.attemptLog.find(value => value.id === input.attempt);
       ensure(attempt, 'contributing loop attempt is absent');
       ensure(atOrAfter(now, attempt.admittedAt), 'outcome clock precedes its admission');
