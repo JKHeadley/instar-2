@@ -165,6 +165,21 @@ const concreteConsumers = [
     anchors: ['cutAndRecover(intakeChild', 'cutAndRecover(outboundChild', 'offsetAfterRecovery', 'admissionsAfter'] },
   { id: 'P12-NF-48', file: 'tests/conversation/telegram.round5.lifecycle.test.ts',
     anchors: ['build({ entryPoints:', 'spawnSync(', "toBe('SIGKILL')", 'reader.status'] },
+  { id: 'P12-NF-06', file: 'tests/conversation/telegram.round10.integration.test.ts',
+    anchors: ["['missing', 'wrong-hash', 'different-updates']", 'createIntakePort(', 'ingress.pollOnce()',
+      "toBe('Refused')", 'toBe(100)', "row.kind === 'intake-receipt'", "row.kind === 'intake-admitted'"],
+    supporting: [{ file: 'src/conversation/telegram.ts', anchors: [
+      'deps.api.readCapture(batch.response.reference)', 'hashBytes(responseBytes) === batch.response.hash',
+      'encode(shape) === encode(response.result[index])',
+    ] }] },
+  { id: 'P12-NF-30', file: 'tests/conversation/telegram.round10.integration.test.ts',
+    anchors: ["['one-zero', '<b>Hello</b>', 0, 0]", "['two-one', '<b>Hello</b> <i>World</i>', 1, 0]",
+      "['hundred-one'", 'telegramPreparedOutbound(false, text, limit)', 'calls.send',
+      'toHaveLength(expectedCalls)'],
+    supporting: [{ file: 'src/conversation/telegram.ts', anchors: [
+      'validateTelegramReplyText(input.message.text, admitted.declaration)',
+      'countTelegramHtmlEntities(text) <= declaration.limits.maxEntities',
+    ] }] },
 ];
 for (const consumer of concreteConsumers) {
   if (!(tests.get(consumer.id) ?? []).some(test => test.file === consumer.file))

@@ -135,8 +135,11 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
     poll(input: Parameters<TelegramBotApiCustodianPort['poll']>[0]) {
       calls.poll.push(input);
       const updates = batches.shift() ?? [];
-      return intake.f.success({ updates, response: { reference: `capture:telegram:poll:${input.offset}`,
-        hash: hashBytes(JSON.stringify({ ok: true, result: updates })) } });
+      const reference = `capture:telegram:poll:${input.offset}`;
+      const responseBytes = JSON.stringify({ ok: true, result: updates.map(update => JSON.parse(update) as unknown) });
+      intake.f.captures[reference] = responseBytes;
+      intake.syncCaptures();
+      return intake.f.success({ updates, response: { reference, hash: hashBytes(responseBytes) } });
     },
     sendMessage(input: Parameters<TelegramBotApiCustodianPort['sendMessage']>[0]) {
       calls.send.push(input);

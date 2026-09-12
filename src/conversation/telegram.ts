@@ -666,11 +666,21 @@ export function createTelegramIngress(deps: TelegramIngressDependencies) {
           ensure(batch.updates.length <= deps.admitted.declaration.cursor.maxBatchItems, 'provider batch exceeds declared item bound');
           ensure(/^sha256:[a-f0-9]{64}$/.test(batch.response.hash) && batch.response.reference.length > 0,
             'poll response lacks capture-backed evidence');
+          const responseBytes = take(deps.api.readCapture(batch.response.reference));
+          ensure(hashBytes(responseBytes) === batch.response.hash,
+            'poll response capture differs from its declared hash');
+          const response = record(JSON.parse(responseBytes) as unknown, 'Telegram poll response');
+          ensure(response.ok === true && Array.isArray(response.result),
+            'poll response capture is not a successful Telegram update batch');
+          ensure(response.result.length === batch.updates.length,
+            'poll response capture differs from the returned update batch');
           const captured: TelegramIntakeOutcome[] = [];
           let blockedOnUpdate: number | null = null;
           let previousUpdateId = -1;
-          for (const raw of batch.updates) {
+          for (const [index, raw] of batch.updates.entries()) {
             const shape = record(JSON.parse(raw) as unknown, 'Telegram update');
+            ensure(encode(shape) === encode(response.result[index]),
+              'returned Telegram update differs from its captured poll response');
             const updateId = integer(shape.update_id, 'provider update_id');
             ensure(updateId >= 0 && updateId >= previousUpdateId, 'provider batch update ids must be nonnegative and ordered');
             previousUpdateId = updateId;
@@ -698,14 +708,24 @@ export function createTelegramIngress(deps: TelegramIngressDependencies) {
 export function renderTelegramHtml(source: string, declaration: TelegramBotDeclaration,
   context: BoundaryContext): Result<string> {
   return boundary('TelegramHtmlRender', { source }, context, () => {
-    validateTelegramReplyText(source, declaration);
+    validateTelegramReplyText(source, declaration, false);
     const rendered = source.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
     validateTelegramReplyText(rendered, declaration);
     return rendered;
   });
 }
 
-function validateTelegramReplyText(text: string, declaration: TelegramBotDeclaration): void {
+export function countTelegramHtmlEntities(text: string): number {
+  ensure(typeof text === 'string', 'Telegram rendered reply text must be a string');
+  let count = 0;
+  for (const match of text.matchAll(/<\s*(\/?)\s*([A-Za-z][A-Za-z0-9-]*)(?=\s|\/?>)[^<>]*>/gu)) {
+    if (match[1] !== '/') count += 1;
+  }
+  return count;
+}
+
+function validateTelegramReplyText(text: string, declaration: TelegramBotDeclaration,
+  validateEntities = true): void {
   ensure(typeof text === 'string' && text.length > 0, 'Telegram reply text must be nonempty');
   ensure(!/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(text),
     'Telegram reply contains unsupported control data');
@@ -713,6 +733,8 @@ function validateTelegramReplyText(text: string, declaration: TelegramBotDeclara
     'Telegram reply exceeds the 4096-character single-message limit; chunking and truncation are unsupported');
   ensure(bytes(text) <= declaration.limits.maxReplyBytes,
     'Telegram reply exceeds the declared byte limit; chunking and truncation are unsupported');
+  if (validateEntities) ensure(countTelegramHtmlEntities(text) <= declaration.limits.maxEntities,
+    'Telegram reply exceeds the declared HTML entity limit; chunking and truncation are unsupported');
 }
 
 export function renderTelegramDeliveryStatus(input: Readonly<{

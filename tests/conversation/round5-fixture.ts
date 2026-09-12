@@ -8,8 +8,11 @@ import { value } from '../intake/fixtures.js';
 import { conversationFixture } from './fixture.js';
 
 /** A Telegram reply admitted through Part Eight's public prepare arm. */
-export function telegramPreparedOutbound(lostResponse = false, text = 'Here is the requested result.') {
-  const telegram = conversationFixture();
+export function telegramPreparedOutbound(lostResponse = false, text = 'Here is the requested result.', maxEntities = 100) {
+  const telegram = conversationFixture({ skipInitialAdmission: maxEntities !== 100 });
+  if (maxEntities !== 100) telegram.admitted = value(telegram.admit({
+    ...telegram.declaration, limits: { ...telegram.declaration.limits, maxEntities },
+  }));
   if (lostResponse) telegram.loseSendResponse();
   const target = { chatId: '-1000000001001', forum: true, messageThreadId: 42 } as const;
   const conversation = telegramConversation(telegram.declaration.bot.id, target);
