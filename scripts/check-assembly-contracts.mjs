@@ -39,6 +39,7 @@ export const packageActivityContractMap = Object.freeze([
 
 export const packageActivityNonExecutable = Object.freeze([
   { subject: 'part-fifteen-package-competition-consumer', status: 'non-executable',
+    grant: 'NON-EXECUTABLE-UNTIL-P15-P10-package-resource-and-activity-v1',
     reason: 'Part Fifteen consumer wiring is outside the row-80 Part Ten grant and remains for its own slice.' },
 ]);
 
@@ -56,7 +57,8 @@ export function checkPackageActivityCoverage(report, rows = packageActivityContr
   for (const tier of ['unit', 'integration', 'lifecycle']) if (!tiers.has(tier)) throw new Error(`package activity has no executable ${tier} mapping`);
   for (const check of ['P10-NF-08', 'P10-NF-30', 'P10-NF-41', 'P10-NF-43', 'P10-NF-44'])
     if (!checks.has(check)) throw new Error(`package activity check is unmapped: ${check}`);
-  if (packageActivityNonExecutable.some(row => row.status !== 'non-executable' || !row.reason))
+  if (packageActivityNonExecutable.some(row => row.status !== 'non-executable'
+    || row.grant !== 'NON-EXECUTABLE-UNTIL-P15-P10-package-resource-and-activity-v1' || !row.reason))
     throw new Error('package activity non-executable map contains an ungrounded claim');
   return rows;
 }

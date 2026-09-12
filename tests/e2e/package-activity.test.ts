@@ -11,7 +11,7 @@ import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 const clone = <T>(input: T): T => JSON.parse(JSON.stringify(input)) as T;
 
 function seedBundle(directory: string) {
-  const f = assemblyRuntimeFixture();
+  const f = assemblyRuntimeFixture(undefined, { verifiedProbes: true });
   const baseCount = f.raw.length;
   const pkg = value(f.runtime.record('LocalCapabilityPackage', clone(assemblyInput('LocalCapabilityPackage'))));
   const packageFact = value(f.runtime.inspect()).find(row => row.record.id === pkg.id)!.fact;

@@ -10,6 +10,7 @@ import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 type Fixture = ReturnType<typeof assemblyRuntimeFixture>;
 type TransitionRow = Readonly<{ record: PackageTransition; fact: FactEnvelope }>;
 const clone = <T>(input: T): T => JSON.parse(JSON.stringify(input)) as T;
+const fixture = () => assemblyRuntimeFixture(undefined, { verifiedProbes: true });
 
 function signed<N extends AssemblyRecordName>(f: Fixture, name: N, input: object) {
   const record = value(f.runtime.record(name, input));
@@ -44,7 +45,7 @@ function activeChain(f: Fixture) {
 }
 
 it('P10-NF-30 P10-NF-41 P10-NF-43 P10-NF-44 full Part Ten runtime and Part Two store resolve every package lifecycle head', () => {
-  const f = assemblyRuntimeFixture();
+  const f = fixture();
   expect(resolve(f).outcome).toEqual({ status: 'unresolved', reason: 'absent' });
   const pkg = recordPackage(f);
   expect(resolve(f).outcome).toEqual({ status: 'unresolved', reason: 'incomplete' });
@@ -67,19 +68,19 @@ it('P10-NF-30 P10-NF-41 P10-NF-43 P10-NF-44 full Part Ten runtime and Part Two s
 });
 
 it('P10-NF-43 conflicts, multi-heads, incomplete references, taint, and mismatched active artifacts remain unresolved', () => {
-  const fork = assemblyRuntimeFixture(); const forkPkg = recordPackage(fork);
+  const fork = fixture(); const forkPkg = recordPackage(fork);
   const staged = transition(fork, forkPkg, 'transition:staged', 'none', 'staged');
   transition(fork, forkPkg, 'transition:branch-a', 'staged', 'validated', staged);
   transition(fork, forkPkg, 'transition:branch-b', 'staged', 'inhibited', staged);
   expect(resolve(fork).outcome).toEqual({ status: 'unresolved', reason: 'multi-head' });
 
-  const conflict = assemblyRuntimeFixture(); recordPackage(conflict);
+  const conflict = fixture(); recordPackage(conflict);
   const changed = value(decodeAssemblyRecord('LocalCapabilityPackage', { ...clone(assemblyInput('LocalCapabilityPackage')),
     sourceDigest: `sha256:${'a'.repeat(64)}` }, { ...conflict.c, validateReferences: false }));
   value(conflict.spine.append(changed));
   expect(resolve(conflict).outcome).toEqual({ status: 'unresolved', reason: 'conflicted' });
 
-  const incomplete = assemblyRuntimeFixture();
+  const incomplete = fixture();
   const incompleteRecord = value(decodeAssemblyRecord('LocalCapabilityPackage', { ...clone(assemblyInput('LocalCapabilityPackage')),
     priorPackage: 'package:missing' }, { ...incomplete.c, validateReferences: false }));
   const incompleteFact = value(incomplete.spine.append(incompleteRecord)).fact;
@@ -91,7 +92,7 @@ it('P10-NF-43 conflicts, multi-heads, incomplete references, taint, and mismatch
     from: 'activating', to: 'active', predecessors: [], dependencyFacts: [] }, { ...incomplete.c, validateReferences: false }));
   // Replace the clean active head with a distinct fixture so immutable conflict
   // does not hide the exact artifact-mismatch outcome under test.
-  const mismatchOnly = assemblyRuntimeFixture(); const mismatchPkg = recordPackage(mismatchOnly);
+  const mismatchOnly = fixture(); const mismatchPkg = recordPackage(mismatchOnly);
   const s = transition(mismatchOnly, mismatchPkg, 'mismatch:staged', 'none', 'staged');
   const v = transition(mismatchOnly, mismatchPkg, 'mismatch:validated', 'staged', 'validated', s);
   const e = transition(mismatchOnly, mismatchPkg, 'mismatch:eligible', 'validated', 'eligible', v);
@@ -100,14 +101,14 @@ it('P10-NF-43 conflicts, multi-heads, incomplete references, taint, and mismatch
     predecessors: [a.fact.id], dependencyFacts: [mismatchPkg.fact.id, a.fact.id] }, { ...mismatchOnly.c, validateReferences: false }))));
   expect(resolve(mismatchOnly).outcome).toEqual({ status: 'unresolved', reason: 'package-mismatch' });
 
-  const tainted = assemblyRuntimeFixture(); recordPackage(tainted);
+  const tainted = fixture(); recordPackage(tainted);
   for (const reference of Object.keys(tainted.context.decode.captures))
     delete (tainted.context.decode.captures as Record<string, string>)[reference];
   expect(resolve(tainted).outcome).toEqual({ status: 'unresolved', reason: 'tainted' });
 });
 
 it('P10-NF-08 P10-NF-30 P10-NF-43 use-time re-resolution observes later activation and reports a moved frontier as unresolved', () => {
-  const f = assemblyRuntimeFixture(); const pkg = recordPackage(f);
+  const f = fixture(); const pkg = recordPackage(f);
   const staged = transition(f, pkg, 'transition:staged', 'none', 'staged');
   const inhibited = transition(f, pkg, 'transition:inhibited', 'staged', 'inhibited', staged);
   const cached = resolve(f); expect(cached.outcome.status).toBe('inactive');
@@ -116,7 +117,7 @@ it('P10-NF-08 P10-NF-30 P10-NF-43 use-time re-resolution observes later activati
   transition(f, pkg, 'transition:active', 'activating', 'active', activating);
   expect(resolve(f).outcome.status).toBe('active');
 
-  const moving = assemblyRuntimeFixture(); const active = activeChain(moving); let reads = 0;
+  const moving = fixture(); const active = activeChain(moving); let reads = 0;
   const movingStore: FactStorePort = Object.freeze({ ...moving.store, readForProjection: () => {
     const snapshot = moving.store.readForProjection();
     if (reads++ === 0) transition(moving, active.pkg, 'transition:retired', 'active', 'retired', active.active);

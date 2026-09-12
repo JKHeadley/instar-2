@@ -2,6 +2,7 @@ import { writeSync } from 'node:fs';
 import { consumeResult, decodeMeasurement, defineDecoder } from '@instar/constitutional-types';
 import { createFactStore } from '@instar/constitutional-types/facts';
 import { registerAssemblyBodies, resolvePackageActivity } from '@instar/constitutional-types/assembly';
+import { registerVerificationBodies } from '@instar/constitutional-types/verification';
 import { createTransportFileStorage } from '../../scripts/transport-file-storage.mjs';
 
 const [seedPath, directory, mode, cut] = process.argv.slice(2);
@@ -13,7 +14,7 @@ const clock = take(decodeMeasurement('clock', seed.context.genesis.clock, seed.c
 let context = { ...seed.context, genesis: { ...seed.context.genesis, clock } };
 const host = { machine: seed.machine, principal: seed.principal, scope: seed.scope, boundary: baseBoundary,
   current: () => ({ facts: context, generation: seed.generation, stopped: false, clock }) };
-context = { ...context, ownedBodies: take(registerAssemblyBodies(host)) };
+context = { ...context, ownedBodies: [...take(registerAssemblyBodies(host)), ...take(registerVerificationBodies(host))] };
 const result = run => consumeResult(defineDecoder({ name: 'PackageActivityFileReceipt', owner: 'part-ten', currentVersion: 1,
   versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {},
   decodeCurrent: () => ({ ok: true, value: run() }),
