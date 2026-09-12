@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { hashBytes } from '../../src/facts/index.js';
 import { evaluateGenesisReplay, evaluateMinimalPath, minimalPlaneProjectionIds, minimalPlaneProjections, minimalResponse,
   operatorSeams, requiredMinimalDependencies, resolveFailureTrace, validateSeamInventory } from '../../src/operator/index.js';
 import type { MinimalDependency, ReplaySample } from '../../src/operator/index.js';
@@ -132,10 +133,10 @@ it('P11-NF-40 P11-NF-41 the four shared seams each name producer, consumer, reco
 });
 
 it('P11-NF-41 P11-NF-42 shared traces never retry: uncertainty remains owned, duplicate digest conflicts, cancellation stays stopped, stale authority closes', () => {
-  const x = operatorFixture(), base = { semanticIdentity: 'message:1', digests: ['d1'], applications: 1,
+  const x = operatorFixture(), base = { semanticIdentity: 'message:1', digests: [hashBytes('payload-one')], applications: 1,
     stopCausallyPrior: false, owner: 'repair-owner', outcome: 'uncertain' as const, authorityCurrent: true };
   expect(value(resolveFailureTrace({ ...base, trace: 'crash-after-effect' }, x.f.c))).toMatchObject({ retry: false, state: 'owned-uncertain' });
-  expect(value(resolveFailureTrace({ ...base, trace: 'duplicate-delivery', digests: ['d1', 'd2'] }, x.f.c))).toMatchObject({ conflict: true, state: 'authority-closed' });
+  expect(value(resolveFailureTrace({ ...base, trace: 'duplicate-delivery', digests: [hashBytes('payload-one'), hashBytes('payload-two')] }, x.f.c))).toMatchObject({ conflict: true, state: 'authority-closed' });
   expect(value(resolveFailureTrace({ ...base, trace: 'cancellation-race', stopCausallyPrior: true }, x.f.c))).toMatchObject({ state: 'stopped' });
   expect(value(resolveFailureTrace({ ...base, trace: 'stale-authority', authorityCurrent: false }, x.f.c))).toMatchObject({ state: 'authority-closed' });
 });

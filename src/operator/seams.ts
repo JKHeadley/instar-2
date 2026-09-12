@@ -2,6 +2,44 @@ import type { BoundaryContext, Result } from '../index.js';
 import { operatorBoundary, requireOperator } from './boundary.js';
 import type { FailureTraceInput, FailureTraceResolution, SeamRow } from './contracts.js';
 
+const failureTraceKinds = Object.freeze<readonly FailureTraceInput['trace'][]>([
+  'crash-after-effect', 'duplicate-delivery', 'cancellation-race', 'stale-authority',
+]);
+const failureTraceOutcomes = Object.freeze<readonly FailureTraceInput['outcome'][]>([
+  'happened', 'did-not-happen', 'uncertain', 'missing',
+]);
+const payloadDigestPattern = /^sha256:[a-f0-9]{64}$/;
+
+function decodeFailureTrace(input: unknown): FailureTraceInput {
+  requireOperator(typeof input === 'object' && input !== null && !Array.isArray(input),
+    'P11-NF-41/42: shared failure trace must be a record');
+  const candidate = input as Record<string, unknown>;
+  requireOperator(typeof candidate.trace === 'string'
+    && failureTraceKinds.includes(candidate.trace as FailureTraceInput['trace']),
+  'P11-NF-41/42: unknown trace kind');
+  requireOperator(typeof candidate.outcome === 'string'
+    && failureTraceOutcomes.includes(candidate.outcome as FailureTraceInput['outcome']),
+  'P11-NF-41/42: unknown trace outcome');
+  requireOperator(typeof candidate.semanticIdentity === 'string' && candidate.semanticIdentity.trim().length > 0
+    && typeof candidate.owner === 'string' && candidate.owner.trim().length > 0,
+  'P11-NF-41/42: trace requires identity and closure owner');
+  requireOperator(Array.isArray(candidate.digests) && candidate.digests.length > 0
+    && candidate.digests.every(digest => typeof digest === 'string' && payloadDigestPattern.test(digest)),
+  'P11-NF-42: trace requires SHA-256 payload digests');
+  requireOperator(Number.isSafeInteger(candidate.applications)
+    && (candidate.applications as number) >= 0 && (candidate.applications as number) <= 1,
+  'P11-NF-42: application count must be a safe integer between zero and one');
+  requireOperator(typeof candidate.stopCausallyPrior === 'boolean' && typeof candidate.authorityCurrent === 'boolean',
+    'P11-NF-41/42: trace requires causal-stop and authority-current observations');
+
+  const decoded = candidate as unknown as FailureTraceInput;
+  requireOperator(decoded.outcome !== 'happened' || decoded.applications === 1,
+    'P11-NF-42: application outcome contradicts the application count');
+  requireOperator(decoded.outcome !== 'did-not-happen' || decoded.applications === 0,
+    'P11-NF-42: decisive non-occurrence contradicts an observed application');
+  return decoded;
+}
+
 export const operatorSeams: readonly SeamRow[] = Object.freeze([
   { seam: 'authorization-completion', producer: 'part-four', consumer: 'parts-eleven/four/eight/nine', record: 'exact request digest + existing act + broker journal',
     order: ['render', 'verified-act-through-intake', 'current-exact-validation', 'effect-or-broker', 'receipt'], failDirection: 'authority-closed; diagnosis/stop/request-open', owner: 'eleven/four/eight/nine' },
@@ -23,9 +61,12 @@ export function validateSeamInventory(rows: readonly SeamRow[], context: Boundar
     `P11-NF-40: incomplete seam row ${row.seam}`);
     for (const expected of operatorSeams) {
       const row = rows.find(candidate => candidate.seam === expected.seam)!;
+      for (const field of ['producer', 'consumer', 'record', 'failDirection', 'owner'] as const)
+        requireOperator(row[field] === expected[field],
+          `P11-NF-40/41: incomplete seam row ${row.seam}.${field}`);
       requireOperator(row.order.length === expected.order.length
         && row.order.every((step, index) => step === expected.order[index]),
-      `P11-NF-40/41: seam transition order differs for ${row.seam}`);
+      `P11-NF-40/41: incomplete seam row ${row.seam}.order`);
     }
     return 'complete' as const;
   });
@@ -33,23 +74,15 @@ export function validateSeamInventory(rows: readonly SeamRow[], context: Boundar
 
 export function resolveFailureTrace(input: FailureTraceInput, context: BoundaryContext): Result<FailureTraceResolution> {
   return operatorBoundary('OperatorSharedFailureTrace', context, () => {
-    requireOperator(input.owner.trim().length > 0 && input.semanticIdentity.trim().length > 0, 'P11-NF-41/42: trace requires identity and closure owner');
-    requireOperator(Number.isSafeInteger(input.applications), 'P11-NF-42: application count must be a safe integer');
-    requireOperator(input.digests.length > 0 && input.digests.every(digest => typeof digest === 'string' && digest.trim().length > 0),
-      'P11-NF-42: trace requires a complete payload digest');
-    requireOperator(input.outcome !== 'happened' || input.applications === 1,
-      'P11-NF-42: application outcome contradicts the application count');
-    const conflict = new Set(input.digests).size > 1;
-    requireOperator(input.applications >= 0 && input.applications <= 1, 'P11-NF-42: duplicate external application');
-    if (conflict) return Object.freeze({ retry: false as const, conflict: true, state: 'authority-closed' as const, owner: input.owner, applications: input.applications });
-    if (input.trace === 'stale-authority' || !input.authorityCurrent)
-      return Object.freeze({ retry: false as const, conflict: false, state: 'authority-closed' as const, owner: input.owner, applications: input.applications });
-    if (input.trace === 'cancellation-race' && input.stopCausallyPrior)
-      return Object.freeze({ retry: false as const, conflict: false, state: 'stopped' as const, owner: input.owner, applications: input.applications });
-    requireOperator(input.outcome !== 'did-not-happen' || input.applications === 0,
-      'P11-NF-42: decisive non-occurrence contradicts an observed application');
-    if (input.outcome === 'happened' || input.outcome === 'did-not-happen')
-      return Object.freeze({ retry: false as const, conflict: false, state: 'settled' as const, owner: input.owner, applications: input.applications });
-    return Object.freeze({ retry: false as const, conflict: false, state: 'owned-uncertain' as const, owner: input.owner, applications: input.applications });
+    const trace = decodeFailureTrace(input);
+    const conflict = new Set(trace.digests).size > 1;
+    if (conflict) return Object.freeze({ retry: false as const, conflict: true, state: 'authority-closed' as const, owner: trace.owner, applications: trace.applications });
+    if (trace.trace === 'stale-authority' || !trace.authorityCurrent)
+      return Object.freeze({ retry: false as const, conflict: false, state: 'authority-closed' as const, owner: trace.owner, applications: trace.applications });
+    if (trace.trace === 'cancellation-race' && trace.stopCausallyPrior)
+      return Object.freeze({ retry: false as const, conflict: false, state: 'stopped' as const, owner: trace.owner, applications: trace.applications });
+    if (trace.outcome === 'happened' || trace.outcome === 'did-not-happen')
+      return Object.freeze({ retry: false as const, conflict: false, state: 'settled' as const, owner: trace.owner, applications: trace.applications });
+    return Object.freeze({ retry: false as const, conflict: false, state: 'owned-uncertain' as const, owner: trace.owner, applications: trace.applications });
   });
 }
