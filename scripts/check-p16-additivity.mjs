@@ -3,6 +3,21 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
+const nulSplit = output => output.split('\0').filter(Boolean);
+const tracked = nulSplit(execFileSync('git', ['diff', '--no-renames', '--name-only', '-z', 'main'], { encoding: 'utf8' }));
+const untracked = nulSplit(execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], { encoding: 'utf8' }));
+const changedPaths = [...new Set([...tracked, ...untracked])];
+const p16SliceChanged = changedPaths.some(path => path.startsWith('src/measurement/')
+  || path.startsWith('tests/measurement/')
+  || /^tests\/(integration|e2e)\/measurement(?:-[^/]*)?\.test\.ts$/.test(path));
+
+// A different feature branch re-synced onto main has no Part Sixteen additivity
+// claim to prove. Part Sixteen branches still execute the original byte comparison.
+if (!p16SliceChanged) {
+  console.log('P16 additivity: Part Sixteen feature scope unchanged; byte-identical to main check is not applicable to this cross-feature branch.');
+  process.exit(0);
+}
+
 const roots = ['tests'];
 const listed = execFileSync('git', ['ls-tree', '-r', '--name-only', 'main', '--', ...roots], { encoding: 'utf8' })
   .trim().split('\n').filter(Boolean);

@@ -27,9 +27,21 @@ export function p15AdditivityBaseline(mainRef = 'main', headRef = 'HEAD', root =
   };
 }
 
+export function p15AdditivityApplies(baseline, headRef = 'HEAD', root = process.cwd()) {
+  // Before Part Fifteen lands on main, its first implementation branch must prove
+  // the complete inherited population. After landing, only a branch changing
+  // Part Fifteen-owned source makes that same ownership assertion.
+  if (!baseline.files.some(row => row.file.startsWith('src/scheduled/'))) return true;
+  const changed = execFileSync('git', ['-C', root, 'diff', '--no-renames', '--name-only', '-z', baseline.mainRef, headRef],
+    { encoding: 'utf8' }).split('\0').filter(Boolean);
+  return changed.some(file => file.startsWith('src/scheduled/'));
+}
+
 export function checkP15Additivity(report, mainRef = 'main', headRef = 'HEAD', root = process.cwd()) {
   if (!report.success) throw new Error('P15 additivity requires a successful actual test run');
   const baseline = p15AdditivityBaseline(mainRef, headRef, root);
+  const applicable = p15AdditivityApplies(baseline, headRef, root);
+  if (!applicable) return { ...baseline, applicable };
   for (const row of baseline.files) {
     const expected = execFileSync('git', ['-C', root, 'cat-file', 'blob', row.object]);
     let current;
@@ -37,7 +49,7 @@ export function checkP15Additivity(report, mainRef = 'main', headRef = 'HEAD', r
     catch { throw new Error(`P15 additivity: pre-existing owner file is missing: ${row.file}`); }
     if (!expected.equals(current)) throw new Error(`P15 additivity: pre-existing owner file bytes changed: ${row.file}`);
   }
-  return baseline;
+  return { ...baseline, applicable };
 }
 
 export function checkP15InheritedScopeTest(report, headRef = 'HEAD') {
@@ -54,6 +66,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const report = JSON.parse(readFileSync('.test-results.json', 'utf8'));
   const baseline = checkP15Additivity(report);
   const inherited = checkP15InheritedScopeTest(report);
-  console.log(`P15 additivity proved current-main base ${baseline.mergeBase}: ${baseline.sourceCount} source files and ${baseline.testFixtureCount} test/fixture files are byte-identical.`);
+  console.log(baseline.applicable
+    ? `P15 additivity proved current-main base ${baseline.mergeBase}: ${baseline.sourceCount} source files and ${baseline.testFixtureCount} test/fixture files are byte-identical.`
+    : `P15 additivity: Part Fifteen source scope unchanged from current-main base ${baseline.mergeBase}; cross-feature byte comparison is not applicable.`);
   console.log(`P15 inherited owner-scope proof: ${inherited.file} passed all ${inherited.passed} tests on HEAD ${inherited.head}.`);
 }
