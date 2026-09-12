@@ -49,14 +49,25 @@ describe('round-two data validation review regressions', () => {
     expect(detail(decodeNormalRegisterWorkflow({ ...workflow, catalog: { ...workflow.catalog, fixtures: 'wrong' } }, s.context))).toContain('array');
   });
 
-  it('P3-NF-02 refuses malformed nested rule and adjective values at the declaration decoder', () => {
-    const s = setup();
-    expect(detail(decodeDeclaration(s.rule(-1), s.context))).toContain('positive integer');
-    expect(detail(decodeDeclaration(s.rule(7, { termRefs: 42 }), s.context))).toMatch(/array|format/);
-    expect(detail(decodeDeclaration(s.rule(7, { termRefs: [''] }), s.context))).toContain('nonempty string');
+  it('P3-NF-02 refuses malformed nested rule and adjective values at the parent/provider seam', () => {
+    const s = setup(), built = s.build(), generation = value(generationOf(built, s.context));
+    const fact: FactReference = { owner: 'part-two', name: 'FactEnvelope', id: 'approval:round-two' };
+    const spine: SpineReadPort = { owner: 'part-two', verifyExtract: () => reply(fact, s.context),
+      enteringForce: () => reply(value(decodeGenerationRecord(json('GenerationRecord', { generation, at: s.f.now }), s.context)), s.context),
+      isCurrent: () => reply(true, s.context) };
+    const parent = value(loadRegister(built, generation, s.context, spine, s.f.now));
+    const approvals = { owner: 'part-two' as const, verifyShapeChange: () => reply(fact, s.context) };
+    const refusal = (declaration: object) => detail(generateAgainstParent(s.input([declaration]), parent,
+      parent.shape, null, approvals, s.context));
+    // Main's protected generic decoder remains unchanged; normal-mode shape
+    // authority owns the stricter parent-relative validation.
+    expect(value(decodeDeclaration(s.rule(-1), s.context)).id).toBe('rule:-1');
+    expect(refusal(s.rule(-1))).toContain('positive integer');
+    expect(refusal(s.rule(7, { termRefs: 42 }))).toMatch(/array|format/);
+    expect(refusal(s.rule(7, { termRefs: [''] }))).toContain('nonempty string');
     const adjective = s.declaration('term:derived', 'terms', { name: 'urgent', kind: 'adjective', definition: 'Derived.',
       allowedValues: [], termRefs: [], derivedFrom: { any: 42 } });
-    expect(detail(decodeDeclaration(adjective, s.context))).toContain('array');
+    expect(refusal(adjective)).toContain('array');
   });
 
   it('P3-NF-03 nominal workflow type cannot be constructed from open JSON', () => {
