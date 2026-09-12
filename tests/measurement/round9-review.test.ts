@@ -67,10 +67,10 @@ describe('Part 16 A1 round 9 independent-review regressions', () => {
       ['export default { allow: () => true };', 'allow'],
       ["export const decisions = { 'canRun'(){ return true; } };", 'canRun'],
       ["export class Decisions { ['pl' + 'ace'] = () => true; }", 'place'],
-      ['export default [function throttle(){ return true; }];', 'throttle'],
       ['const allow=()=>true; const decisions={allow}; export {decisions};', 'allow'],
       ['export default [{ nested: { allow(){ return true; } } }];', 'allow'],
     ] as const)) expect(scan(source), source).toEqual([permission]);
+    expect(scan('export default [function throttle(){ return true; }];')).toEqual([]);
     expect(scan('export namespace measurementHelpers { export function normalize(v:number){ return v; } }'))
       .toEqual([]);
     expect(scan('export default [{ normalize: (v:number) => v }];')).toEqual([]);

@@ -8,7 +8,7 @@ import {
   summarizeRateLimitEvents,
 } from '../../src/measurement/index.js';
 // @ts-expect-error Repository contract checker is intentionally JavaScript.
-import { checkP16Architecture, checkP16Coverage, findForbiddenMeasurementPermissionExports, p16Dispositions } from '../../scripts/check-p16-contract-map.mjs';
+import { checkP16Architecture, checkP16Coverage, findForbiddenMeasurementPermissionExports, p16Dispositions, validateMeasurementPermissionExports } from '../../scripts/check-p16-contract-map.mjs';
 import { refused, value } from '../facts/fixtures.js';
 import { measurementFixture } from '../measurement/fixture.js';
 import {
@@ -89,6 +89,7 @@ it('P16-NF-23 [behavior:observational-port] exposes no allow, place, or throttle
     'src/measurement/index.ts': "export * from './permission.js';",
   });
   expect(scan('export const { normalize } = { normalize: (value: number) => value };')).toEqual([]);
+  expect(scan('export default [function throttle(){ return true; }];')).toEqual([]);
   for (const [source, permission] of ([
     ['export const { allow } = { allow: () => true };', 'allow'],
     ['export const { admit: allow } = { admit: () => true };', 'allow'],
@@ -99,8 +100,40 @@ it('P16-NF-23 [behavior:observational-port] exposes no allow, place, or throttle
     ['export default { allow: () => true };', 'allow'],
     ['export const decisions = { canRun(){ return true; } };', 'canRun'],
     ["export class Decisions { ['pl' + 'ace'] = () => true; }", 'place'],
-    ['export default [function throttle(){ return true; }];', 'throttle'],
   ] as const)) expect(scan(source)).toEqual([permission]);
+});
+
+it('P16-NF-23 [behavior:observational-port] round 12 finding 1 resolves callable permission types', () => {
+  expect(validateMeasurementPermissionExports({
+    'src/measurement/permission.ts':
+      'export default {allow: (() => true) as (() => boolean) | undefined};',
+  })).toMatchObject({ status: 'refused', accepted: false, reason: 'reachable-callable-permission',
+    path: 'src/measurement/permission.ts:default.allow' });
+  expect(validateMeasurementPermissionExports({
+    'src/measurement/permission.ts': 'export default {allow: (() => true) as unknown};',
+  })).toMatchObject({ status: 'unanalyzable', accepted: false,
+    reason: 'reachable-permission-type-unanalyzable',
+    path: 'src/measurement/permission.ts:default.allow' });
+});
+
+it('P16-NF-23 [behavior:observational-port] round 12 finding 2 ignores erased and harmless names', () => {
+  for (const source of [
+    'const value=(n:number)=>n; export type {value as allow}; export const normalize=(n:number)=>n;',
+    'export const allow=7;',
+    'export const normalize=function allow(n:number){return n};',
+  ]) expect(validateMeasurementPermissionExports({ 'src/measurement/permission.ts': source }))
+    .toMatchObject({ status: 'accepted', accepted: true });
+});
+
+it('P16-NF-23 [behavior:observational-port] round 12 finding 3 returns total recursive and namespace results', () => {
+  expect(validateMeasurementPermissionExports({
+    'src/measurement/permission.ts':
+      'export function normalize(n:number):number{return n>0?normalize(n-1):0;}',
+  })).toMatchObject({ status: 'accepted', accepted: true });
+  expect(validateMeasurementPermissionExports({
+    'src/measurement/a.ts': 'export const normalize=(n:number)=>n;',
+    'src/measurement/index.ts': "export * as helpers from './a.js';",
+  })).toMatchObject({ status: 'accepted', accepted: true });
 });
 
 it('P16-NF-23 [behavior:observational-port] rejects round 10 export-reachable callable permissions', () => {
