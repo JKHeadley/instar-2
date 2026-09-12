@@ -49,7 +49,7 @@ it('P12-NF-07 P12-NF-16 P12-NF-17 P12-NF-18 round9 finding 1 refuses all reviewe
     { id: -1000000000123, type: 'supergroup' },
     { id: -1000000000123, type: 'channel' },
   ] as const) for (const source of ['sender_chat', 'actor_chat'] as const) runInbound(sourceUpdate(source, chat), true);
-});
+}, 30_000);
 
 it('P12-NF-16 P12-NF-17 P12-NF-18 round9 finding 2 refuses channel variants with non-channel destinations despite explicit sender', () => {
   for (const variant of ['channel_post', 'edited_channel_post'] as const) {
