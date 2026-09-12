@@ -160,7 +160,13 @@ function existsOnMain(path) {
 export function checkP13Architecture() {
   const failures = [];
   const changed = changedPaths();
-  for (const path of changed) {
+  // The feature-scope arm guards THIS part's slice. On a branch that touches no Part Thirteen path (another
+  // part's slice re-synced onto main), every changed file is by definition outside Part Thirteen's scope, so the
+  // arm has nothing to judge; the structural checks below still run unconditionally.
+  const p13SliceChanged = changed.some(path => path.startsWith('src/harness-adapters/')
+    || path.startsWith('tests/harness-adapters/')
+    || /^tests\/(integration|e2e)\/harness-adapters(?:-[^/]*)?\.test\.ts$/.test(path));
+  if (p13SliceChanged) for (const path of changed) {
     if (!allowedPath(path)) failures.push(`out-of-scope path: ${path}`);
     if (!generated.has(path) && existsOnMain(path)) failures.push(`pre-existing main file changed: ${path}`);
   }
