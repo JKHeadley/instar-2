@@ -102,7 +102,7 @@ const concreteConsumers = [
     anchors: ["{ id: -123, type: 'private' }", "{ id: 123, type: 'group' }",
       "{ id: -1000000000123, type: 'group' }", "{ id: -123, type: 'supergroup' }", "{ id: -123, type: 'channel' }"] },
   { id: 'P12-NF-17', file: 'tests/conversation/telegram.round8.integration.test.ts',
-    anchors: ["sender_chat = { id: -1000000000200, type: 'channel' }", "filter(row => row.kind === 'intake-receipt')"] },
+    anchors: ["sender_chat = { id: chat.id, type: 'channel' }", "filter(row => row.kind === 'intake-receipt')"] },
   { id: 'P12-NF-18', file: 'tests/conversation/telegram.round8.integration.test.ts',
     anchors: ['wired.ingress.pollOnce()', 'wired.ingress.currentOffset()', "toBe('Refused')", 'toHaveLength(0)'] },
   { id: 'P12-NF-26', file: 'tests/conversation/telegram.round8.integration.test.ts',
