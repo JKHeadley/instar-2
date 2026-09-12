@@ -200,6 +200,60 @@ it('R8-F1 P13-NF-31 P13-NF-34 every retained digest for one output range partici
   }
 });
 
+it('R9-F1 P13-NF-31 P13-NF-34 retained output conflicts precede every duplicate or existing-event shortcut', () => {
+  const f = harnessFixture();
+  const a = witnessedEvent(f, 'output-chunk', { id: 'output:a', sourceEvidence: ['obs:a'] });
+  const b = witnessedEvent(f, 'output-chunk', {
+    id: 'output:b', sourceEvidence: ['obs:b'], sourceClock: 21, observedAt: 21,
+    output: { ...a.output!, digest: digest('world'), captureReference: 'capture:b' },
+  });
+  const repeated = witnessedEvent(f, 'output-chunk', {
+    id: 'output:repeat', sourceEvidence: ['obs:repeat'], sourceClock: 22, observedAt: 22,
+    output: { ...a.output!, captureReference: 'capture:repeat' },
+  });
+  const agreeing = witnessedEvent(f, 'output-chunk', {
+    id: 'output:agreeing', sourceEvidence: ['obs:agreeing'],
+    output: { ...a.output!, captureReference: 'capture:agreeing' },
+  });
+  const existingDisagreement = witnessedEvent(f, 'output-chunk', {
+    id: a.id, sourceEvidence: ['obs:existing-disagreement'], sourceClock: 23, observedAt: 23,
+    output: { ...a.output!, captureReference: 'capture:existing-disagreement' },
+  });
+  const populations = [
+    ['one-agreeing', [a], false],
+    ['two-agreeing', [a, agreeing], false],
+    ['agreeing-reversed', [agreeing, a], false],
+    ['conflicting-a-first', [a, b], true],
+    ['conflicting-b-first', [b, a], true],
+    ['conflict-after-two-agreeing', [a, agreeing, b], true],
+    ['conflict-before-two-agreeing', [b, agreeing, a], true],
+  ] as const;
+
+  for (const [label, retained, conflict] of populations) {
+    for (const [candidateLabel, event] of [['exact-a', a], ['new-repeat', repeated]] as const) {
+      for (const maximum of [1, 3, 20]) {
+        const expected = conflict ? 'refused' : 'duplicate';
+        expect(f.port.progressIdentity(event, retained), `${label}/${candidateLabel}/${maximum}/classification`)
+          .toMatchObject({ disposition: conflict ? 'conflict' : 'duplicate' });
+        expect(f.port.admitObservation(event, retained, maximum), `${label}/${candidateLabel}/${maximum}/admission`)
+          .toMatchObject({ disposition: expected, progress: false });
+      }
+    }
+  }
+
+  for (const [label, retained] of [
+    ['existing-conflict-first', [b, a]],
+    ['existing-conflict-last', [a, agreeing, b]],
+  ] as const) {
+    expect(f.port.admitObservation(existingDisagreement, retained, 20), label).toMatchObject({
+      disposition: 'refused',
+      reason: 'owner subject and output range retain a different content digest',
+      progress: false,
+      event: null,
+    });
+  }
+});
+
 it('R6-F1 disputed copied duplicate, obsolete retained copy, foreign retained copy, and unwitnessed output duplicate all re-resolve current evidence before deduplication', () => {
   const disputed = harnessFixture();
   const event = witnessedEvent(disputed);

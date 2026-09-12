@@ -283,15 +283,15 @@ export function createHarnessAdmissionPort(input: HarnessAdmissionInput): Harnes
       const key = progressKey(event);
       const failure = observationFailure(event, input);
       if (failure) return observationReceipt('refused', failure, false, key, null);
+      const progress = classifyHarnessRuntimeProgress(event, retained.values, input.context);
+      if (progress.disposition === 'conflict')
+        return observationReceipt('refused', progress.reason, false, progress.key, null);
       const existing = retained.values.find(row => row.id === event.id);
       if (existing) return harnessAdapterIdentity(existing).canonicalHash === harnessAdapterIdentity(event).canonicalHash
         ? observationReceipt('duplicate', 'exact runtime event already retained', false, key, existing)
         : observationReceipt('refused', 'immutable runtime event disagreement', false, key, existing);
-      const progress = classifyHarnessRuntimeProgress(event, retained.values, input.context);
       if (progress.disposition === 'duplicate')
         return observationReceipt('duplicate', progress.reason, false, progress.key, event);
-      if (progress.disposition === 'conflict')
-        return observationReceipt('refused', progress.reason, false, progress.key, null);
       if (retained.values.length >= maximum)
         return observationReceipt('refused', 'event capacity reached; retained evidence is not age-deleted', false, key, null);
       if (event.kind === 'output-chunk')
