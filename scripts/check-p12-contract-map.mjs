@@ -101,6 +101,13 @@ for (const tier of ['telegram.unit.test.ts', 'telegram.integration.test.ts', 'te
 // the review-identified local execution holes without pretending static source inspection is
 // live-provider evidence.
 const concreteConsumers = [
+  { id: 'P12-NF-16', file: 'tests/conversation/telegram.round13.integration.test.ts',
+    anchors: ["for (const outerMode of ['long-poll', 'webhook'] as const)",
+      'nested = admitTelegramAdapter(declarations[otherMode]', "expect(outer.kind",
+      "expect(nested?.kind", "row.record.type === 'AdapterConformance'", ".toBe(1)"] },
+  { id: 'P12-NF-07', file: 'tests/conversation/telegram.round13.unit.test.ts',
+    anchors: ["['missing-fields', () => ({ value: 100 })]", "unit: 'bytes'", "value: '100'",
+      "decodeMeasurement('clock'", "toBe('Refused')"] },
   { id: 'P12-NF-16', file: 'tests/conversation/telegram.round8.integration.test.ts',
     anchors: ["{ id: -123, type: 'private' }", "{ id: 123, type: 'group' }",
       "{ id: -1000000000123, type: 'group' }", "{ id: -123, type: 'supergroup' }", "{ id: -123, type: 'channel' }"] },

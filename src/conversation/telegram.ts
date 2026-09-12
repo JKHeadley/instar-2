@@ -475,12 +475,15 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
       'Telegram evidence parser declaration must match telegram-intake-v1');
     const mode = selectedMode(declaration);
     const id = `telegram:v1:bot:${declaration.bot.id}`;
-    const current = take(deps.assembly.inspectCurrent());
-    const modes = current.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id
+    // Keep the deterministic sequential refusal ahead of mode-specific work.
+    // This is only a preflight guard; the committing decision is re-resolved
+    // from the pinned current view below after every external dependency call.
+    const observed = take(deps.assembly.inspectCurrent());
+    const observedModes = observed.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id
       && row.record.disposition === 'passed').map(row => row.record.type === 'AdapterConformance' ? row.record.mode : '');
-    ensure(modes.every(existing => existing === mode), 'one Telegram bot cannot admit two intake modes');
+    ensure(observedModes.every(existing => existing === mode), 'one Telegram bot cannot admit two intake modes');
     validateWebhookChoice(declaration, deps);
-    const now = deps.clock();
+    const now = take(decodeMeasurement('clock', deps.clock(), deps.governance.context.types));
     const probe = take(deps.api.identity({ token: declaration.token, apiVersion: declaration.apiVersion }));
     ensure(probe.authenticated === true && probe.botId === declaration.bot.id
       && probe.username === declaration.bot.username && probe.apiVersion === declaration.apiVersion,
@@ -493,6 +496,14 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
     ensure(/^sha256:[a-f0-9]{64}$/.test(probe.capture.hash) && probe.capture.reference.length > 0 && probe.reference.length > 0,
       'Telegram identity probe lacks capture-backed evidence');
     validateIdentityProbe(declaration, deps, probe, now);
+    // Pin one owner-issued conformance view at the committing boundary, after
+    // every external admission dependency has returned. Both the one-mode
+    // decision and prior-conformance reuse consume this same snapshot, so an
+    // admission that committed during the identity probe cannot be missed.
+    const current = take(deps.assembly.inspectCurrent());
+    const modes = current.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id
+      && row.record.disposition === 'passed').map(row => row.record.type === 'AdapterConformance' ? row.record.mode : '');
+    ensure(modes.every(existing => existing === mode), 'one Telegram bot cannot admit two intake modes');
     const contractSeed = contractInput(declaration, deps, mode, probe, 'pending');
     const contractId = `telegram-contract:${take(canonical(contractSeed)).hash}`;
     const contract = take(deps.assembly.record('AdapterEvidenceContract', { ...contractSeed, id: contractId }));
