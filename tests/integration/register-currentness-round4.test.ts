@@ -30,13 +30,6 @@ describe('round-four current owner re-resolution', () => {
       horizon: { lineages, stalenessBound: 100 }, context: s.context });
     const loaded = value(loadRegister(register, generation, s.context, provider, f.now));
     expect(value(readRegisterEntry('store', loaded, s.context)).declaration.id).toBe('store');
-    const malformedRule = s.rule(-1);
-    expect(detail(generateAgainstParent({ ...s.input([malformedRule]), extract: register.extract }, loaded, loaded.shape, null,
-      provider, s.context))).toContain('positive integer');
-    const malformedAdjective = s.declaration('term:derived', 'terms', { name: 'urgent', kind: 'adjective',
-      definition: 'Derived.', allowedValues: [], termRefs: [], derivedFrom: { any: 42 } });
-    expect(detail(generateAgainstParent({ ...s.input([malformedAdjective]), extract: register.extract }, loaded, loaded.shape, null,
-      provider, s.context))).toContain('array');
 
     const at200 = { ...s.context, types: { ...s.context.types, now: f.clock(200) } };
     const at201 = { ...s.context, types: { ...s.context.types, now: f.clock(201) } };

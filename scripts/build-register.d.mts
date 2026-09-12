@@ -11,3 +11,4 @@ export function build(root: string, commit: string, options: {
   outputs: { register: string; ruleBook: string; glossary: string; capabilities: string; coverage: string };
   authorityPrerequisites: { site: string; record: string; required: string }[];
   conversion: { documents: Record<string, string>; sources: { path: string; symbol: string; declaration: { requiredFacts: Record<string, unknown> } }[] }; metrics: { prerequisites: number } };
+export function run(args: string[], root?: string): Promise<void>;

@@ -12,15 +12,9 @@ const grantedSkip = (name, id) => {
   const match = name.match(/SKIPPED:\s*GRANT:([a-z0-9-]+(?::[a-z0-9-]+)+)\s*$/);
   return match !== null && realUnlandedGrants.get(match[1])?.checks.has(id) === true;
 };
-const restoredMainLegacySkip = (file, test) => file === 'tests/integration/register.test.ts'
-  && ['pending', 'skipped'].includes(test.status)
-  && test.title === 'P3-NF-21 P3-NF-23 SKIPPED: production spine admission, signed vector verification and replica initialization require the part-two adapter, absent on this lane base';
 const report = JSON.parse(readFileSync('.test-results.json', 'utf8')); const map = new Map();
 for (const file of report.testResults) for (const test of file.assertionResults) {
   const testFile = isAbsolute(file.name) ? relative(process.cwd(), file.name) : file.name;
-  // Row 77's permanent, named additivity exemption restores this main-era
-  // test byte-for-byte. It is legacy text, not an executable or granted arm.
-  if (restoredMainLegacySkip(testFile, test)) continue;
   for (const id of test.fullName.match(/\bP3-NF-\d+\b/g) ?? []) {
     if (!expected.has(id)) throw new Error(`unknown P3 contract ${id}`);
     const rows = map.get(id) ?? []; rows.push({ file: testFile, name: test.title, status: test.status }); map.set(id, rows);

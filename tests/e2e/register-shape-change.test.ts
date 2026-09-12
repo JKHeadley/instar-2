@@ -3,7 +3,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { build } from '../../scripts/build-register.mjs';
+import { build, run } from '../../scripts/build-register.mjs';
 import { canonical, decode } from '../../src/index.js';
 import { createFactStore, factId } from '../../src/facts/index.js';
 import { createPartTwoRegisterAuthority, createPartTwoRegisterProvider, decodeGeneration } from '../../src/register/index.js';
@@ -16,7 +16,7 @@ const emittedModule = '../../dist/index.js';
 const { decode: emittedDecode } = await import(emittedModule) as typeof import('../../src/index.js');
 
 describe('normal-mode shape-change CLI composition', () => {
-  it('P3-NF-07/09/21/23/24 adds part 14 and its owner manifest, and refuses missing, tampered, or stale authority', () => {
+  it('P3-NF-07/09/21/23/24 adds part 14 and its owner manifest, and refuses missing, tampered, or stale authority', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-shape-change-'));
     try {
       for (const path of ['docs', 'generated', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json'])
@@ -28,7 +28,7 @@ describe('normal-mode shape-change CLI composition', () => {
       const conversionPath = join(root, 'generated/conversion.json');
       const conversion = JSON.parse(readFileSync(conversionPath, 'utf8'));
       for (const source of conversion.sources) if (source.declaration.requiredFacts.number)
-        Object.assign(source.declaration.requiredFacts, { deadline: 1000, owner: 'fixture-operator', overdueAction: 'surface' });
+        Object.assign(source.declaration.requiredFacts, { deadline: 4_000_000_000_000, owner: 'fixture-operator', overdueAction: 'surface' });
       writeFileSync(conversionPath, JSON.stringify(conversion));
       git('init'); git('add', '.'); git('commit', '-qm', 'parent generation');
       let parentCommit = git('rev-parse', 'HEAD');
@@ -107,6 +107,10 @@ describe('normal-mode shape-change CLI composition', () => {
       for (const [name, workflow] of Object.entries({ good, missing, tampered, 'unwitnessed-run': unwitnessedRun,
         'unwitnessed-review': unwitnessedReview }))
         writeFileSync(join(root, `register-source/${name}.json`), JSON.stringify(workflow, null, 2) + '\n');
+      mkdirSync(join(root, 'register-source/workflows'), { recursive: true });
+      writeFileSync(join(root, 'register-source/workflows/part-fourteen.json'), JSON.stringify(good, null, 2) + '\n');
+      writeFileSync(join(root, 'part-two-register-provider.mjs'),
+        'export const provider = globalThis.__partThreeDocumentedProvider;\n');
       git('add', '.'); git('commit', '-qm', 'part fourteen shape change'); const candidate = git('rev-parse', 'HEAD');
 
       Object.assign(s.f.ctx.register, { entries: [...new Set([...s.f.ctx.register.entries, 'build-machine',
@@ -150,11 +154,11 @@ describe('normal-mode shape-change CLI composition', () => {
         facts: { ...factContext, grants: [{ factId: rootFact.id, grant: f.g }] },
         scope: f.scope, landing: { owner: 'part-ten', merges: [{ commit: landingId, onMain: true, parentCount: 2, reviewedBase: ownerBase }] },
         context: s.context });
-      const makeProvider = (observedAt = f.now.value) => createPartTwoRegisterProvider({
+      const makeProvider = (observedAt = f.now.value, stalenessBound = 100) => createPartTwoRegisterProvider({
         store: createFactStore(factContext, { owner: 'part-ten', read: () => JSON.parse(JSON.stringify(durableFacts)),
           append: () => f.success({ kind: 'local-durable' as const }) }),
         authority,
-        horizon: { lineages: { 'machine-a': { head: { epoch: 0, position: enteringForceFact.segment.position }, observedAt, closed: false } }, stalenessBound: 100 },
+        horizon: { lineages: { 'machine-a': { head: { epoch: 0, position: enteringForceFact.segment.position }, observedAt, closed: false } }, stalenessBound },
         context: s.context, separations,
       });
       const provider = makeProvider();
@@ -162,6 +166,14 @@ describe('normal-mode shape-change CLI composition', () => {
       const second = build(root, candidate, { mode: 'normal', workflow: good, provider: makeProvider(), now: 100, requireWorkflowSchema: true });
       expect(first.register.shape.parts).toContain(14);
       expect(first.outputs).toEqual(second.outputs); expect(first.generation).toEqual(second.generation);
+      const documented = readFileSync(join(root, 'docs/build-part-three.md'), 'utf8')
+        .match(/```bash\n(npm run register:generate -- --workflow register-source\/workflows\/part-fourteen\.json --provider \.\/part-two-register-provider\.mjs --commit <full-source-commit>)\n```/)?.[1];
+      expect(documented).toBeDefined();
+      const command = documented!.replace('<full-source-commit>', candidate).split(/\s+/).slice(4);
+      const globals = globalThis as typeof globalThis & { __partThreeDocumentedProvider?: unknown };
+      globals.__partThreeDocumentedProvider = makeProvider();
+      const dateNow = Date.now; Date.now = () => 100;
+      try { await run(command, root); } finally { Date.now = dateNow; delete globals.__partThreeDocumentedProvider; }
       expect(() => build(root, candidate, { mode: 'normal', workflow: missing, provider, now: 100, requireWorkflowSchema: true })).toThrow('not committed');
       expect(() => build(root, candidate, { mode: 'normal', workflow: tampered, provider, now: 100, requireWorkflowSchema: true })).toThrow('bytes do not match');
       expect(() => build(root, candidate, { mode: 'normal', workflow: unwitnessedRun, provider, now: 100,

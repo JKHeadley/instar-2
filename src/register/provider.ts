@@ -153,9 +153,26 @@ function decodeVersions(kind: typeof REGISTER_VERSION_FACT | typeof SHAPE_VERSIO
     if (!progressed) take(decodeVersion(pending[0], context, options.scope, decoded, options.landing));
   }
   const walked = walkVersions(decoded);
-  requireThat(walked.conflicts.length === 0 && walked.duplicates.length === 0,
-    'Part Two governed-version history is conflicted or duplicated');
-  return decoded;
+  requireThat(walked.conflicts.length === 0, 'Part Two governed-version history is conflicted');
+  // Part Two owns the replay decision. Identical content under the identical
+  // approval is an idempotent replay, not a second version-chain row.
+  const duplicates = new Set(walked.duplicates);
+  return decoded.filter(version => !duplicates.has(version.id));
+}
+
+function reaches(actual: CausalFrontier, required: CausalFrontier): boolean {
+  return Object.entries(required).every(([machine, position]) => {
+    const held = actual[machine];
+    return held !== undefined && (held.epoch > position.epoch
+      || held.epoch === position.epoch && held.position >= position.position);
+  });
+}
+
+function generationRecords(snapshot: FactSnapshot, view: ProjectedView, context: RegisterContext): readonly GenerationRecord[] {
+  return snapshot.entries.filter(status => active(status, snapshot, view) && status.fact.kind === 'generation-record').flatMap(status => {
+    try { return [take(decodeGenerationRecord(recordBody(status), context))]; }
+    catch { return []; }
+  });
 }
 
 /** The normal provider accepts only this landed Part Two version-chain adapter. */
@@ -215,12 +232,8 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
     }),
     enteringForce: generation => checked<GenerationRecord, RegisterContext>('PartTwoRegisterEnteringForce', generation, options.context, () => {
       const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
-      const matches = snapshot.entries.filter(status => active(status, snapshot, view) && status.fact.kind === 'generation-record').flatMap(status => {
-        try {
-          const record = take(decodeGenerationRecord(recordBody(status), options.context));
-          return encoding(record.generation).bytes === encoding(generation).bytes ? [record] : [];
-        } catch { return []; }
-      });
+      const matches = generationRecords(snapshot, view, options.context)
+        .filter(record => encoding(record.generation).bytes === encoding(generation).bytes);
       requireThat(matches.length === 1, 'P3-NF-21: generation has no unique current entering-force fact in the Part Two store');
       return matches[0]!;
     }),
@@ -235,7 +248,13 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
         Success: answer => answer.stale.length === 0
           && consumeResult(readProjection(view, definition, clock, options.context, witness.frontier), {
             Success: () => true, Refused: () => false,
-          }),
+          })
+          // A fresh replica does not make every historical extract current.
+          // Once an entering-force record's freshness window expires, the
+          // requested horizon must reach the vector carried by that record.
+          && generationRecords(snapshot, view, options.context).every(record =>
+            clock.value - record.at.value <= options.horizon.stalenessBound
+            || reaches(witness.frontier, witnessFor(record.generation.vector, snapshot).frontier)),
         Refused: () => false,
       });
     }),
@@ -265,9 +284,11 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
     }),
     verifyRecord: (reference, expected) => checked<boolean, RegisterContext>('PartTwoRegisterRecord', { reference, expected }, options.context, () => {
       const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
-      const status = activeStatus(reference.id, snapshot, view);
-      requireThat(status.fact.kind === reference.kind, 'record reference kind differs');
-      requireThat(encoding(recordBody(status)).bytes === encoding(expected).bytes, 'signed record body differs from workflow evidence');
+      const matches = snapshot.entries.filter(status => active(status, snapshot, view)
+        && status.fact.kind === reference.kind
+        && encoding(recordBody(status)).bytes === encoding(expected).bytes);
+      requireThat(matches.length === 1,
+        `Part Two record ${reference.id} is absent, retracted, corrected, conflicted, duplicated, or differs from workflow evidence`);
       return true;
     }),
     verifySemanticReview: review => checked<boolean, RegisterContext>('PartTwoSemanticReview', review, options.context, () => {

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { decode, defineDecoder } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
-import { generateRegister, generationOf, decodeGenerationRecord, loadRegister, readRegisterEntry, readEnforcedRecord, checkGovernedState, buildRuleGraph, resolveTerms, renderRegister, planLandingCompletion } from '../../src/register/index.js';
+import { createFactStore } from '../../src/facts/index.js';
+import { createPartTwoRegisterAuthority, createPartTwoRegisterProvider, generateRegister, generationOf, decodeGenerationRecord, loadRegister, readRegisterEntry, readEnforcedRecord, checkGovernedState, buildRuleGraph, resolveTerms, renderRegister, planLandingCompletion } from '../../src/register/index.js';
 import type { FactReference, RegisterContext, SpineReadPort } from '../../src/register/index.js';
+import { factsFixture } from '../facts/fixtures.js';
 import { setup, json, value, detail, hash } from '../register/fixtures.js';
+import { generationRegistration, ownedSchema, vectorAt } from '../register/normal-provider-fixture.js';
 
 function reply<T>(payload: T, context: RegisterContext): Result<T> {
   return value(defineDecoder<T, RegisterContext>({ name: 'SpineFixtureReply', owner: 'test-only', currentVersion: 1,
@@ -97,5 +100,24 @@ describe('register integration with constitutional types and explicit spine port
       else { expect(() => consume('holder', 'intake.contract', 'decode:Profile')).toThrow('approved history'); expect(calls).toBe(0); }
     }
   });
-  it.skip('P3-NF-21 P3-NF-23 SKIPPED: production spine admission, signed vector verification and replica initialization require the part-two adapter, absent on this lane base', () => {});
+  it('P3-NF-21 P3-NF-23 production spine admission verifies the signed vector and replica horizon', () => {
+    const s = setup(), f = factsFixture(), root = f.fact(), vector = vectorAt(root);
+    const register = s.build(undefined, { extract: { ...s.extract, vector } });
+    const generation = value(generationOf(register, s.context));
+    const record = json('GenerationRecord', { generation, at: f.now });
+    const registration = generationRegistration(record, s.context, f);
+    const context = { ...f.ctx, facts: [], schemas: [f.schema,
+      ownedSchema('generation-record', 'part-three', 'GenerationRecord', f.scope)], ownedBodies: [registration] };
+    const force = f.next(root, { kind: 'generation-record', body: { record } }, context);
+    const store = createFactStore(context, { owner: 'part-ten', read: () => [root, force],
+      append: () => f.success({ kind: 'local-durable' as const }) });
+    const authority = createPartTwoRegisterAuthority({ facts: context, scope: f.scope,
+      landing: { owner: 'part-ten', merges: [] }, context: s.context });
+    const provider = createPartTwoRegisterProvider({ store, authority, horizon: { lineages: {
+      'machine-a': { head: { epoch: 0, position: 1 }, observedAt: 100, closed: false },
+    }, stalenessBound: 100 }, context: s.context });
+    expect(value(loadRegister(register, generation, s.context, provider, f.now))).toEqual(register);
+    expect(detail(provider.isCurrent({ ...vector, id: 'machine-a:0:99' }, f.now))).toContain('does not name');
+    expect(value(provider.isCurrent(vector, f.clock(201)))).toBe(false);
+  });
 });

@@ -1,17 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { consumeResult } from '../../src/index.js';
-import { authorAndAppend } from '../../src/facts/index.js';
-import type { FactSchema } from '../../src/facts/index.js';
+import type { Json, Result } from '../../src/index.js';
+import type { Validation } from '../../src/decode/framework.js';
+import { authorAndAppend, registerOwnedBody } from '../../src/facts/index.js';
+import type { FactSchema, OwnedBodyRegistration } from '../../src/facts/index.js';
 import { createPartTwoRegisterAuthority, createPartTwoRegisterProvider, runRegisterChecks,
-  semanticReviewSubject } from '../../src/register/index.js';
+  decodeCheckRun, decodeRegisteredFact, semanticReviewSubject } from '../../src/register/index.js';
 import { semanticCoverage } from '../../src/verification/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
 import { verificationInput } from '../verification/fixture.js';
-import { setup, value } from '../register/fixtures.js';
+import { json, setup, value } from '../register/fixtures.js';
+import { ownedPolicy, ownedSchema } from '../register/normal-provider-fixture.js';
 
 const detail = (result: ReturnType<ReturnType<typeof createPartTwoRegisterProvider>['verifySemanticReview']>) =>
   consumeResult(result, { Success: () => 'success', Refused: refusal => refusal.detail });
+const validation = <T>(result: Result<T>): Validation<T> => consumeResult<T, Validation<T>>(result, {
+  Success: decoded => ({ ok: true, value: decoded }),
+  Refused: refusal => ({ ok: false, reason: refusal.reason, detail: refusal.detail }),
+});
 
 function providerFor(v: ReturnType<typeof verificationRuntimeFixture>, head: number) {
   const s = setup();
@@ -39,16 +46,23 @@ describe('normal workflow signed evidence composition', () => {
   });
 
   it('P3-NF-28 accepts a fully supported Part Nine answer and refuses an ordinary signed note substitute', () => {
-    const v = verificationRuntimeFixture();
-    (v.context.schemas as FactSchema[]).push(
-      { ...v.schema, kind: 'check-run-record', fields: { id: { kind: 'text', maxLength: 2048 } } },
-    );
+    const v = verificationRuntimeFixture(), s = setup();
+    const rawRun = JSON.parse(JSON.stringify(json('CheckRunRecord', { id: 'check-run:resolved', commit: 'commit:reviewed', branch: 'main',
+      providerRun: 'ci:123', outcome: 'passed', fixtures: [{ id: 'fixture:semantic', stage: 'build', outcome: 'passed' }],
+      at: v.clock(100) }))) as Json;
+    const decodedRun = value(decodeCheckRun(rawRun, s.context));
+    const body = value(registerOwnedBody({ owner: 'part-three', name: 'CheckRunRecord', currentVersion: 1,
+      versions: { 1: { validate: input => ({ ok: true as const, value: input }) } }, migrations: {},
+      decodeCurrent: input => validation(decodeRegisteredFact('check-run-record', input, s.context)) }, ownedPolicy(rawRun), v.c));
+    const mutable = v.context as unknown as { schemas: FactSchema[]; ownedBodies?: OwnedBodyRegistration[] };
+    mutable.schemas.push(ownedSchema('check-run-record', 'part-three', 'CheckRunRecord', v.scope));
+    mutable.ownedBodies = [...(mutable.ownedBodies ?? []), body];
     const run = value(authorAndAppend({ kind: 'check-run-record', schemaVersion: 1, machine: 'machine-a',
       principal: JSON.parse(JSON.stringify(v.alice)), provenance: JSON.parse(JSON.stringify(v.alice.provenance)),
-      at: JSON.parse(JSON.stringify(v.clock(100))), body: { id: 'check-run:resolved' }, required: [] },
+      at: JSON.parse(JSON.stringify(v.clock(100))), body: { record: rawRun }, required: [] },
     v.context, v.store, privateKey)).fact;
     const input = { ...verificationInput('SemanticReviewRecord'), holderHash: 'sha256:subject',
-      checkRuns: ['check-run:resolved'], evidencePopulation: [run.id], layerBelow: [run.id] };
+      checkRuns: [decodedRun.id], evidencePopulation: [run.id], layerBelow: [run.id] };
     const record = value(v.runtime.record('SemanticReviewRecord', input));
     const facts = value(v.store.read()); const fact = facts.find(row => row.kind === 'verification-SemanticReviewRecord')!;
     const note = v.next(facts.at(-1)!, {}, { ...v.context, facts });

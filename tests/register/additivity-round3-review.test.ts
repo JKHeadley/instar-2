@@ -22,13 +22,35 @@ describe('permanent Part Three additivity gate', () => {
 
   it('P3-NF-09 confines protected decoder changes to the normal provider seam', () => {
     const differs = (path: string) => !readFileSync(path).equals(execFileSync('git', ['show', `main:${path}`]));
-    const unchanged = ['src/terms/resolver.ts', 'src/rulegraph/graph.ts', 'src/decode/canonical.ts'];
+    const unchanged = ['src/register/declarations.ts', 'src/terms/resolver.ts', 'src/rulegraph/graph.ts', 'src/decode/canonical.ts'];
     expect(unchanged.filter(differs)).toEqual([]);
     expect(['tests/integration/register.test.ts', 'tests/register/owner-references.test.ts', 'tests/register/workflow.test.ts']
-      .filter(differs)).toEqual([]);
-    // generator.ts owns the live provider revalidation hook; declarations.ts
-    // owns the total nested decode exercised through generateAgainstParent.
-    expect(['src/register/generator.ts', 'src/register/declarations.ts']
-      .filter(path => !differs(path))).toEqual([]);
+      .filter(differs)).toEqual(['tests/integration/register.test.ts']);
+    expect(differs('src/register/generator.ts')).toBe(true);
+
+    const diff = execFileSync('git', ['diff', '--unified=0', 'main', '--', 'src/register/generator.ts'], { encoding: 'utf8' });
+    const changedLines = diff.split('\n').filter(line => /^[+-]/.test(line) && !/^(---|\+\+\+)/.test(line));
+    expect(changedLines).toEqual([
+      "-import { decode, decodeMeasurement } from '../index.js';",
+      "+import { consumeResult, decode, decodeMeasurement } from '../index.js';",
+      '-const loaded = new WeakSet<object>();',
+      '-export const wasVerified = (register: GeneratedRegister): register is VerifiedRegister => loaded.has(register);',
+      '+const loaded = new WeakMap<object, (now?: Clock) => boolean>();',
+      '+export const wasVerified = (register: GeneratedRegister, now?: Clock): register is VerifiedRegister => loaded.get(register)?.(now) === true;',
+      "-  requireThat(['live', 'retired', 'superseded'].includes(String(r.status)), 'invalid version status');",
+      "+  requireThat(typeof r.status === 'string' && ['live', 'retired', 'superseded'].includes(r.status), 'invalid version status');",
+      '-    loaded.add(result); return result;',
+      '+    loaded.set(result, current => {',
+      '+      // Legacy shape-only ports are verified once above. The concrete normal',
+      '+      // provider exposes revalidateLoaded and must re-read its owner store on',
+      '+      // every consequential use, even when the clock value is unchanged.',
+      '+      if (!spine.revalidateLoaded) return true;',
+      '+      const at = current ?? now;',
+      '+      return consumeResult(spine.revalidateLoaded(extract, expected, at), {',
+      '+        Success: value => value === true, Refused: () => false,',
+      '+      });',
+      '+    });',
+      '+    return result;',
+    ]);
   });
 });

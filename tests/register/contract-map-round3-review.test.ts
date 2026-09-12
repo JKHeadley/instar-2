@@ -53,7 +53,7 @@ describe('round-three contract-map checker regressions', () => {
     }
   });
 
-  it('P3-NF-07 excludes only the exact restored main legacy row, never a lookalike or made-up grant', () => {
+  it('P3-NF-07 refuses the exact legacy skip and every made-up grant', () => {
     const item = cases[0]!, root = fixture();
     try {
       const ids = [...readFileSync(join(root, item.design), 'utf8').matchAll(item.expression)].map(match => match[1]!);
@@ -63,7 +63,7 @@ describe('round-three contract-map checker regressions', () => {
         status: 'skipped' });
       writeFileSync(join(root, '.test-results.json'), JSON.stringify({ success: true, numPassedTests: ids.length, numPendingTests: 1,
         testResults: [{ name: 'tests/integration/register.test.ts', assertionResults: assertions }] }));
-      expect(run(root, item.script)).not.toThrow();
+      expect(run(root, item.script)).toThrow(/pending test arm has no exact design grant/);
       assertions.at(-1)!.title = 'P3-NF-21 P3-NF-23 SKIPPED: GRANT:invented-owner:invented-grant';
       writeFileSync(join(root, '.test-results.json'), JSON.stringify({ success: true, numPassedTests: ids.length, numPendingTests: 1,
         testResults: [{ name: 'tests/integration/register.test.ts', assertionResults: assertions }] }));
