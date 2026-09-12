@@ -15,4 +15,6 @@ export * from './decode/historical.js';
 export type { AssemblyRecordName, AssemblyRecord, AssemblyManifest, AssemblyAdmission, HarnessLaunchSpec,
   HarnessObservation, AdapterEvidenceContract, AdapterConformance, StoreCustodyPolicy, StorageAccessObservation,
   LocalCapabilityPackage, PackageTransition, GrowthPolicy, GrowthObservation, HarnessAdapterPort,
-  PersistenceAdapterPort, AssemblyRuntimePort } from './assembly/contracts.js';
+  PersistenceAdapterPort, AssemblyRuntimePort, PackageActivityOutcome, PackageActivityResult,
+  PackageActivityUnresolvedReason } from './assembly/contracts.js';
+export { decodePackageActivityResult, resolvePackageActivity } from './assembly/package-activity.js';

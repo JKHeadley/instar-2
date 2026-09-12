@@ -16,4 +16,5 @@ export { createCustodiedPersistenceAdapter } from './persistence.js';
 export { createMediatedStoreReader } from './custody.js';
 export { assemblyProjectionDefinitions } from './storage.js';
 export { stageLocalCapability, resolveActivePackage } from './package.js';
+export { decodePackageActivityResult, resolvePackageActivity } from './package-activity.js';
 export { deriveGrowthEpisodes, closeGrowthEpisode } from './growth.js';

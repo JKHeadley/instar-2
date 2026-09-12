@@ -1,5 +1,5 @@
 import type { BoundaryContext, Clock, Hash, Json, Result, Scope, VerifiedPrincipal } from '../index.js';
-import type { AppendReceipt, ConflictClass, FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
+import type { AppendReceipt, CausalFrontier, ConflictClass, FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
 import type { ModelAdapterPort } from '../judgment/index.js';
 
 declare class AssemblyBrand<N extends string> {
@@ -211,5 +211,19 @@ export interface AssemblyComposition {
 
 export interface PackageArchiveEntry { readonly path: string; readonly bytes: string; readonly digest: Hash; readonly kind: 'file' }
 export interface PackageStageResult { readonly package: LocalCapabilityPackage; readonly entries: readonly PackageArchiveEntry[]; readonly dependencyOrder: readonly string[] }
+declare class PackageActivityResultBrand { private readonly packageActivityResult: void; private constructor() }
+export type PackageActivityUnresolvedReason = 'absent' | 'conflicted' | 'tainted' | 'incomplete' | 'multi-head' |
+  'nonterminal-head' | 'package-mismatch' | 'frontier-moved';
+export type PackageActivityOutcome =
+  | Readonly<{ status: 'active'; package: string; transition: string }>
+  | Readonly<{ status: 'inactive'; transition: string; disposition: 'inhibited' | 'retired' }>
+  | Readonly<{ status: 'unresolved'; reason: PackageActivityUnresolvedReason }>;
+export interface PackageActivityResult extends PackageActivityResultBrand {
+  readonly type: 'PackageActivityResult'; readonly schemaVersion: 1; readonly owner: 'part-ten'; readonly id: string;
+  readonly namespace: string; readonly frontier: CausalFrontier; readonly confirmedFrontier: CausalFrontier;
+  readonly startedAt: number; readonly completedAt: number; readonly outcome: PackageActivityOutcome;
+  readonly evidence: Readonly<{ packages: readonly string[]; transitions: readonly string[]; heads: readonly string[] }>;
+  readonly identity: Readonly<{ bytes: string; hash: Hash }>;
+}
 export interface GrowthEpisode { readonly key: string; readonly policy: string; readonly scope: string; readonly state: 'open' | 'closed'; readonly ownerRun: string; readonly observations: readonly string[] }
 export interface AssemblyPayloadEnvelope { readonly record: Json }
