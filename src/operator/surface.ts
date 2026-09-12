@@ -160,9 +160,16 @@ function nonApprovableRequestView(status: FactStatus, candidates: readonly FactS
     approvable: false as const, primaryActions: Object.freeze([] as const), competingFacts: Object.freeze(competingFacts), reason });
 }
 
+function isTerminalDisposition(row: FactStatus): boolean {
+  if (row.taint.length || row.conflicts.length) return false;
+  const disposition = object(row.body).disposition;
+  return typeof disposition === 'string' && ['approved', 'declined', 'superseded', 'expired',
+    'withdrawn', 'conflict', 'emergency-stopped'].includes(disposition);
+}
+
 function terminalRequest(composition: OperatorSurfaceComposition, request: string): boolean {
   return snapshot(composition.history).entries.some(row => composition.terminalKinds.includes(row.fact.kind)
-    && object(row.body).request === request);
+    && isTerminalDisposition(row) && object(row.body).request === request);
 }
 
 function bindingView(composition: OperatorSurfaceComposition, input: Readonly<{ adapter: string; conversation: string; platformIdentity: string; identityEpoch: string }>): BindingView {
@@ -286,7 +293,7 @@ export function createOperatorSurface(composition: OperatorSurfaceComposition): 
       pending(maxRows: number): Result<AuthorityQueueView> {
         return operatorBoundary('OperatorAuthorityQueue', composition.boundary, () => {
           requireOperator(Number.isSafeInteger(maxRows) && maxRows > 0, 'P11-NF-15: pending queue requires a finite positive page');
-          const current = snapshot(composition.history), terminal = new Set(current.entries.filter(row => composition.terminalKinds.includes(row.fact.kind))
+          const current = snapshot(composition.history), terminal = new Set(current.entries.filter(row => composition.terminalKinds.includes(row.fact.kind) && isTerminalDisposition(row))
             .map(row => object(row.body).request).filter((value): value is string => typeof value === 'string'));
           const candidates = current.entries.filter(row => row.fact.kind === composition.requestKind && !terminal.has(row.fact.id));
           const facts = current.entries.map(entry => entry.fact);

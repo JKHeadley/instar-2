@@ -21,6 +21,12 @@ export function validateSeamInventory(rows: readonly SeamRow[], context: Boundar
     for (const row of rows) requireOperator(row.producer.trim().length > 0 && row.consumer.trim().length > 0 && row.record.trim().length > 0
       && row.order.length >= 4 && row.order.every(step => step.trim().length > 0) && row.failDirection.trim().length > 0 && row.owner.trim().length > 0,
     `P11-NF-40: incomplete seam row ${row.seam}`);
+    for (const expected of operatorSeams) {
+      const row = rows.find(candidate => candidate.seam === expected.seam)!;
+      requireOperator(row.order.length === expected.order.length
+        && row.order.every((step, index) => step === expected.order[index]),
+      `P11-NF-40/41: seam transition order differs for ${row.seam}`);
+    }
     return 'complete' as const;
   });
 }
@@ -29,6 +35,10 @@ export function resolveFailureTrace(input: FailureTraceInput, context: BoundaryC
   return operatorBoundary('OperatorSharedFailureTrace', context, () => {
     requireOperator(input.owner.trim().length > 0 && input.semanticIdentity.trim().length > 0, 'P11-NF-41/42: trace requires identity and closure owner');
     requireOperator(Number.isSafeInteger(input.applications), 'P11-NF-42: application count must be a safe integer');
+    requireOperator(input.digests.length > 0 && input.digests.every(digest => typeof digest === 'string' && digest.trim().length > 0),
+      'P11-NF-42: trace requires a complete payload digest');
+    requireOperator(input.outcome !== 'happened' || input.applications === 1,
+      'P11-NF-42: application outcome contradicts the application count');
     const conflict = new Set(input.digests).size > 1;
     requireOperator(input.applications >= 0 && input.applications <= 1, 'P11-NF-42: duplicate external application');
     if (conflict) return Object.freeze({ retry: false as const, conflict: true, state: 'authority-closed' as const, owner: input.owner, applications: input.applications });

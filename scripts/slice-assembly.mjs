@@ -1256,6 +1256,8 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     const surface = take(createOperatorSurface({ id: 'surface:phone', boundary: boundaryContext, history, verifier,
       intake: { owner: 'part-four', operation: 'admitVerifiedAct', port: intake },
       emergencyStop: { owner: 'part-four', stop: input => result(() => {
+        if (bytesOf(input.scope) !== bytesOf(scope))
+          throw new Error('independent emergency-stop scope differs from this responder scope');
         const disposition = take(intake.receive(JSON.stringify({ schemaVersion: 1, kind: 'stop', command: '/stop' }), {
           channel: config.channel, sender: config.sender, identityEpoch: config.identityEpoch,
           eventId: `verified-stop:${input.challenge}`,
