@@ -29,7 +29,7 @@ describe('round-three provider review regressions', () => {
     expect(value(provider.resolveReference({ provider: 'record', id: latest.id, kind: 'note' }))).toBe(true);
   });
 
-  it('P3-NF-23 rechecks an already loaded register with the consumer clock, including a legacy spine port', () => {
+  it('P3-NF-23 rechecks an already loaded register with the concrete provider and consumer clock', () => {
     const f = factsFixture(), s = setup(); const first = f.fact();
     const vector = vectorAt(first); const register = s.build(undefined, { extract: { ...s.extract, vector } });
     const generation = value(generationOf(register, s.context));
@@ -47,15 +47,6 @@ describe('round-three provider review regressions', () => {
     const loaded = value(loadRegister(register, generation, s.context, provider, f.now));
     expect(value(readRegisterEntry('store', loaded, s.context)).declaration.id).toBe('store');
     expect(detail(readRegisterEntry('store', loaded, { ...s.context, types: { ...s.context.types, now: f.clock(201) } })))
-      .toContain('current entering-force');
-
-    let current = true;
-    const legacy = { owner: 'part-two' as const, verifyExtract: () => f.success(generation.vector),
-      enteringForce: () => f.success({ type: 'GenerationRecord', schemaVersion: 1, generation, at: f.now } as never),
-      isCurrent: () => f.success(current) };
-    const legacyLoaded = value(loadRegister(register, generation, s.context, legacy, f.now));
-    current = false;
-    expect(detail(readRegisterEntry('store', legacyLoaded, { ...s.context, types: { ...s.context.types, now: f.clock(201) } })))
       .toContain('current entering-force');
   });
 

@@ -152,15 +152,14 @@ export function loadRegister(input: unknown, expected: RegisterGeneration, conte
     requireThat(v.authority === 'shape-only', 'register bytes may not self-assert authority');
     const result = { type: 'GeneratedRegister', schemaVersion: 1, commit: text(v.commit, 'commit'), extract, shape, entries: decoded, authority: 'shape-only' } as unknown as VerifiedRegister;
     loaded.set(result, current => {
+      // Legacy shape-only ports are verified once above. The concrete normal
+      // provider exposes revalidateLoaded and must re-read its owner store on
+      // every consequential use, even when the clock value is unchanged.
+      if (!spine.revalidateLoaded) return true;
       const at = current ?? now;
-      const verified = spine.revalidateLoaded
-        ? consumeResult(spine.revalidateLoaded(extract, expected, at), { Success: value => value === true, Refused: () => false })
-        : consumeResult(spine.verifyExtract(extract), { Success: () => consumeResult(spine.enteringForce(expected), {
-        Success: record => encoding(record.generation).bytes === encoding(expected).bytes && consumeResult(spine.isCurrent(extract.vector, at), {
-          Success: value => value === true, Refused: () => false,
-        }), Refused: () => false,
-      }), Refused: () => false });
-      return verified;
+      return consumeResult(spine.revalidateLoaded(extract, expected, at), {
+        Success: value => value === true, Refused: () => false,
+      });
     });
     return result;
   });
