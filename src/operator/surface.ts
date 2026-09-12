@@ -161,10 +161,14 @@ function nonApprovableRequestView(status: FactStatus, candidates: readonly FactS
 }
 
 function isTerminalDisposition(row: FactStatus): boolean {
-  if (row.taint.length || row.conflicts.length) return false;
   const disposition = object(row.body).disposition;
-  return typeof disposition === 'string' && ['approved', 'declined', 'superseded', 'expired',
+  const terminal = typeof disposition === 'string' && ['approved', 'declined', 'superseded', 'expired',
     'withdrawn', 'conflict', 'emergency-stopped'].includes(disposition);
+  if (!terminal) return false;
+  // Part Four's owner-issued admission is itself the closed request result. A
+  // consumer snapshot that cannot decode its nested owner body must fail closed
+  // against replay, while generic surface dispositions must still be clean.
+  return row.fact.kind === 'intake-verified-act' || (row.taint.length === 0 && row.conflicts.length === 0);
 }
 
 function terminalRequest(composition: OperatorSurfaceComposition, request: string): boolean {
