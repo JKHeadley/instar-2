@@ -168,6 +168,10 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
       closedInput(input, ['command', 'fence', 'currentOwnerRun', 'policy', 'episodeKey',
         'operationFamily', 'pressureScope', 'sourceVector'], 'closed A1 schedule input required');
       closedInput(input.currentOwnerRun, ['owner', 'name', 'id'], 'closed Run reference required');
+      closedInput(input.pressureScope, ['target', 'conversation', 'machine', 'pool'],
+        'closed pressure scope required');
+      ensure(Object.values(input.pressureScope).every(value => typeof value === 'string'
+        && value.length > 0 && value.length <= 256), 'bounded pressure scope text required');
       requireOpaqueSourceReference(input.sourceVector);
       const all = read();
       fence(all, input.fence);
@@ -214,8 +218,19 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
         ensure(encoded(parent.sourceVector).bytes === encoded(input.sourceVector).bytes,
           'unsupported-in-slice-a1');
         ensure(parent.clockBasis === now.subject.instance, 'incomparable shared pressure time');
-        return parent;
       }
+      const priorCommands = all.filter(row => row.record.command === input.command).map(row => row.record);
+      if (priorCommands.length > 0) {
+        ensure(parent && priorCommands.every(prior => prior.type === 'LoopRecord'
+          && 'transition' in prior && prior.transition === 'scheduled'
+          && prior.episode === parent.episode), 'command reused for a different loop operation');
+        ensure(new Set(priorCommands.map(prior => encoded(prior).bytes)).size === 1,
+          'command reused for a different loop operation');
+        const prior = priorCommands[0] as SharedLoopRecord;
+        sharedLoopEvidence(prior, history, spine.context, host);
+        return prior;
+      }
+      if (parent) return parent;
       const episode = `loop:${encoded([pressureKey, input.episodeKey]).hash}`;
       ensure(!all.some(row => row.record.type === 'LoopRecord'
         && 'episode' in row.record && row.record.episode === episode), 'episode identity already used');
@@ -280,6 +295,21 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
       resolveRunReference(previous.currentOwnerRun, history, spine.context);
       if (previous.stoppedSubmission
         && encoded(previous.stoppedSubmission).bytes === encoded(input).bytes) return previous;
+      const priorCommands = all.filter(row => row.record.command === input.command).map(row => row.record);
+      const originalStoppedCommand = priorCommands.length > 0 && priorCommands.every(prior =>
+        prior.type === 'LoopRecord' && 'transition' in prior && prior.transition === 'stopped'
+        && prior.episode === previous.episode);
+      if (priorCommands.length > 0 && !originalStoppedCommand) {
+        ensure(priorCommands.every(prior => prior.type === 'LoopRecord' && 'transition' in prior
+          && ['attempt-admitted', 'half-opened'].includes(prior.transition)
+          && prior.episode === previous.episode && prior.attemptLog.at(-1)?.id === input.attempt),
+        'command reused for a different loop operation');
+        ensure(new Set(priorCommands.map(prior => encoded(prior).bytes)).size === 1,
+          'command reused for a different loop operation');
+        const prior = priorCommands[0] as SharedLoopRecord;
+        sharedLoopEvidence(prior, history, spine.context, host);
+        return prior;
+      }
       const existing = previous.attemptLog.find(attempt => attempt.id === input.attempt);
       if (existing) return previous;
       const decision = sharedAdmissionDecision(previous, now,

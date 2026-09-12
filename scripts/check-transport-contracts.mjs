@@ -107,6 +107,10 @@ export const transportSeamEvidence = [
   ['SLB-A1-EQUIVALENT-BINDING-138', 'integration', 'V30 equivalent current binding selection preserves the exact recorded valid witness'],
   ['SLB-A1-DUPLICATE-RESTART-139', 'e2e', 'V29 fresh-process durable replay refuses duplicated invalid transitions and retains the valid neighbor'],
   ['SLB-A1-EQUIVALENT-SCHEDULE-140', 'integration', 'V13 exact schedule replay collapses canonically equivalent current binding re-encodings; missing references still refuse'],
+  ['SLB-A1-CLOSED-PRESSURE-141', 'integration', 'V14, V15 and V26 malformed pressure scopes refuse before governed normalization and never append'],
+  ['SLB-A1-COMMAND-RESULT-142', 'integration', 'V16, V17, V25 and V27 preserve original command results and refuse cross-operation command reuse'],
+  ['SLB-A1-DEPENDENCY-SET-143', 'integration', 'V29 signed dependency sets collapse across every permutation while changed content still conflicts'],
+  ['SLB-A1-COMMAND-RESTART-144', 'e2e', 'V25 fresh-process replay returns original schedule and admission results without appending'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

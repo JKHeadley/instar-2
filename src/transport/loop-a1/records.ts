@@ -113,7 +113,9 @@ function collapseSignedRecordCopies(candidates: readonly FactEnvelope[],
       fact,
       value: encoded(value(fact)).bytes,
       identity: encoded([
-        fact.kind, fact.schemaVersion, fact.principal, fact.provenance, fact.predecessors.required,
+        fact.kind, fact.schemaVersion, fact.principal, fact.provenance,
+        [...fact.predecessors.required].sort((left, right) =>
+          Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'))),
       ]).bytes,
     };
   });

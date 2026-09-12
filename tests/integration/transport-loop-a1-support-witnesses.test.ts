@@ -33,6 +33,7 @@ function setup() {
     episodeKey: 'one', operationFamily: 'recovery', pressureScope, sourceVector: fixture.vector,
   } as const;
   let loop = value(fixture.api.scheduleEpisode(scheduleInput));
+  const scheduled = loop;
   const outcomeInputs = new Map<string, Parameters<typeof fixture.api.recordLoopOutcome>[0]>();
   const reference = () => ({ owner: 'part-six' as const, name: 'LoopRecord' as const, id: loop.episode });
   const admitInput = (attempt: string) => ({
@@ -68,14 +69,16 @@ function setup() {
     createLoopA1Spine(fixture.host, { context: fixture.ctx, privateKey },
       createFactStore(fixture.ctx, fixture.storage)), fixture.c);
   return {
-    fixture, policy, scheduleInput, admitInput, outcomeInput: (attempt: string) => outcomeInputs.get(attempt)!,
+    fixture, policy, scheduleInput, scheduled, admitInput,
+    outcomeInput: (attempt: string) => outcomeInputs.get(attempt)!,
     admit, finish, open, restart,
     get loop() { return loop; },
   };
 }
 
 function appendCopy(state: ReturnType<typeof setup>, original: FactEnvelope,
-  body: FactEnvelope['body'] = original.body) {
+  body: FactEnvelope['body'] = original.body,
+  required: readonly string[] = original.predecessors.required) {
   state.fixture.time(121);
   const history = [...state.fixture.ctx.facts, ...value(state.fixture.store.read())];
   const head = history.filter(fact => fact.machine === original.machine).at(-1)!;
@@ -86,7 +89,7 @@ function appendCopy(state: ReturnType<typeof setup>, original: FactEnvelope,
     segment,
     prevInSegment: head.contentHash,
     at: state.fixture.clock(121),
-    predecessors: { ...original.predecessors, inSegment: head.id },
+    predecessors: { ...original.predecessors, inSegment: head.id, required },
     body,
   }, privateKey);
   return state.fixture.store.append(wire, { peer: original.machine });
@@ -190,6 +193,13 @@ function canonicalReencodings(input: FactEnvelope['body']): readonly FactEnvelop
   ];
 }
 
+function permutations<T>(values: readonly T[]): T[][] {
+  if (values.length < 2) return [[...values]];
+  return values.flatMap((value, index) => permutations([
+    ...values.slice(0, index), ...values.slice(index + 1),
+  ]).map(rest => [value, ...rest]));
+}
+
 function selectPressureBinding(state: ReturnType<typeof setup>, port: NonNullable<
   ReturnType<typeof setup>['fixture']['host']['loopScopeBinding']>, id: string): void {
   (state.fixture.host as { loopScopeBinding: typeof port }).loopScopeBinding = {
@@ -231,7 +241,7 @@ it.each(readSignedKinds)(
     expect(operationResults(identical)).toEqual(before);
     if (kind === 'PressureBinding') {
       const storedBefore = bytes(identical.fixture.storage.read());
-      expect(value(identical.restart().scheduleEpisode(identical.scheduleInput))).toEqual(identical.loop);
+      expect(value(identical.restart().scheduleEpisode(identical.scheduleInput))).toEqual(identical.scheduled);
       expect(bytes(identical.fixture.storage.read())).toBe(storedBefore);
       selectPressureBinding(identical, originalPort, 'absent-binding');
       expect(detail(identical.restart().scheduleEpisode(identical.scheduleInput))).not.toBe('');
@@ -253,3 +263,40 @@ it.each(readSignedKinds)(
   },
   120_000,
 );
+
+it.each(['same-order', 'reordered', 'changed-content'] as const)(
+  'SLB-A1-DEPENDENCY-SET-143 V29 validates a %s signed assessment copy', mode => {
+    const state = closedState();
+    const original = signedFact(state, 'VerificationAssessment');
+    expect(original.predecessors.required.length).toBeGreaterThan(1);
+    const required = mode === 'reordered'
+      ? [...original.predecessors.required].reverse()
+      : [...original.predecessors.required];
+    const body = mode === 'changed-content' ? mutatedBody('VerificationAssessment', original) : original.body;
+    expect(detail(appendCopy(state, original, body, required))).toBe('');
+
+    const loop = value(state.fixture.api.inspect()).at(-1)!.fact;
+    const context = { ...state.fixture.ctx,
+      facts: [...state.fixture.ctx.facts, ...value(state.fixture.store.read())] };
+    const replay = detail(decodeHistoricalBody(loop, context, context.decode));
+    if (mode === 'changed-content') expect(replay).toContain('conflicted');
+    else expect(replay).toBe('');
+  },
+  120_000,
+);
+
+it('SLB-A1-DEPENDENCY-SET-143 every permutation of a valid signed dependency set is equivalent', () => {
+  const state = closedState();
+  const original = signedFact(state, 'VerificationAssessment');
+  const orders = permutations(original.predecessors.required);
+  expect(orders.length).toBeGreaterThan(1);
+  for (const required of orders) {
+    expect([...required].sort()).toEqual([...original.predecessors.required].sort());
+    expect(detail(appendCopy(state, original, original.body, required))).toBe('');
+  }
+
+  const loop = value(state.fixture.api.inspect()).at(-1)!.fact;
+  const context = { ...state.fixture.ctx,
+    facts: [...state.fixture.ctx.facts, ...value(state.fixture.store.read())] };
+  expect(detail(decodeHistoricalBody(loop, context, context.decode))).toBe('');
+}, 120_000);
