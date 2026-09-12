@@ -176,6 +176,31 @@ function operationResults(state: ReturnType<typeof setup>): readonly string[] {
   ].map(result => bytes(result));
 }
 
+function reverseObjectKeys(input: unknown): unknown {
+  if (Array.isArray(input)) return input.map(reverseObjectKeys);
+  if (!input || typeof input !== 'object') return input;
+  return Object.fromEntries(Object.entries(input as Record<string, unknown>).reverse()
+    .map(([key, value]) => [key, reverseObjectKeys(value)]));
+}
+
+function canonicalReencodings(input: FactEnvelope['body']): readonly FactEnvelope['body'][] {
+  return [
+    JSON.parse(bytes(input)) as FactEnvelope['body'],
+    reverseObjectKeys(input) as FactEnvelope['body'],
+  ];
+}
+
+function selectPressureBinding(state: ReturnType<typeof setup>, port: NonNullable<
+  ReturnType<typeof setup>['fixture']['host']['loopScopeBinding']>, id: string): void {
+  (state.fixture.host as { loopScopeBinding: typeof port }).loopScopeBinding = {
+    owner: 'part-three',
+    resolve: input => {
+      const resolved = value(port.resolve(input));
+      return state.fixture.success({ ...resolved, witness: { ...resolved.witness, id } });
+    },
+  };
+}
+
 function mutatedBody(kind: ReadSignedKind, original: FactEnvelope): FactEnvelope['body'] {
   const body = structuredClone(original.body) as Record<string, any>;
   if (kind === 'SharedBreakerLoopPolicy') body.policy.failureThreshold += 1;
@@ -191,16 +216,33 @@ function mutatedBody(kind: ReadSignedKind, original: FactEnvelope): FactEnvelope
 }
 
 it.each(readSignedKinds)(
-  'SLB-A1-COPY-INVARIANCE-135 duplicate signed %s leaves every A1 operation Result unchanged; mutation refuses', kind => {
+  'SLB-A1-COPY-INVARIANCE-135 SLB-A1-EQUIVALENT-SCHEDULE-140 duplicate signed %s leaves every A1 operation Result unchanged; canonical re-encodings never conflict and mutation refuses', kind => {
     const identical = closedState();
     const before = operationResults(identical);
-    expect(detail(appendCopy(identical, signedFact(identical, kind)))).toBe('');
+    const original = signedFact(identical, kind);
+    const copies = canonicalReencodings(original.body).map(body => {
+      expect(bytes(body)).toBe(bytes(original.body));
+      const appended = appendCopy(identical, original, body);
+      expect(detail(appended)).toBe('');
+      return value(appended).fact;
+    });
+    const originalPort = identical.fixture.host.loopScopeBinding!;
+    if (kind === 'PressureBinding') selectPressureBinding(identical, originalPort, copies.at(-1)!.id);
     expect(operationResults(identical)).toEqual(before);
+    if (kind === 'PressureBinding') {
+      const storedBefore = bytes(identical.fixture.storage.read());
+      expect(value(identical.restart().scheduleEpisode(identical.scheduleInput))).toEqual(identical.loop);
+      expect(bytes(identical.fixture.storage.read())).toBe(storedBefore);
+      selectPressureBinding(identical, originalPort, 'absent-binding');
+      expect(detail(identical.restart().scheduleEpisode(identical.scheduleInput))).not.toBe('');
+      expect(bytes(identical.fixture.storage.read())).toBe(storedBefore);
+    }
 
     const conflicting = closedState();
-    const original = signedFact(conflicting, kind);
+    const conflictingOriginal = signedFact(conflicting, kind);
     const storedBefore = bytes(conflicting.fixture.storage.read());
-    const appendDetail = detail(appendCopy(conflicting, original, mutatedBody(kind, original)));
+    const appendDetail = detail(appendCopy(conflicting, conflictingOriginal,
+      mutatedBody(kind, conflictingOriginal)));
     if (appendDetail) {
       expect(bytes(conflicting.fixture.storage.read())).toBe(storedBefore);
     } else {

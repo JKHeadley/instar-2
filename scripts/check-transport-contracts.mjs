@@ -106,6 +106,7 @@ export const transportSeamEvidence = [
   ['SLB-A1-EXACT-BINDING-137', 'integration', 'V3 exact missing, wrong-kind and wrong-subject pressure witnesses refuse without substitution or append'],
   ['SLB-A1-EQUIVALENT-BINDING-138', 'integration', 'V30 equivalent current binding selection preserves the exact recorded valid witness'],
   ['SLB-A1-DUPLICATE-RESTART-139', 'e2e', 'V29 fresh-process durable replay refuses duplicated invalid transitions and retains the valid neighbor'],
+  ['SLB-A1-EQUIVALENT-SCHEDULE-140', 'integration', 'V13 exact schedule replay collapses canonically equivalent current binding re-encodings; missing references still refuse'],
 ].map(([id, tier, cases]) => ({ id, tier, cases }));
 
 export function checkTransportCoverage(report, dispositions = transportDispositions) {

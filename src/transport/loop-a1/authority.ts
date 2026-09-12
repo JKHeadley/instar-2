@@ -209,8 +209,7 @@ export function createLoopA1Authority<S = never>(host: LoopA1Host, spine: LoopA1
         ensure(parent.pressureKey === pressureKey && parent.episodeKey === input.episodeKey,
           'unsupported-in-slice-a1');
         ensure(encoded(parent.operationFamily).bytes === encoded(binding.operationFamily).bytes
-          && encoded(parent.pressureScope).bytes === encoded(binding.pressureScope).bytes
-          && encoded(parent.pressureBinding).bytes === encoded(binding.witness).bytes,
+          && encoded(parent.pressureScope).bytes === encoded(binding.pressureScope).bytes,
         'conflicting shared pressure policy or parent');
         ensure(encoded(parent.sourceVector).bytes === encoded(input.sourceVector).bytes,
           'unsupported-in-slice-a1');
