@@ -7,7 +7,7 @@ import { createFactStore, hashBytes } from '../../src/facts/index.js';
 import { createIntakePort } from '../../src/intake/index.js';
 import { value } from '../intake/fixtures.js';
 import { conversationFixture } from './fixture.js';
-import { telegramPreparedOutbound } from './round5-fixture.js';
+import { telegramUnpreparedOutbound } from './round5-fixture.js';
 import { telegramUpdate } from './round3-fixture.js';
 
 function pollEvidence(mode: 'valid' | 'missing' | 'wrong-hash' | 'different-updates') {
@@ -70,9 +70,20 @@ it('P12-NF-29 P12-NF-30 round10 finding 2 enforces the declared entity limit on 
     ['hundred-one', Array.from({ length: 101 }, (_, index) => index % 2 ? '<i>x</i>' : '<b>x</b>').join(' '), 100, 0],
   ] as const;
   for (const [name, text, limit, expectedCalls] of cases) {
-    const f = telegramPreparedOutbound(false, text, limit);
-    const result = value(f.doorway.dispatch(f.request, f.effects.fence));
+    const f = telegramUnpreparedOutbound(false, text, limit);
+    const before = value(f.effects.transport.inspect()).filter(row => row.record.type === 'AdmissionReservation');
+    const prepared = f.prepare();
+    if (expectedCalls === 1) {
+      expect(value(f.doorway.dispatch(value(prepared), f.effects.fence)).stage, name).toBe('response');
+    } else {
+      expect(prepared.kind, name).toBe('Refused');
+      if (prepared.kind === 'Refused') {
+        expect(prepared.detail, name).toContain('declared HTML entity limit');
+        expect(prepared.detail, name).toContain('chunking and truncation are unsupported');
+      }
+      expect(value(f.effects.transport.inspect()).filter(row => row.record.type === 'AdmissionReservation'), name)
+        .toEqual(before);
+    }
     expect(f.telegram.calls.send, name).toHaveLength(expectedCalls);
-    expect(result.stage, name).toBe(expectedCalls === 1 ? 'response' : 'unknown');
   }
 }, 30_000);

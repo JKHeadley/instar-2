@@ -7,8 +7,8 @@ import type { InboundRoute, IntakeAdapterPort, IntakeDisposition } from '../inta
 import { constructGoverned } from '../register/index.js';
 import { mergeVerificationRecords, verificationLogicalKey } from '../verification/index.js';
 import type { ProbeRecord, VerificationPlan } from '../verification/index.js';
-import type { EffectValidation, OperationAdapterPort, OperationDefinition, EffectHost, EffectSpine,
-  OperationObservation } from '../effects/index.js';
+import type { EffectDoorway, EffectRequest, EffectValidation, OperationAdapterPort, OperationDefinition, EffectHost,
+  EffectSpine, OperationObservation } from '../effects/index.js';
 import { installOperationDefinition } from '../effects/index.js';
 import { boundary, ensure, freeze, json, take } from './boundary.js';
 import type {
@@ -27,7 +27,10 @@ const replyOperationBindings = new WeakMap<object, Array<Readonly<{
   definition: OperationDefinition; host: EffectHost; spine: EffectSpine;
   inhibitedOperations: ReadonlySet<string>;
 }>>>();
-const deliveryStatusHistories = new WeakMap<BoundaryContext, Set<EffectSpine>>();
+const deliveryStatusHistories = new WeakMap<BoundaryContext, Set<Readonly<{
+  host: EffectHost; spine: EffectSpine;
+}>>>();
+const replyProviderResponses = new WeakMap<EffectSpine, Map<string, string>>();
 const serviceKeys = Object.freeze([
   'new_chat_members', 'left_chat_member', 'new_chat_title', 'new_chat_photo', 'delete_chat_photo',
   'group_chat_created', 'supergroup_chat_created', 'channel_chat_created', 'message_auto_delete_timer_changed',
@@ -434,7 +437,10 @@ function contractInput(declaration: TelegramBotDeclaration, deps: TelegramAdmiss
       `initial-offset=${declaration.cursor.initialOffset}`, `max-batch-items=${declaration.cursor.maxBatchItems}`,
       `max-poll-seconds=${declaration.cursor.maxPollSeconds}`, `max-update-bytes=${declaration.limits.maxUpdateBytes}`,
       `max-reply-characters=${declaration.limits.maxReplyCharacters}`, `max-reply-bytes=${declaration.limits.maxReplyBytes}`,
-      `max-entities=${declaration.limits.maxEntities}`, 'supported-operation=ordinary-reply',
+      `max-entities=${declaration.limits.maxEntities}`,
+      `max-concurrent-polls=${declaration.limits.maxConcurrentPolls}`,
+      `max-charge=${declaration.limits.maxCharge}`, `timeout=${declaration.limits.timeout}`,
+      'supported-operation=ordinary-reply',
     ],
     forwardingTreatment: 'forwarded origin and quoted author remain untrusted captured content',
     impersonationTreatment: 'display names, usernames, forwards and quotes never select a principal',
@@ -754,20 +760,30 @@ export function renderTelegramDeliveryStatus(input: Readonly<{
     const histories = deliveryStatusHistories.get(context);
     ensure(histories && histories.size > 0,
       'Telegram platform-acceptance status requires registered Part Eight history');
-    const recorded = [...histories].flatMap(spine => take(spine.store.readForProjection()).entries
+    const recorded = [...histories].flatMap(binding => take(binding.spine.store.readForProjection()).entries
       .filter(entry => entry.fact.kind === 'effect-OperationObservation'
         && (entry.fact.body as { record?: { id?: string } }).record?.id === observation.id)
       .map(entry => {
         ensure(entry.taint.length === 0 && entry.conflicts.length === 0,
           'Telegram platform-acceptance observation history is tainted or contested');
-        return record(record(entry.fact.body, 'recorded effect observation body').record,
-          'recorded effect observation') as unknown as OperationObservation;
+        return { binding, observation: record(record(entry.fact.body, 'recorded effect observation body').record,
+          'recorded effect observation') as unknown as OperationObservation };
       }));
-    ensure(recorded.length === 1 && encode(recorded[0]) === encode(observation),
+    ensure(recorded.length === 1 && encode(recorded[0]!.observation) === encode(observation),
       'Telegram platform-acceptance status requires the exact recorded operation observation');
-    const evidence = input.evidence;
-    ensure(evidence.type === 'Evidence' && evidence.schemaVersion === 1,
-      'Telegram platform-acceptance status requires typed evidence');
+    const providerBytes = replyProviderResponses.get(recorded[0]!.binding.spine)?.get(observation.operation);
+    ensure(typeof providerBytes === 'string' && hashBytes(providerBytes) === observation.capture.hash,
+      'Telegram platform-acceptance status cannot resolve the owning dispatch provider bytes');
+    const providerResponse = record(JSON.parse(providerBytes) as unknown, 'Telegram provider response');
+    ensure(providerResponse.ok === true, 'Telegram provider response explicitly refused the reply');
+    const providerResult = record(providerResponse.result, 'Telegram provider response result');
+    ensure(positiveInteger(providerResult.message_id, 'Telegram provider response message id') > 0,
+      'Telegram provider response does not prove platform acceptance');
+    const current = recorded[0]!.binding.host.current();
+    const evidence = take(decode('Evidence', input.evidence, {
+      ...current.decode,
+      captures: { ...current.decode.captures, [observation.capture.reference]: providerBytes },
+    }));
     const evidenceClaim = take(readEvidence(evidence, input.now, context.preserved));
     ensure(evidenceClaim.subject === observation.operation && evidenceClaim.predicate === 'operation-occurred',
     'Telegram platform-acceptance status requires source-bounded occurrence evidence');
@@ -802,13 +818,25 @@ function ensureCurrentReplyStanding(host: EffectHost, state: ReturnType<EffectHo
 
 export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAdapter,
   api: TelegramBotApiCustodianPort, target: TelegramConversationTarget,
-  context: BoundaryContext): OperationAdapterPort {
+  context: BoundaryContext): OperationAdapterPort & Readonly<{
+    prepare(doorway: EffectDoorway, input: Parameters<EffectDoorway['prepare']>[0]): Result<EffectRequest>;
+  }> {
   requireAdmission(admitted, api);
   const boundTarget = freeze({ chatId: target.chatId, forum: target.forum, messageThreadId: target.messageThreadId });
   const conversation = telegramConversation(admitted.declaration.bot.id, boundTarget);
   return Object.freeze({
     owner: 'part-ten' as const,
     id: admitted.id,
+    prepare(doorway: EffectDoorway, input: Parameters<EffectDoorway['prepare']>[0]): Result<EffectRequest> {
+      return boundary('TelegramReplyPreparation', { definition: input.definition, message: input.message.id }, context, () => {
+        ensure(input.message.account === admitted.account && input.message.conversation === conversation,
+          'Telegram reply target differs from admitted account/conversation');
+        ensure(input.message.purpose === 'ordinary-reply',
+          'Telegram adapter accepts only attributable ordinary replies');
+        validateTelegramReplyText(input.message.text, admitted.declaration);
+        return take(doorway.prepare(input));
+      });
+    },
     describe: () => ({ contract: admitted.contract.id, account: admitted.account, conversation,
       maxCharge: admitted.declaration.limits.maxCharge, timeout: admitted.declaration.limits.timeout,
       hiddenRetries: 0 as const }),
@@ -892,9 +920,13 @@ export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAd
         const invoked = replyInvocations.get(admitted) ?? new Set<string>();
         ensure(!invoked.has(input.operation), 'Telegram reply claim handoff was already used');
         invoked.add(input.operation); replyInvocations.set(admitted, invoked);
-        return take(api.sendMessage({ token: admitted.declaration.token, apiVersion: admitted.declaration.apiVersion,
+        const providerBytes = take(api.sendMessage({ token: admitted.declaration.token, apiVersion: admitted.declaration.apiVersion,
           chatId: boundTarget.chatId, messageThreadId: boundTarget.messageThreadId, text: input.message.text,
           parseMode: 'HTML', timeout: admitted.declaration.limits.timeout, hiddenRetries: 0 }));
+        const responses = replyProviderResponses.get(binding.spine) ?? new Map<string, string>();
+        responses.set(input.operation, providerBytes);
+        replyProviderResponses.set(binding.spine, responses);
+        return providerBytes;
       });
     },
     observe(input: Parameters<OperationAdapterPort['observe']>[0]) {
@@ -945,8 +977,10 @@ export function installTelegramReplyOperation(input: Readonly<{
     const existing = replyOperationBindings.get(input.admitted) ?? [];
     replyOperationBindings.set(input.admitted, [...existing.filter(row => row.definition.id !== installed.id),
       freeze({ definition: installed, host, spine, inhibitedOperations })]);
-    const histories = deliveryStatusHistories.get(host.boundary) ?? new Set<EffectSpine>();
-    histories.add(spine);
+    const histories = deliveryStatusHistories.get(host.boundary) ?? new Set<Readonly<{
+      host: EffectHost; spine: EffectSpine;
+    }>>();
+    histories.add(freeze({ host, spine }));
     deliveryStatusHistories.set(host.boundary, histories);
     return installed;
   });

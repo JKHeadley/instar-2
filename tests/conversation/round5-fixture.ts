@@ -7,8 +7,7 @@ import { effectFixture } from '../effects/fixture.js';
 import { value } from '../intake/fixtures.js';
 import { conversationFixture } from './fixture.js';
 
-/** A Telegram reply admitted through Part Eight's public prepare arm. */
-export function telegramPreparedOutbound(lostResponse = false, text = 'Here is the requested result.', maxEntities = 100) {
+function telegramOutboundFixture(lostResponse = false, text = 'Here is the requested result.', maxEntities = 100) {
   const telegram = conversationFixture({ skipInitialAdmission: maxEntities !== 100 });
   if (maxEntities !== 100) telegram.admitted = value(telegram.admit({
     ...telegram.declaration, limits: { ...telegram.declaration.limits, maxEntities },
@@ -50,8 +49,20 @@ export function telegramPreparedOutbound(lostResponse = false, text = 'Here is t
   const adapter = createTelegramReplyOperationAdapter(telegram.admitted, telegram.api, target,
     effects.host.boundary);
   const doorway = createEffectDoorway({ ...effects.composition, adapter, assessment: null });
-  const request = value(doorway.prepare({ definition: installed.id, message, run: effects.run,
+  const prepareInput = { definition: installed.id, message, run: effects.run,
     pending: effects.pending.id, attempt: 'attempt:telegram:round5', verificationOwner: 'reply-verifier',
-    obligation: effects.obligation, closure: [], fence: effects.fence }));
-  return { telegram, target, effects, message, adapter, doorway, request };
+    obligation: effects.obligation, closure: [], fence: effects.fence } as const;
+  const prepare = () => adapter.prepare(doorway, prepareInput);
+  return { telegram, target, effects, message, adapter, doorway, prepareInput, prepare };
+}
+
+/** A Telegram reply before the adapter-owned deterministic preparation boundary. */
+export function telegramUnpreparedOutbound(lostResponse = false, text = 'Here is the requested result.', maxEntities = 100) {
+  return telegramOutboundFixture(lostResponse, text, maxEntities);
+}
+
+/** A Telegram reply admitted through the adapter preparation and Part Eight prepare arms. */
+export function telegramPreparedOutbound(lostResponse = false, text = 'Here is the requested result.', maxEntities = 100) {
+  const fixture = telegramOutboundFixture(lostResponse, text, maxEntities);
+  return { ...fixture, request: value(fixture.prepare()) };
 }

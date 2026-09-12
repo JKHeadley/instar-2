@@ -12,7 +12,7 @@ import { createFactStore, hashBytes } from '../../src/facts/index.js';
 import { createIntakePort } from '../../src/intake/index.js';
 import { value } from '../intake/fixtures.js';
 import { conversationFixture } from './fixture.js';
-import { telegramPreparedOutbound } from './round5-fixture.js';
+import { telegramUnpreparedOutbound } from './round5-fixture.js';
 import { telegramUpdate } from './round3-fixture.js';
 // @ts-expect-error Reference fsync host is JavaScript, outside pure core compilation.
 import { createTransportFileStorage } from '../../scripts/transport-file-storage.mjs';
@@ -73,16 +73,20 @@ it('P12-NF-06 P12-NF-07 P12-NF-18 P12-NF-38 P12-NF-48 round10 inconsistent poll 
 
 it('P12-NF-29 P12-NF-30 P12-NF-38 P12-NF-48 round10 entity refusal remains non-replaying after doorway rebuild', () => {
   const text = Array.from({ length: 101 }, (_, index) => index % 2 ? '<i>x</i>' : '<b>x</b>').join(' ');
-  const f = telegramPreparedOutbound(false, text, 100);
-  const first = value(f.doorway.dispatch(f.request, f.effects.fence));
-  expect(first.stage).toBe('unknown');
+  const f = telegramUnpreparedOutbound(false, text, 100);
+  const first = f.prepare();
+  expect(first.kind).toBe('Refused');
+  if (first.kind === 'Refused') expect(first.detail).toContain('chunking and truncation are unsupported');
   expect(f.telegram.calls.send).toHaveLength(0);
+  expect(value(f.effects.transport.inspect()).filter(row => row.record.type === 'AdmissionReservation')).toHaveLength(0);
 
   const adapter = createTelegramReplyOperationAdapter(f.telegram.admitted, f.telegram.api, f.target,
     f.effects.host.boundary);
   const rebuilt = createEffectDoorway({ ...f.effects.composition, adapter, assessment: null });
-  expect(value(rebuilt.dispatch(f.request, f.effects.fence)).id).toBe(first.id);
+  const second = adapter.prepare(rebuilt, f.prepareInput);
+  expect(second.kind).toBe('Refused');
+  if (second.kind === 'Refused') expect(second.detail).toBe(first.kind === 'Refused' ? first.detail : '');
   expect(f.telegram.calls.send).toHaveLength(0);
-  expect(value(f.effects.spine.store.read()).filter(row => row.kind === 'effect-OperationObservation'
-    && (row.body as { record?: { stage?: string } }).record?.stage === 'unknown')).toHaveLength(1);
+  expect(value(f.effects.transport.inspect()).filter(row => row.record.type === 'AdmissionReservation')).toHaveLength(0);
+  expect(value(f.effects.spine.store.read()).filter(row => row.kind === 'effect-OperationObservation')).toHaveLength(0);
 });

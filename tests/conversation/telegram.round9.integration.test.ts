@@ -1,10 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { dryRunLegacyConversationMigration } from '../../src/conversation/index.js';
-import { createEffectDoorway } from '../../src/effects/index.js';
 import { value } from '../intake/fixtures.js';
 import { conversationFixture } from './fixture.js';
-import { telegramPreparedOutbound } from './round5-fixture.js';
+import { telegramUnpreparedOutbound } from './round5-fixture.js';
 import { telegramUpdate, wireTelegram } from './round3-fixture.js';
 
 function runInbound(raw: string, accepted: boolean): void {
@@ -68,33 +67,20 @@ it('P12-NF-29 P12-NF-30 round9 finding 3 registered dispatch refuses renderer-in
     ['null-control', 'bad\u0000text', false],
     ['other-control', 'bad\u0001text', false],
   ] as const) {
-    const f = telegramPreparedOutbound(false, text);
-    const dispatch = value(f.doorway.dispatch(f.request, f.effects.fence));
-    expect(dispatch.stage, name).toBe(accepted ? 'response' : 'unknown');
-    expect(f.telegram.calls.send, name).toHaveLength(accepted ? 1 : 0);
+    const f = telegramUnpreparedOutbound(false, text);
+    const before = value(f.effects.transport.inspect()).filter(row => row.record.type === 'AdmissionReservation');
+    const prepared = f.prepare();
+    if (accepted) {
+      expect(value(f.doorway.dispatch(value(prepared), f.effects.fence)).stage, name).toBe('response');
+      expect(f.telegram.calls.send, name).toHaveLength(1);
+    } else {
+      expect(prepared.kind, name).toBe('Refused');
+      if (prepared.kind === 'Refused') expect(prepared.detail, name).toContain('unsupported control data');
+      expect(value(f.effects.transport.inspect()).filter(row => row.record.type === 'AdmissionReservation'), name)
+        .toEqual(before);
+      expect(f.telegram.calls.send, name).toHaveLength(0);
+    }
   }
-
-  const refused = telegramPreparedOutbound(false, 'bad\u0000text');
-  let concreteInput: Parameters<typeof refused.adapter.invoke>[0] | undefined;
-  let suppressResponseObservation = false;
-  const interceptingAdapter = { ...refused.adapter,
-    invoke(input: Parameters<typeof refused.adapter.invoke>[0]) {
-      concreteInput = input;
-      suppressResponseObservation = true;
-      throw new Error('pause before concrete invocation');
-    },
-  };
-  const interruptedSpine = { ...refused.effects.spine,
-    append(...args: Parameters<typeof refused.effects.spine.append>) {
-      if (suppressResponseObservation) throw new Error('response observation unavailable');
-      return refused.effects.spine.append(...args);
-    },
-  };
-  const doorway = createEffectDoorway({ ...refused.effects.composition, spine: interruptedSpine,
-    adapter: interceptingAdapter, assessment: null });
-  expect(value(doorway.dispatch(refused.request, refused.effects.fence)).stage).toBe('executor-accepted');
-  expect(refused.adapter.invoke(concreteInput!).kind).toBe('Refused');
-  expect(refused.telegram.calls.send).toHaveLength(0);
 }, 30_000);
 
 it('P12-NF-52 round9 finding 4 dry run is a real read-only consumer over the legacy journal fixture', () => {
