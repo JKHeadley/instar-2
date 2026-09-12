@@ -1,16 +1,7 @@
 import { expect, it } from 'vitest';
-import { decode } from '../../src/index.js';
-import {
-  extractTelegramUpdate, renderTelegramDeliveryStatus,
-} from '../../src/conversation/index.js';
-import { value } from '../intake/fixtures.js';
+import { extractTelegramUpdate } from '../../src/conversation/index.js';
 import { conversationFixture } from './fixture.js';
-import { telegramPreparedOutbound } from './round5-fixture.js';
 import { telegramUpdate } from './round3-fixture.js';
-
-const decodeCaptures = (captures: Readonly<Record<string, { readonly bytes?: string | null }>>) => Object.fromEntries(
-  Object.entries(captures).flatMap(([reference, capture]) => typeof capture.bytes === 'string' ? [[reference, capture.bytes]] : []),
-);
 
 function callbackUpdate(chatType: 'private' | 'supergroup' | 'channel'): string {
   return JSON.stringify({ update_id: 100, callback_query: {
@@ -60,44 +51,4 @@ it('P12-NF-07 P12-NF-16 P12-NF-17 P12-NF-18 round7 validates sender-chat source 
   ]) expect(() => extractTelegramUpdate(telegramUpdate(100, update => {
     update.message.sender_chat = senderChat; delete update.message.from;
   }), f.declaration)).toThrow();
-});
-
-it('P12-NF-29 P12-NF-34 round7 renders word and accessible emoji forms from the same source-bounded status fact', () => {
-  const f = telegramPreparedOutbound();
-  const observation = value(f.doorway.dispatch(f.request, f.effects.fence));
-  const evidence = value(decode('Evidence', f.effects.evidenceInput({
-    id: 'evidence:telegram-platform-accepted',
-    claim: { subject: observation.operation, predicate: 'operation-occurred', value: { digest: observation.digest } },
-    source: 'probe', observedAt: f.effects.clock(100), freshFor: 100,
-    capture: observation.capture, strength: 'proof',
-  }), { ...f.effects.ctx.decode, captures: decodeCaptures(f.effects.ctx.captures) }));
-  expect(value(renderTelegramDeliveryStatus({ observation, evidence,
-    now: f.effects.clock(100),
-    status: 'accepted-by-platform', form: 'words' }, f.effects.host.boundary))).toBe('Accepted by platform');
-  const emoji = value(renderTelegramDeliveryStatus({ observation, evidence,
-    now: f.effects.clock(100),
-    status: 'accepted-by-platform', form: 'emoji' }, f.effects.host.boundary));
-  expect(emoji).toContain('📨 Accepted by platform');
-  expect(emoji).toContain('📨 means accepted by platform');
-  for (const status of ['delivered', 'read'] as const) {
-    const stronger = renderTelegramDeliveryStatus({ observation, evidence,
-      now: f.effects.clock(100), status, form: 'words' }, f.effects.host.boundary);
-    expect(stronger.kind, status).toBe('Refused');
-  }
-  expect(renderTelegramDeliveryStatus({ observation, evidence,
-    now: f.effects.clock(201), status: 'accepted-by-platform', form: 'words' }, f.effects.host.boundary).kind).toBe('Refused');
-});
-
-it('P12-NF-34 round7 refuses status evidence that is not bound to the response observation', () => {
-  const f = telegramPreparedOutbound();
-  const observation = value(f.doorway.dispatch(f.request, f.effects.fence));
-  const evidence = value(decode('Evidence', f.effects.evidenceInput({
-    id: 'evidence:wrong-telegram-operation',
-    claim: { subject: 'operation:other', predicate: 'operation-occurred', value: { digest: observation.digest } },
-    source: 'probe', observedAt: f.effects.clock(100), freshFor: 100,
-    capture: observation.capture, strength: 'proof',
-  }), { ...f.effects.ctx.decode, captures: decodeCaptures(f.effects.ctx.captures) }));
-  expect(renderTelegramDeliveryStatus({ observation, evidence,
-    now: f.effects.clock(100),
-    status: 'accepted-by-platform', form: 'words' }, f.effects.host.boundary).kind).toBe('Refused');
 });

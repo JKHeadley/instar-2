@@ -1,28 +1,7 @@
 import { expect, it } from 'vitest';
-import { renderTelegramDeliveryStatus } from '../../src/conversation/index.js';
 import { value } from '../intake/fixtures.js';
 import { conversationFixture } from './fixture.js';
-import { telegramPreparedOutbound, telegramUnpreparedOutbound } from './round5-fixture.js';
-
-it('P12-NF-29 P12-NF-34 P12-NF-35 round11 real Eight dispatch refuses unwitnessed evidence over both provider outcomes', () => {
-  for (const outcome of ['accepted', 'rejected'] as const) {
-    const fixture = telegramPreparedOutbound();
-    if (outcome === 'rejected') fixture.telegram.setSendResult(
-      '{"ok":false,"error_code":400,"description":"message refused by provider"}');
-    const observation = value(fixture.doorway.dispatch(fixture.request, fixture.effects.fence));
-    const counterfeit = {
-      type: 'Evidence', schemaVersion: 1, id: `evidence:round11-counterfeit:${outcome}`,
-      claim: { subject: observation.operation, predicate: 'operation-occurred', value: { digest: observation.digest } },
-      observedAt: { value: 100 }, freshFor: 100, capture: observation.capture,
-    } as any;
-    expect(renderTelegramDeliveryStatus({ observation, evidence: counterfeit, now: fixture.effects.clock(100),
-      status: 'accepted-by-platform', form: 'words' }, fixture.effects.host.boundary).kind, outcome).toBe('Refused');
-    expect(fixture.telegram.calls.send, outcome).toHaveLength(1);
-    expect(fixture.effects.ctx.captures[observation.capture.reference]?.bytes, outcome)
-      .toBe(outcome === 'accepted' ? '{"ok":true,"result":{"message_id":700}}'
-        : '{"ok":false,"error_code":400,"description":"message refused by provider"}');
-  }
-}, 30_000);
+import { telegramUnpreparedOutbound } from './round5-fixture.js';
 
 it('P12-NF-29 P12-NF-30 P12-NF-41 round11 public adapter preparation preserves exact refusal without a claim', () => {
   const refused = telegramUnpreparedOutbound(false, '<b>Hello</b>', 0);
