@@ -92,11 +92,17 @@ export function bootProductionSliceAssembly(input) {
         || (position.epoch === previous.epoch && position.position > previous.position))
         expectedVector[fact.machine] = { epoch: position.epoch, position: position.position };
     }
+    const canonicalDefinitions = minimalPlaneProjections(slice.kinds());
     for (const row of rows) {
       if (typeof row.hash !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(row.hash)
         || row.resumedHash !== row.hash || !row.vector || typeof row.vector !== 'object'
         || Array.isArray(row.vector) || bytesOf(row.vector) !== bytesOf(expectedVector))
         throw new Error('production replay equality lacks matching digests at the current source vector');
+      const definition = canonicalDefinitions.find(candidate => candidate.id === row.projection);
+      const actual = slice.rebuildOne(definition);
+      if (row.hash !== actual.hash || row.resumedHash !== actual.resumedHash
+        || bytesOf(row.vector) !== bytesOf(actual.vector))
+        throw new Error('production replay digests differ from the canonical source rebuild');
     }
     return rows;
   };
@@ -196,6 +202,8 @@ export function bootProductionSliceAssembly(input) {
           verificationRecords: verification.map(row => row.record.id),
         });
       }
+      // Re-resolve the current manifest and provider identities at result consumption.
+      take(bootProductionAssembly({ ...assembly, production }, manifest, scope));
       const witnessed = take(coordinator.handles.deliveryWitness.observe(operation));
       // `observe` may durably append the provider's probe. Resolve Part Nine only
       // after that append so this decision is based on the current fact projection,

@@ -16,6 +16,8 @@ export const operatorSeams: readonly SeamRow[] = Object.freeze([
 export function validateSeamInventory(rows: readonly SeamRow[], context: BoundaryContext): Result<'complete'> {
   return operatorBoundary('OperatorSeamInventory', context, () => {
     requireOperator(rows.length === 4 && new Set(rows.map(row => row.seam)).size === 4, 'P11-NF-40: seam inventory is missing or duplicated');
+    requireOperator(operatorSeams.every(expected => rows.some(row => row.seam === expected.seam)),
+      'P11-NF-40: seam inventory does not name the four required seams');
     for (const row of rows) requireOperator(row.producer.trim().length > 0 && row.consumer.trim().length > 0 && row.record.trim().length > 0
       && row.order.length >= 4 && row.order.every(step => step.trim().length > 0) && row.failDirection.trim().length > 0 && row.owner.trim().length > 0,
     `P11-NF-40: incomplete seam row ${row.seam}`);
@@ -26,6 +28,7 @@ export function validateSeamInventory(rows: readonly SeamRow[], context: Boundar
 export function resolveFailureTrace(input: FailureTraceInput, context: BoundaryContext): Result<FailureTraceResolution> {
   return operatorBoundary('OperatorSharedFailureTrace', context, () => {
     requireOperator(input.owner.trim().length > 0 && input.semanticIdentity.trim().length > 0, 'P11-NF-41/42: trace requires identity and closure owner');
+    requireOperator(Number.isSafeInteger(input.applications), 'P11-NF-42: application count must be a safe integer');
     const conflict = new Set(input.digests).size > 1;
     requireOperator(input.applications >= 0 && input.applications <= 1, 'P11-NF-42: duplicate external application');
     if (conflict) return Object.freeze({ retry: false as const, conflict: true, state: 'authority-closed' as const, owner: input.owner, applications: input.applications });
@@ -33,6 +36,8 @@ export function resolveFailureTrace(input: FailureTraceInput, context: BoundaryC
       return Object.freeze({ retry: false as const, conflict: false, state: 'authority-closed' as const, owner: input.owner, applications: input.applications });
     if (input.trace === 'cancellation-race' && input.stopCausallyPrior)
       return Object.freeze({ retry: false as const, conflict: false, state: 'stopped' as const, owner: input.owner, applications: input.applications });
+    requireOperator(input.outcome !== 'did-not-happen' || input.applications === 0,
+      'P11-NF-42: decisive non-occurrence contradicts an observed application');
     if (input.outcome === 'happened' || input.outcome === 'did-not-happen')
       return Object.freeze({ retry: false as const, conflict: false, state: 'settled' as const, owner: input.owner, applications: input.applications });
     return Object.freeze({ retry: false as const, conflict: false, state: 'owned-uncertain' as const, owner: input.owner, applications: input.applications });
