@@ -81,10 +81,14 @@ const round12Case = {
   file: 'tests/integration/scheduled-round12.test.ts',
   title: 'P15-NF-08 P15-NF-10 round-twelve full-port malformed-resource validation',
 };
+const round13Case = {
+  file: 'tests/integration/scheduled-round13.test.ts',
+  title: 'P15-NF-51 round-thirteen full-port legacy import preserves enabled and disabled activation semantics',
+};
 const requiredExecutableCases = new Map([[8, [round12Case]], [10, [{
   file: 'tests/scheduled/review-round11.test.ts',
   title: 'P15-NF-10 package validation remains usable without claiming service continuation',
-}]]]);
+}]], [51, [round13Case]]]);
 
 export function p15Dispositions(design = readFileSync('docs/19-scheduled-work/09-negative-contract-fixtures.md', 'utf8')) {
   const ids = [...design.matchAll(/^\| (P15-NF-(\d+)) \|/gm)].map(match => ({ id: match[1], number: Number(match[2]) }));
@@ -113,6 +117,9 @@ const proofFiles = [
   { file: 'tests/scheduled/review-round12.test.ts', tokens: ['exerciseP15Round12Proof()', 'expect('] },
   { file: 'tests/integration/scheduled-round12.test.ts', tokens: ['exerciseP15Round12Proof()', 'expect('] },
   { file: 'tests/e2e/scheduled-round12.test.ts', tokens: ['spawnSync(', 'SIGKILL', 'expect('] },
+  { file: 'tests/scheduled/review-round13.test.ts', tokens: ['readFileSync(', 'expect('] },
+  { file: 'tests/integration/scheduled-round13.test.ts', tokens: ['importLegacyScheduledJob(', 'expect('] },
+  { file: 'tests/e2e/scheduled-round13.test.ts', tokens: ['spawnSync(', 'SIGKILL', 'expect('] },
 ];
 const laneDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.instar/lanes');
 const calendarRequest = 'design-19-scheduled-work-seam-request-calendar-adapter.md';

@@ -47,6 +47,12 @@ if (mode === 'legacy-learning-seed-cut') {
   const descriptor = openSync(durable, 'w'); writeSync(descriptor, JSON.stringify(source)); fsyncSync(descriptor); closeSync(descriptor);
   process.kill(process.pid, 'SIGKILL');
 }
+if (mode === 'round13-legacy-seed-cut') {
+  mkdirSync(directory, { recursive: true });
+  const sourceBytes = readFileSync(`tests/scheduled/fixtures/${kind}`, 'utf8');
+  const descriptor = openSync(durable, 'w'); writeSync(descriptor, sourceBytes); fsyncSync(descriptor); closeSync(descriptor);
+  process.kill(process.pid, 'SIGKILL');
+}
 if (mode === 'owner-seed-cut') {
   const s = scheduledFixture(); const raw = []; const log = join(directory, 'facts.jsonl'); const descriptor = openSync(log, 'w');
   const assembly = assemblyRuntimeFixture(core => ({ owner: 'part-ten', read: () => raw, append: (bytes, expected) => {
@@ -482,6 +488,16 @@ if (mode === 'round9-validation-recover') {
 if (mode === 'legacy-recover') {
   const sourceBytes = readFileSync(durable, 'utf8'); const context = scheduledFixture().context;
   process.stdout.write(JSON.stringify(value(importLegacyScheduledJob(sourceBytes, context))));
+}
+if (mode === 'round13-legacy-recover') {
+  const sourceBytes = readFileSync(durable, 'utf8'); const context = scheduledFixture().context;
+  const result = consumeResult(importLegacyScheduledJob(sourceBytes, context), {
+    Success: plan => ({ status: 'accepted', activation: plan.activation, residue: plan.residue,
+      model: plan.model, sourceEnabled: JSON.parse(plan.sourceBytes).enabled,
+      sourceBytesPreserved: plan.sourceBytes === sourceBytes }),
+    Refused: refusal => ({ status: 'refused', detail: refusal.detail }),
+  });
+  process.stdout.write(JSON.stringify(result));
 }
 if (mode === 'round10-validation-seed-cut') {
   mkdirSync(directory, { recursive: true });

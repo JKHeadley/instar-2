@@ -81,7 +81,9 @@ function actualDeclaration(value: Record<string, unknown>, sourceBytes: string):
   ensure(value.integrationGate === undefined || typeof value.integrationGate === 'boolean',
     'legacy integrationGate must be boolean when supplied');
   const importedModel = model(value.model);
-  const residue = value.perMachineIndependent === true ? ['per-machine work is not proven machine-local'] : [];
+  const residue: string[] = [];
+  if (value.enabled === false) residue.push('legacy job is disabled; explicit package enable choice required');
+  if (value.perMachineIndependent === true) residue.push('per-machine work is not proven machine-local');
   const script = executionType === 'script';
   const postCompletionLearning = !script && (living as { enabled?: boolean } | undefined)?.enabled === true
     && value.integrationGate !== false ? 'required' as const : 'off' as const;
