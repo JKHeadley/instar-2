@@ -356,56 +356,67 @@ function validateWebhookChoice(declaration: TelegramBotDeclaration, deps: Telegr
 }
 
 function validateIdentityProbe(declaration: TelegramBotDeclaration, deps: TelegramAdmissionDependencies,
-  probe: AdmittedTelegramAdapter['probe'], now: Clock): void {
+  probe: AdmittedTelegramAdapter['probe']): Readonly<{ validate(now: Clock): void }> {
   const captureBytes = take(deps.api.readCapture(probe.capture.reference));
-  ensure(hashBytes(captureBytes) === probe.capture.hash, 'Telegram identity capture bytes do not match the probe');
-  const response = record(JSON.parse(captureBytes) as unknown, 'Telegram getMe capture');
-  const bot = record(response.result, 'Telegram getMe result');
-  ensure(response.ok === true && bot.is_bot === true && String(integer(bot.id, 'captured bot id')) === declaration.bot.id
-    && `@${nonempty(bot.username, 'captured bot username')}` === declaration.bot.username,
-  'Telegram identity capture does not match the declared bot');
-  ensure(deps.verification.owner === 'part-nine', 'Telegram probe history must remain in Part Nine custody');
   const rows = take(deps.verification.inspect());
   const referenced = rows.filter((row): row is typeof row & { record: ProbeRecord } =>
     row.record.type === 'ProbeRecord' && row.record.id === probe.reference);
-  ensure(referenced.length > 0, 'Telegram identity probe does not resolve to signed Part Nine history');
   const logicalKeys = new Set(referenced.map(row => verificationLogicalKey(row.record)));
   const identityRows = rows.filter((row): row is typeof row & { record: ProbeRecord } =>
     row.record.type === 'ProbeRecord' && (row.record.id === probe.reference
       || logicalKeys.has(verificationLogicalKey(row.record))));
-  for (const row of identityRows) resolvedHistory(deps, row.fact.id, 'Telegram identity probe source');
-  const mergedProbe = mergeVerificationRecords(identityRows.map(row => row.record));
-  ensure(mergedProbe.conflicts.length === 0, 'Telegram identity probe identity is ambiguous or contested');
   const exactProbeBodies = [...new Map(referenced.map(row => [encode(row.record), row.record])).values()];
-  ensure(exactProbeBodies.length === 1, 'Telegram identity probe reference is ambiguous');
-  const recorded = exactProbeBodies[0]!;
+  const recorded = exactProbeBodies[0];
+  const identityHistory = identityRows.map(row => take(deps.history.lookup(row.fact.id)));
 
   const planRows = rows.filter((row): row is typeof row & { record: VerificationPlan } =>
-    row.record.type === 'VerificationPlan' && row.record.id === recorded.plan);
-  ensure(planRows.length > 0, 'Telegram identity probe plan is missing');
-  for (const row of planRows) resolvedHistory(deps, row.fact.id, 'Telegram identity probe plan source');
-  const mergedPlan = mergeVerificationRecords(planRows.map(row => row.record));
-  ensure(mergedPlan.conflicts.length === 0, 'Telegram identity probe plan is ambiguous or contested');
+    row.record.type === 'VerificationPlan' && row.record.id === recorded?.plan);
+  const planHistory = planRows.map(row => take(deps.history.lookup(row.fact.id)));
   const exactPlanBodies = [...new Map(planRows.map(row => [encode(row.record), row.record])).values()];
-  ensure(exactPlanBodies.length === 1, 'Telegram identity probe plan is ambiguous');
-  const plan = exactPlanBodies[0]!;
-  const planArm = plan.arms.filter(arm => arm.id === recorded.arm);
-  ensure(plan.bar.complete === true && plan.bar.version === recorded.planVersion && planArm.length === 1
-    && planArm[0]!.required === true && plan.subject.governed === telegramAccount(declaration.bot.id)
-    && plan.subject.generation === deps.generation,
-  'Telegram identity probe does not bind its complete recorded verification plan');
-  ensure(Number.isSafeInteger(plan.scheduling.freshnessWindow) && plan.scheduling.freshnessWindow > 0,
-    'Telegram identity probe plan has no positive recorded freshness window');
-  const validUntil = recorded.completedAt + plan.scheduling.freshnessWindow;
-  ensure(Number.isSafeInteger(validUntil) && recorded.completedAt <= now.value && now.value < validUntil,
-    'Telegram identity probe is stale under its recorded verification plan');
-
-  ensure(recorded.disposition === 'passed' && recorded.captureStatus === 'available'
-    && recorded.subject === telegramAccount(declaration.bot.id)
-    && recorded.operation === `telegram-bot-api:getMe:${declaration.apiVersion}`
-    && recorded.challengeDigest === probe.capture.hash && recorded.completedAt === probe.observedAt
-    && recorded.witnesses.includes(probe.capture.reference),
-  'Telegram identity probe record does not bind the exact capture and declared bot');
+  return freeze({ validate(now: Clock) {
+      ensure(hashBytes(captureBytes) === probe.capture.hash, 'Telegram identity capture bytes do not match the probe');
+      const response = record(JSON.parse(captureBytes) as unknown, 'Telegram getMe capture');
+      const bot = record(response.result, 'Telegram getMe result');
+      ensure(response.ok === true && bot.is_bot === true && String(integer(bot.id, 'captured bot id')) === declaration.bot.id
+        && `@${nonempty(bot.username, 'captured bot username')}` === declaration.bot.username,
+      'Telegram identity capture does not match the declared bot');
+      ensure(deps.verification.owner === 'part-nine', 'Telegram probe history must remain in Part Nine custody');
+      ensure(referenced.length > 0, 'Telegram identity probe does not resolve to signed Part Nine history');
+      ensure(deps.history.owner === 'part-ten', 'Telegram admission history must remain in Part Ten custody');
+      ensure(identityHistory.every(row => row && row.taint.length === 0 && row.conflicts.length === 0
+        && row.completeness === 'complete'),
+      'Telegram identity probe source does not resolve to complete uncontested signed history');
+      const mergedProbe = mergeVerificationRecords(identityRows.map(row => row.record));
+      ensure(mergedProbe.conflicts.length === 0, 'Telegram identity probe identity is ambiguous or contested');
+      ensure(exactProbeBodies.length === 1, 'Telegram identity probe reference is ambiguous');
+      ensure(recorded, 'Telegram identity probe reference is ambiguous');
+      ensure(planRows.length > 0, 'Telegram identity probe plan is missing');
+      ensure(planHistory.every(row => row && row.taint.length === 0 && row.conflicts.length === 0
+        && row.completeness === 'complete'),
+      'Telegram identity probe plan source does not resolve to complete uncontested signed history');
+      const mergedPlan = mergeVerificationRecords(planRows.map(row => row.record));
+      ensure(mergedPlan.conflicts.length === 0, 'Telegram identity probe plan is ambiguous or contested');
+      ensure(exactPlanBodies.length === 1, 'Telegram identity probe plan is ambiguous');
+      const plan = exactPlanBodies[0]!;
+      const planArm = plan.arms.filter(arm => arm.id === recorded.arm);
+      ensure(plan.bar.complete === true && plan.bar.version === recorded.planVersion && planArm.length === 1
+        && planArm[0]!.required === true && plan.subject.governed === telegramAccount(declaration.bot.id)
+        && plan.subject.generation === deps.generation,
+      'Telegram identity probe does not bind its complete recorded verification plan');
+      ensure(Number.isSafeInteger(plan.scheduling.freshnessWindow) && plan.scheduling.freshnessWindow > 0,
+        'Telegram identity probe plan has no positive recorded freshness window');
+      const validUntil = recorded.completedAt + plan.scheduling.freshnessWindow;
+      ensure(Number.isSafeInteger(validUntil), 'Telegram identity probe plan freshness boundary is malformed');
+      ensure(recorded.completedAt <= now.value && now.value < validUntil,
+        'Telegram identity probe is stale under its recorded verification plan');
+      ensure(recorded.disposition === 'passed' && recorded.captureStatus === 'available'
+        && recorded.subject === telegramAccount(declaration.bot.id)
+        && recorded.operation === `telegram-bot-api:getMe:${declaration.apiVersion}`
+        && recorded.challengeDigest === probe.capture.hash && recorded.completedAt === probe.observedAt
+        && recorded.witnesses.includes(probe.capture.reference),
+      'Telegram identity probe record does not bind the exact capture and declared bot');
+    },
+  });
 }
 
 function contractInput(declaration: TelegramBotDeclaration, deps: TelegramAdmissionDependencies,
@@ -475,40 +486,40 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
       'Telegram evidence parser declaration must match telegram-intake-v1');
     const mode = selectedMode(declaration);
     const id = `telegram:v1:bot:${declaration.bot.id}`;
-    // Keep the deterministic sequential refusal ahead of mode-specific work.
-    // This is only a preflight guard; the committing decision is re-resolved
-    // from the pinned current view below after every external dependency call.
+    // Preserve the cheap deterministic refusal for an already-admitted other
+    // mode. This is not the committing decision: every successful path still
+    // re-resolves after all dependency calls and commits against that frontier.
     const observed = take(deps.assembly.inspectCurrent());
     const observedModes = observed.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id
       && row.record.disposition === 'passed').map(row => row.record.type === 'AdapterConformance' ? row.record.mode : '');
     ensure(observedModes.every(existing => existing === mode), 'one Telegram bot cannot admit two intake modes');
     validateWebhookChoice(declaration, deps);
     const probe = take(deps.api.identity({ token: declaration.token, apiVersion: declaration.apiVersion }));
-    // Pin the committing conformance view and decision clock only after the
-    // identity dependency has returned. Every freshness check and any new
-    // conformance record below consume this one post-dependency instant.
-    const current = take(deps.assembly.inspectCurrent());
-    const now = take(decodeMeasurement('clock', deps.clock(), deps.governance.context.types));
     ensure(probe.authenticated === true && probe.botId === declaration.bot.id
       && probe.username === declaration.bot.username && probe.apiVersion === declaration.apiVersion,
       'fresh authenticated Telegram identity probe does not match the declaration');
     ensure(Number.isSafeInteger(probe.observedAt) && Number.isSafeInteger(probe.freshFor) && probe.freshFor > 0,
       'Telegram identity probe freshness wrapper is malformed');
     const reportedValidUntil = probe.observedAt + probe.freshFor;
-    ensure(Number.isSafeInteger(reportedValidUntil) && probe.observedAt <= now.value && now.value < reportedValidUntil,
-      'Telegram identity probe is stale or retimestamped');
+    ensure(Number.isSafeInteger(reportedValidUntil), 'Telegram identity probe freshness wrapper is malformed');
     ensure(/^sha256:[a-f0-9]{64}$/.test(probe.capture.hash) && probe.capture.reference.length > 0 && probe.reference.length > 0,
       'Telegram identity probe lacks capture-backed evidence');
-    validateIdentityProbe(declaration, deps, probe, now);
-    // Both the one-mode decision and prior-conformance reuse consume the same
-    // owner-issued snapshot, so an admission that committed during the
-    // identity probe cannot be missed.
-    const modes = current.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id
-      && row.record.disposition === 'passed').map(row => row.record.type === 'AdapterConformance' ? row.record.mode : '');
-    ensure(modes.every(existing => existing === mode), 'one Telegram bot cannot admit two intake modes');
+    const identityEvidence = validateIdentityProbe(declaration, deps, probe);
     const contractSeed = contractInput(declaration, deps, mode, probe, 'pending');
     const contractId = `telegram-contract:${take(canonical(contractSeed)).hash}`;
     const contract = take(deps.assembly.record('AdapterEvidenceContract', { ...contractSeed, id: contractId }));
+
+    // Every fallible dependency read above completes before this decision
+    // point. The one conformance snapshot and one decoded Part One clock below
+    // govern mode exclusivity, freshness, reuse, and the new record timestamp.
+    const current = take(deps.assembly.inspectCurrent());
+    const now = take(decodeMeasurement('clock', deps.clock(), deps.governance.context.types));
+    ensure(probe.observedAt <= now.value && now.value < reportedValidUntil,
+      'Telegram identity probe is stale or retimestamped');
+    identityEvidence.validate(now);
+    const modes = current.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id
+      && row.record.disposition === 'passed').map(row => row.record.type === 'AdapterConformance' ? row.record.mode : '');
+    ensure(modes.every(existing => existing === mode), 'one Telegram bot cannot admit two intake modes');
     const conformanceSeed = {
       type: 'AdapterConformance', schemaVersion: 1, id: 'pending', predecessors: [], dependencyFacts: [],
       contract: contract.id, adapter: id, package: deps.evidence.package, artifact: deps.evidence.artifact,
@@ -544,7 +555,14 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
       conformance = prior.record;
     } else {
       const conformanceId = `telegram-conformance:${take(canonical(conformanceSeed)).hash}`;
-      conformance = take(deps.assembly.record('AdapterConformance', { ...conformanceSeed, id: conformanceId }));
+      conformance = take(deps.conformanceCommit.commit({
+        frontier: {
+          adapter: id,
+          facts: current.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id)
+            .map(row => row.fact.id),
+        },
+        record: { ...conformanceSeed, id: conformanceId },
+      }));
     }
     const admitted = freeze({ id, account: telegramAccount(declaration.bot.id), mode, declaration, probe, contract, conformance });
     admittedInstances.add(admitted);

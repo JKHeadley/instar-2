@@ -14,6 +14,7 @@ export { createNativeHarnessAdapter } from './harness.js';
 export type { NativeHarnessDriverPort } from './harness.js';
 export { createCustodiedPersistenceAdapter } from './persistence.js';
 export { createMediatedStoreReader } from './custody.js';
+export { createAdapterConformanceCommitPort } from './conformance-commit.js';
 export { assemblyProjectionDefinitions } from './storage.js';
 export { stageLocalCapability, resolveActivePackage } from './package.js';
 export { deriveGrowthEpisodes, closeGrowthEpisode } from './growth.js';

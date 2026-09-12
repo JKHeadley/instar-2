@@ -1,7 +1,10 @@
 import type {
   BoundaryContext, Clock, Hash, ProvenanceInput, RefusalReason, Result, SecretRef,
 } from '../index.js';
-import type { AdapterConformance, AdapterEvidenceContract, AssemblyHistoryReadPort, AssemblyRuntimePort } from '../assembly/index.js';
+import type {
+  AdapterConformance, AdapterConformanceCommitPort, AdapterEvidenceContract,
+  AssemblyHistoryReadPort, AssemblyRuntimePort,
+} from '../assembly/index.js';
 import type { FactStorePort } from '../facts/index.js';
 import type { InboundRoute, IntakePort } from '../intake/index.js';
 import type { RegisterContext, VerifiedRegister } from '../register/index.js';
@@ -92,6 +95,7 @@ export interface TelegramAdmissionDependencies {
   readonly boundary: BoundaryContext;
   readonly governance: Readonly<{ register: VerifiedRegister; context: RegisterContext }>;
   readonly assembly: AssemblyRuntimePort;
+  readonly conformanceCommit: AdapterConformanceCommitPort;
   readonly history: AssemblyHistoryReadPort;
   readonly verification: VerificationRuntimePort;
   readonly api: TelegramBotApiCustodianPort;
