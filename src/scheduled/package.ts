@@ -5,7 +5,7 @@ import { decodeLocalCapabilityPackage, resolveActivePackage, safePackagePath, st
 import type { AssemblyDecodeContext, CurrentAssemblyFact, LocalCapabilityPackage } from '../assembly/index.js';
 import type { RunExit, RunExitReadPort } from '../rungraph/index.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
-import { parseUnambiguousJson, topLevelJsonStringMemberValues } from './json.js';
+import { inspectTopLevelJsonStringMemberValues, parseUnambiguousJson } from './json.js';
 import { canonicalManifest, decodeScheduledWorkManifest } from './manifest.js';
 import { canonicalInstant, parseRfc3339Offset } from './time.js';
 import type { ScheduledOccurrencePlan, ScheduledWorkPackagePort } from './contracts.js';
@@ -45,15 +45,10 @@ function assemblyFrontier(rows: readonly CurrentAssemblyFact[]): Hash {
 function isAdditionalScheduledManifest(bytes: string, context: BoundaryContext): boolean {
   let parsed: unknown;
   try { parsed = parseUnambiguousJson(bytes); } catch (error) {
-    // A repeated member is a resource-encoding refusal, not evidence that the
-    // resource has ceased to be a scheduled manifest. Decode every top-level
-    // type value without erasing repeats; the ambiguous bytes are never admitted.
-    try {
-      if (topLevelJsonStringMemberValues(bytes, 'type').includes('ScheduledWorkManifest')) throw error;
-    } catch (classificationError) {
-      if (classificationError === error) throw error;
-      return false;
-    }
+    // Once a top-level scheduled kind has been decoded, retain the original
+    // resource refusal even when malformed trailing bytes stop classification.
+    const declaredTypes = inspectTopLevelJsonStringMemberValues(bytes, 'type').values;
+    if (declaredTypes.includes('ScheduledWorkManifest')) throw error;
     return false;
   }
   return consumeResult(decodeScheduledWorkManifest(parsed, context), {

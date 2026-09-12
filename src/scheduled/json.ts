@@ -63,9 +63,23 @@ export function parseUnambiguousJson(source: string): unknown {
 
 /** Decode every top-level string value for one member without erasing repeats. */
 export function topLevelJsonStringMemberValues(source: string, expectedMember: string): readonly string[] {
+  const inspected = inspectTopLevelJsonStringMemberValues(source, expectedMember);
+  if (inspected.error) throw inspected.error;
+  return inspected.values;
+}
+
+/** Retain already-decoded top-level string members when later JSON bytes are malformed. */
+export function inspectTopLevelJsonStringMemberValues(source: string, expectedMember: string): Readonly<{
+  values: readonly string[]; error?: Error;
+}> {
   const values: string[] = [];
-  scanJson(source, false, (member, value) => {
-    if (member === expectedMember && typeof value === 'string') values.push(value);
-  });
-  return Object.freeze(values);
+  try {
+    scanJson(source, false, (member, value) => {
+      if (member === expectedMember && typeof value === 'string') values.push(value);
+    });
+    return Object.freeze({ values: Object.freeze(values) });
+  } catch (error) {
+    return Object.freeze({ values: Object.freeze(values),
+      error: error instanceof Error ? error : new Error(String(error)) });
+  }
 }

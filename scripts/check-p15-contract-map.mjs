@@ -77,7 +77,11 @@ const held = {
   52: 'NON-EXECUTABLE-UNTIL-SEAM-LEDGER.md-rows-23-27-37-44-47-48-49-54-66-67-68-69-and-Part-Ten-production-wiring; measured-or-benchmark-supported-route-arm-also-requires-SEAM-LEDGER.md-row-30',
 };
 
-const requiredExecutableCases = new Map([[10, [{
+const round12Case = {
+  file: 'tests/integration/scheduled-round12.test.ts',
+  title: 'P15-NF-08 P15-NF-10 round-twelve full-port malformed-resource validation',
+};
+const requiredExecutableCases = new Map([[8, [round12Case]], [10, [{
   file: 'tests/scheduled/review-round11.test.ts',
   title: 'P15-NF-10 package validation remains usable without claiming service continuation',
 }]]]);
@@ -106,6 +110,9 @@ const proofFiles = [
   { file: 'tests/scheduled/review-round10.test.ts', tokens: ['exerciseP15Round10Proof()', 'expect('] },
   { file: 'tests/integration/scheduled-round10.test.ts', tokens: ['exerciseP15Round10Proof()', 'expect('] },
   { file: 'tests/e2e/scheduled-round10.test.ts', tokens: ['spawnSync(', 'SIGKILL', 'expect('] },
+  { file: 'tests/scheduled/review-round12.test.ts', tokens: ['exerciseP15Round12Proof()', 'expect('] },
+  { file: 'tests/integration/scheduled-round12.test.ts', tokens: ['exerciseP15Round12Proof()', 'expect('] },
+  { file: 'tests/e2e/scheduled-round12.test.ts', tokens: ['spawnSync(', 'SIGKILL', 'expect('] },
 ];
 const laneDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.instar/lanes');
 const calendarRequest = 'design-19-scheduled-work-seam-request-calendar-adapter.md';

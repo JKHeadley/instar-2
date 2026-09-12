@@ -577,3 +577,47 @@ if (mode === 'round10-validation-recover') {
       reads: saved.reads, changed: saved.changed, facts: assembly.raw.length }));
   }
 }
+if (mode === 'round12-validation-seed-cut') {
+  mkdirSync(directory, { recursive: true });
+  const scheduled = scheduledFixture(); const second = clone(scheduled.manifest);
+  second.schedule.at = '2027-01-02T00:00:00Z'; let bytes = JSON.stringify(second);
+  if (kind === 'support') bytes = 'export const support = 1;\n';
+  if (kind === 'second-missing-field') { delete second.bounds; bytes = JSON.stringify(second); }
+  if (kind === 'second-trailing-comma') bytes = `${bytes.slice(0, -1)},}`;
+  if (kind === 'second-truncated') bytes = bytes.slice(0, -1);
+  if (kind === 'second-duplicate-type') bytes = bytes.replace('"type":"ScheduledWorkManifest"',
+    '"type":"ScheduledWorkManifest","type":"support"');
+  const input = clone(scheduled.package);
+  input.entrypoints.push({ id: 'extra-resource', path: 'data/extra.json', digest: hashBytes(bytes) });
+  const pkg = value(decodeLocalCapabilityPackage(input, scheduled.context));
+  const archive = packageArchive(pkg, { 'scheduled/manifest.json': scheduled.manifestBytes,
+    'dist/maintenance.js': scheduled.bodyBytes, 'data/extra.json': bytes });
+  const request = { package: pkg, archive, manifestPath: 'scheduled/manifest.json',
+    manifestBytes: scheduled.manifestBytes, existingManifests: [] };
+  const requestFile = openSync(join(directory, 'request.json'), 'w');
+  writeSync(requestFile, JSON.stringify(request)); fsyncSync(requestFile); closeSync(requestFile);
+  const raw = []; const facts = openSync(join(directory, 'facts.jsonl'), 'w');
+  const assembly = assemblyRuntimeFixture(core => ({ owner: 'part-ten', read: () => raw,
+    append(factBytes, expected) {
+      if ((raw.at(-1)?.contentHash ?? null) !== expected) throw new Error('head mismatch');
+      const fact = JSON.parse(factBytes); writeSync(facts, `${factBytes}\n`); fsyncSync(facts); raw.push(fact);
+      if (fact.body?.record?.id === 'transition:round12:active') process.kill(process.pid, 'SIGKILL');
+      return core.success({ kind: 'local-durable' });
+    } }));
+  const recorded = value(assembly.runtime.record('LocalCapabilityPackage', pkg));
+  value(assembly.runtime.record('PackageTransition', { ...assemblyInput('PackageTransition'),
+    id: 'transition:round12:active', operation: 'operation:round12:active', package: recorded.namespace,
+    manifestDigest: recorded.contentDigest, observedArtifactDigest: recorded.contentDigest }));
+  closeSync(facts); process.exit(2);
+}
+if (mode === 'round12-validation-recover') {
+  const scheduled = scheduledFixture(); const assembly = assemblyRuntimeFixture();
+  const rows = readFileSync(join(directory, 'facts.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
+  assembly.raw.splice(0, assembly.raw.length, ...rows);
+  const request = JSON.parse(readFileSync(join(directory, 'request.json'), 'utf8'));
+  const result = consumeResult(createScheduledWorkPackagePort().admitPackageResource(request, assembly.c), {
+    Success: () => ({ status: 'accepted' }),
+    Refused: refusal => ({ status: 'refused', detail: refusal.detail }),
+  });
+  process.stdout.write(JSON.stringify({ records: rows.length, ...result }));
+}
