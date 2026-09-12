@@ -150,10 +150,12 @@ export function finishHarnessOperationAttempt(operation: unknown, evidence: unkn
 function progressKey(event: HarnessRuntimeEvent): string {
   const subject = exactSubject(event);
   if (event.kind === 'work-transition')
-    return `work:${subject}:${event.workSubject}:${event.predecessor}:${event.workPhase}`;
+    return `work:${encoded({ subject, workSubject: event.workSubject,
+      predecessor: event.predecessor, workPhase: event.workPhase })?.bytes ?? ''}`;
   if (event.kind === 'output-chunk' && event.output)
-    return `output:${subject}:${event.output.start}:${event.output.end}:${event.output.digest}`;
-  return `non-progress:${subject}:${event.kind}`;
+    return `output:${encoded({ subject, start: event.output.start,
+      end: event.output.end, digest: event.output.digest })?.bytes ?? ''}`;
+  return `non-progress:${encoded({ subject, kind: event.kind })?.bytes ?? ''}`;
 }
 
 export function classifyHarnessRuntimeProgress(input: unknown, retained: readonly unknown[],
@@ -278,6 +280,8 @@ export function createHarnessAdmissionPort(input: HarnessAdmissionInput): Harnes
       if (retained.detail) return observationReceipt('refused', retained.detail, false, '', null);
       const event = candidate.value;
       const key = progressKey(event);
+      const failure = observationFailure(event, input);
+      if (failure) return observationReceipt('refused', failure, false, key, null);
       const existing = retained.values.find(row => row.id === event.id);
       if (existing) return harnessAdapterIdentity(existing).canonicalHash === harnessAdapterIdentity(event).canonicalHash
         ? observationReceipt('duplicate', 'exact runtime event already retained', false, key, existing)
@@ -289,8 +293,6 @@ export function createHarnessAdmissionPort(input: HarnessAdmissionInput): Harnes
         return observationReceipt('refused', progress.reason, false, progress.key, null);
       if (retained.values.length >= maximum)
         return observationReceipt('refused', 'event capacity reached; retained evidence is not age-deleted', false, key, null);
-      const failure = observationFailure(event, input);
-      if (failure) return observationReceipt('refused', failure, false, key, null);
       if (event.kind === 'output-chunk')
         return observationReceipt('refused',
           'output progress is NON-EXECUTABLE-UNTIL-slice-A2 because Part Two exposes no landed current capture-custody read port',

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { createIntakePort } from '../../src/intake/index.js';
+import { decodeAssemblyRecord } from '../../src/assembly/index.js';
 import {
   compareHarnessAdapterRecords,
   decodeHarnessAdapterRecord,
@@ -152,10 +153,11 @@ it('R5-F6 P13-NF-39 one operation retains one exact action and subject across at
 
 it('R5-F7 P13-NF-31 P13-NF-34 output progress identity ignores runtime id and capture label but not bytes', () => {
   const f = harnessFixture();
-  const original = value(decodeHarnessRuntimeEvent(eventInput('output-chunk'), f.owner.c));
-  const repeated = value(decodeHarnessRuntimeEvent(eventInput('output-chunk', {
-    id: 'event:republished', output: { ...original.output!, captureReference: 'capture:two' },
-  }), f.owner.c));
+  const original = witnessedEvent(f, 'output-chunk', { sourceEvidence: ['observation:output-original'] });
+  const repeated = witnessedEvent(f, 'output-chunk', {
+    id: 'event:republished', sourceEvidence: ['observation:output-republished'],
+    output: { ...original.output!, captureReference: 'capture:two' },
+  });
   const changed = value(decodeHarnessRuntimeEvent(eventInput('output-chunk', {
     id: 'event:changed', output: { ...original.output!, digest: digest('different'), captureReference: 'capture:three' },
   }), f.owner.c));
@@ -164,6 +166,111 @@ it('R5-F7 P13-NF-31 P13-NF-34 output progress identity ignores runtime id and ca
   expect(f.port.progressIdentity(repeated, [original])).toMatchObject({ disposition: 'duplicate' });
   expect(f.port.admitObservation(repeated, [original], 1)).toMatchObject({ disposition: 'duplicate', progress: false });
   expect(f.port.progressIdentity(changed, [original])).toMatchObject({ disposition: 'conflict' });
+});
+
+it('R6-F1 disputed copied duplicate, obsolete retained copy, foreign retained copy, and unwitnessed output duplicate all re-resolve current evidence before deduplication', () => {
+  const disputed = harnessFixture();
+  const event = witnessedEvent(disputed);
+  expect(disputed.port.admitObservation(event, [event], 2).disposition).toBe('duplicate');
+  const row = value(disputed.owner.c.history!.lookup(event.sourceEvidence[0]!))!;
+  value(disputed.owner.spine.append(value(decodeAssemblyRecord('HarnessObservation', {
+    ...row.record, detail: 'different signed claim',
+  }, { ...disputed.owner.c, validateReferences: false }))));
+  expect(disputed.port.admitObservation(event, [event], 2)).toMatchObject({
+    disposition: 'refused', reason: expect.stringContaining('disputed'), event: null,
+  });
+
+  const obsolete = harnessFixture();
+  const old = witnessedEvent(obsolete, 'heartbeat', {}, 'generation:obsolete');
+  expect(obsolete.port.admitObservation(old, [old], 2)).toMatchObject({
+    disposition: 'refused', reason: expect.stringContaining('non-current register generation'), event: null,
+  });
+
+  const foreignFixture = harnessFixture();
+  const foreign = value(decodeHarnessRuntimeEvent(eventInput('heartbeat', {
+    harness: 'foreign', machine: 'machine-b',
+  }), foreignFixture.owner.c));
+  expect(foreignFixture.port.admitObservation(foreign, [foreign], 2)).toMatchObject({
+    disposition: 'refused', reason: expect.stringContaining('another exact adapter'), event: null,
+  });
+
+  const outputFixture = harnessFixture();
+  const output = value(decodeHarnessRuntimeEvent(eventInput('output-chunk'), outputFixture.owner.c));
+  const unwitnessedRepeat = { ...output, id: 'event:unwitnessed-repeat', sourceEvidence: ['nonexistent'],
+    output: { ...output.output!, captureReference: 'nonexistent' } };
+  expect(outputFixture.port.admitObservation(unwitnessedRepeat, [output], 1)).toMatchObject({
+    disposition: 'refused', reason: expect.stringContaining('missing'), event: null,
+  });
+
+  const validFixture = harnessFixture();
+  const valid = witnessedEvent(validFixture, 'output-chunk', { sourceEvidence: ['observation:output-valid'] });
+  const validRepeat = witnessedEvent(validFixture, 'output-chunk', {
+    id: 'event:output-repeat', sourceEvidence: ['observation:output-repeat'],
+    output: { ...valid.output!, captureReference: 'capture:repeat' },
+  });
+  expect(validFixture.port.admitObservation(validRepeat, [valid], 1)).toMatchObject({
+    disposition: 'duplicate', progress: false, event: validRepeat,
+  });
+});
+
+it('R6-F2 work identity first and distinct work subject/predecessor use non-colliding canonical field boundaries', () => {
+  const f = harnessFixture();
+  const first = eventInput('work-transition', {
+    id: 'event:work-one', workSubject: 'subject:x', predecessor: 'pre', workPhase: 'phase',
+  });
+  const distinct = eventInput('work-transition', {
+    id: 'event:work-two', workSubject: 'subject', predecessor: 'x:pre', workPhase: 'phase',
+  });
+  const firstResult = f.port.progressIdentity(first, []);
+  const distinctResult = f.port.progressIdentity(distinct, [first]);
+  expect(firstResult.disposition).toBe('advancing');
+  expect(distinctResult.disposition).toBe('advancing');
+  expect(distinctResult.key).not.toBe(firstResult.key);
+});
+
+it('R6-F3 standalone v1 versus v2 compare and nested v1 migrate before compare both accept equivalent events', () => {
+  const f = harnessFixture();
+  const v2 = { ...eventInput('heartbeat'), freshFor: 0 };
+  const { sourceClock, observedAt: _observedAt, freshFor: _freshFor, ...rest } = v2 as any;
+  const v1 = { ...rest, schemaVersion: 1, at: sourceClock };
+  const state = (events: unknown[]) => ({
+    type: 'HarnessAdapterStateSnapshot', schemaVersion: 1, id: 'state:migration',
+    adapter: 'native', machine: 'machine-a', revision: 0, maxHandles: 1,
+    maxAttempts: 2, maxEvents: 3, maxCaptureBytes: 50,
+    handles: [handleInput()], attempts: [attemptInput()], events,
+  });
+  expect(value(compareHarnessAdapterRecords('HarnessRuntimeEvent', v1, v2, f.owner.c))).toEqual({ equal: true });
+  expect(decodeHarnessAdapterStateSnapshot(state([v1]), f.owner.c).kind).toBe('Success');
+  expect(value(compareHarnessAdapterRecords('HarnessAdapterStateSnapshot', state([v1]), state([v2]), f.owner.c)))
+    .toEqual({ equal: true });
+});
+
+it('R6-F4 snapshot capture at handle acquisition accepts and snapshot capture before handle acquisition refuses', () => {
+  const f = harnessFixture();
+  const snapshot = (capturedAt: number) => ({
+    type: 'HarnessHandleSnapshot', schemaVersion: 1, id: 'snapshot:clock', adapter: 'native',
+    machine: 'machine-a', capturedAt, maxHandles: 1, handles: [handleInput()],
+  });
+  expect(decodeHarnessHandleSnapshot(snapshot(10), f.owner.c).kind).toBe('Success');
+  expect(decodeHarnessHandleSnapshot(snapshot(9), f.owner.c)).toMatchObject({
+    kind: 'Refused', detail: expect.stringContaining('cannot postdate'),
+  });
+});
+
+it('R6-F6 owner launch accepts repeated content digest and handle preserves the same ordered repeated context digest sequence', () => {
+  const f = harnessFixture();
+  const launch = value(f.owner.c.history!.lookup('launch:1'))!.record as any;
+  const repeatedManifest = [launch.contextManifest[0], {
+    ...launch.contextManifest[0], class: 'another-class', reference: 'context:another',
+  }];
+  const repeatedLaunch = value(f.owner.runtime.record('HarnessLaunchSpec', {
+    ...launch, id: 'launch:repeated-digest', incarnation: 'worker-incarnation:repeated',
+    contextManifest: repeatedManifest,
+  }));
+  expect(value(f.owner.runtime.resolve(repeatedLaunch))).toMatchObject({ admitted: true });
+  const repeated = repeatedManifest.map((entry: { digest: string }) => entry.digest);
+  const handle = value(decodeHarnessRuntimeHandle(handleInput({ contextDigests: repeated as any }), f.owner.c));
+  expect(handle.contextDigests).toEqual(repeated);
 });
 
 it('R5-F4 P13-NF-05 P13-NF-25 P13-NF-29 current Part Ten observation generation is mandatory at A1 admission', () => {

@@ -50,11 +50,9 @@ function stringList(value: unknown, label: string): readonly string[] {
   if (new Set(result).size !== result.length) throw new Error(`${label}: duplicate member`);
   return result;
 }
-function hashList(value: unknown, label: string): readonly Hash[] {
+function orderedHashList(value: unknown, label: string): readonly Hash[] {
   if (!Array.isArray(value)) throw new Error(`${label}: expected list`);
-  const result = value.map(item => hash(item, label));
-  if (new Set(result).size !== result.length) throw new Error(`${label}: duplicate member`);
-  return result;
+  return value.map(item => hash(item, label));
 }
 function one<T extends string>(value: unknown, choices: readonly T[], label: string): T {
   const result = text(value, label);
@@ -143,7 +141,7 @@ function validateHandle(value: unknown): HarnessRuntimeHandle {
   hash(handle.artifactDigest, 'artifactDigest');
   hash(handle.inputDigest, 'inputDigest');
   integer(handle.acquiredAt, 'acquiredAt');
-  hashList(handle.contextDigests, 'contextDigests');
+  orderedHashList(handle.contextDigests, 'contextDigests');
   stringList(handle.dependencyFacts, 'dependencyFacts');
   return deepFreeze(handle as unknown as HarnessRuntimeHandle);
 }
@@ -158,6 +156,8 @@ function validateSnapshot(value: unknown): HarnessHandleSnapshot {
   if (!Array.isArray(snapshot.handles) || snapshot.handles.length > maximum) throw new Error('handles: capacity exceeded');
   const handles = snapshot.handles.map(validateHandle);
   if (handles.some(handle => handle.machine !== snapshot.machine || handle.harness !== snapshot.adapter)) throw new Error('handles: snapshot subject mismatch');
+  if (handles.some(handle => handle.acquiredAt > (snapshot.capturedAt as number)))
+    throw new Error('handles: acquisition cannot postdate snapshot capture');
   if (new Set(handles.map(handle => handle.launch)).size !== handles.length) throw new Error('handles: duplicate launch');
   return deepFreeze({ ...snapshot, handles } as unknown as HarnessHandleSnapshot);
 }
@@ -181,7 +181,7 @@ function validateAttempt(value: unknown): HarnessOperationAttempt {
   return deepFreeze(attempt as unknown as HarnessOperationAttempt);
 }
 
-function validateStateSnapshot(value: unknown): HarnessAdapterStateSnapshot {
+function validateStateSnapshot(value: unknown, context: HarnessAdapterDecodeContext): HarnessAdapterStateSnapshot {
   const snapshot = object(value, 'HarnessAdapterStateSnapshot');
   exact(snapshot, ['type', 'schemaVersion', 'id', 'adapter', 'machine', 'revision', 'maxHandles', 'maxAttempts',
     'maxEvents', 'maxCaptureBytes', 'handles', 'attempts', 'events'], 'HarnessAdapterStateSnapshot');
@@ -198,7 +198,10 @@ function validateStateSnapshot(value: unknown): HarnessAdapterStateSnapshot {
   if (!Array.isArray(snapshot.events) || snapshot.events.length > maxEvents) throw new Error('events: capacity exceeded');
   const handles = snapshot.handles.map(validateHandle);
   const attempts = snapshot.attempts.map(validateAttempt);
-  const events = snapshot.events.map(validateEvent);
+  const events = snapshot.events.map(event => consumeResult(decodeHarnessRuntimeEvent(event, context), {
+    Success: decoded => decoded,
+    Refused: refusal => { throw new Error(refusal.detail); },
+  }));
   if (handles.some(handle => handle.machine !== snapshot.machine || handle.harness !== snapshot.adapter)
     || events.some(event => event.machine !== snapshot.machine || event.harness !== snapshot.adapter))
     throw new Error('journal entries: snapshot subject mismatch');
@@ -238,7 +241,7 @@ function decoderFor<N extends HarnessAdapterRecordName>(name: N, context: Harnes
         const record = name === 'HarnessRuntimeEvent' ? validateEvent(value)
           : name === 'HarnessRuntimeHandle' ? validateHandle(value)
           : name === 'HarnessHandleSnapshot' ? validateSnapshot(value)
-            : validateStateSnapshot(value);
+            : validateStateSnapshot(value, context);
         return { ok: true, value: record as Extract<HarnessAdapterRecord, { type: N }> };
       } catch (error) {
         return { ok: false, detail: error instanceof Error ? error.message : 'harness adapter decode failed' };

@@ -6,6 +6,13 @@ import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const A2 = 'NON-EXECUTABLE-UNTIL-slice-A2';
+const OWNERSHIP = 'docs/17-harness-adapters/01-ownership-and-boundaries.md';
+const CTX_GROUND = 'dated 06:33Z addendum in seam-response-rungraph-followup.md, SEAM-LEDGER.md row 38';
+const CTX_CURRENT = 'dated 08:48Z addenda in seam-response-assembly-followup.md + seam-response-rungraph-followup.md, SEAM-LEDGER.md row 45';
+const HISTORY_COVERAGE = 'dated 09:10Z addendum in seam-response-rungraph-followup.md, SEAM-LEDGER.md row 52';
+const ROUTE_CONFORMANCE = 'dated 07:52Z addendum in seam-response-assembly-followup.md, SEAM-LEDGER.md row 42';
+const PROMPT = 'dated 07:10Z addenda in seam-response-effects-followup.md + seam-response-assembly-followup.md, SEAM-LEDGER.md row 41';
+const LIVE_PREREQUISITES = `LIVE-PREREQUISITES defined by ${OWNERSHIP}`;
 const executable = new Map([
   [1, 'All four owned record forms and every runtime-event variant use closed total decoders, canonical comparison, migration, and deep freezing.'],
   [2, 'The root design and all indexed section files pass the governed-document checker.'],
@@ -28,34 +35,34 @@ const whollyA2 = new Set([3, 8, 21, 28, 32, 37, 38, 51, 52]);
 const external = new Map([
   [4, 'seam-response-assembly-followup.md'],
   [6, 'seam-response-effects-payloads.md + seam-response-effects-followup.md'],
-  [7, 'seam-response-judgment.md + seam-response-assembly-followup.md'],
+  [7, `seam-response-judgment.md + ${ROUTE_CONFORMANCE}`],
   [9, 'seam-response-assembly-followup.md'],
   [10, 'seam-response-judgment.md + seam-response-assembly-followup.md'],
   [11, 'seam-response-judgment.md + seam-response-assembly-followup.md'],
   [12, 'seam-response-judgment.md + seam-response-assembly-followup.md'],
   [13, 'seam-response-assembly-followup.md'],
-  [14, 'seam-response-effects-payloads.md + seam-response-effects-followup.md + seam-response-rungraph-followup.md'],
-  [16, 'seam-response-rungraph-followup.md + seam-response-judgment.md + seam-response-effects-followup.md'],
-  [17, 'seam-response-rungraph-followup.md'],
-  [18, 'seam-response-rungraph-followup.md'],
-  [19, 'seam-response-effects-payloads.md + seam-response-effects-followup.md + seam-response-rungraph-followup.md'],
-  [20, 'seam-response-effects-payloads.md + seam-response-effects-followup.md + seam-response-rungraph-followup.md'],
-  [22, 'seam-response-rungraph-followup.md'],
-  [23, 'seam-response-rungraph-followup.md + seam-response-judgment.md + seam-response-effects-followup.md'],
-  [26, 'seam-response-rungraph-followup.md'],
+  [14, `seam-response-effects-payloads.md + seam-response-effects-followup.md + ${CTX_GROUND} + ${CTX_CURRENT} + ${HISTORY_COVERAGE}`],
+  [16, `${CTX_GROUND} + ${CTX_CURRENT} + ${HISTORY_COVERAGE} + seam-response-judgment.md + seam-response-effects-followup.md`],
+  [17, `${CTX_GROUND} + ${CTX_CURRENT} + ${HISTORY_COVERAGE}`],
+  [18, `${CTX_GROUND} + ${CTX_CURRENT} + ${HISTORY_COVERAGE}`],
+  [19, `seam-response-effects-payloads.md + seam-response-effects-followup.md + ${CTX_CURRENT} + ${HISTORY_COVERAGE}`],
+  [20, `seam-response-effects-payloads.md + seam-response-effects-followup.md + ${CTX_CURRENT} + ${HISTORY_COVERAGE}`],
+  [22, CTX_CURRENT],
+  [23, `${CTX_GROUND} + ${CTX_CURRENT} + ${HISTORY_COVERAGE} + seam-response-judgment.md + seam-response-effects-followup.md`],
+  [26, `seam-response-rungraph-followup.md compaction grant + ${CTX_CURRENT} + ${HISTORY_COVERAGE}`],
   [27, 'seam-response-run-closure.md + seam-response-rungraph-followup.md'],
-  [35, 'seam-response-assembly-followup.md + seam-response-loop-breaker.md + seam-response-loop-followup.md'],
+  [35, `${PROMPT} + seam-response-loop-breaker.md + seam-response-loop-followup.md`],
   [36, 'seam-response-effects-payloads.md + seam-response-effects-followup.md'],
   [40, 'seam-response-judgment.md + seam-response-assembly-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md'],
   [41, 'seam-response-rungraph-followup.md'],
   [42, 'part-eleven-seam-response-assembly.md'],
-  [43, 'LIVE-PREREQUISITES named by docs/17-harness-adapters/01-conformance-matrix.md'],
-  [44, 'LIVE-PREREQUISITES named by docs/17-harness-adapters/01-conformance-matrix.md'],
-  [45, 'seam-response-assembly-followup.md + seam-response-judgment.md'],
-  [47, 'LIVE-PREREQUISITES named by docs/17-harness-adapters/01-conformance-matrix.md'],
-  [48, 'seam-response-judgment.md + seam-response-assembly-followup.md'],
-  [49, 'seam-response-rungraph-followup.md'],
-  [50, 'seam-response-rungraph-followup.md'],
+  [43, LIVE_PREREQUISITES],
+  [44, LIVE_PREREQUISITES],
+  [45, `${ROUTE_CONFORMANCE} + ${HISTORY_COVERAGE} + seam-response-judgment.md + seam-response-assembly-followup.md`],
+  [47, LIVE_PREREQUISITES],
+  [48, `seam-response-judgment.md + seam-response-assembly-followup.md + ${ROUTE_CONFORMANCE} + ${HISTORY_COVERAGE}`],
+  [49, HISTORY_COVERAGE],
+  [50, HISTORY_COVERAGE],
 ]);
 
 const proofTitles = new Map([
@@ -90,6 +97,45 @@ export function p13Dispositions(design = readFileSync('docs/17-harness-adapters/
     return { ...row, status: `NON-EXECUTABLE-UNTIL-${dependency}`,
       reason: 'The named owner contract is not landed; no local stand-in is counted.' };
   });
+}
+
+/** Resolve held-arm citations against the governing ownership table and its exact paired grants. */
+export function checkP13DependencyCitations(rows = p13Dispositions()) {
+  const ownership = readFileSync(OWNERSHIP, 'utf8');
+  const failures = [];
+  const citations = new Set();
+  for (const row of rows) {
+    for (const path of row.status.match(/docs\/[A-Za-z0-9_./-]+\.md/g) ?? []) {
+      citations.add(path);
+      if (!existsSync(path)) failures.push(`${row.id}: missing dependency document ${path}`);
+    }
+    for (const file of row.status.match(/(?:part-eleven-)?seam-response-[A-Za-z0-9-]+\.md|SEAM-LEDGER\.md/g) ?? []) {
+      if (file === OWNERSHIP.split('/').at(-1)) continue;
+      citations.add(file);
+      if (!ownership.includes(`\`${file}\``))
+        failures.push(`${row.id}: ${file} is not resolved by ${OWNERSHIP}`);
+    }
+  }
+  const required = [
+    ...[14, 16, 17, 18, 19, 20, 22, 23, 26].map(number => [number, CTX_CURRENT]),
+    [35, PROMPT],
+    ...[7, 45, 48].map(number => [number, ROUTE_CONFORMANCE]),
+    ...[14, 16, 17, 18, 19, 20, 23, 26, 45, 48, 49, 50].map(number => [number, HISTORY_COVERAGE]),
+  ];
+  for (const [number, dependency] of required) {
+    const status = rows.find(row => row.number === number)?.status ?? '';
+    if (!status.includes(dependency)) failures.push(`P13-NF-${String(number).padStart(2, '0')}: missing ${dependency}`);
+  }
+  for (const anchor of [
+    'The stable label **LIVE-PREREQUISITES** means',
+    'dated 06:33Z addendum in `seam-response-rungraph-followup.md`',
+    'dated 08:48Z addenda in `seam-response-assembly-followup.md` and `seam-response-rungraph-followup.md`',
+    'dated 09:10Z addendum in `seam-response-rungraph-followup.md`',
+    'dated 07:52Z addendum in `seam-response-assembly-followup.md`',
+    'dated 07:10Z addendum in `seam-response-effects-followup.md`',
+  ]) if (!ownership.includes(anchor)) failures.push(`${OWNERSHIP}: missing dependency anchor ${anchor}`);
+  if (failures.length) throw new Error(failures.join('\n'));
+  return { ownership: OWNERSHIP, citations: [...citations].sort(), requiredPairs: required.length };
 }
 
 const generated = new Set(['generated/capabilities.md', 'generated/coverage.md', 'generated/glossary.md',
@@ -134,6 +180,8 @@ export function checkP13Architecture() {
   const checker = readFileSync('scripts/check-p13-contract-map.mjs', 'utf8');
   const invented = ['part-thirteen', 'seam-response', 'intake.md'].join('-');
   if (checker.includes(invented)) failures.push('invented intake seam grant remains');
+  try { checkP13DependencyCitations(); }
+  catch (error) { failures.push(error instanceof Error ? error.message : 'dependency citation validation failed'); }
   if (failures.length) throw new Error(failures.join('\n'));
   return { changed, sourceFiles };
 }
