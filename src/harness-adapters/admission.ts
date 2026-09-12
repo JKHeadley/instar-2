@@ -168,11 +168,12 @@ export function classifyHarnessRuntimeProgress(input: unknown, retained: readonl
   const key = progressKey(event);
   const subjectRows = prior.values.filter(row => exactSubject(row) === exactSubject(event));
   if (event.kind === 'output-chunk' && event.output) {
-    const sameRange = subjectRows.find(row => row.output
+    const sameRange = subjectRows.filter(row => row.output
       && row.output.start === event.output!.start && row.output.end === event.output!.end);
-    if (sameRange) return sameRange.output!.digest === event.output.digest
-      ? progressReceipt('duplicate', 'owner subject, output range, and content digest already retained', key)
-      : progressReceipt('conflict', 'owner subject and output range retain a different content digest', key);
+    if (sameRange.some(row => row.output!.digest !== event.output!.digest))
+      return progressReceipt('conflict', 'owner subject and output range retain a different content digest', key);
+    if (sameRange.length > 0)
+      return progressReceipt('duplicate', 'owner subject, output range, and content digest already retained', key);
     return progressReceipt('advancing', 'new owner-subject output range and content digest', key);
   }
   if (event.kind === 'work-transition') return subjectRows.some(row => progressKey(row) === key)

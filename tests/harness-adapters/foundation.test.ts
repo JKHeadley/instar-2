@@ -168,6 +168,38 @@ it('R5-F7 P13-NF-31 P13-NF-34 output progress identity ignores runtime id and ca
   expect(f.port.progressIdentity(changed, [original])).toMatchObject({ disposition: 'conflict' });
 });
 
+it('R8-F1 P13-NF-31 P13-NF-34 every retained digest for one output range participates in conflict detection', () => {
+  const f = harnessFixture();
+  const a = witnessedEvent(f, 'output-chunk', { id: 'output:a', sourceEvidence: ['obs:a'] });
+  const b = witnessedEvent(f, 'output-chunk', {
+    id: 'output:b', sourceEvidence: ['obs:b'], sourceClock: 21, observedAt: 21,
+    output: { ...a.output!, digest: digest('world'), captureReference: 'capture:b' },
+  });
+  const candidate = witnessedEvent(f, 'output-chunk', {
+    id: 'output:repeat', sourceEvidence: ['obs:repeat'], sourceClock: 22, observedAt: 22,
+    output: { ...a.output!, captureReference: 'capture:repeat' },
+  });
+  const agreeing = witnessedEvent(f, 'output-chunk', {
+    id: 'output:agreeing', sourceEvidence: ['obs:agreeing'],
+    output: { ...a.output!, captureReference: 'capture:agreeing' },
+  });
+  const cases = [
+    ['consistent', [a], 'duplicate', 'duplicate'],
+    ['different-bytes', [b], 'conflict', 'refused'],
+    ['conflicting-a-first', [a, b], 'conflict', 'refused'],
+    ['conflicting-b-first', [b, a], 'conflict', 'refused'],
+    ['two-consistent', [a, agreeing], 'duplicate', 'duplicate'],
+    ['two-consistent-reversed', [agreeing, a], 'duplicate', 'duplicate'],
+  ] as const;
+
+  for (const [label, retained, identity, admission] of cases) {
+    expect(f.port.progressIdentity(candidate, retained), `${label} classification`)
+      .toMatchObject({ disposition: identity });
+    expect(f.port.admitObservation(candidate, retained, 3), `${label} admission`)
+      .toMatchObject({ disposition: admission, progress: false });
+  }
+});
+
 it('R6-F1 disputed copied duplicate, obsolete retained copy, foreign retained copy, and unwitnessed output duplicate all re-resolve current evidence before deduplication', () => {
   const disputed = harnessFixture();
   const event = witnessedEvent(disputed);
