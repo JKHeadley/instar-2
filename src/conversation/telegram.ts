@@ -483,8 +483,12 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
       && row.record.disposition === 'passed').map(row => row.record.type === 'AdapterConformance' ? row.record.mode : '');
     ensure(observedModes.every(existing => existing === mode), 'one Telegram bot cannot admit two intake modes');
     validateWebhookChoice(declaration, deps);
-    const now = take(decodeMeasurement('clock', deps.clock(), deps.governance.context.types));
     const probe = take(deps.api.identity({ token: declaration.token, apiVersion: declaration.apiVersion }));
+    // Pin the committing conformance view and decision clock only after the
+    // identity dependency has returned. Every freshness check and any new
+    // conformance record below consume this one post-dependency instant.
+    const current = take(deps.assembly.inspectCurrent());
+    const now = take(decodeMeasurement('clock', deps.clock(), deps.governance.context.types));
     ensure(probe.authenticated === true && probe.botId === declaration.bot.id
       && probe.username === declaration.bot.username && probe.apiVersion === declaration.apiVersion,
       'fresh authenticated Telegram identity probe does not match the declaration');
@@ -496,11 +500,9 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
     ensure(/^sha256:[a-f0-9]{64}$/.test(probe.capture.hash) && probe.capture.reference.length > 0 && probe.reference.length > 0,
       'Telegram identity probe lacks capture-backed evidence');
     validateIdentityProbe(declaration, deps, probe, now);
-    // Pin one owner-issued conformance view at the committing boundary, after
-    // every external admission dependency has returned. Both the one-mode
-    // decision and prior-conformance reuse consume this same snapshot, so an
-    // admission that committed during the identity probe cannot be missed.
-    const current = take(deps.assembly.inspectCurrent());
+    // Both the one-mode decision and prior-conformance reuse consume the same
+    // owner-issued snapshot, so an admission that committed during the
+    // identity probe cannot be missed.
     const modes = current.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id
       && row.record.disposition === 'passed').map(row => row.record.type === 'AdapterConformance' ? row.record.mode : '');
     ensure(modes.every(existing => existing === mode), 'one Telegram bot cannot admit two intake modes');
