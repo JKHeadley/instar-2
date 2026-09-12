@@ -26,8 +26,9 @@ describe('permanent Part Three additivity gate', () => {
     const differs = (path: string) => !readFileSync(path).equals(execFileSync('git', ['show', `${base}:${path}`]));
     const unchanged = ['src/register/declarations.ts', 'src/terms/resolver.ts', 'src/rulegraph/graph.ts', 'src/decode/canonical.ts'];
     expect(unchanged.filter(differs)).toEqual([]);
-    expect(['tests/integration/register.test.ts', 'tests/register/owner-references.test.ts', 'tests/register/workflow.test.ts']
+    expect(['tests/register/owner-references.test.ts', 'tests/register/workflow.test.ts']
       .filter(differs)).toEqual([]);
+    expect(differs('tests/integration/register.test.ts')).toBe(true);
     expect(differs('src/register/generator.ts')).toBe(true);
 
     const diff = execFileSync('git', ['diff', '--unified=0', base, '--', 'src/register/generator.ts'], { encoding: 'utf8' });

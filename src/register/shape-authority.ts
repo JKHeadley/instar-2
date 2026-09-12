@@ -1,5 +1,5 @@
 import type { Hash, Json, Result } from '../index.js';
-import type { FactReference, GeneratedRegister, RegisterContext, ShapeChangeDocument, ShapeEntries, VerifiedRegister } from './types.js';
+import type { FactReference, GeneratedRegister, OwnerReferenceEnrollment, RegisterContext, ShapeChangeDocument, ShapeEntries, VerifiedRegister } from './types.js';
 import { checked, encoding, exact, list, number, object, requireThat, strings, take, text } from './boundary.js';
 import { wasVerified, generateRegister, generationOf } from './generator.js';
 import { validateShapeChangeDocument } from './shape-change.js';
@@ -22,6 +22,30 @@ export interface ShapeApprovalPort {
   // Verification must resolve operator approval of EXACTLY this binding, not
   // merely report that an unrelated approval fact exists.
   readonly verifyShapeChange: (binding: ShapeChangeBinding) => Result<FactReference>;
+}
+
+export function resolveOwnerReferenceEnrollments(enrollments: readonly OwnerReferenceEnrollment[],
+  parent: VerifiedRegister, candidate: ShapeEntries, change: ShapeChangeBinding | null,
+  approvals: ShapeApprovalPort, context: RegisterContext, document?: ShapeChangeDocument) {
+  return checked<readonly OwnerReferenceEnrollment[], RegisterContext>('OwnerReferenceEnrollments',
+    { enrollments, parent, candidate, change }, context, () => {
+      requireThat(wasVerified(parent, context.authorityTypes?.now ?? context.types.now),
+        'P3-NF-09: owner enrollments require the witnessed parent generation');
+      const introduced = enrollments.filter(row => !parent.shape.parts.includes(row.part));
+      if (introduced.length > 0) {
+        requireThat(change !== null && change.approval !== undefined && document !== undefined,
+          'P3-NF-09: owner enrollment for a part absent from the parent requires the exact current signed shape-change document');
+        requireThat(encoding(introduced).bytes === encoding(document.ownerReferences).bytes,
+          'P3-NF-09: owner enrollment ledger differs from the exact current shape-change document');
+        requireThat(change.document.hash === encoding(document).hash
+          && document.parent === change.parent && document.candidateShape === change.candidateShape
+          && encoding(document.approvedIn).bytes === encoding(change.approval).bytes,
+        'P3-NF-09: owner enrollment shape-change binding differs');
+        validateShapeChangeDocument(parent.shape, candidate, document, context);
+        take(approvals.verifyShapeChange(change));
+      }
+      return enrollments;
+    });
 }
 
 function profileExpression(input: Json, depth = 0): void {

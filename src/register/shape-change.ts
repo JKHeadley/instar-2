@@ -25,15 +25,32 @@ function change(input: Json): ShapeChangeEntry {
   return { operation: operation as ShapeChangeEntry['operation'], path,
     ...(operation === 'add' ? { after: value.after! } : operation === 'remove' ? { before: value.before! } : { before: value.before!, after: value.after! }) };
 }
-function enrollment(input: Json): OwnerReferenceEnrollment {
+const partUnits = new Map(Object.entries({ one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
+  fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 }));
+const partTens = new Map(Object.entries({ twenty: 20, thirty: 30, forty: 40, fifty: 50,
+  sixty: 60, seventy: 70, eighty: 80, ninety: 90 }));
+
+function ownerPart(owner: string): number | undefined {
+  if (!owner.startsWith('part-')) return undefined;
+  const words = owner.slice(5).split('-');
+  if (words.length === 1) return partUnits.get(words[0]!) ?? partTens.get(words[0]!);
+  if (words.length === 2) {
+    const tens = partTens.get(words[0]!), unit = partUnits.get(words[1]!);
+    if (tens !== undefined && unit !== undefined && unit < 10) return tens + unit;
+  }
+  return undefined;
+}
+
+export function resolveOwnerReferenceIdentity(input: Json): OwnerReferenceEnrollment {
   const value = object(input); exact(value, ['part', 'owner', 'manifest']);
   const part = number(value.part, 'owner enrollment part');
   requireThat(Number.isSafeInteger(part) && part > 0, 'owner enrollment part must be a positive integer');
   const owner = text(value.owner, 'owner enrollment owner');
-  requireThat(/^part-[a-z]+(?:-[a-z]+)*$/.test(owner), 'owner enrollment owner must use a part-name slug');
   const manifest = object(value.manifest!); exact(manifest, ['path', 'hash']);
   const path = text(manifest.path, 'owner enrollment manifest path');
-  requireThat(path === `register-source/owner-references/${owner}.json`, 'owner enrollment manifest path disagrees with owner');
+  requireThat(ownerPart(owner) === part && path === `register-source/owner-references/${owner}.json`,
+    'owner enrollment part, owner, and manifest path must name one owner');
   return { part, owner, manifest: { path, hash: hash(manifest.hash, 'owner enrollment manifest hash') } };
 }
 
@@ -45,7 +62,7 @@ export function decodeShapeChangeDocument(input: unknown, context: BoundaryConte
     requireThat(changes.length > 0, 'shape-change document requires at least one exact change');
     requireThat(new Set(changes.map(row => row.path)).size === changes.length, 'duplicate shape change path');
     requireThat(changes.every((row, i) => i === 0 || changes[i - 1]!.path < row.path), 'shape changes must be path-sorted');
-    const ownerReferences = list(value.ownerReferences, 'ownerReferences').map(enrollment);
+    const ownerReferences = list(value.ownerReferences, 'ownerReferences').map(resolveOwnerReferenceIdentity);
     requireThat(new Set(ownerReferences.map(row => row.part)).size === ownerReferences.length
       && new Set(ownerReferences.map(row => row.owner)).size === ownerReferences.length, 'duplicate owner-reference enrollment');
     requireThat(ownerReferences.every((row, i) => i === 0 || ownerReferences[i - 1]!.part < row.part),

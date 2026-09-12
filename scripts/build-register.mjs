@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { decodeMeasurement, canonical, schemas } from '../dist/index.js';
 import { generateRegister, generationOf, renderRegister, invariantCoverage, implementedInvariants, decodeCheckRun,
   decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion,
-  decodeShapeChangeDocument, decodeNormalRegisterWorkflow } from '../dist/register/index.js';
+  decodeShapeChangeDocument, decodeNormalRegisterWorkflow, resolveOwnerReferenceEnrollments } from '../dist/register/index.js';
 import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, loadParentGeneration, value, bytes } from './register-source.mjs';
 import { checkWiring, scanSources } from './check-register-wiring.mjs';
 import { loadOwnerReferences, mergeOwnerReferences, retainedOwnerEnrollments } from './register-owner-references.mjs';
@@ -51,11 +51,22 @@ export function build(root, commit, options = {}) {
     try { return bytes(JSON.parse(content)) === bytes(workflow); } catch { return false; }
   })) throw new Error('workflow/check inputs must match committed source bytes');
   let parentInput;
+  let parent;
   let shapeDocument;
+  let change;
+  let boundary;
+  const retainedEnrollments = retainedOwnerEnrollments(input);
   if (mode === 'normal' && (workflow.type === 'RegisterWorkflow' || options.requireWorkflowSchema)) {
-    const boundary = buildContext(shapeInput, [], commit, nowValue);
+    boundary = buildContext(shapeInput, [], commit, nowValue);
     workflow = value(decodeNormalRegisterWorkflow(workflow, boundary));
     parentInput = loadParentGeneration(root, commit, workflow.parent);
+    const enrolledPaths = new Set(retainedEnrollments.map(row => row.manifest.path));
+    const parentOwnerInput = { ...input, sources: Object.fromEntries(Object.entries(input.sources)
+      .filter(([path]) => !enrolledPaths.has(path))) };
+    const parentOwner = loadOwnerReferences(root, parentOwnerInput, []);
+    const parentWorkflow = mergeOwnerReferences(workflow, parentOwner);
+    boundary = { ...buildContext(shapeInput, parentInput.register.entries.map(entry => ({ declaration: entry.declaration })), commit, nowValue),
+      references: resolveBuildReferences(root, input, parentWorkflow, options.provider, shapeInput, parentOwner) };
     const binding = workflow.shapeChange?.document;
     if (binding) {
       const raw = input.sources[binding.path];
@@ -63,17 +74,24 @@ export function build(root, commit, options = {}) {
       if (hash(JSON.parse(raw)) !== binding.hash) throw new Error('P3-NF-09: shape-change document bytes do not match approval binding');
       shapeDocument = value(decodeShapeChangeDocument(JSON.parse(raw), boundary));
     }
+    if (!options.provider || options.provider.owner !== 'part-two') throw new Error('P3-NF-21: normal build needs verified part-two provider');
+    const parentGeneration = value(decodeGeneration(parentInput.generation, boundary));
+    const parentNow = value(decodeMeasurement('clock', { type: 'Measurement', schemaVersion: 1,
+      subject: { kind: 'clock', instance: 'build-machine' }, value: nowValue, unit: 'unix-ms', at: nowValue,
+      by: 'register.generator' }, boundary.types));
+    parent = value(loadRegister(parentInput.register, parentGeneration, boundary, options.provider, parentNow));
+    change = shapeDocument ? { parent: shapeDocument.parent, candidateShape: shapeDocument.candidateShape,
+      document: workflow.shapeChange.document, approval: shapeDocument.approvedIn } : workflow.shapeChange ?? null;
   }
-  const retainedEnrollments = retainedOwnerEnrollments(input);
   if (mode === 'normal' && parentInput) {
     const previous = retainedOwnerEnrollments(readCommit(root, workflow.parent.commit));
-    for (const row of previous) if (!retainedEnrollments.some(next => bytes(next) === bytes(row)))
+    const witnessed = previous.filter(row => parent.shape.parts.includes(row.part));
+    for (const row of witnessed) if (!retainedEnrollments.some(next => bytes(next) === bytes(row)))
       throw new Error('retained owner enrollment may not be removed or changed');
-    const additions = retainedEnrollments.filter(row => !previous.some(old => bytes(old) === bytes(row)));
-    if (bytes(additions) !== bytes(shapeDocument?.ownerReferences ?? []))
-      throw new Error('P3-NF-09: owner enrollment ledger changes require the exact current shape-change document');
+    value(resolveOwnerReferenceEnrollments(retainedEnrollments, parent, boundary.shape, change,
+      options.provider, boundary, shapeDocument));
   }
-  const owner = loadOwnerReferences(root, input, shapeDocument?.ownerReferences ?? []);
+  const owner = loadOwnerReferences(root, input, retainedEnrollments);
   // Check explicit workflow presence before adding committed defaults.
   if (!converting) for (const field of ['catalog', 'references'])
     if (!Object.hasOwn(workflow, field)) throw new Error(`normal workflow missing explicit ${field}`);
@@ -142,10 +160,10 @@ export function build(root, commit, options = {}) {
   else {
     const provider = options.provider;
     const parentGeneration = value(decodeGeneration(parentInput ? parentInput.generation : workflow.parent?.generation, context));
-    const parent = value(loadRegister(parentInput ? parentInput.register : workflow.parent?.register, parentGeneration, context, provider, now));
+    parent ??= value(loadRegister(workflow.parent?.register, parentGeneration, context, provider, now));
     const e = value(decodeExtract(extract, context)); value(provider.verifyExtract(e));
     if (!value(provider.isCurrent(e.vector, now))) throw new Error('P3-NF-23: current extract is stale');
-    const change = shapeDocument ? { parent: shapeDocument.parent, candidateShape: shapeDocument.candidateShape,
+    change ??= shapeDocument ? { parent: shapeDocument.parent, candidateShape: shapeDocument.candidateShape,
       document: workflow.shapeChange.document, approval: shapeDocument.approvedIn } : workflow.shapeChange ?? null;
     if (change && !shapeDocument && hash(input.sources[change.document.path]) !== change.document.hash) throw new Error('P3-NF-09: shape-change document bytes do not match approval binding');
     register = value(generateAgainstParent(buildInput, parent, context.shape, change, provider, context, shapeDocument));

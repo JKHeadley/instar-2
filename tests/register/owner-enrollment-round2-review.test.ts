@@ -31,7 +31,8 @@ describe('round-two owner enrollment regressions', () => {
 
       writeFileSync(join(root, 'register-source/owner-enrollments.json'), JSON.stringify({ schemaVersion: 1, enrollments: [enrollment] }));
       git('add', '.'); git('commit', '-qm', 'retain approved enrollment');
-      expect(loadOwnerReferences(root, readInput()).catalog.fixtures.map(row => row.id)).toEqual(['P14-NF-50']);
+      expect(() => loadOwnerReferences(root, readInput())).toThrow('unknown owner manifest path');
+      expect(loadOwnerReferences(root, readInput(), [enrollment]).catalog.fixtures.map(row => row.id)).toEqual(['P14-NF-50']);
 
       const stolen = { ...manifest, fixtures: [{ id: 'P2-NF-32', stage: 'build', artifact: {
         path: 'tests/facts/admission.test.ts', hash: hash(readFileSync(join(root, 'tests/facts/admission.test.ts'), 'utf8')) } }] };
@@ -39,7 +40,7 @@ describe('round-two owner enrollment regressions', () => {
       const stolenEnrollment = { ...enrollment, manifest: { path: manifestPath, hash: hash(stolen) } };
       writeFileSync(join(root, 'register-source/owner-enrollments.json'), JSON.stringify({ schemaVersion: 1, enrollments: [stolenEnrollment] }));
       git('add', '.'); git('commit', '-qm', 'wrong owner attempt');
-      expect(() => loadOwnerReferences(root, readInput())).toThrow('unknown owner fixture');
+      expect(() => loadOwnerReferences(root, readInput(), [stolenEnrollment])).toThrow('unknown owner fixture');
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });

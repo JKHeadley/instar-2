@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { canonical } from '../dist/index.js';
 import { value } from './register-source.mjs';
 import { ownerDocuments } from '../dist/register/owner-contracts.js';
+import { resolveOwnerReferenceIdentity } from '../dist/register/index.js';
 
 export const ownerManifestPath = 'register-source/owner-references.json';
 export const ownerEnrollmentPath = 'register-source/owner-enrollments.json';
@@ -42,10 +43,7 @@ export function retainedOwnerEnrollments(input) {
   if (value.schemaVersion !== 1 || !Array.isArray(value.enrollments)) throw new Error('invalid owner enrollment ledger');
   const seen = new Set();
   return value.enrollments.map(row => {
-    exact(row, ['part', 'owner', 'manifest']); exact(row.manifest, ['path', 'hash']);
-    if (!Number.isSafeInteger(row.part) || row.part <= 0 || typeof row.owner !== 'string'
-      || row.manifest.path !== `register-source/owner-references/${row.owner}.json`
-      || !/^sha256:[a-f0-9]{64}$/.test(row.manifest.hash)) throw new Error('invalid retained owner enrollment');
+    row = resolveOwnerReferenceIdentity(row);
     if (seen.has(row.part) || seen.has(row.owner) || seen.has(row.manifest.path)) throw new Error('duplicate retained owner enrollment');
     seen.add(row.part); seen.add(row.owner); seen.add(row.manifest.path); return row;
   });
@@ -53,13 +51,7 @@ export function retainedOwnerEnrollments(input) {
 export function loadOwnerReferences(root, input, enrollments = []) {
   const result = { references: [], catalog: { fixtures: [], probes: [] }, decoders: [], documents: [], artifacts: {} };
   const seen = new Set();
-  const retained = retainedOwnerEnrollments(input);
-  const merged = [...retained];
-  for (const row of enrollments) {
-    const prior = merged.find(item => item.part === row.part || item.owner === row.owner || item.manifest.path === row.manifest.path);
-    if (prior && hash(prior) !== hash(row)) throw new Error('owner enrollment conflicts with retained grant');
-    if (!prior) merged.push(row);
-  }
+  const merged = enrollments.map(resolveOwnerReferenceIdentity);
   const enrolledPaths = merged.map(row => row.manifest.path);
   if (new Set([...ownerManifestPaths, ...enrolledPaths]).size !== ownerManifestPaths.length + enrolledPaths.length)
     throw new Error('owner enrollment duplicates a closed owner manifest');

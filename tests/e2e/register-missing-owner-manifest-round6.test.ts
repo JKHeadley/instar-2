@@ -36,10 +36,10 @@ describe('round-six governed owner enrollment loading', () => {
       writeFileSync(join(root, 'register-source/owner-enrollments.json'), JSON.stringify({ schemaVersion: 1, enrollments: [enrollment] }));
       git('init'); git('add', '.'); git('commit', '-qm', 'enrolled manifest present');
       const present = inputAt(git('rev-parse', 'HEAD'));
-      expect(loadOwnerReferences(root, present).catalog.fixtures).toHaveLength(1);
+      expect(loadOwnerReferences(root, present, [enrollment]).catalog.fixtures).toHaveLength(1);
       git('rm', manifestPath); git('commit', '-qm', 'enrolled manifest missing');
       const missing = inputAt(git('rev-parse', 'HEAD'));
-      expect(() => loadOwnerReferences(root, missing)).toThrow(`missing governed owner enrollment manifest ${manifestPath}`);
+      expect(() => loadOwnerReferences(root, missing, [enrollment])).toThrow(`missing governed owner enrollment manifest ${manifestPath}`);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });

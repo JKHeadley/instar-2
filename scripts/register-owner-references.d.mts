@@ -8,5 +8,6 @@ export interface OwnerReferences {
 export interface OwnerReferenceEnrollment { part: number; owner: string; manifest: { path: string; hash: string } }
 export const ownerManifestPath: string;
 export const ownerManifestPaths: string[];
+export function retainedOwnerEnrollments(input: { sources: Record<string, string> }): OwnerReferenceEnrollment[];
 export function loadOwnerReferences(root: string, input: { commit: string; sources: Record<string, string>; files: string[] }, enrollments?: readonly OwnerReferenceEnrollment[]): OwnerReferences;
 export function mergeOwnerReferences(workflow: Record<string, unknown>, owner: OwnerReferences): Record<string, unknown>;
