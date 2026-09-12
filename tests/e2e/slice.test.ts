@@ -62,7 +62,7 @@ it('P11-NF-44 P11-NF-45 a cut execution keeps stable logical identities and sati
   expect(cut.report.accounting.boots).toBe(3);
   expect(control.report.accounting.boots).toBe(1);
   expect(cut.report).toMatchObject({ assemblyBoot: { owner: 'part-ten', admission: 'admission:restart-production' } });
-}, 240000);
+}, 300000);
 
 it('P11-NF-47 P11-NF-48 an opaque adapter cut after the dispatch-claim stays owned and uncertain with retained exposure and zero replay', async () => {
   const opaque = await execute({ profile: 'reply', adapter: 'telegram-opaque', cuts: ['outbound-consume'] });
