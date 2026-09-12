@@ -91,7 +91,7 @@ export function validateShapeChangeDocument(parent: ShapeEntries, candidate: Sha
     'P3-NF-09: shape-change document candidate differs');
   requireThat(encoding(document.changes).bytes === encoding(shapeDifferences(parent, candidate)).bytes,
     'P3-NF-09: shape-change document does not name the exact shape entries changed');
-  const introducedParts = document.changes.filter(row => row.operation === 'add' && /^\/parts\/\d+$/.test(row.path)).map(row => row.after);
+  const introducedParts = candidate.parts.filter(part => !parent.parts.includes(part));
   for (const enrollment of document.ownerReferences) requireThat(introducedParts.includes(enrollment.part),
     `P3-NF-09: owner-reference enrollment part ${enrollment.part} is not introduced by this shape change`);
   void context;

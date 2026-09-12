@@ -67,10 +67,14 @@ export function loadOwnerReferences(root, input, enrollments = []) {
   for (const path of Object.keys(input.sources)) if (path.startsWith('register-source/owner-references/') && !admittedPaths.includes(path))
     throw new Error('unknown owner manifest path ' + path);
   for (const manifestPath of admittedPaths) {
-  const raw = input.sources[manifestPath]; if (raw === undefined) continue;
+  const enrollment = merged.find(row => row.manifest.path === manifestPath);
+  const raw = input.sources[manifestPath];
+  if (raw === undefined) {
+    if (enrollment) throw new Error('missing governed owner enrollment manifest ' + manifestPath);
+    continue;
+  }
   const manifest = JSON.parse(raw);
   exact(manifest, ['schemaVersion', 'owner', 'fixtures', 'probes', 'decoders', 'documents']);
-  const enrollment = merged.find(row => row.manifest.path === manifestPath);
   if (enrollment && (hash(manifest) !== enrollment.manifest.hash || manifest.owner !== enrollment.owner))
     throw new Error('governed owner enrollment differs from committed manifest');
   if (manifest.schemaVersion !== 1 || typeof manifest.owner !== 'string' || !Object.hasOwn(contracts, manifest.owner) && !enrollment)

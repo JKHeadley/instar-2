@@ -154,10 +154,24 @@ function decodeVersions(kind: typeof REGISTER_VERSION_FACT | typeof SHAPE_VERSIO
   }
   const walked = walkVersions(decoded);
   requireThat(walked.conflicts.length === 0, 'Part Two governed-version history is conflicted');
-  // Part Two owns the replay decision. Identical content under the identical
-  // approval is an idempotent replay, not a second version-chain row.
-  const duplicates = new Set(walked.duplicates);
-  return decoded.filter(version => !duplicates.has(version.id));
+  // Keep the complete owner-decoded history here. Part Two's walker resolves
+  // references through replay aliases; removing an alias before a later walk
+  // turns a valid successor that names it into a false chain gap.
+  return decoded;
+}
+
+function replayAliases(versions: readonly GovernedVersion[], duplicates: ReadonlySet<string>): ReadonlyMap<string, string> {
+  const aliases = new Map<string, string>();
+  const canonical: GovernedVersion[] = [];
+  for (const version of [...versions].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
+    if (!duplicates.has(version.id)) { canonical.push(version); continue; }
+    const original = canonical.find(row => row.subject === version.subject && row.contentHash === version.contentHash
+      && row.approvedIn.id === version.approvedIn.id
+      && encoding(row.supersedes).bytes === encoding(version.supersedes).bytes);
+    requireThat(original !== undefined, `Part Two replay ${version.id} has no canonical identity`);
+    aliases.set(version.id, original.id);
+  }
+  return aliases;
 }
 
 function reaches(actual: CausalFrontier, required: CausalFrontier): boolean {
@@ -182,14 +196,17 @@ export function createPartTwoRegisterAuthority(options: PartTwoRegisterAuthority
     verifyExtract: (rows: readonly VersionRowInput[], vector: FactPositionVectorReference, snapshot: FactSnapshot) => checked<FactPositionVectorReference, RegisterContext>('PartTwoVersionExtract', { rows, vector }, options.context, () => {
       const witness = witnessFor(vector, snapshot);
       const versions = decodeVersions(REGISTER_VERSION_FACT, options, snapshot, witness.ids);
-      const current = new Set(walkVersions(versions).current.map(v => v.id));
-      const expected = versions.map(version => {
+      const walked = walkVersions(versions);
+      const duplicates = new Set(walked.duplicates);
+      const aliases = replayAliases(versions, duplicates);
+      const current = new Set(walked.current.map(v => v.id));
+      const expected = versions.filter(version => !duplicates.has(version.id)).map(version => {
         const content = object(version.content); const declared = content.status;
         requireThat(typeof declared === 'string', 'governed register content needs its declaration status');
         requireThat(version.landedIn !== null, 'register version requires its verified repository landing');
         return { id: version.subject, version: version.id,
           status: current.has(version.id) ? (declared === 'retired' ? 'retired' : 'live') : 'superseded',
-          since: version.since, supersedes: version.supersedes,
+          since: version.since, supersedes: version.supersedes.map(id => aliases.get(id) ?? id),
           approvedIn: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: version.approvedIn.id },
           landedIn: version.landedIn, base: version.base, contentHash: version.contentHash };
       }).sort((a, b) => a.version < b.version ? -1 : a.version > b.version ? 1 : 0);
@@ -282,13 +299,21 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
       if (requested.kind !== undefined) requireThat(status.fact.kind === text(requested.kind, 'reference.kind'), 'record reference kind differs');
       return true;
     }),
-    verifyRecord: (reference, expected) => checked<boolean, RegisterContext>('PartTwoRegisterRecord', { reference, expected }, options.context, () => {
+    verifyRecord: (reference, expected) => checked<boolean, RegisterContext>('PartTwoRegisterRecord', { reference, expected }, options.context, raw => {
+      const input = object(raw); const requested = object(input.reference!); exact(requested, ['id', 'kind']);
+      const id = text(requested.id, 'reference.id'), kind = text(requested.kind, 'reference.kind');
       const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
       const matches = snapshot.entries.filter(status => active(status, snapshot, view)
-        && status.fact.kind === reference.kind
-        && encoding(recordBody(status)).bytes === encoding(expected).bytes);
+        && status.fact.kind === kind
+        && encoding(recordBody(status)).bytes === encoding(input.expected).bytes
+        && (status.fact.id === id || (() => {
+          const body = recordBody(status);
+          if (body === null || typeof body !== 'object' || Array.isArray(body)) return false;
+          const record = body as Readonly<Record<string, Json>>;
+          return Object.hasOwn(record, 'id') && record.id === id;
+        })()));
       requireThat(matches.length === 1,
-        `Part Two record ${reference.id} is absent, retracted, corrected, conflicted, duplicated, or differs from workflow evidence`);
+        `Part Two record ${id} is absent, retracted, corrected, conflicted, duplicated, or differs from workflow evidence`);
       return true;
     }),
     verifySemanticReview: review => checked<boolean, RegisterContext>('PartTwoSemanticReview', review, options.context, () => {
