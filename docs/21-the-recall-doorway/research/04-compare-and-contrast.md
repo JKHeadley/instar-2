@@ -22,6 +22,7 @@ Every substantive cell is labeled:
 | Label | What the cell can establish |
 |---|---|
 | S | Source code/configuration inspected in R1/R2; running use and outcome require separate evidence. |
+| R | A local rule or reported historical observation; not a reproduced runtime measurement. |
 | M | Our executed synthetic real-method fixture, under its stated substitutions. |
 | A | Author-measured result in the linked external study; not reproduced here. |
 | D | Primary author/documentation describes a mechanism; not an independent experiment. |
@@ -253,6 +254,11 @@ deterministic refusal rules. A vague semantic risk flag on ordinary chat should 
 an indefinite blocking reviewer. R5 proposes bounded advisory treatment there; any extension
 of *blocking semantic* review beyond irreversible effects requires explicit owner reconciliation
 with the rulebook before design approval. Research permission is not a rule amendment.
+
+Irreversibility is also a necessary condition, not blanket authorization for model review of
+every email or public post. The rulebook describes few, nearly deterministic exceptions. A
+selective semantic memory reviewer expands that exception policy even within consequential
+effects; its scope and net benefit need explicit owner reconciliation before a governed design.
 
 ## 7. Implementation seams checked against current main
 

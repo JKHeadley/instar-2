@@ -352,6 +352,11 @@ Targeted SHA-256 identities (not a whole-package integrity attestation):
 | `H:.instar/hooks/instar/compaction-recovery.sh` | `2de027b91ac721279a79578a464301946ffbfa453526e146d60e5c22e948abf2` |
 | `H:.instar/hooks/instar/grounding-before-messaging.sh` | `99ba81dec44324783f76756ee9649589a26419f7204ccd476738285698fd0377` |
 
+**MEASURED (M):** round-two execution of all three real installed methods with synthetic
+collaborators reproduces the summary-prefix, missing-body and lexical-only observations.
+[R5 §7](05-proposals-and-evaluation.md#7-executed-baseline-fixtures--installed-methods-synthetic-collaborators)
+records the execution environment, results and limits. This is not a Dawn runtime experiment.
+
 ## 9. Runtime-only questions for the handoff
 
 For Echo and the pending Dawn inquiry:
