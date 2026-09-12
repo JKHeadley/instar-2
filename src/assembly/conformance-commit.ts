@@ -1,6 +1,6 @@
 import { canonical } from '../index.js';
-import type { BoundaryContext } from '../index.js';
-import type { AdapterConformance, AdapterConformanceCommitPort, AssemblyRuntimePort, CurrentAssemblyFact } from './contracts.js';
+import type { BoundaryContext, Result } from '../index.js';
+import type { AdapterConformance, AssemblyRuntimePort, CurrentAssemblyFact } from './contracts.js';
 import { assemblyIdentity } from './records.js';
 import { boundary, ensure, take } from './boundary.js';
 
@@ -15,6 +15,19 @@ function exactFacts(rows: readonly CurrentAssemblyFact[], adapter: string): read
 
 function sameFacts(left: readonly string[], right: readonly string[]): boolean {
   return take(canonical([...left].sort())).bytes === take(canonical([...right].sort())).bytes;
+}
+
+export interface AdapterConformanceCommitFrontier {
+  readonly adapter: string;
+  readonly facts: readonly string[];
+}
+
+export interface AdapterConformanceCommitPort {
+  readonly owner: 'part-ten';
+  commit(input: Readonly<{
+    frontier: AdapterConformanceCommitFrontier;
+    record: unknown;
+  }>): Result<AdapterConformance>;
 }
 
 /**

@@ -10,7 +10,7 @@ import type { VerificationHost } from '../../src/verification/index.js';
 import {
   admitTelegramAdapter, extractTelegramUpdate, telegramParserDeclarationId,
 } from '../../src/conversation/index.js';
-import { createAdapterConformanceCommitPort } from '../../src/assembly/index.js';
+import { createAdapterConformanceCommitPort } from '../../src/assembly/conformance-commit.js';
 import type {
   AdmittedTelegramAdapter, TelegramBotApiCustodianPort, TelegramBotDeclaration, TelegramIdentityProbe,
 } from '../../src/conversation/index.js';

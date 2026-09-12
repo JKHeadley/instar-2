@@ -1,8 +1,7 @@
 import { expect, it } from 'vitest';
 import { admitTelegramAdapter } from '../../src/conversation/index.js';
-import type {
-  AdapterConformanceCommitPort, AssemblyHistoryReadPort, AssemblyRuntimePort,
-} from '../../src/assembly/index.js';
+import type { AssemblyHistoryReadPort, AssemblyRuntimePort } from '../../src/assembly/index.js';
+import type { AdapterConformanceCommitPort } from '../../src/assembly/conformance-commit.js';
 import type { TelegramBotApiCustodianPort } from '../../src/conversation/index.js';
 import type { VerificationRuntimePort } from '../../src/verification/index.js';
 import { value } from '../intake/fixtures.js';

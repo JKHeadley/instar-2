@@ -2,9 +2,9 @@ import type {
   BoundaryContext, Clock, Hash, ProvenanceInput, RefusalReason, Result, SecretRef,
 } from '../index.js';
 import type {
-  AdapterConformance, AdapterConformanceCommitPort, AdapterEvidenceContract,
-  AssemblyHistoryReadPort, AssemblyRuntimePort,
+  AdapterConformance, AdapterEvidenceContract, AssemblyHistoryReadPort, AssemblyRuntimePort,
 } from '../assembly/index.js';
+import type { AdapterConformanceCommitPort } from '../assembly/conformance-commit.js';
 import type { FactStorePort } from '../facts/index.js';
 import type { InboundRoute, IntakePort } from '../intake/index.js';
 import type { RegisterContext, VerifiedRegister } from '../register/index.js';

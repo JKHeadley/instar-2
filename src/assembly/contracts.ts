@@ -203,19 +203,6 @@ export interface AssemblyRuntimePort {
   admit(manifest: string, scope: string): Result<AssemblyAdmission>;
 }
 
-export interface AdapterConformanceCommitFrontier {
-  readonly adapter: string;
-  readonly facts: readonly string[];
-}
-
-export interface AdapterConformanceCommitPort {
-  readonly owner: 'part-ten';
-  commit(input: Readonly<{
-    frontier: AdapterConformanceCommitFrontier;
-    record: unknown;
-  }>): Result<AdapterConformance>;
-}
-
 export interface AssemblyComposition {
   readonly host: AssemblyHost; readonly spine: AssemblySpine; readonly harnesses: readonly HarnessAdapterPort[];
   readonly model: ModelAdapterPort; readonly persistence: PersistenceAdapterPort;
