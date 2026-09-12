@@ -1,0 +1,95 @@
+## 2. The principal recall contract
+
+**Rule — every principal decision and every outgoing message enters the boundary.** Rules
+1, 4, 29, 41, 57, 66, 77, 78, 83, 95 and 114; **checks: P21-NF-03/04/08/10/13/21**.
+The owner classifies the invocation from the admitted work and operation, not from a caller's
+`internal` string or the wording of its draft. A principal draft cannot submit to Part 11
+without a recall disposition. Every Part 12 outgoing message/effect must validate a matching
+disposition before dispatch. This includes automated replies, ordinary worker output, native
+harness output, scheduled email and infrastructure notices. Existing emergency/stop precedence
+and minimal-response duties remain with their owners; recall is not a new stop gate.
+
+One structural entry point, proposed `RecallPort.prepare`, takes the following resolved inputs.
+The eventual decoder must reject unresolved authority and caller-forged resource handles.
+
+| Input | Required content and binding |
+|---|---|
+| Work | Owner-admitted root/run/step, judgment purpose, current intake/task capture, incarnation, generation and initiating principal |
+| Audience | Current conversation binding and exact recipients/target, including account and channel mode; any multiple-recipient set is explicit |
+| Scope | Owner-issued internal-use and disclosure policy references, identity mapping frontier, provider/custodian access scope and policy version |
+| History | Current permitted recent context, actual grounding reference when required, exact cited references, open commitments/directives resolved by their owners, fresh clock |
+| Sources | Permitted source inventory, captured frontier, per-index coverage, known unknown peers and unavailable sources |
+| Resources | Reserved root budget handle, absolute deadline, allowed retrievers/helper purposes, queue/cancellation policy and current remaining charges |
+
+The proposed output is an evidence packet plus `RecallAttempt` and `RecallManifest` references.
+It carries one disposition: `assembled`, `no-additional-context`, `degraded`, or
+`prerequisite-unresolved`. These describe recall, not authority or effect success. A malformed
+request is refused by the public owner boundary and cannot obtain a success-shaped receipt.
+
+An owner-generated fixed notice with no model call still has an outgoing recall disposition,
+captured template/output and authoritative source references. Its model-submission field is
+explicitly not applicable. It must not invent a provider call or consumption observation
+to satisfy the same final-binding interface. Historical prose introduced by a model instead
+uses the normal principal judgment path. This keeps the minimal responder finite.
+
+| Disposition | What it means | Consumer behavior |
+|---|---|---|
+| assembled | Bounded selection completed with its source statuses and limits exposed | Principal reads the packet; completeness beyond declared coverage is not implied |
+| no-additional-context | The owner policy decided current input suffices, with a recorded reason | Current input still enters accounting; it is counted in entry coverage, not as a successful historical search |
+| degraded | Some eligible source, selection, rendering or diagnostic work failed or exhausted its budget | Ordinary conversation uses available permitted evidence and qualifies material uncertainty; never claim unavailable history was empty |
+| prerequisite-unresolved | A particular consequential prerequisite lacks sufficient evidence under an approved owner rule | Effect owner retains that exact effect pending; status to the initiator remains reachable |
+
+**Rule — retrieval is compulsory to consider, proportionate to perform.** Rules 13, 40,
+57, 77 and 95; **checks: P21-NF-03/05/08/10**. The default policy inspects the current task,
+exact references, relevant current constraints and source coverage. It starts with exact/raw
+and lexical sources, then admits additional adapters under the selected policy and remaining
+budget. A greeting, literal acknowledgment, or fixed infrastructure status with no historical
+claim can take `no-additional-context`. A substantive answer cannot claim this shortcut merely
+because its last input is short. Its reason is auditable and its misses are sampled in section 9.
+
+A principal may request deeper search through the same root while drafting. This consumes the
+remaining envelope; it does not mint another allowance. Every model submission under that
+judgment receives its actual-input accounting, including later tool-result context. A new,
+independent work decision may open another root through the owner; self-retries may not.
+This adopts the distinct A/B hypotheses in
+[R5 §§2–4](research/05-proposals-and-evaluation.md#2-common-boundary-and-recursion-rule).
+
+**Rule — subordinate intelligence cannot recurse into principal recall.** Rules 1, 40,
+41, 57, 75 and 114; **checks: P21-NF-04/08/19**. Query planning, query rewriting,
+summarization, embedding, extraction, reranking, live review and one bounded draft repair
+are subordinate purposes. The owner grants their handles only as children of a live root.
+They have scoped evidence-read/analysis capabilities, no effect or sender handles, and no
+principal-root constructor. Their provider calls still pass through Part 11 and are captured
+and charged. The classification prevents B/C re-entry; it does not exempt a child from A.
+
+The owner checks parentage, purpose, remaining call/read budgets, depth and cancellation before
+each child admission. Depth is at most two for recursive search in the proposed pilot; total
+root caps remain stricter. A child requesting an outward action produces only a proposal for
+the normal principal/effect boundary. A background reflection job has its own durable work
+and resource account; its output is derived memory, not permission to send a message.
+
+**Rule — drafting and sending share proof only while the subject is unchanged.** Rules
+28, 42, 89, 95 and 108; **checks: P21-NF-03/07/10/13**. The final consumer resolves the
+manifest and compares work, audience, exact target, policy, evidence frontier, actual prepared
+bytes and semantic effect parameters. It records an `OutgoingRecallBinding` referencing the
+principal attempt (or fixed-notice disposition) and the final deterministic validation.
+Byte-preserving formatting has a
+recorded transformation; changed links, amounts, recipients or content invalidate approval.
+The effect owner still decides which rendered representation its exact digest covers.
+
+An unchanged draft can reuse retrieval with final current-state validation; this is not a second
+full search by default. New relevant intake, an identity/permission change, expired evidence,
+changed content requiring different support, or a different target invalidates reuse. When
+relevance cannot be bounded, a source-frontier change conservatively invalidates the cache.
+Refresh uses the same remaining root resources. A status message about a held effect passes its
+own cheap recall/accounting disposition without depending on the blocked semantic reviewer.
+
+**Rule — failure cannot fabricate proof or hide the user.** Rules 42, 77, 83, 86 and 95;
+**checks: P21-NF-08/10/13/21**. Optional retrieval and optional diagnostic failure cannot
+make ordinary chat wait for model clearance. Mandatory custody, permission and effect-owner
+proof retain their own fail directions. If the required input capture cannot be admitted, the
+principal path refuses under that owner and the independently governed minimal responder
+provides reachable failure status where available. P21 may not invent that responder or report
+a false-success manifest. This production path depends on the named assembly/operator seams
+in section 14. ACK latency and substantive completion are measured separately; an ACK never
+counts as having answered the original request or satisfied ContinuityAccounting.

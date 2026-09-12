@@ -1,0 +1,832 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:instar:p21:incident-replay:v1",
+  "title": "P21 incident replay artifact \u2014 shape, not authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact",
+    "caseId",
+    "origin",
+    "productionDerived",
+    "setting",
+    "cueForm",
+    "custody",
+    "originalIntake",
+    "trigger",
+    "sourceSnapshot",
+    "permissionState",
+    "recallTrace",
+    "behavior",
+    "environment",
+    "timestamps",
+    "sourceErrors",
+    "charges",
+    "pairedControls",
+    "evaluationOnly",
+    "execution"
+  ],
+  "properties": {
+    "artifact": {
+      "const": "P21-INCIDENT-REPLAY-v1"
+    },
+    "caseId": {
+      "$ref": "#/$defs/boundedText"
+    },
+    "origin": {
+      "enum": [
+        "synthetic",
+        "sanitized-production"
+      ]
+    },
+    "productionDerived": {
+      "type": "boolean"
+    },
+    "setting": {
+      "enum": [
+        "same-topic",
+        "cross-topic",
+        "email",
+        "other-party"
+      ]
+    },
+    "cueForm": {
+      "enum": [
+        "explicit",
+        "ordinary"
+      ]
+    },
+    "custody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scopeRef",
+        "exportDecisionRef",
+        "originalEpisode",
+        "syntheticOnly"
+      ],
+      "properties": {
+        "scopeRef": {
+          "$ref": "#/$defs/reference"
+        },
+        "exportDecisionRef": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "originalEpisode": {
+          "$ref": "#/$defs/knownReferences"
+        },
+        "syntheticOnly": {
+          "type": "boolean"
+        }
+      }
+    },
+    "originalIntake": {
+      "$ref": "#/$defs/knownOriginalIntake"
+    },
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputRef",
+        "decisionTime",
+        "taskRef",
+        "audienceRefs"
+      ],
+      "properties": {
+        "inputRef": {
+          "$ref": "#/$defs/reference"
+        },
+        "decisionTime": {
+          "$ref": "#/$defs/clock"
+        },
+        "taskRef": {
+          "$ref": "#/$defs/reference"
+        },
+        "audienceRefs": {
+          "$ref": "#/$defs/referenceList"
+        }
+      }
+    },
+    "sourceSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frontier",
+        "indexCoverage"
+      ],
+      "properties": {
+        "frontier": {
+          "$ref": "#/$defs/knownFrontier"
+        },
+        "indexCoverage": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "indexRef",
+              "frontier",
+              "processedSpanRefs",
+              "holeRefs",
+              "status"
+            ],
+            "properties": {
+              "indexRef": {
+                "$ref": "#/$defs/reference"
+              },
+              "frontier": {
+                "$ref": "#/$defs/knownFrontier"
+              },
+              "processedSpanRefs": {
+                "$ref": "#/$defs/referenceList"
+              },
+              "holeRefs": {
+                "$ref": "#/$defs/referenceList"
+              },
+              "status": {
+                "enum": [
+                  "available-results",
+                  "available-empty",
+                  "not-indexed",
+                  "behind-frontier",
+                  "scope-filtered",
+                  "unavailable",
+                  "timed-out",
+                  "budget-excluded",
+                  "not-requested"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "permissionState": {
+      "$ref": "#/$defs/knownPermissionState"
+    },
+    "recallTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateCapture",
+        "renderedPacket",
+        "manifest",
+        "actualSubmittedInput",
+        "consumptionEvidence"
+      ],
+      "properties": {
+        "candidateCapture": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "renderedPacket": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "manifest": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "actualSubmittedInput": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "consumptionEvidence": {
+          "$ref": "#/$defs/knownReference"
+        }
+      }
+    },
+    "behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "draft",
+        "preparedEffect",
+        "actualEffectObservation",
+        "outcome",
+        "effectClass"
+      ],
+      "properties": {
+        "draft": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "preparedEffect": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "actualEffectObservation": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "outcome": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "effectClass": {
+          "$ref": "#/$defs/boundedText"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "build",
+        "installedHooks",
+        "flags",
+        "modelConfiguration",
+        "renderer"
+      ],
+      "properties": {
+        "build": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "installedHooks": {
+          "$ref": "#/$defs/knownReferences"
+        },
+        "flags": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "modelConfiguration": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "renderer": {
+          "$ref": "#/$defs/knownReference"
+        }
+      }
+    },
+    "timestamps": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stage",
+          "clock"
+        ],
+        "properties": {
+          "stage": {
+            "$ref": "#/$defs/boundedText"
+          },
+          "clock": {
+            "$ref": "#/$defs/knownClock"
+          }
+        }
+      }
+    },
+    "sourceErrors": {
+      "$ref": "#/$defs/knownSourceErrors"
+    },
+    "charges": {
+      "$ref": "#/$defs/knownCharges"
+    },
+    "pairedControls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "successCaseRef",
+        "unavailableOrLegitimateHoldCaseRef"
+      ],
+      "properties": {
+        "successCaseRef": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "unavailableOrLegitimateHoldCaseRef": {
+          "$ref": "#/$defs/knownReference"
+        }
+      }
+    },
+    "evaluationOnly": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readerAccess",
+        "expectedBehaviorRef",
+        "prohibitedBehaviorRef",
+        "acceptableSupportPaths",
+        "laterCorrectionRefs",
+        "inferredExplanation",
+        "proceduralRepairLesson",
+        "criterionRef"
+      ],
+      "properties": {
+        "readerAccess": {
+          "const": false
+        },
+        "expectedBehaviorRef": {
+          "$ref": "#/$defs/reference"
+        },
+        "prohibitedBehaviorRef": {
+          "$ref": "#/$defs/reference"
+        },
+        "acceptableSupportPaths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "$ref": "#/$defs/reference"
+            },
+            "uniqueItems": true
+          }
+        },
+        "laterCorrectionRefs": {
+          "$ref": "#/$defs/referenceList"
+        },
+        "inferredExplanation": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "proceduralRepairLesson": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "criterionRef": {
+          "$ref": "#/$defs/reference"
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "modelRunExecuted",
+        "runRef",
+        "dispatchAllowed"
+      ],
+      "properties": {
+        "modelRunExecuted": {
+          "type": "boolean"
+        },
+        "runRef": {
+          "$ref": "#/$defs/knownReference"
+        },
+        "dispatchAllowed": {
+          "const": false
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "origin": {
+            "const": "synthetic"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "productionDerived": {
+            "const": false
+          },
+          "custody": {
+            "properties": {
+              "syntheticOnly": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "origin": {
+            "const": "sanitized-production"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "productionDerived": {
+            "const": true
+          },
+          "custody": {
+            "properties": {
+              "syntheticOnly": {
+                "const": false
+              },
+              "exportDecisionRef": {
+                "properties": {
+                  "state": {
+                    "const": "known"
+                  }
+                }
+              },
+              "originalEpisode": {
+                "properties": {
+                  "state": {
+                    "const": "known"
+                  },
+                  "value": {
+                    "minItems": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "knownReference": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "known"
+            },
+            "value": {
+              "$ref": "#/$defs/reference"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/unknownObservation"
+        }
+      ]
+    },
+    "knownReferences": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "known"
+            },
+            "value": {
+              "$ref": "#/$defs/referenceList"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/unknownObservation"
+        }
+      ]
+    },
+    "knownOriginalIntake": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "known"
+            },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "intakeRef",
+                "authorRef",
+                "conversationRef",
+                "captureRefs",
+                "participation",
+                "completeness"
+              ],
+              "properties": {
+                "intakeRef": {
+                  "$ref": "#/$defs/reference"
+                },
+                "authorRef": {
+                  "$ref": "#/$defs/reference"
+                },
+                "conversationRef": {
+                  "$ref": "#/$defs/reference"
+                },
+                "captureRefs": {
+                  "$ref": "#/$defs/referenceList"
+                },
+                "participation": {
+                  "enum": [
+                    "direct",
+                    "observed",
+                    "reported"
+                  ]
+                },
+                "completeness": {
+                  "enum": [
+                    "complete",
+                    "partial",
+                    "unknown"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/unknownObservation"
+        }
+      ]
+    },
+    "knownFrontier": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "known"
+            },
+            "value": {
+              "$ref": "#/$defs/frontier"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/unknownObservation"
+        }
+      ]
+    },
+    "knownPermissionState": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "known"
+            },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "identityMappingRefs",
+                "internalUsePolicyRef",
+                "providerScopeRef",
+                "disclosurePolicyRef",
+                "authorityRefs"
+              ],
+              "properties": {
+                "identityMappingRefs": {
+                  "$ref": "#/$defs/referenceList"
+                },
+                "internalUsePolicyRef": {
+                  "$ref": "#/$defs/reference"
+                },
+                "providerScopeRef": {
+                  "$ref": "#/$defs/reference"
+                },
+                "disclosurePolicyRef": {
+                  "$ref": "#/$defs/reference"
+                },
+                "authorityRefs": {
+                  "$ref": "#/$defs/referenceList"
+                }
+              }
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/unknownObservation"
+        }
+      ]
+    },
+    "knownClock": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "known"
+            },
+            "value": {
+              "$ref": "#/$defs/clock"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/unknownObservation"
+        }
+      ]
+    },
+    "knownSourceErrors": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "known"
+            },
+            "value": {
+              "type": "array",
+              "maxItems": 128,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sourceRef",
+                  "stage",
+                  "status",
+                  "evidenceRef"
+                ],
+                "properties": {
+                  "sourceRef": {
+                    "$ref": "#/$defs/reference"
+                  },
+                  "stage": {
+                    "$ref": "#/$defs/boundedText"
+                  },
+                  "status": {
+                    "$ref": "#/$defs/boundedText"
+                  },
+                  "evidenceRef": {
+                    "$ref": "#/$defs/knownReference"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/unknownObservation"
+        }
+      ]
+    },
+    "knownCharges": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "known"
+            },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "resourcePolicyRef",
+                "reservationRefs",
+                "usageRefs",
+                "priceSnapshotRef",
+                "residualWorkRefs"
+              ],
+              "properties": {
+                "resourcePolicyRef": {
+                  "$ref": "#/$defs/reference"
+                },
+                "reservationRefs": {
+                  "$ref": "#/$defs/referenceList"
+                },
+                "usageRefs": {
+                  "$ref": "#/$defs/referenceList"
+                },
+                "priceSnapshotRef": {
+                  "$ref": "#/$defs/knownReference"
+                },
+                "residualWorkRefs": {
+                  "$ref": "#/$defs/referenceList"
+                }
+              }
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/unknownObservation"
+        }
+      ]
+    },
+    "reference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "Opaque authorized custody/fact reference; never a credential-bearing URL. Syntax is not authority."
+    },
+    "referenceList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reference"
+      },
+      "uniqueItems": true,
+      "maxItems": 1024
+    },
+    "clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "basis",
+        "sourceRef"
+      ],
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "basis": {
+          "$ref": "#/$defs/boundedText"
+        },
+        "sourceRef": {
+          "$ref": "#/$defs/reference"
+        }
+      }
+    },
+    "frontier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "captureRefs",
+        "lineages",
+        "unknownPeers"
+      ],
+      "properties": {
+        "captureRefs": {
+          "$ref": "#/$defs/referenceList"
+        },
+        "lineages": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "machineRef",
+              "epoch",
+              "position"
+            ],
+            "properties": {
+              "machineRef": {
+                "$ref": "#/$defs/reference"
+              },
+              "epoch": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "position": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "unknownPeers": {
+          "$ref": "#/$defs/referenceList"
+        }
+      }
+    },
+    "unknownObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "reason"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "unknown",
+            "unavailable",
+            "not-applicable"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/boundedText"
+        }
+      }
+    },
+    "boundedText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    }
+  }
+}
