@@ -45,8 +45,8 @@ export interface PartTwoRegisterProviderOptions {
 export type PartTwoRegisterProvider = SpineReadPort & Readonly<{
   verifyShapeChange(binding: ShapeChangeBinding): Result<FactReference>;
   resolveReference(reference: Readonly<{ provider: string; id: string; kind?: string }>): Result<boolean>;
-  verifyRecord(reference: Readonly<{ id: string; kind: string }>, expected: unknown): Result<boolean>;
-  verifySemanticReview(review: CheckCatalog['semanticReviews'][number]): Result<boolean>;
+  verifyRecord(reference: Readonly<{ id: string; kind: string }>, expected: unknown, now?: Clock): Result<boolean>;
+  verifySemanticReview(review: CheckCatalog['semanticReviews'][number], now?: Clock): Result<boolean>;
   types?: DecodeContext;
   separations?: WorkflowChecks['separations'];
 }>;
@@ -94,6 +94,15 @@ function recordBody(status: FactStatus): Json {
     if (Object.keys(body).length === 1 && Object.hasOwn(body, 'record')) return body.record!;
   }
   return status.body;
+}
+
+function evidenceUseClock(snapshot: FactSnapshot, supplied: Clock | undefined,
+  options: PartTwoRegisterProviderOptions): Clock {
+  const explicit = supplied ?? options.types?.now ?? options.context.authorityTypes?.now ?? options.context.types.now;
+  if (explicit) return explicit;
+  const latest = [...snapshot.entries].sort((a, b) => b.fact.at.value - a.fact.at.value)[0]?.fact.at;
+  requireThat(latest !== undefined, 'signed evidence verification requires the use clock');
+  return latest;
 }
 
 function witnessFor(reference: FactPositionVectorReference, snapshot: FactSnapshot): Readonly<{
@@ -299,10 +308,11 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
       if (requested.kind !== undefined) requireThat(status.fact.kind === text(requested.kind, 'reference.kind'), 'record reference kind differs');
       return true;
     }),
-    verifyRecord: (reference, expected) => checked<boolean, RegisterContext>('PartTwoRegisterRecord', { reference, expected }, options.context, raw => {
+    verifyRecord: (reference, expected, now) => checked<boolean, RegisterContext>('PartTwoRegisterRecord', { reference, expected }, options.context, raw => {
       const input = object(raw); const requested = object(input.reference!); exact(requested, ['id', 'kind']);
       const id = text(requested.id, 'reference.id'), kind = text(requested.kind, 'reference.kind');
-      const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
+      const snapshot = read(); const { definition, view } = projection(snapshot, options.horizon, options.context);
+      take(readProjection(view, definition, evidenceUseClock(snapshot, now, options), options.context));
       const matches = snapshot.entries.filter(status => active(status, snapshot, view)
         && status.fact.kind === kind
         && encoding(recordBody(status)).bytes === encoding(input.expected).bytes
@@ -316,8 +326,9 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
         `Part Two record ${id} is absent, retracted, corrected, conflicted, duplicated, or differs from workflow evidence`);
       return true;
     }),
-    verifySemanticReview: review => checked<boolean, RegisterContext>('PartTwoSemanticReview', review, options.context, () => {
-      const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
+    verifySemanticReview: (review, now) => checked<boolean, RegisterContext>('PartTwoSemanticReview', review, options.context, () => {
+      const snapshot = read(); const { definition, view } = projection(snapshot, options.horizon, options.context);
+      take(readProjection(view, definition, evidenceUseClock(snapshot, now, options), options.context));
       const status = activeStatus(review.record, snapshot, view);
       requireThat(status.fact.kind === 'verification-SemanticReviewRecord', 'semantic review reference kind differs');
       const record = take(decodeSemanticReviewRecord(recordBody(status), options.context));

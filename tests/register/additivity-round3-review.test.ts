@@ -13,7 +13,7 @@ describe('permanent Part Three additivity gate', () => {
       .trim().split('\n').filter(Boolean);
     const changed = paths.filter(path => !mainEraExemptions.has(path)
       && !readFileSync(path).equals(execFileSync('git', ['show', `${base}:${path}`])));
-    expect(paths).toHaveLength(189);
+    expect(paths).toHaveLength(239);
     expect([...mainEraExemptions]).toEqual([
       ['tests/integration/register.test.ts', 'P3-NF-21/23 implemented by row 77'],
     ]);

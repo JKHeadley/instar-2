@@ -19,8 +19,8 @@ export interface WorkflowChecks {
   readonly bootstrapRules: readonly { number: number; declarationHash: string; owner: string }[];
 }
 export interface NormalWorkflowEvidencePort {
-  readonly verifyRecord: (reference: Readonly<{ id: string; kind: string }>, expected: unknown) => Result<boolean>;
-  readonly verifySemanticReview: (review: CheckCatalog['semanticReviews'][number]) => Result<boolean>;
+  readonly verifyRecord: (reference: Readonly<{ id: string; kind: string }>, expected: unknown, now: Clock) => Result<boolean>;
+  readonly verifySemanticReview: (review: CheckCatalog['semanticReviews'][number], now: Clock) => Result<boolean>;
 }
 export function runRegisterChecks(register: GeneratedRegister, checks: WorkflowChecks, context: RegisterContext,
   evidence?: NormalWorkflowEvidencePort) {
@@ -61,11 +61,11 @@ export function runRegisterChecks(register: GeneratedRegister, checks: WorkflowC
     }
     if (checks.mode === 'normal') {
       requireThat(checks.runs.length === 0 || evidence !== undefined, 'normal check runs require the signed Part Two record verifier');
-      for (const run of checks.runs) requireThat(take(evidence!.verifyRecord({ id: run.id, kind: 'check-run-record' }, run)),
+      for (const run of checks.runs) requireThat(take(evidence!.verifyRecord({ id: run.id, kind: 'check-run-record' }, run, checks.now)),
         `P3-NF-28: Part Two rejected check-run evidence ${run.id}`);
       requireThat(checks.catalog.semanticReviews.length === 0 || evidence !== undefined,
         'normal semantic reviews require the signed Part Two record verifier');
-      for (const review of checks.catalog.semanticReviews) requireThat(take(evidence!.verifySemanticReview(review)),
+      for (const review of checks.catalog.semanticReviews) requireThat(take(evidence!.verifySemanticReview(review, checks.now)),
         `P3-NF-28: Part Nine rejected semantic-review evidence ${review.record}`);
     }
     const graph = take(buildRuleGraph(register, checks.branch, checks.runs, checks.catalog, context, checks.bootstrapRules));
