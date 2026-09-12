@@ -160,7 +160,10 @@ function existsOnMain(path) {
 export function checkP13Architecture() {
   const failures = [];
   const changed = changedPaths();
-  for (const path of changed) {
+  const p13SliceChanged = changed.some(path => path.startsWith('src/harness-adapters/')
+    || path.startsWith('tests/harness-adapters/')
+    || /^tests\/(integration|e2e)\/harness-adapters(?:-[^/]*)?\.test\.ts$/.test(path));
+  if (p13SliceChanged) for (const path of changed) {
     if (!allowedPath(path)) failures.push(`out-of-scope path: ${path}`);
     if (!generated.has(path) && existsOnMain(path)) failures.push(`pre-existing main file changed: ${path}`);
   }
