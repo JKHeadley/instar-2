@@ -146,6 +146,13 @@ function validateHandle(value: unknown): HarnessRuntimeHandle {
   return deepFreeze(handle as unknown as HarnessRuntimeHandle);
 }
 
+function validateHandleIdentities(handles: readonly HarnessRuntimeHandle[]): void {
+  if (new Set(handles.map(handle => handle.launch)).size !== handles.length)
+    throw new Error('handles: duplicate launch');
+  if (new Set(handles.map(handle => handle.id)).size !== handles.length)
+    throw new Error('handles: conflicting immutable handle id');
+}
+
 function validateSnapshot(value: unknown): HarnessHandleSnapshot {
   const snapshot = object(value, 'HarnessHandleSnapshot');
   exact(snapshot, ['type', 'schemaVersion', 'id', 'adapter', 'machine', 'capturedAt', 'maxHandles', 'handles'], 'HarnessHandleSnapshot');
@@ -158,7 +165,7 @@ function validateSnapshot(value: unknown): HarnessHandleSnapshot {
   if (handles.some(handle => handle.machine !== snapshot.machine || handle.harness !== snapshot.adapter)) throw new Error('handles: snapshot subject mismatch');
   if (handles.some(handle => handle.acquiredAt > (snapshot.capturedAt as number)))
     throw new Error('handles: acquisition cannot postdate snapshot capture');
-  if (new Set(handles.map(handle => handle.launch)).size !== handles.length) throw new Error('handles: duplicate launch');
+  validateHandleIdentities(handles);
   return deepFreeze({ ...snapshot, handles } as unknown as HarnessHandleSnapshot);
 }
 
@@ -205,7 +212,7 @@ function validateStateSnapshot(value: unknown, context: HarnessAdapterDecodeCont
   if (handles.some(handle => handle.machine !== snapshot.machine || handle.harness !== snapshot.adapter)
     || events.some(event => event.machine !== snapshot.machine || event.harness !== snapshot.adapter))
     throw new Error('journal entries: snapshot subject mismatch');
-  if (new Set(handles.map(handle => handle.launch)).size !== handles.length) throw new Error('handles: duplicate launch');
+  validateHandleIdentities(handles);
   if (new Set(attempts.map(attempt => attempt.operation)).size !== attempts.length)
     throw new Error('attempts: duplicate operation');
   if (new Set(events.map(event => event.id)).size !== events.length)

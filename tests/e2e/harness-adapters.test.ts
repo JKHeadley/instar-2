@@ -12,6 +12,8 @@ it('A1-E2E R5-F4 R5-F5 R5-F6 R5-F7 R5-F8 R6-F1 R6-F2 R6-F3 R6-F4 R6-F6 P13-NF-01
     unwitnessedOutputDuplicate: 'refused', distinctWorkIdentity: 'advancing',
     nestedMigration: 'Success', nestedV1: 'Success', snapshotClockControl: 'Success',
     snapshotClockRefusal: 'Refused', repeatedOwnerLaunch: true, repeatedHandleDigests: 'Success',
+    conflictingHandleSnapshot: 'Refused', conflictingStateSnapshot: 'Refused',
+    distinctHandleSnapshot: 'Success', distinctStateSnapshot: 'Success',
     contractMapRequiredPairs: 25,
   });
   expect(result.outputCustody).toMatchObject({

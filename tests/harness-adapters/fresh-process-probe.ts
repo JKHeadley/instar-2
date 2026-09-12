@@ -61,6 +61,22 @@ const repeatedLaunch = value(repeatedFixture.owner.runtime.record('HarnessLaunch
   ...launch, id: 'launch:repeated-digest', incarnation: 'worker-incarnation:repeated',
   contextManifest: repeatedManifest,
 }));
+const firstHandle = handleInput();
+const conflictingHandle = handleInput({
+  launch: 'launch:second', run: 'run:second', step: 'step:second', input: 'intake:second',
+  incarnation: 'incarnation:second', processIdentity: 'pid:second',
+  launchOperation: 'operation:second', launchClaim: 'claim:second',
+});
+const distinctHandle = { ...conflictingHandle, id: 'handle:second' };
+const handleSnapshot = (handles: unknown[]) => ({
+  type: 'HarnessHandleSnapshot', schemaVersion: 1, id: 'snapshot', adapter: 'native',
+  machine: 'machine-a', capturedAt: 20, maxHandles: 2, handles,
+});
+const adapterStateSnapshot = (handles: unknown[]) => ({
+  type: 'HarnessAdapterStateSnapshot', schemaVersion: 1, id: 'state', adapter: 'native',
+  machine: 'machine-a', revision: 0, maxHandles: 2, maxAttempts: 0, maxEvents: 0,
+  maxCaptureBytes: 0, handles, attempts: [], events: [],
+});
 
 process.stdout.write(JSON.stringify({
   matchingGeneration: matching.port.admitObservation(witnessedEvent(matching), [], 4).disposition,
@@ -90,6 +106,14 @@ process.stdout.write(JSON.stringify({
   repeatedHandleDigests: decodeHarnessRuntimeHandle(handleInput({
     contextDigests: repeatedManifest.map((entry: { digest: string }) => entry.digest) as any,
   }), repeatedFixture.owner.c).kind,
+  conflictingHandleSnapshot: decodeHarnessHandleSnapshot(
+    handleSnapshot([firstHandle, conflictingHandle]), matching.owner.c).kind,
+  conflictingStateSnapshot: decodeHarnessAdapterStateSnapshot(
+    adapterStateSnapshot([firstHandle, conflictingHandle]), matching.owner.c).kind,
+  distinctHandleSnapshot: decodeHarnessHandleSnapshot(
+    handleSnapshot([firstHandle, distinctHandle]), matching.owner.c).kind,
+  distinctStateSnapshot: decodeHarnessAdapterStateSnapshot(
+    adapterStateSnapshot([firstHandle, distinctHandle]), matching.owner.c).kind,
   contractMapRequiredPairs: checkP13DependencyCitations().requiredPairs,
   removed: ['createRuntimeHandleHolder', 'restoreRuntimeHandleHolder', 'createHarnessEvidenceHolder',
     'sameMachineReconnectCandidate', 'createMemoryHarnessAdapterStateStore', 'correlatedRecoveryProgress',

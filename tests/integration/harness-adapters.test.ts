@@ -90,6 +90,30 @@ it('A1-INTEGRATION R6-F1 R6-F2 R6-F3 R6-F4 R6-F6 replays all data-validation fin
   }), f.owner.c).kind).toBe('Success');
 });
 
+it('A1-INTEGRATION R7-F1 refuses conflicting immutable handle IDs through both public snapshot decoders', () => {
+  const f = harnessFixture();
+  const first = handleInput();
+  const other = handleInput({
+    launch: 'launch:second', run: 'run:second', step: 'step:second', input: 'intake:second',
+    incarnation: 'incarnation:second', processIdentity: 'pid:second',
+    launchOperation: 'operation:second', launchClaim: 'claim:second',
+  });
+  const distinct = { ...other, id: 'handle:second' };
+  const handles = (rows: unknown[]) => ({
+    type: 'HarnessHandleSnapshot', schemaVersion: 1, id: 'snapshot', adapter: 'native',
+    machine: 'machine-a', capturedAt: 20, maxHandles: 2, handles: rows,
+  });
+  const state = (rows: unknown[]) => ({
+    type: 'HarnessAdapterStateSnapshot', schemaVersion: 1, id: 'state', adapter: 'native',
+    machine: 'machine-a', revision: 0, maxHandles: 2, maxAttempts: 0, maxEvents: 0,
+    maxCaptureBytes: 0, handles: rows, attempts: [], events: [],
+  });
+  expect(decodeHarnessHandleSnapshot(handles([first, other]), f.owner.c).kind).toBe('Refused');
+  expect(decodeHarnessAdapterStateSnapshot(state([first, other]), f.owner.c).kind).toBe('Refused');
+  expect(decodeHarnessHandleSnapshot(handles([first, distinct]), f.owner.c).kind).toBe('Success');
+  expect(decodeHarnessAdapterStateSnapshot(state([first, distinct]), f.owner.c).kind).toBe('Success');
+});
+
 it('A1-INTEGRATION R5-F9 P13-NF-24 P13-NF-46 executes the landed Part Four custody-read failure arm without an invented grant', () => {
   const f = intakeFixture();
   const interrupted = value(createIntakePort({ ...f.deps, storage: { ...f.storage,
