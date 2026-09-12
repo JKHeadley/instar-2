@@ -244,6 +244,22 @@
   {
     "type": "Declaration",
     "schemaVersion": 1,
+    "id": "register-currentness-integration",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "tests/integration/register-currentness-round4.test.ts",
+      "why": "Part-three current owner re-resolution fixtures require operator approval; external enforcement is owned by parts nine and eleven.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
     "id": "register-shape-change-e2e",
     "kind": "protected artifacts",
     "status": "live",
