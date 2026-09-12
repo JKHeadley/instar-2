@@ -1310,6 +1310,10 @@ export function registerLoopA1Bodies(host: LoopA1Host, context: BoundaryContext)
                   && loadSharedLoopRecord(stored).domain === record.domain
                   && loadSharedLoopRecord(stored).command === record.command;
               });
+            const validatedCopies = new WeakMap<FactEnvelope, Readonly<{
+              cone: readonly FactEnvelope[];
+              past: readonly LoopA1TransportFact[];
+            }>>();
             const representative = collapseSignedRecordCopies(logicalCopies,
               fact => (fact.body as { record: Json }).record, {
                 absent: 'shared loop record is absent',
@@ -1319,16 +1323,17 @@ export function registerLoopA1Bodies(host: LoopA1Host, context: BoundaryContext)
                   ensure(isStoredSharedLoopRecord(stored), 'owned type mismatch');
                   const copy = loadSharedLoopRecord(stored);
                   sharedLoopRecordCheck(copy);
-                  const copyPast = rowsA1(causalCone(fact, decodeContext.facts.facts), host.domain);
+                  const copyCone = causalCone(fact, decodeContext.facts.facts);
+                  const copyPast = rowsA1(copyCone, host.domain);
                   ensure(copy.policyGeneration.id === latestLease(copyPast as readonly TransportFact[])?.record.generation,
                     'shared transition generation differs from its committed lease');
                   resolveSharedLoopEvidence(copy, fact,
                     decodeContext.facts.facts, decodeContext.facts, host);
+                  validatedCopies.set(fact, { cone: copyCone, past: copyPast });
                 },
               });
             const duplicate = logicalCopies.some(fact => fact.id !== decodeContext.origin.id);
-            const cone = causalCone(representative, decodeContext.facts.facts);
-            const past = rowsA1(cone, host.domain);
+            const { cone, past } = validatedCopies.get(representative)!;
             validateIssuer(host, representative, past);
             const candidate = !decodeContext.facts.facts.some(fact => fact.id === decodeContext.origin.id);
             if (candidate && !duplicate) noteAccountingCandidate(host);
