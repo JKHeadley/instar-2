@@ -147,8 +147,12 @@ const allowedPath = path => path.startsWith('src/harness-adapters/')
   || generated.has(path);
 
 function changedPaths() {
-  const tracked = execFileSync('git', ['diff', '--name-only', 'main'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
-  const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+  // NUL-delimited output: Git never quotes or escapes pathnames under -z, so a path with non-ASCII or control
+  // characters keeps its real bytes and the scope predicates below see the actual name (an escaped, quoted
+  // name would start with `"` and match nothing).
+  const nulSplit = out => out.split('\0').filter(Boolean);
+  const tracked = nulSplit(execFileSync('git', ['diff', '--name-only', '-z', 'main'], { encoding: 'utf8' }));
+  const untracked = nulSplit(execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], { encoding: 'utf8' }));
   return [...new Set([...tracked, ...untracked])].sort();
 }
 
