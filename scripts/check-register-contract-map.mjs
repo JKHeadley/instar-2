@@ -13,7 +13,7 @@ const grantedSkip = (name, id) => {
   return match !== null && realUnlandedGrants.get(match[1])?.checks.has(id) === true;
 };
 const restoredMainLegacySkip = (file, test) => file === 'tests/integration/register.test.ts'
-  && test.status === 'pending'
+  && ['pending', 'skipped'].includes(test.status)
   && test.title === 'P3-NF-21 P3-NF-23 SKIPPED: production spine admission, signed vector verification and replica initialization require the part-two adapter, absent on this lane base';
 const report = JSON.parse(readFileSync('.test-results.json', 'utf8')); const map = new Map();
 for (const file of report.testResults) for (const test of file.assertionResults) {

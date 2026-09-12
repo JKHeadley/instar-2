@@ -60,7 +60,7 @@ describe('round-three contract-map checker regressions', () => {
       const assertions = ids.map(id => ({ fullName: id, title: `${id} executable`, status: 'passed' }));
       assertions.push({ fullName: 'P3-NF-21 P3-NF-23',
         title: 'P3-NF-21 P3-NF-23 SKIPPED: production spine admission, signed vector verification and replica initialization require the part-two adapter, absent on this lane base',
-        status: 'pending' });
+        status: 'skipped' });
       writeFileSync(join(root, '.test-results.json'), JSON.stringify({ success: true, numPassedTests: ids.length, numPendingTests: 1,
         testResults: [{ name: 'tests/integration/register.test.ts', assertionResults: assertions }] }));
       expect(run(root, item.script)).not.toThrow();
