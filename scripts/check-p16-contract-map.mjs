@@ -96,27 +96,143 @@ function collectBindingNames(name, found) {
   }
 }
 
+const hasModifier = (node, kind) => node.modifiers?.some(modifier => modifier.kind === kind) ?? false;
+
+function staticPropertyName(name) {
+  if (!name) return undefined;
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)
+    || ts.isNoSubstitutionTemplateLiteral(name)) return name.text;
+  if (!ts.isComputedPropertyName(name)) return undefined;
+  const evaluate = expression => {
+    if (ts.isStringLiteral(expression) || ts.isNumericLiteral(expression)
+      || ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
+    if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+      || ts.isSatisfiesExpression(expression) || ts.isNonNullExpression(expression))
+      return evaluate(expression.expression);
+    if (ts.isBinaryExpression(expression)
+      && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+      const left = evaluate(expression.left); const right = evaluate(expression.right);
+      return left === undefined || right === undefined ? undefined : left + right;
+    }
+    return undefined;
+  };
+  return evaluate(name.expression);
+}
+
+function localBindings(statements) {
+  const bindings = new Map();
+  for (const statement of statements) {
+    if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)
+      || ts.isModuleDeclaration(statement)) && statement.name && ts.isIdentifier(statement.name))
+      bindings.set(statement.name.text, statement);
+    if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations)
+      if (ts.isIdentifier(declaration.name) && declaration.initializer)
+        bindings.set(declaration.name.text, declaration.initializer);
+  }
+  return bindings;
+}
+
+function collectExposedValuePermissions(node, bindings, found, seen = new Set()) {
+  if (!node || seen.has(node)) return;
+  seen.add(node);
+  if (ts.isIdentifier(node)) {
+    if (forbiddenPermissionExports.has(node.text)) found.add(node.text);
+    collectExposedValuePermissions(bindings.get(node.text), bindings, found, seen);
+    return;
+  }
+  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node)
+    || ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node)) {
+    collectExposedValuePermissions(node.expression, bindings, found, seen);
+    return;
+  }
+  if (ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isFunctionDeclaration(node)) {
+    if (node.name && forbiddenPermissionExports.has(node.name.text)) found.add(node.name.text);
+    return;
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    for (const property of node.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        collectExposedValuePermissions(property.expression, bindings, found, seen);
+        continue;
+      }
+      const name = staticPropertyName(property.name);
+      if (name && forbiddenPermissionExports.has(name)) found.add(name);
+      if (ts.isPropertyAssignment(property))
+        collectExposedValuePermissions(property.initializer, bindings, found, seen);
+      else if (ts.isShorthandPropertyAssignment(property))
+        collectExposedValuePermissions(property.name, bindings, found, seen);
+    }
+    return;
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    for (const element of node.elements)
+      if (!ts.isOmittedExpression(element)) collectExposedValuePermissions(element, bindings, found, seen);
+    return;
+  }
+  if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+    for (const member of node.members) {
+      const name = staticPropertyName(member.name);
+      if (name && forbiddenPermissionExports.has(name)) found.add(name);
+      if (ts.isPropertyDeclaration(member) && member.initializer)
+        collectExposedValuePermissions(member.initializer, bindings, found, seen);
+    }
+    return;
+  }
+  if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+    for (const argument of node.arguments ?? [])
+      collectExposedValuePermissions(argument, bindings, found, seen);
+    return;
+  }
+  if (ts.isConditionalExpression(node)) {
+    collectExposedValuePermissions(node.whenTrue, bindings, found, seen);
+    collectExposedValuePermissions(node.whenFalse, bindings, found, seen);
+  }
+}
+
+function collectExportedStatementPermissions(statement, bindings, found) {
+  if (ts.isExportDeclaration(statement) && statement.exportClause) {
+    if (ts.isNamedExports(statement.exportClause)) {
+      for (const element of statement.exportClause.elements) {
+        if (forbiddenPermissionExports.has(element.name.text)) found.add(element.name.text);
+        if (!statement.moduleSpecifier)
+          collectExposedValuePermissions(bindings.get((element.propertyName ?? element.name).text), bindings, found);
+      }
+    } else if (ts.isNamespaceExport(statement.exportClause)
+      && forbiddenPermissionExports.has(statement.exportClause.name.text)) {
+      found.add(statement.exportClause.name.text);
+    }
+    return;
+  }
+  if (ts.isExportAssignment(statement)) {
+    collectExposedValuePermissions(statement.expression, bindings, found);
+    return;
+  }
+  if (!hasModifier(statement, ts.SyntaxKind.ExportKeyword)) return;
+  if ('name' in statement && statement.name && ts.isIdentifier(statement.name)
+    && forbiddenPermissionExports.has(statement.name.text)) found.add(statement.name.text);
+  if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
+    collectBindingNames(declaration.name, found);
+    collectExposedValuePermissions(declaration.initializer, bindings, found);
+  }
+  if (ts.isClassDeclaration(statement)) collectExposedValuePermissions(statement, bindings, found);
+  if (ts.isModuleDeclaration(statement)) {
+    let body = statement.body;
+    while (body && ts.isModuleDeclaration(body)) body = body.body;
+    if (body && ts.isModuleBlock(body)) {
+      const nestedBindings = localBindings(body.statements);
+      for (const nested of body.statements)
+        collectExportedStatementPermissions(nested, nestedBindings, found);
+    }
+  }
+}
+
 export function findForbiddenMeasurementPermissionExports(sources) {
   const found = new Set();
   for (const [file, source] of Object.entries(sources)) {
     const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    for (const statement of parsed.statements) {
-      if (ts.isExportDeclaration(statement) && statement.exportClause) {
-        if (ts.isNamedExports(statement.exportClause)) {
-          for (const element of statement.exportClause.elements)
-            if (forbiddenPermissionExports.has(element.name.text)) found.add(element.name.text);
-        } else if (ts.isNamespaceExport(statement.exportClause)
-          && forbiddenPermissionExports.has(statement.exportClause.name.text)) {
-          found.add(statement.exportClause.name.text);
-        }
-      }
-      const exported = statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword);
-      if (!exported) continue;
-      if ('name' in statement && statement.name && ts.isIdentifier(statement.name)
-        && forbiddenPermissionExports.has(statement.name.text)) found.add(statement.name.text);
-      if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations)
-        collectBindingNames(declaration.name, found);
-    }
+    const bindings = localBindings(parsed.statements);
+    for (const statement of parsed.statements)
+      collectExportedStatementPermissions(statement, bindings, found);
   }
   return [...found].sort();
 }

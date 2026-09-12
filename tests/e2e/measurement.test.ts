@@ -54,6 +54,11 @@ beforeAll(() => {
     const execution=take(decode('Evidence',{type:'Evidence',schemaVersion:1,id:'execution:e2e',claim:{subject:'run:a',
       predicate:'execution-observed',value:{hardware:'m1',workload:'w1'}},source:'probe',observedAt:clock(100),freshFor:10,
       capture:{reference:'capture:evidence',hash:captureHash},strength:'proof'},types));
+    const competingExecution=take(decode('Evidence',{type:'Evidence',schemaVersion:1,id:'execution:e2e',claim:{subject:'run:a',
+      predicate:'execution-observed',value:{hardware:'m2',workload:'w1'}},source:'probe',observedAt:clock(100),freshFor:10,
+      capture:{reference:'capture:evidence',hash:captureHash},strength:'proof'},types));
+    const conflictFired=evidence('feature:conflict:e2e','fired');
+    const conflictNoop=evidence('feature:conflict:e2e','no-op');
     const feature={kind:'exchange',classifier:'complete',actionProved:true,negativeProved:false,gradeOnly:false,
       feature:'feature-a',action:'feature-action-observed',evaluationClock:clock(100)};
     const descriptor={processIncarnation:'p:1',pid:7,startEvidence:'s:1',tags:['worker']};
@@ -100,6 +105,12 @@ beforeAll(() => {
       claimTarget:take(m.renderMeasurementClaim({kind:'target',hardware:null,workload:null,evidence:[]},context)),
       claimMeasured:take(m.renderMeasurementClaim(claim,
         {...context,types:{...types,evidence:[execution]}})),
+      claimCompeting:kind(m.renderMeasurementClaim(claim,
+        {...context,types:{...types,evidence:[execution,competingExecution]}})),
+      claimCompetingReversed:kind(m.renderMeasurementClaim(claim,
+        {...context,types:{...types,evidence:[competingExecution,execution]}})),
+      claimEqualReplay:take(m.renderMeasurementClaim(claim,
+        {...context,types:{...types,evidence:[execution,execution]}})),
       claimCopied:kind(m.renderMeasurementClaim(claim,{...context,types:{...types,evidence:[structuredClone(execution)]}})),
       claimIncomplete:kind(m.renderMeasurementClaim(claim,{...context,types:{...types,evidence:[incompleteExecution]}})),
       quota:take(m.coalesceUnknownQuotaEpisodes(['account','account'],[],context)),
@@ -118,6 +129,14 @@ beforeAll(() => {
       trendConflict:kind(m.resourceTrend([point('r1',100,100),point('r1',160,110)],2,context)),
       fired:take(m.classifyFeatureOutcome({...feature,evidence:fired},{...context,types:{...types,evidence:[fired]}})),
       noop:take(m.classifyFeatureOutcome({...feature,actionProved:false,negativeProved:true,evidence:noop},{...context,types:{...types,evidence:[noop]}})),
+      competingFeature:kind(m.classifyFeatureOutcome({...feature,evidence:conflictFired},
+        {...context,types:{...types,evidence:[conflictFired,conflictNoop]}})),
+      competingFeatureReversed:kind(m.classifyFeatureOutcome({...feature,evidence:conflictFired},
+        {...context,types:{...types,evidence:[conflictNoop,conflictFired]}})),
+      competingFeatureSelectNegative:kind(m.classifyFeatureOutcome({...feature,actionProved:false,negativeProved:true,
+        evidence:conflictNoop},{...context,types:{...types,evidence:[conflictFired,conflictNoop]}})),
+      equalFeatureReplay:take(m.classifyFeatureOutcome({...feature,evidence:conflictFired},
+        {...context,types:{...types,evidence:[conflictFired,conflictFired]}})),
       copiedEvidence:(()=>{const copied=structuredClone(fired);
         return kind(m.classifyFeatureOutcome({...feature,evidence:copied},
           {...context,types:{...types,evidence:[copied]}}));})(),
@@ -141,6 +160,14 @@ beforeAll(() => {
         "export * as allow from './nested.js';",
       ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
         'src/measurement/index.ts':"export * from './permission.js';"})),
+      containerPermissionExports:[
+        'export namespace measurementDecisions { export function allow(){return true;} }',
+        'export default { allow: () => true };',
+        'export const decisions={canRun(){return true;}};',
+        "export class Decisions { ['pl'+'ace']=()=>true; }",
+        'export default [function throttle(){return true;}];',
+      ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
+        'src/measurement/index.ts':"export * from './permission.js';"})),
       coverageBlocked,
       blocked:p16Dispositions().filter(row=>row.status==='NON-EXECUTABLE-UNTIL-slice-A2').length,
       additivity:execFileSync(process.execPath,['scripts/check-p16-additivity.mjs'],{encoding:'utf8'}),
@@ -156,16 +183,16 @@ beforeAll(() => {
 it('P16-NF-01 [behavior:contract-inventory] validates all 53 labels in a fresh process', () => expect(result.inventory).toBe(53));
 it('P16-NF-02 [behavior:architecture-boundary] validates the A1 architecture in a fresh process', () => expect(result.architecture).toMatchObject({ executable: 12, mixed: 2 }));
 it('P16-NF-03 [behavior:registration-current-content] rejects missing identity, replacement content, and disabled sampled identity in a fresh process', () => expect(result).toMatchObject({ cache: 'cache:fixture', cacheMissing: expect.stringContaining('Refused'), substituted: expect.stringContaining('Refused'), sampleDisabled: expect.stringContaining('Refused') }));
-it('P16-NF-05 [behavior:measured-claim] distinguishes admitted execution from copied and malformed proof in a fresh process', () => expect(result).toMatchObject({ claimTarget: 'target: not measured', claimMeasured: expect.stringContaining('measured execution'), claimCopied: expect.stringContaining('Refused'), claimIncomplete: expect.stringContaining('Refused') }));
+it('P16-NF-05 [behavior:measured-claim] distinguishes admitted execution from copied, conflicting, and malformed proof in a fresh process', () => expect(result).toMatchObject({ claimTarget: 'target: not measured', claimMeasured: expect.stringContaining('measured execution'), claimCompeting: expect.stringContaining('Refused'), claimCompetingReversed: expect.stringContaining('Refused'), claimEqualReplay: expect.stringContaining('measured execution'), claimCopied: expect.stringContaining('Refused'), claimIncomplete: expect.stringContaining('Refused') }));
 it('P16-NF-22 [behavior:quota-coalescing] coalesces repeated missing-state observations in a fresh process', () => expect(result.quota).toEqual({ notices: ['account'], open: ['account'] }));
-it('P16-NF-23 [behavior:observational-port] exposes only the observational holder port in a fresh process', () => expect(result).toMatchObject({ port: ['admitAmount', 'owner', 'trend'], permissionExport: ['allow'], destructuredPermissionExports: [['allow'], ['allow'], ['allow'], ['allow'], ['allow']] }));
+it('P16-NF-23 [behavior:observational-port] exposes only the observational holder port in a fresh process', () => expect(result).toMatchObject({ port: ['admitAmount', 'owner', 'trend'], permissionExport: ['allow'], destructuredPermissionExports: [['allow'], ['allow'], ['allow'], ['allow'], ['allow']], containerPermissionExports: [['allow'], ['allow'], ['canRun'], ['place'], ['throttle']] }));
 it('P16-NF-24 [behavior:rate-event-populations] executes breaker and session rate populations in a fresh process', () => expect(result.rate).toEqual({ 'circuit-open': 1, quota: 1 }));
 it('P16-NF-25 [behavior:cpu-and-byte] executes CPU normalization and byte admission in a fresh process', () => expect(result).toMatchObject({ cpu: [50, 12.5], fractionalBytes: expect.stringContaining('Refused') }));
 it('P16-NF-26 [behavior:process-incarnation] executes typed absence and malformed process input in a fresh process', () => expect(result.process).toEqual(['missing', expect.stringContaining('Refused')]));
 it('P16-NF-27 [behavior:limit-plus-one-census] executes bounded census and PID conflict controls in a fresh process', () => expect(result).toMatchObject({ census: { examined: 1, omitted: 1, truncated: true }, censusConflict: expect.stringContaining('Refused') }));
 it('P16-NF-28 [behavior:classified-and-unclassified] executes registered classifier content in a fresh process', () => expect(result).toMatchObject({ classes: { counts: { 'agent-worker': 1 }, unclassified: 1 }, classChanged: expect.stringContaining('Refused'), classPidConflict: expect.stringContaining('Refused') }));
 it('P16-NF-29 [behavior:resource-trend] executes complete and conflicting trend identities in a fresh process', () => expect(result).toMatchObject({ trend: { state: 'complete', rssDeltaBytes: 10 }, trendConflict: expect.stringContaining('Refused') }));
-it('P16-NF-30 [behavior:fired-and-no-op] executes admitted and copied evidence controls in a fresh process', () => expect(result).toMatchObject({ fired: 'fired', noop: 'no-op', copiedEvidence: expect.stringContaining('Refused'), alteredCopiedEvidence: expect.stringContaining('Refused'), absent: 'unclassified', malformedEvidence: expect.stringContaining('Refused'), foreignClockEvidence: expect.stringContaining('Refused'), actionWithdrawn: expect.stringContaining('Refused') }));
+it('P16-NF-30 [behavior:fired-and-no-op] executes admitted, conflicting, and copied evidence controls in a fresh process', () => expect(result).toMatchObject({ fired: 'fired', noop: 'no-op', competingFeature: expect.stringContaining('Refused'), competingFeatureReversed: expect.stringContaining('Refused'), competingFeatureSelectNegative: expect.stringContaining('Refused'), equalFeatureReplay: 'fired', copiedEvidence: expect.stringContaining('Refused'), alteredCopiedEvidence: expect.stringContaining('Refused'), absent: 'unclassified', malformedEvidence: expect.stringContaining('Refused'), foreignClockEvidence: expect.stringContaining('Refused'), actionWithdrawn: expect.stringContaining('Refused') }));
 it('P16-NF-52 [behavior:non-executable-exclusion] excludes all structural A2 rows and passed blocked claims in a fresh process', () => expect(result).toMatchObject({ blocked: 16, coverageBlocked: 'refused', burnEqual: expect.stringContaining('Refused') }));
 it('P16-NF-53 [behavior:legacy-additivity] verifies legacy test additivity in a fresh process', () => expect(result.additivity).toContain('byte-identical to main'));
 

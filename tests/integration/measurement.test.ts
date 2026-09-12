@@ -54,6 +54,16 @@ it('P16-NF-05 [behavior:measured-claim] requires admitted named execution eviden
   const context = { ...f.c, types: { ...f.types, evidence: [evidence] } };
   expect(value(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'm1', workload: 'w1',
     evidence: [evidence.id] }, context))).toContain('measured execution');
+  const competing = value(decode('Evidence', f.evidenceInput({ id: evidence.id, claim: {
+    subject: 'run:a', predicate: 'execution-observed', value: { hardware: 'm2', workload: 'w1' },
+  } }), f.types));
+  refused(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'm1', workload: 'w1',
+    evidence: [evidence.id] }, { ...f.c, types: { ...f.types, evidence: [evidence, competing] } }));
+  refused(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'm1', workload: 'w1',
+    evidence: [evidence.id] }, { ...f.c, types: { ...f.types, evidence: [competing, evidence] } }));
+  expect(value(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'm1', workload: 'w1',
+    evidence: [evidence.id] }, { ...f.c, types: { ...f.types, evidence: [evidence, evidence] } })))
+    .toContain('measured execution');
   refused(renderMeasurementClaim({ kind: 'recorded-execution', hardware: 'm1', workload: 'w1',
     evidence: [evidence.id] }, { ...f.c, types: { ...f.types, evidence: [structuredClone(evidence)] } }));
   const incomplete = { id: evidence.id, observedAt: { value: 100 }, freshFor: 10,
@@ -76,13 +86,18 @@ it('P16-NF-23 [behavior:observational-port] exposes no allow, place, or throttle
     'src/measurement/index.ts': "export * from './permission.js';",
   });
   expect(scan('export const { normalize } = { normalize: (value: number) => value };')).toEqual([]);
-  for (const source of [
-    'export const { allow } = { allow: () => true };',
-    'export const { admit: allow } = { admit: () => true };',
-    'export const [allow] = [() => true];',
-    'const x = () => true; export { x as allow };',
-    "export * as allow from './nested.js';",
-  ]) expect(scan(source)).toEqual(['allow']);
+  for (const [source, permission] of ([
+    ['export const { allow } = { allow: () => true };', 'allow'],
+    ['export const { admit: allow } = { admit: () => true };', 'allow'],
+    ['export const [allow] = [() => true];', 'allow'],
+    ['const x = () => true; export { x as allow };', 'allow'],
+    ["export * as allow from './nested.js';", 'allow'],
+    ['export namespace measurementDecisions { export function allow(){ return true; } }', 'allow'],
+    ['export default { allow: () => true };', 'allow'],
+    ['export const decisions = { canRun(){ return true; } };', 'canRun'],
+    ["export class Decisions { ['pl' + 'ace'] = () => true; }", 'place'],
+    ['export default [function throttle(){ return true; }];', 'throttle'],
+  ] as const)) expect(scan(source)).toEqual([permission]);
 });
 
 it('P16-NF-24 [behavior:rate-event-populations] keeps breaker and session populations distinct', () => {
@@ -152,6 +167,16 @@ it('P16-NF-30 [behavior:fired-and-no-op] executes positive, negative, absent, an
     types: { ...f.types, evidence: [fired] } }))).toBe('fired');
   expect(value(classifyFeatureOutcome({ ...base, actionProved: false, negativeProved: true, evidence: noOp },
     { ...f.c, types: { ...f.types, evidence: [noOp] } }))).toBe('no-op');
+  const competingNoOp = value(decode('Evidence', f.evidenceInput({ id: fired.id, claim: {
+    subject: 'feature-a', predicate: 'feature-action-observed', value: 'no-op',
+  } }), f.types));
+  for (const evidence of [[fired, competingNoOp], [competingNoOp, fired]] as const)
+    refused(classifyFeatureOutcome({ ...base, evidence: fired }, { ...f.c,
+      types: { ...f.types, evidence } }));
+  refused(classifyFeatureOutcome({ ...base, actionProved: false, negativeProved: true,
+    evidence: competingNoOp }, { ...f.c, types: { ...f.types, evidence: [fired, competingNoOp] } }));
+  expect(value(classifyFeatureOutcome({ ...base, evidence: fired }, { ...f.c,
+    types: { ...f.types, evidence: [fired, fired] } }))).toBe('fired');
   const copied = structuredClone(fired);
   refused(classifyFeatureOutcome({ ...base, evidence: copied }, { ...f.c,
     types: { ...f.types, evidence: [copied] } }), 'comparison domain');

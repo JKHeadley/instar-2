@@ -1,5 +1,5 @@
 import { compare, compareMeasurements, decode, decodeMeasurement, readEvidence } from '../index.js';
-import type { BoundaryContext, Clock, Result } from '../index.js';
+import type { BoundaryContext, Clock, Evidence, Result } from '../index.js';
 import { boundary, contentRegistrationId, encoding, ensure, freeze, take } from './boundary.js';
 import type {
   AdmittedMeasurementAmount, ClassifiedFootprint, ClassifiedLegacyResourceObservation,
@@ -45,6 +45,28 @@ function clockOrder(left: Clock, right: Clock, context: BoundaryContext): number
   return take(compareMeasurements(left, right, context.preserved));
 }
 
+function resolveAdmittedEvidence(id: string, context: MeasurementDecodeContext,
+  label: string): Evidence {
+  const candidates = (context.types.evidence ?? []).filter(evidence => evidence.id === id);
+  ensure(candidates.length > 0, `${label} is not admitted`);
+  const organization = take(decode('Scope', {
+    type: 'Scope', schemaVersion: 1, kind: 'organization',
+  }, context.types));
+  const admitted = candidates.map(evidence => {
+    const decoded = take(decode('Evidence', evidence, context.types));
+    ensure(encoding(decoded).bytes === encoding(evidence).bytes,
+      `${label} must retain its admitted bytes`);
+    ensure(take(compare('Evidence', evidence, decoded, 'value', organization,
+      context.preserved)) === true, `${label} must be an admitted Evidence record`);
+    return evidence;
+  });
+  const selected = admitted[0]!;
+  for (const candidate of admitted.slice(1))
+    ensure(take(compare('Evidence', selected, candidate, 'identity', organization,
+      context.preserved)) === true, `${label} is conflicted`);
+  return selected;
+}
+
 /**
  * Slice A1 admits only the registered category/value tuple. Evidence membership,
  * witness reconciliation and historical quantity resolution belong to slice A2.
@@ -85,20 +107,12 @@ export function renderMeasurementClaim(input: Readonly<{
     ensure(input.hardware?.trim() && input.workload?.trim() && input.evidence.length > 0,
       'measured requires named hardware, workload, and execution evidence');
     const expected = { hardware: input.hardware, workload: input.workload };
-    ensure(input.evidence.every(id => (context.types.evidence ?? []).some(evidence => {
-      if (evidence.id !== id) return false;
-      const decoded = take(decode('Evidence', evidence, context.types));
-      ensure(encoding(decoded).bytes === encoding(evidence).bytes,
-        'measured execution evidence must retain its admitted bytes');
-      const organization = take(decode('Scope', {
-        type: 'Scope', schemaVersion: 1, kind: 'organization',
-      }, context.types));
-      ensure(take(compare('Evidence', evidence, decoded, 'value', organization, context.preserved)) === true,
-        'measured execution evidence must be an admitted Evidence record');
+    ensure(input.evidence.every(id => {
+      const decoded = resolveAdmittedEvidence(id, context, 'measured execution evidence');
       const claim = take(readEvidence(decoded, decoded.observedAt, context.preserved));
       return claim.predicate === 'execution-observed'
         && encoding(claim.value).bytes === encoding(expected).bytes;
-    })), 'measured execution evidence is not admitted or does not bind the claim');
+    }), 'measured execution evidence is not admitted or does not bind the claim');
     return `measured execution on ${input.hardware} for ${input.workload}`;
   });
 }
@@ -393,14 +407,10 @@ export function classifyFeatureOutcome(input: FeatureOutcomeClassificationReques
     ensure(evaluationClock !== null, 'feature classification requires an explicit evaluation clock');
     if (!input.actionProved && !input.negativeProved) return 'unclassified';
     if (!decodedEvidence || !(context.types.evidence ?? []).includes(input.evidence!)) return 'unclassified';
-    const organization = take(decode('Scope', {
-      type: 'Scope', schemaVersion: 1, kind: 'organization',
-    }, context.types));
-    ensure(take(compare('Evidence', input.evidence!, decodedEvidence, 'value', organization,
-      context.preserved)) === true,
-    'feature outcome evidence must be an admitted Evidence record');
+    const resolvedEvidence = resolveAdmittedEvidence(decodedEvidence.id, context,
+      'feature outcome evidence');
     take(compareMeasurements(decodedEvidence.observedAt, evaluationClock, context.preserved));
-    const claim = take(readEvidence(decodedEvidence, evaluationClock, context.preserved));
+    const claim = take(readEvidence(resolvedEvidence, evaluationClock, context.preserved));
     const expected = input.actionProved ? 'fired' : 'no-op';
     return claim.subject === input.feature && claim.predicate === input.action && claim.value === expected
       ? expected : 'unclassified';
