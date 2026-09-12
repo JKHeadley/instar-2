@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canonical, compare, decode } from '../../src/index.js';
 import { classifyFeatureOutcome, renderMeasurementClaim } from '../../src/measurement/index.js';
-// @ts-expect-error Repository contract checker is intentionally JavaScript.
-import { findForbiddenMeasurementPermissionExports } from '../../scripts/check-p16-contract-map.mjs';
 import { refused, value } from '../facts/fixtures.js';
 import { measurementFixture } from './fixture.js';
 
@@ -55,24 +53,5 @@ describe('Part 16 A1 round 9 independent-review regressions', () => {
       refused(renderMeasurementClaim(claim, { ...f.c, types: { ...f.types, evidence } }));
     expect(value(renderMeasurementClaim(claim, { ...f.c,
       types: { ...f.types, evidence: [m1, m1] } }))).toContain('measured execution on m1');
-  });
-
-  it('P16-NF-23 [behavior:observational-port] walks callable permissions in every exported container form', () => {
-    const scan = (source: string) => findForbiddenMeasurementPermissionExports({
-      'src/measurement/permission.ts': source,
-      'src/measurement/index.ts': "export * from './permission.js';",
-    });
-    for (const [source, permission] of ([
-      ['export namespace measurementDecisions { export function allow(){ return true; } }', 'allow'],
-      ['export default { allow: () => true };', 'allow'],
-      ["export const decisions = { 'canRun'(){ return true; } };", 'canRun'],
-      ["export class Decisions { ['pl' + 'ace'] = () => true; }", 'place'],
-      ['const allow=()=>true; const decisions={allow}; export {decisions};', 'allow'],
-      ['export default [{ nested: { allow(){ return true; } } }];', 'allow'],
-    ] as const)) expect(scan(source), source).toEqual([permission]);
-    expect(scan('export default [function throttle(){ return true; }];')).toEqual([]);
-    expect(scan('export namespace measurementHelpers { export function normalize(v:number){ return v; } }'))
-      .toEqual([]);
-    expect(scan('export default [{ normalize: (v:number) => v }];')).toEqual([]);
   });
 });

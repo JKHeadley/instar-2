@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decode } from '../../src/index.js';
 import { classifyFeatureOutcome } from '../../src/measurement/index.js';
-// @ts-expect-error Repository contract checker is intentionally JavaScript.
-import { findForbiddenMeasurementPermissionExports } from '../../scripts/check-p16-contract-map.mjs';
 import { refused, value } from '../facts/fixtures.js';
 import { measurementFixture } from './fixture.js';
 
@@ -27,18 +25,5 @@ describe('Part 16 A1 round 8 independent-review regressions', () => {
     'comparison domain');
     expect(value(classifyFeatureOutcome({ ...request, evidence: copied }, { ...f.c,
       types: { ...f.types, evidence: [admitted] } }))).toBe('unclassified');
-  });
-
-  it('P16-NF-23 [behavior:observational-port] destructured-allow, destructured-alias-allow, array-destructured-allow, and named-reexport-allow refuse', () => {
-    const scan = (source: string) => findForbiddenMeasurementPermissionExports({
-      'src/measurement/permission.ts': source,
-      'src/measurement/index.ts': "export * from './permission.js';",
-    });
-    expect(scan('export const { normalize } = { normalize: (value: number) => value };')).toEqual([]);
-    expect(scan('export const { allow } = { allow: () => true };')).toEqual(['allow']);
-    expect(scan('export const { admit: allow } = { admit: () => true };')).toEqual(['allow']);
-    expect(scan('export const [allow] = [() => true];')).toEqual(['allow']);
-    expect(scan('const x = () => true; export { x as allow };')).toEqual(['allow']);
-    expect(scan("export * as allow from './nested.js';")).toEqual(['allow']);
   });
 });

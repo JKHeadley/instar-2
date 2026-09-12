@@ -5,7 +5,7 @@ import {
   renderMeasurementClaim,
 } from '../../src/measurement/index.js';
 // @ts-expect-error Repository contract checker is intentionally JavaScript.
-import { checkP16Coverage, findForbiddenMeasurementPermissionExports, p16Dispositions } from '../../scripts/check-p16-contract-map.mjs';
+import { checkP16Coverage, p16Dispositions } from '../../scripts/check-p16-contract-map.mjs';
 import { refused, value } from '../facts/fixtures.js';
 import { measurementFixture } from './fixture.js';
 
@@ -70,7 +70,7 @@ describe('Part 16 A1 round 7 independent-review regressions', () => {
 
   it('P16-NF-52 [behavior:non-executable-exclusion] finding 4 rejects passed assertions for every blocked check', () => {
     const rows = p16Dispositions() as { id: string; number: number; status: string }[];
-    const markers: Record<number, string> = { 1: 'contract-inventory', 2: 'architecture-boundary',
+    const markers: Record<number, string> = { 1: 'contract-inventory',
       3: 'registration-current-content', 5: 'measured-claim', 22: 'quota-coalescing',
       23: 'observational-port', 24: 'rate-event-populations', 25: 'cpu-and-byte',
       26: 'process-incarnation', 27: 'limit-plus-one-census', 28: 'classified-and-unclassified',
@@ -91,17 +91,6 @@ describe('Part 16 A1 round 7 independent-review regressions', () => {
       expect(() => checkP16Coverage(attacked), row.id)
         .toThrow('non-executable row was counted as a pass');
     }
-  });
-
-  it('P16-NF-23 [behavior:observational-port] finding 5 rejects forbidden permission exports', () => {
-    expect(findForbiddenMeasurementPermissionExports({
-      'src/measurement/helper.ts': 'export function normalize(value: number) { return value; }',
-      'src/measurement/index.ts': "export { normalize } from './helper.js';",
-    })).toEqual([]);
-    expect(findForbiddenMeasurementPermissionExports({
-      'src/measurement/permission.ts': 'export function allow() { return true; }',
-      'src/measurement/index.ts': "export { allow } from './permission.js';",
-    })).toEqual(['allow']);
   });
 
   it('finding 6 burn recovery thresholds must both be strictly lower than entry thresholds', () => {

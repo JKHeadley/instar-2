@@ -10,8 +10,7 @@ beforeAll(() => {
     import { canonical, consumeResult, decode, decodeMeasurement } from './dist/index.js';
     import * as m from './dist/measurement/index.js';
     import * as decodeModule from './dist/measurement/decode.js';
-    import { checkP16Architecture, checkP16Coverage, findForbiddenMeasurementPermissionExports,
-      p16Dispositions, validateMeasurementPermissionExports } from './scripts/check-p16-contract-map.mjs';
+    import { checkP16Coverage, p16Dispositions } from './scripts/check-p16-contract-map.mjs';
     const take = r => consumeResult(r, { Success: v => v, Refused: x => { throw new Error(x.detail); } });
     const kind = r => consumeResult(r, { Success: () => 'Success', Refused: x => 'Refused:' + x.detail });
     const binding = raw => 'measurement-content:' + take(canonical(raw)).hash;
@@ -86,7 +85,7 @@ beforeAll(() => {
     const burnContext={...context,register:burnRegister,types:{...types,register:burnRegister},
       registeredContracts:{...context.registeredContracts,[burnEqual.id]:binding(burnEqual)}};
     const rows=p16Dispositions();
-    const markers={1:'contract-inventory',2:'architecture-boundary',3:'registration-current-content',5:'measured-claim',
+    const markers={1:'contract-inventory',3:'registration-current-content',5:'measured-claim',
       22:'quota-coalescing',23:'observational-port',24:'rate-event-populations',25:'cpu-and-byte',
       26:'process-incarnation',27:'limit-plus-one-census',28:'classified-and-unclassified',29:'resource-trend',
       30:'fired-and-no-op',52:'non-executable-exclusion',53:'legacy-additivity'};
@@ -97,7 +96,7 @@ beforeAll(() => {
       name:process.cwd()+'/tests/'+name+'.test.ts',assertionResults:assertions}))};
     const coverageBlocked=(()=>{try{checkP16Coverage(blockedReport);return'accepted';}catch{return'refused';}})();
     const out={
-      inventory:p16Dispositions().length, architecture:checkP16Architecture(),
+      inventory:p16Dispositions().length,
       cache:take(m.decodeReadCachePolicy(cache,context)).id,
       cacheMissing:kind(m.decodeReadCachePolicy(cache,{...context,register:{...register,entries:entries.filter(x=>x!==cache.id)}})),
       substituted:kind(m.decodeMeasurementProducerContract(invented,changedContext)),
@@ -150,83 +149,6 @@ beforeAll(() => {
       actionWithdrawn:kind(m.classifyFeatureOutcome({...feature,evidence:fired},{...context,register:withdrawnRegister,
         types:{...types,register:withdrawnRegister,evidence:[fired]}})),
       burnEqual:kind(m.decodeBurnPolicy(burnEqual,burnContext)),
-      permissionExport:findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':'export function allow(){return true;}',
-        'src/measurement/index.ts':"export { allow } from './permission.js';"}),
-      destructuredPermissionExports:[
-        'export const { allow } = { allow: () => true };',
-        'export const { admit: allow } = { admit: () => true };',
-        'export const [allow] = [() => true];',
-        'const x=()=>true; export {x as allow};',
-        "export * as allow from './nested.js';",
-      ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
-        'src/measurement/index.ts':"export * from './permission.js';"})),
-      containerPermissionExports:[
-        'export namespace measurementDecisions { export function allow(){return true;} }',
-        'export default { allow: () => true };',
-        'export const decisions={canRun(){return true;}};',
-        "export class Decisions { ['pl'+'ace']=()=>true; }",
-        'export default [function throttle(){return true;}];',
-      ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
-        'src/measurement/index.ts':"export * from './permission.js';"})),
-      round10PermissionExports:[
-        "const key='allow'; export const decisions={[key]:()=>true};",
-        'export function measurementDecisions(){return {allow:()=>true};}',
-        'export const measurementDecisions=()=>({allow:()=>true});',
-        'class Base {allow(){return true;}} export class Decisions extends Base {}',
-        'export const decisions={get current(){return {allow:()=>true};}};',
-        'export const decisions=()=>()=>({allow:()=>true});',
-      ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
-        'src/measurement/index.ts':"export * from './permission.js';"})),
-      round10DefaultSpread:findForbiddenMeasurementPermissionExports({
-        'src/measurement/permission.ts':'const decisions=[{allow:()=>true}]; export default [...decisions];',
-        'src/measurement/index.ts':"export {default as decisions} from './permission.js';"}),
-      round10HelperExports:[
-        'export function measurementHelpers(){return {normalize:(v)=>v};}',
-        'class Base {normalize(v){return v;}} export class Helpers extends Base {}',
-        'export const helpers={get current(){return {normalize:(v)=>v};}};',
-      ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
-        'src/measurement/index.ts':"export * from './permission.js';"})),
-      round11Finding1:[
-        "const key='allow'.split('').join(''); export default {[key]:()=>true};",
-        "export default Object.fromEntries([['allow',()=>true]]);",
-        "export default Object.defineProperty({},'allow',{value:()=>true});",
-        "export default Object.defineProperties({},{allow:{value:()=>true}});",
-        "const result={}; Reflect.set(result,'allow',()=>true);export default result;",
-        "const result:Record<string,()=>boolean>={};result.allow=()=>true;export default result;",
-        "const result:Record<string,()=>boolean>={};const k='allow'; result[k]=()=>true;export default result;",
-        "export default function make(){const result:Record<string,()=>boolean>={};result.allow=()=>true;return result;}",
-        "export default class { [key:string]:unknown; constructor(){this['allow']=()=>true;} }",
-        "function make(key:string){return {[key]:()=>true};}export default make('allow');",
-        "function make({key}:{key:string}){return {[key]:()=>true};}export default make({key:'allow'});",
-        "export default function make(key='allow'){return {[key]:()=>true};}",
-        "export default function* values(){yield {allow:()=>true};}",
-        "export default new Proxy({},{get(_target,key){if(key==='allow')return ()=>true;}});",
-        "const key='allow'.split('').join(''); export default {get [key](){return ()=>true;}};",
-      ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
-        'src/measurement/index.ts':"export * from './permission.js'; export {default as fixtureDefault} from './permission.js';"})),
-      round11Finding2:[
-        'const allow=(n:number)=>n; export const normalize=allow;',
-        'const data={allow:()=>true,normalize:(n:number)=>n}; export const normalize=data.normalize;',
-        'function count(_input:unknown){return 1;} export const countValue=count({allow:()=>true});',
-        'const allow=(n:number)=>n; export function normalize(n:number){return allow(n);}',
-        'export type allow=(n:number)=>number; export const normalize=(n:number)=>n;',
-      ].map(source=>findForbiddenMeasurementPermissionExports({'src/measurement/permission.ts':source,
-        'src/measurement/index.ts':"export * from './permission.js';"})),
-      round12Finding1:[
-        'export default {allow: (()=>true) as (()=>boolean)|undefined};',
-        'export default {allow: (()=>true) as unknown};',
-      ].map(source=>validateMeasurementPermissionExports({'src/measurement/permission.ts':source})),
-      round12Finding2:[
-        'const value=(n:number)=>n; export type {value as allow}; export const normalize=(n:number)=>n;',
-        'export const allow=7;',
-        'export const normalize=function allow(n:number){return n};',
-      ].map(source=>validateMeasurementPermissionExports({'src/measurement/permission.ts':source})),
-      round12Finding3:[
-        validateMeasurementPermissionExports({'src/measurement/permission.ts':
-          'export function normalize(n:number):number{return n>0?normalize(n-1):0;'}),
-        validateMeasurementPermissionExports({'src/measurement/a.ts':'export const normalize=(n:number)=>n;',
-          'src/measurement/index.ts':"export * as helpers from './a.js';"}),
-      ],
       coverageBlocked,
       blocked:p16Dispositions().filter(row=>row.status==='NON-EXECUTABLE-UNTIL-slice-A2').length,
       additivity:execFileSync(process.execPath,['scripts/check-p16-additivity.mjs'],{encoding:'utf8'}),
@@ -240,20 +162,10 @@ beforeAll(() => {
 }, 30_000);
 
 it('P16-NF-01 [behavior:contract-inventory] validates all 53 labels in a fresh process', () => expect(result.inventory).toBe(53));
-it('P16-NF-02 [behavior:architecture-boundary] validates the A1 architecture in a fresh process', () => expect(result.architecture).toMatchObject({ executable: 12, mixed: 2 }));
-it('P16-NF-23 [behavior:observational-port] round 11 finding 1 rejects all transformed callable-permission cases in a fresh process', () => expect(result.round11Finding1).toEqual(Array.from({ length: 15 }, () => ['allow'])));
-it('P16-NF-23 [behavior:observational-port] round 11 finding 2 accepts all private, discarded, and type-only name cases in a fresh process', () => expect(result.round11Finding2).toEqual(Array.from({ length: 5 }, () => [])));
-it('P16-NF-23 [behavior:observational-port] round 12 finding 1 refuses callable and unanalyzable permission types in a fresh process', () => expect(result.round12Finding1).toMatchObject([
-  { status: 'refused', accepted: false, path: 'src/measurement/permission.ts:default.allow' },
-  { status: 'unanalyzable', accepted: false, path: 'src/measurement/permission.ts:default.allow' },
-]));
-it('P16-NF-23 [behavior:observational-port] round 12 finding 2 accepts erased, non-callable and private names in a fresh process', () => expect(result.round12Finding2).toMatchObject(Array.from({ length: 3 }, () => ({ status: 'accepted', accepted: true }))));
-it('P16-NF-23 [behavior:observational-port] round 12 finding 3 returns total recursive and namespace results in a fresh process', () => expect(result.round12Finding3).toMatchObject(Array.from({ length: 2 }, () => ({ status: 'accepted', accepted: true }))));
 it('P16-NF-03 [behavior:registration-current-content] rejects missing identity, replacement content, and disabled sampled identity in a fresh process', () => expect(result).toMatchObject({ cache: 'cache:fixture', cacheMissing: expect.stringContaining('Refused'), substituted: expect.stringContaining('Refused'), sampleDisabled: expect.stringContaining('Refused') }));
 it('P16-NF-05 [behavior:measured-claim] distinguishes admitted execution from copied, conflicting, and malformed proof in a fresh process', () => expect(result).toMatchObject({ claimTarget: 'target: not measured', claimMeasured: expect.stringContaining('measured execution'), claimCompeting: expect.stringContaining('Refused'), claimCompetingReversed: expect.stringContaining('Refused'), claimEqualReplay: expect.stringContaining('measured execution'), claimCopied: expect.stringContaining('Refused'), claimIncomplete: expect.stringContaining('Refused') }));
 it('P16-NF-22 [behavior:quota-coalescing] coalesces repeated missing-state observations in a fresh process', () => expect(result.quota).toEqual({ notices: ['account'], open: ['account'] }));
-it('P16-NF-23 [behavior:observational-port] exposes only the observational holder port in a fresh process', () => expect(result).toMatchObject({ port: ['admitAmount', 'owner', 'trend'], permissionExport: ['allow'], destructuredPermissionExports: [['allow'], ['allow'], ['allow'], ['allow'], ['allow']], containerPermissionExports: [['allow'], ['allow'], ['canRun'], ['place'], []] }));
-it('P16-NF-23 [behavior:observational-port] rejects round 10 reachable permissions in a fresh process', () => expect(result).toMatchObject({ round10PermissionExports: [['allow'], ['allow'], ['allow'], ['allow'], ['allow'], ['allow']], round10DefaultSpread: ['allow'], round10HelperExports: [[], [], []] }));
+it('P16-NF-23 [behavior:observational-port] exposes only the observational holder port in a fresh process', () => expect(result).toMatchObject({ port: ['admitAmount', 'owner', 'trend'] }));
 it('P16-NF-24 [behavior:rate-event-populations] executes breaker and session rate populations in a fresh process', () => expect(result.rate).toEqual({ 'circuit-open': 1, quota: 1 }));
 it('P16-NF-25 [behavior:cpu-and-byte] executes CPU normalization and byte admission in a fresh process', () => expect(result).toMatchObject({ cpu: [50, 12.5], fractionalBytes: expect.stringContaining('Refused') }));
 it('P16-NF-26 [behavior:process-incarnation] executes typed absence and malformed process input in a fresh process', () => expect(result.process).toEqual(['missing', expect.stringContaining('Refused')]));

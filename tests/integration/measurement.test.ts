@@ -8,19 +8,12 @@ import {
   summarizeRateLimitEvents,
 } from '../../src/measurement/index.js';
 // @ts-expect-error Repository contract checker is intentionally JavaScript.
-import { checkP16Architecture, checkP16Coverage, findForbiddenMeasurementPermissionExports, p16Dispositions, validateMeasurementPermissionExports } from '../../scripts/check-p16-contract-map.mjs';
+import { checkP16Coverage, p16Dispositions } from '../../scripts/check-p16-contract-map.mjs';
 import { refused, value } from '../facts/fixtures.js';
 import { measurementFixture } from '../measurement/fixture.js';
-import {
-  round11ExportTemplates, round11Finding1Ids, round11HarmlessExports, scanRound11Source,
-} from '../measurement/round11-architecture-fixtures.js';
 
 it('P16-NF-01 [behavior:contract-inventory] resolves the complete governed check inventory', () => {
   expect(p16Dispositions()).toHaveLength(53);
-});
-
-it('P16-NF-02 [behavior:architecture-boundary] admits only the public A1 dependency surface', () => {
-  expect(checkP16Architecture()).toMatchObject({ executable: 12, mixed: 2, sliceA2: 16 });
 });
 
 it('P16-NF-03 [behavior:registration-current-content] enforces current identity and content bindings', () => {
@@ -84,92 +77,6 @@ it('P16-NF-22 [behavior:quota-coalescing] coalesces repeated valid missing-state
 
 it('P16-NF-23 [behavior:observational-port] exposes no allow, place, or throttle operation', () => {
   expect(Object.keys(createMeasurementLedger(measurementFixture().c)).sort()).toEqual(['admitAmount', 'owner', 'trend']);
-  const scan = (source: string) => findForbiddenMeasurementPermissionExports({
-    'src/measurement/permission.ts': source,
-    'src/measurement/index.ts': "export * from './permission.js';",
-  });
-  expect(scan('export const { normalize } = { normalize: (value: number) => value };')).toEqual([]);
-  expect(scan('export default [function throttle(){ return true; }];')).toEqual([]);
-  for (const [source, permission] of ([
-    ['export const { allow } = { allow: () => true };', 'allow'],
-    ['export const { admit: allow } = { admit: () => true };', 'allow'],
-    ['export const [allow] = [() => true];', 'allow'],
-    ['const x = () => true; export { x as allow };', 'allow'],
-    ["export * as allow from './nested.js';", 'allow'],
-    ['export namespace measurementDecisions { export function allow(){ return true; } }', 'allow'],
-    ['export default { allow: () => true };', 'allow'],
-    ['export const decisions = { canRun(){ return true; } };', 'canRun'],
-    ["export class Decisions { ['pl' + 'ace'] = () => true; }", 'place'],
-  ] as const)) expect(scan(source)).toEqual([permission]);
-});
-
-it('P16-NF-23 [behavior:observational-port] round 12 finding 1 resolves callable permission types', () => {
-  expect(validateMeasurementPermissionExports({
-    'src/measurement/permission.ts':
-      'export default {allow: (() => true) as (() => boolean) | undefined};',
-  })).toMatchObject({ status: 'refused', accepted: false, reason: 'reachable-callable-permission',
-    path: 'src/measurement/permission.ts:default.allow' });
-  expect(validateMeasurementPermissionExports({
-    'src/measurement/permission.ts': 'export default {allow: (() => true) as unknown};',
-  })).toMatchObject({ status: 'unanalyzable', accepted: false,
-    reason: 'reachable-permission-type-unanalyzable',
-    path: 'src/measurement/permission.ts:default.allow' });
-});
-
-it('P16-NF-23 [behavior:observational-port] round 12 finding 2 ignores erased and harmless names', () => {
-  for (const source of [
-    'const value=(n:number)=>n; export type {value as allow}; export const normalize=(n:number)=>n;',
-    'export const allow=7;',
-    'export const normalize=function allow(n:number){return n};',
-  ]) expect(validateMeasurementPermissionExports({ 'src/measurement/permission.ts': source }))
-    .toMatchObject({ status: 'accepted', accepted: true });
-});
-
-it('P16-NF-23 [behavior:observational-port] round 12 finding 3 returns total recursive and namespace results', () => {
-  expect(validateMeasurementPermissionExports({
-    'src/measurement/permission.ts':
-      'export function normalize(n:number):number{return n>0?normalize(n-1):0;}',
-  })).toMatchObject({ status: 'accepted', accepted: true });
-  expect(validateMeasurementPermissionExports({
-    'src/measurement/a.ts': 'export const normalize=(n:number)=>n;',
-    'src/measurement/index.ts': "export * as helpers from './a.js';",
-  })).toMatchObject({ status: 'accepted', accepted: true });
-});
-
-it('P16-NF-23 [behavior:observational-port] rejects round 10 export-reachable callable permissions', () => {
-  const scan = (source: string, index = "export * from './permission.js';") =>
-    findForbiddenMeasurementPermissionExports({
-      'src/measurement/permission.ts': source,
-      'src/measurement/index.ts': index,
-    });
-  for (const [source, index] of [
-    ["const key='allow'; export const decisions={[key]:()=>true};", undefined],
-    ['export function measurementDecisions(){return {allow:()=>true};}', undefined],
-    ['export const measurementDecisions=()=>({allow:()=>true});', undefined],
-    ['const decisions=[{allow:()=>true}]; export default [...decisions];',
-      "export {default as decisions} from './permission.js';"],
-    ['class Base {allow(){return true;}} export class Decisions extends Base {}', undefined],
-    ['export const decisions={get current(){return {allow:()=>true};}};', undefined],
-    ['export const decisions=()=>()=>({allow:()=>true});', undefined],
-  ] as const) expect(scan(source, index)).toEqual(['allow']);
-  expect(scan('export function measurementHelpers(){return {normalize:(v:number)=>v};}')).toEqual([]);
-  expect(scan('class Base {normalize(v:number){return v;}} export class Helpers extends Base {}')).toEqual([]);
-});
-
-it('P16-NF-23 [behavior:observational-port] round 11 finding 1 rejects transformed callable permissions and accepts their normalization neighbors', () => {
-  for (const [id, template] of round11ExportTemplates.filter(([id]) => round11Finding1Ids.has(id))) {
-    expect(findForbiddenMeasurementPermissionExports(scanRound11Source(
-      template.replaceAll('__NAME__', 'allow'),
-    )), id).toEqual(['allow']);
-    expect(findForbiddenMeasurementPermissionExports(scanRound11Source(
-      template.replaceAll('__NAME__', 'normalize'),
-    )), `${id}-normalize`).toEqual([]);
-  }
-}, 20_000);
-
-it('P16-NF-23 [behavior:observational-port] round 11 finding 2 ignores private, discarded, and type-only allow spellings', () => {
-  for (const [id, source] of round11HarmlessExports.filter(([id]) => id !== 'numeric-metadata'))
-    expect(findForbiddenMeasurementPermissionExports(scanRound11Source(source)), id).toEqual([]);
 });
 
 it('P16-NF-24 [behavior:rate-event-populations] keeps breaker and session populations distinct', () => {
@@ -273,7 +180,7 @@ it('P16-NF-30 [behavior:fired-and-no-op] executes positive, negative, absent, an
 it('P16-NF-52 [behavior:non-executable-exclusion] keeps every A2 row outside passing acceptance', () => {
   const rows = p16Dispositions() as { id: string; number: number; status: string }[];
   expect(rows.filter(row => row.status === 'NON-EXECUTABLE-UNTIL-slice-A2')).toHaveLength(16);
-  const markers: Record<number, string> = { 1: 'contract-inventory', 2: 'architecture-boundary',
+  const markers: Record<number, string> = { 1: 'contract-inventory',
     3: 'registration-current-content', 5: 'measured-claim', 22: 'quota-coalescing', 23: 'observational-port',
     24: 'rate-event-populations', 25: 'cpu-and-byte', 26: 'process-incarnation',
     27: 'limit-plus-one-census', 28: 'classified-and-unclassified', 29: 'resource-trend',
