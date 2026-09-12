@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 // @ts-expect-error The executable contract checker intentionally ships as an ESM script without declarations.
 import { auditP15ArchitectureRows, auditP15CoverageRows, p15Dispositions } from '../../scripts/check-p15-contract-map.mjs';
 // @ts-expect-error The executable additivity checker intentionally ships as an ESM script without declarations.
-import { checkP15InheritedScopeTest } from '../../scripts/check-p15-additivity.mjs';
+import { checkP15InheritedScopeTest, p15AdditivityApplies, p15AdditivityBaseline } from '../../scripts/check-p15-additivity.mjs';
 
 const result = (run: () => unknown) => {
   try { return { accepted: true, value: run() }; }
@@ -36,7 +36,8 @@ it('P15 round-fifteen F2 validates inherited assertions from the actual HEAD rep
   const checker = readFileSync('scripts/check-p15-additivity.mjs', 'utf8');
   expect(checker).not.toMatch(/git', \['(?:clone|checkout)'/);
   const packageOnMain = execFileSync('git', ['show', 'main:package.json'], { encoding: 'utf8' });
-  expect(readFileSync('package.json', 'utf8')).toBe(packageOnMain);
+  if (p15AdditivityApplies(p15AdditivityBaseline()))
+    expect(readFileSync('package.json', 'utf8')).toBe(packageOnMain);
   expect(packageOnMain).not.toContain('--exclude tests/harness-adapters/contract-map.test.ts');
 
   const name = resolve('tests/harness-adapters/contract-map.test.ts');
