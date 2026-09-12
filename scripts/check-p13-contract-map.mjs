@@ -147,8 +147,14 @@ const allowedPath = path => path.startsWith('src/harness-adapters/')
   || generated.has(path);
 
 function changedPaths() {
-  const tracked = execFileSync('git', ['diff', '--name-only', 'main'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
-  const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+  // NUL-delimited output: Git never quotes or escapes pathnames under -z, so a path with non-ASCII or control
+  // characters keeps its real bytes and the scope predicates below see the actual name (an escaped, quoted
+  // name would start with `"` and match nothing).
+  const nulSplit = out => out.split('\0').filter(Boolean);
+  // --no-renames: a rename OUT of Part Thirteen must surface its deleted source path (rename detection would report
+  // only the foreign destination and let the diff look as if it touched no Part Thirteen path).
+  const tracked = nulSplit(execFileSync('git', ['diff', '--no-renames', '--name-only', '-z', 'main'], { encoding: 'utf8' }));
+  const untracked = nulSplit(execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], { encoding: 'utf8' }));
   return [...new Set([...tracked, ...untracked])].sort();
 }
 
@@ -160,7 +166,13 @@ function existsOnMain(path) {
 export function checkP13Architecture() {
   const failures = [];
   const changed = changedPaths();
-  for (const path of changed) {
+  // The feature-scope arm guards THIS part's slice. On a branch that touches no Part Thirteen path (another
+  // part's slice re-synced onto main), every changed file is by definition outside Part Thirteen's scope, so the
+  // arm has nothing to judge; the structural checks below still run unconditionally.
+  const p13SliceChanged = changed.some(path => path.startsWith('src/harness-adapters/')
+    || path.startsWith('tests/harness-adapters/')
+    || /^tests\/(integration|e2e)\/harness-adapters(?:-[^/]*)?\.test\.ts$/.test(path));
+  if (p13SliceChanged) for (const path of changed) {
     if (!allowedPath(path)) failures.push(`out-of-scope path: ${path}`);
     if (!generated.has(path) && existsOnMain(path)) failures.push(`pre-existing main file changed: ${path}`);
   }
