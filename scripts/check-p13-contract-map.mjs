@@ -151,7 +151,9 @@ function changedPaths() {
   // characters keeps its real bytes and the scope predicates below see the actual name (an escaped, quoted
   // name would start with `"` and match nothing).
   const nulSplit = out => out.split('\0').filter(Boolean);
-  const tracked = nulSplit(execFileSync('git', ['diff', '--name-only', '-z', 'main'], { encoding: 'utf8' }));
+  // --no-renames: a rename OUT of Part Thirteen must surface its deleted source path (rename detection would report
+  // only the foreign destination and let the diff look as if it touched no Part Thirteen path).
+  const tracked = nulSplit(execFileSync('git', ['diff', '--no-renames', '--name-only', '-z', 'main'], { encoding: 'utf8' }));
   const untracked = nulSplit(execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], { encoding: 'utf8' }));
   return [...new Set([...tracked, ...untracked])].sort();
 }
