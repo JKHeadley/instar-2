@@ -8,7 +8,7 @@ import { value } from '../intake/fixtures.js';
 import { conversationFixture } from './fixture.js';
 
 /** A Telegram reply admitted through Part Eight's public prepare arm. */
-export function telegramPreparedOutbound(lostResponse = false) {
+export function telegramPreparedOutbound(lostResponse = false, text = 'Here is the requested result.') {
   const telegram = conversationFixture();
   if (lostResponse) telegram.loseSendResponse();
   const target = { chatId: '-1000000001001', forum: true, messageThreadId: 42 } as const;
@@ -42,7 +42,7 @@ export function telegramPreparedOutbound(lostResponse = false) {
     type: 'OutboundMessage', schemaVersion: 1, id: 'telegram-message:round5',
     semanticMessage: 'five-semantic-message:telegram:round5', run: effects.run.id,
     speaker: effects.host.principal.id, account: telegram.admitted.account, conversation,
-    text: 'Here is the requested result.', purpose: 'ordinary-reply', sourceResult: effects.pending.id,
+    text, purpose: 'ordinary-reply', sourceResult: effects.pending.id,
   }, effects.host));
   const adapter = createTelegramReplyOperationAdapter(telegram.admitted, telegram.api, target,
     effects.host.boundary);

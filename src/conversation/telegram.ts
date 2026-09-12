@@ -88,17 +88,28 @@ type TelegramSenderEvidence =
   | Readonly<{ kind: 'channel-post'; role: 'author'; label: string }>
   | Readonly<{ kind: 'unresolved'; role: 'actor'; label: string }>;
 
+type TelegramRoutedVariant = 'message' | 'edited-message' | 'channel-post' | 'edited-channel-post'
+  | 'callback' | 'reaction' | 'membership' | 'reaction-count' | 'inline' | 'unsupported';
+
+interface TelegramSelectedUpdate {
+  readonly event: RecordValue;
+  readonly kind: TelegramUpdateKind;
+  readonly variant: TelegramRoutedVariant;
+  readonly sender: TelegramSenderEvidence;
+}
+
 function senderFromEvent(event: RecordValue, role: 'author' | 'actor', label: string): TelegramSenderEvidence {
   if (event.sender_chat !== undefined) return { kind: 'chat', value: record(event.sender_chat, `${label} sender chat`), role, label };
   if (event.from !== undefined) return { kind: 'user', value: record(event.from, `${label} sender`), role, label };
   return { kind: 'unresolved', role: 'actor', label };
 }
 
-function updateEvent(update: RecordValue): { event: RecordValue; kind: TelegramUpdateKind; sender: TelegramSenderEvidence } {
+function updateEvent(update: RecordValue): TelegramSelectedUpdate {
   const variants = Object.entries(update).filter(([key]) => key !== 'update_id');
   ensure(variants.length === 1, 'Telegram update must contain exactly one routed variant');
   const supported = ['callback_query', 'edited_message', 'edited_channel_post', 'channel_post', 'message',
-    'chat_join_request', 'chat_member', 'my_chat_member', 'message_reaction', 'message_reaction_count']
+    'chat_join_request', 'chat_member', 'my_chat_member', 'message_reaction', 'message_reaction_count',
+    'inline_query', 'chosen_inline_result']
     .filter(key => update[key] !== undefined);
   const unsupportedRouted = Object.entries(update).filter(([key, value]) => key !== 'update_id'
     && !supported.includes(key) && value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -106,16 +117,18 @@ function updateEvent(update: RecordValue): { event: RecordValue; kind: TelegramU
   if (supported.length === 0) {
     ensure(unsupportedRouted.length === 1, 'unsupported Telegram update has no unambiguous authenticated chat route');
     const event = record(unsupportedRouted[0]![1], `unsupported ${unsupportedRouted[0]![0]}`);
-    return { event, kind: 'unsupported', sender: senderFromEvent(event, 'actor', `unsupported-${unsupportedRouted[0]![0]}`) };
+    return { event, kind: 'unsupported', variant: 'unsupported',
+      sender: senderFromEvent(event, 'actor', `unsupported-${unsupportedRouted[0]![0]}`) };
   }
   if (update.callback_query !== undefined) {
     const callback = record(update.callback_query, 'callback query');
-    return { event: record(callback.message, 'callback message'), kind: 'callback',
+    return { event: record(callback.message, 'callback message'), kind: 'callback', variant: 'callback',
       sender: { kind: 'user', value: record(callback.from, 'callback sender'), role: 'actor', label: 'callback' } };
   }
   if (update.edited_message !== undefined || update.edited_channel_post !== undefined) {
     const event = record(update.edited_message ?? update.edited_channel_post, 'edited message');
-    return { event, kind: 'edit', sender: update.edited_message !== undefined
+    return { event, kind: 'edit', variant: update.edited_message !== undefined ? 'edited-message' : 'edited-channel-post',
+      sender: update.edited_message !== undefined
       ? senderFromEvent(event, 'author', 'edited-message')
       : event.sender_chat !== undefined
         ? { kind: 'chat', value: record(event.sender_chat, 'edited channel-post sender chat'), role: 'author', label: 'edited-channel-post' }
@@ -123,7 +136,7 @@ function updateEvent(update: RecordValue): { event: RecordValue; kind: TelegramU
   }
   if (update.channel_post !== undefined) {
     const event = record(update.channel_post, 'channel post');
-    return { event, kind: 'channel-post', sender: event.sender_chat !== undefined
+    return { event, kind: 'channel-post', variant: 'channel-post', sender: event.sender_chat !== undefined
       ? { kind: 'chat', value: record(event.sender_chat, 'channel-post sender chat'), role: 'author', label: 'channel-post' }
       : { kind: 'channel-post', role: 'author', label: 'channel-post' } };
   }
@@ -131,7 +144,7 @@ function updateEvent(update: RecordValue): { event: RecordValue; kind: TelegramU
     const event = record(update.message, 'message');
     const kind: TelegramUpdateKind = serviceKeys.some(key => event[key] !== undefined) ? 'service-event'
       : mediaKeys.some(key => event[key] !== undefined) ? 'media-metadata' : 'reply';
-    return { event, kind, sender: senderFromEvent(event, 'author', 'message') };
+    return { event, kind, variant: 'message', sender: senderFromEvent(event, 'author', 'message') };
   }
   for (const key of ['chat_join_request', 'chat_member', 'my_chat_member', 'message_reaction', 'message_reaction_count'] as const) {
     if (update[key] !== undefined) {
@@ -139,25 +152,66 @@ function updateEvent(update: RecordValue): { event: RecordValue; kind: TelegramU
       if (key === 'message_reaction') {
         const hasUser = event.user !== undefined, hasActorChat = event.actor_chat !== undefined;
         ensure(hasUser !== hasActorChat, 'Telegram reaction must carry exactly one user or actor_chat sender');
-        return { event, kind: 'unsupported', sender: hasUser
+        return { event, kind: 'unsupported', variant: 'reaction', sender: hasUser
           ? { kind: 'user', value: record(event.user, 'reaction user'), role: 'actor', label: 'message-reaction' }
           : { kind: 'chat', value: record(event.actor_chat, 'reaction actor chat'), role: 'actor', label: 'message-reaction' } };
       }
-      return { event, kind: 'unsupported', sender: key === 'message_reaction_count'
+      return { event, kind: 'unsupported', variant: key === 'message_reaction_count' ? 'reaction-count' : 'membership',
+        sender: key === 'message_reaction_count'
         ? { kind: 'unresolved', role: 'actor', label: 'message-reaction-count' }
         : senderFromEvent(event, 'actor', key) };
+    }
+  }
+  for (const key of ['inline_query', 'chosen_inline_result'] as const) {
+    if (update[key] !== undefined) {
+      const event = record(update[key], key.replaceAll('_', ' '));
+      return { event, kind: 'unsupported', variant: 'inline',
+        sender: { kind: 'user', value: record(event.from, `${key} sender`), role: 'actor', label: key } };
     }
   }
   throw new Error('unsupported Telegram update has no authenticated chat route; it remains unacknowledged');
 }
 
-function resolveTelegramSender(sender: TelegramSenderEvidence, destination: RecordValue,
-  destinationType: string): Readonly<{ id: string; kind: 'person' | 'system' }> {
+function validateTelegramChatIdentity(id: number, type: string, label: string): void {
+  if (type === 'private') {
+    ensure(id > 0, `${label} requires a positive user chat id`);
+    return;
+  }
+  ensure(id < 0, `${label} requires a negative chat id`);
+  const isChannelRepresentation = id <= -1_000_000_000_000;
+  ensure(type === 'group' ? !isChannelRepresentation : isChannelRepresentation,
+    `${label} has an inconsistent chat id representation for type ${type}`);
+}
+
+function resolveTelegramUpdateIdentity(selected: TelegramSelectedUpdate): Readonly<{
+  chat: RecordValue;
+  chatId: number;
+  chatType: string;
+  principal: Readonly<{ id: string; kind: 'person' | 'system' }>;
+}> {
+  ensure(selected.variant !== 'inline',
+    'an inline Telegram update has no authenticated chat destination and cannot select a conversation route');
+  const destination = record(selected.event.chat, 'authenticated chat');
+  const destinationId = integer(destination.id, 'authenticated chat id');
+  const destinationType = nonempty(destination.type, 'authenticated chat type');
+  ensure(['private', 'group', 'supergroup', 'channel'].includes(destinationType),
+    'authenticated chat type is outside the Telegram closed set');
+  validateTelegramChatIdentity(destinationId, destinationType, 'Telegram destination');
+
+  const channelPost = selected.variant === 'channel-post' || selected.variant === 'edited-channel-post';
+  ensure(!channelPost || destinationType === 'channel',
+    'a channel-post update requires a channel destination independently of sender evidence');
+  ensure(!(['message', 'edited-message'] as const).includes(selected.variant as 'message' | 'edited-message')
+    || destinationType !== 'channel',
+    'a Telegram channel destination requires the channel-post update variant');
+
+  let sender = selected.sender;
   if (sender.kind === 'unresolved') {
-    return { id: `telegram:v1:unresolved-sender:${sender.label}`, kind: 'system' };
+    return { chat: destination, chatId: destinationId, chatType: destinationType,
+      principal: { id: `telegram:v1:unresolved-sender:${sender.label}`, kind: 'system' } };
   }
   if (sender.kind === 'channel-post') {
-    ensure(destinationType === 'channel', 'a channel-post source requires a channel destination');
+    ensure(channelPost, 'a channel-post source is inconsistent with the actual Telegram update variant');
     sender = { kind: 'chat', value: destination, role: sender.role, label: sender.label };
   }
   if (sender.kind === 'chat') {
@@ -165,39 +219,30 @@ function resolveTelegramSender(sender: TelegramSenderEvidence, destination: Reco
     ensure(['group', 'supergroup', 'channel'].includes(sourceType),
       `${sender.label} chat type is outside the non-human Telegram source set`);
     const sourceId = integer(sender.value.id, `${sender.label} chat id`);
-    ensure(sourceId < 0, `${sender.label} chat id must be a canonical negative Telegram chat id`);
-    return { id: `telegram:v1:channel:${String(sourceId)}`, kind: 'system' };
+    validateTelegramChatIdentity(sourceId, sourceType, `${sender.label} Telegram source`);
+    if (channelPost) ensure(sourceType === 'channel' && sourceId === destinationId,
+      'a channel-post sender chat must match its channel destination');
+    return { chat: destination, chatId: destinationId, chatType: destinationType,
+      principal: { id: `telegram:v1:channel:${String(sourceId)}`, kind: 'system' } };
   }
   ensure(typeof sender.value.is_bot === 'boolean', 'Telegram sender must carry a boolean is_bot discriminator');
   ensure(sender.role !== 'author' || destinationType !== 'channel',
     'a Telegram channel post cannot supply a human message author');
   const sourceId = String(positiveInteger(sender.value.id, `${sender.label} sender id`));
-  return sender.value.is_bot
+  const principal: Readonly<{ id: string; kind: 'person' | 'system' }> = sender.value.is_bot
     ? { id: `telegram:v1:bot-sender:${sourceId}`, kind: 'system' }
     : { id: `telegram:v1:user:${sourceId}`, kind: 'person' };
-}
-
-function validateTelegramDestination(id: number, type: string): void {
-  if (type === 'private') {
-    ensure(id > 0, 'a private Telegram destination requires a positive user chat id');
-    return;
-  }
-  ensure(id < 0, 'a non-private Telegram destination requires a negative chat id');
-  const isChannelRepresentation = id <= -1_000_000_000_000;
-  ensure(type === 'group' ? !isChannelRepresentation : isChannelRepresentation,
-    `${type} Telegram destination has an inconsistent chat id representation`);
+  return { chat: destination, chatId: destinationId, chatType: destinationType, principal };
 }
 
 function extractTelegramUpdateUnchecked(raw: string, declaration: TelegramBotDeclaration): TelegramExtractedUpdate {
   const update = record(JSON.parse(raw) as unknown, 'Telegram update');
   const updateId = integer(update.update_id, 'provider update_id'); ensure(updateId >= 0, 'provider update_id must be nonnegative');
   const selected = updateEvent(update);
-  const chat = record(selected.event.chat, 'authenticated chat');
-  const numericChatId = integer(chat.id, 'authenticated chat id');
-  const chatType = nonempty(chat.type, 'authenticated chat type');
-  ensure(['private', 'group', 'supergroup', 'channel'].includes(chatType),
-    'authenticated chat type is outside the Telegram closed set');
-  validateTelegramDestination(numericChatId, chatType);
+  const identity = resolveTelegramUpdateIdentity(selected);
+  const chat = identity.chat;
+  const numericChatId = identity.chatId;
+  const chatType = identity.chatType;
   const chatId = String(numericChatId);
   ensure(chat.is_forum === undefined || typeof chat.is_forum === 'boolean',
     'Telegram chat is_forum discriminator must be boolean when present');
@@ -207,7 +252,7 @@ function extractTelegramUpdateUnchecked(raw: string, declaration: TelegramBotDec
   const thread = threadValue === undefined ? null : positiveInteger(threadValue, 'message_thread_id');
   const messageThreadId = forum ? thread : null;
   if (!forum) ensure(thread === null, 'non-forum update carries a topic id');
-  const principal = resolveTelegramSender(selected.sender, chat, chatType);
+  const principal = identity.principal;
   const senderId = principal.id;
   const target = { chatId, forum, messageThreadId };
   const conversation = telegramConversation(declaration.bot.id, target);
@@ -653,16 +698,21 @@ export function createTelegramIngress(deps: TelegramIngressDependencies) {
 export function renderTelegramHtml(source: string, declaration: TelegramBotDeclaration,
   context: BoundaryContext): Result<string> {
   return boundary('TelegramHtmlRender', { source }, context, () => {
-    ensure(typeof source === 'string' && source.length > 0, 'Telegram reply text must be nonempty');
-    ensure(!/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(source),
-      'Telegram reply contains unsupported control data');
+    validateTelegramReplyText(source, declaration);
     const rendered = source.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-    ensure(Array.from(rendered).length <= declaration.limits.maxReplyCharacters,
-      'Telegram reply exceeds the 4096-character single-message limit; chunking and truncation are unsupported');
-    ensure(bytes(rendered) <= declaration.limits.maxReplyBytes,
-      'Telegram reply exceeds the declared byte limit; chunking and truncation are unsupported');
+    validateTelegramReplyText(rendered, declaration);
     return rendered;
   });
+}
+
+function validateTelegramReplyText(text: string, declaration: TelegramBotDeclaration): void {
+  ensure(typeof text === 'string' && text.length > 0, 'Telegram reply text must be nonempty');
+  ensure(!/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(text),
+    'Telegram reply contains unsupported control data');
+  ensure(Array.from(text).length <= declaration.limits.maxReplyCharacters,
+    'Telegram reply exceeds the 4096-character single-message limit; chunking and truncation are unsupported');
+  ensure(bytes(text) <= declaration.limits.maxReplyBytes,
+    'Telegram reply exceeds the declared byte limit; chunking and truncation are unsupported');
 }
 
 export function renderTelegramDeliveryStatus(input: Readonly<{
@@ -744,11 +794,9 @@ export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAd
       return boundary('TelegramReplyInvoke', { operation: input.operation }, context, () => {
         ensure(input.message.account === admitted.account && input.message.conversation === conversation,
           'Telegram reply target differs from admitted account/conversation');
-        ensure(input.message.purpose === 'ordinary-reply' && input.message.text.length > 0,
+        ensure(input.message.purpose === 'ordinary-reply',
           'Telegram adapter accepts only attributable ordinary replies');
-        ensure(Array.from(input.message.text).length <= admitted.declaration.limits.maxReplyCharacters
-          && bytes(input.message.text) <= admitted.declaration.limits.maxReplyBytes,
-          'Telegram reply exceeds declared platform limits');
+        validateTelegramReplyText(input.message.text, admitted.declaration);
         const candidates = (replyOperationBindings.get(admitted) ?? []).filter(binding => {
           const snapshot = take(binding.spine.store.readForProjection());
           const reservation = snapshot.entries.filter(entry => entry.fact.kind === 'transport-AdmissionReservation'

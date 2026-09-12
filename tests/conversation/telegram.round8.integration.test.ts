@@ -22,7 +22,7 @@ it('P12-NF-16 P12-NF-17 P12-NF-18 round8 inconsistent destination identities ref
       update.message.chat = chat;
       delete update.message.message_thread_id;
       if (chat.type === 'channel') {
-        update.message.sender_chat = { id: -1000000000200, type: 'channel' };
+        update.message.sender_chat = { id: chat.id, type: 'channel' };
         delete update.message.from;
       }
     }));

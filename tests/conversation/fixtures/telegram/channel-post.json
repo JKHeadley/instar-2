@@ -2,7 +2,7 @@
   "update_id": 103,
   "channel_post": {
     "message_id": 503,
-    "sender_chat": { "id": -200, "type": "channel", "title": "Source channel" },
+    "sender_chat": { "id": -1000000000200, "type": "channel", "title": "Source channel" },
     "chat": { "id": -1000000000200, "type": "channel", "title": "Source channel" },
     "date": 1700000004,
     "text": "channel post"

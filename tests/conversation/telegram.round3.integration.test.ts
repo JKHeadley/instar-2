@@ -109,7 +109,7 @@ it('P12-NF-07 P12-NF-08 P12-NF-17 round3 sender-less edited channel reaches Part
   const f = conversationFixture();
   const wire = wireTelegram(f);
   const raw = telegramUpdate(100, update => {
-    update.message.sender_chat = { id: -200, type: 'channel' };
+    update.message.sender_chat = { id: -1000000000200, type: 'channel' };
     delete update.message.from;
     update.edited_message = update.message;
     delete update.message;

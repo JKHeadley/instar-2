@@ -1,4 +1,8 @@
 export type * from './contracts.js';
+export type {
+  LegacyConversationDryRunInput, LegacyConversationDryRunReport, LegacyConversationDryRunRow,
+} from './legacy.js';
+export { dryRunLegacyConversationMigration } from './legacy.js';
 export {
   admitTelegramAdapter, createTelegramIngress, createTelegramIntakeAdapter,
   createTelegramReplyOperationAdapter, extractTelegramUpdate, installTelegramReplyOperation,

@@ -65,7 +65,7 @@ it('P12-NF-16 P12-NF-17 exact bot/chat/topic identity classifies every captured 
   });
   expect(JSON.stringify(reply)).not.toContain('888');
   expect(JSON.stringify(reply)).not.toContain('999');
-  expect(rows[3]![1].principal).toEqual({ id: 'telegram:v1:channel:-200', kind: 'system' });
+  expect(rows[3]![1].principal).toEqual({ id: 'telegram:v1:channel:-1000000000200', kind: 'system' });
   expect(rows[4]![1].conversation).toBe('telegram:v1:bot:9001:chat:-1000000001001:general');
   expect(rows[2]![1].conversation).toBe('telegram:v1:bot:9001:chat:123:direct');
 });

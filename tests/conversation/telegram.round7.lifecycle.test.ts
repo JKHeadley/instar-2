@@ -34,7 +34,7 @@ it('P12-NF-07 P12-NF-16 P12-NF-17 P12-NF-18 P12-NF-48 round7 restart retains rea
     admitted: f.admitted, api: f.api, intake, facts, observer: f.intake.deps.author.principal.id });
   f.queue(JSON.stringify({ update_id: 100, message_reaction: {
     chat: { id: -1000000001001, type: 'supergroup' }, message_id: 700,
-    actor_chat: { id: -200, type: 'channel' }, date: 1_700_000_000,
+    actor_chat: { id: -1000000000200, type: 'channel' }, date: 1_700_000_000,
     old_reaction: [], new_reaction: [{ type: 'emoji', emoji: '👍' }],
   } }));
   expect(ingress.pollOnce().kind).toBe('Success');
@@ -51,6 +51,5 @@ it('P12-NF-07 P12-NF-16 P12-NF-17 P12-NF-18 P12-NF-48 round7 restart retains rea
   expect(value(restarted.currentOffset())).toBe(101);
   const receipts = value(restartedFacts.read()).filter(row => row.kind === 'intake-receipt');
   expect(receipts).toHaveLength(1);
-  expect(JSON.parse((receipts[0]!.body as { ingress: string }).ingress).sender).toBe('telegram:v1:channel:-200');
+  expect(JSON.parse((receipts[0]!.body as { ingress: string }).ingress).sender).toBe('telegram:v1:channel:-1000000000200');
 });
-

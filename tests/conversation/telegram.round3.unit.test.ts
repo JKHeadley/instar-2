@@ -23,22 +23,22 @@ it('P12-NF-16 round3 public Telegram routes reject alternate numeric representat
 it('P12-NF-07 P12-NF-08 P12-NF-16 P12-NF-17 round3 edited channels and bot authors remain non-human with or without compatibility from', () => {
   const f = conversationFixture();
   const editedWithCompatibility = telegramUpdate(100, update => {
-    update.message.sender_chat = { id: -200, type: 'channel' };
+    update.message.sender_chat = { id: -1000000000200, type: 'channel' };
     update.message.from = { id: 136817688, is_bot: true };
     update.edited_message = update.message;
     delete update.message;
   });
   expect(extractTelegramUpdate(editedWithCompatibility, f.declaration).principal)
-    .toEqual({ id: 'telegram:v1:channel:-200', kind: 'system' });
+    .toEqual({ id: 'telegram:v1:channel:-1000000000200', kind: 'system' });
 
   const editedWithoutCompatibility = telegramUpdate(101, update => {
-    update.message.sender_chat = { id: -200, type: 'channel' };
+    update.message.sender_chat = { id: -1000000000200, type: 'channel' };
     delete update.message.from;
     update.edited_message = update.message;
     delete update.message;
   });
   expect(extractTelegramUpdate(editedWithoutCompatibility, f.declaration).principal)
-    .toEqual({ id: 'telegram:v1:channel:-200', kind: 'system' });
+    .toEqual({ id: 'telegram:v1:channel:-1000000000200', kind: 'system' });
 
   const botAuthored = telegramUpdate(102, update => { update.message.from.is_bot = true; });
   expect(extractTelegramUpdate(botAuthored, f.declaration).principal)

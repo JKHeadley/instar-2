@@ -55,7 +55,7 @@ const partial = {
   49: 'PARTIAL: mode/API changes are exercised as distinct or inhibited conformance subjects and the generated active-generation briefing is checked for exact current modes, operations and public doorways; live cross-version provider replay remains activation evidence.',
   50: 'PARTIAL: runtime admission records current check-run/probe references, but activation remains dark without the missing owner positives.',
   51: 'PARTIAL: media metadata enters Four owned hold with zero fetch/provider/send; media custody beyond metadata is Slice B and successful media is non-executable-until-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md.',
-  52: 'PARTIAL: legacy import is non-executable-until-seam-response-intake-followup.md-seam-response-rungraph-followup.md-and-seam-response-effects-followup.md.',
+  52: 'PARTIAL: the bounded read-only dry run reports exact unmappable legacy sends with zero import/replay/provider calls; import is non-executable-until-seam-response-intake-followup.md-seam-response-rungraph-followup.md-and-seam-response-effects-followup.md.',
   53: 'PARTIAL: minimal response is non-executable-until-part-eleven-seam-response-assembly.md-is-integrated.',
 };
 
@@ -79,7 +79,7 @@ for (const file of report.testResults) for (const test of file.assertionResults)
 const landedArms = new Set([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
   27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 41, 42, 45, 46,
-  26, 47, 48, 49, 50, 51,
+  26, 47, 48, 49, 50, 51, 52,
 ]);
 for (const row of expected) {
   const reason = executable[row.number] ?? partial[row.number];
@@ -130,6 +130,14 @@ const concreteConsumers = [
     anchors: ["runtime.record('GrowthObservation'", 'configured-target:not-a-measurement', 'success-only', 'estimate:not-a-measurement'] },
   { id: 'P12-NF-49', file: 'tests/conversation/telegram.round3.lifecycle.test.ts',
     anchors: ["mode: 'webhook'", "apiVersion: '9.3'", "generated/source.json", "generated/capabilities.md"] },
+  { id: 'P12-NF-52', file: 'tests/conversation/telegram.round9.integration.test.ts',
+    anchors: ['dryRunLegacyConversationMigration(', 'conversation-registry-send-intent.jsonl',
+      "['send-intent', 'unmappable', false]", 'expect(report.providerCalls).toBe(0)',
+      'expect(f.calls.send).toHaveLength(0)', 'toEqual(intakeBefore)', 'toEqual(assemblyBefore)'],
+    supporting: [{ file: 'src/conversation/legacy.ts', anchors: [
+      "mode: 'read-only'", "disposition: 'unmappable'", 'importPermitted: false',
+      'replayPermitted: false', 'providerCalls: 0',
+    ] }] },
   { id: 'P12-NF-06', file: 'tests/conversation/telegram.round5.lifecycle.test.ts',
     anchors: ['spawnSync(', "'SIGKILL'", "'before-capture'", "'after-receipt'", "'mismatch-chat'"],
     supporting: [{ file: 'tests/conversation/telegram.round5.intake-child.ts',
