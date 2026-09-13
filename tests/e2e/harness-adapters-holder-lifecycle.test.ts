@@ -34,6 +34,34 @@ function runOwnerJournalCut(mode: 'seed' | 'recover', directory: string): Promis
   });
 }
 
+function runRound4OwnerCut(mode: 'seed' | 'recover', cut: string, target: string,
+  directory: string): Promise<WorkerResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(join(process.cwd(), 'node_modules/.bin/vite-node'),
+      ['tests/harness-adapters/a2-round4-owner-cut-worker.ts', mode, cut, target, directory],
+      { cwd: process.cwd() });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', bytes => { stdout += String(bytes); });
+    child.stderr.on('data', bytes => { stderr += String(bytes); });
+    child.on('error', reject);
+    child.on('exit', (code, signal) => resolve({ code, signal, stdout, stderr }));
+  });
+}
+
+function runRound4PoisonCut(mode: 'seed' | 'recover', cut: string,
+  directory: string): Promise<WorkerResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(join(process.cwd(), 'node_modules/.bin/vite-node'),
+      ['tests/harness-adapters/a2-round4-poison-cut-worker.ts', mode, cut, directory],
+      { cwd: process.cwd() });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', bytes => { stdout += String(bytes); });
+    child.stderr.on('data', bytes => { stderr += String(bytes); });
+    child.on('error', reject);
+    child.on('exit', (code, signal) => resolve({ code, signal, stdout, stderr }));
+  });
+}
+
 function race(directory: string, who: string): Promise<{ status: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(join(process.cwd(), 'node_modules/.bin/vite-node'),
@@ -112,4 +140,32 @@ it('A2-E2E R3-F05 P13-NF-24 P13-NF-32 P13-NF-38 owner history prevents completio
   expect(result.owner.kind).toBe('Success');
   expect(result.events).toEqual(['closure:ten']);
   expect(result.completion).toMatchObject({ state: 'pending', event: 'observation:input-accepted' });
+}, 20_000);
+
+it.each(['heartbeat', 'probe-failed', 'process-exited'])
+    ('A2-E2E R4-F01 R4-F02 P13-NF-24 P13-NF-29 P13-NF-32 P13-NF-33 owner %s survives a SIGKILL-after-lock journal omission', async target => {
+    const directory = mkdtempSync(join(tmpdir(), `p13-a2-r4-${target}-`));
+    const killed = await runRound4OwnerCut('seed', 'lock', target, directory);
+    expect(killed.signal).toBe('SIGKILL');
+    const recovered = await runRound4OwnerCut('recover', 'lock', target, directory);
+    expect(recovered, recovered.stderr).toMatchObject({ code: 0, signal: null });
+    const result = JSON.parse(recovered.stdout) as {
+      liveness: { state: string }; completion: { state: string }; events: string[];
+    };
+    expect(result.events).toEqual(['r4:prior-live', 'r4:prior-close']);
+    expect(result.completion.state).toBe('pending');
+    expect(result.liveness.state).toBe(target === 'heartbeat' ? 'live'
+      : target === 'probe-failed' ? 'unknown' : 'dead');
+  }, 20_000);
+
+it('A2-E2E R4-F03 P13-NF-28 P13-NF-38 P13-NF-51 owner-confirmed poison survives a SIGKILL-after-lock omission', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'p13-a2-r4-poison-'));
+  const killed = await runRound4PoisonCut('seed', 'lock', directory);
+  expect(killed.signal).toBe('SIGKILL');
+  const recovered = await runRound4PoisonCut('recover', 'lock', directory);
+  expect(recovered, recovered.stderr).toMatchObject({ code: 0, signal: null });
+  expect(JSON.parse(recovered.stdout)).toMatchObject({
+    resume: { state: 'poisoned', event: 'r4:observation:transcript-poison' },
+    reconnect: { disposition: 'refused', handle: null },
+  });
 }, 20_000);

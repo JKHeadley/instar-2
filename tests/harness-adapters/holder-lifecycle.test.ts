@@ -149,6 +149,36 @@ it('A2-UNIT R3-F05 P13-NF-24 P13-NF-32 owner evidence refused by local event cap
   expect(holder.completion(f.handle, 20)).toMatchObject({ state: 'pending', event: 'observation:input-accepted' });
 });
 
+it('A2-UNIT R4-F01 R4-F02 P13-NF-24 P13-NF-29 P13-NF-32 P13-NF-33 every omitted owner phase constrains liveness and completion', () => {
+  for (const kind of ['probe-failed', 'process-exited', 'heartbeat', 'diagnostic', 'input-accepted'] as const) {
+    for (const custody of ['omitted', 'capacity'] as const) {
+      const f = a2Fixture();
+      const holder = createHarnessEvidenceHolder({ adapter: 'native', artifact: f.handle.artifactDigest,
+        platform: f.handle.platform, machine: f.handle.machine, scope: 'conversation:1', maxEvents: 2,
+        maxCaptureBytes: 1024, context: f.owner.c,
+        state: createMemoryHarnessAdapterStateStore(`r4:${kind}:${custody}`), admission: f.port,
+        owners: { handles: f.handles, current: f.owner.host } });
+      holder.admit(witnessedEvent(f, 'heartbeat', { id: `r4:prior-live:${kind}:${custody}`,
+        sourceEvidence: [`owner:r4:prior-live:${kind}:${custody}`], sourceClock: 10, observedAt: 10,
+        streamState: 'closed', childrenState: 'closed' }));
+      holder.admit(witnessedEvent(f, 'turn-closed', { id: `r4:prior-close:${kind}:${custody}`,
+        sourceEvidence: [`owner:r4:prior-close:${kind}:${custody}`], sourceClock: 11, observedAt: 11,
+        streamState: 'closed', childrenState: 'closed' }));
+      const later = witnessedEvent(f, kind, { id: `r4:later:${kind}:${custody}`,
+        sourceEvidence: [`owner:r4:later:${kind}:${custody}`], sourceClock: 20, observedAt: 20,
+        streamState: 'open', childrenState: 'pending', unresolvedOperations: ['operation:r4:pending'] });
+      if (custody === 'capacity') expect(holder.admit(later)).toMatchObject({ disposition: 'refused' });
+      f.owner.time(21);
+      expect(holder.completion(f.handle, 21), `${kind}:${custody}:completion`)
+        .toMatchObject({ state: 'pending', event: later.sourceEvidence[0] });
+      if (kind === 'probe-failed') expect(holder.liveness(f.handle, 21), `${kind}:${custody}:liveness`)
+        .toMatchObject({ state: 'unknown', event: later.sourceEvidence[0] });
+      if (kind === 'process-exited') expect(holder.liveness(f.handle, 21), `${kind}:${custody}:liveness`)
+        .toMatchObject({ state: 'dead', event: later.sourceEvidence[0] });
+    }
+  }
+}, 15_000);
+
 it('A2-UNIT R2-F01 P13-NF-29 P13-NF-32 unordered and delayed evidence never earns liveness or completion', () => {
   for (const failureId of ['aaa-failure', 'zzz-failure']) {
     const f = a2Fixture();

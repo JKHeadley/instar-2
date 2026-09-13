@@ -3,7 +3,7 @@ import type { Clock, Hash, Result } from '../index.js';
 import type { AssemblyHost, HarnessObservation } from '../assembly/index.js';
 import type { RunGraphPort } from '../rungraph/index.js';
 import type { FenceToken, TransportAuthority } from '../transport/index.js';
-import type { VerificationRuntimePort } from '../verification/index.js';
+import type { VerificationPlan, VerificationRuntimePort } from '../verification/index.js';
 import type {
   HarnessAdapterDecodeContext,
   HarnessAdapterStateSnapshot,
@@ -485,6 +485,8 @@ interface EvidenceAnalysis {
   readonly all: readonly HarnessRuntimeEvent[];
   readonly current: readonly HarnessRuntimeEvent[];
   readonly unavailable: readonly HarnessRuntimeEvent[];
+  readonly ownerOmittedCurrent: readonly HarnessObservation[];
+  readonly ownerOmittedUnavailable: readonly HarnessObservation[];
 }
 
 function retainsPendingWork(event: HarnessRuntimeEvent): boolean {
@@ -588,6 +590,23 @@ export function createHarnessEvidenceHolder(input: Readonly<{
       || handle.platform !== input.platform || handle.machine !== input.machine) {
       throw new Error('runtime handle belongs to another exact adapter artifact, platform, or machine');
     }
+    if (!input.context.history) throw new Error('evidence decisions require current Part Ten signed-history resolution');
+    const launch = consumeResult(input.context.history.lookup(handle.launch), {
+      Success: value => value,
+      Refused: refused => { throw new Error(refused.detail); },
+    });
+    if (!launch?.record || launch.record.type !== 'HarnessLaunchSpec'
+      || launch.taint.length || launch.conflicts.length || launch.completeness !== 'complete'
+      || !consumeResult(input.context.history.resolve(launch.record), {
+        Success: value => value.admitted,
+        Refused: refused => { throw new Error(refused.detail); },
+      })
+      || launch.record.harness !== handle.harness || launch.record.artifactDigest !== handle.artifactDigest
+      || launch.record.machine !== handle.machine || launch.record.run !== handle.run
+      || launch.record.step !== handle.step || launch.record.input !== handle.input
+      || launch.record.incarnation !== handle.incarnation) {
+      throw new Error('evidence decision cannot resolve the exact current Ten launch subject');
+    }
     const all = state.read().events.filter(event => sameHandle(event, handle));
     const current: HarnessRuntimeEvent[] = [];
     const unavailable: HarnessRuntimeEvent[] = [];
@@ -604,68 +623,66 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         unavailable.push(event);
       }
     }
-    return freeze({ all, current, unavailable });
-  };
-
-  const omittedOwnerPending = (
-    handle: HarnessRuntimeHandle,
-    now: number,
-    closureClock: number,
-    retained: readonly HarnessRuntimeEvent[],
-  ): HarnessObservation | null => {
-    if (!input.context.history) throw new Error('completion requires current Part Ten signed-history resolution');
-    const launch = consumeResult(input.context.history.lookup(handle.launch), {
-      Success: value => value,
-      Refused: refused => { throw new Error(refused.detail); },
-    });
-    if (!launch?.record || launch.record.type !== 'HarnessLaunchSpec'
-      || launch.taint.length || launch.conflicts.length || launch.completeness !== 'complete'
-      || !consumeResult(input.context.history.resolve(launch.record), {
-        Success: value => value.admitted,
-        Refused: refused => { throw new Error(refused.detail); },
-      })
-      || launch.record.harness !== handle.harness || launch.record.artifactDigest !== handle.artifactDigest
-      || launch.record.machine !== handle.machine || launch.record.run !== handle.run
-      || launch.record.step !== handle.step || launch.record.input !== handle.input
-      || launch.record.incarnation !== handle.incarnation) {
-      throw new Error('completion cannot resolve the exact current Ten launch subject');
-    }
-    const represented = new Set(retained.flatMap(event => event.sourceEvidence));
-    const current = input.owners.current.current();
+    const represented = new Set(all.flatMap(event => event.sourceEvidence));
     const rows = consumeResult(input.context.history.current(), {
       Success: value => value,
       Refused: refused => { throw new Error(refused.detail); },
     });
-    const pendingPhases = new Set<HarnessObservation['phase']>([
-      'input-accepted', 'context-consumed', 'output-observed', 'pause-observed', 'uncertain',
-    ]);
     const candidates = rows.flatMap(row => row.record.type === 'HarnessObservation'
       && !represented.has(row.record.id)
       && row.record.launch === handle.launch && row.record.run === handle.run
       && row.record.step === handle.step && row.record.input === handle.input
       && row.record.incarnation === handle.incarnation
-      && row.record.observedAt >= closureClock
-      && pendingPhases.has(row.record.phase)
+      && row.record.boundaryEvidence === handle.processIdentity
       ? [{ ...row, record: row.record }]
       : []);
-    const ordered = [...candidates].sort((left, right) =>
-      right.record.observedAt - left.record.observedAt || left.record.id.localeCompare(right.record.id));
-    for (const row of ordered) {
-      // Any exact later owner observation omitted from the local journal keeps
-      // completion conservative. Current evidence proves pending work; future,
-      // stale, disputed, or otherwise unresolvable evidence proves uncertainty,
-      // never permission to resurrect an older closure.
-      if (row.record.generation !== current.generation || row.record.observedAt > now
+    const ownerOmittedCurrent: HarnessObservation[] = [];
+    const ownerOmittedUnavailable: HarnessObservation[] = [];
+    for (const row of candidates) {
+      if (row.record.generation !== owner.generation || row.record.observedAt > now
         || row.record.freshFor <= 0 || now - row.record.observedAt > row.record.freshFor
-        || row.taint.length || row.conflicts.length) return row.record;
+        || row.taint.length || row.conflicts.length) {
+        ownerOmittedUnavailable.push(row.record);
+        continue;
+      }
       const admitted = consumeResult(input.context.history.resolve(row.record), {
         Success: value => value.admitted,
         Refused: () => false,
       });
-      if (admitted) return row.record;
-      return row.record;
+      (admitted ? ownerOmittedCurrent : ownerOmittedUnavailable).push(row.record);
     }
-    return null;
+    const ordered = (values: HarnessObservation[]) => values.sort((left, right) =>
+      right.observedAt - left.observedAt || left.id.localeCompare(right.id));
+    return freeze({ all, current, unavailable,
+      ownerOmittedCurrent: ordered(ownerOmittedCurrent),
+      ownerOmittedUnavailable: ordered(ownerOmittedUnavailable) });
+  };
+
+  const validResumePlan = (
+    plan: VerificationPlan,
+    subject: string,
+    purpose: 'resume-compatible' | 'transcript-poison',
+    now: number,
+  ): boolean => {
+    const current = input.owners.current.current();
+    const holder = `part-thirteen:${purpose}`;
+    const fixture = purpose === 'resume-compatible' ? 'P13-NF-38' : 'P13-NF-51';
+    const purposeArm = plan.arms.some(arm => arm.required && arm.kind === 'runtime'
+      && arm.id === purpose && arm.executable === `harness.${purpose}`
+      && arm.fixture === fixture && arm.outputContract === 'VerificationAssessment');
+    const purposeConsumer = plan.consumers.some(consumer => consumer.id === holder
+      && consumer.direction === 'closed' && consumer.enforcedRecord === 'VerificationAssessment'
+      && consumer.decoder === 'decodeVerificationAssessment');
+    if (current.clock.value !== now || plan.subject.holder !== holder
+      || plan.subject.governed !== subject || plan.subject.scope !== input.scope
+      || plan.subject.generation !== current.generation || !purposeArm || !purposeConsumer
+      || !plan.bar.complete || !plan.bar.sources.includes('runtime-conversation')) return false;
+    const posture = consumeResult(input.owners.verification!.posture(plan.id, current.clock), {
+      Success: value => value,
+      Refused: refused => { throw new Error(refused.detail); },
+    });
+    return posture.posture === 'healthy' && posture.generation === current.generation
+      && posture.evaluatedAt === now;
   };
 
   const resumeDisposition = (
@@ -690,34 +707,37 @@ export function createHarnessEvidenceHolder(input: Readonly<{
       const row = rows.find(candidate => candidate.record.type === 'VerificationPlan'
         && candidate.record.id === planId);
       if (!row || row.taint.length || row.conflicts.length || row.record.type !== 'VerificationPlan') return 'unknown';
-      const current = input.owners.current.current();
-      const expectedHolder = prefix === compatible
-        ? 'part-thirteen:resume-compatible'
-        : 'part-thirteen:transcript-poison';
-      const expectedArm = prefix === compatible ? 'resume-compatible' : 'transcript-poison';
-      const expectedFixture = prefix === compatible ? 'P13-NF-38' : 'P13-NF-51';
-      const purposeArm = row.record.arms.some(arm => arm.required && arm.kind === 'runtime'
-        && arm.id === expectedArm && arm.executable === `harness.${expectedArm}`
-        && arm.fixture === expectedFixture && arm.outputContract === 'VerificationAssessment');
-      const purposeConsumer = row.record.consumers.some(consumer => consumer.id === expectedHolder
-        && consumer.direction === 'closed' && consumer.enforcedRecord === 'VerificationAssessment'
-        && consumer.decoder === 'decodeVerificationAssessment');
-      if (current.clock.value !== now || row.record.subject.holder !== expectedHolder
-        || row.record.subject.governed !== exactSubject(event)
-        || row.record.subject.scope !== input.scope || row.record.subject.generation !== current.generation
-        || !purposeArm || !purposeConsumer
-        || !row.record.bar.complete || !row.record.bar.sources.includes('runtime-conversation')) return 'unknown';
-      const posture = consumeResult(input.owners.verification!.posture(row.record.id, current.clock), {
-        Success: value => value,
-        Refused: refused => {
-          throw new Error(refused.detail);
-        },
-      });
-      if (posture.posture !== 'healthy' || posture.generation !== current.generation
-        || posture.evaluatedAt !== now) return 'unknown';
-      return prefix === compatible ? 'eligible' : 'poisoned';
+      const purpose = prefix === compatible ? 'resume-compatible' : 'transcript-poison';
+      return validResumePlan(row.record, exactSubject(event), purpose, now)
+        ? purpose === 'resume-compatible' ? 'eligible' : 'poisoned'
+        : 'unknown';
     } catch {
       return 'unknown';
+    }
+  };
+
+  const omittedOwnerPoison = (
+    handle: HarnessRuntimeHandle,
+    now: number,
+    analysis: EvidenceAnalysis,
+  ): HarnessObservation | null => {
+    if (!input.owners.verification) return null;
+    const pauses = analysis.ownerOmittedCurrent.filter(row => row.phase === 'pause-observed');
+    if (pauses.length === 0) return null;
+    try {
+      const rows = consumeResult(input.owners.verification.inspectCurrent(), {
+        Success: value => value,
+        Refused: refused => { throw new Error(refused.detail); },
+      });
+      const subject = bytes([handle.harness, handle.artifactDigest, handle.platform, handle.machine,
+        handle.launch, handle.run, handle.step, handle.input, handle.incarnation,
+        handle.processIdentity]) ?? '';
+      const poisoned = rows.some(row => row.record.type === 'VerificationPlan'
+        && row.taint.length === 0 && row.conflicts.length === 0
+        && validResumePlan(row.record, subject, 'transcript-poison', now));
+      return poisoned ? pauses[0]! : null;
+    } catch {
+      return null;
     }
   };
 
@@ -770,14 +790,31 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         const availableEvents = analysis.current.filter(event => relevantKinds.has(event.kind));
         const unavailableEvents = analysis.unavailable.filter(event => relevantKinds.has(event.kind));
         const available = newest(availableEvents);
+        const omittedAvailable = analysis.ownerOmittedCurrent.find(row =>
+          ['launched', 'uncertain', 'exit-observed'].includes(row.phase));
         const unavailable = newest(unavailableEvents);
-        if (unavailable && (!available || unavailable.sourceClock >= available.sourceClock)) {
+        const omittedUnavailable = analysis.ownerOmittedUnavailable.find(row =>
+          ['launched', 'uncertain', 'exit-observed'].includes(row.phase));
+        const availableClock = Math.max(available?.sourceClock ?? -1, omittedAvailable?.observedAt ?? -1);
+        const unavailableClock = Math.max(unavailable?.sourceClock ?? -1, omittedUnavailable?.observedAt ?? -1);
+        if (unavailableClock >= availableClock && unavailableClock >= 0) {
           return freeze({ state: 'unknown' as const,
             reason: 'newest exact-process evidence is stale, unavailable, future-dated, or disputed',
-            event: unavailable.id });
+            event: (unavailableClock === omittedUnavailable?.observedAt
+              ? omittedUnavailable.id : unavailable?.id) ?? '' });
         }
-        if (!available) return freeze({ state: 'unknown' as const,
+        if (!available && !omittedAvailable) return freeze({ state: 'unknown' as const,
           reason: 'no fresh exact-incarnation liveness witness; timeout or absence does not prove death', event: '' });
+        if (omittedAvailable && omittedAvailable.observedAt >= (available?.sourceClock ?? -1)) {
+          if (omittedAvailable.phase === 'uncertain') return freeze({ state: 'unknown' as const,
+            reason: 'current owner history contains a newer uncertain exact-process observation omitted from the local journal',
+            event: omittedAvailable.id });
+          if (omittedAvailable.phase === 'exit-observed') return freeze({ state: 'dead' as const,
+            reason: 'current owner history contains a newer exact-process exit omitted from the local journal',
+            event: omittedAvailable.id });
+          if (!available || omittedAvailable.observedAt > available.sourceClock) return freeze({ state: 'live' as const,
+            reason: 'fresh exact-incarnation Part Ten launch-phase observation', event: omittedAvailable.id });
+        }
         const frontier = sourceFrontier(availableEvents);
         const positive = frontier.some(event => ['process-started', 'probe-live', 'heartbeat'].includes(event.kind));
         const exited = frontier.find(event => event.kind === 'process-exited');
@@ -788,7 +825,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         if (exited) return freeze({ state: 'dead' as const,
           reason: 'explicit current correlated process-exit witness', event: exited.id });
         return freeze({ state: 'live' as const,
-          reason: 'fresh exact-incarnation owner-witnessed proof', event: available.id });
+          reason: 'fresh exact-incarnation owner-witnessed proof', event: available!.id });
       } catch (error) {
         return freeze({ state: 'unknown' as const,
           reason: error instanceof Error ? error.message : 'runtime evidence journal is unavailable', event: '' });
@@ -799,8 +836,13 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         const analysis = readAnalysis(handle, now);
         const relevant = new Set<HarnessRuntimeEvent['kind']>(['work-transition', 'output-chunk']);
         const unavailable = newest(analysis.unavailable.filter(event => relevant.has(event.kind)));
-        if (unavailable) return freeze({ state: 'unknown' as const,
-          reason: 'retained work evidence is stale, unavailable, or disputed', event: unavailable.id });
+        const omitted = [...analysis.ownerOmittedUnavailable, ...analysis.ownerOmittedCurrent]
+          .filter(row => row.phase === 'output-observed')
+          .sort((left, right) => right.observedAt - left.observedAt || left.id.localeCompare(right.id))[0];
+        if (unavailable || omitted) return freeze({ state: 'unknown' as const,
+          reason: 'retained or owner-current work evidence is omitted, stale, unavailable, or disputed',
+          event: (omitted?.observedAt ?? -1) >= (unavailable?.sourceClock ?? -1)
+            ? omitted?.id ?? '' : unavailable?.id ?? '' });
         const work = newest(analysis.current.filter(event => event.kind === 'work-transition'));
         const output = newest(analysis.current.filter(event => event.kind === 'output-chunk'));
         const coverage = outputCoverage(analysis.current);
@@ -850,7 +892,9 @@ export function createHarnessEvidenceHolder(input: Readonly<{
             reason: 'turn closure retains later work, incomplete output, an open stream, child, or unresolved operation',
             event: closure.id });
         }
-        const omitted = omittedOwnerPending(handle, now, closure.sourceClock, analysis.all);
+        const omitted = [...analysis.ownerOmittedUnavailable, ...analysis.ownerOmittedCurrent]
+          .filter(row => row.observedAt >= closure.sourceClock)
+          .sort((left, right) => right.observedAt - left.observedAt || left.id.localeCompare(right.id))[0];
         if (omitted) return freeze({ state: 'pending' as const,
           reason: 'current exact-subject owner history retains later work omitted from the local event journal',
           event: omitted.id });
@@ -871,6 +915,17 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         const availableEvents = analysis.current.filter(relevant);
         const available = newest(availableEvents);
         const unavailable = newest(analysis.unavailable.filter(relevant));
+        const poison = omittedOwnerPoison(handle, now, analysis);
+        if (poison) return freeze({ state: 'poisoned' as const,
+          reason: 'Part Nine current guard posture confirms owner poison evidence omitted from the local journal',
+          event: poison.id });
+        const omitted = [...analysis.ownerOmittedUnavailable, ...analysis.ownerOmittedCurrent]
+          .sort((left, right) => right.observedAt - left.observedAt || left.id.localeCompare(right.id))[0];
+        if (omitted && (!available || omitted.observedAt >= available.sourceClock)) {
+          return freeze({ state: 'unknown' as const,
+            reason: 'newer current owner evidence omitted from the local journal prevents favourable resume',
+            event: omitted.id });
+        }
         if (unavailable && (!available || unavailable.sourceClock >= available.sourceClock)) {
           return freeze({ state: 'unknown' as const,
             reason: 'newest resume evidence is stale, unavailable, future-dated, or disputed',
