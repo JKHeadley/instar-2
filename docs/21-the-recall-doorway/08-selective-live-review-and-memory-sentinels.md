@@ -58,7 +58,7 @@ The result records conclusion and justification separately, claim/span mappings,
 suggested repair, unresolved evidence, source errors and charges. At most one subordinate repair
 call changes the draft. The final deterministic validator rechecks exact bytes/target, current
 scope/authority, supported prerequisite and receipt currency. A failed recheck ends this attempt;
-there is no reviewer ping-pong or normalized approval hash that discards a changed URL.
+there is no reviewer ping-pong or normalized approval hash that discards a changed link address.
 
 **Rule — a semantic failure has only its approved consequence.** Rules 42, 57, 77, 83,
 86, 95 and 103; **checks: P21-NF-10/13/14/24**. Proposed OD-05/06 defaults permit the
@@ -83,7 +83,7 @@ it does not authorize an arbitrary low-context filter or implied expansion of th
 OD-05 proposes that bounded exception for the listed classes only when the preregistered pilot
 shows net value. Until accepted, semantic C is offline/shadow without dispatch authority;
 retrospective review and existing deterministic owner checks remain the operating posture.
-No amendment to the rulebook is claimed by this D1 draft. A remains accounting, B remains
+No amendment to the rulebook is claimed by this draft. A remains accounting, B remains
 bounded retrieval; neither requires an additional semantic judgment before every send.
 
 **Value — pay for demonstrated repairs, count silence as a cost.**

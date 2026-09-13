@@ -52,7 +52,7 @@ controlled comparisons examine summary-only with original-plus-summary, enriched
 warm/cold and deliberately stale caches, corrupted derived beliefs, hostile retrieved instructions,
 and remembered approval with current revocation. Preserve owner authority in every arm.
 
-Budget sweeps follow R5 §6: 1k/4k/8k recall tokens; 0.25/1/2 s ordinary retrieval; 5/10/15 s
+Budget sweeps follow R5 §6: 1,000/4,000/8,000 recall tokens; 0.25/1/2 s ordinary retrieval; 5/10/15 s
 combined consequential envelope. Sweep on development; freeze the chosen envelopes for reserved
 evaluation. Report cold/warm cache, ordinary/burst workload, caught-up/behind indexes, and
 available/unavailable dependencies. Missing captures and legitimate permission holds have their
@@ -118,5 +118,5 @@ with a comparable success and unavailable-evidence/legitimate-hold control, and 
 fields as explicit unknowns with reasons. It never invents an original from the desired answer.
 Private originals remain in authorized custody; only synthetic or explicitly sanitized/exportable
 material can enter git. Missing private replay sources yield an unavailable result, not a fabricated
-experiment. JSON shape validation is executable now; production replay awaits the listed owner
+experiment. JavaScript Object Notation (JSON) shape validation is executable now; production replay awaits the listed owner
 seams. Dawn's deployed traces, Jamie outcome and the four reported incidents remain **UNKNOWN**.

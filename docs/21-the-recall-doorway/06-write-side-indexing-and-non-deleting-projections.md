@@ -4,7 +4,8 @@
 89, 90 and 96; **checks: P21-NF-05/09/11/12/18/23**. Part 4 intake and Part 2 custody
 retain the original admitted exchange before P21 indexing begins. The read side must not wait
 for embeddings or summarization to establish that an intake exists. The landed capture dependency
-requires fsync-equivalent preservation (`src/intake/contracts.ts:25–28`); that interface alone
+requires preservation equivalent to `fsync`, flushing accepted bytes to durable storage
+(`src/intake/contracts.ts:25–28`); that interface alone
 does not establish every deployed email or agent-exchange producer. Complete non-topic intake
 is a separately named dependency in section 14.
 
@@ -38,7 +39,8 @@ source. Index lag and oldest pending work are measured, not inferred from servic
 
 **Rule — generated memory is admitted data; rebuilding views is deterministic.** Rules 7,
 31, 33, 45, 57, 75 and 90; **checks: P21-NF-11/12/18/19/23**. The landed fold language
-is closed and data-only (`src/projections/fold.ts:1–23`). It does not run an LLM inside a fold.
+is closed and data-only (`src/projections/fold.ts:1–23`). It does not run a large language model
+(LLM) inside a fold.
 A registered extraction/reflection producer therefore captures its exact input, model/prompt,
 output, source frontier and charges, then proposes an immutable derived-memory record through
 normal admission. An informational projection deterministically folds those admitted records.
@@ -74,7 +76,8 @@ The scheduling owner holds their queue, deadlines, retries, cancellation and rec
 memory sentinel submits findings or repair proposals; it cannot silently rewrite originals,
 install a lesson as authority, or send a notice. A proposed pilot worker permits one background
 job at a time per declared resource pool, yields to control/user work, and caps each batch at
-200 source messages and 1 MiB of loaded original text. These are unmeasured defaults subject to section 15.
+200 source messages and 1 mebibyte (MiB; 1,048,576 bytes) of loaded original text. These are
+unmeasured defaults subject to section 15.
 
 The scheduling owner admits each durable job and P21 opens its MAINTENANCE root using
 section 2's admission path, even when no conversational root exists. The root's reserved job

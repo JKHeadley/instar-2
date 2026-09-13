@@ -113,8 +113,9 @@ not just an adapter's advertised modes. NF-10 includes K, C and R for continuity
 context and resource recovery. NF-16 includes Q and M for the coherence mapping and measurement
 A2, in addition to benchmark/clock compatibility. NF-04/19 include A2 for the maintenance trace’s admitted derived result; NF-04 also includes
 W for admission without conversational work and I through A2’s source-custody dependency. NF-17/18 include the
-preference, replicated-relationship and replicated-learning consumers and genuine multi-machine
-custody regressions, including tombstones and surviving foreign variants. NF-21 is the conjunction of every
+correction/preference lifecycle, replicated-knowledge, replicated-relationship and replicated-learning
+consumers and genuine multi-machine custody regressions, including tombstones, surviving foreign
+variants, metadata-versus-body coverage, and retained observations feeding subsequent analysis. NF-21 is the conjunction of every
 applicable production component above, including conditional live-review duties.
 
 **Rule — all inherited duties receive a disposition.** Rules 7, 8, 33, 49, 69, 71,

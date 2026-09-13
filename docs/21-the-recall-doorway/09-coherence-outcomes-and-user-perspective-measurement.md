@@ -53,8 +53,9 @@ case without counting a second independent failure opportunity.
 58, 69 and 75; **checks: P21-NF-15/16/18/20/21**. P21 proposes registered feature
 event/action-predicate and outcome mappings to Part 20. It submits evidence and quantities
 through the owner, retaining canonical case/root identity so multiple child calls, retries and
-graders do not multiply the denominator. Observation windows are half-open and use comparable
-owner clocks, never append time as a substitute. Late grades refine the original case's window.
+graders do not multiply the denominator. Each observation window includes its start and excludes
+its end, so an event on a shared boundary counts once, in the window starting there. Windows use
+comparable owner clocks, never append time as a substitute. Late grades refine the original case's window.
 Zero denominator is undefined; missing pricing is unknown, not free; missing peers are partial.
 
 The [Part 20 feature/benchmark join contract](../20-measurement-ledgers/07-feature-benchmark-and-burn-joins.md)
@@ -78,5 +79,5 @@ production-derived to satisfy the rulebook's real-case benchmark requirement.
 **Value — measure the relationship experienced by the user.**
 [R5 §10](research/05-proposals-and-evaluation.md#10-metrics-denominators-and-error-attribution)
 defines these outcomes and denominators; [R3 §§3, 8](research/03-external-research.md) explains
-why static QA is insufficient. Audits should show that relevant history changed the answer or
+why static question-answer tests are insufficient. Audits should show that relevant history changed the answer or
 action appropriately, not reward fluent familiarity, extra citations or a busy sentinel.

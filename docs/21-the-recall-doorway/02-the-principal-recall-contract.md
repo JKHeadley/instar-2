@@ -139,5 +139,6 @@ proof retain their own fail directions. If the required input capture cannot be 
 principal path refuses under that owner and the independently governed minimal responder
 provides reachable failure status where available. P21 may not invent that responder or report
 a false-success manifest. This production path depends on the named assembly/operator seams
-in section 14. ACK latency and substantive completion are measured separately; an ACK never
+in section 14. ACK means acknowledgment of receipt. ACK latency and substantive completion
+are measured separately; an ACK never
 counts as having answered the original request or satisfied ContinuityAccounting.

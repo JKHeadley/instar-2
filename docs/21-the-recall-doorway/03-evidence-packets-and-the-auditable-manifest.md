@@ -94,7 +94,7 @@ All inputs, including subordinate calls and large overflow artifacts, stay in au
 custody. Hashes permit integrity checking but are never the sole memory copy. The ordinary
 reader gets the scoped packet, not protected exclusion lists or private audit topology. The
 operator read surface must apply its own current permissions; being an audit does not permit
-unrestricted export. Proposal A's 64 KiB metadata cap in section 7 spills complete lists to
+unrestricted export. Proposal A's 64 kibibyte (KiB; 1,024 bytes each) metadata cap in section 7 spills complete lists to
 charged, durable referenced artifacts; it never silently drops required lineage.
 
 **Rule — preserve what an evidence span means.** Rules 7, 28, 29, 86 and 89;

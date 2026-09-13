@@ -51,7 +51,7 @@ The primary reader's original drafting cost is separately measured and included 
 totals; review-induced repair is added work in this envelope. Query embeddings count even when
 they are not helper LLM calls. Retained captures, indexing, rebuilds, storage and retrospective
 curation are billed in lifecycle totals. A successful return at 2 s is not proof the underlying
-work stopped: residual CPU, calls and charges remain visible and reserved until reconciled.
+work stopped: residual processor work, calls and charges remain visible and reserved until reconciled.
 
 **Rule — cancellation bounds actual work.** Rules 55, 57, 60, 61, 75 and 95;
 **checks: P21-NF-04/08/10/19**. Use a monotonic local deadline and cancellation handle;
