@@ -9,13 +9,7 @@ has no independently maintained affected-check list. A row includes indirect dep
 not only the owner immediately called. Every listed condition is conjunctive. A permitted
 fixture with stand-in owner data does not prove a production consumer is active.
 
-The short keys below abbreviate the exact dependency ids, not types. For a REQUESTED key,
-its execution condition is **NON-EXECUTABLE-UNTIL-<request slug> GRANTED**, followed by
-landing of that granted owner implementation with real acceptance evidence. The named request
-file is the tracked obligation, not approval. Echo alone records grants/refusals in
-`SEAM-LEDGER.md` and response addenda. For a GRANTED key, the condition is **non-executable
-until the named grant file lands** with its exact scope, ordering and approval conditions.
-A source limit does not disappear because an older response anticipated a broader landing.
+The short keys below abbreviate the exact dependency ids, not types. For a key whose owner seam was requested by this design, the execution condition is **NON-EXECUTABLE-UNTIL-row-<n>-<slug>**, the SEAM-LEDGER row of its conditional grant, followed by landing of that granted owner implementation with real acceptance evidence. The request document remains the record of the exact behavior asked for; the grant is recorded in `seam-response-recall-doorway-grants.md`. Inherited grants keep their existing named files and scope.
 
 All request, response and ledger filenames in this section refer to the lane directory
 `/Users/dabombstudio/.instar/agents/echo/.instar/lanes/`. They are review artifacts; no file
