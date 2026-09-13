@@ -8,7 +8,8 @@ import type { HarnessRuntimeEvent } from '../../src/harness-adapters/contracts.j
 import type { HarnessAdapterStateStorePort } from '../../src/harness-adapters/holder.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { value } from '../facts/fixtures.js';
-import { decodedHandle, harnessFixture, witnessedEvent } from './fixture.js';
+import { harnessFixture, witnessedEvent } from './fixture.js';
+import { signedHandle } from './a2-fixture.js';
 import { verificationInput } from '../verification/fixture.js';
 import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
 // @ts-expect-error The exact filesystem host is JavaScript outside pure core compilation.
@@ -54,12 +55,12 @@ function resumeOwner(event: HarnessRuntimeEvent) {
 
 const f = harnessFixture();
 f.owner.time(20);
-const seedHandle = decodedHandle(f);
+const seedHandle = signedHandle(f);
 const spec = value(f.owner.runtime.record('HarnessLaunchSpec', {
   ...assemblyInput('HarnessLaunchSpec'), id: 'launch:restart', run: 'run:restart', step: 'step:restart',
   artifactDigest: seedHandle.artifactDigest, inputDigest: seedHandle.inputDigest,
 }));
-const handle = decodedHandle(f, { id: 'handle:restart', launch: spec.id, run: spec.run, step: spec.step });
+const handle = signedHandle(f, { id: 'handle:restart', launch: spec.id, run: spec.run, step: spec.step });
 const contract = value(f.owner.runtime.record('AdapterEvidenceContract', {
   ...assemblyInput('AdapterEvidenceContract'), id: 'contract:restart', adapter: 'native',
   artifact: handle.artifactDigest,

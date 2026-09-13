@@ -15,8 +15,8 @@ import type { HarnessRuntimeEvent } from '../../src/harness-adapters/contracts.j
 import { assemblyInput } from '../assembly/fixture.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
-import { decodedHandle, digest, harnessFixture, witnessedEvent } from '../harness-adapters/fixture.js';
-import { a2Fixture } from '../harness-adapters/a2-fixture.js';
+import { digest, harnessFixture, witnessedEvent } from '../harness-adapters/fixture.js';
+import { a2Fixture, signedHandle } from '../harness-adapters/a2-fixture.js';
 import { setup as runGraphFixture } from '../rungraph/fixtures.js';
 import { transportFixture } from '../transport/fixture.js';
 import { transportLoopFixture } from '../transport/loop-fixture.js';
@@ -69,7 +69,7 @@ it('A2-INTEGRATION R2-F07 P13-NF-31 real Part Five transition records progress b
   value(assembly.owner.runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'),
     id: 'launch:work', harness: 'native', artifactDigest: digest('native-artifact'),
     run: run.id, step: running.pending[0]!.id }));
-  const process = decodedHandle(assembly, { launch: 'launch:work', run: run.id, step: running.pending[0]!.id });
+  const process = signedHandle(assembly, { launch: 'launch:work', run: run.id, step: running.pending[0]!.id });
   const handles = createRuntimeHandleHolder({ adapter: process.harness, machine: process.machine,
     maxHandles: 2, maxAttempts: 4, context: assembly.owner.c,
     state: createMemoryHarnessAdapterStateStore('a2:work:handles'), admission: assembly.port });
@@ -96,7 +96,7 @@ it('A2-INTEGRATION R2-F02 R2-F10 P13-NF-51 literal diagnostics grant nothing; on
   f.owner.time(20);
   const handles = createRuntimeHandleHolder({ adapter: 'native', machine: 'machine-a', maxHandles: 2,
     maxAttempts: 4, context: f.owner.c, state: createMemoryHarnessAdapterStateStore('a2:resume:handles'), admission: f.port });
-  const handle = decodedHandle(f);
+  const handle = signedHandle(f);
   handles.put(handle);
   const diagnostic = witnessedEvent(f, 'diagnostic', { id: 'diagnostic:resume',
     diagnosticCode: 'resume-compatible:plan:resume-compatible' });
@@ -141,7 +141,7 @@ it('A2-INTEGRATION R2-F02 R2-F10 P13-NF-51 literal diagnostics grant nothing; on
   const poisonHandles = createRuntimeHandleHolder({ adapter: 'native', machine: 'machine-a', maxHandles: 2,
     maxAttempts: 4, context: poisoned.owner.c,
     state: createMemoryHarnessAdapterStateStore('a2:resume:poison-handles'), admission: poisoned.port });
-  const poisonHandle = decodedHandle(poisoned);
+  const poisonHandle = signedHandle(poisoned);
   poisonHandles.put(poisonHandle);
   const poison = witnessedEvent(poisoned, 'diagnostic', { id: 'diagnostic:poison',
     diagnosticCode: 'transcript-poison:plan:transcript-poison' });
@@ -164,7 +164,7 @@ it('A2-INTEGRATION P13-NF-28 P13-NF-38 same-machine reconnect consumes real Six 
     incarnation: fence.incarnation }));
   const handles = createRuntimeHandleHolder({ adapter: 'native', machine: 'machine-a', maxHandles: 2,
     maxAttempts: 4, context: f.owner.c, state: createMemoryHarnessAdapterStateStore('a2:reconnect:handles'), admission: f.port });
-  const handle = decodedHandle(f, { launch: 'launch:reconnect', incarnation: fence.incarnation });
+  const handle = signedHandle(f, { launch: 'launch:reconnect', incarnation: fence.incarnation });
   handles.put(handle);
   const diagnostic = witnessedEvent(f, 'diagnostic', { id: 'diagnostic:reconnect', launch: handle.launch,
     incarnation: fence.incarnation,
@@ -239,7 +239,7 @@ it('A2-INTEGRATION R2-F05 R2-F06 P13-NF-24 P13-NF-39 delivery replay preserves i
     ...assemblyInput('HarnessLaunchSpec'), id: 'launch:delivery-replay', run: 'run:delivery-replay',
     step: 'step:delivery-replay', artifactDigest: f.handle.artifactDigest, inputDigest: f.handle.inputDigest,
   }));
-  const handle = decodedHandle(f, { id: 'handle:delivery-replay', launch: spec.id, run: spec.run, step: spec.step });
+  const handle = signedHandle(f, { id: 'handle:delivery-replay', launch: spec.id, run: spec.run, step: spec.step });
   expect(f.handles.put(handle)).toMatchObject({ disposition: 'stored' });
   const contract = value(f.owner.runtime.record('AdapterEvidenceContract', {
     ...assemblyInput('AdapterEvidenceContract'), id: 'contract:replay', adapter: 'native', artifact: f.handle.artifactDigest,
@@ -279,7 +279,7 @@ it('A2-INTEGRATION R3-F03 P13-NF-24 P13-NF-39 delivery replay preserves owner re
       step: `step:r3-replay:${age}`, artifactDigest: f.handle.artifactDigest,
       inputDigest: f.handle.inputDigest,
     }));
-    const handle = decodedHandle(f, { id: `handle:r3-replay:${age}`, launch: spec.id,
+    const handle = signedHandle(f, { id: `handle:r3-replay:${age}`, launch: spec.id,
       run: spec.run, step: spec.step });
     expect(f.handles.put(handle)).toMatchObject({ disposition: 'stored' });
     const contract = value(f.owner.runtime.record('AdapterEvidenceContract', {

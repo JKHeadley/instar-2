@@ -10,7 +10,8 @@ import type { HarnessRuntimeEvent } from '../../src/harness-adapters/contracts.j
 import { decodeProbeRecord } from '../../src/verification/index.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { value } from '../facts/fixtures.js';
-import { decodedHandle, digest, harnessFixture, witnessedEvent } from '../harness-adapters/fixture.js';
+import { digest, harnessFixture, witnessedEvent } from '../harness-adapters/fixture.js';
+import { signedHandle } from '../harness-adapters/a2-fixture.js';
 import { transportFixture } from '../transport/fixture.js';
 import { verificationInput } from '../verification/fixture.js';
 import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
@@ -57,7 +58,7 @@ it('A2-INTEGRATION R5-F03 P13-NF-28 P13-NF-38 P13-NF-51 outstanding Nine-confirm
     const spec = value(ten.owner.runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'),
       id: `launch:r5:poison:${custody}`, artifactDigest: digest('native-artifact'),
       incarnation: fence.incarnation }));
-    const handle = decodedHandle(ten, { launch: spec.id, incarnation: fence.incarnation });
+    const handle = signedHandle(ten, { launch: spec.id, incarnation: fence.incarnation });
     const handles = createRuntimeHandleHolder({ adapter: handle.harness, machine: handle.machine,
       maxHandles: 4, maxAttempts: 8, context: ten.owner.c,
       state: createMemoryHarnessAdapterStateStore(`r5:poison:${custody}:handles`), admission: ten.port });

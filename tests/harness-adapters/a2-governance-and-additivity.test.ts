@@ -33,7 +33,11 @@ it('R2-F08 R2-F10 P13-A2-MAP all 52 rows retain exact real-owner dispositions an
   expect(rows.find(row => row.number === 51)?.heldArms).toContain('seam-response-effects-followup.md');
   expect(rows.find(row => row.number === 21)?.status).toContain('dated 08:48Z addenda');
   expect(rows.find(row => row.number === 31)?.heldArms)
-    .toBe('NON-EXECUTABLE-UNTIL-design-17-harness-adapters-seam-request-part-two-capture-read.md');
+    .toContain('NON-EXECUTABLE-UNTIL-design-17-harness-adapters-seam-request-part-two-capture-read.md');
+  expect(rows.find(row => row.number === 31)?.heldArms)
+    .toContain('NON-EXECUTABLE-UNTIL-row-83-run-admission-production');
+  expect(rows.find(row => row.number === 31)?.heldArms).toContain('SEAM-LEDGER.md row 38');
+  expect(rows.find(row => row.number === 31)?.heldArms).toContain('SEAM-LEDGER.md row 45');
 });
 
 it('R2-F11 P13-A2-MAP dependency validation covers A2 held arms and refuses an invented grant', () => {

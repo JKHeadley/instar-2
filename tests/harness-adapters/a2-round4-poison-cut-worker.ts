@@ -12,7 +12,8 @@ import { value } from '../facts/fixtures.js';
 import { transportFixture } from '../transport/fixture.js';
 import { verificationInput } from '../verification/fixture.js';
 import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
-import { decodedHandle, digest, harnessFixture, witnessedEvent } from './fixture.js';
+import { digest, harnessFixture, witnessedEvent } from './fixture.js';
+import { signedHandle } from './a2-fixture.js';
 
 const [mode, cut, directory] = process.argv.slice(2);
 const take = <T>(result: import('../../src/index.js').Result<T>): T => consumeResult(result, {
@@ -31,7 +32,7 @@ const spec = mode === 'recover'
   : value(f.owner.runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'),
     id: 'launch:r4:poison', artifactDigest: digest('native-artifact'), incarnation: fence.incarnation }));
 if (!spec || spec.type !== 'HarnessLaunchSpec') throw new Error('expected launch');
-const handle = decodedHandle(f, { launch: spec.id, incarnation: fence.incarnation });
+const handle = signedHandle(f, { launch: spec.id, incarnation: fence.incarnation });
 const handles = createRuntimeHandleHolder({ adapter: handle.harness, machine: handle.machine, maxHandles: 4,
   maxAttempts: 8, context: f.owner.c, state: createHarnessAdapterFileState(`${directory}/handles.json`),
   admission: f.port });

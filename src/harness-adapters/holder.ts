@@ -484,16 +484,35 @@ function outputCoverage(events: readonly HarnessRuntimeEvent[]): Readonly<{ end:
 interface EvidenceAnalysis {
   readonly all: readonly HarnessRuntimeEvent[];
   readonly decisionSet: readonly MaterializedEvidence[];
+  readonly signedResumeHandle: boolean;
 }
 
 interface MaterializedEvidence {
   readonly id: string;
   readonly sourceClock: number;
-  readonly phase: HarnessObservation['phase'];
-  readonly observation: HarnessObservation;
+  readonly phase: HarnessObservation['phase'] | null;
+  readonly observation: HarnessObservation | null;
   readonly event: HarnessRuntimeEvent | null;
   readonly ownerCurrent: boolean;
   readonly availability: 'current' | 'unavailable';
+}
+
+function sameOrderedValues(left: readonly unknown[], right: readonly unknown[]): boolean {
+  return bytes(left) === bytes(right);
+}
+
+function handleMatchesSignedLaunch(
+  handle: HarnessRuntimeHandle,
+  launch: import('../assembly/index.js').HarnessLaunchSpec,
+  now: number,
+): boolean {
+  return handle.launch === launch.id && handle.harness === launch.harness
+    && handle.artifactDigest === launch.artifactDigest && handle.machine === launch.machine
+    && handle.run === launch.run && handle.step === launch.step && handle.input === launch.input
+    && handle.inputDigest === launch.inputDigest && handle.incarnation === launch.incarnation
+    && handle.launchOperation === launch.processOperation && handle.acquiredAt <= now
+    && sameOrderedValues(handle.contextDigests, launch.contextManifest.map(row => row.digest))
+    && sameOrderedValues(handle.dependencyFacts, launch.dependencyFacts);
 }
 
 function retainsPendingWork(event: HarnessRuntimeEvent): boolean {
@@ -621,6 +640,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
       || launch.record.incarnation !== handle.incarnation) {
       throw new Error('evidence decision cannot resolve the exact current Ten launch subject');
     }
+    const signedResumeHandle = handleMatchesSignedLaunch(handle, launch.record, now);
     const all = state.read().events.filter(event => sameHandle(event, handle));
     const rows = consumeResult(input.context.history.current(), {
       Success: value => value,
@@ -633,15 +653,38 @@ export function createHarnessEvidenceHolder(input: Readonly<{
       && row.record.boundaryEvidence === handle.processIdentity
       ? [{ ...row, record: row.record }]
       : []);
-    const byId = new Map(candidates.map(row => [row.record.id, row]));
+    // Re-resolve through the same public lookup used by A1 admission. That
+    // lookup accepts both the owned record id and its signed fact-envelope id;
+    // the fact id then binds the result back to this decision's current listing.
+    const byFact = new Map(candidates.map(row => [row.fact.id, row]));
+    const resolveObservation = (reference: string) => {
+      try {
+        const resolved = consumeResult(input.context.history!.lookup(reference), {
+          Success: value => value,
+          Refused: () => null,
+        });
+        if (!resolved?.record || resolved.record.type !== 'HarnessObservation') return null;
+        return byFact.get(resolved.fact.id) ?? null;
+      } catch {
+        return null;
+      }
+    };
     const represented = new Set<string>();
     const decisionSet: MaterializedEvidence[] = [];
 
     for (const event of all) {
       const source = event.sourceEvidence[0] ?? '';
-      represented.add(source);
-      const row = byId.get(source);
-      if (!row) continue;
+      const row = resolveObservation(source);
+      if (!row) {
+        // Evidence loss is monotone at the common decision boundary. A retained
+        // local event never disappears merely because the current owner reader
+        // cannot resolve its signed source; it remains explicit unavailable
+        // evidence so no predicate can recover an older favourable answer.
+        decisionSet.push({ id: event.id, sourceClock: event.sourceClock, phase: null,
+          observation: null, event, ownerCurrent: false, availability: 'unavailable' });
+        continue;
+      }
+      represented.add(row.record.id);
       const ownerCurrent = row.record.generation === owner.generation && row.record.observedAt <= now
         && row.taint.length === 0 && row.conflicts.length === 0
         && consumeResult(input.context.history.resolve(row.record), {
@@ -681,7 +724,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         phase: row.record.phase, observation: row.record, event: null, ownerCurrent, availability });
     }
     decisionSet.sort((left, right) => right.sourceClock - left.sourceClock || left.id.localeCompare(right.id));
-    return freeze({ all, decisionSet });
+    return freeze({ all, decisionSet, signedResumeHandle });
   };
 
   const validResumePlan = (
@@ -816,7 +859,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         const analysis = readAnalysis(handle, now);
         const relevant = analysis.decisionSet.filter(row => row.event
           ? ['process-started', 'probe-live', 'probe-failed', 'heartbeat', 'process-exited'].includes(row.event.kind)
-          : ['launched', 'uncertain', 'exit-observed'].includes(row.phase));
+          : row.phase !== null && ['launched', 'uncertain', 'exit-observed'].includes(row.phase));
         const availableRows = relevant.filter(row => row.availability === 'current');
         const unavailableRows = relevant.filter(row => row.availability === 'unavailable');
         const availableClock = availableRows[0]?.sourceClock ?? -1;
@@ -859,17 +902,20 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         const work = newest(currentEvents.filter(event => event.kind === 'work-transition'));
         const output = newest(currentEvents.filter(event => event.kind === 'output-chunk'));
         const coverage = outputCoverage(currentEvents);
+        const positiveClock = Math.max(work?.sourceClock ?? -1,
+          output && coverage.complete && coverage.end > 0 ? output.sourceClock : -1);
+        const uncertain = analysis.decisionSet.find(row => row.sourceClock > positiveClock
+          && (row.phase === 'output-observed' || (row.observation === null && row.event
+            && ['work-transition', 'output-chunk'].includes(row.event.kind)))
+          && (row.availability === 'unavailable' || !row.event));
+        if (uncertain) return freeze({ state: 'unknown' as const,
+          reason: 'retained or owner-current work evidence is omitted, stale, unavailable, or disputed',
+          event: uncertain.id });
         if (work || (output && coverage.complete && coverage.end > 0)) {
           return freeze({ state: 'progressed' as const,
             reason: 'current owner-resolved exact-subject work evidence advances',
             event: (work ?? output)!.id });
         }
-        const uncertain = analysis.decisionSet.find(row => row.phase === 'output-observed'
-          && (row.availability === 'unavailable' || !row.event
-            || row.event.kind === 'work-transition' || row.event.kind === 'output-chunk'));
-        if (uncertain) return freeze({ state: 'unknown' as const,
-          reason: 'retained or owner-current work evidence is omitted, stale, unavailable, or disputed',
-          event: uncertain.id });
         return freeze({ state: 'pending' as const,
           reason: 'no current owner-resolved work-bearing transition', event: '' });
       } catch (error) {
@@ -896,7 +942,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
 
         const unavailableLater = analysis.decisionSet.find(row => row.availability === 'unavailable'
           && row.sourceClock >= closure.sourceClock
-          && (!row.event || retainsPendingWork(row.event)));
+          && (row.observation === null || !row.event || retainsPendingWork(row.event)));
         if (unavailableLater) {
           return freeze({ state: 'pending' as const,
             reason: 'later pending-input, closure, or output evidence is stale, unavailable, or disputed',
@@ -930,6 +976,9 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     resume(handle, now) {
       try {
         const analysis = readAnalysis(handle, now);
+        if (!analysis.signedResumeHandle) return freeze({ state: 'unknown' as const,
+          reason: 'retained runtime handle disagrees with the current signed Ten launch or decision clock',
+          event: '' });
         const relevant = (event: HarnessRuntimeEvent) => event.kind === 'diagnostic'
           && (event.diagnosticCode.startsWith('resume-compatible:')
             || event.diagnosticCode.startsWith('transcript-poison:'));

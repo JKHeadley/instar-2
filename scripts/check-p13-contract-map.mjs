@@ -16,6 +16,7 @@ const ROUTE_CONFORMANCE = 'dated 07:52Z addendum in seam-response-assembly-follo
 const PROMPT = 'dated 07:10Z addenda in seam-response-effects-followup.md + seam-response-assembly-followup.md, SEAM-LEDGER.md row 41';
 const LIVE_PREREQUISITES = `LIVE-PREREQUISITES defined by ${OWNERSHIP}`;
 const HARNESS_EFFECT_IMPLEMENTATION = 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md';
+const RUN_ADMISSION_PRODUCTION = 'NON-EXECUTABLE-UNTIL-row-83-run-admission-production';
 const executable = new Map([
   [1, 'All four owned record forms and every runtime-event variant use closed total decoders, canonical comparison, migration, and deep freezing.'],
   [2, 'The root design and all indexed section files pass the governed-document checker.'],
@@ -25,7 +26,7 @@ const executable = new Map([
   [25, 'The A1 observation-admission arm rejects otherwise valid evidence from an obsolete register generation.'],
   [29, 'The A1 observation-admission arm requires current owner generation; liveness classification remains in Slice A2.'],
   [30, 'Only closed structured events decode; diagnostic text is never interpreted as state.'],
-  [31, 'A1 progress identity deduplicates owner subject plus output range and digest without inventing owner custody.'],
+  [31, 'A1 progress identity deduplicates an already presented owner subject plus output range and digest without claiming production owner admission.'],
   [33, 'The owned event preserves exit status as evidence and never constructs Part Five state.'],
   [34, 'A1 output decoding and declared duplicate identity are executable; capture custody and lifecycle assembly remain in Slice A2.'],
   [39, 'One operation retains one exact action and subject; contradictory replays refuse.'],
@@ -123,7 +124,7 @@ const a2Held = new Map([
   [21, `NON-EXECUTABLE-UNTIL-${CTX_CURRENT}`],
   [4, 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md'],
   [25, CROSS_MACHINE],
-  [31, OUTPUT_CUSTODY],
+  [31, `${OUTPUT_CUSTODY} + ${RUN_ADMISSION_PRODUCTION} + NON-EXECUTABLE-UNTIL-${CTX_GROUND} + NON-EXECUTABLE-UNTIL-${CTX_CURRENT}`],
   [34, OUTPUT_CUSTODY],
   [35, `NON-EXECUTABLE-UNTIL-${PROMPT} + seam-response-loop-followup.md`],
   [37, 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md'],
@@ -143,7 +144,7 @@ const a2ProofTitles = new Map([
   [25, 'A2-INTEGRATION P13-NF-28 P13-NF-38 same-machine reconnect consumes real Six fence, exact liveness, and Part Nine resume'],
   [28, 'A2-UNIT P13-NF-24 P13-NF-28 journal read errors remain typed unknown and never become absence'],
   [29, 'A2-UNIT REVIEW-F3 P13-NF-29 P13-NF-33 newest probe failure is unknown and exit is evidence, never a Run mutation'],
-  [31, 'A2-INTEGRATION R2-F07 P13-NF-31 real Part Five transition records progress but cannot authenticate caller-claimed recovery growth'],
+  [31, 'A2-UNIT R6-F04 P13-NF-31 local comparison and duplicate classification execute without crediting production Six admission or grounding'],
   [32, 'A2-UNIT REVIEW-F1 P13-NF-32 a disputed later pending input cannot restore completion'],
   [33, 'A2-UNIT REVIEW-F3 P13-NF-29 P13-NF-33 newest probe failure is unknown and exit is evidence, never a Run mutation'],
   [34, 'A2-UNIT REVIEW-F8 P13-NF-31 P13-NF-34 output stays held on the named Part Two read seam and compaction exposes no action'],

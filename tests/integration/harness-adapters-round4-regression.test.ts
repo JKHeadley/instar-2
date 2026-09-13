@@ -6,7 +6,8 @@ import type { HarnessRuntimeEvent } from '../../src/harness-adapters/contracts.j
 import { decodeProbeRecord } from '../../src/verification/index.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { value } from '../facts/fixtures.js';
-import { decodedHandle, digest, harnessFixture, witnessedEvent } from '../harness-adapters/fixture.js';
+import { digest, harnessFixture, witnessedEvent } from '../harness-adapters/fixture.js';
+import { signedHandle } from '../harness-adapters/a2-fixture.js';
 import { transportFixture } from '../transport/fixture.js';
 import { verificationInput } from '../verification/fixture.js';
 import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
@@ -51,7 +52,7 @@ it('A2-INTEGRATION R4-F01 P13-NF-25 P13-NF-29 P13-NF-33 P13-NF-38 omitted curren
         id: `launch:r4:${kind}:${custody}`, run: `run:r4:${kind}:${custody}`,
         step: `step:r4:${kind}:${custody}`, artifactDigest: digest('native-artifact'),
         incarnation: fence.incarnation }));
-      const handle = decodedHandle(ten, { launch: spec.id, run: spec.run, step: spec.step,
+      const handle = signedHandle(ten, { launch: spec.id, run: spec.run, step: spec.step,
         incarnation: fence.incarnation });
       const handles = createRuntimeHandleHolder({ adapter: 'native', machine: 'machine-a', maxHandles: 2,
         maxAttempts: 4, context: ten.owner.c,
@@ -96,7 +97,7 @@ it('A2-INTEGRATION R4-F03 P13-NF-28 P13-NF-38 P13-NF-51 omitted owner-confirmed 
     const spec = value(ten.owner.runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'),
       id: `launch:r4:poison:${custody}`, artifactDigest: digest('native-artifact'),
       incarnation: fence.incarnation }));
-    const handle = decodedHandle(ten, { launch: spec.id, incarnation: fence.incarnation });
+    const handle = signedHandle(ten, { launch: spec.id, incarnation: fence.incarnation });
     const handles = createRuntimeHandleHolder({ adapter: 'native', machine: 'machine-a', maxHandles: 2,
       maxAttempts: 4, context: ten.owner.c,
       state: createMemoryHarnessAdapterStateStore(`r4:poison:${custody}:handles`), admission: ten.port });
