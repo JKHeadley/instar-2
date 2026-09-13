@@ -4,6 +4,10 @@ _Generated from `00-the-purpose.changelog.json` by `scripts/render-changelog.mjs
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 3 · 2026-09-13 · draft — operator's confirmation in topic 52075 on 2026-09-13 that undecidable design questions are constitution gaps; the memory design's decision 5 (which effects get an extra history check) was undecidable because 'consequential' had no definition
+
+- **Added one constitutional definition of a consequential effect (four tests), of user-facing, and of significant/critical resolving to consequential, with a registration-time classification check on the effect doorway.** — The rule book records that rules 34, 38, 43, 62 and 76 are blocked on 'significant', 'critical' and 'user-facing' having no definition; the memory design's decision 5 was undecidable for the same reason. _(rule book: 'Rules 34, 38, 43, 62 and 76 hinge on significant, critical, or user-facing'; memory design section 15 decision 5; topic 52075)_
+
 ## Revision 2 · 2026-09-13 · approved — operator direction in topic 52075 on 2026-09-13: wisdom in the use of knowledge is the aim above coherence, and the constitution must be complete enough to decide every design question; approved by the operator in topic 52075 on 2026-09-13 23:26Z ('approved')
 
 - **Added the Value 'wisdom is what coherence is for': coherence is the precondition; the aim is wisdom in the use of knowledge, with complete recall as the baseline and recorded, graded use-or-withhold judgment above it.** — The purpose named coherence, trust, sovereignty and alignment but not wisdom; rule 57 bounds judgment without naming its growth as a goal. The operator stated that wisdom is core to the project. _(topic 52075, operator message of 2026-09-13 22:48Z)_

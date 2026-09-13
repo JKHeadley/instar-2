@@ -1,5 +1,21 @@
 [
   {
+    "revision": 3,
+    "date": "2026-09-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator's confirmation in topic 52075 on 2026-09-13 that undecidable design questions are constitution gaps; the memory design's decision 5 (which effects get an extra history check) was undecidable because 'consequential' had no definition"
+    },
+    "changes": [
+      {
+        "what": "Added one constitutional definition of a consequential effect (four tests), of user-facing, and of significant/critical resolving to consequential, with a registration-time classification check on the effect doorway.",
+        "why": "The rule book records that rules 34, 38, 43, 62 and 76 are blocked on 'significant', 'critical' and 'user-facing' having no definition; the memory design's decision 5 was undecidable for the same reason.",
+        "ref": "rule book: 'Rules 34, 38, 43, 62 and 76 hinge on significant, critical, or user-facing'; memory design section 15 decision 5; topic 52075"
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-13",
     "status": "approved",
