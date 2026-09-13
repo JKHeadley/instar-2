@@ -18,3 +18,6 @@ export {
   finishHarnessOperationAttempt,
   harnessRuntimeEventWitness,
 } from './admission.js';
+export * as holderLifecycle from './holder.js';
+export * as sessionAdapters from './adapter.js';
+export * as recoveryBoundaries from './regression-boundaries.js';
