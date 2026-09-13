@@ -42,14 +42,14 @@ it('P16-NF-04 [behavior:evidence-quantity-binding] P16-NF-14 [behavior:causal-qu
   const quantity = value(port.resolve({ witnesses: [witness], sourceHistory: history,
     evaluationClock: f.clock(200) }));
   expect(quantity).toMatchObject({ state: 'resolved', amount: 8 });
+  const binding = value(port.bindPeer(history));
   const aggregate = value(port.aggregate({
     policy: value(decodeAggregateMeasurementsPolicy(f.aggregatePolicyInput, f.c)),
     quantities: [quantity], unit: 'tokens', category: 'input', dimensions: ['feature'],
     producer: 'probe', scope: 'scope:ordinary', start: f.clock(0), end: f.clock(200),
-    evaluationClock: f.clock(200), frontier: 'frontier:integration',
+    evaluationClock: f.clock(200), frontier: binding.frontierDigest,
   }));
   expect(aggregate).toMatchObject({ amount: 8, unresolved: [] });
-  const binding = value(port.bindPeer(history));
   const peer = { peer: 'machine-a', state: 'admitted' as const, sourceHistory: history,
     ...binding, observedAt: f.clock(195), lastFrontier: null, quantities: [quantity] };
   expect(value(port.mergePeers([peer], { requiredPeers: ['machine-a'],
@@ -90,7 +90,7 @@ it('P16-NF-12 [behavior:signed-history-attribution] P16-NF-13 [behavior:unattrib
   expect(value(cache.inspect())).toHaveLength(1);
 });
 
-it('P16-NF-33 [behavior:burn-hysteresis] P16-NF-34 [behavior:coverage-debt] full A2 port validates an authoritative inactive roster without fabricating burn', () => {
+it('P16-NF-33 [behavior:burn-hysteresis] P16-NF-34 [behavior:coverage-debt] burn:unwitnessed-no-exchange-claim full A2 port refuses to treat an asserted inactive roster as owner evidence', () => {
   const f = measurementA2Fixture();
   const planned = f.persistBurnWindow({ id: 'inactive:integration', start: 0, end: 200,
     samples: [], attempts: ['dispatch:no-exchange'], observed: [], supported: [],
@@ -100,7 +100,8 @@ it('P16-NF-33 [behavior:burn-hysteresis] P16-NF-34 [behavior:coverage-debt] full
   const window = value(port.window({ window: planned.build(history), sourceHistory: history }));
   expect(value(port.burn(f.burnPolicy(), { state: 'closed', recoveryCount: 0,
     notified: false, investigation: null }, window, []))).toMatchObject({
-    classification: 'inactive', currentAmount: 0, culprit: null,
+    classification: 'incomplete', currentAmount: null, culprit: null,
     notify: false, openInvestigation: false,
+    coverageDebt: ['eligible-sample-floor', 'owner-no-exchange:dispatch:no-exchange'],
   });
 });

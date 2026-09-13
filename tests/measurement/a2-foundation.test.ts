@@ -194,17 +194,18 @@ describe('Part 16 slice A2 current-history measurement semantics', () => {
       amount: 50, sourceSample: 'process:resource' }] });
   });
 
-  it('P16-NF-34 [behavior:coverage-debt] P16-NF-33 [behavior:burn-hysteresis] P16-NF-39 [behavior:all-identities-retention] P16-NF-40 [behavior:capture-retention] P16-NF-41 [behavior:bounded-cache-eviction] keeps durable identities separate from bounded disposable cache work', () => {
+  it('P16-NF-34 [behavior:coverage-debt] P16-NF-33 [behavior:burn-hysteresis] P16-NF-39 [behavior:all-identities-retention] P16-NF-40 [behavior:capture-retention] P16-NF-41 [behavior:bounded-cache-eviction] burn:high-window-forged-as-prior-recovery keeps durable identities separate from bounded disposable cache work', () => {
     const f = measurementA2Fixture();
     const observation = f.planObservation({ subject: 'exchange:aggregate', sourceEvent: 'usage:aggregate', amount: 9, at: 100 });
     f.persistObservation(observation);
     const history = f.snapshot();
     const quantity = f.quantity([observation], history);
+    const frontier = value(currentPeerHistoryBinding(history, f.c)).frontierDigest;
     const policy = value(decodeAggregateMeasurementsPolicy(f.aggregatePolicyInput, f.c));
     expect(value(aggregateCurrentMeasurements({ policy, quantities: [quantity], unit: 'tokens',
       category: 'input', dimensions: ['feature'], producer: 'probe', scope: 'scope:ordinary',
       start: f.clock(0), end: f.clock(200), evaluationClock: f.clock(200),
-      frontier: 'frontier:a2' }, f.c))).toMatchObject({ amount: 9, members: ['usage:aggregate'] });
+      frontier }, f.c))).toMatchObject({ amount: 9, members: ['usage:aggregate'] });
     const generation = generationFor(f);
     expect(value(measurementProjectionDefinition(generation, {
       'measurement-observation': { identity: 'identity', value: 'measurement', merge: 'set-union' },
@@ -223,17 +224,19 @@ describe('Part 16 slice A2 current-history measurement semantics', () => {
     const burn = measurementA2Fixture();
     const makeWindow = (id: string, start: number, end: number,
       target: readonly [number, number], other: readonly [number, number]) => {
-      const targetRows = (['input', 'output'] as const).map((category, index) =>
-        burn.planObservation({ subject: `${id}:target`, sourceEvent: `${id}:target:${category}`,
-          category, amount: target[index]!, at: start + 50 }));
-      const otherRows = (['input', 'output'] as const).map((category, index) =>
-        burn.planObservation({ subject: `${id}:other`, sourceEvent: `${id}:other:${category}`,
-          category, amount: other[index]!, at: start + 50 }));
+      const targetRows = [burn.planObservation({ subject: `${id}:target`,
+        sourceEvent: `${id}:target:input`, category: 'input',
+        amount: target[0] + target[1], at: start + 50, contract: burn.eventProducer })];
+      const otherRows = [burn.planObservation({ subject: `${id}:other`,
+        sourceEvent: `${id}:other:input`, category: 'input',
+        amount: other[0] + other[1], at: start + 50, contract: burn.eventProducer })];
       [...targetRows, ...otherRows].forEach(burn.persistObservation);
       return burn.persistBurnWindow({ id, start, end, comparisonScopeAmount:
         target[0] + target[1] + other[0] + other[1], samples: [
-        { identity: `${id}:target`, feature: 'feature-a', observations: targetRows },
-        { identity: `${id}:other`, feature: 'comparison', observations: otherRows },
+        { identity: `${id}:target`, feature: 'feature-a', source: 'programmatic-event',
+          observations: targetRows },
+        { identity: `${id}:other`, feature: 'comparison', source: 'programmatic-event',
+          observations: otherRows },
       ] });
     };
     const basePlan = makeWindow('base', 0, 200, [5, 5], [90, 0]);
@@ -253,6 +256,9 @@ describe('Part 16 slice A2 current-history measurement semantics', () => {
     const opened = value(evaluateCurrentBurn(policyBurn, closed, high, [base], burn.c));
     expect(opened).toMatchObject({ classification: 'activity', notify: true,
       openInvestigation: true, episode: { state: 'open' } });
+    refused(evaluateCurrentBurn(policyBurn, { ...opened.episode, recoveryCount: 1,
+      lastEvaluatedObservation: 'invented-recovery' }, low, [high], burn.c),
+    'lacks its current owner observation');
     const recovering = value(evaluateCurrentBurn(policyBurn, opened.episode, low, [high], burn.c));
     expect(recovering.episode).toMatchObject({ state: 'open', recoveryCount: 1 });
     const replay = value(evaluateCurrentBurn(policyBurn, recovering.episode, low, [high], burn.c));
