@@ -8,11 +8,17 @@ const executable = new Set([1, 5, 22, 25, 26, 27, 28, 29, 30, 52]);
 const mixed = new Set([3, 24]);
 const sliceA1Arch = new Set([2]);
 const sliceA2 = new Set([4, 12, 13, 14, 16, 33, 34, 36, 37, 38, 39, 40, 41, 47, 48, 50]);
-const a2Executable = new Set([4, 12, 13, 14, 16, 34, 38, 39, 40, 41]);
+const a2Executable = new Set([12, 13, 34, 39, 40, 41]);
 const a2Mixed = new Map(Object.entries({
+  4: ['seam-response-intake-followup.md #12', 'seam-response-assembly-followup.md #14',
+    'seam-response-judgment.md #13'],
+  14: ['seam-response-assembly-followup.md #14'],
+  16: ['seam-response-declarations.md #11'],
   33: ['seam-response-assembly-followup.md'],
-  36: ['seam-response-loop-followup.md accountingWindow addendum', 'SEAM-LEDGER.md row 34'],
+  36: ['seam-response-loop-followup.md accountingWindow addendum', 'SEAM-LEDGER.md row 34',
+    'seam-response-declarations.md #11'],
   37: ['seam-response-loop-followup.md accountingWindow addendum', 'SEAM-LEDGER.md row 34'],
+  38: ['seam-response-loop-followup.md #20 qualified-accounting-read', 'SEAM-LEDGER.md row 34'],
   47: ['seam-response-operator-followup.md P16-P11-measurement-spend-surface-v1', 'SEAM-LEDGER.md row 64'],
   48: ['seam-response-operator-followup.md P16-P11-measurement-spend-surface-v1', 'SEAM-LEDGER.md row 64'],
   50: ['seam-response-loop-followup.md qualified-accounting-read', 'SEAM-LEDGER.md row 34'],

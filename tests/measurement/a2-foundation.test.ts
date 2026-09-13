@@ -64,7 +64,7 @@ describe('Part 16 slice A2 current-history measurement semantics', () => {
     expect(equal.witnesses).toHaveLength(2);
     const witnesses = [f.witness(differentA, history), f.witness(differentB, history)];
     expect(value(resolveCurrentQuantity({ witnesses, sourceHistory: history,
-      evaluationClock: f.clock(200) }, f.c))).toMatchObject({ state: 'unresolved', amount: null });
+      evaluationClock: f.clock(200) }, f.c))).toMatchObject({ state: 'resolved', amount: 11 });
     const resolution: QuantityOwnerResolution = { owner: 'probe', key: differentA.identity,
       witnesses: [differentA.sourceEvent, differentB.sourceEvent], amount: 11,
       evidence: resolutionEvidence };

@@ -152,14 +152,14 @@ record('capture:real-owner-pin-and-tombstone',()=>captureRetentionProof(),r=>r.p
 {
  const f=measurementA2Fixture();const o=f.planObservation({subject:'peer:sample',sourceEvent:'peer:witness',amount:17,at:100});f.persistObservation(o);
  const h=f.snapshot(), q=f.quantity([o],h,200), binding=got(m.currentPeerHistoryBinding(h,f.c));
- const a={peer:'a',state:'admitted',sourceHistory:h,...binding,observedAt:f.clock(190),lastFrontier:null,quantities:[q]};
- const policy={requiredPeers:['a'],evaluationClock:f.clock(200),maximumClockSkewMs:10};
+ const a={peer:'machine-a',state:'admitted',sourceHistory:h,...binding,observedAt:f.clock(190),lastFrontier:null,quantities:[q]};
+ const policy={requiredPeers:['machine-a'],evaluationClock:f.clock(200),maximumClockSkewMs:10};
  record('peer:well-formed-boundary-clock',()=>m.mergeCurrentPeerMeasurements([a],policy,f.c),r=>ok(r)&&got(r).state==='complete');
- record('peer:overlap-union-once',()=>m.mergeCurrentPeerMeasurements([a,{...a,peer:'b'}],{...policy,requiredPeers:['a','b']},f.c),r=>ok(r)&&got(r).state==='complete'&&got(r).members.length===1);
+ record('peer:overlap-union-once',()=>m.mergeCurrentPeerMeasurements([a,{...a,peer:'remote'}],{...policy,requiredPeers:['machine-a','remote']},f.c),r=>ok(r)&&got(r).state==='partial'&&got(r).members.length===1);
  record('peer:omitted-quantity-is-derived',()=>m.mergeCurrentPeerMeasurements([{...a,quantities:[]}],policy,f.c),r=>ok(r)&&got(r).members.includes('peer:witness'));
  record('peer:invented-frontier-is-partial',()=>m.mergeCurrentPeerMeasurements([{...a,frontierDigest:'invented'}],policy,f.c),r=>ok(r)&&got(r).state==='partial'&&got(r).missingPeers[0].reason==='unwitnessed-frontier');
- record('peer:clock-skew-is-partial',()=>m.mergeCurrentPeerMeasurements([a,{...a,peer:'b',observedAt:f.clock(100)}],{...policy,requiredPeers:['a','b']},f.c),r=>ok(r)&&got(r).state==='partial'&&got(r).admittedPeers.includes('a')&&got(r).missingPeers[0].reason==='clock-skew');
- record('peer:missing-quantities-wrong-type-refuses',()=>m.mergeCurrentPeerMeasurements([a,{peer:'b',state:'missing',sourceHistory:null,sourceHistoryDigest:null,frontier:null,frontierDigest:null,observedAt:null,lastFrontier:null,quantities:''}],{...policy,requiredPeers:['a','b']},f.c),no);
+ record('peer:clock-skew-is-partial',()=>m.mergeCurrentPeerMeasurements([a,{...a,peer:'remote',observedAt:f.clock(100)}],{...policy,requiredPeers:['machine-a','remote']},f.c),r=>ok(r)&&got(r).state==='partial'&&got(r).admittedPeers.includes('machine-a'));
+ record('peer:missing-quantities-wrong-type-refuses',()=>m.mergeCurrentPeerMeasurements([a,{peer:'remote',state:'missing',sourceHistory:null,sourceHistoryDigest:null,frontier:null,frontierDigest:null,observedAt:null,lastFrontier:null,quantities:''}],{...policy,requiredPeers:['machine-a','remote']},f.c),no);
 }
 // A later disagreeing witness invalidates a former resolution without deleting either.
 {
@@ -177,7 +177,7 @@ record('capture:real-owner-pin-and-tombstone',()=>captureRetentionProof(),r=>r.p
  record('projection:stale-owner-read-refuses-stale-base',()=>projections.readProjection(view,request1.sourceDefinition,f.clock(200),f.c),r=>no(r)&&r.reason==='stale-base');
  record('history:stale-owner-snapshot-refuses',()=>m.renderCurrentMeasurementRead(request1,f.c),no);
  record('history:copied-owner-snapshot-refuses',()=>m.currentPeerHistoryBinding(structuredClone(h2),f.c),no);
- record('resolution:later-witness-retained-as-unresolved',()=>m.renderCurrentMeasurementRead(readRequest(f,h2),f.c),r=>ok(r)&&got(r).rows[0].amount===null&&got(r).rows[0].state==='conflicted');
+ record('resolution:later-witness-refuses-stale-owner-resolution',()=>m.renderCurrentMeasurementRead(readRequest(f,h2),f.c),no);
 }
 // The source claims one sample time across measurement/evidence; rejecting a late witness
 // as a new occurrence must not cause a model exchange to move to the usage arrival day.

@@ -100,7 +100,7 @@ describe('Part 16 A2 round-two independent review regressions', () => {
     const r = disagreementFixture();
     expect(value(resolveCurrentQuantity({ witnesses: [r.witnesses[0]!],
       sourceHistory: r.sourceHistory, evaluationClock: r.f.clock(200) }, r.f.c)))
-      .toMatchObject({ state: 'unresolved', amount: null });
+      .toMatchObject({ state: 'resolved', amount: 105 });
     const resolved = value(resolveCurrentQuantity({ witnesses: r.witnesses,
       resolution: r.resolution, sourceHistory: r.sourceHistory,
       evaluationClock: r.f.clock(200) }, r.f.c));

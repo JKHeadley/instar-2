@@ -10,8 +10,8 @@ it('Slice A2 flips exactly its runnable rows while the permanent A1 compatibilit
   expect(active.filter(row => row.status === 'NON-EXECUTABLE-UNTIL-slice-A2')).toEqual([]);
   expect(active.filter(row => row.status === 'EXECUTABLE').map(row => row.number)
     .filter(number => [4, 12, 13, 14, 16, 33, 34, 36, 37, 38, 39, 40, 41, 47, 48, 50]
-      .includes(number))).toEqual([4, 12, 13, 14, 16, 34, 38, 39, 40, 41]);
-  for (const number of [33, 36, 37, 47, 48, 50]) {
+      .includes(number))).toEqual([12, 13, 34, 39, 40, 41]);
+  for (const number of [4, 14, 16, 33, 36, 37, 38, 47, 48, 50]) {
     const row = active.find(candidate => candidate.number === number)!;
     expect(row.status).toMatch(/^MIXED-EXECUTABLE-A2-PLUS-NON-EXECUTABLE-UNTIL-/);
     expect(row.dependencies.length).toBeGreaterThan(0);
