@@ -25,6 +25,7 @@ it('P13-A2-MAP all 52 rows retain an exact executable or non-executable owner di
   expect(rows).toHaveLength(52);
   expect(new Set(rows.map(row => row.id)).size).toBe(52);
   expect(rows.filter(row => row.status === 'EXECUTABLE')).toHaveLength(21);
+  expect(rows.filter(row => row.heldArms)).toHaveLength(8);
   expect(rows.find(row => row.number === 21)?.status).toContain('dated 08:48Z addenda');
   expect(rows.find(row => row.number === 31)?.heldArms)
     .toBe('NON-EXECUTABLE-UNTIL-design-17-harness-adapters-seam-request-part-two-capture-read.md');

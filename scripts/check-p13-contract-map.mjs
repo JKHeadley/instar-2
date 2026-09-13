@@ -149,8 +149,11 @@ const a2ProofTitles = new Map([
 export function p13A2Dispositions(design = readFileSync('docs/17-harness-adapters/12-negative-contract-fixtures.md', 'utf8')) {
   const base = p13Dispositions(design);
   return base.map(row => {
-    if (a2Executable.has(row.number)) return { ...row, status: 'EXECUTABLE', reason: a2Executable.get(row.number),
+    if (a2Executable.has(row.number)) {
+      const { heldArms: _a1Hold, ...current } = row;
+      return { ...current, status: 'EXECUTABLE', reason: a2Executable.get(row.number),
       ...(a2Held.has(row.number) ? { heldArms: a2Held.get(row.number) } : {}) };
+    }
     if (row.number === 21) return { ...row, status: a2Held.get(21),
       reason: 'The design requires the named current immutable context-delivery grants; no local owner substitute is counted.' };
     return row;
