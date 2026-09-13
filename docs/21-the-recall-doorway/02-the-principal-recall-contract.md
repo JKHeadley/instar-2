@@ -111,7 +111,13 @@ work, current authority and its own recall path, never promotion of the maintena
 This admission path is **NON-EXECUTABLE-UNTIL-row-90-resource-recall-reservations** and
 **NON-EXECUTABLE-UNTIL-row-91-scheduled-memory-work**: non-executable until the corresponding
 scopes in `seam-response-recall-doorway-grants.md` land, together with the judgment and assembly
-dependencies in section 14. `src/scheduled/contracts.ts:29–83` supplies the manifest's work,
+dependencies in section 14. Supervised work also remains
+**NON-EXECUTABLE-UNTIL-row-27-part-seven-runtime-route** and
+**NON-EXECUTABLE-UNTIL-row-30-benchmark-route-support**, until `seam-response-judgment.md`
+and `seam-response-assembly-followup.md` land for those scopes and the scheduled owner
+resolves a current matching, passing supervisor evaluation (section 14 U27/U30).
+Recurring admission additionally requires G84's named calendar grant; a one-shot admission
+cannot establish recurring behavior. `src/scheduled/contracts.ts:29–83` supplies the manifest's work,
 authority, bounds and supervision fields; its `ScheduledWorkPackagePort` plans occurrences,
 not this runtime admission. `src/transport/contracts.ts:23–44` and
 `src/transport/loop-a1/contracts.ts:30–56` do not yet supply the root/child composition.

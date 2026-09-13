@@ -88,7 +88,12 @@ observed result before the next critical step. Its calls, failures and findings 
 and charged to that durable job, never hidden inside a zero-helper ordinary recall budget.
 It cannot override deterministic custody, scope or admission failures. This maintenance
 supervision is separate from selective live message review; it supplies no new sender or hold
-authority. Model route selection remains registered and unmeasured until evaluated.
+authority. The scheduled owner selects the most efficient registered supervisor route whose
+current matching benchmark evaluation passes its task class's quality and safety bars.
+Missing, stale, retracted, conflicted, mismatched or failing support makes supervision
+unavailable under that owner's declared failure direction; an unmeasured route cannot satisfy
+this supervised-maintenance positive. Section 14 U27/U30 name the current-route and
+measured-support grants separately.
 
 The positive NF-04/19/23 trace starts with retained source input and no active conversational
 root. A real admitted scheduled memory item obtains its MAINTENANCE root and reserved finite
@@ -98,10 +103,16 @@ step required by the registered critical pipeline. Normal admission stores the d
 and exact coverage; resource-owner evidence accounts for all calls and remaining exposure.
 The trace must succeed with ordinary conversation's zero-helper policy still configured and
 zero attempted outgoing messages or external task effects. Paired cases refuse a child
-sender/root request, a caller-forged work item, exhausted or missing job bounds, and a missing supervisor. Restart
+sender/root request, a caller-forged work item, exhausted or missing job bounds, and a missing supervisor or stale/mismatched/failing benchmark evaluation. Restart
 before completion retains the same root/reservation and pending coverage. This trace is
 non-executable until rows 90/91 of `seam-response-recall-doorway-grants.md` land and the complete
-NF-04/19/23 dependency rows in section 14 are satisfied.
+NF-04/19/23 dependency rows in section 14 are satisfied, including
+**NON-EXECUTABLE-UNTIL-row-27-part-seven-runtime-route** and
+**NON-EXECUTABLE-UNTIL-row-30-benchmark-route-support**: the corresponding scopes in
+`seam-response-judgment.md` and `seam-response-assembly-followup.md` must land.
+A one-shot execution is evidence for this worker path only; the complete migration and
+recurring-work positives also need section 14 G84's calendar adapter and successive-occurrence
+proof. No one-shot trace proves the daily backstop or weekly preference analysis.
 
 **Value — preserve raw values while experimenting with better keys.** R1's summary gap and
 snapshot imports ([R1 §§3, 7](research/01-instar-1x-memory.md)), Dawn's formation/consolidation

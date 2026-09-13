@@ -464,7 +464,8 @@ No review failure blocks inbound delivery or ordinary conversation. Owner policy
 identity, not a caller's origin label or remembered review, select the admission path.
 
 Change mutable review state into append-only evidence and owner-resolved current obligations.
-Preserve the daily bounded backstop and Tier 1 supervision through the scheduled-work owner;
+Preserve the daily bounded backstop and Tier 1 supervision through the scheduled-work owner,
+with section 14 U27/U30's current matching supervisor evaluation and G84's recurring adapter;
 retire callback-plus-backstop composition after durable owner admission and recovery take over.
 Filled/expired/dead-lettered state must not imply automatic closure. Recovery must
 reconcile whether a downstream artifact already exists before retrying; uncertain effects
@@ -486,8 +487,8 @@ with no invented shell or completed review. Neither neighbor suppresses correcti
 Kill after correction capture before shell creation, after shell before judgment, after result
 before action creation, and after action creation before link attachment. Restart/import twice;
 require one recoverable obligation per source identity, retained attempt limits, no duplicate
-action and no closure from an absent link. Exercise the scheduled backstop through its real
-owner consumer, including disabled recovery and malformed-result neighbors. Exhaustion retains
+action and no closure from an absent link. Exercise successive daily backstop occurrences
+through the pinned calendar adapter and real scheduled owner consumer across restart, including disabled recovery and malformed-result neighbors. Exhaustion retains
 its retry obligation even when the action sink fails. Age an unresolved filled review into
 parked follow-up, with a linked
 in-progress action as the exclusion neighbor. Pair matching filled correspondence with missing,
@@ -555,8 +556,8 @@ Replace the legacy route and hook only with the same startup, later-input and co
 consumer migration. Do not retire one while the other still reads its old source.
 
 The migration regression P21-REG-PREFERENCES begins with recurring user corrections: capture,
-scrub, retain qualifying occurrences across the required days/sessions, run the real scheduled
-analysis and route, store guidance, restart, then observe its body in actual captured context
+scrub, retain qualifying occurrences across the required days/sessions, run successive weekly
+analysis occurrences through the pinned calendar adapter and real scheduled owner and route, store guidance, restart, then observe its body in actual captured context
 and independently assess a later answer that honors it. Storage alone cannot pass. A second-machine variant
 must traverse real replicated custody and the new consumer; fixture-only union output cannot
 pass it. A concurrent divergent hint must retain both origins and eligible advisory variants
@@ -579,7 +580,10 @@ verify delivery stays reachable while observation coverage is explicitly unavail
 clean record of compliance. These proposed migration positives are **non-executable until
 `seam-response-recall-doorway-grants.md` lands for the complete NF-17/18/21 dependencies in
 section 14**, together with their inherited grants and P21 implementations. The three executed
-baseline observations remain distinct.
+baseline observations remain distinct. The daily backstop and weekly analysis positives are
+**NON-EXECUTABLE-UNTIL-row-84-calendar-adapter**, until `seam-response-assembly-followup.md`
+row 84 lands, and also require the U27/U30 supervisor grants named in section 14. Manual
+invocation or a one-shot fixture cannot prove these preserved cadences.
 
 **Rule — replicated knowledge preserves catalog identity without inventing body delivery.**
 Rules 7, 31, 33, 44, 45, 57, 89 and 90; **checks: P21-NF-05/11/12/17/18/21**.
