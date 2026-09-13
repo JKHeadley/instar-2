@@ -95,7 +95,7 @@ retains its owner's refusal regardless of reviewer availability. Bounded pending
 as resolved, explicitly still-unresolved/expired, cancelled or superseded under the effect owner;
 expiry does not authorize execution or erase the original directive. Proposed recovery is at
 most two rechecks within five minutes, one logical notice updated with the result plus a
-pull-visible record. This is **NON-EXECUTABLE-UNTIL-effect-recall-pending GRANTED** and the selected
+pull-visible record. This is **NON-EXECUTABLE-UNTIL-row-92-effect-recall-pending** and the selected
 operator policy. The effect owner retains the pending attempt; transport/scheduling owns
 bounded rechecks; the run graph retains outstanding work; operator surfaces own status and
 expiry actions. OD-06 selects the waiting experience, not those engineering boundaries.

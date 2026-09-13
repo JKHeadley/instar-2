@@ -9,7 +9,7 @@ display name, text similarity, email spelling, a model's person guess or a retri
 
 The landed intake interfaces at `src/intake/contracts.ts:8–23` distinguish authenticated route
 and sender evidence. They are not a general cross-channel person resolver. The required public
-join/scope service is **NON-EXECUTABLE-UNTIL-intake-conversation-recall-scope GRANTED** (section 14).
+join/scope service is **NON-EXECUTABLE-UNTIL-row-87-intake-conversation-recall-scope** (section 14).
 Fixtures may supply owner state to test a future consumer; production activation may not.
 
 | Situation | Permitted interpretation | Prohibited shortcut |

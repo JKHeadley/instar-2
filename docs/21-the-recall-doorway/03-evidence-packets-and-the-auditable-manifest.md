@@ -9,7 +9,7 @@ P21 supplies references and digests to those existing owners, not an alternative
 `src/judgment/contracts.ts:12–21` exposes separate question/context/submitted captures.
 `src/assembly/contracts.ts:33–49` exposes class/reference/digest carrier rows and consumption
 observations. These landed shapes do not provide every join below. Production binding is
-**NON-EXECUTABLE-UNTIL-judgment-recall-consumer GRANTED** and
+**NON-EXECUTABLE-UNTIL-row-85-judgment-recall-consumer** and
 **non-executable until `seam-response-assembly-followup.md` and
 `seam-response-rungraph-followup.md` row-45 addenda land** (ASSEMBLY-CURRENT-CONTEXT);
 operator inspection additionally awaits

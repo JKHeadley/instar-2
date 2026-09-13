@@ -62,7 +62,7 @@ requires accepted-question and planned-execution populations with visible missin
 cancelled/pending members. The landed A1 code admits category/value tuples, not evidence-bound
 aggregates (`src/measurement/operations.ts:70–90`; `src/measurement/README.md:3–11`).
 Production coherence totals, cost attribution and operator/export views are therefore
-**NON-EXECUTABLE-UNTIL-measurement-a2-coherence GRANTED** and its inherited benchmark/clock/surface
+**NON-EXECUTABLE-UNTIL-row-93-measurement-a2-coherence** and its inherited benchmark/clock/surface
 dependencies in section 14. An offline experiment logger is permitted as a labeled research
 artifact, not a substitute production owner or proof of paid-service readiness.
 

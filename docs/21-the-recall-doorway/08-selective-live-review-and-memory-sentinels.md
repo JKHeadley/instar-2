@@ -41,7 +41,7 @@ activate a mode that declares this review a required prerequisite.
 
 Each selected class must also have an exact owner-decoded operation subject and a real
 confined adapter. The landed ordinary-reply union does not establish email/payment payloads.
-Those missing subjects are **NON-EXECUTABLE-UNTIL-effect-recall-operation-payloads GRANTED**,
+Those missing subjects are **NON-EXECUTABLE-UNTIL-row-96-effect-recall-operation-payloads**,
 then until the approved implementation lands; the request file and existing narrower typed
 payload grants are named in section 14. An interest in extra review never authorizes the
 underlying action or a new operation definition.
