@@ -268,11 +268,23 @@ export function createSessionHarnessAdapter(input: SessionHarnessAdapterInput): 
         requireValue(attempt.disposition !== 'refused', attempt.reason);
         if (attempt.disposition === 'existing') {
           requireValue(attempt.attempt?.subjectDigest === subjectDigest, 'retained delivery attempt names changed input or target');
-          const phase = attempt.attempt.state === 'observed' ? 'input-accepted' : 'uncertain';
+          let ownerWitness: HarnessObservation | null = null;
+          if (attempt.attempt.state === 'observed' && attempt.attempt.evidence) {
+            try {
+              const candidate = resolveObservation(input, attempt.attempt.evidence, 'input-accepted');
+              if (candidate.launch === spec.id && candidate.run === spec.run && candidate.step === spec.step
+                && candidate.input === spec.input && candidate.incarnation === spec.incarnation) ownerWitness = candidate;
+            } catch {
+              // Local custody proves only that an observation was recorded. If
+              // Ten cannot currently resolve that receipt, delivery remains
+              // uncertain and the original operation must not be invoked again.
+            }
+          }
+          const phase = ownerWitness ? 'input-accepted' : 'uncertain';
           return observation(input, spec, phase, attempt.attempt.evidence,
-            attempt.attempt.state === 'observed'
+            ownerWitness
               ? 'original delivery observation restored from durable operation custody'
-              : 'delivery may already have occurred; observe the original operation before any repeat',
+              : 'delivery may already have occurred but its owner receipt is unresolved; observe the original operation before any repeat',
             attempt.attempt.observedAt ?? attempt.attempt.attemptedAt);
         }
         const accepted = take(input.driver.deliver({

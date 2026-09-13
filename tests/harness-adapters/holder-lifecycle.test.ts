@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { decodeAssemblyRecord } from '../../src/assembly/index.js';
 import {
   createHarnessEvidenceHolder,
+  createMemoryHarnessAdapterStateStore,
   createRuntimeHandleHolder,
 } from '../../src/harness-adapters/holder.js';
 import { correlatedRecoveryProgress, preventiveCompactionDisposition }
@@ -33,15 +34,17 @@ it('A2-UNIT REVIEW-F1 REVIEW-F2 P13-NF-24 P13-NF-32 later pending input defeats 
   const first = witnessedEvent(f, 'turn-closed', { id: 'closure:old', streamState: 'closed',
     childrenState: 'closed', sourceClock: 20, observedAt: 20 });
   expect(f.evidence.admit(first).disposition).toBe('recorded');
+  f.owner.time(25);
   expect(f.evidence.completion(f.handle, 25).state).toBe('complete');
 
   const peer = createHarnessEvidenceHolder({ adapter: 'native', artifact: f.handle.artifactDigest,
-    platform: f.handle.platform, machine: f.handle.machine, maxEvents: 32, maxCaptureBytes: 1024,
+    platform: f.handle.platform, machine: f.handle.machine, scope: 'conversation:1', maxEvents: 32, maxCaptureBytes: 1024,
     context: f.owner.c, state: f.evidenceState, admission: f.port,
     owners: { handles: f.handles, current: f.owner.host } });
   const pending = witnessedEvent(f, 'input-accepted', { id: 'input:new', sourceClock: 30,
     observedAt: 30, streamState: 'open' });
   expect(peer.admit(pending).disposition).toBe('recorded');
+  f.owner.time(30);
   expect(f.evidence.completion(f.handle, 30)).toMatchObject({ state: 'pending' });
 });
 
@@ -57,6 +60,7 @@ it('A2-UNIT REVIEW-F1 P13-NF-32 a disputed later pending input cannot restore co
   const conflict = value(decodeAssemblyRecord(source.type, { ...source, detail: `${source.detail}:conflict` },
     { ...f.owner.c, validateReferences: false }));
   value(f.owner.spine.append(conflict));
+  f.owner.time(30);
   expect(f.evidence.completion(f.handle, 30)).toMatchObject({ state: 'pending', event: 'input:disputed' });
 });
 
@@ -64,8 +68,10 @@ it('A2-UNIT REVIEW-F3 P13-NF-29 P13-NF-33 newest probe failure is unknown and ex
   const f = a2Fixture();
   f.evidence.admit(witnessedEvent(f, 'heartbeat', { id: 'heartbeat:old', sourceClock: 20, observedAt: 20 }));
   f.evidence.admit(witnessedEvent(f, 'probe-failed', { id: 'probe:new', sourceClock: 30, observedAt: 30 }));
+  f.owner.time(30);
   expect(f.evidence.liveness(f.handle, 30)).toMatchObject({ state: 'unknown', event: 'probe:new' });
   f.evidence.admit(witnessedEvent(f, 'process-exited', { id: 'exit:current', sourceClock: 40, observedAt: 40 }));
+  f.owner.time(40);
   expect(f.evidence.liveness(f.handle, 40)).toMatchObject({ state: 'dead', event: 'exit:current' });
 });
 
@@ -89,10 +95,58 @@ it('A2-UNIT P13-NF-24 P13-NF-28 journal read errors remain typed unknown and nev
       snapshot: Parameters<HarnessAdapterStateStorePort['save']>[1]) => f.evidenceState.save(expected, snapshot),
   });
   const holder = createHarnessEvidenceHolder({ adapter: 'native', artifact: f.handle.artifactDigest,
-    platform: f.handle.platform, machine: f.handle.machine, maxEvents: 32, maxCaptureBytes: 1024,
+    platform: f.handle.platform, machine: f.handle.machine, scope: 'conversation:1', maxEvents: 32, maxCaptureBytes: 1024,
     context: f.owner.c, state: broken, admission: f.port,
     owners: { handles: f.handles, current: f.owner.host } });
   fail = true;
   expect(holder.events(f.handle.launch)).toMatchObject({ state: 'unknown', events: [] });
+  f.owner.time(20);
   expect(holder.liveness(f.handle, 20)).toMatchObject({ state: 'unknown' });
+});
+
+it('A2-UNIT R2-F01 P13-NF-29 P13-NF-32 unordered and delayed evidence never earns liveness or completion', () => {
+  for (const failureId of ['aaa-failure', 'zzz-failure']) {
+    const f = a2Fixture();
+    f.evidence.admit(witnessedEvent(f, 'heartbeat', { id: 'mid-heartbeat', sourceClock: 20, observedAt: 20 }));
+    f.evidence.admit(witnessedEvent(f, 'probe-failed', { id: failureId, sourceClock: 20, observedAt: 20 }));
+    f.owner.time(21);
+    expect(f.evidence.liveness(f.handle, 21), failureId).toMatchObject({ state: 'unknown' });
+  }
+
+  for (const inputId of ['aaa-input', 'zzz-input']) {
+    const f = a2Fixture();
+    f.evidence.admit(witnessedEvent(f, 'turn-closed', { id: 'mid-closure', sourceClock: 20,
+      observedAt: 20, streamState: 'closed', childrenState: 'closed' }));
+    f.evidence.admit(witnessedEvent(f, 'input-accepted', { id: inputId, sourceClock: 20,
+      observedAt: 20, streamState: 'open', unresolvedOperations: ['operation:unsettled'] }));
+    f.owner.time(21);
+    expect(f.evidence.completion(f.handle, 21), inputId).toMatchObject({ state: 'pending' });
+  }
+
+  const delayed = a2Fixture();
+  delayed.evidence.admit(witnessedEvent(delayed, 'probe-failed', {
+    id: 'newer-source-failure', sourceClock: 20, observedAt: 20,
+  }));
+  delayed.evidence.admit(witnessedEvent(delayed, 'heartbeat', {
+    id: 'delayed-old-heartbeat', sourceClock: 10, observedAt: 30,
+  }));
+  delayed.owner.time(31);
+  expect(delayed.evidence.liveness(delayed.handle, 31)).toMatchObject({ state: 'unknown' });
+});
+
+it('A2-UNIT R2-F03 R2-F04 P13-NF-05 P13-NF-29 rejects foreign holder tuples and stale caller clocks', () => {
+  const f = a2Fixture();
+  const foreign = createHarnessEvidenceHolder({ adapter: 'native', artifact: f.handle.artifactDigest,
+    platform: 'linux-x64', machine: f.handle.machine, scope: 'conversation:1', maxEvents: 8, maxCaptureBytes: 64,
+    context: f.owner.c, state: createMemoryHarnessAdapterStateStore('a2:foreign-tuple'), admission: f.port,
+    owners: { handles: f.handles, current: f.owner.host } });
+  expect(foreign.admit(witnessedEvent(f, 'heartbeat', { id: 'foreign-tuple' })))
+    .toMatchObject({ disposition: 'refused' });
+  f.owner.time(20);
+  expect(foreign.liveness(f.handle, 20)).toMatchObject({ state: 'unknown' });
+
+  f.evidence.admit(witnessedEvent(f, 'heartbeat', { id: 'fresh-at-twenty', sourceClock: 20, freshFor: 100 }));
+  f.owner.time(200);
+  expect(f.evidence.liveness(f.handle, 21)).toMatchObject({ state: 'unknown' });
+  expect(f.evidence.liveness(f.handle, 200)).toMatchObject({ state: 'unknown' });
 });

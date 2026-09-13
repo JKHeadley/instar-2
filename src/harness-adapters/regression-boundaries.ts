@@ -31,7 +31,10 @@ export function correlatedRecoveryProgress(worker: string, observations: readonl
   const evidence = Object.freeze(observations.filter(row => row.worker === worker
     && Number.isSafeInteger(row.before) && row.before >= 0
     && Number.isSafeInteger(row.after) && row.after > row.before));
-  const witnessed = proof && proof.handle.processIdentity === worker
-    && proof.holder.progress(proof.handle, proof.now).state === 'progressed';
-  return Object.freeze({ state: evidence.length && witnessed ? 'progressed' : 'pending', evidence });
+  // Caller numbers are not Part Two capture evidence. A prior Five transition
+  // can prove work state, but cannot authenticate arbitrary later byte growth.
+  // Keep the observations for diagnosis while the capture-read owner seam is
+  // unlanded; never promote them to recovered progress.
+  void proof;
+  return Object.freeze({ state: 'pending' as const, evidence });
 }

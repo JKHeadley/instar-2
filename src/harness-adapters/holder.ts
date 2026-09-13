@@ -294,8 +294,13 @@ export function createRuntimeHandleHolder(input: Readonly<{
     beginAttempt(attempt) {
       try {
         const current = state.read();
+        const retained = current.attempts.find(row => row.operation === attempt.operation);
         const candidate = {
           ...attempt,
+          // The operation identity owns the first attempt clock. Recovery may run
+          // later, but it reconstructs that same immutable attempt rather than
+          // presenting the recovery clock as a changed action subject.
+          attemptedAt: retained?.attemptedAt ?? attempt.attemptedAt,
           state: 'pending' as const,
           evidence: '',
           observedAt: null,
@@ -444,16 +449,13 @@ function sameHandle(event: HarnessRuntimeEvent, handle: HarnessRuntimeHandle): b
 
 function newest(events: readonly HarnessRuntimeEvent[]): HarnessRuntimeEvent | undefined {
   return [...events].sort((left, right) =>
-    right.observedAt - left.observedAt
-    || right.sourceClock - left.sourceClock
-    || right.id.localeCompare(left.id))[0];
+    right.sourceClock - left.sourceClock
+    || left.id.localeCompare(right.id))[0];
 }
 
-function laterThan(older: HarnessRuntimeEvent, newer: HarnessRuntimeEvent): boolean {
-  return newer.observedAt > older.observedAt
-    || (newer.observedAt === older.observedAt && newer.sourceClock > older.sourceClock)
-    || (newer.observedAt === older.observedAt && newer.sourceClock === older.sourceClock
-      && newer.id.localeCompare(older.id) > 0);
+function sourceFrontier(events: readonly HarnessRuntimeEvent[]): readonly HarnessRuntimeEvent[] {
+  const clock = newest(events)?.sourceClock;
+  return clock === undefined ? [] : events.filter(event => event.sourceClock === clock);
 }
 
 function outputCoverage(events: readonly HarnessRuntimeEvent[]): Readonly<{ end: number; complete: boolean }> {
@@ -482,6 +484,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
   artifact: Hash;
   platform: string;
   machine: string;
+  scope: string;
   maxEvents: number;
   maxCaptureBytes: number;
   context: HarnessAdapterDecodeContext;
@@ -489,7 +492,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
   admission: HarnessAdmissionPort;
   owners: HarnessEvidenceOwnerPorts;
 }>): HarnessEvidenceHolder {
-  if (!input.adapter || !input.artifact || !input.platform || !input.machine
+  if (!input.adapter || !input.artifact || !input.platform || !input.machine || !input.scope
     || !Number.isSafeInteger(input.maxEvents) || input.maxEvents < 1
     || !Number.isSafeInteger(input.maxCaptureBytes) || input.maxCaptureBytes < 1) {
     throw new Error('evidence holder requires exact adapter identity and explicit positive finite bounds');
@@ -519,6 +522,10 @@ export function createHarnessEvidenceHolder(input: Readonly<{
   ): HarnessEvidenceAdmission => freeze({ disposition, reason, progress, progressKey });
 
   const witnessFailure = (event: HarnessRuntimeEvent): string | null => {
+    if (event.harness !== input.adapter || event.artifactDigest !== input.artifact
+      || event.platform !== input.platform || event.machine !== input.machine) {
+      return 'runtime event belongs to another exact adapter artifact, platform, or machine';
+    }
     const admission = input.admission.admitObservation(event, [], Number.MAX_SAFE_INTEGER);
     const heldWork = event.kind === 'work-transition'
       && admission.disposition === 'refused'
@@ -555,6 +562,12 @@ export function createHarnessEvidenceHolder(input: Readonly<{
 
   const readAnalysis = (handle: HarnessRuntimeHandle, now: number): EvidenceAnalysis => {
     if (!Number.isSafeInteger(now) || now < 0) throw new Error('evidence decision clock must be a nonnegative safe integer');
+    const owner = input.owners.current.current();
+    if (owner.clock.value !== now) throw new Error('evidence decision requires the exact current owner clock');
+    if (handle.harness !== input.adapter || handle.artifactDigest !== input.artifact
+      || handle.platform !== input.platform || handle.machine !== input.machine) {
+      throw new Error('runtime handle belongs to another exact adapter artifact, platform, or machine');
+    }
     const all = state.read().events.filter(event => sameHandle(event, handle));
     const current: HarnessRuntimeEvent[] = [];
     const unavailable: HarnessRuntimeEvent[] = [];
@@ -600,9 +613,19 @@ export function createHarnessEvidenceHolder(input: Readonly<{
       const expectedHolder = prefix === compatible
         ? 'part-thirteen:resume-compatible'
         : 'part-thirteen:transcript-poison';
+      const expectedArm = prefix === compatible ? 'resume-compatible' : 'transcript-poison';
+      const expectedFixture = prefix === compatible ? 'P13-NF-38' : 'P13-NF-51';
+      const purposeArm = row.record.arms.some(arm => arm.required && arm.kind === 'runtime'
+        && arm.id === expectedArm && arm.executable === `harness.${expectedArm}`
+        && arm.fixture === expectedFixture && arm.outputContract === 'VerificationAssessment');
+      const purposeConsumer = row.record.consumers.some(consumer => consumer.id === expectedHolder
+        && consumer.direction === 'closed' && consumer.enforcedRecord === 'VerificationAssessment'
+        && consumer.decoder === 'decodeVerificationAssessment');
       if (current.clock.value !== now || row.record.subject.holder !== expectedHolder
         || row.record.subject.governed !== exactSubject(event)
-        || row.record.subject.generation !== current.generation) return 'unknown';
+        || row.record.subject.scope !== input.scope || row.record.subject.generation !== current.generation
+        || !purposeArm || !purposeConsumer
+        || !row.record.bar.complete || !row.record.bar.sources.includes('runtime-conversation')) return 'unknown';
       const posture = consumeResult(input.owners.verification!.posture(row.record.id, current.clock), {
         Success: value => value,
         Refused: refused => {
@@ -662,20 +685,26 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         const relevantKinds = new Set<HarnessRuntimeEvent['kind']>([
           'process-started', 'probe-live', 'probe-failed', 'heartbeat', 'process-exited',
         ]);
-        const available = newest(analysis.current.filter(event => relevantKinds.has(event.kind)));
-        const unavailable = newest(analysis.unavailable.filter(event => relevantKinds.has(event.kind)));
-        if (unavailable && (!available || laterThan(available, unavailable)
-          || (available.observedAt === unavailable.observedAt && available.sourceClock === unavailable.sourceClock))) {
+        const availableEvents = analysis.current.filter(event => relevantKinds.has(event.kind));
+        const unavailableEvents = analysis.unavailable.filter(event => relevantKinds.has(event.kind));
+        const available = newest(availableEvents);
+        const unavailable = newest(unavailableEvents);
+        if (unavailable && (!available || unavailable.sourceClock >= available.sourceClock)) {
           return freeze({ state: 'unknown' as const,
             reason: 'newest exact-process evidence is stale, unavailable, future-dated, or disputed',
             event: unavailable.id });
         }
         if (!available) return freeze({ state: 'unknown' as const,
           reason: 'no fresh exact-incarnation liveness witness; timeout or absence does not prove death', event: '' });
-        if (available.kind === 'process-exited') return freeze({ state: 'dead' as const,
-          reason: 'explicit current correlated process-exit witness', event: available.id });
-        if (available.kind === 'probe-failed') return freeze({ state: 'unknown' as const,
-          reason: 'newest exact-process probe failed; older liveness cannot hide an unreadable probe', event: available.id });
+        const frontier = sourceFrontier(availableEvents);
+        const positive = frontier.some(event => ['process-started', 'probe-live', 'heartbeat'].includes(event.kind));
+        const exited = frontier.find(event => event.kind === 'process-exited');
+        const failed = frontier.find(event => event.kind === 'probe-failed');
+        if (failed || (exited && positive)) return freeze({ state: 'unknown' as const,
+          reason: 'latest source-clock frontier contains failed, contradictory, or unordered liveness evidence',
+          event: (failed ?? exited)!.id });
+        if (exited) return freeze({ state: 'dead' as const,
+          reason: 'explicit current correlated process-exit witness', event: exited.id });
         return freeze({ state: 'live' as const,
           reason: 'fresh exact-incarnation owner-witnessed proof', event: available.id });
       } catch (error) {
@@ -708,7 +737,8 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     completion(handle, now) {
       try {
         const analysis = readAnalysis(handle, now);
-        const closure = newest(analysis.current.filter(event => event.kind === 'turn-closed'));
+        const closures = analysis.current.filter(event => event.kind === 'turn-closed');
+        const closure = newest(closures);
         if (!closure) {
           const unavailable = newest(analysis.unavailable.filter(event => event.kind === 'turn-closed'));
           return freeze({ state: 'unknown' as const,
@@ -722,19 +752,23 @@ export function createHarnessEvidenceHolder(input: Readonly<{
           'input-accepted', 'context-consumed', 'work-transition', 'output-chunk', 'turn-closed',
         ]);
         const unavailableLater = newest(analysis.unavailable.filter(event =>
-          workBearingKinds.has(event.kind) && (event.id === closure.id || laterThan(closure, event))));
+          workBearingKinds.has(event.kind) && event.sourceClock >= closure.sourceClock));
         if (unavailableLater) {
           return freeze({ state: 'pending' as const,
             reason: 'later pending-input, closure, or output evidence is stale, unavailable, or disputed',
             event: unavailableLater.id });
         }
 
-        const laterOpen = analysis.current.some(event => laterThan(closure, event)
+        const frontierClosures = closures.filter(event => event.sourceClock === closure.sourceClock);
+        const closureIds = new Set(frontierClosures.map(event => event.id));
+        const laterOpen = analysis.current.some(event => !closureIds.has(event.id)
+          && event.sourceClock >= closure.sourceClock
           && (workBearingKinds.has(event.kind) || event.streamState === 'open'
             || event.childrenState === 'pending' || event.childrenState === 'unknown'
             || event.unresolvedOperations.length > 0));
-        if (closure.streamState !== 'closed' || !['none', 'closed'].includes(closure.childrenState)
-          || closure.unresolvedOperations.length || laterOpen || !outputCoverage(analysis.current).complete) {
+        const incompleteClosure = frontierClosures.some(event => event.streamState !== 'closed'
+          || !['none', 'closed'].includes(event.childrenState) || event.unresolvedOperations.length > 0);
+        if (incompleteClosure || laterOpen || !outputCoverage(analysis.current).complete) {
           return freeze({ state: 'pending' as const,
             reason: 'turn closure retains later work, incomplete output, an open stream, child, or unresolved operation',
             event: closure.id });
@@ -750,15 +784,22 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     resume(handle, now) {
       try {
         const analysis = readAnalysis(handle, now);
-        const available = newest(analysis.current.filter(event => event.kind === 'diagnostic'));
-        const unavailable = newest(analysis.unavailable.filter(event => event.kind === 'diagnostic'));
-        if (unavailable && (!available || laterThan(available, unavailable))) {
+        const relevant = (event: HarnessRuntimeEvent) => event.kind === 'diagnostic'
+          && (event.diagnosticCode.startsWith('resume-compatible:')
+            || event.diagnosticCode.startsWith('transcript-poison:'));
+        const availableEvents = analysis.current.filter(relevant);
+        const available = newest(availableEvents);
+        const unavailable = newest(analysis.unavailable.filter(relevant));
+        if (unavailable && (!available || unavailable.sourceClock >= available.sourceClock)) {
           return freeze({ state: 'unknown' as const,
             reason: 'newest resume evidence is stale, unavailable, future-dated, or disputed',
             event: unavailable.id });
         }
         if (!available) return freeze({ state: 'unknown' as const,
           reason: 'pane text, silence, or missing evidence cannot establish resume safety', event: '' });
+        const dispositions = new Set(sourceFrontier(availableEvents).map(event => resumeDisposition(event, now)));
+        if (dispositions.size !== 1) return freeze({ state: 'unknown' as const,
+          reason: 'latest resume source-clock frontier contains unordered contradictory evidence', event: available.id });
         const disposition = resumeDisposition(available, now);
         if (disposition === 'poisoned') return freeze({ state: 'poisoned' as const,
           reason: 'Part Nine current guard posture confirms the runtime conversation cannot resume safely',

@@ -42,7 +42,7 @@ function initial(path: string): void {
     handles: [], attempts: [], events: [] })}\n`);
 }
 
-it('A2-E2E P13-NF-03 P13-NF-08 P13-NF-28 holder custody reconstructs from the durable journal after restart', () => {
+it('A2-E2E P13-NF-28 holder custody reconstructs from the durable journal after restart', () => {
   const directory = mkdtempSync(join(tmpdir(), 'p13-a2-restart-'));
   const state = createHarnessAdapterFileState(join(directory, 'state.json')) as HarnessAdapterStateStorePort;
   const f = harnessFixture();
@@ -55,18 +55,28 @@ it('A2-E2E P13-NF-03 P13-NF-08 P13-NF-28 holder custody reconstructs from the du
   expect(restarted.lookup(handle.launch)).toMatchObject({ state: 'found', handle });
 });
 
-it.each(['lock', 'write', 'fsync', 'rename', 'unlink'])
-('A2-E2E P13-NF-24 P13-NF-32 P13-NF-38 storage cut at %s recovers only a valid successor after proving the writer dead', async cut => {
-  const directory = mkdtempSync(join(tmpdir(), `p13-a2-storage-${cut}-`));
-  const path = join(directory, 'state.json');
-  initial(path);
-  const killed = await run('seed', cut, path);
-  expect(killed.signal).toBe('SIGKILL');
-  const recovered = await run('recover', cut, path);
-  expect(recovered, recovered.stderr).toMatchObject({ code: 0, signal: null });
-  expect(JSON.parse(recovered.stdout)).toMatchObject({ status: 'saved', revision: cut === 'lock' ? 1 : 2 });
-  expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ revision: cut === 'lock' ? 1 : 2 });
-}, 20_000);
+it.each(['lock', 'write', 'fsync:1', 'rename', 'fsync:2', 'unlink', 'fsync:3'])
+    ('A2-E2E R2-F12 P13-NF-24 P13-NF-32 P13-NF-38 storage cut at %s preserves pending delivery and holder lifecycle evidence', async cut => {
+    const directory = mkdtempSync(join(tmpdir(), `p13-a2-storage-${cut}-`));
+    const path = join(directory, 'state.json');
+    const killed = await run('seed', cut, path);
+    expect(killed.signal).toBe('SIGKILL');
+    const recovered = await run('recover', cut, path);
+    expect(recovered, recovered.stderr).toMatchObject({ code: 0, signal: null });
+    expect(JSON.parse(recovered.stdout)).toMatchObject({ status: 'recovered',
+      attemptState: cut === 'lock' ? 'pending' : 'observed', attemptedAt: 20,
+      delivery: 'uncertain', completion: 'pending', resume: 'eligible', driverCalls: 0 });
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({
+      handles: [{ launch: 'launch:restart' }], attempts: [{ kind: 'delivery', operation: 'operation:restart-delivery' }],
+    });
+    expect(JSON.parse(readFileSync(`${path}.evidence`, 'utf8'))).toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({ id: 'restart:closure', kind: 'turn-closed' }),
+        expect.objectContaining({ id: 'restart:pending-input', kind: 'input-accepted' }),
+        expect.objectContaining({ id: 'restart:resume', kind: 'diagnostic' }),
+      ]),
+    });
+  }, 20_000);
 
 it('A2-E2E P13-NF-24 P13-NF-39 concurrent filesystem writers cannot acknowledge the same journal predecessor', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'p13-a2-cas-'));

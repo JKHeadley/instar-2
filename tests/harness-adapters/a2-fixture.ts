@@ -25,7 +25,7 @@ export function a2Fixture(input: Readonly<{
   const evidenceState = input.evidenceState ?? createMemoryHarnessAdapterStateStore('a2:evidence');
   const evidence = createHarnessEvidenceHolder({
     adapter: 'native', artifact: digest('native-artifact'), platform: 'darwin-arm64',
-    machine: 'machine-a', maxEvents: 32, maxCaptureBytes: 1024,
+    machine: 'machine-a', scope: 'conversation:1', maxEvents: 32, maxCaptureBytes: 1024,
     context: base.owner.c, state: evidenceState, admission: base.port,
     owners: { handles, current: base.owner.host, ...input.owners },
   });
