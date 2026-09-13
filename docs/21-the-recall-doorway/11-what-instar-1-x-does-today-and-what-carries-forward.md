@@ -34,6 +34,7 @@ an adapter and owner contract audit before migration.
 | LearningsReplicatedStore / `src/core/LearningsReplicatedStore.ts:373`, `:557`, `:591`; `src/commands/server.ts:12140–12160` | Content-anchored identity, surviving concurrent advisory variants, tombstone-aware views and escaped foreign learning body; journal-backed union reads | Local learning id as cross-machine identity; treating the available union/renderer as an already wired session-context consumer; promoting a peer lesson to authority |
 | PreferencesManager / `src/core/PreferencesManager.ts:39–90`, `:133–179`, `:309–403` | Captured learned-guidance records, correction-loop provenance, observation time, confidence and recurrence metadata; bounded advisory context | In-place upserts as a complete correction history; `count` as proof every preference was delivered; learned hints as authority |
 | CorrectionCaptureLoop / `src/monitoring/CorrectionCaptureLoop.ts:306–429`; CorrectionLedger / `src/monitoring/CorrectionLedger.ts:330–415`; CorrectionAnalyzer / `src/monitoring/CorrectionAnalyzer.ts:143–209`; CorrectionLoopDriver / `src/monitoring/CorrectionLoopDriver.ts:186–480` | Scrubbed correction evidence, bounded occurrence analysis, durable route clusters and finite rechecks, connected to the real preference consumer | Optional capture as complete intake; discarded unique pending evidence; route reservation or disk presence as proof of application, use or effectiveness |
+| Record-time class review / `src/monitoring/CorrectionClassReview.ts:66–128`, `:130–269`; `src/monitoring/ClassReviewStore.ts:44–70`, `:150–235`; `src/core/ClassReviewReplicatedStore.ts:113–141`; `src/monitoring/CorrectionInstanceFixGate.ts:22–43` | Independent standards/process review of a recorded correction, durable pending/filled state, bounded recovery, retained overdue obligations and advisory peer evidence; correspondence-bound linked-action admission | Recurrence threshold as a prerequisite for this branch; filled review as completed repair; peer disposition as local approval; callback or partial artifact linkage as complete recovery. Destination and requested owner seam are specified below. |
 | SelfViolationDetector / `src/monitoring/SelfViolationDetector.ts:81–114`; `src/server/routes.ts:3396`, `:3554–3593` | Observe-only matched-pattern evidence feeding later analysis, with explicit guidance and context links in the replacement | Treating a heuristic match as confirmed violation, an unawaited observation as delivery proof, or the prefixed observation hash as the original preference key |
 | PreferencesReplicatedStore / `src/core/PreferencesReplicatedStore.ts:305–367`; server composition / `src/commands/server.ts:5047–5078` | Union semantics preserve concurrent non-deleted variants as advisory candidates; retained origin/conflict evidence | Assuming the inspected local-only loader proves peer delivery; suppressing all hints while optional conflict cleanup waits |
 | Preference context route / `src/server/routes.ts:24588–24666`; installed `.instar/hooks/instar/session-start.sh:149–176` | Configured source precedence and bounded rendered preference body reaching session start | Silent hook skip as successful recall; replacing the store without migrating the route and actual context consumer |
@@ -172,6 +173,142 @@ delivery result or unknown. Subsequent bounded analysis reads that link even whe
 cluster was terminal, and may propose a new assessment or lesson without manufacturing user
 support, another session or a successful send. These are P21 source/derived-record and consumer
 obligations under the existing section 14 grants, not additions to another owner's types.
+
+**Rule — a recorded correction also owns a standards/process review.** Rules 4, 7, 8,
+24, 33, 44, 45, 55, 57, 82, 85, 89, 95 and 113;
+**checks: P21-NF-17/18/21**. A record-time class review asks whether a correction reveals
+a missing or weak standard and a gap in the development process. It begins when the correction
+is recorded, independently of recurrence analysis. A review shell is the saved obligation to
+answer those questions before the model has answered them. Filled means that the judgment
+is saved, not that either proposed change was approved, implemented or effective.
+
+**Record-time behavior today.** In the read-only Echo 1.x checkout,
+`src/monitoring/CorrectionCaptureLoop.ts:422` and `:541` call `onRecorded` after successful
+direct-capture and backlog ledger writes. `src/commands/server.ts:15079`, `:15143` connects
+both to the separate consumer composed at `:18471–18577`. That composition requires shared
+intelligence and the resolved development/configuration gate; dry-run defaults to true at
+`:18509`. These are conditional wiring facts, not evidence of a deployed review execution.
+`CorrectionClassReview.ts:66–81` creates the shell synchronously outside dry-run and starts
+asynchronous judgment; dry-run instead emits a would-create observation and returns no shell.
+No recurrence count, day diversity or weekly analyzer run is required. Noise rejected before
+the ledger has no recorded correction; a low-value/noise record supplied to this consumer
+still receives an explicit review disposition.
+
+`ClassReviewStore.ts:44–70`, `:136–235` stores the separate `class-reviews.db` record keyed
+by the correction's deduplication key. It retains correction/machine/origin observations,
+standard and process judgments, rationale/confidence, their separate outcome states, review
+lifecycle, authority machine, artifact links, retry counts/dates and version. Repeated delivery
+of the same correction/machine observation does not add another observation. `:313–390`
+keeps deferred and expired-unreviewed outcomes parked and unresolved, supports tracked deferral
+and explicit supersession, and skips aging a linked in-progress action. New distinct observations
+can reopen rejected/deferred/expired work (`:158–176`); a repeated counter alone is not that event.
+
+**Recovery and linked actions today.** `CorrectionClassReview.ts:93–113` backfills missing
+shells and retries due pending ones in bounded batches, attributing unauthenticated backfill
+to agent-self. `:130–166`, `:244–269` bounds concurrent judgments and failed attempts
+(defaults five concurrent, three attempts), with exponential retry delay capped at one hour.
+Exhaustion retains a dead-lettered review, meaning attempts have stopped, and calls the action
+sink to track a retry. `:116–128` retains aged work and coalesces follow-up. The actual
+`src/server/routes.ts:25306–25323` backfill endpoint invokes recovery and aging, default seven
+days, with active-action exclusions. This proves a callable recovery consumer, not a running
+timer or successful retry in an installation.
+
+`CorrectionClassReview.ts:168–235` saves the judgment before proposing a standards initiative
+or process action. Confidence, attributed origin, existing related outcomes and the open-artifact
+cap limit proposals; policy relaxation goes to attention. Standards proposals request user
+ratification, and process proposals invoke shared linked-action admission. The server adapters
+at `server.ts:18537–18561` create initiatives/actions and annotate their limits; this wiring
+alone is not proof that later autonomous execution is prevented. The admission function
+`CorrectionInstanceFixGate.ts:22–43`, also called by `routes.ts:23801–23811` and
+`:28779–28789`, rejects missing correction, mismatched reference, absent review or pending
+review in enforcement mode. A corresponding filled review allows admission; a missing review
+store or dead-lettered review allows it with that explicit reason. Dry-run allows proposed
+refusals while returning `wouldRefuse`. None of these outcomes proves the repair occurred.
+
+There are real interruption gaps: the capture callback can fail after the ledger write, and
+the review can be filled before an action is created or its link attached. Backfill handles
+absent/pending reviews, but skips filled reviews; it does not reconcile that latter gap
+(`CorrectionClassReview.ts:98–113`, `:187–242`). The retry-action callback is likewise not
+atomic with saving exhaustion. Import must preserve uncertain action creation rather than
+blindly issuing the action again or treating the review as complete.
+
+**Replicated evidence today.** `server.ts:18487–18503` conditionally attaches the emitter
+and peer-journal reader. `src/core/ClassReviewReplicatedStore.ts:25–97`, `:113–141` transfers
+bounded, scrubbed judgments, observations, outcomes and links; decoded peer lifecycle is
+remote-advisory. It does not transfer local retry dates/counts: the decoded attempt count is
+zero, not evidence that no attempt occurred. `ClassReviewStore.ts:228–235`, `:465–502`
+merges observations and lets filled evidence outrank pending/dead-lettered evidence, while
+local authoritative lifecycle outcomes remain local. The linked-action gate uses this merged
+read, so a peer's filled judgment can establish that review exists; it cannot ratify or close
+the local operator's work. Conditional peer wiring is not proof of peer custody or delivery.
+
+**Preserve/change/retire disposition.** P21-A2 captures the separate review database,
+available peer journals, correction ledger, audit and linked initiatives/actions/deferral records
+before switching this consumer. Preserve all available fields above and origin-scoped aliases,
+including pending, filled, dead-lettered, parked, reopened and superseded records. Capture each
+peer variant before folding; retain missing retry metadata and missing source/link evidence as
+unknown. Part Two retains originals and immutable imported evidence; P21 supplies searchable
+advisory derivations. A captured legacy judgment never becomes a fresh independent assessment.
+
+Nine's feedback owner (`docs/13-the-verification-holders.md:311–328`) owns the improvement
+obligation and disposition, with Five retaining its work, Seven executing bounded judgment,
+Six scheduling recovery, Ten composing custody and consumers, Eight admitting any later effect,
+and Eleven exposing overdue work and explicit operator decisions. Nine's `FeedbackDisposition`
+exists in `src/verification/contracts.ts:101–108` and its decoder at `records.ts:178–184`,
+but it does not supply the two-question record-time review and linked-action recovery protocol.
+Retain the legacy review detail as P21-owned evidence linked through the owner; do not add
+legacy states to Nine's union or fabricate a missing source intent to satisfy its decoder.
+
+The additive owner behavior is **REQUESTED as CORRECTION-CLASS-REVIEW-LIFECYCLE (Z)** in
+`design-recall-doorway-seam-request-correction-class-review.md`. It must admit a durable
+review obligation for one recorded correction without waiting for recurrence, reconcile missing
+shells and interrupted result/action linkage with the same work identity and remaining budget,
+and resolve current correction/review correspondence before linked repair-work admission.
+Standards changes retain explicit constitutional approval; a saved or peer-filled judgment
+supplies evidence only. Keep the legacy unavailable/dead-letter/dry-run admission distinctions
+as explicit policy observations; any allowed repair still needs current ordinary authority.
+The maintenance review returns evidence to Nine; later repair work is independently admitted,
+never an outgoing action or new capability of that maintenance root. Seven's raw judgment
+captures remain in their local custody; peer review consumes only authorized advisory evidence.
+No review failure blocks inbound delivery or ordinary conversation. Owner policy and source
+identity, not a caller's origin label or remembered review, select the admission path.
+
+Change mutable review state into append-only evidence and owner-resolved current obligations.
+Retire the process-local callback as sole admission, incidental endpoint invocation as the only
+recovery trigger, and filled/expired/dead-lettered state as automatic closure. Recovery must
+reconcile whether a downstream artifact already exists before retrying; uncertain effects
+stay with their existing owners. Preserve bounded retry, parked follow-up, active-action aging
+exclusion and operator control without deleting an outstanding obligation. Rollback restores
+the old reader against retained compatible state while keeping new owner work and unresolved
+links visible. The new seam is not covered by rows 85–96 and is not assumed granted.
+
+**Migration fixture P21-REG-CLASS-REVIEW.** Use an isolated single correction with one occurrence
+on one day in one session, below recurrence admission, with that analyzer disabled. Exercise
+both direct capture and backlog drain. With record-time review enabled and dry-run off, observe
+the durable pending shell before releasing the model result; restart, recover the same obligation,
+then capture both judgments and the filled result. Import pending and already-filled neighbors,
+including existing linked artifacts. A filled result must not claim a completed improvement.
+Disabled review yields explicit unavailable coverage; fresh dry-run records only would-create,
+with no invented shell or completed review. Neither neighbor suppresses correction custody.
+
+Kill after correction capture before shell creation, after shell before judgment, after result
+before action creation, and after action creation before link attachment. Restart/import twice;
+require one recoverable obligation per source identity, retained attempt limits, no duplicate
+action and no closure from an absent link. Exhaustion retains its retry obligation even when
+the action sink fails. Age an unresolved filled review into parked follow-up, with a linked
+in-progress action as the exclusion neighbor. Pair matching filled correspondence with missing,
+mismatched, pending, dead-lettered and unavailable-review cases, plus dry-run would-refuse evidence.
+Assert current authority still governs any action, and delivery remains reachable in every case.
+Across two machines, import real peer evidence and restart: a permitted peer-filled judgment
+can be considered as review evidence, but its rejected/ratified/closed disposition cannot change
+local obligations or approve a standards change. Missing peer retry metadata stays unknown.
+
+Run this fixture through unit, public-pipeline integration and actual production initialization,
+with real owner storage/recovery/admission consumers; a helper's return value is insufficient.
+The migration positive is **non-executable until Z is granted and its owner implementation
+lands**, and until the applicable scopes of **`seam-response-recall-doorway-grants.md` land**
+with the complete inherited NF-17/18/21 dependencies in section 14. No repaired review or
+migration execution is claimed by this source audit.
 
 **Rule — learned preferences retain their actual consumer and evidence limits.** Rules 7,
 33, 44, 45, 47 and 89; **checks: P21-NF-05/11/12/17/18/21**. This source audit supplements
@@ -416,7 +553,7 @@ provider or production-state mutation. [The permanent regression contract](fixtu
 retains those observed results and separate post-migration expectations; it does not replace
 the historical failures with invented passing output.
 
-| Permanent case | Recorded failure | Required migration oracle |
+| Permanent case | Recorded failure | Required migration result |
 |---|---|---|
 | P21-REG-F1 | 250 new messages; prompt contains 200, missing first 50; saved count/last id both 250 | Every original remains recoverable; summary coverage names exactly consumed spans and leaves the prefix pending until processed |
 | P21-REG-F2 | Hybrid result count 1, fresh source and entity name present; actual preference body absent | Preference body, speaker and source reach actual submitted context, or exclusion is explicit with degraded disposition |
@@ -426,7 +563,7 @@ Run original baseline observations against hash-matching installed artifacts, th
 variants through P21 unit, integration and lifecycle paths. A different package version is a
 new labeled baseline, not a reproduction of 1.3.1237. F3 does not require dense search on every
 turn or prescribe an engine. The dense/hybrid variant tests that advertised arm; a different
-meaning-sensitive route must pass the same doorway evidence oracle. The old empty stub is
+meaning-sensitive route must pass the same doorway evidence check. The old empty stub is
 not a semantic accuracy test. Each case also tests zero match,
 deadline, budget boundary, source outage and actual renderer/submission behavior. Future tests
 may never be skipped merely because a replacement engine uses a different internal method.

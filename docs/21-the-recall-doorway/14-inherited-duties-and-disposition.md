@@ -11,6 +11,11 @@ fixture with stand-in owner data does not prove a production consumer is active.
 
 The short keys below abbreviate the exact dependency ids, not types. For a key whose owner seam was requested by this design, the execution condition is **NON-EXECUTABLE-UNTIL-row-<n>-<slug>**, the SEAM-LEDGER row of its conditional grant, followed by landing of that granted owner implementation with real acceptance evidence. The request document remains the record of the exact behavior asked for; the grant is recorded in `seam-response-recall-doorway-grants.md`. Inherited grants keep their existing named files and scope.
 
+Z is a separate, ungranted request for the record-time correction review and linked-action
+lifecycle in section 11. It has no assigned ledger row or grant in rows 85–96; its affected
+checks remain non-executable until the named request is granted and its owner implementation
+lands. The granted dependencies in those checks still require their cited grant files to land.
+
 All request, response and ledger filenames in this section refer to the lane directory
 `/Users/dabombstudio/.instar/agents/echo/.instar/lanes/`. They are review artifacts; no file
 here grants a change to another owner. Runtime activation re-resolves current public decoders,
@@ -34,6 +39,7 @@ ports, artifacts, generation and joint tests. It cannot use a remembered or cach
 | X / ASSEMBLY-RECALL-LIFECYCLE | Ten assembly (src/assembly; docs/14), with existing producer, consumer and Eleven surface owners. Real confined recall composition, producer/consumer registration, startup/later-input/compaction, surfaces and update parity. | REQUESTED: `design-recall-doorway-seam-request-assembly-recall-lifecycle.md`. **NON-EXECUTABLE-UNTIL-row-94-assembly-recall-lifecycle**; then its granted implementation and acceptance evidence must land. |
 | V / LIVE-REVIEW-OWNER-POLICY | Eight effect policy, Seven judgment, Nine verification and the operator (docs/12, docs/11, docs/13; docs/01 live-review convention). Conditional owner selector and findings-to-pending consumer. OD-05 and explicit rulebook reconciliation precede any semantic blocking activation. | REQUESTED: `design-recall-doorway-seam-request-live-review-owner-policy.md`. **NON-EXECUTABLE-UNTIL-row-95-live-review-owner-policy**; then its granted implementation and acceptance evidence must land. |
 | Y / EFFECT-RECALL-OPERATION-PAYLOADS | Eight effects (docs/12-the-effect-doorway.md; src/effects), with Ten concrete adapters. Exact approved email/payment/public/release operation subjects; use existing typed grants where sufficient, request missing owner payloads explicitly. | REQUESTED: `design-recall-doorway-seam-request-effect-recall-operation-payloads.md`. **NON-EXECUTABLE-UNTIL-row-96-effect-recall-operation-payloads**; then its granted implementation and acceptance evidence must land. |
+| Z / CORRECTION-CLASS-REVIEW-LIFECYCLE | Nine feedback (docs/13 §6; src/verification), with Five work, Six recovery, Seven judgment, Eight action/effect admission, Ten composition and Eleven surfaces. Admit review on correction record, preserve two-question evidence and independent obligations, reconcile interrupted review/action links, and validate linked repair admission without peer lifecycle authority. | **REQUESTED, not granted:** `design-recall-doorway-seam-request-correction-class-review.md`. Non-executable until this request is granted and its additive owner implementation and acceptance evidence land; no existing type is widened by P21. |
 
 **Rule — inherited grants retain their narrow scope.** Rules 33, 49, 69 and 95;
 **checks: P21-NF-02/05/09/10/15–18/20/21/23/24**. These are existing grants, not recall
@@ -68,6 +74,7 @@ listed owner halves and ordering prerequisites; a later half alone cannot satisf
 - X requires J, E, C, K, H, O, I, W, P.
 - V requires E, J, P, O.
 - Y requires T.
+- Z requires J, E, R, W, O.
 - C requires T, L.
 - K requires C, T, H.
 - H requires C.
@@ -84,7 +91,7 @@ full contract and dependencies; silently dropping an unavailable arm is forbidde
 | Check | All required implementation/request/grant keys, including indirect ones | Execution posture / additional policy condition |
 |---|---|---|
 | P21-NF-01 | None | EXECUTABLE documentation/artifact validation only. |
-| P21-NF-02 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-02 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H, Z | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-03 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-04 | A1, A2, J, S, I, R, W, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-05 | A1, J, E, S, R, Y, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
@@ -99,11 +106,11 @@ full contract and dependencies; silently dropping an unavailable arm is forbidde
 | P21-NF-14 | A1, A2, A4, J, E, S, I, O, R, W, P, Q, V, Y, T, L, C, K, H, M | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
 | P21-NF-15 | A1, A2, A3, J, S, I, O, R, W, Q, T, L, C, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-16 | A1, A2, A3, J, S, I, O, R, W, Q, T, L, C, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. OD-03 paid-run approval if paid; OD-04 approval for the human study. |
-| P21-NF-17 | A1, A2, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | Historical baseline is inspectable. Migration positives are non-executable under every listed key. |
-| P21-NF-18 | A1, A2, J, E, S, I, R, W, Q, Y, T, L, C, K, H, M | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-19 | A1, A2, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-20 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | Register --check is EXECUTABLE. Runtime registration is non-executable under every listed key. |
-| P21-NF-21 | A1, A2, A3, A4, J, E, S, I, O, R, W, P, Q, X, V, Y, T, L, C, K, H, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
+| P21-NF-17 | A1, A2, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H, Z | Historical baseline is inspectable. Migration positives are non-executable under every listed key. |
+| P21-NF-18 | A1, A2, J, E, S, I, R, W, Q, Y, T, L, C, K, H, M, Z, O | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-19 | A1, A2, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H, Z | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-20 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H, Z | Register --check is EXECUTABLE. Runtime registration is non-executable under every listed key. |
+| P21-NF-21 | A1, A2, A3, A4, J, E, S, I, O, R, W, P, Q, X, V, Y, T, L, C, K, H, M, B, Z | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
 | P21-NF-22 | A1, A2, A3, J, S, I, O, R, W, Q, T, L, C, M, B | Schema/artifact inspection is EXECUTABLE. Production replay/semantic positive is non-executable under every listed key. |
 | P21-NF-23 | A1, A2, J, S, I, R, W, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-24 | A1, A2, A4, J, E, S, I, O, R, W, P, X, V, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
@@ -115,7 +122,9 @@ A2, in addition to benchmark/clock compatibility. NF-04/19 include A2 for the ma
 W for admission without conversational work and I through A2’s source-custody dependency. NF-17/18 include the
 correction/preference lifecycle, replicated-knowledge, replicated-relationship and replicated-learning
 consumers and genuine multi-machine custody regressions, including tombstones, surviving foreign
-variants, metadata-versus-body coverage, and retained observations feeding subsequent analysis. NF-21 is the conjunction of every
+variants, metadata-versus-body coverage, and retained observations feeding subsequent analysis.
+Z adds the independent record-time class-review migration and linked-action recovery fixture to
+NF-17/18/21, with its inventory, confinement and registration duties in NF-02/19/20. NF-21 is the conjunction of every
 applicable production component above, including conditional live-review duties.
 
 **Rule — all inherited duties receive a disposition.** Rules 7, 8, 33, 49, 69, 71,

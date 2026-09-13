@@ -45,7 +45,7 @@ returned label. A mock returning `refused` while a hidden sender ran is a failur
 remain versioned public regression inputs. Private Dawn source, private exchanges and unknown
 incidents are excluded. A source-unavailable test tests calibrated behavior, not an impossible
 requirement to recall what no permitted source supplies. The old baseline's known failure stays
-recorded even after its post-migration oracle passes.
+recorded even after its post-migration expected result passes.
 
 **Value — negative tests should expose the user's failure, not only validate a schema.**
 The fault locations and paired controls derive from [R1 §§4–8](research/01-instar-1x-memory.md),

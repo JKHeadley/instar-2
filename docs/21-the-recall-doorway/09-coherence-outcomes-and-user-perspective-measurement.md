@@ -22,10 +22,10 @@ supersedes an assessment through a new record without rewriting the original out
 | unnecessary-hold | Legitimate effects permitted by evidence and authority: memory/review blocks, defers or exceeds the policy cap without a valid prerequisite reason. Existing justified authority refusals are separate. |
 | wrong-audience | Evaluated audience-sensitive opportunities: forbidden information enters model context, draft, prepared final output or actual delivery. Report each stage separately, including internal-use and disclosure violations. |
 
-No runtime may decide that all unlabeled opportunities passed. An independent opportunity census
+No runtime may decide that all unlabeled opportunities passed. An independent inventory of opportunities
 records every principal root, no-additional-context turn, refused/defaulted/cancelled/pending
 case, and sampled ungraded case. Healthy-evidence recall denominators exclude missing custody
-only by an explicit labeled stratum; total user burden still includes those failures. Forbidden
+only as a separately labeled group; total user burden still includes those failures. Forbidden
 source knowledge is not a healthy recall target. Counts of legitimate abstentions, unsupported
 certainty, fabricated recollection and confident denial with unavailable history remain visible.
 
