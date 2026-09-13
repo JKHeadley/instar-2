@@ -86,7 +86,7 @@ full contract and dependencies; silently dropping an unavailable arm is forbidde
 | P21-NF-01 | None | EXECUTABLE documentation/artifact validation only. |
 | P21-NF-02 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-03 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-04 | A1, J, S, R, W, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-04 | A1, A2, J, S, I, R, W, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-05 | A1, J, E, S, R, Y, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-06 | A1, S, R, L | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-07 | A1, J, E, S, R, Y, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
@@ -101,7 +101,7 @@ full contract and dependencies; silently dropping an unavailable arm is forbidde
 | P21-NF-16 | A1, A2, A3, J, S, I, O, R, W, Q, T, L, C, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. OD-03 paid-run approval if paid; OD-04 approval for the human study. |
 | P21-NF-17 | A1, A2, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | Historical baseline is inspectable. Migration positives are non-executable under every listed key. |
 | P21-NF-18 | A1, A2, J, E, S, I, R, W, Q, Y, T, L, C, K, H, M | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-19 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-19 | A1, A2, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-20 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | Register --check is EXECUTABLE. Runtime registration is non-executable under every listed key. |
 | P21-NF-21 | A1, A2, A3, A4, J, E, S, I, O, R, W, P, Q, X, V, Y, T, L, C, K, H, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
 | P21-NF-22 | A1, A2, A3, J, S, I, O, R, W, Q, T, L, C, M, B | Schema/artifact inspection is EXECUTABLE. Production replay/semantic positive is non-executable under every listed key. |
@@ -111,7 +111,8 @@ full contract and dependencies; silently dropping an unavailable arm is forbidde
 NF-09 therefore includes I's complete email/agent custody and the actual-input consumer J,
 not just an adapter's advertised modes. NF-10 includes K, C and R for continuity, current
 context and resource recovery. NF-16 includes Q and M for the coherence mapping and measurement
-A2, in addition to benchmark/clock compatibility. NF-04 includes W for maintenance admission without conversational work. NF-17/18 include the
+A2, in addition to benchmark/clock compatibility. NF-04/19 include A2 for the maintenance trace’s admitted derived result; NF-04 also includes
+W for admission without conversational work and I through A2’s source-custody dependency. NF-17/18 include the
 preference, replicated-relationship and replicated-learning consumers and genuine multi-machine
 custody regressions, including tombstones and surviving foreign variants. NF-21 is the conjunction of every
 applicable production component above, including conditional live-review duties.
