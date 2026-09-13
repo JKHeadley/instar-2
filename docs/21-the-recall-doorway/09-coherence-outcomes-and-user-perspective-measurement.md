@@ -41,7 +41,7 @@ case without counting a second independent failure opportunity.
 | User-perspective metric | Required reporting |
 |---|---|
 | Repetition burden | Needless repeat requests, volunteered corrections, repeated explanation turns and time until satisfactory completion; user survey alongside adjudicated cases |
-| Spontaneous coherence | Correct behavior on ordinary task cues without an explicit “remember” instruction, by each of T1/T2/email/other-party settings |
+| Spontaneous coherence | Correct behavior on ordinary task cues without an explicit “remember” instruction, separately for the same long conversation, a different conversation, email, and another person or agent’s report |
 | Attribution and temporal consistency | False first-person claims, wrong speaker, known corrections honored, historical-as-of correctness |
 | Prospective behavior | Due commitments honored, cancellations respected, false cues ignored, unjustified actions and missed cues separately |
 | Availability and completion | ACK, first substantive answer, effect disposition and final user completion; silence, abandonment and unresolved cases remain counted |

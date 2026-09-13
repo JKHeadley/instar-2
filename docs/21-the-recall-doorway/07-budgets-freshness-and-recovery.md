@@ -1,6 +1,6 @@
 ## 7. Budgets, freshness, and recovery
 
-**Rule — one attempt spends one finite envelope.** Rules 13, 39, 40, 43, 57, 75, 95 and
+**Rule — one attempt spends one finite envelope.** Rules 13, 39, 55, 57, 60, 61, 75, 95 and
 114; **checks: P21-NF-04/08/10/14/18/23**. The resource owner reserves capacity before
 work starts. The P21 coordinator admits each source call and child against the same root account.
 Parallel adapters, retries, loading cached originals, review and draft repair do not create
@@ -53,7 +53,7 @@ they are not helper LLM calls. Retained captures, indexing, rebuilds, storage an
 curation are billed in lifecycle totals. A successful return at 2 s is not proof the underlying
 work stopped: residual CPU, calls and charges remain visible and reserved until reconciled.
 
-**Rule — cancellation bounds actual work.** Rules 40, 43, 57, 75 and 95;
+**Rule — cancellation bounds actual work.** Rules 55, 57, 60, 61, 75 and 95;
 **checks: P21-NF-04/08/10/19**. Use a monotonic local deadline and cancellation handle;
 convert persisted owner deadlines on restart using verified clock evidence, never by resetting
 the original window. Admission reserves overhead so three five-second slices do not promise
@@ -62,6 +62,13 @@ child is isolated and prevented from returning usable evidence after expiry. Its
 outstanding exposure remains charged under the resource owner. No new call starts on an expired
 root. Providers without enforceable cancellation report that limit; their residual exposure
 cannot be counted as zero or admitted beyond the root's reserved maximum.
+The owner basis is [transport sections 3–6](../10-the-transport-and-leases.md), including
+monotonic timer recovery, bounded loops and retained reservation exposure, and
+[effect settlement](../12-the-effect-doorway.md). The landed contracts retain that division:
+`src/transport/contracts.ts:70–89` records settlement accounting and
+`src/effects/contracts.ts:41–47` binds final charge, delayed-execution exclusion and retained
+exposure. Recall-specific composition remains non-executable until row 90 of
+`seam-response-recall-doorway-grants.md` lands with section 14's loop/owner dependencies.
 
 **Rule — reuse binds evidence and permission currency.** Rules 28, 31, 33, 45, 90 and 95;
 **checks: P21-NF-07/09/10/18**. Cache keys bind principal/provider scope, recipient set,
@@ -75,9 +82,10 @@ vectors under another model's declared dimension/version.
 Contradictions use event time, ingestion time and validity time separately. For a current-state
 question, newer ingestion does not automatically defeat an older event's later correction. For
 an as-of question, a superseded fact may be the correct historical answer. Unresolved conflicting
-sources remain visible and cannot be resolved by popularity, machine arrival order or a cache TTL.
+sources remain visible and cannot be resolved by popularity, machine arrival order or a cache’s
+time-to-live (TTL), the maximum age at which it may be reused.
 
-**Rule — crash and outage keep an honest disposition.** Rules 42, 43, 45, 77, 83 and 95;
+**Rule — crash and outage keep an honest disposition.** Rules 42, 45, 55, 60, 61, 77, 83 and 95;
 **checks: P21-NF-05/10/13/14/18/21/24**.
 
 | Failure cut | Required durable disposition and next owner action |

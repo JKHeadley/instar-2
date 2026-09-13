@@ -42,8 +42,8 @@ uses the normal principal judgment path. This keeps the minimal responder finite
 **Rule — general memory recall searches by meaning.** Rules 11, 13, 40,
 57, 77 and 95; **checks: P21-NF-03/05/08/09/10**. A conforming general recall installation
 must retrieve relevant evidence when the later request paraphrases the earlier exchange without
-sharing its search terms. Exact lookup and lexical search remain components and experiment
-controls; they cannot alone satisfy this contract. No particular vector engine is required,
+sharing its search terms. Exact lookup and lexical retrieval (search by matching words or
+phrases) remain components and experiment controls; they cannot alone satisfy this contract. No particular vector engine is required,
 and meaning-sensitive retrieval need not add a model call on every turn.
 
 The default policy inspects the current task,
@@ -62,19 +62,59 @@ independent work decision may open another root through the owner; self-retries 
 This adopts the distinct A/B hypotheses in
 [R5 §§2–4](research/05-proposals-and-evaluation.md#2-common-boundary-and-recursion-rule).
 
-**Rule — subordinate intelligence cannot recurse into principal recall.** Rules 1, 40,
-41, 57, 75 and 114; **checks: P21-NF-04/08/19**. Query planning, query rewriting,
-summarization, embedding, extraction, reranking, live review and one bounded draft repair
-are subordinate purposes. The owner grants their handles only as children of a live root.
+**Rule — subordinate intelligence cannot recurse into principal recall.** Rules 1, 41, 55,
+57, 60, 61, 75 and 114; **checks: P21-NF-04/08/19**. Query planning, query rewriting,
+summarization, embedding (encoding text as numbers for meaning-based comparison), extraction,
+reranking (reordering retrieved candidates by their relevance), live review and one bounded
+draft repair are subordinate purposes. The owner grants their handles only as children of a live root.
 They have scoped evidence-read/analysis capabilities, no effect or sender handles, and no
 principal-root constructor. Their provider calls still pass through Part 11 and are captured
 and charged. The classification prevents B/C re-entry; it does not exempt a child from A.
 
 The owner checks parentage, purpose, remaining call/read budgets, depth and cancellation before
 each child admission. Depth is at most two for recursive search in the proposed pilot; total
-root caps remain stricter. A child requesting an outward action produces only a proposal for
-the normal principal/effect boundary. A background reflection job has its own durable work
-and resource account; its output is derived memory, not permission to send a message.
+root caps remain stricter. A PRINCIPAL-root child requesting an outward action produces only
+a proposal for the normal principal/effect boundary. A MAINTENANCE-root child cannot propose or produce an
+outgoing message or effect; its permitted result is derived memory and its supporting evidence.
+
+**Rule — admitted maintenance opens an analysis-only root.** Rules 38, 41, 55, 60, 61,
+75 and 114; **checks: P21-NF-04/08/19/23**. The scheduled-work owner (Fifteen's package,
+Six's scheduling and Ten's assembly) owns the durable maintenance work item under row 91.
+It resolves the registered memory entry point, source scope, system principal, standing,
+work/run identity and finite job policy before admitting the item. P21 then opens one
+MAINTENANCE root against that admitted item and Six's row-90 reservation. No active conversation
+or PRINCIPAL root is required. A planned calendar occurrence alone is not admitted work.
+
+The root's input binds the work item's source/result scope instead of the principal-path
+recipient set; outgoing audience is explicitly not applicable. It grants scoped evidence
+reads and analysis only. Summarization, extraction, reflection and the maintenance supervisor
+receive child handles from this root before their first model call. The finite deterministic
+bootstrap admits the supervisor through the judgment owner; it does not ask another supervisor
+to approve the bootstrap. Each required business step then receives captured supervision under
+[the scheduled execution contract](../19-scheduled-work/05-execution-gates-and-supervision.md).
+
+The job policy reserves its own absolute deadline and finite read, byte, token, model-call,
+recursion, retry, concurrency and spend ceilings, including the supervisor and residual work.
+These are separate from section 7's ordinary-conversation and consequential-effect envelopes;
+in particular, the ordinary zero-helper allowance does not disable maintenance supervision.
+A missing ceiling inhibits admission; zero allows no work in that resource category. The
+section 6 batch/pool limits also apply. Every child, retry and restart consumes the same
+remaining job reservation; no child can construct another root or re-enter principal recall.
+
+A MAINTENANCE root can never produce an outgoing message, select an external effect, or obtain
+an `OutgoingRecallBinding`. It yields only derived memory with capture, supervision and charge
+evidence through normal admission. The existing owners still execute and settle the internal
+provider/storage operations needed for that analysis; the maintenance worker receives no
+sender or effect handle. Any later outward action requires independently admitted principal
+work, current authority and its own recall path, never promotion of the maintenance root.
+
+This admission path is **NON-EXECUTABLE-UNTIL-row-90-resource-recall-reservations** and
+**NON-EXECUTABLE-UNTIL-row-91-scheduled-memory-work**: non-executable until the corresponding
+scopes in `seam-response-recall-doorway-grants.md` land, together with the judgment and assembly
+dependencies in section 14. `src/scheduled/contracts.ts:29–83` supplies the manifest's work,
+authority, bounds and supervision fields; its `ScheduledWorkPackagePort` plans occurrences,
+not this runtime admission. `src/transport/contracts.ts:23–44` and
+`src/transport/loop-a1/contracts.ts:30–56` do not yet supply the root/child composition.
 
 **Rule — drafting and sending share proof only while the subject is unchanged.** Rules
 28, 42, 89, 95 and 108; **checks: P21-NF-03/07/10/13**. The final consumer resolves the

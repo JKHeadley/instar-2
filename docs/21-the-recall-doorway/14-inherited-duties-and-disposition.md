@@ -1,6 +1,6 @@
 ## 14. Inherited duties and disposition
 
-**Rule — the twelve requested owner seams are granted conditionally.** Rules 13, 28 and 42. The seam authority recorded each request as SEAM-LEDGER rows 85–96 with a conditional grant in `seam-response-recall-doorway-grants.md`: each is an additive owner behavior built later as its own owner slice with the request's acceptance evidence, and every Part 21 check that depends on it stays non-executable, by the row name used in the dependency map, until that owner implementation lands. Row 89 (operator context consumers) additionally waits for Part Eleven to land; row 95 (live-review owner policy) is inert until the operator's decision 5 and the governing rule process both approve the narrow semantic exception. A grant is not an implementation and does not make a runtime positive executable.
+**Rule — the twelve requested owner seams are granted conditionally.** Rules 13, 28 and 42. The seam authority recorded each request as SEAM-LEDGER rows 85–96 with a conditional grant in `seam-response-recall-doorway-grants.md`. Each grant covers an additive owner behavior built as its own owner slice with the request's acceptance evidence. Every dependent Part 21 check stays non-executable under its row-named dependency until that owner implementation lands. Row 89 (operator context consumers) additionally waits for Part Eleven to land. Row 95 (live-review owner policy) remains inert until the operator approves decision 5. It also requires the governing rule process to approve the narrow semantic exception. A grant is not an implementation and does not make a runtime positive executable.
 
 **Rule — one authoritative dependency map governs every check.** Rules 8, 33, 49, 69,
 71, 90, 95 and 111; **checks: P21-NF-01–24**. The expanded per-check table below is the
@@ -86,8 +86,8 @@ full contract and dependencies; silently dropping an unavailable arm is forbidde
 | P21-NF-01 | None | EXECUTABLE documentation/artifact validation only. |
 | P21-NF-02 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-03 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-04 | A1, J, S, R, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-05 | A1, J, S, R, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-04 | A1, J, S, R, W, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-05 | A1, J, E, S, R, Y, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-06 | A1, S, R, L | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-07 | A1, J, E, S, R, Y, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-08 | A1, J, S, R, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. OD-03 run approval for paid cases. |
@@ -111,8 +111,9 @@ full contract and dependencies; silently dropping an unavailable arm is forbidde
 NF-09 therefore includes I's complete email/agent custody and the actual-input consumer J,
 not just an adapter's advertised modes. NF-10 includes K, C and R for continuity, current
 context and resource recovery. NF-16 includes Q and M for the coherence mapping and measurement
-A2, in addition to benchmark/clock compatibility. NF-17/18 include the learned-preference
-consumer and genuine multi-machine custody regression. NF-21 is the conjunction of every
+A2, in addition to benchmark/clock compatibility. NF-04 includes W for maintenance admission without conversational work. NF-17/18 include the
+preference, replicated-relationship and replicated-learning consumers and genuine multi-machine
+custody regressions, including tombstones and surviving foreign variants. NF-21 is the conjunction of every
 applicable production component above, including conditional live-review duties.
 
 **Rule — all inherited duties receive a disposition.** Rules 7, 8, 33, 49, 69, 71,

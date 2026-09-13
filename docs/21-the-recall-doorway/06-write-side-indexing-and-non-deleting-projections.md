@@ -29,7 +29,7 @@ A summary built from messages 51–250 may declare precisely that subset; it may
 messages 1–250 as fully summarized. Per-span progress supports bounded batches without blocking
 all useful reads. Original lookup remains available for the missing prefix.
 
-An index error, unsupported attachment, partial MIME capture or unembedded item is explicitly
+An index error, unsupported attachment, partial email capture or unembedded item is explicitly
 different from a source with zero matching facts. Quarantine retains the failed input, error,
 owner, attempt count and bounded next action. Expiring a retry does not delete unique input.
 The writer records a durable completion fact only after the derived artifact is recoverable;
@@ -67,7 +67,7 @@ or “anonymization” as a back door to destroying unique content. Imported fil
 before any export can replace their served view. Privacy-limited unavailable originals remain
 unavailable, with honest provenance limits, rather than fabricated support.
 
-**Rule — background intelligence has owners and budgets.** Rules 39, 40, 43, 57, 75, 85
+**Rule — background intelligence has owners and budgets.** Rules 38, 39, 41, 55, 57, 60, 61, 75, 85
 and 114; **checks: P21-NF-04/08/11/19/23/24**. Indexing, summarization, reflection,
 contradiction detection and retrospective miss review are separate declared work classes.
 The scheduling owner holds their queue, deadlines, retries, cancellation and recovery. The
@@ -76,6 +76,9 @@ install a lesson as authority, or send a notice. A proposed pilot worker permits
 job at a time per declared resource pool, yields to control/user work, and caps each batch at
 200 source messages and 1 MiB of loaded original text. These are unmeasured defaults subject to section 15.
 
+The scheduling owner admits each durable job and P21 opens its MAINTENANCE root using
+section 2's admission path, even when no conversational root exists. The root's reserved job
+envelope includes every formation and supervisor call before execution begins.
 Critical background formation, repair and migration procedures declare at least Tier 1 LLM
 supervision through the judgment owner: the supervisor validates each programmatic step's
 observed result before the next critical step. Its calls, failures and findings are captured
@@ -83,6 +86,19 @@ and charged to that durable job, never hidden inside a zero-helper ordinary reca
 It cannot override deterministic custody, scope or admission failures. This maintenance
 supervision is separate from selective live message review; it supplies no new sender or hold
 authority. Model route selection remains registered and unmeasured until evaluated.
+
+The positive NF-04/19/23 trace starts with retained source input and no active conversational
+root. A real admitted scheduled memory item obtains its MAINTENANCE root and reserved finite
+job envelope. Its supervisor and summarization/extraction/reflection children submit through
+the judgment owner with actual input/output captures. The supervisor validates every business
+step required by the registered critical pipeline. Normal admission stores the derived result
+and exact coverage; resource-owner evidence accounts for all calls and remaining exposure.
+The trace must succeed with ordinary conversation's zero-helper policy still configured and
+zero attempted outgoing messages or external task effects. Paired cases refuse a child
+sender/root request, a caller-forged work item, exhausted or missing job bounds, and a missing supervisor. Restart
+before completion retains the same root/reservation and pending coverage. This trace is
+non-executable until rows 90/91 of `seam-response-recall-doorway-grants.md` land and the complete
+NF-04/19/23 dependency rows in section 14 are satisfied.
 
 **Value — preserve raw values while experimenting with better keys.** R1's summary gap and
 snapshot imports ([R1 §§3, 7](research/01-instar-1x-memory.md)), Dawn's formation/consolidation

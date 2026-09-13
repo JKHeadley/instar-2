@@ -47,7 +47,7 @@ its design is `docs/11-the-judgment-doorway.md`. A numeric coincidence never sel
 | Term | Contract meaning |
 |---|---|
 | PRINCIPAL judgment | A decision that produces a substantive reply to a person or selects an external effect, including scheduled/proactive work. This classification is not the `VerifiedPrincipal` identity type. |
-| Recall root | One owner-admitted evidence-assembly attempt for such a decision, with an immutable budget account and audience binding. Final dispatch may reuse it under section 2. |
+| Recall root | One owner-admitted evidence-assembly attempt with an immutable resource account and purpose. A PRINCIPAL root serves the decision above and binds its audience. A MAINTENANCE root serves an admitted background memory work item, has no outgoing audience or sender capability, and produces only derived memory. Section 2 defines both admission paths; only a PRINCIPAL root can support final dispatch reuse. |
 | Original episode | Retained evidence of an exchange or observation, with source attribution and custody. A summary of an episode is derived evidence. |
 | Derived belief | A source-linked interpretation of what appears true, including validity interval, uncertainty and contradiction. It is not the speaker's own statement. |
 | Procedural lesson | A proposed or accepted way to act, with originating evidence and evaluation. It is neither an episode nor a standing grant. |

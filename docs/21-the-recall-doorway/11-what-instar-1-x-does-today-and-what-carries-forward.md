@@ -7,8 +7,8 @@ artifacts, identified in [R2 §§1, 8](research/02-dawn-grounding.md). The dirty
 checkout at `5b36623a99327e74abe5ef04d63019f9aca6b1c5` is separate; [R1 §10](research/01-instar-1x-memory.md#10-snapshot-identifiers-and-validation-boundary)
 pins its inspected mutable files. Unpinned live state and private incidents are not silently
 attributed to either snapshot. The rows below cite the 1.x source paths audited in R1, not
-landed Instar 2.0 code. The preference-path audit below also reads the current 1.x source and
-installed hook directly; it does not claim an installed-method execution. Each engine needs
+landed Instar 2.0 code. The preference, replicated-relationship and replicated-learning audits below also read the
+current 1.x source and applicable installed hook directly; it does not claim an installed-method execution. Each engine needs
 an adapter and owner contract audit before migration.
 
 | 1.x mechanism and audited path | Carries forward | Retires or changes |
@@ -25,9 +25,11 @@ an adapter and owner contract audit before migration.
 | PromptBuildRecall / `src/core/PromptBuildRecall.ts:128`, `:219`, `:239` | Budgeted prompt-retrieval adapter ideas, source health and explicit optional capabilities | Content/description mismatch; prompt-prefix-only cache; timeout without residual-work accounting; optional hook as sole enforcement |
 | KnowledgeManager / `src/knowledge/KnowledgeManager.ts:45`, `:159`, `:181` | Captured knowledge documents, searchable catalog and original-body lookup | Metadata replication as proof of body custody; deletion of unique document bodies |
 | RelationshipManager / `src/core/RelationshipManager.ts:161`, `:175`, `:783` | Person notes/arcs as labeled derived candidates plus original-exchange lookup | Name-only channel identity resolution and recognition treated as permission |
+| RelationshipsReplicatedStore / `src/core/RelationshipsReplicatedStore.ts:409`, `:578`, `:618`; `src/commands/server.ts:5098–5130`, `:6976–6992` | Channel-set identity keys, surviving concurrent variants, tombstone-aware served views and escaped foreign context; separate peer-read consumer | Local UUID as cross-machine identity; interpreting the local-only loader or wired helper as actual peer injection; merging imported people into authenticated principals |
 | SelfKnowledgeTree / `src/knowledge/SelfKnowledgeTree.ts:94`; TreeTraversal / `src/knowledge/TreeTraversal.ts:207` | Traceable bounded recursive-source adapter for capability/state and eligible history | Assuming its present source selection already searches every conversation |
 | Playbook / `playbook-scripts/playbook-assemble.py:79`, `:157`; `playbook-retirement.py:68`; `playbook-mount.py:1` | Declared scoped lesson selection, quarantine, retained metadata and explicit shared snapshots | Integrity fallback silently treated as verification; unretained path bodies; automatic sharing by name |
 | Learnings / `src/core/EvolutionManager.ts:1165`, `:1187`, `:1247` | Case-linked procedural lesson producer and evaluated use | Pruning unique lessons or treating registry insertion as semantic delivery |
+| LearningsReplicatedStore / `src/core/LearningsReplicatedStore.ts:373`, `:557`, `:591`; `src/commands/server.ts:12140–12160` | Content-anchored identity, surviving concurrent advisory variants, tombstone-aware views and escaped foreign learning body; journal-backed union reads | Local learning id as cross-machine identity; treating the available union/renderer as an already wired session-context consumer; promoting a peer lesson to authority |
 | PreferencesManager / `src/core/PreferencesManager.ts:39–90`, `:133–179`, `:309–403` | Captured learned-guidance records, correction-loop provenance, observation time, confidence and recurrence metadata; bounded advisory context | In-place upserts as a complete correction history; `count` as proof every preference was delivered; learned hints as authority |
 | PreferencesReplicatedStore / `src/core/PreferencesReplicatedStore.ts:305–367`; server composition / `src/commands/server.ts:5047–5078` | Union semantics preserve concurrent non-deleted variants as advisory candidates; retained origin/conflict evidence | Assuming the inspected local-only loader proves peer delivery; suppressing all hints while optional conflict cleanup waits |
 | Preference context route / `src/server/routes.ts:24588–24666`; installed `.instar/hooks/instar/session-start.sh:149–176` | Configured source precedence and bounded rendered preference body reaching session start | Silent hook skip as successful recall; replacing the store without migrating the route and actual context consumer |
@@ -97,6 +99,98 @@ learning, missing peer custody, byte-cap omission, current permission refusal, a
 instruction precedence. Repeat at initial start and post-compaction with current consumption
 evidence. These are proposed migration positives, inhibited by the complete NF-17/18/21
 dependencies in section 14; the three previously executed baseline observations remain distinct.
+
+**Rule — replicated relationships preserve identity evidence and consumer limits.** Rules 7,
+28, 31, 33, 44, 45, 89 and 90; **checks: P21-NF-05/06/11/12/17/18/21**.
+The read-only 1.x sources in this block are under `/Users/dabombstudio/.instar/agents/echo`.
+`RelationshipsReplicatedStore.ts:409–415` derives a key from the sorted, deduplicated channel
+identifiers, not the local UUID. No-channel records have no replicated key. Different channel
+sets can yield different keys even for a person later shown to be the same; an imported key
+is identity evidence, never an authenticated principal or permission to join histories.
+
+`RelationshipsReplicatedStore.ts:578–594` renders each surviving concurrent value separately
+with its origin and conflict flag. A tombstone is an explicit deletion marker: it contributes
+no displayed value, and a resolved deletion yields none. In an unresolved conflict, surviving
+non-deleted variants remain eligible; a deletion marker is not a blanket instruction to hide
+all other variants. The read does not overwrite the local record. The foreign-context helper
+at `:618–657` wraps material in an origin-marked untrusted-data envelope and escapes rendered
+fields, retaining notes, relationship arc and recent-interaction text as another machine's
+claims rather than this agent's instructions or first-person experience.
+
+The consumer is concrete but bounded: `src/commands/server.ts:6976–6992` wires the relationship
+manager's separate peer-read seam through the union and foreign renderer, leaving local
+principal resolution separate (`src/core/RelationshipManager.ts:101–122`). However, the reader's
+loader and key inventory at `src/commands/server.ts:5098–5130` enumerate only local records and
+return only this machine's origin. The consumer filters out that origin. This composition
+therefore does not establish live peer context, automatic principal injection or any installed
+flag state. `CLAUDE.md:1202` describes the intended replicated relationship experience; the
+inspected consumer and custody path delimit what exists today.
+
+P21-A2 captures each available local/peer snapshot and imports the channel-set key, original
+channel set, origin, version/order evidence, conflict variants and tombstones. Local UUIDs stay
+origin-scoped aliases. Channel-set changes require current identity-owner resolution before
+cross-conversation joins. The P21-A1 person retriever keeps all permitted surviving variants
+as separately attributed candidates and records any budget/scope exclusions. Tombstones remain
+in retained history and suppress only the served values their resolved semantics remove; index
+rebuild or a stale returning peer cannot resurrect those values. This preserves the served-view
+disposition without adopting deletion of unique originals. Foreign guidance remains escaped,
+delimited and untrusted in the actual rendered packet. The manager peer reader and every
+startup/later-input/compaction caller migrate with the new judgment/assembly consumers.
+
+P21-REG-RELATIONSHIPS starts with two machines using different local UUIDs for the same channel
+set. Actual peer custody, import and restart must preserve one source identity and deliver the
+permitted note body with its origin through captured principal context. A concurrent divergent
+note retains both eligible variants without waiting for conflict cleanup. Paired cases cover
+a changed channel set without a verified mapping, a channel-less local record, missing peer
+custody/local-only operation, disabled replication, a resolved tombstone followed by a stale
+peer, a surviving value beside a concurrent tombstone, scope refusal, and hostile markup in
+foreign fields. Assert no foreign identity becomes principal authority and no deleted value
+reappears in the served view. Repeat at startup and post-compaction; helper output alone fails.
+
+**Rule — replicated learnings preserve advisory variants without inventing injection.** Rules
+7, 31, 33, 44, 45, 57, 89 and 90; **checks: P21-NF-05/11/12/17/18/21**.
+The read-only 1.x `src/core/LearningsReplicatedStore.ts:373–384` derives the replicated key from
+normalized title and category plus the source content id, falling back to discovery time.
+It does not use a machine-local learning id or hash the whole body. Empty title/category
+cannot supply a key. Edits to those identity inputs can change the key and must not silently
+merge independent lessons during import.
+
+The union at `:557–573` retains each surviving concurrent value with origin/conflict evidence
+as advisory guidance. It omits tombstone variants and resolved deletions, without blocking on
+an unresolved conflict or writing foreign values over local records. The renderer at
+`:591–615` escapes fields, keeps the foreign origin envelope and includes the lesson details,
+source and application metadata when present. That helper is not proof of session delivery.
+`src/commands/server.ts:12140–12159` composes a gated reader over own and peer journal streams
+when the peer-stream reader exists. At `:12160` the variable is unused and session-context
+injection is explicitly future work. Send-side emitter wiring at `:12162–12186` is separate
+from that missing consumer. `CLAUDE.md:1203` describes the intended advisory experience, not
+an executed context-injection guarantee.
+
+P21-A2 captures original learning snapshots, available journals and tombstones, retaining each
+content-anchored key, origin, ordering evidence, source attribution and concurrent variant.
+Local learning ids are origin-scoped aliases only. Missing original episodes remain unknown;
+a peer's lesson cannot manufacture supporting exchanges. The new procedural-lesson source
+feeds the P21-A1 coordinator and actual judgment/assembly consumers at startup, later input
+and compaction. It preserves escaped untrusted guidance and all eligible surviving variants,
+with explicit exclusions for scope or budget. Tombstone-resolved values stay out of served
+views across rebuild and peer return while unique historical evidence remains in authorized
+custody. No import or conflict cleanup promotes a lesson to standing or overwrites another
+origin's account. Implementation must build and prove the absent context consumer before
+claiming migration complete; a readable peer journal or renderer alone cannot close it.
+
+P21-REG-LEARNINGS starts with different local learning ids but the same normalized title,
+category and source anchor on two machines. After real peer custody, import and restart, the
+permitted lesson body and attribution must reach actual captured context. Concurrent divergent
+details retain both advisory variants. Paired cases cover different source anchors with the
+same title, missing peer journals, disabled replication, missing original evidence, an absent
+context consumer, budget omission, a resolved tombstone plus stale peer, a concurrent surviving
+value, hostile markup and a current instruction overriding a remembered lesson. Repeat through
+startup and post-compaction and assert no authority is acquired from guidance.
+
+Both replicated-store migration positives are **non-executable until
+`seam-response-recall-doorway-grants.md` lands for their section 14 NF-17/18/21 dependencies**,
+together with those rows' inherited grants and P21 implementations. No repaired execution or
+live peer injection is claimed here.
 
 **Rule — structural composition replaces inconsistent injection paths.** Rules 1, 30, 44,
 47, 66, 78, 96 and 110; **checks: P21-NF-03/05/10/17/21**. Topic-intent briefings,

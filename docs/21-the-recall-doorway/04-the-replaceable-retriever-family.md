@@ -1,7 +1,7 @@
 ## 4. The replaceable retriever family
 
-**Rule — engines are adapters behind owner-governed ports.** Rules 1, 4, 30, 33, 40,
-57, 66 and 69; **checks: P21-NF-02/04/06/08/09/19/20**. Proposed
+**Rule — engines are adapters behind owner-governed ports.** Rules 1, 4, 30, 33, 55,
+57, 60, 66 and 69; **checks: P21-NF-02/04/06/08/09/19/20**. Proposed
 `RecallSourcePort.describe/query` reports capabilities and returns bounded candidate references.
 The P21 coordinator owns policy selection, budget allocation, deduplication, ranking composition
 and evidence rendering. The source-access owner mediates every read, including loading the
@@ -21,7 +21,7 @@ the active owner contract before it replaces an installed adapter.
 |---|---|---|
 | Exact history | Fact/message/capture ids, conversation and temporal range; original adjacent turns and verified source spans | Referenced retained fact bypasses lagged index through custody; unavailable capture is not “never said”; bounds preserve omitted-range accounting |
 | Lexical | Task-derived terms, quoted names/phrases and permitted corpus handle; exact-body matches with source offsets | Negation and qualifiers crossing a chunk boundary survive loading the original text. Successful zero-match differs from unavailable search. |
-| Semantic | Task/query embedding under a pinned model, dimension and index generation; dense candidates and optional lexical fusion | Lexical-mismatch evidence reaches actual packet; missing embeddings and changed models expose coverage and compatibility limits |
+| Semantic | Task/query embedding under a pinned model, dimension and index generation; dense retrieval compares numerical meaning representations, while hybrid retrieval combines those results with word/phrase matches | Lexical-mismatch evidence reaches actual packet; missing embeddings and changed models expose coverage and compatibility limits |
 | Relationship/person | Owner-resolved person/agent ids, time and conversation links; permitted original exchanges plus labeled notes/arcs/pins | Same-name people stay separate; imported note does not become direct participation; relationship state is not current standing |
 | Cross-conversation joins | Explicit Part 16 conversation mapping and owner-authorized relation edges; source paths spanning scoped conversations/channels | Two authorized topics join; unverified alias, wrong account, restricted intermediate node and missing email custody refuse or limit only the affected path |
 | Recursive search | An unresolved evidence question, current candidate references, allowed adapters and remaining root handle; traced expansion and stopping reason | Cycles, repeated queries, uncooperative children, depth/call exhaustion and forbidden hops cannot create new roots or concealed work |
@@ -49,8 +49,8 @@ final context cap. Adapter rank, owner exclusions, policy displacement and rende
 are separate diagnostic stages. A cache hit reports the original query/source identity and
 current revalidation, not a fictitious fresh search.
 
-**Rule — recursive search is bounded exploration, not recursive authority.** Rules 40, 41,
-57, 75 and 114; **checks: P21-NF-04/08/09/19**. Each hop records its parent candidate,
+**Rule — recursive search is bounded exploration, not recursive authority.** Rules 41, 55,
+57, 60, 61, 75 and 114; **checks: P21-NF-04/08/09/19**. Each hop records its parent candidate,
 question, edge/source, scope resolution, charge and stopping reason. The owner keeps a visited
 set bound to source/version and query, charges backend fan-out, and stops on support found,
 no new permitted evidence, cycle, depth ceiling, cancellation or budget exhaustion. Model-planned

@@ -15,21 +15,41 @@ observations. These landed shapes do not provide every join below. Production bi
 operator inspection additionally awaits
 **OPERATOR-CONTEXT-CONSUMERS**, all defined in section 14.
 
-The proposed manifest requires these fields or exact recoverable references to equivalent
-owner data. Decoder admission rejects unknown versions, unresolved required references and
-asserted successful submission without the owner's capture evidence.
+The fields belong to the records below, or to exact recoverable references to equivalent
+owner data. Every record has its own schema version and admission identity. The pre-submit
+`RecallManifest` is immutable and complete before submission; it requires no future judgment,
+submission, output or outgoing-binding reference.
 
-| Record group | Required information |
+| Record / field group | Required information at that record's creation |
 |---|---|
-| Identity | Schema/policy version; root/attempt/parent; run/step/judgment; generation/incarnation; principal; conversation and recipient/target binding |
-| Temporal and scope | Observed clock, query time and historical-as-of time; captured frontier; each index frontier/holes; identity and permission policy references; pending conflicts/taint |
-| Planning | Current task/input capture; source inventory; selected and unselected strategies with reasons; exact-reference requirements; no-additional-context reason when applicable |
-| Query attempts | Adapter id/artifact/contract/model/index version; normalized query plus derivation capture; source status; start/end; candidate counts; truncation, retry and cache behavior |
-| Candidate accounting | Source/capture/span identities; rank and evidence kind; selected/excluded disposition and reason; restricted audit reference for large or sensitive lists |
-| Selected evidence | Exact original spans or recoverable captures, attribution, event/ingestion/validity times, direct/indirect participation, supersession/contradiction links, allowed use/disclosure |
-| Rendering | Ordered packet sections; rendered span offsets; retained qualification/speaker boundaries; actual token/byte count and any trimming; renderer version/digest |
-| Submission | Intended packet reference, actual provider-input capture reference/hash, ordered supplied carrier rows, every subsequent transformation, owner consumption observation or explicit unknown |
-| Output and costs | Judgment output and prepared effect references; review findings if any; final binding reference; reserved/spent/residual resources, status and limitation references |
+| RecallAttempt / admission identity | Own root/attempt identity; existing parent reference for a child, otherwise not applicable; purpose (PRINCIPAL or MAINTENANCE), admitted work/run/step, generation/incarnation, initiating principal, source policy and resource reservation; audience binding or maintenance not-applicable disposition |
+| RecallManifest / identity | Existing attempt and work references; schema/policy version; generation/incarnation; principal; conversation and recipient/target binding for principal work, or maintenance source/result scope |
+| RecallManifest / temporal and scope | Observed clock, query time and historical-as-of time; captured frontier; each index frontier/holes; identity and permission policy references; pending conflicts/taint |
+| RecallManifest / planning | Current task/input capture; source inventory; selected and unselected strategies with reasons; exact-reference requirements; no-additional-context reason when applicable |
+| RecallManifest / query attempts | Adapter id/artifact/contract/model/index version; normalized query plus derivation capture; source status; start/end or explicit unfinished state; candidate counts; truncation, retry and cache behavior |
+| RecallManifest / candidate accounting | Source/capture/span identities; rank and evidence kind; selected/excluded disposition and reason; restricted audit reference for large or sensitive lists |
+| RecallManifest / selected evidence | Exact original spans or recoverable captures, attribution, event/ingestion/validity times, direct/indirect participation, supersession/contradiction links, allowed use/disclosure |
+| RecallManifest / rendering and assembly costs | Ordered packet sections; rendered span offsets; retained qualification/speaker boundaries; actual token/byte count and any trimming; renderer version/digest; assembly-time reserved/spent/residual owner evidence and recall disposition/limits |
+| RecallSubmission / actual input | Existing manifest/attempt; judgment-owner request/attempt and actual provider-input capture reference/hash; ordered supplied carrier rows and every subsequent transformation; owner consumption observation or explicit unknown with reason |
+| RecallAttempt / appended observations | Existing attempt and, once created, manifest/submission references; owner judgment output, review findings, derived-memory result or final binding when actually present; stage status, limits and current spent/residual resource evidence. Each observation is a new fact, never an update to admission or manifest. |
+| OutgoingRecallBinding / final subject | Existing manifest/attempt and applicable submission; judgment output used for the draft, exact prepared effect/notice subject, current deterministic validation and available review findings; fixed non-model notice instead binds captured template/output and not-applicable model submission |
+
+An unresolved required reference is a claimed dependency that its owner cannot resolve as an
+admitted record/capture of the required kind with its declared identity and content bindings,
+under current owner resolution and access policy. Historical source captures retain their
+original work and generation; they need not originate in the work now recalling them.
+For `RecallAttempt` admission, the work, policy and reservation must already resolve; later
+observations require the existing attempt and only the stage evidence they claim. For
+`RecallManifest`, all required assembly evidence must resolve, including its admitted attempt
+and selected captures; a submission, model output or outgoing binding is not required or allowed
+as a forward reference. For `RecallSubmission`, the manifest and actual judgment-owner input
+capture must resolve; no model output or outgoing binding is required. Unknown consumption
+cannot replace the required input capture. For `OutgoingRecallBinding`, the manifest, exact
+prepared subject and current owner validation must resolve; model-generated output additionally
+requires its actual submission/output evidence. Non-model notices use the explicit alternative
+above, never a fabricated judgment. A MAINTENANCE root cannot satisfy outgoing admission.
+Unknown versions and any unresolved reference required by the chosen record/stage are refused;
+a source's honest unavailable status is not a claim that a missing capture was resolved.
 
 **Rule — source outcomes remain distinguishable.** Rules 13, 42, 45 and 95;
 **checks: P21-NF-05/06/09/15**. Each source attempt records exactly one primary state and
@@ -47,16 +67,28 @@ any orthogonal coverage limits. The following proposed vocabulary must not colla
 | not-requested | The policy did not query that source, with its selection reason |
 | available-results | The bounded query returned candidates; packet delivery and useful behavior remain separate facts |
 
-**Rule — two immutable stages avoid a circular receipt.** Rules 33, 41, 45 and 90;
-**checks: P21-NF-05/10/19**. The pre-submit manifest binds the proposed packet and its
-selection. After submission, a separate `RecallSubmission` references that immutable manifest
-and the owner-captured actual input. An `OutgoingRecallBinding` later references submission and
-effect bytes; a fixed non-model notice instead references its captured template/output and
-not-applicable submission disposition. None updates an earlier fact to say it was consumed.
-A manifest does not contain
-its own digest in the input it hashes. A crash before submission leaves an attempted assembly,
-not a completed judgment. A captured input with missing diagnostic linkage remains explicitly
-unattributed until an evidence-backed repair appends the join.
+**Rule — immutable records follow creation order.** Rules 33, 41, 45 and 90;
+**checks: P21-NF-05/10/19**. Admit the attempt first, then capture/render its packet and
+admit the complete pre-submit manifest. Submit that packet through the judgment owner. Only
+after actual input capture exists can a separate `RecallSubmission` reference it and the
+manifest. Once output, the exact prepared subject and current final validation exist, admit
+`OutgoingRecallBinding` referencing the manifest and applicable submission. Append attempt
+observations referencing each record only after it exists. No earlier fact is mutated to say
+it was consumed, and a manifest never contains its own digest in the input it hashes.
+
+NF-05/10 must execute that ordinary successful creation order without placeholders or forward
+references, as well as each interrupted and non-model case. A crash before manifest admission
+leaves only the attempted assembly. A crash after manifest admission but before submission
+leaves the manifest intact with submission/output/binding absent, not unknown successes.
+A captured input with missing diagnostic linkage remains explicitly unattributed until an
+evidence-backed repair appends the join; it never triggers a duplicate provider call for logging.
+After submission, interrupted output or preparation leaves the corresponding later records
+absent, with observed failure/unknown state appended to the attempt. Actual charge and residual
+exposure stay with their owners even when output is absent. A fixed non-model notice skips
+`RecallSubmission` entirely and binds its manifest plus captured template/output with submission
+not applicable. A completed analysis with no outgoing work, including maintenance, has no
+outgoing binding and records that stage as not applicable. These are stage dispositions, not
+unresolved reference placeholders.
 
 All inputs, including subordinate calls and large overflow artifacts, stay in authorized
 custody. Hashes permit integrity checking but are never the sole memory copy. The ordinary
