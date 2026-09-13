@@ -62,7 +62,7 @@ strategy from iterative query planning; each declares its construction and read 
 **Rule — installation conformance includes a paraphrase positive.** Rule 11;
 **checks: P21-NF-09/17/21**. Through the actual doorway, a later paraphrased request must
 select the permitted earlier constraint and deliver its original body and attribution into the
-captured principal input. Test an ordinary task cue as well as an explicit history question.
+captured PRINCIPAL input. Test an ordinary task cue as well as an explicit history question.
 An installation containing only exact/lexical adapters fails complete-mode activation even if
 it labels itself honestly. During an outage, that fallback remains reachable with a degraded
 disposition and no absence claim from a keyword miss.

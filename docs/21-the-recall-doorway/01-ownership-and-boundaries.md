@@ -28,18 +28,43 @@ the requested document numbers when saying “Part 11” or “Part 20”; a quo
 tag keeps its actual value. For example, `src/judgment` calls itself `part-seven`, although
 its design is `docs/11-the-judgment-doorway.md`. A numeric coincidence never selects an owner.
 
-| Consumed document / package owner | Duty retained by that owner | Part Twenty-One's use |
-|---|---|---|
-| Part 2 fact spine: `docs/06-the-fact-envelope.md`, `src/facts`, `src/projections` | Durable signed facts, original captures, causal history, taint (the owner-carried provisional, contested or evidence-unavailable qualification), correction and projection law | Read permitted originals; append recall records through its public admission; declare rebuildable informational indexes |
-| Register: `docs/02-the-register.md`, `src/register` | Declarations, governed versions, ports, checks and activation | Enumerate every retriever, producer, consumer, blocker, store, resource policy and required owner seam |
-| Part 4 intake: `docs/08-the-intake.md`, `src/intake` | Authenticated sender, custody before acknowledgment, binding and classification | Consume captured task and sender evidence; never authenticate from remembered text |
-| Part 5 run graph: `docs/09-the-run-graph.md`, `src/rungraph` | Work identity, actual start/resume grounding, continuity and run lifecycle | Bind roots and child charges to work; supplement grounding with relevant recall; never claim recall replaces full-history coverage |
-| Part 9 verification owner: `docs/13-the-verification-holders.md`, `src/verification` | Assessment, grades and independent review evidence; document 9's run graph is separately consumed above | Memory findings do not manufacture an independent assessment |
-| Part 11 judgment: `docs/11-the-judgment-doorway.md`, `src/judgment` | Model-call admission, input/output captures, advisory judgment and benchmark records | Supply evidence packet and assembly receipt; resolve actual submission after all transformations |
-| Part 12 effects: `docs/12-the-effect-doorway.md`, `src/effects` | Current authority, exact effect binding, dispatch, observation, settlement | Validate outgoing recall coverage and return findings; never invoke, retry, approve or settle an effect privately |
-| Part 16 conversations: `docs/16-conversation-adapters.md`, intake and concrete adapters | Durable scoped conversation tuples and verified mappings | Join permitted evidence through explicit identities; never collapse people or authorities by similarity |
-| Part 20 measurement: `docs/20-measurement-ledgers.md`, `src/measurement` | Quantities, accounting attribution, burn, aggregation and read surfaces | Produce coherence observations with denominator membership; use the owner for measured totals and costs |
-| Assembly/operator/harness: `docs/14-the-assembly.md`, `docs/15-the-operator-surfaces.md`, `src/assembly` | Custody, confinement, context carrier, production composition, operator visibility | Bind packet references into the carrier; require actual consumption and a reachable recovery surface |
+| Document label and path | Package / part owner | Imported contract names and retained duty | Part Twenty-One's use |
+|---|---|---|---|
+| Document 05 — `docs/05-the-types.md` | One — `src/types`, `src/decode` | `VerifiedPrincipal`, `Directive`, `Measurement` (including `Clock`), `StandingGrant`, `Authorization`, `Revocation`, `Provenance`, `Evidence`, `Decision`, `Scope`, `Result`, `Outcome`: constitutional identity, authority, evidence, decisions and quantities | Consume verified values and current owner resolution; never construct authority from remembered prose. Measurement ledgers consume One's quantity type; they do not own it. |
+| Document 06 — `docs/06-the-fact-envelope.md` | Two — `src/facts`, `src/projections` | `FactEnvelope`, `CausalFrontier`, `CapturedContent`, `AuthorityTaint`, `ProjectionDefinition`, `ProjectedView`: signed history, original captures and declared views | Read permitted originals; append recall records through public admission; declare rebuildable informational indexes. Taint retains provisional, contested or evidence-unavailable qualifications. |
+| Documents 02/07 — `docs/02-the-register.md`, `docs/07-the-declarations.md` | Three — `src/register`, `src/terms`, `src/rulegraph` | `Declaration`, `RegisterGeneration`, `VerifiedRegister`: declarations, version resolution, ports, checks and activation | Enumerate every retriever, producer, consumer, blocker, store, resource policy and owner seam; governed recall-owner enrollment remains pending under section 14 key D. |
+| Document 08 — `docs/08-the-intake.md` | Four — `src/intake` | `InboundRoute`, `SenderEvidence`, `IntakePort`, `IntakeCapturePort`: authenticated sender, custody before acknowledgment, binding and classification; the capture port is implemented by Ten | Consume captured task and sender evidence; never authenticate from remembered text. |
+| Document 09 — `docs/09-the-run-graph.md` | Five — `src/rungraph` | `Run`, `SessionGrounding`; designed `ContinuityAccounting` remains unlanded: work identity, actual start/resume grounding and run lifecycle | Bind roots and child charges to work; supplement grounding with relevant recall; full-history and continuity duties remain Five's. |
+| Document 10 — `docs/10-the-transport-and-leases.md` | Six — `src/transport`, `src/transport/loop-a1` | `Lease`, `FenceToken`, `AdmissionReservation`, `LoopPolicy`, `LoopRecord`, `SettlementApplication`: current ownership, reservations, bounded loops and retained resource exposure | Reserve finite recall work, charge children and retain remaining exposure across restart. Existing narrow reservation/loop contracts do not supply recall composition; section 14 R/L grants must land. |
+| Document 11 — `docs/11-the-judgment-doorway.md` | Seven — `src/judgment` | `JudgmentRequest`, `BenchmarkRecord`, `BenchmarkRunRecord`: model-call admission, question/context/submitted captures, advisory judgment and benchmark provenance | Supply evidence packet and assembly receipt; resolve actual submission after all transformations. |
+| Document 12 — `docs/12-the-effect-doorway.md` | Eight — `src/effects` | `OperationDefinition`, `OutboundMessage`, `EffectRequest`, `EffectValidation`, `EffectSettlement`: current authority, exact effect binding, dispatch, observation and settlement | Supply outgoing recall coverage and findings; no private invocation, retry, approval or settlement. |
+| Document 13 — `docs/13-the-verification-holders.md` | Nine — `src/verification` | `VerificationPlan`, `VerificationAssessment`, `Grade`, `FeedbackDisposition`: assessment, independent review evidence and feedback obligations | Memory findings cannot manufacture an independent assessment or close improvement work. |
+| Document 14 — `docs/14-the-assembly.md` | Ten — `src/assembly` | `HarnessLaunchSpec` (including its `contextManifest` field), `HarnessObservation`: custody, confinement, context carrier and production composition | Bind packet references into the existing carrier; require actual consumption. Acceptance of launch input alone is insufficient. |
+| Document 15 — `docs/15-the-operator-surfaces.md` | Eleven — operator surfaces; no landed `src/operator` package | Consumes earlier-owner values for authorized inspection, approvals and reachable recovery; no new core type or landed operator export is assumed | Require current context/outcome views and phone-complete pending actions; section 14 O awaits Eleven and its cited grant. |
+| Document 16 — `docs/16-conversation-adapters.md` | Twelve — conversation adapters over Four/Eight/Ten | Scoped conversation tuples and verified mappings under the existing intake/effect contracts; no general cross-channel resolver is landed | Join permitted evidence through explicit identities; no identity or authority merge by similarity. |
+| Document 19 — `docs/19-scheduled-work.md` | Fifteen — `src/scheduled`, with Six/Ten runtime owners | `ScheduledWorkPackagePort`: declarative bounded work planning; runtime admission remains section 14 W | Open maintenance roots only for owner-admitted jobs, not merely planned occurrences. |
+| Document 20 — `docs/20-measurement-ledgers.md` | Sixteen — `src/measurement` | Registered category/value admission through `MeasurementLedgerPort`; One retains `Measurement`; A2 evidence/quantity joins remain pending | Produce coherence observations with denominator membership; use the owner for measured totals, attribution, costs and read surfaces. |
+| Document 21 — `docs/21-the-recall-doorway.md` and its indexed sections | Part Twenty-One — proposed recall owner; package enrollment unlanded | Proposed `RecallAttempt`, `RecallManifest`, `RecallSubmission`, `OutgoingRecallBinding`, `CoherenceOutcome`, `RecallPort.prepare`, `RecallSourcePort.describe/query` | Own evidence assembly, retriever contracts and derived recall records only; none is a landed export or a replacement for the owners above. |
+
+The imported spellings above follow their owners' documents and landed contracts:
+`src/types/values.ts:10–96`, `src/facts/contracts.ts:5–51`,
+`src/projections/fold.ts:18–42`, `src/register/types.ts:22–50`,
+`src/intake/contracts.ts:8–61`, `src/rungraph/types.ts:23–82`,
+`src/transport/contracts.ts:7–89`, `src/judgment/contracts.ts:12–120`,
+`src/effects/contracts.ts:8–49`, `src/verification/contracts.ts:19–108`,
+`src/assembly/contracts.ts:33–49`, `src/scheduled/contracts.ts` and
+`src/measurement/contracts.ts`. Document concepts with different exported spellings are
+mapped here, not silently minted as new types. In particular, Two's envelope/capture/frontier
+and projection concepts (`docs/06`, “The envelope every fact carries” and the projection
+contract) map to the six exports in its row; Three's anchored register generation and verified
+consumption (`docs/07`, “The generator”) map to `RegisterGeneration` and `VerifiedRegister`.
+Four's route, authenticated sender and capture-before-acknowledgment port (`docs/08`, “The port
+and its adapters”) map to the four intake exports. Six's application of Eight's settlement
+(`docs/10`, section 4) maps to `SettlementApplication`; Six does not own effect settlement.
+The public scheduled-work and measurement ports implement their documents' package boundaries
+(`docs/19`, sections 1–2; `docs/20`, sections 1–2); their exported port names are implementation
+spellings, not additional constitutional types. Legacy names in section 11 identify 1.x
+sources only; research method names identify experiment evidence, not consumed core contracts.
 
 **Rule — name the terms that carry a decision.** Rules 13, 26, 28, 95 and 108;
 **checks: P21-NF-02/03/06/14/15**.

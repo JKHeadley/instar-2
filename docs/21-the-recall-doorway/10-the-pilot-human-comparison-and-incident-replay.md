@@ -121,8 +121,9 @@ dimensions, horizon and uncertainty it actually beat. Until then the result is u
 
 **Rule — implementation must accept a named incident replay artifact.** Rules 7, 35,
 41, 58, 85, 89, 90 and 108; **checks: P21-NF-15/17/22**. `P21-INCIDENT-REPLAY-v1`
-is defined by [its schema](fixtures/incident-replay-v1.schema.json) and
-[custody/semantic requirements](fixtures/README.md). It contains original intake/author references,
+uses [the closed structural schema](fixtures/incident-replay-v1.schema.json) under this
+section’s validation Rules. The [artifact README](fixtures/README.md) is explanatory only
+and adds no requirements. The artifact contains original intake/author references,
 later trigger and expected behavior, captured/indexed frontiers, candidates/actual submitted
 context, scope/permission state, draft/effect/outcome, timestamps, build/hooks/flags, source errors
 and charges. The implementation must validate it, resolve only authorized references, and replay
@@ -135,3 +136,70 @@ Private originals remain in authorized custody; only synthetic or explicitly san
 material can enter git. Missing private replay sources yield an unavailable result, not a fabricated
 experiment. JavaScript Object Notation (JSON) shape validation is executable now; production replay awaits the listed owner
 seams. Dawn's deployed traces, Jamie outcome and the four reported incidents remain **UNKNOWN**.
+
+
+**Rule — replay validation preserves custody, scope and the decision-time boundary.** Rules
+7, 28, 33, 35, 41, 58, 89, 90, 95 and 108; **checks: P21-NF-05/06/17/22**.
+Use a Draft 2020-12 validator, including date-time format checking. Every tagged observation is
+`known` with its value, or `unknown`, `unavailable`, or `not-applicable` with a nonempty reason.
+Empty string/null is not an undocumented substitute. Known empty collections are allowed where
+they mean an observed empty inventory. Unknown history never becomes an empty known frontier.
+All objects reject undeclared fields. The `artifact` identity fixes schema version one; a schema
+change requires a new identity and migration, not reinterpretation of the same record.
+
+Shape-valid does not mean runtime-ready. Semantic validation checks whether the references,
+permissions and evidence actually support the replay, beyond its field structure. The owner
+must perform these checks:
+
+1. Resolve each reference through authorized custody and verify the source hash, admitted fact,
+   scope, generation and causal frontier. A string with the right syntax is not a grant. References
+   must not contain embedded credentials, raw personal text, or publicly usable private tokens.
+2. Freeze evidence at the trigger's decision time and source frontier. Do not expose later intake,
+   future corrections, expected behavior, diagnosis or repair lesson to the replaying reader. The
+   `evaluationOnly` object belongs exclusively to the grader and external experiment logger.
+   Its `readerAccess:false` flag is a contract obligation, not proof a consumer obeyed it.
+3. Resolve original author, quoted author/forwarder where applicable, conversation, account and
+   audience from source evidence. Check provider/internal-use/disclosure policies separately before
+   search, loading the original text, embedding, model context, cache and final prepared output. Resolve any
+   authority for the simulated effect from its owner, never from remembered prose.
+4. Validate the index's per-lineage position and exact processed spans/holes against original
+   source history. A frontier cannot cross a required unprocessed span. A known empty indexCoverage
+   means no index coverage was supplied, not a claim that every source was indexed.
+5. Resolve candidate, packet, manifest and actual provider-input captures independently; verify
+   transformations and selected support paths. A missing actual input permits a partial replay
+   or an unavailable diagnostic, not an assertion about what the original reader saw.
+6. Resolve every acceptable support path to permitted original evidence available at the replay
+   snapshot, including current-trigger support where valid. An expected answer is a grader label,
+   never replacement evidence. Unknown originals or forbidden sources select the unavailable
+   rubric; they cannot become healthy-evidence opportunities by inference.
+7. Reconcile timestamps and charges through comparable owner clocks and resource records. Unknown
+   price/usage stays unknown, and cancelled/late work remains counted. A declared model execution
+   requires an actual resolvable run and input/output evidence; the boolean alone proves nothing.
+8. Keep original episode, inferred explanation and procedural lesson as separate references. Pair
+   a private incident with a comparable success and unavailable-source/legitimate-hold control
+   before admitting it to the paired experiment. A missing pair is a reported readiness gap.
+9. A sanitized-production artifact requires a real original-episode reference and export decision
+   from the current owner. Verify both, plus the transformation from private source to sanitized
+   replay and its declared semantic losses. The schema checks their presence only. Synthetic
+   artifacts have `productionDerived:false` and cannot be promoted as production-derived cases.
+10. Replay always stops at a sandboxed prepared effect, with `dispatchAllowed:false`; the real
+    effect adapter must be absent or structurally confined. No payment, message, deployment or
+    public post is performed to obtain a benchmark answer.
+
+Unsupported or unknown required context produces a partial/unavailable import report with exact
+reasons. Unknown optional diagnostics may remain unknown. Invalid authority, a post-frontier
+support path, private export without a grant, or reader-visible labels refuses the affected
+replay; no synthetic filler closes it. These semantic consumers are
+**non-executable until P21-A3 and the complete NF-22 owner dependencies in section 14 land,
+including `seam-response-recall-doorway-grants.md` and `seam-response-declarations.md` row 77**.
+
+
+**Rule — replay validation has structural and owner-validated controls.** Rules 34, 35,
+58, 95 and 108; **checks: P21-NF-01/22**.
+Structural validation must accept the included example and reject an omitted required field,
+undeclared root/nested field, untagged null, `known` without a value, unknown without a reason,
+bad decision-time format, `readerAccess:true`, `dispatchAllowed:true`, and synthetic content
+marked production-derived. A sanitized-production variant without known export/original
+references must fail. Schema-valid forged references, future-label leakage and unsupported
+execution claims belong to the separate owner semantic checks and must never be reported as
+covered by JSON validation alone. Neither validation layer establishes beyond-human coherence.

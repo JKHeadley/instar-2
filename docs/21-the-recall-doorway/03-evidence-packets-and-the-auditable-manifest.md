@@ -23,7 +23,7 @@ submission, output or outgoing-binding reference.
 | Record / field group | Required information at that record's creation |
 |---|---|
 | RecallAttempt / admission identity | Own root/attempt identity; existing parent reference for a child, otherwise not applicable; purpose (PRINCIPAL or MAINTENANCE), admitted work/run/step, generation/incarnation, initiating principal, source policy and resource reservation; audience binding or maintenance not-applicable disposition |
-| RecallManifest / identity | Existing attempt and work references; schema/policy version; generation/incarnation; principal; conversation and recipient/target binding for principal work, or maintenance source/result scope |
+| RecallManifest / identity | Existing attempt and work references; schema/policy version; generation/incarnation; principal; conversation and recipient/target binding for PRINCIPAL work, or maintenance source/result scope |
 | RecallManifest / temporal and scope | Observed clock, query time and historical-as-of time; captured frontier; each index frontier/holes; identity and permission policy references; pending conflicts/taint |
 | RecallManifest / planning | Current task/input capture; source inventory; selected and unselected strategies with reasons; exact-reference requirements; no-additional-context reason when applicable |
 | RecallManifest / query attempts | Adapter id/artifact/contract/model/index version; normalized query plus derivation capture; source status; start/end or explicit unfinished state; candidate counts; truncation, retry and cache behavior |

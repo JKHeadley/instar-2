@@ -7,8 +7,8 @@ artifacts, identified in [R2 §§1, 8](research/02-dawn-grounding.md). The dirty
 checkout at `5b36623a99327e74abe5ef04d63019f9aca6b1c5` is separate; [R1 §10](research/01-instar-1x-memory.md#10-snapshot-identifiers-and-validation-boundary)
 pins its inspected mutable files. Unpinned live state and private incidents are not silently
 attributed to either snapshot. The rows below cite the 1.x source paths audited in R1, not
-landed Instar 2.0 code. The correction/preference lifecycle and replicated knowledge, relationship
-and learning audits below also read current 1.x source and the applicable installed hook directly;
+landed Instar 2.0 code. The correction/preference lifecycle, replicated knowledge, relationship and learning, customized
+context and surrounding source-family audits below also read current 1.x source and applicable installed hooks directly;
 they do not claim an installed-method execution. Each engine needs
 an adapter and owner contract audit before migration.
 
@@ -24,6 +24,7 @@ an adapter and owner contract audit before migration.
 | SessionActivitySentinel / `src/monitoring/SessionActivitySentinel.ts:369`, `:430`, `:647` | Declared background extraction and repair observation | Reusing an entity id without accounting for new content; clearing recovered pending work without storing its result |
 | WorkingMemoryAssembler / `src/memory/WorkingMemoryAssembler.ts:75`, `:138`, `:335`, `:548` | Candidate assembly/ranking ideas behind the P21 coordinator | Hidden source omissions, lexical-only behavior labeled general recall, approximate token caps and name-only evidence |
 | WorkingSet / `src/memory/WorkingSet.ts:65`, `:105` | Scoped task/lesson candidates | Pointer-only inclusion counted as body consumption; bypass of playbook provenance/quarantine |
+| ContextHierarchy / `src/core/ContextHierarchy.ts:143–233`, `:248–378`; public readers `src/server/routes.ts:7970–7986`, `:8090–8101`; installed `.instar/hooks/instar/session-start.sh:447–455` | Capture customized `.instar/context/` segment bodies, source identities and trigger/tier metadata; retain direct segment readers and the startup consumer until replacements pass | Distinguish regenerable `DISPATCH.md` from unique segment text; listing a path or printing dispatch instructions is not body delivery. P21-REG-CONTEXT below covers migrated and retained-owner paths. |
 | PromptBuildRecall / `src/core/PromptBuildRecall.ts:128`, `:219`, `:239` | Budgeted prompt-retrieval adapter ideas, source health and explicit optional capabilities | Content/description mismatch; prompt-prefix-only cache; timeout without residual-work accounting; optional hook as sole enforcement |
 | KnowledgeManager / `src/knowledge/KnowledgeManager.ts:45`, `:159`, `:181` | Captured knowledge documents, searchable catalog and original-body lookup | Metadata replication as proof of body custody; deletion of unique document bodies |
 | KnowledgeReplicatedStore / `src/core/KnowledgeReplicatedStore.ts:328`, `:496`, `:530`; `src/commands/server.ts:12241–12295` | Address-or-title plus type identity, surviving concurrent catalog variants, deletion-aware served views and escaped foreign metadata | Local ids/paths as cross-machine identity; metadata transfer or the local-only, unused union reader as proof of peer body custody or context delivery |
@@ -40,11 +41,89 @@ an adapter and owner contract audit before migration.
 | PreferencesReplicatedStore / `src/core/PreferencesReplicatedStore.ts:305–367`; server composition / `src/commands/server.ts:5047–5078` | Union semantics preserve concurrent non-deleted variants as advisory candidates; retained origin/conflict evidence | Assuming the inspected local-only loader proves peer delivery; suppressing all hints while optional conflict cleanup waits |
 | Preference context route / `src/server/routes.ts:24588–24666`; installed `.instar/hooks/instar/session-start.sh:149–176` | Configured source precedence and bounded rendered preference body reaching session start | Silent hook skip as successful recall; replacing the store without migrating the route and actual context consumer |
 | MemoryMigrator / `src/memory/MemoryMigrator.ts:71`, `:142`, `:463`; MemoryExporter / `src/memory/MemoryExporter.ts:125`, `:196`, `:213` | Versioned source import and disposable served export | One-time source-key dedup that misses later edits; nonempty partial export replacing uncaptured unique memory |
-| MessageStore / `src/messaging/MessageStore.ts:1`; ThreadLog / `src/threadline/ThreadLog.ts:1`, `:474`, `:522`; ConversationStore / `src/threadline/ConversationStore.ts:220` | Direct/indirect exchange sources, stable message identity, cold history and authorized resume | Count/hash-only retention as an archive; assuming every store reaches the principal context |
+| MessageStore / `src/messaging/MessageStore.ts:1`; ThreadLog / `src/threadline/ThreadLog.ts:1`, `:474`, `:522`; ConversationStore / `src/threadline/ConversationStore.ts:220` | Direct/indirect exchange sources, stable message identity, cold history and authorized resume | Count/hash-only retention as an archive; assuming every store reaches the PRINCIPAL context |
 
 These dispositions follow [R1 §§3–4](research/01-instar-1x-memory.md) and the targeted installed
 recheck in [R2 §8](research/02-dawn-grounding.md#8-comparison-with-the-installed-1x-target).
 They are proposed migration semantics, not a claim those changes have been executed.
+
+**Rule — customized context bodies survive separately from their dispatch instructions.**
+Rules 7, 33, 44, 45, 47, 69, 89, 95 and 111; **checks: P21-NF-05/17/21**.
+A context segment here is a persisted Markdown file with one topic of guidance. A dispatch
+table maps task triggers to those files; it is navigation, not their contents. These are
+read-only 1.x source observations, independent of the installed-method baseline executions.
+
+`src/core/ContextHierarchy.ts:143–233` declares eleven segments: identity, safety and project
+at tier 0 (intended always-loaded context); session and relationships at tier 1 (intended
+session-boundary context); development, deployment, communication, architecture,
+research-navigation and conversational-actions at tier 2 (task-triggered context). These tier
+numbers describe context loading, separately from the supervision levels in section 6.
+`initialize()` creates only missing segment files, deliberately preserving custom bodies
+(`:248–267`). It always calls `writeDispatchTable()`, which rebuilds `DISPATCH.md` from the
+declared segment/trigger metadata (`:291–329`). Regenerating that table cannot reconstruct a
+custom session procedure, relationship note, development lesson or communication preference.
+
+`loadTier()` reads files cumulatively through the requested tier, trims bodies, applies its
+content filter and silently skips missing/read-failed files (`:337–355`). `loadSegment()`
+returns an individual declared segment's raw body or null for an unknown/missing/unreadable
+segment (`:361–378`). `listSegments()` reports existence, byte size, path and stat errors;
+it does not read bodies into a model (`:392–417`). The inspected `src/` callers use
+`loadSegment()` for the public body reader; no production caller of `loadTier()` appears in
+that tree. Do not treat the cumulative reader's availability as automatic injection.
+
+A separate exported reader, `checkDeclaredIdentityDirectory()` (`ContextHierarchy.ts:81–140`),
+reads the persisted identity segment's declared directory and compares its absolute, real
+filesystem path with the directory resolved at boot. Missing/unreadable declaration returns
+`not-declared`; an invalid declaration produces a startup warning, not a startup refusal
+(`src/commands/server.ts:3730–3737`). Retain this current-path validation with its owner; an
+imported historical path cannot replace the current boot binding. Include matching, moved/stale
+and unavailable identity-directory controls without treating a warning as model-body delivery.
+
+Production constructs and initializes this source at `src/commands/server.ts:16306–16315`.
+`GET /context` lists segment metadata; `GET /context/dispatch` returns trigger mappings
+(`src/server/routes.ts:7970–7986`). `GET /context/:segmentId` serves the actual Markdown
+body, with 404 for null and 501 for an uninitialized hierarchy (`:8090–8101`); the other two
+routes also return 501 when uninitialized. The installed session-start hook prints
+`context/DISPATCH.md` when that file exists inside its server-running branch
+(`.instar/hooks/instar/session-start.sh:447–460`). It does not load the named segment bodies
+in that block. The table's claim of automatic loading and a successful route response are
+not evidence that any particular model received or used a segment.
+
+P21-A2 captures every available customized body before initialization, regeneration or consumer
+replacement, including additional installed files outside the default list. Retain exact bytes,
+source path/id, hash, origin, available edit/source evidence and tier/trigger metadata. An
+unlisted file is retained with explicit reader coverage, never silently discarded or counted
+as loaded by the default readers. Capture the dispatch artifact for audit, but treat its
+regeneration as a metadata view; preserve any unique local edits before replacing it. Missing
+or inaccessible originals remain unavailable; fresh templates cannot impersonate them.
+
+Identity, safety, organization and execution instructions remain with their existing governance
+and assembly owners. Their capture is historical evidence, not a new instruction grant.
+Eligible contextual notes can migrate to the scoped recall source under P21-A1/A2; each retained
+owner reader must instead be explicitly bound into the same actual-context accounting. Replace
+or retain the metadata routes, body route, direct-file callers and installed startup/compaction
+consumers together. The dispatch-only hook may retire only when the corresponding governed
+awareness and body-delivery paths pass; ordinary reachability retains its declared fail direction.
+
+P21-REG-CONTEXT seeds distinct customized session, relationships, development and communication
+bodies, with markers absent from their templates and from `DISPATCH.md`. Capture/import twice,
+restart and regenerate the dispatch view; assert exact body/hash and attribution preservation.
+Exercise both an eligible migrated note and an explicitly retained-owner instruction through
+real production initialization, scoped public/direct readers and actual provider-input capture.
+At initial start, resume and compaction, test the declared session-boundary bodies; for development
+and communication, use matching task triggers and a nonmatching-trigger control with an explicit
+not-requested disposition. Assess later behavior separately from submitted-body evidence.
+
+Remove a segment, fail its read, disable/unwire its source or replacement consumer, remove the
+dispatch file, and supply only a template or metadata response in paired controls. Record the
+precise missing/disabled/excluded source and delivery status; no dispatch text, path, byte count,
+200 response or generated default can satisfy the customized-body positive. Preserve accessible
+originals and reachable status. Rollback restores the previous readers against retained compatible
+bodies without losing newly admitted evidence. This NF-17/21 positive is **non-executable until
+`seam-response-recall-doorway-grants.md` lands for the complete section 14 dependencies,
+including row 94's source/consumer lifecycle, the inherited current-context and continuity
+grants named there, `seam-response-declarations.md` row 77, and P21-A1/A2**. It adds no owner
+type or ungranted action; retained-owner duties stay with their owners.
 
 **Rule — typed citation evidence survives independently of entity text.** Rules 7, 28, 33,
 44, 45, 89, 90 and 95; **checks: P21-NF-05/06/11/12/17/18/21**.
@@ -141,7 +220,7 @@ repeat through cache/restart. Missing support and no-support remain explicit, ne
 from a plausible entity body or from backfilled URL text. Verify the historical snapshot and
 legacy journal alone are insufficient inputs where they omit required rows.
 
-Finally, an actual principal recall must load the permitted original citation and its
+Finally, an actual PRINCIPAL recall must load the permitted original citation and its
 qualification into captured provider input, and the later response must use that support
 correctly. A name-only candidate, a route returning 200, or preserved entity prose cannot pass;
 delivered-but-ignored support is a reader-use failure. Run unit, public-pipeline and production
@@ -541,7 +620,7 @@ as proof of body custody. Build the absent peer-read and actual judgment/assembl
 consumers through the existing section 14 dependencies before retiring local catalog callers.
 
 P21-REG-KNOWLEDGE uses two machines with different local ids/paths for the same normalized
-address and type. Real peer custody, import, restart and actual principal input must preserve
+address and type. Real peer custody, import, restart and actual PRINCIPAL input must preserve
 the key and foreign attribution; concurrent divergent summaries remain separate eligible
 guidance. Pair metadata-only transfer with separately captured-body retrieval: only the latter
 can satisfy a required original-text claim. Additional controls cover title fallback without an
@@ -575,7 +654,7 @@ manager's separate peer-read seam through the union and foreign renderer, leavin
 principal resolution separate (`src/core/RelationshipManager.ts:101–122`). However, the reader's
 loader and key inventory at `src/commands/server.ts:5098–5130` enumerate only local records and
 return only this machine's origin. The consumer filters out that origin. This composition
-therefore does not establish live peer context, automatic principal injection or any installed
+therefore does not establish live peer context, automatic submission to a PRINCIPAL judgment or any installed
 flag state. `CLAUDE.md:1202` describes the intended replicated relationship experience; the
 inspected consumer and custody path delimit what exists today.
 
@@ -592,7 +671,7 @@ startup/later-input/compaction caller migrate with the new judgment/assembly con
 
 P21-REG-RELATIONSHIPS starts with two machines using different local UUIDs for the same channel
 set. Actual peer custody, import and restart must preserve one source identity and deliver the
-permitted note body with its origin through captured principal context. A concurrent divergent
+permitted note body with its origin through captured PRINCIPAL context. A concurrent divergent
 note retains both eligible variants without waiting for conflict cleanup. Paired cases cover
 a changed channel set without a verified mapping, a channel-less local record, missing peer
 custody/local-only operation, disabled replication, a resolved tombstone followed by a stale
@@ -685,6 +764,67 @@ approval lifecycle.
 | `src/monitoring/GrowthMilestoneAnalyst.ts:313–357`, `:460–525`; `src/monitoring/GrowthDigestPublisher.ts:396–510`, `:897–932`, `:1006–1056`; `src/server/routes.ts:10583–10629` | Stage-observation journal, approval-change/correction-pattern findings, digest, delivery audit and retry/deferral records | Capture historical observations before stage pruning; retain missing-input and send-failure limits. Preserve the actual read/digest consumer with its existing notice owner. A threshold finding or delivered growth summary neither accepts a preference nor proves recall improvement. |
 | `src/monitoring/ApprenticeshipCycleStore.ts:24–47`, `:626–679`, `:834–837`; `src/monitoring/MentorStageA.ts:1–30`; `src/server/routes.ts:25743–25934` | Task, learner output, mentor findings, overseer differences, coaching, transcript-audit and operator-experience evidence; local and permitted peer-cycle reads | Keep training/instance lifecycle with its owner. Preserve source-visible versus internal context restrictions and peer-read coverage; do not feed withheld mentor internals to the learner or turn a closed cycle into an independent quality grade. Migration retains unique coaching and actual readers, not only a cycle count. |
 | `src/monitoring/DeferralPatternSentinel.ts:1–14`, `:123–145`; `src/core/JudgmentProvenanceLog.ts:552–610`; `src/monitoring/ReviewCanaryBattery.ts:254–281`, `:399–418`; `src/server/routes.ts:33848–33877` | Content-free distinct-deferral observations and existing provenance; separate synthetic review fixtures and battery results | The deferral helper declares itself not boot-wired and owns no store; preserve the provenance reader without claiming an active sentinel. The battery refuses outside its enabled observation-only test mode. Keep synthetic rows separate from real user episodes, retain available results before fixture cleanup, and never count a canary as production recall success. |
+
+**Rule — context outside the memory directories has an explicit owner disposition.** Rules
+7, 28, 33, 44, 45, 47, 69, 89, 95 and 111; **checks: P21-NF-02/05/17/18/19/21**.
+The following inventory includes sources that reach specialized model calls or user read
+surfaces, even when they do not feed ordinary conversation. “Retain owner” means keep that
+source's writer, policy and current-state resolver with its existing owner, capture permitted
+historical evidence before any replacement, and register its actual reader in the migration
+manifest. It does not mean that P21 imports credentials, duplicates authority, or implements a
+new source. An available helper, advertised route or configured hook is not proof of delivery.
+
+| Source family and concrete 1.x reader/producer | Preserve or explicitly retain owner | Change or retire for recall |
+|---|---|---|
+| Canonical quick facts, anti-patterns and project registry — `src/core/CanonicalState.ts:7–13`, `:90–141`, `:180–230`; `src/server/routes.ts:8112–8156` | Capture these three separate JSON registries, question/answer/source fields, learned anti-pattern bodies and project observations; retain their actual lookup/read surfaces | These are separate from BootSelfKnowledge. A legacy `lastVerified` timestamp set during an upsert is not independent verification; retain originals before replacing mutable views and re-resolve live project/authority state. |
+| Operational and reflective identity — `src/core/IdentityRenderer.ts:1–21`, `:158`, `:345`; `src/core/SoulManager.ts:90–96`, `:329–330`, `:642`; `src/core/OrgIntentManager.ts:246–258`; `src/core/OrgIntentIdentityLayer.ts:10–33`; `src/server/routes.ts:27501–27628`; installed `session-start.sh:122–147` | Retain governance/identity owners for AGENT.md, ORG-INTENT.md, soul.md, initial snapshots, pending edits and audit; preserve unique custom text separately from generated harness shadows | Migrate the real render/read/hook consumers with those owners. A captured instruction or imported pending change confers no new authority; regenerated shadow files do not replace unique source bodies. Do not relax soul-section visibility or infer a hook ran from its template. |
+| User profiles and operator context — `src/users/UserContextBuilder.ts:45–145`, `UserManager.ts:296`, `TopicOperatorStore.ts:297–308`; `src/commands/server.ts:1126–1130`; `src/server/routes.ts:7907` | Retain user/identity owners and capture permitted bio, interests, style/timezone, relationship/history text, custom fields and verified-binding evidence | Keep profile facts distinct from learned PreferencesManager guidance. Preserve truncation and missing-profile coverage in actual context; a rendered “system-enforced” permission label is not current authority. |
+| Topic intent, temporal awareness and task framing — `src/core/TopicIntent.ts:497–543`, `TopicIntentBriefing.ts:55–66`, `TopicAwareness.ts:1–22`; `src/server/topicIntentRoutes.ts:1`; existing topic-intent/ArcCheck hook audit | Capture topic evidence, tentative/established distinctions, pending confirmations, goals/arcs/work and extraction/check observations; retain topic-intent writers and public readers | Register briefing and later-input consumers separately from raw history. Preserve quoted support and uncertainty; an established legacy label does not mint a directive. A temporal summary does not establish full-history coverage. |
+| Mid-task context resurfacing — `src/core/Usher.ts:1–34`, `UsherSignalStore.ts:1–68`, `UsherActedCorrelator.ts:1–27`, `:135–171`; `src/commands/server.ts:6111–6114`, `:14929–14940`; `src/server/routes.ts:15834` | Capture the faded topic-context candidates, bounded turn evidence, suggested resurfacing reasons and retained use/miss correlation observations; retain the topic-intent/observation owner and signal pull reader | The inspected Usher is signal-only and does not inject. Its store keeps a bounded set of signals; its use/miss credit is a lexical-overlap heuristic, not proof the model consumed a signal or understood its source. Preserve both numerator paths separately, missing-provider/no-candidate/error neighbors and disabled-source posture; do not migrate these metrics as measured recall success or permission to interrupt. |
+| Feature discovery and consent history — `src/core/FeatureRegistry.ts:1–12`, `DiscoveryEvaluator.ts:32–66`, `:171`, `:464–503`; `src/commands/server.ts:18101–18104`; `src/server/routes.ts:34288`, `:34361`, `:34465` | Retain feature/consent owners for the per-user discovery database, prior offered/deferred/declined/enabled states and authorized current action policy; capture permitted contextual recommendations and actual surface observations | Keep static feature descriptions, stored user choices, category-keyed cached model recommendations and actual enabling separate. A recommendation is not consent; cached context is not a fresh user decision. Missing intelligence or an uninitialized evaluator remains unavailable, and a timeout does not itself cancel residual provider work. |
+| Cross-machine conflict evidence and proposed text — `src/core/ConflictStore.ts:1–24`, `:40–49`, `LLMConflictResolver.ts:203–247` | Retain synchronization and resolution owners for available original divergent versions, conflict/recurrence/loss counters, current operator dispositions, bounded model input and proposed merge content | The conflict ledger contains version identities rather than payloads and can evict old open entries with a loss count; it cannot reconstruct originals alone. The separate model resolver's tiered proposal is derived text, never authoritative identity or an approved merge. Capture unique available versions before replacement and re-resolve the owner's present conflict rather than importing a historical resolution as a fresh decision. |
+| Project and documentation navigation — `src/core/ProjectMapper.ts:22–34`, `:281–308`; `CartographerTree.ts:1–16`, `:46–55`; `CartographerNavigator.ts:5–31`; `cartographerSummary.ts:8–15`; `src/monitoring/CartographerSweepPoller.ts:1` | Retain project-map and cartographer owners; capture unique generated descriptions with covered code identities, source roots, freshness and authoring observations | Preserve the bounded navigation reader and its untrusted-summary rendering. This code/document tree is distinct from SelfKnowledgeTree; code-hash freshness does not prove a summary is correct or that omitted directories were examined. |
+| Pre-compaction learning extraction — `src/core/PreCompactionFlush.ts:156–230`, `:329`, `:374`; `src/commands/server.ts:13284–13304` | Capture available transcript slice, derived learning files, MEMORY.md index entries and flush audit; preserve the explicitly enabled PreCompact callback and no-provider/no-transcript/error dispositions | This producer is separate from rolling summaries. Move formation to supervised maintenance under P21-A2 or explicitly retain its owner with captured-call accounting. Retire an index append or `ok` result as proof every fact body was written or later used; bounded transcript tails are partial evidence. |
+| Job bodies, handoffs and reflection — `src/scheduler/JobScheduler.ts:1372–1475`, `JobRunHistory.ts:1`; `src/core/JobReflector.ts:70–170`; existing ExecutionJournal/BlockerLearningLoop rows | Capture validated job bodies, prior handoff notes and state snapshots, common blockers, run/skip histories, reflection input/results and available execution provenance; retain scheduling owner | The prompt actually includes topic awareness and last-run handoff when available. Keep those consumers and the reflector distinct from generic memory search. Missing intelligence yields no reflection, and proposed improvements do not authorize changing a job. |
+| Dispatch context and learned adaptations — `src/core/ContextSnapshotBuilder.ts:77–115`; `ContextualEvaluator.ts:1–18`; existing DispatchExecutor, DecisionJournal and EvolutionManager rows | Capture snapshot versions and their underlying identity/jobs/decision metadata, dispatch content, adaptation proposals and applied/reverted evidence; retain dispatch/effect owners | Preserve the actual specialized model consumer, not just a snapshot cache. Record cached age and omitted fields. An accepted dispatch recommendation or rendered context is not proof of application or ordinary-session delivery. |
+| Work, commitments and continuity state — `src/core/WorkLedger.ts:19–36`, `CodexTaskContinuationStore.ts:123–163`, `SessionBuildContextStore.ts:7–30`, `SessionClockReader.ts:12–25`, `ForwardedTopicContext.ts:19–25`; `src/monitoring/CommitmentTracker.ts:1–17`; `src/tasks/TaskFlowRegistry.ts:1–12` and `task-flow-registry.store.sqlite.ts:1` | Retain work/run/commitment owners for ledgers, remaining tasks, awaited results, build locations, clocks, session/resume/handoff mappings and task-flow records; capture historical observations and available forwarded originals | Migrate real continuation, restore, status and context readers without restarting stopped work or replaying actions. Task-flow notification metrics do not prove a user notification. A resume id, countdown, handoff or remembered promise cannot close work or stand in for full history. |
+| Approval, permission and behavioral-baseline evidence — `src/core/ApprovalLedger.ts:1–33`; `src/permissions/RelationshipBehaviorStore.ts:1–20`, `RelationshipAnomalyScorer.ts:387`, `PermissionDecisionLedger.ts:77`, `AmbientContributionGate.ts:290–291`; `src/coordination/ReviewExchange.ts:1` | Retain current authority with identity/permission owners; preserve lawful decision histories, operator-sourced classifications/divergences, corrections, review exchanges and shape-only behavioral observations | Keep the permission baseline separate from relationship notes: it stores counts/action/time/length shapes, not messages. No recall importer reconstructs private text from aggregates or converts learned familiarity, old approval or agreement ratios into authority. |
+| Goal alignment, review and provenance — `src/monitoring/GoalRealignment.ts:1–9`; `src/core/JudgmentProvenanceLog.ts:6–32`, `CoherenceJournalReader.ts:13–34`; `src/core/reviewers/context-completeness.ts:1`; existing class-review/decision/grade rows | Retain observation/review owners and restricted provenance, actual bounded input, findings, priority events, dry-run verdicts, review decisions and available outcome links; include other reviewers in `src/core/reviewers/` | GoalRealignment's inspected phase has no injection or planner-annotation seam. Keep it explicitly retained, not a claimed live recall source. Preserve raw-local versus redacted-read distinctions and known truncation; a current-labelled legacy journal stream is not proof of complete peer coverage. |
+| Response-review context and durable review history — `src/core/conversationContextWiring.ts:1–34`, `untrustedConversationContext.ts:1–22`, `ResponseReviewDecisionLog.ts:1–23`, `:46–63`; `src/core/CoherenceGate.ts:498–520`; `src/commands/server.ts:17996` | Retain the review owner and capture permitted original turn references, bounded role-labeled context, truncation/source status, verdicts and available counterfactual/canary rows; keep the durable decision log distinct from the in-memory review window | The context provider can omit the context section on failure; its prompt contract is not proof the reviewer saw full history. The decision log keeps scrubbed excerpts and rotates; it swallows write failures. Preserve available unique evidence before rotation, and never infer a complete denominator or full-body custody from a review verdict. Legacy sender classifications do not become new standing. |
+| Decision-quality and organizational drift evidence — `src/core/DecisionQualityRecorderImpl.ts:1–35`, `:186–225`; `DispatchDecisionJournal.ts:1–12`; `OrgIntentDriftAnalyzer.ts:1–16` | Retain judgment/measurement/review owners for enrolled settlement and outcome annotations, provenance sampling/budget dispositions, dispatch-specific journal rows and drift digests; preserve their real query and later-analysis consumers | The quality writer is gated and defaults to dry-run; dry-run suppresses durable writes, and separate provenance sampling can omit body context. A content-free quality row is not a full model-call capture. The drift analyzer is deterministic signal from a bounded review window, not a learned directive or new blocking policy. |
+| Feedback factory — `src/core/FeedbackManager.ts:1–23`; `src/feedback-factory/store/FeedbackStore.ts:1`, `store/JsonlFeedbackStore.ts:1`, `store/FeedbackSourceGenerations.ts:123–144`, `processor/process.ts:7–12`, `processing/FeedbackProcessingService.ts:7–23`, `drain/FeedbackReadinessArbiter.ts:97–120` | Retain feedback owners for original reports, attachments, clusters, source generations, processing/reopen/verification history, drain obligations, initiative linkage and parity/import reports; preserve both local feedback and factory readers | Clustering, readiness assessment, processing counts and downstream initiative delivery are separate stages. Retain disabled/unwired and missing-source controls; import does not send old feedback again, close clusters or assume the factory is active. |
+| Remediation evidence and learned runbook proposals — `src/remediation/NovelFailureReviewer.ts:25–46`, `:330`, `:390`; `audit/AuditWriter.ts:1`, `audit/AuditProjection.ts:111`, `IntentJournal.ts:1`; `src/server/routes/remediation-proposals.ts:1` | Retain remediation owners for audit, unmatched-event clusters, counters, proposed fixes, review decisions and intent/action reconciliation; preserve the proposal read surface | This is a separate source from SystemReviewer and CoherenceReviewer. Capture lawful historical evidence without replaying runbooks or transferring vault/lock authority; a signed suggestion does not prove a fix was approved, run or effective. |
+| Channel originals, attached/pasted content and delivery evidence — `src/messaging/shared/MessageLogger.ts:83–158`, `telegramInboundFiles.ts:1`, `src/messaging/slack/RingBuffer.ts:1`, `FileHandler.ts:1`, `src/templates/hooks/slack-channel-context.sh:55–100`, `src/messaging/imessage/NativeBackend.ts:457`; `src/paste/PasteManager.ts:1–25`, `:457–468`; `src/lifeline/MessageQueue.ts:147`, `droppedMessages.ts:99` | Retain channel/intake/custody owners; capture available bodies, attachments, pasted files, per-platform history, queued inbound/outbound payloads, acknowledgments and loss/retry observations before expiry or cleanup | Preserve platform-specific reader coverage and distinguish full originals from ring buffers, offsets, ids or snippets. Privacy/consent filters remain owner-enforced. The Slack context-hook template fetches at most 30 cached messages and truncates each body; it is not installed in the inspected hook directory, so no live injection is claimed. Lifeline fallback/status is an independent consumer, not proof the main session processed the message. |
+| Agent-to-agent history and derived briefings — `src/threadline/canonicalHistoryRead.ts:53–58`, `PipeSessionSpawner.ts:217–283`, `A2ACheckInProxy.ts:75–81`, `openConversationBrief.ts:313–333`, `A2ACheckInSummarizer.ts:1–18`; `ThreadlineMCPServer.ts:99`, `adapters/RESTServer.ts:60–76`; existing ThreadLog/ConversationStore rows | Retain threadline/custody owners for canonical log, available outbox/backfill, conversation metadata, bounded wrapper history, relay/listener inboxes and resume mappings; capture derived summaries, purpose labels, check-ins and digest/surfacing records | Preserve actual history, spawn-summary and user-bridge readers separately. The pipe summarizer takes a bounded recent subset and can report unavailable; its summary is untrusted derived evidence. A purpose template, check-in or in-memory adapter history is not a complete archive or direct participation. |
+| Harness transcripts, tool results and provider context — `src/providers/primitives/observability/conversationLogReader.ts:1`, `conversationLogTailer.ts:1`, `src/providers/primitives/integration/conversationLogProvider.ts:1`, `sessionResumeIndex.ts:1`, `src/providers/primitives/control/inputInjection.ts:1`, `contextScopeControl.ts:1`; concrete adapters under `src/providers/adapters/`; `src/core/FrameworkSessionStore.ts:1` | Retain harness/assembly owners and capture available original transcripts, tool-result bodies, input transformations, resume indexes and actual delivery observations; register each supported adapter's concrete consumer | Capability/conformance declarations and optional thread-fork/rollback interfaces are not evidence that an adapter implements them. Preserve local/remote availability and confinement; each actual input channel joins captured-context accounting without acquiring private provider access. |
+| Model-selection preferences and execution profiles — `src/providers/uxConfirm/PreferenceStore.ts:1–17`, `TriggerGate.ts:1`, `FrameworkModelRouter.ts:1`; `src/core/TopicProfileStore.ts:1`, `TopicProfileResolver.ts:1–25`, `EscalationHintStore.ts:1–38` | Retain routing/assembly owners for user/task-pattern confirmed choices, cost/catalog snapshots, profile pins and fallback observations, with their actual selection/confirmation consumers | These are distinct from conversational learned guidance. The expiring escalation hint only triggers a fresh destination-owner decision; it is not a model-tier grant. A stored pick cannot replace current model availability, cost, permission or explicit instruction checks; it does not establish recall quality. |
+| Browser/account and capability pointers — `src/core/PlaywrightProfileRegistry.ts:623–701`; installed `session-start.sh:269–293`; `src/providers/parity/conversationalActionCatalog.ts:1`; existing capability/self-knowledge rows | Retain account/capability owners; capture permissible profile notes, source ages, action-catalog/skill metadata and consumer observations while credentials remain in vault custody | A boot pointer is not the browser's content, a login claim is not fresh access proof, and a cached action catalog is not permission to invoke it. Preserve custom skill bodies before regeneration; only the actual selected content can count as model input. |
+| Reports and outward profiles — `src/publishing/PrivateViewer.ts:107–121`, `TelegraphService.ts:263`; `src/moltbridge/ProfileCompiler.ts:1–10`; `src/server/fileRoutes.ts:1` | Retain publishing/file owners for private-view bodies, metadata, available published content, profile drafts and approved-export evidence; record original source links | A remote page id or local publishing state is not original-body custody. Profile compilation's safe-tag selection and human review do not authorize broader export. Preserve actual report readers and restrictions; no migration republishes a private source. |
+| Operational measurements, findings and notices — `src/monitoring/TokenLedger.ts:1`, `ResourceLedger.ts:1`, `FeatureMetricsLedger.ts:1`, `DashboardInsightEngine.ts:1`, `PresenceProxy.ts:1`, `PromiseBeacon.ts:1–24`, `src/messaging/SessionSummarySentinel.ts:109–117`; probes in `src/monitoring/probes/` | Retain measurement, monitoring and notification owners for available usage/health/quota/burn, blocker/claim/guard/recovery evidence, terminal slices, summaries, insight results and delivery observations; existing failure/growth rows remain distinct | Metering is not memory; its findings are eligible scoped evidence. Keep configured, observed, inferred and actually delivered states separate. Capture unique observations before rotation when they become retained recall support; missing sampling is unknown, not a healthy run. A status summary cannot complete a user's request. |
+
+The remaining implementation directories supply these families rather than separate stores:
+`src/config` supplies current configuration; `src/identity`, `src/security`, `src/privacy` and
+credential/coordination helpers retain identity, secret and access-policy ownership;
+`src/core/storage` and `src/utils` provide storage/rotation/read primitives. `src/data` (including the model-decision census at `provenanceCoverage.ts:215–334`),
+`src/core/promptClauses.ts:1–43`, `src/scaffold` and `src/templates` supply registries,
+versioned prompt/skill/job bodies and hooks whose
+installed customizations and real consumers belong to the rows above. `src/commands` and
+`src/server` expose those readers and production composition. Tunnel/transport/relay plumbing
+retains available connection and delivery evidence with its owner, not an invented conversation
+archive. `src/redteam`, `src/testing`, provider canary/conformance/example/parity scenarios and
+permission test harnesses supply synthetic tests; their results stay distinct from real
+learned episodes. Empty `src/harness-adapters` and `src/messaging/telegram-origin` directories
+supply no additional source. Each other provider/feedback/remediation/threadline subdirectory
+belongs to its explicitly named family above, including its read, migration and audit helpers.
+
+For every additional family, NF-17's migrated-or-retained-owner positive exercises the real
+source and restarted scoped consumer with available support; pair missing, disabled/unwired
+and restricted-source cases. NF-21 additionally checks actual model input or the actual user
+read/delivery surface the row declares. Do not require model submission of a source deliberately
+retained only for an owner/user surface; report that distinction. Runtime positives remain
+**non-executable until `seam-response-recall-doorway-grants.md` lands for section 14's full
+NF-17/18/21 dependencies, `seam-response-declarations.md` row 77 lands, and P21-A1/A2 land**.
+Retaining a writer with its existing owner introduces no new owner operation or payload.
 
 Name-only matches also checked: `src/core/baselineProcessPatterns.ts:1`,
 `src/monitoring/MemoryPressureMonitor.ts:1` and `hostMemoryPressure.ts:1` describe process

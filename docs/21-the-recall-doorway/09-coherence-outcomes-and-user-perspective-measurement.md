@@ -2,7 +2,7 @@
 
 **Rule — record outcomes separately from their explanations.** Rules 13, 26, 39, 41,
 58, 75, 85, 86 and 108; **checks: P21-NF-05/12/14/15/16/22**. P21's proposed
-`CoherenceOutcome` binds a canonical principal opportunity (one stable case shared across retries,
+`CoherenceOutcome` binds a canonical PRINCIPAL opportunity (one stable case shared across retries,
 child calls and later assessments) to its admitted work, trigger,
 permitted source/support paths, recall attempt/submission, response/prepared effect, any actual
 delivery observation, criterion, grader and source frontier. It records observed behavior and
@@ -27,7 +27,7 @@ supersedes an assessment through a new record without rewriting the original out
 | wrong-audience | Evaluated audience-sensitive opportunities: forbidden information enters model context, draft, prepared final output or actual delivery. Report each stage separately, including internal-use and disclosure violations. |
 
 No runtime may decide that all unlabeled opportunities passed. An independent inventory of opportunities
-records every principal root, no-additional-context turn, refused/defaulted/cancelled/pending
+records every PRINCIPAL root, no-additional-context turn, refused/defaulted/cancelled/pending
 case, and sampled ungraded case. Healthy-evidence recall denominators exclude missing custody
 only as a separately labeled group; total user burden still includes those failures. Forbidden
 source knowledge is not a healthy recall target. Counts of legitimate abstentions, unsupported

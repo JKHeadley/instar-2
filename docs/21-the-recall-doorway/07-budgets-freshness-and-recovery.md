@@ -41,9 +41,9 @@ OD-03, subject to the operator's approved time and spending limits.
 The added-work duration is the sum of non-overlapping recall/accounting/review/repair/final-check
 stage intervals, including their queue time; parallel reads within a stage count wall time once.
 It is not a two-second promise for the entire answer. The work/judgment owner separately supplies
-a finite absolute total-work deadline that includes principal drafting. Every stage deadline is
+a finite absolute total-work deadline that includes PRINCIPAL drafting. Every stage deadline is
 the earlier of that overall deadline and its remaining added-work allowance. P21 cannot extend
-the enclosing deadline, exclude a helper as “principal drafting,” or reset either budget on
+the enclosing deadline, exclude a helper as “PRINCIPAL drafting,” or reset either budget on
 restart. Missing finite owner deadlines inhibit admission. Reserve final-check overhead before
 search so an otherwise valid answer does not routinely exhaust its validation allowance.
 

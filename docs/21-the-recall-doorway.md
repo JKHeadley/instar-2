@@ -18,21 +18,23 @@ named dependencies land and real evidence passes. Source existence, actual conte
 model use, and the user's outcome are four separate evidence claims.
 
 The design combines **Proposal A**, accounting for what actually reached the model, with
-**Proposal B**, bounded recall before principal drafting. **Proposal C**, selective live
-semantic review, is a separately governed intervention for qualifying consequential effects.
-Deterministic owner checks run first; retrospective review is the default elsewhere.
+**Proposal B**, bounded recall before drafting the main answer or choosing an external action.
+**Proposal C**, selective live semantic review—comparing a claim’s meaning with its supporting
+evidence—is a separately governed intervention for qualifying consequential effects.
+Fixed checks enforced by the component responsible for the action run first; review after
+the fact is the default elsewhere.
 The [accepted research](21-the-recall-doorway/research/05-proposals-and-evaluation.md)
-supplies the hypotheses and falsification protocol. No paid experiment or production effect
+supplies the hypotheses and the procedure for testing whether they are wrong. No paid experiment or production effect
 is authorized by this document.
 
 ---
 
 ## Sections
 
-This design is split into one file per section so each renders on GitHub and can take line comments. The files below, read in order, are the complete document.
+This design is split into one file per section so each renders on GitHub and can take line comments. The Governed status covers this index and every numbered section below as one governed body. The files below, read in order, are the complete document. Supporting research and artifact READMEs are explanatory evidence, not additional requirements; executable artifact shapes are specified by the indexed Rules.
 
 1. [Ownership and boundaries](21-the-recall-doorway/01-ownership-and-boundaries.md)
-2. [The principal recall contract](21-the-recall-doorway/02-the-principal-recall-contract.md)
+2. [The PRINCIPAL recall contract](21-the-recall-doorway/02-the-principal-recall-contract.md)
 3. [Evidence packets and the auditable manifest](21-the-recall-doorway/03-evidence-packets-and-the-auditable-manifest.md)
 4. [The replaceable retriever family](21-the-recall-doorway/04-the-replaceable-retriever-family.md)
 5. [Identity, scope, and cross-conversation joins](21-the-recall-doorway/05-identity-scope-and-cross-conversation-joins.md)
