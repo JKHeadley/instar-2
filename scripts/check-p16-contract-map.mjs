@@ -49,6 +49,28 @@ const behaviors = new Map(Object.entries({
   52: ['non-executable-exclusion', 'p16Dispositions'],
   53: ['legacy-additivity', 'check-p16-additivity'],
 }).map(([number, value]) => [Number(number), value]));
+const acceptanceNeighbors = new Map([
+  [13, [
+    'attribution:real-owner-positive',
+    'attribution:absent-neighbor',
+    'attribution:withdrawn-decision-evidence-current-resolution',
+  ]],
+  [33, [
+    'burn:event-only-opens',
+    'burn:landed-model-input-output-derivation',
+    'burn:omitted-current-event-must-not-close-inactive',
+    'burn:well-formed-unresolved-event-retains-episode-and-debt',
+    'burn:expired-baseline-cannot-open',
+  ]],
+  [37, [
+    'peer:well-formed-boundary-clock',
+    'peer:clock-skew-is-partial',
+    'history:late-usage-keeps-owner-dispatch-window',
+    'history:late-usage-does-not-enter-arrival-window',
+    'resource:successive-samples-do-not-collapse',
+    'peer:fresh-process-input-is-byte-equal-before-and-after-unrelated-call',
+  ]],
+]);
 const dependencies = {
   3: ['seam-response-intake-followup.md', 'seam-response-assembly-followup.md',
     'seam-response-judgment.md', 'SEAM-LEDGER.md row 64'],
@@ -154,6 +176,9 @@ export function checkP16Coverage(report, dispositions = p16Dispositions()) {
       || row.status.startsWith('SUPPLEMENTAL-EXECUTABLE-')) {
       for (const tier of tiers) if (!passing.some(test => test.file.startsWith(tier)))
         throw new Error(`${row.id}: executable row lacks a passing ${tier} fixture`);
+      for (const neighbor of acceptanceNeighbors.get(row.number) ?? [])
+        if (!passing.some(test => test.title.includes(neighbor)))
+          throw new Error(`${row.id}: named acceptance/refusal neighbor did not execute: ${neighbor}`);
     } else if (passed.length) throw new Error(`${row.id}: non-executable row was counted as a pass`);
     return { ...row, tests, passing: passing.length };
   });

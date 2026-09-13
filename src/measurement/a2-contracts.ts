@@ -4,7 +4,7 @@ import type { ProjectionDefinition, ProjectionGeneration } from '../projections/
 import type {
   AttributionRequest, AttributionResult, BoundedReadCache, BurnEpisodeState, BurnEvaluation,
   BurnPolicy, BurnWindow, MeasurementAggregate, MeasurementProducerContract, MeasurementReadQuery,
-  MeasurementReadResult, ReadCachePolicy,
+  MeasurementReadResult, MeasurementReadRow, ReadCachePolicy,
   QuantityOwnerResolution, QuantityWitness, QuantityWitnessInput, ResolvedQuantity,
 } from './contracts.js';
 
@@ -144,5 +144,12 @@ export interface StoredMeasurementObservation {
   readonly identity: string;
   readonly measurement: unknown;
   readonly evidence: Evidence;
+  /** Signed producer content lets a cold reader re-establish the registered contract. */
+  readonly producerContract?: string;
   readonly corrects?: string;
+}
+
+/** A2's evidence-complete row composes beside the landed A1 presentation contract. */
+export interface EvidenceCompleteMeasurementReadRow extends MeasurementReadRow {
+  readonly evidenceManifest: readonly Evidence[];
 }

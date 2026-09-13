@@ -48,7 +48,9 @@ export function measurementA2Fixture(seedRows: readonly unknown[] = []) {
         identity: { kind: 'text' as const, maxLength: 128 },
         measurement: { kind: 'constitutional' as const, type: 'Measurement' as const },
         evidence: { kind: 'constitutional' as const, type: 'Evidence' as const },
+        producerContract: { kind: 'text' as const, maxLength: 65_536 },
       },
+      optional: ['producerContract'],
     },
     {
       ...facts.schema,
@@ -149,7 +151,8 @@ export function measurementA2Fixture(seedRows: readonly unknown[] = []) {
     const relation = contract.categories.find(row => row.name === category)!.relation;
     const identity = value(canonical({ family: contract.family, subject: options.subject,
       sourceSample: options.subject, category, unit: constitutional.unit, relation,
-      hardwareProfile: options.hardwareProfile ?? null })).hash;
+      hardwareProfile: options.hardwareProfile ?? null,
+      ...(contract.family === 'resource' ? { sampleAt: at } : {}) })).hash;
     const input: QuantityWitnessInput = {
       contract,
       subjectInstance: options.subject,
@@ -169,7 +172,8 @@ export function measurementA2Fixture(seedRows: readonly unknown[] = []) {
 
   function persistObservation(observation: PlannedObservation): string {
     return append('measurement-observation', json({ identity: observation.identity,
-      measurement: observation.measurement, evidence: observation.evidence }), observation.at);
+      measurement: observation.measurement, evidence: observation.evidence,
+      producerContract: value(canonical(observation.input.contract)).bytes }), observation.at);
   }
 
   function snapshot(): FactSnapshot {
