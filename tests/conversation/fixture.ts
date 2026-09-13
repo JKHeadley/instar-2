@@ -10,7 +10,6 @@ import type { VerificationHost } from '../../src/verification/index.js';
 import {
   admitTelegramAdapter, extractTelegramUpdate, telegramParserDeclarationId,
 } from '../../src/conversation/index.js';
-import { createAdapterConformanceCommitPort } from '../../src/assembly/conformance-commit.js';
 import type {
   AdmittedTelegramAdapter, TelegramBotApiCustodianPort, TelegramBotDeclaration, TelegramIdentityProbe,
 } from '../../src/conversation/index.js';
@@ -162,7 +161,6 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
     boundary: { ...intake.f.c, register: runtimeRegister },
     governance: governed.governance,
     assembly: assembly.runtime,
-    conformanceCommit: createAdapterConformanceCommitPort(assembly.runtime, assembly.c),
     history: assembly.c.history!,
     verification,
     api,

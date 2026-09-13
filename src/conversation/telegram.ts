@@ -21,6 +21,7 @@ import type {
 const admittedInstances = new WeakSet<object>();
 const admissionContexts = new WeakMap<object, BoundaryContext>();
 const admissionCustodians = new WeakMap<object, TelegramBotApiCustodianPort>();
+const activeAdmissions = new Set<string>();
 const activePolls = new Set<string>();
 const replyInvocations = new WeakMap<object, Set<string>>();
 const replyOperationBindings = new WeakMap<object, Array<Readonly<{
@@ -473,6 +474,10 @@ function contractInput(declaration: TelegramBotDeclaration, deps: TelegramAdmiss
 export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: TelegramAdmissionDependencies): Result<AdmittedTelegramAdapter> {
   return boundary('TelegramAdapterAdmission', declaration, deps.boundary, () => {
     validateDeclaration(declaration);
+    const id = `telegram:v1:bot:${declaration.bot.id}`;
+    ensure(!activeAdmissions.has(id), 'Telegram bot admission is already in flight in this process');
+    activeAdmissions.add(id);
+    try {
     take(constructGoverned('features', telegramFeatureDeclarationId, deps.governance.register, deps.governance.context));
     take(constructGoverned('parsers', telegramParserDeclarationId, deps.governance.register, deps.governance.context));
     ensure(deps.governance.register.entries.some(entry => entry.declaration.id === telegramParserDeclarationId
@@ -485,10 +490,9 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
     ensure(deps.evidence.parserDeclaration === telegramParserDeclarationId,
       'Telegram evidence parser declaration must match telegram-intake-v1');
     const mode = selectedMode(declaration);
-    const id = `telegram:v1:bot:${declaration.bot.id}`;
     // Preserve the cheap deterministic refusal for an already-admitted other
-    // mode. This is not the committing decision: every successful path still
-    // re-resolves after all dependency calls and commits against that frontier.
+    // mode. Same-process overlap is excluded by the guard above; cross-process
+    // conditional append remains held on the granted Part Ten row 99 seam.
     const observed = take(deps.assembly.inspectCurrent());
     const observedModes = observed.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id
       && row.record.disposition === 'passed').map(row => row.record.type === 'AdapterConformance' ? row.record.mode : '');
@@ -535,6 +539,7 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
         'real-model positive non-executable-until-seam-response-judgment.md-and-seam-response-effects-followup.md',
         'real-settlement positive non-executable-until-seam-response-effects-followup.md',
         'production assembly non-executable-until-part-eleven-seam-response-assembly.md-is-integrated',
+        'cross-process one-admitted-mode NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append',
       ],
       testedAt: now.value, validUntil: now.value + deps.evidence.validFor, disposition: 'passed',
     };
@@ -555,20 +560,16 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
       conformance = prior.record;
     } else {
       const conformanceId = `telegram-conformance:${take(canonical(conformanceSeed)).hash}`;
-      conformance = take(deps.conformanceCommit.commit({
-        frontier: {
-          adapter: id,
-          facts: current.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id)
-            .map(row => row.fact.id),
-        },
-        record: { ...conformanceSeed, id: conformanceId },
-      }));
+      conformance = take(deps.assembly.record('AdapterConformance', { ...conformanceSeed, id: conformanceId }));
     }
     const admitted = freeze({ id, account: telegramAccount(declaration.bot.id), mode, declaration, probe, contract, conformance });
     admittedInstances.add(admitted);
     admissionContexts.set(admitted, deps.boundary);
     admissionCustodians.set(admitted, deps.api);
     return admitted;
+    } finally {
+      activeAdmissions.delete(id);
+    }
   });
 }
 

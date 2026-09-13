@@ -1,7 +1,6 @@
 import { expect, it } from 'vitest';
 import { admitTelegramAdapter } from '../../src/conversation/index.js';
 import type { AssemblyHistoryReadPort, AssemblyRuntimePort } from '../../src/assembly/index.js';
-import type { AdapterConformanceCommitPort } from '../../src/assembly/conformance-commit.js';
 import type { TelegramBotApiCustodianPort } from '../../src/conversation/index.js';
 import type { VerificationRuntimePort } from '../../src/verification/index.js';
 import { value } from '../intake/fixtures.js';
@@ -26,12 +25,6 @@ function interleaveAt(outerMode: 'long-poll' | 'webhook', target: number | null)
     trigger();
     return result;
   };
-  const before = <T>(label: string, operation: () => T): T => {
-    points.push(label);
-    trigger();
-    return operation();
-  };
-
   const api: TelegramBotApiCustodianPort = Object.freeze({ ...base.api,
     identity: (input: Parameters<TelegramBotApiCustodianPort['identity']>[0]) =>
       after('api.identity', () => base.api.identity(input)),
@@ -48,17 +41,12 @@ function interleaveAt(outerMode: 'long-poll' | 'webhook', target: number | null)
       after(`assembly.record:${name}`, () => base.assembly.record(name, input))) as AssemblyRuntimePort['record'],
     inspectCurrent: () => after('assembly.inspectCurrent', () => base.assembly.inspectCurrent()),
   });
-  const conformanceCommit: AdapterConformanceCommitPort = Object.freeze({ ...base.conformanceCommit,
-    commit: (input: Parameters<AdapterConformanceCommitPort['commit']>[0]) =>
-      before('conformanceCommit.commit', () => base.conformanceCommit.commit(input)),
-  });
   const outer = admitTelegramAdapter(declarations[outerMode], {
     ...base,
     api,
     history,
     verification,
     assembly,
-    conformanceCommit,
     clock: () => after('clock', base.clock),
   });
   const records = value(fixture.assembly.runtime.inspectCurrent()).filter(row =>
@@ -75,9 +63,9 @@ it('P12-NF-16 P12-NF-18 P12-NF-46 round15 admission-every-await-interleaving pre
       'api.readCapture',
       'verification.inspect',
       'assembly.record:AdapterEvidenceContract',
+      'assembly.record:AdapterConformance',
       'assembly.inspectCurrent',
       'clock',
-      'conformanceCommit.commit',
     ]) expect(discovery.points, `${outerMode}: missing ${required}`).toContain(required);
     expect(discovery.points.some(point => point.startsWith('history.lookup:')),
       `${outerMode}: history lookup coverage`).toBe(true);

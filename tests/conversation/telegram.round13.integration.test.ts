@@ -30,8 +30,8 @@ it('P12-NF-16 P12-NF-18 P12-NF-46 round13 pins the committing conformance view a
     const outer = admitTelegramAdapter(declarations[outerMode], { ...fixture.admissionDependencies, api });
     if (!overlap) nested = admitTelegramAdapter(declarations[otherMode], { ...fixture.admissionDependencies, api });
 
-    expect(outer.kind, `${outerMode}/${overlap}: outer`).toBe(overlap ? 'Refused' : 'Success');
-    expect(nested?.kind, `${outerMode}/${overlap}: nested`).toBe(overlap ? 'Success' : 'Refused');
+    expect(outer.kind, `${outerMode}/${overlap}: outer`).toBe('Success');
+    expect(nested?.kind, `${outerMode}/${overlap}: nested`).toBe('Refused');
     const records = value(fixture.assembly.runtime.inspectCurrent()).filter(row =>
       row.record.type === 'AdapterConformance' && row.record.adapter === 'telegram:v1:bot:9001');
     expect(new Set(records.map(row => row.record.type === 'AdapterConformance' ? row.record.mode : '')).size,
