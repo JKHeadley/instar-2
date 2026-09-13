@@ -187,7 +187,7 @@ consistent database including evidence, journal actions and decision journal sep
 conversion; never run destructive legacy rebuild as the way to obtain the import inventory.
 
 **Field mapping into retained records.** P21-A2 owns versioned imported citation records under
-section 1's package-record discipline. Part Two owns admitted facts and original captures,
+section 1's package-record discipline. Two owns admitted facts and original captures,
 not a new `MemoryEvidence` constitutional type. Its existing fact schema and owned-body
 registration remain unchanged (`src/facts/contracts.ts:10–18,35–67`, a **2.0 destination**;
 `docs/06-the-fact-envelope.md:96–177`, “The envelope every fact carries”). The register grants and P21 implementation must declare
@@ -437,7 +437,7 @@ available peer journals, correction ledger, audit and linked initiatives/actions
 before switching this consumer. Preserve all available fields above and origin-scoped aliases,
 including pending, filled, dead-lettered, parked, reopened and superseded records. Capture each
 peer variant before folding; retain missing retry metadata and missing source/link evidence as
-unknown. Part Two retains originals and immutable imported evidence; P21 supplies searchable
+unknown. Two retains originals and immutable imported evidence; P21 supplies searchable
 advisory derivations. A captured legacy judgment never becomes a fresh independent assessment.
 
 Nine's feedback owner (`docs/13-the-verification-holders.md:311–328`) owns the improvement
@@ -471,7 +471,8 @@ reconcile whether a downstream artifact already exists before retrying; uncertai
 stay with their existing owners. Preserve bounded retry, parked follow-up, active-action aging
 exclusion and operator control without deleting an outstanding obligation. Rollback restores
 the old reader against retained compatible state while keeping new owner work and unresolved
-links visible. The new seam is not covered by rows 85–96 and is not assumed granted.
+links visible. Z is granted conditionally under SEAM-LEDGER row 97 in
+`seam-response-recall-doorway-grants.md` and remains unimplemented.
 
 **Migration fixture P21-REG-CLASS-REVIEW.** Use an isolated single correction with one occurrence
 on one day in one session, below recurrence admission, with that analyzer disabled. Exercise

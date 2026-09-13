@@ -1,6 +1,6 @@
 ## 14. Inherited duties and disposition
 
-**Rule — the twelve requested owner seams are granted conditionally.** Rules 13, 28 and 42; **checks: P21-NF-01 (inspecting the grant and dependency evidence), P21-NF-02, P21-NF-20 and P21-NF-21 (owner registration and activation)**. The seam authority recorded each request as SEAM-LEDGER rows 85–96 with a conditional grant in `seam-response-recall-doorway-grants.md`. Each grant covers an additive owner behavior built as its own owner slice with the request's acceptance evidence. Every dependent Part 21 check stays non-executable under its row-named dependency until that owner implementation lands. Row 89 (operator context consumers) additionally waits for Part Eleven to land. Row 95 (live-review owner policy) remains inert until the operator approves decision 5. It also requires the governing rule process to approve the narrow semantic exception. A grant is not an implementation and does not make a runtime positive executable.
+**Rule — the twelve requested owner seams are granted conditionally.** Rules 13, 28 and 42; **checks: P21-NF-01 (inspecting the grant and dependency evidence), P21-NF-02, P21-NF-20 and P21-NF-21 (owner registration and activation)**. The seam authority recorded each request as SEAM-LEDGER rows 85–96 with a conditional grant in `seam-response-recall-doorway-grants.md`. Each grant covers an additive owner behavior built as its own owner slice with the request's acceptance evidence. Every dependent Part 21 check stays non-executable under its row-named dependency until that owner implementation lands. Row 89 (operator context consumers) additionally waits for Eleven's operator surfaces to land. Row 95 (live-review owner policy) remains inert until the operator approves decision 5. It also requires the governing rule process to approve the narrow semantic exception. A grant is not an implementation and does not make a runtime positive executable.
 
 **Rule — one authoritative dependency map governs every check.** Rules 8, 33, 49, 69,
 71, 90, 95 and 111; **checks: P21-NF-01–24**. The expanded per-check table below is the
@@ -11,10 +11,12 @@ fixture with stand-in owner data does not prove a production consumer is active.
 
 The short keys below abbreviate the exact dependency ids, not types. For a key whose owner seam was requested by this design, the execution condition is **NON-EXECUTABLE-UNTIL-row-<n>-<slug>**, the SEAM-LEDGER row of its conditional grant, followed by landing of that granted owner implementation with real acceptance evidence. The request document remains the record of the exact behavior asked for; the grant is recorded in `seam-response-recall-doorway-grants.md`. Inherited grants keep their existing named files and scope.
 
-Z is a separate request for the record-time correction review and linked-action
-lifecycle in section 11. Its conditional grant is SEAM-LEDGER row 97, recorded in `seam-response-recall-doorway-grants.md`; its affected
-checks are **NON-EXECUTABLE-UNTIL-row-97-correction-class-review-lifecycle** and remain so until its owner implementation
-lands. The granted dependencies in those checks still require their cited grant files to land.
+Z covers the record-time correction review and linked-action lifecycle in section 11.
+Z is granted conditionally under SEAM-LEDGER row 97 in
+`seam-response-recall-doorway-grants.md` and remains unimplemented. Its affected checks are
+**NON-EXECUTABLE-UNTIL-row-97-correction-class-review-lifecycle**, until that grant's owner
+implementation lands. The other granted dependencies in those checks still require their
+cited grant files to land.
 
 All request, response and ledger filenames in this section refer to the lane directory
 `/Users/dabombstudio/.instar/agents/echo/.instar/lanes/`. They are review artifacts; no file
@@ -26,7 +28,8 @@ ports, artifacts, generation and joint tests. It cannot use a remembered or cach
 | A1 / P21-A1 | Recall owner: bounded root, manifest/submission, coordinator, scoped adapters, closed decoders and contract map | Proposed P21 implementation; non-executable until P21-A1 lands with D's implemented normal-mode workflow and governed recall-owner enrollment, plus S/R |
 | A2 / P21-A2 | Recall owner: indexing, derived-memory producers, source holes, migration and all legacy consumer regressions | Proposed P21 implementation; non-executable until P21-A2 lands |
 | A3 / P21-A3 | Recall owner: coherence outcomes, replay runner and frozen evaluation integration | Proposed P21 implementation; non-executable until P21-A3 lands |
-| A4 / P21-A4 | Recall owner: selective-review and retrospective/write-watch consumers; no independent holder or effect authority | Proposed P21 implementation; non-executable until P21-A4 lands |
+| A4a / P21-A4a | Recall owner: retrospective outcome-review and write-side coherence-watch consumers, using admitted maintenance work; no sender, hold or independent holder authority | Proposed P21 implementation; non-executable until P21-A4a and its A2 dependencies land. No V dependency or live-review approval requirement. |
+| A4b / P21-A4b | Recall owner: optional selective live-review and bounded repair consumers; findings only, with all effect decisions retained by their owners | Proposed P21 implementation; non-executable until P21-A4b, A4a, V and P land. V's operator and governing-rule approvals remain mandatory. |
 | J / JUDGMENT-RECALL-CONSUMER | Seven (src/judgment; docs/11-the-judgment-doorway.md §§1–3), with Ten assembly. PRINCIPAL/subordinate admission and actual submitted-input join; existing captures remain Seven-owned. | REQUESTED: `design-recall-doorway-seam-request-judgment-recall-consumer.md`. **NON-EXECUTABLE-UNTIL-row-85-judgment-recall-consumer**; then its granted implementation and acceptance evidence must land. |
 | E / EFFECT-RECALL-CONSUMER | Eight (src/effects; docs/12-the-effect-doorway.md §§1–5,9). Current final outgoing recall binding; exact bytes/target/authority revalidation; dispatch and settlement stay Eight-owned. | REQUESTED: `design-recall-doorway-seam-request-effect-recall-consumer.md`. **NON-EXECUTABLE-UNTIL-row-86-effect-recall-consumer**; then its granted implementation and acceptance evidence must land. |
 | S / INTAKE-CONVERSATION-RECALL-SCOPE | Four intake (src/intake; docs/08-the-intake.md), conversation family (docs/16 §§1,4), One authority and Ten custody. Verified person/conversation relations and independent internal-use/provider/disclosure scopes, resolved before exposure. | REQUESTED: `design-recall-doorway-seam-request-intake-conversation-recall-scope.md`. **NON-EXECUTABLE-UNTIL-row-87-intake-conversation-recall-scope**; then its granted implementation and acceptance evidence must land. |
@@ -39,7 +42,7 @@ ports, artifacts, generation and joint tests. It cannot use a remembered or cach
 | X / ASSEMBLY-RECALL-LIFECYCLE | Ten assembly (src/assembly; docs/14), with existing producer, consumer and Eleven surface owners. Real confined recall composition, producer/consumer registration, startup/later-input/compaction, surfaces and update parity. | REQUESTED: `design-recall-doorway-seam-request-assembly-recall-lifecycle.md`. **NON-EXECUTABLE-UNTIL-row-94-assembly-recall-lifecycle**; then its granted implementation and acceptance evidence must land. |
 | V / LIVE-REVIEW-OWNER-POLICY | Eight effect policy, Seven judgment, Nine verification and the operator (docs/12, docs/11, docs/13; docs/01 live-review convention). Conditional owner selector and findings-to-pending consumer. OD-05 and explicit rulebook reconciliation precede any semantic blocking activation. | REQUESTED: `design-recall-doorway-seam-request-live-review-owner-policy.md`. **NON-EXECUTABLE-UNTIL-row-95-live-review-owner-policy**; then its granted implementation and acceptance evidence must land. |
 | Y / EFFECT-RECALL-OPERATION-PAYLOADS | Eight effects (docs/12-the-effect-doorway.md; src/effects), with Ten concrete adapters. Exact approved email/payment/public/release operation subjects; use existing typed grants where sufficient, request missing owner payloads explicitly. | REQUESTED: `design-recall-doorway-seam-request-effect-recall-operation-payloads.md`. **NON-EXECUTABLE-UNTIL-row-96-effect-recall-operation-payloads**; then its granted implementation and acceptance evidence must land. |
-| Z / CORRECTION-CLASS-REVIEW-LIFECYCLE | Nine feedback (docs/13 §6; src/verification), with Five work, Six recovery, Seven judgment, Eight action/effect admission, Ten composition and Eleven surfaces. Admit review on correction record, preserve two-question evidence and independent obligations, reconcile interrupted review/action links, and validate linked repair admission without peer lifecycle authority. | REQUESTED: `design-recall-doorway-seam-request-correction-class-review.md`. **NON-EXECUTABLE-UNTIL-row-97-correction-class-review-lifecycle**; then its granted additive owner implementation and acceptance evidence must land; no existing type is widened by P21. |
+| Z / CORRECTION-CLASS-REVIEW-LIFECYCLE | Nine feedback (docs/13 §6; src/verification), with Five work, Six recovery, Seven judgment, Eight action/effect admission, Ten composition and Eleven surfaces. Admit review on correction record, preserve two-question evidence and independent obligations, reconcile interrupted review/action links, and validate linked repair admission without peer lifecycle authority. | GRANTED CONDITIONALLY under SEAM-LEDGER row 97 in `seam-response-recall-doorway-grants.md`; remains unimplemented. Request: `design-recall-doorway-seam-request-correction-class-review.md`. **NON-EXECUTABLE-UNTIL-row-97-correction-class-review-lifecycle**; then its granted additive owner implementation and acceptance evidence must land; no existing type is widened by P21. |
 
 **Rule — inherited grants retain their narrow scope.** Rules 33, 49, 69 and 95;
 **checks: P21-NF-02/05/09/10/15–18/20/21/23/24**. These are existing grants, not recall
@@ -55,7 +58,7 @@ listed owner halves and ordering prerequisites; a later half alone cannot satisf
 | K / RUNGRAPH-CONTINUITY | Five's ContinuityAccounting producer/decoder/reader and Eight's exact first-reply consumer. `seam-response-run-closure.md`, `seam-response-rungraph-followup.md` and `seam-response-effects-followup.md`, ledger 8; the A′ re-slice is `seam-response-run-closure-a-prime.md` (76). `src/rungraph/closure-records.ts:405–419` rejects these fields. Producer precedes the consumer. | Non-executable until the continuity scope in `seam-response-run-closure.md`, `seam-response-rungraph-followup.md` and `seam-response-effects-followup.md` lands; `seam-response-run-closure-a-prime.md` does not supply it. |
 | H / RUNGRAPH-MULTILINEAGE-GROUNDING | Five's complete conversation order, original-message/rolling-summary range coverage and frontier validation. **`seam-response-rungraph-followup.md`, final history-coverage addendum, SEAM-LEDGER row 52**; request `design-harness-adapters-seam-request-part-five-history-coverage.md`. This is an existing grant, not a proposed P21 widening of `SessionGrounding`. `src/rungraph/graph.ts:108–110` still refuses the broad cases. | Non-executable until `seam-response-rungraph-followup.md` row-52 addendum lands, including its row-38/45 current-consumption prerequisites. |
 | M / MEASUREMENT-OWNER-A2 | Sixteen A2 evidence-to-quantity binding, attribution, peer/historical/read composition: `part-sixteen-slice-a1-scope.md`, ledger 78. Its owner inputs are the grants named by docs/20 sections 1/7: `seam-response-declarations.md`, `seam-response-intake-followup.md`, `seam-response-assembly-followup.md`, `seam-response-effects-followup.md`, `seam-response-loop-followup.md`, `seam-response-rungraph-followup.md` and `seam-response-operator-followup.md` (rows 11–15/19/20/34/64). Keep their build/approval ordering and missing-pricing semantics. Landed `src/measurement/README.md:3–11` explicitly excludes A2; this grant does not accept Q's new outcome mapping. | Non-executable until A2 under `part-sixteen-slice-a1-scope.md` and the listed declarations/intake/assembly/effects/loop/rungraph/operator grant files land for these owner inputs. |
-| B / MEASUREMENT-BENCHMARK-COMPATIBILITY | Seven's owner-resolved compatibility and comparable actual benchmark start clock; Ten measured route support; Nine independent Grade/evaluation; Six bounded analysis. `seam-response-judgment.md` and `seam-response-assembly-followup.md` (30), `seam-response-judgment.md` start-clock addendum (73, after bounded-history row 66 when touching the same record), `seam-response-loop-followup.md` (25/47) and its Part Two paging prerequisite. The clock grant is conditional on approval of docs/20. | Non-executable until `seam-response-judgment.md`, `seam-response-assembly-followup.md` and `seam-response-loop-followup.md` land with those exact scopes and conditions. Numeric `startedAt`, opaque digests and same-model agreement do not satisfy it. |
+| B / MEASUREMENT-BENCHMARK-COMPATIBILITY | Seven's owner-resolved compatibility and comparable actual benchmark start clock; Ten measured route support; Nine independent Grade/evaluation; Six bounded analysis. `seam-response-judgment.md` and `seam-response-assembly-followup.md` (30), `seam-response-judgment.md` start-clock addendum (73, after bounded-history row 66 when touching the same record), `seam-response-loop-followup.md` (25/47) and its Two's paging prerequisite. The clock grant is conditional on approval of docs/20. | Non-executable until `seam-response-judgment.md`, `seam-response-assembly-followup.md` and `seam-response-loop-followup.md` land with those exact scopes and conditions. Numeric `startedAt`, opaque digests and same-model agreement do not satisfy it. |
 
 **Rule — expand indirect dependencies before deciding executability.** Rules 33, 69 and 95;
 **checks: P21-NF-01–24**. The dependency relation is:
@@ -63,7 +66,8 @@ listed owner halves and ordering prerequisites; a later half alone cannot satisf
 - A1 requires D, S, R.
 - A2 requires A1, J, I, W.
 - A3 requires A2, Q, B, I, O.
-- A4 requires A2, V, P.
+- A4a requires A2.
+- A4b requires A4a, V, P.
 - J requires A1, C, T.
 - E requires A1, J, T, Y.
 - I requires S, T.
@@ -83,11 +87,39 @@ listed owner halves and ordering prerequisites; a later half alone cannot satisf
 - B requires T, C, L, M.
 
 The following table is the expanded dependency list from that relation for each whole
-runtime positive. A partial schema/unit inspection does not shorten it. Section 12's execution
+runtime positive or explicitly named acceptance arm, as defined in section 12.
+A partial schema/unit inspection does not shorten it. Section 12's execution
 column is a view of this table, not a second list to edit. When an owner dependency changes,
 recompute the closure and its section-12 references together; NF-01 checks equality, no missing
-key and no cycle. A future split into smaller executable arms must explicitly name each arm's
-full contract and dependencies; silently dropping an unavailable arm is forbidden.
+key and no cycle. Every arm must name its full contract and dependencies; silently dropping an unavailable arm
+is forbidden. NF-10/13/14/21/24 each have two arms defined in section 12: **A/B + retrospective**
+and **live review**. The live-review arm includes the A/B + retrospective arm's evidence and
+adds its own complete positive and refused neighbors. The table reports both separately.
+A/B + retrospective activation requires all its applicable checks and all five A/B arms;
+live-review activation additionally requires all five live arms, V's OD-05 approval and governing
+rule exception, measured benefit, and OD-06's waiting policy. A declined or unapproved live arm
+is reported inactive/unexecuted, never passed or silently omitted from a whole-check claim.
+
+A4a can be initialized and exercised through W/J without A4b or V. X composes the registered
+requirements for the selected mode using the existing assembly contract; it must not require
+a live consumer in the A/B profile or accept its absence in the live profile. O's ordinary
+context/outcome/notices and W's retrospective/write-side work likewise remain usable without V.
+P and Y remain required owner infrastructure where the expanded lists include them; installing
+pending storage or a typed adapter does not invoke semantic review or grant permission to hold.
+The A/B arms exercise no semantic hold. Existing deterministic authority/integrity refusals
+remain mandatory in both modes. This uses rows 89/91/94's granted composition scopes and adds
+no owner operation, payload, policy approval or grant.
+
+The direct dependency keys for the split arms are listed here; the expanded table supplies
+every transitive key and its cataloged request/grant filename.
+
+| Check | A/B + retrospective direct keys | Live-review direct keys (also includes the entire A/B arm) |
+|---|---|---|
+| P21-NF-10 | A4a, X | A4b, X |
+| P21-NF-13 | A4a, P | A4b |
+| P21-NF-14 | A4a, P, Q | A4b, Q |
+| P21-NF-21 | A3, A4a, X, Z | A3, A4b, X, Z |
+| P21-NF-24 | A4a, X | A4b, X |
 
 | Check | All required implementation/request/grant keys, including indirect ones | Execution posture / additional policy condition |
 |---|---|---|
@@ -100,21 +132,26 @@ full contract and dependencies; silently dropping an unavailable arm is forbidde
 | P21-NF-07 | A1, J, E, S, R, Y, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-08 | A1, J, S, R, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. OD-03 run approval for paid cases. |
 | P21-NF-09 | A1, A2, J, S, I, R, W, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-10 | A1, A2, A4, J, E, S, I, O, R, W, P, X, V, Y, D, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
+| P21-NF-10 (A/B + retrospective) | A1, A2, A4a, J, E, S, I, O, R, W, P, X, Y, D, T, L, C, K, H | NON-EXECUTABLE until every listed implementation and named grant file lands, including `seam-response-recall-doorway-grants.md`; no V or OD-05 semantic-exception approval required. |
+| P21-NF-10 (live review) | A1, A2, A4a, A4b, J, E, S, I, O, R, W, P, X, V, Y, D, T, L, C, K, H | NON-EXECUTABLE until every listed implementation and named grant file lands, including `seam-response-recall-doorway-grants.md` row 95; OD-05 and governing-rule exception approvals, measured benefit and OD-06 waiting policy required. |
 | P21-NF-11 | A1, A2, J, S, I, R, W, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-12 | A1, A2, J, S, I, R, W, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-13 | A1, A2, A4, J, E, S, I, O, R, W, P, V, Y, D, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
-| P21-NF-14 | A1, A2, A4, J, E, S, I, O, R, W, P, Q, V, Y, D, T, L, C, K, H, M | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
+| P21-NF-13 (A/B + retrospective) | A1, A2, A4a, J, E, S, I, O, R, W, P, Y, D, T, L, C, K, H | NON-EXECUTABLE until every listed implementation and named grant file lands, including `seam-response-recall-doorway-grants.md`; no V or OD-05 semantic-exception approval required. |
+| P21-NF-13 (live review) | A1, A2, A4a, A4b, J, E, S, I, O, R, W, P, V, Y, D, T, L, C, K, H | NON-EXECUTABLE until every listed implementation and named grant file lands, including `seam-response-recall-doorway-grants.md` row 95; OD-05 and governing-rule exception approvals, measured benefit and OD-06 waiting policy required. |
+| P21-NF-14 (A/B + retrospective) | A1, A2, A4a, J, E, S, I, O, R, W, P, Q, Y, D, T, L, C, K, H, M | NON-EXECUTABLE until every listed implementation and named grant file lands, including `seam-response-recall-doorway-grants.md`; no V or OD-05 semantic-exception approval required. |
+| P21-NF-14 (live review) | A1, A2, A4a, A4b, J, E, S, I, O, R, W, P, Q, V, Y, D, T, L, C, K, H, M | NON-EXECUTABLE until every listed implementation and named grant file lands, including `seam-response-recall-doorway-grants.md` row 95; OD-05 and governing-rule exception approvals, measured benefit and OD-06 waiting policy required. |
 | P21-NF-15 | A1, A2, A3, J, S, I, O, R, W, Q, D, T, L, C, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-16 | A1, A2, A3, J, S, I, O, R, W, Q, D, T, L, C, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. OD-03 paid-run approval if paid; OD-04 approval for the human study. |
 | P21-NF-17 | A1, A2, J, E, S, I, O, R, W, P, X, Y, Z, D, T, L, C, K, H | Historical baseline is inspectable. Migration positives are non-executable under every listed key. |
 | P21-NF-18 | A1, A2, J, E, S, I, O, R, W, Q, Y, Z, D, T, L, C, K, H, M | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-19 | A1, A2, J, E, S, I, O, R, W, P, X, Y, Z, D, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
 | P21-NF-20 | A1, J, E, S, I, O, R, W, P, X, Y, Z, D, T, L, C, K, H | Existing shape-only register replay --check is EXECUTABLE. Runtime registration is non-executable until `seam-response-declarations.md` row 77 lands and recall-owner governed enrollment passes, with every other listed key. |
-| P21-NF-21 | A1, A2, A3, A4, J, E, S, I, O, R, W, P, Q, X, V, Y, Z, D, T, L, C, K, H, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
+| P21-NF-21 (A/B + retrospective) | A1, A2, A3, A4a, J, E, S, I, O, R, W, P, Q, X, Y, Z, D, T, L, C, K, H, M, B | NON-EXECUTABLE until every listed implementation and named grant file lands, including `seam-response-recall-doorway-grants.md`; no V or OD-05 semantic-exception approval required. |
+| P21-NF-21 (live review) | A1, A2, A3, A4a, A4b, J, E, S, I, O, R, W, P, Q, X, V, Y, Z, D, T, L, C, K, H, M, B | NON-EXECUTABLE until every listed implementation and named grant file lands, including `seam-response-recall-doorway-grants.md` row 95; OD-05 and governing-rule exception approvals, measured benefit and OD-06 waiting policy required. |
 | P21-NF-22 | A1, A2, A3, J, S, I, O, R, W, Q, D, T, L, C, M, B | Schema/artifact inspection is EXECUTABLE. Production replay/semantic positive is non-executable under every listed key. |
 | P21-NF-23 | A1, A2, J, S, I, R, W, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-24 | A1, A2, A4, J, E, S, I, O, R, W, P, X, V, Y, D, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
+| P21-NF-24 (A/B + retrospective) | A1, A2, A4a, J, E, S, I, O, R, W, P, X, Y, D, T, L, C, K, H | NON-EXECUTABLE until every listed implementation and named grant file lands, including `seam-response-recall-doorway-grants.md`; no V or OD-05 semantic-exception approval required. |
+| P21-NF-24 (live review) | A1, A2, A4a, A4b, J, E, S, I, O, R, W, P, X, V, Y, D, T, L, C, K, H | NON-EXECUTABLE until every listed implementation and named grant file lands, including `seam-response-recall-doorway-grants.md` row 95; OD-05 and governing-rule exception approvals, measured benefit and OD-06 waiting policy required. |
 
 D applies to every runtime positive through A1: normal-mode provider, governed shape change,
 and the recall owner's own enrollment must all pass. M's price/measurement declaration scope
@@ -129,16 +166,20 @@ correction/preference lifecycle, replicated-knowledge, replicated-relationship a
 consumers and genuine multi-machine custody regressions, including tombstones, surviving foreign
 variants, metadata-versus-body coverage, and retained observations feeding subsequent analysis.
 Z adds the independent record-time class-review migration and linked-action recovery fixture to
-NF-17/18/21, with its inventory, confinement and registration duties in NF-02/19/20. NF-21 requires every
-applicable production component above, including conditional live-review duties.
+NF-17/18/21, with its inventory, confinement and registration duties in NF-02/19/20. NF-21's
+A/B + retrospective arm includes Z and every applicable production component without V;
+its live-review arm additionally requires A4b/V and the conditional live-review duties.
+References elsewhere to NF-21's migration/context positives mean the complete A/B + retrospective
+arm; references to its live-review activation mean the complete live-review arm. Neither may
+be reported as execution of the other.
 
 **Rule — all inherited duties receive a disposition.** Rules 7, 8, 33, 49, 69, 71,
 77, 95, 105 and 113; **checks: P21-NF-02/11/15/18/20/21**.
 
 | Duty | Disposition in Part Twenty-One |
 |---|---|
-| Durable original history and lossless memory under rule 7 | Held as a design contract: originals remain in Part 2 custody; indexing/reflection/export never delete unique evidence. Runtime proof awaits P21-A2 and custody composition. |
-| Authenticated intake, standing and audience | Consumed from Part 4/identity owners; no recall inference creates principal/permission. General join/internal-use service explicitly requested and pending. |
+| Durable original history and lossless memory under rule 7 | Held as a design contract: originals remain in Two's custody; indexing/reflection/export never delete unique evidence. Runtime proof awaits P21-A2 and custody composition. |
+| Authenticated intake, standing and audience | Consumed from Four's intake and the identity owners; no recall inference creates principal/permission. General join/internal-use service explicitly requested and pending. |
 | Full-history SessionGrounding at start/resume | Consumed exactly as landed within its narrow limits. B adds relevance selection; it cannot replace or relax grounding, clock, threshold or current-work coverage. |
 | Compaction disclosure and uncovered inbound accounting | Retained with run graph/effect/assembly owners through RUNGRAPH-CONTINUITY; ACK or manifest is not a substitute. |
 | Part 11 actual judgment input audit | P21 assembles and accounts; judgment/assembly retain capture and consumption. Carrier present, broader consumers pending, no second capture law. |

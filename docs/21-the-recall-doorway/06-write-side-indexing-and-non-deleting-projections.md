@@ -1,7 +1,7 @@
 ## 6. Write-side indexing and non-deleting projections
 
 **Rule — original custody precedes memory formation.** Rules 7, 24, 31, 33, 43, 45, 85,
-89, 90 and 96; **checks: P21-NF-05/09/11/12/18/23**. Part 4 intake and Part 2 custody
+89, 90 and 96; **checks: P21-NF-05/09/11/12/18/23**. Four's intake and Two's custody
 retain the original admitted exchange before P21 indexing begins. The read side must not wait
 for embeddings or summarization to establish that an intake exists. The landed capture dependency
 requires preservation equivalent to `fsync`, flushing accepted bytes to durable storage
@@ -63,7 +63,7 @@ schema/model version, scope policy, retention class and resource budget. Rebuild
 index must prove original reconstruction before old derived storage is retired. A confidence
 decay or low-use rank changes selection, not original retention or truth.
 
-Redaction and secret custody follow Part 2's separately governed policy. P21 creates no general
+Redaction and secret custody follow Two's separately governed policy. P21 creates no general
 forget/delete operation and cannot use an embedding expiration, archive rotation, migration,
 or “anonymization” as a back door to destroying unique content. Imported files are captured
 before any export can replace their served view. Privacy-limited unavailable originals remain

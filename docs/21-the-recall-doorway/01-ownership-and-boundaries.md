@@ -17,7 +17,7 @@ contract vocabulary for implementation, not exports that already exist.
 | CoherenceOutcome | Opportunity, expected/observed behavior, labels and separately falsifiable diagnosis; measurement and grade owners retain their records |
 | Source/projection/policy declarations | Register-owned declarations of P21 adapter contracts, immutable derived-memory versions, scope/resource hooks and activation requirements |
 
-All durable records enter through Part 2's public fact admission and retain generation
+All durable records enter through Two's public fact admission and retain generation
 (the owner-verified register version applicable to the record), predecessor/cause, schema version, author and source evidence. No model emits an admitted record
 directly. P21-A1/A2/A3 specify the eventual closed decoders (validators that accept only the
 declared record shapes); this draft supplies no private core type cast or production fact kind. Retrospective corrections append new evidence rather than
