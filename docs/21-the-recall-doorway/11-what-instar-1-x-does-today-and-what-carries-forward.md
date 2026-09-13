@@ -264,7 +264,7 @@ Retain the legacy review detail as P21-owned evidence linked through the owner; 
 legacy states to Nine's union or fabricate a missing source intent to satisfy its decoder.
 
 The additive owner behavior is **REQUESTED as CORRECTION-CLASS-REVIEW-LIFECYCLE (Z)** in
-`design-recall-doorway-seam-request-correction-class-review.md`. It must admit a durable
+`design-recall-doorway-seam-request-correction-class-review.md` (granted conditionally as SEAM-LEDGER row 97). It must admit a durable
 review obligation for one recorded correction without waiting for recurrence, reconcile missing
 shells and interrupted result/action linkage with the same work identity and remaining budget,
 and resolve current correction/review correspondence before linked repair-work admission.
@@ -312,8 +312,8 @@ local obligations or approve a standards change. Missing peer retry metadata sta
 
 Run this fixture through unit, public-pipeline integration and actual production initialization,
 with real owner storage/recovery/admission consumers; a helper's return value is insufficient.
-The migration positive is **non-executable until Z is granted and its owner implementation
-lands**, and until the applicable scopes of **`seam-response-recall-doorway-grants.md` land**
+The migration positive is **NON-EXECUTABLE-UNTIL-row-97-correction-class-review-lifecycle** (until its granted owner implementation
+lands), and until the applicable scopes of **`seam-response-recall-doorway-grants.md` land**
 with the complete inherited NF-17/18/21 dependencies in section 14. No repaired review or
 migration execution is claimed by this source audit.
 
