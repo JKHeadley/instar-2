@@ -210,8 +210,12 @@ to agent-self. `:130–166`, `:244–269` bounds concurrent judgments and failed
 Exhaustion retains a dead-lettered review, meaning attempts have stopped, and calls the action
 sink to track a retry. `:116–128` retains aged work and coalesces follow-up. The actual
 `src/server/routes.ts:25306–25323` backfill endpoint invokes recovery and aging, default seven
-days, with active-action exclusions. This proves a callable recovery consumer, not a running
-timer or successful retry in an installation.
+days, with active-action exclusions. The shipped
+`src/scaffold/templates/jobs/instar/correction-class-review-backstop.md:1–23` supplies a
+separate daily backstop, enabled in its template, with Tier 1 supervision and a 100-record
+request to that endpoint. It runs per machine, treats a disabled endpoint as unavailable,
+checks response shape and delegates proposal routing to the server. This is configured
+recovery behavior, not proof that an installed job ran or its response counts were effective.
 
 `CorrectionClassReview.ts:168–235` saves the judgment before proposing a standards initiative
 or process action. Confidence, attributed origin, existing related outcomes and the open-artifact
@@ -274,8 +278,9 @@ No review failure blocks inbound delivery or ordinary conversation. Owner policy
 identity, not a caller's origin label or remembered review, select the admission path.
 
 Change mutable review state into append-only evidence and owner-resolved current obligations.
-Retire the process-local callback as sole admission, incidental endpoint invocation as the only
-recovery trigger, and filled/expired/dead-lettered state as automatic closure. Recovery must
+Preserve the daily bounded backstop and Tier 1 supervision through the scheduled-work owner;
+retire callback-plus-backstop composition after durable owner admission and recovery take over.
+Filled/expired/dead-lettered state must not imply automatic closure. Recovery must
 reconcile whether a downstream artifact already exists before retrying; uncertain effects
 stay with their existing owners. Preserve bounded retry, parked follow-up, active-action aging
 exclusion and operator control without deleting an outstanding obligation. Rollback restores
@@ -294,8 +299,10 @@ with no invented shell or completed review. Neither neighbor suppresses correcti
 Kill after correction capture before shell creation, after shell before judgment, after result
 before action creation, and after action creation before link attachment. Restart/import twice;
 require one recoverable obligation per source identity, retained attempt limits, no duplicate
-action and no closure from an absent link. Exhaustion retains its retry obligation even when
-the action sink fails. Age an unresolved filled review into parked follow-up, with a linked
+action and no closure from an absent link. Exercise the scheduled backstop through its real
+owner consumer, including disabled recovery and malformed-result neighbors. Exhaustion retains
+its retry obligation even when the action sink fails. Age an unresolved filled review into
+parked follow-up, with a linked
 in-progress action as the exclusion neighbor. Pair matching filled correspondence with missing,
 mismatched, pending, dead-lettered and unavailable-review cases, plus dry-run would-refuse evidence.
 Assert current authority still governs any action, and delivery remains reachable in every case.
