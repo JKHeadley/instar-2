@@ -47,7 +47,7 @@ case without counting a second independent failure opportunity.
 | Availability and completion | ACK, first substantive answer, effect disposition and final user completion; silence, abandonment and unresolved cases remain counted |
 | Review benefit/harm | Initially wrong drafts repaired, initially correct drafts harmed, residual errors, introduced/unnecessary holds and hold-resolution time |
 | Accounting fidelity | Actual-input span agreement, false-success receipts, missing lineage and correct diagnosis under injected faults |
-| Latency and resources | Added and total p50/p95/p99/max, censored timeouts, queue time, cancelled residual work, model/embedding/read/build/storage/curation costs |
+| Latency and resources | Added and total duration: p50, p95 and p99 are the durations below which 50%, 95% and 99% of observations fall; max is the longest. Report censored timeouts (attempts still unfinished at the deadline), queue time, cancelled residual work, model/embedding/read/build/storage/curation costs |
 
 **Rule — Part 20 owns measured joins, not a local P21 scoreboard.** Rules 13, 39, 41,
 58, 69 and 75; **checks: P21-NF-15/16/18/20/21**. P21 proposes registered feature
@@ -62,7 +62,7 @@ requires accepted-question and planned-execution populations with visible missin
 cancelled/pending members. The landed A1 code admits category/value tuples, not evidence-bound
 aggregates (`src/measurement/operations.ts:70–90`; `src/measurement/README.md:3–11`).
 Production coherence totals, cost attribution and operator/export views are therefore
-**NON-EXECUTABLE-UNTIL-MEASUREMENT-A2-COHERENCE** and its inherited benchmark/clock/surface
+**NON-EXECUTABLE-UNTIL-measurement-a2-coherence GRANTED** and its inherited benchmark/clock/surface
 dependencies in section 14. An offline experiment logger is permitted as a labeled research
 artifact, not a substitute production owner or proof of paid-service readiness.
 

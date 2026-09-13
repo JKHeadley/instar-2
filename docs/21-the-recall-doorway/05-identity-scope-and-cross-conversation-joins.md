@@ -9,7 +9,7 @@ display name, text similarity, email spelling, a model's person guess or a retri
 
 The landed intake interfaces at `src/intake/contracts.ts:8–23` distinguish authenticated route
 and sender evidence. They are not a general cross-channel person resolver. The required public
-join/scope service is **NON-EXECUTABLE-UNTIL-INTAKE-CONVERSATION-RECALL-SCOPE** (section 14).
+join/scope service is **NON-EXECUTABLE-UNTIL-intake-conversation-recall-scope GRANTED** (section 14).
 Fixtures may supply owner state to test a future consumer; production activation may not.
 
 | Situation | Permitted interpretation | Prohibited shortcut |
@@ -23,7 +23,7 @@ Fixtures may supply owner state to test a future consumer; production activation
 
 **Rule — filter before content crosses any boundary.** Rules 28, 29, 57, 86, 89 and 95;
 **checks: P21-NF-06/07/12/18/19**. The source owner checks permissions before candidates
-or content reach an adapter that is not permitted to see them, before each graph hop/hydration,
+or content reach an adapter that is not permitted to see them, before each graph hop and original-text load,
 before summary construction, before embedding/reranking or model context, on cache reuse, and
 again at final recipient binding. A recipient-only output filter is too late. Unauthorized
 source existence, hit counts, names and graph topology are themselves protected metadata.
@@ -32,7 +32,7 @@ The P21 coordinator receives only authorized candidate handles and policy-limite
 Separate restricted audit records may distinguish `scope-filtered` from `unavailable`; the
 recipient-visible status uses a policy-approved abstraction that does not expose forbidden
 existence. A malformed or permissive adapter result is revalidated against the source owner
-before hydration. An adapter's claim that it already filtered is not sufficient.
+before loading original text. An adapter's claim that it already filtered is not sufficient.
 
 Internal use without onward disclosure is a distinct mode, not the default implication of
 memory ownership. The owner must explicitly authorize the principal/provider to receive that

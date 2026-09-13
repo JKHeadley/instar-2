@@ -39,12 +39,20 @@ uses the normal principal judgment path. This keeps the minimal responder finite
 | degraded | Some eligible source, selection, rendering or diagnostic work failed or exhausted its budget | Ordinary conversation uses available permitted evidence and qualifies material uncertainty; never claim unavailable history was empty |
 | prerequisite-unresolved | A particular consequential prerequisite lacks sufficient evidence under an approved owner rule | Effect owner retains that exact effect pending; status to the initiator remains reachable |
 
-**Rule — retrieval is compulsory to consider, proportionate to perform.** Rules 13, 40,
-57, 77 and 95; **checks: P21-NF-03/05/08/10**. The default policy inspects the current task,
+**Rule — general memory recall searches by meaning.** Rules 11, 13, 40,
+57, 77 and 95; **checks: P21-NF-03/05/08/09/10**. A conforming general recall installation
+must retrieve relevant evidence when the later request paraphrases the earlier exchange without
+sharing its search terms. Exact lookup and lexical search remain components and experiment
+controls; they cannot alone satisfy this contract. No particular vector engine is required,
+and meaning-sensitive retrieval need not add a model call on every turn.
+
+The default policy inspects the current task,
 exact references, relevant current constraints and source coverage. It starts with exact/raw
-and lexical sources, then admits additional adapters under the selected policy and remaining
-budget. A greeting, literal acknowledgment, or fixed infrastructure status with no historical
-claim can take `no-additional-context`. A substantive answer cannot claim this shortcut merely
+and lexical sources where useful and includes a meaning-sensitive route for general recall
+under the selected policy and remaining budget. If that route is unavailable or cannot finish,
+exact/lexical fallback is `degraded`, not a conforming complete recall mode. A keyword miss
+never proves the memory is absent. A greeting, literal acknowledgment, or fixed infrastructure
+status with no historical claim can take `no-additional-context`. A substantive answer cannot claim this shortcut merely
 because its last input is short. Its reason is auditable and its misses are sampled in section 9.
 
 A principal may request deeper search through the same root while drafting. This consumes the

@@ -3,27 +3,40 @@
 **Rule — one attempt spends one finite envelope.** Rules 13, 39, 40, 43, 57, 75, 95 and
 114; **checks: P21-NF-04/08/10/14/18/23**. The resource owner reserves capacity before
 work starts. The P21 coordinator admits each source call and child against the same root account.
-Parallel adapters, retries, cache hydration, review and draft repair do not create new allowances.
+Parallel adapters, retries, loading cached originals, review and draft repair do not create
+new allowances.
 Zero remains zero. A caller cannot bypass a cap by renaming a query or opening another child.
 
 The following are **proposed pilot ceilings, not approved expenditure, measurements, provider
 prices or service-level promises**. They adopt [R5 §§3–6](research/05-proposals-and-evaluation.md)
-and add explicit backend/queue bounds for review. All are operator decision OD-03 in section 15.
+and add explicit backend/queue bounds for review. They implement the proposed experience in
+operator decision OD-03 in section 15.
+Here, p95 is the duration below which 95% of observations fall. KiB and MiB mean
+1,024 and 1,048,576 bytes respectively; token counts use the selected model's tokenizer.
 
 | Resource per root | Ordinary conversation | Qualifying consequential effect |
 |---|---|---|
-| Combined added work | 2 s wall time including accounting and final recall validation | 15 s total; recall, review and repair each at most 5 s, including overhead within the total |
+| Combined added work | 2 s wall time including accounting and final recall validation | 15 s total. Recall, review and repair each take at most 5 s. Overhead fits within that total. |
 | Inserted recall context | 4,000 tokenizer-measured tokens | 6,000 tokenizer-measured tokens |
 | Logical evidence reads | 6 total | 10 total, including at most 2 used by reviewer |
 | Backend fan-out | At most 2 backend operations per logical read; at most 2 concurrent operations per root | Same, maximum 20 backend operations per root |
-| Hydrated candidate text | 256 KiB and 64 candidates total | 512 KiB and 96 candidates total |
+| Loaded candidate text | 256 KiB total. At most 64 candidates. | 512 KiB total. At most 96 candidates. |
 | Backend scan | Declared indexed-query resource bound; raw fallback at most 1 MiB per root | Same; opaque/unmeterable backends declare unsupported hard scan guarantees |
 | Helper model calls | 0; no ordinary live semantic-review arm | At most 3 total: recall helper, review, one repair; a retry consumes a slot |
-| Helper tokens | 0 | Recall 4,000 input/500 output; review 8,000/800; repair 8,000/1,200; each is a ceiling |
+| Helper tokens | 0 | Recall: 4,000 input/500 output tokens. Review: 8,000/800. Repair: 8,000/1,200. Each pair is a ceiling. |
 | Recursion | No model-planned search; bounded deterministic source composition | Search depth at most 2, still within total reads/calls |
-| Accounting | 0 model calls, at most 64 KiB new metadata; larger required lineage in charged referenced artifacts | Same |
+| Accounting | 0 model calls. At most 64 KiB new metadata. Larger required lineage uses charged referenced artifacts. | Same |
 | Accounting target | Added local p95 at most 25 ms, tested including slow storage | Same; not an extra deadline outside 15 s |
 | Queue and retries | Queue time included in the 2 s; at most 1 retry per failed read, still within all root caps | Queue time included in the 15 s; same read retry rule; no try-until-agreement review |
+
+The proposed paid pilot has a US$25 total ceiling only after a separate explicit run approval.
+Currently authorized spend is US$0. Freeze the provider, model, embedding and price snapshot,
+then admit the complete affordable plan before evaluation. If it does not fit, resize the plan
+and record the statistical limit before running it. No provider price or per-root dollar estimate
+is asserted here. Permit two concurrent backend reads per root and one background worker per
+declared pool. Set the pool-wide active-root cap from measured capacity before activation;
+a missing cap inhibits admission. These settings are versioned engineering proposals serving
+OD-03, subject to the operator's approved time and spending limits.
 
 The added-work duration is the sum of non-overlapping recall/accounting/review/repair/final-check
 stage intervals, including their queue time; parallel reads within a stage count wall time once.
@@ -81,9 +94,12 @@ An unrelated missing memory never automatically blocks an effect. A genuine auth
 retains its owner's refusal regardless of reviewer availability. Bounded pending recovery ends
 as resolved, explicitly still-unresolved/expired, cancelled or superseded under the effect owner;
 expiry does not authorize execution or erase the original directive. Proposed recovery is at
-most two rechecks within five minutes, one deduplicated status/result to the initiator plus a
-pull-visible record. This is **NON-EXECUTABLE-UNTIL-EFFECT-RECALL-PENDING** and the selected
-operator policy; section 15 leaves the owner assignment and exact operating point open.
+most two rechecks within five minutes, one logical notice updated with the result plus a
+pull-visible record. This is **NON-EXECUTABLE-UNTIL-effect-recall-pending GRANTED** and the selected
+operator policy. The effect owner retains the pending attempt; transport/scheduling owns
+bounded rechecks; the run graph retains outstanding work; operator surfaces own status and
+expiry actions. OD-06 selects the waiting experience, not those engineering boundaries.
+The request and its transitive dependencies are specified in section 14.
 
 **Rule — multi-machine history is partial until proved otherwise.** Rules 32, 33, 45 and
 113; **checks: P21-NF-07/10/11/18**. Originals and durable recall records follow the fact
@@ -93,4 +109,5 @@ authorized audit. Partition does not mean “no history.” A successor placemen
 incarnation-bound receipts, re-resolves current permissions and retains the original budget and
 pending effect identity through the owners. The narrow landed grounding refusal for multiple
 lineages (`src/rungraph/graph.ts:108`) is not broadened by this proposal. Production multi-lineage
-start/resume remains a named run-graph dependency.
+start/resume is non-executable until `seam-response-rungraph-followup.md`'s history-coverage
+addendum (SEAM-LEDGER row 52) lands, with the transitive dependencies in section 14.

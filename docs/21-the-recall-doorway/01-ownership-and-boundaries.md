@@ -57,8 +57,8 @@ its design is `docs/11-the-judgment-doorway.md`. A numeric coincidence never sel
 
 **Rule — build claims bind inspected bytes.** Rules 13, 49, 69, 90 and 111;
 **checks: P21-NF-01/02/20/21**. The verified main snapshot is
-`dd38f07ae4e12e04373ffde7fdf006b08381cf15`, freshly fetched and merged into this branch
-on 2026-09-12. The following are the bounded landed-code claims used by this design.
+`dd38f07ae4e12e04373ffde7fdf006b08381cf15`. The following are the bounded landed-code
+claims used by this design.
 They agree with [R4 §7](research/04-compare-and-contrast.md#7-implementation-seams-checked-against-current-main).
 
 | Verified path at that snapshot | What exists | What it does not establish |

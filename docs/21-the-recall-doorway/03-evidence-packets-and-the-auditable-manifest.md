@@ -9,8 +9,10 @@ P21 supplies references and digests to those existing owners, not an alternative
 `src/judgment/contracts.ts:12–21` exposes separate question/context/submitted captures.
 `src/assembly/contracts.ts:33–49` exposes class/reference/digest carrier rows and consumption
 observations. These landed shapes do not provide every join below. Production binding is
-**NON-EXECUTABLE-UNTIL-JUDGMENT-RECALL-CONSUMER** and
-**NON-EXECUTABLE-UNTIL-ASSEMBLY-CURRENT-CONTEXT**; operator inspection additionally awaits
+**NON-EXECUTABLE-UNTIL-judgment-recall-consumer GRANTED** and
+**non-executable until `seam-response-assembly-followup.md` and
+`seam-response-rungraph-followup.md` row-45 addenda land** (ASSEMBLY-CURRENT-CONTEXT);
+operator inspection additionally awaits
 **OPERATOR-CONTEXT-CONSUMERS**, all defined in section 14.
 
 The proposed manifest requires these fields or exact recoverable references to equivalent

@@ -74,7 +74,7 @@ The scheduling owner holds their queue, deadlines, retries, cancellation and rec
 memory sentinel submits findings or repair proposals; it cannot silently rewrite originals,
 install a lesson as authority, or send a notice. A proposed pilot worker permits one background
 job at a time per declared resource pool, yields to control/user work, and caps each batch at
-200 source messages and 1 MiB of hydrated text. These are unmeasured defaults subject to section 15.
+200 source messages and 1 MiB of loaded original text. These are unmeasured defaults subject to section 15.
 
 Critical background formation, repair and migration procedures declare at least Tier 1 LLM
 supervision through the judgment owner: the supervisor validates each programmatic step's

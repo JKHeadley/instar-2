@@ -39,6 +39,13 @@ does qualify. Unknown class or missing policy means semantic review is not enabl
 effect authority and integrity checks still apply. Policy absence cannot be exploited to
 activate a mode that declares this review a required prerequisite.
 
+Each selected class must also have an exact owner-decoded operation subject and a real
+confined adapter. The landed ordinary-reply union does not establish email/payment payloads.
+Those missing subjects are **NON-EXECUTABLE-UNTIL-effect-recall-operation-payloads GRANTED**,
+then until the approved implementation lands; the request file and existing narrower typed
+payload grants are named in section 14. An interest in extra review never authorizes the
+underlying action or a new operation definition.
+
 **Rule — findings bind exact evidence, bytes and audience.** Rules 41, 42, 57, 89 and 108;
 **checks: P21-NF-05/07/13/14/15**. The review request includes the exact prepared operation,
 recipient/target, current authority references, recall packet/submission receipt, source and

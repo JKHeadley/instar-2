@@ -9,7 +9,8 @@ an immutable run manifest with approved resources and frozen source/model/price/
 No paid run, real email, public post, deployment or transaction is authorized by this draft.
 
 The run manifest must identify corpus and expanded-history digests, seed split, all arms and
-ablations, reader/provider/model/settings, index/extractor/embedding/reranker versions, prompt
+comparisons with one component removed, reader/provider/model/settings,
+index/extractor/embedding/reranker versions, prompt
 and renderer digests, permissions, context/resource caps, fixed repeat seeds, grader contract,
 sampling/uncertainty method, stopping rule, price snapshot and total spend admission. A change
 after looking at reserved outcomes requires a separately labeled exploratory run and new
@@ -47,7 +48,7 @@ arm, including the baseline without product accounting.
 
 Conditions are healthy, retained-but-index-lagged, source-unavailable, injected selection/rendering
 omission, and correct evidence actually submitted alongside stale/conflicting material. Additional
-ablations compare summary-only with original-plus-summary, enriched keys with replaced values,
+controlled comparisons examine summary-only with original-plus-summary, enriched keys with replaced values,
 warm/cold and deliberately stale caches, corrupted derived beliefs, hostile retrieved instructions,
 and remembered approval with current revocation. Preserve owner authority in every arm.
 
@@ -68,13 +69,15 @@ Graders receive permitted originals, time/audience and the frozen rubric, but no
 Expected evidence is any valid support path, not one obligatory substring. Calibrate model
 graders against independent human adjudication on a proposed 20% stratified sample plus every
 audience/authority failure and disputed case. Preserve disagreements. The tested reviewer
-cannot grade its own success. Bootstrap paired differences over independent seed histories,
-not correlated cue variants or repeats; report the method and interval assumptions.
+cannot grade its own success. Estimate uncertainty by repeatedly resampling independent seed
+histories and recomputing the paired difference between methods. Keep each history's cue
+variants and repeats together.
+Report the resampling method and the assumptions behind its uncertainty interval.
 
 | Candidate promotion gate, subject to OD-03/04 | Result that would reject or limit the proposal |
 |---|---|
 | A: zero false-success receipts in deterministic substitutions; actual-input fidelity; p95 accounting overhead at most 25 ms | Intended-only logs, erased overflow or false consumption reject A implementation even if answers look good |
-| B: target at least 5 percentage points lower missed recall versus tuned discretionary/simple controls, with interval and per-setting effects | Simple method matches the portfolio at lower cost; ordinary turns slow without benefit; interval is inconclusive; select the simpler method or collect more evidence |
+| B: target at least 5 percentage points lower missed recall versus tuned discretionary/simple controls, with interval and per-setting effects | Simple method matches the portfolio at lower cost; ordinary turns slow without benefit; interval is inconclusive; select the simpler rule-11-conforming method or collect more evidence |
 | C: positive net reduction of consequential historical errors after introduced errors; unnecessary holds below proposed 1%; within time/cost caps | Review merely repeats B, shifts errors into silence, harms correct drafts, or cannot demonstrate a benefit; retain deterministic plus retrospective policy |
 | Boundaries: all negative scope/authority/dispatch fixtures pass | Any unauthorized exposure or unsanctioned effect prevents promotion regardless of average accuracy |
 

@@ -1,167 +1,154 @@
 ## 15. Operator decisions and honest limits
 
-**Value — decisions arrive with proposed defaults, not invented answers.** These are the four
-questions for Justin recorded in [R5 §12](research/05-proposals-and-evaluation.md#12-incident-replay-handoff-and-recommendation),
-followed by the explicit live-review and pending-owner choices requested by Echo. All six are
-**OPEN OPERATOR DECISIONS**. Echo accepted the research direction and requested this design;
-that is not acceptance of these defaults, approval of a rule exception, or authorization to
-spend money. A later decision must name its scope and replace this open posture through the
-governing owner process. Silence is never consent.
+**Value — proposed defaults need an answer.** All six decisions are open. The recommendations
+are proposals, not recorded operator answers. Accepting the research does not approve these
+choices, authorize spending, or permit an additional blocking check. Silence is not consent.
 
-The defaults below make the accepted research direction concrete for Echo to carry to Justin.
-Numeric details not supplied by the operator, including the pilot's proposed dollar ceiling,
-study horizon and recovery cadence, are this draft's proposals for review.
+**Value — decision 1: where to measure better remembering first.**
 
-**Value — OD-01: what should the agent have remembered in the four incidents?**
+Question: Which everyday situations should get the most attention in the first trial?
 
-Question: which earlier exchange should have changed which later reply or action, and what
-would satisfactory behavior have done without asking you to repeat it?
+Choices: Balanced coverage; long conversations first; connections across conversations first.
 
-Choices: assess only explicit history questions; assess ordinary unprompted use too; or narrow
-the target to selected settings. The difference is whether an agent can pass by answering memory
-quizzes while still missing the old constraint during everyday work.
+What it changes:
 
-Echo's proposed default: require ordinary useful recall as well as explicit recall across the
-same long topic, another topic, email, and information from another user/agent. Use this agent's
-retained, permitted exchanges and correctly attributed reports as the default knowledge boundary.
-Obtain one authorized failure, comparable success and missing-source/legitimate-hold control
-per setting through `P21-INCIDENT-REPLAY-v1`. Until supplied, the four causes and outcomes remain
-UNKNOWN; the invented corpus can exercise mechanisms but cannot close the incidents.
+- Balanced coverage gives equal attention to long chats, other chats, email, and information
+  from other people or agents, but learns less about each from a small trial.
+- Long conversations first gives a clearer early answer about forgetting within one chat,
+  while evidence about the other situations takes longer to collect.
+- Connections across conversations first emphasizes whether earlier email and other exchanges
+  help later work, while same-chat improvements receive less early study.
 
-Recorded consequence: sections 9–10 separate spontaneous and explicit outcomes, preserve missing
-custody, and keep episode, hypothesized failure and repair lesson distinct. No user is required
-to pre-tag, pin or repeat every important fact for the memory contract to apply.
+Recommendation: Use balanced coverage because the goal is reliable everyday help across all
+four situations, including when you do not explicitly ask the agent to remember.
 
-**Value — OD-02: when may another person's information help, and when may it be revealed?**
+**Value — decision 2: using information learned from someone else.**
 
-Question: when may information from another person or agent be used privately, and when may it
-be disclosed? Include a case where remembering should change behavior without revealing the source.
+Question: How should information learned from one person help in conversations with someone else?
 
-Choices: same-audience use only; explicit grants for private internal use and separate sharing;
-or a broader organization-governed sharing policy. Broader use can improve connections, but
-requires clearer source, model-provider and final-audience boundaries.
+Background: Permission to use something privately and permission to tell another person are
+separate; remembering a private detail does not make it shareable.
 
-Echo's proposed default: explicit owner-resolved identity and separate internal-use/provider/
-disclosure grants; no name-based person merge, cross-person permission by familiarity, or
-automatic access to another agent's unshared exchanges. Same-conversation membership alone is
-not permission to disclose everything in that history. A separately authorized public/shared
-support path may answer even when a private path is excluded. Internal-only influence is enabled
-only where the composed owner policy can enforce it; until then that material stays out of the
-principal's context. Approved general lessons keep restricted provenance where lawfully retained.
+Choices: Shared information only; separately permitted private use; an agreed shared group.
 
-Recorded consequence: section 5 applies owner filters before search exposure, graph expansion,
-embedding, summaries, cache reuse, context and output. The proposed scope/join service remains
-NON-EXECUTABLE-UNTIL-INTAKE-CONVERSATION-RECALL-SCOPE; D1 does not invent a sharing grant.
+What it changes:
 
-**Value — OD-03: what delay, cost, qualification and false holds are acceptable?**
+- Shared information only means cross-person help uses information explicitly cleared for that
+  audience, so useful private connections may be missed.
+- Separately permitted private use lets private information improve help only with permission
+  for that use, while revealing it still needs separate permission.
+- An agreed shared group lets members benefit from information explicitly shared within that
+  group, while anything outside the agreement stays restricted.
 
-Question: which tradeoffs are acceptable for ordinary conversation versus email, public posting,
-deployment, money or other irreversible effects?
+Recommendation: Choose separately permitted private use because it can preserve useful
+connections while keeping permission to reveal the information separate.
 
-Choices: shortest response time with simple recall; bounded richer recall; or longer investigation
-for hard consequential prerequisites. More time/calls may improve evidence but can also add
-irrelevant context and unnecessary holds. Prices and latency bands require measurement.
+**Value — decision 3: how long better remembering may take.**
 
-Echo's proposed default: section 7's 2 s/4,000-token/six-read ordinary envelope with zero helper
-model calls; 15 s/6,000-token/ten-read consequential envelope with at most one recall helper,
-one review and one repair. Zero additional model calls for accounting; 64 KiB receipt metadata
-and 25 ms local p95 target, with complete overflow references. Background work gets one worker,
-200-message/1 MiB batches and measured lag targets. Degraded ordinary replies qualify material
-uncertainty; unresolved required consequential evidence stays pending with reachable status.
+Question: How much extra waiting would you accept for the agent to check relevant history?
 
-Proposed paid-pilot ceiling: **US$25 total only after a separate explicit run approval**, a
-frozen provider/model/embedding/price snapshot, and owner admission of a complete affordable
-plan. If that plan does not fit, resize it and record the statistical limit before evaluation.
-The **currently authorized spend is US$0**. No provider prices or per-root dollar estimates
-are asserted here. Proposed live concurrency is two backend reads per root and one background
-worker per declared pool; the actual pool-wide active-root cap must be set from measured
-capacity before activation. No unspecified cap means unlimited. Prices, resource caps and
-latency targets must remain versioned operator choices, not hard-coded product truths.
+Choices: Keep it brief; allow a short check; investigate further when I ask.
 
-Recorded consequence: the pilot freezes choices before outcomes; cost includes indexing,
-curation, failed/cancelled calls, storage and residual work. Timeouts stay in the latency and
-completion populations. The proposed C false-hold target is below 1% of legitimate effects,
-but the small pilot cannot certify that tail. No experiment is run as part of D1.
+What it changes:
 
-**Value — OD-04: what would make beyond-human coherence a meaningful claim?**
+- Keep it brief prioritizes a prompt reply with an explanation when evidence is missing, so
+  some hard connections may remain unresolved.
+- Allow a short check aims to add at most two seconds to ordinary conversation and fifteen
+  seconds before a major action, with potentially more running cost for the harder checks.
+- Investigate further when I ask keeps the ordinary limit short but permits a separately
+  agreed time and spending limit for a difficult case.
 
-Question: what comparison population, permitted tools and repeated-interaction horizon would
-make that claim meaningful from your perspective?
+Recommendation: Allow a short check because it gives relevant history a chance to help without
+turning routine conversation into a long investigation.
 
-Choices: human unaided recall; human with searchable records; or separately report both.
-These answer different questions. A searchable machine archive beating an unaided person on
-exact wording does not establish better judgment, relationship understanding or task completion.
+**Value — decision 4: what better than human remembering should mean.**
 
-Echo's proposed default: report both under `P21-HUMAN-01`, with four weeks of repeated
-interactions, equal permitted exposure within each comparison, objective episode/constraint
-outcomes and blinded user judgments. Score exact episodes, current preferences, commitments,
-associative usefulness, attribution and audience restraint separately. Freeze participant
-population, tool/time allowances, sample/precision plan and per-dimension bars before collection.
-Use the synthetic pilot to design the study, not as a human comparator. Any later claim states
-the tested population, horizon, tools, dimensions and uncertainty; no aggregate slogan replaces it.
+Question: Should the agent be compared with people remembering unaided, people searching their
+records, or both?
 
-Recorded consequence: beyond-human remains an unmeasured operator goal until the distinct
-consented comparison exists. Strong benchmark QA or a good tone cannot close this decision.
+Choices: Unaided memory; searchable records; report both separately.
 
-**Value — OD-05: which consequential effects qualify for live semantic review?**
+What it changes:
 
-Question: should an approved owner policy add selective historical review beyond the rulebook's
-few nearly deterministic live exceptions, and for which exact operation classes/prerequisites?
+- Unaided memory shows how the agent compares with what people remember without looking
+  things up, but gives the agent an advantage from its archive.
+- Searchable records tests whether the agent helps more than a person who can look up the
+  same exchanges, but takes more participant time.
+- Report both separately shows each comparison clearly, but requires a larger study.
 
-Choices: existing deterministic checks plus retrospective review only; bounded semantic review
-for a narrow allowlist with consequential historical dependencies; or an explicitly different
-policy requiring a separate rule review. Universal chat blocking is not this design's default.
+Recommendation: Report both separately over four weeks of repeated interactions because the
+result should explain where the agent helps, without hiding the advantage of searchable records.
 
-Echo's proposed default: the narrow allowlist in section 8—email dispatch, public posts/comments,
-deployments, money and other specifically registered irreversible effects—only when a named
-historical prerequisite or concrete source conflict warrants it. Deterministic owner checks
-run first. A semantic hold requires an approved full-context owner policy, the measured C bar,
-and the pending/reachability owner path. No reviewer on ordinary chat; retrospective review
-is the default for everything else. Until explicit reconciliation, C remains offline/shadow.
+**Value — decision 5: which major actions deserve an extra history check.**
 
-Recorded consequence: **NON-EXECUTABLE-UNTIL-LIVE-REVIEW-OWNER-POLICY**. The rulebook's
-near-deterministic exceptions are acknowledged explicitly; deterministic selection does not
-make semantic review deterministic. Acceptance must record the exact exception/fail directions
-and owner consumers before activation, with no claim this draft amended the constitution.
+Question: For which actions would an extra check against earlier conversations be worth a possible delay?
 
-**Value — OD-06: who owns an effect that is waiting for memory evidence?**
+Background: This proposed check looks for an earlier promise, restriction, or conflicting statement
+that matters to the action; it would need separate approval before it could delay anything.
 
-Question: which owner holds the pending draft, rechecks its prerequisites, expires the attempt
-and keeps you informed without either sending too early or going silent?
+Choices: No extra check before acting; email and public posts; all listed major actions.
 
-Choices: the effect owner with existing scheduling and operator surfaces; a new dedicated owner
-requiring a broader governance change; or no blocking semantic mode. A private reviewer queue
-would duplicate authority and recovery and is not a proposed default.
+What it changes:
 
-Echo's proposed default: Part 12's effect owner retains the exact effect/draft/cause; the
-transport/scheduling owner performs at most two bounded rechecks within five minutes; the run
-owner retains the outstanding work; operator surfaces show current status and an actionable
-expiry result. One deduplicated response to the initiator and pull-visible detail preserve
-reachability. Expiry never means approval, non-occurrence, deleted work or an expired directive.
-User stop and current revocation retain precedence. Late reviewer results cannot release it.
+- No extra check before acting keeps existing safeguards and reviews mistakes afterward, so
+  it avoids added delay but misses a chance to catch a historical mistake before it happens.
+- Email and public posts adds that chance when earlier exchanges matter to those messages,
+  with possible delay or an unnecessary wait.
+- All listed major actions also covers publishing software updates, payments, and other specifically agreed
+  actions that cannot be undone when earlier exchanges matter, increasing coverage and possible delay.
 
-Recorded consequence: **NON-EXECUTABLE-UNTIL-EFFECT-RECALL-PENDING**, plus the scope,
-resource, operator and assembly dependencies in section 14. This is a requested owner contract
-with a proposed assignment; no pending-recovery/expiry implementation is assumed from a
-generic hold elsewhere.
+Recommendation: Propose all listed major actions because a forgotten commitment can matter
+beyond messages, but activate this extra check only after it proves useful and receives approval.
 
-**Rule — decisions stay within explicit ownership and approval.** Rules 7, 13, 28, 42,
-57, 66, 77, 82, 86, 90, 94, 95, 98, 103, 108 and 111;
-**checks: P21-NF-02/06–08/13–16/18/20–24**. Unlanded seams are the named dependencies
-in section 14; executable versus inhibited checks are in section 12. Proposed spend, policy
-exceptions and operating thresholds require recorded owner/operator disposition. They are not
-silently enabled by accepting the research or merging a documentation branch.
+**Value — decision 6: what happens when an action needs missing evidence.**
 
-The owner integration decisions for Echo have the following fixed evidence basis. They are
-not choices to assume missing code into existence; their implementation assignments must retain
-the named inhibited consumers until owner evidence arrives.
+Question: When an otherwise permitted action needs evidence the agent cannot yet find, how should it wait?
 
-| Seam decision | Verified disposition and required dependency |
-|---|---|
-| Full-history startup versus compaction continuity | SessionGrounding is landed within its limits (`src/rungraph/types.ts:70`, `src/rungraph/graph.ts:98–110`). Complete compaction accounting remains NON-EXECUTABLE-UNTIL-RUNGRAPH-CONTINUITY; multiple-lineage startup remains NON-EXECUTABLE-UNTIL-RUNGRAPH-MULTILINEAGE-GROUNDING. Closure's explicit continuity rejection is at `src/rungraph/closure-records.ts:405–419`. |
-| Context assembly versus carrier and operator consumption | Carrier landed (`src/assembly/contracts.ts:33–49`); P21 principal submission binding remains NON-EXECUTABLE-UNTIL-JUDGMENT-RECALL-CONSUMER and ASSEMBLY-CURRENT-CONTEXT. Operator inspection/recovery remains NON-EXECUTABLE-UNTIL-OPERATOR-CONTEXT-CONSUMERS. |
-| Coherence measurements and comparisons | A1 admission landed, A2 pending (`src/measurement/README.md:3–11`). Production totals remain NON-EXECUTABLE-UNTIL-MEASUREMENT-A2-COHERENCE; comparisons additionally await MEASUREMENT-BENCHMARK-COMPATIBILITY. |
-| New recall-specific joins and lifecycle | The remaining scope, custody, resource, scheduled-work, outgoing and production-composition contracts in section 14 are requested owner duties, not existing grants. Each affected positive remains inhibited until all its named owners integrate. |
+Choices: Tell me immediately; try for one minute; try for five minutes.
+
+What it changes:
+
+- Tell me immediately makes no automatic recheck and leaves the action unresolved for your
+  next instruction, with one notice explaining the missing evidence.
+- Try for one minute makes bounded rechecks, shows one waiting notice and updates it with
+  the result; if time runs out, the action stays unsent and awaits your instruction.
+- Try for five minutes gives a temporary outage longer to recover, with the same single
+  updated notice; if time runs out, the action stays unsent and awaits your instruction.
+
+Recommendation: Try for five minutes because missing information may become available without your
+help, while the time limit and updated notice keep the wait visible and finite.
+
+**Rule — decisions stay within explicit ownership and approval.** Rules 7, 11, 13, 28, 42,
+57, 66, 77, 82, 86, 90, 93, 94, 95, 98, 103, 108 and 111;
+**checks: P21-NF-02/06–09/13–16/18/20–24**. Decision numbers map to stable ids OD-01
+through OD-06 in order. OD-01 changes evaluation emphasis, not the all-setting recall contract
+in sections 2/5. Incident evidence collection is separate: section 10 requires an authorized
+failure, comparable success and missing-source/legitimate-hold control per setting through
+`P21-INCIDENT-REPLAY-v1`; the four reported causes remain UNKNOWN until supplied.
+OD-02 consumes section 5's current scope policy; its private-use option remains inactive until
+that policy is enforceable. OD-03 selects an experience; section 7 holds the engineering caps,
+pricing snapshot and proposed US$25 pilot ceiling. Current authorized spend is US$0; a paid run
+requires separate explicit approval. Section 10 freezes statistical and false-hold thresholds
+before any evaluation, including the proposed C unnecessary-hold target below 1%, which the
+small pilot cannot certify.
+
+OD-04 maps to `P21-HUMAN-01` in section 10, with independently graded dimensions and a frozen
+population, tools, time allowances and precision plan. OD-05 is an interest/policy choice,
+not a waiver: section 8's rulebook reconciliation, measured evidence and exact exception
+approval remain mandatory. Ordinary chat cannot acquire a semantic blocking reviewer.
+OD-06 chooses only waiting duration and notifications. The effect owner retains the exact
+attempt, the scheduling owner performs at most two bounded rechecks within the selected window,
+the run graph retains outstanding work, and operator surfaces own status and follow-up actions.
+There is one logical notice updated with the result and a pull-visible record. Expiry never
+means approval, proved non-occurrence, deletion, or expiry of the underlying directive.
+Stop and current revocation take precedence; a late reviewer result cannot release an expired
+attempt. Sections 7/14 specify the engineering assignment and the requested pending seam.
+
+Every ungranted earlier-owner dependency is REQUESTED in section 14 and remains
+non-executable until its named request is GRANTED and implemented. Granted dependencies remain
+non-executable until the cited grant lands with current owner evidence. Section 14 is the sole
+per-check dependency authority; section 12 derives its execution posture from that map.
+No recommendation here changes that posture.
 
 **Value — honest limits.** The design has source-grounded mechanisms, three measured installed
 method failures, a prepared synthetic corpus and explicit experiments. It has no production
