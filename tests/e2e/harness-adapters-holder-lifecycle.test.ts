@@ -22,6 +22,18 @@ function run(mode: 'seed' | 'recover', cut: string, path: string): Promise<Worke
   });
 }
 
+function runOwnerJournalCut(mode: 'seed' | 'recover', directory: string): Promise<WorkerResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(join(process.cwd(), 'node_modules/.bin/vite-node'),
+      ['tests/harness-adapters/a2-owner-journal-cut-worker.ts', mode, directory], { cwd: process.cwd() });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', bytes => { stdout += String(bytes); });
+    child.stderr.on('data', bytes => { stderr += String(bytes); });
+    child.on('error', reject);
+    child.on('exit', (code, signal) => resolve({ code, signal, stdout, stderr }));
+  });
+}
+
 function race(directory: string, who: string): Promise<{ status: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(join(process.cwd(), 'node_modules/.bin/vite-node'),
@@ -86,4 +98,18 @@ it('A2-E2E P13-NF-24 P13-NF-39 concurrent filesystem writers cannot acknowledge 
   expect(results.filter(result => result.status === 'saved')).toHaveLength(1);
   expect(results.filter(result => result.status === 'refused')).toHaveLength(1);
   expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ revision: 1 });
+}, 20_000);
+
+it('A2-E2E R3-F05 P13-NF-24 P13-NF-32 P13-NF-38 owner history prevents completion after the pending-event journal lock cut', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'p13-a2-owner-journal-cut-'));
+  const killed = await runOwnerJournalCut('seed', directory);
+  expect(killed.signal).toBe('SIGKILL');
+  const recovered = await runOwnerJournalCut('recover', directory);
+  expect(recovered, recovered.stderr).toMatchObject({ code: 0, signal: null });
+  const result = JSON.parse(recovered.stdout) as {
+    owner: { kind: string }; completion: { state: string; event: string }; events: string[];
+  };
+  expect(result.owner.kind).toBe('Success');
+  expect(result.events).toEqual(['closure:ten']);
+  expect(result.completion).toMatchObject({ state: 'pending', event: 'observation:input-accepted' });
 }, 20_000);

@@ -129,7 +129,7 @@ const a2Held = new Map([
   [37, 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md'],
   [38, 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md + design-harness-adapters-seam-request-cross-machine-ownership.md'],
   [39, 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md + seam-response-loop-followup.md'],
-  [46, `HELD-REMAINDER-paired legacy rollout selection, enumeration, disabled/unreadable work-gate, cooldown, and dry-run incident fixtures; NON-EXECUTABLE-UNTIL-${PROMPT}`],
+  [46, `NON-EXECUTABLE-UNTIL-${PROMPT}`],
   [47, `NON-EXECUTABLE-UNTIL-${CTX_GROUND} + ${CTX_CURRENT} + ${HISTORY_COVERAGE} + ${ROUTE_CONFORMANCE} + seam-response-judgment.md + seam-response-assembly-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md + seam-response-run-closure.md + seam-response-rungraph-followup.md + seam-response-loop-followup.md + ${PROMPT} + part-eleven-seam-response-assembly.md`],
   [51, `NON-EXECUTABLE-UNTIL-${CTX_GROUND} + ${CTX_CURRENT} + seam-response-loop-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md`],
   [52, 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md + seam-response-effects-followup.md'],
@@ -151,7 +151,7 @@ const a2ProofTitles = new Map([
   [37, 'A2-INTEGRATION R2-F09 P13-NF-35 P13-NF-37 P13-NF-47 landed Six one-episode breaker opens, refuses cooldown, and reaches half-open'],
   [38, 'A2-INTEGRATION P13-NF-28 P13-NF-38 same-machine reconnect consumes real Six fence, exact liveness, and Part Nine resume'],
   [39, 'A2-UNIT P13-NF-28 P13-NF-39 durable holders reread current custody and keep attempts total'],
-  [46, 'R5-F9 P13-NF-24 P13-NF-46 real Part Four custody read EACCES returns a typed refusal and preserves the durable receipt'],
+  [46, 'A2-INTEGRATION R3-F06 P13-NF-46 paired legacy incident fixtures execute against real Four Five Six and Part Thirteen safe boundaries'],
   [47, 'A2-INTEGRATION R2-F09 P13-NF-35 P13-NF-37 P13-NF-47 landed Six one-episode breaker opens, refuses cooldown, and reaches half-open'],
   [51, 'A2-INTEGRATION R2-F02 R2-F10 P13-NF-51 literal diagnostics grant nothing; only exact-purpose current Part Nine posture owns resume'],
   [52, 'A2-UNIT REVIEW-F8 P13-NF-31 P13-NF-34 output stays held on the named Part Two read seam and compaction exposes no action'],
@@ -179,7 +179,17 @@ export function checkP13DependencyCitations(rows = p13A2Dispositions()) {
   const ownership = readFileSync(OWNERSHIP, 'utf8');
   const failures = [];
   const citations = new Set();
+  const exactByRow = new Map();
+  for (const view of [p13Dispositions(), p13A2Dispositions()]) for (const row of view) {
+    const choices = exactByRow.get(row.number) ?? new Set();
+    choices.add(`${row.status}\0${row.heldArms ?? ''}`);
+    exactByRow.set(row.number, choices);
+  }
   for (const row of rows) {
+    const exact = `${row.status}\0${row.heldArms ?? ''}`;
+    if (!exactByRow.get(row.number)?.has(exact)) {
+      failures.push(`${row.id}: status or heldArms is not an exact executable disposition or existing grant/SEAM-LEDGER citation`);
+    }
     const disposition = `${row.status} ${row.heldArms ?? ''}`;
     for (const path of disposition.match(/docs\/[A-Za-z0-9_./-]+\.md/g) ?? []) {
       citations.add(path);

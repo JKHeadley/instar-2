@@ -64,6 +64,36 @@ it('A2-UNIT REVIEW-F1 P13-NF-32 a disputed later pending input cannot restore co
   expect(f.evidence.completion(f.handle, 30)).toMatchObject({ state: 'pending', event: 'input:disputed' });
 });
 
+it('A2-UNIT R3-F01 P13-NF-24 P13-NF-32 P13-NF-34 disputed exact-subject pending fields never restore an older closure', () => {
+  for (const kind of ['input-accepted', 'context-consumed', 'heartbeat', 'diagnostic', 'probe-failed'] as const) {
+    const f = a2Fixture();
+    f.evidence.admit(witnessedEvent(f, 'turn-closed', { id: `r3:closure:${kind}`,
+      sourceClock: 10, observedAt: 10, streamState: 'closed', childrenState: 'closed' }));
+    const pending = witnessedEvent(f, kind, { id: `r3:pending:${kind}`,
+      sourceClock: 20, observedAt: 20, streamState: 'open', childrenState: 'pending',
+      unresolvedOperations: ['operation:still-unsettled'] });
+    expect(f.evidence.admit(pending).disposition).toBe('recorded');
+    f.owner.time(20);
+    expect(f.evidence.completion(f.handle, 20), `${kind}:current`).toMatchObject({ state: 'pending' });
+    const source = value(f.owner.c.history!.lookup(pending.sourceEvidence[0]!))!.record!;
+    if (source.type !== 'HarnessObservation') throw new Error('expected harness observation');
+    value(f.owner.spine.append(value(decodeAssemblyRecord(source.type,
+      { ...source, detail: `${source.detail}:disputed` }, { ...f.owner.c, validateReferences: false }))));
+    expect(f.evidence.completion(f.handle, 20), `${kind}:disputed`).toMatchObject({ state: 'pending' });
+  }
+});
+
+it('A2-UNIT R3-F04 P13-NF-01 P13-NF-15 P13-NF-39 malformed replay clocks refuse before retained attempt time is restored', () => {
+  for (const attemptedAt of [-1, Number.NaN, Number.POSITIVE_INFINITY, 'yesterday', null, undefined]) {
+    const f = a2Fixture();
+    const { state: _state, evidence: _evidence, observedAt: _observedAt, ...attempt } =
+      attemptInput() as import('../../src/harness-adapters/contracts.js').HarnessOperationAttempt;
+    expect(f.handles.beginAttempt(attempt as never)).toMatchObject({ disposition: 'started' });
+    expect(f.handles.beginAttempt({ ...attempt, attemptedAt } as never), String(attemptedAt))
+      .toMatchObject({ disposition: 'refused', attempt: null });
+  }
+});
+
 it('A2-UNIT REVIEW-F3 P13-NF-29 P13-NF-33 newest probe failure is unknown and exit is evidence, never a Run mutation', () => {
   const f = a2Fixture();
   f.evidence.admit(witnessedEvent(f, 'heartbeat', { id: 'heartbeat:old', sourceClock: 20, observedAt: 20 }));
@@ -102,6 +132,21 @@ it('A2-UNIT P13-NF-24 P13-NF-28 journal read errors remain typed unknown and nev
   expect(holder.events(f.handle.launch)).toMatchObject({ state: 'unknown', events: [] });
   f.owner.time(20);
   expect(holder.liveness(f.handle, 20)).toMatchObject({ state: 'unknown' });
+});
+
+it('A2-UNIT R3-F05 P13-NF-24 P13-NF-32 owner evidence refused by local event capacity still defeats an older closure', () => {
+  const f = a2Fixture();
+  const holder = createHarnessEvidenceHolder({ adapter: 'native', artifact: f.handle.artifactDigest,
+    platform: f.handle.platform, machine: f.handle.machine, scope: 'conversation:1', maxEvents: 1,
+    maxCaptureBytes: 1024, context: f.owner.c, state: createMemoryHarnessAdapterStateStore('r3:capacity'),
+    admission: f.port, owners: { handles: f.handles, current: f.owner.host } });
+  expect(holder.admit(witnessedEvent(f, 'turn-closed', { id: 'r3:capacity:closure', sourceClock: 10,
+    observedAt: 10, streamState: 'closed', childrenState: 'closed' }))).toMatchObject({ disposition: 'recorded' });
+  expect(holder.admit(witnessedEvent(f, 'input-accepted', { id: 'r3:capacity:pending', sourceClock: 20,
+    observedAt: 20, childrenState: 'pending', unresolvedOperations: ['operation:pending'] })))
+    .toMatchObject({ disposition: 'refused', reason: expect.stringContaining('capacity') });
+  f.owner.time(20);
+  expect(holder.completion(f.handle, 20)).toMatchObject({ state: 'pending', event: 'observation:input-accepted' });
 });
 
 it('A2-UNIT R2-F01 P13-NF-29 P13-NF-32 unordered and delayed evidence never earns liveness or completion', () => {

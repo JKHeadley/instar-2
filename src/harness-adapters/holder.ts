@@ -110,6 +110,7 @@ export interface HarnessEventRead {
 export interface HarnessEvidenceHolder {
   readonly owner: 'part-thirteen';
   readonly machine: string;
+  readonly scope: string;
   readonly maxEvents: number;
   readonly maxCaptureBytes: number;
   admit(event: HarnessRuntimeEvent): HarnessEvidenceAdmission;
@@ -294,6 +295,16 @@ export function createRuntimeHandleHolder(input: Readonly<{
     beginAttempt(attempt) {
       try {
         const current = state.read();
+        // Validate the submitted recovery input before restoring the immutable
+        // first-attempt clock. Otherwise a malformed clock can disappear behind
+        // retained custody and be reported as an exact existing attempt.
+        const submitted = input.admission.beginAttempt({
+          ...attempt,
+          state: 'pending' as const,
+          evidence: '',
+          observedAt: null,
+        }, [], 1);
+        if (submitted.disposition === 'refused') return submitted;
         const retained = current.attempts.find(row => row.operation === attempt.operation);
         const candidate = {
           ...attempt,
@@ -476,6 +487,15 @@ interface EvidenceAnalysis {
   readonly unavailable: readonly HarnessRuntimeEvent[];
 }
 
+function retainsPendingWork(event: HarnessRuntimeEvent): boolean {
+  return ['input-accepted', 'context-consumed', 'work-transition', 'output-chunk', 'turn-closed']
+    .includes(event.kind)
+    || event.streamState === 'open'
+    || event.childrenState === 'pending'
+    || event.childrenState === 'unknown'
+    || event.unresolvedOperations.length > 0;
+}
+
 const OUTPUT_CUSTODY_SEAM =
   'NON-EXECUTABLE-UNTIL-design-17-harness-adapters-seam-request-part-two-capture-read.md';
 
@@ -587,6 +607,67 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     return freeze({ all, current, unavailable });
   };
 
+  const omittedOwnerPending = (
+    handle: HarnessRuntimeHandle,
+    now: number,
+    closureClock: number,
+    retained: readonly HarnessRuntimeEvent[],
+  ): HarnessObservation | null => {
+    if (!input.context.history) throw new Error('completion requires current Part Ten signed-history resolution');
+    const launch = consumeResult(input.context.history.lookup(handle.launch), {
+      Success: value => value,
+      Refused: refused => { throw new Error(refused.detail); },
+    });
+    if (!launch?.record || launch.record.type !== 'HarnessLaunchSpec'
+      || launch.taint.length || launch.conflicts.length || launch.completeness !== 'complete'
+      || !consumeResult(input.context.history.resolve(launch.record), {
+        Success: value => value.admitted,
+        Refused: refused => { throw new Error(refused.detail); },
+      })
+      || launch.record.harness !== handle.harness || launch.record.artifactDigest !== handle.artifactDigest
+      || launch.record.machine !== handle.machine || launch.record.run !== handle.run
+      || launch.record.step !== handle.step || launch.record.input !== handle.input
+      || launch.record.incarnation !== handle.incarnation) {
+      throw new Error('completion cannot resolve the exact current Ten launch subject');
+    }
+    const represented = new Set(retained.flatMap(event => event.sourceEvidence));
+    const current = input.owners.current.current();
+    const rows = consumeResult(input.context.history.current(), {
+      Success: value => value,
+      Refused: refused => { throw new Error(refused.detail); },
+    });
+    const pendingPhases = new Set<HarnessObservation['phase']>([
+      'input-accepted', 'context-consumed', 'output-observed', 'pause-observed', 'uncertain',
+    ]);
+    const candidates = rows.flatMap(row => row.record.type === 'HarnessObservation'
+      && !represented.has(row.record.id)
+      && row.record.launch === handle.launch && row.record.run === handle.run
+      && row.record.step === handle.step && row.record.input === handle.input
+      && row.record.incarnation === handle.incarnation
+      && row.record.observedAt >= closureClock
+      && pendingPhases.has(row.record.phase)
+      ? [{ ...row, record: row.record }]
+      : []);
+    const ordered = [...candidates].sort((left, right) =>
+      right.record.observedAt - left.record.observedAt || left.record.id.localeCompare(right.record.id));
+    for (const row of ordered) {
+      // Any exact later owner observation omitted from the local journal keeps
+      // completion conservative. Current evidence proves pending work; future,
+      // stale, disputed, or otherwise unresolvable evidence proves uncertainty,
+      // never permission to resurrect an older closure.
+      if (row.record.generation !== current.generation || row.record.observedAt > now
+        || row.record.freshFor <= 0 || now - row.record.observedAt > row.record.freshFor
+        || row.taint.length || row.conflicts.length) return row.record;
+      const admitted = consumeResult(input.context.history.resolve(row.record), {
+        Success: value => value.admitted,
+        Refused: () => false,
+      });
+      if (admitted) return row.record;
+      return row.record;
+    }
+    return null;
+  };
+
   const resumeDisposition = (
     event: HarnessRuntimeEvent,
     now: number,
@@ -643,6 +724,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
   const holder: HarnessEvidenceHolder = {
     owner: 'part-thirteen',
     machine: input.machine,
+    scope: input.scope,
     maxEvents: input.maxEvents,
     maxCaptureBytes: input.maxCaptureBytes,
     admit(event) {
@@ -748,11 +830,8 @@ export function createHarnessEvidenceHolder(input: Readonly<{
             event: unavailable?.id ?? '' });
         }
 
-        const workBearingKinds = new Set<HarnessRuntimeEvent['kind']>([
-          'input-accepted', 'context-consumed', 'work-transition', 'output-chunk', 'turn-closed',
-        ]);
         const unavailableLater = newest(analysis.unavailable.filter(event =>
-          workBearingKinds.has(event.kind) && event.sourceClock >= closure.sourceClock));
+          retainsPendingWork(event) && event.sourceClock >= closure.sourceClock));
         if (unavailableLater) {
           return freeze({ state: 'pending' as const,
             reason: 'later pending-input, closure, or output evidence is stale, unavailable, or disputed',
@@ -763,9 +842,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         const closureIds = new Set(frontierClosures.map(event => event.id));
         const laterOpen = analysis.current.some(event => !closureIds.has(event.id)
           && event.sourceClock >= closure.sourceClock
-          && (workBearingKinds.has(event.kind) || event.streamState === 'open'
-            || event.childrenState === 'pending' || event.childrenState === 'unknown'
-            || event.unresolvedOperations.length > 0));
+          && retainsPendingWork(event));
         const incompleteClosure = frontierClosures.some(event => event.streamState !== 'closed'
           || !['none', 'closed'].includes(event.childrenState) || event.unresolvedOperations.length > 0);
         if (incompleteClosure || laterOpen || !outputCoverage(analysis.current).complete) {
@@ -773,6 +850,10 @@ export function createHarnessEvidenceHolder(input: Readonly<{
             reason: 'turn closure retains later work, incomplete output, an open stream, child, or unresolved operation',
             event: closure.id });
         }
+        const omitted = omittedOwnerPending(handle, now, closure.sourceClock, analysis.all);
+        if (omitted) return freeze({ state: 'pending' as const,
+          reason: 'current exact-subject owner history retains later work omitted from the local event journal',
+          event: omitted.id });
         return freeze({ state: 'complete' as const,
           reason: 'correlated lifecycle closure has contiguous output and closed streams, children, and operations',
           event: closure.id });
@@ -864,9 +945,9 @@ export function sameMachineReconnectCandidate(
   }
   const handle = lookup.handle;
   if (input.incarnation !== handle.incarnation || input.fence.machine !== handle.machine
-    || input.fence.incarnation !== handle.incarnation) {
+    || input.fence.incarnation !== handle.incarnation || input.fence.domain !== input.evidence.scope) {
     return freeze({ disposition: 'refused',
-      reason: 'fence or requested incarnation does not name the retained process lifetime',
+      reason: 'fence domain, machine, or requested incarnation does not name the governed conversation process lifetime',
       handle: null });
   }
   const head = consumeResult(input.authority.inspect(), {

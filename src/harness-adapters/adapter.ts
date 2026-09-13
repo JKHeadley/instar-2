@@ -123,6 +123,10 @@ function resolveObservation(input: SessionHarnessAdapterInput, reference: string
     'delivery observation history is not admitted');
   requireValue(row.record.generation === input.generation(),
     'delivery observation belongs to a non-current register generation');
+  const now = input.clock();
+  requireValue(row.record.freshFor > 0 && now >= row.record.observedAt
+    && now <= row.record.observedAt + row.record.freshFor,
+  'delivery observation is stale or future-dated');
   return row.record;
 }
 
@@ -280,11 +284,9 @@ export function createSessionHarnessAdapter(input: SessionHarnessAdapterInput): 
               // uncertain and the original operation must not be invoked again.
             }
           }
-          const phase = ownerWitness ? 'input-accepted' : 'uncertain';
-          return observation(input, spec, phase, attempt.attempt.evidence,
-            ownerWitness
-              ? 'original delivery observation restored from durable operation custody'
-              : 'delivery may already have occurred but its owner receipt is unresolved; observe the original operation before any repeat',
+          if (ownerWitness) return ownerWitness;
+          return observation(input, spec, 'uncertain', attempt.attempt.evidence,
+            'delivery may already have occurred but its owner receipt is unresolved; observe the original operation before any repeat',
             attempt.attempt.observedAt ?? attempt.attempt.attemptedAt);
         }
         const accepted = take(input.driver.deliver({

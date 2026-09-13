@@ -184,6 +184,13 @@ it('A2-INTEGRATION P13-NF-28 P13-NF-38 same-machine reconnect consumes real Six 
   expect(sameMachineReconnectCandidate({ launch: handle.launch, machine: 'machine-b',
     incarnation: handle.incarnation, fence, now: 20, evidence, authority: six.api }, handles))
     .toMatchObject({ disposition: 'unsupported', handle: null });
+
+  const foreignSix = transportFixture();
+  (foreignSix.host as unknown as { domain: string }).domain = 'conversation:FOREIGN';
+  const foreignFence = value(foreignSix.api.acquire('foreign-domain-acquire', '', 500));
+  expect(sameMachineReconnectCandidate({ launch: handle.launch, machine: handle.machine,
+    incarnation: handle.incarnation, fence: foreignFence, now: 20, evidence, authority: foreignSix.api }, handles))
+    .toMatchObject({ disposition: 'refused', handle: null });
 });
 
 it('A2-INTEGRATION REVIEW-F8 P13-NF-37 real Six stops a recovery observation at its bound', () => {
@@ -262,6 +269,56 @@ it('A2-INTEGRATION R2-F05 R2-F06 P13-NF-24 P13-NF-39 delivery replay preserves i
   expect(value(packageView.adapter.deliver(delivery))).toMatchObject({ phase: 'uncertain', observedAt: 20,
     boundaryEvidence: 'absent-from-owner-history' });
   expect(driverCalls).toBe(0);
+});
+
+it('A2-INTEGRATION R3-F03 P13-NF-24 P13-NF-39 delivery replay preserves owner receipt clocks and rejects future or expired evidence', () => {
+  for (const age of [0, 1, 200, -10]) {
+    const f = a2Fixture();
+    const spec = value(f.owner.runtime.record('HarnessLaunchSpec', {
+      ...assemblyInput('HarnessLaunchSpec'), id: `launch:r3-replay:${age}`, run: `run:r3-replay:${age}`,
+      step: `step:r3-replay:${age}`, artifactDigest: f.handle.artifactDigest,
+      inputDigest: f.handle.inputDigest,
+    }));
+    const handle = decodedHandle(f, { id: `handle:r3-replay:${age}`, launch: spec.id,
+      run: spec.run, step: spec.step });
+    expect(f.handles.put(handle)).toMatchObject({ disposition: 'stored' });
+    const contract = value(f.owner.runtime.record('AdapterEvidenceContract', {
+      ...assemblyInput('AdapterEvidenceContract'), id: `contract:r3-replay:${age}`,
+      adapter: 'native', artifact: f.handle.artifactDigest,
+    }));
+    const conformance = value(f.owner.runtime.record('AdapterConformance', {
+      ...assemblyInput('AdapterConformance'), id: `conformance:r3-replay:${age}`, contract: contract.id,
+      adapter: 'native', artifact: f.handle.artifactDigest, platform: f.handle.platform, mode: 'advisory',
+    }));
+    const delivery = { launch: handle.launch, intake: handle.input, digest: handle.inputDigest,
+      incarnation: handle.incarnation, operation: `operation:r3-replay:${age}` };
+    expect(f.handles.beginAttempt({ kind: 'delivery', operation: delivery.operation, launch: delivery.launch,
+      incarnation: delivery.incarnation, subjectDigest: value(canonical(delivery)).hash, attemptedAt: 20 }))
+      .toMatchObject({ disposition: 'started' });
+    const receipt = value(f.owner.runtime.record('HarnessObservation', {
+      ...assemblyInput('HarnessObservation'), id: `observation:r3-replay:${age}`, launch: spec.id,
+      run: spec.run, step: spec.step, input: spec.input, incarnation: spec.incarnation,
+      phase: 'input-accepted', observedAt: age < 0 ? 30 : 20, freshFor: 1,
+    }));
+    expect(f.handles.finishAttempt(delivery.operation, receipt.id, 20)).toMatchObject({ disposition: 'observed' });
+    const now = age < 0 ? 20 : 20 + age;
+    f.owner.time(now);
+    let driverCalls = 0;
+    const tripwire = () => { driverCalls++; throw new Error('replay must not invoke the driver'); };
+    const packageView = createFutureHarnessAdapter({ id: 'native', artifact: f.handle.artifactDigest,
+      platform: handle.platform, conformance: conformance.id, machine: handle.machine,
+      driver: { owner: 'part-eight', launch: tripwire, deliver: tripwire, observe: tripwire },
+      handles: f.handles, evidence: f.evidence, context: f.owner.c, clock: () => now,
+      generation: () => f.owner.host.current().generation });
+    const replay = value(packageView.adapter.deliver(delivery));
+    if (age === 0 || age === 1) {
+      expect(replay).toMatchObject({ id: receipt.id, phase: 'input-accepted',
+        observedAt: receipt.observedAt, freshFor: receipt.freshFor });
+    } else {
+      expect(replay).toMatchObject({ phase: 'uncertain' });
+    }
+    expect(driverCalls).toBe(0);
+  }
 });
 
 it('A2-INTEGRATION R2-F09 P13-NF-04 base describe re-resolves real Ten conformance and refuses its expired neighbour without driver execution', () => {

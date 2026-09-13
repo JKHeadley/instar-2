@@ -28,7 +28,8 @@ it('R2-F08 R2-F10 P13-A2-MAP all 52 rows retain exact real-owner dispositions an
   expect(rows.filter(row => row.heldArms)).toHaveLength(12);
   expect(rows.find(row => row.number === 3)?.status).toBe('NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md');
   expect(rows.find(row => row.number === 8)?.status).toBe('NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md');
-  expect(rows.find(row => row.number === 46)?.heldArms).toContain('HELD-REMAINDER-paired legacy rollout selection');
+  expect(rows.find(row => row.number === 46)?.heldArms).toContain('dated 07:10Z addenda');
+  expect(rows.find(row => row.number === 46)?.heldArms).not.toContain('HELD-REMAINDER');
   expect(rows.find(row => row.number === 51)?.heldArms).toContain('seam-response-effects-followup.md');
   expect(rows.find(row => row.number === 21)?.status).toContain('dated 08:48Z addenda');
   expect(rows.find(row => row.number === 31)?.heldArms)
@@ -40,6 +41,10 @@ it('R2-F11 P13-A2-MAP dependency validation covers A2 held arms and refuses an i
   expect(() => checkP13DependencyCitations(rows.map(row => row.number === 31
     ? { ...row, heldArms: 'NON-EXECUTABLE-UNTIL-seam-response-NO-SUCH-GRANT.md' }
     : row))).toThrow('seam-response-NO-SUCH-GRANT.md');
+  for (const heldArms of ['NON-EXECUTABLE-UNTIL-not-a-grant', 'HELD-REMAINDER-unimplemented-check']) {
+    expect(() => checkP13DependencyCitations(rows.map(row => row.number === 31 ? { ...row, heldArms } : row)), heldArms)
+      .toThrow();
+  }
   expect(checkP13DependencyCitations(rows).citations)
     .toContain('design-17-harness-adapters-seam-request-part-two-capture-read.md');
 });
