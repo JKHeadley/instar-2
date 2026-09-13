@@ -8,10 +8,24 @@ const executable = new Set([1, 5, 22, 25, 26, 27, 28, 29, 30, 52]);
 const mixed = new Set([3, 24]);
 const sliceA1Arch = new Set([2]);
 const sliceA2 = new Set([4, 12, 13, 14, 16, 33, 34, 36, 37, 38, 39, 40, 41, 47, 48, 50]);
+const a2Executable = new Set([4, 12, 13, 14, 16, 34, 38, 39, 40, 41]);
+const a2Mixed = new Map(Object.entries({
+  33: ['seam-response-assembly-followup.md'],
+  36: ['seam-response-loop-followup.md accountingWindow addendum', 'SEAM-LEDGER.md row 34'],
+  37: ['seam-response-loop-followup.md accountingWindow addendum', 'SEAM-LEDGER.md row 34'],
+  47: ['seam-response-operator-followup.md P16-P11-measurement-spend-surface-v1', 'SEAM-LEDGER.md row 64'],
+  48: ['seam-response-operator-followup.md P16-P11-measurement-spend-surface-v1', 'SEAM-LEDGER.md row 64'],
+  50: ['seam-response-loop-followup.md qualified-accounting-read', 'SEAM-LEDGER.md row 34'],
+}).map(([number, value]) => [Number(number), value]));
 const behaviors = new Map(Object.entries({
   1: ['contract-inventory', 'p16Dispositions'],
   3: ['registration-current-content', 'decodeMeasurementProducerContract'],
+  4: ['evidence-quantity-binding', 'createCurrentQuantityWitness'],
   5: ['measured-claim', 'renderMeasurementClaim'],
+  12: ['signed-history-attribution', 'resolveCurrentAttribution'],
+  13: ['unattributed-conflicted', 'resolveCurrentAttribution'],
+  14: ['causal-quantity-resolution', 'resolveCurrentQuantity'],
+  16: ['current-history-read', 'renderCurrentMeasurementRead'],
   22: ['quota-coalescing', 'coalesceUnknownQuotaEpisodes'],
   23: ['observational-port', 'createMeasurementLedger'],
   24: ['rate-event-populations', 'summarizeRateLimitEvents'],
@@ -21,6 +35,17 @@ const behaviors = new Map(Object.entries({
   28: ['classified-and-unclassified', 'classifyProcesses'],
   29: ['resource-trend', 'resourceTrend'],
   30: ['fired-and-no-op', 'classifyFeatureOutcome'],
+  33: ['burn-hysteresis', 'evaluateCurrentBurn'],
+  34: ['coverage-debt', 'evaluateCurrentBurn'],
+  36: ['deterministic-historical-presentation', 'renderCurrentMeasurementRead'],
+  37: ['peer-union-window', 'mergeCurrentPeerMeasurements'],
+  38: ['peer-completeness-clock', 'mergeCurrentPeerMeasurements'],
+  39: ['all-identities-retention', 'measurementProjectionDefinition'],
+  40: ['capture-retention', 'redactCapture'],
+  41: ['bounded-cache-eviction', 'createBoundedReadCache'],
+  47: ['privacy', 'renderCurrentMeasurementRead'],
+  48: ['bounded-query', 'renderCurrentMeasurementRead'],
+  50: ['historical-restart-rebuild', 'renderCurrentMeasurementRead'],
   52: ['non-executable-exclusion', 'p16Dispositions'],
   53: ['legacy-additivity', 'check-p16-additivity'],
 }).map(([number, value]) => [Number(number), value]));
@@ -60,8 +85,7 @@ const dependencies = {
   51: ['seam-response-effects-followup.md'],
 };
 
-export function p16Dispositions(design = readFileSync(
-  'docs/20-measurement-ledgers/13-non-functional-checks-and-activation.md', 'utf8')) {
+function dispositions(design, activateA2) {
   const ids = [...design.matchAll(/^\| (P16-NF-(\d+)) \|/gm)]
     .map(match => ({ id: match[1], number: Number(match[2]) }));
   if (ids.length !== 52 || ids.some((row, index) => row.number !== index + 1))
@@ -80,8 +104,20 @@ export function p16Dispositions(design = readFileSync(
         { name: 'architecture', status: 'NON-EXECUTABLE-UNTIL-slice-A1-arch', dependencies: ['slice-A1-arch'] },
       ],
     };
-    if (sliceA2.has(row.number))
+    if (sliceA2.has(row.number) && !activateA2)
       return { ...row, status: 'NON-EXECUTABLE-UNTIL-slice-A2', dependencies: ['slice-A2'] };
+    if (activateA2 && a2Mixed.has(row.number)) {
+      const dependencies = a2Mixed.get(row.number);
+      return { ...row, status: `MIXED-EXECUTABLE-A2-PLUS-NON-EXECUTABLE-UNTIL-${dependencies.join(' + ')}`,
+        dependencies,
+        arms: [
+          { name: 'slice-A2-local', status: 'EXECUTABLE', dependencies: [] },
+          { name: 'owner-seam', status: `NON-EXECUTABLE-UNTIL-${dependencies.join(' + ')}`, dependencies },
+        ],
+      };
+    }
+    if (activateA2 && a2Executable.has(row.number))
+      return { ...row, status: 'EXECUTABLE', dependencies: [] };
     if (executable.has(row.number)) return { ...row, status: 'EXECUTABLE', dependencies: [] };
     const blocked = dependencies[row.number];
     if (!blocked?.length) throw new Error(`${row.id}: non-executable row has no exact dependency`);
@@ -89,6 +125,18 @@ export function p16Dispositions(design = readFileSync(
       return { ...row, status: `MIXED-EXECUTABLE-A1-PLUS-${blocked.join(' + ')}`, dependencies: blocked };
     return { ...row, status: `NON-EXECUTABLE-UNTIL-${blocked.join(' + ')}`, dependencies: blocked };
   });
+}
+
+/** Permanent A1 compatibility inventory used by the landed byte-identical A1 fixtures. */
+export function p16Dispositions(design = readFileSync(
+  'docs/20-measurement-ledgers/13-non-functional-checks-and-activation.md', 'utf8')) {
+  return dispositions(design, false);
+}
+
+/** Active repository inventory after Slice A2, retaining exact blocked owner-seam arms. */
+export function p16A2Dispositions(design = readFileSync(
+  'docs/20-measurement-ledgers/13-non-functional-checks-and-activation.md', 'utf8')) {
+  return dispositions(design, true);
 }
 
 export function checkP16Coverage(report, dispositions = p16Dispositions()) {
@@ -105,14 +153,15 @@ export function checkP16Coverage(report, dispositions = p16Dispositions()) {
     if (row.status === 'EXECUTABLE' || row.status.startsWith('MIXED-EXECUTABLE-')
       || row.status.startsWith('SUPPLEMENTAL-EXECUTABLE-')) {
       for (const tier of tiers) if (!passing.some(test => test.file.startsWith(tier)))
-        throw new Error(`${row.id}: A1 row lacks a passing ${tier} fixture`);
+        throw new Error(`${row.id}: executable row lacks a passing ${tier} fixture`);
     } else if (passed.length) throw new Error(`${row.id}: non-executable row was counted as a pass`);
     return { ...row, tests, passing: passing.length };
   });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const rows = checkP16Coverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
+  const rows = checkP16Coverage(JSON.parse(readFileSync('.test-results.json', 'utf8')),
+    p16A2Dispositions());
   console.log('| Check | Status | Passing test files |');
   console.log('|---|---|---|');
   for (const row of rows)
