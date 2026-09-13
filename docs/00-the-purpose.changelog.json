@@ -1,0 +1,47 @@
+[
+  {
+    "revision": 2,
+    "date": "2026-09-13",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator direction in topic 52075 on 2026-09-13: wisdom in the use of knowledge is the aim above coherence, and the constitution must be complete enough to decide every design question; approved by the operator in topic 52075 on 2026-09-13 23:26Z ('approved')"
+    },
+    "changes": [
+      {
+        "what": "Added the Value 'wisdom is what coherence is for': coherence is the precondition; the aim is wisdom in the use of knowledge, with complete recall as the baseline and recorded, graded use-or-withhold judgment above it.",
+        "why": "The purpose named coherence, trust, sovereignty and alignment but not wisdom; rule 57 bounds judgment without naming its growth as a goal. The operator stated that wisdom is core to the project.",
+        "ref": "topic 52075, operator message of 2026-09-13 22:48Z"
+      },
+      {
+        "what": "Added the Rule 'a design question this document cannot decide is a gap in this document', with the check that every part design's decision list names the purpose statement, pillar, or constraint that decides each question, and that an undecidable question is filed as a candidate amendment.",
+        "why": "The operator asked that the constitution work as a north star complete enough to give every design decision a clear answer, and that unclear decisions be treated as evidence of what the constitution is missing.",
+        "ref": "topic 52075, operator message of 2026-09-13 23:02Z"
+      }
+    ],
+    "approvedIn": {
+      "pr": 69,
+      "mergeCommit": null
+    }
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-05",
+    "status": "approved",
+    "cause": {
+      "kind": "draft",
+      "note": "the purpose, the name, and the decision boundary"
+    },
+    "approvedIn": {
+      "pr": 19,
+      "mergeCommit": "192bf356e7fe1eb01ace74f8d1c91bc79bbf1d77"
+    },
+    "changes": [
+      {
+        "what": "Initial purpose statement, the four pillars, the five constraints, and who decides what.",
+        "why": "Every other document is written in service of this one.",
+        "ref": "PR #19"
+      }
+    ]
+  }
+]
