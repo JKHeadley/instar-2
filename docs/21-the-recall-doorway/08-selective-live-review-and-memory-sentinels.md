@@ -17,7 +17,7 @@ second sentinel lifecycle. Each hook declares its input, output, budget, purpose
 | Hook | Work performed | Authorized output |
 |---|---|---|
 | Source/current-state check | Resolve referenced originals, supersession, recipient binding, permission and manifest currency | Deterministic owner evidence; violations go to the owner that already owns that rule |
-| Historical claim review | Compare concrete draft claims against permitted original support and known contradictions | supported / repair-needed / unresolved findings with source spans and explicit unknowns |
+| Historical claim review | Compare concrete draft claims against permitted original support and known contradictions | supported (permitted evidence substantiates the claim) / repair-needed (evidence identifies a needed correction) / unresolved (available evidence cannot settle the claim) findings with source spans and explicit unknowns |
 | Relationship/commitment review | Check who spoke, direct versus observed experience, relevant earlier promises and current recipient expectations | Evidence-based proposed draft change; no guessed identity or automatic disclosure |
 | Write-side coherence watch | Observe missing index coverage, conflicting beliefs or broken derivation links | Durable defect/repair proposal; no original deletion |
 | Retrospective outcome review | Examine graded patterns, corrections, successes, false holds and missed ordinary opportunities | Candidate outcome/lesson/replay artifact through its owners; no unsolicited per-item message |
@@ -81,7 +81,7 @@ not supply that approval. Rule 86 permits a full-context intelligent gate only w
 it does not authorize an arbitrary low-context filter or implied expansion of the live exceptions.
 
 OD-05 proposes that bounded exception for the listed classes only when the preregistered pilot
-shows net value. Until accepted, semantic C is offline/shadow without dispatch authority;
+shows net value. Until accepted, semantic C is offline/shadow (evaluated without controlling a real dispatch);
 retrospective review and existing deterministic owner checks remain the operating posture.
 No amendment to the rulebook is claimed by this draft. A remains accounting, B remains
 bounded retrieval; neither requires an additional semantic judgment before every send.

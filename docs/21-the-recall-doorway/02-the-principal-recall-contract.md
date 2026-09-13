@@ -14,12 +14,12 @@ The eventual decoder must reject unresolved authority and caller-forged resource
 
 | Input | Required content and binding |
 |---|---|
-| Work | Owner-admitted root/run/step, judgment purpose, current intake/task capture, incarnation, generation and initiating principal |
+| Work | Owner-admitted root/run/step, judgment purpose, current intake/task capture, incarnation (one worker process lifetime), generation and initiating principal |
 | Audience | Current conversation binding and exact recipients/target, including account and channel mode; any multiple-recipient set is explicit |
 | Scope | Owner-issued internal-use and disclosure policy references, identity mapping frontier, provider/custodian access scope and policy version |
 | History | Current permitted recent context, actual grounding reference when required, exact cited references, open commitments/directives resolved by their owners, fresh clock |
 | Sources | Permitted source inventory, captured frontier, per-index coverage, known unknown peers and unavailable sources |
-| Resources | Reserved root budget handle, absolute deadline, allowed retrievers/helper purposes, queue/cancellation policy and current remaining charges |
+| Resources | Reserved root budget handle, absolute deadline, allowed retrievers/helper purposes, queue/cancellation policy and current remaining allowance and charges (resource use already spent or still reserved under the owner account) |
 
 The proposed output is an evidence packet plus `RecallAttempt` and `RecallManifest` references.
 It carries one disposition: `assembled`, `no-additional-context`, `degraded`, or

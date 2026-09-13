@@ -17,6 +17,7 @@ an adapter and owner contract audit before migration.
 | TopicMemory / `src/memory/TopicMemory.ts:249`, `:485`, `:605` | Raw-history and exact/lexical source adapters; source completeness reporting | Telegram-specific identifiers as universal identity; recent windows as complete memory |
 | TopicSummarizer / `src/memory/TopicSummarizer.ts:170–219` | Bounded summary producer with exact processed spans and retained originals | Advancing coverage through unseen prefix; overwriting a summary as if it preserved every original |
 | SemanticMemory / `src/memory/SemanticMemory.ts:1043`, `:1602`, `:1760`, `:1950` | Labeled knowledge/relationship candidates, lexical/hybrid retrieval and source-linked supersession | Retriever-owned privacy, mutation-as-history, repeated age decay as truth and hard expiry of unique memory |
+| Semantic citation evidence / `src/memory/SemanticMemory.ts:982–999`, `:1208–1347`; `src/memory/EvidenceRenderer.ts:113–145`; `src/server/routes.ts:5625–5699` | Separate typed support rows, journal actions, producers and both direct/inverse citation consumers; per-evidence restrictions survive independently of entity text | Entity-only export/rebuild as full evidence recovery; body text as fabricated support; full disposition, field mapping and P21-REG-EVIDENCE below |
 | VectorSearch / `src/memory/VectorSearch.ts:1`; EmbeddingProvider / `src/memory/EmbeddingProvider.ts:1` | Replaceable dense backend and embedding producer | Unversioned vector/source coupling, invisible missing embeddings, provider calls outside resource/scope owners |
 | MemoryIndex / `src/memory/MemoryIndex.ts:221`, `:304`; Chunker / `src/memory/Chunker.ts:24`, `:102` | File/lexical adapter and chunk-key construction | Navigation offsets presented as immutable evidence spans; body replacement before capture |
 | EpisodicMemory / `src/memory/EpisodicMemory.ts:116`, `:167`; ActivityPartitioner / `src/memory/ActivityPartitioner.ts:1` | Episode grouping and derived summaries linked to original activity | Digest treated as full transcript; deletion of unique pending extraction input |
@@ -34,7 +35,7 @@ an adapter and owner contract audit before migration.
 | LearningsReplicatedStore / `src/core/LearningsReplicatedStore.ts:373`, `:557`, `:591`; `src/commands/server.ts:12140–12160` | Content-anchored identity, surviving concurrent advisory variants, tombstone-aware views and escaped foreign learning body; journal-backed union reads | Local learning id as cross-machine identity; treating the available union/renderer as an already wired session-context consumer; promoting a peer lesson to authority |
 | PreferencesManager / `src/core/PreferencesManager.ts:39–90`, `:133–179`, `:309–403` | Captured learned-guidance records, correction-loop provenance, observation time, confidence and recurrence metadata; bounded advisory context | In-place upserts as a complete correction history; `count` as proof every preference was delivered; learned hints as authority |
 | CorrectionCaptureLoop / `src/monitoring/CorrectionCaptureLoop.ts:306–429`; CorrectionLedger / `src/monitoring/CorrectionLedger.ts:330–415`; CorrectionAnalyzer / `src/monitoring/CorrectionAnalyzer.ts:143–209`; CorrectionLoopDriver / `src/monitoring/CorrectionLoopDriver.ts:186–480` | Scrubbed correction evidence, bounded occurrence analysis, durable route clusters and finite rechecks, connected to the real preference consumer | Optional capture as complete intake; discarded unique pending evidence; route reservation or disk presence as proof of application, use or effectiveness |
-| Record-time class review / `src/monitoring/CorrectionClassReview.ts:66–128`, `:130–269`; `src/monitoring/ClassReviewStore.ts:44–70`, `:150–235`; `src/core/ClassReviewReplicatedStore.ts:113–141`; `src/monitoring/CorrectionInstanceFixGate.ts:22–43` | Independent standards/process review of a recorded correction, durable pending/filled state, bounded recovery, retained overdue obligations and advisory peer evidence; correspondence-bound linked-action admission | Recurrence threshold as a prerequisite for this branch; filled review as completed repair; peer disposition as local approval; callback or partial artifact linkage as complete recovery. Destination and requested owner seam are specified below. |
+| Record-time class review / `src/monitoring/CorrectionClassReview.ts:66–128`, `:130–269`; `src/monitoring/ClassReviewStore.ts:44–70`, `:150–235`; `src/core/ClassReviewReplicatedStore.ts:113–141`; `src/monitoring/CorrectionInstanceFixGate.ts:22–41` | Independent standards/process review of a recorded correction, durable pending/filled state, bounded recovery, retained overdue obligations and advisory peer evidence; correspondence-bound linked-action admission | Recurrence threshold as a prerequisite for this branch; filled review as completed repair; peer disposition as local approval; callback or partial artifact linkage as complete recovery. Destination and requested owner seam are specified below. |
 | SelfViolationDetector / `src/monitoring/SelfViolationDetector.ts:81–114`; `src/server/routes.ts:3396`, `:3554–3593` | Observe-only matched-pattern evidence feeding later analysis, with explicit guidance and context links in the replacement | Treating a heuristic match as confirmed violation, an unawaited observation as delivery proof, or the prefixed observation hash as the original preference key |
 | PreferencesReplicatedStore / `src/core/PreferencesReplicatedStore.ts:305–367`; server composition / `src/commands/server.ts:5047–5078` | Union semantics preserve concurrent non-deleted variants as advisory candidates; retained origin/conflict evidence | Assuming the inspected local-only loader proves peer delivery; suppressing all hints while optional conflict cleanup waits |
 | Preference context route / `src/server/routes.ts:24588–24666`; installed `.instar/hooks/instar/session-start.sh:149–176` | Configured source precedence and bounded rendered preference body reaching session start | Silent hook skip as successful recall; replacing the store without migrating the route and actual context consumer |
@@ -44,6 +45,112 @@ an adapter and owner contract audit before migration.
 These dispositions follow [R1 §§3–4](research/01-instar-1x-memory.md) and the targeted installed
 recheck in [R2 §8](research/02-dawn-grounding.md#8-comparison-with-the-installed-1x-target).
 They are proposed migration semantics, not a claim those changes have been executed.
+
+**Rule — typed citation evidence survives independently of entity text.** Rules 7, 28, 33,
+44, 45, 89, 90 and 95; **checks: P21-NF-05/06/11/12/17/18/21**.
+A citation is a recorded link from a remembered claim to a particular source; it is not proof
+that the source exists, is accessible now, or supports the claim. An inverse citation lookup
+asks which remembered claims cite a given source kind and source id. The following are read-only
+1.x source observations under `/Users/dabombstudio/.instar/agents/echo`, not 2.0 type exports
+or evidence of a deployed successful recall.
+
+**Storage and writers today.** `src/core/types.ts:7654–7744` defines `MemoryEvidence` with
+ten source kinds: feedback, commit, session, document, message, job-run, ledger-entry,
+pattern-entity, external-url and supersedes-evidence. It records source id, optional path,
+inclusive line bounds/freeform line range, contribution weight, source confidence, privacy tier,
+annotation and update time. `SemanticMemory.ts:982–999` stores these in `entity_evidence`,
+with a separate evidence-row id and entity id and indexes for entity and source lookup.
+Evidence has its own privacy restrictions even when the entity's text is more widely visible.
+Ordinary recall/hybrid search does not eagerly load it (`src/core/types.ts:7640–7647`).
+
+`SemanticMemory.ts:1208–1278` transactionally creates an entity with evidence or appends rows
+and writes consolidated `rememberWithEvidence` or `addEvidence` journal actions, retaining the
+producer label. The first action contains the entity payload; the second references an existing
+entity. These are SQLite transactions, not a transaction spanning SQLite and the journal:
+`SemanticMemory.ts:904–914` appends the journal separately and silently catches a write failure without
+rolling back the database. The database has evidence ids; the journal carries evidence values,
+not those generated row ids (`:1233–1237`, `:1276`, `:1411–1425`). Import must reconcile both
+sources without either losing journal-only evidence or counting a dual write twice.
+
+The process-internal producer allowlist, caps and shape checks are at `:1351–1469`,
+`:2530–2540`, `:2592–2602`. Evidence may narrow, never widen, the entity's privacy. The normal
+cap is 50 rows, configurable from zero through 500; notes have a 500-byte cap. Weights and
+confidence have separate 0–1 meanings. The supersedes guard rejects a self-reference and caps
+supersedes rows at 32; it is not a proof that an arbitrary multi-entity graph is acyclic.
+A producer name is an internal calling convention, not an authenticated cross-process principal.
+The `manual` owner check remains unimplemented in that allowlist's comment; P21 must not
+inherit it as current authorization.
+
+| Producer or reader | Actual 1.x behavior | Preserve / change / retire disposition |
+|---|---|---|
+| `src/core/EvolutionManager.ts:561–644` | Optional semantic bridge creates a pattern entity, seeds recognized `feedback:` support, and appends cluster evidence; unrecognized sources can yield no evidence and creation failure can leave only the proposal. | Preserve proposal/cluster links and each support row as distinct retained evidence; change missing bridge/source to explicit coverage; retire a cluster body or successful proposal write as proof of citation custody. |
+| `src/core/DispatchExecutor.ts:240–321` | Optional decision emission links cluster pattern, dispatch ledger, prior runs and prior decision entities; emission failure is caught. | Preserve those exact kinds and links; change to registered evidence production through P21-A2 and current owner admission; retire a decision record as proof that dispatch happened. |
+| `src/core/DecisionJournal.ts:294–376` | Requires nonempty evidence; optional semantic bridge returns an entity link, propagates policy errors, but falls back to a journal-only row on other bridge errors. | Preserve the separate decision journal, embedded evidence and available entity link; reconcile interrupted cross-store writes; retain absent linkage as unknown. Never discard a journal-only decision or synthesize its original exchange from the decision text. |
+| `src/core/LearnSkillBridge.ts:76–150`, `:187–239`; `src/server/routes.ts:23512–23611` | Derives session-shaped references or an inline-message hash and short note; exposes feedback/commit references and pending document fallback separately. The route returns derived/explicit evidence, but does not pass that array to `addLearning` or write it to `entity_evidence`. | Preserve available response captures and explicit source evidence; change the producer to durable, resolved source linkage. Retire response-only evidence and an inline hash as proof of original-message custody; a missing response/capture stays missing. Do not assume the declared LearnSkill producer is a wired semantic writer. |
+| `src/commands/memoryBackfillEvidence.ts:112–202` | Recognizes only an entire HTTP(S) address in the legacy source field; writes `external-url` evidence with inherited privacy and confidence 0.5. Other source strings are skipped. Its default private-scope duplicate check cannot see sensitive evidence. | Preserve backfill origin and uncertainty, including historical duplicates; change duplicate detection to a restricted complete import inventory. Retire URL-pattern recognition as proof of retrieved support and never derive support from entity prose. |
+| `src/memory/SemanticMemory.ts:1286–1347`; `src/memory/EvidenceRenderer.ts:78–145` | Direct eager and inverse reads check entity visibility and evidence tier; bare evidence reads/array helpers check the evidence tier only and need a separately authorized parent. Undefined evidence means not loaded; an empty array means loaded with no visible rows. | Preserve both filters, lazy/empty distinction and source-kind/id lookup. Replace the numeric-tier decision with the section 5 current source owner at every boundary; no bare helper or cached entity may bypass parent authorization. |
+| `src/server/routes.ts:5625–5699` | `/memory/evidence/by-entity/:id` returns filtered evidence; hidden/missing entities both yield 404. `/memory/entities/by-evidence` filters inverse matches and their count. Unwired memory yields 503. Recognized viewer scopes narrow the route's default private view; invalid/missing scope also defaults to private (`:5609–5621`). | Preserve the two actual citation consumers and non-disclosing hidden/missing response; migrate both with the producer. Resolve requester, use, provider and recipient permissions from owners, never a query string or legacy private default. No claim of general per-user authorization follows from these routes. |
+
+The evidence vocabulary orders public, shared-project, private and sensitive separately from
+entity shared-project/shared-topic/private. Shared-topic maps conservatively to private on the
+evidence scale; no existing viewer scope reaches sensitive (`EvidenceRenderer.ts:41–97`).
+Migration must preserve that restriction, not coerce sensitive to private or drop a row's tier
+because its parent is shared. These tiers alone do not identify actual people or topics.
+
+**Recovery today.** `SemanticMemory.ts:2071–2166` exports/imports entities and edges without
+the evidence table; `writeSnapshot()` uses that export (`:2301–2313`). The journal recovery
+switch at `:2209–2259` handles remember/connect/forget/verify/supersede, but not
+`rememberWithEvidence` or `addEvidence`. Rebuild deletes entities (`:2281–2294`), which also
+cascades to evidence rows under the table's foreign key. Thus reopening an intact database
+can retain evidence while rebuilding through this legacy path cannot establish full evidence
+recovery. Retire that incomplete rebuild/export as a lossless migration route. Capture the
+consistent database including evidence, journal actions and decision journal separately before
+conversion; never run destructive legacy rebuild as the way to obtain the import inventory.
+
+**Field mapping into retained records.** P21-A2 owns versioned imported citation records under
+section 1's package-record discipline. Part Two owns admitted facts and original captures,
+not a new `MemoryEvidence` constitutional type. Its existing fact schema and owned-body
+registration remain unchanged (`src/facts/contracts.ts:10–18,35–67`, a **2.0 destination**;
+`docs/06-the-fact-envelope.md:96–177`, “The envelope every fact carries”). The register grants and P21 implementation must declare
+these records before admission. Each imported record points to its captured legacy bytes;
+an unresolved legacy source id is historical data, not a fabricated admitted reference.
+
+| Legacy field or distinction | Required retained mapping and current read |
+|---|---|
+| Database evidence id and entity id; journal action/position and producer | Preserve origin-scoped aliases, source artifact hash and row/action position, entity-version link and producer observation. Reconcile duplicate database/journal representations with evidence; ambiguous correspondence stays explicit. Rerun from the same captured input admits no duplicate; changed source bytes create a new version. |
+| `kind`, `sourceId`, `path`, `lineStart`, `lineEnd`, `lines` | Preserve exact values and missing fields. Resolve to authorized original capture/span only where supported. A path or line number without pinned original bytes remains a locator, not a verified span. Maintain bounded entity-to-citation and kind/id-to-entity projections. |
+| `weight`, `confidence`, `note`, `updatedAt` | Preserve contribution versus claimed source confidence, full qualification/annotation and historical update time, separately from import/admission time. No score becomes truth, an independent grade, or proof that a source was read. |
+| Parent `ownerId`/`privacyScope` and row `privacyTier`, including absent tier | Retain both original policies and inheritance explicitly. Current reads require the parent's permission AND the evidence row's restriction AND the referenced source's permission for the proposed use. Unresolved owner/policy mapping prevents exposure; it does not delete the capture. Preserve sensitive restrictions and recheck after policy change or cache reuse. |
+| Loaded/empty, filtered, missing source and supersedes link | Record loading and coverage separately from citation content. Supersession retains original evidence and its origin, not a destructive edit. A visible claim can have unavailable or forbidden support; disclose neither restricted row existence nor inverse-hit counts to an unauthorized reader. |
+
+**Migration fixture P21-REG-EVIDENCE.** In isolated stores, create a shared-project claim with
+one real supported citation, a second private citation and a sensitive citation; retain the
+original support captures with different qualifications and locations. Add an entity with no
+support and another with a dangling source reference. Exercise create-with-evidence and append,
+the actual proposal/dispatch/decision producers and the learning/backfill limits above. Capture
+all source stores, import twice, restart, rebuild only the new derived indexes, and read again.
+Assert field/annotation/time fidelity and one reconciled imported identity per known row/action;
+include journal-only, database-only and interrupted bridge neighbors without invented links.
+
+Drive both replacement HTTP citation consumers through production initialization. A permitted
+private read sees shared and private support but not sensitive support; a shared-project read
+sees only its permitted row. Hidden and absent parents remain indistinguishable. An inverse
+lookup finds a visible entity only through a permitted matching citation; a private-only match
+must not leak that entity or a count to the shared viewer. Then change current permission and
+repeat through cache/restart. Missing support and no-support remain explicit, never inferred
+from a plausible entity body or from backfilled URL text. Verify the historical snapshot and
+legacy journal alone are insufficient inputs where they omit required rows.
+
+Finally, an actual principal recall must load the permitted original citation and its
+qualification into captured provider input, and the later response must use that support
+correctly. A name-only candidate, a route returning 200, or preserved entity prose cannot pass;
+delivered-but-ignored support is a reader-use failure. Run unit, public-pipeline and production
+lifecycle tiers, including two origins with colliding local ids and incomplete peer custody.
+This migration positive is **non-executable until `seam-response-recall-doorway-grants.md`
+lands for NF-17/18/21's full section 14 dependencies, `seam-response-declarations.md` row 77
+lands with governed recall-owner enrollment, and P21-A1/A2 land**. Existing grants supply
+custody, scope and consumer composition; no owner union is redefined and no repaired execution
+is claimed.
 
 **Rule — corrections retain the lifecycle that produces and maintains guidance.** Rules 7,
 24, 26, 33, 44, 45, 55, 85, 86 and 89; **checks: P21-NF-05/11/12/17/18/21**.
@@ -537,6 +644,88 @@ Both replicated-store migration positives are **non-executable until
 `seam-response-recall-doorway-grants.md` lands for their section 14 NF-17/18/21 dependencies**,
 together with those rows' inherited grants and P21 implementations. No repaired execution or
 live peer injection is claimed here.
+
+**Rule — the surrounding memory family has explicit dispositions too.** Rules 7, 33, 44,
+45, 69, 89, 90 and 111; **checks: P21-NF-02/11/12/17/18/19/20/21/23**.
+The inventory above plus the following rows covers all 15 files under the audited 1.x
+`src/memory`, the memory-related replicated families under `src/core`, the correction,
+class-review, preference and learning loops under `src/monitoring`, and their source-visible
+job and public read/write consumers. Infrastructure that supplies identity or repair remains
+with its existing owner; its presence is not a new recall permission. These are source-file
+observations, not installed activation claims. A retained producer below may continue producing
+through its own owner: migrating its recall reader does not authorize replacing its action or
+approval lifecycle.
+
+| Additional source / producer / consumer, relative to the 1.x root | Preserve | Change or retire for recall |
+|---|---|---|
+| `src/memory/NativeModuleHealer.ts:1–36`; `src/monitoring/NativeHealDegradationBridge.ts:1` | Database-open failure and repair observations; explicitly unavailable source when storage cannot open | Keep native-module installation/repair with infrastructure owners. A retriever never gains package installation or a hidden repair allowance. Neither successful repair nor a live process proves source coverage. |
+| `src/core/PreferencesSync.ts:103–162`, `:181–254`, `:373`; existing preference rows above | Legacy paged replica files, cursor/incarnation and stale/conflict evidence alongside foundation journals | Import both available source families before replacing route precedence; retain gaps and restrictions. The old peer cache is not an original correction archive. |
+| `src/core/ReplicatedStoreReader.ts:1`; the knowledge, relationship, learning, preference and class-review rows above | Shared registry-driven reads, origin/order evidence and surviving conflict variants | Continue to mediate reads; retain unique historical input before any bounded journal rotation. A union helper does not prove peer storage or actual consumer delivery. |
+| `src/core/EvolutionActionsReplicatedStore.ts:381–396`, `:567–633`; `src/commands/server.ts:12378–12425` | Title/commitment-target/creation-time identity, advisory foreign action text, concurrent variants and deletion markers | The inspected reader is local-only and unused; build the actual recall consumer before claiming peer recall. Imported pending/completed/cancelled text remains historical evidence; action/work owners re-resolve live obligations and authority. No recalled completion closes work. |
+| `src/core/WorkingSetArtifactManager.ts:1–25`, `:84–108`; `src/core/WorkingSetArtifactReplicatedStore.ts:253–262`, `:386–405`; `src/commands/server.ts:12320–12354`; `src/server/routes.ts:9117–9225` | Separate interactive-file catalog, producer-scoped path key, hash/readiness state, conflict variants and separately captured file body | This is distinct from `src/memory/WorkingSet.ts`'s lesson selection. Local catalog and unused local-only union are not peer body custody. Preserve metadata and unique bodies before catalog expiry; path/hash or ready state cannot prove actual input. Keep fetch confinement with the custody owner. |
+| `src/core/UserRegistryReplicatedStore.ts:1`; `src/core/TopicOperatorReplicatedStore.ts:1`; `src/core/TopicPinReplicatedStore.ts:47–53`, `:141` | Available person/contact observations, historical operator mappings and machine-placement pins as separately attributed source data | Identity/standing/placement remain owner-resolved, never imported as recall authority. Topic placement pins are not memory-importance pins. Do not merge authenticated people from replicated display names. |
+| `src/core/SubscriptionAccountMetaReplicatedStore.ts:1–8`; `src/core/ThreadlinePairingReplicatedStore.ts:1` | Existing owner custody of account metadata and peer-pairing state | These are infrastructure/identity stores, not general memory sources. Recall may consume only the owner's permitted current result; raw logins, pairing credentials and authority are not imported into a recall packet. |
+| `src/core/ExecutionJournal.ts:61–80`, `:87–174`, `:220–260`; `src/core/PatternAnalyzer.ts:117–237`; `src/core/ReflectionConsolidator.ts:95–138` | Pending/completed execution evidence, hook versus agent origin, pattern reports, deduplication and proposal/learning links | Capture pending files and retained journals before pruning; preserve observed versus inferred claims. Move memory derivation to supervised maintenance and actual context readers; a count of generated proposals is not learning effectiveness. |
+| `src/core/BlockerLearningLoop.ts:108–192`, `:199–263` | Job `commonBlockers`, resolution/session origin, pending/confirmed/expired state and reuse counts | Capture before expiry/cap pruning and retain later observations. Legacy human/agent reuse thresholds are advisory evidence, not verified authority or a replacement for present access checks. A resolution containing credential references stays in authorized custody. |
+| `src/core/AutonomousEvolution.ts:129–235`; `src/core/EvolutionManager.ts:1165–1247`; `src/server/routes.ts:23380–23899` | Proposal, gap, action and learning records, review decisions, job-change files and their applied/reverted history | Keep approval, scheduling and effect execution with their owners. Import values as evidence, not permission to reapply a job change. Preserve separate diagnosis/remedy and available consumer evidence; status or an identity-relevance nudge is not proven learning. |
+| `src/monitoring/ReflectionMetrics.ts:90–188`; `src/core/LearningVelocityScorer.ts:54–104`; `src/server/routes.ts:4967–4991`, `:10867–10935` | Reflection occurrence/threshold state and learning-event population; the route counts action completion, not merely filing | Retain observations and exclusions through the measurement owner. Event rate, trend and adaptability score do not establish coherent recall, reflection quality or causation. |
+| `src/monitoring/HumanAsDetectorLog.ts:176–288`; `src/monitoring/scrubSecrets.ts:23–40`; correction/preference/class-review rows above | Classified signals, scrubbed available context, drift samples, capture/backlog, ledger, recurrence and independent review state | Preserve this whole producer chain, not only preferences. An unmatched heuristic or skipped observer is unavailable coverage, not evidence of no correction. No secret-pattern scrub proves removal of all private content. |
+| `src/monitoring/FailureLedger.ts:400–506`, `:613–654`; `src/monitoring/FailureAttributionEngine.ts:86–153`; `src/monitoring/CiFailurePoller.ts:1`; `src/monitoring/FailureAnalyzer.ts:79–110`; `src/monitoring/FailureLoopDriver.ts:75–148`; `src/server/routes.ts:13895–14030` | Separate failure/occurrence/insight evidence, attributed versus inferred causes, support/source diversity, linked action/initiative and finite verification windows | Import permitted observations and procedural candidates as P21 data. Retain existing feedback/work lifecycle under its owners; never replay its action creation during import. Legacy rate comparison is correlational and its unknown exposure stays unknown; current measurement/grade owners decide new effectiveness claims. |
+| `src/monitoring/FrameworkIssueLedger.ts:345–477`, `:572–616`, `:712–725`; `src/server/routes.ts:13674–13820` | Issue/observation/capture records and candidate/extracted/superseded playbook status; cross-framework candidate reads and recorded promoter | Keep this issue-derived playbook separate from the adaptive-context manifest. The current promotion check uses a nonempty, non-Echo actor string, not verified independent authority. Preserve the historical label but require current owner-approved promotion for new lessons; candidate inclusion is not acceptance or actual use. |
+| `src/knowledge/TreeGenerator.ts:44–100`, `ProbeRegistry.ts:56–94`, `TreeTriage.ts:157–227`, `TreeSynthesis.ts:63`, `CoverageAuditor.ts:60–111`, `IntegrityManager.ts:51–100`, and `types.ts:1`; `src/server/routes.ts:7206–7305` | Tree configuration, query/probe results, derivations, coverage and integrity observations alongside the existing SelfKnowledgeTree/TreeTraversal row | Register each source and subordinate model/probe call with scope/budget and honest failure. Tree coverage means configured capability/state coverage, not complete conversational memory. A signature or selected node does not prove original custody or current truth. |
+| `src/knowledge/KnowledgeManager.ts:45–181`; `src/commands/playbook.ts:675–838`; `src/scaffold/templates.ts:1624–1674`; `src/server/routes.ts:13707–13719` | Knowledge-file/catalog readers and the adaptive playbook command surface; the route here serves framework-issue playbook entries | The audited routes file has no general `/knowledge` or adaptive `/playbook` route. Migrate actual knowledge callers and playbook CLI/script consumers, not invented endpoints. Preserve versioned manifest items, referenced bodies, mounted snapshots, evaluation/history/quarantine and privacy records before replacement or retirement. |
+| `src/server/routes.ts:5289–5380`, `:5386–5584`, `:5705–5871` | File search/stats/reindex/sync; semantic create/read/forget/connect/search/hybrid/embedding migration/explore/verify/supersede/decay/stale/export/import/stats/context; memory export, rebuild, snapshot and all four import surfaces | Every live reader moves with its source. Write/forget/decay/export/rebuild callers must use non-deleting admitted history and proven reconstructable views; neither HTTP success nor a legacy entity snapshot proves citation preservation. Disabled, failed and partial results stay explicit. |
+| `src/server/routes.ts:7994–8012`, `:24003–24193`, `:31477–31532`; `:20797–20873` | Working-memory, topic history/assembled session/summary, episode stats/session/activity/theme/scan and relationship list/stale/detail/context/import consumers | Replace each context consumer together with startup/later-input/compaction wiring. A summary-data endpoint only supplies material to the calling model; it does not prove a summary ran or was read. Relationship removal cannot delete unique retained evidence. |
+| `src/core/BootSelfKnowledge.ts:1–33`, `:269–358`; `src/server/routes.ts:24686–24800`; generated memory guidance `src/scaffold/templates.ts:233–245`, `:293–299` | Boot self-knowledge quick facts and named capabilities; managed MEMORY.md and separately available harness auto-memory | Capture unique notes before replacing served files; retain current owner permission and provenance. Harness-local auto-memory is a separate source with explicitly unknown availability on other machines, not automatic shared history. Quick-fact delete becomes removal from the current view with retained lawful history, never an implicit new erasure policy. |
+
+
+| Additional learning observer / consumer | Preserve | Change or retire for recall |
+|---|---|---|
+| `src/monitoring/RevertDetector.ts:135–219`; failure-family rows above | Reachable-commit/file-intersection observations, original failure links and inferred versus automatic attribution | Retain both input commits and the recorded status change. Current code can resolve a matched failure or open a resolved forensic row; that is not an independent proof of a correct repair. Import never reruns the status mutation or grants git authority to recall. |
+| `src/monitoring/GrowthMilestoneAnalyst.ts:313–357`, `:460–525`; `src/monitoring/GrowthDigestPublisher.ts:396–510`, `:897–932`, `:1006–1056`; `src/server/routes.ts:10583–10629` | Stage-observation journal, approval-change/correction-pattern findings, digest, delivery audit and retry/deferral records | Capture historical observations before stage pruning; retain missing-input and send-failure limits. Preserve the actual read/digest consumer with its existing notice owner. A threshold finding or delivered growth summary neither accepts a preference nor proves recall improvement. |
+| `src/monitoring/ApprenticeshipCycleStore.ts:24–47`, `:626–679`, `:834–837`; `src/monitoring/MentorStageA.ts:1–30`; `src/server/routes.ts:25743–25934` | Task, learner output, mentor findings, overseer differences, coaching, transcript-audit and operator-experience evidence; local and permitted peer-cycle reads | Keep training/instance lifecycle with its owner. Preserve source-visible versus internal context restrictions and peer-read coverage; do not feed withheld mentor internals to the learner or turn a closed cycle into an independent quality grade. Migration retains unique coaching and actual readers, not only a cycle count. |
+| `src/monitoring/DeferralPatternSentinel.ts:1–14`, `:123–145`; `src/core/JudgmentProvenanceLog.ts:552–610`; `src/monitoring/ReviewCanaryBattery.ts:254–281`, `:399–418`; `src/server/routes.ts:33848–33877` | Content-free distinct-deferral observations and existing provenance; separate synthetic review fixtures and battery results | The deferral helper declares itself not boot-wired and owns no store; preserve the provenance reader without claiming an active sentinel. The battery refuses outside its enabled observation-only test mode. Keep synthetic rows separate from real user episodes, retain available results before fixture cleanup, and never count a canary as production recall success. |
+
+Name-only matches also checked: `src/core/baselineProcessPatterns.ts:1`,
+`src/monitoring/MemoryPressureMonitor.ts:1` and `hostMemoryPressure.ts:1` describe process
+classification or physical machine memory, not retained conversational memory. They stay with
+resource/infrastructure owners. `src/monitoring/FeedbackAnomalyDetector.ts:1–12` is an ephemeral
+submission-rate gate, not a feedback-content archive; retain any available owner observations,
+but do not invent missing pre-restart history from its reset counters.
+
+Memory-related job templates under `src/scaffold/templates/jobs/instar/` have these explicit
+consumer dispositions; each citation is a template, not an observed job run:
+
+| Templates / current consumer | Preserve | Change or retire |
+|---|---|---|
+| `reflection-trigger.md:18–42`, `insight-harvest.md:24–38`, `relationship-maintenance.md:17` | Activity-to-note, unapplied-learning-to-proposal and relationship-staleness observations | Supervised maintenance admits source-linked derivations; replace direct note edits and discretionary per-item sends with declared custody and owner notice policy. A sampled tail of activity is not full elapsed-window coverage. |
+| `correction-analyzer.md:1–35`, `correction-class-review-backstop.md:1–23`, `failure-analyzer.md:1–38` | Separate weekly recurrence, daily record-time recovery and failure-learning analyses, their enabled/disabled defaults and supervision instructions | Preserve each distinct obligation, including below-threshold correction review. Prove real scheduled owner/consumer use; template supervision text alone cannot pass. |
+| `evolution-proposal-evaluate.md:24–38`, `evolution-proposal-implement.md:24–33`, `evolution-overdue-check.md:24–37` | Proposal evaluation/implementation inputs, overdue work and source evidence | Preserve owner approval boundaries and outstanding work. The overdue template's body permits advancing/cancelling despite its report-only description; neither text is imported as new authority or permission to close a directive. |
+| `overseer-learning.md:18–34`, `overseer-maintenance.md:18–30` | Category reports, handoff findings and cost/usefulness questions | Feed retrospective outcomes under registered budgets; a quiet job or falling work count does not prove successful learning. Memory-hygiene/export names in overseer prose do not establish a concrete executed job. |
+| `mentor-onboarding.md:1`, `identity-review.md:1`, `org-intent-drift-audit.md:1`, `initiative-digest-review.md:1`, `docs-coverage-audit.md:1` | Permitted onboarding lessons, identity/drift evidence, initiative summaries and documentation-coverage findings when used as recall sources | Preserve captured reports and their provenance; keep identity, org intent, work decisions and documentation truth with their owners. These observers do not confer authority through memory. |
+| `llm-decision-grading.md:1`, `bench-refresh.md:1`, `benchmark-divergence-analysis.md:1`, `review-canary-battery.md:1`, `commitment-detection.md:1`, `commitment-checkin-reminder.md:1` | Decision/outcome/benchmark and commitment evidence feeding recall/learning | Consume current judgment, verification and commitment-owner records; migrate source readers with their owners, without turning a remembered grade, proposal or reminder into fresh authority. |
+
+The remaining templates concern health, release, routing, feedback transport or other operational
+observation; they are not independent memory stores. Their captured findings are eligible source
+evidence under the same source/consumer declarations, and their actions remain with their owners.
+Adaptive playbook scripts remain a single migration family with separately inventoried manifest,
+assembly, relevance, annotation, reflection, micro-evaluation/evaluation log, decay, deduplication,
+retirement, lifecycle, mount, history, scratchpad, verification/HMAC, privacy/DSAR and backend
+state artifacts (`playbook-scripts/` and the command surface above). HMAC means a keyed integrity
+check; it does not prove truth or permission. DSAR is the legacy user-data export/deletion command
+family; its name grants no new deletion permission. Capture every referenced unique body and
+source state before switching these consumers; preserve quarantine and existing privacy
+constraints, while removal from a served view does not erase retained lawful history.
+
+P21-A2's migration manifest must give each row's concrete installed artifact and consumer a
+captured/imported, retained-with-existing-owner, or explicit unavailable disposition. For each
+migrated source family, NF-17 exercises the real producer → retained import → restarted scoped
+reader → actual consumer sequence and an absent/disabled/restricted neighbor; NF-18 adds peer
+variants where the row declares replication. NF-21 proves current context consumption through
+production initialization, not a helper's returned string. Other owners' retained action writers
+are not silently redirected or replayed. These obligations remain non-executable under the full
+NF-17/18/21 dependency rows in section 14, including `seam-response-recall-doorway-grants.md`
+and row 77 of `seam-response-declarations.md`; source inventory alone supplies no runtime pass.
 
 **Rule — structural composition replaces inconsistent injection paths.** Rules 1, 30, 44,
 47, 66, 78, 96 and 110; **checks: P21-NF-03/05/10/17/21**. Topic-intent briefings,

@@ -21,8 +21,8 @@ Here, p95 is the duration below which 95% of observations fall. KiB and MiB mean
 | Logical evidence reads | 6 total | 10 total, including at most 2 used by reviewer |
 | Backend fan-out | At most 2 backend operations per logical read; at most 2 concurrent operations per root | Same, maximum 20 backend operations per root |
 | Loaded candidate text | 256 KiB total. At most 64 candidates. | 512 KiB total. At most 96 candidates. |
-| Backend scan | Declared indexed-query resource bound; raw fallback at most 1 MiB per root | Same; opaque/unmeterable backends declare unsupported hard scan guarantees |
-| Helper model calls | 0; no ordinary live semantic-review arm | At most 3 total: recall helper, review, one repair; a retry consumes a slot |
+| Backend scan | Declared indexed-query resource bound; raw fallback at most 1 MiB per root | Same; backends whose internal work cannot be inspected or measured declare unsupported hard scan guarantees |
+| Helper model calls | 0; no ordinary live semantic-review mode | At most 3 total: recall helper, review, one repair; a retry consumes a slot |
 | Helper tokens | 0 | Recall: 4,000 input/500 output tokens. Review: 8,000/800. Repair: 8,000/1,200. Each pair is a ceiling. |
 | Recursion | No model-planned search; bounded deterministic source composition | Search depth at most 2, still within total reads/calls |
 | Accounting | 0 model calls. At most 64 KiB new metadata. Larger required lineage uses charged referenced artifacts. | Same |

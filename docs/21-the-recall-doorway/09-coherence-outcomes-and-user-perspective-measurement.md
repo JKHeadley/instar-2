@@ -2,17 +2,21 @@
 
 **Rule — record outcomes separately from their explanations.** Rules 13, 26, 39, 41,
 58, 75, 85, 86 and 108; **checks: P21-NF-05/12/14/15/16/22**. P21's proposed
-`CoherenceOutcome` binds a canonical principal opportunity to its admitted work, trigger,
+`CoherenceOutcome` binds a canonical principal opportunity (one stable case shared across retries,
+child calls and later assessments) to its admitted work, trigger,
 permitted source/support paths, recall attempt/submission, response/prepared effect, any actual
 delivery observation, criterion, grader and source frontier. It records observed behavior and
 evidence separately from the inferred failure stage. A user saying “I already told you” is an
 intake observation and candidate case, not automatic proof of a retrieval defect.
 
 The record contains schema/version, stable case identity, setting/cue form/effect class,
-expected time and audience, custody/index conditions, observed labels, adjudication state,
-original/derived/lesson distinction, raw numerator/denominator membership, source availability,
+expected time and audience, custody/index conditions, observed labels, adjudication state (the status of the assessment
+against the recorded criteria), original/derived/lesson distinction, raw numerator/denominator
+membership (which counted events and eligible opportunities enter each rate), source availability,
 charges/latency references and causal corrections. Labels may coexist; they are not an exclusive
-four-way enum. Adjudication is proposed, confirmed, disputed or unassessable. Later evidence
+four-way list. The states are proposed (awaiting assessment), confirmed (the assessment is
+supported), disputed (the assessment is challenged), or unassessable (evidence is insufficient
+to assess it). Later evidence
 supersedes an assessment through a new record without rewriting the original outcome or window.
 
 | Outcome label | Denominator and failure event |

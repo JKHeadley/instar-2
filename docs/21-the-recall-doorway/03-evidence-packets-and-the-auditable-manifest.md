@@ -29,7 +29,7 @@ submission, output or outgoing-binding reference.
 | RecallManifest / query attempts | Adapter id/artifact/contract/model/index version; normalized query plus derivation capture; source status; start/end or explicit unfinished state; candidate counts; truncation, retry and cache behavior |
 | RecallManifest / candidate accounting | Source/capture/span identities; rank and evidence kind; selected/excluded disposition and reason; restricted audit reference for large or sensitive lists |
 | RecallManifest / selected evidence | Exact original spans or recoverable captures, attribution, event/ingestion/validity times, direct/indirect participation, supersession/contradiction links, allowed use/disclosure |
-| RecallManifest / rendering and assembly costs | Ordered packet sections; rendered span offsets; retained qualification/speaker boundaries; actual token/byte count and any trimming; renderer version/digest; assembly-time reserved/spent/residual owner evidence and recall disposition/limits |
+| RecallManifest / rendering and assembly costs | Ordered packet sections; rendered span offsets; retained qualification/speaker boundaries; actual token/byte count and any trimming; renderer version/digest; assembly-time reserved/spent/residual (still potentially payable or running) owner resource evidence and recall disposition/limits |
 | RecallSubmission / actual input | Existing manifest/attempt; judgment-owner request/attempt and actual provider-input capture reference/hash; ordered supplied carrier rows and every subsequent transformation; owner consumption observation or explicit unknown with reason |
 | RecallAttempt / appended observations | Existing attempt and, once created, manifest/submission references; owner judgment output, review findings, derived-memory result or final binding when actually present; stage status, limits and current spent/residual resource evidence. Each observation is a new fact, never an update to admission or manifest. |
 | OutgoingRecallBinding / final subject | Existing manifest/attempt and applicable submission; judgment output used for the draft, exact prepared effect/notice subject, current deterministic validation and available review findings; fixed non-model notice instead binds captured template/output and not-applicable model submission |
@@ -53,7 +53,7 @@ a source's honest unavailable status is not a claim that a missing capture was r
 
 **Rule — source outcomes remain distinguishable.** Rules 13, 42, 45 and 95;
 **checks: P21-NF-05/06/09/15**. Each source attempt records exactly one primary state and
-any orthogonal coverage limits. The following proposed vocabulary must not collapse into `[]`.
+any separately recorded coverage limits. The following proposed vocabulary must not collapse into `[]`.
 
 | State | Meaning |
 |---|---|

@@ -6,7 +6,7 @@
 71, 90, 95 and 111; **checks: P21-NF-01–24**. The expanded per-check table below is the
 only activation dependency inventory. Section 12 references its rows; the owner catalog here
 has no independently maintained affected-check list. A row includes indirect dependencies,
-not only the owner immediately called. Every listed condition is conjunctive. A permitted
+not only the owner immediately called. Every dependency must be satisfied. A permitted
 fixture with stand-in owner data does not prove a production consumer is active.
 
 The short keys below abbreviate the exact dependency ids, not types. For a key whose owner seam was requested by this design, the execution condition is **NON-EXECUTABLE-UNTIL-row-<n>-<slug>**, the SEAM-LEDGER row of its conditional grant, followed by landing of that granted owner implementation with real acceptance evidence. The request document remains the record of the exact behavior asked for; the grant is recorded in `seam-response-recall-doorway-grants.md`. Inherited grants keep their existing named files and scope.
@@ -23,7 +23,7 @@ ports, artifacts, generation and joint tests. It cannot use a remembered or cach
 
 | Key / dependency id | Accountable owner and required deliverable | Disposition / evidence |
 |---|---|---|
-| A1 / P21-A1 | Recall owner: bounded root, manifest/submission, coordinator, scoped adapters, closed decoders and contract map | Proposed P21 implementation; non-executable until P21-A1 lands |
+| A1 / P21-A1 | Recall owner: bounded root, manifest/submission, coordinator, scoped adapters, closed decoders and contract map | Proposed P21 implementation; non-executable until P21-A1 lands with D's implemented normal-mode workflow and governed recall-owner enrollment, plus S/R |
 | A2 / P21-A2 | Recall owner: indexing, derived-memory producers, source holes, migration and all legacy consumer regressions | Proposed P21 implementation; non-executable until P21-A2 lands |
 | A3 / P21-A3 | Recall owner: coherence outcomes, replay runner and frozen evaluation integration | Proposed P21 implementation; non-executable until P21-A3 lands |
 | A4 / P21-A4 | Recall owner: selective-review and retrospective/write-watch consumers; no independent holder or effect authority | Proposed P21 implementation; non-executable until P21-A4 lands |
@@ -48,6 +48,7 @@ listed owner halves and ordering prerequisites; a later half alone cannot satisf
 
 | Key / dependency id | Required owner delivery and exact grant basis | Present execution condition |
 |---|---|---|
+| D / REGISTER-NORMAL-MODE-RECALL-ENROLLMENT | Three register (docs/07-the-declarations.md:165–263, “The generator”; src/register), with Two's verified history provider. **GRANTED SEAM-LEDGER row 77, `seam-response-declarations.md` normal-mode/shape-change/new-owner-enrollment addendum**: implement the real provider for parent-generation loading, `verifyExtract` and `isCurrent`, the approved shape-change document and workflow schema, and governed enrollment of each new owner manifest. Then enroll the recall owner and its exact declarations, decoders, fixtures and probes against the parent generation through that workflow. | **Non-executable until `seam-response-declarations.md` row 77 lands and the recall owner's governed enrollment passes.** The general provider landing alone does not enroll recall. `register-source/bootstrap-shape.json:1109` lists only parts 1–11; `scripts/register-owner-references.mjs:9,36–43` refuses unknown owner paths/owners; `scripts/build-register.mjs:83` requires the verified provider for normal builds. Existing shape-only replay remains separately executable and unchanged; it proves neither enrollment nor current authority. |
 | T / EFFECT-TYPED-PAYLOADS | Eight's typed operations, infrastructure notices, provider calls and harness delivery, with Ten's confined drivers. `seam-response-effects-payloads.md` (ledger 3/4), `seam-response-effects-followup.md` (21/23/29), `seam-response-judgment.md` (23) and `seam-response-assembly-followup.md` (9/21/28). Typed payloads precede Eight follow-up and Ten drivers. Landed `src/effects/contracts.ts:16–49` is ordinary-reply only. | Non-executable until `seam-response-effects-payloads.md`, `seam-response-effects-followup.md`, `seam-response-judgment.md` and `seam-response-assembly-followup.md` land for these scopes. Missing email/payment subjects are separately REQUESTED as Y; no arbitrary new operation is assumed. |
 | L / LOOP-OWNER-FOLLOWUP | Six's full bounded loops, shared accounting and production run admission. `seam-response-loop-breaker.md`, `seam-response-loop-followup.md` (20/25/26, bounded paging/authority rows 37/47, production row 83), `seam-response-facts-followup.md` (37), `seam-response-assembly-followup.md` (83), and `seam-response-intake-scheduled.md` with its `seam-response-intake-scheduled-a.md` re-slice (10/75), and `seam-response-intake-followup.md` (49: occurrence continuity across identity epochs). Follow the loop → accounting → authority/scheduling and actual run-admission ordering in those grants. The landed loop A1, scheduled-intake A and run-closure A′ are narrower; original `src/transport/loop-a1` and `src/scheduled` exports alone do not prove this composition. | Non-executable until `seam-response-loop-breaker.md`, `seam-response-loop-followup.md`, `seam-response-facts-followup.md`, `seam-response-assembly-followup.md`, `seam-response-intake-followup.md` and the remaining scope of `seam-response-intake-scheduled.md` land; preserve the `seam-response-intake-scheduled-a.md` limits. Row 83 also requires its recorded owner approval conditions. |
 | C / ASSEMBLY-CURRENT-CONTEXT | Ten's immutable current delivery specification plus Five's actual-start read/consumption sequence under one incarnation. `seam-response-assembly-followup.md` and `seam-response-rungraph-followup.md`, ledger 45 (refines row 38). Ten carrier exists at `src/assembly/contracts.ts:33–49`; `src/assembly/harness.ts:33–40` still binds delivery to original launch input. Ten delivery lands before Five's consumer. | Non-executable until `seam-response-assembly-followup.md` and `seam-response-rungraph-followup.md` row-45 addenda land. These do not grant J's P21 join. |
@@ -59,7 +60,7 @@ listed owner halves and ordering prerequisites; a later half alone cannot satisf
 **Rule — expand indirect dependencies before deciding executability.** Rules 33, 69 and 95;
 **checks: P21-NF-01–24**. The dependency relation is:
 
-- A1 requires S, R.
+- A1 requires D, S, R.
 - A2 requires A1, J, I, W.
 - A3 requires A2, Q, B, I, O.
 - A4 requires A2, V, P.
@@ -91,29 +92,33 @@ full contract and dependencies; silently dropping an unavailable arm is forbidde
 | Check | All required implementation/request/grant keys, including indirect ones | Execution posture / additional policy condition |
 |---|---|---|
 | P21-NF-01 | None | EXECUTABLE documentation/artifact validation only. |
-| P21-NF-02 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H, Z | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-03 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-04 | A1, A2, J, S, I, R, W, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-05 | A1, J, E, S, R, Y, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-06 | A1, S, R, L | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-07 | A1, J, E, S, R, Y, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-08 | A1, J, S, R, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. OD-03 run approval for paid cases. |
-| P21-NF-09 | A1, A2, J, S, I, R, W, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-10 | A1, A2, A4, J, E, S, I, O, R, W, P, X, V, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
-| P21-NF-11 | A1, A2, J, S, I, R, W, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-12 | A1, A2, J, S, I, R, W, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-13 | A1, A2, A4, J, E, S, I, O, R, W, P, V, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
-| P21-NF-14 | A1, A2, A4, J, E, S, I, O, R, W, P, Q, V, Y, T, L, C, K, H, M | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
-| P21-NF-15 | A1, A2, A3, J, S, I, O, R, W, Q, T, L, C, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-16 | A1, A2, A3, J, S, I, O, R, W, Q, T, L, C, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. OD-03 paid-run approval if paid; OD-04 approval for the human study. |
-| P21-NF-17 | A1, A2, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H, Z | Historical baseline is inspectable. Migration positives are non-executable under every listed key. |
-| P21-NF-18 | A1, A2, J, E, S, I, R, W, Q, Y, T, L, C, K, H, M, Z, O | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-19 | A1, A2, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H, Z | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-20 | A1, J, E, S, I, O, R, W, P, X, Y, T, L, C, K, H, Z | Register --check is EXECUTABLE. Runtime registration is non-executable under every listed key. |
-| P21-NF-21 | A1, A2, A3, A4, J, E, S, I, O, R, W, P, Q, X, V, Y, T, L, C, K, H, M, B, Z | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
-| P21-NF-22 | A1, A2, A3, J, S, I, O, R, W, Q, T, L, C, M, B | Schema/artifact inspection is EXECUTABLE. Production replay/semantic positive is non-executable under every listed key. |
-| P21-NF-23 | A1, A2, J, S, I, R, W, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
-| P21-NF-24 | A1, A2, A4, J, E, S, I, O, R, W, P, X, V, Y, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
+| P21-NF-02 | A1, J, E, S, I, O, R, W, P, X, Y, Z, D, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-03 | A1, J, E, S, I, O, R, W, P, X, Y, D, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-04 | A1, A2, J, S, I, R, W, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-05 | A1, J, E, S, R, Y, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-06 | A1, S, R, D, L | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-07 | A1, J, E, S, R, Y, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-08 | A1, J, S, R, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. OD-03 run approval for paid cases. |
+| P21-NF-09 | A1, A2, J, S, I, R, W, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-10 | A1, A2, A4, J, E, S, I, O, R, W, P, X, V, Y, D, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
+| P21-NF-11 | A1, A2, J, S, I, R, W, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-12 | A1, A2, J, S, I, R, W, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-13 | A1, A2, A4, J, E, S, I, O, R, W, P, V, Y, D, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
+| P21-NF-14 | A1, A2, A4, J, E, S, I, O, R, W, P, Q, V, Y, D, T, L, C, K, H, M | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
+| P21-NF-15 | A1, A2, A3, J, S, I, O, R, W, Q, D, T, L, C, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-16 | A1, A2, A3, J, S, I, O, R, W, Q, D, T, L, C, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. OD-03 paid-run approval if paid; OD-04 approval for the human study. |
+| P21-NF-17 | A1, A2, J, E, S, I, O, R, W, P, X, Y, Z, D, T, L, C, K, H | Historical baseline is inspectable. Migration positives are non-executable under every listed key. |
+| P21-NF-18 | A1, A2, J, E, S, I, O, R, W, Q, Y, Z, D, T, L, C, K, H, M | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-19 | A1, A2, J, E, S, I, O, R, W, P, X, Y, Z, D, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-20 | A1, J, E, S, I, O, R, W, P, X, Y, Z, D, T, L, C, K, H | Existing shape-only register replay --check is EXECUTABLE. Runtime registration is non-executable until `seam-response-declarations.md` row 77 lands and recall-owner governed enrollment passes, with every other listed key. |
+| P21-NF-21 | A1, A2, A3, A4, J, E, S, I, O, R, W, P, Q, X, V, Y, Z, D, T, L, C, K, H, M, B | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
+| P21-NF-22 | A1, A2, A3, J, S, I, O, R, W, Q, D, T, L, C, M, B | Schema/artifact inspection is EXECUTABLE. Production replay/semantic positive is non-executable under every listed key. |
+| P21-NF-23 | A1, A2, J, S, I, R, W, D, T, L, C | NON-EXECUTABLE under every listed key and its named request/grant file. |
+| P21-NF-24 | A1, A2, A4, J, E, S, I, O, R, W, P, X, V, Y, D, T, L, C, K, H | NON-EXECUTABLE under every listed key and its named request/grant file. OD-05 exception reconciliation and OD-06 waiting policy also required for the live arm. |
+
+D applies to every runtime positive through A1: normal-mode provider, governed shape change,
+and the recall owner's own enrollment must all pass. M's price/measurement declaration scope
+does not supply D, and an old replay verdict cannot substitute for it.
 
 NF-09 therefore includes I's complete email/agent custody and the actual-input consumer J,
 not just an adapter's advertised modes. NF-10 includes K, C and R for continuity, current
@@ -124,7 +129,7 @@ correction/preference lifecycle, replicated-knowledge, replicated-relationship a
 consumers and genuine multi-machine custody regressions, including tombstones, surviving foreign
 variants, metadata-versus-body coverage, and retained observations feeding subsequent analysis.
 Z adds the independent record-time class-review migration and linked-action recovery fixture to
-NF-17/18/21, with its inventory, confinement and registration duties in NF-02/19/20. NF-21 is the conjunction of every
+NF-17/18/21, with its inventory, confinement and registration duties in NF-02/19/20. NF-21 requires every
 applicable production component above, including conditional live-review duties.
 
 **Rule — all inherited duties receive a disposition.** Rules 7, 8, 33, 49, 69, 71,

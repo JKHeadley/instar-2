@@ -10,17 +10,17 @@ contract vocabulary for implementation, not exports that already exist.
 
 | Proposed package-owned artifact | P21 responsibility; owner references retained |
 |---|---|
-| RecallAttempt | Immutable attempt identity and append-only admission/completion observations; work, purpose, source policy and resource reservation |
+| RecallAttempt | Immutable attempt identity and append-only admission/completion observations; work, purpose, source policy and resource reservation (capacity set aside before starting work) |
 | RecallManifest | Selection and rendered-packet account before submission; exact original/derived evidence references and exclusions |
 | RecallSubmission | Post-submission join to the actual judgment-owner capture; never a self-issued consumption assertion |
 | OutgoingRecallBinding | Exact final effect/notice subject and current validation bound to the attempt, submission or non-model disposition |
 | CoherenceOutcome | Opportunity, expected/observed behavior, labels and separately falsifiable diagnosis; measurement and grade owners retain their records |
 | Source/projection/policy declarations | Register-owned declarations of P21 adapter contracts, immutable derived-memory versions, scope/resource hooks and activation requirements |
 
-All durable records enter through Part 2's public fact admission and retain generation,
-predecessor/cause, schema version, author and source evidence. No model emits an admitted record
-directly. P21-A1/A2/A3 specify the eventual closed decoders; this draft supplies no private core
-type cast or production fact kind. Retrospective corrections append new evidence rather than
+All durable records enter through Part 2's public fact admission and retain generation
+(the owner-verified register version applicable to the record), predecessor/cause, schema version, author and source evidence. No model emits an admitted record
+directly. P21-A1/A2/A3 specify the eventual closed decoders (validators that accept only the
+declared record shapes); this draft supplies no private core type cast or production fact kind. Retrospective corrections append new evidence rather than
 overwriting an earlier attempt's result.
 
 Document path numbers and owner package numbers differ in this repository. This design uses
@@ -30,7 +30,7 @@ its design is `docs/11-the-judgment-doorway.md`. A numeric coincidence never sel
 
 | Consumed document / package owner | Duty retained by that owner | Part Twenty-One's use |
 |---|---|---|
-| Part 2 fact spine: `docs/06-the-fact-envelope.md`, `src/facts`, `src/projections` | Durable signed facts, original captures, causal history, taint, correction and projection law | Read permitted originals; append recall records through its public admission; declare rebuildable informational indexes |
+| Part 2 fact spine: `docs/06-the-fact-envelope.md`, `src/facts`, `src/projections` | Durable signed facts, original captures, causal history, taint (the owner-carried provisional, contested or evidence-unavailable qualification), correction and projection law | Read permitted originals; append recall records through its public admission; declare rebuildable informational indexes |
 | Register: `docs/02-the-register.md`, `src/register` | Declarations, governed versions, ports, checks and activation | Enumerate every retriever, producer, consumer, blocker, store, resource policy and required owner seam |
 | Part 4 intake: `docs/08-the-intake.md`, `src/intake` | Authenticated sender, custody before acknowledgment, binding and classification | Consume captured task and sender evidence; never authenticate from remembered text |
 | Part 5 run graph: `docs/09-the-run-graph.md`, `src/rungraph` | Work identity, actual start/resume grounding, continuity and run lifecycle | Bind roots and child charges to work; supplement grounding with relevant recall; never claim recall replaces full-history coverage |
@@ -53,7 +53,7 @@ its design is `docs/11-the-judgment-doorway.md`. A numeric coincidence never sel
 | Procedural lesson | A proposed or accepted way to act, with originating evidence and evaluation. It is neither an episode nor a standing grant. |
 | Evidence frontier | The per-lineage admitted-history boundary visible for this attempt, plus each queried index's covered spans and holes. It is not “all history everywhere.” |
 | Consequential effect | A concrete operation selected by an approved owner policy from email, public posting, deployment, money or other irreversible effects; class membership alone does not authorize semantic blocking. |
-| Coherence opportunity | A later behavior whose permitted source evidence and expected use can be adjudicated. Unlabeled turns are not assumed successes. |
+| Coherence opportunity | A later behavior whose permitted source evidence and expected use can be assessed against the recorded criteria. Unlabeled turns are not assumed successes. |
 
 **Rule — build claims bind inspected bytes.** Rules 13, 49, 69, 90 and 111;
 **checks: P21-NF-01/02/20/21**. The verified main snapshot is

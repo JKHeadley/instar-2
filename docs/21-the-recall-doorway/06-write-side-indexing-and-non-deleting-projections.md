@@ -34,8 +34,8 @@ An index error, unsupported attachment, partial email capture or unembedded item
 different from a source with zero matching facts. Quarantine retains the failed input, error,
 owner, attempt count and bounded next action. Expiring a retry does not delete unique input.
 The writer records a durable completion fact only after the derived artifact is recoverable;
-kill cuts before that fact cause safe idempotent recomputation or observation, never a skipped
-source. Index lag and oldest pending work are measured, not inferred from service uptime.
+process termination before that fact causes safe idempotent recomputation or observation, never
+a skipped source. Index lag and oldest pending work are measured, not inferred from service uptime.
 
 **Rule — generated memory is admitted data; rebuilding views is deterministic.** Rules 7,
 31, 33, 45, 57, 75 and 90; **checks: P21-NF-11/12/18/19/23**. The landed fold language
