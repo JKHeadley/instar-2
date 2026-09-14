@@ -1,6 +1,7 @@
 import type {
   BoundaryContext, Clock, Hash, ProvenanceInput, RefusalReason, Result, SecretRef,
 } from '../index.js';
+import type { OwnedReference } from '../index.js';
 import type {
   AdapterConformance, AdapterEvidenceContract, AssemblyHistoryReadPort, AssemblyRuntimePort,
 } from '../assembly/index.js';
@@ -8,6 +9,9 @@ import type { FactStorePort } from '../facts/index.js';
 import type { InboundRoute, IntakePort } from '../intake/index.js';
 import type { RegisterContext, VerifiedRegister } from '../register/index.js';
 import type { VerificationRuntimePort } from '../verification/index.js';
+import type {
+  EffectAssessmentInput, EffectAssessmentPort, EffectCustodyPort, OperationDefinition, OperationObservation,
+} from '../effects/index.js';
 
 export type TelegramIngressMode = 'long-poll' | 'webhook';
 export type TelegramUpdateKind = 'reply' | 'callback' | 'edit' | 'channel-post' |
@@ -116,6 +120,50 @@ export interface TelegramConversationTarget {
   readonly chatId: string;
   readonly forum: boolean;
   readonly messageThreadId: number | null;
+}
+
+export type TelegramDeliveryClaim = 'provider-accepted' | 'human-delivered' | 'human-read';
+export type TelegramDeliveryStatusForm = 'word' | 'emoji';
+
+export interface TelegramReplyAssessmentDependencies {
+  readonly admitted: AdmittedTelegramAdapter;
+  readonly api: TelegramBotApiCustodianPort;
+  readonly target: TelegramConversationTarget;
+  readonly assessment: EffectAssessmentPort;
+  readonly verification: VerificationRuntimePort;
+  readonly custody: EffectCustodyPort;
+  readonly definition: OperationDefinition;
+  readonly boundary: BoundaryContext;
+}
+
+export interface TelegramReplyAssessmentInput {
+  readonly effect: EffectAssessmentInput;
+  readonly claim: TelegramDeliveryClaim;
+  readonly existing: OwnedReference<'part-nine', 'VerificationAssessment'> | null;
+}
+
+export interface TelegramProviderAcceptance {
+  readonly assessment: OwnedReference<'part-nine', 'VerificationAssessment'>;
+  readonly stage: 'provider-accepted';
+  readonly sourceStage: 'response';
+  readonly operation: string;
+  readonly account: string;
+  readonly conversation: string;
+  readonly digest: string;
+  readonly observation: string;
+  readonly evidence: readonly string[];
+  readonly unsupported: readonly ['human-delivered', 'human-read'];
+}
+
+export interface TelegramDeliveryStatus {
+  readonly stage: 'provider-accepted';
+  readonly sourceStage: 'response';
+  readonly form: TelegramDeliveryStatusForm;
+  readonly text: 'accepted by platform' | '📨';
+  readonly accessibleLabel: 'accepted by platform';
+  readonly legend: 'accepted by platform';
+  readonly assessment: OwnedReference<'part-nine', 'VerificationAssessment'>;
+  readonly observation: string;
 }
 
 export interface TelegramExtractedUpdate {

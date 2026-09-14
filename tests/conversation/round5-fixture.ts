@@ -25,7 +25,7 @@ function telegramOutboundFixture(lostResponse = false, text = 'Here is the reque
     generation: effects.host.current().decode.register.generation.id,
     speaker: effects.host.principal.id, scopeDigest: value(canonical(effects.host.scope)).hash,
     durability: 'replicated' as const, replicas: 1,
-    lossModel: 'fixture peer custody; production loss model remains an assembly admission concern',
+    lossModel: 'Second local directory is a peer STAND-IN; shared disk loss is NOT covered.',
     maxBytes: telegram.declaration.limits.maxReplyBytes,
     maxCharge: telegram.declaration.limits.maxCharge,
     timeout: telegram.declaration.limits.timeout, verificationBar: 'reply-bar:1',

@@ -1,5 +1,5 @@
 // Part Twelve Slice A1 coverage. A PARTIAL row is never promoted by a parser,
-// stand-in or no-op: it names the missing owner consumer/grant, Slice A2, or Slice B scope.
+// stand-in or no-op: it names the missing owner consumer/grant or Slice B scope.
 import { readFileSync } from 'node:fs';
 import { relative } from 'node:path';
 
@@ -32,13 +32,13 @@ const partial = {
   23: 'PARTIAL: iMessage is Slice B.', 24: 'PARTIAL: iMessage is Slice B.', 25: 'PARTIAL: web is Slice B.',
   26: 'PARTIAL: the landed Telegram rename/forward identity arm is executable; cross-platform alias and legacy migration remain Slice B and owner-governed.',
   28: 'PARTIAL: public prepare/dispatch, the final concrete current-state recheck and nine real local outbound process cuts are executable; the production real-model chain awaits its named owner integrations.',
-  29: 'PARTIAL: exact HTML preparation is executable; delivery-status word/emoji assessment is NON-EXECUTABLE-UNTIL-slice-A2; broader advisory review remains owner scope.',
+  29: 'PARTIAL: exact HTML preparation and source-bounded provider-acceptance word/emoji status are executable; broader advisory review remains owner scope.',
   30: 'PARTIAL: fitting or explicit refusal is executable; aggregate output is non-executable-until-seam-response-effects-payloads.md.',
   31: 'PARTIAL: no adapter retry/fallback is executable; unchanged-digest successor handling remains non-executable-until-seam-response-effects-followup.md-and-seam-response-loop-followup.md.',
   32: 'PARTIAL: reaction, typing, read-receipt, delete, edit, media and single-member shapes are refused through the public prepare port with no provider or public-text fallback; typed optional-effect positives are non-executable-until their named grants land.',
   33: 'PARTIAL: Eight persists request/claim before send and the fsync-backed prepared outbox reconstructs across nine real local process cuts through the existing Six/Eight/Ten contracts; the production crash matrix awaits Part Eleven assembly integration.',
-  34: 'PARTIAL: response-stage provider bytes are recorded durably through Part Eight; every delivery-status assessment derived from those bytes is NON-EXECUTABLE-UNTIL-slice-A2; the independent live witness remains activation evidence.',
-  35: 'PARTIAL: Telegram provider-response assessment is NON-EXECUTABLE-UNTIL-slice-A2; real settlement remains separately non-executable-until-seam-response-effects-followup.md.',
+  34: 'PARTIAL: exact capture-backed Telegram response evidence is assessed only as provider acceptance, while mismatched, unwitnessed, unsupported-stage and human-delivery/read claims refuse; the independent live witness remains activation evidence.',
+  35: 'PARTIAL: the Telegram response uses the landed Part Nine public assessment and retains its owner evidence; real settlement remains non-executable-until-seam-response-effects-followup.md.',
   36: 'PARTIAL: stable lookup is explicitly unsupported and cannot prove non-occurrence; the full recovery schedule is owner scope.',
   37: 'PARTIAL: a Part Six bounded observation wake performs one read-only Telegram lookup attempt with zero additional invocation; successor retry is non-executable-until-seam-response-effects-followup.md-and-seam-response-loop-followup.md.',
   38: 'PARTIAL: fsync-backed intake and ordinary-reply reconstruction run across fifteen real local process cuts plus three mismatched-route neighbors; held-receipt continuation is non-executable-until-seam-response-intake-followup.md row 46.',
@@ -60,7 +60,6 @@ const partial = {
 };
 
 const design = readFileSync('docs/16-conversation-adapters/12-negative-contract-fixtures.md', 'utf8');
-const sliceA2Rows = new Set([29, 34, 35]);
 const row99ConditionalAppendRows = new Set([16, 18, 46]);
 const expected = [...design.matchAll(/^\| (P12-NF-(\d+)) \|/gm)].map(match => ({ id: match[1], number: Number(match[2]) }));
 if (expected.length !== 53) throw new Error(`expected 53 P12 checks, found ${expected.length}`);
@@ -80,7 +79,7 @@ for (const file of report.testResults) for (const test of file.assertionResults)
 // These rows all have a concrete Slice A/build/owner-path assertion that must pass.
 const landedArms = new Set([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 41, 42, 45, 46,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 41, 42, 45, 46,
   26, 47, 48, 49, 50, 51, 52,
 ]);
 for (const row of expected) {
@@ -89,8 +88,6 @@ for (const row of expected) {
   if (landedArms.has(row.number) && !(tests.get(row.id)?.length))
     throw new Error(`${row.id}: landed executable arm without a passing test`);
   if (partial[row.number] && !reason.startsWith('PARTIAL:')) throw new Error(`${row.id}: partial reason is not explicit`);
-  if (sliceA2Rows.has(row.number) && !reason.includes('NON-EXECUTABLE-UNTIL-slice-A2'))
-    throw new Error(`${row.id}: Slice A2 assessment arm is not named exactly`);
   if (row99ConditionalAppendRows.has(row.number)
     && !reason.includes('NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append'))
     throw new Error(`${row.id}: cross-process admission arm does not cite the exact row 99 hold`);
@@ -98,6 +95,9 @@ for (const row of expected) {
 const p12nf48Files = new Set((tests.get('P12-NF-48') ?? []).map(test => test.file));
 for (const tier of ['telegram.unit.test.ts', 'telegram.integration.test.ts', 'telegram.lifecycle.test.ts'])
   if (![...p12nf48Files].some(file => file.endsWith(tier))) throw new Error(`P12-NF-48: missing passing ${tier} tier`);
+const p12nf35Files = new Set((tests.get('P12-NF-35') ?? []).map(test => test.file));
+for (const tier of ['telegram.round17.unit.test.ts', 'telegram.round17.integration.test.ts', 'telegram.round17.lifecycle.test.ts'])
+  if (![...p12nf35Files].some(file => file.endsWith(tier))) throw new Error(`P12-NF-35: missing passing ${tier} assessment tier`);
 
 // High-risk executable arms are not established by a check id in a title alone.
 // Require the passing focused consumer and the concrete owner-port calls/assertion
@@ -175,9 +175,27 @@ const concreteConsumers = [
       "toEqual(['admitted', 'admitted', 'admitted'])", "expect(bindings[2]).toBe('none')", "['requester', 'requester', 'requester']"] },
   { id: 'P12-NF-29', file: 'tests/conversation/telegram.unit.test.ts',
     anchors: ['renderTelegramHtml(', "'A < B & C > D'", "'A &lt; B &amp; C &gt; D'", "'control data'"] },
+  { id: 'P12-NF-29', file: 'tests/conversation/telegram.round17.unit.test.ts',
+    anchors: ['assessTelegramReplyResponse(', "renderTelegramDeliveryStatus(acceptance, 'word'",
+      "renderTelegramDeliveryStatus(acceptance, 'emoji'", "text: 'accepted by platform'",
+      "accessibleLabel: 'accepted by platform'", "stage: 'human-read'"] },
   { id: 'P12-NF-34', file: 'tests/conversation/telegram.outbound.integration.test.ts',
     anchors: ["expect(observation.stage).toBe('response')", 'effects.ctx.captures[observation.capture.reference]',
       "toBe('{\"ok\":true,\"result\":{\"message_id\":700}}')", "refused(doorway.settle(observation.operation), 'assessor unavailable')"] },
+  { id: 'P12-NF-34', file: 'tests/conversation/telegram.round17.integration.test.ts',
+    anchors: ['exact Telegram response reaches the landed Part Nine assessment and not settlement',
+      "claim: 'provider-accepted'", "['occurrence', 'satisfied']", "['quiescence', 'insufficient']",
+      "['charge', 'insufficient']", "['missing', 'wrong-digest']", "['human-delivered', 'human-read']"] },
+  { id: 'P12-NF-35', file: 'tests/conversation/telegram.round17.lifecycle.test.ts',
+    anchors: ['provider assessment rebuilds without send or settlement replay', 'rebuildAssessment()',
+      'existing: first.assessment', 'expect(rebuilt).toEqual(first)', "row.record.type === 'EffectSettlement'", 'toHaveLength(0)'],
+    supporting: [{ file: 'src/conversation/telegram.ts', anchors: [
+      'export function assessTelegramReplyResponse', "input.claim === 'provider-accepted'",
+      'take(deps.custody.verify([response.capture], deps.definition))', 'deps.assessment.assess(input.effect)',
+      'deps.assessment.read(assessment, input.effect)', "view.outcome.kind === 'happened'",
+      "view.finalCharge === null && view.delayedExecutionExcluded === false",
+      "ownerAssessment.captureStatuses[0]!.reference === response.capture.reference",
+    ] }] },
   { id: 'P12-NF-28', file: 'tests/conversation/telegram.round3.integration.test.ts',
     anchors: ['transport.consume(', 'adapter.invoke(', "row.kind === 'effect-OperationObservation'", 'calls.send'] },
   { id: 'P12-NF-37', file: 'tests/conversation/telegram.round3.lifecycle.test.ts',
@@ -270,9 +288,7 @@ if (/[0-9]{6,}:[A-Za-z0-9_-]{20,}/.test(candidates)) throw new Error('P12-NF-12:
 console.log('| Check | Disposition | Passing test files |');
 console.log('|---|---|---|');
 for (const row of expected) {
-  const disposition = sliceA2Rows.has(row.number)
-    ? landedArms.has(row.number) ? 'EXECUTABLE ARM + NON-EXECUTABLE-UNTIL-slice-A2' : 'NON-EXECUTABLE-UNTIL-slice-A2'
-    : executable[row.number] ? 'EXECUTABLE' : landedArms.has(row.number) ? 'EXECUTABLE ARM + PARTIAL' : 'PARTIAL';
+  const disposition = executable[row.number] ? 'EXECUTABLE' : landedArms.has(row.number) ? 'EXECUTABLE ARM + PARTIAL' : 'PARTIAL';
   console.log(`| ${row.id} | ${disposition} | ${[...new Set((tests.get(row.id) ?? []).map(test => test.file))].join('; ') || '—'} |`);
 }
-console.log(`${landedArms.size} P12 checks have passing executable arms; P12-NF-16/18/46 hold cross-process admission on NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append; P12-NF-29/34/35 name their removed assessment arms NON-EXECUTABLE-UNTIL-slice-A2; all 53 have explicit dispositions and no missing consumer passes as a no-op.`);
+console.log(`${landedArms.size} P12 checks have passing executable arms; P12-NF-16/18/46 hold cross-process admission on NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append; P12-NF-35 retains only real settlement on non-executable-until-seam-response-effects-followup.md; all 53 have explicit dispositions and no missing consumer passes as a no-op.`);

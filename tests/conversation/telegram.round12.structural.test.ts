@@ -2,20 +2,19 @@ import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import * as conversation from '../../src/conversation/index.js';
 
-it('round12 structural re-slice names every moved map row and exports no A2 assessment surface', () => {
+it('P12-NF-29 P12-NF-34 P12-NF-35 round17 structural map requires the landed assessment and retains only exact holds', () => {
   const map = readFileSync('scripts/check-p12-contract-map.mjs', 'utf8');
-  const moved = map.match(/const sliceA2Rows = new Set\(\[([^\]]+)\]\);/);
-  expect(moved?.[1]?.split(',').map(value => Number(value.trim()))).toEqual([29, 34, 35]);
-  for (const row of [29, 34, 35]) {
-    expect(map).toMatch(new RegExp(`\\n\\s*${row}: [^\\n]+NON-EXECUTABLE-UNTIL-slice-A2`));
-  }
-  expect(map).toContain("'EXECUTABLE ARM + NON-EXECUTABLE-UNTIL-slice-A2'");
-  expect(map).toContain("'NON-EXECUTABLE-UNTIL-slice-A2'");
+  expect(map).not.toContain('slice-A2');
+  expect(map).toContain("35: 'PARTIAL: the Telegram response uses the landed Part Nine public assessment");
+  expect(map).toContain('real settlement remains non-executable-until-seam-response-effects-followup.md');
+  expect(map).toContain('NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append');
 
-  expect(Object.keys(conversation).filter(name => /status|assessment/i.test(name))).toEqual([]);
+  expect(Object.keys(conversation).filter(name => /status|assess/i.test(name))).toEqual([
+    'assessTelegramReplyResponse', 'renderTelegramDeliveryStatus',
+  ]);
   const telegram = readFileSync('src/conversation/telegram.ts', 'utf8');
-  expect(telegram).not.toContain('renderTelegramDeliveryStatus');
-  expect(telegram).not.toContain('deliveryStatusHistories');
-  expect(telegram).not.toContain('replyProviderResponses');
-  expect(telegram).not.toContain('readEvidence');
+  expect(telegram).toContain('export function assessTelegramReplyResponse');
+  expect(telegram).toContain('export function renderTelegramDeliveryStatus');
+  expect(telegram).toContain("input.claim === 'provider-accepted'");
+  expect(telegram).toContain("view.finalCharge === null && view.delayedExecutionExcluded === false");
 });

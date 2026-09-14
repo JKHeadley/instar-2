@@ -15,7 +15,8 @@ import type {
   AdmittedTelegramAdapter, TelegramAdmissionDependencies, TelegramBotApiCustodianPort,
   TelegramBotDeclaration, TelegramConversationTarget, TelegramExtractedUpdate,
   TelegramIngressDependencies, TelegramIntakeOutcome, TelegramPollCycle,
-  TelegramUpdateKind, TelegramWebhookOutcome,
+  TelegramProviderAcceptance, TelegramReplyAssessmentDependencies, TelegramReplyAssessmentInput,
+  TelegramDeliveryStatus, TelegramDeliveryStatusForm, TelegramUpdateKind, TelegramWebhookOutcome,
 } from './contracts.js';
 
 const admittedInstances = new WeakSet<object>();
@@ -785,6 +786,115 @@ function ensureCurrentReplyStanding(host: EffectHost, state: ReturnType<EffectHo
         && (grant.standing === 'operator' || grant.actions.includes('work'));
     } catch { return false; }
   }), 'current standing does not cover reply');
+}
+
+function exactTelegramResponse(input: TelegramReplyAssessmentInput,
+  deps: TelegramReplyAssessmentDependencies) {
+  const { effect } = input;
+  ensure(input.claim === 'provider-accepted',
+    'a Telegram provider response cannot establish human delivery or read');
+  ensure(deps.assessment.owner === 'part-nine',
+    'Telegram delivery assessment must remain in Part Nine custody');
+  ensure(deps.verification.owner === 'part-nine' && deps.custody.owner === 'part-ten',
+    'Telegram response evidence requires the public Nine assessment and Ten custody owners');
+  const conversation = telegramConversation(deps.admitted.declaration.bot.id, deps.target);
+  const responses = effect.observations.filter(observation => observation.stage === 'response');
+  ensure(responses.length === 1, 'Telegram provider acceptance requires one exact response-stage observation');
+  const response = responses[0]!;
+  ensure(effect.request.id === effect.reservation.request
+    && effect.request.attempt === effect.reservation.attempt
+    && effect.request.digest === effect.reservation.digest
+    && effect.request.verificationBar === effect.bar
+    && effect.request.definition === deps.definition.id
+    && effect.reservation.state === 'consumed'
+    && response.request === effect.request.id
+    && response.operation === effect.reservation.operation
+    && response.claim === effect.claim
+    && response.digest === effect.request.digest
+    && response.account === deps.admitted.account
+    && response.conversation === conversation
+    && deps.definition.adapter === deps.admitted.id
+    && deps.definition.account === response.account
+    && deps.definition.conversation === response.conversation
+    && deps.definition.verificationBar === effect.bar,
+  'Telegram response evidence differs from the exact request, claim, account, conversation, or digest');
+  ensure(effect.observations.every(observation => observation.request === response.request
+    && observation.operation === response.operation
+    && observation.claim === response.claim
+    && observation.digest === response.digest
+    && observation.account === response.account
+    && observation.conversation === response.conversation),
+  'Telegram observation history contains mismatched response evidence');
+  ensure(response.attestation === 'local-recorder' && response.capture.reference.length > 0
+    && /^sha256:[a-f0-9]{64}$/.test(response.capture.hash),
+  'Telegram response observation lacks its closed capture-backed shape');
+  take(deps.custody.verify([response.capture], deps.definition));
+  return response;
+}
+
+export function assessTelegramReplyResponse(input: TelegramReplyAssessmentInput,
+  deps: TelegramReplyAssessmentDependencies): Result<TelegramProviderAcceptance> {
+  return boundary('TelegramReplyResponseAssessment', {
+    effect: input.effect, claim: input.claim, existing: input.existing,
+  }, deps.boundary, () => {
+    requireAdmission(deps.admitted, deps.api);
+    const response = exactTelegramResponse(input, deps);
+    const assessment = input.existing ?? take(deps.assessment.assess(input.effect));
+    ensure(assessment.owner === 'part-nine' && assessment.name === 'VerificationAssessment'
+      && assessment.id.length > 0, 'Telegram response assessment has the wrong owner or kind');
+    const view = take(deps.assessment.read(assessment, input.effect));
+    ensure(view.outcome.kind === 'happened' && view.outcome.evidence.length > 0,
+      'Telegram provider acceptance is not witnessed by exact current evidence');
+    ensure(view.finalCharge === null && view.delayedExecutionExcluded === false,
+      'Telegram response assessment claims an unsupported stronger closure stage');
+    ensure(view.required.includes(assessment.id),
+      'Telegram response assessment does not retain its owner-issued fact');
+    const assessmentRows = take(deps.verification.inspectCurrent()).filter(row =>
+      row.fact.id === assessment.id && row.record.type === 'VerificationAssessment');
+    ensure(assessmentRows.length === 1 && assessmentRows[0]!.taint.length === 0
+      && assessmentRows[0]!.conflicts.length === 0,
+    'Telegram provider acceptance assessment is missing, ambiguous, or tainted');
+    const ownerAssessment = assessmentRows[0]!.record;
+    ensure(ownerAssessment.type === 'VerificationAssessment'
+      && ownerAssessment.operation === response.operation
+      && ownerAssessment.attempt === input.effect.reservation.attempt
+      && ownerAssessment.operationDigest === response.digest
+      && ownerAssessment.evidence.length === 1
+      && ownerAssessment.evidence[0] === view.outcome.evidence[0]
+      && ownerAssessment.captureStatuses.length === 1
+      && ownerAssessment.captureStatuses[0]!.reference === response.capture.reference
+      && ownerAssessment.captureStatuses[0]!.status === 'available',
+    'Telegram provider acceptance is not bound to the exact witnessed response capture');
+    return {
+      assessment, stage: 'provider-accepted', sourceStage: 'response',
+      operation: response.operation, account: response.account, conversation: response.conversation,
+      digest: response.digest, observation: response.id, evidence: [...view.outcome.evidence],
+      unsupported: ['human-delivered', 'human-read'],
+    };
+  });
+}
+
+export function renderTelegramDeliveryStatus(acceptance: TelegramProviderAcceptance,
+  form: TelegramDeliveryStatusForm, context: BoundaryContext): Result<TelegramDeliveryStatus> {
+  return boundary('TelegramDeliveryStatusRender', { acceptance, form }, context, () => {
+    ensure(acceptance.stage === 'provider-accepted' && acceptance.sourceStage === 'response'
+      && acceptance.unsupported.length === 2
+      && acceptance.unsupported[0] === 'human-delivered'
+      && acceptance.unsupported[1] === 'human-read'
+      && acceptance.assessment.owner === 'part-nine'
+      && acceptance.assessment.name === 'VerificationAssessment'
+      && acceptance.assessment.id.length > 0
+      && acceptance.observation.length > 0
+      && acceptance.evidence.length > 0,
+    'Telegram status requires a source-bounded provider-acceptance assessment');
+    ensure(form === 'word' || form === 'emoji', 'Telegram delivery status form is unsupported');
+    return {
+      stage: acceptance.stage, sourceStage: acceptance.sourceStage, form,
+      text: form === 'word' ? 'accepted by platform' : '📨',
+      accessibleLabel: 'accepted by platform', legend: 'accepted by platform',
+      assessment: acceptance.assessment, observation: acceptance.observation,
+    };
+  });
 }
 
 export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAdapter,
