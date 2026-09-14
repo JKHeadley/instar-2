@@ -1,0 +1,189 @@
+{
+  "artifact": "P21-INCIDENT-REPLAY-v1",
+  "caseId": "P21-EXAMPLE-SYNTHETIC-01",
+  "origin": "synthetic",
+  "productionDerived": false,
+  "setting": "same-topic",
+  "cueForm": "ordinary",
+  "custody": {
+    "scopeRef": "synthetic:scope:one",
+    "exportDecisionRef": {
+      "state": "not-applicable",
+      "reason": "All material and references are invented."
+    },
+    "originalEpisode": {
+      "state": "known",
+      "value": [
+        "synthetic:episode:one"
+      ]
+    },
+    "syntheticOnly": true
+  },
+  "originalIntake": {
+    "state": "known",
+    "value": {
+      "intakeRef": "synthetic:intake:one",
+      "authorRef": "synthetic:person:a",
+      "conversationRef": "synthetic:conversation:one",
+      "captureRefs": [
+        "synthetic:capture:one"
+      ],
+      "participation": "direct",
+      "completeness": "complete"
+    }
+  },
+  "trigger": {
+    "inputRef": "synthetic:trigger:one",
+    "decisionTime": {
+      "at": "2025-09-15T12:00:00Z",
+      "basis": "synthetic-UTC",
+      "sourceRef": "synthetic:clock:one"
+    },
+    "taskRef": "synthetic:task:one",
+    "audienceRefs": [
+      "synthetic:person:a"
+    ]
+  },
+  "sourceSnapshot": {
+    "frontier": {
+      "state": "known",
+      "value": {
+        "captureRefs": [
+          "synthetic:capture:one"
+        ],
+        "lineages": [
+          {
+            "machineRef": "synthetic:machine:one",
+            "epoch": 1,
+            "position": 1
+          }
+        ],
+        "unknownPeers": []
+      }
+    },
+    "indexCoverage": []
+  },
+  "permissionState": {
+    "state": "known",
+    "value": {
+      "identityMappingRefs": [
+        "synthetic:identity:one"
+      ],
+      "internalUsePolicyRef": "synthetic:internal:one",
+      "providerScopeRef": "synthetic:provider:none",
+      "disclosurePolicyRef": "synthetic:disclosure:one",
+      "authorityRefs": []
+    }
+  },
+  "recallTrace": {
+    "candidateCapture": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "renderedPacket": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "manifest": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "actualSubmittedInput": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "consumptionEvidence": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    }
+  },
+  "behavior": {
+    "draft": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "preparedEffect": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "actualEffectObservation": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "outcome": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "effectClass": "ordinary-reply"
+  },
+  "environment": {
+    "build": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "installedHooks": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "flags": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "modelConfiguration": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "renderer": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    }
+  },
+  "timestamps": [],
+  "sourceErrors": {
+    "state": "unknown",
+    "reason": "Not observed in this synthetic shape-only example."
+  },
+  "charges": {
+    "state": "unknown",
+    "reason": "Not observed in this synthetic shape-only example."
+  },
+  "pairedControls": {
+    "successCaseRef": {
+      "state": "unknown",
+      "reason": "Matched control is a runtime replay obligation, absent from this shape-only sample."
+    },
+    "unavailableOrLegitimateHoldCaseRef": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    }
+  },
+  "evaluationOnly": {
+    "readerAccess": false,
+    "expectedBehaviorRef": "synthetic:label:expected",
+    "prohibitedBehaviorRef": "synthetic:label:prohibited",
+    "acceptableSupportPaths": [
+      [
+        "synthetic:capture:one",
+        "synthetic:trigger:one"
+      ]
+    ],
+    "laterCorrectionRefs": [],
+    "inferredExplanation": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "proceduralRepairLesson": {
+      "state": "unknown",
+      "reason": "Not observed in this synthetic shape-only example."
+    },
+    "criterionRef": "synthetic:criterion:one"
+  },
+  "execution": {
+    "modelRunExecuted": false,
+    "runRef": {
+      "state": "unknown",
+      "reason": "This is a schema example, not an executed model experiment."
+    },
+    "dispatchAllowed": false
+  }
+}
