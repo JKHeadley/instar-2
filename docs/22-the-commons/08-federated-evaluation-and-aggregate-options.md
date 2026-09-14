@@ -1,0 +1,49 @@
+## 8. Federated evaluation and aggregate options
+
+**Value — Proposal B is an evaluation extension after A, subject to additional gates.**
+A signed fixed evaluation package may bring a comparison to permitted local evidence while
+originals stay in local custody. Better coverage is a hypothesis; it does not establish
+privacy or improved judgment. B stays inactive until the relevant owner seams, isolation,
+E1–E8 and its incremental E9 comparison pass. Model-weight training is outside this contract.
+
+Basis: Purpose wisdom, sovereignty and evidence constraint; R5 Proposal B; OD-01 and G1/G2/G4.
+
+**Rule — an evaluation invitation cannot query memory or execute arbitrarily.** **Checks: P22-NF-13/17/20.**
+Admission binds exact package/candidate hashes, scenario/rubric, declared read scope, allowed
+outputs, provider exposure, expiry, maximum calls/cost and durable repeat budget. Ten confines
+execution; Eight excludes actual dispatch and undeclared network/filesystem effects; Six
+accounts for children, cancellation and restart. A signed malicious package still fails.
+Provider requests are separately checked exposures. Repeated, adaptive or differencing queries
+outside the sealed plan are refused. Outputs pass the same content-free/richer grant checks
+as A; local execution alone is not a privacy guarantee. Front outage cannot stall local work.
+
+Basis: Rules 28/39/41/55/57/60/61/86/95; purpose authority constraint; R5 E3/E9; section 14 EV dependencies.
+
+**Value — Proposal C is a separate deferred prevalence option.**
+It may estimate broad failure categories under an explicitly approved local differential-privacy
+mechanism, meaning randomization occurs before the front sees a contribution. It cannot replace
+accountable cases, accepted grades or judgment review. Secure aggregation, if added, needs its
+own threshold/dropout/collusion specification; it is not assumed or implied by pseudonymity.
+
+Basis: Purpose wisdom and trust; R5 Proposal C; G2.
+
+**Rule — a privacy claim names its protected unit and composed budget.** **Checks: P22-NF-14/17.**
+The candidate protected unit is one independently verified operator's complete permitted
+contribution across its agents. Neighboring datasets differ by replacement of that contribution.
+Pin mechanism, clipping, cadence, destination/collusion assumptions and cumulative accounting.
+Unknown operator grouping means this guarantee is unavailable. Restart, key rotation, window
+boundaries and address changes never reset the budget. The proposed 90-day profile permits
+one contribution per seven days, clips a normalized category vector to L1 norm at most one,
+and allows at most epsilon 1, delta 0 across all destinations. No category estimate is released
+below 50 independent operator contributors. These numbers are proposed limits, not a proof that
+an as-yet unselected mechanism meets them or permission to spend privacy loss.
+
+Basis: Trust and non-widening authority; rules 13/28/41/95; R5 C/E10; G2, candidate amendment on privacy terms.
+
+**Rule — prevalence never promotes a judgment lesson by vote.** **Checks: P22-NF-10/14.**
+C may nominate an investigation. It supplies no case-level provenance, standing-bearing grade,
+independent support set or human approval for a lesson. Even statistically clear agreement to
+breach a pillar is rejected. Known-count synthetic simulations measure estimator utility only;
+a released estimate retains uncertainty, suppression and its participating-population limit.
+
+Basis: Purpose wisdom, alignment and authority constraint; big picture §8; seven principles 1/3/7; R5 E10.
