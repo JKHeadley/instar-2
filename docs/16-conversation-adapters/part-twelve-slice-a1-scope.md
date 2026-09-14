@@ -37,5 +37,6 @@ for the exact per-bot `AdapterConformance` frontier read by each admission calle
 is over: the competing-process one-admitted-mode arms of P12-NF-16, P12-NF-18, and P12-NF-46 are
 executable. `tests/conversation/held/admission-process.ts`,
 `tests/conversation/held/run-admission-matrix.py`, and
+the permanent restart companion `admission-restart-matrix.py` at
 `tests/conversation/held/admission-restart-matrix.py` permanently require one durable winner in either process order and a
 fresh-process readmission of that winner after restart.
