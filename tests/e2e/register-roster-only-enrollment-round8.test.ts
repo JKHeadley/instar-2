@@ -11,6 +11,7 @@ import type { FactReference } from '../../src/register/index.js';
 import { factsFixture } from '../facts/fixtures.js';
 import { hash, json, setup, value } from '../register/fixtures.js';
 import { generationRegistration, ownedSchema, versionSchema } from '../register/normal-provider-fixture.js';
+import { realRepositoryLanding } from '../register/repository-landing-round11.js';
 
 const emittedModule = '../../dist/index.js';
 const { decode: emittedDecode } = await import(emittedModule) as typeof import('../../src/index.js');
@@ -29,8 +30,8 @@ describe('round-eight normal build roster-only enrollment regression', () => {
         Object.assign(source.declaration.requiredFacts, { deadline: 4_000_000_000_000,
           owner: 'fixture-operator', overdueAction: 'surface' });
       writeFileSync(conversionPath, JSON.stringify(conversion));
-      git('init'); git('add', '.'); git('commit', '-qm', 'parent generation');
-      let parentCommit = git('rev-parse', 'HEAD'); const ownerBase = parentCommit;
+      const { base: ownerBase, commit: landingId, landing } = realRepositoryLanding(root);
+      let parentCommit = git('rev-parse', 'HEAD');
       const parentRegister = JSON.parse(readFileSync(join(root, 'generated/register.json'), 'utf8'));
       const parentSource = JSON.parse(readFileSync(join(root, 'generated/source.json'), 'utf8'));
       const s = setup(), f = factsFixture();
@@ -55,7 +56,7 @@ describe('round-eight normal build roster-only enrollment regression', () => {
         JSON.stringify({ schemaVersion: 1, enrollments: [enrollment] }, null, 2) + '\n');
       const rootId = factId({ machine: 'machine-a', epoch: 0, position: 0 });
       const sinceId = factId({ machine: 'machine-a', epoch: 0, position: 1 });
-      const landingId = factId({ machine: 'machine-a', epoch: 0, position: 2 });
+      const anchorId = factId({ machine: 'machine-a', epoch: 0, position: 2 });
       const approval: FactReference = { owner: 'part-two', name: 'FactEnvelope', id: 'approval:shape:v1' };
       const documentPath = 'register-source/shape-changes/part-fourteen.json';
       mkdirSync(join(root, 'register-source/shape-changes'), { recursive: true });
@@ -96,7 +97,7 @@ describe('round-eight normal build roster-only enrollment regression', () => {
       git('add', 'generated/register.json', 'generated/source.json', manifestPath,
         'register-source/owner-enrollments.json', documentPath, 'register-source/bootstrap-shape.json',
         'tests/e2e/sentinel-holders.test.ts', 'tests/sentinel-holders/core.test.ts');
-      git('commit', '--amend', '-qm', 'parent roster and unapproved enrollment');
+      git('commit', '-qm', 'parent roster and unapproved enrollment');
       parentCommit = git('rev-parse', 'HEAD');
       const workflow = { type: 'RegisterWorkflow', schemaVersion: 1, mode: 'normal', branch: 'fixture-roster-only',
         parent: { commit: parentCommit, register: 'generated/register.json', source: 'generated/source.json',
@@ -118,8 +119,8 @@ describe('round-eight normal build roster-only enrollment regression', () => {
         versionSchema('register-version-record', f.scope), versionSchema('register-shape-version-record', f.scope),
         ownedSchema('generation-record', 'part-three', 'GenerationRecord', f.scope)], ownedBodies: [registration] };
       const rootFact = f.fact({}, factContext), sinceFact = f.next(rootFact, {}, factContext);
-      const landingFact = f.next(sinceFact, {}, factContext);
-      expect([rootFact.id, sinceFact.id, landingFact.id]).toEqual([rootId, sinceId, landingId]);
+      const anchorFact = f.next(sinceFact, {}, factContext);
+      expect([rootFact.id, sinceFact.id, anchorFact.id]).toEqual([rootId, sinceId, anchorId]);
       const principal = (id: string, kind: 'person' | 'system') => {
         const proof = s.f.proof({ id, kind }, { id, kind }, 'identity');
         return value((emittedDecode as unknown as typeof decode)('VerifiedPrincipal', json('VerifiedPrincipal', { id, kind }),
@@ -129,19 +130,18 @@ describe('round-eight normal build roster-only enrollment regression', () => {
       const separations = parentSource.authorityPrerequisites.map(({ site, record }: { site: string; record: string }) => ({
         site, record, execution: { principal: executor, grants: s.f.grants, revocations: [], scope: s.f.scope, now: s.f.now },
         writer, scope: s.f.scope, action: 'work' }));
-      let previous = landingFact;
+      let previous = anchorFact;
       const versionFacts = ownerVersions.map(version => {
         const fact = f.next(previous, { kind: 'register-version-record', body: { record: JSON.stringify(version) } }, factContext);
         previous = fact; return fact;
       });
       expect(previous.id).toBe(vectorId);
       const enteringForceFact = f.next(previous, { kind: 'generation-record', body: { record: generationRecord } }, factContext);
-      const durableFacts = [rootFact, sinceFact, landingFact, ...versionFacts, enteringForceFact];
+      const durableFacts = [rootFact, sinceFact, anchorFact, ...versionFacts, enteringForceFact];
       const provider = createPartTwoRegisterProvider({ store: createFactStore(factContext, { owner: 'part-ten',
         read: () => JSON.parse(JSON.stringify(durableFacts)), append: () => f.success({ kind: 'local-durable' as const }) }),
         authority: createPartTwoRegisterAuthority({ facts: { ...factContext, grants: [{ factId: rootFact.id, grant: f.g }] },
-          scope: f.scope, landing: { owner: 'part-ten', merges: [{ commit: landingId, onMain: true, parentCount: 2,
-            reviewedBase: ownerBase }] }, context: s.context }),
+          scope: f.scope, landing, context: s.context }),
         horizon: { lineages: { 'machine-a': { head: { epoch: 0, position: enteringForceFact.segment.position },
           observedAt: 100, closed: false } }, stalenessBound: 100 }, context: s.context, separations });
 

@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { createFactStore, decodeVersion } from '../../src/facts/index.js';
@@ -8,18 +11,20 @@ import type { FactPositionVectorReference, PartTwoRegisterAuthorityPort, ShapeCh
 import { factsFixture } from '../facts/fixtures.js';
 import { detail, json, setup, value } from '../register/fixtures.js';
 import { generationRegistration, ownedSchema, vectorAt, versionSchema } from '../register/normal-provider-fixture.js';
+import { realRepositoryLanding } from '../register/repository-landing-round11.js';
 
 describe('Part Two register provider', () => {
   it('P3-NF-09 P3-NF-21 P3-NF-23 uses the landed version decoder for complete history and exact approval', () => {
+    const repositoryRoot = mkdtempSync(join(tmpdir(), 'instar-register-real-landing-'));
+    try {
+    const resolvedLanding = realRepositoryLanding(repositoryRoot);
     const f = factsFixture(), s = setup(); const root = f.fact(), since = f.next(root);
     const content = s.declaration(); const encoded = value(canonical(content)); f.capture(encoded.bytes, encoded.hash);
-    const base = 'base:register'; const landingCommit = 'merge:register';
+    const { base, commit: landingCommit, landing } = resolvedLanding;
     const approval = f.authorize({ id: 'approval:store:v1', artifact: encoded.hash, base, action: { kind: 'merge', scope: f.scope } });
     const version = { id: 'store:v1', subject: 'store', content, contentHash: encoded.hash, since: since.id, supersedes: [],
       approvedIn: approval.id, base, landedIn: landingCommit };
     const shapeApprovalId = 'approval:shape:v1';
-    const landing = { owner: 'part-ten' as const,
-      merges: [{ commit: landingCommit, onMain: true, parentCount: 2, reviewedBase: base }] };
     const versionContext = { ...f.ctx, facts: [root, since], grants: [{ factId: root.id, grant: f.g }] };
     const decodedVersion = value(decodeVersion(version, versionContext, f.scope, [], landing));
     const versionContextForStore = { ...versionContext,
@@ -132,5 +137,6 @@ describe('Part Two register provider', () => {
     expect(() => createPartTwoRegisterProvider({ store, authority: { owner: 'part-two',
       verifyExtract: () => f.success(vector), verifyShapeChange: () => f.success(binding.approval!) } as PartTwoRegisterAuthorityPort,
     horizon: { lineages: {}, stalenessBound: 100 }, context: s.context })).toThrow('landed Part Two version-chain');
+    } finally { rmSync(repositoryRoot, { recursive: true, force: true }); }
   });
 });

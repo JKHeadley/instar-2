@@ -27,12 +27,17 @@ export function runRegisterChecks(sourceRegister: GeneratedRegister, sourceCheck
   return checked('RegisterWorkflowChecks', { register: sourceRegister, checks: sourceChecks }, context, raw => {
     const captured = object(raw);
     const capturedChecks = captured.checks as unknown as WorkflowChecks;
-    // Principal/provenance values in the remaining workflow input retain their
-    // Part One brands. Evidence rows and their use clock are plain signed-data
-    // claims, so every later verifier and graph read consumes one captured copy.
-    const register = sourceRegister;
-    const checks: WorkflowChecks = { ...sourceChecks, runs: capturedChecks.runs,
-      catalog: capturedChecks.catalog, now: capturedChecks.now };
+    // Every decision reads the one Part One-captured input. Only the opaque
+    // principal brands are restored from the admitted caller values; their
+    // sites, scopes, standing inputs and clocks remain the captured data.
+    const register = captured.register as unknown as GeneratedRegister;
+    const checks: WorkflowChecks = { ...capturedChecks,
+      separations: capturedChecks.separations.map((separation, index) => {
+        const admitted = sourceChecks.separations[index];
+        requireThat(admitted !== undefined, 'captured separation has no admitted principal');
+        return { ...separation, execution: { ...separation.execution, principal: admitted.execution.principal },
+          writer: admitted.writer };
+      }) };
     requireThat(['bootstrap', 'normal', 'replay'].includes(checks.mode), 'unknown build mode');
     requireThat(checks.mode !== 'normal' || checks.bootstrapRules.length === 0, 'normal build cannot suspend policy prerequisites');
     requireThat(checks.mode === 'normal' || register.extract.rows.length === 0, 'bootstrap/replay cannot reuse a committed extract');

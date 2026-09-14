@@ -11,6 +11,7 @@ import type { FactReference, ShapeChangeBinding } from '../../src/register/index
 import { factsFixture } from '../facts/fixtures.js';
 import { hash, json, setup, value } from '../register/fixtures.js';
 import { generationRegistration, ownedSchema, versionSchema } from '../register/normal-provider-fixture.js';
+import { realRepositoryLanding } from '../register/repository-landing-round11.js';
 
 const emittedModule = '../../dist/index.js';
 const { decode: emittedDecode } = await import(emittedModule) as typeof import('../../src/index.js');
@@ -30,9 +31,8 @@ describe('normal-mode shape-change CLI composition', () => {
       for (const source of conversion.sources) if (source.declaration.requiredFacts.number)
         Object.assign(source.declaration.requiredFacts, { deadline: 4_000_000_000_000, owner: 'fixture-operator', overdueAction: 'surface' });
       writeFileSync(conversionPath, JSON.stringify(conversion));
-      git('init'); git('add', '.'); git('commit', '-qm', 'parent generation');
+      const { base: ownerBase, commit: landingId, landing } = realRepositoryLanding(root);
       let parentCommit = git('rev-parse', 'HEAD');
-      const ownerBase = parentCommit;
       const parentRegister = JSON.parse(readFileSync(join(root, 'generated/register.json'), 'utf8'));
       const parentSource = JSON.parse(readFileSync(join(root, 'generated/source.json'), 'utf8'));
       const s = setup(), f = factsFixture();
@@ -55,7 +55,7 @@ describe('normal-mode shape-change CLI composition', () => {
       const rootId = factId({ machine: 'machine-a', epoch: 0, position: 0 });
       const sinceId = factId({ machine: 'machine-a', epoch: 0, position: 1 });
       const approval: FactReference = { owner: 'part-two', name: 'FactEnvelope', id: 'approval:shape:v1' };
-      const landingId = factId({ machine: 'machine-a', epoch: 0, position: 2 });
+      const anchorId = factId({ machine: 'machine-a', epoch: 0, position: 2 });
       const documentPath = 'register-source/shape-changes/part-fourteen.json'; mkdirSync(join(root, 'register-source/shape-changes'), { recursive: true });
       const document = { type: 'ShapeChangeDocument', schemaVersion: 1, id: 'part-fourteen-owner-enrollment', parent: parentSource.generation,
         candidateShape: hash(shape), changes: [{ operation: 'add', path: `/parts/${parentRegister.shape.parts.length}`, after: 14 }],
@@ -90,7 +90,7 @@ describe('normal-mode shape-change CLI composition', () => {
       writeFileSync(join(root, documentPath), JSON.stringify(document, null, 2) + '\n');
       writeFileSync(join(root, 'generated/register.json'), JSON.stringify(parentRegister));
       writeFileSync(join(root, 'generated/source.json'), JSON.stringify(parentSource));
-      git('add', 'generated/register.json', 'generated/source.json'); git('commit', '--amend', '-qm', 'parent generation');
+      git('add', 'generated/register.json', 'generated/source.json'); git('commit', '-qm', 'landing completion');
       parentCommit = git('rev-parse', 'HEAD');
       const baseWorkflow = { type: 'RegisterWorkflow', schemaVersion: 1, mode: 'normal', branch: 'fixture-shape-change',
         parent: { commit: parentCommit, register: 'generated/register.json', source: 'generated/source.json', conversion: 'generated/conversion.json' },
@@ -124,8 +124,8 @@ describe('normal-mode shape-change CLI composition', () => {
         versionSchema('register-version-record', f.scope), versionSchema('register-shape-version-record', f.scope),
         ownedSchema('generation-record', 'part-three', 'GenerationRecord', f.scope)], ownedBodies: [registration] };
       const rootFact = f.fact({}, factContext), sinceFact = f.next(rootFact, {}, factContext);
-      const landingFact = f.next(sinceFact, {}, factContext);
-      expect([rootFact.id, sinceFact.id, landingFact.id]).toEqual([rootId, sinceId, landingId]);
+      const anchorFact = f.next(sinceFact, {}, factContext);
+      expect([rootFact.id, sinceFact.id, anchorFact.id]).toEqual([rootId, sinceId, anchorId]);
       const principal = (id: string, kind: 'person' | 'system') => {
         const proof = s.f.proof({ id, kind }, { id, kind }, 'identity');
         return value((emittedDecode as unknown as typeof decode)('VerifiedPrincipal', json('VerifiedPrincipal', { id, kind }),
@@ -141,7 +141,7 @@ describe('normal-mode shape-change CLI composition', () => {
       const shapeApproval = f.authorize({ id: approval.id, artifact: shapeEncoded.hash, base: parentCommit });
       const shapeVersion = { id: 'shape:part-fourteen:v1', subject: 'register-shape:part-fourteen', content: expectedBinding,
         contentHash: shapeEncoded.hash, since: sinceId, supersedes: [], approvedIn: shapeApproval.id, base: parentCommit, landedIn: null };
-      let previous = landingFact;
+      let previous = anchorFact;
       const versionFacts = ownerVersions.map(version => {
         const fact = f.next(previous, { kind: 'register-version-record', body: { record: JSON.stringify(version) } }, factContext);
         previous = fact; return fact;
@@ -149,11 +149,10 @@ describe('normal-mode shape-change CLI composition', () => {
       expect(previous.id).toBe(vectorId);
       const shapeVersionFact = f.next(previous, { kind: 'register-shape-version-record', body: { record: JSON.stringify(shapeVersion) } }, factContext);
       const enteringForceFact = f.next(shapeVersionFact, { kind: 'generation-record', body: { record: generationRecord } }, factContext);
-      const durableFacts = [rootFact, sinceFact, landingFact, ...versionFacts, shapeVersionFact, enteringForceFact];
+      const durableFacts = [rootFact, sinceFact, anchorFact, ...versionFacts, shapeVersionFact, enteringForceFact];
       const authority = createPartTwoRegisterAuthority({
         facts: { ...factContext, grants: [{ factId: rootFact.id, grant: f.g }] },
-        scope: f.scope, landing: { owner: 'part-ten', merges: [{ commit: landingId, onMain: true, parentCount: 2, reviewedBase: ownerBase }] },
-        context: s.context });
+        scope: f.scope, landing, context: s.context });
       const makeProvider = (observedAt = f.now.value, stalenessBound = 100) => createPartTwoRegisterProvider({
         store: createFactStore(factContext, { owner: 'part-ten', read: () => JSON.parse(JSON.stringify(durableFacts)),
           append: () => f.success({ kind: 'local-durable' as const }) }),
