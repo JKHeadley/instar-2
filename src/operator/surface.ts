@@ -247,6 +247,9 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
   const isolationLive = readEvidence(composition.isolation.live(path), false, 'isolation-proof');
   requireOperator(typeof isolationLive === 'boolean', 'P11-NF-10/12: isolation result must be a boolean');
   const receiptMatches = !!receipt && receipt.operation === operation && receipt.path === path;
+  const currentBase = composition.history.decode().currentBase;
+  const currentBaseKnown = typeof currentBase === 'string' && currentBase.trim().length > 0;
+  const receiptBaseCurrent = !!receipt && currentBaseKnown && receipt.base === currentBase;
   const receiptComplete = !!receipt
     && [receipt.attestation, receipt.base, receipt.authorization]
       .every(value => typeof value === 'string' && value.trim().length > 0)
@@ -263,6 +266,8 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
   const effectiveDigestWitnessed = !!receipt && receiptMatches && plan?.record.type === 'VerificationPlan'
     && plan.record.bar.subjectDigest === receipt.effectiveHash;
   if (receiptMatches && !effectiveDigestWitnessed) uncertainty.push('independent-probe-effective-digest-mismatch');
+  if (!currentBaseKnown) uncertainty.push('current-owner-base-unavailable');
+  else if (receiptMatches && !receiptBaseCurrent) uncertainty.push('broker-receipt-current-base-mismatch');
   if (postureRead.detail !== null) uncertainty.push(`broker-posture-unavailable:${postureRead.detail}`);
   if (!brokerRead.ok) uncertainty.push(`broker-evidence-unavailable:${brokerRead.detail}`);
   if (!receipt) uncertainty.push('broker-receipt-missing');
@@ -274,7 +279,7 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
   if (isolationLive === false) uncertainty.push('isolation-proof-missing');
   if (brokerPosture !== 'protected') uncertainty.push('broker-posture-unprotected');
   const protectedNow = brokerPosture === 'protected' && receiptMatches && receipt?.disposition === 'committed'
-    && receiptComplete && witnessFresh && isolationLive === true && effectiveDigestWitnessed;
+    && receiptComplete && receiptBaseCurrent && witnessFresh && isolationLive === true && effectiveDigestWitnessed;
   return Object.freeze({ operation, posture: protectedNow ? 'protected' as const : 'unprotected' as const,
     brokerReceipt: receiptMatches && receiptComplete ? receipt.attestation : null, effectiveDigest: receiptMatches ? receipt.effectiveHash : null,
     effectiveBase: receiptMatches ? receipt.base : null,
