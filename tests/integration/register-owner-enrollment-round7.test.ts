@@ -8,7 +8,7 @@ import { factsFixture } from '../facts/fixtures.js';
 import { detail, hash, json, setup, value } from '../register/fixtures.js';
 import { generationRegistration, ownedSchema, vectorAt, versionSchema } from '../register/normal-provider-fixture.js';
 
-describe.skip('round-seven witnessed owner enrollment authority SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
+describe.skip('round-seven witnessed owner enrollment authority SKIPPED: HELD-BY-SCOPE:SEAM-LEDGER-row-124', () => {
   it('P3-NF-09 refuses an unwitnessed retained enrollment and resolves candidate additions through the real signed provider', () => {
     const f = factsFixture(), s = setup(), root = f.fact(), vector = vectorAt(root);
     const register = s.build(undefined, { extract: { ...s.extract, vector } });

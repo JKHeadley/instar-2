@@ -5,7 +5,7 @@ import { createProgram } from '../../scripts/check-architecture.mjs';
 import { decodeNormalRegisterWorkflow } from '../../src/register/index.js';
 import { detail, json, setup, value } from './fixtures.js';
 
-describe.skip('round-two data validation review regressions SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
+describe.skip('round-two data validation review regressions SKIPPED: HELD-BY-SCOPE:SEAM-LEDGER-row-124', () => {
   it('P3-NF-03 completely decodes workflow payloads and refuses missing/mistyped nested fields', () => {
     const s = setup();
     const workflow = json('RegisterWorkflow', { mode: 'normal', branch: 'round-two', parent: { commit: 'a'.repeat(40),

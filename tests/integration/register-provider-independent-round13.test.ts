@@ -58,6 +58,7 @@ describe('round-thirteen independent normal provider data validation', () => {
 
   it('P3-NF-23 re-resolves a stale public reference through the owner projection', () => {
     const x = fixture();
+    (x.s.context.types as unknown as { now: typeof x.f.now }).now = x.f.clock(100);
     expect(value(x.provider.resolveReference({ provider: 'record', id: x.root.id, kind: 'note' }))).toBe(true);
     (x.s.context.types as unknown as { now: typeof x.f.now }).now = x.f.clock(201);
     expect(value(x.provider.isCurrent(x.vector, x.f.clock(201)))).toBe(false);

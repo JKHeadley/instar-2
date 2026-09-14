@@ -8,7 +8,7 @@ import { factsFixture } from '../facts/fixtures.js';
 import { hash, json, setup, value } from '../register/fixtures.js';
 import { generationRegistration, ownedSchema, vectorAt, versionSchema } from '../register/normal-provider-fixture.js';
 
-describe.skip('round-eight signed roster-only enrollment regression SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
+describe.skip('round-eight signed roster-only enrollment regression SKIPPED: HELD-BY-SCOPE:SEAM-LEDGER-row-124', () => {
   it('P3-NF-09 does not convert a signed part-roster addition into approval of a manifest tuple the document omits', () => {
     const f = factsFixture(), s = setup(), root = f.fact(), since = f.next(root);
     const oldRegister = s.build(undefined, { extract: { ...s.extract, vector: vectorAt(root) } });

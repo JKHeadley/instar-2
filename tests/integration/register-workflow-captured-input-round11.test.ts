@@ -24,7 +24,7 @@ function checksFor(register: ReturnType<ReturnType<typeof setup>['build']>,
     claims: register.shape.kinds.map(kind => ({ kind: kind.name, complete: false })), ...overrides };
 }
 
-describe.skip('round-eleven captured workflow decision input SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
+describe.skip('round-eleven captured workflow decision input SKIPPED: HELD-BY-SCOPE:SEAM-LEDGER-row-124', () => {
   it('P3-NF-28 uses the captured main branch and does not count a signed foreign-branch run', () => {
     const s = setup(), f = factsFixture();
     const register = s.build([s.rule(26), s.holder([{ rule: 26, class: 'held',

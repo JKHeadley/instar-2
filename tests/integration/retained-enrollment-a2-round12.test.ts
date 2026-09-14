@@ -8,7 +8,7 @@ import { factsFixture } from '../facts/fixtures.js';
 import { detail, hash, json, setup, value } from '../register/fixtures.js';
 import { generationRegistration, ownedSchema, vectorAt, versionSchema } from '../register/normal-provider-fixture.js';
 
-describe.skip('round-twelve retained enrollment authority cases SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
+describe.skip('round-twelve retained enrollment authority cases SKIPPED: HELD-BY-SCOPE:SEAM-LEDGER-row-124', () => {
   it('P3-NF-09 P3-NF-21 reviewer cases valid, unwitnessed-parent, wrong-candidate-shape, and wrong-shape-difference re-resolve historical shape data', () => {
     for (const variant of ['valid', 'unwitnessed-parent', 'wrong-candidate-shape', 'wrong-shape-difference'] as const) {
       const f = factsFixture(), s = setup(), root = f.fact(), since = f.next(root);

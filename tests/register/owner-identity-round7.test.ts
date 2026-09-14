@@ -3,7 +3,7 @@ import { loadOwnerReferences } from '../../scripts/register-owner-references.mjs
 import { decodeShape, decodeShapeChangeDocument, shapeDifferences } from '../../src/register/index.js';
 import { detail, hash, json, setup, value } from './fixtures.js';
 
-describe.skip('round-seven owner enrollment identity SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
+describe.skip('round-seven owner enrollment identity SKIPPED: HELD-BY-SCOPE:SEAM-LEDGER-row-124', () => {
   it('P3-NF-09 refuses part 15 paired with the Part Fourteen owner and manifest in every roster position', () => {
     const s = setup();
     for (const placement of ['append', 'prepend'] as const) {

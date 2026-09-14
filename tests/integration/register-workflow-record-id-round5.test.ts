@@ -15,7 +15,7 @@ const validation = <T>(result: Result<T>): Validation<T> => consumeResult<T, Val
   Refused: refusal => ({ ok: false, reason: refusal.reason, detail: refusal.detail }),
 });
 
-describe.skip('round-five normal workflow record identity SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
+describe.skip('round-five normal workflow record identity SKIPPED: HELD-BY-SCOPE:SEAM-LEDGER-row-124', () => {
   it('P3-NF-28 resolves a CheckRunRecord id independently of its enclosing FactEnvelope id', () => {
     const s = setup();
     const register = s.build([s.rule(26), s.holder([{ rule: 26, class: 'held',

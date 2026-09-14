@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { decodeShape, decodeShapeChangeDocument, shapeDifferences, validateShapeChangeDocument } from '../../src/register/index.js';
 import { hash, json, setup, value } from './fixtures.js';
 
-describe.skip('round-twelve retained enrollment shape validation SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
+describe.skip('round-twelve retained enrollment shape validation SKIPPED: HELD-BY-SCOPE:SEAM-LEDGER-row-124', () => {
   it('P3-NF-09 reviewer cases valid, wrong-candidate-shape, and wrong-shape-difference validate exact introduced entries', () => {
     const s = setup();
     const raw = JSON.parse(JSON.stringify(s.context.shape)); raw.parts.push(14);

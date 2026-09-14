@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { decodeShape, decodeShapeChangeDocument, shapeDifferences, validateShapeChangeDocument } from '../../src/register/index.js';
 import { hash, json, setup, value } from './fixtures.js';
 
-describe.skip('round-six shape roster insertion SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
+describe.skip('round-six shape roster insertion SKIPPED: HELD-BY-SCOPE:SEAM-LEDGER-row-124', () => {
   it('P3-NF-09 recognizes an enrolled part by set introduction, independent of roster position', () => {
     for (const parentHasLaterPart of [false, true]) {
       const s = setup();

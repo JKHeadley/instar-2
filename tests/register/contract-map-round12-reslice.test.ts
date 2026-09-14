@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const grant = 'NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment';
+const hold = 'HELD-BY-SCOPE:SEAM-LEDGER-row-124';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'contract-map-round-twelve-'));
@@ -25,11 +25,11 @@ function p3Assertions(root: string) {
 }
 
 describe('round-twelve A1 contract-map re-slice', () => {
-  it('P3-NF-07 accepts only the exact row-124 grant on a held workflow/enrollment file', () => {
+  it('P3-NF-07 accepts only the exact row-124 scope hold on a held workflow/enrollment file', () => {
     const root = fixture();
     try {
       const assertions = p3Assertions(root);
-      assertions.push({ fullName: `held SKIPPED: GRANT:${grant} P3-NF-01/02/03/07/09/13/15/19/21/22/23/24/26/27/28/29 workflow enrollment`,
+      assertions.push({ fullName: `held SKIPPED: ${hold} P3-NF-01/02/03/07/09/13/15/19/21/22/23/24/26/27/28/29 workflow enrollment`,
         title: 'all mixed workflow enrollment arms', status: 'pending' });
       writeFileSync(join(root, '.test-results.json'), JSON.stringify({ success: true, testResults: [
         { name: 'tests/register/generator.test.ts', assertionResults: assertions.slice(0, -1) },
@@ -45,7 +45,7 @@ describe('round-twelve A1 contract-map re-slice', () => {
     const root = fixture();
     try {
       const assertions = p3Assertions(root);
-      assertions.push({ fullName: `held SKIPPED: GRANT:${grant} P3-NF-01/02/03/07/09/13/15/19/21/22/23/24/26/27/28`,
+      assertions.push({ fullName: `held SKIPPED: ${hold} P3-NF-01/02/03/07/09/13/15/19/21/22/23/24/26/27/28`,
         title: 'mixed arms missing P3-NF-29', status: 'pending' });
       writeFileSync(join(root, '.test-results.json'), JSON.stringify({ success: true, testResults: [
         { name: 'tests/register/generator.test.ts', assertionResults: assertions.slice(0, -1) },
@@ -78,7 +78,7 @@ describe('round-twelve A1 contract-map re-slice', () => {
       })).toThrow(/pending test arm has no exact design grant/);
       writeFileSync(join(root, '.test-results.json'), JSON.stringify({ success: true, testResults: [{
         name: 'tests/register/generator.test.ts', assertionResults: [...assertions, {
-          fullName: `SKIPPED: GRANT:${grant} P3-NF-09 wrong file`, title: 'P3-NF-09 wrong file', status: 'pending',
+          fullName: `SKIPPED: ${hold} P3-NF-09 wrong file`, title: 'P3-NF-09 wrong file', status: 'pending',
         }],
       }] }));
       expect(() => execFileSync(process.execPath, [resolve('scripts/check-register-contract-map.mjs')], {

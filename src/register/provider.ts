@@ -5,8 +5,8 @@ import type { CausalFrontier, FactContext, FactEnvelope, FactSnapshot, FactStatu
   LandingReadPort } from '../facts/index.js';
 import { foldProjection, readProjection } from '../projections/index.js';
 import type { KnownLineage, ProjectedView, ProjectionDefinition } from '../projections/index.js';
-import type { FactPositionVectorReference, FactReference, GenerationRecord, RegisterContext, SpineReadPort,
-  VersionRowInput } from './types.js';
+import type { ChainExtract, FactPositionVectorReference, FactReference, GenerationRecord, RegisterContext,
+  RegisterGeneration, SpineReadPort, VersionRowInput } from './types.js';
 import type { WorkflowChecks } from './workflow.js';
 import type { ShapeChangeBinding } from './shape-authority.js';
 import type { CheckCatalog } from '../rulegraph/graph.js';
@@ -100,16 +100,10 @@ function evidenceUseClock(supplied: Clock | undefined, options: PartTwoRegisterP
   return supplied ?? options.types?.now ?? options.context.authorityTypes?.now ?? options.context.types.now;
 }
 
-function projectionUseClock(options: PartTwoRegisterProviderOptions, snapshot: FactSnapshot): Clock {
+function projectionUseClock(options: PartTwoRegisterProviderOptions): Clock {
   const supplied = evidenceUseClock(undefined, options);
-  if (supplied !== undefined)
-    return take(decodeMeasurement('clock', supplied, options.types ?? options.context.types));
-  const template = [...snapshot.entries].sort((a, b) => b.fact.at.value - a.fact.at.value)[0]?.fact.at;
-  requireThat(template !== undefined, 'Part Two reference currentness requires an observed owner clock');
-  const observed = Object.values(options.horizon.lineages).map(lineage => lineage.observedAt)
-    .filter((value): value is number => value !== null && Number.isSafeInteger(value));
-  const value = observed.length > 0 ? Math.max(...observed) : template.value;
-  return take(decodeMeasurement('clock', { ...template, value, at: value }, options.types ?? options.context.types));
+  requireThat(supplied !== undefined, 'Part Two reference currentness requires an explicit use clock');
+  return take(decodeMeasurement('clock', supplied, options.types ?? options.context.types));
 }
 
 function witnessFor(reference: FactPositionVectorReference, snapshot: FactSnapshot): Readonly<{
@@ -253,6 +247,48 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
   requireThat(Number.isFinite(options.horizon.stalenessBound) && options.horizon.stalenessBound > 0,
     'Part Two register horizon needs a positive staleness bound');
   const read = () => take(options.store.readForProjection());
+  const verifyExtractAt = (captured: ChainExtract, snapshot: FactSnapshot): FactPositionVectorReference => {
+    projection(snapshot, options.horizon, options.context);
+    witnessFor(captured.vector, snapshot);
+    const answer = take(options.authority.verifyExtract(captured.rows, captured.vector, snapshot));
+    requireThat(encoding(answer).bytes === encoding(captured.vector).bytes,
+      'P3-NF-23: Part Two extract resolver returned a different vector');
+    return answer;
+  };
+  const enteringForceAt = (captured: RegisterGeneration, snapshot: FactSnapshot): GenerationRecord => {
+    const { view } = projection(snapshot, options.horizon, options.context);
+    const matches = generationRecords(snapshot, view, options.context)
+      .filter(record => record.generation.id === captured.id);
+    const values = new Map(matches.map(record => [encoding(record).bytes, record]));
+    requireThat(values.size === 1,
+      'P3-NF-21: generation has no unique current entering-force fact; no single consistent value exists in the Part Two store');
+    const witnessed = [...values.values()][0]!;
+    requireThat(encoding(witnessed.generation).bytes === encoding(captured).bytes,
+      'P3-NF-21: entering-force identity names a different generation');
+    return witnessed;
+  };
+  const isCurrentAt = (reference: FactPositionVectorReference, now: Clock, snapshot: FactSnapshot): boolean => {
+    const clock = take(decodeMeasurement('clock', now, options.types ?? options.context.types));
+    const supplied = object(reference); exact(supplied, ['owner', 'name', 'id']);
+    requireThat(supplied.owner === 'part-two' && supplied.name === 'FactPositionVector'
+      && typeof supplied.id === 'string' && supplied.id.length > 0,
+    'P3-NF-23: malformed FactPositionVector reference');
+    const { definition, view } = projection(snapshot, options.horizon, options.context);
+    const witness = witnessFor(reference, snapshot);
+    return consumeResult(readProjection(view, definition, clock, options.context), {
+      Success: answer => answer.stale.length === 0
+        && consumeResult(readProjection(view, definition, clock, options.context, witness.frontier), {
+          Success: () => true, Refused: () => false,
+        })
+        // A fresh replica does not make every historical extract current.
+        // Once an entering-force record's freshness window expires, the
+        // requested horizon must reach the vector carried by that record.
+        && generationRecords(snapshot, view, options.context).every(record =>
+          clock.value - record.at.value <= options.horizon.stalenessBound
+          || reaches(witness.frontier, witnessFor(record.generation.vector, snapshot).frontier)),
+      Refused: () => false,
+    });
+  };
   let provider: PartTwoRegisterProvider;
   provider = {
     owner: 'part-two',
@@ -260,54 +296,32 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
     ...(options.separations ? { separations: options.separations } : {}),
     verifyExtract: extract => checked<FactPositionVectorReference, RegisterContext>('PartTwoRegisterExtractVerification', extract, options.context, raw => {
       const captured = raw as unknown as typeof extract;
-      const snapshot = read(); projection(snapshot, options.horizon, options.context);
-      witnessFor(captured.vector, snapshot);
-      const answer = take(options.authority.verifyExtract(captured.rows, captured.vector, snapshot));
-      requireThat(encoding(answer).bytes === encoding(captured.vector).bytes,
-        'P3-NF-23: Part Two extract resolver returned a different vector');
-      return answer;
+      return verifyExtractAt(captured, read());
     }),
     enteringForce: generation => checked<GenerationRecord, RegisterContext>('PartTwoRegisterEnteringForce', generation, options.context, raw => {
       const captured = raw as unknown as typeof generation;
-      const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
-      const matches = generationRecords(snapshot, view, options.context)
-        .filter(record => record.generation.id === captured.id);
-      const values = new Map(matches.map(record => [encoding(record).bytes, record]));
-      requireThat(values.size === 1,
-        'P3-NF-21: generation has no unique current entering-force fact; no single consistent value exists in the Part Two store');
-      const witnessed = [...values.values()][0]!;
-      requireThat(encoding(witnessed.generation).bytes === encoding(captured).bytes,
-        'P3-NF-21: entering-force identity names a different generation');
-      return witnessed;
+      return enteringForceAt(captured, read());
     }),
     isCurrent: (reference, now) => checked<boolean, RegisterContext>('PartTwoRegisterCurrency', { reference, now }, options.context, raw => {
       const input = object(raw); const clock = take(decodeMeasurement('clock', input.now, options.types ?? options.context.types));
       const supplied = object(input.reference!); exact(supplied, ['owner', 'name', 'id']);
       requireThat(supplied.owner === 'part-two' && supplied.name === 'FactPositionVector' && typeof supplied.id === 'string' && supplied.id.length > 0,
         'P3-NF-23: malformed FactPositionVector reference');
-      const snapshot = read(); const { definition, view } = projection(snapshot, options.horizon, options.context);
-      const witness = witnessFor(input.reference as unknown as FactPositionVectorReference, snapshot);
-      return consumeResult(readProjection(view, definition, clock, options.context), {
-        Success: answer => answer.stale.length === 0
-          && consumeResult(readProjection(view, definition, clock, options.context, witness.frontier), {
-            Success: () => true, Refused: () => false,
-          })
-          // A fresh replica does not make every historical extract current.
-          // Once an entering-force record's freshness window expires, the
-          // requested horizon must reach the vector carried by that record.
-          && generationRecords(snapshot, view, options.context).every(record =>
-            clock.value - record.at.value <= options.horizon.stalenessBound
-            || reaches(witness.frontier, witnessFor(record.generation.vector, snapshot).frontier)),
-        Refused: () => false,
-      });
+      return isCurrentAt(input.reference as unknown as FactPositionVectorReference, clock, read());
     }),
     revalidateLoaded: (extract, generation, now) => checked<boolean, RegisterContext>('PartTwoLoadedRegisterRevalidation',
       { extract, generation, now }, options.context, raw => {
         const input = object(raw); const capturedExtract = input.extract as unknown as typeof extract;
         const capturedGeneration = input.generation as unknown as typeof generation;
         const capturedNow = input.now as unknown as Clock;
-        take(provider.verifyExtract(capturedExtract)); take(provider.enteringForce(capturedGeneration));
-        requireThat(take(provider.isCurrent(capturedExtract.vector, capturedNow)), 'loaded register vector is no longer current');
+        verifyExtractAt(capturedExtract, read());
+        // Entering-force and currency are one authority decision. Resolve both
+        // from the same refreshed owner snapshot so a withdrawal cannot be
+        // combined with currency computed from a different history.
+        const authoritySnapshot = read();
+        enteringForceAt(capturedGeneration, authoritySnapshot);
+        requireThat(isCurrentAt(capturedExtract.vector, capturedNow, authoritySnapshot),
+          'loaded register vector is no longer current');
         return true;
       }),
     verifyShapeChange: binding => checked<FactReference, RegisterContext>('PartTwoShapeChangeApproval', binding, options.context, raw => {
@@ -325,7 +339,7 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
       requireThat(requested.provider === 'record', 'external reference namespace is not the Part Two record provider');
       const id = text(requested.id, 'reference.id');
       const snapshot = read(); const { definition, view } = projection(snapshot, options.horizon, options.context);
-      const clock = projectionUseClock(options, snapshot);
+      const clock = projectionUseClock(options);
       take(readProjection(view, definition, clock, options.context));
       const status = activeStatus(id, snapshot, view);
       if (requested.kind !== undefined) requireThat(status.fact.kind === text(requested.kind, 'reference.kind'), 'record reference kind differs');
@@ -338,14 +352,21 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
       const clock = take(decodeMeasurement('clock', input.now, options.types ?? options.context.types));
       const snapshot = read(); const { definition, view } = projection(snapshot, options.horizon, options.context);
       take(readProjection(view, definition, clock, options.context));
-      const matches = snapshot.entries.filter(status => active(status, snapshot, view)
-        && status.fact.kind === kind
-        && (status.fact.id === id || (() => {
-          const body = recordBody(status);
-          if (body === null || typeof body !== 'object' || Array.isArray(body)) return false;
+      const activeKind = snapshot.entries.filter(status => active(status, snapshot, view) && status.fact.kind === kind);
+      const ownedId = (status: FactStatus): string => {
+        const body = recordBody(status);
+        if (body !== null && typeof body === 'object' && !Array.isArray(body)) {
           const record = body as Readonly<Record<string, Json>>;
-          return Object.hasOwn(record, 'id') && record.id === id;
-        })()));
+          if (Object.hasOwn(record, 'id') && typeof record.id === 'string') return record.id;
+        }
+        return status.fact.id;
+      };
+      const selectedIdentities = new Set(activeKind
+        .filter(status => status.fact.id === id || ownedId(status) === id).map(ownedId));
+      requireThat(selectedIdentities.size === 1,
+        `Part Two record ${id} is absent, retracted, corrected, conflicted, duplicated, or has inconsistent owned values`);
+      const resolvedId = [...selectedIdentities][0]!;
+      const matches = activeKind.filter(status => ownedId(status) === resolvedId);
       const values = new Map(matches.map(status => {
         const body = recordBody(status); return [encoding(body).bytes, body];
       }));

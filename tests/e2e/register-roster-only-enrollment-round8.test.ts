@@ -165,7 +165,7 @@ export function rosterOnlyEnrollmentFixture(signInvalidDocument = false) {
     } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
-describe.skip('round-eight normal build roster-only enrollment regression SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
+describe.skip('round-eight normal build roster-only enrollment regression SKIPPED: HELD-BY-SCOPE:SEAM-LEDGER-row-124', () => {
   it('P3-NF-09 refuses a manifest tuple with no signed enrollment approval although the witnessed parent roster contains its part', () => {
     rosterOnlyEnrollmentFixture();
   }, 60_000);

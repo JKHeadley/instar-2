@@ -23,8 +23,9 @@ from that surface is A1 acceptance evidence.
 - In particular, `resolveOwnerReferenceEnrollments()` must validate the retained historical shape transition against the exact
   witnessed parent generation, exact candidate shape, exact introduced entries, and actual part introduction before admitting the
   manifest tuple. Signature validity alone is insufficient.
-- Every new A2 regression is held under the exact label
-  `NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment`. A passed workflow/enrollment acceptance arm is an A1 contract-map failure.
+- Every new A2 regression is independently executable but held under the exact label
+  `HELD-BY-SCOPE:SEAM-LEDGER-row-124`. It is excluded from A1 contract-map evidence; a passed workflow/enrollment acceptance arm is
+  an A1 contract-map failure. `NON-EXECUTABLE-UNTIL-*` is reserved for a genuinely absent executable dependency.
 
 The retained A2 obligation is rereview11 F4's five-case table (the same defect first identified as rereview10 F1), preserving
 these exact independently executable case ids:
@@ -44,33 +45,33 @@ does not permit a workflow/enrollment pass to count toward A1.
 
 | Check | A1 disposition | A2 workflow/enrollment disposition |
 |---|---|---|
-| P3-NF-01 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (normal workflow repin/restart arm) |
-| P3-NF-02 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (workflow boundary arm) |
-| P3-NF-03 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (workflow decoder arm) |
+| P3-NF-01 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (normal workflow repin/restart arm) |
+| P3-NF-02 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (workflow boundary arm) |
+| P3-NF-03 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (workflow decoder arm) |
 | P3-NF-04 | EXECUTABLE | — |
 | P3-NF-05 | EXECUTABLE | — |
 | P3-NF-06 | EXECUTABLE | — |
-| P3-NF-07 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (workflow replay arm) |
+| P3-NF-07 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (workflow replay arm) |
 | P3-NF-08 | EXECUTABLE | — |
-| P3-NF-09 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (shape document and enrollment arms, including F1) |
+| P3-NF-09 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (shape document and enrollment arms, including F1) |
 | P3-NF-10 | EXECUTABLE | — |
 | P3-NF-11 | EXECUTABLE | — |
 | P3-NF-12 | EXECUTABLE | — |
-| P3-NF-13 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (workflow graph arm) |
+| P3-NF-13 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (workflow graph arm) |
 | P3-NF-14 | EXECUTABLE | — |
-| P3-NF-15 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (workflow loop arm) |
+| P3-NF-15 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (workflow loop arm) |
 | P3-NF-16 | EXECUTABLE | — |
 | P3-NF-17 | EXECUTABLE | — |
 | P3-NF-18 | EXECUTABLE | — |
-| P3-NF-19 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (workflow resolution arm) |
+| P3-NF-19 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (workflow resolution arm) |
 | P3-NF-20 | EXECUTABLE | — |
-| P3-NF-21 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (retained-enrollment parent witness arm) |
-| P3-NF-22 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (normal workflow completion arm) |
-| P3-NF-23 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (workflow/extract use arm) |
-| P3-NF-24 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (workflow landed-parts arm) |
+| P3-NF-21 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (retained-enrollment parent witness arm) |
+| P3-NF-22 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (normal workflow completion arm) |
+| P3-NF-23 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (workflow/extract use arm) |
+| P3-NF-24 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (workflow landed-parts arm) |
 | P3-NF-25 | EXECUTABLE | — |
-| P3-NF-26 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (workflow graph arm) |
-| P3-NF-27 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (workflow separation arm) |
-| P3-NF-28 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (workflow evidence arm) |
-| P3-NF-29 | EXECUTABLE | NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment (workflow graph arm) |
+| P3-NF-26 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (workflow graph arm) |
+| P3-NF-27 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (workflow separation arm) |
+| P3-NF-28 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (workflow evidence arm) |
+| P3-NF-29 | EXECUTABLE | HELD-BY-SCOPE:SEAM-LEDGER-row-124 (workflow graph arm) |
 | P3-NF-30 | EXECUTABLE | — |

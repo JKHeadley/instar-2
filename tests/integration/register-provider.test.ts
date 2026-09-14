@@ -67,7 +67,7 @@ describe('Part Two register provider', () => {
       context: s.context });
     const provider = createPartTwoRegisterProvider({ store, authority, horizon: {
       lineages: { 'machine-a': { head: { epoch: 0, position: 4 }, observedAt: f.now.value, closed: false } }, stalenessBound: 100,
-    }, context: s.context });
+    }, context: s.context, types: { ...s.context.types, now: f.now } });
 
     expect(decodedVersion.id).toBe(version.id);
     expect(decodedShapeVersion.id).toBe(shapeVersion.id);

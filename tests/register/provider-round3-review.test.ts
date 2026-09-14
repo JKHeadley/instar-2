@@ -23,7 +23,8 @@ describe('round-three provider review regressions', () => {
     expect(owner.corrections).toEqual([{ original: original.id, replacement: latest.id }]);
     const authority = createPartTwoRegisterAuthority({ facts: context, scope: f.scope,
       landing: { owner: 'part-ten', merges: [] }, context: s.context });
-    const provider = createPartTwoRegisterProvider({ store, authority, horizon: { lineages, stalenessBound: 100 }, context: s.context });
+    const provider = createPartTwoRegisterProvider({ store, authority, horizon: { lineages, stalenessBound: 100 },
+      context: s.context, types: { ...s.context.types, now: f.now } });
     expect(detail(provider.resolveReference({ provider: 'record', id: original.id, kind: 'note' }))).toContain('corrected');
     expect(detail(provider.resolveReference({ provider: 'record', id: first.id, kind: 'note' }))).toContain('corrected');
     expect(value(provider.resolveReference({ provider: 'record', id: latest.id, kind: 'note' }))).toBe(true);

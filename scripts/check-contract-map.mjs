@@ -31,9 +31,8 @@ for (const id of expected) {
   if (rows.some(row => !['passed', 'pending', 'skipped'].includes(row.status))) throw new Error(`${id}: test failed`);
   if (rows.some(row => ['pending', 'skipped'].includes(row.status) && !grantedSkip(row.name, id)))
     throw new Error(`${id}: pending test arm has no exact design grant for this check`);
-  if (!rows.some(row => row.status === 'passed')
-    && !rows.some(row => ['pending', 'skipped'].includes(row.status) && grantedSkip(row.name, id)))
-    throw new Error(`${id}: neither passed nor skipped under an exact unlanded design grant`);
+  if (!rows.some(row => row.status === 'passed'))
+    throw new Error(`${id}: executable design contract has no passing test result`);
 }
 console.log('| Check | Actual test file | Status |');
 console.log('|---|---|---|');
