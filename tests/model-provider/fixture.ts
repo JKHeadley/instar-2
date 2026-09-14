@@ -151,7 +151,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
       if (!options.endpoint) throw new Error('real local HTTP endpoint required');
       const response = await fetch(options.endpoint, { method: 'POST', body: bytes, redirect: 'error',
         headers: { Authorization: `Bearer ${options.credential}`, 'Content-Type': 'application/json', 'X-Operation': bounds.operation },
-        signal: AbortSignal.timeout(options.timeout ?? 2000) });
+        signal: AbortSignal.timeout(Math.min(options.timeout ?? bounds.timeout, bounds.timeout, bounds.deadline - now)) });
       const observation = await response.json() as ProviderObservation;
       options.afterInvoke?.(); return observation;
     }, ...options.route };

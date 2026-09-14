@@ -145,3 +145,16 @@ it('MODEL-PROVIDER-PATH integration late independent charge proof renews Nine as
     expect(http.requests).toHaveLength(1);
   } finally { await http.close(); }
 });
+it('MODEL-PROVIDER-PATH integration the admitted timeout bound cannot be widened by driver defaults', async () => {
+  const http = await localProvider();
+  try {
+    http.delay(200);
+    const f = providerFixture({ ...http, timeout: 2000 }), { request } = f.prepare();
+    expect(request.payload.timeout).toBe(100);
+    const observation = value(await f.api.dispatch(request, f.fence));
+    const receipt = JSON.parse(value(f.captures.read(observation.capture as Parameters<typeof f.captures.read>[0])));
+    expect(receipt).toMatchObject({ state: 'uncertain', bytes: null, usage: { charge: null }, limitation: { kind: 'transport-threw' } });
+    refused(await f.api.dispatch(request, f.fence));
+    expect(http.requests).toHaveLength(1); expect(value(f.graph.read(f.id)).pending).toHaveLength(1);
+  } finally { await http.close(); }
+});

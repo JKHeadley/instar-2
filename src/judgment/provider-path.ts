@@ -4,8 +4,10 @@ import { authorAndAppend, causalCone, hashBytes, registerOwnedBody } from '../fa
 import type { FactContext, FactEnvelope, FactSchema, FactStorePort, OwnedShape } from '../facts/index.js';
 import type { FenceToken, TransportAuthority } from '../transport/index.js';
 import type { RunGraphPort } from '../rungraph/index.js';
-import { consumeEffectSettlement, consumeProviderReceipt } from '../effects/index.js';
-import type { EffectSettlement, ProviderReceipt } from '../effects/index.js';
+import { consumeEffectSettlement } from '../effects/index.js';
+import { consumeProviderReceipt } from '../effects/provider-api.js';
+import type { ProviderReceipt } from '../effects/provider-api.js';
+import type { EffectSettlement } from '../effects/index.js';
 import type { Capture, JudgmentCapturePort, JudgmentHost, ProviderObservation, RecordedAnswer } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { observationCheck } from './model-adapter.js';
