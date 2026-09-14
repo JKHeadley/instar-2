@@ -1,8 +1,4 @@
-/**
- * HELD: P12-NF-16/18/46 cross-process one-admitted-mode arm.
- * Expected to fail until Part Ten SEAM-LEDGER row 99 lands. This source is not
- * a Vitest passing test and must not be counted as one.
- */
+/** P12-NF-16/18/46 cross-process one-admitted-mode executable. */
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { admitTelegramAdapter } from '../../../src/conversation/index.js';
@@ -70,6 +66,20 @@ const assembly = {
     });
   },
 } as unknown as typeof fixture.assembly.runtime;
+const conditionalAssembly = {
+  owner: 'part-ten' as const,
+  appendIfSubjectFrontier(name: any, input: any, expected: any) {
+    durable(join(exchangeDirectory, `${admissionMode}.ready`), { pid: process.pid, mode: admissionMode });
+    wait(join(exchangeDirectory, `${admissionMode}.release`));
+    return locked(() => {
+      refresh();
+      const result = fixture.admissionDependencies.conditionalAssembly
+        .appendIfSubjectFrontier(name, input, expected);
+      durable(factsFile, fixture.assembly.raw);
+      return result;
+    });
+  },
+} as unknown as typeof fixture.admissionDependencies.conditionalAssembly;
 const history = {
   ...fixture.admissionDependencies.history,
   lookup(reference: string) {
@@ -84,7 +94,7 @@ const verification = {
 };
 const { recordedEndpointChoice: _choice, ...longPollDeclaration } = fixture.declaration;
 const result = admitTelegramAdapter(admissionMode === 'webhook' ? fixture.declaration : longPollDeclaration, {
-  ...fixture.admissionDependencies, assembly, history, verification,
+  ...fixture.admissionDependencies, assembly, conditionalAssembly, history, verification,
 });
 const rows = locked(() => {
   refresh();

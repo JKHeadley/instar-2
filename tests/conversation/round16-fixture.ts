@@ -2,7 +2,7 @@ import { admitTelegramAdapter } from '../../src/conversation/index.js';
 import type {
   AdmittedTelegramAdapter, TelegramBotApiCustodianPort,
 } from '../../src/conversation/index.js';
-import type { AssemblyHistoryReadPort, AssemblyRuntimePort } from '../../src/assembly/index.js';
+import type { AssemblyHistoryReadPort, AssemblyRuntimePort, ConditionalAssemblyAppendPort } from '../../src/assembly/index.js';
 import type { VerificationRuntimePort } from '../../src/verification/index.js';
 import { value } from '../intake/fixtures.js';
 import { telegramUpdate, wireTelegram } from './round3-fixture.js';
@@ -51,7 +51,13 @@ export function admissionInterleaving(
     record: ((name: Parameters<AssemblyRuntimePort['record']>[0], input: unknown) =>
       at(`assembly.record:${name}`, () => base.assembly.record(name, input))) as AssemblyRuntimePort['record'],
   });
-  const outer = admitTelegramAdapter(declarations[outerMode], { ...base, api, history, verification, assembly,
+  const conditionalAssembly = Object.freeze({ ...base.conditionalAssembly,
+    appendIfSubjectFrontier: ((name: Parameters<ConditionalAssemblyAppendPort['appendIfSubjectFrontier']>[0],
+      input: unknown, expected: Parameters<ConditionalAssemblyAppendPort['appendIfSubjectFrontier']>[2]) =>
+      at(`conditionalAssembly.appendIfSubjectFrontier:${name}`,
+        () => base.conditionalAssembly.appendIfSubjectFrontier(name, input, expected))) as ConditionalAssemblyAppendPort['appendIfSubjectFrontier'],
+  });
+  const outer = admitTelegramAdapter(declarations[outerMode], { ...base, api, history, verification, assembly, conditionalAssembly,
     clock: () => at('clock', base.clock) });
   const records = value(base.assembly.inspectCurrent()).filter(row =>
     row.record.type === 'AdapterConformance' && row.record.adapter === 'telegram:v1:bot:9001');

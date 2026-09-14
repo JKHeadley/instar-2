@@ -15,7 +15,7 @@ Granted as SEAM-LEDGER row 82 (Echo, 2026-09-12 ~10:45Z; reversible by Justin). 
 - The other conversation platforms and media custody beyond metadata.
 - Every production positive that still depends on a named unlanded owner seam, including the real-model, real-settlement, production-grounding, minimal-responder, held-receipt continuation, stable-attempt redelivery, and optional-effect paths.
 
-## Row 99 — Part Ten conditional append dependency
+## Row 99 — Part Ten conditional append integration
 
 The following dependency is copied verbatim from `.instar/lanes/seam-response-part-twelve-ten-conditional-append.md`:
 
@@ -25,4 +25,10 @@ The following dependency is copied verbatim from `.instar/lanes/seam-response-pa
 >
 > Grant: Part Ten exposes ONE public operation, "append only if the per-bot frontier equals the frontier the caller read; refuse otherwise", built on Part Two's existing physical compare-head append (SegmentStoragePort.append(bytes, expectedHead)). Built later as a Ten owner slice. Until it lands, P12 keeps an in-process single-flight guard (executable) and holds its cross-process one-admitted-mode arm NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append; the emulated compare-and-set is removed, not kept as a stand-in.
 
-This hold applies only to the competing-process one-admitted-mode arms of P12-NF-16, P12-NF-18, and P12-NF-46. The in-process single-flight arms remain executable. The permanent real-process reproducer is `tests/conversation/held/admission-process.ts` plus `tests/conversation/held/run-admission-matrix.py`; it is marked held, excluded from Vitest's passing set, and expected to fail until row 99 lands. It is not a structural passing substitute for the missing owner operation.
+Row 99 landed on main in `f144f1435a11914b79ffcb6c1cfb19444f70e3ef`. Slice A1 now consumes
+Part Ten's public `createConditionalAssemblyAppendPort` and its `appendIfSubjectFrontier` operation
+for the exact per-bot `AdapterConformance` frontier read by each admission caller. The former hold
+is over: the competing-process one-admitted-mode arms of P12-NF-16, P12-NF-18, and P12-NF-46 are
+executable. `tests/conversation/held/admission-process.ts`, `run-admission-matrix.py`, and
+`admission-restart-matrix.py` permanently require one durable winner in either process order and a
+fresh-process readmission of that winner after restart.

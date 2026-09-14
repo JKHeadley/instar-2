@@ -2,7 +2,7 @@ import { canonical, consumeOutcome, consumeResult, decode, decodeMeasurement, gr
 import type { BoundaryContext, Clock, Json, Result } from '../index.js';
 import type { FactEnvelope } from '../facts/index.js';
 import { hashBytes, walkVersions } from '../facts/index.js';
-import type { AdapterConformance } from '../assembly/index.js';
+import type { AdapterConformance, AssemblySubjectFrontier } from '../assembly/index.js';
 import type { InboundRoute, IntakeAdapterPort, IntakeDisposition } from '../intake/index.js';
 import { constructGoverned } from '../register/index.js';
 import { mergeVerificationRecords, verificationLogicalKey } from '../verification/index.js';
@@ -509,6 +509,8 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
       && entry.declaration.kind === 'parsers' && entry.declaration.status === 'live'),
     'Telegram parser declaration is not admitted');
     ensure(deps.api.owner === 'part-ten', 'Telegram credential and provider client must remain in Part Ten custody');
+    ensure(deps.conditionalAssembly.owner === 'part-ten',
+      'Telegram competing-mode admission requires Part Ten conditional assembly append');
     ensure(deps.evidence.stages.length > 0 && deps.evidence.fixtureDigests.length > 0
       && deps.evidence.positiveFixtures.length > 0 && deps.evidence.negativeFixtures.length > 0,
       'Telegram admission requires substantive positive and negative conformance evidence');
@@ -516,8 +518,8 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
       'Telegram evidence parser declaration must match telegram-intake-v1');
     const mode = selectedMode(declaration);
     // Preserve the cheap deterministic refusal for an already-admitted other
-    // mode. Same-process overlap is excluded by the guard above; cross-process
-    // conditional append remains held on the granted Part Ten row 99 seam.
+    // mode. The later conditional append closes the cross-process race at the
+    // exact per-bot frontier observed by this caller.
     const observed = take(deps.assembly.inspectCurrent());
     const observedModes = observed.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id
       && row.record.disposition === 'passed').map(row => row.record.type === 'AdapterConformance' ? row.record.mode : '');
@@ -549,6 +551,11 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
     const modes = current.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id
       && row.record.disposition === 'passed').map(row => row.record.type === 'AdapterConformance' ? row.record.mode : '');
     ensure(modes.every(existing => existing === mode), 'one Telegram bot cannot admit two intake modes');
+    const conformanceFrontier: AssemblySubjectFrontier = freeze({
+      subject: { type: 'AdapterConformance', field: 'adapter', value: id },
+      facts: current.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id)
+        .map(row => row.fact.id).sort(),
+    });
     const conformanceSeed = {
       type: 'AdapterConformance', schemaVersion: 1, id: 'pending', predecessors: [], dependencyFacts: [],
       contract: contract.id, adapter: id, package: deps.evidence.package, artifact: deps.evidence.artifact,
@@ -564,7 +571,6 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
         'real-model positive non-executable-until-seam-response-judgment.md-and-seam-response-effects-followup.md',
         'real-settlement positive non-executable-until-seam-response-effects-followup.md',
         'production assembly non-executable-until-part-eleven-seam-response-assembly.md-is-integrated',
-        'cross-process one-admitted-mode NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append',
       ],
       testedAt: now.value, validUntil: now.value + deps.evidence.validFor, disposition: 'passed',
     };
@@ -585,7 +591,9 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
       conformance = prior.record;
     } else {
       const conformanceId = `telegram-conformance:${take(canonical(conformanceSeed)).hash}`;
-      conformance = take(deps.assembly.record('AdapterConformance', { ...conformanceSeed, id: conformanceId }));
+      conformance = take(deps.conditionalAssembly.appendIfSubjectFrontier(
+        'AdapterConformance', { ...conformanceSeed, id: conformanceId }, conformanceFrontier,
+      ));
     }
     const admitted = freeze({ id, account: telegramAccount(declaration.bot.id), mode, declaration, probe, contract, conformance });
     admittedInstances.add(admitted);

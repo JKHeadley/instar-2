@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { admitTelegramAdapter } from '../../src/conversation/index.js';
-import type { AssemblyHistoryReadPort, AssemblyRuntimePort } from '../../src/assembly/index.js';
+import type { AssemblyHistoryReadPort, AssemblyRuntimePort, ConditionalAssemblyAppendPort } from '../../src/assembly/index.js';
 import type { TelegramBotApiCustodianPort } from '../../src/conversation/index.js';
 import type { VerificationRuntimePort } from '../../src/verification/index.js';
 import { value } from '../intake/fixtures.js';
@@ -41,12 +41,19 @@ function interleaveAt(outerMode: 'long-poll' | 'webhook', target: number | null)
       after(`assembly.record:${name}`, () => base.assembly.record(name, input))) as AssemblyRuntimePort['record'],
     inspectCurrent: () => after('assembly.inspectCurrent', () => base.assembly.inspectCurrent()),
   });
+  const conditionalAssembly = Object.freeze({ ...base.conditionalAssembly,
+    appendIfSubjectFrontier: ((name: Parameters<ConditionalAssemblyAppendPort['appendIfSubjectFrontier']>[0],
+      input: unknown, expected: Parameters<ConditionalAssemblyAppendPort['appendIfSubjectFrontier']>[2]) =>
+      after(`conditionalAssembly.appendIfSubjectFrontier:${name}`,
+        () => base.conditionalAssembly.appendIfSubjectFrontier(name, input, expected))) as ConditionalAssemblyAppendPort['appendIfSubjectFrontier'],
+  });
   const outer = admitTelegramAdapter(declarations[outerMode], {
     ...base,
     api,
     history,
     verification,
     assembly,
+    conditionalAssembly,
     clock: () => after('clock', base.clock),
   });
   const records = value(fixture.assembly.runtime.inspectCurrent()).filter(row =>
@@ -63,7 +70,7 @@ it('P12-NF-16 P12-NF-18 P12-NF-46 round15 admission-every-await-interleaving pre
       'api.readCapture',
       'verification.inspect',
       'assembly.record:AdapterEvidenceContract',
-      'assembly.record:AdapterConformance',
+      'conditionalAssembly.appendIfSubjectFrontier:AdapterConformance',
       'assembly.inspectCurrent',
       'clock',
     ]) expect(discovery.points, `${outerMode}: missing ${required}`).toContain(required);

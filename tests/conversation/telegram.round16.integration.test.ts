@@ -4,7 +4,7 @@ import { admissionInterleaving } from './round16-fixture.js';
 it('P12-NF-16 P12-NF-18 P12-NF-46 round16 admission-interleavings retains one usable mode and permits unchanged reconstruction', () => {
   for (const outerMode of ['long-poll', 'webhook'] as const) {
     const discovery = admissionInterleaving(outerMode, null, 'after');
-    const target = discovery.trace.indexOf('assembly.record:AdapterConformance');
+    const target = discovery.trace.indexOf('conditionalAssembly.appendIfSubjectFrontier:AdapterConformance');
     const result = admissionInterleaving(outerMode, target, 'before');
     expect(result.fired, outerMode).toBe(true);
     expect(result.winnerMode, outerMode).toBe(outerMode);

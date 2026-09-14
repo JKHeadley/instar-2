@@ -7,7 +7,8 @@ it('P12-NF-29 P12-NF-34 P12-NF-35 round17 structural map requires the landed ass
   expect(map).not.toContain('slice-A2');
   expect(map).toContain("35: 'PARTIAL: the Telegram response uses the landed Part Nine public assessment");
   expect(map).toContain('real settlement remains non-executable-until-seam-response-effects-followup.md');
-  expect(map).toContain('NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append');
+  expect(map).not.toContain('NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append');
+  expect(map).toContain('competing-process one-mode admission through Part Ten appendIfSubjectFrontier');
 
   expect(Object.keys(conversation).filter(name => /status|assess/i.test(name))).toEqual([
     'assessTelegramReplyResponse', 'renderTelegramDeliveryStatus',

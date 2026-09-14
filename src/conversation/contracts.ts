@@ -4,6 +4,7 @@ import type {
 import type { OwnedReference } from '../index.js';
 import type {
   AdapterConformance, AdapterEvidenceContract, AssemblyHistoryReadPort, AssemblyRuntimePort,
+  ConditionalAssemblyAppendPort,
 } from '../assembly/index.js';
 import type { FactStorePort } from '../facts/index.js';
 import type { InboundRoute, IntakePort } from '../intake/index.js';
@@ -99,6 +100,7 @@ export interface TelegramAdmissionDependencies {
   readonly boundary: BoundaryContext;
   readonly governance: Readonly<{ register: VerifiedRegister; context: RegisterContext }>;
   readonly assembly: AssemblyRuntimePort;
+  readonly conditionalAssembly: ConditionalAssemblyAppendPort;
   readonly history: AssemblyHistoryReadPort;
   readonly verification: VerificationRuntimePort;
   readonly api: TelegramBotApiCustodianPort;

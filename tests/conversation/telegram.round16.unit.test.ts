@@ -4,7 +4,7 @@ import { admissionInterleaving } from './round16-fixture.js';
 it('P12-NF-16 P12-NF-18 P12-NF-46 round16 admission-interleavings refuses the nested in-process flight before append', () => {
   for (const outerMode of ['long-poll', 'webhook'] as const) {
     const discovery = admissionInterleaving(outerMode, null, 'after');
-    const target = discovery.trace.indexOf('assembly.record:AdapterConformance');
+    const target = discovery.trace.indexOf('conditionalAssembly.appendIfSubjectFrontier:AdapterConformance');
     expect(target, outerMode).toBeGreaterThan(-1);
     for (const phase of ['before', 'after'] as const) {
       const result = admissionInterleaving(outerMode, target, phase);

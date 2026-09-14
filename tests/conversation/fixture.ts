@@ -15,6 +15,7 @@ import type {
 } from '../../src/conversation/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+import { createConditionalAssemblyAppendPort } from '../../src/assembly/index.js';
 import { intakeFixture, json, value } from '../intake/fixtures.js';
 import { verificationInput } from '../verification/fixture.js';
 
@@ -161,6 +162,9 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
     boundary: { ...intake.f.c, register: runtimeRegister },
     governance: governed.governance,
     assembly: assembly.runtime,
+    conditionalAssembly: createConditionalAssemblyAppendPort({
+      host: assembly.host, author: { context: assembly.context, privateKey }, storage: assembly.storage,
+    }),
     history: assembly.c.history!,
     verification,
     api,

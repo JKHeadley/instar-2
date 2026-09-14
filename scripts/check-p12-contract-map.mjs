@@ -24,8 +24,8 @@ const partial = {
   13: 'PARTIAL: single-arrival owned holds are executable; held redelivery/recovery is non-executable-until-seam-response-intake-followup.md row 46.',
   14: 'PARTIAL: verified binding selection is delegated to landed Part Four; the full first-sender negative matrix is not rebuilt here.',
   15: 'PARTIAL: binding conflict semantics remain Part Four-owned and are not claimed by the Telegram adapter.',
-  16: 'PARTIAL: direct/general/topic identity and same-process one-mode single-flight are executable; docs/16-conversation-adapters/part-twelve-slice-a1-scope.md holds cross-process one-admitted-mode NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append.',
-  18: 'PARTIAL: capture-before-offset, exact-route fresh-process reconstruction, signed webhook choice and same-process one-mode single-flight are executable; docs/16-conversation-adapters/part-twelve-slice-a1-scope.md holds cross-process one-admitted-mode NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append; reminder positive is non-executable-until-seam-response-operator-followup.md row 59.',
+  16: 'PARTIAL: direct/general/topic identity, same-process single-flight, and competing-process one-mode admission through Part Ten appendIfSubjectFrontier are executable; other identity arms remain owner scope.',
+  18: 'PARTIAL: capture-before-offset, exact-route fresh-process reconstruction, signed webhook choice, same-process single-flight, and competing-process one-mode admission through Part Ten appendIfSubjectFrontier are executable; reminder positive is non-executable-until-seam-response-operator-followup.md row 59.',
   19: 'PARTIAL: Slack identity/admission is Slice B and additionally depends on seam-response-intake-followup.md rows 18, 46 and 57 plus seam-response-judgment.md row 35.',
   20: 'PARTIAL: Slack fault/redelivery is Slice B and non-executable-until-seam-response-intake-followup.md rows 18, 46 and 57 plus seam-response-judgment.md row 35.',
   21: 'PARTIAL: WhatsApp is Slice B.', 22: 'PARTIAL: WhatsApp is Slice B; named payloads remain unsupported.',
@@ -49,7 +49,7 @@ const partial = {
   43: 'PARTIAL: real-model positive is non-executable-until-seam-response-judgment.md-and-seam-response-effects-followup.md; production grounding also awaits the row-45 owner grants and Part Eleven assembly integration.',
   44: 'PARTIAL: real-model path is non-executable-until-seam-response-judgment.md-and-seam-response-effects-followup.md; real settlement is non-executable-until-seam-response-effects-followup.md; production lifecycle awaits Part Eleven assembly integration.',
   45: 'PARTIAL: no later platform activates; later platform parity is Slice B.',
-  46: 'PARTIAL: fresh authenticated identity, same-process one-mode single-flight and captured outbound response are executable with fixtures; docs/16-conversation-adapters/part-twelve-slice-a1-scope.md holds cross-process one-admitted-mode NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append; real live-provider inbound/outbound proof is not claimed.',
+  46: 'PARTIAL: fresh authenticated identity, same-process single-flight, competing-process one-mode admission through Part Ten appendIfSubjectFrontier, and captured outbound response are executable with fixtures; real live-provider inbound/outbound proof is not claimed.',
   47: 'PARTIAL: the Part Ten consumer accepts a named hardware workload record and refuses target/estimate references or omitted failed samples represented as complete measurement; live hardware measurements remain activation evidence.',
   48: 'PARTIAL: three local tiers execute with public prepare/dispatch and real SIGKILL/restart coverage, but the real-model positive is non-executable-until-seam-response-judgment.md-and-seam-response-effects-followup.md and production assembly/custody owner grants integrate.',
   49: 'PARTIAL: mode/API changes are exercised as distinct or inhibited conformance subjects and the generated active-generation briefing is checked for exact current modes, operations and public doorways; live cross-version provider replay remains activation evidence.',
@@ -63,10 +63,12 @@ const design = readFileSync('docs/16-conversation-adapters/12-negative-contract-
 const row99ScopePath = 'docs/16-conversation-adapters/part-twelve-slice-a1-scope.md';
 const row99Scope = readFileSync(row99ScopePath, 'utf8');
 for (const required of [
-  'Part Ten exposes ONE public operation, "append only if the per-bot frontier equals the frontier the caller read; refuse otherwise"',
-  'This hold applies only to the competing-process one-admitted-mode arms of P12-NF-16, P12-NF-18, and P12-NF-46.',
+  'Row 99 landed on main in `f144f1435a11914b79ffcb6c1cfb19444f70e3ef`',
+  'appendIfSubjectFrontier',
+  'the competing-process one-admitted-mode arms of P12-NF-16, P12-NF-18, and P12-NF-46 are',
   'tests/conversation/held/admission-process.ts',
   'tests/conversation/held/run-admission-matrix.py',
+  '`admission-restart-matrix.py`',
 ]) if (!row99Scope.includes(required)) throw new Error(`row 99 A1 scope omits ${required}`);
 const row99ConditionalAppendRows = new Set([16, 18, 46]);
 const expected = [...design.matchAll(/^\| (P12-NF-(\d+)) \|/gm)].map(match => ({ id: match[1], number: Number(match[2]) }));
@@ -97,9 +99,9 @@ for (const row of expected) {
     throw new Error(`${row.id}: landed executable arm without a passing test`);
   if (partial[row.number] && !reason.startsWith('PARTIAL:')) throw new Error(`${row.id}: partial reason is not explicit`);
   if (row99ConditionalAppendRows.has(row.number)
-    && (!reason.includes('NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append')
-      || !reason.includes(row99ScopePath)))
-    throw new Error(`${row.id}: cross-process admission arm does not cite its governing A1 row 99 scope`);
+    && (!reason.includes('competing-process one-mode admission through Part Ten appendIfSubjectFrontier')
+      || reason.includes('row-99-ten-conditional-append')))
+    throw new Error(`${row.id}: landed cross-process admission arm is not executable through Part Ten`);
 }
 const p12nf48Files = new Set((tests.get('P12-NF-48') ?? []).map(test => test.file));
 for (const tier of ['telegram.unit.test.ts', 'telegram.integration.test.ts', 'telegram.lifecycle.test.ts'])
@@ -114,6 +116,22 @@ for (const tier of ['telegram.round17.unit.test.ts', 'telegram.round17.integrati
 // the review-identified local execution holes without pretending static source inspection is
 // live-provider evidence.
 const concreteConsumers = [
+  ...[16, 18, 46].map(number => ({ id: `P12-NF-${number.toString().padStart(2, '0')}`,
+    file: 'tests/conversation/telegram.round23.lifecycle.test.ts',
+    anchors: ['round23 executes both competing-process orders through appendIfSubjectFrontier',
+      "run('run-admission-matrix.py')", "run('admission-restart-matrix.py')",
+      "expect(row.actualSuccesses).toBe(1)", "toContain('conditional append subject frontier changed; current=')",
+      "expect(restarted.get(winner.mode)?.kind).toBe('Success')"],
+    supporting: [{ file: 'src/conversation/telegram.ts', anchors: [
+      "subject: { type: 'AdapterConformance', field: 'adapter', value: id }",
+      'deps.conditionalAssembly.appendIfSubjectFrontier(',
+    ] }, { file: 'tests/conversation/held/admission-process.ts', anchors: [
+      'fixture.admissionDependencies.conditionalAssembly',
+      'appendIfSubjectFrontier(name, input, expected)',
+    ] }, { file: 'tests/conversation/held/admission_matrix.py', anchors: [
+      '"conditional append subject frontier changed; current="',
+      'restarted[winner["mode"]]["kind"] != "Success"',
+    ] }] })),
   { id: 'P12-NF-16', file: 'tests/conversation/telegram.round13.integration.test.ts',
     anchors: ["for (const outerMode of ['long-poll', 'webhook'] as const)",
       'nested = admitTelegramAdapter(declarations[otherMode]', "expect(outer.kind",
@@ -145,12 +163,12 @@ const concreteConsumers = [
     ] }] },
   { id: 'P12-NF-18', file: 'tests/conversation/telegram.round15.lifecycle.test.ts',
     anchors: ['round15 admission-every-await-interleaving', 'for (let target = 0; target < discovery.points.length; target++)',
-      "'api.readCapture'", "'assembly.inspectCurrent'", "'clock'", "'assembly.record:AdapterConformance'",
+      "'api.readCapture'", "'assembly.inspectCurrent'", "'clock'", "'conditionalAssembly.appendIfSubjectFrontier:AdapterConformance'",
       "filter(kind => kind === 'Success')", '.toHaveLength(1)'],
     supporting: [{ file: 'src/conversation/telegram.ts', anchors: [
       "ensure(!activeAdmissions.has(id), 'Telegram bot admission is already in flight in this process')",
       'Every fallible dependency read above completes before this decision',
-      "deps.assembly.record('AdapterConformance'", 'activeAdmissions.delete(id)',
+      'deps.conditionalAssembly.appendIfSubjectFrontier(', 'activeAdmissions.delete(id)',
     ] }] },
   { id: 'P12-NF-46', file: 'tests/conversation/telegram.round15.unit.test.ts',
     anchors: ['fresh-capture-overlap-confirmation', 'captureReadOverlap(outerMode)',
@@ -160,7 +178,7 @@ const concreteConsumers = [
     anchors: ['round16 admission-interleavings', "expect(result.winnerMode, outerMode).toBe(outerMode)",
       "expect(result.readmission?.kind, outerMode).toBe('Success')", 'row.taint.length === 0 && row.conflicts.length === 0'],
     supporting: [{ file: 'tests/conversation/round16-fixture.ts', anchors: [
-      "at(`assembly.record:${name}`", 'nested = admitTelegramAdapter(declarations[otherMode], base)',
+      "at(`conditionalAssembly.appendIfSubjectFrontier:${name}`", 'nested = admitTelegramAdapter(declarations[otherMode], base)',
       'const readmission = winnerMode === null ? null : admitTelegramAdapter',
     ] }] },
   { id: 'P12-NF-18', file: 'tests/conversation/telegram.round16.lifecycle.test.ts',
@@ -170,7 +188,7 @@ const concreteConsumers = [
       "expect(result.readmission?.kind, `${label}: readmission`).toBe('Success')"] },
   { id: 'P12-NF-46', file: 'tests/conversation/telegram.round16.unit.test.ts',
     anchors: ['round16 admission-interleavings refuses the nested in-process flight before append',
-      "discovery.trace.indexOf('assembly.record:AdapterConformance')", "expect(result.outer.kind, `${outerMode}/${phase}: outer`).toBe('Success')",
+      "discovery.trace.indexOf('conditionalAssembly.appendIfSubjectFrontier:AdapterConformance')", "expect(result.outer.kind, `${outerMode}/${phase}: outer`).toBe('Success')",
       "expect(result.nested?.kind, `${outerMode}/${phase}: nested`).toBe('Refused')", 'toHaveLength(1)'] },
   { id: 'P12-NF-16', file: 'tests/conversation/telegram.round8.integration.test.ts',
     anchors: ["{ id: -123, type: 'private' }", "{ id: 123, type: 'group' }",
@@ -376,6 +394,8 @@ const candidates = readFileSync('src/conversation/telegram.ts', 'utf8')
   + ['reply', 'callback', 'edit', 'channel-post', 'service-event', 'media-metadata', 'unsupported']
     .map(name => readFileSync(`tests/conversation/fixtures/telegram/${name}.json`, 'utf8')).join('');
 if (/[0-9]{6,}:[A-Za-z0-9_-]{20,}/.test(candidates)) throw new Error('P12-NF-12: Telegram token bytes found in source or fixture');
+const passingExecutableArms = landedArms.size + 1;
+if (passingExecutableArms < 43) throw new Error('row 99 integration did not add a passing executable arm');
 
 console.log('| Check | Disposition | Passing test files |');
 console.log('|---|---|---|');
@@ -383,4 +403,4 @@ for (const row of expected) {
   const disposition = executable[row.number] ? 'EXECUTABLE' : landedArms.has(row.number) ? 'EXECUTABLE ARM + PARTIAL' : 'PARTIAL';
   console.log(`| ${row.id} | ${disposition} | ${[...new Set((tests.get(row.id) ?? []).map(test => test.file))].join('; ') || '—'} |`);
 }
-console.log(`${landedArms.size} P12 checks have passing executable arms; ${row99ScopePath} holds the P12-NF-16/18/46 cross-process admission arm on NON-EXECUTABLE-UNTIL-row-99-ten-conditional-append; P12-NF-35 retains only real settlement on non-executable-until-seam-response-effects-followup.md; all 53 have explicit dispositions and no missing consumer passes as a no-op.`);
+console.log(`${passingExecutableArms} passing executable arms cover ${landedArms.size} P12 checks, including the landed P12-NF-16/18/46 competing-process admission arm; P12-NF-35 retains only real settlement on non-executable-until-seam-response-effects-followup.md; all 53 have explicit dispositions and no missing consumer passes as a no-op.`);

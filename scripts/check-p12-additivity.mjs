@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { build } from 'esbuild';
 
-const baseline = '201ce04470cbe42cdaa80bf7ddba2542f544959e';
+const baseline = '9d8ceafdd6561a7cb2becf7031c83213a08c82d1';
 const workspace = process.cwd();
 
 function run(command, args, options = {}) {
