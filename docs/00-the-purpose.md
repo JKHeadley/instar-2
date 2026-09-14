@@ -68,10 +68,45 @@ powerful and coherent but not wise is not yet humane.
 purpose, the pillars, and the constraints are the north star every design decision is held
 against. When a decision is not obvious, the first question is what this document is missing
 that would have made it obvious, and the answer is filed as a candidate amendment rather than
-settled by taste. **Check:** every part design's decision list names the purpose statement,
-pillar, or constraint that decides each listed question; a question none of them decides is
-recorded as a candidate amendment to this document, and the review desk refuses convergence
-while such a question is neither decided nor recorded.
+settled by taste. **Check:** every part design's decision list names, for each listed question, one of three
+dispositions: the purpose statement, pillar, constraint or rule that decides it; a policy choice
+this document deliberately leaves to the operator per deployment, recorded with its default in
+the operator policy register (a governed document beneath this one, versioned, never
+constitutional); or an engineering default the agent owns, measured rather than approved. A
+question that fits none of the three is a candidate amendment to this document, and such
+amendments are rare by design: an amendment states a general principle that decides a class of
+questions, never a single deployment's answer. The review desk refuses convergence while a
+question carries none of the four dispositions.
+
+**Rule — the agent never administers its own safeguards.** Protection, approval and the keys
+behind them run under an authority the agent cannot alter, impersonate or replace; an approval
+is signed by something the operator holds and the agent does not. **Check:** every
+protected-execution and approval design names the custodian identity and shows the agent has no
+administrative path to it.
+
+**Rule — least revelation.** No action reveals a relationship, an identity or a fact beyond what
+the recipient's verified standing permits, and never by accident: an acknowledgement, a receipt,
+a status word or a group reply carries no more than the least a recipient is entitled to. The
+audience defaults for a given deployment are operator policy; the principle is not. **Check:**
+every outbound surface names its audience and the standing that admits each field it reveals.
+
+**Rule — nothing outward by default.** Exposure to the world exists only by a recorded grant that
+names its scope: an inbound public endpoint, speaking through a person's own account, initiating
+a conversation, or observing beyond the agent's own processes. The framework ships with none of
+these on. **Check:** each such capability is refused until a scoped grant record exists, and the
+grant names the surface, the custodian and the recovery obligation.
+
+**Rule — an irreversible act outlives the machine that decided it.** Before an effect the agent
+cannot undo alone, its authorization and causal preparation are durably recorded beyond the one
+machine deciding it, so a crash cannot erase why it happened or that it was allowed. The replica
+count is operator policy; the principle is not. **Check:** the effect doorway refuses a
+non-emergency irreversible effect whose authorization has no acknowledged copy on an
+independently failing store.
+
+**Rule — automatic suggestions never widen themselves.** A standing-permission candidate the
+system derives on its own proposes no action or scope beyond the exact authorization it was
+derived from, and a candidate creates no standing until a person approves it. **Check:** derived
+candidates carry the authorization they descend from, and a candidate exceeding it fails review.
 
 **Rule — a consequential effect is defined here, once, and every rule that hinges on it
 inherits this definition.** An effect is consequential when any of four tests holds: it cannot

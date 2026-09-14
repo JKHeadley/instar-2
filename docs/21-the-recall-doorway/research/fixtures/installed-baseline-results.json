@@ -1,0 +1,26 @@
+{
+  "at": "2026-09-12T21:28:56.178Z",
+  "node": "v24.14.1",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "packageVersion": "1.3.1237",
+  "f1": {
+    "processed": 200,
+    "firstPresent": false,
+    "fiftyFirstPresent": true,
+    "savedCount": 250,
+    "savedLast": 250
+  },
+  "f2": {
+    "source": "fresh",
+    "resultsCount": 1,
+    "namePresent": true,
+    "bodyPresent": false
+  },
+  "f3": {
+    "lexical": 6,
+    "hybrid": 0,
+    "empty": true
+  },
+  "scope": "Real installed methods, synthetic stores/provider; no production state or provider call"
+}
