@@ -73,6 +73,8 @@ at first use; they are not new constitutional types or landed registry entries.
 | Exact binomial upper bound | Conservative event-rate ceiling for independent yes/no opportunities, with its exact equation; [section 8.3](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#83-endpoints-and-numeric-thresholds) |
 | Paired discordance | Fraction of matched cases in which only one candidate succeeds; [section 8.3](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#83-endpoints-and-numeric-thresholds) |
 | Nearest-rank percentile / p95 | Sort observations; p95 is the value at one-based position `ceil(0.95*n)`; [section 8.2](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#82-execution-and-separation-of-claims) |
+| Context delta | The changes in the current use context (audience, permissions, recipients, facts in play) since a card's assessment; [section 8](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md) |
+| Failure-detection rate | Correctly detected reference-labeled failures divided by all reference-labeled failures in the detection sample; a detection measure, distinct from information sensitivity; [section 8.3](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md) |
 
 Basis: Purpose’s checkability and evidence constraints; rules 49/65/108; the
 linked sections own the exact experimental definitions.
