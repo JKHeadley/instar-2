@@ -797,8 +797,24 @@ function exactTelegramResponse(input: TelegramReplyAssessmentInput,
     'Telegram delivery assessment must remain in Part Nine custody');
   ensure(deps.verification.owner === 'part-nine' && deps.custody.owner === 'part-ten',
     'Telegram response evidence requires the public Nine assessment and Ten custody owners');
+  ensure(deps.effects.owner === 'part-eight',
+    'Telegram response observations must resolve through the public Part Eight fact reader');
   const conversation = telegramConversation(deps.admitted.declaration.bot.id, deps.target);
-  const responses = effect.observations.filter(observation => observation.stage === 'response');
+  const effectRows = take(deps.effects.inspect());
+  const observations = effect.observations.map(supplied => {
+    const matches = effectRows.filter(row => row.record.type === 'OperationObservation'
+      && row.record.id === supplied.id);
+    ensure(matches.length > 0,
+      'Telegram response observation is not an exact stored Part Two fact');
+    const canonicalMatches = new Set(matches.map(row => encode(row.record)));
+    ensure(canonicalMatches.size === 1 && canonicalMatches.has(encode(supplied)),
+      'Telegram response observation differs from its exact decoded stored record');
+    const resolved = matches[0]!.record;
+    ensure(resolved.type === 'OperationObservation',
+      'Telegram response observation has the wrong stored record kind');
+    return resolved;
+  });
+  const responses = observations.filter(observation => observation.stage === 'response');
   ensure(responses.length === 1, 'Telegram provider acceptance requires one exact response-stage observation');
   const response = responses[0]!;
   ensure(effect.request.id === effect.reservation.request
@@ -818,7 +834,7 @@ function exactTelegramResponse(input: TelegramReplyAssessmentInput,
     && deps.definition.conversation === response.conversation
     && deps.definition.verificationBar === effect.bar,
   'Telegram response evidence differs from the exact request, claim, account, conversation, or digest');
-  ensure(effect.observations.every(observation => observation.request === response.request
+  ensure(observations.every(observation => observation.request === response.request
     && observation.operation === response.operation
     && observation.claim === response.claim
     && observation.digest === response.digest
@@ -860,15 +876,18 @@ export function assessTelegramReplyResponse(input: TelegramReplyAssessmentInput,
       && assessmentRows[0]!.conflicts.length === 0,
     'Telegram provider acceptance assessment is missing, ambiguous, or tainted');
     const ownerAssessment = assessmentRows[0]!.record;
-    ensure(ownerAssessment.type === 'VerificationAssessment'
-      && ownerAssessment.operation === response.operation
+    ensure(ownerAssessment.type === 'VerificationAssessment',
+      'Telegram provider acceptance assessment has the wrong stored record kind');
+    const witnessedIds = [...new Set(witnessed)].sort();
+    const ownerEvidenceIds = [...new Set(ownerAssessment.evidence)].sort();
+    ensure(ownerAssessment.operation === response.operation
       && ownerAssessment.attempt === input.effect.reservation.attempt
       && ownerAssessment.operationDigest === response.digest
-      && ownerAssessment.evidence.length === 1
-      && ownerAssessment.evidence[0] === witnessed[0]
-      && ownerAssessment.captureStatuses.length === 1
-      && ownerAssessment.captureStatuses[0]!.reference === response.capture.reference
-      && ownerAssessment.captureStatuses[0]!.status === 'available',
+      && witnessedIds.length > 0
+      && encode(ownerEvidenceIds) === encode(witnessedIds)
+      && ownerAssessment.captureStatuses.length > 0
+      && ownerAssessment.captureStatuses.every(status => status.reference === response.capture.reference
+        && status.status === 'available'),
     'Telegram provider acceptance is not bound to the exact witnessed response capture');
     return {
       assessment, stage: 'provider-accepted', sourceStage: 'response',

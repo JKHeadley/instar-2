@@ -55,7 +55,7 @@ it('P12-NF-34 P12-NF-35 round17 mismatched, unwitnessed, unsupported-stage and h
     row.stage === 'response' ? { ...row, stage: 'lookup' as const } as OperationObservation : row) };
   refused(assessTelegramReplyResponse({
     effect: noResponse, claim: 'provider-accepted', existing: null,
-  }, unsupported.dependencies), 'one exact response-stage observation');
+  }, unsupported.dependencies), 'differs from its exact decoded stored record');
 
   for (const claim of ['human-delivered', 'human-read'] as const) {
     const fixture = telegramResponseAssessmentFixture();

@@ -92,6 +92,7 @@ export function telegramResponseAssessmentFixture(
   };
   const dependencies = {
     admitted: outbound.telegram.admitted, api: outbound.telegram.api, target: outbound.target,
+    effects: outbound.doorway,
     assessment, verification: runtime, custody: outbound.effects.composition.custody!, definition,
     boundary: outbound.effects.host.boundary,
   };
