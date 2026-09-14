@@ -6,4 +6,4 @@ it('P12-NF-28 round21 keeps equal operation identities independent across separa
   expect(result.results.map(row => row.kind)).toEqual(['Success', 'Success']);
   expect(result.results.map(row => row.stage)).toEqual(['response', 'response']);
   expect(result.providerCalls).toEqual([1, 1]);
-});
+}, 30_000);

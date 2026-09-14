@@ -1,0 +1,25 @@
+{
+  "mode": "replay",
+  "catalog": {
+    "fixtures": [
+      {
+        "id": "P12-TELEGRAM-REPLY-CAPTURE",
+        "stage": "build",
+        "artifact": {
+          "path": "tests/conversation/fixtures/telegram/reply.json",
+          "hash": "sha256:073c68317e076c099ce4de0570e7af8094cce492fac9473923b1078dba059aac"
+        }
+      }
+    ],
+    "probes": [],
+    "sentinels": [],
+    "semanticReviews": []
+  },
+  "references": [
+    {
+      "provider": "fixture",
+      "id": "P12-TELEGRAM-REPLY-CAPTURE",
+      "kind": "captured-bytes"
+    }
+  ]
+}
