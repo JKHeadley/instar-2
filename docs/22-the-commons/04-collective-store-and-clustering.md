@@ -61,4 +61,4 @@ Basis: Trust and constraint 3; rules 13/28/57/58/65/86/108; R4 collective custod
 Reconciliation targets are in the pilot; operational timers are bounded settings. Monitors
 report their own last successful run. A silent dead detector cannot certify healthy state.
 
-Basis: Purpose constraint 2; rules 43/45/47/62/69/95; P22 E2/E7/E12.
+Basis: Purpose constraint 2; rules 43/45/62/69/95; P22 E2/E7/E12.

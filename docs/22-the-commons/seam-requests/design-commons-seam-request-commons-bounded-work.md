@@ -1,9 +1,9 @@
 # Commons seam request — RS: commons-bounded-work
 
-Status: REQUESTED. No owner grant or implementation asserted.
+Status: GRANTED CONDITIONAL by the copied seam-response-commons-grants.md, row 106; unlanded, no implementation or activation asserted.
 Owner: Six resources/leases / Five runs / Fifteen scheduling / Seven supervision.
 Requester: Part Twenty-Two D1, design-commons.
-Dependency: NON-EXECUTABLE until this exact seam is GRANTED and its implementation lands with acceptance evidence.
+Dependency: NON-EXECUTABLE-UNTIL-row-106-commons-bounded-work. Rows 83 RunAdmissionPort production and 84 calendar adapter first; finite exposure and Tier 1 supervision.
 
 **Rule — exact additive behavior requested.** **Check:** the owner accepts or refuses this scope explicitly.
 Finite root/child reservations, per-agent/operator/anonymous limits, persisted backoff and remaining exposure, durable repeat/privacy counters, review/outcome jobs with current Tier 1 supervision and fresh running proof.

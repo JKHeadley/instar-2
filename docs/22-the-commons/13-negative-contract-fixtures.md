@@ -34,6 +34,9 @@ Basis: Purpose constraints 1–3; rules 34/35/49/65/69/95/111; R5 three-tier pro
 | F20 | Complete legacy inventory and one restartable importer | Missing curated notes, duplicate task, old narrative retry, inherited consent | Hold cutover; preserve recoverable state and exact mismatch | 18/19 |
 | F21 | Local loop with front disabled and a real registered supervisor | Dark consumer, no-op supervisor, front outage hides user status | Local lifecycle remains reachable; fleet readiness unavailable | 20 |
 | F22 | Mature fixed holdout and declared conservative bounds | Synthetic filler, missing cases dropped, better after looking at labels | Inconclusive/invalid; new sealed protocol and fresh holdout needed | 17 |
+| F23 | Current grant permits a send claim before revocation | Authority observes revocation before the claim or retry | Refuse every new admission ordered after observation; retain the refusal witness | 05/19 |
+| F24 | Send was claimed while permitted, then revocation is observed | Paused executor resumes or packet crosses after observation | Preserve bounded already admitted exposure and reconcile its receipt/unknown outcome; admit no replacement, never claim instantaneous cancellation | 05/19 |
+| F25 | Legacy record retained with its original verification label and method | Import treats old `verified`, time without recurrence or silence as current proof | Preserve the legacy claim unchanged; require new owner-validated outcome evidence and a linked current grade before present verification or promotion | 18/19 |
 
 
 **Rule — fixture provenance never becomes fleet outcome evidence.** **Checks: P22-NF-09/10/17.**

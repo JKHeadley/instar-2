@@ -1,9 +1,9 @@
 # Commons seam request — GR: verification-commons-grades-and-corrections
 
-Status: REQUESTED. No owner grant or implementation asserted.
+Status: GRANTED CONDITIONAL by the copied seam-response-commons-grants.md, row 108; unlanded, no implementation or activation asserted.
 Owner: Nine verification / Five work / Seven judgment.
 Requester: Part Twenty-Two D1, design-commons.
-Dependency: NON-EXECUTABLE until this exact seam is GRANTED and its implementation lands with acceptance evidence.
+Dependency: NON-EXECUTABLE-UNTIL-row-108-verification-commons-grades-and-corrections. Row 97 correction-class review lifecycle with independent standards review, not grade replacement alone.
 
 **Rule — exact additive behavior requested.** **Check:** the owner accepts or refuses this scope explicitly.
 Current complete scoped Grade/BenchmarkEvaluation emission; separate conclusion/reason/outcome dimensions, reliable grader and interested-party metadata, causal corrections and independent standards/process review with linked repair obligations.

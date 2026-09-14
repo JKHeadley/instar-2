@@ -1,9 +1,9 @@
 # Commons seam request — RG: register-commons-enrollment
 
-Status: REQUESTED. No owner grant or implementation asserted.
+Status: GRANTED CONDITIONAL by the copied seam-response-commons-grants.md, row 102; unlanded, no implementation or activation asserted.
 Owner: Three register / Two verified history.
 Requester: Part Twenty-Two D1, design-commons.
-Dependency: NON-EXECUTABLE until this exact seam is GRANTED and its implementation lands with acceptance evidence.
+Dependency: NON-EXECUTABLE-UNTIL-row-102-register-commons-enrollment. Row 77 shape-change slice first; normal governed enrollment, no blanket authority.
 
 **Rule — exact additive behavior requested.** **Check:** the owner accepts or refuses this scope explicitly.
 Governed commons-owner enrollment through the normal generation/shape workflow; register exact declarations, decoders, producers, consumers, checks and public operation contracts.

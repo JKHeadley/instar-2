@@ -1,9 +1,9 @@
 # Commons seam request — JO: judgment-benchmark-commons-resolution
 
-Status: REQUESTED. No owner grant or implementation asserted.
+Status: GRANTED CONDITIONAL by the copied seam-response-commons-grants.md, row 107; unlanded, no implementation or activation asserted.
 Owner: Seven judgment / Ten route support.
 Requester: Part Twenty-Two D1, design-commons.
-Dependency: NON-EXECUTABLE until this exact seam is GRANTED and its implementation lands with acceptance evidence.
+Dependency: NON-EXECUTABLE-UNTIL-row-107-judgment-benchmark-commons-resolution. Rows 30, 73 and 100; real owner benchmark execution/rerun as well as compatibility, clock and current route support.
 
 **Rule — exact additive behavior requested.** **Check:** the owner accepts or refuses this scope explicitly.
 Owner-resolved complete benchmark compatibility and comparable run-start clock; real scenario admission, exact actual-input joins and current measured route support; bounded local evaluation under declared provider exposure.

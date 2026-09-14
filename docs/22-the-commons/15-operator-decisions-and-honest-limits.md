@@ -1,143 +1,181 @@
 ## 15. Operator decisions and honest limits
 
 **Rule — every choice has a deciding authority or a recorded gap.** **Checks: P22-NF-01/10/11/17/20.**
-The settled decisions below follow the named purpose text or are agent-owned settings within
-named constraints. G1–G4 are candidate amendments, not silent policy choices or approved
-runtime settings. Their questions are the complete list of unresolved operator judgment items.
-Drafting, source inspection, documentation checks and tests do not require an answer to them;
-activation and dependent effects do. Filing a gap permits review to discuss it, not enact it.
+The settled decisions follow the named purpose text or are agent-owned settings within named
+constraints. G1, G2 and G4 are deployment policy choices reserved to the operator by the
+purpose's “Who decides what”; their numerical defaults are not constitutional amendments.
+G3 retains the candidate general-principle amendment required by the purpose's gap rule and
+the JU grant. Their questions are the unresolved operator judgment items. Drafting and checks
+need no answers; activation and dependent effects do. The closing Rule holds all citations
+and internal routing for the decision cards.
 
-Basis: Purpose gap Rule and “Who decides what”; constraints 1–4; rules 90/95.
+### Settled decisions
 
-**Value — OD-01: start with accountable cases and proposals.**
-Disposition: Decided direction. Build the design around A; admit B only after its owner,
-isolation and added-benefit gates pass. Keep C separate and deferred. Each agent keeps its
-local loop. The developers operate the default front; any operator can run the same code.
-A front is an operated service, not the agent's source of governing authority.
+**Value — start with accountable cases and proposals.**
+Background: A shared service can return tested lessons while each agent keeps its own local
+learning. Sending evaluation invitations to other agents and publishing statistical summaries
+need additional privacy and benefit checks.
 
-Basis: Coherency, sovereignty, wisdom and evidence constraint; big picture §§8/9; accepted R5 recommendation and this design assignment.
+Question: What should the shared service start with?
 
-**Value — OD-02: local-only until explicit enrollment; richer sharing is separate.**
-Disposition: Constitutionally bounded. Enrollment grants only the named destination, fields,
-purpose and terms. A separate current grant is needed for richer evidence, and other people's
-restrictions still hold. Changing the address or installing an update cannot turn sharing on.
+Choices: Start with accountable cases and tested proposals, then consider those extensions;
+or defer the shared service and keep all learning local. The first can share useful repairs;
+the second avoids fleet operation but loses that exchange.
 
-Basis: Purpose sovereignty/trust and non-widening authority; rules 28/29/86/95; R2/R4; G2 supplies unresolved terms, not permission by default.
+Recommendation: Start with accountable cases and proposals. The purpose's coherency and
+wisdom statements decide this direction, within the accepted design assignment. Each operator
+can run the same service code; operating it grants no governing authority.
 
-**Value — OD-03: the agent owns implementation tuning inside the floors.**
-Disposition: Agent-owned setting. Choose an eligible transport (Threadline first candidate),
-schema byte/count ceilings, queue bursts, retry schedules, clustering method, storage adapter,
-worker count and operational reconciliation intervals through measured engineering. Keep
-finite exposure, zero-limit behavior, content-free privacy, current consent, honest missingness,
-reachable local service and same-code parity. Changing a setting cannot widen those constraints.
+**Value — joining and richer sharing need separate permission.**
+Background: Even a report without message content can reveal patterns. Permission for one
+recipient does not cover another recipient or a more revealing payload.
 
-Trial allocation, cluster bootstrap/seed and candidate analysis code are also agent-proposed
-experimental settings. They remain sealed before results are read. The constitution does not
-uniquely choose 600 cases or a bootstrap seed. G1 concerns accepted release risk, G2 privacy
-loss, and G4 actual resource authority; those policy judgments are not engineering discretion.
+Question: How should participation begin?
 
-Basis: Purpose “Who decides what,” constraints 1–4; rules 39/41/55/60/61/77/95; sections 3/7/10.
+Choices: Keep sharing off; explicitly join with the permitted content-free fields; or separately
+authorize richer evidence after seeing the exact payload. These choices progressively widen
+what the named recipient can see and must remain independently revocable.
 
-**Value — OD-04: feedback cannot outvote the constitution.**
-Disposition: Constitutionally decided. Within the relevant scope, operator standing precedes
-verified user, other agent and anonymous fleet. Lower-standing volume cannot buy higher
-standing. Evidence can refute anyone's factual explanation; it cannot acquire their authority.
-Local preferences stay local unless independent real cases and pillar placement support a
-separately approved fleet proposal. Later outcomes and sound reasons, not approval scores,
-decide the evidence of improvement.
+Recommendation: Keep sharing off until explicit enrollment, then require separate permission
+for richer sharing. The purpose's sovereignty and non-widening-authority constraint decide
+this boundary. An update or address change cannot grant permission.
 
-Basis: Purpose wisdom, trust/alignment, sovereignty and authority constraint; rules 28/29/57/58/86/108; section 5 seven principles.
+**Value — tune implementation within fixed constraints.**
+Background: Transport, queue limits, worker counts, retry timing and statistical sampling
+settings need engineering judgment and measured results.
+
+Question: Who should choose those settings?
+
+Choices: Let the agent tune them within the existing limits; or require operator review of each
+adjustment. The first reduces routine work; the second gives more direct control and slows tuning.
+
+Recommendation: Let the agent tune them. This is an agent-owned setting bounded by the named
+purpose constraints on evidence, silent loss and authority, plus the existing privacy and
+resource limits. Seal experiment settings before outcomes are read. Tuning cannot decide
+acceptable release risk, privacy loss or actual spending authority.
+
+**Value — feedback cannot outvote the constitution.**
+Background: Many people can repeat a claim without adding independent evidence or authority.
+A person with standing can also give a factually wrong reason.
+
+Question: What should decide whether a lesson is accepted?
+
+Choices: Use scoped standing, sound reasons and later outcomes; or use popularity. The first
+preserves accountable judgment; the second could reward a widely liked harmful action.
+
+Recommendation: Use standing and evidence. The purpose's wisdom, alignment and sovereignty
+statements decide this. Popularity cannot change authority; factual counterevidence still
+matters regardless of who made the original claim.
 
 ### Questions for the operator
 
-**Value — G1: what evidence is enough to risk a fleet release?**
-Question: Should each kind of change have its own agreed evidence and risk limits?
+**Value — choose the evidence and risk policy for releases.**
+Background: A display change and a change in handling private information can have different
+consequences. Both need honest evidence, with privacy and authority violations as absolute stops.
+This is a policy choice the constitution leaves to the operator per deployment.
 
-Recommendation: Yes. Keep privacy and authority violations as absolute stops. Use the pilot's
-proposed improvement, coverage and later-outcome targets as the starting profile, then approve
-a profile for the particular release before a real trial begins.
+Question: Should each kind of release have its own agreed evidence and risk limits?
 
-Tradeoff: A single profile is simpler, but a small display change and a judgment about private
-information need different confidence. Separate profiles take more review work.
+Choices: Approve a profile for each kind of release, which adds review work but fits the risk;
+or choose one conservative profile for all releases, which is simpler but can delay small fixes.
+Neither choice can relax the privacy or authority floors.
 
-Disposition: OPEN candidate purpose amendment, “outcome-specific release evidence profiles.”
-The purpose demands honest evidence but does not set acceptable residual risk. The candidate
-text would require an operator-approved risk/evidence profile with non-tradeable floors for
-each consequential release class; the alternative is one universal profile. Pilot thresholds
-are proposed settings, not constitutional facts or completed evidence.
+Recommendation: Use separate profiles, approved before a real trial. Begin with the proposed
+pilot improvement, coverage and later-outcome targets, then assess whether they fit the release.
+These are operating policy and experiment settings, not amendments to the constitution.
 
-Basis: Purpose wisdom, evidence constraint 3, gap Rule and operator policy authority; R5 G1/E5–E7; section 10.
+**Value — choose complete retention terms.**
+Background: Keeping evidence supports later review but prolongs exposure. These terms apply
+to whatever sharing you separately permit; choosing retention does not enroll anyone.
+This is a policy choice the constitution leaves to the operator per deployment.
 
-**Value — G2: what may a commons keep, and for how long?**
-Question: What retention terms should an enrolled commons offer for cases and richer evidence?
+Question: How long should this service keep cases, attachments and minimal history?
 
-Recommendation: Make retention, backup expiry and onward-sharing terms explicit before
-joining. As a pilot proposal, keep case metadata for at most 90 days, give richer attachments
-a separate shorter period chosen with their owner, and expire deleted material from controlled
-backups within 30 days. Keep only the minimal permitted withdrawal/provenance record needed
-to prevent reuse of withdrawn evidence. Do not enable the aggregate channel yet.
+Choices:
+- Short: case metadata 30 days, richer attachments 7 days, minimal history 90 days, and deleted
+  material expires from controlled backups within 7 days. Exposure is shorter; later reviews
+  lose support sooner.
+- Balanced: case metadata 90 days, richer attachments 14 days, minimal history 180 days, and
+  deleted material expires from controlled backups within 30 days. This allows longer follow-up
+  while placing a finite limit on every category.
+- Extended: case metadata 180 days, richer attachments 30 days, minimal history 365 days, and
+  deleted material expires from controlled backups within 30 days. This supports slower reviews
+  but retains linkable records longer.
 
-Tradeoff: Short retention reduces exposure but can remove support for later review. When
-support expires, dependent claims must show that loss. A dishonest recipient may retain copies;
-no deletion promise can undo information it has already learned.
+For all choices, live-record periods run from original adoption and cannot restart on copying,
+retry or restore. Minimal history contains only destination-scoped opaque case identity,
+withdrawal/expiry status, approval-policy identity and custody dates, without content or raw
+identifiers. It expires on the stated schedule from original adoption. Early withdrawal removes
+live case/attachment support immediately within controlled custody; backup deletion receipts
+remain bounded by the chosen backup period. Shorter source-owner limits always win. Once support
+expires, dependent claims become unsupported; after minimal history expires, old support cannot
+be accepted again without fresh owner validation and permission. Recipients outside controlled
+custody may keep copies; these choices cannot undo information already learned.
 
-Disposition: OPEN candidate purpose amendment, “purpose-bound privacy and retention budgets.”
-The proposed text would require explicit per-artifact retention/deletion/backup terms and a
-cumulative privacy-loss budget where randomization is used. Alternatives are no fleet export,
-content-free case sharing alone, or a separately approved aggregate channel. The pilot's
-privacy numbers and proposed periods remain inactive until approved. No indefinite retention
-exception is granted by the phrase minimal provenance; its fields and expiry must be agreed too.
+Recommendation: Use the balanced terms for the pilot because they cover the planned later
+reviews with finite exposure. Keep statistical aggregate sharing disabled; its privacy-loss
+budget is a separate policy approval, not granted by a retention choice.
 
-Basis: Trust, sovereignty, non-widening authority and gap Rule; R5 G2/E3/E10; sections 6/8; privacy is not guaranteed by pseudonymity.
+**Value — decide how to judge competing harms.**
+Background: Sharing and withholding can both be permitted yet hurt different people. The
+purpose aims at wisdom but does not settle every tradeoff. This asks about a general governing
+principle, not a deployment default, and is recorded as a candidate purpose amendment.
 
-**Value — G3: how should hard choices between sharing and withholding be judged?**
-Question: When both choices are permitted but each could hurt someone, whose outcome criteria should apply?
+Question: Should judgments use criteria approved for the people and situation affected?
 
-Recommendation: Have the judgment-of-use owner record who could be helped or hurt, use criteria
-approved for that scope, and preserve unresolved disagreement. Keep such fleet lessons on hold
-until the criterion is settled; do not turn the fleet's preference into a universal tradeoff.
+Choices: Require scoped, accountable criteria and preserve unresolved disagreement, which can
+hold a lesson for further review; or adopt one universal numerical tradeoff, which is easier
+to automate but can conceal differences in who bears the harm.
 
-Tradeoff: This keeps sensitive choices accountable but may delay a lesson that many people
-like. A universal numeric tradeoff would be easier to automate and would hide real differences
-between the people affected.
+Recommendation: Require scoped criteria that identify who could be helped or hurt, with an
+explicit record of disagreement. Keep affected fleet lessons on hold until the criterion is
+settled. The candidate general principle is: use accountable criteria for competing permitted
+harms and preserve unresolved disagreement. Decisions already settled by a governing constraint
+stay settled; the fleet cannot vote itself a new criterion.
 
-Disposition: OPEN candidate purpose amendment, “scoped accountable harm criteria.” Part 23
-owns the criterion request; Part 22 consumes it through JU. The candidate text would require
-scoped accountable criteria and a recorded disposition of disagreement when floors permit both
-choices. The alternative is a universal numeric tradeoff. Ordinary choices already decided by
-a floor remain decided and do not enter this question.
+**Value — choose a release and trial mandate.**
+Background: Approving a release and operating the service are separate responsibilities. The
+trial also has two stages. First, replay old cases locally with later labels available only
+to graders and no actions sent; this tests prepared behavior. Then, only after those checks
+pass, observe a changed agent in fresh, authorized work to learn what actually happens over
+30 days. The first stage costs provider calls and review time; the second also needs new
+participants, ongoing review and a separately agreed budget. This is a policy choice the
+constitution leaves to the operator per deployment.
 
-Basis: Purpose wisdom, trust/alignment, sovereignty and gap Rule; R5 G3; section 14 JU request; rules 57/108.
+Question: What release and trial mandate should you give?
 
-**Value — G4: who may approve releases, and what resources may the pilot use?**
-Question: Should you approve each fleet release yourself, or appoint a named person with a limited mandate?
+Choices:
+- Keep approval with you. Consider at most $250 of additional provider spending per local replay
+  comparison arm, with reviewer time agreed before work begins; authorize no fresh-work trial
+  until its spending, participants and reviewer-time budget are separately presented and approved.
+- Name a revocable delegate for exact releases within stated scope, with the same staged resource
+  limits. This can shorten the review queue but needs explicit boundaries and a revocation path.
+- Hold releases and both trial stages. This commits no trial resources and delays evidence collection.
 
-Recommendation: Keep approval with you until you name a revocable delegate, the kinds of
-releases they may approve and the resources available. For a later trial, consider the
-proposed $250 additional provider limit per offline arm as a ceiling, not a target. Approve
-prospective trial spending and reviewer time separately before they are committed.
+Recommendation: Keep approval with you until you name a scoped delegate. Treat the replay
+amount as a proposed ceiling, not a target or permission. Present the exact reviewer-time and
+fresh-work budgets before committing them; no real spend, recruitment, release or recurring
+operation is authorized by this document.
 
-Tradeoff: Personal approval gives direct control and may slow the queue. Delegation can speed
-review but needs clear scope and a way to revoke it. Running the front does not make someone
-the release approver.
-
-Disposition: OPEN candidate purpose amendment, “scoped revocable fleet release delegation.”
-The candidate text would require a named human approver, exact-content authority, revocation
-and operator-set resource ceilings; the alternative is operator-only approval each time.
-No real pilot provider spend, recurring fleet operation, participant recruitment or release
-is authorized by this design. Existing owner authority still governs any separately authorized
-ordinary local work.
-
-Basis: Purpose operator-only policy/authority/build/spend boundary and gap Rule; R5 G4/E8/E11; sections 6/10.
-
-**Rule — honest limits remain visible after document checks pass.** **Checks: P22-NF-01/17/20.**
-This is a governed proposed contract supported by source inspection and accepted research.
+**Rule — decision bases and honest limits remain visible after document checks pass.** **Checks: P22-NF-01/17/20.**
+Each Basis line below names the deciding purpose text, an agent-owned setting's constraint,
+or operator policy authority. Only G3 proposes a general-purpose amendment; no operating default
+amends the constitution. The request copies and conditional grants are coordination evidence.
 There are no executed fleet privacy trials, measured wisdom gains, production commons receipts,
-real local emitter lifecycle results, independently converged design approval or paid pilot
-results supplied by this document. The expected useful cohort size, independent-case supply,
-human review burden, B's incremental benefit and C's small-cohort utility remain unknown.
-All thirteen new owner requests are REQUESTED; none is a grant. Existing conditional seams
-retain their original requirements. Local privacy-sensitive grades may remain attestations
-forever. A functioning commons can improve measured cases without proving universal wisdom.
+real local emitter lifecycle results, independent convergence approval or paid pilot results
+supplied by this document. Useful cohort size, independent-case supply, review burden,
+remote evaluation's incremental benefit and small-cohort aggregate utility remain unknown.
+All thirteen commons requests have the conditional grants in rows 102–114, including row 113
+arm B's operator gate; none is claimed implemented or activated. Existing conditions remain
+intact. Local privacy-sensitive grades may remain attestations forever. A functioning commons
+can improve measured cases without proving universal wisdom.
 
-Basis: Purpose wisdom and constraints 3/4; rules 13/49/65/69/95/108/111; R1–R5 and section 14.
+Basis: OD-01, “start with accountable cases and proposals”: Purpose “coherency is the root, and the other three follow from it” and “wisdom is what coherence is for”; big picture §§8/9; accepted R5 and assignment; A first, B gated, C deferred.
+Basis: OD-02, “joining and richer sharing need separate permission”: Purpose sovereignty and “the agent does not widen its own authority”; rules 28/29/86/95; R2/R4; sections 2/3/6, ID/FX/UI; G2 sets terms only.
+Basis: OD-03, “tune implementation within fixed constraints”: agent-owned setting under Purpose “Who decides what,” constraints 1–4 and non-widening authority; rules 39/41/55/60/61/77/95; sections 3/7/10; transport, limits, clustering, bootstrap/seed and allocation are bounded engineering choices.
+Basis: OD-04, “feedback cannot outvote the constitution”: Purpose wisdom, alignment, sovereignty and authority boundary; rules 28/29/57/58/86/108; section 5 seven principles.
+Basis: G1, “choose the evidence and risk policy for releases”: operator deployment policy under Purpose “Who decides what,” wisdom and evidence constraint 3; section 10 E5–E7; R5 G1; no constitutional numerical default.
+Basis: G2, “choose complete retention terms”: operator deployment policy under Purpose “Who decides what,” trust, sovereignty and non-widening authority; sections 2/6/8; R5 G2/E3/E10; no enrollment or aggregate privacy-budget approval implied.
+Basis: G3, “decide how to judge competing harms”: Purpose “wisdom is what coherence is for” and “a design question this document cannot decide is a gap in this document”; candidate general amendment “scoped accountable harm criteria”; Part 23 judgment-of-use owner via JU, row 112, after convergence/approval; Part 22 consumes, never invents, the criterion; rules 57/108; R5 G3.
+Basis: G4, “choose a release and trial mandate”: operator deployment policy under Purpose “Who decides what,” operator-only authority/build/spend boundary; R5 G4/E8/E11; sections 6/10; EX operator deployment standing and EV arm B exposure approval remain separate gates.
+Basis: Honest limits and introductory rule: Purpose constraints 1–4, gap Rule, sole consequential-effect/user-facing definition and authority boundary; rules 13/49/65/69/90/95/108/111; R1–R5; section 14 and [verbatim grants](seam-requests/seam-response-commons-grants.md), SEAM-LEDGER rows 102–114.

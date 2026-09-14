@@ -23,8 +23,9 @@ late grades refine the original window. Bare timestamps or front arrival time ca
 Report proof, observation, attestation and inference separately, alongside interested-party
 share, grader/model lineage, concentration, independence and missing peer reasons. Zero
 population is undefined, missing price unknown, suppressed values not zero. Never average
-local percentiles into a fleet percentile. A complaint-enriched corpus is not the prevalence
-of failure among all Instar users. Fleet support and strata preserve local ordinal standing;
+local percentiles into a fleet percentile. A percentile is a value at or below which the
+named fraction of observations falls. A complaint-enriched corpus is not the prevalence
+of failure among all Instar users. Fleet support and strata (separately reported groups) preserve local ordinal standing;
 equal operator weights in the pilot are a statistical setting, not authority equality.
 
 Basis: Purpose evidence constraint; rules 13/58/75/86/108; Part 20 §7, P16-NF-31/32/38; R2/R4.

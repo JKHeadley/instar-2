@@ -1,9 +1,9 @@
 # Commons seam request — ME: measurement-commons-evidence-joins
 
-Status: REQUESTED. No owner grant or implementation asserted.
+Status: GRANTED CONDITIONAL by the copied seam-response-commons-grants.md, row 110; unlanded, no implementation or activation asserted.
 Owner: Sixteen measurement / Seven judgment / Nine verification / Six accounting.
 Requester: Part Twenty-Two D1, design-commons.
-Dependency: NON-EXECUTABLE until this exact seam is GRANTED and its implementation lands with acceptance evidence.
+Dependency: NON-EXECUTABLE-UNTIL-row-110-measurement-commons-evidence-joins. Rows 78/101, both P16 A2a single-store and A2b peer-merge slices; A2a alone is insufficient.
 
 **Rule — exact additive behavior requested.** **Check:** the owner accepts or refuses this scope explicitly.
 Registered commons event mappings and A2 joins for canonical accepted/planned populations, current grades, cost/settlement, comparable windows, evidence strata, independently grouped operators and privacy-qualified exports/read views.

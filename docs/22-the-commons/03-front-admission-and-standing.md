@@ -1,6 +1,7 @@
 ## 3. Front admission and standing
 
 **Rule — verify a pseudonym and separately resolve its standing.** **Checks: P22-NF-03/05/06.**
+A pseudonym is a substitute identifier; its use can still link contributions and does not prove anonymity.
 Enrollment binds a destination-scoped key to verified principal evidence through the identity
 owner. Verification checks issuer trust, challenge/signature, intended destination, current
 epoch, expiry and revocation. It does not require public real names. A role grant separately

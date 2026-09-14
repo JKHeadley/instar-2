@@ -1,9 +1,9 @@
 # Commons seam request — FX: commons-export-release-effects
 
-Status: REQUESTED. No owner grant or implementation asserted.
+Status: GRANTED CONDITIONAL by the copied seam-response-commons-grants.md, row 105; unlanded, no implementation or activation asserted.
 Owner: Eight effects / Ten confined adapters.
 Requester: Part Twenty-Two D1, design-commons.
-Dependency: NON-EXECUTABLE until this exact seam is GRANTED and its implementation lands with acceptance evidence.
+Dependency: NON-EXECUTABLE-UNTIL-row-105-commons-export-release-effects. Effects slice A first; exact current grant at first send and retry; local-only failure, no ordinary-chat bypass.
 
 **Rule — exact additive behavior requested.** **Check:** the owner accepts or refuses this scope explicitly.
 Typed exact-subject export, custody query, correction, release, withdrawal and install operations; bind destination/bytes/policy/approval and current grant at first send and retry; local-only fail direction, no redirect bypass or hidden retries.

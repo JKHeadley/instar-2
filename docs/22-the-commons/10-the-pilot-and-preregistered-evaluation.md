@@ -30,14 +30,14 @@ held-out local opportunities and report the mechanism cost as well as package ou
 This tests the proposals' end-to-end usefulness under equal budgets, not an isolated causal
 effect of one algorithm. Identical resulting packages imply no demonstrated outcome advantage;
 mechanism cost/coverage can still differ. B-versus-A is a separately preregistered paired
-incremental comparison on these same candidate packages.
+comparison (both candidates evaluated on the same opportunities) of incremental benefit on these same candidate packages.
 
 Basis: Purpose wisdom and constraint 3; R5 fixed-baseline comparison; OD-03 experimental setting bounded by G1/G4.
 
 **Value — the candidate real-case sample.** Reserve at least 300 real graded development
-episodes from operators outside the held-out cohort. Hold out 600 different real canonical
+episodes from operators outside the held-out cohort, the group reserved for final evaluation. Hold out 600 different real canonical
 opportunities from 20 independently enrolled operators, 30 per operator. Before candidate
-selection, stratify the holdout into ten cells of 60: the four section 2 recall causes; wrongful
+selection, stratify the holdout (divide it into predefined groups) into ten cells of 60: the four section 2 recall causes; wrongful
 disclosure; wrongful withholding; permitted internal use without disclosure; later-outcome
 reversal of immediate approval; benchmark/regression feedback; and correction/reason refutation.
 Within each cell include 20 failures, 20 matched successes and 20 legitimate-hold or
@@ -76,7 +76,7 @@ factual grade causally, preserving both records.
 Basis: Purpose wisdom; rule 108; judgment-learning principles 4–6.
 
 **Rule — missingness and correlation cannot improve the estimate.** **Check:** all planned
-executions remain in the denominator, including refusals, cancellations, pending and conflicted
+executions remain in the denominator (the full population used to calculate a fraction), including refusals, cancellations, pending and conflicted
 grades. A correctly graded refusal can pass its criterion; missing evidence cannot. Correct
 handling of an unavailable-evidence control can have a complete grade; that differs from an
 outcome the grader cannot determine. For each offline operator compute the paired
@@ -91,31 +91,40 @@ does not establish independence if all copied one source incident.
 
 Basis: Purpose constraint 3; Part 20 §7; rules 13/58/75; R5 conservative bounds.
 
-**Value — fixed inference method.** Use 10,000 paired operator-cluster bootstrap resamples,
-seed 220205, for offline candidate differences and the incremental B-minus-A comparison.
-Keep each cluster's cases together. There are four planned offline comparisons; use two-sided
-98.75% percentile intervals for each (Bonferroni family error at most 5% under the interval
-method's assumptions). Test no additional candidate on this holdout. For prospective
-confirmation use a two-sided 95% interval from 10,000 arm-stratified operator-cluster bootstrap
-resamples with the same recorded seed. These are proposed analysis choices, not a guarantee
-of coverage with a small or dependent cohort. Publish distributions and sensitivity to leaving
+**Value — fixed inference method.** An operator-cluster bootstrap repeatedly samples whole
+operators with replacement, keeping each operator's cases together to retain their correlation.
+Use 10,000 such paired resamples, seed 220205, for offline candidate differences and the
+incremental B-minus-A comparison. A percentile interval uses the chosen lower and upper
+percentiles of those resampled estimates as its endpoints. The four planned comparisons use
+two-sided 98.75% intervals each. Bonferroni family error control divides a total 5% error
+allowance by four: the chance of any interval missing its target is at most 5% only if each
+individual interval attains its claimed coverage: how often repeated samples would produce
+an interval containing the target. This adjustment addresses multiple
+comparisons; it does not repair dependence or bootstrap approximation error in a small cohort.
+Test no additional candidate on this holdout. For prospective confirmation use a two-sided
+95% interval from 10,000 arm-stratified resamples, meaning sample operators separately within
+each assigned treatment group, with the same recorded seed. These are proposed analysis choices,
+not a guarantee of coverage with a small or dependent cohort. Publish distributions and sensitivity to leaving
 out each operator; no claim of sufficient power is made before real variance is known.
 
 Basis: Purpose constraint 3 and agent technical discretion; R5 inference method; OD-03, bounded by G1 and sealed before outcome inspection.
 
 ### Preregistered thresholds and negative fixtures
 
+
 **Value — fix the following candidate thresholds together.** None can compensate for another:
 privacy/authority floors are vetoes, utility thresholds test useful gains, and throughput checks
 test whether the loop operates. Exact boundary equality is accepted for minimums/maximums,
 except a positive confidence lower bound must be strictly greater than zero. A quality gate
-that lacks enough data is inconclusive. All quantities are proposed targets, not measured values.
+that lacks enough data is inconclusive. All quantities are proposed targets, not measured values. A median is the middle observation;
+p95 is the 95th percentile, the value at or below which 95% of observations fall. A percentage
+point is an absolute difference between percentages, not a relative percent change.
 
 | ID | Acceptance threshold | Protocol and falsifier |
 |---|---|---|
 | E1 Standing and placement | Zero forbidden promotions or forged grades across 10,000 generated admission attempts; 100% of promoted artifacts have an exact pillar derivation, independent evidence and human approval | Cover every gate and both boundary sides, including expired grants, operator from another scope, 10,000 cloned agent votes, anonymous reproducible bug, an operator's wrong factual reason, equal-standing conflict, missing pillar and a pillar contradiction; duplicate votes must not change authority |
 | E2 Custody and complete loop | Zero lost or double-adopted canonical cases across 10,000 fault-injected transitions; 100% of admitted cases receive an owned review disposition within seven days; healthy reconciliation p95 at most five minutes | Crash before/after persist/receipt/grade/release, reorder and replay messages, 429/503 backoff, offline front, missing owner, non-persisting 200, corrected grade and withdrawn release; measure dispositions including held/rejected, separately from successful improvements |
-| E3 Default privacy and consent | Zero planted content/identifier canaries outside the allowed boundary across 10,000 export attempts; zero sends after revocation or to an unapproved destination | Inspect wire bytes, stored rows, logs, errors, retry queues and model-provider requests; exercise nested strings, code fields, raw hashes, gradients, upgrade, key rotation, same-code second commons and hostile front requests; any leak stops the arm |
+| E3 Default privacy and consent | Zero planted content/identifier canaries outside the allowed boundary across 10,000 export attempts; zero new send admissions after the responsible authority observes revocation; no admission to an unapproved destination | Inspect wire bytes, stored rows, logs, errors, retry queues and model-provider requests; exercise nested strings, code fields, raw hashes, gradients, upgrade, key rotation, same-code second commons and hostile front requests; pair revocation-before-claim with revocation-after-claim, retaining admitted exposure and reconciling receipts; any forbidden exposure stops new admissions |
 | E4 Grader quality and anti-approval optimization | At least 200 independently adjudicated calibration cases; conclusion accuracy at least 90%, reason accuracy at least 85%; every sampled floor violation detected | Two permitted independent human reviewers blind to arm and standing label, adjudicate disagreement before opening labels; report per-standing strata. On 100 paired belief/order/verbosity perturbations, no constitutional conclusion flips toward approval; ordinary unexplained conclusion disagreement at most 5% |
 | E5 Real-case benefit | Offline conservative primary gain at least 5 percentage points and adjusted confidence lower bound greater than zero against L; prospective 30-day gain at least 5 points with 95% lower bound greater than zero | Use the sealed real populations and valid-reason outcome; immediate approval is never the endpoint. No missing-data imputation, model self-grade or public synthetic challenge score may supply the claimed gain |
 | E6 Coverage and subgroup floors | At least 95% current complete grade coverage overall and 90% in every cell and operator; zero observed authority/disclosure-floor violations; no named cell loses more than 2 percentage points | Report all planned denominators and unknowns. Require the conservative point-difference floor in every cell and in each separately reported conclusion, reason, justified-withhold and completion dimension. This is a screening rule, not proof of subgroup equivalence |
@@ -148,8 +157,20 @@ review priority, not standing, and cannot bypass the constitution or release app
 
 Basis: Purpose coherency/wisdom and evidence constraint; rules 58/85/108; R5 local-counterexample boundary.
 
+**Rule — revocation stops admission at the responsible authority.** **Checks: P22-NF-05/19, E3.**
+Eight's effect admission and Six's claim/fence authority record when they observe revocation.
+A send claim ordered after that observation is refused, including a retry or changed destination.
+A claim admitted before observation can still cross the external boundary afterward: a paused
+executor or packet in flight cannot be recalled by this contract. Retain its exact destination,
+bytes, claim, reserved exposure and uncertain outcome until receipt or owner reconciliation;
+do not erase it or admit a replacement as if nothing happened. The remaining exposure is the
+already claimed calls within their finite reservations, with no instantaneous cancellation or
+wall-clock transmission deadline promised. No granted destination-side cancellation exists.
+
+Basis: Owner effect/lease contracts, [transport and leases](../10-the-transport-and-leases.md) §4 and [run graph](../09-the-run-graph.md) §10; section 14 FX/RS/ST; purpose evidence and authority constraints.
+
 **Rule — stop, preserve and return an honest verdict.** **Check:** any authority or privacy
-violation immediately stops the affected arm's exports/effects, preserves permitted evidence,
+violation immediately closes new export/effect admissions when observed by the responsible authority, preserves permitted evidence,
 notifies its accountable owner through the existing authorized surface, and holds dependent
 promotions. E1/E3/E11 failures cannot be offset by E5. A cost cap stops further work, leaving
 planned missing members in the denominator. An unmet sample, unknown price, absent owner seam,

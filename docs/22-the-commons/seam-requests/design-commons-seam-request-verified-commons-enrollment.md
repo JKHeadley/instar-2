@@ -1,9 +1,9 @@
 # Commons seam request — ID: verified-commons-enrollment
 
-Status: REQUESTED. No owner grant or implementation asserted.
+Status: GRANTED CONDITIONAL by the copied seam-response-commons-grants.md, row 103; unlanded, no implementation or activation asserted.
 Owner: One authority / Four intake / Ten transport custody.
 Requester: Part Twenty-Two D1, design-commons.
-Dependency: NON-EXECUTABLE until this exact seam is GRANTED and its implementation lands with acceptance evidence.
+Dependency: NON-EXECUTABLE-UNTIL-row-103-verified-commons-enrollment. One independently resolves current standing/scope/delegation/revocation; unknown operator independence stays unknown; no public real names.
 
 **Rule — exact additive behavior requested.** **Check:** the owner accepts or refuses this scope explicitly.
 Destination-scoped pseudonymous enrollment with challenge/signature validation, independent current standing/scope/delegation and revocation resolution, operator grouping with unknown independence, and rotation continuity without public real names.
@@ -20,6 +20,6 @@ Require unit, authenticated full-pipeline integration and production-initializat
 
 Basis: Purpose evidence constraint; rules 34/35/49/65/69/95/111; Part 22 NF map and fixtures.
 
-**Rule — dependencies remain explicit.** **Check:** direct keys landed owner foundations only expand through the authoritative section 14 catalog. Every named request/response condition in that closure must hold. Section 12 status derives from that map. A new grant does not itself make a dependent runtime check executable. Any wider direction, value or authority question returns to the operator before implementation.
+**Rule — dependencies remain explicit.** **Check:** direct keys None expand through the authoritative section 14 catalog. Every named request/response condition in that closure must hold. Section 12 status derives from that map. A new grant does not itself make a dependent runtime check executable. Any wider direction, value or authority question returns to the operator before implementation.
 
 Basis: docs/22-the-commons/14-inherited-duties-and-seam-disposition.md; purpose gap Rule and authority boundary.

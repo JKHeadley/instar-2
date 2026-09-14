@@ -1,9 +1,9 @@
 # Commons seam request — EV: assembly-commons-isolated-evaluation
 
-Status: REQUESTED. No owner grant or implementation asserted.
+Status: GRANTED CONDITIONAL by the copied seam-response-commons-grants.md, row 113; unlanded, no implementation or activation asserted.
 Owner: Ten confinement / Seven evaluation / Eight effects / Six resource accounting.
 Requester: Part Twenty-Two D1, design-commons.
-Dependency: NON-EXECUTABLE until this exact seam is GRANTED and its implementation lands with acceptance evidence.
+Dependency: NON-EXECUTABLE-UNTIL-row-113-assembly-commons-isolated-evaluation. Arm A after RC/JO. Arm B is OPERATOR-GATED on an approved exposure record and 10,000 hostile-package cases before activation.
 
 **Rule — exact additive behavior requested.** **Check:** the owner accepts or refuses this scope explicitly.
 Two separable acceptance arms: A locally admitted replay with decision-time input, grader-only later labels and no dispatch; B signed remote invitation admission binding exact scope/provider/output/cost/expiry/repeat budget, no undeclared access and no adaptive queries.
@@ -20,6 +20,6 @@ Require unit, authenticated full-pipeline integration and production-initializat
 
 Basis: Purpose evidence constraint; rules 34/35/49/65/69/95/111; Part 22 NF map and fixtures.
 
-**Rule — dependencies remain explicit.** **Check:** direct keys EX expand through the authoritative section 14 catalog. Every named request/response condition in that closure must hold. Section 12 status derives from that map. A new grant does not itself make a dependent runtime check executable. Any wider direction, value or authority question returns to the operator before implementation.
+**Rule — dependencies remain explicit.** **Check:** direct keys RC JO expand through the authoritative section 14 catalog. Arm B additionally expands EVB (EV ID FX RS UI) and requires its operator-approved exposure record; EX consumes arm A alone. Every named request/response condition in that closure must hold. Section 12 status derives from that map. A new grant does not itself make a dependent runtime check executable. Any wider direction, value or authority question returns to the operator before implementation.
 
 Basis: docs/22-the-commons/14-inherited-duties-and-seam-disposition.md; purpose gap Rule and authority boundary.

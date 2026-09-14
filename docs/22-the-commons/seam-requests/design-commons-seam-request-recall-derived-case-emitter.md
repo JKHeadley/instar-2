@@ -1,9 +1,9 @@
 # Commons seam request — RC: recall-derived-case-emitter
 
-Status: REQUESTED. No owner grant or implementation asserted.
+Status: GRANTED CONDITIONAL by the copied seam-response-commons-grants.md, row 109; unlanded, no implementation or activation asserted.
 Owner: Part 21 recall / Four intake / Seven judgment / Ten custody.
 Requester: Part Twenty-Two D1, design-commons.
-Dependency: NON-EXECUTABLE until this exact seam is GRANTED and its implementation lands with acceptance evidence.
+Dependency: NON-EXECUTABLE-UNTIL-row-109-recall-derived-case-emitter. PR #68 merged and P21 A1–A3 landed; content-free default without raw capture access.
 
 **Rule — exact additive behavior requested.** **Check:** the owner accepts or refuses this scope explicitly.
 Owner-validated canonical coherence case mapping with four stage-evidenced causes, actual-input witness, outcome labels, permitted derivative projection and semantic incident-replay validation; no raw capture access in default export construction.

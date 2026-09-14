@@ -21,6 +21,13 @@ supplies evidence; the indexed sections supply the complete proposed contract.
 
 Basis: Purpose constraints 1–4 and authority boundary; rules 13/49/69/90/91/95/108/111; section 12 activation and section 15 decisions.
 
+**Rule — the purpose owns the shared definitions and undecided-question rule.** **Check: P22-NF-01.**
+This body inherits consequential effect, user-facing, significant and critical by reference;
+it does not define them again. Its decision list applies the purpose's gap rule. The checker
+and design review compare each use and decision disposition with that authority.
+
+Basis: [Purpose](00-the-purpose.md#the-purpose), the three approved additions: “wisdom is what coherence is for.”; “a design question this document cannot decide is a gap in this document.”; “a consequential effect is defined here, once, and every rule that hinges on it inherits this definition.”
+
 ---
 
 ## Sections

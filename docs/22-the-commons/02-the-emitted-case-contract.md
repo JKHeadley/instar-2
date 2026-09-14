@@ -4,8 +4,8 @@
 Four distinct objects remain separate: original local episode, closed derived case, specifically
 exportable replay/scenario, and proposed behavioral lesson. Original messages, exact judgment
 inputs, reasons and source frontiers stay with their local owners. Export construction consumes
-owner-validated categories without opening raw captures. The front may receive an attestation
-whose private support it cannot inspect; it must not relabel that attestation independent proof.
+owner-validated categories without opening raw captures. The front may receive an attestation, a source's claim
+whose private support the front cannot inspect; it must not relabel that attestation independent proof.
 A proposed schema id is `P22-DERIVED-CASE-v1`. This is contract vocabulary awaiting a closed
 decoder, not an implemented core type. Every object and nested tagged union rejects unknown
 properties; strings cannot become hidden text channels under names such as `reasonCode`.
@@ -14,14 +14,14 @@ properties; strings cannot become hidden text channels under names such as `reas
 |---|---|
 | Envelope | Schema/version, one of `recall-outcome`, `graded-decision`, `benchmark-result`, `correction`; destination, immutable export identity, enrollment epoch, policy/grant version and signature |
 | Canonical mapping | Destination-scoped opaque case and assessment keys; predecessor, correction target and parent export keys; one locally retained mapping across attempts |
-| Origin and strength | Production-derived or synthetic; owner validation and independence states; separate proof, observation, attestation, inference and interested-party classification |
+| Origin and strength | Production-derived or synthetic; owner validation and independence states; separate proof, observation, attestation, inference (a conclusion drawn rather than directly observed) and interested-party classification |
 | Stage and behavior | Cause assessments and their evidence state; outcome labels, use/withhold category, sensitivity/audience class and observed effects; no raw sensitive descriptions |
 | Mechanism | Approved public capture/retriever/index/extractor/embedding/reranker/renderer ids and versions; selection, rendering and submission coverage codes |
 | Decision | Approved public model/provider/settings, prompt, context-assembly, action-floor and output-schema identities; opaque private identities explicitly non-comparable |
-| Timing | Clock-comparability state, event-window class, binned age/latency, timeout/cancellation code; exact times and frontiers remain local |
+| Timing | Clock-comparability state, event-window class, binned (grouped into ranges) age/latency, timeout/cancellation code; exact times and frontiers remain local |
 | Grade | Owner criterion/version, conclusion and reason grades separately, grader/method/standing, scope-validation state, horizon, conflict/currentness and evidence availability |
 | Benchmark | Public scenario/version, candidate, plan/run mapping, planned ordinal or permitted aggregate profile; compatibility disposition; graded, missing, refused, cancelled, pending and conflicted counts |
-| Quantities | Part 20 registered units, permitted counts and cost/usage buckets; explicit unknown price, coverage and missingness |
+| Quantities | Part 20 registered units, permitted counts and cost/usage buckets; explicit unknown price, coverage (share with required evidence) and missingness (evidence absent or unavailable) |
 | Correction | Target, supported new assessment codes, causal predecessor/successor, author standing and evidence state; never raw correction text |
 | Export receipt | Field-policy digest, transformation id, semantic-loss codes, exact local payload binding, grant/revocation reference and custody receipt |
 
@@ -53,7 +53,7 @@ Basis: Wisdom and evidence constraint 3; rule 108; R2 cause table; Part 21 §9.
 
 **Rule — content-free applies to every channel, including retry and failure.** **Checks: P22-NF-05/07/18.**
 Default export rejects prompts, messages, answers, rationale, correction/lesson prose, names,
-emails, conversation/topic/run identifiers, paths, URLs, private hashes, embeddings, gradients
+emails, conversation/topic/run identifiers, paths, URLs, private hashes, embeddings (numerical representations of content), gradients (model-update signals that may reveal training content)
 and arbitrary labels. A public software digest is allowed only when its public identity is
 verified. Opaque private compatibility does not establish equality. Richer payloads need a
 separate current grant, authorized access and an explicit transformation-loss account.
@@ -86,10 +86,13 @@ they are disputed evidence. A correctly signed correction still needs owner caus
 Basis: Coherency and trust; rules 13/28/33/58/86/108; R2 closed-decoder contract; OD-03 bounded encoding settings.
 
 **Rule — content-free is not a promise of anonymity.** **Checks: P22-NF-05/14/15.**
+Anonymity means the recipient cannot identify the contributor; omitting names alone does not establish it.
 A hostile front may correlate connection origin, timing, enrollment linkage, rare software/model
 combinations and repeated outcomes, and can retain anything actually exported. Approved category
-coarsening, finite contribution, batching and small-cell suppression reduce particular exposure;
-none alone hides all metadata or proves differential privacy. Front logs and diagnostic providers
+coarsening (combining detailed categories), finite contribution, batching and small-cell
+suppression (withholding results for groups too small to publish safely) reduce particular exposure;
+none alone hides all metadata or proves differential privacy, a quantified bound on how much
+replacing one protected contributor can change the probabilities of published results. Front logs and diagnostic providers
 are part of the custody inventory, with explicit access and retention terms. Repeated-query
 and cross-destination linkage risks remain in the threat model. An exact public artifact id is
 still excluded when its approved field policy requires coarsening. Unknown privacy eligibility
@@ -97,3 +100,33 @@ holds the export. Richer export, onward forwarding, publication and model traini
 their own authority; enrollment cannot authorize all future uses.
 
 Basis: Trust, sovereignty and authority constraint; R2 hostile-front table; section 8 C mechanism; G2 retention/privacy terms.
+
+**Rule — terms retain their stated limits.** **Check: P22-NF-01.**
+The terms list is a reading aid; first-use explanations govern their use throughout this body.
+
+| Term | Meaning / where explained |
+|---|---|
+| Attestation; inference | Source claim; conclusion drawn rather than directly observed; this section |
+| Binning; evidence coverage; missingness | Grouping in ranges; share with evidence; absent/unavailable evidence; this section |
+| Embeddings; gradients | Content representations; model-update signals; either can reveal content; this section |
+| Anonymity; pseudonymity | Non-identifiability; using a substitute identifier without guaranteeing it; sections 2/3 |
+| Blinded review; calibration; holdout | Concealed treatment assignment; comparison to adjudicated cases; cases reserved from development; section 5 |
+| Prevalence | Fraction of a defined population with a category; section 8 |
+| Percentile; strata | Value below which a named fraction falls; separately reported groups; section 9 |
+| Paired comparison; cohort; stratification | Same opportunities for both candidates; reserved evaluation group; predefined grouping; section 10 |
+| Denominator; median; p95; percentage point | Population underlying a fraction; middle value; 95th percentile; absolute percentage difference; section 10 |
+| Coarsening; small-cell suppression | Combining detailed categories; withholding results for small groups; this section |
+| Differential privacy | Bound on changes in output probabilities when a protected contribution changes; this section |
+| Repeated, adaptive, differencing queries | Re-asking, choosing from prior answers, or comparing overlapping groups; section 8 |
+| Local differential privacy | Randomization at the contributor before the front receives data; section 8 |
+| Secure aggregation; dropout; collusion | Protected summation; participants leaving; cooperating parties; section 8 |
+| Protected unit; neighboring datasets | One operator's full contribution; datasets differing by its replacement; section 8 |
+| Clipping; category vector; L1 norm | Limiting magnitude; numerical category weights; sum of absolute weights; section 8 |
+| Epsilon; delta; sensitivity | Multiplicative probability parameter; additive slack; maximum neighboring change; section 8 |
+| Cumulative privacy accounting | Accounting for privacy loss over all releases/destinations; section 8 |
+| Operator-cluster bootstrap | Resampling whole operators with their cases intact; section 10 |
+| Percentile interval; coverage | Resample-quantile endpoints; how often the method includes the target over repeated samples; section 10 |
+| Bonferroni family error | Chance of any comparison's interval missing its target, bounded by allocating error across comparisons; section 10 |
+| Arm-stratified resampling | Resampling operators within each assigned trial group; section 10 |
+
+Basis: Purpose honest-evidence and trust constraints; sections 8/10 privacy and inference contracts.

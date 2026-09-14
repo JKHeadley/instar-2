@@ -1,9 +1,9 @@
 # Commons seam request — UI: operator-commons-surfaces
 
-Status: REQUESTED. No owner grant or implementation asserted.
+Status: GRANTED CONDITIONAL by the copied seam-response-commons-grants.md, row 111; unlanded, no implementation or activation asserted.
 Owner: Eleven operator surfaces / Eight approvals / Ten assembly.
 Requester: Part Twenty-Two D1, design-commons.
-Dependency: NON-EXECUTABLE until this exact seam is GRANTED and its implementation lands with acceptance evidence.
+Dependency: NON-EXECUTABLE-UNTIL-row-111-operator-commons-surfaces. Part 11 implementation (PR #50) landed and row 64 surface pattern.
 
 **Rule — exact additive behavior requested.** **Check:** the owner accepts or refuses this scope explicitly.
 Phone-readable enrollment and exact-payload preview; destination/retention/richer-sharing controls, revocation, typed custody/review/install/outcome status, scoped exact release approval and independent reachable recovery.
