@@ -2,11 +2,13 @@
 
 Status: audit harvest; not a governing document. Candidate amendments below are proposals, not adopted authority.
 
-Audited branch: `decisions-sweep`, exact input commit `808ca2424d9c6ec5e0920142b62ebd3f4738e5b9`. This is the first retrospective application of purpose revision 2's undecidable-question rule to the existing part designs. Read first in full: [docs/00-the-purpose.md](../../docs/00-the-purpose.md), [docs/01-the-rules.md](../../docs/01-the-rules.md), [docs/04-the-big-picture.md](../../docs/04-the-big-picture.md).
+Audited branch: `decisions-sweep`, exact audited base `eac87b07f54b316e85db82a4b71ef40f205ad5a7`: the merge of main `212966f6c58797c3f5f1f27bc1eee8bb4d9957f8` into the reviewed harvest head `64f78366739365df03ad0b2243191dc4793fe72e`. All 92 dispositions were re-audited against the complete purpose at this merged base, after reading the Repair 1 verdict in full. Constitutional texts read in full: [docs/00-the-purpose.md](../../docs/00-the-purpose.md), [docs/01-the-rules.md](../../docs/01-the-rules.md), [docs/04-the-big-picture.md](../../docs/04-the-big-picture.md).
 
 The supplied range names document numbers, not internal part numbers: docs/05 is Part One, docs/20 is Part Sixteen. The snapshot has **16 design indexes/documents and 70 linked sections, 86 files and 15,908 lines**. **There is no docs/21 index or section at this commit.** The explicit docs/21 coverage row below records that absence; no seventeenth design or question has been invented. Section files were included by each index's numbered links; historical changelogs and the approved decision sheet were consulted as answer evidence. Questions-for-the-operator lists in `.instar/lanes` were excluded.
 
-**92 separately disposed questions/subquestions:** 18 DECIDED-BY, 25 AGENT'S, 26 CANDIDATE AMENDMENT, 23 ALREADY-ANSWERED. The 26 amendment dispositions consolidate into **15 candidate amendments**. Counts use the atomic IDs below, not repetitions of a question in fixtures or seam tables. The 82 original decision-list items have four supplemental entries: the conflict matrix, the substantive retention question beneath its accepted deferral, and two index-level product-scope questions; split suffixes separate different decision grounds.
+**92 separately disposed questions/subquestions:** 10 DECIDED-BY, 26 AGENT'S, 33 CANDIDATE AMENDMENT, 23 ALREADY-ANSWERED. The 33 amendment dispositions consolidate into **19 candidate amendments** (CA-01–11 and CA-13–20; CA-12 is dropped). Counts use the atomic IDs below, not repetitions of a question in fixtures or seam tables. The 82 original decision-list items have four supplemental entries: the conflict matrix, the substantive retention question beneath its accepted deferral, and two index-level product-scope questions; split suffixes separate different decision grounds.
+
+The [purpose approval history](../../docs/00-the-purpose.changelog.json) binds all three approved additions: revision 1 (four pillars, constraints and decision boundary), PR #19, `192bf356e7fe1eb01ace74f8d1c91bc79bbf1d77`; revision 2 (wisdom and the gap rule), PR #69, `c83db01063b62cf309448bc8b8f859cb9be812ae`; revision 3 (consequential, ordinary, user-facing, significant and critical), PR #71, `e281a2c2751a6d71efc41d592212336fcc2561c8`. All three are ancestors of the audited base. The original `808ca2424d9c6ec5e0920142b62ebd3f4738e5b9` audit lacked revision 3 and is not this repair's constitutional input.
 
 ## Summary table
 
@@ -43,15 +45,15 @@ The question column links to the exact source line in the audited tree. The deci
 | 07 / Part 3 | [07.6 — Separation for governed-state gates](../../docs/07-the-declarations.md#L608) | ALREADY-ANSWERED | [F3](../../docs/07-the-declarations.changelog.json) revision 6: operator accepted all seven defaults |
 | 07 / Part 3 | [07.7 — Protected toolchain](../../docs/07-the-declarations.md#L611) | ALREADY-ANSWERED | [F3](../../docs/07-the-declarations.changelog.json) revision 6: operator accepted all seven defaults |
 | 08 / Part 4 | [08.1 — Accept steering risk from stolen platform token](../../docs/08-the-intake.md#L595) | CANDIDATE AMENDMENT | [CA-03](#ca-03) |
-| 08 / Part 4 | [08.2 — Five interdependent amendments](../../docs/08-the-intake.md#L602) | ALREADY-ANSWERED | Git d532ec9 (PR18); [F4](../../docs/08-the-intake.changelog.json) revisions 4–6; [F1](../../docs/05-the-types.changelog.json) revision 7 |
-| 08 / Part 4 | [08.3a — Bounded authorization routing and quoted sender](../../docs/08-the-intake.md#L608) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): sovereignty, constraint 5; [R28](../../docs/01-the-rules.md#L268), [R52](../../docs/01-the-rules.md#L217), [R82](../../docs/01-the-rules.md#L293), [R98](../../docs/01-the-rules.md#L306) |
+| 08 / Part 4 | [08.2 — Five interdependent amendments](../../docs/08-the-intake.md#L602) | CANDIDATE AMENDMENT | [CA-16](#ca-16) |
+| 08 / Part 4 | [08.3a — Bounded authorization routing and quoted sender](../../docs/08-the-intake.md#L608) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness and drafting; R28/52/82/98 |
 | 08 / Part 4 | [08.3b — Hide approver identity from requester](../../docs/08-the-intake.md#L608) | CANDIDATE AMENDMENT | [CA-04](#ca-04) |
-| 08 / Part 4 | [08.4a — Standing candidates never exceed approval](../../docs/08-the-intake.md#L612) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): sovereignty, constraint 5; [R57](../../docs/01-the-rules.md#L282), [R98](../../docs/01-the-rules.md#L306), [R104](../../docs/01-the-rules.md#L312) |
+| 08 / Part 4 | [08.4a — Standing candidates never exceed approval](../../docs/08-the-intake.md#L612) | CANDIDATE AMENDMENT | [CA-05](#ca-05) |
 | 08 / Part 4 | [08.4b — Surface candidate grants only on recurrence](../../docs/08-the-intake.md#L612) | CANDIDATE AMENDMENT | [CA-05](#ca-05) |
 | 08 / Part 4 | [08.5 — Public unresolved-sender acknowledgment default](../../docs/08-the-intake.md#L614) | CANDIDATE AMENDMENT | [CA-04](#ca-04) |
-| 08 / Part 4 | [08.6 — Emergency stop before grounding and minting](../../docs/08-the-intake.md#L617) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): sovereignty; [R4](../../docs/01-the-rules.md#L250), [R60](../../docs/01-the-rules.md#L238), [R61](../../docs/01-the-rules.md#L239), [R95](../../docs/01-the-rules.md#L303) |
+| 08 / Part 4 | [08.6 — Emergency stop before grounding and minting](../../docs/08-the-intake.md#L617) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness and sequencing; R4/60/61/95 |
 | 09 / Part 5 | [09.1 — Unknown effects delay completion](../../docs/09-the-run-graph.md#L988) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): coherence, constraint 3; [R24](../../docs/01-the-rules.md#L265), [R26](../../docs/01-the-rules.md#L266), [R42](../../docs/01-the-rules.md#L278), [R97](../../docs/01-the-rules.md#L305) |
-| 09 / Part 5 | [09.2 — Graph limits, attempts and review calendar](../../docs/09-the-run-graph.md#L995) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): sequencing and technical correctness; [R55](../../docs/01-the-rules.md#L236), [R60](../../docs/01-the-rules.md#L238), [R72](../../docs/01-the-rules.md#L288); [F3](../../docs/07-the-declarations.changelog.json) decision 2 |
+| 09 / Part 5 | [09.2 — Graph limits, attempts and semantic-gap ceiling](../../docs/09-the-run-graph.md#L995) | CANDIDATE AMENDMENT | [CA-17](#ca-17) |
 | 09 / Part 5 | [09.3 — Single owning parent versus shared ownership](../../docs/09-the-run-graph.md#L1001) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; [R83](../../docs/01-the-rules.md#L227), [R114](../../docs/01-the-rules.md#L320) |
 | 10 / Part 6 | [10.1a — Scoped quorum realization and voter count](../../docs/10-the-transport-and-leases.md#L907) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; [R31](../../docs/01-the-rules.md#L270), [R63](../../docs/01-the-rules.md#L240); [Big picture](../../docs/04-the-big-picture.md) §4 |
 | 10 / Part 6 | [10.1b — Exclusive ownership versus partition execution](../../docs/10-the-transport-and-leases.md#L907) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): coherence, sovereignty; [R63](../../docs/01-the-rules.md#L240), [R95](../../docs/01-the-rules.md#L303) |
@@ -67,7 +69,7 @@ The question column links to the exact source line in the audited tree. The deci
 | 14 / Part 10 | [14.1 — Administrator and authorized-reader compromise residual](../../docs/14-the-assembly.md#L1033) | CANDIDATE AMENDMENT | [CA-01](#ca-01) |
 | 14 / Part 10 | [14.2 — Refuse opaque or unsupported protected modes](../../docs/14-the-assembly.md#L1035) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): constraints 3 and 5; [R26](../../docs/01-the-rules.md#L266), [R82](../../docs/01-the-rules.md#L293), [R95](../../docs/01-the-rules.md#L303) |
 | 14 / Part 10 | [14.3a — Finite replay, maintenance and resource thresholds](../../docs/14-the-assembly.md#L1037) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; [R13](../../docs/01-the-rules.md#L258), [R39](../../docs/01-the-rules.md#L276), [R60](../../docs/01-the-rules.md#L238) |
-| 14 / Part 10 | [14.3b — Recoverable encryption-key custody before live claims](../../docs/14-the-assembly.md#L1037) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): coherence, constraint 2; [R7](../../docs/01-the-rules.md#L252), [R26](../../docs/01-the-rules.md#L266), [R33](../../docs/01-the-rules.md#L272), [R43](../../docs/01-the-rules.md#L279) |
+| 14 / Part 10 | [14.3b — Recoverable encryption-key custody before live claims](../../docs/14-the-assembly.md#L1037) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; R7/26/33/43; [CA-01](#ca-01) for loss-model acceptance |
 | 15 / Part 11 | [15.1 — Accept broker administration and loss-of-root procedure](../../docs/15-the-operator-surfaces.md#L432) | CANDIDATE AMENDMENT | [CA-01](#ca-01) |
 | 15 / Part 11 | [15.2 — Default authentication gesture](../../docs/15-the-operator-surfaces.md#L437) | CANDIDATE AMENDMENT | [CA-07](#ca-07) |
 | 15 / Part 11 | [15.3 — Published safety margins](../../docs/15-the-operator-surfaces.md#L441) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; [R13](../../docs/01-the-rules.md#L258), [R26](../../docs/01-the-rules.md#L266), [R39](../../docs/01-the-rules.md#L276) |
@@ -75,28 +77,28 @@ The question column links to the exact source line in the audited tree. The deci
 | 16 / Part 12 | [16.2 — Recipients of private group-chat receipts](../../docs/16-conversation-adapters/14-operator-decisions-and-honest-limits.md#L12) | CANDIDATE AMENDMENT | [CA-04](#ca-04) |
 | 16 / Part 12 | [16.3 — Slack thread or channel as conversation](../../docs/16-conversation-adapters/14-operator-decisions-and-honest-limits.md#L19) | CANDIDATE AMENDMENT | [CA-08](#ca-08) |
 | 16 / Part 12 | [16.4 — Personal WhatsApp/iMessage sending scope](../../docs/16-conversation-adapters/14-operator-decisions-and-honest-limits.md#L25) | CANDIDATE AMENDMENT | [CA-09](#ca-09) |
-| 16 / Part 12 | [16.5 — Label platform acceptance](../../docs/16-conversation-adapters/14-operator-decisions-and-honest-limits.md#L32) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): trust, constraint 3; [R26](../../docs/01-the-rules.md#L266), [R42](../../docs/01-the-rules.md#L278), [R89](../../docs/01-the-rules.md#L298) |
+| 16 / Part 12 | [16.5 — Label platform acceptance](../../docs/16-conversation-adapters/14-operator-decisions-and-honest-limits.md#L32) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): presentation/drafting; R26/42/89 |
 | 16 / Part 12 | [16.6 — Allow public Telegram webhook ingress](../../docs/16-conversation-adapters/14-operator-decisions-and-honest-limits.md#L38) | CANDIDATE AMENDMENT | [CA-10](#ca-10) |
-| 16 / Part 12 | [16.7 — Push unresolved-delivery notices or digests](../../docs/16-conversation-adapters/14-operator-decisions-and-honest-limits.md#L45) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): trust; [R52](../../docs/01-the-rules.md#L217), [R53](../../docs/01-the-rules.md#L218), [R54](../../docs/01-the-rules.md#L338), [R87](../../docs/01-the-rules.md#L296), [R88](../../docs/01-the-rules.md#L297) |
-| 16 / Part 12 | [16.x1 — Telegram, Slack, WhatsApp, iMessage and web product set](../../docs/16-conversation-adapters.md#L5) | CANDIDATE AMENDMENT | [CA-11](#ca-11) |
-| 17 / Part 13 | [17.1 — Advisory mode without context-consumption proof](../../docs/17-harness-adapters/14-operator-decisions-and-honest-limits.md#L3) | CANDIDATE AMENDMENT | [CA-12](#ca-12) |
+| 16 / Part 12 | [16.7 — Push unresolved-delivery notices or digests](../../docs/16-conversation-adapters/14-operator-decisions-and-honest-limits.md#L45) | CANDIDATE AMENDMENT | [CA-18](#ca-18) |
+| 16 / Part 12 | [16.x1 — Telegram, Slack, WhatsApp, iMessage and web product set](../../docs/16-conversation-adapters.md#L5) | ALREADY-ANSWERED | [Big picture](../../docs/04-the-big-picture.md) §10; [approved revision 2](../../docs/04-the-big-picture.changelog.json), PR #12 / `0d525aef088c75da9e0c7b6d92a2860a4f700374` |
+| 17 / Part 13 | [17.1 — Advisory mode without context-consumption proof](../../docs/17-harness-adapters/14-operator-decisions-and-honest-limits.md#L3) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md) revision 3; R96, with applicable R38/43 and history checks |
 | 17 / Part 13 | [17.2 — Compact events versus diagnostic snapshots](../../docs/17-harness-adapters/14-operator-decisions-and-honest-limits.md#L20) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; wisdom; [R26](../../docs/01-the-rules.md#L266), [R41](../../docs/01-the-rules.md#L235), [R58](../../docs/01-the-rules.md#L237); [H](../../docs/harvests/standards-and-registries-harvest.decisions.md) ruling 15 |
-| 17 / Part 13 | [17.3 — Age-only removal of diagnostics](../../docs/17-harness-adapters/14-operator-decisions-and-honest-limits.md#L39) | CANDIDATE AMENDMENT | [CA-02](#ca-02) |
+| 17 / Part 13 | [17.3 — Age-only removal of diagnostics](../../docs/17-harness-adapters/14-operator-decisions-and-honest-limits.md#L39) | DECIDED-BY | R7; [F2](../../docs/06-the-fact-envelope.changelog.json) approved revision 9 / narrow tombstone policy; retained-evidence contracts |
 | 17 / Part 13 | [17.4 — Use models without proof of understanding](../../docs/17-harness-adapters/14-operator-decisions-and-honest-limits.md#L56) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): wisdom; verification is a mechanism; [R3](../../docs/01-the-rules.md#L329), [R38](../../docs/01-the-rules.md#L275), [R58](../../docs/01-the-rules.md#L237) |
-| 17 / Part 13 | [17.5 — Provider conversation loss with durable local recovery](../../docs/17-harness-adapters/14-operator-decisions-and-honest-limits.md#L73) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): coherence, constraint 2; [R47](../../docs/01-the-rules.md#L215), [R68](../../docs/01-the-rules.md#L286), [R96](../../docs/01-the-rules.md#L304) |
+| 17 / Part 13 | [17.5 — Provider conversation loss with durable local recovery](../../docs/17-harness-adapters/14-operator-decisions-and-honest-limits.md#L73) | CANDIDATE AMENDMENT | [CA-11](#ca-11), provider-retention clause |
 | 17 / Part 13 | [17.6 — Named machines and trusted administrators](../../docs/17-harness-adapters/14-operator-decisions-and-honest-limits.md#L91) | CANDIDATE AMENDMENT | [CA-01](#ca-01) |
-| 17 / Part 13 | [17.7 — Paid service with delayed final bill and enforced cap](../../docs/17-harness-adapters/14-operator-decisions-and-honest-limits.md#L112) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): sovereignty, constraint 5; [R4](../../docs/01-the-rules.md#L250), [R18](../../docs/01-the-rules.md#L332), [R60](../../docs/01-the-rules.md#L238), [R75](../../docs/01-the-rules.md#L225); [H](../../docs/harvests/standards-and-registries-harvest.decisions.md) ruling 20 |
-| 17 / Part 13 | [17.x1 — Supported harness-mode product scope and confinement cost](../../docs/17-harness-adapters.md#L5) | CANDIDATE AMENDMENT | [CA-11](#ca-11) |
-| 18 / Part 14 | [18.1 — Length of watch-only safety trials](../../docs/18-sentinel-holders/15-operator-decisions-and-honest-limits.md#L3) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): sequencing and technical correctness; [R72](../../docs/01-the-rules.md#L288), [R73](../../docs/01-the-rules.md#L289); [F3](../../docs/07-the-declarations.changelog.json) decision 2 |
-| 18 / Part 14 | [18.2 — Recovery classes that may act automatically](../../docs/18-sentinel-holders/15-operator-decisions-and-honest-limits.md#L15) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): sovereignty, constraint 5; [R18](../../docs/01-the-rules.md#L332), [R23](../../docs/01-the-rules.md#L264), [R57](../../docs/01-the-rules.md#L282), [R98](../../docs/01-the-rules.md#L306), [R104](../../docs/01-the-rules.md#L312) |
-| 18 / Part 14 | [18.3 — Hourly limit on failed-repair notifications](../../docs/18-sentinel-holders/15-operator-decisions-and-honest-limits.md#L27) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; [R52](../../docs/01-the-rules.md#L217), [R53](../../docs/01-the-rules.md#L218), [R54](../../docs/01-the-rules.md#L338), [R87](../../docs/01-the-rules.md#L296), [R88](../../docs/01-the-rules.md#L297) |
+| 17 / Part 13 | [17.7 — Paid service with delayed final bill and enforced cap](../../docs/17-harness-adapters/14-operator-decisions-and-honest-limits.md#L112) | CANDIDATE AMENDMENT | [CA-11](#ca-11), delayed-settlement clause |
+| 17 / Part 13 | [17.x1 — Supported harness-mode product scope and confinement cost](../../docs/17-harness-adapters.md#L5) | CANDIDATE AMENDMENT | [CA-11](#ca-11), supported-mode/confinement-cost clause |
+| 18 / Part 14 | [18.1 — Length of watch-only safety trials](../../docs/18-sentinel-holders/15-operator-decisions-and-honest-limits.md#L3) | CANDIDATE AMENDMENT | [CA-17](#ca-17) |
+| 18 / Part 14 | [18.2 — Recovery classes that may act automatically](../../docs/18-sentinel-holders/15-operator-decisions-and-honest-limits.md#L15) | CANDIDATE AMENDMENT | [CA-19](#ca-19) |
+| 18 / Part 14 | [18.3 — Hourly limit on failed-repair notifications](../../docs/18-sentinel-holders/15-operator-decisions-and-honest-limits.md#L27) | CANDIDATE AMENDMENT | [CA-18](#ca-18) |
 | 18 / Part 14 | [18.4 — Per-machine timing and automatic-action limits](../../docs/18-sentinel-holders/15-operator-decisions-and-honest-limits.md#L39) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; [R13](../../docs/01-the-rules.md#L258), [R31](../../docs/01-the-rules.md#L270), [R39](../../docs/01-the-rules.md#L276), [R55](../../docs/01-the-rules.md#L236), [R60](../../docs/01-the-rules.md#L238) |
 | 18 / Part 14 | [18.5 — Additional readers of full process inventory](../../docs/18-sentinel-holders/15-operator-decisions-and-honest-limits.md#L51) | CANDIDATE AMENDMENT | [CA-13](#ca-13) |
 | 19 / Part 15 | [19.1 — Missed scheduled work default](../../docs/19-scheduled-work/11-operator-decisions-and-honest-limits.md#L3) | CANDIDATE AMENDMENT | [CA-14](#ca-14) |
 | 19 / Part 15 | [19.2 — Repeated local clock time](../../docs/19-scheduled-work/11-operator-decisions-and-honest-limits.md#L16) | CANDIDATE AMENDMENT | [CA-15](#ca-15) |
 | 19 / Part 15 | [19.3 — Admission when provider quota is unknown](../../docs/19-scheduled-work/11-operator-decisions-and-honest-limits.md#L32) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; [R15](../../docs/01-the-rules.md#L260), [R26](../../docs/01-the-rules.md#L266), [R60](../../docs/01-the-rules.md#L238), [R75](../../docs/01-the-rules.md#L225), [R95](../../docs/01-the-rules.md#L303) |
-| 19 / Part 15 | [19.4 — Maintenance share and urgent-start delay](../../docs/19-scheduled-work/11-operator-decisions-and-honest-limits.md#L49) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; [R13](../../docs/01-the-rules.md#L258), [R15](../../docs/01-the-rules.md#L260), [R39](../../docs/01-the-rules.md#L276), [R60](../../docs/01-the-rules.md#L238) |
-| 19 / Part 15 | [19.5 — Bounded automatic half-open trial versus human restart](../../docs/19-scheduled-work/11-operator-decisions-and-honest-limits.md#L73) | DECIDED-BY | [Purpose](../../docs/00-the-purpose.md): sovereignty; [R23](../../docs/01-the-rules.md#L264), [R55](../../docs/01-the-rules.md#L236), [R61](../../docs/01-the-rules.md#L239), [R88](../../docs/01-the-rules.md#L297), [R103](../../docs/01-the-rules.md#L311) |
+| 19 / Part 15 | [19.4 — Maintenance share and urgent-start delay](../../docs/19-scheduled-work/11-operator-decisions-and-honest-limits.md#L49) | CANDIDATE AMENDMENT | [CA-20](#ca-20) |
+| 19 / Part 15 | [19.5 — Bounded automatic half-open trial versus human restart](../../docs/19-scheduled-work/11-operator-decisions-and-honest-limits.md#L73) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; R23/55/60/61/88; [CA-19](#ca-19) for new recovery/retry authority |
 | 19 / Part 15 | [19.6 — Direct legacy job import support window](../../docs/19-scheduled-work/11-operator-decisions-and-honest-limits.md#L91) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): sequencing and technical correctness; [R44](../../docs/01-the-rules.md#L214), [R45](../../docs/01-the-rules.md#L280), [R78](../../docs/01-the-rules.md#L242), [R90](../../docs/01-the-rules.md#L299) |
 | 20 / Part 16 | [20.1 — 30/90/365-day detailed presentation](../../docs/20-measurement-ledgers/16-operator-decisions-and-honest-limits.md#L3) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; [R7](../../docs/01-the-rules.md#L252), [R39](../../docs/01-the-rules.md#L276); section 9 |
 | 20 / Part 16 | [20.2 — Subscription allocation method](../../docs/20-measurement-ledgers/16-operator-decisions-and-honest-limits.md#L14) | AGENT'S | [Purpose](../../docs/00-the-purpose.md): technical correctness; [R13](../../docs/01-the-rules.md#L258), [R26](../../docs/01-the-rules.md#L266), [R39](../../docs/01-the-rules.md#L276), [R75](../../docs/01-the-rules.md#L225) |
@@ -110,11 +112,15 @@ The question column links to the exact source line in the audited tree. The deci
 
 ## Basis and counting discipline
 
-A deciding text must entail the answer at the level asked. Coherence alone does not choose a storage replica count, a Slack conversation boundary or an acceptable administrator. A numbered rule can decide a floor while a distinct product trade still needs an amendment. When the question is technical method, sequencing or tuning, the purpose's **agent decides** delegation supplies the authority: initial numbers are labelled unmeasured, and existing operator ceilings are never widened. The word “policy” on a timer does not by itself make it an operator question. Conversely, product scope, disclosure grants and explicit exceptions to the grounding rule are not mere tuning.
+DECIDED-BY requires cited text that uniquely settles the choice at the original breadth asked. A constraint that merely bounds multiple conforming answers is not a deciding text: use AGENT'S only where the purpose delegates that choice, otherwise CANDIDATE AMENDMENT. Coherence alone does not choose a storage replica count, a Slack conversation boundary or an acceptable administrator. A numbered rule can decide a floor while a distinct product trade still needs an amendment. When the question is technical method, sequencing or tuning, the purpose's **agent decides** delegation supplies the authority: initial numbers are labelled unmeasured, and existing operator ceilings are never widened. The word “policy” on a timer does not by itself make it an operator question. Conversely, acceptance of an unprotected interval, a service objective, disclosure grants and residual-risk policy are not mere tuning. An explicit exception to an existing rule is a proposal to change that rule, outside this gap sweep.
 
-ALREADY-ANSWERED means there is a recorded approved answer, identified below. F2 and F3 contain explicit operator-acceptance notes; F1 contains exact approved-version records. The part-four bundle has a verifiable landing but incomplete approval metadata, disclosed in 08.2. A draft status line, a recommendation, a reviewer's acceptance, a build passing or an implementation landing by itself does not answer every residual policy question. The purpose and big-picture documents themselves retain draft wording despite the supplied merged baseline; this audit treats their exact merged contents as its constitutional inputs, without repairing those status lines.
+ALREADY-ANSWERED means there is a recorded approved answer, identified below. F2 and F3 contain explicit operator-acceptance notes; F1 contains exact approved-version records. The part-four bundle has a verifiable landing but no operator-approved record in the cited evidence; 08.2 remains unresolved under CA-16, rather than being treated as a metadata-only repair. A draft status line, a recommendation, a reviewer's acceptance, a build passing or an implementation landing by itself does not answer every residual policy question. The purpose and big-picture documents themselves retain draft wording despite the supplied merged baseline; their approved changelog records (purpose revisions 1–3 and big-picture revision 2 / PR #12) establish the constitutional inputs; this harvest does not repair those status lines.
 
-“Accept carrying it?” is a sequencing decision distinct from the question being carried: 06.8 records approval of carriage, while 06.x1 records the still-unresolved retention policy. The same external-anchor question in 05.6b is followed to its later owner decisions, not silently declared answered because an owner was named. Duplicate mentions in inherited-duty tables and fixtures point back to these IDs. Runtime questions such as “Did this effect happen?” and the sentinel-family diagnostic predicates are executable subject questions with specified evidence, not unanswered operator-design decisions; they are excluded from the counts. Ordinary fixed Value choices without an open question or an explicit operator decision are not added as new questions.
+“Accept carrying it?” is a sequencing decision distinct from the question being carried: 06.8 records approval of carriage, while 06.x1 records the still-unresolved retention policy. The same external-anchor question in 05.6b is followed to its later owner decisions, not silently declared answered because an owner was named. Duplicate mentions in inherited-duty tables and fixtures point back to these IDs. Runtime questions such as “Did this effect happen?” and the sentinel-family diagnostic predicates are executable subject questions with specified evidence, not unanswered operator-design decisions; they are excluded from the counts. Fixed Value choices without an open question or an explicit operator decision are not added as new questions. Counts retain the 92 original atomic IDs. Each row has one primary disposition; separately labelled constitutional floors, delegated realizations and cross-references within it do not create additional questions. A mixed question remains CANDIDATE AMENDMENT while its operator policy is unresolved; its delegated subchoices are answered explicitly, not substituted for the original question.
+
+Every disposition uses revision 3's vocabulary: consequential means any of the four purpose tests holds, and ordinary means none holds. Messages that change what a person knows are consequential, including advisory answers; operator-visible surfaces are user-facing. Significant features have consequential effects, and critical pipelines/outcomes are those on which such effects depend. Consequently the applicable history, supervision and live-proof requirements remain attached to the choices below, including notification and reporting implementations. Classification neither creates authority nor requires a fresh prompt for an already covered action. Historical source quotations retain their original words; the audited answers resolve those words to the current purpose.
+
+All 92 answers were reconsidered against the pillars, wisdom/complete relevant recall, the gap rule, the definitions, and the five constraints. The review's 70 retained dispositions still fit their cited approval, uniquely entailed floor or delegated choice under that complete source; the 22 flagged dispositions are repaired below. No pillar supplies an unnamed grant, selects an audience or provider, or turns a preferred mechanism into an entailed answer.
 
 The layer below this audit is the constitutional source, the design decision surfaces, their linked section bodies, approved answer records and actual git presence/ancestry. This harvest does not claim an independent convergence verdict, runtime implementation, or ratification of any amendment. Its documentation-only posture is shared through git; no runtime state, authority, machine placement or installed agent file changes. Reversal removes this harvest commit while preserving the audit in git history.
 
@@ -220,7 +226,7 @@ Exact location: [docs/05-the-types.md:557](../../docs/05-the-types.md#L557). The
 
 > No rule says who may resolve which conflict.
 
-**ALREADY-ANSWERED — [F1](../../docs/05-the-types.changelog.json) revision 5 change 2 and approvedIn PR13.** Use live above-requester standing for ordinary conflicts and operator standing in scope for grants, revocations, authorizations and principals.
+**ALREADY-ANSWERED — [F1](../../docs/05-the-types.changelog.json) revision 5 change 2 and approvedIn PR13.** Use live above-requester standing for non-authority conflicts and operator standing in scope for grants, revocations, authorizations and principals.
 
 The approved change explicitly records the matrix as a Value; do not falsely attribute its exact hierarchy to rules 82 or 104.
 
@@ -276,7 +282,7 @@ Exact location: [docs/06-the-fact-envelope.md:1070](../../docs/06-the-fact-envel
 
 **ALREADY-ANSWERED — [Decision-list preface](../../docs/06-the-fact-envelope.md#L1041); [F2](../../docs/06-the-fact-envelope.changelog.json); approved revision 9 / PR16.** Retain the shared-fact rule while allowing justified machine-local stores and sidecars.
 
-The preface explicitly says every listed question was decided at approval; revision 9 individually enumerates 1, 3, 4, 6, 7, 9 and 10, and revision 8 names 2, so 5 and 8 have only the broader attestation. For 8 that attests carrying the question, not solving retention.
+F2 revision 9, `changes[0].why`, explicitly records questions 5 and 8 answered in conversation with their recommendations accepted, bound by approvedIn PR #16 / `d403a070468126278c4dae54f27107009fcd7c99`. For question 8, that approves carrying the reconciliation, not deleting evidence or deciding the retained policy gap.
 
 #### 06.6 — Full history on every machine
 
@@ -306,7 +312,7 @@ Exact location: [docs/06-the-fact-envelope.md:1086](../../docs/06-the-fact-envel
 
 **ALREADY-ANSWERED — [Decision-list preface](../../docs/06-the-fact-envelope.md#L1041); [F2](../../docs/06-the-fact-envelope.changelog.json); approved revision 9 / PR16.** Carry the rule-7 versus bounded-capture-retention reconciliation to part nine as an explicit obligation, without deciding routine deletion.
 
-The preface explicitly says every listed question was decided at approval; revision 9 individually enumerates 1, 3, 4, 6, 7, 9 and 10, and revision 8 names 2, so 5 and 8 have only the broader attestation. For 8 that attests carrying the question, not solving retention.
+F2 revision 9, `changes[0].why`, explicitly records questions 5 and 8 answered in conversation with their recommendations accepted, bound by approvedIn PR #16 / `d403a070468126278c4dae54f27107009fcd7c99`. For question 8, that approves carrying the reconciliation, not deleting evidence or deciding the retained policy gap.
 
 #### 06.9 — Glossary fact/field homonym
 
@@ -432,9 +438,9 @@ Exact location: [docs/08-the-intake.md:602](../../docs/08-the-intake.md#L602). T
 
 > **Five amendments ride this bundle, atomically** (part three's convention): part one gains the exercise split (authority-conferring vs directive — the wall's honest answer to chat); the glossary's operator clause reads "selected … within the recorded conversation binding"; the parsers kind gains `authenticationClass`, `eventIdAuthority`, and `ackPolicy`; the glossary's profile-declaring kinds gain parsers; and the blocking-site kind gains the `enforces` companion row. Striking any item returns the whole to review. Approve the bundle?
 
-**ALREADY-ANSWERED — Git d532ec9 (PR18); [F4](../../docs/08-the-intake.changelog.json) revisions 4–6; [F1](../../docs/05-the-types.changelog.json) revision 7.** Keep the landed exercise split, bound-operator glossary clause, parser evidence/ackPolicy and profile changes, and enforces companion row as one exact bundle.
+**CANDIDATE AMENDMENT — [CA-16](#ca-16).** Proposed answer: adopt the five specified intake amendments atomically through an exact-content operator approval; striking any item returns the bundle to review.
 
-This is the landed bundle decision, not a claim that its residual-risk questions have individual recorded answers: its changelog still lacks approvedIn. Main contains the actual amendments; the history metadata is weaker than F2/F3 and should be repaired separately.
+`d532ec9d046e780ccfe76b98ab366253c51e0e35` proves PR #18 landed, not that the operator approved the bundle. F4 revisions 4–6 are draft/review records and F1 revision 7 is draft; neither supplies the required approval anchor. Authorization remains unresolved in this harvest. CA-16 records the adoption proposal, and CA-03's exposure proposal is conditional on a verified exercise split, never a substitute approval for it.
 
 #### 08.3a — Bounded authorization routing and quoted sender
 
@@ -442,9 +448,9 @@ Exact location: [docs/08-the-intake.md:608](../../docs/08-the-intake.md#L608). T
 
 > **Beyond-standing requests route, bounded and quoted.** The approver sees the system's framing with the sender quoted as untrusted content; needed standing is computed from the operation, not the phrasing; requests coalesce per requester and class. The receipt does *not* name the approver by default. Right lines?
 
-**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md): sovereignty, constraint 5; [R28](../../docs/01-the-rules.md#L268), [R52](../../docs/01-the-rules.md#L217), [R82](../../docs/01-the-rules.md#L293), [R98](../../docs/01-the-rules.md#L306).** Compute required standing from the classified operation, quote sender content as untrusted, and coalesce bounded pre-filled requests.
+**AGENT'S — [Purpose](../../docs/00-the-purpose.md): technical correctness and drafting; R28/52/82/98.** Choose system framing with sender prose quoted and explicitly untrusted, and coalesce requests by requester × classified operation class. These are delegated rendering and aggregation choices; other bounded untrusted renderings and keys could comply.
 
-Sender phrasing cannot widen the authorization subject, and a preserved request never becomes consent through waiting.
+**DECIDED-BY floor — R28/52/82/98:** sender prose creates no authority; required standing derives from the operation; requests are bounded, explicit and pre-filled, and preserved input or waiting never becomes consent. The selected rendering and coalescer must preserve that floor, not borrow constitutional inevitability from it.
 
 #### 08.3b — Hide approver identity from requester
 
@@ -462,9 +468,9 @@ Exact location: [docs/08-the-intake.md:612](../../docs/08-the-intake.md#L612). T
 
 > **Candidate standing grants appear only on recurrence, and never exceed the approval.** Less one-tap convenience on first contact, no grooming ratchet. Confirm?
 
-**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md): sovereignty, constraint 5; [R57](../../docs/01-the-rules.md#L282), [R98](../../docs/01-the-rules.md#L306), [R104](../../docs/01-the-rules.md#L312).** Review each authorization as a candidate grant whose action and scope remain within the actual approval, and require explicit approval before it grants standing.
+**CANDIDATE AMENDMENT — [CA-05](#ca-05).** Proposed answer: cap an automatically derived standing suggestion at the exact actions and scope of the authorization that generated it. The operator may deliberately request and explicitly approve a different grant, including a broader one.
 
-Reviewing a candidate is not granting it.
+**DECIDED-BY floor — purpose constraint 5 and R98/104:** each authorization is reviewed as a candidate; standing requires explicit approval before issuance. R57 bounds executable model actions, not the breadth of a separately approvable grant proposal. The automatic suggestion ceiling is new policy, not an entailment of that floor.
 
 #### 08.4b — Surface candidate grants only on recurrence
 
@@ -492,9 +498,9 @@ Exact location: [docs/08-the-intake.md:617](../../docs/08-the-intake.md#L617). T
 
 > **The emergency stop's doorway fast path** — deterministic recognition from the bound operator, acting before grounding and minting. Confirm the shape?
 
-**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md): sovereignty; [R4](../../docs/01-the-rules.md#L250), [R60](../../docs/01-the-rules.md#L238), [R61](../../docs/01-the-rules.md#L239), [R95](../../docs/01-the-rules.md#L303).** Apply the exact authenticated bound-operator emergency stop before ordinary grounding or run creation, preserving its causal record.
+**AGENT'S — [Purpose](../../docs/00-the-purpose.md): technical correctness and sequencing; R4/60/61/95.** Choose the authenticated bound-operator emergency-stop path before grounding and run minting, retaining its causal record. Verify the chosen ordering with stop-before-grounding, missing-run, contested-binding and duplicate-stop cases before claiming it works.
 
-The exceptional deterministic stop is expressly ruled; the fast path is no grant to an unauthenticated stop string.
+**DECIDED-BY floor — R4 and the authority bounds:** the exact authenticated operator stop may use its deterministic exception; an unauthenticated stop string may not. R4 does not uniquely select where the exception sits in this pipeline. The separately authorized stop remains an exception under the consequential-effect definition, not a grant created by this sequencing choice.
 
 ### Document 09 — Part 5: Run graph
 
@@ -510,15 +516,15 @@ Exact location: [docs/09-the-run-graph.md:988](../../docs/09-the-run-graph.md#L9
 
 Availability preference cannot turn missing evidence into a fact; finite observation effort is compatible with an indefinitely unresolved obligation.
 
-#### 09.2 — Graph limits, attempts and review calendar
+#### 09.2 — Graph limits, attempts and semantic-gap ceiling
 
 Exact location: [docs/09-the-run-graph.md:995](../../docs/09-the-run-graph.md#L995). The quoted question is verbatim with line wrapping normalized.
 
 > **Value — finite starting limits and review deadlines need an accepted policy.** No automatic check chooses optimal node/depth/fan-out limits, retry count, or the calendar ceiling for semantic holding gaps. Section 3 proposes initial limits and section 12 proposes 2026-10-05. The operator question is whether those starting values fit the intended workload. Testable constraints and measured exhaustion remain mandatory whichever finite values are selected.
 
-**AGENT'S — [Purpose](../../docs/00-the-purpose.md): sequencing and technical correctness; [R55](../../docs/01-the-rules.md#L236), [R60](../../docs/01-the-rules.md#L238), [R72](../../docs/01-the-rules.md#L288); [F3](../../docs/07-the-declarations.changelog.json) decision 2.** Use the proposed 1,024 nodes, 32 children, depth 16 and three attempts as unmeasured initial tuning values, and schedule the proposed 2026-10-05 review within any controlling operator-set ceiling.
+**CANDIDATE AMENDMENT — [CA-17](#ca-17).** Proposed answer: accept 2026-10-05 as the calendar ceiling for Part Five's semantic holding gaps, as a governing deadline rather than merely a review date. F3 decision 2 leaves that ceiling to the operator; the date is proposed, not approved.
 
-Actual money/resource allowances still come from recorded authority; review scheduling cannot extend an operator deadline, and workload suitability remains to be measured.
+**AGENT'S — purpose technical correctness/sequencing:** choose the proposed 1,024 outstanding nodes per root, 32 children, depth 16 and three attempts as unmeasured starting limits within actual resource authority; measure exhaustion and schedule reviews within the adopted ceiling. These engineering choices do not accept the gap interval or establish its absent governing deadline.
 
 #### 09.3 — Single owning parent versus shared ownership
 
@@ -574,7 +580,7 @@ Exact location: [docs/11-the-judgment-doorway.md:847](../../docs/11-the-judgment
 
 > Does the proposed conservative retention posture fit the intended privacy policy: retain unresolved evidence, stop new affected model calls at capacity, and have part nine settle routine-age retention through the existing amendment path rather than silently deleting it?
 
-**CANDIDATE AMENDMENT — [CA-02](#ca-02).** Proposed answer: retain pinned or unique evidence and refuse affected new capture admission at capacity, using lossless archival tiers to bound ordinary retention.
+**CANDIDATE AMENDMENT — [CA-02](#ca-02).** Proposed answer: retain pinned or unique evidence and refuse affected new capture admission at capacity, using lossless archival tiers to bound active-tier retention.
 
 Rule 7 supplies the no-loss floor, but B §5 and the later contracts disagree about universal raw capture expiry; the amendment must reconcile those words, not silently pick one.
 
@@ -598,9 +604,9 @@ Exact location: [docs/12-the-effect-doorway.md:823](../../docs/12-the-effect-doo
 
 > **Durability versus single-machine availability.** Adopt replicated(1) for ordinary irreversibles, with explicit approved per-operation local-durable demands for installations accepting permanent-machine-loss risk? Stops retain their approved local-durable fast path.
 
-**CANDIDATE AMENDMENT — [CA-06](#ca-06).** Proposed answer: require a second independent durable copy before an ordinary irreversible effect, with a separately approved, explicitly scoped local-loss exception.
+**CANDIDATE AMENDMENT — [CA-06](#ca-06).** Proposed answer: require a second independently failing durable copy before a non-emergency irreversible effect, with a separately approved, explicitly scoped local-loss exception.
 
-Constraint 2 requires a loss detector and R32 a declared scope, neither mandates exactly one peer or accepts permanent machine-loss risk; the stop exception remains intact.
+The quoted source's “ordinary irreversibles” is incompatible with purpose revision 3: an effect the agent cannot undo is consequential. CA-06 selects the non-emergency irreversible subset, not all consequential effects. Constraint 2 requires a loss detector and R32 a declared scope; neither mandates exactly one peer or accepts permanent machine-loss risk. The separately authorized emergency-stop exception remains intact.
 
 #### 12.2 — Uncertain external effects retain exposure
 
@@ -654,7 +660,7 @@ Exact location: [docs/13-the-verification-holders.md:809](../../docs/13-the-veri
 
 **AGENT'S — [Purpose](../../docs/00-the-purpose.md): technical correctness; wisdom; [R38](../../docs/01-the-rules.md#L275), [R39](../../docs/01-the-rules.md#L276), [R58](../../docs/01-the-rules.md#L237), [R60](../../docs/01-the-rules.md#L238).** Start with the proposed five-minute critical probes, fifteen-minute fixture replay, daily retrospective and weekly full semantic review, then tune to measured harm horizons within authorized budgets.
 
-These are configured starting values, not demonstrated detection bounds; an operator spend ceiling remains binding.
+These are configured starting values, not demonstrated detection bounds; an operator spend ceiling remains binding. Critical probes cover outcomes on which consequential effects depend, resolving scope through purpose revision 3 rather than a separate severity vocabulary.
 
 ### Document 14 — Part 10: Assembly
 
@@ -676,9 +682,9 @@ Exact location: [docs/14-the-assembly.md:1035](../../docs/14-the-assembly.md#L10
 
 > Accept governed-mode refusal for opaque/unconfined harnesses and unsupported protected host modes, while retaining independently admitted communication and supported ordinary work?
 
-**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md): constraints 3 and 5; [R26](../../docs/01-the-rules.md#L266), [R82](../../docs/01-the-rules.md#L293), [R95](../../docs/01-the-rules.md#L303).** Refuse governed/protected modes lacking actual confinement or verified approval evidence and keep independently admitted ordinary communication available.
+**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md): constraints 3 and 5; [R26](../../docs/01-the-rules.md#L266), [R82](../../docs/01-the-rules.md#L293), [R95](../../docs/01-the-rules.md#L303).** Refuse governed/protected modes lacking actual confinement or verified approval evidence and keep independently admitted communication available under its own grounding and effect requirements.
 
-This is scoped enforcement of the promised contract; it does not ban every advisory use, which is a separate policy question in 17.1.
+This is scoped enforcement of the promised contract. Advisory labeling does not waive grounding; 17.1 records the existing R96 answer and excludes the proposed relaxation from this gap sweep.
 
 #### 14.3a — Finite replay, maintenance and resource thresholds
 
@@ -696,9 +702,9 @@ Exact location: [docs/14-the-assembly.md:1037](../../docs/14-the-assembly.md#L10
 
 > Approve the requirement for finite per-installation replay/maintenance/resource thresholds and independently recoverable encryption keys before the corresponding live claims? The deployment selects the actual values within governance and records its measurements. Routine capture deletion or weaker approval provenance would amend earlier governed contracts; this part proposes neither. Technical choices within those contracts—separate custodian, per-store encrypted wrappers, exact package pinning and observed activation—are recorded and reversible through compatible new admissions. They do not add user permission prompts to ordinary standing-covered work.
 
-**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md): coherence, constraint 2; [R7](../../docs/01-the-rules.md#L252), [R26](../../docs/01-the-rules.md#L266), [R33](../../docs/01-the-rules.md#L272), [R43](../../docs/01-the-rules.md#L279).** Require tested independently recoverable key custody before claiming encrypted retained history is recoverable.
+**AGENT'S — [Purpose](../../docs/00-the-purpose.md): technical correctness; R7/26/33/43; [CA-01](#ca-01) for loss-model acceptance.** Choose an independently recoverable key mechanism and exercise its recovery tests within the approved deployment loss model. Independent recoverability is the selected engineering arrangement, not a mechanism uniquely selected by the preservation and probe rules.
 
-Choosing the custodian and accepting administrator compromise still belongs to CA-01, not to this engineering prerequisite.
+**DECIDED-BY floor — purpose constraint 3 and R26/43:** no recoverability claim beyond the tested recovery model. Choosing the custodian and accepting administrator compromise or root-loss residuals remain operator policy in CA-01; no technical test accepts those residuals on the operator's behalf.
 
 ### Document 15 — Part 11: Operator surfaces
 
@@ -784,9 +790,9 @@ Exact location: [docs/16-conversation-adapters/14-operator-decisions-and-honest-
 
 > when a platform has taken the message but not confirmed delivery, what should the user see?
 
-**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md): trust, constraint 3; [R26](../../docs/01-the-rules.md#L266), [R42](../../docs/01-the-rules.md#L278), [R89](../../docs/01-the-rules.md#L298).** Show accepted by platform, or an unambiguous equivalent, until evidence establishes a stronger delivery stage.
+**AGENT'S — [Purpose](../../docs/00-the-purpose.md): presentation/drafting; R26/42/89.** Choose an accurate “accepted by platform” indicator or an unambiguous equivalent over the source's other conforming option, no status. That is a presentation choice, including whether to show the intermediate state at all.
 
-The precise typography is the agent's; the claimed state must not outrun the witness.
+**DECIDED-BY floor — purpose constraint 3 and R26/42/89:** never claim a stronger delivery stage than the evidence proves. The indicator is user-facing under purpose revision 3 and carries the applicable proof requirements; those requirements do not mandate showing it.
 
 #### 16.6 — Allow public Telegram webhook ingress
 
@@ -804,9 +810,9 @@ Exact location: [docs/16-conversation-adapters/14-operator-decisions-and-honest-
 
 > when that bounded watch ends without an answer, how should your attention be requested?
 
-**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md): trust; [R52](../../docs/01-the-rules.md#L217), [R53](../../docs/01-the-rules.md#L218), [R54](../../docs/01-the-rules.md#L338), [R87](../../docs/01-the-rules.md#L296), [R88](../../docs/01-the-rules.md#L297).** Push one bounded grouped notice only when failed self-repair leaves an action needed or a result, and keep unchanged uncertainty on the pull surface.
+**CANDIDATE AMENDMENT — [CA-18](#ca-18).** Proposed answer: after bounded repair/observation fails, select one immediate grouped action-needed or result notice per incident, subject to a shared ceiling of two pushed notices in any rolling hour per operator across failed repair and unresolved delivery. Keep unchanged uncertainty on the pull surface, with no automatic unchanged daily digest.
 
-The suggested automatic daily digest is not licensed merely because uncertainty persists; each push must independently satisfy the notification bar.
+R52/53/54/87/88 constrain eligibility, route and bounds; they do not select push over pull-only or immediate over a qualifying digest. CA-18 makes that attention trade explicitly. Formatting, grouping and implementation within an adopted ceiling are AGENT'S; a message to a person remains consequential under purpose revision 3.
 
 #### 16.x1 — Telegram, Slack, WhatsApp, iMessage and web product set
 
@@ -814,9 +820,9 @@ Exact location: [docs/16-conversation-adapters.md:5](../../docs/16-conversation-
 
 > Whether these five platforms are the right product set is an operator judgment, not an automatic check.
 
-**CANDIDATE AMENDMENT — [CA-11](#ca-11).** Proposed answer: adopt these five as the initial supported conversation family, with evidence-based independent activation and versioned additions.
+**ALREADY-ANSWERED — [Big picture](../../docs/04-the-big-picture.md) §10; [approved revision 2](../../docs/04-the-big-picture.changelog.json), PR #12 / `0d525aef088c75da9e0c7b6d92a2860a4f700374`.** The approved conversation family already names Telegram, Slack, WhatsApp, iMessage and web. Preserve that family.
 
-This explicit index-level operator judgment is additional to the seven numbered questions; activation order alone does not decide the supported product set.
+The index repeats a settled product roster; it creates no new gap. Which implementations prove first remains AGENT'S sequencing, with each activation requiring its own evidence. CA-11 covers the distinct harness-mode and confinement-cost acceptance question, not this approved list.
 
 ### Document 17 — Part 13: Harness adapters
 
@@ -828,9 +834,9 @@ Exact location: [docs/17-harness-adapters/14-operator-decisions-and-honest-limit
 
 > Should a safely confined setup remain available for clearly labeled advisory work when we cannot verify that it used the supplied background, or should we turn it off?
 
-**CANDIDATE AMENDMENT — [CA-12](#ca-12).** Proposed answer: allow a separately labelled and confined advisory mode with an explicit grounding-evidence exception, never as proof of a grounded run or a critical judgment.
+**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md) revision 3; R96, with applicable R38/43 and history checks.** A mode without the required grounding evidence cannot claim or perform work requiring that evidence. Disable the proposed ungrounded advisory use unless a separately authorized rule change supplies an exact exception; a label or confinement alone cannot waive R96.
 
-R96 requires grounding and the contract requires consumption evidence; honest labeling alone does not authorize a new exception. This amendment would need to narrow that rule explicitly.
+CA-12 is dropped: it is **a proposal to change rule 96, outside this sweep**, not an undecided gap. A human-facing advisory answer can change what a person knows and is consequential; calling it advisory does not exclude critical downstream reliance or remove applicable history, supervision and probe duties. Any separate proposal would need exact permitted consumers and consequential-effect coverage, and operator-controlled authority review.
 
 #### 17.2 — Compact events versus diagnostic snapshots
 
@@ -848,9 +854,9 @@ Exact location: [docs/17-harness-adapters/14-operator-decisions-and-honest-limit
 
 > Should we keep diagnostic content until an already permitted removal reason applies, or open a separate policy change that allows removal just because content is old?
 
-**CANDIDATE AMENDMENT — [CA-02](#ca-02).** Proposed answer: keep unique diagnostic evidence until an already authorized removal reason applies, using bounded lossless tiers and explicit capacity refusal.
+**DECIDED-BY — R7; [F2](../../docs/06-the-fact-envelope.changelog.json) approved revision 9 / narrow tombstone policy; retained-evidence contracts.** Keep diagnostic evidence until an already permitted removal reason applies; age alone is not one. Do not open an age-only-removal change as part of this gap harvest.
 
-The proposed amendment reconciles retention terminology across parts; it does not pretend that age is currently a lawful redaction reason.
+Retaining the current rule answers the question today. A request to change it would be a separate policy-change proposal. Remove 17.3 from CA-02, whose genuine gap remains the active-tier meaning, reconstruction path and capacity-admission reconciliation in 06.x1/11.1/13.1.
 
 #### 17.4 — Use models without proof of understanding
 
@@ -868,9 +874,9 @@ Exact location: [docs/17-harness-adapters/14-operator-decisions-and-honest-limit
 
 > Should a tested setup remain available when the provider may lose its saved conversation, provided our durable work and current history remain available for a replacement?
 
-**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md): coherence, constraint 2; [R47](../../docs/01-the-rules.md#L215), [R68](../../docs/01-the-rules.md#L286), [R96](../../docs/01-the-rules.md#L304).** Allow the mode when durable work and full recoverable current history survive and a replacement re-grounds correctly.
+**CANDIDATE AMENDMENT — [CA-11](#ca-11), provider-retention clause.** Proposed answer: permit a tested mode despite possible loss of the provider's saved conversation, accepting a slower fresh start when authoritative durable work and full recoverable current history survive and the replacement re-grounds.
 
-A provider transcript is a disposable continuation aid, not the sole authoritative memory.
+R47/68/96 require preservation and grounding; they do not choose this residual-risk policy over requiring a provider's permanent-retention promise. The recovery implementation and its tests are AGENT'S within the adopted policy.
 
 #### 17.6 — Named machines and trusted administrators
 
@@ -888,9 +894,9 @@ Exact location: [docs/17-harness-adapters/14-operator-decisions-and-honest-limit
 
 > Should a paid service remain available when its final charge cannot be seen promptly, but the company charging us enforces a cap on the total possible charge?
 
-**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md): sovereignty, constraint 5; [R4](../../docs/01-the-rules.md#L250), [R18](../../docs/01-the-rules.md#L332), [R60](../../docs/01-the-rules.md#L238), [R75](../../docs/01-the-rules.md#L225); [H](../../docs/harvests/standards-and-registries-harvest.decisions.md) ruling 20.** Allow an explicitly armed, standing-covered capped service while reserving its maximum possible charge and never repeating or releasing an uncertain call.
+**CANDIDATE AMENDMENT — [CA-11](#ca-11), delayed-settlement clause.** Proposed answer: offer a capped paid mode despite delayed final billing, accepting the bounded charge uncertainty and unavailable reserved budget while maximum possible exposure remains reserved.
 
-The cap is a ceiling, not the original permission; unbounded liability or missing arming remains unavailable.
+A provider-enforced cap, existing spend authority and explicit first arming are inherited requirements, not acceptance of the billing residual. R4/18/60/75 and decision-sheet ruling 20 do not select offering this mode over disabling it. Keep no uncertain repetition and no premature reservation release; arming and residual acceptance are distinct approval subjects.
 
 #### 17.x1 — Supported harness-mode product scope and confinement cost
 
@@ -898,9 +904,9 @@ Exact location: [docs/17-harness-adapters.md:5](../../docs/17-harness-adapters.m
 
 > No automatic check decides whether the supported modes are useful enough or whether their confinement cost is acceptable; the operator retains those judgments.
 
-**CANDIDATE AMENDMENT — [CA-11](#ca-11).** Proposed answer: make contract-conforming Claude Code and Codex the initial external harness set beside Native, and add other modes by governed product scope with separate evidence.
+**CANDIDATE AMENDMENT — [CA-11](#ca-11), supported-mode/confinement-cost clause.** Proposed answer: accept the supported modes that prove their exact grounding, confinement, observation and recovery contracts within approved deployment resource budgets, including their measured isolation/observation overhead and scoped loss of availability when that proof fails. Retain unsupported modes as unavailable and cost-over-budget modes pending their own budget decision.
 
-The index raises a product-set question not fully answered by the seven residual-limit decisions; capability and process-driver selection inside the chosen set remain engineering.
+The approved B §10 harness family already includes Instar Native, Codex, Claude Code, Gemini, Grok Build and future runtimes; implementation order and equivalent process drivers are AGENT'S. This candidate accepts the usefulness/cost trade for qualifying modes; it neither narrows the roster nor treats a vendor name as an answer to a mode question. Provider-history loss and delayed settlement have separate explicit CA-11 clauses.
 
 ### Document 18 — Part 14: Sentinel holders
 
@@ -912,9 +918,9 @@ Exact location: [docs/18-sentinel-holders/15-operator-decisions-and-honest-limit
 
 > How long may a safety feature watch and report without acting before it must be turned on or rolled back?
 
-**AGENT'S — [Purpose](../../docs/00-the-purpose.md): sequencing and technical correctness; [R72](../../docs/01-the-rules.md#L288), [R73](../../docs/01-the-rules.md#L289); [F3](../../docs/07-the-declarations.changelog.json) decision 2.** Give each feature an evidence-based finite watch-only deadline beneath any governing maximum, then graduate or roll back with the gap visible.
+**CANDIDATE AMENDMENT — [CA-17](#ca-17).** Proposed answer: permit individually approved watch-only safety trials with feature-specific deadlines under a system-wide maximum of seven elapsed days from trial start, subject to any earlier governing gap deadline. This accepts a disclosed interval without automatic protection; it is not merely timer tuning.
 
-The operator owns a named system-wide ceiling; the agent tunes the trial within it and cannot call watch-only protection live.
+**AGENT'S — purpose sequencing/technical correctness:** inside an actually accepted trial, set the shorter evidence-based schedule, measure it and graduate or roll back by the approved deadline. The proposed maximum does not approve any trial or call watch-only protection live; existing stronger enforcement and required user-facing fixes remain governed by their current rules.
 
 #### 18.2 — Recovery classes that may act automatically
 
@@ -922,9 +928,9 @@ Exact location: [docs/18-sentinel-holders/15-operator-decisions-and-honest-limit
 
 > Which kinds of recovery may happen without asking for approval each time?
 
-**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md): sovereignty, constraint 5; [R18](../../docs/01-the-rules.md#L332), [R23](../../docs/01-the-rules.md#L264), [R57](../../docs/01-the-rules.md#L282), [R98](../../docs/01-the-rules.md#L306), [R104](../../docs/01-the-rules.md#L312).** Run only recovery operations already covered by live recorded standing and their tested floors, proposing scoped grants for the rest instead of asking again for covered work.
+**CANDIDATE AMENDMENT — [CA-19](#ca-19).** Proposed answer: choose individually approved reversible, low-risk recovery kinds after their watch-only trials and failure review as the initial automatic-authority policy. Each grant names actions, scope and restart coverage; no new class receives authority merely from passing tests.
 
-Neither low risk nor passing tests creates authority; the constitution also does not require re-approval of an existing grant.
+**DECIDED-BY floor — purpose constraint 5 and R18/23/57/98/104:** existing live grants may be exercised within their tested floors without redundant approvals. That floor does not choose which new recovery classes the operator should authorize. New irreversible or permission-changing restart authority is outside this initial grant default and needs a separate explicit operator decision under CA-19.
 
 #### 18.3 — Hourly limit on failed-repair notifications
 
@@ -932,9 +938,9 @@ Exact location: [docs/18-sentinel-holders/15-operator-decisions-and-honest-limit
 
 > After self-repair fails, how many action-needed or result messages should the system be allowed to send?
 
-**AGENT'S — [Purpose](../../docs/00-the-purpose.md): technical correctness; [R52](../../docs/01-the-rules.md#L217), [R53](../../docs/01-the-rules.md#L218), [R54](../../docs/01-the-rules.md#L338), [R87](../../docs/01-the-rules.md#L296), [R88](../../docs/01-the-rules.md#L297).** Use one action-or-result message per incident under a measured finite hourly ceiling, coalescing overflow on the alerts/pull surface.
+**CANDIDATE AMENDMENT — [CA-18](#ca-18).** Proposed answer: choose one grouped action-needed/result notice per incident under the same two-notice rolling-hour ceiling used for uncertain delivery, with overflow and unchanged uncertainty retained on the alerts/pull surface.
 
-The question chooses an aggregation/tuning shape; the actual ceiling must respect recorded operator policy and never license status churn.
+This selects interruption versus pull-only and the finite ceiling, both operator policy. R52/53/54/87/88 supply constraints but not that selection. Formatting, coalescer implementation and tuning inside an adopted ceiling remain AGENT'S; repeating unchanged daily status does not qualify merely because it is grouped.
 
 #### 18.4 — Per-machine timing and automatic-action limits
 
@@ -966,9 +972,9 @@ Exact location: [docs/19-scheduled-work/11-operator-decisions-and-honest-limits.
 
 > When a repeating job misses several scheduled times, should it run once for the newest missed time or run none of them?
 
-**CANDIDATE AMENDMENT — [CA-14](#ca-14).** Proposed answer: coalesce missed maintenance/observation opportunities to the newest useful occurrence and do not execute time-sensitive sends outside their declared usefulness window.
+**CANDIDATE AMENDMENT — [CA-14](#ca-14).** Proposed answer: admit only the newest missed maintenance/observation occurrence, provided the job is not time-sensitive and that occurrence is inside its explicitly declared usefulness window. Missing window means no catch-up. Time-sensitive work (even in-window or also maintenance) and otherwise unclassified work default to no catch-up; a different policy must be explicit before admission.
 
-R93 preserves directives and R46 accepted intake, but neither says which missed calendar opportunities should cause a new effect; every missed occurrence and unfinished duty must still have an honest disposition.
+R93 preserves directives and R46 accepted intake, but neither selects a missed opportunity. Every missed instant retains its disposition, and skipping never closes accepted unfinished work. CA-14 supplies exhaustive precedence and window defaults.
 
 #### 19.2 — Repeated local clock time
 
@@ -996,9 +1002,9 @@ Exact location: [docs/19-scheduled-work/11-operator-decisions-and-honest-limits.
 
 > Under sustained heavy demand, what share of job starts should maintenance receive, and how long may ready urgent work wait for its turn?
 
-**AGENT'S — [Purpose](../../docs/00-the-purpose.md): technical correctness; [R13](../../docs/01-the-rules.md#L258), [R15](../../docs/01-the-rules.md#L260), [R39](../../docs/01-the-rules.md#L276), [R60](../../docs/01-the-rules.md#L238).** Evaluate the proposed 20-of-100 start-credit maintenance share and 60-second ready-urgent target as an initial tuning profile after protected reserves, adopting it only if measured admission evidence supports it.
+**CANDIDATE AMENDMENT — [CA-20](#ca-20).** Proposed answer: select the service objective of at least 20 maintenance starts in every 100 eligible start credits after protected reserves, and at most 60 seconds waiting for continuously ready urgent work. The original denominator and readiness predicate are preserved in CA-20.
 
-There is no measured universal service guarantee here; an operator-imposed product SLA or spend ceiling cannot be altered by tuning.
+The choice among 10/100–30 seconds, 20/100–60 seconds and 25/100–120 seconds is a product service trade, not merely a measured tuning profile. Algorithms and feasibility measurement are AGENT'S; an adopted objective remains a target until real evidence supports the corresponding live guarantee.
 
 #### 19.5 — Bounded automatic half-open trial versus human restart
 
@@ -1006,9 +1012,9 @@ Exact location: [docs/19-scheduled-work/11-operator-decisions-and-honest-limits.
 
 > After repeated failures automatically pause a job, should it try one small test after a cool-down or wait for a person to restart it?
 
-**DECIDED-BY — [Purpose](../../docs/00-the-purpose.md): sovereignty; [R23](../../docs/01-the-rules.md#L264), [R55](../../docs/01-the-rules.md#L236), [R61](../../docs/01-the-rules.md#L239), [R88](../../docs/01-the-rules.md#L297), [R103](../../docs/01-the-rules.md#L311).** Permit one bounded half-open trial after cooldown only within the recorded recovery standing and current effect checks, asking a person only when that standing actually requires it.
+**AGENT'S — [Purpose](../../docs/00-the-purpose.md): technical correctness; R23/55/60/61/88; [CA-19](#ca-19) for new recovery/retry authority.** Choose one bounded half-open trial after cooldown for a paused job when its existing recovery/retry grant explicitly covers that restart and the current effect checks pass; otherwise preserve the paused work pending the required authorization. Measure that strategy and its failure cuts; the breaker rules do not uniquely require exactly one trial.
 
-The recommendation's automatic human gate for every irreversible action is not itself a constitutional rule; irreversibility demands its evidence and authority, not a newly invented permission prompt.
+The original class-policy question is separately answered by CA-19: new automatic grants initially cover individually approved reversible, low-risk kinds, with irreversible or permission-changing restarts requiring separately explicit authority. Consequential does not automatically mean a fresh prompt, and it does not automatically mean retry-authorized. No repeated action may bypass unresolved-outcome checks.
 
 #### 19.6 — Direct legacy job import support window
 
@@ -1062,7 +1068,7 @@ Exact location: [docs/20-measurement-ledgers/16-operator-decisions-and-honest-li
 
 **AGENT'S — [Purpose](../../docs/00-the-purpose.md): technical correctness; [R13](../../docs/01-the-rules.md#L258), [R26](../../docs/01-the-rules.md#L266), [R58](../../docs/01-the-rules.md#L237), [R107](../../docs/01-the-rules.md#L314).** Show both with explicit evidence tiers, reserving primary/published claims for independently adequate current evidence.
 
-The display choice is reversible reporting design; approval does not turn ten cases or a configured confidence interval into an adequate benchmark.
+The display choice is delegated reporting design; presenting it to a person is user-facing and can be consequential under purpose revision 3, so applicable evidence requirements remain; approval does not turn ten cases or a configured confidence interval into an adequate benchmark.
 
 #### 20.5 — Anomalous-spend thresholds
 
@@ -1106,7 +1112,7 @@ The decision sheet already records the operator's first-arming requirement. The 
 
 ### Document 21 — Part 17: No design present at the audited base
 
-Checked the tracked tree at the exact base: `git ls-tree -r --name-only 808ca2424d9c6ec5e0920142b62ebd3f4738e5b9 -- docs` contains no `docs/21*` paths; filesystem enumeration agrees. This is a missing requested input, not proof that Part Seventeen has no operator questions. The audit covers every supplied part that exists and makes no claim about an absent design.
+Checked the tracked tree at the exact base: `git ls-tree -r --name-only eac87b07f54b316e85db82a4b71ef40f205ad5a7 -- docs` contains no `docs/21*` paths; filesystem enumeration agrees. This is a missing requested input, not proof that Part Seventeen has no operator questions. The audit covers every supplied part that exists and makes no claim about an absent design.
 
 ## Consolidated candidate amendments
 
@@ -1122,13 +1128,14 @@ Questions: 05.6b, 11.2, 13.2, 14.1, 15.1, 17.6.
 
 <a id="ca-02"></a>
 
-### CA-02 — Retention bounds must preserve unique relevant evidence
+### CA-02 — Active-tier retention, reconstruction and capacity admission
 
-Questions: 06.x1, 11.1, 13.1, 17.3.
+Questions: 06.x1, 11.1, 13.1.
 
-**Rule — bounded retention is not a timer for forgetting.** A retention bound limits the active readable tier, its caches and new admission; it does not authorize destroying the only recoverable copy of relevant knowledge. Unique or pinned judgment and diagnostic evidence moves only to a tested lossless archive, or remains in place while new affected capture work waits at capacity. Age alone is not a removal reason. An already authorized narrow tombstone preserves the history of what was removed and why, and makes its unavailable evidence visible. **Check:** every retention policy identifies the complete reconstruction path and tests it across age and capacity boundaries; unresolved pins survive, lossless movement verifies before releasing its source, and no universal raw-age-expiry claim passes by silently deleting evidence.
+**Rule — bounded payload retention names a storage tier, not a knowledge lifetime.** The big picture's bounded full-payload retention means the active readable tier and its caches. Before releasing that tier's source, move unique or pinned judgment and diagnostic evidence into a tested lossless archive with a durable locator and reconstruction manifest that can recover the complete credential-scrubbed input/output and its decision context. When no verified archive capacity is available, keep the evidence in place and refuse new affected capture admission at capacity; independently admitted communication and repair remain available. **Check:** age and capacity boundary tests reconstruct the complete record, verify archive bytes and required keys before source release, preserve unresolved pins, and prove bounded admission when either archive or reconstruction fails.
 
-Adoption must reconcile the big picture §5's bounded full-payload retention with parts two, seven and nine. It is not a new age-deletion permission, and the operator's already-approved narrow redaction mechanism remains in force.
+The new decision is this active-tier interpretation, reconstruction path and admission cost, reconciling B §5 with parts two, seven and nine. Coherence, complete relevant recall, constraint 2 and R7 already provide the no-loss floor; they are not another gap. The approved narrow operator tombstone exception remains intact with permanent envelopes, hashes and removal reasons, and visible unavailable evidence. Age alone remains unauthorized; 17.3 is DECIDED-BY and outside this candidate's gap coverage.
+
 
 <a id="ca-03"></a>
 
@@ -1136,7 +1143,10 @@ Adoption must reconcile the big picture §5's bounded full-payload retention wit
 
 Questions: 08.1.
 
-**Rule — a conversation borrows only its recorded standing.** An authenticated chat platform may select and direct a previously verified conversation binding, but the binding is approved with its exact scope and the platform-token compromise exposure stated in plain words. The default grant excludes authority changes, new grants and approvals; greater steering exposure requires an explicit bounded binding change and its recovery plan. **Check:** pairing records the platform-wide set of affected bindings and its exposure, tests a stolen-token actor against each boundary, and proves that revocation and independent stop remain usable without trusting the compromised chat credential.
+**Rule — chat steering carries a disclosed and accepted exposure.** Subject to an operator-approved exercise split, a verified conversation binding may accept channel-attested steering of its previously approved work scope only with its platform-token compromise exposure recorded and accepted by the operator. Channel-attested exercise always excludes authority changes, new grants and approvals: it can select existing verified standing, never supply authority-conferring provenance. A verified binding change may change the previously approved work scope and its disclosed steering exposure, with a recovery plan; that change and every other authority-conferring act still require independent verified provenance. **Check:** pairing records the platform-wide set of affected bindings, tests a stolen-token actor against each bound scope and the invariant authority wall, and proves revocation and independent stop remain usable without trusting the compromised credential.
+
+The new policy is acceptance of the disclosed token-compromise exposure. The exercise/authority split is not a configurable default; its bundle approval remains unresolved in 08.2 / CA-16.
+
 
 <a id="ca-04"></a>
 
@@ -1148,19 +1158,25 @@ Questions: 08.3b, 08.5, 16.2.
 
 <a id="ca-05"></a>
 
-### CA-05 — Review every grant candidate; surface on recurrence
+### CA-05 — Automatic candidate ceilings and recurrence-only presentation
 
-Questions: 08.4b.
+Questions: 08.4a, 08.4b.
 
-**Rule — remembering a yes does not turn first contact into a standing invitation.** Every authorization is immediately reviewed and retained as a possible standing grant within its actual action and scope. The ordinary surface proposes that grant only when the same classified need recurs within the proposed term, showing the evidence of recurrence and requiring an explicit yes; an operator may deliberately request a grant earlier. **Check:** first approval creates the candidate record without silently conferring standing, a genuine second occurrence resurfaces the bounded proposal before another redundant ask, and changed scope or phrasing cannot groom a wider grant.
+**Rule — automatic standing suggestions stay within the yes that generated them.** An automatically derived candidate proposes no actions or scope beyond the exact authorization from which it was derived. The default presentation surfaces that candidate only when the same classified need genuinely recurs within the proposed term, showing the recurrence evidence. An operator may deliberately request a grant earlier or request and explicitly approve a different, including broader, grant; the automatic suggestion ceiling does not cap that separate request. **Check:** first contact records a candidate without default presentation or issued standing; genuine recurrence presents it before a redundant ask; changed phrasing, aggregated approvals and repeated requests cannot enlarge the automatically suggested action set or scope; a deliberate different grant follows its own exact-content approval path.
+
+R104's every-authorization candidate review and R98's explicit approval before issuance are inherited floors. The two new policies are the automatic candidate ceiling and recurrence-only default presentation; neither creates standing.
+
 
 <a id="ca-06"></a>
 
-### CA-06 — Durability floor for irreversible effects
+### CA-06 — Durability floor for non-emergency irreversible effects
 
 Questions: 12.1.
 
-**Rule — an irreversible act normally outlives one machine.** Before an ordinary irreversible effect, its required authorization and causal preparation have a local durable record and an acknowledged durable copy on one independently failing peer. A single-machine exception is a separately approved operation policy that states the permanent-loss risk and its scope; missing peers never select the exception automatically. The independently authorized emergency stop keeps its local durable fast path. **Check:** each operation names its loss model and replica evidence, crash tests remove the originating machine before and after dispatch, and an unapproved or stale local-only exception refuses that effect while preserving communication and repair.
+**Rule — a non-emergency irreversible act normally outlives one machine.** Before an effect that the agent cannot undo alone, excluding the separately authorized emergency stop, its required authorization and causal preparation have a local durable record and an acknowledged durable copy on one independently failing peer. A single-machine exception is a separately approved operation policy that states the permanent-loss risk and its scope; missing peers never select the exception automatically. The independently authorized emergency stop keeps its local durable fast path. **Check:** each operation resolves its classification to purpose revision 3, names its loss model and replica evidence, and undergoes crash tests removing the originating machine before and after dispatch; an unapproved or stale local-only exception refuses that effect while preserving admitted communication and repair.
+
+This selects a replica count for non-emergency irreversible effects, which are consequential by the first purpose test. It does not extend the one-peer requirement to every consequential effect classified by the other three tests. Loss detection alone does not select this replica count or accept the local-loss exception.
+
 
 <a id="ca-07"></a>
 
@@ -1168,7 +1184,7 @@ Questions: 12.1.
 
 Questions: 15.2.
 
-**Value — approval should be hard to impersonate and possible from a phone.** The default protected approval is an explicit action signed by a factor held on the operator's device and outside the agent's custody, bound to the exact request the operator sees. An accessible recovery route may use another independently verified factor with the same subject binding; it does not reduce approval to a secret the agent can read. The operator chooses the recovery custodian in the deployment record. This chooses the phishing and accessibility trade without pretending that one gesture can eliminate either risk.
+**Value — approval should be hard to impersonate and possible from a phone.** The default protected approval is an explicit action signed by a factor held on the operator's device and outside the agent's custody, bound to the exact request the operator sees. An accessible recovery route may use another independently verified factor with the same subject binding; it does not reduce approval to a secret the agent can read. The operator chooses the recovery custodian in the deployment record. This chooses the phishing and accessibility trade without pretending that one gesture can eliminate either risk. First paid-door arming and spend authority remain separately recorded approval subjects; changing the gesture erases neither requirement.
 
 <a id="ca-08"></a>
 
@@ -1176,7 +1192,7 @@ Questions: 15.2.
 
 Questions: 16.3.
 
-**Value — separate conversations keep their own commitments.** In Slack the thread is the ordinary unit of work and authority; the channel supplies relevant background through an attributable handoff rather than making unrelated requests share one directive and approval trail. A deliberately channel-wide assignment is recorded as such with its scope and owner. This chooses a default interaction shape, not a claim that a thread is the only place coherent work can happen.
+**Value — separate conversations keep their own commitments.** In Slack the thread is the default unit of work and authority; the channel supplies relevant background through an attributable handoff rather than making unrelated requests share one directive and approval trail. A deliberately channel-wide assignment is recorded as such with its scope and owner. The background handoff preserves source standing and provenance and never imports another thread's authority. This chooses a default interaction shape, not a claim that a thread is the only place coherent work can happen.
 
 <a id="ca-09"></a>
 
@@ -1192,25 +1208,22 @@ Questions: 16.4.
 
 Questions: 16.6.
 
-**Rule — public ingress is a recorded installation choice.** An installation may expose an inbound conversation endpoint only within its recorded deployment standing, naming the public surface, custodian, capture-before-acknowledgment guarantee and recovery obligation. The framework does not expose every installation by default. Where no such choice is recorded, an independently proved outgoing polling path keeps communication available; once the constraints are settled, choosing equivalent ingress mechanics is the agent's work. **Check:** activation verifies the exact ingress grant and custody evidence, and missing public permission selects only an admitted non-public path rather than abandoning the user.
+**Rule — public ingress is a recorded installation choice.** An installation may expose an inbound conversation endpoint only within its recorded deployment standing, naming the public surface, custodian, capture-before-acknowledgment guarantee and recovery obligation. The framework does not expose every installation by default. Existing deployment standing explicitly covering that endpoint supplies the choice without a redundant fresh prompt. Where no such choice is recorded, an independently proved outgoing polling path keeps communication available; once the constraints are settled, choosing equivalent ingress mechanics is the agent's work. **Check:** activation verifies the exact ingress grant and custody evidence, and missing public permission selects only an admitted non-public path rather than abandoning the user.
 
 <a id="ca-11"></a>
 
-### CA-11 — Initial supported product families
+### CA-11 — Supported-mode costs and residual-risk acceptance
 
-Questions: 16.x1, 17.x1.
+Questions: 17.x1, 17.5, 17.7.
 
-**Value — meet people and workers where this generation is intended to live.** The initial conversation family is Telegram, Slack, WhatsApp, iMessage and web, with Telegram the first reference proof; the initial external worker family is Claude Code and Codex beside Instar Native, with the same public contract open to Gemini, Grok and later runtimes. Membership promises a maintained path to parity, not a false claim that every mode is already supported. Expansion or retirement of a family is an explicit product-scope change that preserves existing work and migration paths; implementation order and conforming drivers remain the agent's.
+**Value — supported modes earn their cost within the approved family.** Accept the usefulness and measured confinement/observation overhead of modes that prove their exact grounding, output-verification, confinement, observation and recovery contracts within already approved deployment resource budgets. Accept the scoped availability cost of refusing a mode while its proof is absent; do not relax its contract to reduce that cost. A mode exceeding those budgets remains unavailable pending its own budget decision. Exact tuple activation evidence is still required; this policy alone activates no mode or host.
 
-<a id="ca-12"></a>
+**Value — provider conversation retention need not be permanent.** Permit a tested mode even if the provider can lose its saved conversation, provided authoritative durable work and complete recoverable current history survive and the replacement re-grounds. Accept the possible slower fresh start and restoration interruption rather than require a provider's forever-retention promise. The replacement mechanism and tests are delegated engineering; recoverable local history alone did not decide to accept this residual.
 
-### CA-12 — Explicit limited advisory exception
+**Value — capped delayed settlement is an accepted mode.** Permit a paid mode whose provider enforces a cap on the total possible charge even when final billing is delayed. Accept that bounded billing uncertainty and the resulting unavailable budget while maximum still-possible exposure remains reserved. Existing spend authority, explicit first arming, no uncertain repetition and no premature reservation release remain mandatory; a cap supplies none of those permissions. Acceptance of the delayed-billing residual is a distinct subject from first arming and a spend ceiling.
 
-Questions: 17.1.
+B §10 / approved PR #12 already names the conversation family and the wider harness family: Instar Native, Codex, Claude Code, Gemini, Grok Build and future runtimes. This candidate preserves that roster. Which implementations prove first and which conforming process drivers they use remain AGENT'S sequencing/technical correctness. Family retirement or narrowing would be an explicit change to an approved choice, not an undiscovered gap.
 
-**Rule — an advisory limit must not impersonate grounded agency.** As an explicit exception to the full-grounding proof required by rule 96, a separately admitted advisory mode may accept a human-directed request when safe confinement holds but consumption of all required background cannot be witnessed. It declares that limitation before use, records the supplied context and its missing evidence, and cannot satisfy a grounded-run exit test, critical judgment, authority decision or other consumer requiring that proof. Effects still require their ordinary standing and doorway checks. **Check:** mode-specific contract tests reject every promotion of advisory output into such a proof, verify the disclosure and confinement, and keep the fully governed mode unavailable until its actual context evidence exists.
-
-This is an explicit proposed exception to R96, not a claim that a label currently waives it. Until adopted, ordinary governed context proof remains mandatory.
 
 <a id="ca-13"></a>
 
@@ -1222,11 +1235,14 @@ Questions: 18.5.
 
 <a id="ca-14"></a>
 
-### CA-14 — Missed opportunities retain duties without stale effects
+### CA-14 — Exhaustive missed-occurrence defaults
 
 Questions: 19.1.
 
-**Rule — a late clock does not invent useful work.** Repeating maintenance and observation jobs coalesce missed opportunities into the newest still-useful occurrence by default; time-sensitive sends and actions do not execute outside their declared usefulness window. Every missed instant retains its disposition, and skipping an opportunity never closes an accepted run, promise or directive. A job may explicitly choose a different catch-up policy within its standing and resource limits. **Check:** restart and long-outage fixtures enumerate every missed instant, produce only the selected bounded admissions, preserve all unfinished duties, and refuse a late send whose declared window has closed.
+**Rule — catch-up selects an occurrence before admitting it.** Unless an explicit job policy already chooses otherwise, apply these defaults in order: time-sensitive sends or actions get no catch-up, even inside a usefulness window or when also maintenance/observation; otherwise maintenance/observation jobs select only the newest missed occurrence and admit it once only if it is still inside an explicitly declared usefulness window measured from that occurrence's due instant to catch-up admission; otherwise unclassified jobs get no catch-up. A missing usefulness window means no catch-up. If the newest occurrence has expired, skip it and all older occurrences; do not search backward for another. A different catch-up policy must be explicit before admission and remain within standing and resource limits. **Check:** restart/outage fixtures cover each class, overlapping classes, inside/exact-end/outside-window cases (admission must be strictly before the window ends), missing windows, expired newest occurrences, and explicit overrides; they enumerate every missed instant and prove only the selected bounded admission occurs.
+
+Every missed instant retains its honest disposition. Skipping an opportunity never closes an accepted run, promise or directive: R46/93 already require that preservation, independently of this new catch-up choice.
+
 
 <a id="ca-15"></a>
 
@@ -1234,7 +1250,57 @@ Questions: 19.1.
 
 Questions: 19.2.
 
-**Value — a daily promise normally happens once.** When a recurring local time occurs twice because the clock moves backward, the ordinary schedule chooses the earlier occurrence once. A job that means the later instant or both records that choice explicitly before activation. This is a choice about what a person's calendar instruction ordinarily means, not a fact derived from clock arithmetic; both the chosen time-zone data and the choice remain in the durable schedule history.
+**Value — a daily promise normally happens once.** When a recurring local time occurs twice because the clock moves backward, the default schedule chooses the earlier occurrence once. A job that means the later instant or both records that choice explicitly before activation. This is a choice about what a person's calendar instruction usually means, not a fact derived from clock arithmetic; both the chosen time-zone data and the choice remain in the durable schedule history.
+
+<a id="ca-16"></a>
+
+### CA-16 — Atomic adoption of the five intake amendments
+
+Questions: 08.2.
+
+**Value — the intake exercise and declaration changes are one adoption subject.** Propose operator adoption of the exact five-item bundle quoted in 08.2: the authority-conferring/directive exercise split in Part One; the bound-operator glossary clause; parser `authenticationClass`, `eventIdAuthority` and `ackPolicy`; parsers as a profile-declaring glossary kind; and the blocking-site `enforces` companion row. Use the reviewed bundle content at PR #18 landing `d532ec9d046e780ccfe76b98ab366253c51e0e35` as the proposal locator, with its affected artifact digests and current base bound in the approval request. Striking any item returns the whole bundle to review. The verified-provenance wall for authority-conferring acts always holds; attestation selects only existing verified bindings.
+
+No operator approval covering this bundle is established by the cited F4 draft/review or F1 revision 7 record. The landing is not consent. Adoption stays unresolved until an exact operator-approved record is supplied or this concrete proposal receives its own approval; downstream compatibility review must bind the content actually proposed at that time. CA-03 separately proposes acceptance of token-compromise exposure.
+
+<a id="ca-17"></a>
+
+### CA-17 — Semantic-gap ceiling and bounded watch-only trials
+
+Questions: 09.2, 18.1.
+
+**Value — unprotected intervals have explicit governing limits.** Propose 2026-10-05 at 00:00 UTC as the calendar ceiling for the Part Five semantic holding gaps named in its section 12. Separately, permit individually approved watch-only trials for new safety capabilities, each with a feature-specific deadline under a system-wide maximum of seven elapsed days from its first watch-only admission, or an earlier governing gap deadline, whichever is sooner. The operator accepts the named unprotected scope and interval before that trial; a restart, replacement or re-label does not reset its clock. At the deadline, graduate only with the required proof or roll back the trial, leaving the unheld duty and required repair visible under the governing gap rules. Neither rollback nor this maximum extends an existing deadline.
+
+These are proposed governing values, not approval of any gap or feature trial. Existing enforcement is not removed to create a trial, and R76's live-by-default user-facing fixes are not reclassified as risky new capabilities. The agent sets shorter schedules, graph/retry limits and measurements within actual accepted trials and resource authority. A visible watch-only feature is never claimed as active protection.
+
+<a id="ca-18"></a>
+
+### CA-18 — Initial failed-repair and uncertain-delivery attention policy
+
+Questions: 16.7, 18.3.
+
+**Value — request incident attention promptly but finitely.** After self-repair has failed and any required bounded delivery observation has ended without resolution, select one immediate grouped action-needed or result notice per incident, with at most two such pushed notices in any rolling 60 minutes per operator across these two incident families and all machines/channels. Aggregate incidents that compete for a slot; count a grouped delivery as one notice and record each covered incident as notified. If no slot is available, preserve overflow on the pull surface and reconsider it when a slot opens, only while it still independently qualifies as action-needed or a result. Route pushes to the existing alerts destination. No repeated notice or daily digest is sent merely because uncertainty remains unchanged; the pull surface continues to show that uncertainty and its owner.
+
+R52/53/54/87/88 continue to govern eligibility, aggregation, routing and failed-self-heal evidence. This selects push over pull-only and the two-per-hour ceiling; those rules did not select it. Formatting, coalescer implementation and tuning beneath an adopted ceiling are the agent's, while raising the ceiling or changing this attention policy needs operator adoption. Notification effects remain consequential and user-facing under purpose revision 3, with the applicable doorway, supervision and proof duties.
+
+<a id="ca-19"></a>
+
+### CA-19 — Individually approved initial recovery classes
+
+Questions: 18.2; 19.5's new-class/retry-authority boundary (its in-grant strategy remains AGENT'S).
+
+**Value — initial automatic recovery grants grow one evidenced kind at a time.** Choose individually approved reversible, low-risk recovery kinds after their watch-only trials and failure review. Each actual operator-issued grant names the allowed actions, scope, limits and whether it covers restart/half-open retries after a breaker pause. A passed trial, test suite or abstract policy grants no class any authority. New irreversible or permission-changing recovery/restart kinds are excluded from this initial grant default and require a separate explicit operator authority decision with their own scope and evidence. Existing live grants retain their exact coverage; do not add redundant approval to work already covered.
+
+Within a recorded restart/retry grant, the agent may choose and test one bounded half-open trial after cooldown through the normal effect and uncertainty checks. Consequential classification alone neither confers retry authority nor demands a fresh permission prompt; actual grant coverage decides that boundary. This proposal authorizes no new recovery effect by itself.
+
+<a id="ca-20"></a>
+
+### CA-20 — Maintenance share and ready-urgent service objective
+
+Questions: 19.4.
+
+**Value — upkeep and ready urgent work share an explicit service target.** Under sustained heavy demand with eligible maintenance waiting, choose at least 20 maintenance starts in every 100 start credits after separate emergency, stop, diagnosis and repair reserves are protected. Each due occurrence consumes exactly one scheduling credit when accepted to start; subsequent steps consume no additional scheduling credits and still obey their own resource limits. Ready urgent work waits at most 60 seconds for its turn: ready means it has passed every current permission, safety, capability, placement and available-capacity check and waits only for scheduling. Measure the wait while that readiness continuously holds; a real lost prerequisite is recorded separately, never relabelled to hide scheduler delay.
+
+This selects the source's 20/100–60-second trade over its other service promises. The agent chooses algorithms and measures feasibility without spending protected reserves or widening resource authority. Adoption establishes a target, not a live guarantee: only actual evidence can establish that the implementation meets it, and a miss remains a miss requiring repair rather than silently lowering the objective.
 
 ## Prior answer needing downstream reconciliation, not a new amendment
 
@@ -1242,4 +1308,8 @@ Questions: 19.2.
 
 ## Validation record
 
-`node scripts/check-governed-docs.mjs docs` passed: 23 governed bodies of 108 files scanned, with 70 indexed section files covered. Source-quote, location, link, question-count, amendment-reference and approval-commit ancestry checks passed; `git diff --check` passed. `npm test` passed with the lockfile-defined local dependencies and a temporary external progress reporter: 217 test files passed, one file skipped; 1,404 tests passed, 105 skipped, zero failures. No test logic or deadlines changed. These checks validate document discipline and the existing implementation; they cannot certify the audit's judgments or ratify its proposed amendments. The local DONE receipt records the actual pushed 40-hex HEAD after comparison with the branch on origin, alongside the disposition and amendment counts.
+Repair 1 validation: `node scripts/check-governed-docs.mjs docs` passed (23 governed bodies of 108 files scanned; 70 indexed section files covered). `git diff --check` passed. All 92 unchanged source quotations and locations, local links, matching table/detail dispositions, 19 candidate mappings, approved-commit ancestry and the 86-file/15,908-line coverage inventory passed their documentary checks. These checks validate document discipline, not constitutional convergence or adoption. This repair changes only this harvest; it introduces no code, runtime state, authority, deployment or installed-agent changes. The earlier harvest's test-suite result belongs to its earlier head and is not presented as a new execution here.
+
+## Repair 1
+
+Repaired findings F00–F19 from `CONVERGED — NO` in `.instar/lanes/astra-decisions-sweep-review-64f78366.md`, the independent Astra verdict on `64f78366739365df03ad0b2243191dc4793fe72e` / PR #73. Audited base after merging main: `eac87b07f54b316e85db82a4b71ef40f205ad5a7`. All 92 dispositions were re-audited against purpose revisions 1–3. Kept CA-01/04/07/08/09/10/13/15; reworded CA-02/03/05/06/11/14; dropped CA-12 as **a proposal to change rule 96, outside this sweep**. CA-16–20 record the additional genuine policy gaps required by the verdict. Counts: 10 DECIDED-BY, 26 AGENT'S, 33 CANDIDATE AMENDMENT, 23 ALREADY-ANSWERED; 19 consolidated candidates. None is adopted by this harvest, and this repair does not claim independent convergence.
