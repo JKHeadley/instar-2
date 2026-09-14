@@ -2,7 +2,7 @@
   {
     "revision": 3,
     "date": "2026-09-13",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "review",
       "pr": 68,
@@ -30,7 +30,11 @@
         "ref": "rereview11 RD-04; OD-05; sections 8/12/14/15"
       }
     ],
-    "multiMachinePosture": "Documentation only; inherited cross-machine duties remain intact, with scheduler-owned restart acceptance and no runtime activation."
+    "multiMachinePosture": "Documentation only; inherited cross-machine duties remain intact, with scheduler-owned restart acceptance and no runtime activation.",
+    "approvedIn": {
+      "pr": 68,
+      "mergeCommit": "abf65fedd761196ba455c108e90ca4a22bdf62a5"
+    }
   },
   {
     "revision": 2,
