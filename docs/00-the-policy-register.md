@@ -1,4 +1,4 @@
-**Status: draft, awaiting approval. Governed.**
+**Status: approved. Governed.**
 
 # The operator policy register
 
@@ -54,9 +54,17 @@ Entries are numbered P-01 onward. "Default" is what ships. "Per deployment" stat
 
 **Value — P-17 intake bundle adoption.** Status: pending operator adoption. Five intake changes (the authority-conferring versus directive exercise split; the bound-operator glossary clause; the parser fields for authentication class, event-id authority and acknowledgement policy; parser and acknowledgement conformance) landed in code without an explicit operator approval record. Adopting them as one bundle is an operator act recorded here; landing is not consent.
 
-**Value — P-18 competing permitted harms.** Status: pending operator adoption (Part Twenty-Three, OD-08). Default: decide unresolved conflicts individually; preserve the competing supported claims and continue help that does not depend on settling them. Serves: the purpose’s wisdom Value and authority constraint. Per deployment: the operator may record a scoped priority policy with affected situations, limits, challenge route and later outcome review. No priority creates source permission or constitutional authority.
+**Value — P-18 competing permitted harms.** Adopted by the operator on 2026-09-14 (Part Twenty-Three, OD-08). Default: decide unresolved conflicts individually; preserve the competing supported claims and continue help that does not depend on settling them. Serves: the purpose’s wisdom Value and authority constraint. Per deployment: the operator may record a scoped priority policy with affected situations, limits, challenge route and later outcome review. No priority creates source permission or constitutional authority.
 
-**Value — P-19 observable implications of private use.** Status: pending operator adoption (Part Twenty-Three, OD-09). Default: keep a use unavailable when its audience-visible implications are outside verified source permission; other permitted help continues. Serves: [least revelation](00-the-purpose.md#the-purpose). Per deployment: the operator records any narrower source/use/audience tolerance only with the source authority’s verified permission and enforceable limits; unknown scope remains unavailable. No universal numerical risk allowance is implied.
+**Value — P-19 observable implications of private use.** Adopted by the operator on 2026-09-14 (Part Twenty-Three, OD-09). Default: keep a use unavailable when its audience-visible implications are outside verified source permission; other permitted help continues. Serves: [least revelation](00-the-purpose.md#the-purpose). Per deployment: the operator records any narrower source/use/audience tolerance only with the source authority’s verified permission and enforceable limits; unknown scope remains unavailable. No universal numerical risk allowance is implied.
+
+## The commons (Part Twenty-Two; adopted by the operator on 2026-09-14)
+
+**Value — P-20 release evidence profiles.** Default: each kind of commons release has its own evidence and risk profile, approved before a real trial; a profile's targets are experiment settings, not measured results, and no profile may relax the privacy or authority floors. Serves: "Who decides what" and the evidence constraint. Per deployment: the profiles and their targets.
+
+**Value — P-21 commons retention terms.** Default: balanced terms. Temporary search copies are discarded after 90 days; supporting files are reviewed for removal after 14 days; once an allowed removal proceeds, copies in backups under our control are removed within 30 days. The clocks start when the service first accepts the material and are not restarted by copying, retrying or restoring. Permanent case history is never deleted and getting old is never a removal reason. Statistical aggregate sharing stays disabled until its privacy-loss budget is separately approved. Serves: the permanent-memory posture (rule 7), within the fact and verification retention contracts. Per deployment: the three terms.
+
+**Value — P-22 release and trial mandate.** Default: release approval stays with the operator until a scoped, revocable delegate is named; the first trial is the two-choice local replay, with $500 of additional provider spend as a proposed ceiling to present against, never permission to spend; reviewer time is agreed before work begins; no fresh-work trial runs until its spending, participants and reviewer time are separately presented and approved. Serves: the operator-only authority and spend boundary. Per deployment: the delegate, if any, and the approved budgets.
 
 ---
 
