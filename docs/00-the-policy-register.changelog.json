@@ -1,0 +1,11 @@
+[
+  {
+    "revision": 1,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": { "kind": "conversation", "note": "operator's direction in topic 52075 on 2026-09-14 ('three tiers'): deployment-specific operating choices belong in a policy register beneath the purpose, not in constitutional amendments" },
+    "changes": [
+      { "what": "Seeded the register with seventeen operator policies (P-01 to P-17) distilled from the decisions sweep's candidate amendments, each naming the purpose principle it serves and what a deployment may change.", "why": "The sweep's nineteen candidates were operating policies and engineering defaults rather than general principles; the five general principles went to the purpose (PR #75) and the deployment choices live here.", "ref": "docs/harvests/decisions-sweep-2026-09-13.md consolidated candidates; topic 52075" }
+    ]
+  }
+]
