@@ -32,7 +32,7 @@ The document numbering and owner numbering are intentionally distinguished.
 `P16-NF-*` checks do not assign measurement to conversation adapters.
 
 **Rule — permission is prior to assessment and remains current.**
-**Checks: P23-NF-03/04/06/17.** Source owners and Part 21 filter before original
+**Checks: P23-NF-03/04/06/17a.** Source owners and Part 21 filter before original
 loads, graph hops, transformations, embeddings, rerankers, provider context,
 cache reuse and final recipient binding. Private use, provider exposure and
 onward disclosure require separate current permission. Unknown permission means

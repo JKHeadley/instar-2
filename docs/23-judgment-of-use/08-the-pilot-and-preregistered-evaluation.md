@@ -1,11 +1,12 @@
 ## 8. The pilot and preregistered evaluation
 
 **Rule — freeze the accepted comparison before execution.**
-**Checks: P23-NF-13/14/15/16/17.** `P23-EVAL-01` is the pilot contract below,
+**Checks: P23-NF-13/14/15/16/17a.** `P23-EVAL-01` is the pilot contract below,
 carrying the complete R5 population, thresholds, statistics and stop rules.
 Section 6's 120-case grader audit, 20% second-level audit and independence
-requirements are part of this protocol. Section 11 supplies control fixtures;
-their synthetic examples cannot supply the real-case denominator. A/B share all
+requirements are part of this protocol. Section 11 supplies local control fixtures;
+commons export/receipt fixtures belong to NF-12/17b and run for commons activation.
+Synthetic examples cannot supply the real-case denominator. A/B share all
 sensitivity, recording, standing, delayed outcome and pillar controls; A reuses
 a scoped card with a context delta (the changes in the current use context, meaning the audience,
 the permissions, the recipients and the facts in play, since the card's assessment), while B explicitly compares every feasible
@@ -33,7 +34,7 @@ and separately granted resources; they do not set fleet or disclosure policy.
 
 ### 8.1 Population, cases and preregistration artifact
 **Rule — real cases support the claim; fixtures test the controls.** Rules
-27/58/65 and Nine §§6–7; **Checks: P23-NF-15/16/17**. Enroll 120 permitted real
+27/58/65 and Nine §§6–7; **Checks: P23-NF-15/16/17a**. Enroll 120 permitted real
 incident clusters for development and 600 disjoint, sealed real incident clusters
 for the primary held-out comparison. A cluster groups the same incident,
 conversation, related people/history and derived variants; all related cases
@@ -62,7 +63,7 @@ rules 24/27/57/58/65/95/108; [R5 §7](research/05-proposals-and-evaluation.md).
 Numeric settings are agent-owned, bounded by current permission, honest measurement
 and separately granted resources; they do not set fleet or disclosure policy.
 
-**Rule — freeze the full comparison identity.** **Checks: P23-NF-15/16/17**.
+**Rule — freeze the full comparison identity.** **Checks: P23-NF-15/16/17a**.
 The signed preregistration artifact includes case eligibility query and source
 frontiers, authorized readers/providers, clustering/split seed, transformed-input
 and semantic-loss manifests, exact candidate/model/prompt/context/floor/schema
@@ -86,7 +87,7 @@ Numeric settings are agent-owned, bounded by current permission, honest measurem
 and separately granted resources; they do not set fleet or disclosure policy.
 
 ### 8.2 Execution and separation of claims
-**Rule — replay cannot dispatch an effect.** **Checks: P23-NF-15/16/17**.
+**Rule — replay cannot dispatch an effect.** **Checks: P23-NF-15/16/17a**.
 Run A/B/C once on the same permitted decision-time inputs per primary occasion.
 The replay environment has no production dispatch capability, regardless of
 model instruction. Future messages, actual outcomes and labels reach only the
@@ -176,7 +177,7 @@ sections 3/10/12’s J/E/O/M grants and real-owner acceptance conditions. The
 workload size, window and quantile are agent-owned engineering defaults.
 
 ### 8.3 Endpoints and numeric thresholds
-**Rule — candidate acceptance bars.** **Checks: P23-NF-13/14/15/16/17.** These settings may be replaced before
+**Rule — candidate acceptance bars.** **Checks: P23-NF-13/14/15/16/17a.** These settings may be replaced before
 sealing with a recorded reason. After seeing results, any changed threshold or
 candidate is a new comparison using fresh held-out cases. No repeated peeking
 until significance, no early success stopping and no exclusion of difficult

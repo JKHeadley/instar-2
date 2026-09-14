@@ -1,7 +1,7 @@
 ## 6. Grade the grader and resist approval optimization
 
 **Rule — the learner does not control its judge.**
-**Checks: P23-NF-13/14/16/17.** Freeze constitutional references, criteria,
+**Checks: P23-NF-13/14/16/17a.** Freeze constitutional references, criteria,
 case partitions, labels, grader assignments and candidate identities before
 candidate outputs are inspected. An independently controlled store denies learner
 writes and witnesses attempted mutation. Learner-authored hashes, a different

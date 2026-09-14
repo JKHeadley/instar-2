@@ -15,6 +15,9 @@ Basis: Purpose's evidence constraint; [R1](research/01-instar-1x-judgment.md),
 | ConvergenceChecker sycophancy signal | Regex signals for emphatic agreement, praise and apologies | Keep as advisory evidence; a deserved apology can trigger it and a quiet false agreement can evade it |
 | ScopeVerifier coherence routes | Checks working directory, project/remote, topic and scope; produces reflection | Preserve scope checks; correct project does not establish a harmless information flow, and the check alone does not persist outcome learning |
 | CoherenceGate response-review pipeline | Policy-first candidate review, recipient handling and bounded telemetry | Preserve owner floor and contextual findings; primary-user shortcut does not authorize third-party secrets; provider filtering must happen earlier |
+| Organizational intent / session context / response review | `src/core/OrgIntentManager.ts` parses `.instar/ORG-INTENT.md` into constraints, goals, values and an ordered tradeoff hierarchy (bullets or a chained order). Its formatter feeds `GET /intent/org/session-context` and the session-start hook. `src/core/CoherenceGate.ts:1377–1395` supplies those buckets and legacy flat `orgValues` to reviewers; `src/core/reviewers/value-alignment.ts` asks for constraint blocks, goal warnings/blocks and value-drift warnings | Retain raw policy, parsed buckets/order and attributable review findings as evidence in Two's custody. Replace file-to-session injection with S/Part 21 permitted current-policy context captured by J/Seven; replace structured and flat-blob response-review consumers with Seven review under the current One floor and Eight's exact-effect checks. One owns verified authority; the operator or a currently verified scoped delegate owns deployment policy, registered through Three. A local file is not that authority |
+| Organizational tradeoff resolution | `src/core/TradeoffResolver.ts:89–210` consumes two values and the parsed hierarchy through `POST /intent/tradeoff-resolve` (`src/server/routes.ts`). Pair-pattern matches precede substring/list-order matches; a sole matched value wins, while neither match or an undeciding same-entry match returns no-match or tie. Callers receive the winner, basis, indices and explanation | Retain source order, requested pair and any recorded resolution as evidence. Retire the text-matching resolver as a policy authority; replace its callers with Seven's recorded choice using current One-verified, Three-registered policy and S's permitted inputs. Unknown, tied or conflicting priorities stay unresolved under the declared floor/default and go to O for the policy owner's review; no substring result establishes pillar placement or a universal competing-harm priority |
+| Organizational drift review | `src/core/OrgIntentDriftAnalyzer.ts` consume parsed org intent plus timestamped CoherenceGate review verdicts and violations. `GET /intent/org/drift` reads the bounded review-history window; block/hold rates, chronological half-window comparison and first-20-character bucket matches produce advisory findings. The opt-in weekly org-intent drift audit consumes the digest; absent intent and insufficient data have explicit states | Retain policy version, available review history, window/limits, thresholds, findings and pending follow-up as evidence through Two. Replace the digest consumer with Nine's review/correction work, Twenty's bounded measurement and O's permitted views; replace any enabled weekly job with W's registered cadence, preserving disabled state. Nine admits any subsequent Grade only with owner-verified standing; One remains the policy-authority owner. A heuristic drift count neither verifies harm/wisdom nor changes policy |
 | ExternalOperationGate and adaptive trust | Mutability/reversibility matrix, scoped floors and model narrowing; success evidence and trust suggestions | Reads can disclose a private query; a reversible write can change what someone knows; no success streak grants new source permission |
 | AdaptiveTrust incident response / TrustRecovery | `src/core/AdaptiveTrust.ts:225–248` records an incident and last-incident time, resets the success streak, forwards the incident to recovery and tightens the operation trust level only when the configured drop is more restrictive. `src/core/TrustRecovery.ts:87–185` tracks prior/dropped levels, reason, successes and offered/recovered/dismissed state | Preserve incident history, currently tightened restrictions and pending recovery separately from success/elevation evidence. Recovery suggestions are not grants or verified wisdom; never restore a more permissive level merely by importing a record |
 | MandateGate / signed mandates | Current author, caller, expiry, revocation and named parameter bounds | Preserve real authorization; broad parameter bounds are not exact content, recipient and linked-target approval |
@@ -28,7 +31,8 @@ Basis: Purpose's evidence constraint; [R1](research/01-instar-1x-judgment.md),
 **Checks: P23-NF-18/21.** Migrate the named mechanisms through an inventory of
 source identity, custody, pending work, producer/consumer, expected target,
 loss detector and evidence limitations. Retain original decisions, corrections,
-legacy grade labels, contrary cases and outstanding follow-up. Assign missing
+legacy grade labels, organizational policy text/order and review/drift history,
+contrary cases and outstanding follow-up. Assign missing
 sensitivity/standing/reason fields explicit unknowns; never fabricate old model
 inputs, independent standing or mature outcomes. Same logical entry imports once
 across restart and machines; incompatible causal variants remain disputed.
@@ -43,6 +47,7 @@ Basis: Purpose's coherency and no-silent-loss constraint; rules 7/24/33/44/85/10
 | P23-NF-21d quality meter | Legacy rungs remain labelled; conclusion/reason/outcome separate; missing human standing cannot become a verified Grade |
 | P23-NF-21e divergence | Compatible complete sources can compare; biased/self-reported or mismatched sources cannot become independent support |
 | P23-NF-21f installed composition | Fresh and existing agents get registered producers, consumers, cadence, capabilities and status; disabled/dry-run/no-op ports cannot pass lifecycle |
+| P23-NF-21g organizational priority and drift | Positive: import synthetic policy with a nondisclosure constraint, a timely-help goal, trust/speed values and “trust > speed,” plus attributable review history and a drift finding. Separately supply a current One-verified operator/delegate policy decision, scope and Three registration for that same order. S/Part 21 session context and Seven response review receive the permitted current policy; Seven records the supported in-scope priority choice, and Eight preserves the nondisclosure floor. Nine retains the drift finding as advisory evidence and its pending review; O exposes permitted status and an enabled W cadence actually runs. Unknown neighbor: absent/template-only policy, no-match, a sole substring match or unverified/revoked authority retains evidence but grants no priority. Tie neighbor: “trust and speed” in one entry with no owner-resolved ordering leaves the choice unresolved under the declared default. Conflicting-policy neighbor: opposite source orders or a legacy order contradicting current policy retains both variants and the conflict; only independently resolved current policy may govern, never first-match, last-import or majority. A constraint cannot be overridden by a priority winner. Missing history/insufficient data remains unknown; repeated heuristic drift, a matching local file or stable digest never becomes verified wisdom. Run all neighbors across update, restart and duplicate import; preserve one pending review, original text/findings and cadence enablement without reinstating retired consumers |
 
 Before legacy retirement, D/S retain pattern custody and configuration; J/E compose
 the advisory outbound observation; V/Nine receives its correction; O exposes
@@ -51,6 +56,19 @@ authority/effect consumers, while Two retains incident/recovery evidence. The
 21a/21b inventory and restart reconciliation must prove all those fields and
 consumers survive; an unmapped field or unavailable owner keeps migration pending.
 No import, success count or pending recovery recommendation creates permission.
+
+For 21g, D/Two retain the source policy and available review-history records with
+source identity, custody and import cursors; missing historical versions remain
+unknown rather than being inferred from today's file. Current policy authority
+is resolved by One for the operator or its verified scoped delegate and registered
+through Three; source/provider restrictions remain with S and exact-effect
+permission with Eight. Retire the session-start file injection, structured/flat
+response-review policy reads, text-matching tradeoff caller and legacy drift
+endpoint/job only after their named replacement consumers and loss detectors pass
+21g/21f. Reconcile policy versions, review counts/window truncation, pending drift
+review and scheduled work before retirement; missing mappings keep migration
+pending. Neither importing policy nor a drift finding changes the purpose or
+settles section 13's pending competing-harm policy.
 
 Each subcase uses unit, real public/HTTP integration and actual production
 initialization evidence plus restart and current-authority refusal. The scheduled

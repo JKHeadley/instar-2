@@ -33,7 +33,7 @@ causal reasoning. Evidence that never arrived is a recall failure, not wise
 withholding. Forbidden-source diagnostics cannot leak via these records.
 
 **Rule — narrow the floor; never widen it.**
-**Checks: P23-NF-06/17/19.** Deterministic disclosure/integrity checks remain the
+**Checks: P23-NF-06/17a/19.** Deterministic disclosure/integrity checks remain the
 floor. Rule 86's secrets/money exceptions and owner-verified authority tests do
 not become model scores; contextual sensitivity heuristics acquire no new
 blocking power. Ordinary permitted help uses its declared reachable default if
@@ -45,7 +45,7 @@ outage therefore has different outcomes at different consumers.
 Basis: Purpose's authority constraint; rules 57/86/95; Part 21 §5 and §15 OD-02,
 section 1 Basis; Seven's declared ActionFloor and Eight's current validation.
 
-**Rule — choosing is not dispatching.** **Checks: P23-NF-06/17.** Eight rechecks
+**Rule — choosing is not dispatching.** **Checks: P23-NF-06/17a.** Eight rechecks
 current authority and source policy against exact outgoing bytes and material
 parameters, destination, links/quotes, provider and audience at the effect
 boundary. A changed target or revoked grant cannot reuse approval of equivalent

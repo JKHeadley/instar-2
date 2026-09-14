@@ -26,7 +26,7 @@ applicable evaluation, not a recurrence threshold or rising confidence alone.
 
 **Rule — a pillar name must carry an argument.**
 **Checks: P23-NF-11/14.** The PlacementAssessment contains exact purpose/pillar/
-constraint version, scoped learning claim, entailment argument, conflict search,
+constraint version, scoped learning claim, an explanation of how the cited principle supports the lesson, conflict search,
 strongest counterexample, evidence that would falsify it, deciding reviewer and
 one of `fits`, `contradicts`, `undecidable-gap`. A word match such as “trust”
 is insufficient. Contradictions reject the learning regardless of votes. Before

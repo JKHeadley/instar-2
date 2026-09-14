@@ -4,6 +4,12 @@ _Generated from `23-judgment-of-use.changelog.json` by `scripts/render-changelog
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 4 · 2026-09-14 · draft — Part Twenty-Three repair round 3; fourth independent re-review at d063624d8ca89c405cc9eeab152a082c5f38dd27
+
+- **F-01: Split NF-17 into local-isolation and commons-export/receipt-recovery arms; bind fixtures, activation and complete dependency closures to the selected arm.** — Keep FX-21 and the commons receipt crash cut under C and all row 121 conditions while local A/B acceptance requires only NF-17a. _(docs/23-judgment-of-use/10-non-functional-checks-and-activation.md; docs/23-judgment-of-use/11-negative-contract-fixtures.md; docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md)_
+- **F-02: Inventory organizational intent, priority resolution and drift review; name retained evidence, current authority and replacement consumers; add NF-21g migration cases.** — Preserve real 1.x policy and review behavior through positive, unknown, tie and conflicting-policy cases without promoting local text or heuristic findings into verified authority. _(docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md)_
+- **C-01: Replace “entailment argument” with “an explanation of how the cited principle supports the lesson.”** — Use plain language for the same placement requirement. _(docs/23-judgment-of-use/05-local-wisdom-fleet-candidates-and-pillar-placement.md)_
+
 ## Revision 3 · 2026-09-14 · draft — Part Twenty-Three repair round 2; third independent re-review at 7724cd6e, A01 and A02
 
 - **A01: Keep only the two open policy questions as operator cards; move all seven decided dispositions and their citations into closing-Rule traceability.** — Separate operator choices from settled purpose and engineering dispositions while preserving their text and purpose-tier labels. _(docs/23-judgment-of-use/13-operator-decisions-and-honest-limits.md)_

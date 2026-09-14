@@ -1,5 +1,31 @@
 [
   {
+    "revision": 4,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Part Twenty-Three repair round 3; fourth independent re-review at d063624d8ca89c405cc9eeab152a082c5f38dd27"
+    },
+    "changes": [
+      {
+        "what": "F-01: Split NF-17 into local-isolation and commons-export/receipt-recovery arms; bind fixtures, activation and complete dependency closures to the selected arm.",
+        "why": "Keep FX-21 and the commons receipt crash cut under C and all row 121 conditions while local A/B acceptance requires only NF-17a.",
+        "ref": "docs/23-judgment-of-use/10-non-functional-checks-and-activation.md; docs/23-judgment-of-use/11-negative-contract-fixtures.md; docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md"
+      },
+      {
+        "what": "F-02: Inventory organizational intent, priority resolution and drift review; name retained evidence, current authority and replacement consumers; add NF-21g migration cases.",
+        "why": "Preserve real 1.x policy and review behavior through positive, unknown, tie and conflicting-policy cases without promoting local text or heuristic findings into verified authority.",
+        "ref": "docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md"
+      },
+      {
+        "what": "C-01: Replace “entailment argument” with “an explanation of how the cited principle supports the lesson.”",
+        "why": "Use plain language for the same placement requirement.",
+        "ref": "docs/23-judgment-of-use/05-local-wisdom-fleet-candidates-and-pillar-placement.md"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-09-14",
     "status": "draft",

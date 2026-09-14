@@ -32,8 +32,12 @@ the following table. Owner grants must enumerate any further transitive scope
 before activation; a missing/unknown grant closure inhibits the consumer, it
 does not remove a dependency. NF-01 checks keys, acyclicity, exact row expansion,
 request/grant existence, verbatim grant identity, all nine row labels, every named
-condition and status consistency. A conditional grant must never be reported as
-requested-only, built or activated. P is required by every runtime row.
+condition and status consistency, plus fixture/crash-cut dependencies and the
+exact arms selected for activation. NF-17a closes over P/D/S/J/E/V; NF-17b
+closes over P/D/S/J/E/V/M/W/O/C for export, scheduled retry and recovery views.
+NF-12 and NF-17b inherit every C condition below; no local isolation or lifecycle
+claim can include their commons decoder or receipt obligations. A conditional
+grant must never be reported as requested-only, built or activated. P is required by every runtime row.
 
 Basis: Purpose's current-document and evidence constraints; rules 33/49/69/95.
 
