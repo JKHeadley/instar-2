@@ -73,6 +73,24 @@ pillar, or constraint that decides each listed question; a question none of them
 recorded as a candidate amendment to this document, and the review desk refuses convergence
 while such a question is neither decided nor recorded.
 
+**Rule — a consequential effect is defined here, once, and every rule that hinges on it
+inherits this definition.** An effect is consequential when any of four tests holds: it cannot
+be undone by the agent alone (an email sent, a public post, a release, a deletion outside the
+agent's own custody, a message to a person that changes what they know); it commits money or a
+resource above a level the operator names; it reaches outside the scope the operator granted for
+the work; or it touches a matter the operator has marked as policy-sensitive. Everything else is
+ordinary. **User-facing** means an effect, surface or message that a person outside the agent's
+own processes can perceive, including the operator; internal facts, logs, journals and
+agent-to-agent traffic that no person reads are not user-facing. **Significant** and
+**critical** both resolve to consequential: a feature is significant when at least one of its
+effects is consequential, and a pipeline or outcome is critical when a consequential effect
+depends on it. This is what the memory design's extra history check, the supervised-execution
+rule and the live-probe rule attach to; rules 34, 38, 43, 62 and 76 read their undefined words
+through this paragraph. **Check:** the effect doorway classifies every registered effect kind
+against the four tests at registration and records the classification with the effect; a rule
+or design that says "critical", "significant", "consequential" or "user-facing" without resolving
+to this definition fails review.
+
 **Value — verification is a mechanism here, never the purpose.** An earlier proposal put
 provability in the purpose slot. It belongs one level down: a rule held by willpower cannot
 cross the instance boundary, so making rules checkable is *how* coherence is held, not what it
