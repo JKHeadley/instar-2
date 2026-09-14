@@ -15,5 +15,9 @@ export default defineConfig({
     pool: 'forks',
     fileParallelism: false,
     maxWorkers: 1,
+    // Full-gate workers run at reduced priority and exercise durable multi-owner
+    // histories. Keep the runner deadline above the observed ~5.1s boundary so
+    // valid serialized tests are not reported as semantic failures under load.
+    testTimeout: 10_000,
   },
 });
