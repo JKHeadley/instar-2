@@ -1,0 +1,29 @@
+[
+  {
+    "revision": 1,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Part Twenty-Three design round D1; accepted R1\u2013R5 at 8bf9a823 and B/A/C direction"
+    },
+    "changes": [
+      {
+        "what": "Define judgment of use in the standard governed index and thirteen numbered sections.",
+        "why": "Carry sensitivity, recorded choices, verified standing, delayed grades, local learning and commons boundaries into a reviewable part design.",
+        "ref": "docs/23-judgment-of-use.md; accepted research head 8bf9a823ecbef6edbace393612139cceb9638e04"
+      },
+      {
+        "what": "Carry the full R5 evaluation protocol, 22 non-functional checks, paired negative fixtures and named owner requests.",
+        "why": "Keep measurement falsifiable and runtime activation dependent on real owner grants and evidence.",
+        "ref": "docs/23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md; docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md"
+      },
+      {
+        "what": "Classify nine decisions and file two unresolved policy questions as candidate purpose amendments.",
+        "why": "Only genuine operator judgment remains in the questions list; settings and constitutional boundaries name their basis.",
+        "ref": "docs/23-judgment-of-use/13-operator-decisions-and-honest-limits.md"
+      }
+    ],
+    "multiMachinePosture": "Documentation only. Proposed per-agent state spans authorized machines through owner causal history; restricted captures stay in source custody, conflicting grades and partial coverage remain explicit, and copies never increase independent evidence."
+  }
+]
