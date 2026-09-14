@@ -29,8 +29,8 @@ describe('round-twelve A1 contract-map re-slice', () => {
     const root = fixture();
     try {
       const assertions = p3Assertions(root);
-      assertions.push({ fullName: `held SKIPPED: GRANT:${grant} P3-NF-09 retained enrollment`,
-        title: 'P3-NF-09 retained enrollment', status: 'pending' });
+      assertions.push({ fullName: `held SKIPPED: GRANT:${grant} P3-NF-01/02/03/07/09/13/15/19/21/22/23/24/26/27/28/29 workflow enrollment`,
+        title: 'all mixed workflow enrollment arms', status: 'pending' });
       writeFileSync(join(root, '.test-results.json'), JSON.stringify({ success: true, testResults: [
         { name: 'tests/register/generator.test.ts', assertionResults: assertions.slice(0, -1) },
         { name: 'tests/integration/register-owner-enrollment-round7.test.ts', assertionResults: assertions.slice(-1) },
@@ -38,6 +38,22 @@ describe('round-twelve A1 contract-map re-slice', () => {
       expect(() => execFileSync(process.execPath, [resolve('scripts/check-register-contract-map.mjs')], {
         cwd: root, stdio: ['ignore', 'pipe', 'pipe'],
       })).not.toThrow();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('P3-NF-07 expands multi-id names and refuses a claimed mixed arm with no actual test binding', () => {
+    const root = fixture();
+    try {
+      const assertions = p3Assertions(root);
+      assertions.push({ fullName: `held SKIPPED: GRANT:${grant} P3-NF-01/02/03/07/09/13/15/19/21/22/23/24/26/27/28`,
+        title: 'mixed arms missing P3-NF-29', status: 'pending' });
+      writeFileSync(join(root, '.test-results.json'), JSON.stringify({ success: true, testResults: [
+        { name: 'tests/register/generator.test.ts', assertionResults: assertions.slice(0, -1) },
+        { name: 'tests/integration/register-owner-enrollment-round7.test.ts', assertionResults: assertions.slice(-1) },
+      ] }));
+      expect(() => execFileSync(process.execPath, [resolve('scripts/check-register-contract-map.mjs')], {
+        cwd: root, stdio: ['ignore', 'pipe', 'pipe'],
+      })).toThrow(/P3-NF-29: row-124 workflow\/enrollment disposition has no actual test binding/);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 

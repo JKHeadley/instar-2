@@ -100,6 +100,18 @@ function evidenceUseClock(supplied: Clock | undefined, options: PartTwoRegisterP
   return supplied ?? options.types?.now ?? options.context.authorityTypes?.now ?? options.context.types.now;
 }
 
+function projectionUseClock(options: PartTwoRegisterProviderOptions, snapshot: FactSnapshot): Clock {
+  const supplied = evidenceUseClock(undefined, options);
+  if (supplied !== undefined)
+    return take(decodeMeasurement('clock', supplied, options.types ?? options.context.types));
+  const template = [...snapshot.entries].sort((a, b) => b.fact.at.value - a.fact.at.value)[0]?.fact.at;
+  requireThat(template !== undefined, 'Part Two reference currentness requires an observed owner clock');
+  const observed = Object.values(options.horizon.lineages).map(lineage => lineage.observedAt)
+    .filter((value): value is number => value !== null && Number.isSafeInteger(value));
+  const value = observed.length > 0 ? Math.max(...observed) : template.value;
+  return take(decodeMeasurement('clock', { ...template, value, at: value }, options.types ?? options.context.types));
+}
+
 function witnessFor(reference: FactPositionVectorReference, snapshot: FactSnapshot): Readonly<{
   fact: FactEnvelope; ids: ReadonlySet<string>; frontier: CausalFrontier;
 }> {
@@ -259,9 +271,14 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
       const captured = raw as unknown as typeof generation;
       const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
       const matches = generationRecords(snapshot, view, options.context)
-        .filter(record => encoding(record.generation).bytes === encoding(captured).bytes);
-      requireThat(matches.length === 1, 'P3-NF-21: generation has no unique current entering-force fact in the Part Two store');
-      return matches[0]!;
+        .filter(record => record.generation.id === captured.id);
+      const values = new Map(matches.map(record => [encoding(record).bytes, record]));
+      requireThat(values.size === 1,
+        'P3-NF-21: generation has no unique current entering-force fact; no single consistent value exists in the Part Two store');
+      const witnessed = [...values.values()][0]!;
+      requireThat(encoding(witnessed.generation).bytes === encoding(captured).bytes,
+        'P3-NF-21: entering-force identity names a different generation');
+      return witnessed;
     }),
     isCurrent: (reference, now) => checked<boolean, RegisterContext>('PartTwoRegisterCurrency', { reference, now }, options.context, raw => {
       const input = object(raw); const clock = take(decodeMeasurement('clock', input.now, options.types ?? options.context.types));
@@ -307,7 +324,9 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
       const requested = object(raw); exact(requested, ['provider', 'id', 'kind']);
       requireThat(requested.provider === 'record', 'external reference namespace is not the Part Two record provider');
       const id = text(requested.id, 'reference.id');
-      const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
+      const snapshot = read(); const { definition, view } = projection(snapshot, options.horizon, options.context);
+      const clock = projectionUseClock(options, snapshot);
+      take(readProjection(view, definition, clock, options.context));
       const status = activeStatus(id, snapshot, view);
       if (requested.kind !== undefined) requireThat(status.fact.kind === text(requested.kind, 'reference.kind'), 'record reference kind differs');
       return true;
@@ -321,15 +340,19 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
       take(readProjection(view, definition, clock, options.context));
       const matches = snapshot.entries.filter(status => active(status, snapshot, view)
         && status.fact.kind === kind
-        && encoding(recordBody(status)).bytes === encoding(input.expected).bytes
         && (status.fact.id === id || (() => {
           const body = recordBody(status);
           if (body === null || typeof body !== 'object' || Array.isArray(body)) return false;
           const record = body as Readonly<Record<string, Json>>;
           return Object.hasOwn(record, 'id') && record.id === id;
         })()));
-      requireThat(matches.length === 1,
-        `Part Two record ${id} is absent, retracted, corrected, conflicted, duplicated, or differs from workflow evidence`);
+      const values = new Map(matches.map(status => {
+        const body = recordBody(status); return [encoding(body).bytes, body];
+      }));
+      requireThat(values.size === 1,
+        `Part Two record ${id} is absent, retracted, corrected, conflicted, duplicated, or has inconsistent owned values`);
+      requireThat(encoding([...values.values()][0]).bytes === encoding(input.expected).bytes,
+        `Part Two record ${id} differs from workflow evidence`);
       return true;
     }),
     verifySemanticReview: (review, now) => checked<boolean, RegisterContext>('PartTwoSemanticReview',

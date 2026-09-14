@@ -26,7 +26,8 @@ from that surface is A1 acceptance evidence.
 - Every new A2 regression is held under the exact label
   `NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment`. A passed workflow/enrollment acceptance arm is an A1 contract-map failure.
 
-The first A2 obligation is rereview10 F1, preserving these exact independently executable case ids:
+The retained A2 obligation is rereview11 F4's five-case table (the same defect first identified as rereview10 F1), preserving
+these exact independently executable case ids:
 
 - `valid` — a witnessed historical introduction of part 14 remains accepted.
 - `unwitnessed-parent` — a parent generation with no entering-force record refuses (P3-NF-21).
