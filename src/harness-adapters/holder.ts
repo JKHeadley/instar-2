@@ -796,12 +796,44 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     const locallyConfirmed = retainedPoison.find(row => row.ownerCurrent && row.availability === 'current'
       && row.event && resumeDisposition(row.event, now) === 'poisoned');
     if (locallyConfirmed) return freeze({ disposition: 'poisoned' as const, evidence: locallyConfirmed });
-    // Once poison has been witnessed, a disputed Ten observation, stale source,
-    // or unavailable Nine witness cannot make the conversation safe. There is
-    // no landed clearance record in this slice, so the conservative result is
-    // unknown until the owners can again establish the poison disposition.
-    if (retainedPoison.length > 0) {
-      return freeze({ disposition: 'unknown' as const, evidence: retainedPoison[0]! });
+    // A diagnostic becomes a retained poison obligation only after Nine has
+    // recorded a successful exact-purpose probe for it. A detector candidate,
+    // or even a plan with no successful probe, may remain diagnostic but cannot
+    // veto a later owner-confirmed compatible resume. Conversely, once the
+    // successful probe existed, later source loss or conflict cannot make the
+    // conversation safe; without a landed clearance record it stays unknown.
+    const previouslyConfirmed = retainedPoison.find(row => {
+      const event = row.event!;
+      const planId = event.diagnosticCode.slice('transcript-poison:'.length);
+      if (!planId) return false;
+      try {
+        const rows = consumeResult(input.owners.verification!.inspectCurrent(), {
+          Success: value => value,
+          Refused: refused => { throw new Error(refused.detail); },
+        });
+        const plan = rows.find(candidate => candidate.record.type === 'VerificationPlan'
+          && candidate.record.id === planId)?.record;
+        if (!plan || plan.type !== 'VerificationPlan'
+          || plan.subject.holder !== 'part-thirteen:transcript-poison'
+          || plan.subject.governed !== exactSubject(event) || plan.subject.scope !== input.scope
+          || !plan.arms.some(arm => arm.required && arm.kind === 'runtime'
+            && arm.id === 'transcript-poison' && arm.executable === 'harness.transcript-poison'
+            && arm.fixture === 'P13-NF-51' && arm.outputContract === 'VerificationAssessment')
+          || !plan.consumers.some(consumer => consumer.id === 'part-thirteen:transcript-poison'
+            && consumer.direction === 'closed' && consumer.enforcedRecord === 'VerificationAssessment'
+            && consumer.decoder === 'decodeVerificationAssessment')
+          || !plan.bar.complete || !plan.bar.sources.includes('runtime-conversation')) return false;
+        return rows.some(candidate => candidate.record.type === 'ProbeRecord'
+          && candidate.record.plan === plan.id && candidate.record.planVersion === plan.bar.version
+          && candidate.record.arm === 'transcript-poison' && candidate.record.subject === exactSubject(event)
+          && candidate.record.disposition === 'passed' && candidate.record.captureStatus === 'available'
+          && candidate.record.missingPhases.length === 0 && candidate.record.witnesses.length > 0);
+      } catch {
+        return false;
+      }
+    });
+    if (previouslyConfirmed) {
+      return freeze({ disposition: 'unknown' as const, evidence: previouslyConfirmed });
     }
 
     const omitted = analysis.decisionSet.filter(row => !row.event && row.phase === 'pause-observed');
