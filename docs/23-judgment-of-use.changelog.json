@@ -1,5 +1,22 @@
 [
   {
+    "revision": 7,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Independent design re-review 7 at 59bbef214aa186318d274225fd4ef68e5879bc11 (ASTRA-01)"
+    },
+    "changes": [
+      {
+        "what": "Define cohort, execution ordinal and pseudonymous enrollment at first use and in the index terms table.",
+        "why": "The re-review found the three terms neither in the glossary nor defined at first use; their meanings matter to the population and dependency contracts.",
+        "ref": "docs/23-judgment-of-use/01-ownership-and-boundaries.md; docs/23-judgment-of-use/07-measurement-and-outcome-accounting.md; docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md; docs/23-judgment-of-use.md"
+      }
+    ],
+    "multiMachinePosture": "Documentation only. Proposed per-agent state spans authorized machines through owner causal history; restricted captures stay in source custody, conflicting grades and partial coverage remain explicit, and copies never increase independent evidence."
+  },
+  {
     "revision": 6,
     "date": "2026-09-14",
     "status": "draft",
@@ -162,23 +179,6 @@
         "what": "Classify nine decisions and file two unresolved policy questions as candidate purpose amendments.",
         "why": "Only genuine operator judgment remains in the questions list; settings and constitutional boundaries name their basis.",
         "ref": "docs/23-judgment-of-use/13-operator-decisions-and-honest-limits.md"
-      }
-    ],
-    "multiMachinePosture": "Documentation only. Proposed per-agent state spans authorized machines through owner causal history; restricted captures stay in source custody, conflicting grades and partial coverage remain explicit, and copies never increase independent evidence."
-  },
-  {
-    "revision": 2,
-    "date": "2026-09-14",
-    "status": "draft",
-    "cause": {
-      "kind": "conversation",
-      "note": "Independent design re-review 7 at 59bbef214aa186318d274225fd4ef68e5879bc11 (ASTRA-01)"
-    },
-    "changes": [
-      {
-        "what": "Define cohort, execution ordinal and pseudonymous enrollment at first use and in the index terms table.",
-        "why": "The re-review found the three terms neither in the glossary nor defined at first use; their meanings matter to the population and dependency contracts.",
-        "ref": "docs/23-judgment-of-use/01-ownership-and-boundaries.md; docs/23-judgment-of-use/07-measurement-and-outcome-accounting.md; docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md; docs/23-judgment-of-use.md"
       }
     ],
     "multiMachinePosture": "Documentation only. Proposed per-agent state spans authorized machines through owner causal history; restricted captures stay in source custody, conflicting grades and partial coverage remain explicit, and copies never increase independent evidence."

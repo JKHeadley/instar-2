@@ -4,6 +4,10 @@ _Generated from `23-judgment-of-use.changelog.json` by `scripts/render-changelog
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-09-14 · draft — Independent design re-review 7 at 59bbef214aa186318d274225fd4ef68e5879bc11 (ASTRA-01)
+
+- **Define cohort, execution ordinal and pseudonymous enrollment at first use and in the index terms table.** — The re-review found the three terms neither in the glossary nor defined at first use; their meanings matter to the population and dependency contracts. _(docs/23-judgment-of-use/01-ownership-and-boundaries.md; docs/23-judgment-of-use/07-measurement-and-outcome-accounting.md; docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md; docs/23-judgment-of-use.md)_
+
 ## Revision 6 · 2026-09-14 · draft — Part Twenty-Three repair round 5; sixth independent re-review at e8f32bc9def29edea7abca9fe35f579db4f7520f
 
 - **ASTRA-01: Keep journal-analysis replacement inside Part 23 using existing public Two facts, Nine grades and M occasion joins only; bind migration and activation to replacement acceptance.** — Respect row 119 scope while preserving the legacy consumer, population/exclusion accounting, weighted heuristic basis and unassessed state until migration passes. _(docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md)_
@@ -41,7 +45,3 @@ each linked to the git change that made it (rule 91).
 - **Define judgment of use in the standard governed index and thirteen numbered sections.** — Carry sensitivity, recorded choices, verified standing, delayed grades, local learning and commons boundaries into a reviewable part design. _(docs/23-judgment-of-use.md; accepted research head 8bf9a823ecbef6edbace393612139cceb9638e04)_
 - **Carry the full R5 evaluation protocol, 22 non-functional checks, paired negative fixtures and named owner requests.** — Keep measurement falsifiable and runtime activation dependent on real owner grants and evidence. _(docs/23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md; docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md)_
 - **Classify nine decisions and file two unresolved policy questions as candidate purpose amendments.** — Only genuine operator judgment remains in the questions list; settings and constitutional boundaries name their basis. _(docs/23-judgment-of-use/13-operator-decisions-and-honest-limits.md)_
-
-## Revision 2 · 2026-09-14 · draft — Independent design re-review 7 at 59bbef214aa186318d274225fd4ef68e5879bc11 (ASTRA-01)
-
-- **Define cohort, execution ordinal and pseudonymous enrollment at first use and in the index terms table.** — The re-review found the three terms neither in the glossary nor defined at first use; their meanings matter to the population and dependency contracts. _(docs/23-judgment-of-use/01-ownership-and-boundaries.md; docs/23-judgment-of-use/07-measurement-and-outcome-accounting.md; docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md; docs/23-judgment-of-use.md)_
