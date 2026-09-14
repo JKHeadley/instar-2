@@ -12,7 +12,7 @@ describe('permanent Part Three additivity gate', () => {
       .trim().split('\n').filter(Boolean);
     const changed = paths.filter(path => !mainEraExemptions.has(path)
       && !readFileSync(path).equals(execFileSync('git', ['show', `${main}:${path}`])));
-    expect(paths).toHaveLength(239);
+    expect(paths).toHaveLength(314);
     expect([...mainEraExemptions]).toEqual([]);
     expect(changed, `main-vs-HEAD additivity changed: ${changed.join(', ')}`).toEqual([]);
   });
