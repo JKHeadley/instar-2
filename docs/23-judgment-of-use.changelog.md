@@ -4,6 +4,10 @@ _Generated from `23-judgment-of-use.changelog.json` by `scripts/render-changelog
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 8 · 2026-09-14 · draft — Part Twenty-Three repair round 6; eighth independent re-review at 5b46999a5f85f905166bef5a9c535f72cfda336c
+
+- **ASTRA-01: Separate bounded trial admission from supported-use activation, split NF-16a/16b, name the admission checklist in the prospective protocol and add the three admission/support fixtures.** — Allow an authorized trial to collect its own prospective evidence while results remain UNMEASURED; require completed prospective and live timing evidence for supported use, preserving all permission, resource, isolation and owner-seam conditions. _(docs/23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md; docs/23-judgment-of-use/11-negative-contract-fixtures.md)_
+
 ## Revision 7 · 2026-09-14 · draft — Independent design re-review 7 at 59bbef214aa186318d274225fd4ef68e5879bc11 (ASTRA-01)
 
 - **Define cohort, execution ordinal and pseudonymous enrollment at first use and in the index terms table.** — The re-review found the three terms neither in the glossary nor defined at first use; their meanings matter to the population and dependency contracts. _(docs/23-judgment-of-use/01-ownership-and-boundaries.md; docs/23-judgment-of-use/07-measurement-and-outcome-accounting.md; docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md; docs/23-judgment-of-use.md)_

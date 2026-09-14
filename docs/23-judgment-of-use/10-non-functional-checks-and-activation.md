@@ -10,8 +10,11 @@ in section 12 for each key, including earlier-owner transitive dependencies.
 Every runtime row remains non-executable until P and all listed owner implementations
 land, all inherited conditions pass, and real evidence
 satisfies the whole row. A fixture or schema test alone cannot shorten that list.
-NF-17 has two separately reported arms: 17a local isolation and 17b commons
-export. A reference to the whole NF-17 requires both arms; local activation
+NF-16 has two separately reported arms: 16a frozen replay and trial readiness,
+and 16b completed prospective and live timing evidence. A reference to the whole
+NF-16 requires both arms; trial admission selects 16a explicitly, while supported-use
+activation requires both. NF-17 has two separately reported arms: 17a local
+isolation and 17b commons export. A reference to the whole NF-17 requires both arms; local activation
 selects 17a explicitly. NF-01 is documentation validation only and can run now.
 
 Basis: Purpose's checkability/evidence constraints; rules 34/49/65/69/95/113.
@@ -33,7 +36,8 @@ Basis: Purpose's checkability/evidence constraints; rules 34/49/65/69/95/113.
 | P23-NF-13 — Independent protected grading | Blinded sampler and denied learner edits witnessed by independent control; self-attestation or self-selected sample fails. | P, D, S, J, V, M, W; P unimplemented; `NON-EXECUTABLE-UNTIL-row-115-registration-and-custody`; `NON-EXECUTABLE-UNTIL-row-116-source-assessment-and-recall`; `NON-EXECUTABLE-UNTIL-row-117-judgment-use-occasion`; `NON-EXECUTABLE-UNTIL-row-118-standing-grades-and-reassessment`; `NON-EXECUTABLE-UNTIL-row-119-measurement-occasion-joins`; `NON-EXECUTABLE-UNTIL-row-123-scheduled-outcomes-and-audits` |
 | P23-NF-14 — Approval-pressure and genuine-change controls | Irrelevant praise leaves supported choice stable; real permission/evidence/preference change gets appropriate response. | P, D, S, J, V; P unimplemented; `NON-EXECUTABLE-UNTIL-row-115-registration-and-custody`; `NON-EXECUTABLE-UNTIL-row-116-source-assessment-and-recall`; `NON-EXECUTABLE-UNTIL-row-117-judgment-use-occasion`; `NON-EXECUTABLE-UNTIL-row-118-standing-grades-and-reassessment` |
 | P23-NF-15 — Measurement and compatibility | Owner census and compatible independent grades join; missingness, zero denominator, wrong tuple and unknown cost stay honest. | P, D, S, J, V, M; P unimplemented; `NON-EXECUTABLE-UNTIL-row-115-registration-and-custody`; `NON-EXECUTABLE-UNTIL-row-116-source-assessment-and-recall`; `NON-EXECUTABLE-UNTIL-row-117-judgment-use-occasion`; `NON-EXECUTABLE-UNTIL-row-118-standing-grades-and-reassessment`; `NON-EXECUTABLE-UNTIL-row-119-measurement-occasion-joins` |
-| P23-NF-16 — Frozen real-case pilot | All preregistered dimensions, confidence bounds, resources and strata reported, plus section 8.2’s separately authorized live A/B timing workload under Nine's registered production-system principal, narrow grants and designated operator-owned probe-resource contract, with unfinished-reply accounting; a test identity or fixture aimed at a production store is refused before any fact is written. Leaked siblings/synthetic roots/retuned labels cannot pass. | P, D, S, J, E, V, M, W, O; P unimplemented; `NON-EXECUTABLE-UNTIL-row-115-registration-and-custody`; `NON-EXECUTABLE-UNTIL-row-116-source-assessment-and-recall`; `NON-EXECUTABLE-UNTIL-row-117-judgment-use-occasion`; `NON-EXECUTABLE-UNTIL-row-120-effect-use-binding`; `NON-EXECUTABLE-UNTIL-row-118-standing-grades-and-reassessment`; `NON-EXECUTABLE-UNTIL-row-119-measurement-occasion-joins`; `NON-EXECUTABLE-UNTIL-row-123-scheduled-outcomes-and-audits`; `NON-EXECUTABLE-UNTIL-row-122-operator-views-and-recovery` |
+| P23-NF-16a — Frozen replay and trial readiness | Sealed section 8 protocol, authorized real-case population, independent grader controls and all applicable replay-stage bars pass, with dimensions, confidence bounds, resources and strata reported. Trial admission accepts pending prospective results only as UNMEASURED; any unmet admission condition refuses entry. Live timing admission retains Nine's registered production-system principal, narrow grants and designated operator-owned probe resources, and refusal of a test identity or fixture before any production fact is written. Leaked siblings/synthetic roots/retuned labels cannot pass. | P, D, S, J, E, V, M, W, O; P unimplemented; `NON-EXECUTABLE-UNTIL-row-115-registration-and-custody`; `NON-EXECUTABLE-UNTIL-row-116-source-assessment-and-recall`; `NON-EXECUTABLE-UNTIL-row-117-judgment-use-occasion`; `NON-EXECUTABLE-UNTIL-row-120-effect-use-binding`; `NON-EXECUTABLE-UNTIL-row-118-standing-grades-and-reassessment`; `NON-EXECUTABLE-UNTIL-row-119-measurement-occasion-joins`; `NON-EXECUTABLE-UNTIL-row-123-scheduled-outcomes-and-audits`; `NON-EXECUTABLE-UNTIL-row-122-operator-views-and-recovery` |
+| P23-NF-16b — Completed prospective and live timing evidence | All section 8 prospective bars pass after required observation windows, with complete denominators, confidence bounds, resources and strata, plus the separately authorized live A/B timing workload and unfinished-reply accounting. Pending, missing or failed endpoints refuse a measured/support claim and supported-use activation; complete independently verified results for the declared class can pass. | P, D, S, J, E, V, M, W, O; P unimplemented; `NON-EXECUTABLE-UNTIL-row-115-registration-and-custody`; `NON-EXECUTABLE-UNTIL-row-116-source-assessment-and-recall`; `NON-EXECUTABLE-UNTIL-row-117-judgment-use-occasion`; `NON-EXECUTABLE-UNTIL-row-120-effect-use-binding`; `NON-EXECUTABLE-UNTIL-row-118-standing-grades-and-reassessment`; `NON-EXECUTABLE-UNTIL-row-119-measurement-occasion-joins`; `NON-EXECUTABLE-UNTIL-row-123-scheduled-outcomes-and-audits`; `NON-EXECUTABLE-UNTIL-row-122-operator-views-and-recovery` |
 | P23-NF-17a — Local replay isolation and provider boundary | Authorized historical inputs produce sandbox-only result; live dispatch, private grader context and future-label leaks are structurally refused. | P, D, S, J, E, V; P unimplemented; `NON-EXECUTABLE-UNTIL-row-115-registration-and-custody`; `NON-EXECUTABLE-UNTIL-row-116-source-assessment-and-recall`; `NON-EXECUTABLE-UNTIL-row-117-judgment-use-occasion`; `NON-EXECUTABLE-UNTIL-row-120-effect-use-binding`; `NON-EXECUTABLE-UNTIL-row-118-standing-grades-and-reassessment` |
 | P23-NF-17b — Commons export isolation and receipt recovery | Private hashes/identifying rationale are refused by the commons decoder; permitted destination-scoped fields pass. An eligible correction interrupted before receipt retains one owned pending obligation, resumes through authorized retry and adopts the exact authenticated receipt once; forged/duplicate receipts cannot close it. | P, D, S, J, E, V, M, W, O, C; P unimplemented; `NON-EXECUTABLE-UNTIL-row-115-registration-and-custody`; `NON-EXECUTABLE-UNTIL-row-116-source-assessment-and-recall`; `NON-EXECUTABLE-UNTIL-row-117-judgment-use-occasion`; `NON-EXECUTABLE-UNTIL-row-120-effect-use-binding`; `NON-EXECUTABLE-UNTIL-row-118-standing-grades-and-reassessment`; `NON-EXECUTABLE-UNTIL-row-119-measurement-occasion-joins`; `NON-EXECUTABLE-UNTIL-row-123-scheduled-outcomes-and-audits`; `NON-EXECUTABLE-UNTIL-row-122-operator-views-and-recovery`; `NON-EXECUTABLE-UNTIL-row-121-commons-candidate-and-correction` |
 | P23-NF-18 — Loss, custody and multi-machine recovery | Rebuild at declared frontier preserves pending links, disputes and corrections; duplicates/unavailable captures/full stores cannot yield false completeness. | P, D, S, J, E, V, M, W, O; P unimplemented; `NON-EXECUTABLE-UNTIL-row-115-registration-and-custody`; `NON-EXECUTABLE-UNTIL-row-116-source-assessment-and-recall`; `NON-EXECUTABLE-UNTIL-row-117-judgment-use-occasion`; `NON-EXECUTABLE-UNTIL-row-120-effect-use-binding`; `NON-EXECUTABLE-UNTIL-row-118-standing-grades-and-reassessment`; `NON-EXECUTABLE-UNTIL-row-119-measurement-occasion-joins`; `NON-EXECUTABLE-UNTIL-row-123-scheduled-outcomes-and-audits`; `NON-EXECUTABLE-UNTIL-row-122-operator-views-and-recovery` |
@@ -54,23 +58,77 @@ The section 11 fixtures name the exact outcomes; owner refusal preserves inputs.
 Basis: Purpose's evidence constraint; rules 34/35/49/65/69; existing owner testing
 contracts and Part 21 activation convention.
 
-**Rule — activation is a conjunction, not an implementation flag.**
-**Checks: P23-NF-12/16/17a/17b/19/20/21/22.** Documentation approval, all applicable
-owner grants and their implementation, registered current consumer defaults,
-independent control of grading, unit/integration/lifecycle evidence, migration
-parity and applicable study permissions are separate conditions. A/B local
-activation requires NF-02–11, NF-13–16, NF-17a and NF-18–22: the union is
-P, D, S, J, E, V, M, W, O. NF-21 includes the package-owned 21h calculation
-and its public-input/population reconciliation without assigning analysis to M,
-and 21j's policy comparison, HTTP/CLI consumers and conflict-journal evidence;
-local activation requires their 21f replacement acceptance before legacy
-retirement. NF-16 timing must also pass Nine's production-system probe positive
-and the test-identity/production-store refusal before any fact is written.
-Commons export additionally requires NF-12 and
-NF-17b: the union adds C and inherits row 121’s full conditions in section 12,
-including commons rows 102–114 and their earlier-owner prerequisites. A local
-loop does not depend on enabling fleet sharing. Proposal C, the challenge arm, is distinct from dependency C. The initial
-challenge arm is offline/background under NF-13/14/16/17a and never controls a real action.
+**Rule — trial admission and supported-use activation are separate conjunctions.**
+**Checks: P23-NF-01–22, with NF-16a/16b and NF-17a/17b selected below.**
+Neither admission is an implementation flag. The following shared conditions
+are mandatory in BOTH checklists: documentation approval and NF-01; all applicable
+owner grants and their implementation; registered current consumer defaults;
+independent control of grading; unit/integration/production-initialization
+lifecycle and wiring evidence; migration parity; and applicable study permissions.
+The A/B owner union for both is P, D, S, J, E, V, M, W, O, with every section 12
+inherited condition. Unknown, requested-only or no-op owner evidence fails either
+checklist. NF-20's lifecycle acceptance must already exercise the real owner path
+through outcome, independent Grade and scoped support under the owner testing
+contract; that acceptance trace is not the prospective pilot's population or result.
+
+Owner evidence for both checklists must name D's registrations, custody and real
+assembly bindings; S's current source/private-use/provider/audience permissions
+and recall evidence; J's actual-input, occasion and compatibility captures;
+E's exact authorized effects and settlement; V's standing, independent protected
+grading and reassessment; M's complete population, missingness and cost joins;
+W's due observation/audit work and recovery; and O's approved scope, controls,
+status and recovery views. Register finite spend/quota/resource grants, horizons,
+stop/revocation and supervision before any workload uses them. Section 8's US$0
+spend default remains until separately granted; subscription use still needs its
+metered quota cap. NF-21 includes the package-owned 21h calculation and its
+public-input/population reconciliation without assigning analysis to M, and
+21j's policy comparison, HTTP/CLI consumers and conflict-journal evidence;
+both checklists require their 21f replacement acceptance before legacy retirement.
+
+1. **TRIAL ADMISSION — bounded authorized evaluation and prospective local trial.**
+   Require all shared conditions and NF-02–11, NF-13–15, NF-16a, NF-17a and
+   NF-18–22 before the selected A/B candidate enters the prospective phase.
+   NF-16a requires the sealed protocol and all applicable section 8 replay and
+   grader bars, including B's gain test when B is selected. The preceding replay
+   collects those results only under the shared conditions, frozen protocol,
+   independent controls and NF-17a shadow restrictions: sections 2–3 govern
+   permitted inputs and recording, future labels/outcomes stay in the grader
+   channel, and the replay has no live credentials or dispatch port. Replay
+   results are not a prerequisite to collecting themselves and cannot authorize
+   prospective entry until NF-16a passes. The trial's approved scope covers at
+   least 300 new independent eligible occasions, at least 30 days and all later
+   required windows within granted resources. Initially observe existing authorized
+   behavior and advisory suggestions; any live preference application must stay
+   within current grants. No experimental withholding or disclosure is imposed
+   solely for a counterfactual. NF-16b's prospective endpoints remain UNMEASURED
+   while required results/windows are pending. Trial admission grants only bounded
+   evidence collection; it cannot produce a measured/support claim or supported
+   production use. The separate timing workload needs its own section 8.2 grant,
+   Nine's production-system probe positive and test-identity/production-store
+   refusal before any fact is written; its results are not required to admit
+   their own collection. Missing timing authorization leaves that workload
+   unexecuted and its endpoint UNMEASURED. Stop, revocation, ceilings and observed
+   integrity/adverse-evidence failures inhibit further trial work as section 8
+   requires; already-required authorized outcome observation remains owned.
+2. **SUPPORTED-USE ACTIVATION — supported local production use.**
+   Recheck every shared and trial-admission condition under current authority,
+   and require NF-02–11, NF-13–16 (both 16a and 16b), NF-17a and NF-18–22.
+   NF-16b requires all section 8 prospective results, including mature actual
+   outcomes, prospective permission/process integrity, unnecessary hold and harmful
+   withholding evidence and reassessment deadlines, after every required window;
+   section 8.2's separately authorized live timing endpoint must also pass.
+   Independent V grades and M's complete population/compatibility joins must
+   support the declared class. Pending, disputed, missing, unverifiable or failed
+   required results cannot satisfy the conjunction; a passing replay or authorized
+   running trial cannot substitute. Only after this checklist passes may that
+   class be recommended as locally measured and activated for supported use.
+
+For either checklist, commons export additionally requires NF-12 and NF-17b:
+the union adds C and inherits row 121's full conditions in section 12, including
+commons rows 102–114 and their earlier-owner prerequisites. A local loop does
+not depend on enabling fleet sharing; trial admission makes no fleet release.
+Proposal C, the challenge arm, is distinct from dependency C. The initial challenge
+arm is offline/background under NF-13/14/16a/17a and never controls a real action.
 No live C activation is specified here; any such consumer needs its exact
 operator-approved rule exception and measured benefit through the existing owner.
 

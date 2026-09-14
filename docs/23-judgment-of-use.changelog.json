@@ -1,5 +1,21 @@
 [
   {
+    "revision": 8,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Part Twenty-Three repair round 6; eighth independent re-review at 5b46999a5f85f905166bef5a9c535f72cfda336c"
+    },
+    "changes": [
+      {
+        "what": "ASTRA-01: Separate bounded trial admission from supported-use activation, split NF-16a/16b, name the admission checklist in the prospective protocol and add the three admission/support fixtures.",
+        "why": "Allow an authorized trial to collect its own prospective evidence while results remain UNMEASURED; require completed prospective and live timing evidence for supported use, preserving all permission, resource, isolation and owner-seam conditions.",
+        "ref": "docs/23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md; docs/23-judgment-of-use/11-negative-contract-fixtures.md"
+      }
+    ]
+  },
+  {
     "revision": 7,
     "date": "2026-09-14",
     "status": "draft",
