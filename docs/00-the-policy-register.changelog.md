@@ -8,4 +8,4 @@ each linked to the git change that made it (rule 91).
 
 - **Seeded the register with seventeen operator policies (P-01 to P-17) distilled from the decisions sweep's candidate amendments, each naming the purpose principle it serves and what a deployment may change.** — The sweep's nineteen candidates were operating policies and engineering defaults rather than general principles; the five general principles went to the purpose (PR #75) and the deployment choices live here. _(docs/harvests/decisions-sweep-2026-09-13.md consolidated candidates; topic 52075)_
 
-Approved in: PR #76.
+Approved in: PR #76, merge `c5644c113`.
