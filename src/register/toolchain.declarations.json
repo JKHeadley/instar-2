@@ -432,5 +432,37 @@
       82
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "register-round-twelve-integration",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "tests/integration/*-round12.test.ts",
+      "why": "Part-three round-twelve held enrollment regressions require operator approval; external enforcement is owned by parts nine and eleven.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "register-round-twelve-e2e",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "tests/e2e/*-round12.test.ts",
+      "why": "Part-three round-twelve held normal-build enrollment regressions require operator approval; external enforcement is owned by parts nine and eleven.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
   }
 ]
