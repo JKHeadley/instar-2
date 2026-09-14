@@ -56,10 +56,20 @@ const behaviors = new Map(Object.entries({
   53: ['legacy-additivity', 'check-p16-additivity'],
 }).map(([number, value]) => [Number(number), value]));
 const acceptanceNeighbors = new Map([
+  [4, [
+    'sample-clock:cumulative-model-session-successive-points-not-same-quantity',
+    'sample-clock:quota-successive-points-not-same-quantity',
+    'sample-clock:package-cost-successive-points-not-same-quantity',
+  ]],
   [13, [
     'attribution:real-owner-positive',
     'attribution:absent-neighbor',
     'attribution:withdrawn-decision-evidence-current-resolution',
+  ]],
+  [16, [
+    'sample-clock:cumulative-model-session-read-retains-both-source-times',
+    'sample-clock:quota-read-retains-both-source-times',
+    'sample-clock:package-cost-read-retains-both-source-times',
   ]],
   [33, [
     'burn:event-only-opens',
@@ -76,6 +86,14 @@ const acceptanceNeighbors = new Map([
     'resource:successive-samples-do-not-collapse',
     'peer:fresh-process-input-is-byte-equal-before-and-after-unrelated-call',
   ]],
+]);
+const successOnlyNeighbors = new Set([
+  'sample-clock:cumulative-model-session-successive-points-not-same-quantity',
+  'sample-clock:cumulative-model-session-read-retains-both-source-times',
+  'sample-clock:quota-successive-points-not-same-quantity',
+  'sample-clock:quota-read-retains-both-source-times',
+  'sample-clock:package-cost-successive-points-not-same-quantity',
+  'sample-clock:package-cost-read-retains-both-source-times',
 ]);
 const dependencies = {
   3: ['seam-response-intake-followup.md', 'seam-response-assembly-followup.md',
@@ -182,9 +200,13 @@ export function checkP16Coverage(report, dispositions = p16Dispositions()) {
       || row.status.startsWith('SUPPLEMENTAL-EXECUTABLE-')) {
       for (const tier of tiers) if (!passing.some(test => test.file.startsWith(tier)))
         throw new Error(`${row.id}: executable row lacks a passing ${tier} fixture`);
-      for (const neighbor of acceptanceNeighbors.get(row.number) ?? [])
-        if (!passing.some(test => test.title.includes(neighbor)))
+      for (const neighbor of acceptanceNeighbors.get(row.number) ?? []) {
+        const acceptance = passing.find(test => test.title.includes(neighbor));
+        if (!acceptance)
           throw new Error(`${row.id}: named acceptance/refusal neighbor did not execute: ${neighbor}`);
+        if (successOnlyNeighbors.has(neighbor) && !acceptance.title.includes('[accepts-success]'))
+          throw new Error(`${row.id}: positive acceptance neighbor permits refusal: ${neighbor}`);
+      }
     } else if (passed.length) throw new Error(`${row.id}: non-executable row was counted as a pass`);
     return { ...row, tests, passing: passing.length };
   });

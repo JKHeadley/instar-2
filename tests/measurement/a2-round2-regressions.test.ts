@@ -19,7 +19,7 @@ function generationFor(f: ReturnType<typeof measurementA2Fixture>): ProjectionGe
 }
 
 function readRequest(f: ReturnType<typeof measurementA2Fixture>,
-  sourceHistory: ReturnType<typeof f.snapshot>) {
+  sourceHistory: ReturnType<typeof f.snapshot>, producers = [f.producer]) {
   const sourceGeneration = generationFor(f);
   const sourceDefinition = value(measurementProjectionDefinition(sourceGeneration, {
     'measurement-observation': { identity: 'identity', value: 'measurement',
@@ -28,15 +28,15 @@ function readRequest(f: ReturnType<typeof measurementA2Fixture>,
   const binding = value(bindCurrentMeasurementReadSource({ sourceHistory, sourceDefinition,
     sourceGeneration }, f.c));
   return { sourceHistory, sourceDefinition, sourceGeneration,
-    query: f.readQuery(binding), producers: [f.producer], attributions: [], timedOut: false };
+    query: f.readQuery(binding), producers, attributions: [], timedOut: false };
 }
 
-function disagreementFixture(resolutionAt = 150) {
+function disagreementFixture(resolutionAt = 150, eventFamily = false) {
   const f = measurementA2Fixture();
   const left = f.planObservation({ subject: 'exchange:review', sourceEvent: 'w:a',
-    amount: 100, at: 100 });
+    amount: 100, at: 100, ...(eventFamily ? { contract: f.eventProducer } : {}) });
   const right = f.planObservation({ subject: 'exchange:review', sourceEvent: 'w:b',
-    amount: 110, at: 100 });
+    amount: 110, at: 100, ...(eventFamily ? { contract: f.eventProducer } : {}) });
   [left, right].forEach(f.persistObservation);
   const evidence = f.admitEvidence(f.evidenceInput({ id: 'resolution:review',
     observedAt: f.clock(resolutionAt), freshFor: 1_000_000,
@@ -54,15 +54,17 @@ describe('Part 16 A2 round-two independent review regressions', () => {
   it('history:equal-witnesses-count-once and history:owner-resolved-disagreement retain one resolved row', () => {
     const equal = measurementA2Fixture();
     const one = equal.planObservation({ subject: 'exchange:equal', sourceEvent: 'equal:a',
-      amount: 100, at: 100 });
+      amount: 100, at: 100, contract: equal.eventProducer });
     const two = equal.planObservation({ subject: 'exchange:equal', sourceEvent: 'equal:b',
-      amount: 100, at: 100 });
+      amount: 100, at: 100, contract: equal.eventProducer });
     [one, two].forEach(equal.persistObservation);
-    expect(value(renderCurrentMeasurementRead(readRequest(equal, equal.snapshot()), equal.c)))
+    expect(value(renderCurrentMeasurementRead(readRequest(equal, equal.snapshot(),
+      [equal.eventProducer]), equal.c)))
       .toMatchObject({ totalCount: 1, rows: [{ amount: 100 }] });
 
-    const resolved = disagreementFixture();
-    expect(value(renderCurrentMeasurementRead(readRequest(resolved.f, resolved.sourceHistory),
+    const resolved = disagreementFixture(150, true);
+    expect(value(renderCurrentMeasurementRead(readRequest(resolved.f, resolved.sourceHistory,
+      [resolved.f.eventProducer]),
       resolved.f.c))).toMatchObject({ totalCount: 1, rows: [{ amount: 105 }] });
   });
 

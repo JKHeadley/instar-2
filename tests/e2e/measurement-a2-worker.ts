@@ -22,7 +22,7 @@ const store = createFactStore(f.factContext, physical.storage);
 
 if (mode === 'write') {
   const observation = f.planObservation({ subject: 'exchange:restart',
-    sourceEvent: 'usage:restart', amount: 13, at: 100 });
+    sourceEvent: 'usage:restart', amount: 13, at: 100, contract: f.eventProducer });
   die('before-append');
   value(authorAndAppend({ kind: 'measurement-observation', schemaVersion: 1,
     machine: 'machine-a', principal: f.facts.alice as unknown as Json,
@@ -46,7 +46,7 @@ if (history.entries.length === 0) {
   const claim = evidence.claim.value as { category: string; sourceSample: string;
     state: 'reported' };
   const port = createMeasurementLedgerA2(f.c);
-  const witness = value(port.witness({ input: { contract: f.producer,
+  const witness = value(port.witness({ input: { contract: f.eventProducer,
     subjectInstance: body.measurement.subject.instance, sourceSample: claim.sourceSample,
     category: claim.category, measurement: body.measurement, evidence,
     sourceEvent: evidence.id, phase: 'final', predecessors: [], state: claim.state,
@@ -70,7 +70,7 @@ if (history.entries.length === 0) {
   const binding = value(port.bindRead({ sourceHistory: history, sourceDefinition: definition,
     sourceGeneration: generation }));
   const read = value(port.read({ sourceHistory: history, sourceDefinition: definition,
-    sourceGeneration: generation, query: f.readQuery(binding), producers: [f.producer],
+    sourceGeneration: generation, query: f.readQuery(binding), producers: [f.eventProducer],
     attributions: [], timedOut: false }));
   die('after-fold');
   const cache = value(port.cache(value(decodeReadCachePolicy(f.cachePolicyInput, f.c))));

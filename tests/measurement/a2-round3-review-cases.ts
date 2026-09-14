@@ -26,14 +26,14 @@ function readRequest(f: any, history: any, producers = [f.producer], overrides =
 // Persist exactly the same two disagreeing witnesses; change only caller stream metadata.
 {
   const f=measurementA2Fixture();
-  const a=f.planObservation({subject:'exchange:stream',sourceEvent:'stream:a',amount:100,at:100});
-  const b=f.planObservation({subject:'exchange:stream',sourceEvent:'stream:b',amount:110,at:100});
+  const a=f.planObservation({subject:'exchange:stream',sourceEvent:'stream:a',amount:100,at:100,contract:f.eventProducer});
+  const b=f.planObservation({subject:'exchange:stream',sourceEvent:'stream:b',amount:110,at:100,contract:f.eventProducer});
   [a,b].forEach(f.persistObservation); const h=f.snapshot();
   const aw=f.witness(a,h), bw=f.witness(b,h);
   record('stream:independent-disagreement',()=>m.resolveCurrentQuantity({witnesses:[aw,bw],sourceHistory:h,evaluationClock:f.clock(200)},f.c),r=>ok(r)&&got(r).state==='unresolved');
   const fake=m.createCurrentQuantityWitness({input:{...b.input,phase:'correction',predecessors:[a.sourceEvent]},sourceHistory:h},f.c);
   record('stream:invented-correction-must-not-select-winner',()=>ok(fake)?m.resolveCurrentQuantity({witnesses:[aw,got(fake)],sourceHistory:h,evaluationClock:f.clock(200)},f.c):fake,r=>no(r)||(ok(r)&&got(r).state==='unresolved'));
-  record('history:disagreement-retains-both-witnesses-and-partial',()=>m.renderCurrentMeasurementRead(readRequest(f,h),f.c),r=>ok(r)&&got(r).partial&&JSON.stringify(got(r)).includes('stream:a')&&JSON.stringify(got(r)).includes('stream:b'));
+  record('history:disagreement-retains-both-witnesses-and-partial',()=>m.renderCurrentMeasurementRead(readRequest(f,h,[f.eventProducer]),f.c),r=>ok(r)&&got(r).partial&&JSON.stringify(got(r)).includes('stream:a')&&JSON.stringify(got(r)).includes('stream:b'));
 }
 // An existing event cannot vanish merely because the signed population list omits it.
 {
@@ -130,12 +130,12 @@ record('capture:real-owner-pin-and-tombstone',()=>captureRetentionProof(),r=>r.p
  [model,event].forEach(f.persistObservation);const h=f.snapshot();
  const witness=f.witness(model,h);
  record('quantity:other-valid-family-does-not-refuse-selected-key',()=>m.resolveCurrentQuantity({witnesses:[witness],sourceHistory:h,evaluationClock:f.clock(200)},f.c),r=>ok(r)&&got(r).amount===7);
- record('history:valid-model-and-event-population-is-readable',()=>m.renderCurrentMeasurementRead(readRequest(f,h,[f.producer,f.eventProducer]),f.c),r=>ok(r)&&got(r).totalCount===2);
+ record('history:unwitnessed-model-quarantines-but-event-remains-readable',()=>m.renderCurrentMeasurementRead(readRequest(f,h,[f.producer,f.eventProducer]),f.c),r=>ok(r)&&got(r).partial&&got(r).totalCount===1&&got(r).rows[0].family==='programmatic-event');
 }
 {
  const f=measurementA2Fixture();
- const obs=[0,199,200].map((at,i)=>f.planObservation({subject:`bounded:${i}`,sourceEvent:`bounded:w:${i}`,amount:i,at}));obs.forEach(f.persistObservation);
- const h=f.snapshot(),req=readRequest(f,h,[f.producer],{start:f.clock(0),end:f.clock(200),evaluationClock:f.clock(200),pageSize:1});
+ const obs=[0,199,200].map((at,i)=>f.planObservation({subject:`bounded:${i}`,sourceEvent:`bounded:w:${i}`,amount:i,at,contract:f.eventProducer}));obs.forEach(f.persistObservation);
+ const h=f.snapshot(),req=readRequest(f,h,[f.eventProducer],{start:f.clock(0),end:f.clock(200),evaluationClock:f.clock(200),pageSize:1});
  const first=m.renderCurrentMeasurementRead(req,f.c);
  record('read:exact-start-included-end-excluded-and-count-retained',()=>first,r=>ok(r)&&got(r).totalCount===2&&got(r).rows[0].at.value===0&&got(r).partial&&got(r).nextCursor!==null);
  const next={...req,query:f.readQuery({...req.query,cursor:got(first).nextCursor})};
@@ -164,11 +164,11 @@ record('capture:real-owner-pin-and-tombstone',()=>captureRetentionProof(),r=>r.p
 // A later disagreeing witness invalidates a former resolution without deleting either.
 {
  const f=measurementA2Fixture();
- const rows=['a','b','c'].map((id,i)=>f.planObservation({subject:'exchange:later',sourceEvent:`later:${id}`,amount:100+i*10,at:100}));
+ const rows=['a','b','c'].map((id,i)=>f.planObservation({subject:'exchange:later',sourceEvent:`later:${id}`,amount:100+i*10,at:100,contract:f.eventProducer}));
  rows.slice(0,2).forEach(f.persistObservation);
  const evidence=f.admitEvidence(f.evidenceInput({id:'later:resolution',observedAt:f.clock(110),freshFor:1_000_000,claim:{subject:rows[0].identity,predicate:'quantity-resolved',value:{amount:105,witnesses:['later:a','later:b']}}}));
  f.append('measurement-evidence',{evidence},f.clock(110));
- const h1=f.snapshot(), request1=readRequest(f,h1);
+ const h1=f.snapshot(), request1=readRequest(f,h1,[f.eventProducer]);
  const view=got(projections.foldProjection(request1.sourceDefinition,h1,request1.sourceGeneration,f.c));
  record('projection:current-owner-source-accepted',()=>projections.readProjection(view,request1.sourceDefinition,f.clock(200),f.c),ok);
  record('resolution:current-supported-read',()=>m.renderCurrentMeasurementRead(request1,f.c),r=>ok(r)&&got(r).rows[0].amount===105);
@@ -177,7 +177,7 @@ record('capture:real-owner-pin-and-tombstone',()=>captureRetentionProof(),r=>r.p
  record('projection:stale-owner-read-refuses-stale-base',()=>projections.readProjection(view,request1.sourceDefinition,f.clock(200),f.c),r=>no(r)&&r.reason==='stale-base');
  record('history:stale-owner-snapshot-refuses',()=>m.renderCurrentMeasurementRead(request1,f.c),no);
  record('history:copied-owner-snapshot-refuses',()=>m.currentPeerHistoryBinding(structuredClone(h2),f.c),no);
- record('resolution:later-witness-refuses-stale-owner-resolution',()=>m.renderCurrentMeasurementRead(readRequest(f,h2),f.c),no);
+ record('resolution:later-witness-retains-unresolved-current-history',()=>m.renderCurrentMeasurementRead(readRequest(f,h2,[f.eventProducer]),f.c),r=>ok(r)&&got(r).partial&&got(r).rows[0].amount===null&&got(r).rows[0].evidenceManifest.length===3);
 }
 // The source claims one sample time across measurement/evidence; rejecting a late witness
 // as a new occurrence must not cause a model exchange to move to the usage arrival day.
@@ -251,14 +251,14 @@ record('capture:real-owner-pin-and-tombstone',()=>captureRetentionProof(),r=>r.p
 // Owner resolution ordering is causal, including equal wall-clock ticks.
 for (const early of [true,false]) {
  const f=measurementA2Fixture();
- const a=f.planObservation({subject:'ordered',sourceEvent:'ordered:a',amount:100,at:100});
- const b=f.planObservation({subject:'ordered',sourceEvent:'ordered:b',amount:110,at:100});
+ const a=f.planObservation({subject:'ordered',sourceEvent:'ordered:a',amount:100,at:100,contract:f.eventProducer});
+ const b=f.planObservation({subject:'ordered',sourceEvent:'ordered:b',amount:110,at:100,contract:f.eventProducer});
  const evidence=f.admitEvidence(f.evidenceInput({id:'ordered:resolution',observedAt:f.clock(100),freshFor:1000000,claim:{subject:a.identity,predicate:'quantity-resolved',value:{amount:105,witnesses:['ordered:a','ordered:b']}}}));
  if(early) f.append('measurement-evidence',{evidence},f.clock(100));
  [a,b].forEach(f.persistObservation);
  if(!early) f.append('measurement-evidence',{evidence},f.clock(100));
  const h=f.snapshot();
- record(early?'resolution:earlier-signed-resolution-refuses':'resolution:same-tick-causal-successor-accepts',()=>m.renderCurrentMeasurementRead(readRequest(f,h),f.c),r=>early?no(r):ok(r)&&got(r).rows[0].amount===105);
+ record(early?'resolution:earlier-signed-resolution-refuses':'resolution:same-tick-causal-successor-accepts',()=>m.renderCurrentMeasurementRead(readRequest(f,h,[f.eventProducer]),f.c),r=>early?no(r):ok(r)&&got(r).rows[0].amount===105);
 }
 
 // The reviewer's separate fresh-process peer case belongs in the permanent roster too.

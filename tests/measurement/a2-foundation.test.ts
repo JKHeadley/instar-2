@@ -120,7 +120,7 @@ describe('Part 16 slice A2 current-history measurement semantics', () => {
   it('P16-NF-12 [behavior:signed-history-attribution] P16-NF-13 [behavior:unattributed-conflicted] P16-NF-16 [behavior:current-history-read] P16-NF-36 [behavior:deterministic-historical-presentation] P16-NF-47 [behavior:privacy] P16-NF-48 [behavior:bounded-query] P16-NF-50 [behavior:historical-restart-rebuild] derives rows from the current fold and rejects invented or stale bindings', () => {
     const f = measurementA2Fixture();
     const observation = f.planObservation({ subject: 'exchange:read', sourceEvent: 'usage:read',
-      amount: 7, at: 100 });
+      amount: 7, at: 100, contract: f.eventProducer });
     f.persistObservation(observation);
     const history = f.snapshot();
     const generation = generationFor(f);
@@ -132,18 +132,18 @@ describe('Part 16 slice A2 current-history measurement semantics', () => {
     const query = f.readQuery(binding);
     const first = value(renderCurrentMeasurementRead({ sourceHistory: history,
       sourceDefinition: definition, sourceGeneration: generation, query,
-      producers: [f.producer], attributions: [], timedOut: false }, f.c));
+      producers: [f.eventProducer], attributions: [], timedOut: false }, f.c));
     expect(first).toMatchObject({ totalCount: 1, partial: false,
-      rows: [{ identity: observation.identity, amount: 7, state: 'unattributed',
+      rows: [{ identity: observation.identity, amount: 7, state: 'reported',
         feature: null, model: null }] });
     expect(JSON.stringify(first)).not.toMatch(/prompt|response|command|environment/i);
     expect(first.exportBytes).toBeLessThanOrEqual(query.maxExportBytes);
     expect(value(renderCurrentMeasurementRead({ sourceHistory: history,
       sourceDefinition: definition, sourceGeneration: generation, query,
-      producers: [f.producer], attributions: [], timedOut: false }, f.c))).toEqual(first);
+      producers: [f.eventProducer], attributions: [], timedOut: false }, f.c))).toEqual(first);
     const inventedQuery = f.readQuery({ ...binding, sourceHistoryDigest: 'sha256:invented' });
     refused(renderCurrentMeasurementRead({ sourceHistory: history, sourceDefinition: definition,
-      sourceGeneration: generation, query: inventedQuery, producers: [f.producer],
+      sourceGeneration: generation, query: inventedQuery, producers: [f.eventProducer],
       attributions: [], timedOut: false }, f.c), 'exact owner snapshot');
   });
 
@@ -196,16 +196,20 @@ describe('Part 16 slice A2 current-history measurement semantics', () => {
 
   it('P16-NF-34 [behavior:coverage-debt] P16-NF-33 [behavior:burn-hysteresis] P16-NF-39 [behavior:all-identities-retention] P16-NF-40 [behavior:capture-retention] P16-NF-41 [behavior:bounded-cache-eviction] burn:high-window-forged-as-prior-recovery keeps durable identities separate from bounded disposable cache work', () => {
     const f = measurementA2Fixture();
-    const observation = f.planObservation({ subject: 'exchange:aggregate', sourceEvent: 'usage:aggregate', amount: 9, at: 100 });
+    const observation = f.planObservation({ subject: 'exchange:aggregate',
+      sourceEvent: 'usage:aggregate', amount: 9, at: 100, contract: f.eventProducer });
     f.persistObservation(observation);
     const history = f.snapshot();
     const quantity = f.quantity([observation], history);
     const frontier = value(currentPeerHistoryBinding(history, f.c)).frontierDigest;
-    const policy = value(decodeAggregateMeasurementsPolicy(f.aggregatePolicyInput, f.c));
+    const eventAggregate = { ...f.aggregatePolicyInput, id: 'aggregate:event',
+      sourceKind: 'programmatic-count' };
+    const aggregateContext = f.withRegistered(eventAggregate);
+    const policy = value(decodeAggregateMeasurementsPolicy(eventAggregate, aggregateContext));
     expect(value(aggregateCurrentMeasurements({ policy, quantities: [quantity], unit: 'tokens',
       category: 'input', dimensions: ['feature'], producer: 'probe', scope: 'scope:ordinary',
       start: f.clock(0), end: f.clock(200), evaluationClock: f.clock(200),
-      frontier }, f.c))).toMatchObject({ amount: 9, members: ['usage:aggregate'] });
+      frontier }, aggregateContext))).toMatchObject({ amount: 9, members: ['usage:aggregate'] });
     const generation = generationFor(f);
     expect(value(measurementProjectionDefinition(generation, {
       'measurement-observation': { identity: 'identity', value: 'measurement', merge: 'set-union' },
@@ -296,7 +300,9 @@ describe('Part 16 slice A2 current-history measurement semantics', () => {
       comparisonScopeAmount: 1, samples: [{ identity: 'endpoint:target', feature: 'feature-a',
         observations: [endpointObservation] }] });
     const endpointHistory = endpoint.snapshot();
-    refused(createCurrentBurnWindow({ window: endpointPlan.build(endpointHistory),
-      sourceHistory: endpointHistory }, endpoint.c), 'outside');
+    const endpointWindow = value(createCurrentBurnWindow({ window: endpointPlan.build(endpointHistory),
+      sourceHistory: endpointHistory }, endpoint.c));
+    refused(evaluateCurrentBurn(endpoint.burnPolicy(), closed, endpointWindow, [], endpoint.c),
+      'comparison denominator');
   });
 });

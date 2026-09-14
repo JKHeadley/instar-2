@@ -32,10 +32,13 @@ it('P16-NF-12 [behavior:signed-history-attribution] P16-NF-13 [behavior:unattrib
 it('P16-NF-04 [behavior:evidence-quantity-binding] P16-NF-14 [behavior:causal-quantity-resolution] P16-NF-37 [behavior:peer-union-window] P16-NF-38 [behavior:peer-completeness-clock] full A2 port binds quantities and peer completeness to one current owner history', () => {
   const f = measurementA2Fixture();
   const observation = f.planObservation({ subject: 'exchange:integration',
-    sourceEvent: 'usage:integration', amount: 8, at: 100 });
+    sourceEvent: 'usage:integration', amount: 8, at: 100, contract: f.eventProducer });
   f.persistObservation(observation);
   const history = f.snapshot();
-  const port = createMeasurementLedgerA2(f.c);
+  const eventAggregate = { ...f.aggregatePolicyInput, id: 'aggregate:event',
+    sourceKind: 'programmatic-count' };
+  const context = f.withRegistered(eventAggregate);
+  const port = createMeasurementLedgerA2(context);
   expect(Object.keys(port).sort()).toEqual(['aggregate', 'attribute', 'bindPeer', 'bindRead', 'burn',
     'cache', 'mergePeers', 'owner', 'read', 'resolve', 'window', 'witness']);
   const witness = value(port.witness({ input: observation.input, sourceHistory: history }));
@@ -44,7 +47,7 @@ it('P16-NF-04 [behavior:evidence-quantity-binding] P16-NF-14 [behavior:causal-qu
   expect(quantity).toMatchObject({ state: 'resolved', amount: 8 });
   const binding = value(port.bindPeer(history));
   const aggregate = value(port.aggregate({
-    policy: value(decodeAggregateMeasurementsPolicy(f.aggregatePolicyInput, f.c)),
+    policy: value(decodeAggregateMeasurementsPolicy(eventAggregate, context)),
     quantities: [quantity], unit: 'tokens', category: 'input', dimensions: ['feature'],
     producer: 'probe', scope: 'scope:ordinary', start: f.clock(0), end: f.clock(200),
     evaluationClock: f.clock(200), frontier: binding.frontierDigest,
@@ -61,7 +64,7 @@ it('P16-NF-04 [behavior:evidence-quantity-binding] P16-NF-14 [behavior:causal-qu
 it('P16-NF-12 [behavior:signed-history-attribution] P16-NF-13 [behavior:unattributed-conflicted] P16-NF-16 [behavior:current-history-read] P16-NF-36 [behavior:deterministic-historical-presentation] P16-NF-39 [behavior:all-identities-retention] P16-NF-40 [behavior:capture-retention] P16-NF-41 [behavior:bounded-cache-eviction] P16-NF-47 [behavior:privacy] P16-NF-48 [behavior:bounded-query] P16-NF-50 [behavior:historical-restart-rebuild] full A2 port renders bounded rows from its exact current all-identities fold', () => {
   const f = measurementA2Fixture();
   const observation = f.planObservation({ subject: 'exchange:read:integration',
-    sourceEvent: 'usage:read:integration', amount: 6, at: 100 });
+    sourceEvent: 'usage:read:integration', amount: 6, at: 100, contract: f.eventProducer });
   f.persistObservation(observation);
   const history = f.snapshot();
   const port = createMeasurementLedgerA2(f.c);
@@ -78,10 +81,10 @@ it('P16-NF-12 [behavior:signed-history-attribution] P16-NF-13 [behavior:unattrib
     sourceGeneration: generation }));
   const query = f.readQuery({ ...binding, pageSize: 1 });
   const result = value(port.read({ sourceHistory: history, sourceDefinition: definition,
-    sourceGeneration: generation, query, producers: [f.producer], attributions: [],
+    sourceGeneration: generation, query, producers: [f.eventProducer], attributions: [],
     timedOut: false }));
   expect(result).toMatchObject({ totalCount: 1, partial: false,
-    rows: [{ identity: observation.identity, amount: 6, state: 'unattributed' }] });
+    rows: [{ identity: observation.identity, amount: 6, state: 'reported' }] });
   expect(JSON.stringify(result)).not.toMatch(/prompt|response|command|environment/i);
   expect(captureRetentionProof().tombstone).toMatchObject({ status: 'tombstoned', bytes: null });
   const cache = value(port.cache(value(decodeReadCachePolicy(f.cachePolicyInput, f.c))));
