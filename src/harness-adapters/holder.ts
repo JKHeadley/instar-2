@@ -42,6 +42,62 @@ export interface HarnessAdapterStateStorePort {
   save(expected: Hash | null, snapshot: HarnessAdapterStateSnapshot): void;
 }
 
+interface HarnessValidationFloor {
+  readonly type: 'HarnessValidationFloor';
+  readonly schemaVersion: 1;
+  readonly id: string;
+  readonly purpose: 'transcript-poison';
+  readonly adapter: string;
+  readonly artifact: Hash;
+  readonly platform: string;
+  readonly machine: string;
+  readonly launch: string;
+  readonly incarnation: string;
+  readonly processIdentity: string;
+  readonly subject: string;
+  readonly event: string;
+  readonly eventHash: Hash;
+  readonly observation: string;
+  readonly observationFact: string;
+  readonly observationWitness: string;
+  readonly plan: string;
+  readonly planFact: string;
+  readonly planVersion: string;
+  readonly probe: string;
+  readonly probeFact: string;
+  readonly generation: string;
+  readonly confirmedAt: number;
+}
+
+interface HarnessValidationFloorStore {
+  loadValidationFloors(): readonly unknown[];
+  appendValidationFloor(floor: HarnessValidationFloor): void;
+}
+
+const fallbackValidationFloors = new WeakMap<object, readonly HarnessValidationFloor[]>();
+
+function validationFloorStore(state: HarnessAdapterStateStorePort): HarnessValidationFloorStore {
+  const extended = state as HarnessAdapterStateStorePort & Partial<HarnessValidationFloorStore>;
+  if (extended.loadValidationFloors && extended.appendValidationFloor) {
+    return {
+      loadValidationFloors: () => extended.loadValidationFloors!(),
+      appendValidationFloor: floor => extended.appendValidationFloor!(floor),
+    };
+  }
+  return {
+    loadValidationFloors: () => fallbackValidationFloors.get(state) ?? [],
+    appendValidationFloor(floor) {
+      const current = fallbackValidationFloors.get(state) ?? [];
+      const existing = current.find(row => row.id === floor.id);
+      if (existing) {
+        if (bytes(existing) !== bytes(floor)) throw new Error('immutable validation floor disagreement');
+        return;
+      }
+      fallbackValidationFloors.set(state, freeze([...current, floor]));
+    },
+  };
+}
+
 export interface HarnessHandleLookup {
   readonly state: 'found' | 'missing' | 'unknown';
   readonly found: boolean;
@@ -133,6 +189,7 @@ export function createMemoryHarnessAdapterStateStore(
   id = 'memory:harness-adapter-state',
 ): HarnessAdapterStateStorePort {
   let retained: HarnessAdapterStateSnapshot | null = null;
+  let validationFloors: readonly HarnessValidationFloor[] = [];
   return Object.freeze({
     owner: 'part-thirteen' as const,
     id,
@@ -141,6 +198,15 @@ export function createMemoryHarnessAdapterStateStore(
       const current = retained ? harnessAdapterIdentity(retained).canonicalHash : null;
       if (current !== expected) throw new Error('harness adapter state compare-and-swap mismatch');
       retained = snapshot;
+    },
+    loadValidationFloors: () => validationFloors,
+    appendValidationFloor(floor: HarnessValidationFloor) {
+      const existing = validationFloors.find(row => row.id === floor.id);
+      if (existing) {
+        if (bytes(existing) !== bytes(floor)) throw new Error('immutable validation floor disagreement');
+        return;
+      }
+      validationFloors = freeze([...validationFloors, floor]);
     },
   });
 }
@@ -561,6 +627,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     context: input.context,
     state: input.state,
   });
+  const validationFloors = validationFloorStore(input.state);
 
   const decision = (
     disposition: HarnessEvidenceAdmission['disposition'],
@@ -754,6 +821,149 @@ export function createHarnessEvidenceHolder(input: Readonly<{
       && posture.evaluatedAt === now;
   };
 
+  const poisonConfirmation = (
+    event: HarnessRuntimeEvent,
+    now: number,
+  ): HarnessValidationFloor | null => {
+    if (event.kind !== 'diagnostic' || !event.diagnosticCode.startsWith('transcript-poison:')
+      || !input.owners.verification || !input.context.history) return null;
+    const planId = event.diagnosticCode.slice('transcript-poison:'.length);
+    if (!planId) return null;
+    try {
+      const rows = consumeResult(input.owners.verification.inspectCurrent(), {
+        Success: value => value,
+        Refused: refused => { throw new Error(refused.detail); },
+      });
+      const planRow = rows.find(candidate => candidate.record.type === 'VerificationPlan'
+        && candidate.record.id === planId);
+      if (!planRow || planRow.record.type !== 'VerificationPlan' || planRow.taint.length
+        || planRow.conflicts.length || !validResumePlan(planRow.record, exactSubject(event),
+          'transcript-poison', now)) return null;
+      const plan = planRow.record;
+      const probeRow = rows.find(candidate => candidate.record.type === 'ProbeRecord'
+        && candidate.record.plan === plan.id
+        && candidate.record.planVersion === plan.bar.version
+        && candidate.record.arm === 'transcript-poison'
+        && candidate.record.subject === exactSubject(event)
+        && candidate.record.disposition === 'passed'
+        && candidate.record.captureStatus === 'available'
+        && candidate.record.missingPhases.length === 0
+        && candidate.record.witnesses.length > 0
+        && candidate.taint.length === 0 && candidate.conflicts.length === 0);
+      if (!probeRow || probeRow.record.type !== 'ProbeRecord') return null;
+      const observationRow = consumeResult(input.context.history.lookup(event.sourceEvidence[0] ?? ''), {
+        Success: value => value,
+        Refused: refused => { throw new Error(refused.detail); },
+      });
+      if (!observationRow?.record || observationRow.record.type !== 'HarnessObservation'
+        || observationRow.taint.length || observationRow.conflicts.length
+        || observationRow.completeness !== 'complete') return null;
+      const identity = harnessAdapterIdentity(event);
+      return freeze({
+        type: 'HarnessValidationFloor' as const,
+        schemaVersion: 1 as const,
+        id: `validation-floor:${identity.canonicalHash}`,
+        purpose: 'transcript-poison' as const,
+        adapter: event.harness,
+        artifact: event.artifactDigest,
+        platform: event.platform,
+        machine: event.machine,
+        launch: event.launch,
+        incarnation: event.incarnation,
+        processIdentity: event.processIdentity,
+        subject: exactSubject(event),
+        event: event.id,
+        eventHash: identity.canonicalHash,
+        observation: observationRow.record.id,
+        observationFact: observationRow.fact.id,
+        observationWitness: observationRow.record.detail,
+        plan: plan.id,
+        planFact: planRow.fact.id,
+        planVersion: plan.bar.version,
+        probe: probeRow.record.id,
+        probeFact: probeRow.fact.id,
+        generation: plan.subject.generation,
+        confirmedAt: now,
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  const validationFloorFor = (value: unknown): HarnessValidationFloor => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('retained validation floor is malformed');
+    }
+    const row = value as Record<string, unknown>;
+    const fields = ['type', 'schemaVersion', 'id', 'purpose', 'adapter', 'artifact', 'platform', 'machine',
+      'launch', 'incarnation', 'processIdentity', 'subject', 'event', 'eventHash', 'observation',
+      'observationFact', 'observationWitness', 'plan', 'planFact', 'planVersion', 'probe', 'probeFact',
+      'generation', 'confirmedAt'];
+    if (Object.keys(row).length !== fields.length || fields.some(field => !(field in row))
+      || row.type !== 'HarnessValidationFloor' || row.schemaVersion !== 1
+      || row.purpose !== 'transcript-poison' || !Number.isSafeInteger(row.confirmedAt)
+      || (row.confirmedAt as number) < 0
+      || fields.filter(field => !['schemaVersion', 'confirmedAt'].includes(field))
+        .some(field => typeof row[field] !== 'string' || !(row[field] as string))) {
+      throw new Error('retained validation floor is malformed');
+    }
+    const floor = freeze(row as unknown as HarnessValidationFloor);
+    if (!floor.artifact.startsWith('sha256:') || !floor.eventHash.startsWith('sha256:')) {
+      throw new Error('retained validation floor has malformed hashes');
+    }
+    return floor;
+  };
+
+  const retainedPoisonFloors = (handle: HarnessRuntimeHandle): readonly HarnessValidationFloor[] => {
+    const raw = validationFloors.loadValidationFloors();
+    if (!Array.isArray(raw)) throw new Error('retained validation floors are unavailable');
+    const floors = raw.map(validationFloorFor);
+    if (new Set(floors.map(floor => floor.id)).size !== floors.length) {
+      throw new Error('retained validation floors contain duplicate identities');
+    }
+    return freeze(floors.filter(floor => floor.adapter === handle.harness
+      && floor.artifact === handle.artifactDigest && floor.platform === handle.platform
+      && floor.machine === handle.machine && floor.launch === handle.launch
+      && floor.incarnation === handle.incarnation && floor.processIdentity === handle.processIdentity));
+  };
+
+  const validationFloorCurrent = (floor: HarnessValidationFloor, now: number): boolean => {
+    if (!input.owners.verification || !input.context.history) return false;
+    try {
+      const observation = consumeResult(input.context.history.lookup(floor.observation), {
+        Success: value => value,
+        Refused: refused => { throw new Error(refused.detail); },
+      });
+      if (!observation?.record || observation.record.type !== 'HarnessObservation'
+        || observation.fact.id !== floor.observationFact || observation.record.detail !== floor.observationWitness
+        || observation.record.launch !== floor.launch || observation.record.incarnation !== floor.incarnation
+        || observation.record.boundaryEvidence !== floor.processIdentity || observation.taint.length
+        || observation.conflicts.length || observation.completeness !== 'complete'
+        || !consumeResult(input.context.history.resolve(observation.record), {
+          Success: value => value.admitted,
+          Refused: () => false,
+        })) return false;
+      const rows = consumeResult(input.owners.verification.inspectCurrent(), {
+        Success: value => value,
+        Refused: refused => { throw new Error(refused.detail); },
+      });
+      const plan = rows.find(candidate => candidate.record.type === 'VerificationPlan'
+        && candidate.record.id === floor.plan && candidate.fact.id === floor.planFact);
+      const probe = rows.find(candidate => candidate.record.type === 'ProbeRecord'
+        && candidate.record.id === floor.probe && candidate.fact.id === floor.probeFact);
+      if (!plan || plan.record.type !== 'VerificationPlan' || plan.taint.length || plan.conflicts.length
+        || plan.record.bar.version !== floor.planVersion || plan.record.subject.generation !== floor.generation
+        || !probe || probe.record.type !== 'ProbeRecord' || probe.taint.length || probe.conflicts.length
+        || probe.record.plan !== floor.plan || probe.record.planVersion !== floor.planVersion
+        || probe.record.arm !== 'transcript-poison' || probe.record.subject !== floor.subject
+        || probe.record.disposition !== 'passed' || probe.record.captureStatus !== 'available'
+        || probe.record.missingPhases.length > 0 || probe.record.witnesses.length === 0) return false;
+      return validResumePlan(plan.record, floor.subject, 'transcript-poison', now);
+    } catch {
+      return false;
+    }
+  };
+
   const resumeDisposition = (
     event: HarnessRuntimeEvent,
     now: number,
@@ -791,49 +1001,27 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     analysis: EvidenceAnalysis,
   ): Readonly<{ disposition: 'poisoned' | 'unknown'; evidence: MaterializedEvidence }> | null => {
     if (!input.owners.verification) return null;
+    const floors = retainedPoisonFloors(handle);
     const retainedPoison = analysis.decisionSet.filter(row => row.event?.kind === 'diagnostic'
       && row.event.diagnosticCode.startsWith('transcript-poison:'));
     const locallyConfirmed = retainedPoison.find(row => row.ownerCurrent && row.availability === 'current'
       && row.event && resumeDisposition(row.event, now) === 'poisoned');
     if (locallyConfirmed) return freeze({ disposition: 'poisoned' as const, evidence: locallyConfirmed });
-    // A diagnostic becomes a retained poison obligation only after Nine has
-    // recorded a successful exact-purpose probe for it. A detector candidate,
-    // or even a plan with no successful probe, may remain diagnostic but cannot
-    // veto a later owner-confirmed compatible resume. Conversely, once the
-    // successful probe existed, later source loss or conflict cannot make the
-    // conversation safe; without a landed clearance record it stays unknown.
-    const previouslyConfirmed = retainedPoison.find(row => {
-      const event = row.event!;
-      const planId = event.diagnosticCode.slice('transcript-poison:'.length);
-      if (!planId) return false;
-      try {
-        const rows = consumeResult(input.owners.verification!.inspectCurrent(), {
-          Success: value => value,
-          Refused: refused => { throw new Error(refused.detail); },
-        });
-        const plan = rows.find(candidate => candidate.record.type === 'VerificationPlan'
-          && candidate.record.id === planId)?.record;
-        if (!plan || plan.type !== 'VerificationPlan'
-          || plan.subject.holder !== 'part-thirteen:transcript-poison'
-          || plan.subject.governed !== exactSubject(event) || plan.subject.scope !== input.scope
-          || !plan.arms.some(arm => arm.required && arm.kind === 'runtime'
-            && arm.id === 'transcript-poison' && arm.executable === 'harness.transcript-poison'
-            && arm.fixture === 'P13-NF-51' && arm.outputContract === 'VerificationAssessment')
-          || !plan.consumers.some(consumer => consumer.id === 'part-thirteen:transcript-poison'
-            && consumer.direction === 'closed' && consumer.enforcedRecord === 'VerificationAssessment'
-            && consumer.decoder === 'decodeVerificationAssessment')
-          || !plan.bar.complete || !plan.bar.sources.includes('runtime-conversation')) return false;
-        return rows.some(candidate => candidate.record.type === 'ProbeRecord'
-          && candidate.record.plan === plan.id && candidate.record.planVersion === plan.bar.version
-          && candidate.record.arm === 'transcript-poison' && candidate.record.subject === exactSubject(event)
-          && candidate.record.disposition === 'passed' && candidate.record.captureStatus === 'available'
-          && candidate.record.missingPhases.length === 0 && candidate.record.witnesses.length > 0);
-      } catch {
-        return false;
-      }
-    });
-    if (previouslyConfirmed) {
-      return freeze({ disposition: 'unknown' as const, evidence: previouslyConfirmed });
+    // The floor is appended when the owner-confirmed diagnostic is admitted,
+    // before the event-journal write. It therefore distinguishes a candidate
+    // that never earned confirmation from a confirmation whose current owner
+    // prefix, observation, or local event later disappeared. No landed owner
+    // clearance record exists, so loss can only degrade poison to unknown.
+    if (floors.length > 0) {
+      const floor = floors[0]!;
+      const evidence = retainedPoison.find(row => row.event?.id === floor.event)
+        ?? (analysis.all.length >= input.maxEvents
+          ? analysis.decisionSet.find(row => row.id === floor.observation)
+          : undefined)
+        ?? freeze({ id: floor.event, sourceClock: floor.confirmedAt, phase: null,
+          observation: null, event: null, ownerCurrent: false, availability: 'unavailable' as const });
+      return freeze({ disposition: validationFloorCurrent(floor, now) ? 'poisoned' as const : 'unknown' as const,
+        evidence });
     }
 
     const omitted = analysis.decisionSet.filter(row => !row.event && row.phase === 'pause-observed');
@@ -853,9 +1041,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         && row.taint.length === 0 && row.conflicts.length === 0
         && validResumePlan(row.record, subject, 'transcript-poison', now));
       if (poisoned) return freeze({ disposition: 'poisoned' as const, evidence: omitted[0]! });
-      return poisonPlans.length > 0
-        ? freeze({ disposition: 'unknown' as const, evidence: omitted[0]! })
-        : null;
+      return null;
     } catch {
       return freeze({ disposition: 'unknown' as const, evidence: omitted[0]! });
     }
@@ -877,6 +1063,8 @@ export function createHarnessEvidenceHolder(input: Readonly<{
           return decision('refused', progress.reason, false, progress.key);
         }
         if (failure) return decision('refused', failure, false, progress.key);
+        const confirmation = poisonConfirmation(event, input.owners.current.current().clock.value);
+        if (confirmation) validationFloors.appendValidationFloor(confirmation);
 
         const existing = current.events.find(row => row.id === event.id);
         if (existing) {

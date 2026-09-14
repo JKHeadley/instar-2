@@ -22,6 +22,7 @@ import {
 import { createTransportFileStorage } from './transport-file-storage.mjs';
 
 const STATE_KIND = 'harness-adapter-state';
+const VALIDATION_FLOOR_KIND = 'harness-adapter-validation-floor';
 const STATE_SITE = 'harness-adapter-state.storage';
 const MAX_STATE_BYTES = 16 * 1024 * 1024;
 
@@ -104,16 +105,29 @@ function deterministicAuthor(path) {
     site: STATE_SITE,
     preserved: decodeContext.preserved,
     decode: decodeContext,
-    schemas: [{
-      kind: STATE_KIND, version: 1,
-      fields: {
-        stateId: { kind: 'text', maxLength: 4096 },
-        canonicalHash: { kind: 'text', maxLength: 71 },
-        snapshot: { kind: 'text', maxLength: MAX_STATE_BYTES },
+    schemas: [
+      {
+        kind: STATE_KIND, version: 1,
+        fields: {
+          stateId: { kind: 'text', maxLength: 4096 },
+          canonicalHash: { kind: 'text', maxLength: 71 },
+          snapshot: { kind: 'text', maxLength: MAX_STATE_BYTES },
+        },
+        machineScope: 'shared', standing: 'requester', action: 'work', scope,
+        causallyBound: false, requiredReferences: [], authority: 'none',
       },
-      machineScope: 'shared', standing: 'requester', action: 'work', scope,
-      causallyBound: false, requiredReferences: [], authority: 'none',
-    }],
+      {
+        kind: VALIDATION_FLOOR_KIND, version: 1,
+        fields: {
+          stateId: { kind: 'text', maxLength: 4096 },
+          floorId: { kind: 'text', maxLength: 4096 },
+          canonicalHash: { kind: 'text', maxLength: 71 },
+          floor: { kind: 'text', maxLength: MAX_STATE_BYTES },
+        },
+        machineScope: 'shared', standing: 'requester', action: 'work', scope,
+        causallyBound: false, requiredReferences: [], authority: 'none',
+      },
+    ],
     keys: [{ id: keyId, machine, publicKey, from: { epoch: 0, position: 0 } }],
     facts: [], grants: [], revocations: [], genesis: { hash: genesisHash, clock },
     timeAnchors: [], captures: {}, folded: {},
@@ -176,18 +190,19 @@ export function createHarnessAdapterFileState(path) {
 
   const current = () => {
     const facts = take(store.read());
-    if (facts.some(fact => fact.kind !== STATE_KIND || fact.body.stateId !== stateId)) {
+    if (facts.some(fact => ![STATE_KIND, VALIDATION_FLOOR_KIND].includes(fact.kind)
+      || fact.body.stateId !== stateId)) {
       throw new Error('Part Two harness state contains a foreign fact');
     }
-    const fact = facts.at(-1) ?? null;
-    if (!fact) return { fact: null, snapshot: null, canonicalHash: null };
+    const fact = facts.filter(candidate => candidate.kind === STATE_KIND).at(-1) ?? null;
+    if (!fact) return { fact: null, head: facts.at(-1) ?? null, snapshot: null, canonicalHash: null };
     const raw = JSON.parse(fact.body.snapshot);
     const snapshot = take(decodeHarnessAdapterStateSnapshot(raw, author.decodeContext));
     const canonicalHash = harnessAdapterIdentity(snapshot).canonicalHash;
     if (fact.body.canonicalHash !== canonicalHash) {
       throw new Error('Part Two harness state canonical identity mismatch');
     }
-    return { fact, snapshot, canonicalHash };
+    return { fact, head: facts.at(-1) ?? null, snapshot, canonicalHash };
   };
 
   const append = (expected, snapshot) => {
@@ -197,7 +212,7 @@ export function createHarnessAdapterFileState(path) {
     }
     const decoded = take(decodeHarnessAdapterStateSnapshot(snapshot, author.decodeContext));
     const identity = harnessAdapterIdentity(decoded).canonicalHash;
-    const head = before.fact;
+    const head = before.head ?? before.fact;
     const segment = {
       machine: author.machine,
       epoch: head?.segment.epoch ?? 0,
@@ -212,6 +227,49 @@ export function createHarnessAdapterFileState(path) {
         inSegment: head?.id ?? null, frontier: author.context.folded, required: [],
       },
       body: { stateId, canonicalHash: identity, snapshot: encoded(decoded).bytes },
+    }, author.privateKey);
+    take(store.append(envelope));
+  };
+
+  const loadValidationFloors = () => {
+    const facts = take(store.read());
+    if (facts.some(fact => ![STATE_KIND, VALIDATION_FLOOR_KIND].includes(fact.kind)
+      || fact.body.stateId !== stateId)) {
+      throw new Error('Part Two harness state contains a foreign fact');
+    }
+    return facts.filter(fact => fact.kind === VALIDATION_FLOOR_KIND).map(fact => {
+      const floor = JSON.parse(fact.body.floor);
+      const identity = encoded(floor);
+      if (fact.body.floorId !== floor.id || fact.body.canonicalHash !== identity.hash) {
+        throw new Error('Part Two harness validation floor canonical identity mismatch');
+      }
+      return floor;
+    });
+  };
+
+  const appendValidationFloor = floor => {
+    const identity = encoded(floor);
+    const existing = loadValidationFloors().find(candidate => candidate.id === floor.id);
+    if (existing) {
+      if (encoded(existing).hash !== identity.hash) throw new Error('immutable validation floor disagreement');
+      return;
+    }
+    const before = current();
+    const head = before.head ?? before.fact;
+    const segment = {
+      machine: author.machine,
+      epoch: head?.segment.epoch ?? 0,
+      position: head ? head.segment.position + 1 : 0,
+    };
+    const envelope = signEnvelope({
+      type: 'FactEnvelope', envelopeVersion: 1, id: factId(segment), kind: VALIDATION_FLOOR_KIND,
+      schemaVersion: 1, at: author.clock, machine: author.machine,
+      principal: json(author.principal), provenance: json(author.provenance), segment,
+      prevInSegment: head?.contentHash ?? author.context.genesis.hash,
+      predecessors: {
+        inSegment: head?.id ?? null, frontier: author.context.folded, required: [],
+      },
+      body: { stateId, floorId: floor.id, canonicalHash: identity.hash, floor: identity.bytes },
     }, author.privateKey);
     take(store.append(envelope));
   };
@@ -234,6 +292,8 @@ export function createHarnessAdapterFileState(path) {
     save(expected, snapshot) {
       append(expected, snapshot);
     },
+    loadValidationFloors,
+    appendValidationFloor,
   });
 }
 
