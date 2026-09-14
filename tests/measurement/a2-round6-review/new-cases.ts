@@ -98,55 +98,105 @@ for (const missingFirst of [true, false]) {
     result => ok(result) && got(result).partial && got(result).rows[0].amount === null);
 }
 
-// Deterministic property sweep: once a resolution covers its causal past, every later or
-// concurrent current-witness set remains readable as resolved, unresolved, or contested.
+// Deterministic property sweep: every composition of current witnesses, lawful correction,
+// concurrent owner verdicts, and per-witness freshness returns an honest quantity/read state.
+// Thirteen arrival/id schedules across the sixteen semantic combinations give 208 cases.
 test('resolution:property:any-current-witness-set-with-later-resolution-never-refuses', () => {
   const outcomes: string[] = [];
-  for (const missingFirst of [true, false]) {
-    for (const arrival of ['none', 'later', 'concurrent'] as const) {
-      for (const addedAmount of [83, 89]) {
+  for (const corrected of [false, true]) {
+    for (const competingResolution of [false, true]) {
+      for (const staleWitness of [false, true]) {
+        for (const agreeingCurrentWitnesses of [false, true]) {
+          for (let schedule = 0; schedule < 13; schedule++) {
         const f = F();
-        const first = f.planObservation({ subject: 'property',
-          sourceEvent: missingFirst ? 'z:first' : 'a:first', amount: 81, at: 100,
+        let first = f.planObservation({ subject: `property:${schedule}`,
+          sourceEvent: schedule % 2 === 0 ? 'z:first' : 'a:first', amount: 81, at: 100,
           contract: f.eventProducer });
-        const second = f.planObservation({ subject: 'property',
-          sourceEvent: missingFirst ? 'a:second' : 'z:second', amount: 85, at: 100,
+        const second = f.planObservation({ subject: first.subject,
+          sourceEvent: schedule % 2 === 0 ? 'a:second' : 'z:second',
+          amount: agreeingCurrentWitnesses ? 81 : 85, at: 100,
           contract: f.eventProducer });
-        [first, second].forEach(f.persistObservation);
+        if (staleWitness) {
+          f.evidence.splice(f.evidence.findIndex((evidence: any) =>
+            evidence.id === first.evidence.id), 1);
+          const evidence = f.admitEvidence(f.evidenceInput({ id: first.sourceEvent,
+            observedAt: f.clock(100), freshFor: 50, claim: first.evidence.claim }));
+          first = { ...first, evidence, input: { ...first.input, evidence } };
+        }
+        const arrival = schedule % 2 === 0 ? [first, second] : [second, first];
+        let original = '';
+        for (const observation of arrival) {
+          const fact = f.persistObservation(observation);
+          if (observation.sourceEvent === first.sourceEvent) original = fact;
+        }
         const resolution = f.admitEvidence(f.evidenceInput({ id: 'property:resolution',
           observedAt: f.clock(120), freshFor: 1_000_000,
           claim: { subject: first.identity, predicate: 'quantity-resolved',
             value: { amount: 83, witnesses: [first.sourceEvent, second.sourceEvent] } } }));
         f.append('measurement-evidence', { evidence: resolution }, f.clock(120));
-        if (arrival !== 'none') {
-          const added = f.planObservation({ subject: 'property',
-            sourceEvent: `property:${arrival}:${addedAmount}`, amount: addedAmount, at: 100,
-            contract: f.eventProducer });
-          if (arrival === 'later') f.persistObservation(added);
-          else {
-            const wire = f.facts.wire({ kind: 'measurement-observation', schemaVersion: 1,
-              machine: 'machine-b',
-              segment: { machine: 'machine-b', epoch: 0, position: 0 }, at: f.clock(130),
-              predecessors: { inSegment: null,
-                frontier: { 'machine-a': { epoch: 0, position: 1 } },
-                required: ['machine-a:0:1'] },
-              body: { identity: added.identity, measurement: added.measurement,
-                evidence: added.evidence,
-                producerContract: got(one.canonical(f.eventProducer)).bytes } }, f.factContext);
-            got(f.store.append(wire, { peer: 'machine-b' }));
-          }
+
+        let competingWire: ReturnType<typeof f.facts.wire> | null = null;
+        if (competingResolution) {
+          const evidence = f.admitEvidence(f.evidenceInput({ id: 'property:resolution:other',
+            observedAt: f.clock(120), freshFor: 1_000_000,
+            claim: { subject: first.identity, predicate: 'quantity-resolved',
+              value: { amount: 87, witnesses: [first.sourceEvent, second.sourceEvent] } } }));
+          competingWire = f.facts.wire({ kind: 'measurement-evidence', schemaVersion: 1,
+            machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 },
+            at: f.clock(120), predecessors: { inSegment: null,
+              frontier: { 'machine-a': { epoch: 0, position: 1 } },
+              required: ['machine-a:0:1'] }, body: { evidence } }, f.factContext);
+          if (schedule % 3 !== 0) got(f.store.append(competingWire, { peer: 'machine-b' }));
         }
+
+        let current = [first, second];
+        let sourceHistory;
+        if (corrected) {
+          const factContext = { ...f.factContext,
+            schemas: f.factContext.schemas.map((schema: any) =>
+              schema.kind === 'measurement-observation'
+              ? { ...schema,
+                fields: { ...schema.fields, corrects: { kind: 'reference' as const } },
+                optional: [...(schema.optional ?? []), 'corrects'] }
+              : schema) };
+          const store = facts.createFactStore(factContext, f.storage);
+          const replacement = f.planObservation({ subject: first.subject,
+            sourceEvent: `property:replacement:${schedule}`,
+            amount: agreeingCurrentWitnesses ? second.measurement.value : 89,
+            at: 100, contract: f.eventProducer });
+          got(facts.authorAndAppend({ kind: 'measurement-observation', schemaVersion: 1,
+            machine: 'machine-a', principal: f.facts.alice,
+            provenance: f.facts.alice.provenance, at: f.clock(140),
+            body: { identity: replacement.identity, measurement: replacement.measurement,
+              evidence: replacement.evidence,
+              producerContract: got(one.canonical(f.eventProducer)).bytes,
+              corrects: original }, required: [original] }, factContext, store, privateKey));
+          if (competingWire && schedule % 3 === 0)
+            got(store.append(competingWire, { peer: 'machine-b' }));
+          sourceHistory = got(store.readForProjection());
+          current = [replacement, second];
+        } else {
+          if (competingWire && schedule % 3 === 0)
+            got(f.store.append(competingWire, { peer: 'machine-b' }));
+          sourceHistory = f.snapshot();
+        }
+        const quantity = m.resolveCurrentQuantity({ witnesses: current.map(observation =>
+          f.witness(observation, sourceHistory)), sourceHistory,
+        evaluationClock: f.clock(200) }, f.c);
+        if (!ok(quantity)) return { valid: false, refused: quantity, outcomes };
         const read = m.renderCurrentMeasurementRead(
-          request(f, f.snapshot(), [f.eventProducer]), f.c);
+          request(f, sourceHistory, [f.eventProducer]), f.c);
         if (!ok(read)) return { valid: false, refused: read, outcomes };
         const row = got(read).rows[0];
-        outcomes.push(row.amount !== null ? 'resolved'
-          : row.state === 'conflicted' ? 'unresolved' : 'contested');
+        outcomes.push(`${got(quantity).state}:${row?.state ?? 'unavailable'}`);
+          }
+        }
       }
     }
   }
-  return { valid: outcomes.length === 12
-    && outcomes.every(state => ['resolved', 'unresolved', 'contested'].includes(state)), outcomes };
+  return { valid: outcomes.length === 208
+    && outcomes.every(state => ['resolved:reported', 'unresolved:conflicted',
+      'unavailable:unavailable'].includes(state)), outcomes };
 }, result => result.valid === true);
 
 // Baseline failures retain the full failed condition and raw population evidence.
