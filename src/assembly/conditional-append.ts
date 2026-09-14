@@ -135,6 +135,7 @@ export function createConditionalAssemblyAppendPort(
             ensureAssemblyWorkPermitted({ current: () => current }, name);
             return current;
           } };
+          const expectedHead = observedFacts.at(-1)?.contentHash ?? null;
 
           const existing = rows.find(row => row.record.type === name
             && (row.record.id === candidate.id || assemblyLogicalKey(row.record) === assemblyLogicalKey(candidate)));
@@ -151,14 +152,20 @@ export function createConditionalAssemblyAppendPort(
                 return { kind: 'local-durable' as const };
               }),
             };
-            take(createAssemblySpine(appendHost, author, createFactStore(author.context, authenticationStorage)).append(candidate));
+            const replay = createAssemblySpine(
+              appendHost, author, createFactStore(author.context, authenticationStorage),
+            ).append(candidate);
+            const settled = resultParts(replay);
+            if (!settled.ok) {
+              if (physicalHead(storage) !== expectedHead) continue;
+              take(replay);
+            }
             ensure(authenticated, 'conditional append replay did not reach Part Two authentication');
             const comparison = take(compareAssemblyRecords(name, existing.record, candidate, host.boundary));
             ensure(comparison.equal, comparison.conflict?.detail ?? 'assembly identity conflict');
             return existing.record as Extract<AssemblyRecord, { type: N }>;
           }
 
-          const expectedHead = observedFacts.at(-1)?.contentHash ?? null;
           const pinnedStorage: SegmentStoragePort = {
             owner: 'part-ten',
             read: () => storage.read(),

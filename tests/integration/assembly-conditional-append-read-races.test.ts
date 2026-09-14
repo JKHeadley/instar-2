@@ -14,6 +14,7 @@ interface WorkerResult {
   readonly stopped?: boolean;
   readonly outcome?: { readonly kind: string; readonly detail?: string };
   readonly rows?: readonly { readonly id: string; readonly adapter: string; readonly mode: string; readonly fact: string }[];
+  readonly sweep?: number;
 }
 
 function run(command: 'init' | 'append' | 'read', directory: string,
@@ -82,6 +83,41 @@ it.each(readRaces)(
       expect(resumed.data?.outcome?.detail).toContain('conditional append subject frontier changed; current=');
       expect(resumed.data?.outcome?.detail).toContain(fresh.rows?.[0]?.fact);
     }
+  },
+  60_000,
+);
+
+const replayReadRaces = ([1, 2, 3] as const).flatMap(pauseRead =>
+  (['webhook', 'long-poll'] as const).map(role => ({
+    pauseRead,
+    role,
+    id: `replay-read-${pauseRead}-unrelated-${role}`,
+  })));
+
+it.each(replayReadRaces)(
+  'P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:replay-read-race] $id',
+  async ({ pauseRead, role }) => {
+    const directory = mkdtempSync(join(tmpdir(), 'p10-conditional-replay-read-race-'));
+    run('init', directory);
+    expect(run('append', directory, { role, id: 'original' }).outcome?.kind).toBe('Success');
+    const paused = launch(directory, { role, id: 'original', pauseRead });
+    const release = join(directory, 'read-pause');
+    await waitFor(`${release}.ready`);
+    const winner = run('append', directory, {
+      role: role === 'webhook' ? 'long-poll' : 'webhook',
+      id: 'unrelated-interloper',
+      adapter: 'other',
+    });
+    writeFileSync(release, 'go');
+    const resumed = await paused;
+    const fresh = run('read', directory);
+
+    expect(winner.outcome?.kind).toBe('Success');
+    expect(resumed.status, resumed.stderr).toBe(0);
+    expect(resumed.data?.outcome?.kind).toBe('Success');
+    expect(fresh.rows).toHaveLength(2);
+    expect(fresh.rows?.map(row => row.id)).toEqual(['original', 'unrelated-interloper']);
+    expect(fresh.sweep).toBe(13);
   },
   60_000,
 );
