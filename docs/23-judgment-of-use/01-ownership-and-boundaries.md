@@ -25,7 +25,7 @@ Basis: Purpose's coherency and no-silent-loss constraint; rules 1/28/29/33/49/58
 | Parts 15/16 operator surfaces and conversations | Reachable status, verified identities, current audience | Permitted assessment views and explicit limitations |
 | Part 20 measurement | Canonical populations, quantity joins, compatibility and costs | Criterion mappings, occasion joins and outcome observations |
 | Part 21 recall | Complete relevant permitted evidence, non-obvious connections, actual-submission linkage and permission filtering | Assessment references and use dispositions; never a replacement retriever |
-| Part 22 commons | Export schema, enrollment, independence/cohort evaluation, privacy, fleet admission and human approval | Local candidate and later correction offered through its permitted seam |
+| Part 22 commons | Export schema, enrollment, independence and cohort evaluation (a cohort is a group of cases selected for one analysis), privacy, fleet admission and human approval | Local candidate and later correction offered through its permitted seam |
 
 The document numbering and owner numbering are intentionally distinguished.
 `09-the-run-graph.md` is not the verification owner. Part 20's internal

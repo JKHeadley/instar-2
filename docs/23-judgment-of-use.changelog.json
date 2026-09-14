@@ -19,7 +19,7 @@
         "ref": "docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md"
       },
       {
-        "what": "ASTRA-03: Bind live timing to Nine’s registered production system principal, narrow grants and designated operator-owned probe resources, with refusal of test identities or fixtures before production fact writes.",
+        "what": "ASTRA-03: Bind live timing to Nine\u2019s registered production system principal, narrow grants and designated operator-owned probe resources, with refusal of test identities or fixtures before production fact writes.",
         "why": "Satisfy rule 35 on the actual live path without changing the timing population or wisdom-evidence boundary.",
         "ref": "docs/23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md"
       }
@@ -71,7 +71,7 @@
         "ref": "docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md"
       },
       {
-        "what": "C-01: Replace “entailment argument” with “an explanation of how the cited principle supports the lesson.”",
+        "what": "C-01: Replace \u201centailment argument\u201d with \u201can explanation of how the cited principle supports the lesson.\u201d",
         "why": "Use plain language for the same placement requirement.",
         "ref": "docs/23-judgment-of-use/05-local-wisdom-fleet-candidates-and-pillar-placement.md"
       }
@@ -93,7 +93,7 @@
       },
       {
         "what": "A02: Define recovery hysteresis and coverage debt at the measurement prerequisite and add both to the index terms table.",
-        "why": "Make the required measurement evidence understandable at first use while retaining the measurement owner’s meanings.",
+        "why": "Make the required measurement evidence understandable at first use while retaining the measurement owner\u2019s meanings.",
         "ref": "docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md; docs/23-judgment-of-use.md"
       }
     ]
@@ -128,7 +128,7 @@
         "ref": "docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md"
       },
       {
-        "what": "JU-05: Make the two policy decisions phone-readable and apply the purpose’s three dispositions.",
+        "what": "JU-05: Make the two policy decisions phone-readable and apply the purpose\u2019s three dispositions.",
         "why": "Move traceability into the closing Rule and record pending deployment defaults beneath least revelation.",
         "ref": "docs/23-judgment-of-use/13-operator-decisions-and-honest-limits.md"
       },
@@ -145,7 +145,7 @@
     "status": "draft",
     "cause": {
       "kind": "conversation",
-      "note": "Part Twenty-Three design round D1; accepted R1–R5 at 8bf9a823 and B/A/C direction"
+      "note": "Part Twenty-Three design round D1; accepted R1\u2013R5 at 8bf9a823 and B/A/C direction"
     },
     "changes": [
       {
@@ -162,6 +162,23 @@
         "what": "Classify nine decisions and file two unresolved policy questions as candidate purpose amendments.",
         "why": "Only genuine operator judgment remains in the questions list; settings and constitutional boundaries name their basis.",
         "ref": "docs/23-judgment-of-use/13-operator-decisions-and-honest-limits.md"
+      }
+    ],
+    "multiMachinePosture": "Documentation only. Proposed per-agent state spans authorized machines through owner causal history; restricted captures stay in source custody, conflicting grades and partial coverage remain explicit, and copies never increase independent evidence."
+  },
+  {
+    "revision": 2,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Independent design re-review 7 at 59bbef214aa186318d274225fd4ef68e5879bc11 (ASTRA-01)"
+    },
+    "changes": [
+      {
+        "what": "Define cohort, execution ordinal and pseudonymous enrollment at first use and in the index terms table.",
+        "why": "The re-review found the three terms neither in the glossary nor defined at first use; their meanings matter to the population and dependency contracts.",
+        "ref": "docs/23-judgment-of-use/01-ownership-and-boundaries.md; docs/23-judgment-of-use/07-measurement-and-outcome-accounting.md; docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md; docs/23-judgment-of-use.md"
       }
     ],
     "multiMachinePosture": "Documentation only. Proposed per-agent state spans authorized machines through owner causal history; restricted captures stay in source custody, conflicting grades and partial coverage remain explicit, and copies never increase independent evidence."

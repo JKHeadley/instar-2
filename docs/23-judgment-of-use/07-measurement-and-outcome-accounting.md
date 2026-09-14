@@ -5,7 +5,9 @@
 manifest, criterion and outcome-hook joins to Part 20. Accepted canonical
 occasions, including refusal, no effect, cancellation and default, form the
 production population. Planned benchmark `(run, scenario version, candidate,
-ordinal)` executions form the replay population. Repeated model calls, machine
+ordinal)` executions form the replay population, where the execution ordinal is
+the zero-based position of a planned execution for one scenario and candidate,
+distinct from a retry. Repeated model calls, machine
 copies and multiple graders do not inflate either. Before-dispatch failures
 remain counted; zero denominator is undefined, not success or failure.
 

@@ -92,7 +92,9 @@ benchmark execution wherever U30 is reached. The A/B + retrospective arm is the
 only consumed arm; infrastructure for pending work is not a semantic hold.
 
 C additionally inherits every section of the [commons grant](seams/seam-response-commons-grants.md):
-102 normal enrollment after 77; 103 destination-scoped pseudonymous enrollment,
+102 normal enrollment after 77; 103 destination-scoped pseudonymous enrollment (identification by a
+destination-specific substitute identifier, with real identity and verified
+authority handled separately),
 challenge/signature and current One authority, unknown operator independence and
 no public real names; 104 real fact-store/transport-file custody, pre-send outbox,
 exact authenticated receipts, idempotent adoption, non-deleting decisions, fenced
