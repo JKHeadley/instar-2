@@ -141,6 +141,7 @@ const exactConditionalRowGrants = new Map([
 ]);
 const dependencyGrantIds = value => value.match(/P\d+-P\d+-[a-z0-9-]+-v\d+/g) ?? [];
 const ungrantedRequestFiles = new Set([calendarRequest, runAdmissionRequest]);
+const hasGrantedLedgerState = row => /\| (?:GRANTED|ALREADY GRANTED|BUILDING|BUILT)\b/.test(row ?? '');
 const isRequestOnlyDisposition = row => {
   if (!row.held || row.executable) return false;
   const files = dependencyFiles(row.held);
@@ -294,7 +295,7 @@ export function auditP15ArchitectureRows(dispositions) {
     }
     for (const match of row.held.matchAll(/row(?:s)?-([0-9-]+)/g)) for (const number of match[1].split('-').filter(Boolean)) {
       const ledgerRow = ledger.split('\n').find(line => line.startsWith(`| ${number} |`));
-      if (!ledgerRow || !/\| (?:GRANTED|ALREADY GRANTED)/.test(ledgerRow))
+      if (!hasGrantedLedgerState(ledgerRow))
         throw new Error(`${row.id}: ledger row ${number} is absent or not granted`);
     }
   }
