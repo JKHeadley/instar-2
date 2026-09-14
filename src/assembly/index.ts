@@ -20,3 +20,4 @@ export { deriveGrowthEpisodes, closeGrowthEpisode } from './growth.js';
 export { createConditionalAssemblyAppendPort } from './conditional-append.js';
 export type { AssemblyRecordSubject, AssemblySubjectFrontier, ConditionalAssemblyAppendPort,
   ConditionalAssemblyAppendDependencies } from './conditional-append.js';
+export { createConfinedProviderInvocation, type ConfinedProviderRoute, type ProviderInvocationPort } from './provider-invocation.js';
