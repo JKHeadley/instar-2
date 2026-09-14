@@ -853,8 +853,19 @@ export function aggregateCurrentMeasurements(request: CurrentAggregateMeasuremen
     'aggregate quantities must be bounded and identify an owner snapshot');
     ensure(new Set(request.quantities.map(row => row.key)).size === request.quantities.length,
       'aggregate repeats a quantity key');
+    // Establish provenance without treating the witnesses that happened to be usable
+    // when the caller resolved the quantity as the current selection. The selection
+    // below replays every retained witness at the consequential clock, so an expired
+    // witness remains audit evidence while a fresh equivalent witness can still carry
+    // the amount.
     const dependencies = request.quantities.map(quantity =>
-      quantityCurrent(quantity, context, evaluationClock));
+      quantityCurrent(quantity, context));
+    request.quantities.forEach((quantity, index) => {
+      const hasUsableWitness = dependencies[index]!.witnesses.some(witness =>
+        evidenceIsUsable(admittedEvidence(witness.evidence, context,
+          'quantity witness evidence'), evaluationClock, context));
+      if (!hasUsableWitness) quantityCurrent(quantity, context, evaluationClock);
+    });
     const sourceHistory = dependencies[0]!.sourceHistory;
     ensure(dependencies.every(dependency => dependency.sourceHistory === sourceHistory),
       'aggregate quantities do not share one exact current owner snapshot');
@@ -1161,10 +1172,14 @@ function reconcileBurnPopulation(sourceHistory: FactSnapshot, start: Clock, end:
     row => row.membershipAt !== null
       && clockOrder(start, row.membershipAt, context) <= 0
       && clockOrder(row.membershipAt, end, context) < 0);
+  const selectedObservations = [...observations.usable, ...observations.unavailable];
+  const modelExchanges = new Set(selectedObservations
+    .filter(row => row.contract.family === 'model-call')
+    .map(row => row.measurement.subject.instance));
   const modelUsage = new Set(observations.usable
     .filter(row => row.contract.family === 'model-call')
     .map(row => row.measurement.subject.instance));
-  const events = new Set(observations.usable
+  const events = new Set(selectedObservations
     .filter(row => row.contract.family === 'programmatic-event')
     .map(row => row.measurement.subject.instance));
 
@@ -1177,8 +1192,8 @@ function reconcileBurnPopulation(sourceHistory: FactSnapshot, start: Clock, end:
     const bucket = attempts.get(record.attempt) ?? [];
     bucket.push(status); attempts.set(record.attempt, bucket);
   }
-  const actualAttempts = new Set(modelUsage);
-  const observed = new Set(modelUsage);
+  const actualAttempts = new Set(modelExchanges);
+  const observed = new Set(modelExchanges);
   const uncertain = new Set<string>();
   const conflicted = new Set<string>();
   for (const [attempt, rows] of attempts) {
@@ -1383,6 +1398,7 @@ function selectedAmount(policy: BurnPolicy, sample: BurnSample,
 function resolvedSamples(policy: BurnPolicy, samples: readonly BurnSample[],
   evaluationClock: Clock, context: MeasurementDecodeContext) {
   let amount = 0;
+  let discreteAmount = 0n;
   let count = 0;
   let lostCurrentSupport = false;
   const debt: string[] = [];
@@ -1394,10 +1410,40 @@ function resolvedSamples(policy: BurnPolicy, samples: readonly BurnSample[],
         && resolveQuantityCurrentAt(quantity, context, evaluationClock).state !== 'resolved'))
         lostCurrentSupport = true;
     }
-    else { amount += selected; count++; }
+    else {
+      if (policy.unit === 'tokens' || policy.unit === 'bytes') discreteAmount += BigInt(selected);
+      else amount += selected;
+      count++;
+    }
   }
+  if (policy.unit === 'tokens' || policy.unit === 'bytes') {
+    ensure(discreteAmount <= BigInt(Number.MAX_SAFE_INTEGER),
+      'burn resolved discrete amount overflow');
+    amount = Number(discreteAmount);
+  } else ensure(Number.isFinite(amount) && amount >= 0, 'burn resolved amount overflow');
   return freeze({ amount, count, debt: [...new Set(debt)].sort(),
     lostCurrentSupport, identities: samples.map(sample => sample.identity).sort() });
+}
+
+function burnWindowCondition(policy: BurnPolicy, window: BurnWindow,
+  dependency: WindowDependency, evaluationClock: Clock,
+  context: MeasurementDecodeContext) {
+  const target = resolvedSamples(policy,
+    window.samples.filter((sample: BurnSample) => sample.feature === policy.feature),
+    evaluationClock, context);
+  const comparison = resolvedSamples(policy, window.samples, evaluationClock, context);
+  ensure(comparison.lostCurrentSupport || window.comparisonScopeAmount === comparison.amount,
+    'comparison denominator differs from its current registered-selection population');
+  const coverage = window.observedExchanges === 0 ? null
+    : window.usageSupportedExchanges / window.observedExchanges;
+  const ownerDebt = dependency.ownerEvidenceDebt;
+  const structural = target.debt.length > 0 || comparison.debt.length > 0
+    || ownerDebt.length > 0;
+  const incomplete = !window.censusComplete || !window.collectorsComplete
+    || window.dispatchUncertain > 0 || window.conflictedAttempts > 0 || structural;
+  const adequate = !incomplete && target.count >= policy.minimumEligibleSamples
+    && (coverage === null || coverage >= policy.minimumUsageCoverage);
+  return { target, comparison, coverage, incomplete, adequate, ownerDebt };
 }
 
 function median(values: readonly number[]): number | null {
@@ -1443,6 +1489,8 @@ export function evaluateCurrentBurn(policyInput: BurnPolicy, previous: BurnEpiso
       validateWindowCurrent(window, context, consequentialClock));
     ensure(new Set([currentDependency.interval, ...baselineDependencies.map(row => row.interval)]).size
       === baselines.length + 1, 'burn current and baseline intervals must be distinct');
+    let priorRecoveryCurrent = true;
+    let priorRecoveryDebt: string | null = null;
     if (previous.recoveryCount > 0) {
       const prior = episodeDependencies.get(previous);
       ensure(prior !== undefined && prior.policy === policy.id
@@ -1451,10 +1499,30 @@ export function evaluateCurrentBurn(policyInput: BurnPolicy, previous: BurnEpiso
         && prior.recoveryEligible,
       'prior burn recovery count lacks its current owner observation');
       const priorWindow = validateWindowCurrent(prior.window, context, consequentialClock);
-      prior.baselines.forEach(window => validateWindowCurrent(window, context, consequentialClock));
+      const priorBaselineDependencies = prior.baselines.map(window =>
+        validateWindowCurrent(window, context, consequentialClock));
       ensure(previous.lastEvaluatedWindow === priorWindow.interval
         && previous.lastEvaluatedObservation === priorWindow.observation,
       'prior burn recovery references differ from their owner observation');
+      const priorConditions = [burnWindowCondition(policy, prior.window, priorWindow,
+        consequentialClock, context), ...prior.baselines.map((window, index) =>
+        burnWindowCondition(policy, window, priorBaselineDependencies[index]!,
+          consequentialClock, context))];
+      const priorConfidence = prior.baselines.length > 0
+        && priorConditions.every(row => row.adequate);
+      const priorCurrentAmount = priorConditions[0]!.target.count > 0
+        ? priorConditions[0]!.target.amount : null;
+      const priorBaselineAmount = priorConfidence
+        ? median(priorConditions.slice(1).map(row => row.target.amount)) : null;
+      const priorShare = priorCurrentAmount === null
+        || priorConditions[0]!.comparison.amount === 0
+        ? null : priorCurrentAmount / priorConditions[0]!.comparison.amount;
+      const priorExcess = priorCurrentAmount === null || priorBaselineAmount === null
+        ? null : Math.max(0, priorCurrentAmount - priorBaselineAmount);
+      priorRecoveryCurrent = priorConfidence && priorExcess !== null && priorShare !== null
+        && priorExcess <= policy.recoveryExcess && priorShare <= policy.recoveryShare;
+      if (!priorRecoveryCurrent)
+        priorRecoveryDebt = `prior-recovery:${prior.window.id}:evidence-no-longer-usable`;
     }
     const orderedBaselines = baselines.map((window, index) => ({ window,
       dependency: baselineDependencies[index]! })).sort((a, b) =>
@@ -1467,28 +1535,8 @@ export function evaluateCurrentBurn(policyInput: BurnPolicy, previous: BurnEpiso
     }
     const all = [current, ...orderedBaselines.map(row => row.window)];
     const allDependencies = [currentDependency, ...orderedBaselines.map(row => row.dependency)];
-    const selected = all.map(window => resolvedSamples(policy,
-      window.samples.filter((sample: BurnSample) => sample.feature === policy.feature),
-      consequentialClock, context));
-    const comparisons = all.map(window =>
-      resolvedSamples(policy, window.samples, consequentialClock, context));
-    all.forEach((window, index) => ensure(comparisons[index]!.lostCurrentSupport
-      || window.comparisonScopeAmount === comparisons[index]!.amount,
-    'comparison denominator differs from its current registered-selection population'));
-    const conditions = all.map((window, index) => {
-      const target = selected[index]!;
-      const comparison = comparisons[index]!;
-      const coverage = window.observedExchanges === 0 ? null
-        : window.usageSupportedExchanges / window.observedExchanges;
-      const ownerDebt = allDependencies[index]!.ownerEvidenceDebt;
-      const structural = target.debt.length > 0 || comparison.debt.length > 0
-        || ownerDebt.length > 0;
-      const incomplete = !window.censusComplete || !window.collectorsComplete
-        || window.dispatchUncertain > 0 || window.conflictedAttempts > 0 || structural;
-      const adequate = !incomplete && target.count >= policy.minimumEligibleSamples
-        && (coverage === null || coverage >= policy.minimumUsageCoverage);
-      return { target, comparison, coverage, incomplete, adequate, ownerDebt };
-    });
+    const conditions = all.map((window, index) => burnWindowCondition(policy, window,
+      allDependencies[index]!, consequentialClock, context));
     const now = conditions[0]!;
     const confidence = baselines.length > 0 && conditions.every(row => row.adequate)
       ? 'adequate' as const : 'insufficient-evidence' as const;
@@ -1506,6 +1554,7 @@ export function evaluateCurrentBurn(policyInput: BurnPolicy, previous: BurnEpiso
     const excess = currentAmount === null || baselineAmount === null
       ? null : Math.max(0, currentAmount - baselineAmount);
     const debt = [...now.target.debt, ...now.comparison.debt, ...now.ownerDebt];
+    if (priorRecoveryDebt !== null) debt.push(priorRecoveryDebt);
     if (!current.censusComplete) debt.push('census-incomplete');
     if (!current.collectorsComplete) debt.push('collector-incomplete');
     if (current.dispatchUncertain > 0) debt.push('dispatch-uncertain');
@@ -1576,8 +1625,9 @@ export function evaluateCurrentBurn(policyInput: BurnPolicy, previous: BurnEpiso
     } else if (excess !== null && share !== null && excess <= policy.recoveryExcess
       && share <= policy.recoveryShare) {
       const priorInterval = intervalFromToken(previous.lastEvaluatedWindow);
-      const same = previous.lastEvaluatedWindow === currentDependency.interval;
-      const consecutive = priorInterval !== null
+      const same = priorRecoveryCurrent
+        && previous.lastEvaluatedWindow === currentDependency.interval;
+      const consecutive = priorRecoveryCurrent && priorInterval !== null
         && encoding(priorInterval.end).bytes === encoding(current.start).bytes;
       const recoveryCount = same ? Math.max(previous.recoveryCount, 1)
         : consecutive ? previous.recoveryCount + 1 : 1;
