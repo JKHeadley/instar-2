@@ -4,6 +4,12 @@ _Generated from `23-judgment-of-use.changelog.json` by `scripts/render-changelog
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 6 · 2026-09-14 · draft — Part Twenty-Three repair round 5; sixth independent re-review at e8f32bc9def29edea7abca9fe35f579db4f7520f
+
+- **ASTRA-01: Keep journal-analysis replacement inside Part 23 using existing public Two facts, Nine grades and M occasion joins only; bind migration and activation to replacement acceptance.** — Respect row 119 scope while preserving the legacy consumer, population/exclusion accounting, weighted heuristic basis and unassessed state until migration passes. _(docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md)_
+- **ASTRA-02: Inventory agent/org policy validation, HTTP and CLI consumers and both conflict-journal source references; specify owners, retirement gates and NF-21j migration cases.** — Preserve legacy evidence and distinct policy-comparison behavior through aligned, contradictory, missing/template and journal-evidence cases without treating heuristic output as authority. _(docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md)_
+- **ASTRA-03: Bind live timing to Nine’s registered production system principal, narrow grants and designated operator-owned probe resources, with refusal of test identities or fixtures before production fact writes.** — Satisfy rule 35 on the actual live path without changing the timing population or wisdom-evidence boundary. _(docs/23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md)_
+
 ## Revision 5 · 2026-09-14 · draft — Part Twenty-Three repair round 4; fifth independent re-review at d542e73a40cc0982a1bb48274dddd44601c3ffef
 
 - **A01: Inventory decision-journal drift/alignment and intent CLI consumers, name replacement owners and retirement gates, and add NF-21h population/update acceptance cases.** — Preserve source evidence, cohort/exclusion accounting and N/A as not assessed; keep the legacy weighted score a heuristic, never a wisdom Grade. _(docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md)_

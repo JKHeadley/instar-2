@@ -123,17 +123,32 @@ Numeric settings are agent-owned, bounded by current permission, honest measurem
 and separately granted resources; they do not set fleet or disclosure policy.
 
 **Rule — live timing is a separate authorized workload.**
-**Checks: P23-NF-06/15/16/19.** `P23-TIMING-01` measures ordinary permitted
-replies on the actual intake, queue, judgment and effect route to an operator-owned
-test account. It is not the wisdom replay or a counterfactual intervention in a
-person’s conversation. Before admission, record a scoped grant naming the account,
-verified audience, provider, route, harmless test content, finite resources and
+**Checks: P23-NF-06/15/16/19.** Under rule 35 and
+[Nine §4's live-probe contract](../13-the-verification-holders.md#4-probes-exercise-the-real-boundary),
+`P23-TIMING-01` measures ordinary permitted replies on the actual intake, queue,
+judgment and effect route using a registered production system principal with
+narrow observation grants and designated operator-owned probe resources. It is
+not the wisdom replay or a counterfactual intervention in a person’s conversation.
+Before admission, record a scoped grant naming that system principal, probe resources,
+verified audience, provider, route, harmless probe content, finite resources and
 300 A/B pairs (600 distinct reply requests); without it the endpoint is unmeasured.
 No third-party recipient, private incident or consequential task is replayed.
-The authorized account’s observing client records receipt of the complete reply.
+The production system principal's independently controlled observing client
+records receipt of the complete reply. Fixture identities and test accounts
+never enter production stores; a scoped workload grant cannot waive this rule.
+The refused neighbor directs a test identity or fixture at a production store:
+the actual production write boundary refuses it before any fact is written,
+including intake, journal and probe facts. Verify unchanged production fact
+state and observe the refusal outside that store, retaining the negative-case
+evidence in isolated fixture custody. The positive uses only the registered
+production principal and its designated resources; no fixture is relabelled to
+pass admission. Every send, provider call and cleanup follows Nine's ordinary
+Five/Six/Eight admission, finite budgets and stable operation identities; failed
+cleanup retains its resource charge and changes probe posture. Stop and
+off-switch inhibit new probes.
 
-Freeze 300 test inputs spanning the intended ordinary-reply sizes and queue-load
-bands, the fixed model/settings and permitted context snapshots. The pairing key
+Freeze 300 harmless probe inputs spanning the intended ordinary-reply sizes and
+queue-load bands, the fixed model/settings and permitted context snapshots. The pairing key
 is `(timing protocol digest, case ordinal, route/configuration digest, load band)`.
 Each pair contains one fresh A request and one fresh B request using the same
 input/context; their arm-specific request and effect identities remain distinct.
@@ -156,8 +171,8 @@ A successful arm’s request admits exactly one reply effect on its tested path;
 revoked or refused requests produce no reply and retain their unfinished status. Eight binds
 it to the permitted bytes/audience/standing, retains idempotent identity across
 retries and forbids a second effect after uncertain dispatch. A/B are two explicitly
-authorized test requests, never two executions of one user action. Additional or
-unauthorized sends fail integrity. The offline wisdom environment retains no live
+authorized probe requests from the production system principal, never two
+executions of one user action. Additional or unauthorized sends fail integrity. The offline wisdom environment retains no live
 credentials or dispatch port; these timing cases supply no wisdom denominator.
 
 With all 300 pairs finished, calculate `d_i = latency_B_i - latency_A_i` in seconds,

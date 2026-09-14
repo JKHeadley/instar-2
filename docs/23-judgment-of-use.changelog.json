@@ -1,5 +1,31 @@
 [
   {
+    "revision": 6,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Part Twenty-Three repair round 5; sixth independent re-review at e8f32bc9def29edea7abca9fe35f579db4f7520f"
+    },
+    "changes": [
+      {
+        "what": "ASTRA-01: Keep journal-analysis replacement inside Part 23 using existing public Two facts, Nine grades and M occasion joins only; bind migration and activation to replacement acceptance.",
+        "why": "Respect row 119 scope while preserving the legacy consumer, population/exclusion accounting, weighted heuristic basis and unassessed state until migration passes.",
+        "ref": "docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md"
+      },
+      {
+        "what": "ASTRA-02: Inventory agent/org policy validation, HTTP and CLI consumers and both conflict-journal source references; specify owners, retirement gates and NF-21j migration cases.",
+        "why": "Preserve legacy evidence and distinct policy-comparison behavior through aligned, contradictory, missing/template and journal-evidence cases without treating heuristic output as authority.",
+        "ref": "docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md"
+      },
+      {
+        "what": "ASTRA-03: Bind live timing to Nine’s registered production system principal, narrow grants and designated operator-owned probe resources, with refusal of test identities or fixtures before production fact writes.",
+        "why": "Satisfy rule 35 on the actual live path without changing the timing population or wisdom-evidence boundary.",
+        "ref": "docs/23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md"
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-09-14",
     "status": "draft",
