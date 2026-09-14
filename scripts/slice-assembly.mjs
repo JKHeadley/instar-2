@@ -843,6 +843,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     isCurrent(vector) { registerChecks.push('current'); return registerReply(vector.id === candidate.extract.vector.id); },
   }, genesisClock));
   const governance = { register: verifiedRegister, context: registerContext };
+  Object.assign(registerShape, { generation: { owner: 'part-three', name: 'RegisterGeneration', id: registerGeneration.id } });
 
   // ------------------------------------------------------------ host results
   const boundaryContext = { site: 'facts.admit', preserved: decodeContext.preserved, register: registerShape };
