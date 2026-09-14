@@ -2,8 +2,9 @@
 
 **Rule — every choice has a deciding authority or a recorded gap.** **Checks: P22-NF-01/10/11/17/20.**
 The settled decisions follow the named purpose text or are agent-owned settings within named
-constraints. G1, G2 and G4 are deployment policy choices reserved to the operator by the
-purpose's “Who decides what”; their numerical defaults are not constitutional amendments.
+constraints. G1 and G4, and G2's disposable-cache and eligible-attachment settings, are deployment
+policy choices reserved to the operator by the purpose's “Who decides what”. They cannot
+authorize deletion of permanent history or add an age-based redaction reason.
 G3 retains the candidate general-principle amendment required by the purpose's gap rule and
 the JU grant. Their questions are the unresolved operator judgment items. Drafting and checks
 need no answers; activation and dependent effects do. The closing Rule holds all citations
@@ -80,41 +81,64 @@ Choices: Approve a profile for each kind of release, which adds review work but 
 or choose one conservative profile for all releases, which is simpler but can delay small fixes.
 Neither choice can relax the privacy or authority floors.
 
-Recommendation: Use separate profiles, approved before a real trial. Begin with the proposed
-pilot improvement, coverage and later-outcome targets, then assess whether they fit the release.
-These are operating policy and experiment settings, not amendments to the constitution.
+Recommendation: Use separate profiles, approved before a real trial, because handling private
+information needs scrutiny matched to its consequences. Start with these proposed targets:
 
-**Value — choose complete retention terms.**
-Background: Keeping evidence supports later review but prolongs exposure. These terms apply
-to whatever sharing you separately permit; choosing retention does not enroll anyone.
-This is a policy choice the constitution leaves to the operator per deployment.
+- Improve the share of cases with a sound result and a valid reason by at least five percentage
+  points over the unchanged agent, both in local replay and after 30 days of fresh work. The
+  uncertainty range must also stay above zero improvement; immediate praise is insufficient.
+- Have complete, current grades for at least 95% of cases overall and 90% for each tested group
+  and each operator. No tested group or separately assessed behavior may lose more than two
+  percentage points; any observed privacy or authority violation stops release.
+- Include at least 20 independent operators in replay. Each shared judgment lesson needs at
+  least ten relevant real graded cases from five independent operators, with no operator
+  supplying more than one fifth of its support. Reflect current corrections within five minutes
+  on a healthy connection. Observe fresh-work results immediately, after seven days and after
+  30 days before making the final claim.
 
-Question: How long should this service keep cases, attachments and minimal history?
+Assess these targets against the release's risks before approval. They are proposed operating
+policy and experiment settings, not measured results or amendments to the constitution.
+
+**Value — choose attachment and cache retention terms.**
+Background: Permanent history supports accountable review. Every choice retains signed case
+facts, provenance, curated decisions, approvals, withdrawal records and the identities needed
+to recognize retries and replay. A withdrawn case remains a retained record with a withdrawal
+fact. These terms govern only disposable derived caches and attachments eligible for removal
+under the existing redaction contract. They neither enroll anyone nor authorize age-based
+removal of unique evidence.
+
+Question: How long should disposable caches and eligible attachment copies remain available?
 
 Choices:
-- Short: case metadata 30 days, richer attachments 7 days, minimal history 90 days, and deleted
-  material expires from controlled backups within 7 days. Exposure is shorter; later reviews
-  lose support sooner.
-- Balanced: case metadata 90 days, richer attachments 14 days, minimal history 180 days, and
-  deleted material expires from controlled backups within 30 days. This allows longer follow-up
-  while placing a finite limit on every category.
-- Extended: case metadata 180 days, richer attachments 30 days, minimal history 365 days, and
-  deleted material expires from controlled backups within 30 days. This supports slower reviews
-  but retains linkable records longer.
 
-For all choices, live-record periods run from original adoption and cannot restart on copying,
-retry or restore. Minimal history contains only destination-scoped opaque case identity,
-withdrawal/expiry status, approval-policy identity and custody dates, without content or raw
-identifiers. It expires on the stated schedule from original adoption. Early withdrawal removes
-live case/attachment support immediately within controlled custody; backup deletion receipts
-remain bounded by the chosen backup period. Shorter source-owner limits always win. Once support
-expires, dependent claims become unsupported; after minimal history expires, old support cannot
-be accepted again without fresh owner validation and permission. Recipients outside controlled
-custody may keep copies; these choices cannot undo information already learned.
+- Short: discard rebuildable caches after 30 days; review attachments for eligible removal
+  after 7 days. Complete authorized removal from controlled backups within 7 days after the
+  redaction becomes executable. This reduces disposable exposure but may require more rebuilds.
+- Balanced: discard rebuildable caches after 90 days; review attachments for eligible removal
+  after 14 days. Complete authorized removal from controlled backups within 30 days after the
+  redaction becomes executable. This reduces rebuild work during the pilot's follow-up period.
+- Extended: discard rebuildable caches after 180 days; review attachments for eligible removal
+  after 30 days. Complete authorized removal from controlled backups within 30 days after the
+  redaction becomes executable. This supports slower reviews but keeps disposable copies longer.
 
-Recommendation: Use the balanced terms for the pilot because they cover the planned later
-reviews with finite exposure. Keep statistical aggregate sharing disabled; its privacy-loss
-budget is a separate policy approval, not granted by a retention choice.
+Cache and attachment-review periods run from original adoption, never restarting on copying,
+retry or restore. An attachment review date is not a deletion deadline or permission: removal
+still needs the existing permitted reason, operator standing, visible delay and absence of
+protected evidence pins. Ineligible or pinned attachments remain retained; the service shows
+why removal is held. Shorter source-owner terms trigger review sooner but cannot bypass those
+gates. The signed envelope, hash, references and redaction fact remain permanent after lawful
+byte removal. No option promises a maximum lifetime for unique evidence.
+
+Withdrawal immediately makes the case ineligible as current support in controlled views and
+records that withdrawal permanently; it does not delete case or approval history. If lawful
+redaction removes supporting bytes, dependent claims become unverifiable wherever those bytes
+are required. Restore preserves withdrawals, redactions and replay identities, so old support
+cannot silently become current again. Recipients outside controlled custody may keep copies;
+these choices cannot undo information already learned.
+
+Recommendation: Use balanced terms for the pilot because its 90-day cache window covers the
+planned follow-up period with fewer rebuilds while preserving permanent review history.
+Keep statistical aggregate sharing disabled; its privacy-loss budget is a separate approval.
 
 **Value — decide how to judge competing harms.**
 Background: Sharing and withholding can both be permitted yet hurt different people. The
@@ -142,25 +166,38 @@ pass, observe a changed agent in fresh, authorized work to learn what actually h
 participants, ongoing review and a separately agreed budget. This is a policy choice the
 constitution leaves to the operator per deployment.
 
+The proposed first comparison includes two choices: the unchanged agent with fleet sharing off,
+and the agent using accountable shared cases and reviewed proposals. Budget at most $250 in
+additional provider calls for each choice, including the unchanged comparison, for a maximum
+proposed replay total of $500. Optional evaluation invitations and private statistical summaries
+are excluded from that first comparison. If separately approved later, each adds a comparison
+choice with its own $250 ceiling; all four choices together have a proposed ceiling of $1,000.
+Reviewer time is separate and must be included in the exact budget presented for approval.
+
 Question: What release and trial mandate should you give?
 
 Choices:
-- Keep approval with you. Consider at most $250 of additional provider spending per local replay
-  comparison arm, with reviewer time agreed before work begins; authorize no fresh-work trial
+
+- Keep approval with you. Consider the two-choice local replay above, at most $500 in additional
+  provider spending in total, with reviewer time agreed before work begins; authorize no fresh-work trial
   until its spending, participants and reviewer-time budget are separately presented and approved.
 - Name a revocable delegate for exact releases within stated scope, with the same staged resource
   limits. This can shorten the review queue but needs explicit boundaries and a revocation path.
 - Hold releases and both trial stages. This commits no trial resources and delays evidence collection.
 
-Recommendation: Keep approval with you until you name a scoped delegate. Treat the replay
-amount as a proposed ceiling, not a target or permission. Present the exact reviewer-time and
-fresh-work budgets before committing them; no real spend, recruitment, release or recurring
-operation is authorized by this document.
+Recommendation: Keep approval with you until you name a scoped delegate, because operating
+the service does not confer release authority. Begin with the two-choice replay because it
+tests the basic shared-case benefit before paying for the optional approaches. Treat $500 as
+a proposed ceiling, not permission to spend. Present an exact replay budget including provider
+calls and reviewer time, and a separate fresh-work budget, before committing either. No real
+spend, recruitment, release or recurring operation is authorized by this document.
 
 **Rule — decision bases and honest limits remain visible after document checks pass.** **Checks: P22-NF-01/17/20.**
 Each Basis line below names the deciding purpose text, an agent-owned setting's constraint,
-or operator policy authority. Only G3 proposes a general-purpose amendment; no operating default
-amends the constitution. The request copies and conditional grants are coordination evidence.
+or operator policy authority. G3 proposes a general-purpose amendment. G2 offers no finite
+history-deletion choice: any such proposal would require an explicit governed amendment and
+matching fact/custody and verification owner changes before affected checks could pass.
+No operating default amends the constitution. The request copies and conditional grants are coordination evidence.
 There are no executed fleet privacy trials, measured wisdom gains, production commons receipts,
 real local emitter lifecycle results, independent convergence approval or paid pilot results
 supplied by this document. Useful cohort size, independent-case supply, review burden,
@@ -175,7 +212,7 @@ Basis: OD-02, “joining and richer sharing need separate permission”: Purpose
 Basis: OD-03, “tune implementation within fixed constraints”: agent-owned setting under Purpose “Who decides what,” constraints 1–4 and non-widening authority; rules 39/41/55/60/61/77/95; sections 3/7/10; transport, limits, clustering, bootstrap/seed and allocation are bounded engineering choices.
 Basis: OD-04, “feedback cannot outvote the constitution”: Purpose wisdom, alignment, sovereignty and authority boundary; rules 28/29/57/58/86/108; section 5 seven principles.
 Basis: G1, “choose the evidence and risk policy for releases”: operator deployment policy under Purpose “Who decides what,” wisdom and evidence constraint 3; section 10 E5–E7; R5 G1; no constitutional numerical default.
-Basis: G2, “choose complete retention terms”: operator deployment policy under Purpose “Who decides what,” trust, sovereignty and non-widening authority; sections 2/6/8; R5 G2/E3/E10; no enrollment or aggregate privacy-budget approval implied.
+Basis: G2, “choose attachment and cache retention terms”: rule 7 and Purpose permanent-memory posture; Part Two [fact/capture redaction contract](../06-the-fact-envelope.md), Part Nine [retention contract](../13-the-verification-holders.md) §8, ST non-deleting curated decisions; operator settings under “Who decides what” only within those limits; sections 2/4/6/8; no enrollment, new redaction reason or aggregate privacy-budget approval implied.
 Basis: G3, “decide how to judge competing harms”: Purpose “wisdom is what coherence is for” and “a design question this document cannot decide is a gap in this document”; candidate general amendment “scoped accountable harm criteria”; Part 23 judgment-of-use owner via JU, row 112, after convergence/approval; Part 22 consumes, never invents, the criterion; rules 57/108; R5 G3.
 Basis: G4, “choose a release and trial mandate”: operator deployment policy under Purpose “Who decides what,” operator-only authority/build/spend boundary; R5 G4/E8/E11; sections 6/10; EX operator deployment standing and EV arm B exposure approval remain separate gates.
 Basis: Honest limits and introductory rule: Purpose constraints 1–4, gap Rule, sole consequential-effect/user-facing definition and authority boundary; rules 13/49/65/69/90/95/108/111; R1–R5; section 14 and [verbatim grants](seam-requests/seam-response-commons-grants.md), SEAM-LEDGER rows 102–114.

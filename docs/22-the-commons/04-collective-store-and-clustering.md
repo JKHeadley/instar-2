@@ -11,7 +11,11 @@ batch rather than hammering every row. Cancellation retains exposure and unresol
 The collective store retains immutable admitted records, provenance, authorized attachments,
 curated review decisions and causal assessment succession. Search indexes and similarity
 clusters are rebuildable projections; curated rationale, dissent, approvals and repair links
-are not. A durable mutation goes through Two's fact admission and its declared storage policy.
+are not. Signed case facts, provenance, curated decisions, approvals, withdrawal records and
+replay identities remain permanent under every retention option. Withdrawal adds a fact and
+removes current eligibility; it never deletes the case history. F27 checks cache disposal and
+existing-contract attachment redaction against forbidden history expiry and restore resurrection.
+A durable mutation goes through Two's fact admission and its declared storage policy.
 Corrupt data returns unavailable/quarantined, never an empty success view.
 
 Basis: Coherency and constraint 2; rules 7/33/45/55/60/61/95; R1/R4 custody lessons; section 14 ST/R seams.

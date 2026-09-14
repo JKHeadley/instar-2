@@ -16,14 +16,28 @@ properties; strings cannot become hidden text channels under names such as `reas
 | Canonical mapping | Destination-scoped opaque case and assessment keys; predecessor, correction target and parent export keys; one locally retained mapping across attempts |
 | Origin and strength | Production-derived or synthetic; owner validation and independence states; separate proof, observation, attestation, inference (a conclusion drawn rather than directly observed) and interested-party classification |
 | Stage and behavior | Cause assessments and their evidence state; outcome labels, use/withhold category, sensitivity/audience class and observed effects; no raw sensitive descriptions |
-| Mechanism | Approved public capture/retriever/index/extractor/embedding/reranker/renderer ids and versions; selection, rendering and submission coverage codes |
+| Capture mechanism | Approved public ids/versions for capture (recording permitted input) and the extractor (deriving structured information from captured content); capture coverage codes |
+| Selection mechanism | Approved public ids/versions for the index (searchable lookup), retriever (finding candidate support), embedding method (representing content as numbers for comparison) and reranker (reordering retrieved candidates for relevance); selection coverage codes. Only method identities may be exported, never the content representations themselves |
+| Delivery mechanism | Approved public renderer ids/versions (preparing selected support for input), with rendering and actual submission coverage codes |
 | Decision | Approved public model/provider/settings, prompt, context-assembly, action-floor and output-schema identities; opaque private identities explicitly non-comparable |
 | Timing | Clock-comparability state, event-window class, binned (grouped into ranges) age/latency, timeout/cancellation code; exact times and frontiers remain local |
 | Grade | Owner criterion/version, conclusion and reason grades separately, grader/method/standing, scope-validation state, horizon, conflict/currentness and evidence availability |
 | Benchmark | Public scenario/version, candidate, plan/run mapping, planned ordinal or permitted aggregate profile; compatibility disposition; graded, missing, refused, cancelled, pending and conflicted counts |
 | Quantities | Part 20 registered units, permitted counts and cost/usage buckets; explicit unknown price, coverage (share with required evidence) and missingness (evidence absent or unavailable) |
 | Correction | Target, supported new assessment codes, causal predecessor/successor, author standing and evidence state; never raw correction text |
-| Export receipt | Field-policy digest, transformation id, semantic-loss codes, exact local payload binding, grant/revocation reference and custody receipt |
+| Export receipt | Field-policy digest, transformation id, semantic-loss codes, opaque local payload-binding reference, grant/revocation reference and local pre-send validation-receipt reference |
+
+The local exporter produces the pre-send validation receipt after validating the derived
+fields and export policy. Its opaque reference is in the outgoing group above; the local
+outbox then commits that receipt's binding to the final immutable payload bytes before sending.
+The binding itself remains local, outside the bytes it hashes; the wire carries only its opaque
+reference, so neither a self-referential digest nor a post-send payload edit is required.
+The front produces a different, authenticated custody receipt only after durable storage.
+That later receipt stays outside the immutable wire payload and is joined locally by destination,
+export id and payload digest. Before it arrives, local front-custody state is `not-yet-received`;
+a lost acknowledgment leaves custody unknown, not failed or stored by assumption. Recovery
+queries custody or resends the identical bytes under current authority; it never inserts the
+front receipt into the payload. Section 3 defines the front receipt's required bindings.
 
 Each optional observation is explicitly `known` with a typed value or `unknown`, `unavailable`,
 `not-applicable` with an enumerated reason. Missingness is not `null`, zero or a fabricated
@@ -53,7 +67,7 @@ Basis: Wisdom and evidence constraint 3; rule 108; R2 cause table; Part 21 §9.
 
 **Rule — content-free applies to every channel, including retry and failure.** **Checks: P22-NF-05/07/18.**
 Default export rejects prompts, messages, answers, rationale, correction/lesson prose, names,
-emails, conversation/topic/run identifiers, paths, URLs, private hashes, embeddings (numerical representations of content), gradients (model-update signals that may reveal training content)
+emails, conversation/topic/run identifiers, paths, URLs, private hashes, embeddings, gradients (model-update signals that may reveal training content)
 and arbitrary labels. A public software digest is allowed only when its public identity is
 verified. Opaque private compatibility does not establish equality. Richer payloads need a
 separate current grant, authorized access and an explicit transformation-loss account.
@@ -108,7 +122,8 @@ The terms list is a reading aid; first-use explanations govern their use through
 |---|---|
 | Attestation; inference | Source claim; conclusion drawn rather than directly observed; this section |
 | Binning; evidence coverage; missingness | Grouping in ranges; share with evidence; absent/unavailable evidence; this section |
-| Embeddings; gradients | Content representations; model-update signals; either can reveal content; this section |
+| Extractor; embedding; reranker | Derives structured information from captured content; represents content as numbers for comparison; reorders retrieved candidates for relevance. The exported mechanism fields name approved software, not its private content; this section |
+| Gradients | Model-update signals that may reveal training content; this section |
 | Anonymity; pseudonymity | Non-identifiability; using a substitute identifier without guaranteeing it; sections 2/3 |
 | Blinded review; calibration; holdout | Concealed treatment assignment; comparison to adjudicated cases; cases reserved from development; section 5 |
 | Prevalence | Fraction of a defined population with a category; section 8 |

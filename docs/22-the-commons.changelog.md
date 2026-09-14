@@ -4,6 +4,15 @@ _Generated from `22-the-commons.changelog.json` by `scripts/render-changelog.mjs
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 3 · 2026-09-14 · draft — Operator-directed repair round 2 of rereview1 AC-01–AC-08 at 52b42f4ba9a176801ab52b4123d819366ac7ceb1; verdict .instar/lanes/astra-design-commons-52b42f4b.md.
+
+- **Preserve permanent case, withdrawal and approval history in every retention option; limit timers to disposable caches and existing-contract attachment review.** — AC-01 requires rule 7 and the fact/verification redaction boundary, including retained replay identity and honest unavailable support. _(AC-01; sections 4/13/15; F27; ST grant)_
+- **Repair the UI/GUI catalog row, restore the standalone GEXEC bundle and make catalog-to-graph agreement explicit. Cite the restored Part Sixteen A2a/A2b scope artifact without dropping either implementation gate.** — AC-02/03 require well-formed dependency evidence and the actual inherited authority artifact. _(AC-02/03; section 14; /Users/dabombstudio/.instar/agents/echo/.instar/lanes/part-sixteen-slice-a2a-scope.md)_
+- **Separate the local pre-send validation receipt from the later front custody receipt; recover acknowledgments without changing payload bytes.** — AC-04 requires a possible first submission and stable replay identity. _(AC-04; sections 2/3/12/13; F10)_
+- **Audit receiving dispatch application/execution and preserve its pending/applied history and context during fenced migration through release/install owners.** — AC-05 requires the existing return consumer to be accounted for without converting legacy labels into current authority. _(AC-05; sections 11/12/13; F26)_
+- **Correct rule 29 attribution and ground standing scope/delegation in Part One and rules 28/103/104.** — AC-06 requires citations to support their actual attached obligations. _(AC-06; section 3)_
+- **Name local replay choices and their $500 initial/$1,000 optional full provider ceilings, state release evidence targets, and define capture/selection/delivery mechanisms at first use and in the terms list.** — AC-07/08 require self-contained operator choices and understandable technical vocabulary; exact spending approval remains separate. _(AC-07/08; sections 2/10/15)_
+
 ## Revision 2 · 2026-09-14 · draft — Operator-directed repair of independent review AC-01–AC-09 at ea82d7149ca530bf5d958721e48bcc4078dbd154.
 
 - **Inherit the exact purpose additions and remove unsupported compaction-rule citations.** — AC-01 requires citations that support their attached obligations. _(AC-01; docs/00-the-purpose.md)_
