@@ -1,6 +1,8 @@
 # Judgment-of-use seam request — standing-grades-and-reassessment
 
-Status: REQUESTED; no grant or implementation asserted.
+Status: GRANTED CONDITIONAL — NON-EXECUTABLE-UNTIL-row-118-standing-grades-and-reassessment; implementation and activation pending.
+Grant: [seam-response-judgment-of-use-grants.md §standing-grades-and-reassessment](seam-response-judgment-of-use-grants.md#standing-grades-and-reassessment-key-v-row-118).
+Conditions: Grades carrying verified standing (rule 28/29) with conclusion, reason and outcome separately falsifiable (rule 108) and delayed reassessment (rules 58/24); folds with rows 97 and 108's owner slices; conditional on J.
 Owner: Nine verification with identity owners and Seven.
 Requester: Part 23 judgment-of-use design.
 Dependency key: V; local prerequisites: J.
@@ -28,17 +30,16 @@ casts or parallel authority store may fill a missing grant.
 The canonical per-check relation and earlier-owner dependency catalog are in
 `docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md`; section 10
 expands each runtime check's complete local key set. Every row containing V
-stays NON-EXECUTABLE until the owner grants this exact scope, its implementation
-lands, and its named inherited dependencies and real acceptance evidence pass.
-The owner response must enumerate any further prerequisite grants and conditions;
+stays NON-EXECUTABLE-UNTIL-row-118-standing-grades-and-reassessment until its granted implementation
+lands and every condition in section 12 and its real acceptance evidence passes.
+Further owner prerequisites must be enumerated before activation;
 unknown closure inhibits activation. Prior grants retain their narrow conditions.
 A document request, generic decoder or offline fixture supplies no runtime evidence.
 
 No additional live semantic blocker, source permission, resource grant or fleet
 admission is requested. Any wider policy goes to its constitutional owner.
-The response should state granted/refused/needs-policy, exact scope, prerequisite
-files and acceptance evidence. Filing this artifact does not transmit a message
-or edit the owner's design, and is not an approval record.
+The linked grant controls the approved scope; this request supplies acceptance
+obligations, not authority beyond that grant. Implementation remains pending.
 
 Basis: Purpose's sovereignty, authority/evidence constraints and no-silent-loss
 rule; rules 28/33/49/57/58/65/69/95/108/113; indexed Part 23 sections 1–13.

@@ -59,3 +59,20 @@ and activation dependencies are stated in the indexed Rules.
 11. [Negative contract fixtures](23-judgment-of-use/11-negative-contract-fixtures.md)
 12. [Inherited duties and seam disposition](23-judgment-of-use/12-inherited-duties-and-seam-disposition.md)
 13. [Operator decisions and honest limits](23-judgment-of-use/13-operator-decisions-and-honest-limits.md)
+
+
+**Value — terms used in this design.** These local evaluation terms are defined
+at first use; they are not new constitutional types or landed registry entries.
+
+| Term | Plain meaning and owned definition |
+|---|---|
+| Stratification / stratum | Grouping observations / one group, so overall success cannot hide a weak group; [section 2](23-judgment-of-use/02-sensitivity-attached-to-every-learned-fact.md) |
+| Uncertainty calibration | Whether stated confidence matches observed support; [section 6](23-judgment-of-use/06-grade-the-grader-and-resist-approval-optimization.md) |
+| Paired resampling | Draw whole matched A/B incident groups repeatedly to estimate uncertainty; [section 8.3](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#83-endpoints-and-numeric-thresholds) |
+| Confidence bound | A one-sided sampling-based limit at a stated coverage level; [section 8.3](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#83-endpoints-and-numeric-thresholds) |
+| Exact binomial upper bound | Conservative event-rate ceiling for independent yes/no opportunities, with its exact equation; [section 8.3](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#83-endpoints-and-numeric-thresholds) |
+| Paired discordance | Fraction of matched cases in which only one candidate succeeds; [section 8.3](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#83-endpoints-and-numeric-thresholds) |
+| Nearest-rank percentile / p95 | Sort observations; p95 is the value at one-based position `ceil(0.95*n)`; [section 8.2](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#82-execution-and-separation-of-claims) |
+
+Basis: Purpose’s checkability and evidence constraints; rules 49/65/108; the
+linked sections own the exact experimental definitions.

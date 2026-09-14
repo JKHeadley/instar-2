@@ -40,7 +40,9 @@ Basis: Purpose's wisdom and authority constraint; rules 28/57/86/108.
 Freeze examples by criterion and subject scope. Material harm means evidenced
 confidentiality loss, consequential commitment failure, or comparable harm named
 in that criterion; unresolved comparability stays disputed. These categories
-stratify observation and do not set permission or an acceptable-risk policy.
+group observations by harm category. This grouping is **stratification**; each
+group is a **stratum**, so a strong overall result cannot hide a weak group.
+The categories do not set permission or an acceptable-risk policy.
 
 Basis: Purpose's wisdom Value and “Who decides what,” bounded by the authority
 constraint and rule 57; [R5 §2](research/05-proposals-and-evaluation.md).

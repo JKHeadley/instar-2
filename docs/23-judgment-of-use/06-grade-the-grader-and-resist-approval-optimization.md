@@ -8,15 +8,23 @@ writes and witnesses attempted mutation. Learner-authored hashes, a different
 provider or another instance of the same evaluator do not prove independence.
 Absent that protection and permitted independent review, quality stays unmeasured.
 
-Basis: Purpose's authority and evidence constraints; rules 65/108;
+Basis: [Purpose — the agent never administers its own safeguards](../00-the-purpose.md#the-purpose), authority and evidence constraints; rules 65/108;
 Nine's external protection anchor; [R5 §6](research/05-proposals-and-evaluation.md).
 
 **Rule — independent review tests graders, including their incentives.**
 **Checks: P23-NF-07/13/14/16.** Audit a frozen stratified random sample of at
-least 120 eligible real cases per grader configuration, plus every material
+least 120 eligible real cases per grader configuration: randomly select 20 from
+each of section 8.1’s six groups (strata), keeping incident clusters disjoint.
+A missing group leaves that audit incomplete. Also inspect every material
 adverse outcome, process violation and standing dispute. The auditor receives
 permitted evidence only; grade scope validity, evidence fidelity, conclusion,
-reason, outcome, uncertainty calibration and approval bias separately. Grade the
+reason, outcome, uncertainty calibration and approval bias separately.
+**Uncertainty calibration** asks whether stated confidence matches how often a
+claim is supported: among claims assigned 80% confidence, about 80% should hold.
+For each dimension, freeze confidence bins before inspection and report the
+mean stated probability, adjudicated supported fraction and sample count in
+each bin. Missing probabilities or unresolved reference grades leave calibration
+unknown; they cannot be scored as agreement. Grade the
 original Grade through Nine, preserving disputes rather than issuing a reputation
 vote. Graders cannot choose their favorable review sample.
 

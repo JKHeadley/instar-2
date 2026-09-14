@@ -29,9 +29,12 @@ applicable evaluation, not a recurrence threshold or rising confidence alone.
 constraint version, scoped learning claim, entailment argument, conflict search,
 strongest counterexample, evidence that would falsify it, deciding reviewer and
 one of `fits`, `contradicts`, `undecidable-gap`. A word match such as “trust”
-is insufficient. Contradictions reject the learning regardless of votes. A gap
-files a candidate amendment with incompatible priority options and operator
-ownership; no reusable priority policy installs while it is unresolved.
+is insufficient. Contradictions reject the learning regardless of votes. Before
+classifying a gap, apply the purpose’s three-tier check: cite deciding purpose
+text, a deployment policy and its register default, or a measured agent-owned
+engineering default. Only a question fitting none files a candidate amendment
+with incompatible options and operator ownership. No unresolved priority becomes
+an admitted lesson; section 13’s competing-harm policy remains pending.
 
 Basis: Purpose's gap rule, alignment and authority constraint; rules 49/108.
 

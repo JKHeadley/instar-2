@@ -2,8 +2,9 @@
 
 **Rule — specialize judgment, do not duplicate its owners.**
 **Checks: P23-NF-02/03/05/07/15/20.** Part 23 owns sensitivity and use-assessment
-payloads, wisdom criteria and bounded local lesson content. Seven owns Decision,
-actual-input capture and benchmark identity; Nine owns Grade, feedback and
+payloads, wisdom criteria and bounded local lesson content. One owns the constitutional
+Decision type and decoder. Seven imports it and owns judgment requests, recording,
+actual-input capture, resolution and benchmark records; Nine owns Grade, feedback and
 reassessment. Record names here are candidate vocabulary, not landed exports.
 All durable payloads require owner-admitted facts, closed decoders, provenance,
 causal predecessors, schema identity and registered custody before activation.
@@ -14,11 +15,11 @@ Basis: Purpose's coherency and no-silent-loss constraint; rules 1/28/29/33/49/58
 
 | Document / owner | Retained responsibility | Part 23 contribution |
 |---|---|---|
-| Parts 5/6, One/Two types, facts and projections | Verified authority, fact admission, original custody, causal history and rebuildable views | Package-owned assessment and lesson payloads, references to original evidence |
+| Parts 5/6, One/Two types, facts and projections | One: constitutional Decision type and decoder, verified authority; Two: fact admission, original custody, causal history and rebuildable views | Package-owned assessment and lesson payloads, references to original evidence |
 | Parts 7/8, Three/Four declarations and intake | Registered ports; authenticated sender and source scope | Declare every consumer, store, blocking site and grading input |
 | Part 9 document, Five run graph | Work identity, grounding, continuity and open work | One canonical occasion per decision step; due outcome/reassessment work |
 | Parts 10/14/19, Six/Ten/Fifteen transport, assembly and scheduling | Bounded work, resource accounting, real composition, supervision and recovery | Reassessment and audit jobs through existing runtime, no private scheduler |
-| Part 11 document, Seven judgment owner (“Part 7/11”) | Decision, question/context captures, terminal manifest, BenchmarkRecord and route compatibility | Use/withhold specialization bound to actual inputs and current floor |
+| Part 11 document, Seven judgment owner (“Part 7/11”) | JudgmentRequest, judgment recording, actual-input captures, JudgmentResolution, terminal manifest, BenchmarkRecord and route compatibility; imports One’s Decision | Use/withhold specialization bound to actual inputs and current floor |
 | Part 12 document, Eight effects | Exact effect, authority, attempts, dispatch, observation and settlement | Evidence about permitted choices, no new execution power |
 | Part 13 document, Nine verification owner (“Part 9”) | Grade, FeedbackDisposition, independent review, correction-class work and re-derivation | Subject-scoped wisdom criteria and standing requirements |
 | Parts 15/16 operator surfaces and conversations | Reachable status, verified identities, current audience | Permitted assessment views and explicit limitations |
@@ -39,7 +40,7 @@ private and unused. Assessment cannot read forbidden bytes to decide their
 sensitivity; forbidden existence, counts and topology also remain protected.
 Combined evidence inherits the intersection of contributing permissions.
 
-Basis: Purpose's trust, sovereignty and authority constraint; rules 28/29/57/86/95;
+Basis: [Purpose — least revelation](../00-the-purpose.md#the-purpose), trust, sovereignty and authority constraint; rules 28/29/57/86/95;
 [Part 21 §5](https://github.com/JKHeadley/instar-2/blob/b579d0b928a618e73ce10e1529f45d691400e32e/docs/21-the-recall-doorway/05-identity-scope-and-cross-conversation-joins.md),
 [Part 21 §15 OD-02](https://github.com/JKHeadley/instar-2/blob/b579d0b928a618e73ce10e1529f45d691400e32e/docs/21-the-recall-doorway/15-operator-decisions-and-honest-limits.md).
 
@@ -61,7 +62,7 @@ rules 34/38/43/57/62/76/95.
 review; R4/R5 provide the accepted design evidence. No source label proves a
 running consumer. The Part 21 dependency is read at its specified head above;
 Part 22's inspected research defines a handoff, not a granted fleet algorithm.
-Section 12 records missing seams and the exact inherited dependency sources.
+Section 12 records conditional grants, pending owner implementations and the exact inherited dependency sources.
 
 Basis: Purpose's evidence constraint; [R1](research/01-instar-1x-judgment.md),
 [R2](research/02-sensitivity-and-disclosure-models.md),
