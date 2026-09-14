@@ -1,4 +1,4 @@
-import { canonical, consumeResult, decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../index.js';
+import { canonical, consumeOutcome, consumeResult, decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../index.js';
 import type { BoundaryContext, Clock, Json, Result } from '../index.js';
 import type { FactEnvelope } from '../facts/index.js';
 import { hashBytes, walkVersions } from '../facts/index.js';
@@ -843,7 +843,12 @@ export function assessTelegramReplyResponse(input: TelegramReplyAssessmentInput,
     ensure(assessment.owner === 'part-nine' && assessment.name === 'VerificationAssessment'
       && assessment.id.length > 0, 'Telegram response assessment has the wrong owner or kind');
     const view = take(deps.assessment.read(assessment, input.effect));
-    ensure(view.outcome.kind === 'happened' && view.outcome.evidence.length > 0,
+    const witnessed = consumeOutcome(view.outcome, {
+      happened: evidence => evidence,
+      'did-not-happen': () => null,
+      uncertain: () => null,
+    });
+    ensure(witnessed !== null && witnessed.length > 0,
       'Telegram provider acceptance is not witnessed by exact current evidence');
     ensure(view.finalCharge === null && view.delayedExecutionExcluded === false,
       'Telegram response assessment claims an unsupported stronger closure stage');
@@ -860,7 +865,7 @@ export function assessTelegramReplyResponse(input: TelegramReplyAssessmentInput,
       && ownerAssessment.attempt === input.effect.reservation.attempt
       && ownerAssessment.operationDigest === response.digest
       && ownerAssessment.evidence.length === 1
-      && ownerAssessment.evidence[0] === view.outcome.evidence[0]
+      && ownerAssessment.evidence[0] === witnessed[0]
       && ownerAssessment.captureStatuses.length === 1
       && ownerAssessment.captureStatuses[0]!.reference === response.capture.reference
       && ownerAssessment.captureStatuses[0]!.status === 'available',
