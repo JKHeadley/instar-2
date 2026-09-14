@@ -1,7 +1,12 @@
 import { consumeResult, defineDecoder } from '../index.js';
 import type { BoundaryContext, Hash, Json, Result, VersionedDecoder } from '../index.js';
 
-export interface HarnessValidationFloor {
+declare const harnessValidationFloorOwned: unique symbol;
+interface HarnessValidationFloorOwned {
+  readonly [harnessValidationFloorOwned]: 'part-thirteen-validation-floor';
+}
+
+export interface HarnessValidationFloor extends HarnessValidationFloorOwned {
   readonly type: 'HarnessValidationFloor';
   readonly schemaVersion: 1;
   readonly id: string;

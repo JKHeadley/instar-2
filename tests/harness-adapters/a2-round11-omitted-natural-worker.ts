@@ -5,9 +5,7 @@ import {
   createRuntimeHandleHolder,
   sameMachineReconnectCandidate,
 } from '../../src/harness-adapters/holder.js';
-import type {
-  HarnessEvidenceStateStorePort,
-} from '../../src/harness-adapters/holder.js';
+import type { HarnessEvidenceStateStorePort } from '../../src/harness-adapters/holder.js';
 import { decodeProbeRecord } from '../../src/verification/index.js';
 // @ts-expect-error The exact filesystem host is JavaScript outside pure core compilation.
 import { createHarnessAdapterFileState } from '../../scripts/slice-p13-state-storage.mjs';
@@ -18,56 +16,50 @@ import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
 import { harnessFixture } from './fixture.js';
 import { round9PoisonPrefixFixture } from './a2-round9-fixture.js';
 
-const [mode, style, cut, directory, loss] = process.argv.slice(2);
-if (!mode || !style || !cut || !directory || !loss) {
-  throw new Error('mode, style, cut, directory, and history loss are required');
-}
+const [mode, cut, directory, loss] = process.argv.slice(2);
+if (!mode || !cut || !directory || !loss) throw new Error('mode, cut, directory, and history loss are required');
 
 const fileState = createHarnessAdapterFileState(`${directory}/events`) as HarnessEvidenceStateStorePort;
-const state: HarnessEvidenceStateStorePort = style === 'facade'
-  ? Object.freeze({
-      owner: 'part-thirteen' as const,
-      id: fileState.id,
-      load: () => fileState.load(),
-      save: fileState.save.bind(fileState),
-      loadValidationFloors: () => fileState.loadValidationFloors(),
-      appendValidationFloor: fileState.appendValidationFloor.bind(fileState),
-      loadPoisonCandidates: () => fileState.loadPoisonCandidates(),
-      appendPoisonCandidate: fileState.appendPoisonCandidate.bind(fileState),
-    })
-  : fileState;
 const dump = (name: string, value_: unknown) =>
   fs.writeFileSync(`${directory}/${name}.json`, JSON.stringify(value_));
 const read = (name: string): unknown => JSON.parse(fs.readFileSync(`${directory}/${name}.json`, 'utf8'));
 
 if (mode === 'seed') {
-  const fixture = round9PoisonPrefixFixture({
-    confirmPoison: style !== 'late',
-    eventState: state,
+  let blockedLocalAppend = false;
+  const pendingState: HarnessEvidenceStateStorePort = Object.freeze({
+    ...fileState,
+    save(expected: Parameters<HarnessEvidenceStateStorePort['save']>[0],
+      snapshot: Parameters<HarnessEvidenceStateStorePort['save']>[1]) {
+      if (snapshot.events.some(event => event.diagnosticCode.startsWith('transcript-poison:'))) {
+        blockedLocalAppend = true;
+        throw new Error('injected EIO before local poison event commit');
+      }
+      fileState.save(expected, snapshot);
+    },
   });
-  let nine = fixture.freshNine(fixture.fullNine);
-  let evidence = fixture.evidence;
-  if (style === 'late') {
-    const plan = value(nine.runtime.inspectCurrent())
-      .find(row => row.record.id === 'r9:plan:transcript-poison');
-    if (!plan || plan.record.type !== 'VerificationPlan') throw new Error('late poison plan missing');
-    const probe = value(decodeProbeRecord({
-      ...verificationInput('ProbeRecord'),
-      id: 'r10:process:late-probe',
-      predecessors: [plan.fact.id],
-      plan: plan.record.id,
-      planVersion: plan.record.bar.version,
-      arm: 'transcript-poison',
-      subject: plan.record.subject.governed,
-    }, nine.c));
-    const witness = nine.witnessFor(probe, 'r10:process:late-evidence');
-    nine.setEvidence([...nine.host.current().evidence, witness]);
-    value(nine.runtime.record('ProbeRecord', { ...probe, witnesses: [witness.id] }));
-    evidence = fixture.holder(state, nine);
-  }
+  const fixture = round9PoisonPrefixFixture({ confirmPoison: false, eventState: pendingState });
+  if (!blockedLocalAppend) throw new Error('local append boundary not reached');
+
+  const nine = fixture.freshNine(fixture.fullNine);
+  const plan = value(nine.runtime.inspectCurrent())
+    .find(row => row.record.id === 'r9:plan:transcript-poison');
+  if (!plan || plan.record.type !== 'VerificationPlan') throw new Error('poison plan missing');
+  const probe = value(decodeProbeRecord({
+    ...verificationInput('ProbeRecord'),
+    id: 'r11:process:late-probe',
+    predecessors: [plan.fact.id],
+    plan: plan.record.id,
+    planVersion: plan.record.bar.version,
+    arm: 'transcript-poison',
+    subject: plan.record.subject.governed,
+  }, nine.c));
+  const witness = nine.witnessFor(probe, 'r11:process:late-evidence');
+  nine.setEvidence([...nine.host.current().evidence, witness]);
+  value(nine.runtime.record('ProbeRecord', { ...probe, witnesses: [witness.id] }));
+  const evidence = fixture.holder(fileState, nine);
 
   const handleState = createHarnessAdapterFileState(`${directory}/handles`);
-  const durableHandles = createRuntimeHandleHolder({
+  const handles = createRuntimeHandleHolder({
     adapter: fixture.handle.harness,
     machine: fixture.handle.machine,
     maxHandles: 4,
@@ -76,20 +68,22 @@ if (mode === 'seed') {
     state: handleState,
     admission: fixture.ten.port,
   });
-  if (durableHandles.put(fixture.handle).disposition !== 'stored') throw new Error('seed handle failed');
+  if (handles.put(fixture.handle).disposition !== 'stored') throw new Error('seed handle failed');
 
   dump('ten', fixture.ten.owner.raw);
   dump('handle', fixture.handle);
   dump('nine-full', nine.bytes);
-  dump('nine-probe', style === 'late' ? fixture.fullNine : fixture.probePrefix);
+  dump('nine-probe', fixture.fullNine);
   dump('nine-plan', fixture.planPrefix);
   dump('evidence', nine.host.current().evidence);
   dump('before', {
     resume: evidence.resume(fixture.handle, 22),
     floorCount: fileState.loadValidationFloors().length,
+    candidateCount: fileState.loadPoisonCandidates().length,
+    blockedLocalAppend,
   });
   const six = transportFixture(`${directory}/six`);
-  dump('fence', value(six.api.acquire('r10:process:acquire', '', 500)));
+  value(six.api.acquire('r11:process:acquire', '', 500));
 
   for (const name of fs.readdirSync(directory).filter(name => name.endsWith('.json'))) {
     const descriptor = fs.openSync(`${directory}/${name}`, 'r');
@@ -130,12 +124,12 @@ if (mode === 'seed') {
     maxEvents: 32,
     maxCaptureBytes: 1024,
     context: ten.owner.c,
-    state,
+    state: fileState,
     admission: ten.port,
     owners: { handles, current: ten.owner.host, verification: nine.runtime },
   });
   const six = transportFixture(`${directory}/six`);
-  const fence = value(six.api.acquire('r10:process:acquire', '', 500));
+  const fence = value(six.api.acquire('r11:process:acquire', '', 500));
   const subject = value(canonical([handle.harness, handle.artifactDigest, handle.platform, handle.machine,
     handle.launch, handle.run, handle.step, handle.input, handle.incarnation, handle.processIdentity])).bytes;
   process.stdout.write(JSON.stringify({

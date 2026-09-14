@@ -144,6 +144,8 @@ it('A2-UNIT R10-F3-SEMANTIC P13-NF-28 P13-NF-38 P13-NF-51 schema-valid but incon
       save: fixture.eventState.save.bind(fixture.eventState),
       loadValidationFloors: () => [malformed],
       appendValidationFloor: () => { throw new Error('read-only malformed fixture'); },
+      loadPoisonCandidates: () => fixture.eventState.loadPoisonCandidates(),
+      appendPoisonCandidate: () => { throw new Error('read-only malformed fixture'); },
     });
     const holder = fixture.holder(facade, fixture.freshNine(fixture.fullNine));
     expect(holder.resume(fixture.handle, 22)).toMatchObject({ state: 'unknown' });

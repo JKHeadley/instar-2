@@ -18,12 +18,14 @@ import {
 import {
   decodeHarnessValidationFloor,
   decodeHarnessAdapterStateSnapshot,
+  decodeHarnessRuntimeEvent,
   harnessAdapterIdentity,
 } from '../src/harness-adapters/index.js';
 import { createTransportFileStorage } from './transport-file-storage.mjs';
 
 const STATE_KIND = 'harness-adapter-state';
 const VALIDATION_FLOOR_KIND = 'harness-adapter-validation-floor';
+const POISON_CANDIDATE_KIND = 'harness-adapter-poison-candidate';
 const STATE_SITE = 'harness-adapter-state.storage';
 const MAX_STATE_BYTES = 16 * 1024 * 1024;
 
@@ -128,6 +130,17 @@ function deterministicAuthor(path) {
         machineScope: 'shared', standing: 'requester', action: 'work', scope,
         causallyBound: false, requiredReferences: [], authority: 'none',
       },
+      {
+        kind: POISON_CANDIDATE_KIND, version: 1,
+        fields: {
+          stateId: { kind: 'text', maxLength: 4096 },
+          eventId: { kind: 'text', maxLength: 4096 },
+          canonicalHash: { kind: 'text', maxLength: 71 },
+          event: { kind: 'text', maxLength: MAX_STATE_BYTES },
+        },
+        machineScope: 'shared', standing: 'requester', action: 'work', scope,
+        causallyBound: false, requiredReferences: [], authority: 'none',
+      },
     ],
     keys: [{ id: keyId, machine, publicKey, from: { epoch: 0, position: 0 } }],
     facts: [], grants: [], revocations: [], genesis: { hash: genesisHash, clock },
@@ -191,7 +204,7 @@ export function createHarnessAdapterFileState(path) {
 
   const current = () => {
     const facts = take(store.read());
-    if (facts.some(fact => ![STATE_KIND, VALIDATION_FLOOR_KIND].includes(fact.kind)
+    if (facts.some(fact => ![STATE_KIND, VALIDATION_FLOOR_KIND, POISON_CANDIDATE_KIND].includes(fact.kind)
       || fact.body.stateId !== stateId)) {
       throw new Error('Part Two harness state contains a foreign fact');
     }
@@ -234,7 +247,7 @@ export function createHarnessAdapterFileState(path) {
 
   const loadValidationFloors = () => {
     const facts = take(store.read());
-    if (facts.some(fact => ![STATE_KIND, VALIDATION_FLOOR_KIND].includes(fact.kind)
+    if (facts.some(fact => ![STATE_KIND, VALIDATION_FLOOR_KIND, POISON_CANDIDATE_KIND].includes(fact.kind)
       || fact.body.stateId !== stateId)) {
       throw new Error('Part Two harness state contains a foreign fact');
     }
@@ -276,6 +289,53 @@ export function createHarnessAdapterFileState(path) {
     take(store.append(envelope));
   };
 
+  const loadPoisonCandidates = () => {
+    const facts = take(store.read());
+    if (facts.some(fact => ![STATE_KIND, VALIDATION_FLOOR_KIND, POISON_CANDIDATE_KIND].includes(fact.kind)
+      || fact.body.stateId !== stateId)) {
+      throw new Error('Part Two harness state contains a foreign fact');
+    }
+    return facts.filter(fact => fact.kind === POISON_CANDIDATE_KIND).map(fact => {
+      const event = take(decodeHarnessRuntimeEvent(JSON.parse(fact.body.event), author.decodeContext));
+      const identity = harnessAdapterIdentity(event);
+      if (fact.body.eventId !== event.id || fact.body.canonicalHash !== identity.canonicalHash) {
+        throw new Error('Part Two harness poison candidate canonical identity mismatch');
+      }
+      return event;
+    });
+  };
+
+  const appendPoisonCandidate = event => {
+    const decoded = take(decodeHarnessRuntimeEvent(event, author.decodeContext));
+    const identity = harnessAdapterIdentity(decoded);
+    const existing = loadPoisonCandidates().find(candidate => candidate.id === decoded.id);
+    if (existing) {
+      if (harnessAdapterIdentity(existing).canonicalHash !== identity.canonicalHash) {
+        throw new Error('immutable poison candidate disagreement');
+      }
+      return;
+    }
+    const before = current();
+    const head = before.head ?? before.fact;
+    const segment = {
+      machine: author.machine,
+      epoch: head?.segment.epoch ?? 0,
+      position: head ? head.segment.position + 1 : 0,
+    };
+    const envelope = signEnvelope({
+      type: 'FactEnvelope', envelopeVersion: 1, id: factId(segment), kind: POISON_CANDIDATE_KIND,
+      schemaVersion: 1, at: author.clock, machine: author.machine,
+      principal: json(author.principal), provenance: json(author.provenance), segment,
+      prevInSegment: head?.contentHash ?? author.context.genesis.hash,
+      predecessors: {
+        inSegment: head?.id ?? null, frontier: author.context.folded, required: [],
+      },
+      body: { stateId, eventId: decoded.id, canonicalHash: identity.canonicalHash,
+        event: encoded(decoded).bytes },
+    }, author.privateKey);
+    take(store.append(envelope));
+  };
+
   return Object.freeze({
     owner: 'part-thirteen',
     id: stateId,
@@ -296,6 +356,8 @@ export function createHarnessAdapterFileState(path) {
     },
     loadValidationFloors,
     appendValidationFloor,
+    loadPoisonCandidates,
+    appendPoisonCandidate,
   });
 }
 

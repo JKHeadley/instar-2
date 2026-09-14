@@ -155,5 +155,8 @@ export function withoutPoisonJournal(
     loadValidationFloors: () => state.loadValidationFloors(),
     appendValidationFloor: (floor: Parameters<HarnessEvidenceStateStorePort['appendValidationFloor']>[0]) =>
       state.appendValidationFloor(floor),
+    loadPoisonCandidates: () => state.loadPoisonCandidates(),
+    appendPoisonCandidate: (event: Parameters<HarnessEvidenceStateStorePort['appendPoisonCandidate']>[0]) =>
+      state.appendPoisonCandidate(event),
   });
 }

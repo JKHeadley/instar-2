@@ -129,6 +129,9 @@ it('A2-UNIT P13-NF-24 P13-NF-28 journal read errors remain typed unknown and nev
     loadValidationFloors: () => f.evidenceState.loadValidationFloors(),
     appendValidationFloor: (floor: Parameters<HarnessEvidenceStateStorePort['appendValidationFloor']>[0]) =>
       f.evidenceState.appendValidationFloor(floor),
+    loadPoisonCandidates: () => f.evidenceState.loadPoisonCandidates(),
+    appendPoisonCandidate: (event: Parameters<HarnessEvidenceStateStorePort['appendPoisonCandidate']>[0]) =>
+      f.evidenceState.appendPoisonCandidate(event),
   });
   const holder = createHarnessEvidenceHolder({ adapter: 'native', artifact: f.handle.artifactDigest,
     platform: f.handle.platform, machine: f.handle.machine, scope: 'conversation:1', maxEvents: 32, maxCaptureBytes: 1024,
