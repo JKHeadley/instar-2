@@ -2,6 +2,8 @@
 
 **Rule — the candidate protocol is fixed before outcome inspection.** **Checks: P22-NF-17 and E1–E12 below.**
 Retain R5's preregistered design and thresholds below without selecting favorable outcomes.
+Preregistration fixes the evaluation plan before outcomes are inspected; an arm is one tested
+choice, and the baseline is the unchanged agent used for comparison.
 Every Rule in this section is an implementation/evaluation obligation; every Value is an
 agent-proposed experimental setting bounded by wisdom, honest evidence, privacy and current
 resource authority. G1 is the unresolved release-risk profile, G2 the privacy/retention terms,

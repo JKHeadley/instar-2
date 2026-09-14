@@ -28,7 +28,8 @@ front, release consumer or measured fleet-learning result is claimed here.
 
 A is the proposed P22 case/store/admission/review/return implementation, B the additional
 invitation/evaluation consumer, and C the separately proposed privacy mechanism/accountant.
-All three are UNLANDED. B includes A; C cannot emit a judgment lesson. Each still needs the
+All three are UNLANDED. A and C require RG for commons-owner enrollment; B includes A
+and inherits RG. C cannot emit a judgment lesson. Each still needs the
 full selected NF closure below and any policy approval. Proving declarations or schema alone
 cannot change that status.
 
@@ -112,9 +113,9 @@ run in owner confinement before B's production activation; it does not depend on
 
 | Key | Direct graph dependencies |
 |---|---|
-| A | None |
+| A | RG |
 | B | A EVB |
-| C | None |
+| C | RG |
 | RG | GREG |
 | ID | None |
 | ST | None |
@@ -145,7 +146,9 @@ The direct keys below plus their transitive closure are the acceptance boundary.
 the expanded column is required, with the exact request/response file in its catalog row.
 Section 12 derives its status from this table. NF-01 verifies four-cell seam and bundle rows, one catalog entry per seam/bundle key,
 catalog-to-graph agreement (including UI → GUI and GEXEC → GFX/GLOOP), graph closure,
-no undefined keys/cycles and equality of this table with section 12. NF-13 adds B/EVB;
+no undefined keys/cycles and equality of this table with section 12. NF-01 also asserts that
+every commons runtime positive reaches RG and its exact row-102 enrollment label; inherited
+register machinery or a partial fixture cannot substitute for the new owner’s enrollment. NF-13 adds B/EVB;
 NF-14 adds C. NF-17's optional B and C arms add those keys and their corresponding NF-13/14
 closures to its A row; NF-20 does the same when composing an optional mode. No policy decision
 can substitute for an unlanded owner implementation.
@@ -156,20 +159,20 @@ Basis: Constraints 1/3; rules 49/69/95/111.
 |---|---|---|---|
 | P22-NF-01 | None | None | EXECUTABLE documentation only. |
 | P22-NF-02 | A RG EX | A, EV, EX, FX, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, JU, ME, RC, RG, RS, ST, UI | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
-| P22-NF-03 | A ID ST GR JO | A, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, ST | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
-| P22-NF-04 | A RC GR JO ME | A, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, JO, ME, RC | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
-| P22-NF-05 | A ID FX ST RC GR ME | A, FX, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, ME, RC, ST | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
-| P22-NF-06 | A ID ST FX RS | A, FX, GFX, GLOOP, ID, RS, ST | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
+| P22-NF-03 | A ID ST GR JO | A, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, RG, ST | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
+| P22-NF-04 | A RC GR JO ME | A, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, JO, ME, RC, RG | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
+| P22-NF-05 | A ID FX ST RC GR ME | A, FX, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, ME, RC, RG, ST | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
+| P22-NF-06 | A ID ST FX RS | A, FX, GFX, GLOOP, GREG, ID, RG, RS, ST | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
 | P22-NF-07 | A ST FX RS UI EX | A, EV, EX, FX, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, JU, ME, RC, RG, RS, ST, UI | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
 | P22-NF-08 | A ST GR JO ME UI EX | A, EV, EX, FX, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, JU, ME, RC, RG, RS, ST, UI | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
-| P22-NF-09 | A RC JO GR ME EV | A, EV, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, JO, ME, RC | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
-| P22-NF-10 | A ID JO GR JU ST | A, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, JU, RC, ST | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
+| P22-NF-09 | A RC JO GR ME EV | A, EV, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, JO, ME, RC, RG | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
+| P22-NF-10 | A ID JO GR JU ST | A, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, JU, RC, RG, ST | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
 | P22-NF-11 | A RG ID FX ST GR JO UI EX | A, EV, EX, FX, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, JU, ME, RC, RG, RS, ST, UI | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
 | P22-NF-12 | A FX ST GR ME UI EX | A, EV, EX, FX, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, JU, ME, RC, RG, RS, ST, UI | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
-| P22-NF-13 | B EVB | A, B, EV, EVB, FX, GEXEC, GFX, GJ, GLOOP, GM, GRC, GREG, GUI, ID, JO, RC, RS, UI | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
+| P22-NF-13 | B EVB | A, B, EV, EVB, FX, GEXEC, GFX, GJ, GLOOP, GM, GRC, GREG, GUI, ID, JO, RC, RG, RS, UI | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
 | P22-NF-14 | C ID FX RS ME UI EX | C, EV, EX, FX, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, JU, ME, RC, RG, RS, ST, UI | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
 | P22-NF-15 | A ID ST FX UI EX | A, EV, EX, FX, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, JU, ME, RC, RG, RS, ST, UI | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
-| P22-NF-16 | A ME | A, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, JO, ME, RC | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
+| P22-NF-16 | A ME | A, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, JO, ME, RC, RG | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
 | P22-NF-17 | A RC JO GR ME JU UI EX EV | A, EV, EX, FX, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, JU, ME, RC, RG, RS, ST, UI | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
 | P22-NF-18 | A ST ID FX RC GR ME EX | A, EV, EX, FX, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, JU, ME, RC, RG, RS, ST, UI | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |
 | P22-NF-19 | A ST RS FX ME EX | A, EV, EX, FX, GEXEC, GFX, GJ, GLOOP, GM, GR, GRC, GREG, GUI, ID, JO, JU, ME, RC, RG, RS, ST, UI | NON-EXECUTABLE: inherits every exact grant label and condition for these keys; section 12 prints the required labels. |

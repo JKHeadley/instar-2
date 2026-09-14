@@ -10,7 +10,7 @@ Basis: Purpose wisdom, sovereignty and evidence constraint; R5 Proposal B; OD-01
 
 **Rule — an evaluation invitation cannot query memory or execute arbitrarily.** **Checks: P22-NF-13/17/20.**
 Admission binds exact package/candidate hashes, scenario/rubric, declared read scope, allowed
-outputs, provider exposure, expiry, maximum calls/cost and durable repeat budget. Ten confines
+outputs, provider exposure (the possible calls, cost and information disclosed), expiry, maximum calls/cost and durable repeat budget. Ten confines
 execution; Eight excludes actual dispatch and undeclared network/filesystem effects; Six
 accounts for children, cancellation and restart. A signed malicious package still fails.
 Provider requests are separately checked exposures. Repeated queries ask again; adaptive

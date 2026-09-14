@@ -13,6 +13,8 @@ Unproved unique operator identity means unknown independence, not one more indep
 Basis: Rule 28, Know Your Principal; rule 29, Session Input Is a Principal, verifies actors able to inject session input. Role scope, delegation and current standing come from Part One’s [VerifiedPrincipal and StandingGrant model](../05-the-types.md#standinggrant--what-a-principal-may-decide-and-where), including grant provenance, live grantor authority, revocation and the org-intent limit on re-delegation; rules 103 (governed boundaries) and 104 (recorded scoped standing grants); purpose wisdom/sovereignty and non-widening authority; R4; section 14 ID seam.
 
 **Rule — standing is scoped ordinal precedence, never an exchange rate.** **Checks: P22-NF-03/10.**
+Ordinal precedence means an ordered priority within the relevant decision scope, not a score
+that enough lower-priority votes can outweigh.
 Apply constitutional floors and scope first, verified standing second, current evidence
 eligibility third, independent outcome evaluation fourth, and exact human promotion authority
 last. No arithmetic sum can buy the next class.
@@ -42,7 +44,8 @@ supported-version response, and never invokes a permissive fallback.
 Use durable per-enrollment and per-operator contribution limits, plus bounded anonymous/network
 abuse limits, total byte/work ceilings and finite review capacity. Network identity is not
 human identity. Restart, rotation, multiple agents and concurrent front workers cannot reset
-an operator's budget. Rates, bursts and backoff intervals are agent-owned settings bounded by
+an operator's budget. Rates, bursts and backoff intervals (waiting periods before another
+permitted attempt) are agent-owned settings bounded by
 resource caps and reachable service, versioned and tested at zero, equality and one over.
 A full queue holds admission visibly; it never evicts an unreviewed accepted case silently.
 
@@ -53,8 +56,11 @@ A network acknowledgment is `received` only. `front-stored` requires an authenti
 binding destination, export id, payload digest, schema, custody policy and durable commit.
 The front produces it after storage; it is joined to the outbox outside the immutable payload.
 Until recovered, the front receipt is `not-yet-received` and storage remains unknown locally.
-Idempotent resend returns the same custody result; changed bytes under the same identity are
-rejected as conflict. `admitted`, `signal-only` and `rejected` are later explicit decisions.
+Duplicate submissions already in flight return the same stored custody result without another
+adoption; changed bytes under the same identity are rejected as conflict. This is idempotency
+(repeated arrival has no additional effect), not permission to resend uncertain work. Unknown
+deduplication state holds admission. Recovery follows section 2's lookup and owner-settlement
+gates. `admitted`, `signal-only` and `rejected` are later explicit decisions.
 Neither HTTP 200 nor a honeypot/probe response proves storage, review, a fix or installation.
 
 Basis: Constraint 3; rules 13/45/49/69; R1, receipt and persistence ordering.

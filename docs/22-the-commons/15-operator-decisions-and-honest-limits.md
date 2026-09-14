@@ -100,44 +100,47 @@ Assess these targets against the release's risks before approval. They are propo
 policy and experiment settings, not measured results or amendments to the constitution.
 
 **Value — choose attachment and cache retention terms.**
-Background: Permanent history supports accountable review. Every choice retains signed case
-facts, provenance, curated decisions, approvals, withdrawal records and the identities needed
-to recognize retries and replay. A withdrawn case remains a retained record with a withdrawal
-fact. These terms govern only disposable derived caches and attachments eligible for removal
-under the existing redaction contract. They neither enroll anyone nor authorize age-based
-removal of unique evidence.
+Background: Every choice keeps the permanent case history: what was reported, where it came
+from, review decisions, approvals, withdrawals and the records needed to recognize an already
+handled report. These choices cover temporary search copies that can be rebuilt from that
+history, and supporting files supplied with permission to examine what happened in a case.
 
-Question: How long should disposable caches and eligible attachment copies remain available?
+Supporting files may be removed only to meet an obligation to erase content, remove private
+content sent to the wrong place, or remove a sensitive claim attributed to the wrong person.
+Getting old is not a removal reason. Files needed to verify an approval, resolve a dispute or
+finish reviewing a decision or settle outstanding charges must remain protected. A review checks
+these conditions; it does not promise that a file can be removed.
+
+Question: When should temporary search copies be discarded and supporting files reviewed for removal?
 
 Choices:
 
-- Short: discard rebuildable caches after 30 days; review attachments for eligible removal
-  after 7 days. Complete authorized removal from controlled backups within 7 days after the
-  redaction becomes executable. This reduces disposable exposure but may require more rebuilds.
-- Balanced: discard rebuildable caches after 90 days; review attachments for eligible removal
-  after 14 days. Complete authorized removal from controlled backups within 30 days after the
-  redaction becomes executable. This reduces rebuild work during the pilot's follow-up period.
-- Extended: discard rebuildable caches after 180 days; review attachments for eligible removal
-  after 30 days. Complete authorized removal from controlled backups within 30 days after the
-  redaction becomes executable. This supports slower reviews but keeps disposable copies longer.
+- Short: discard temporary search copies after 30 days; review supporting files after 7 days.
+  Once removal is allowed to proceed, finish removing copies from backups we control within
+  7 days. This reduces exposure from disposable copies but may require more rebuilding.
+- Balanced: discard temporary search copies after 90 days; review supporting files after 14 days.
+  Once removal is allowed to proceed, finish removing copies from backups we control within
+  30 days. This reduces rebuilding during the pilot's follow-up period.
+- Extended: discard temporary search copies after 180 days; review supporting files after 30 days.
+  Once removal is allowed to proceed, finish removing copies from backups we control within
+  30 days. This supports slower reviews but keeps disposable copies longer.
 
-Cache and attachment-review periods run from original adoption, never restarting on copying,
-retry or restore. An attachment review date is not a deletion deadline or permission: removal
-still needs the existing permitted reason, operator standing, visible delay and absence of
-protected evidence pins. Ineligible or pinned attachments remain retained; the service shows
-why removal is held. Shorter source-owner terms trigger review sooner but cannot bypass those
-gates. The signed envelope, hash, references and redaction fact remain permanent after lawful
-byte removal. No option promises a maximum lifetime for unique evidence.
+The search-copy and file-review clocks start when the service first accepts the material.
+Copying, retrying or restoring it does not restart them. The backup-removal clock starts only
+when the authorized operator has approved an allowed removal, the announced waiting period has
+ended, and no evidence protection still prevents removal. If a file cannot be removed, keep it
+and show why. A shorter limit set by its source triggers an earlier review, with the same checks.
+No option sets a maximum lifetime for unique evidence.
 
-Withdrawal immediately makes the case ineligible as current support in controlled views and
-records that withdrawal permanently; it does not delete case or approval history. If lawful
-redaction removes supporting bytes, dependent claims become unverifiable wherever those bytes
-are required. Restore preserves withdrawals, redactions and replay identities, so old support
-cannot silently become current again. Recipients outside controlled custody may keep copies;
-these choices cannot undo information already learned.
+Withdrawing a case immediately stops its use as current support in views we control and keeps
+a permanent withdrawal record. It does not erase case or approval history. If an allowed removal
+takes away a supporting file, any claim needing that file becomes unverifiable. Restoring a
+backup must preserve those withdrawals and removals, and must still recognize previously handled
+reports. Recipients outside our control may keep copies; these choices cannot undo what they
+already learned.
 
-Recommendation: Use balanced terms for the pilot because its 90-day cache window covers the
-planned follow-up period with fewer rebuilds while preserving permanent review history.
+Recommendation: Use balanced terms for the pilot because its 90-day search-copy window covers
+the planned follow-up period with fewer rebuilds while preserving permanent review history.
 Keep statistical aggregate sharing disabled; its privacy-loss budget is a separate approval.
 
 **Value — decide how to judge competing harms.**
@@ -197,6 +200,13 @@ Each Basis line below names the deciding purpose text, an agent-owned setting's 
 or operator policy authority. G3 proposes a general-purpose amendment. G2 offers no finite
 history-deletion choice: any such proposal would require an explicit governed amendment and
 matching fact/custody and verification owner changes before affected checks could pass.
+G2's temporary search copies are disposable derived caches; supporting files are attachments
+under Two/Nine's existing redaction contract. Original adoption anchors cache/review ages.
+Executable redaction requires operator standing, a closed-list reason, completed surfaced delay
+and no protected evidence pins, including Authorization provenance, open Conflict, unresolved
+judgment, assessment and accounting. The backup-removal deadline starts at that executable
+point. The signed envelope, hash, references and redaction fact stay permanent after byte
+removal; restored projections preserve withdrawals, tombstones and replay identities.
 No operating default amends the constitution. The request copies and conditional grants are coordination evidence.
 There are no executed fleet privacy trials, measured wisdom gains, production commons receipts,
 real local emitter lifecycle results, independent convergence approval or paid pilot results

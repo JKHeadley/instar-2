@@ -2,10 +2,12 @@
 
 **Value — a commons makes a useful local lesson available to other agents without taking over their minds.**
 Proposal A is the accountable case-and-proposal commons. The primary developers operate the
-canonical deployed front; the same receiver, processor and release code can serve an operator's
-own fleet. Each agent keeps its local improvement loop when the front is absent or disabled.
+canonical deployed front (the designated receiving service); the same receiver, processor and
+release code can serve an operator's own fleet. Each agent keeps its local improvement loop when the front is absent or disabled.
 Part 22 owns permitted collective custody, admission, clustering, review tracking and distribution.
-It does not own private memory, truth, principal standing, grades or permission to act.
+Custody means responsibility for keeping a record; admission means accepting it through the
+responsible owner’s checks. It does not own private memory, truth, principal standing (who may
+decide what within which scope), grades or permission to act.
 
 Basis: [Purpose](../00-the-purpose.md), coherency, sovereignty and wisdom; [big picture](../04-the-big-picture.md) §§8–10; [R4](research/04-compare-and-contrast.md), two tiers; OD-01/02.
 
@@ -22,7 +24,7 @@ only after their owning implementation and current registration resolve them.
 | Declaration and generation admission | Three, `src/register`, documents 02/07 | Register the new commons owner and every producer, consumer and check |
 | Authenticated arrival | Four intake, document 08; Twelve conversation family, document 16 | Resolve enrollment and sender evidence before attribution |
 | Work and responsibility | Five run graph, document 09 | Retain local work, review and repair obligations; front receipts do not close them |
-| Fences, reservations, retries and finite work | Six transport, document 10 | Reserve one bounded job and its children; adapter retries cannot create work |
+| Fences (checks rejecting stale workers), reservations (budget set aside before work), retries and finite work | Six transport, document 10 | Reserve one bounded job and its children; adapter retries cannot create work |
 | Actual judgment input, real scenarios and compatibility | Seven, `src/judgment`, document 11 | Consume `JudgmentRequest`, `BenchmarkRecord`, `BenchmarkScenario`, `BenchmarkRunRecord`; request missing resolvers |
 | Export, publication and install effects | Eight, `src/effects`, document 12 | Exact destination, bytes, current authority and settlement remain owner decisions |
 | Graded outcomes, corrections and independent review | Nine, `src/verification`, document 13 | Local grade/correction emitter; consume `Grade`, `BenchmarkEvaluation`, `FeedbackDisposition`, not a commons grade constructor |
@@ -51,7 +53,8 @@ Basis: Purpose constraints 3/4; [R1](research/01-instar-1x-feedback-factory.md);
 **Rule — transport is replaceable and cannot confer admission.** **Checks: P22-NF-03/06/15.**
 Threadline is the first transport candidate under the registered agent-transport port.
 Transport eligibility requires the same authenticated envelope, destination binding, receipt,
-backpressure and correction contract as any alternative adapter. Its discovery, encryption
+backpressure (a busy receiver slows senders or holds new admission until capacity is available)
+and correction contract as any alternative adapter. Its discovery, encryption
 or peer reputation supplies neither human standing nor export consent. A missing Threadline
 adapter leaves that transport unavailable; it does not prevent the local loop or authorize
 an unregistered HTTP bypass. Choosing an eligible implementation is an agent-owned setting.

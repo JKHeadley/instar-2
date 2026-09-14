@@ -1,19 +1,22 @@
 ## 2. The emitted-case contract
 
-**Rule — emit a derived case, not an original episode.** **Checks: P22-NF-04/05/07/09.**
+**Rule — emit a derived case, not an original episode.** **Checks: P22-NF-04/05/06/07/09.**
 Four distinct objects remain separate: original local episode, closed derived case, specifically
 exportable replay/scenario, and proposed behavioral lesson. Original messages, exact judgment
-inputs, reasons and source frontiers stay with their local owners. Export construction consumes
+inputs, reasons and source frontiers (the exact recorded history available at a given point)
+stay with their local owners. Export construction consumes
 owner-validated categories without opening raw captures. The front may receive an attestation, a source's claim
 whose private support the front cannot inspect; it must not relabel that attestation independent proof.
 A proposed schema id is `P22-DERIVED-CASE-v1`. This is contract vocabulary awaiting a closed
-decoder, not an implemented core type. Every object and nested tagged union rejects unknown
-properties; strings cannot become hidden text channels under names such as `reasonCode`.
+decoder (a reader that accepts only the declared fields and value shapes), not an implemented
+core type. Every object and nested tagged union rejects unknown properties. A tagged union uses
+a kind tag to select exactly one allowed record shape; nested unions apply that same rule inside
+the record. Strings cannot become hidden text channels under names such as `reasonCode`.
 
 | Field group | Allowed contract and source |
 |---|---|
-| Envelope | Schema/version, one of `recall-outcome`, `graded-decision`, `benchmark-result`, `correction`; destination, immutable export identity, enrollment epoch, policy/grant version and signature |
-| Canonical mapping | Destination-scoped opaque case and assessment keys; predecessor, correction target and parent export keys; one locally retained mapping across attempts |
+| Envelope | Schema/version, one of `recall-outcome`, `graded-decision`, `benchmark-result`, `correction`; destination, immutable export identity, enrollment epoch (the destination-specific generation of the verified signing-key enrollment; rotation starts a new generation and requires current identity-owner validation; it does not renew consent or reset a budget), policy/grant version and signature |
+| Canonical mapping | Destination-scoped opaque case and assessment keys (identifiers that reveal no private content); predecessor, correction target and parent export keys; one locally retained mapping across attempts |
 | Origin and strength | Production-derived or synthetic; owner validation and independence states; separate proof, observation, attestation, inference (a conclusion drawn rather than directly observed) and interested-party classification |
 | Stage and behavior | Cause assessments and their evidence state; outcome labels, use/withhold category, sensitivity/audience class and observed effects; no raw sensitive descriptions |
 | Capture mechanism | Approved public ids/versions for capture (recording permitted input) and the extractor (deriving structured information from captured content); capture coverage codes |
@@ -25,19 +28,32 @@ properties; strings cannot become hidden text channels under names such as `reas
 | Benchmark | Public scenario/version, candidate, plan/run mapping, planned ordinal or permitted aggregate profile; compatibility disposition; graded, missing, refused, cancelled, pending and conflicted counts |
 | Quantities | Part 20 registered units, permitted counts and cost/usage buckets; explicit unknown price, coverage (share with required evidence) and missingness (evidence absent or unavailable) |
 | Correction | Target, supported new assessment codes, causal predecessor/successor, author standing and evidence state; never raw correction text |
-| Export receipt | Field-policy digest, transformation id, semantic-loss codes, opaque local payload-binding reference, grant/revocation reference and local pre-send validation-receipt reference |
+| Export receipt | Field-policy digest (a fixed-length fingerprint binding exact bytes), transformation id, semantic-loss codes (what meaning the transformation removed or changed), opaque local payload-binding reference, grant/revocation reference and local pre-send validation-receipt reference |
 
 The local exporter produces the pre-send validation receipt after validating the derived
 fields and export policy. Its opaque reference is in the outgoing group above; the local
-outbox then commits that receipt's binding to the final immutable payload bytes before sending.
+outbox (the durable record of pending sends) then commits that receipt's binding to the final
+immutable payload bytes before sending.
 The binding itself remains local, outside the bytes it hashes; the wire carries only its opaque
 reference, so neither a self-referential digest nor a post-send payload edit is required.
 The front produces a different, authenticated custody receipt only after durable storage.
 That later receipt stays outside the immutable wire payload and is joined locally by destination,
 export id and payload digest. Before it arrives, local front-custody state is `not-yet-received`;
-a lost acknowledgment leaves custody unknown, not failed or stored by assumption. Recovery
-queries custody or resends the identical bytes under current authority; it never inserts the
-front receipt into the payload. Section 3 defines the front receipt's required bindings.
+a lost acknowledgment or timeout after the network call started leaves custody `UNKNOWN`,
+not failed or stored by assumption. Recovery is a read-only custody QUERY for the front's
+exact subject: destination, export id and payload digest, authenticated to the original sender.
+It retrieves an existing receipt/result without submitting missing work. A missing, stale,
+inaccessible or conflicting record preserves uncertainty and the original reservation.
+Identical bytes, current consent and receiver deduplication do not authorize a blind resend.
+
+A query-then-resend path is admitted only if the query yields authoritative `not received`
+evidence for that exact subject and digest, and Eight (effects) and Nine (verification) establish
+non-occurrence, quiescence (the old claim cannot still execute) and settled charge (any charge
+from that attempt is resolved). An absent search result is not such evidence. Only then may
+Six admit a new bounded execution attempt under current authority, retaining the original
+export identity and bytes. If those owners cannot establish every condition, lookup/waiting
+remains the only continuation. The recovered front receipt stays outside the payload.
+Section 3 defines its required bindings.
 
 Each optional observation is explicitly `known` with a typed value or `unknown`, `unavailable`,
 `not-applicable` with an enumerated reason. Missingness is not `null`, zero or a fabricated
@@ -45,7 +61,7 @@ success. Stable random opaque ids follow a fixed length/encoding; public ids res
 approved registry entry. Field lengths, array counts and nesting limits are finite and
 versioned. Their exact values are agent-owned under resource and privacy floors (OD-03).
 
-Basis: Coherency and trust, constraints 1–3; rules 13/28/33/58/86/108; [R2 schema](research/02-what-flows-and-what-must-not.md); Part 21 §§3/9/10 at the section 1 pin.
+Basis: Coherency and trust, constraints 1–3; rules 13/28/33/58/86/108; [R2 schema](research/02-what-flows-and-what-must-not.md); Part 21 §§3/9/10 at the section 1 pin; [transport](../10-the-transport-and-leases.md) §§4/7, observation before retry and lost-acknowledgment lookup; ST/FX grants.
 
 **Rule — the four causes require different witnesses.** **Checks: P22-NF-04/09.**
 
@@ -120,6 +136,16 @@ The terms list is a reading aid; first-use explanations govern their use through
 
 | Term | Meaning / where explained |
 |---|---|
+| Backpressure | A busy receiver slows senders or holds new admission until capacity is available; section 1 |
+| Closed decoder; nested tagged union | Reader accepting only declared fields/shapes; a kind tag selects exactly one allowed shape, also inside records; this section |
+| Enrollment epoch | Destination-specific generation of a verified signing-key enrollment; rotation requires current validation without renewing consent or resetting budgets; this section |
+| Source frontier; digest; opaque reference; semantic loss | Exact available history; fingerprint of exact bytes; identifier revealing no private content; meaning removed or changed by transformation; this section |
+| Quiescence; settled charge | Old claim cannot still execute; any charge from that attempt is resolved. Both accompany proven non-occurrence before retry; this section |
+| Custody; admission; standing | Responsibility for keeping a record; acceptance through owner checks; who may decide what within which scope; section 1 |
+| Fence; reservation | Check rejecting a stale worker; budget set aside before work; section 1 |
+| Ordinal precedence; backoff; idempotency | Scoped ordered priority; wait before another permitted attempt; repeated arrival has no additional effect. None grants a retry; section 3 |
+| Outbox; projection; reconciliation; tombstone | Durable pending-send record; rebuildable view; checking records against owner evidence; retained marker for removed bytes; sections 2/4/6 |
+| Release manifest; exposure; preregistration; arm; baseline | Exact package and approval inventory; possible calls, cost or disclosure; fixing a plan before reading outcomes; tested choice; unchanged comparison agent; sections 6/8/10 |
 | Attestation; inference | Source claim; conclusion drawn rather than directly observed; this section |
 | Binning; evidence coverage; missingness | Grouping in ranges; share with evidence; absent/unavailable evidence; this section |
 | Extractor; embedding; reranker | Derives structured information from captured content; represents content as numbers for comparison; reorders retrieved candidates for relevance. The exported mechanism fields name approved software, not its private content; this section |

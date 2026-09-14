@@ -13,7 +13,7 @@ Basis: Constraint 3; [R1](research/01-instar-1x-feedback-factory.md), operationa
 
 | 1.x path at the R1 pin | What it does | Disposition |
 |---|---|---|
-| `src/core/FeedbackManager.ts` and `src/server/routes.ts` | Bounded narrative reports, local persistence, retries; first network attempt precedes local append; any response.ok counts forwarded | Keep local receipts and bounded retries; replace with outbox-before-send, concurrent-safe append, typed stages and closed derived-case schema |
+| `src/core/FeedbackManager.ts` and `src/server/routes.ts` | Bounded narrative reports, local persistence, retries; first network attempt precedes local append; any response.ok counts forwarded | Keep local receipts, bounded per-call batches and request timeouts, and capped 429/503 backoff; replace with outbox-before-send, concurrent-safe append, typed stages and closed derived-case schema. RS adds durable per-report attempt/exposure budgets and exhaustion handling |
 | `src/core/canonicalFeedback.ts`, `src/core/PostUpdateMigrator.ts` | Canonical configurable address; known legacy URL migration preserves custom URLs | Keep same-code operated split and address selection; new destination never inherits consent |
 | `src/core/FeedbackManager.ts`, receiver `handlers.ts` | Name-derived pseudonym; initial send contains name and pseudonym, retry differs; receiver stores name/IP; optional HMAC is not per-principal standing | Replace with destination-scoped verified enrollment, independent standing grants and same privacy decoder on every attempt |
 | `src/monitoring/FeedbackAnomalyDetector.ts`, receiver `handlers.ts` | Memory-local contributor controls and separate per-IP front limits | Replace resettable limits with durable multi-worker budgets; do not infer unique operators from IPs |
@@ -26,7 +26,14 @@ Basis: Constraint 3; [R1](research/01-instar-1x-feedback-factory.md), operationa
 | `src/core/AutoDispatcher.ts` and `src/core/DispatchExecutor.ts` | `autoApplyPassive` uses the path above only without the contextual evaluator/snapshot builder; discernment evaluates first, with origin verification and relevance filtering when those dependencies are configured. Accepted lesson/strategy/behavioral dispatches use the passive path; accepted action/configuration dispatches execute structured steps or an agentic prompt. Scope and step checks apply when the scope enforcer and autonomy manager are configured; other accepted types still require approval. Results, pending approval and decision history are recorded | Fence the old poll/apply/execute consumers during cutover. Route any newly authorized return through Eight's exact effects and Ten's local installation composition; old configuration or action content cannot execute on import |
 | Shipped/installed feedback skills identified separately in R1 | Narrative report guidance, including original user words; some receipt/auth examples differ from code | Replace export guidance and structural validators together; no skill wording can authorize private export |
 
-Basis: 1.x source at the section 1 pin; `src/core/FeedbackManager.ts:165–227,248–352` and `src/server/routes.ts:20925–21018`.
+The 1.x sender bounds each request and each call’s stored batch, and caps the waiting delay
+for 429/503 responses. It has no finite per-report attempt budget and no exhaustion breaker
+across calls to `retryUnforwarded()`: an unforwarded row can be retried on every later invocation.
+RS therefore adds a durable attempt/exposure budget and an explicit exhausted hold with owner
+escalation; bounded backoff alone does not supply a bounded retry lifecycle. Every new attempt
+also obeys section 2’s uncertainty and settlement gates.
+
+Basis: 1.x source at the section 1 pin; `src/core/FeedbackManager.ts:165–227,248–352`, `src/core/feedbackBackoff.ts:60–122` and `src/server/routes.ts:20925–21018`; section 14 RS.
 Basis: 1.x source at the section 1 pin; `src/core/canonicalFeedback.ts:26–31`, `src/core/PostUpdateMigrator.ts:11210–11216`.
 Basis: 1.x source at the section 1 pin; `src/core/FeedbackManager.ts:125–159,269–280`, receiver `handlers.ts:100–107,145–157`.
 Basis: 1.x source at the section 1 pin; `src/monitoring/FeedbackAnomalyDetector.ts:36–109`, receiver `handlers.ts:74–107`.

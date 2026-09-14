@@ -4,6 +4,14 @@ _Generated from `22-the-commons.changelog.json` by `scripts/render-changelog.mjs
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 4 · 2026-09-14 · draft — Operator-directed repair round 3 of rereview2 AC-01–AC-05 at 7aead7ad2b890d8687aa152723d6aac2b77433c8; verdict .instar/lanes/astra-design-commons-7aead7ad.md.
+
+- **Require exact-subject custody lookup while a send is uncertain; admit query-then-resend only after authoritative non-receipt, owner-proven non-occurrence/quiescence/settled charge and current authority. Distinguish in-flight duplicates and revise F10.** — AC-01 requires the inherited transport uncertainty bar; identical bytes and deduplication do not authorize resubmission. _(AC-01; sections 2/3/12/13; transport sections 4/7)_
+- **Require commons-owner enrollment through A and C, inherited by B; recompute both dependency tables and exact row-102 labels, and assert enrollment reachability in NF-01.** — AC-02 requires every complete runtime positive to include RG; general register machinery is insufficient. _(AC-02; sections 12/14; row 102)_
+- **Specify inherited per-request/per-call batch bounds and capped 429/503 backoff, with no finite per-report retry budget or cross-call exhaustion breaker; identify RS durable budgets and exhaustion handling as new obligations.** — AC-03 requires the migration audit to match the actual 1.x sender. _(AC-03; section 11; RS)_
+- **Explain temporary search copies, supporting files, the three allowed removal reasons, evidence protections and the backup clock in everyday language; retain choices and move storage mechanics to the closing Rule.** — AC-04 requires a self-contained retention decision card without changing the retention contract. _(AC-04; section 15; G2)_
+- **Define backpressure, nested tagged unions and enrollment epochs at first use and in the terms list; clarify the remaining custody, retry, storage and evaluation vocabulary.** — AC-05 requires load-bearing terms to be understandable before they govern a decision. _(AC-05; sections 1–4/6/8/10; section 2 terms list)_
+
 ## Revision 3 · 2026-09-14 · draft — Operator-directed repair round 2 of rereview1 AC-01–AC-08 at 52b42f4ba9a176801ab52b4123d819366ac7ceb1; verdict .instar/lanes/astra-design-commons-52b42f4b.md.
 
 - **Preserve permanent case, withdrawal and approval history in every retention option; limit timers to disposable caches and existing-contract attachment review.** — AC-01 requires rule 7 and the fact/verification redaction boundary, including retained replay identity and honest unavailable support. _(AC-01; sections 4/13/15; F27; ST grant)_

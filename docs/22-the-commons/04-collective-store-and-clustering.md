@@ -10,7 +10,7 @@ batch rather than hammering every row. Cancellation retains exposure and unresol
 
 The collective store retains immutable admitted records, provenance, authorized attachments,
 curated review decisions and causal assessment succession. Search indexes and similarity
-clusters are rebuildable projections; curated rationale, dissent, approvals and repair links
+clusters are rebuildable projections (views derived from retained records); curated rationale, dissent, approvals and repair links
 are not. Signed case facts, provenance, curated decisions, approvals, withdrawal records and
 replay identities remain permanent under every retention option. Withdrawal adds a fact and
 removes current eligibility; it never deletes the case history. F27 checks cache disposal and
@@ -62,7 +62,8 @@ Basis: Trust and constraint 3; rules 13/28/57/58/65/86/108; R4 collective custod
 | Release and installation | Inventory joins published artifacts, withdrawal notices and actual local installs; missing outcome follow-up stays overdue |
 | Budget and identity epochs | Durable accounting replay detects reset/reuse; refuse new spending/export while current state is unresolved |
 
-Reconciliation targets are in the pilot; operational timers are bounded settings. Monitors
+Reconciliation checks stored state against its owners’ evidence to expose mismatches. Its
+targets are in the pilot; operational timers are bounded settings. Monitors
 report their own last successful run. A silent dead detector cannot certify healthy state.
 
 Basis: Purpose constraint 2; rules 43/45/62/69/95; P22 E2/E7/E12.

@@ -1,7 +1,7 @@
 ## 6. The return path
 
 **Rule — a release carries evidence and remains a proposal until locally admitted.** **Checks: P22-NF-11/12.**
-The release manifest binds immutable artifact/version/content hashes, parent lineage,
+The release manifest (the exact package and approval inventory) binds immutable artifact/version/content hashes, parent lineage,
 scenario/proposal identity, exact human approval and delegation, placement record, current
 support and dissent, owner compatibility requirements, migration/rollback plan and outcome
 follow-up. Signatures authenticate an approved issuer; they cannot replace any of those fields.
@@ -35,7 +35,7 @@ current authority. A withdrawn package is never silently deleted from its histor
 
 A receiver can acknowledge deletion/withdrawal only for custody it controls. Already disclosed
 knowledge, dishonest copies and third-party backups are not recallable by assertion. Deletion
-receipts, backup expiry and tombstones record what was actually performed under agreed terms.
+receipts, backup expiry and tombstones (retained markers showing which bytes were removed) record what was actually performed under agreed terms.
 The operator can still inspect reachable status while the commons or normal model path is down.
 
 Basis: Coherency, trust and constraints 2/3; rules 42/45/77/83/95/108; R2 hostile-front limits; G2.

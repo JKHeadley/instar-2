@@ -1,5 +1,42 @@
 [
   {
+    "revision": 4,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator-directed repair round 3 of rereview2 AC-01–AC-05 at 7aead7ad2b890d8687aa152723d6aac2b77433c8; verdict .instar/lanes/astra-design-commons-7aead7ad.md."
+    },
+    "changes": [
+      {
+        "what": "Require exact-subject custody lookup while a send is uncertain; admit query-then-resend only after authoritative non-receipt, owner-proven non-occurrence/quiescence/settled charge and current authority. Distinguish in-flight duplicates and revise F10.",
+        "why": "AC-01 requires the inherited transport uncertainty bar; identical bytes and deduplication do not authorize resubmission.",
+        "ref": "AC-01; sections 2/3/12/13; transport sections 4/7"
+      },
+      {
+        "what": "Require commons-owner enrollment through A and C, inherited by B; recompute both dependency tables and exact row-102 labels, and assert enrollment reachability in NF-01.",
+        "why": "AC-02 requires every complete runtime positive to include RG; general register machinery is insufficient.",
+        "ref": "AC-02; sections 12/14; row 102"
+      },
+      {
+        "what": "Specify inherited per-request/per-call batch bounds and capped 429/503 backoff, with no finite per-report retry budget or cross-call exhaustion breaker; identify RS durable budgets and exhaustion handling as new obligations.",
+        "why": "AC-03 requires the migration audit to match the actual 1.x sender.",
+        "ref": "AC-03; section 11; RS"
+      },
+      {
+        "what": "Explain temporary search copies, supporting files, the three allowed removal reasons, evidence protections and the backup clock in everyday language; retain choices and move storage mechanics to the closing Rule.",
+        "why": "AC-04 requires a self-contained retention decision card without changing the retention contract.",
+        "ref": "AC-04; section 15; G2"
+      },
+      {
+        "what": "Define backpressure, nested tagged unions and enrollment epochs at first use and in the terms list; clarify the remaining custody, retry, storage and evaluation vocabulary.",
+        "why": "AC-05 requires load-bearing terms to be understandable before they govern a decision.",
+        "ref": "AC-05; sections 1–4/6/8/10; section 2 terms list"
+      }
+    ],
+    "multiMachinePosture": "Documentation only. Lost-acknowledgment, duplicate-arrival and query-then-resend paths retain owner uncertainty and settlement gates. All commons runtime positives require row-102 enrollment. No commons runtime fixture, deployment or fleet outcome is claimed executed."
+  },
+  {
     "revision": 3,
     "date": "2026-09-14",
     "status": "draft",
