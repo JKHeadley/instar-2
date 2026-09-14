@@ -1,0 +1,175 @@
+## 2. The emitted-case contract
+
+**Rule — emit a derived case, not an original episode.** **Checks: P22-NF-04/05/06/07/09.**
+Four distinct objects remain separate: original local episode, closed derived case, specifically
+exportable replay/scenario, and proposed behavioral lesson. Original messages, exact judgment
+inputs, reasons and source frontiers (the exact recorded history available at a given point)
+stay with their local owners. Export construction consumes
+owner-validated categories without opening raw captures. The front may receive an attestation, a source's claim
+whose private support the front cannot inspect; it must not relabel that attestation independent proof.
+A proposed schema id is `P22-DERIVED-CASE-v1`. This is contract vocabulary awaiting a closed
+decoder (a reader that accepts only the declared fields and value shapes), not an implemented
+core type. Every object and nested tagged union rejects unknown properties. A tagged union uses
+a kind tag to select exactly one allowed record shape; nested unions apply that same rule inside
+the record. Strings cannot become hidden text channels under names such as `reasonCode`.
+
+| Field group | Allowed contract and source |
+|---|---|
+| Envelope | Schema/version, one of `recall-outcome`, `graded-decision`, `benchmark-result`, `correction`; destination, immutable export identity, enrollment epoch (the destination-specific generation of the verified signing-key enrollment; rotation starts a new generation and requires current identity-owner validation; it does not renew consent or reset a budget), policy/grant version and signature |
+| Canonical mapping | Destination-scoped opaque case and assessment keys (identifiers that reveal no private content); predecessor, correction target and parent export keys; one locally retained mapping across attempts |
+| Origin and strength | Production-derived or synthetic; owner validation and independence states; separate proof, observation, attestation, inference (a conclusion drawn rather than directly observed) and interested-party classification |
+| Stage and behavior | Cause assessments and their evidence state; outcome labels, use/withhold category, sensitivity/audience class and observed effects; no raw sensitive descriptions |
+| Capture mechanism | Approved public ids/versions for capture (recording permitted input) and the extractor (deriving structured information from captured content); capture coverage codes |
+| Selection mechanism | Approved public ids/versions for the index (searchable lookup), retriever (finding candidate support), embedding method (representing content as numbers for comparison) and reranker (reordering retrieved candidates for relevance); selection coverage codes. Only method identities may be exported, never the content representations themselves |
+| Delivery mechanism | Approved public renderer ids/versions (preparing selected support for input), with rendering and actual submission coverage codes |
+| Decision | Approved public model/provider/settings, prompt, context-assembly, action-floor and output-schema identities; opaque private identities explicitly non-comparable |
+| Timing | Clock-comparability state, event-window class, binned (grouped into ranges) age/latency, timeout/cancellation code; exact times and frontiers remain local |
+| Grade | Owner criterion/version, conclusion and reason grades separately, grader/method/standing, scope-validation state, horizon, conflict/currentness and evidence availability |
+| Benchmark | Public scenario/version, candidate, plan/run mapping, planned ordinal or permitted aggregate profile; compatibility disposition; graded, missing, refused, cancelled, pending and conflicted counts |
+| Quantities | Part 20 registered units, permitted counts and cost/usage buckets; explicit unknown price, coverage (share with required evidence) and missingness (evidence absent or unavailable) |
+| Correction | Target, supported new assessment codes, causal predecessor/successor, author standing and evidence state; never raw correction text |
+| Export receipt | Field-policy digest (a fixed-length fingerprint binding exact bytes), transformation id, semantic-loss codes (what meaning the transformation removed or changed), opaque local payload-binding reference, grant/revocation reference and local pre-send validation-receipt reference |
+
+The local exporter produces the pre-send validation receipt after validating the derived
+fields and export policy. Its opaque reference is in the outgoing group above; the local
+outbox (the durable record of pending sends) then commits that receipt's binding to the final
+immutable payload bytes before sending.
+The binding itself remains local, outside the bytes it hashes; the wire carries only its opaque
+reference, so neither a self-referential digest nor a post-send payload edit is required.
+The front produces a different, authenticated custody receipt only after durable storage.
+That later receipt stays outside the immutable wire payload and is joined locally by destination,
+export id and payload digest. Before it arrives, local front-custody state is `not-yet-received`;
+a lost acknowledgment or timeout after the network call started leaves custody `UNKNOWN`,
+not failed or stored by assumption. Recovery is a read-only custody QUERY for the front's
+exact subject: destination, export id and payload digest, authenticated to the original sender.
+It retrieves an existing receipt/result without submitting missing work. A missing, stale,
+inaccessible or conflicting record preserves uncertainty and the original reservation.
+Identical bytes, current consent and receiver deduplication do not authorize a blind resend.
+
+A query-then-resend path is admitted only if the query yields authoritative `not received`
+evidence for that exact subject and digest, and Eight (effects) and Nine (verification) establish
+non-occurrence, quiescence (the old claim cannot still execute) and settled charge (any charge
+from that attempt is resolved). An absent search result is not such evidence. Only then may
+Six admit a new bounded execution attempt under current authority, retaining the original
+export identity and bytes. If those owners cannot establish every condition, lookup/waiting
+remains the only continuation. The recovered front receipt stays outside the payload.
+Section 3 defines its required bindings.
+
+Each optional observation is explicitly `known` with a typed value or `unknown`, `unavailable`,
+`not-applicable` with an enumerated reason. Missingness is not `null`, zero or a fabricated
+success. Stable random opaque ids follow a fixed length/encoding; public ids resolve an
+approved registry entry. Field lengths, array counts and nesting limits are finite and
+versioned. Their exact values are agent-owned under resource and privacy floors (OD-03).
+
+Basis: Coherency and trust, constraints 1–3; rules 13/28/33/58/86/108; [R2 schema](research/02-what-flows-and-what-must-not.md); Part 21 §§3/9/10 at the section 1 pin; [transport](../10-the-transport-and-leases.md) §§4/7, observation before retry and lost-acknowledgment lookup; ST/FX grants.
+
+**Rule — the four causes require different witnesses.** **Checks: P22-NF-04/09.**
+
+| Cause | Required local evidence | Refused inference |
+|---|---|---|
+| `not-captured` | Expected permitted intake opportunity plus missing-capture evidence or a recorded capture failure at the relevant frontier | A source that is unavailable now proves it was never captured |
+| `not-found` | Permitted original existed at decision time; query/index/selection evidence failed to retrieve sufficient support | Forbidden history was a legitimate retrieval target |
+| `found-not-delivered` | Sufficient permitted support selected, with evidence it was omitted during rendering, assembly or actual submission | An intended prompt proves what the provider received |
+| `delivered-not-used` | Sufficient support confirmed in actual provider input, plus graded behavior that misused or ignored it | Rightful withholding means recall failed |
+
+Multiple supported causes can coexist. Unknown or disputed cause remains explicit.
+Mechanism codes distinguish capture, index-lag/hole, query, selection, permission, rendering,
+submission, reader-use, review and recipient-delivery. Separate outcome labels include
+`missed`, `obsolete`, `unnecessary-hold`, `wrong-audience`. Internal use, provider exposure,
+prepared output and actual delivery remain distinct stages. Correct private use without
+revealing a fact is a possible success; accurate recall disclosed to the wrong audience fails.
+
+Basis: Wisdom and evidence constraint 3; rule 108; R2 cause table; Part 21 §9.
+
+**Rule — content-free applies to every channel, including retry and failure.** **Checks: P22-NF-05/07/18.**
+Default export rejects prompts, messages, answers, rationale, correction/lesson prose, names,
+emails, conversation/topic/run identifiers, paths, URLs, private hashes, embeddings, gradients (model-update signals that may reveal training content)
+and arbitrary labels. A public software digest is allowed only when its public identity is
+verified. Opaque private compatibility does not establish equality. Richer payloads need a
+separate current grant, authorized access and an explicit transformation-loss account.
+Original-author custody and audience restrictions still apply even when the operator opts in.
+
+Basis: Trust, sovereignty, non-widening authority; rules 28/29/86/89/95; R2 privacy floor; OD-02 and G2.
+
+
+**Rule — case kinds have distinct required evidence and correction semantics.** **Checks: P22-NF-04/08/09.**
+Every case requires the envelope, canonical mapping, origin, attribution and export receipt.
+A recall outcome also requires stage observations, cause evidence states and a separate behavior
+assessment. A graded decision requires criterion, conclusion/reason/outcome observations,
+grader standing resolution, sensitivity/audience and outcome horizon. A benchmark result
+requires the exact plan/candidate/scenario mapping, compatibility disposition and complete
+planned-population accounting. A correction requires its target assessment, causal predecessor,
+new assessment and author evidence. A missing source observation uses its explicit unavailable
+tag; it cannot be replaced by dropping the field. Kind-specific fields on the wrong kind fail.
+
+Default export ids are locally generated random 128-bit values encoded as 32 lowercase hex
+characters, never caller-authored names. Digests use a fixed registered algorithm/length and
+only public or exported bytes. Enumerations and public software ids resolve the selected schema
+registry; arbitrary custom values fail. Booleans, integer counts and finite registered quantities
+are type-checked, not coerced from strings. Numbers outside owner bounds, duplicate keys,
+non-finite values and arrays beyond the schema limit fail before serialization. Wire limits
+are chosen and frozen with the schema before deployment, not supplied by each report.
+A correction arriving before its target is stored as unresolved custody, never applied to an
+invented target. Cross-enrollment corrections need verified authority over that case; otherwise
+they are disputed evidence. A correctly signed correction still needs owner causal validation.
+
+Basis: Coherency and trust; rules 13/28/33/58/86/108; R2 closed-decoder contract; OD-03 bounded encoding settings.
+
+**Rule — content-free is not a promise of anonymity.** **Checks: P22-NF-05/14/15.**
+Anonymity means the recipient cannot identify the contributor; omitting names alone does not establish it.
+A hostile front may correlate connection origin, timing, enrollment linkage, rare software/model
+combinations and repeated outcomes, and can retain anything actually exported. Approved category
+coarsening (combining detailed categories), finite contribution, batching and small-cell
+suppression (withholding results for groups too small to publish safely) reduce particular exposure;
+none alone hides all metadata or proves differential privacy, a quantified bound on how much
+replacing one protected contributor can change the probabilities of published results. Front logs and diagnostic providers
+are part of the custody inventory, with explicit access and retention terms. Repeated-query
+and cross-destination linkage risks remain in the threat model. An exact public artifact id is
+still excluded when its approved field policy requires coarsening. Unknown privacy eligibility
+holds the export. Richer export, onward forwarding, publication and model training each require
+their own authority; enrollment cannot authorize all future uses.
+
+Basis: Trust, sovereignty and authority constraint; R2 hostile-front table; section 8 C mechanism; G2 retention/privacy terms.
+
+**Rule — terms retain their stated limits.** **Check: P22-NF-01.**
+The terms list is a reading aid; first-use explanations govern their use throughout this body.
+
+| Term | Meaning / where explained |
+|---|---|
+| Backpressure | A busy receiver slows senders or holds new admission until capacity is available; section 1 |
+| Closed decoder; nested tagged union | Reader accepting only declared fields/shapes; a kind tag selects exactly one allowed shape, also inside records; this section |
+| Enrollment epoch | Destination-specific generation of a verified signing-key enrollment; rotation requires current validation without renewing consent or resetting budgets; this section |
+| Source frontier; digest; opaque reference; semantic loss | Exact available history; fingerprint of exact bytes; identifier revealing no private content; meaning removed or changed by transformation; this section |
+| Quiescence; settled charge | Old claim cannot still execute; any charge from that attempt is resolved. Both accompany proven non-occurrence before retry; this section |
+| Custody; admission; standing | Responsibility for keeping a record; acceptance through owner checks; who may decide what within which scope; section 1 |
+| Fence; reservation | Check rejecting a stale worker; budget set aside before work; section 1 |
+| Ordinal precedence; backoff; idempotency | Scoped ordered priority; wait before another permitted attempt; repeated arrival has no additional effect. None grants a retry; section 3 |
+| Outbox; projection; reconciliation; tombstone | Durable pending-send record; rebuildable view; checking records against owner evidence; retained marker for removed bytes; sections 2/4/6 |
+| Release manifest; exposure; preregistration; arm; baseline | Exact package and approval inventory; possible calls, cost or disclosure; fixing a plan before reading outcomes; tested choice; unchanged comparison agent; sections 6/8/10 |
+| Attestation; inference | Source claim; conclusion drawn rather than directly observed; this section |
+| Binning; evidence coverage; missingness | Grouping in ranges; share with evidence; absent/unavailable evidence; this section |
+| Extractor; embedding; reranker | Derives structured information from captured content; represents content as numbers for comparison; reorders retrieved candidates for relevance. The exported mechanism fields name approved software, not its private content; this section |
+| Gradients | Model-update signals that may reveal training content; this section |
+| Anonymity; pseudonymity | Non-identifiability; using a substitute identifier without guaranteeing it; sections 2/3 |
+| Blinded review; calibration; holdout | Concealed treatment assignment; comparison to adjudicated cases; cases reserved from development; section 5 |
+| Prevalence | Fraction of a defined population with a category; section 8 |
+| Percentile; strata | Value below which a named fraction falls; separately reported groups; section 9 |
+| Paired comparison; cohort; stratification | Same opportunities for both candidates; reserved evaluation group; predefined grouping; section 10 |
+| Denominator; median; p95; percentage point | Population underlying a fraction; middle value; 95th percentile; absolute percentage difference; section 10 |
+| Coarsening; small-cell suppression | Combining detailed categories; withholding results for small groups; this section |
+| Differential privacy | Bound on changes in output probabilities when a protected contribution changes; this section |
+| Repeated, adaptive, differencing queries | Re-asking, choosing from prior answers, or comparing overlapping groups; section 8 |
+| Local differential privacy | Randomization at the contributor before the front receives data; section 8 |
+| Secure aggregation; dropout; collusion | Protected summation; participants leaving; cooperating parties; section 8 |
+| Protected unit; neighboring datasets | One operator's full contribution; datasets differing by its replacement; section 8 |
+| Clipping; category vector; L1 norm | Limiting magnitude; numerical category weights; sum of absolute weights; section 8 |
+| Epsilon; delta; sensitivity | Multiplicative probability parameter; additive slack; maximum neighboring change; section 8 |
+| Cumulative privacy accounting | Accounting for privacy loss over all releases/destinations; section 8 |
+| Operator-cluster bootstrap | Resampling whole operators with their cases intact; section 10 |
+| Percentile interval; coverage | Resample-quantile endpoints; how often the method includes the target over repeated samples; section 10 |
+| Bonferroni family error | Chance of any comparison's interval missing its target, bounded by allocating error across comparisons; section 10 |
+| Arm-stratified resampling | Resampling operators within each assigned trial group; section 10 |
+| HMAC | Message-authentication code using a shared secret; section 11 |
+| Tier 1 supervision | A model checks each critical step through the existing judgment doorway; section 12 |
+
+Basis: Purpose honest-evidence and trust constraints; sections 8/10 privacy and inference contracts.

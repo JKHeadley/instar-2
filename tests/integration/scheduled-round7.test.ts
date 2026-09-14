@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { exerciseP15Round7Proof } from '../scheduled/round7-proof.js';
 
+// Ten real owner-port scenarios share this proof; match round eight's bounded integration budget.
 it('P15-NF-03 P15-NF-07 P15-NF-08 P15-NF-10 round-seven full-port owner boundary', () => {
   const proof = exerciseP15Round7Proof();
   expect(Object.fromEntries(Object.entries(proof.resources).map(([key, value]) => [key, value.status]))).toEqual({
@@ -10,4 +11,4 @@ it('P15-NF-03 P15-NF-07 P15-NF-08 P15-NF-10 round-seven full-port owner boundary
   expect(new Set(['recorded', 'staged', 'retired', 'inhibited'].map(key => proof.activity[key]!.detail)))
     .toEqual(new Set(['competing package activity requires a Part Ten owner-issued activity resolution']));
   expect(proof.activity.active).toEqual({ status: 'refused', detail: 'package declaration namespace collision' });
-});
+}, 15_000);

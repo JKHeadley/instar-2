@@ -1,0 +1,92 @@
+[
+  {
+    "revision": 4,
+    "date": "2026-09-14",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator's direction in topic 52075 on 2026-09-14 ('three tiers'): the constitution holds general principles and amends rarely; specific operating choices belong to a per-deployment operator policy register; the first application of the gap rule had produced 19 over-specific candidate amendments; approved by the operator in topic 52075 at 02:59Z 2026-09-14 ('Approved 75 and 76')"
+    },
+    "changes": [
+      {
+        "what": "The gap Rule's check now recognises three dispositions (decided by this document; operator policy per deployment, recorded in a policy register; agent-owned engineering default) and makes amendments rare general principles.",
+        "why": "Applied literally, the first check turned every undecided deployment choice into a proposed constitutional amendment.",
+        "ref": "topic 52075, operator messages of 2026-09-14 02:36Z and 02:51Z; docs/harvests/decisions-sweep-2026-09-13.md"
+      },
+      {
+        "what": "Five general principles added: the agent never administers its own safeguards; least revelation; nothing outward by default; an irreversible act outlives the machine that decided it; automatic suggestions never widen themselves.",
+        "why": "These are the general principles the 19 candidates reduced to; each decides a class of questions, and its deployment-specific defaults move to the policy register.",
+        "ref": "docs/harvests/decisions-sweep-2026-09-13.md consolidated candidates CA-01, 03, 04, 05, 06, 07, 09, 10, 13"
+      }
+    ],
+    "approvedIn": {
+      "pr": 75,
+      "mergeCommit": "296bf4235629877ad1b6ad6e1846631df331b6f5"
+    }
+  },
+  {
+    "revision": 3,
+    "date": "2026-09-13",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator's confirmation in topic 52075 on 2026-09-13 that undecidable design questions are constitution gaps; the memory design's decision 5 (which effects get an extra history check) was undecidable because 'consequential' had no definition; approved by the operator on GitHub (review) and in topic 52075 at 00:06Z 2026-09-14"
+    },
+    "changes": [
+      {
+        "what": "Added one constitutional definition of a consequential effect (four tests), of user-facing, and of significant/critical resolving to consequential, with a registration-time classification check on the effect doorway.",
+        "why": "The rule book records that rules 34, 38, 43, 62 and 76 are blocked on 'significant', 'critical' and 'user-facing' having no definition; the memory design's decision 5 was undecidable for the same reason.",
+        "ref": "rule book: 'Rules 34, 38, 43, 62 and 76 hinge on significant, critical, or user-facing'; memory design section 15 decision 5; topic 52075"
+      }
+    ],
+    "approvedIn": {
+      "pr": 71,
+      "mergeCommit": "e281a2c2751a6d71efc41d592212336fcc2561c8"
+    }
+  },
+  {
+    "revision": 2,
+    "date": "2026-09-13",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator direction in topic 52075 on 2026-09-13: wisdom in the use of knowledge is the aim above coherence, and the constitution must be complete enough to decide every design question; approved by the operator in topic 52075 on 2026-09-13 23:26Z ('approved')"
+    },
+    "changes": [
+      {
+        "what": "Added the Value 'wisdom is what coherence is for': coherence is the precondition; the aim is wisdom in the use of knowledge, with complete recall as the baseline and recorded, graded use-or-withhold judgment above it.",
+        "why": "The purpose named coherence, trust, sovereignty and alignment but not wisdom; rule 57 bounds judgment without naming its growth as a goal. The operator stated that wisdom is core to the project.",
+        "ref": "topic 52075, operator message of 2026-09-13 22:48Z"
+      },
+      {
+        "what": "Added the Rule 'a design question this document cannot decide is a gap in this document', with the check that every part design's decision list names the purpose statement, pillar, or constraint that decides each question, and that an undecidable question is filed as a candidate amendment.",
+        "why": "The operator asked that the constitution work as a north star complete enough to give every design decision a clear answer, and that unclear decisions be treated as evidence of what the constitution is missing.",
+        "ref": "topic 52075, operator message of 2026-09-13 23:02Z"
+      }
+    ],
+    "approvedIn": {
+      "pr": 69,
+      "mergeCommit": "c83db01063b62cf309448bc8b8f859cb9be812ae"
+    }
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-05",
+    "status": "approved",
+    "cause": {
+      "kind": "draft",
+      "note": "the purpose, the name, and the decision boundary"
+    },
+    "approvedIn": {
+      "pr": 19,
+      "mergeCommit": "192bf356e7fe1eb01ace74f8d1c91bc79bbf1d77"
+    },
+    "changes": [
+      {
+        "what": "Initial purpose statement, the four pillars, the five constraints, and who decides what.",
+        "why": "Every other document is written in service of this one.",
+        "ref": "PR #19"
+      }
+    ]
+  }
+]

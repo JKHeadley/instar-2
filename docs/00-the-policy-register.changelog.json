@@ -1,0 +1,38 @@
+[
+  {
+    "revision": 2,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Part Twenty-Three repair round 1; independent design verdict at 7b717740, JU-01 through JU-06"
+    },
+    "changes": [
+      {
+        "what": "Record pending P-18 competing-harm and P-19 private-use implication policies.",
+        "why": "Apply the purpose’s three-tier gap check to Part Twenty-Three OD-08/09 with explicit defaults and no claim of operator adoption.",
+        "ref": "docs/23-judgment-of-use/../00-the-policy-register.md"
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-14",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator's direction in topic 52075 on 2026-09-14 ('three tiers'): deployment-specific operating choices belong in a policy register beneath the purpose, not in constitutional amendments; approved by the operator in topic 52075 at 02:59Z 2026-09-14 ('Approved 75 and 76')"
+    },
+    "changes": [
+      {
+        "what": "Seeded the register with seventeen operator policies (P-01 to P-17) distilled from the decisions sweep's candidate amendments, each naming the purpose principle it serves and what a deployment may change.",
+        "why": "The sweep's nineteen candidates were operating policies and engineering defaults rather than general principles; the five general principles went to the purpose (PR #75) and the deployment choices live here.",
+        "ref": "docs/harvests/decisions-sweep-2026-09-13.md consolidated candidates; topic 52075"
+      }
+    ],
+    "approvedIn": {
+      "pr": 76,
+      "mergeCommit": "c5644c1135633ae592cb3d2900c0fe85ba8693a7"
+    }
+  }
+]
