@@ -2,10 +2,10 @@
   {
     "revision": 4,
     "date": "2026-09-14",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "conversation",
-      "note": "operator's direction in topic 52075 on 2026-09-14 ('three tiers'): the constitution holds general principles and amends rarely; specific operating choices belong to a per-deployment operator policy register; the first application of the gap rule had produced 19 over-specific candidate amendments"
+      "note": "operator's direction in topic 52075 on 2026-09-14 ('three tiers'): the constitution holds general principles and amends rarely; specific operating choices belong to a per-deployment operator policy register; the first application of the gap rule had produced 19 over-specific candidate amendments; approved by the operator in topic 52075 at 02:59Z 2026-09-14 ('Approved 75 and 76')"
     },
     "changes": [
       {
@@ -18,7 +18,11 @@
         "why": "These are the general principles the 19 candidates reduced to; each decides a class of questions, and its deployment-specific defaults move to the policy register.",
         "ref": "docs/harvests/decisions-sweep-2026-09-13.md consolidated candidates CA-01, 03, 04, 05, 06, 07, 09, 10, 13"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 75,
+      "mergeCommit": null
+    }
   },
   {
     "revision": 3,
