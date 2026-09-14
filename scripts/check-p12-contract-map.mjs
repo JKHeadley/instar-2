@@ -192,7 +192,8 @@ const concreteConsumers = [
     supporting: [{ file: 'src/conversation/telegram.ts', anchors: [
       'export function assessTelegramReplyResponse', "input.claim === 'provider-accepted'",
       'take(deps.custody.verify([response.capture], deps.definition))', 'deps.assessment.assess(input.effect)',
-      'deps.assessment.read(assessment, input.effect)', "view.outcome.kind === 'happened'",
+      'deps.assessment.read(assessment, input.effect)', 'consumeOutcome(view.outcome',
+      "'did-not-happen': () => null", 'uncertain: () => null',
       "view.finalCharge === null && view.delayedExecutionExcluded === false",
       "ownerAssessment.captureStatuses[0]!.reference === response.capture.reference",
     ] }] },
