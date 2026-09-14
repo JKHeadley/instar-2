@@ -1,10 +1,11 @@
 # Capabilities
 
-Register generation: sha256:c9b89daf1226ebfce65f4638e45162a22f8ff342073d7979a06bd901bf95d544
-Source commit: f24dfa6929ef7dc8842580192061aa306b34b3c5
+Register generation: sha256:84eb792540b1e3587236debccbb8c21cbd8dd80dd872c3d5c64720f6ad33c745
+Source commit: 2dadce4fe49ee076fb69eda3bf0561d05bdd8a98
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
 - intake-slice: live; metrics: ["intake.preserved","intake.admitted","intake.held","intake.hold-age","intake.mismatch","intake.stop"]; live proof: unavailable
 - register-tooling: live; metrics: ["register.entries","register.rules","register.terms","register.warnings"]; live proof: unavailable
 - rungraph-core: dark; metrics: ["rungraph.fact-count","rungraph.pending-count","rungraph.fold-ms","rungraph.conflict-count"]; live proof: unavailable
+- telegram-conversation-adapter: dark; metrics: ["telegram.mode.long-poll.default","telegram.mode.webhook.signed-choice-only","telegram.identity.fresh-authenticated-probe","telegram.cursor.consecutive-durable-receipts","telegram.operation.ordinary-reply.supported","telegram.operation.media.inhibited","telegram.operation.reaction.inhibited","telegram.operation.typing.inhibited","telegram.operation.delete.inhibited","telegram.operation.edit.inhibited","telegram.operation.aggregate.inhibited","public.IntakePort.receive","public.EffectDoorway.handoff"]; live proof: unavailable
