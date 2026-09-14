@@ -1091,15 +1091,18 @@ export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAd
           account: admitted.account, conversation,
         });
         const invocationCapture = take(binding.host.capture(invocationBytes));
-        const invocationFields = {
+        const invocationIdentity = {
           request: request.id as string, operation: input.operation, claim: input.claim,
           digest: input.digest, account: admitted.account, conversation,
+        };
+        const invocationFields = {
+          ...invocationIdentity,
           stage: 'executor-accepted' as const, wake: '', capture: invocationCapture,
           attestation: 'local-recorder' as const,
         };
         const invocation = {
           type: 'OperationObservation' as const, schemaVersion: 1 as const,
-          id: `observation:telegram-invocation-started:${take(canonical(invocationFields)).hash}`,
+          id: `observation:telegram-invocation-started:${take(canonical(invocationIdentity)).hash}`,
           ...invocationFields,
         } as unknown as OperationObservation;
         ensure(!effect('OperationObservation').some(row => row.record.id === invocation.id),
@@ -1126,6 +1129,25 @@ export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAd
             && receipt.durability.n >= binding.definition.replicas,
           'Telegram reply invocation-started observation missed its replica demand');
         }
+        const postMarkerState = binding.host.current();
+        ensure(!postMarkerState.stopped, 'stop inhibits Telegram reply');
+        ensureCurrentReplyStanding(binding.host, postMarkerState);
+        const postMarkerVersions = walkVersions(postMarkerState.versions);
+        ensure(postMarkerVersions.conflicts.length === 0, 'Telegram reply operation definition is contested');
+        const postMarkerDefinition = postMarkerVersions.current.find(version => version.id === binding.definition.version
+          && version.subject === binding.definition.feature);
+        ensure(postMarkerDefinition && encode(postMarkerDefinition.content) === encode(binding.definition)
+          && postMarkerState.decode.register.entries.includes(binding.definition.feature)
+          && postMarkerState.decode.register.entries.includes(binding.definition.adapter)
+          && binding.definition.generation === postMarkerState.decode.register.generation.id
+          && binding.definition.adapter === admitted.id
+          && binding.definition.account === admitted.account
+          && binding.definition.conversation === conversation,
+        'Telegram reply operation definition or adapter binding is not current');
+        ensure(validation && validation.expires > postMarkerState.clock.value
+          && validation.generation === postMarkerState.decode.register.generation.id
+          && encode(validation.authority) === encode(postMarkerState.authority),
+        'Telegram reply dispatch validation is expired or no longer current');
         return take(api.sendMessage({ token: admitted.declaration.token, apiVersion: admitted.declaration.apiVersion,
           chatId: boundTarget.chatId, messageThreadId: boundTarget.messageThreadId, text: input.message.text,
           parseMode: 'HTML', timeout: admitted.declaration.limits.timeout, hiddenRetries: 0 }));
