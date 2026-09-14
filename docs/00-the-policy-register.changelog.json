@@ -20,7 +20,7 @@
       }
     ],
     "approvedIn": {
-      "pr": null,
+      "pr": 81,
       "mergeCommit": null
     }
   },
