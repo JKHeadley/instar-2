@@ -2,9 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const mainEraExemptions = new Map([
-  ['tests/integration/register.test.ts', 'P3-NF-21/23 implemented by row 77'],
-]);
+const mainEraExemptions = new Map<string, string>();
 
 describe('permanent Part Three additivity gate', () => {
   it('P3-NF-09 keeps every other test and fixture that existed on main byte-identical', () => {
@@ -14,10 +12,7 @@ describe('permanent Part Three additivity gate', () => {
     const changed = paths.filter(path => !mainEraExemptions.has(path)
       && !readFileSync(path).equals(execFileSync('git', ['show', `${base}:${path}`])));
     expect(paths).toHaveLength(239);
-    expect([...mainEraExemptions]).toEqual([
-      ['tests/integration/register.test.ts', 'P3-NF-21/23 implemented by row 77'],
-    ]);
-    expect(paths).toEqual(expect.arrayContaining([...mainEraExemptions.keys()]));
+    expect([...mainEraExemptions]).toEqual([]);
     expect(changed, `main-vs-HEAD additivity changed: ${changed.join(', ')}`).toEqual([]);
   });
 
@@ -28,7 +23,7 @@ describe('permanent Part Three additivity gate', () => {
     expect(unchanged.filter(differs)).toEqual([]);
     expect(['tests/register/owner-references.test.ts', 'tests/register/workflow.test.ts']
       .filter(differs)).toEqual([]);
-    expect(differs('tests/integration/register.test.ts')).toBe(true);
+    expect(differs('tests/integration/register.test.ts')).toBe(false);
     expect(differs('src/register/generator.ts')).toBe(true);
 
     const diff = execFileSync('git', ['diff', '--unified=0', base, '--', 'src/register/generator.ts'], { encoding: 'utf8' });

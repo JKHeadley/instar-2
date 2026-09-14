@@ -96,13 +96,8 @@ function recordBody(status: FactStatus): Json {
   return status.body;
 }
 
-function evidenceUseClock(snapshot: FactSnapshot, supplied: Clock | undefined,
-  options: PartTwoRegisterProviderOptions): Clock {
-  const explicit = supplied ?? options.types?.now ?? options.context.authorityTypes?.now ?? options.context.types.now;
-  if (explicit) return explicit;
-  const latest = [...snapshot.entries].sort((a, b) => b.fact.at.value - a.fact.at.value)[0]?.fact.at;
-  requireThat(latest !== undefined, 'signed evidence verification requires the use clock');
-  return latest;
+function evidenceUseClock(supplied: Clock | undefined, options: PartTwoRegisterProviderOptions): Clock | undefined {
+  return supplied ?? options.types?.now ?? options.context.authorityTypes?.now ?? options.context.types.now;
 }
 
 function witnessFor(reference: FactPositionVectorReference, snapshot: FactSnapshot): Readonly<{
@@ -202,8 +197,10 @@ function generationRecords(snapshot: FactSnapshot, view: ProjectedView, context:
 export function createPartTwoRegisterAuthority(options: PartTwoRegisterAuthorityOptions): PartTwoRegisterAuthorityPort {
   const authority: PartTwoRegisterAuthorityPort = Object.freeze({
     owner: 'part-two',
-    verifyExtract: (rows: readonly VersionRowInput[], vector: FactPositionVectorReference, snapshot: FactSnapshot) => checked<FactPositionVectorReference, RegisterContext>('PartTwoVersionExtract', { rows, vector }, options.context, () => {
-      const witness = witnessFor(vector, snapshot);
+    verifyExtract: (rows: readonly VersionRowInput[], vector: FactPositionVectorReference, snapshot: FactSnapshot) => checked<FactPositionVectorReference, RegisterContext>('PartTwoVersionExtract', { rows, vector }, options.context, raw => {
+      const input = object(raw); const capturedRows = input.rows as unknown as readonly VersionRowInput[];
+      const capturedVector = input.vector as unknown as FactPositionVectorReference;
+      const witness = witnessFor(capturedVector, snapshot);
       const versions = decodeVersions(REGISTER_VERSION_FACT, options, snapshot, witness.ids);
       const walked = walkVersions(versions);
       const duplicates = new Set(walked.duplicates);
@@ -219,15 +216,16 @@ export function createPartTwoRegisterAuthority(options: PartTwoRegisterAuthority
           approvedIn: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: version.approvedIn.id },
           landedIn: version.landedIn, base: version.base, contentHash: version.contentHash };
       }).sort((a, b) => a.version < b.version ? -1 : a.version > b.version ? 1 : 0);
-      requireThat(encoding(rows).bytes === encoding(expected).bytes,
+      requireThat(encoding(capturedRows).bytes === encoding(expected).bytes,
         'P3-NF-23: extract is not the complete current Part Two version-chain answer');
-      return vector;
+      return capturedVector;
     }),
-    verifyShapeChange: (binding: ShapeChangeBinding, snapshot: FactSnapshot) => checked<FactReference, RegisterContext>('PartTwoShapeVersion', binding, options.context, () => {
-      requireThat(binding.approval !== undefined, 'P3-NF-09: governed shape change requires approval');
+    verifyShapeChange: (binding: ShapeChangeBinding, snapshot: FactSnapshot) => checked<FactReference, RegisterContext>('PartTwoShapeVersion', binding, options.context, raw => {
+      const captured = raw as unknown as ShapeChangeBinding;
+      requireThat(captured.approval !== undefined, 'P3-NF-09: governed shape change requires approval');
       const versions = decodeVersions(SHAPE_VERSION_FACT, options, snapshot);
-      const current = walkVersions(versions).current.filter(version => encoding(version.content).bytes === encoding(binding).bytes
-        && version.approvedIn.id === binding.approval.id);
+      const current = walkVersions(versions).current.filter(version => encoding(version.content).bytes === encoding(captured).bytes
+        && version.approvedIn.id === captured.approval!.id);
       requireThat(current.length === 1, 'P3-NF-09: no unique current governed version approves this exact shape change');
       return { owner: 'part-two', name: 'FactEnvelope', id: current[0]!.approvedIn.id };
     }),
@@ -248,18 +246,20 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
     owner: 'part-two',
     ...(options.types ? { types: options.types } : {}),
     ...(options.separations ? { separations: options.separations } : {}),
-    verifyExtract: extract => checked<FactPositionVectorReference, RegisterContext>('PartTwoRegisterExtractVerification', extract, options.context, () => {
+    verifyExtract: extract => checked<FactPositionVectorReference, RegisterContext>('PartTwoRegisterExtractVerification', extract, options.context, raw => {
+      const captured = raw as unknown as typeof extract;
       const snapshot = read(); projection(snapshot, options.horizon, options.context);
-      witnessFor(extract.vector, snapshot);
-      const answer = take(options.authority.verifyExtract(extract.rows, extract.vector, snapshot));
-      requireThat(encoding(answer).bytes === encoding(extract.vector).bytes,
+      witnessFor(captured.vector, snapshot);
+      const answer = take(options.authority.verifyExtract(captured.rows, captured.vector, snapshot));
+      requireThat(encoding(answer).bytes === encoding(captured.vector).bytes,
         'P3-NF-23: Part Two extract resolver returned a different vector');
       return answer;
     }),
-    enteringForce: generation => checked<GenerationRecord, RegisterContext>('PartTwoRegisterEnteringForce', generation, options.context, () => {
+    enteringForce: generation => checked<GenerationRecord, RegisterContext>('PartTwoRegisterEnteringForce', generation, options.context, raw => {
+      const captured = raw as unknown as typeof generation;
       const snapshot = read(); const { view } = projection(snapshot, options.horizon, options.context);
       const matches = generationRecords(snapshot, view, options.context)
-        .filter(record => encoding(record.generation).bytes === encoding(generation).bytes);
+        .filter(record => encoding(record.generation).bytes === encoding(captured).bytes);
       requireThat(matches.length === 1, 'P3-NF-21: generation has no unique current entering-force fact in the Part Two store');
       return matches[0]!;
     }),
@@ -269,7 +269,7 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
       requireThat(supplied.owner === 'part-two' && supplied.name === 'FactPositionVector' && typeof supplied.id === 'string' && supplied.id.length > 0,
         'P3-NF-23: malformed FactPositionVector reference');
       const snapshot = read(); const { definition, view } = projection(snapshot, options.horizon, options.context);
-      const witness = witnessFor(reference, snapshot);
+      const witness = witnessFor(input.reference as unknown as FactPositionVectorReference, snapshot);
       return consumeResult(readProjection(view, definition, clock, options.context), {
         Success: answer => answer.stale.length === 0
           && consumeResult(readProjection(view, definition, clock, options.context, witness.frontier), {
@@ -285,17 +285,21 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
       });
     }),
     revalidateLoaded: (extract, generation, now) => checked<boolean, RegisterContext>('PartTwoLoadedRegisterRevalidation',
-      { extract, generation, now }, options.context, () => {
-        take(provider.verifyExtract(extract)); take(provider.enteringForce(generation));
-        requireThat(take(provider.isCurrent(extract.vector, now)), 'loaded register vector is no longer current');
+      { extract, generation, now }, options.context, raw => {
+        const input = object(raw); const capturedExtract = input.extract as unknown as typeof extract;
+        const capturedGeneration = input.generation as unknown as typeof generation;
+        const capturedNow = input.now as unknown as Clock;
+        take(provider.verifyExtract(capturedExtract)); take(provider.enteringForce(capturedGeneration));
+        requireThat(take(provider.isCurrent(capturedExtract.vector, capturedNow)), 'loaded register vector is no longer current');
         return true;
-    }),
-    verifyShapeChange: binding => checked<FactReference, RegisterContext>('PartTwoShapeChangeApproval', binding, options.context, () => {
+      }),
+    verifyShapeChange: binding => checked<FactReference, RegisterContext>('PartTwoShapeChangeApproval', binding, options.context, raw => {
+      const captured = raw as unknown as ShapeChangeBinding;
       const snapshot = read(); projection(snapshot, options.horizon, options.context);
-      requireThat(binding.approval !== undefined, 'P3-NF-09: governed shape change requires a Part Two approval reference');
-      exactFactReference(binding.approval, 'shape approval');
-      const approval = take(options.authority.verifyShapeChange(binding, snapshot)); exactFactReference(approval, 'shape approval witness');
-      requireThat(encoding(approval).bytes === encoding(binding.approval).bytes,
+      requireThat(captured.approval !== undefined, 'P3-NF-09: governed shape change requires a Part Two approval reference');
+      exactFactReference(captured.approval, 'shape approval');
+      const approval = take(options.authority.verifyShapeChange(captured, snapshot)); exactFactReference(approval, 'shape approval witness');
+      requireThat(encoding(approval).bytes === encoding(captured.approval).bytes,
         'P3-NF-09: Part Two approval resolver returned a different record');
       return approval;
     }),
@@ -308,11 +312,13 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
       if (requested.kind !== undefined) requireThat(status.fact.kind === text(requested.kind, 'reference.kind'), 'record reference kind differs');
       return true;
     }),
-    verifyRecord: (reference, expected, now) => checked<boolean, RegisterContext>('PartTwoRegisterRecord', { reference, expected }, options.context, raw => {
+    verifyRecord: (reference, expected, now) => checked<boolean, RegisterContext>('PartTwoRegisterRecord',
+      { reference, expected, now: evidenceUseClock(now, options) }, options.context, raw => {
       const input = object(raw); const requested = object(input.reference!); exact(requested, ['id', 'kind']);
       const id = text(requested.id, 'reference.id'), kind = text(requested.kind, 'reference.kind');
+      const clock = take(decodeMeasurement('clock', input.now, options.types ?? options.context.types));
       const snapshot = read(); const { definition, view } = projection(snapshot, options.horizon, options.context);
-      take(readProjection(view, definition, evidenceUseClock(snapshot, now, options), options.context));
+      take(readProjection(view, definition, clock, options.context));
       const matches = snapshot.entries.filter(status => active(status, snapshot, view)
         && status.fact.kind === kind
         && encoding(recordBody(status)).bytes === encoding(input.expected).bytes
@@ -326,17 +332,27 @@ export function createPartTwoRegisterProvider(options: PartTwoRegisterProviderOp
         `Part Two record ${id} is absent, retracted, corrected, conflicted, duplicated, or differs from workflow evidence`);
       return true;
     }),
-    verifySemanticReview: (review, now) => checked<boolean, RegisterContext>('PartTwoSemanticReview', review, options.context, () => {
+    verifySemanticReview: (review, now) => checked<boolean, RegisterContext>('PartTwoSemanticReview',
+      { review, now: evidenceUseClock(now, options) }, options.context, raw => {
+      const input = object(raw); const captured = object(input.review!);
+      exact(captured, ['holder', 'rule', 'generation', 'subjectHash', 'record']);
+      const holder = text(captured.holder, 'review.holder');
+      const rule = captured.rule; requireThat(typeof rule === 'number' && Number.isSafeInteger(rule) && rule > 0,
+        'review.rule: expected positive integer');
+      const generation = text(captured.generation, 'review.generation');
+      const subjectHash = text(captured.subjectHash, 'review.subjectHash');
+      const reviewRecord = text(captured.record, 'review.record');
+      const clock = take(decodeMeasurement('clock', input.now, options.types ?? options.context.types));
       const snapshot = read(); const { definition, view } = projection(snapshot, options.horizon, options.context);
-      take(readProjection(view, definition, evidenceUseClock(snapshot, now, options), options.context));
-      const status = activeStatus(review.record, snapshot, view);
+      take(readProjection(view, definition, clock, options.context));
+      const status = activeStatus(reviewRecord, snapshot, view);
       requireThat(status.fact.kind === 'verification-SemanticReviewRecord', 'semantic review reference kind differs');
       const record = take(decodeSemanticReviewRecord(recordBody(status), options.context));
-      const edge = `rule:${review.rule}->${review.holder}`;
-      requireThat(record.generation === review.generation && record.edge === edge
-        && record.holderHash === review.subjectHash,
+      const edge = `rule:${rule}->${holder}`;
+      requireThat(record.generation === generation && record.edge === edge
+        && record.holderHash === subjectHash,
       'signed semantic review does not bind this exact holder/rule/generation/subject');
-      const answer = semanticCoverage([{ edge, generation: review.generation, firstSeen: 0 }],
+      const answer = semanticCoverage([{ edge, generation, firstSeen: 0 }],
         [record], { snapshot })[0];
       requireThat(answer?.reviewed === true && answer.verdict === 'adequate',
         'Part Nine reports this semantic review incomplete or non-current');

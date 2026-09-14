@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { createFactStore, decodeVersion } from '../../src/facts/index.js';
-import { createPartTwoRegisterAuthority, createPartTwoRegisterProvider, decodeExtract, generationOf, loadRegister, readRegisterEntry } from '../../src/register/index.js';
+import { createPartTwoRegisterAuthority, createPartTwoRegisterProvider, decodeExtract, decodeShape,
+  decodeShapeChangeDocument, generateAgainstParent, generationOf, loadRegister, readRegisterEntry,
+  shapeDifferences } from '../../src/register/index.js';
 import type { FactPositionVectorReference, PartTwoRegisterAuthorityPort, ShapeChangeBinding } from '../../src/register/index.js';
 import { factsFixture } from '../facts/fixtures.js';
 import { detail, json, setup, value } from '../register/fixtures.js';
@@ -29,9 +31,15 @@ describe('Part Two register provider', () => {
       landedIn: landingCommit, base, contentHash: encoded.hash };
     const extract = value(decodeExtract(json('ChainExtract', { vector, rows: [row] }), s.context));
     const register = s.build([content], { extract }); const generation = value(generationOf(register, s.context));
-    const binding: ShapeChangeBinding = { parent: generation.id, candidateShape: value(canonical(s.context.shape)).hash,
-      document: { path: 'register-source/shape-changes/part-fourteen.json', hash: value(canonical({ approved: true })).hash },
-      approval: { owner: 'part-two', name: 'FactEnvelope', id: shapeApprovalId } };
+    const shapeInput = JSON.parse(JSON.stringify(s.context.shape)); shapeInput.parts.push(14);
+    const candidate = value(decodeShape(shapeInput, s.context));
+    const shapeApprovalReference = { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: shapeApprovalId };
+    const document = value(decodeShapeChangeDocument(json('ShapeChangeDocument', { id: 'part-fourteen-shape',
+      parent: generation.id, candidateShape: value(canonical(candidate)).hash,
+      changes: shapeDifferences(s.context.shape, candidate), ownerReferences: [], approvedIn: shapeApprovalReference }), s.context));
+    const binding: ShapeChangeBinding = { parent: generation.id, candidateShape: value(canonical(candidate)).hash,
+      document: { path: 'register-source/shape-changes/part-fourteen.json', hash: value(canonical(document)).hash },
+      approval: shapeApprovalReference };
     const shapeEncoded = value(canonical(binding)); f.capture(shapeEncoded.bytes, shapeEncoded.hash);
     const shapeApproval = f.authorize({ id: shapeApprovalId, artifact: shapeEncoded.hash, base: 'base:shape' });
     const shapeVersion = { id: 'shape:v1', subject: 'register-shape:part-fourteen', content: binding,
@@ -66,6 +74,11 @@ describe('Part Two register provider', () => {
     expect(value(provider.resolveReference({ provider: 'record', id: root.id, kind: 'note' }))).toBe(true);
     const loaded = value(loadRegister(register, generation, s.context, provider, f.now));
     expect(value(readRegisterEntry('store', loaded, s.context)).declaration.id).toBe('store');
+    expect(value(generateAgainstParent(s.input(), loaded, candidate, binding, provider, s.context, document)).shape)
+      .toEqual(candidate);
+    const changedDocument = value(decodeShapeChangeDocument({ ...document, id: 'changed-document' }, s.context));
+    expect(detail(generateAgainstParent(s.input(), loaded, candidate, binding, provider, s.context, changedDocument)))
+      .toContain('bytes differ');
 
     const omitted = value(decodeExtract(json('ChainExtract', { vector, rows: [] }), s.context));
     expect(detail(provider.verifyExtract(omitted))).toContain('complete current');

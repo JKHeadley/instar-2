@@ -36,9 +36,9 @@ describe('round-six workflow record reference identity', () => {
     const provider = createPartTwoRegisterProvider({ store: v.store, authority, horizon: { lineages: {
       'machine-a': { head: { epoch: 0, position: 0 }, observedAt: 100, closed: false },
     }, stalenessBound: 100 }, context: s.context });
-    expect(value(provider.verifyRecord({ id: signed.id, kind: 'check-run-record' }, run))).toBe(true);
-    expect(value(provider.verifyRecord({ id: run.id, kind: 'check-run-record' }, run))).toBe(true);
-    expect(detail(provider.verifyRecord({ id: 'invented:absent', kind: 'check-run-record' }, run)))
+    expect(value(provider.verifyRecord({ id: signed.id, kind: 'check-run-record' }, run, v.clock(100)))).toBe(true);
+    expect(value(provider.verifyRecord({ id: run.id, kind: 'check-run-record' }, run, v.clock(100)))).toBe(true);
+    expect(detail(provider.verifyRecord({ id: 'invented:absent', kind: 'check-run-record' }, run, v.clock(100))))
       .toContain('Part Two record invented:absent is absent');
   });
 });

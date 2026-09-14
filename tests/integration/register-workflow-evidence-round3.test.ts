@@ -39,8 +39,8 @@ describe('normal workflow signed evidence composition', () => {
     const provider = providerFor(v, 0);
     const review = { holder: 'holder', rule: 26, generation: record.generation,
       subjectHash: record.holderHash, record: fact.id };
-    expect(detail(provider.verifySemanticReview(review))).toContain('Part Nine reports this semantic review incomplete');
-    expect(detail(provider.verifySemanticReview({ ...review, subjectHash: 'sha256:changed-subject' })))
+    expect(detail(provider.verifySemanticReview(review, v.clock(100)))).toContain('Part Nine reports this semantic review incomplete');
+    expect(detail(provider.verifySemanticReview({ ...review, subjectHash: 'sha256:changed-subject' }, v.clock(100))))
       .toContain('does not bind this exact holder');
   });
 
@@ -69,8 +69,9 @@ describe('normal workflow signed evidence composition', () => {
     const provider = providerFor(v, 2);
     const review = { holder: 'holder', rule: 26, generation: record.generation,
       subjectHash: record.holderHash, record: fact.id };
-    expect(value(provider.verifySemanticReview(review))).toBe(true);
-    expect(detail(provider.verifySemanticReview({ ...review, record: note.id }))).toContain('semantic review reference kind differs');
+    expect(value(provider.verifySemanticReview(review, v.clock(100)))).toBe(true);
+    expect(detail(provider.verifySemanticReview({ ...review, record: note.id }, v.clock(100))))
+      .toContain('semantic review reference kind differs');
   });
 
   it('P3-NF-28 normal graph cannot upgrade an exact-bound review that Part Nine reports partial', () => {

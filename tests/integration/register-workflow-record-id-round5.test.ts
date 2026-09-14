@@ -41,8 +41,8 @@ describe('round-five normal workflow record identity', () => {
     const provider = createPartTwoRegisterProvider({ store: v.store, authority, horizon: { lineages: {
       'machine-a': { head: { epoch: 0, position: 0 }, observedAt: 100, closed: false },
     }, stalenessBound: 100 }, context: s.context });
-    expect(value(provider.verifyRecord({ id: signed.id, kind: 'check-run-record' }, run))).toBe(true);
-    expect(value(provider.verifyRecord({ id: run.id, kind: 'check-run-record' }, run))).toBe(true);
+    expect(value(provider.verifyRecord({ id: signed.id, kind: 'check-run-record' }, run, v.clock(100)))).toBe(true);
+    expect(value(provider.verifyRecord({ id: run.id, kind: 'check-run-record' }, run, v.clock(100)))).toBe(true);
 
     const checks = { mode: 'normal' as const, branch: 'main', runs: [run],
       catalog: { fixtures: [{ id: 'check', stage: 'build' }], probes: [], sentinels: [], semanticReviews: [] },

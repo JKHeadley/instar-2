@@ -2,7 +2,7 @@ import type { Clock, Result, Scope, VerifiedPrincipal } from '../index.js';
 import type { GeneratedRegister, RegisterContext, StandingContext, EnforcementBoundary, CheckRunRecord } from './types.js';
 import type { ConstructObservation, GovernedStateObservation } from './governance.js';
 import type { CheckCatalog } from '../rulegraph/graph.js';
-import { checked, requireThat, take } from './boundary.js';
+import { checked, object, requireThat, take } from './boundary.js';
 import { checkPairing, checkBoundaryCoverage, checkGovernedState, checkGovernedStateSources, checkSeparation } from './governance.js';
 import { buildRuleGraph, checkDeadlines } from '../rulegraph/graph.js';
 import { boundaryRungs } from './rungs.js';
@@ -22,9 +22,17 @@ export interface NormalWorkflowEvidencePort {
   readonly verifyRecord: (reference: Readonly<{ id: string; kind: string }>, expected: unknown, now: Clock) => Result<boolean>;
   readonly verifySemanticReview: (review: CheckCatalog['semanticReviews'][number], now: Clock) => Result<boolean>;
 }
-export function runRegisterChecks(register: GeneratedRegister, checks: WorkflowChecks, context: RegisterContext,
+export function runRegisterChecks(sourceRegister: GeneratedRegister, sourceChecks: WorkflowChecks, context: RegisterContext,
   evidence?: NormalWorkflowEvidencePort) {
-  return checked('RegisterWorkflowChecks', { register, checks }, context, () => {
+  return checked('RegisterWorkflowChecks', { register: sourceRegister, checks: sourceChecks }, context, raw => {
+    const captured = object(raw);
+    const capturedChecks = captured.checks as unknown as WorkflowChecks;
+    // Principal/provenance values in the remaining workflow input retain their
+    // Part One brands. Evidence rows and their use clock are plain signed-data
+    // claims, so every later verifier and graph read consumes one captured copy.
+    const register = sourceRegister;
+    const checks: WorkflowChecks = { ...sourceChecks, runs: capturedChecks.runs,
+      catalog: capturedChecks.catalog, now: capturedChecks.now };
     requireThat(['bootstrap', 'normal', 'replay'].includes(checks.mode), 'unknown build mode');
     requireThat(checks.mode !== 'normal' || checks.bootstrapRules.length === 0, 'normal build cannot suspend policy prerequisites');
     requireThat(checks.mode === 'normal' || register.extract.rows.length === 0, 'bootstrap/replay cannot reuse a committed extract');

@@ -34,15 +34,21 @@ export function resolveOwnerReferenceEnrollments(enrollments: readonly OwnerRefe
   approvals: ShapeApprovalPort, context: RegisterContext, document?: ShapeChangeDocument,
   enrollmentApprovals: readonly OwnerReferenceEnrollmentApproval[] = []) {
   return checked<readonly OwnerReferenceEnrollment[], RegisterContext>('OwnerReferenceEnrollments',
-    { enrollments, parent, candidate, change }, context, () => {
+    { enrollments, parent, candidate, change, enrollmentApprovals, ...(document === undefined ? {} : { document }) }, context, raw => {
+      const input = object(raw);
+      const capturedEnrollments = input.enrollments as unknown as readonly OwnerReferenceEnrollment[];
+      const capturedCandidate = input.candidate as unknown as ShapeEntries;
+      const capturedChange = input.change as unknown as ShapeChangeBinding | null;
+      const capturedDocument = input.document as unknown as ShapeChangeDocument | undefined;
+      const capturedApprovals = input.enrollmentApprovals as unknown as readonly OwnerReferenceEnrollmentApproval[];
       requireThat(wasVerified(parent, context.authorityTypes?.now ?? context.types.now),
         'P3-NF-09: owner enrollments require the witnessed parent generation');
-      const current = change !== null && change.approval !== undefined && document !== undefined
-        ? [{ binding: change as GovernedShapeChangeBinding, document }] : [];
-      const evidence = [...current, ...enrollmentApprovals].filter((row, index, rows) =>
+      const current = capturedChange !== null && capturedChange.approval !== undefined && capturedDocument !== undefined
+        ? [{ binding: capturedChange as GovernedShapeChangeBinding, document: capturedDocument }] : [];
+      const evidence = [...current, ...capturedApprovals].filter((row, index, rows) =>
         rows.findIndex(candidate => encoding(candidate.binding).bytes === encoding(row.binding).bytes) === index);
-      for (const enrollment of enrollments) {
-        requireThat(candidate.parts.includes(enrollment.part),
+      for (const enrollment of capturedEnrollments) {
+        requireThat(capturedCandidate.parts.includes(enrollment.part),
           'P3-NF-09: owner enrollment for a part absent from the parent requires the exact current signed shape-change document');
         const witnessed = evidence.filter(row => row.document.ownerReferences
           .some(reference => encoding(reference).bytes === encoding(enrollment).bytes));
@@ -55,7 +61,7 @@ export function resolveOwnerReferenceEnrollments(enrollments: readonly OwnerRefe
         'P3-NF-09: owner enrollment shape-change binding differs');
         take(approvals.verifyShapeChange(binding));
       }
-      return enrollments;
+      return capturedEnrollments;
     });
 }
 
@@ -101,10 +107,16 @@ function validateParentBuildInput(input: unknown, shape: ShapeEntries): void {
 }
 export function generateAgainstParent(input: unknown, parent: VerifiedRegister, candidate: ShapeEntries,
   change: ShapeChangeBinding | null, approvals: ShapeApprovalPort, context: RegisterContext, document?: ShapeChangeDocument) {
-  return checked<GeneratedRegister, RegisterContext>('ParentShapeBuild', { input, parent, candidate, change }, context, () => {
+  return checked<GeneratedRegister, RegisterContext>('ParentShapeBuild',
+    { input, parent, candidate, change, ...(document === undefined ? {} : { document }) }, context, raw => {
+    const captured = object(raw);
+    const buildInput = captured.input;
+    const candidate = captured.candidate as unknown as ShapeEntries;
+    const change = captured.change as unknown as ShapeChangeBinding | null;
+    const document = captured.document as unknown as ShapeChangeDocument | undefined;
     requireThat(wasVerified(parent, context.authorityTypes?.now ?? context.types.now),
       'P3-NF-09: parent requires verified entering-force generation');
-    validateParentBuildInput(input, parent.shape);
+    validateParentBuildInput(buildInput, parent.shape);
     const parentGeneration = take(generationOf(parent, context));
     if (encoding(candidate).hash !== encoding(parent.shape).hash) {
       requireThat(change && change.parent === parentGeneration.id && change.candidateShape === encoding(candidate).hash
@@ -121,10 +133,10 @@ export function generateAgainstParent(input: unknown, parent: VerifiedRegister, 
       take(approvals.verifyShapeChange(change));
     } else requireThat(change === null, 'unchanged shape must not smuggle a change binding');
     // Candidate schema never supplies permission to its ordinary declarations.
-    take(generateRegister(input, { ...context, shape: parent.shape }));
+    take(generateRegister(buildInput, { ...context, shape: parent.shape }));
     // Approval permits a schema change, not an unloadable representation. Both
     // schemas must accept the same authored input; incompatible migrations refuse
     // here, before a generation can be published or its schema relabelled.
-    return take(generateRegister(input, { ...context, shape: candidate }));
+    return take(generateRegister(buildInput, { ...context, shape: candidate }));
   });
 }
