@@ -3,8 +3,8 @@
 **Value — decisions are derived from the constitution.** Each of the six decisions below names
 the purpose statement, pillar, or constraint that decides it, under the purpose's Rule that
 “a design question this document cannot decide is a gap in this document.” The agent owns
-measurement and tuning within those constraints. Decision 5 depends on the candidate purpose
-amendment in PR #71, whose approval remains the operator's. These decisions authorize no
+measurement and tuning within those constraints. Decision 5 rests on purpose revision 3
+(PR #71, approved by the operator and merged at e281a2c2). These decisions authorize no
 spending or additional blocking check. Silence is not consent.
 
 **Value — decision 1: where to measure better remembering first.**
@@ -118,7 +118,8 @@ What it changes:
 - All listed major actions also covers publishing software updates, payments, and other specifically agreed
   actions that cannot be undone when earlier exchanges matter, increasing coverage and possible delay.
 
-DECIDED BY: The consequential-effect definition in purpose revision 3 (PR #71). The extra
+DECIDED BY: The consequential-effect definition in purpose revision 3 (PR #71, approved and
+merged at e281a2c2). The extra
 history check covers exactly the effects that pass any of its four tests:
 
 - The effect cannot be undone by the agent alone.
@@ -129,8 +130,8 @@ history check covers exactly the effects that pass any of its four tests:
 Email, public posts, releases and payments are instances, not the definition. The effect
 owner applies the constitutional classification; the operator owns the threshold and policy
 markings. A qualifying effect does not bypass section 8's historical-prerequisite selector,
-owner checks, measured-benefit requirement or exact exception approval. This decision is
-pending the operator's approval of revision 3; until then the live-review arm stays inert exactly as section 12 already requires.
+owner checks, measured-benefit requirement or exact exception approval. The live-review arm
+stays inert until section 12's activation conditions are met, exactly as section 12 requires.
 
 **Value — decision 6: what happens when an action needs missing evidence.**
 
@@ -169,7 +170,7 @@ small pilot cannot certify.
 
 OD-04 maps to `P21-HUMAN-01` in section 10, with independently graded dimensions and a frozen
 population, tools, time allowances and precision plan. OD-05 derives the qualifying effects
-from the pending constitutional definition; it grants no waiver. Section 8's rulebook
+from the constitutional definition (purpose revision 3); it grants no waiver. Section 8's rulebook
 reconciliation, measured evidence and exact exception approval remain mandatory. Ordinary chat cannot acquire a semantic blocking reviewer.
 OD-06 chooses only waiting duration and notifications. The effect owner retains the exact
 attempt, the scheduling owner performs at most two bounded rechecks within the selected window,
@@ -185,11 +186,8 @@ non-executable until the cited grant lands with current owner evidence. Section 
 per-check dependency authority; section 12 derives its execution posture from that map.
 No decision here changes that posture.
 
-Questions for the operator — judgment questions: [] (none).
-
-Pending item:
-
-- decision 5 rests on purpose revision 3 (PR #71), awaiting operator approval.
+Questions for the operator — judgment questions: [] (none). Pending items: none; every
+decision above names the approved constitutional text that decides it.
 
 **Value — honest limits.** The design has source-grounded mechanisms, three measured installed
 method failures, a prepared synthetic corpus and explicit experiments. It has no production
