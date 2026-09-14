@@ -1,6 +1,6 @@
 {
-  "commit": "34dd09861ec67a74c3842122bb39339f0f3bb0aa",
-  "generation": "sha256:ed6f31d3f1a2e42ebced9bcfdf0d57aac10c8e39b34656a54c72cc9b9892e486",
+  "commit": "f6ac4a76864ad98829529e2c5fe125d90f2e5264",
+  "generation": "sha256:5e78a8d538d2b8e321a951d2beeb5051dcb618f86bb342d092c7c8595aac6bdc",
   "authority": "shape-only",
   "mode": "replay",
   "authorityPrerequisites": [
@@ -69,6 +69,5 @@
       "record": "rungraph.contract",
       "required": "verified enforced-record approval history and live writer/executor separation before entering force; replay is not runtime authority"
     }
-  ],
-  "workflow": "register-source/part-twelve-replay.json"
+  ]
 }
