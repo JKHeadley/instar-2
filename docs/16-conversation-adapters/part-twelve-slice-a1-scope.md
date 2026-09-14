@@ -35,6 +35,7 @@ Row 99 landed on main in `f144f1435a11914b79ffcb6c1cfb19444f70e3ef`. Slice A1 no
 Part Ten's public `createConditionalAssemblyAppendPort` and its `appendIfSubjectFrontier` operation
 for the exact per-bot `AdapterConformance` frontier read by each admission caller. The former hold
 is over: the competing-process one-admitted-mode arms of P12-NF-16, P12-NF-18, and P12-NF-46 are
-executable. `tests/conversation/held/admission-process.ts`, `run-admission-matrix.py`, and
-`admission-restart-matrix.py` permanently require one durable winner in either process order and a
+executable. `tests/conversation/held/admission-process.ts`,
+`tests/conversation/held/run-admission-matrix.py`, and
+`tests/conversation/held/admission-restart-matrix.py` permanently require one durable winner in either process order and a
 fresh-process readmission of that winner after restart.
