@@ -1,0 +1,29 @@
+[
+  {
+    "revision": 1,
+    "date": "2026-09-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator confirmation, topic 52075, 2026-09-13 23:26Z; repair round 9 on PR #68"
+    },
+    "changes": [
+      {
+        "what": "Derive all six section-15 decisions from the constitution and name the agent-owned tuning and follow-on judgment-of-use design.",
+        "why": "The amended purpose requires a deciding purpose statement, pillar or constraint for every listed question. Only the consequential-effect definition in PR #71 awaits operator approval; execution and spend gates remain in force.",
+        "ref": "PR #68; purpose amendment PR #69; candidate purpose revision 3, PR #71; operator confirmation in topic 52075 at 2026-09-13 23:26Z"
+      },
+      {
+        "what": "Update open-decision cross-references and allow the three precise constitutional-version references in the governed-document checker.",
+        "why": "Decision status must agree across the design; a reference to the governing authority is current content, not document history. Existing Rule/Value labels and check references are preserved.",
+        "ref": "docs/00-the-purpose.md: a design question this document cannot decide is a gap in this document; rule 91"
+      },
+      {
+        "what": "Give the round-seven scheduled-work integration proof a 15-second test timeout, matching round eight.",
+        "why": "The required npm test run completed 1,403 passing tests but the ten-scenario owner-port proof exceeded the implicit five-second default. The test checks owner boundaries, not latency; all assertions and a finite timeout remain intact.",
+        "ref": "tests/integration/scheduled-round7.test.ts; tests/integration/scheduled-round8.test.ts; repair-round-9 npm test evidence"
+      }
+    ],
+    "multiMachinePosture": "Documentation, lint allowances and one bounded test timeout only; no runtime state or cross-machine behavior changes."
+  }
+]

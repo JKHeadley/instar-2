@@ -102,7 +102,7 @@ Report natural unaided human recall separately from tool-assisted human performa
 exposure, original-record access, task and time/resource conditions within each comparison;
 do not compare an indexed agent to an artificially deprived human and call the result general.
 
-OD-04 proposes a four-week study with separately scored exact episodes, current preferences,
+OD-04, decided (section 15), sets a four-week study with separately scored exact episodes, current preferences,
 commitments/cancellations, associative use, attribution and audience restraint. Recruit people
 with comparable familiarity with the tasks. Estimate how much performance varies between people.
 Before collecting comparison results, specify the smallest difference the study must detect and

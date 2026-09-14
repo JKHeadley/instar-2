@@ -47,7 +47,8 @@ future runtime acceptance contracts, not executions on this HEAD.
 **A/B + retrospective** means accounting and bounded retrieval with A4a's retrospective
 outcome-review and write-side coherence-watch consumers actually initialized and executing
 admitted maintenance work. It has no selective live-review consumer requirement. Run its
-positive with the semantic exception still unapproved and again with OD-05 declined; cover
+positive with the semantic exception still unapproved and again with the constitutional
+dependency of OD-05, decided (section 15), declined; cover
 both absent A4b/V and installed-but-inert A4b/V. Ordinary replies must complete through actual
 input accounting and final outgoing binding, retrospective/write-side work must produce
 retained findings with supervision and charges, and authorized notices must remain reachable.
@@ -69,7 +70,8 @@ or hold is invoked, while a valid A/B composition remains available. Returning 2
 consumer, or using a live reviewer as a stand-in for retrospective work cannot pass.
 
 **Live review** includes the entire A/B + retrospective arm and its controls, then initializes
-A4b/V with both OD-05 operator approval and the governing rule exception, the required measured
+A4b/V with the constitutional dependency of OD-05, decided (section 15), approved,
+the governing rule exception, the required measured
 benefit and OD-06 waiting policy. The following additional positives use actual approved
 operation subjects and real confined test adapters. Missing approval, missing consumer,
 deterministic refusal and stale/expired evidence are refused neighbors; a grant file's

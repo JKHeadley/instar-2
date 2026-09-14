@@ -9,8 +9,8 @@ Zero remains zero. A caller cannot bypass a cap by renaming a query or opening a
 
 The following are **proposed pilot ceilings, not approved expenditure, measurements, provider
 prices or service-level promises**. They adopt [R5 §§3–6](research/05-proposals-and-evaluation.md)
-and add explicit backend/queue bounds for review. They implement the proposed experience in
-operator decision OD-03 in section 15.
+and add explicit backend/queue bounds for review. They implement the experience in
+OD-03, decided (section 15).
 Here, p95 is the duration below which 95% of observations fall. KiB and MiB mean
 1,024 and 1,048,576 bytes respectively; token counts use the selected model's tokenizer.
 
