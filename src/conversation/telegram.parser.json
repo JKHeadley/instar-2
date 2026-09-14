@@ -1,0 +1,34 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "telegram-intake-v1",
+    "kind": "parsers",
+    "status": "live",
+    "requiredFacts": {
+      "fixture": "P12-TELEGRAM-REPLY-CAPTURE",
+      "authenticationClass": [
+        { "stimulusType": "message", "class": "channel-attested" },
+        { "stimulusType": "stop", "class": "channel-attested" }
+      ],
+      "eventIdAuthority": {
+        "mintedBy": "Telegram provider update_id",
+        "uniquenessScope": "verified bot instance and authenticated chat",
+        "replayWindow": 0,
+        "fallbackFingerprint": { "policy": "none", "basis": "provider update_id is required" }
+      },
+      "ackPolicy": "never"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": { "kind": "no" }
+    },
+    "standards": [28, 29, 36, 42, 46, 110],
+    "holds": []
+  }
+]

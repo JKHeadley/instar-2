@@ -10,6 +10,12 @@ Granted as SEAM-LEDGER row 82 (Echo, 2026-09-12 ~10:45Z; reversible by Justin). 
 - The registered Telegram ordinary-reply operation: prepare, dispatch through the landed Part Six/Eight ports, durable Part Eight response recording, and the source-bounded local Part Nine response assessment added during the A1 repair rounds. Real settlement remains held on its separately named owner grant.
 - The contract map for exactly the P12-NF checks these cover. Every missing owner positive and every Slice B check remains explicitly non-executable by name.
 
+The dark global capability extension remains in `src/conversation/telegram.declarations.json`.
+The executable A1 parser declaration and its P12-owned captured-byte reference are composed beside
+that legacy scan in `src/conversation/telegram.parser.json` and `register-source/part-twelve-replay.json`.
+This preserves the existing Part Three owner loader and Part Ten additivity boundary byte-for-byte
+while the adapter's admission path still requires the exact live parser declaration.
+
 ## A2 — removed from this branch, built later as its own slice
 
 - The other conversation platforms and media custody beyond metadata.

@@ -45,6 +45,7 @@ export function conversationFixture(options: { mode?: 'long-poll' | 'webhook'; b
   const declarations = [
     ...JSON.parse(readFileSync('src/intake/port.declarations.json', 'utf8')) as object[],
     ...JSON.parse(readFileSync('src/conversation/telegram.declarations.json', 'utf8')) as object[],
+    ...JSON.parse(readFileSync('src/conversation/telegram.parser.json', 'utf8')) as object[],
   ];
   Object.assign(intake.r.context, { references: [...intake.r.context.references ?? [],
     { provider: 'fixture', id: 'P12-TELEGRAM-REPLY-CAPTURE', kind: 'captured-bytes' }] });
