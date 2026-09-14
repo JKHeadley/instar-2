@@ -26,6 +26,9 @@ function approvedVersions(file) {
 // Known non-history uses of a marker word, each with the reason it is content rather than
 // history. Every entry is a visible, reviewable exception; adding one is a reviewed change.
 const ALLOW = [
+  { file: "docs/21-the-recall-doorway/15-operator-decisions-and-honest-limits.md", line: 121, why: "names the pending constitutional authority in PR #71, not this design's history" },
+  { file: "docs/21-the-recall-doorway/15-operator-decisions-and-honest-limits.md", line: 133, why: "names the pending constitutional authority in PR #71, not this design's history" },
+  { file: "docs/21-the-recall-doorway/15-operator-decisions-and-honest-limits.md", line: 192, why: "names the pending constitutional authority in PR #71, not this design's history" },
   { file: "docs/rules/91-a-document-reads-as-its-first-version.md", why: "the rule's own full text quotes the markers it bans" },
   { file: "docs/02-the-register.md", line: 218, why: "'revision' names a round of the pre-send review pattern, not a document history" },
   { file: "docs/01-the-rules.md", line: 228, why: "rule 91's own row in the rule book quotes the marker it bans" },

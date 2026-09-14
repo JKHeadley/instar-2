@@ -200,4 +200,4 @@ it('P16-NF-52 [behavior:non-executable-exclusion] keeps every A2 row outside pas
 it('P16-NF-53 [behavior:legacy-additivity] keeps all pre-existing test files byte-identical to main', () => {
   expect(execFileSync(process.execPath, ['scripts/check-p16-additivity.mjs'], { encoding: 'utf8' }))
     .toContain('byte-identical to main');
-}, 20_000); // Concurrent-gate load exceeds the isolated additivity comparison runtime.
+});

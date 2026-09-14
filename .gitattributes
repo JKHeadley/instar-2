@@ -1,0 +1,2 @@
+# Preserve Echo's grant response byte-for-byte, including its terminal blank line.
+docs/22-the-commons/seam-requests/seam-response-commons-grants.md whitespace=-blank-at-eof

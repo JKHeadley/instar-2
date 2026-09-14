@@ -1,0 +1,85 @@
+{
+  "artifact": "P21-LEGACY-REGRESSIONS-v1",
+  "baselineRef": "../research/fixtures/installed-baseline-results.json",
+  "evidenceIdentityRef": "../research/02-dawn-grounding.md#8-comparison-with-the-installed-1x-target",
+  "baselineExecuted": true,
+  "repairExecuted": false,
+  "providerCalls": 0,
+  "productionMutation": false,
+  "cases": [
+    {
+      "id": "P21-REG-F1",
+      "source": "dist/memory/TopicSummarizer.js",
+      "input": {
+        "messageIds": [
+          1,
+          250
+        ],
+        "rangeInclusive": true,
+        "maxMessagesPerPrompt": 200
+      },
+      "observed": {
+        "processed": 200,
+        "firstPresent": false,
+        "fiftyFirstPresent": true,
+        "savedCount": 250,
+        "savedLast": 250
+      },
+      "repairOracle": [
+        "All 250 original messages remain recoverable.",
+        "Summary coverage names exactly the messages actually supplied.",
+        "Any unprocessed prefix remains pending; a complete frontier cannot cross it."
+      ],
+      "checks": [
+        "P21-NF-11",
+        "P21-NF-17"
+      ]
+    },
+    {
+      "id": "P21-REG-F2",
+      "source": "dist/core/PromptBuildRecall.js",
+      "input": {
+        "name": "Travel choice",
+        "content": "PERSON_A prefers rail for this trip.",
+        "enabled": true
+      },
+      "observed": {
+        "source": "fresh",
+        "resultsCount": 1,
+        "namePresent": true,
+        "bodyPresent": false
+      },
+      "repairOracle": [
+        "The exact evidence body, source and speaker occur in actual submitted context, or the exclusion is explicit.",
+        "A name or result count cannot establish body delivery."
+      ],
+      "checks": [
+        "P21-NF-05",
+        "P21-NF-17"
+      ]
+    },
+    {
+      "id": "P21-REG-F3",
+      "source": "dist/memory/WorkingMemoryAssembler.js",
+      "input": {
+        "prompt": "transport preference",
+        "lexicalResults": [],
+        "hybridResults": []
+      },
+      "observed": {
+        "lexical": 6,
+        "hybrid": 0,
+        "empty": true
+      },
+      "repairOracle": [
+        "For the separate lexical-mismatch variant, a declared dense/hybrid arm invokes that strategy and delivers its useful original evidence.",
+        "A lexical-only arm may remain lexical but cannot report semantic retrieval.",
+        "No universal dense-call requirement follows from the empty baseline."
+      ],
+      "checks": [
+        "P21-NF-09",
+        "P21-NF-17"
+      ]
+    }
+  ]
+}
