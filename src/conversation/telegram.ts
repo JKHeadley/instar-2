@@ -24,7 +24,11 @@ const admissionContexts = new WeakMap<object, BoundaryContext>();
 const admissionCustodians = new WeakMap<object, TelegramBotApiCustodianPort>();
 const activeAdmissions = new Set<string>();
 const activePolls = new Set<string>();
-const replyInvocations = new WeakMap<object, Set<string>>();
+// An admission may be reconstructed as more than one JavaScript object while
+// retaining the same bot, mode, contract and conformance fact. Keep the
+// consume-once guard at that durable admission identity, with the owning fact
+// store separating independent operation histories that may reuse fixture ids.
+const replyInvocations = new Map<string, WeakMap<object, Set<string>>>();
 const replyOperationBindings = new WeakMap<object, Array<Readonly<{
   definition: OperationDefinition; host: EffectHost; spine: EffectSpine;
   inhibitedOperations: ReadonlySet<string>;
@@ -57,6 +61,30 @@ const nonempty = (value: unknown, name: string): string => {
 };
 const bytes = (value: string) => new TextEncoder().encode(value).length;
 const encode = (value: unknown) => take(canonical(value)).bytes;
+
+function telegramAdmissionIdentity(admitted: AdmittedTelegramAdapter): string {
+  return take(canonical({
+    bot: admitted.declaration.bot.id,
+    mode: admitted.mode,
+    contract: admitted.contract.id,
+    conformance: admitted.conformance.id,
+  })).hash;
+}
+
+function replyInvocationSet(admitted: AdmittedTelegramAdapter, spine: EffectSpine): Set<string> {
+  const identity = telegramAdmissionIdentity(admitted);
+  let stores = replyInvocations.get(identity);
+  if (stores === undefined) {
+    stores = new WeakMap<object, Set<string>>();
+    replyInvocations.set(identity, stores);
+  }
+  let operations = stores.get(spine.store);
+  if (operations === undefined) {
+    operations = new Set<string>();
+    stores.set(spine.store, operations);
+  }
+  return operations;
+}
 
 function firstDifferentField(expected: unknown, supplied: unknown, path: string): string | null {
   if (Object.is(expected, supplied)) return null;
@@ -1075,9 +1103,9 @@ export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAd
           && validation.generation === state.decode.register.generation.id
           && encode(validation.authority) === encode(state.authority),
         'Telegram reply dispatch validation is expired or no longer current');
-        const invoked = replyInvocations.get(admitted) ?? new Set<string>();
+        const invoked = replyInvocationSet(admitted, binding.spine);
         ensure(!invoked.has(input.operation), 'Telegram reply claim handoff was already used');
-        invoked.add(input.operation); replyInvocations.set(admitted, invoked);
+        invoked.add(input.operation);
         return take(api.sendMessage({ token: admitted.declaration.token, apiVersion: admitted.declaration.apiVersion,
           chatId: boundTarget.chatId, messageThreadId: boundTarget.messageThreadId, text: input.message.text,
           parseMode: 'HTML', timeout: admitted.declaration.limits.timeout, hiddenRetries: 0 }));
