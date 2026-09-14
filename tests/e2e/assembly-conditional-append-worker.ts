@@ -31,6 +31,26 @@ if (mode === 'read') {
   process.exit(0);
 }
 
+if (mode === 'attempt') {
+  const template = assemblyRuntimeFixture();
+  const store = createFactStore(template.context, storage);
+  const spine = createAssemblySpine(template.host, { context: template.context, privateKey }, store);
+  const runtime = createAssemblyRuntime({ ...template.composition, spine });
+  const adapter = 'telegram:v1:bot:99';
+  const port = createConditionalAssemblyAppendPort({
+    host: template.host, author: { context: template.context, privateKey }, storage,
+  });
+  const outcome = port.appendIfSubjectFrontier('AdapterConformance', {
+    ...assemblyInput('AdapterConformance'), id: 'conformance:contender', adapter, mode: 'long-poll',
+  }, { subject: { type: 'AdapterConformance', field: 'adapter', value: adapter }, facts: [] });
+  const rows = value(runtime.inspect()).filter(row => row.record.type === 'AdapterConformance')
+    .map(row => ({ id: row.record.id, adapter: (row.record as { adapter: string }).adapter, mode: (row.record as { mode: string }).mode }));
+  process.stdout.write(`${JSON.stringify(outcome.kind === 'Success'
+    ? { kind: 'Success', rows }
+    : { kind: 'Refused', reason: outcome.reason, detail: outcome.detail, rows })}\n`);
+  process.exit(0);
+}
+
 if (mode !== 'cut' || !cut || !marker) throw new Error('cut stage and marker required');
 const f = assemblyRuntimeFixture(() => storage);
 cutsEnabled = true;

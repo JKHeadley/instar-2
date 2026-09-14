@@ -36,6 +36,35 @@ function lastJson(stdout: string): Record<string, unknown> {
   return JSON.parse(line) as Record<string, unknown>;
 }
 
+function runCase(directory: string, options: Readonly<Record<string, unknown>> = {}): Record<string, unknown> {
+  const child = spawnSync(process.execPath, [...args, 'case', directory, JSON.stringify(options)], { encoding: 'utf8', timeout: 30_000 });
+  expect(child.status, child.stderr).toBe(0);
+  return lastJson(child.stdout);
+}
+
+it.each(['unknown', 'forged', 'missing'] as const)('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:replay-authentication] real-store unauthenticated-existing-%s refuses in a fresh process', principal => {
+  const directory = mkdtempSync(join(tmpdir(), `p10-conditional-auth-${principal}-`));
+  expect(runCase(directory)).toMatchObject({ kind: 'Success', rows: [{ id: 'review:webhook' }] });
+  const replay = runCase(directory, { principal });
+  expect(replay).toMatchObject({ kind: 'Refused', rows: [{ id: 'review:webhook' }] });
+}, 30_000);
+
+it('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:stop-inhibition] real-store ordinary and conditional work share the stop refusal', () => {
+  const ordinary = runCase(mkdtempSync(join(tmpdir(), 'p10-conditional-stop-ordinary-')), { stop: true, ordinary: true });
+  const conditional = runCase(mkdtempSync(join(tmpdir(), 'p10-conditional-stop-conditional-')), { stop: true });
+  expect(ordinary).toMatchObject({ kind: 'Refused', detail: 'stop inhibits new assembly work', rows: [] });
+  expect(conditional).toMatchObject({ kind: 'Refused', detail: 'stop inhibits new assembly work', rows: [] });
+}, 30_000);
+
+it.each([
+  ['extra-current-claim', { extraExpected: { current: true } }],
+  ['extra-current-facts', { extraExpected: { currentFrontier: [] } }],
+  ['extra-subject-key', { extraSubject: { current: true } }],
+] as const)('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:closed-shape-refusal] real-store %s refuses without an append', (_caseId, options) => {
+  const result = runCase(mkdtempSync(join(tmpdir(), 'p10-conditional-claims-')), options);
+  expect(result).toMatchObject({ kind: 'Refused', detail: 'conditional append frontier token is malformed', rows: [] });
+}, 30_000);
+
 it.each([
   ['webhook', 'long-poll'],
   ['long-poll', 'webhook'],

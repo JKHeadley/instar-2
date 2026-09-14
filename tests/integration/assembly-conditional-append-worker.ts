@@ -20,6 +20,42 @@ function fixture(storage: SegmentStoragePort) {
 
 const base = createTransportFileStorage(directory, result);
 
+if (mode === 'case') {
+  const opts = JSON.parse(role ?? '{}') as {
+    principal?: 'unknown' | 'forged' | 'missing';
+    stop?: boolean;
+    ordinary?: boolean;
+    extraExpected?: Readonly<Record<string, unknown>>;
+    extraSubject?: Readonly<Record<string, unknown>>;
+  };
+  const f = fixture(base);
+  if (opts.stop) f.stop();
+  const adapter = 'telegram:v1:bot:99';
+  const candidate = { ...assemblyInput('AdapterConformance'), id: 'review:webhook', adapter, mode: 'webhook' };
+  const current = value(f.runtime.inspectCurrent()).filter(row => row.record.type === 'AdapterConformance'
+    && (row.record as { adapter: string }).adapter === adapter).map(row => row.fact.id);
+  const expected = {
+    subject: { type: 'AdapterConformance' as const, field: 'adapter', value: adapter, ...opts.extraSubject },
+    facts: current,
+    ...opts.extraExpected,
+  };
+  let host = f.host;
+  if (opts.principal === 'unknown') host = { ...host, principal: { ...host.principal, id: 'principal:intruder' } } as unknown as typeof host;
+  if (opts.principal === 'forged') host = { ...host, principal: { ...host.principal,
+    provenance: { ...host.principal.provenance, captureHash: `sha256:${'0'.repeat(64)}` } } } as unknown as typeof host;
+  if (opts.principal === 'missing') host = { ...host, principal: undefined } as unknown as typeof host;
+  const outcome = opts.ordinary
+    ? f.runtime.record('AdapterConformance', candidate)
+    : createConditionalAssemblyAppendPort({ host, author: { context: f.context, privateKey }, storage: base })
+      .appendIfSubjectFrontier('AdapterConformance', candidate, expected);
+  const rows = value(f.runtime.inspect()).filter(row => row.record.type === 'AdapterConformance')
+    .map(row => ({ id: row.record.id, adapter: (row.record as { adapter: string }).adapter, mode: (row.record as { mode: string }).mode }));
+  process.stdout.write(`${JSON.stringify(outcome.kind === 'Success'
+    ? { kind: 'Success', rows }
+    : { kind: 'Refused', reason: outcome.reason, detail: outcome.detail, rows })}\n`);
+  process.exit(0);
+}
+
 if (mode === 'read') {
   const f = fixture(base);
   const rows = value(f.runtime.inspect()).filter(row => row.record.type === 'AdapterConformance')

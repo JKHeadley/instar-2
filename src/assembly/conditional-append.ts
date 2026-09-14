@@ -6,6 +6,7 @@ import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { assemblyLogicalKey, assemblyRows, compareAssemblyRecords,
   createAssemblySpine, decodeAssemblyRecord, validateAssemblyRecordReferences } from './records.js';
 import type { AssemblyAuthor, AssemblyHost, AssemblyRecord, AssemblyRecordName } from './contracts.js';
+import { ensureAssemblyWorkPermitted } from './service.js';
 
 export interface AssemblyRecordSubject {
   readonly type: AssemblyRecordName;
@@ -59,6 +60,16 @@ function resultParts<T>(result: Result<T>): Readonly<{ ok: true; value: T } | { 
   });
 }
 
+function exactKeys(input: unknown, expected: readonly string[]): boolean {
+  return input !== null && typeof input === 'object' && !Array.isArray(input)
+    && encoded(Object.keys(input as object).sort()).bytes === encoded([...expected].sort()).bytes;
+}
+
+function storageLockContended(refusal: Refused): boolean {
+  return refusal.reason === 'decode' && /(?:^|\s)EEXIST(?::|\s)/.test(refusal.detail)
+    && refusal.detail.includes('append.lock');
+}
+
 /**
  * Part Ten's subject-scoped conditional append.
  *
@@ -76,6 +87,9 @@ export function createConditionalAssemblyAppendPort(
   return Object.freeze({ owner: 'part-ten' as const,
     appendIfSubjectFrontier<N extends AssemblyRecordName>(name: N, input: unknown, expected: AssemblySubjectFrontier) {
       return boundary('AssemblyConditionalAppend', { name, input, expected }, host.boundary, () => {
+        ensureAssemblyWorkPermitted(host, name);
+        ensure(exactKeys(expected, ['subject', 'facts']) && exactKeys(expected?.subject, ['type', 'field', 'value']),
+          'conditional append frontier token is malformed');
         ensure(expected && expected.subject && expected.subject.type === name,
           'conditional append subject type must match the record type');
         ensure(typeof expected.subject.field === 'string' && /^[A-Za-z][A-Za-z0-9]*$/.test(expected.subject.field)
@@ -101,6 +115,20 @@ export function createConditionalAssemblyAppendPort(
           const existing = rows.find(row => row.record.type === name
             && (row.record.id === candidate.id || assemblyLogicalKey(row.record) === assemblyLogicalKey(candidate)));
           if (existing) {
+            // An equal logical replay still crosses Part Two's origin authentication
+            // boundary. The validating adapter acknowledges only after Part Two has
+            // decoded the signed envelope; it deliberately persists no second fact.
+            let authenticated = false;
+            const authenticationStorage: SegmentStoragePort = {
+              owner: 'part-ten',
+              read: () => storage.read(),
+              append: () => boundary('AssemblyConditionalReplayAuthentication', null, host.boundary, () => {
+                authenticated = true;
+                return { kind: 'local-durable' as const };
+              }),
+            };
+            take(createAssemblySpine(host, author, createFactStore(author.context, authenticationStorage)).append(candidate));
+            ensure(authenticated, 'conditional append replay did not reach Part Two authentication');
             const comparison = take(compareAssemblyRecords(name, existing.record, candidate, host.boundary));
             ensure(comparison.equal, comparison.conflict?.detail ?? 'assembly identity conflict');
             return existing.record as Extract<AssemblyRecord, { type: N }>;
@@ -128,6 +156,12 @@ export function createConditionalAssemblyAppendPort(
           const settled = resultParts(appended);
           if (settled.ok) return candidate;
           if (headMoved) continue;
+          if (storageLockContended(settled.refusal)) {
+            const latestStore = createFactStore(author.context, storage);
+            const latestRows = assemblyRows(take(latestStore.read()), host.boundary);
+            const latest = freeze({ subject: expected.subject, facts: subjectFacts(latestRows, expected.subject) });
+            ensure(false, `conditional append physical storage contended; current=${encoded(latest).bytes}`);
+          }
           take(appended);
           return candidate;
         }
