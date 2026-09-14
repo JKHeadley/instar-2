@@ -27,11 +27,15 @@ if (mode === 'case') {
     ordinary?: boolean;
     extraExpected?: Readonly<Record<string, unknown>>;
     extraSubject?: Readonly<Record<string, unknown>>;
+    provenance?: 'other-authenticated-actor' | 'other-authenticated-act' | 'foreign-recorder';
+    candidateMode?: string;
+    candidateId?: string;
   };
   const f = fixture(base);
   if (opts.stop) f.stop();
   const adapter = 'telegram:v1:bot:99';
-  const candidate = { ...assemblyInput('AdapterConformance'), id: 'review:webhook', adapter, mode: 'webhook' };
+  const candidate = { ...assemblyInput('AdapterConformance'), id: opts.candidateId ?? 'review:webhook',
+    adapter, mode: opts.candidateMode ?? 'webhook' };
   const current = value(f.runtime.inspectCurrent()).filter(row => row.record.type === 'AdapterConformance'
     && (row.record as { adapter: string }).adapter === adapter).map(row => row.fact.id);
   const expected = {
@@ -44,15 +48,29 @@ if (mode === 'case') {
   if (opts.principal === 'forged') host = { ...host, principal: { ...host.principal,
     provenance: { ...host.principal.provenance, captureHash: `sha256:${'0'.repeat(64)}` } } } as unknown as typeof host;
   if (opts.principal === 'missing') host = { ...host, principal: undefined } as unknown as typeof host;
+  if (opts.provenance === 'foreign-recorder') host = { ...host, principal: f.bob };
+  let context = f.context;
+  if (opts.provenance === 'other-authenticated-actor') context = { ...context,
+    decode: { ...context.decode, provenance: f.bob.provenance } };
+  if (opts.provenance === 'other-authenticated-act') context = { ...context,
+    decode: { ...context.decode, provenance: f.proof({ purpose: 'another signed act' }).p } };
   const outcome = opts.ordinary
     ? f.runtime.record('AdapterConformance', candidate)
-    : createConditionalAssemblyAppendPort({ host, author: { context: f.context, privateKey }, storage: base })
+    : createConditionalAssemblyAppendPort({ host, author: { context, privateKey }, storage: base })
       .appendIfSubjectFrontier('AdapterConformance', candidate, expected);
   const rows = value(f.runtime.inspect()).filter(row => row.record.type === 'AdapterConformance')
     .map(row => ({ id: row.record.id, adapter: (row.record as { adapter: string }).adapter, mode: (row.record as { mode: string }).mode }));
   process.stdout.write(`${JSON.stringify(outcome.kind === 'Success'
     ? { kind: 'Success', rows }
     : { kind: 'Refused', reason: outcome.reason, detail: outcome.detail, rows })}\n`);
+  process.exit(0);
+}
+
+if (mode === 'current') {
+  const f = fixture(base);
+  const current = value(f.runtime.inspectCurrent()).filter(row => row.record.type === 'AdapterConformance');
+  process.stdout.write(`${JSON.stringify({ kind: 'current', current,
+    verdicts: current.map(row => value(f.runtime.resolve(row.record))) })}\n`);
   process.exit(0);
 }
 

@@ -49,6 +49,29 @@ it.each(['unknown', 'forged', 'missing'] as const)('P10-SEAM-CONDITIONAL-APPEND-
   expect(replay).toMatchObject({ kind: 'Refused', rows: [{ id: 'review:webhook' }] });
 }, 30_000);
 
+it.each([
+  ['other-authenticated-actor', false], ['other-authenticated-actor', true],
+  ['other-authenticated-act', false], ['other-authenticated-act', true],
+  ['foreign-recorder', false], ['foreign-recorder', true],
+] as const)('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:extension-provenance] authenticated-wrong-provenance-%s-%s refuses before any new durable record', (provenance, replay) => {
+  const directory = mkdtempSync(join(tmpdir(), `p10-conditional-provenance-${provenance}-`));
+  if (replay) expect(runCase(directory)).toMatchObject({ kind: 'Success', rows: [{ id: 'review:webhook' }] });
+  const result = runCase(directory, { provenance });
+  expect(result).toMatchObject({ kind: 'Refused' });
+  expect(result.rows).toHaveLength(replay ? 1 : 0);
+}, 30_000);
+
+it.each(['webhook', 'long-poll'] as const)('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:extension-current] fresh-current-resolve-%s remains admitted and untainted', candidateMode => {
+  const directory = mkdtempSync(join(tmpdir(), `p10-conditional-current-${candidateMode}-`));
+  expect(runCase(directory, { candidateMode, candidateId: `review:${candidateMode}` })).toMatchObject({ kind: 'Success' });
+  const child = spawnSync(process.execPath, [...args, 'current', directory], { encoding: 'utf8', timeout: 30_000 });
+  expect(child.status, child.stderr).toBe(0);
+  const result = lastJson(child.stdout) as { current: Array<{ taint: unknown[]; conflicts: unknown[] }>; verdicts: Array<{ admitted: boolean }> };
+  expect(result.current).toHaveLength(1);
+  expect(result.current[0]).toMatchObject({ taint: [], conflicts: [] });
+  expect(result.verdicts).toEqual([expect.objectContaining({ admitted: true })]);
+}, 30_000);
+
 it('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:stop-inhibition] real-store ordinary and conditional work share the stop refusal', () => {
   const ordinary = runCase(mkdtempSync(join(tmpdir(), 'p10-conditional-stop-ordinary-')), { stop: true, ordinary: true });
   const conditional = runCase(mkdtempSync(join(tmpdir(), 'p10-conditional-stop-conditional-')), { stop: true });

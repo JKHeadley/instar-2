@@ -6,7 +6,7 @@ import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { assemblyLogicalKey, assemblyRows, compareAssemblyRecords,
   createAssemblySpine, decodeAssemblyRecord, validateAssemblyRecordReferences } from './records.js';
 import type { AssemblyAuthor, AssemblyHost, AssemblyRecord, AssemblyRecordName } from './contracts.js';
-import { ensureAssemblyWorkPermitted } from './service.js';
+import { ensureAssemblyWorkPermitted } from './work-permission.js';
 
 export interface AssemblyRecordSubject {
   readonly type: AssemblyRecordName;
@@ -70,6 +70,23 @@ function storageLockContended(refusal: Refused): boolean {
     && refusal.detail.includes('append.lock');
 }
 
+function stopCheckedBytes(bytes: string, host: AssemblyHost, name: AssemblyRecordName): string {
+  // A composing storage may publish stop synchronously as append is entered.
+  // Revalidate again when the unchanged byte string is actually consumed so
+  // that such a wrapper cannot hand stopped work to the physical adapter.
+  const guarded = new String(bytes) as String & { [Symbol.toPrimitive](): string };
+  const consume = () => {
+    ensureAssemblyWorkPermitted(host, name);
+    return bytes;
+  };
+  Object.defineProperties(guarded, {
+    [Symbol.toPrimitive]: { value: consume },
+    toString: { value: consume },
+    valueOf: { value: consume },
+  });
+  return Object.freeze(guarded) as unknown as string;
+}
+
 /**
  * Part Ten's subject-scoped conditional append.
  *
@@ -111,6 +128,7 @@ export function createConditionalAssemblyAppendPort(
           const current = freeze({ subject: expected.subject, facts: subjectFacts(rows, expected.subject) });
           ensure(sameFacts(current.facts, expected.facts),
             `conditional append subject frontier changed; current=${encoded(current).bytes}`);
+          ensureAssemblyWorkPermitted(host, name);
 
           const existing = rows.find(row => row.record.type === name
             && (row.record.id === candidate.id || assemblyLogicalKey(row.record) === assemblyLogicalKey(candidate)));
@@ -141,7 +159,10 @@ export function createConditionalAssemblyAppendPort(
             read: () => storage.read(),
             append(bytes) {
               let result: Result<import('../facts/index.js').DurabilityState>;
-              try { result = storage.append(bytes, expectedHead); }
+              try {
+                ensureAssemblyWorkPermitted(host, name);
+                result = storage.append(stopCheckedBytes(bytes, host, name), expectedHead);
+              }
               catch (error) {
                 headMoved = physicalHead(storage) !== expectedHead;
                 throw error;
@@ -151,7 +172,12 @@ export function createConditionalAssemblyAppendPort(
             },
           };
           const appendStore = createFactStore(author.context, pinnedStorage);
-          const appendSpine = createAssemblySpine(host, author, appendStore);
+          const appendHost: AssemblyHost = { ...host, current() {
+            const current = host.current();
+            ensureAssemblyWorkPermitted({ current: () => current }, name);
+            return current;
+          } };
+          const appendSpine = createAssemblySpine(appendHost, author, appendStore);
           const appended = appendSpine.append(candidate);
           const settled = resultParts(appended);
           if (settled.ok) return candidate;

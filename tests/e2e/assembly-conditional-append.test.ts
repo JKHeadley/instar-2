@@ -1,4 +1,4 @@
-import { existsSync, unlinkSync } from 'node:fs';
+import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,10 +27,24 @@ function waitFor(path: string, timeout = 10_000): Promise<void> {
   });
 }
 
-function lastJson(stdout: string): { kind?: string; detail?: string; rows: readonly unknown[] } {
+function lastJson(stdout: string): { kind?: string; detail?: string; rows?: readonly unknown[] } {
   const line = stdout.trim().split('\n').filter(row => row.startsWith('{')).at(-1);
   if (!line) throw new Error(`worker produced no JSON: ${stdout}`);
   return JSON.parse(line) as { kind?: string; detail?: string; rows: readonly unknown[] };
+}
+
+function childResult(child: ReturnType<typeof spawn>): Promise<{ status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }> {
+  let stdout = '', stderr = '';
+  child.stdout!.on('data', value => { stdout += value; });
+  child.stderr!.on('data', value => { stderr += value; });
+  return new Promise(resolve => child.once('exit', (status, signal) => resolve({ status, signal, stdout, stderr })));
+}
+
+function runWorker(directory: string, mode: 'attempt' | 'read', options: Readonly<Record<string, unknown>> = {}) {
+  const child = spawnSync(process.execPath, [...args, mode, directory, '', '', JSON.stringify(options)],
+    { encoding: 'utf8', timeout: 30_000 });
+  expect(child.status, child.stderr).toBe(0);
+  return lastJson(child.stdout);
 }
 
 it('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:held-lock-contention] production-held file lock returns a subject-scoped current frontier and preserves one winner', async () => {
@@ -61,6 +75,36 @@ it('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:held
   ]);
 }, 30_000);
 
+it.each([
+  ['same-subject', 'telegram:v1:bot:99'],
+  ['other-subject', 'telegram:v1:bot:other'],
+] as const)('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:held-lock-contention] held-lock-exact-nonempty-current-%s names only the committed target frontier', async (_caseId, writerAdapter) => {
+  const directory = mkdtempSync(join(tmpdir(), `p10-conditional-held-nonempty-${_caseId}-`));
+  assemblyRuntimeFixture(f => createTransportFileStorage(directory, <T>(run: () => T) => f.success(run())));
+  expect(runWorker(directory, 'attempt', { id: 'conformance:baseline', candidateMode: 'baseline' })).toMatchObject({ kind: 'Success' });
+  const readBaseline = runWorker(directory, 'read');
+  const baseline = readBaseline.rows as Array<{ id: string }>;
+  expect(baseline).toHaveLength(1);
+
+  const marker = join(directory, 'held.ready');
+  const writer = spawn(process.execPath, [...args, 'cut', directory, 'before-write', marker,
+    JSON.stringify({ id: 'conformance:writer', adapter: writerAdapter, candidateMode: 'writer' })], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const writerDone = childResult(writer);
+  await waitFor(marker);
+  const contender = runWorker(directory, 'attempt', { id: 'conformance:loser', candidateMode: 'loser' });
+  expect(contender.kind).toBe('Refused');
+  const detail = String(contender.detail);
+  expect(detail).toContain('conditional append physical storage contended; current=');
+  const current = JSON.parse(detail.split('current=')[1]!) as { subject: { value: string }; facts: string[] };
+  expect(current.subject.value).toBe('telegram:v1:bot:99');
+  expect(current.facts).toHaveLength(1);
+
+  unlinkSync(marker);
+  const completed = await writerDone;
+  expect(completed.status, completed.stderr).toBe(0);
+  expect(runWorker(directory, 'read').rows).toHaveLength(2);
+}, 30_000);
+
 it.each(cuts)('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] production initialization survives SIGKILL at %s on the real Two/Ten file path', async cut => {
   const directory = mkdtempSync(join(tmpdir(), `p10-conditional-${cut}-`));
   assemblyRuntimeFixture(f => createTransportFileStorage(directory, <T>(run: () => T) => f.success(run())));
@@ -80,5 +124,39 @@ it.each(cuts)('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier]
   const expectedRows = cuts.indexOf(cut) >= cuts.indexOf('after-rename') ? 1 : 0;
   const rows = lastJson(read.stdout).rows;
   expect(rows).toHaveLength(expectedRows);
-  if (expectedRows) expect(rows[0]).toEqual({ id: 'conformance:cut', adapter: 'telegram:v1:bot:99', mode: 'webhook' });
+  if (expectedRows) expect(rows?.[0]).toEqual({ id: 'conformance:cut', adapter: 'telegram:v1:bot:99', mode: 'webhook' });
 }, 30_000);
+
+it.each(cuts.flatMap(cut => (['webhook', 'long-poll'] as const).map(winnerMode => [cut, winnerMode] as const)))(
+  'P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] live competing admission survives SIGKILL at %s with %s winner mode', async (cut, winnerMode) => {
+    const directory = mkdtempSync(join(tmpdir(), `p10-conditional-race-cut-${winnerMode}-${cut}-`));
+    assemblyRuntimeFixture(f => createTransportFileStorage(directory, <T>(run: () => T) => f.success(run())));
+    const loserMode = winnerMode === 'webhook' ? 'long-poll' : 'webhook';
+    const loserRelease = join(directory, 'loser');
+    const loser = spawn(process.execPath, [...args, 'gate', directory, '', loserRelease,
+      JSON.stringify({ id: `conformance:${loserMode}`, candidateMode: loserMode })], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const loserDone = childResult(loser);
+    await waitFor(`${loserRelease}.ready`);
+
+    const winnerMarker = join(directory, 'winner.ready');
+    const winner = spawn(process.execPath, [...args, 'cut', directory, cut, winnerMarker,
+      JSON.stringify({ id: `conformance:${winnerMode}`, candidateMode: winnerMode })], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const winnerDone = childResult(winner);
+    await waitFor(winnerMarker);
+
+    writeFileSync(loserRelease, 'go');
+    const refused = await loserDone;
+    expect(refused.status, refused.stderr).toBe(0);
+    const refusal = lastJson(refused.stdout);
+    expect(refusal.kind).toBe('Refused');
+    expect(refusal.detail).toContain('current=');
+
+    winner.kill('SIGKILL');
+    const killed = await winnerDone;
+    expect(killed.signal, killed.stderr).toBe('SIGKILL');
+    const rows = runWorker(directory, 'read').rows as Array<{ id: string; adapter: string; mode: string }>;
+    const expectedRows = cuts.indexOf(cut) >= cuts.indexOf('after-rename') ? 1 : 0;
+    expect(rows).toHaveLength(expectedRows);
+    if (expectedRows) expect(rows[0]).toEqual({ id: `conformance:${winnerMode}`, adapter: 'telegram:v1:bot:99', mode: winnerMode });
+  }, 30_000,
+);

@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import type { SegmentStoragePort } from '../../src/facts/index.js';
 import { boundary } from '../../src/facts/boundary.js';
 import { createConditionalAssemblyAppendPort } from '../../src/assembly/index.js';
+import { ensureAssemblyWorkPermitted } from '../../src/assembly/work-permission.js';
 import { privateKey, value } from '../facts/fixtures.js';
 import { assemblyInput } from './fixture.js';
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
@@ -101,6 +102,53 @@ it('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:stop
 });
 
 it.each([
+  ['not-stopped', false],
+  ['stopped', true],
+  ['unknown', undefined],
+] as const)('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:stop-predicate-parity] additive stop predicate matches landed service for %s host state', (_caseId, stopped) => {
+  const f = assemblyRuntimeFixture();
+  const current = f.host.current.bind(f.host);
+  (f.host as unknown as { current: typeof f.host.current }).current = () => ({ ...current(), stopped }) as ReturnType<typeof f.host.current>;
+  const helper = boundary('ConditionalAppendStopParity', null, f.c, () => {
+    ensureAssemblyWorkPermitted(f.host, 'AdapterConformance');
+    return true;
+  });
+  const ordinary = f.runtime.record('AdapterConformance', conformance(`conformance:parity:${_caseId}`, 'native', 'webhook'));
+  expect(helper.kind).toBe(ordinary.kind);
+  if (helper.kind === 'Refused' && ordinary.kind === 'Refused') expect(helper.detail).toBe(ordinary.detail);
+});
+
+it('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:stop-spine-clock] stop observed after frontier comparison refuses before the spine', () => {
+  const f = assemblyRuntimeFixture();
+  let currentCalls = 0;
+  const host = { ...f.host, current: () => {
+    currentCalls += 1;
+    if (currentCalls === 2) f.stop();
+    return f.host.current();
+  } };
+  const result = createConditionalAssemblyAppendPort({ host, author: { context: f.context, privateKey }, storage: f.storage })
+    .appendIfSubjectFrontier('AdapterConformance', conformance('conformance:late-stop', 'native', 'webhook'),
+      { subject: subject('native'), facts: [] });
+  expect(refusalDetail(result)).toBe('stop inhibits new assembly work');
+  expect(currentCalls).toBe(2);
+  expect(value(f.runtime.inspect()).filter(row => row.record.type === 'AdapterConformance')).toHaveLength(0);
+});
+
+it('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:stop-physical-append] stop issued at the physical adapter boundary refuses before bytes are consumed', () => {
+  const f = assemblyRuntimeFixture();
+  const storage: SegmentStoragePort = { owner: 'part-ten', read: f.storage.read,
+    append(bytes, expectedHead) {
+      f.stop();
+      return f.storage.append(bytes, expectedHead);
+    },
+  };
+  const result = port(f, storage).appendIfSubjectFrontier('AdapterConformance',
+    conformance('conformance:physical-stop', 'native', 'webhook'), { subject: subject('native'), facts: [] });
+  expect(refusalDetail(result)).toBe('stop inhibits new assembly work');
+  expect(value(f.runtime.inspect()).filter(row => row.record.type === 'AdapterConformance')).toHaveLength(0);
+});
+
+it.each([
   ['extra-current-claim', { subject: subject('native'), facts: [], current: true }],
   ['extra-current-facts', { subject: subject('native'), facts: [], currentFrontier: [] }],
   ['extra-subject-key', { subject: { ...subject('native'), current: true }, facts: [] }],
@@ -109,6 +157,26 @@ it.each([
   const result = port(f).appendIfSubjectFrontier('AdapterConformance', conformance('conformance:closed', 'native', 'webhook'),
     expected as Parameters<ReturnType<typeof port>['appendIfSubjectFrontier']>[2]);
   expect(refusalDetail(result)).toBe('conditional append frontier token is malformed');
+  expect(value(f.runtime.inspect()).filter(row => row.record.type === 'AdapterConformance')).toHaveLength(0);
+});
+
+it.each([
+  ['subject-array', { subject: [subject('native')], facts: [] }],
+  ['subject-null', { subject: null, facts: [] }],
+  ['nested-type', { subject: { ...subject('native'), type: { name: 'AdapterConformance' } }, facts: [] }],
+  ['nested-field', { subject: { ...subject('native'), field: { name: 'adapter' } }, facts: [] }],
+  ['nested-value', { subject: { ...subject('native'), value: { id: 'native' } }, facts: [] }],
+  ['nested-current-object', { subject: { ...subject('native'), current: { subject: subject('native'), facts: [] } }, facts: [] }],
+  ['nested-frontier-object', { subject: subject('native'), facts: [{ id: 'machine-a:0:11' }] }],
+  ['nested-current-token', { subject: subject('native'), facts: [], current: { subject: subject('native'), facts: [] } }],
+  ['proto-field', { subject: { ...subject('native'), field: '__proto__' }, facts: [] }],
+  ['unknown-type', { subject: { ...subject('native'), type: 'Unknown' }, facts: [] }],
+] as const)('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:extension-nested-shapes] %s refuses without an append', (_caseId, expected) => {
+  const f = assemblyRuntimeFixture();
+  const result = port(f).appendIfSubjectFrontier('AdapterConformance',
+    conformance(`conformance:nested:${_caseId}`, 'native', 'webhook'),
+    expected as unknown as Parameters<ReturnType<typeof port>['appendIfSubjectFrontier']>[2]);
+  expect(result.kind).toBe('Refused');
   expect(value(f.runtime.inspect()).filter(row => row.record.type === 'AdapterConformance')).toHaveLength(0);
 });
 

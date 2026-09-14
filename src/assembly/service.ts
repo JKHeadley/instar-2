@@ -4,11 +4,6 @@ import { assemblyLogicalKey, assemblyRows, compareAssemblyRecords, decodeAssembl
 import { currentAssemblyRows, resolveAssemblyHistory } from './history.js';
 import type { AdapterConformance, AssemblyAdmission, AssemblyComposition, AssemblyManifest, AssemblyRecord, AssemblyRecordName, AssemblyRuntimePort } from './contracts.js';
 
-export function ensureAssemblyWorkPermitted(host: AssemblyComposition['host'], name: AssemblyRecordName): void {
-  ensure(!host.current().stopped || name === 'HarnessObservation' || name === 'StorageAccessObservation'
-    || name === 'GrowthObservation' || name === 'AssemblyAdmission', 'stop inhibits new assembly work');
-}
-
 function activeConformance(record: AdapterConformance, generation: string, now: number, bindings: readonly AssemblyManifest['publicPorts'][number][]): boolean {
   return record.disposition === 'passed' && record.generation === generation && record.validUntil >= now && record.stageChecks.length > 0
     && record.stageChecks.every(row => row.checkRun.trim().length > 0 && row.positive.length > 0 && row.negative.length > 0
@@ -44,7 +39,7 @@ export function createAssemblyRuntime(composition: AssemblyComposition): Assembl
   return Object.freeze({ owner: 'part-ten' as const,
     record<N extends AssemblyRecordName>(name: N, input: unknown) {
       return boundary('AssemblyRecord', input, host.boundary, () => {
-        ensureAssemblyWorkPermitted(host, name);
+        ensure(!host.current().stopped || name === 'HarnessObservation' || name === 'StorageAccessObservation' || name === 'GrowthObservation' || name === 'AssemblyAdmission', 'stop inhibits new assembly work');
         const candidate = take(decodeAssemblyRecord(name, input, runtimeContext));
         validateAssemblyRecordReferences(candidate, runtimeContext);
         const existing = take(inspect()).find(row => row.record.type === name &&
