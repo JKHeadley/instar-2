@@ -58,6 +58,31 @@ const nonempty = (value: unknown, name: string): string => {
 const bytes = (value: string) => new TextEncoder().encode(value).length;
 const encode = (value: unknown) => take(canonical(value)).bytes;
 
+function firstDifferentField(expected: unknown, supplied: unknown, path: string): string | null {
+  if (Object.is(expected, supplied)) return null;
+  if (Array.isArray(expected) || Array.isArray(supplied)) {
+    if (!Array.isArray(expected) || !Array.isArray(supplied)) return path;
+    if (expected.length !== supplied.length) return `${path}.length`;
+    for (let index = 0; index < expected.length; index += 1) {
+      const difference = firstDifferentField(expected[index], supplied[index], `${path}[${index}]`);
+      if (difference !== null) return difference;
+    }
+    return null;
+  }
+  const expectedRecord = expected !== null && typeof expected === 'object' ? expected as RecordValue : null;
+  const suppliedRecord = supplied !== null && typeof supplied === 'object' ? supplied as RecordValue : null;
+  if (expectedRecord === null || suppliedRecord === null) return path;
+  const expectedKeys = Object.keys(expectedRecord).sort();
+  const suppliedKeys = Object.keys(suppliedRecord).sort();
+  for (const key of expectedKeys) if (!Object.hasOwn(suppliedRecord, key)) return `${path}.${key}`;
+  for (const key of suppliedKeys) if (!Object.hasOwn(expectedRecord, key)) return `${path}.${key}`;
+  for (const key of expectedKeys) {
+    const difference = firstDifferentField(expectedRecord[key], suppliedRecord[key], `${path}.${key}`);
+    if (difference !== null) return difference;
+  }
+  return null;
+}
+
 export const telegramParserDeclarationId = 'telegram-intake-v1';
 export const telegramFeatureDeclarationId = 'telegram-conversation-adapter';
 
@@ -801,6 +826,34 @@ function exactTelegramResponse(input: TelegramReplyAssessmentInput,
     'Telegram response observations must resolve through the public Part Eight fact reader');
   const conversation = telegramConversation(deps.admitted.declaration.bot.id, deps.target);
   const effectRows = take(deps.effects.inspect());
+  const requestMatches = effectRows.filter(row => row.record.type === 'EffectRequest'
+    && row.record.id === effect.request.id);
+  ensure(requestMatches.length > 0,
+    'Telegram response request.id does not resolve to a stored Part Eight record');
+  const canonicalRequests = new Set(requestMatches.map(row => encode(row.record)));
+  ensure(canonicalRequests.size === 1,
+    'Telegram response request.id resolves to conflicting Part Eight records');
+  const request = requestMatches[0]!.record;
+  ensure(request.type === 'EffectRequest',
+    'Telegram response request.type has the wrong stored record kind');
+  const requestDifference = firstDifferentField(request, effect.request, 'request');
+  ensure(requestDifference === null,
+    `Telegram response ${requestDifference ?? 'request'} differs from its exact decoded stored Part Eight record`);
+
+  const reservationRows = take(deps.transport.inspect()).filter(row => row.record.type === 'AdmissionReservation'
+    && row.record.operation === effect.reservation.operation && row.record.state === 'consumed');
+  ensure(reservationRows.length > 0,
+    'Telegram response reservation.operation does not resolve to a consumed Part Six record');
+  const canonicalReservations = new Set(reservationRows.map(row => encode(row.record)));
+  ensure(canonicalReservations.size === 1,
+    'Telegram response reservation.operation resolves to conflicting consumed Part Six records');
+  const reservation = reservationRows[0]!.record;
+  ensure(reservation.type === 'AdmissionReservation',
+    'Telegram response reservation.type has the wrong stored record kind');
+  const reservationDifference = firstDifferentField(reservation, effect.reservation, 'reservation');
+  ensure(reservationDifference === null,
+    `Telegram response ${reservationDifference ?? 'reservation'} differs from its exact decoded stored Part Six record`);
+
   const observations = effect.observations.map(supplied => {
     const matches = effectRows.filter(row => row.record.type === 'OperationObservation'
       && row.record.id === supplied.id);
@@ -817,16 +870,16 @@ function exactTelegramResponse(input: TelegramReplyAssessmentInput,
   const responses = observations.filter(observation => observation.stage === 'response');
   ensure(responses.length === 1, 'Telegram provider acceptance requires one exact response-stage observation');
   const response = responses[0]!;
-  ensure(effect.request.id === effect.reservation.request
-    && effect.request.attempt === effect.reservation.attempt
-    && effect.request.digest === effect.reservation.digest
-    && effect.request.verificationBar === effect.bar
-    && effect.request.definition === deps.definition.id
-    && effect.reservation.state === 'consumed'
-    && response.request === effect.request.id
-    && response.operation === effect.reservation.operation
+  ensure(request.id === reservation.request
+    && request.attempt === reservation.attempt
+    && request.digest === reservation.digest
+    && request.verificationBar === effect.bar
+    && request.definition === deps.definition.id
+    && reservation.state === 'consumed'
+    && response.request === request.id
+    && response.operation === reservation.operation
     && response.claim === effect.claim
-    && response.digest === effect.request.digest
+    && response.digest === request.digest
     && response.account === deps.admitted.account
     && response.conversation === conversation
     && deps.definition.adapter === deps.admitted.id

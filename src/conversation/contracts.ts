@@ -12,6 +12,7 @@ import type { VerificationRuntimePort } from '../verification/index.js';
 import type {
   EffectAssessmentInput, EffectAssessmentPort, EffectCustodyPort, EffectDoorway, OperationDefinition, OperationObservation,
 } from '../effects/index.js';
+import type { TransportAuthority } from '../transport/index.js';
 
 export type TelegramIngressMode = 'long-poll' | 'webhook';
 export type TelegramUpdateKind = 'reply' | 'callback' | 'edit' | 'channel-post' |
@@ -130,6 +131,7 @@ export interface TelegramReplyAssessmentDependencies {
   readonly api: TelegramBotApiCustodianPort;
   readonly target: TelegramConversationTarget;
   readonly effects: Pick<EffectDoorway, 'owner' | 'inspect'>;
+  readonly transport: Pick<TransportAuthority, 'inspect'>;
   readonly assessment: EffectAssessmentPort;
   readonly verification: VerificationRuntimePort;
   readonly custody: EffectCustodyPort;
