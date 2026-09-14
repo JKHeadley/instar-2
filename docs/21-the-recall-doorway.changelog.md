@@ -4,6 +4,15 @@ _Generated from `21-the-recall-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 3 · 2026-09-13 · approved — operator review on PR #68; Independent rereview11 of b579d0b928a618e73ce10e1529f45d691400e32e; repair round 11, RD-01 through RD-04
+
+- **Copy the row-100 Seven execution/rerun-admission grant, add it to U30, and label every dependent acceptance positive non-executable until it lands.** — RD-01: row 30 support resolution does not grant benchmark execution or rerun admission; recall must not implement the missing owner operation. _(rereview11 RD-01; SEAM-LEDGER row 100; seam-response-judgment-benchmark-execution.md)_
+- **Retain IntegrationGate with the scheduled owner; inventory its separate auto-blockers file and actual completion consumer; add the learning/hold/release migration fixture.** — RD-02: reader replacement and restart must preserve successful learning, failed/no-learning holds and bounded timeout/bypass semantics through the real scheduler. _(rereview11 RD-02; docs/19-scheduled-work/05-execution-gates-and-supervision.md; P21-REG-INTEGRATION-GATE)_
+- **Move all six decision Basis entries into the closing Rule block.** — RD-03: operator decision bodies must stay readable on a phone without technical citations. _(rereview11 RD-03; docs/21-the-recall-doorway/15-operator-decisions-and-honest-limits.md)_
+- **Explain everyday actions and extra-check permission, recommend the all-listed-actions option for isolated trials, and explicitly defer the live policy choice with matching status references.** — RD-04: a trial recommendation and constitutional classification do not answer or authorize the pending live before/after-review choice. _(rereview11 RD-04; OD-05; sections 8/12/14/15)_
+
+Approved in: PR #68, merge `abf65fedd`.
+
 ## Revision 2 · 2026-09-13 · draft — operator review on PR #68; Independent rereview10 of 50f17eb5; repair round 10, RD-01 through RD-04
 
 - **Inherit consequential classification solely from the purpose and name history-review candidates separately, including selector and boundary fixtures.** — RD-01: policy selection for extra review must not narrow constitutional classification. _(rereview10 RD-01 at 50f17eb5; PR #68)_
