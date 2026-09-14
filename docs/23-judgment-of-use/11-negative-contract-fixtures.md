@@ -38,6 +38,7 @@ Basis: Purpose's checkability/evidence constraints; rules 28/34/35/58/65/95/108.
 | P23-FX-24 — Recovery and storage pressure | Partition/crash/import/full store during pending outcome or correction | Retain one canonical occasion and owned backlog, surface unknown custody; rebuild without fabricated success | 18/21 |
 | P23-FX-25 — Ordinary outage | Optional reviewer unavailable during ordinary permitted reply | Reachable declared default and incomplete assessment; mandatory authority gap still holds only affected effect | 06/19 |
 | P23-FX-26 — Dark wiring | Every schema passes but actual initialization supplies no-op grade or calendar port | Lifecycle fails; real due job, independent grade and supported local lesson furnish positive trace | 20/21/22 |
+| P23-FX-27 — Sole effect classification | Independently vary reversibility, operator resource threshold, granted scope and policy-sensitive marking while holding assessed sensitivity constant | Each purpose test independently classifies the effect as consequential; a permitted ordinary visible status remains ordinary; classification never grants execution or semantic review | 02/06/19 |
 
 **Rule — crash cuts preserve the same obligation.**
 **Checks: P23-NF-05/09/12/18/20/21.** Exercise cuts before attachment, after

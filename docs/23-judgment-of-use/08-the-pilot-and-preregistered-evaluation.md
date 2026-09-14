@@ -188,8 +188,9 @@ and separately granted resources; they do not set fleet or disclosure policy.
 
 ### 8.4 Decision rule and feedback to the design
 **Rule — select only what the evidence supports.** **Checks: P23-NF-15/16.** If B satisfies every
-applicable mandatory bar and the B-over-A gain test, proceed to its scoped
-prospective assessment and then recommend only the locally measured classes.
+applicable replay and grader bar and the B-over-A gain test, proceed to its scoped
+prospective assessment. Recommend only locally measured classes after their
+prospective bars and required later observation windows also pass.
 If B is not better, prefer the less costly adequately performing A or report
 no adequate candidate. If neither passes, repair and preregister a new trial.
 C's added detections are a reason to plan a confirmatory test, not authority to
