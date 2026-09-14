@@ -169,5 +169,7 @@ The terms list is a reading aid; first-use explanations govern their use through
 | Percentile interval; coverage | Resample-quantile endpoints; how often the method includes the target over repeated samples; section 10 |
 | Bonferroni family error | Chance of any comparison's interval missing its target, bounded by allocating error across comparisons; section 10 |
 | Arm-stratified resampling | Resampling operators within each assigned trial group; section 10 |
+| HMAC | Message-authentication code using a shared secret; section 11 |
+| Tier 1 supervision | A model checks each critical step through the existing judgment doorway; section 12 |
 
 Basis: Purpose honest-evidence and trust constraints; sections 8/10 privacy and inference contracts.

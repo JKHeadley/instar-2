@@ -36,11 +36,18 @@ policy authority to the refuter. Reliability and standing are stored separately.
 Basis: Purpose wisdom, trust/alignment and authority constraint; rules 28/57/86/103/104/108; Part One StandingGrant scope/delegation model; R4, standing and weighting; OD-04.
 
 **Rule — admission is closed, bounded and durable.** **Checks: P22-NF-03/05/06/07.**
-Validate length/shape before expensive cryptography and models, then authenticate and validate
-all fields before collective adoption. A rejected unauthenticated body is not copied into
-logs or the canonical store; retain only bounded safe rejection metadata. Quarantine that
-requires payload custody must itself be authorized. Unknown schema stays rejected, with a
-supported-version response, and never invokes a permissive fallback.
+Four/Ten preserve every received input in their existing restricted, secret-safe intake custody
+before the front can validate, authenticate, parse or reject it. Preservation is mandatory:
+the intake receipt binds the arrival hash and durable capture; matched secret spans remain
+only in secret-store custody, and ordinary intake readers receive the redacted capture under
+Four's existing access rules. No Commons grant widens access to either artifact.
+After preservation, validate length/shape before expensive cryptography and models, then
+authenticate and validate all fields before collective adoption. Every refusal binds to the
+preserved intake receipt, including malformed or unauthenticated arrivals. Only Commons logs
+and the collective store are limited to bounded safe rejection metadata and opaque receipt
+references; rejected payloads and secret spans never enter those surfaces, responses or provider
+calls. Unknown schema stays rejected, with a supported-version response, and never invokes a
+permissive fallback. F28 proves preserve-before-reject ordering and non-disclosure together.
 Use durable per-enrollment and per-operator contribution limits, plus bounded anonymous/network
 abuse limits, total byte/work ceilings and finite review capacity. Network identity is not
 human identity. Restart, rotation, multiple agents and concurrent front workers cannot reset
@@ -49,7 +56,7 @@ permitted attempt) are agent-owned settings bounded by
 resource caps and reachable service, versioned and tested at zero, equality and one over.
 A full queue holds admission visibly; it never evicts an unreviewed accepted case silently.
 
-Basis: Constraints 1/2; rules 39/41/55/60/61/77/95; R1 rate-control failures; OD-03; G4 resource authority.
+Basis: Constraints 1/2; rule 4; Four [intake sequence and refusal contract](../08-the-intake.md#the-intake-sequence), `src/intake/port.ts:170–183`; rules 39/41/55/60/61/77/95; R1 rate-control failures; OD-03; G4 resource authority.
 
 **Rule — receipt language names the achieved state.** **Checks: P22-NF-06/07/20.**
 A network acknowledgment is `received` only. `front-stored` requires an authenticated receipt

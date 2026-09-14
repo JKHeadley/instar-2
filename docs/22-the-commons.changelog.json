@@ -1,5 +1,37 @@
 [
   {
+    "revision": 5,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator-directed repair round 4 of third independent re-review AC-01–AC-04 at 0f2de7dacc0d919c5c096a9425177b609be80434; verdict .instar/lanes/astra-design-commons-0f2de7da.md."
+    },
+    "changes": [
+      {
+        "what": "Require Four/Ten restricted, secret-safe intake preservation before front validation or rejection, bind every refusal to its preserved receipt, and limit Commons logs and collective storage to safe metadata. Add F28 and its NF mappings.",
+        "why": "AC-01 requires mandatory input preservation under rule 4 and Four without disclosing rejected payloads or widening custody access.",
+        "ref": "AC-01; sections 3/12/13; F28; docs/08-the-intake.md:214,241,481"
+      },
+      {
+        "what": "Audit the evaluation-throws and absent-discernment legacy execution branches with pinned source citations; retire both at cutover and extend F26 and NF-18/19 for failed or absent review.",
+        "why": "AC-02 requires preservation of pending legacy work and refusal of automatic execution without model review; separately approved compatible returns remain permitted.",
+        "ref": "AC-02; sections 11/12/13; F26; src/core/AutoDispatcher.ts:400,597; src/commands/server.ts:11880"
+      },
+      {
+        "what": "Inventory DeferredDispatchTracker and state/deferred-dispatches.json, preserve original dispatches, conditions, reason history, count/limit and next/current poll, and map remaining work to owned held/review items. Add F29 across import/replay/restart and NF-18/19 mappings.",
+        "why": "AC-03 requires no lost deferred work, refreshed allowance or unapproved reevaluation/execution during migration.",
+        "ref": "AC-03; sections 11/12/13; F29; src/core/DeferredDispatchTracker.ts:21,59,73,145,233; src/core/AutoDispatcher.ts:379,450"
+      },
+      {
+        "what": "Explain HMAC and Tier 1 supervision in their first requirement sentences and add both to the terms table.",
+        "why": "AC-04 requires load-bearing terms to be understandable without outside reading or reading ahead.",
+        "ref": "AC-04; sections 2/11/12"
+      }
+    ],
+    "multiMachinePosture": "Documentation only. Rejected-input custody and deferred-queue import/restart fixtures remain gated implementation obligations. No runtime Commons fixture, deployment or fleet outcome is claimed executed."
+  },
+  {
     "revision": 4,
     "date": "2026-09-14",
     "status": "draft",

@@ -4,6 +4,13 @@ _Generated from `22-the-commons.changelog.json` by `scripts/render-changelog.mjs
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-09-14 · draft — Operator-directed repair round 4 of third independent re-review AC-01–AC-04 at 0f2de7dacc0d919c5c096a9425177b609be80434; verdict .instar/lanes/astra-design-commons-0f2de7da.md.
+
+- **Require Four/Ten restricted, secret-safe intake preservation before front validation or rejection, bind every refusal to its preserved receipt, and limit Commons logs and collective storage to safe metadata. Add F28 and its NF mappings.** — AC-01 requires mandatory input preservation under rule 4 and Four without disclosing rejected payloads or widening custody access. _(AC-01; sections 3/12/13; F28; docs/08-the-intake.md:214,241,481)_
+- **Audit the evaluation-throws and absent-discernment legacy execution branches with pinned source citations; retire both at cutover and extend F26 and NF-18/19 for failed or absent review.** — AC-02 requires preservation of pending legacy work and refusal of automatic execution without model review; separately approved compatible returns remain permitted. _(AC-02; sections 11/12/13; F26; src/core/AutoDispatcher.ts:400,597; src/commands/server.ts:11880)_
+- **Inventory DeferredDispatchTracker and state/deferred-dispatches.json, preserve original dispatches, conditions, reason history, count/limit and next/current poll, and map remaining work to owned held/review items. Add F29 across import/replay/restart and NF-18/19 mappings.** — AC-03 requires no lost deferred work, refreshed allowance or unapproved reevaluation/execution during migration. _(AC-03; sections 11/12/13; F29; src/core/DeferredDispatchTracker.ts:21,59,73,145,233; src/core/AutoDispatcher.ts:379,450)_
+- **Explain HMAC and Tier 1 supervision in their first requirement sentences and add both to the terms table.** — AC-04 requires load-bearing terms to be understandable without outside reading or reading ahead. _(AC-04; sections 2/11/12)_
+
 ## Revision 4 · 2026-09-14 · draft — Operator-directed repair round 3 of rereview2 AC-01–AC-05 at 7aead7ad2b890d8687aa152723d6aac2b77433c8; verdict .instar/lanes/astra-design-commons-7aead7ad.md.
 
 - **Require exact-subject custody lookup while a send is uncertain; admit query-then-resend only after authoritative non-receipt, owner-proven non-occurrence/quiescence/settled charge and current authority. Distinguish in-flight duplicates and revise F10.** — AC-01 requires the inherited transport uncertainty bar; identical bytes and deduplication do not authorize resubmission. _(AC-01; sections 2/3/12/13; transport sections 4/7)_
