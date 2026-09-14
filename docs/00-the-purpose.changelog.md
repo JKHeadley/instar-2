@@ -8,7 +8,7 @@ each linked to the git change that made it (rule 91).
 
 - **Added one constitutional definition of a consequential effect (four tests), of user-facing, and of significant/critical resolving to consequential, with a registration-time classification check on the effect doorway.** — The rule book records that rules 34, 38, 43, 62 and 76 are blocked on 'significant', 'critical' and 'user-facing' having no definition; the memory design's decision 5 was undecidable for the same reason. _(rule book: 'Rules 34, 38, 43, 62 and 76 hinge on significant, critical, or user-facing'; memory design section 15 decision 5; topic 52075)_
 
-Approved in: PR #71.
+Approved in: PR #71, merge `e281a2c27`.
 
 ## Revision 2 · 2026-09-13 · approved — operator direction in topic 52075 on 2026-09-13: wisdom in the use of knowledge is the aim above coherence, and the constitution must be complete enough to decide every design question; approved by the operator in topic 52075 on 2026-09-13 23:26Z ('approved')
 
