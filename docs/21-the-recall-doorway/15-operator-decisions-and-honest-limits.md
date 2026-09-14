@@ -15,8 +15,6 @@ Reason: Equal starting attention can expose gaps across all four situations. It 
 detail about each in a small trial, so the agent may adjust the balance as evidence accumulates.
 Preserving important information in every channel does not require equal trial allocation.
 
-Basis: Purpose, “nothing that mattered is silently lost,” coherence pillar and “Who decides what”; section 10, P21-PILOT-01; OD-01.
-
 **Value — decision 2: using information learned from someone else.**
 
 Question: How should information learned from one person help in conversations with someone else?
@@ -44,8 +42,6 @@ or withholding each detail. Record the choice and reason, then compare it with w
 Feedback counts only from people entitled to assess that outcome. This helps improve care
 without turning a useful connection into permission to disclose it.
 
-Basis: Purpose, “wisdom is what coherence is for” and authority constraint; rules 57/86/95; section 5 current scope policy; OD-02. The follow-on “judgment of use” owner design is not specified here.
-
 **Value — decision 3: how long better remembering may take.**
 
 Agent-owned setting, bounded by timely help and a reachable response; initial choice:
@@ -55,8 +51,6 @@ not by operator decision.
 Reason: A brief check can recover useful context without making ordinary conversation wait
 for an open-ended investigation. When evidence remains missing, say so. A deeper investigation
 needs its own agreed time and spending limits.
-
-Basis: Rule 77; section 7 owns the initial two-second ordinary and fifteen-second history-review candidate ceilings and separate spend authorization; OD-03.
 
 **Value — decision 4: what better than human remembering should mean.**
 
@@ -68,38 +62,43 @@ Reason: Separate comparisons expose the advantage of having an archive and show 
 agent helps beyond searching it. They require more participant time. The constitution requires
 honest measurement; it does not choose the comparison groups or the study length.
 
-Basis: Purpose, wisdom Value, evidence constraint and “Who decides what”; section 10 owns P21-HUMAN-01 and the initial four-week horizon; OD-04. No paid study is authorized.
-
 **Value — decision 5: which major actions deserve an extra history check.**
 
 Question: When should an action receive an extra check against earlier conversations?
 
-Background: “Consequential effect” has its single meaning in the purpose. “History-review
-candidates” are a policy-selected subset of those effects. They have an earlier promise,
-restriction, or conflicting statement that matters to the action. Classification alone neither
-permits the action nor enables the extra review.
+Background: These actions include sending an email, posting publicly, releasing software,
+paying, and other things the agent cannot undo on its own. An earlier promise, restriction,
+or conflicting statement may matter to whether the prepared action is right. The extra check
+compares that action with the permitted earlier conversations. Ordinary conversation does not
+receive this extra blocking check.
 
-Choices within approved policy: Review afterward; check email and public posts before acting;
-check all listed history-review candidates before acting.
+Permission for an extra check means you explicitly agree which actions may pause before they
+happen while the agent checks that history, and when missing evidence must leave them unsent.
+That also needs approval through the process that governs the agent's rules. Neither agreement
+permits the underlying email, post, release or payment; each still needs its usual permission.
+
+Choices: Review afterward; check email and public posts before acting; check all listed actions
+before acting when earlier promises, restrictions or conflicting statements matter.
 
 What it changes:
 
 - Reviewing afterward avoids added delay but misses a chance to catch a historical mistake first.
-- Checking email and public posts may catch a mistake before sending, but can add an unnecessary wait.
-- Checking all listed history-review candidates also covers software releases, payments and
-  other specifically agreed irreversible actions when earlier exchanges matter, adding coverage
-  and possible delay.
+- Checking email and public posts may catch a mistake before sending, but can add an unnecessary
+  wait and leaves releases, payments and other agreed actions to later review.
+- Checking all listed actions when history matters also covers releases, payments and other
+  agreed actions the agent cannot undo on its own. It offers more coverage and possible delay;
+  actions without a relevant earlier promise, restriction or conflict do not get the extra check.
 
-Decision: Inherit the purpose’s classification and keep the narrower history-review candidate
-selection separate. The constitutional boundary is settled; the proposed selection grants no
-permission to act or to block an action.
+Recommendation: Test the third choice—checking all listed actions when history matters—in
+isolated trials. Earlier promises can matter to a payment or release as much as to an email;
+this trial can show whether broader coverage catches more mistakes than it introduces errors
+or unnecessary waits. A trial uses prepared examples without controlling real actions. This
+recommendation gives no permission to switch the check on or spend money on a trial.
 
-Recommendation: Keep the extra review from controlling real actions until its exact policy
-exception is approved and a trial shows that repairs outweigh mistakes and unnecessary waits.
-Then use it only for the approved history-review candidates. This targets the extra cost where
-history demonstrably matters.
-
-Basis: Purpose’s sole consequential-effect definition, PR #71, operator-approved and merged at e281a2c2; sections 1/8 selector and governing-rule reconciliation; section 12 activation; OD-05. The class allowlist is a proposal within that boundary, not a second constitutional definition or an approved runtime exception.
+Decision status: The choice for real actions is deliberately deferred until the trial evidence
+and your explicit choice are available and the required rule approval is recorded. Until then,
+extra history review stays afterward or in isolated trials; existing permission and required
+evidence checks still apply before acting.
 
 **Value — decision 6: what happens when an action needs missing evidence.**
 
@@ -124,12 +123,24 @@ a brief recovery window with limited rechecks and one notice updated with the re
 changed by measurement, not by operator decision. When the window ends without evidence, the
 action stays unsent and awaits further instruction.
 
-Basis: Rule 95; section 7 owns the initial five-minute window, at most two rechecks and one logical notice; sections 12/14 retain activation and owner dependencies; OD-06.
-
 **Rule — decisions stay within explicit ownership and approval.** Rules 7, 11, 13, 28, 42,
 57, 66, 77, 82, 86, 90, 93, 94, 95, 98, 103, 108 and 111;
 **checks: P21-NF-02/06–09/13–16/18/20–24**. Decision numbers map to stable ids OD-01
-through OD-06 in order. OD-01 changes evaluation emphasis, not the all-setting recall contract
+through OD-06 in order.
+
+Basis for decision 1: Purpose, “nothing that mattered is silently lost,” coherence pillar and “Who decides what”; section 10, P21-PILOT-01; OD-01.
+
+Basis for decision 2: Purpose, “wisdom is what coherence is for” and authority constraint; rules 57/86/95; section 5 current scope policy; OD-02. The follow-on “judgment of use” owner design is not specified here.
+
+Basis for decision 3: Rule 77; section 7 owns the initial two-second ordinary and fifteen-second history-review candidate ceilings and separate spend authorization; OD-03.
+
+Basis for decision 4: Purpose, wisdom Value, evidence constraint and “Who decides what”; section 10 owns P21-HUMAN-01 and the initial four-week horizon; OD-04. No paid study is authorized.
+
+Basis for decision 5: Purpose’s sole consequential-effect definition, PR #71, operator-approved and merged at e281a2c2; sections 1/8 selector and governing-rule reconciliation; section 12 activation; OD-05. The class allowlist is a proposal within that boundary, not a second constitutional definition or an approved runtime exception.
+
+Basis for decision 6: Rule 95; section 7 owns the initial five-minute window, at most two rechecks and one logical notice; sections 12/14 retain activation and owner dependencies; OD-06.
+
+OD-01 changes evaluation emphasis, not the all-setting recall contract
 in sections 2/5. Incident evidence collection is separate: section 10 requires an authorized
 failure, comparable success and missing-source/legitimate-hold control per setting through
 `P21-INCIDENT-REPLAY-v1`; the four reported causes remain UNKNOWN until supplied.
@@ -144,7 +155,8 @@ OD-04 maps to `P21-HUMAN-01` in section 10, with independently graded dimensions
 population, tools, time allowances and precision plan. OD-05 inherits consequential
 classification from the purpose by reference. The operator retains ownership of resource
 thresholds and policy-sensitive markings. History-review candidates are section 8’s
-policy-selected subset; selection grants no waiver. Section 8's rulebook
+selected actions whose earlier promises, restrictions or conflicting statements matter;
+selection grants no waiver. The live before/after-review choice remains deferred. Section 8's rulebook
 reconciliation, measured evidence and exact exception approval remain mandatory. Ordinary chat cannot acquire a semantic blocking reviewer.
 OD-06’s fail direction is constitutionally decided; its waiting duration and notification
 counts are agent-owned settings. The effect owner retains the exact
@@ -161,12 +173,17 @@ non-executable until the cited grant lands with current owner evidence. Section 
 per-check dependency authority; section 12 derives its execution posture from that map.
 No decision here changes that posture.
 
-Questions for the operator — judgment questions: [] (none). Pending policy questions: none.
-The list is empty because the constitution decides the boundaries in OD-02/05/06 and the agent
-owns OD-01/03/04 and OD-06’s numeric settings. It does not uniquely settle the initial trial
-allocation or comparison method. Engineering settings live in sections 7/10 and change by
-measurement within those boundaries. Runtime exception approval and paid-run approval remain
-activation conditions, not permissions supplied by this list. A new policy question that the
+Questions for the operator — pending live-policy choice: OD-05, whether to review afterward,
+check email/public posts before acting, or check all listed history-dependent actions before
+acting. The third option is recommended for isolated trials; choosing and enabling the live
+policy is deferred pending evidence, explicit operator choice and governing-rule reconciliation.
+The purpose settles consequential classification and permission boundaries, not that selection.
+Section 8 records the candidate narrow exception for that governing process; it is not an approved
+purpose or rule change. No-pending-policy status may be claimed only after this choice is resolved
+or the live proposal is withdrawn. OD-02/06 retain their constitutional boundaries; OD-01/03/04
+and OD-06's numeric settings remain agent-owned. Engineering settings live in sections 7/10 and
+change by measurement within those boundaries. Runtime exception and paid-run approvals remain
+separate activation conditions; this list supplies neither. A new policy question that the
 purpose cannot decide must be recorded as a candidate purpose amendment before convergence.
 
 **Value — honest limits.** The design has source-grounded mechanisms, three measured installed

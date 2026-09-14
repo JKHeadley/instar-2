@@ -750,6 +750,7 @@ approval lifecycle.
 | `src/core/UserRegistryReplicatedStore.ts:1`; `src/core/TopicOperatorReplicatedStore.ts:1`; `src/core/TopicPinReplicatedStore.ts:47–53`, `:141` | Available person/contact observations, historical operator mappings and machine-placement pins as separately attributed source data | Identity/standing/placement remain owner-resolved, never imported as recall authority. Topic placement pins are not memory-importance pins. Do not merge authenticated people from replicated display names. |
 | `src/core/SubscriptionAccountMetaReplicatedStore.ts:1–8`; `src/core/ThreadlinePairingReplicatedStore.ts:1` | Existing owner custody of account metadata and peer-pairing state | These are infrastructure/identity stores, not general memory sources. Recall may consume only the owner's permitted current result; raw logins, pairing credentials and authority are not imported into a recall packet. |
 | `src/core/ExecutionJournal.ts:61–80`, `:87–174`, `:220–260`; `src/core/PatternAnalyzer.ts:117–237`; `src/core/ReflectionConsolidator.ts:95–138` | Pending/completed execution evidence, hook versus agent origin, pattern reports, deduplication and proposal/learning links | Capture pending files and retained journals before pruning; preserve observed versus inferred claims. Move memory derivation to supervised maintenance and actual context readers; a count of generated proposals is not learning effectiveness. |
+| `src/scheduler/IntegrationGate.ts:109–181`, `:200–269`; `src/scheduler/JobScheduler.ts:1606–1638`; `src/commands/server.ts:7287–7293` | Retain the scheduling owner's awaited job-completion learning consumer, reflection/pattern evidence and distinct `{stateDir}/state/jobs/{slug}/auto-blockers.json` source, separate from job-definition `commonBlockers` | Reader replacement preserves the post-completion contract in [scheduled work section 5](../19-scheduled-work/05-execution-gates-and-supervision.md): accepted learning, failed/no-learning hold and bounded timeout/ceiling release. Recall does not own queue progression or implement the gate. P21-REG-INTEGRATION-GATE below exercises the real consumer. |
 | `src/core/BlockerLearningLoop.ts:108–192`, `:199–263` | Job `commonBlockers`, resolution/session origin, pending/confirmed/expired state and reuse counts | Capture before expiry/cap pruning and retain later observations. Legacy human/agent reuse thresholds are advisory evidence, not verified authority or a replacement for present access checks. A resolution containing credential references stays in authorized custody. |
 | `src/core/AutonomousEvolution.ts:129–235`; `src/core/EvolutionManager.ts:1165–1247`; `src/server/routes.ts:23380–23899` | Proposal, gap, action and learning records, review decisions, job-change files and their applied/reverted history | Keep approval, scheduling and effect execution with their owners. Import values as evidence, not permission to reapply a job change. Preserve separate diagnosis/remedy and available consumer evidence; status or an identity-relevance nudge is not proven learning. |
 | `src/monitoring/ReflectionMetrics.ts:90–188`; `src/core/LearningVelocityScorer.ts:54–104`; `src/server/routes.ts:4967–4991`, `:10867–10935` | Reflection occurrence/threshold state and learning-event population; the route counts action completion, not merely filing | Retain observations and exclusions through the measurement owner. Event rate, trend and adaptability score do not establish coherent recall, reflection quality or causation. |
@@ -790,7 +791,7 @@ new source. An available helper, advertised route or configured hook is not proo
 | Cross-machine conflict evidence and proposed text — `src/core/ConflictStore.ts:1–24`, `:40–49`, `LLMConflictResolver.ts:203–247` | Retain synchronization and resolution owners for available original divergent versions, conflict/recurrence/loss counters, current operator dispositions, bounded model input and proposed merge content | The conflict ledger contains version identities rather than payloads and can evict old open entries with a loss count; it cannot reconstruct originals alone. The separate model resolver's tiered proposal is derived text, never authoritative identity or an approved merge. Capture unique available versions before replacement and re-resolve the owner's present conflict rather than importing a historical resolution as a fresh decision. |
 | Project and documentation navigation — `src/core/ProjectMapper.ts:22–34`, `:281–308`; `CartographerTree.ts:1–16`, `:46–55`; `CartographerNavigator.ts:5–31`; `cartographerSummary.ts:8–15`; `src/monitoring/CartographerSweepPoller.ts:1` | Retain project-map and cartographer owners; capture unique generated descriptions with covered code identities, source roots, freshness and authoring observations | Preserve the bounded navigation reader and its untrusted-summary rendering. This code/document tree is distinct from SelfKnowledgeTree; code-hash freshness does not prove a summary is correct or that omitted directories were examined. |
 | Pre-compaction learning extraction — `src/core/PreCompactionFlush.ts:156–230`, `:329`, `:374`; `src/commands/server.ts:13284–13304` | Capture available transcript slice, derived learning files, MEMORY.md index entries and flush audit; preserve the explicitly enabled PreCompact callback and no-provider/no-transcript/error dispositions | This producer is separate from rolling summaries. Move formation to supervised maintenance under P21-A2 or explicitly retain its owner with captured-call accounting. Retire an index append or `ok` result as proof every fact body was written or later used; bounded transcript tails are partial evidence. |
-| Job bodies, handoffs and reflection — `src/scheduler/JobScheduler.ts:1372–1475`, `JobRunHistory.ts:1`; `src/core/JobReflector.ts:70–170`; existing ExecutionJournal/BlockerLearningLoop rows | Capture validated job bodies, prior handoff notes and state snapshots, common blockers, run/skip histories, reflection input/results and available execution provenance; retain scheduling owner | The prompt actually includes topic awareness and last-run handoff when available. Keep those consumers and the reflector distinct from generic memory search. Missing intelligence yields no reflection, and proposed improvements do not authorize changing a job. |
+| Job bodies, handoffs and reflection — `src/scheduler/JobScheduler.ts:1372–1475`, `JobRunHistory.ts:1`; `src/core/JobReflector.ts:70–170`; existing ExecutionJournal/BlockerLearningLoop rows | Capture validated job bodies, prior handoff notes and state snapshots, job-definition common blockers, the separate `state/jobs/{slug}/auto-blockers.json` file, run/skip histories, reflection input/results and available execution provenance; retain scheduling owner and its awaited `JobScheduler.notifyJobComplete` → `IntegrationGate.evaluate` consumer | The prompt actually includes topic awareness and last-run handoff when available. Keep those consumers and the reflector distinct from generic memory search. Missing intelligence yields no reflection, and proposed improvements do not authorize changing a job. |
 | Dispatch context and learned adaptations — `src/core/ContextSnapshotBuilder.ts:77–115`; `ContextualEvaluator.ts:1–18`; existing DispatchExecutor, DecisionJournal and EvolutionManager rows | Capture snapshot versions and their underlying identity/jobs/decision metadata, dispatch content, adaptation proposals and applied/reverted evidence; retain dispatch/effect owners | Preserve the actual specialized model consumer, not just a snapshot cache. Record cached age and omitted fields. An accepted dispatch recommendation or rendered context is not proof of application or ordinary-session delivery. |
 | Work, commitments and continuity state — `src/core/WorkLedger.ts:19–36`, `CodexTaskContinuationStore.ts:123–163`, `SessionBuildContextStore.ts:7–30`, `SessionClockReader.ts:12–25`, `ForwardedTopicContext.ts:19–25`; `src/monitoring/CommitmentTracker.ts:1–17`; `src/tasks/TaskFlowRegistry.ts:1–12` and `task-flow-registry.store.sqlite.ts:1` | Retain work/run/commitment owners for ledgers, remaining tasks, awaited results, build locations, clocks, session/resume/handoff mappings and task-flow records; capture historical observations and available forwarded originals | Migrate real continuation, restore, status and context readers without restarting stopped work or replaying actions. Task-flow notification metrics do not prove a user notification. A resume id, countdown, handoff or remembered promise cannot close work or stand in for full history. |
 | Approval, permission and behavioral-baseline evidence — `src/core/ApprovalLedger.ts:1–33`; `src/permissions/RelationshipBehaviorStore.ts:1–20`, `RelationshipAnomalyScorer.ts:387`, `PermissionDecisionLedger.ts:77`, `AmbientContributionGate.ts:290–291`; `src/coordination/ReviewExchange.ts:1` | Retain current authority with identity/permission owners; preserve lawful decision histories, operator-sourced classifications/divergences, corrections, review exchanges and shape-only behavioral observations | Keep the permission baseline separate from relationship notes: it stores counts/action/time/length shapes, not messages. No recall importer reconstructs private text from aggregates or converts learned familiarity, old approval or agreement ratios into authority. |
@@ -871,6 +872,68 @@ production initialization, not a helper's returned string. Other owners' retaine
 are not silently redirected or replayed. These obligations remain non-executable under the full
 NF-17a–j/18/21 dependency rows in section 14, including `seam-response-recall-doorway-grants.md`
 and row 77 of `seam-response-declarations.md`; source inventory alone supplies no runtime pass.
+
+**Rule — job-completion learning remains an awaited scheduling-owner duty.** Rules 7, 8,
+33, 44, 45, 46, 58, 68 and 111; **checks: P21-NF-17j/21**, with the full NF-17 umbrella
+dependencies. [Scheduled work section 5's post-completion contract](../19-scheduled-work/05-execution-gates-and-supervision.md)
+already owns the replacement behavior and its P15-NF-42/44/45/50/51 checks. Moving reflection
+or pattern derivation into section 6's supervised maintenance does not detach their scheduler
+consumer or make learning completion a recall verdict.
+
+In the audited 1.x source, `src/commands/server.ts:7287–7293` constructs and injects
+`IntegrationGate`, even without an intelligence provider. For model-session completion,
+`src/scheduler/JobScheduler.ts:1606–1628` awaits `IntegrationGate.evaluate()` and calls
+`processQueue()` only when it returns `proceed`. A failed job with no reflection can therefore
+withhold that queue-drain call; this is more than an optional reflection producer.
+`src/scheduler/IntegrationGate.ts:109–181`, `:200–211` awaits reflection, analyzes the execution
+journal and records available reflection in run history. `:221–269` separately writes
+`{stateDir}/state/jobs/{slug}/auto-blockers.json`, deduplicating high-confidence pattern keys
+and retaining description, resolution, originating session, added time, pending status and
+success count. This file is not the job definition's `commonBlockers` field or the
+`BlockerLearningLoop` source. Its write does not prove a later job loaded or used a blocker.
+
+The legacy gate releases on its finite timeout with a warning, bypasses disabled learning or
+an explicit false gate, and releases on the fourth consecutive per-slug block
+(`IntegrationGate.ts:85–106`, `:158–181`, `:280–296`). Its counter is process-local; restarting
+1.x does not prove a durable hold. The optional no-gate model-session fallback starts reflection
+without awaiting it and drains immediately (`JobScheduler.ts:1630–1638`). Direct scripts do not
+enter this completion method. Preserve these source distinctions and flags in the manifest;
+do not infer learning from a shared job-definition flag or reconstruct lost counter history.
+
+Retain the gate, its writer and progression authority with scheduled work. P21-A2 captures
+available original blocker files, journal inputs, reflections, run history, source settings and
+gate observations before changing any reader. Import exact bytes/fields and origin-scoped
+job/session links, retaining missing files or links as unavailable. Register the real scheduler
+completion consumer separately from the prompt's blocker reader and any recall lookup. A new
+recall reader consumes permitted evidence; it never drains the queue, installs a blocker as
+an instruction, or reports a saved reflection as accepted learning.
+
+**Migration fixture P21-REG-INTEGRATION-GATE.** Exercise the default injected model-session
+composition through production initialization and its real completion callback, then repeat
+across capture/import twice, reader replacement and restart. The successful-learning arm starts
+with real reflection and pattern inputs, observes the awaited result and retained separate
+blocker output, and proves the scheduling owner accepts learning before its successor admits.
+Assert imported blocker field fidelity and source linkage through the actual replacement reader;
+if a blocker is claimed as model context, require its body in captured input as well.
+A failed/no-learning neighbor must withhold legacy queue draining; its imported 2.0 counterpart
+must inhibit only the same stable job and learning-policy generation. A second ready job and
+status/repair work remain reachable under the scheduled owner's contract.
+
+Exercise unavailable intelligence, missing reflection, finite timeout, the first three counted
+holds and fourth-event ceiling release. In 2.0, restart between hold and release reconstructs
+the same counter, deadline, remaining allowance and follow-up from owner facts; it cannot reset
+limits or label timeout/ceiling release as learning. An accepted learning Result resets that
+job's counter; another job's success does not. Preserve the still-open follow-up obligation
+on release. These are the scheduled owner's bounded semantics, not preservation of the legacy
+process-local counter loss or global queue-drain hold. Pair explicit learning opt-out and
+direct-script bypass, both mapped to `off`, with the no-gate model-session residue, which stays
+inhibited until its owner selects `off` or `required`. Missing/disabled/unwired readers cannot
+pass by returning a file count or a successful callback. Rollback restores compatible old
+readers while retaining newly admitted evidence and unresolved owner work; it never replays a
+completed job. Run unit, public-pipeline integration, lifecycle and wiring checks for this
+migration handoff. It is **NON-EXECUTABLE-UNTIL-row-100-benchmark-execution** and remains
+non-executable until all section 14 NF-17j/21 dependencies and the referenced scheduled-owner
+contract pass. No new owner operation is supplied by recall and no migration execution is claimed.
 
 **Rule — structural composition replaces inconsistent injection paths.** Rules 1, 30, 44,
 47, 66, 78, 96 and 110; **checks: P21-NF-03/05/10/17a–j/21**. Topic-intent briefings,

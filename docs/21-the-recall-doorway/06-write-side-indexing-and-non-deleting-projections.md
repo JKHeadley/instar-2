@@ -93,7 +93,8 @@ current matching benchmark evaluation passes its task class's quality and safety
 Missing, stale, retracted, conflicted, mismatched or failing support makes supervision
 unavailable under that owner's declared failure direction; an unmeasured route cannot satisfy
 this supervised-maintenance positive. Section 14 U27/U30 name the current-route and
-measured-support grants separately.
+measured-support grants separately; U30 also includes Seven’s row-100 execution/rerun-admission
+operation in `seam-response-judgment-benchmark-execution.md`. Recall only consumes it.
 
 The positive NF-04/19/23 trace starts with retained source input and no active conversational
 root. A real admitted scheduled memory item obtains its MAINTENANCE root and reserved finite
@@ -109,7 +110,14 @@ non-executable until rows 90/91 of `seam-response-recall-doorway-grants.md` land
 NF-04/19/23 dependency rows in section 14 are satisfied, including
 **NON-EXECUTABLE-UNTIL-row-27-part-seven-runtime-route** and
 **NON-EXECUTABLE-UNTIL-row-30-benchmark-route-support**: the corresponding scopes in
-`seam-response-judgment.md` and `seam-response-assembly-followup.md` must land.
+`seam-response-judgment.md` and `seam-response-assembly-followup.md` must land. It is also
+**NON-EXECUTABLE-UNTIL-row-100-benchmark-execution** until Seven’s separate row-100
+operation in `seam-response-judgment-benchmark-execution.md` lands under the row-30 ordering.
+The owner prerequisite's positive executes the registered scenario set and re-resolves its signed
+graded results before supervisor selection. Paired changes to prompt hash, context manifest,
+model and routing entry must invoke Seven's operation to admit exactly the affected scenarios
+for rerun; unaffected scenarios are not rerun. Compatibility lookup or a prefilled evaluation
+alone cannot pass the execution/admission prerequisite.
 A one-shot execution is evidence for this worker path only; the complete migration and
 recurring-work positives also need section 14 G84's calendar adapter and successive-occurrence
 proof. No one-shot trace proves the daily backstop or weekly preference analysis.

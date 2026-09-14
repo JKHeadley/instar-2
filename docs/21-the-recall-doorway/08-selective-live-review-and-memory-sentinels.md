@@ -25,7 +25,7 @@ second sentinel lifecycle. Each hook declares its input, output, budget, purpose
 | Retrospective outcome review | Examine graded patterns, corrections, successes, false holds and missed ordinary opportunities | Candidate outcome/lesson/replay artifact through its owners; no unsolicited per-item message |
 
 **Rule — the selector is explicit and cheap.** Rules 4, 13, 57, 66 and 86;
-**checks: P21-NF-08/13/14**. OD-05, decided (section 15), first classifies the admitted operation
+**checks: P21-NF-08/13/14**. The selector proposed for OD-05 (section 15) first classifies the admitted operation
 using the effect registry, then resolves deterministic prerequisites and exact target. Hard
 owner violations follow the existing refusal. If those pass, live semantic review is eligible
 only for history-review candidates: constitutionally consequential operations in an approved
@@ -68,7 +68,7 @@ scope/authority, supported prerequisite and receipt currency. A failed recheck e
 there is no reviewer ping-pong or normalized approval hash that discards a changed link address.
 
 **Rule — a semantic failure has only its approved consequence.** Rules 42, 57, 77, 83,
-86, 95 and 103; **checks: P21-NF-10/13/14/24**. OD-05/06, decided (section 15), permit the
+86, 95 and 103; **checks: P21-NF-10/13/14/24**. Only an approved OD-05 live policy with OD-06’s required-evidence boundary (section 15) permits the
 effect owner to leave a history-review candidate pending when a named required historical prerequisite
 remains unresolved, including review timeout. Review timeout is not approval. Advisory findings
 outside such a prerequisite cannot become a new wall. Ordinary status remains reachable through
@@ -87,8 +87,9 @@ and operator/rule reconciliation before activation. Merely labeling an email irr
 not supply that approval. Rule 86 permits a full-context intelligent gate only within governance;
 it does not authorize an arbitrary low-context filter or implied expansion of the live exceptions.
 
-OD-05 is decided (section 15), conditional on PR #71 approval; that bounded exception applies only when the preregistered pilot
-shows net value. Until accepted, semantic C is offline/shadow (evaluated without controlling a real dispatch);
+OD-05’s live before/after-review choice is deferred (section 15); its isolated-trial
+recommendation is not approval to enable it. The bounded exception requires explicit operator
+choice, governing-rule approval and preregistered pilot evidence showing net value. Until accepted, semantic C is offline/shadow (evaluated without controlling a real dispatch);
 retrospective review and existing deterministic owner checks remain the operating posture.
 No amendment to the rulebook is claimed by this draft. A remains accounting, B remains
 bounded retrieval; neither requires an additional semantic judgment before every send.
