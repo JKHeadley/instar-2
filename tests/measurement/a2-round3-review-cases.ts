@@ -104,7 +104,7 @@ function eventWindows(specs: any[]) {
  const base=plan('fresh-base',0,200,10,90,true),high=plan('fresh-high',200,400,150,50,false);
  const h=f.snapshot();const b=got(m.createCurrentBurnWindow({window:base.build(h),sourceHistory:h},f.c));
  const w=got(m.createCurrentBurnWindow({window:high.build(h),sourceHistory:h},f.c));
- record('burn:expired-baseline-cannot-open',()=>m.evaluateCurrentBurn(f.burnPolicy(),closed,w,[b],f.c),r=>no(r)||(ok(r)&&!got(r).notify&&got(r).confidence!=='adequate'));
+ record('burn:expired-baseline-cannot-open',()=>m.evaluateCurrentBurn(f.burnPolicy(),closed,w,[b],f.c),r=>ok(r)&&!got(r).notify&&got(r).confidence==='insufficient-evidence'&&got(r).coverageDebt.some((debt:string)=>debt.includes('baseline:fresh-base:failed=')));
  // Round 7's composition invariant supersedes this case's original whole-read
  // refusal: valid but wholly expired evidence remains an unavailable quantity.
  record('quantity:expired-baseline-refuses-at-same-evaluation',()=>m.resolveCurrentQuantity({witnesses:b.samples[0].quantities[0].witnesses,sourceHistory:h,evaluationClock:f.clock(400)},f.c),r=>ok(r)&&got(r).state==='unavailable'&&got(r).amount===null);

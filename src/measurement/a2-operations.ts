@@ -389,6 +389,13 @@ function quantityCurrent(quantity: ResolvedQuantity,
   return dependency;
 }
 
+function resolveQuantityCurrentAt(quantity: ResolvedQuantity,
+  context: MeasurementDecodeContext, evaluationClock: Clock): ResolvedQuantity {
+  const dependency = quantityCurrent(quantity, context);
+  return resolveQuantityFromCurrentHistory({ witnesses: dependency.witnesses,
+    sourceHistory: dependency.sourceHistory, evaluationClock }, context);
+}
+
 function heads(witnesses: readonly QuantityWitness[]): readonly QuantityWitness[] {
   // Stream replacement is an owner resolution fact. Caller phase/predecessor metadata is
   // retained for audit, but never converts independent signed observations into a winner.
@@ -1081,7 +1088,7 @@ function validateWindowCurrent(window: BurnWindow,
     'burn population evidence', evaluationClock);
   statusContaining(dependency.sourceHistory, [evidence], 'burn population evidence', context);
   window.samples.flatMap(sample => sample.quantities).forEach(quantity =>
-    quantityCurrent(quantity, context, evaluationClock));
+    quantityCurrent(quantity, context));
   return dependency;
 }
 
@@ -1143,8 +1150,10 @@ function reconcileBurnPopulation(sourceHistory: FactSnapshot, start: Clock, end:
     events: readonly string[];
   }>, context: MeasurementDecodeContext): readonly string[] {
   const suppliedContracts = samples.flatMap(sample => sample.quantities)
-    .flatMap(quantity => quantity.witnesses)
-    .map(witness => witnessCurrent(witness, context, horizon).contract);
+    .flatMap(quantity => {
+      quantityCurrent(quantity, context, horizon);
+      return quantity.witnesses.map(witness => witnessCurrent(witness, context).contract);
+    });
   const contracts = [...new Map([
     ...snapshotProducerContracts(sourceHistory, context), ...suppliedContracts,
   ].map(contract => [contract.id, contract] as const)).values()];
@@ -1354,15 +1363,14 @@ function selectedAmount(policy: BurnPolicy, sample: BurnSample,
   if (!selection || selection.version !== sample.selectionVersion) return null;
   const expectedFamily = sample.source === 'model-exchange' ? 'model-call' : 'programmatic-event';
   const amounts = selection.categories.map(category => {
-    const matches = sample.quantities.filter(quantity => {
-      quantityCurrent(quantity, context, evaluationClock);
-      return quantity.state === 'resolved' && quantity.witnesses.length > 0
-        && quantity.witnesses.every(witness => witnessCurrent(witness, context).contract.family === expectedFamily
+    const matches = sample.quantities.map(quantity => ({ quantity,
+      current: resolveQuantityCurrentAt(quantity, context, evaluationClock) }))
+      .filter(({ current }) => current.state === 'resolved' && current.witnesses.length > 0
+        && current.witnesses.every(witness => witnessCurrent(witness, context).contract.family === expectedFamily
           && witness.category === category && witness.measurement.unit === policy.unit
-          && witness.measurement.subject.instance === sample.identity);
-    });
+          && witness.measurement.subject.instance === sample.identity));
     ensure(matches.length <= 1, 'burn sample has competing category quantities');
-    return matches[0]?.amount ?? null;
+    return matches[0]?.current.amount ?? null;
   });
   if (amounts.some(value => value === null)) return null;
   const amount = amounts.reduce<number>((sum, value) => sum + (value ?? 0), 0);
@@ -1376,14 +1384,20 @@ function resolvedSamples(policy: BurnPolicy, samples: readonly BurnSample[],
   evaluationClock: Clock, context: MeasurementDecodeContext) {
   let amount = 0;
   let count = 0;
+  let lostCurrentSupport = false;
   const debt: string[] = [];
   for (const sample of samples) {
     const selected = selectedAmount(policy, sample, evaluationClock, context);
-    if (selected === null) debt.push(`unresolved:${sample.identity}`);
+    if (selected === null) {
+      debt.push(`unresolved:${sample.identity}`);
+      if (sample.quantities.some(quantity => quantity.state === 'resolved'
+        && resolveQuantityCurrentAt(quantity, context, evaluationClock).state !== 'resolved'))
+        lostCurrentSupport = true;
+    }
     else { amount += selected; count++; }
   }
   return freeze({ amount, count, debt: [...new Set(debt)].sort(),
-    identities: samples.map(sample => sample.identity).sort() });
+    lostCurrentSupport, identities: samples.map(sample => sample.identity).sort() });
 }
 
 function median(values: readonly number[]): number | null {
@@ -1458,8 +1472,9 @@ export function evaluateCurrentBurn(policyInput: BurnPolicy, previous: BurnEpiso
       consequentialClock, context));
     const comparisons = all.map(window =>
       resolvedSamples(policy, window.samples, consequentialClock, context));
-    all.forEach((window, index) => ensure(window.comparisonScopeAmount === comparisons[index]!.amount,
-      'comparison denominator differs from its current registered-selection population'));
+    all.forEach((window, index) => ensure(comparisons[index]!.lostCurrentSupport
+      || window.comparisonScopeAmount === comparisons[index]!.amount,
+    'comparison denominator differs from its current registered-selection population'));
     const conditions = all.map((window, index) => {
       const target = selected[index]!;
       const comparison = comparisons[index]!;
