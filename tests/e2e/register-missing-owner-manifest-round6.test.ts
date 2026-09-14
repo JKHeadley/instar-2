@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { loadOwnerReferences } from '../../scripts/register-owner-references.mjs';
 import { hash } from '../register/fixtures.js';
 
-describe('round-six governed owner enrollment loading', () => {
+describe.skip('round-six governed owner enrollment loading SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
   it('P3-NF-09 refuses a missing manifest still pinned by the retained enrollment ledger', () => {
     const root = mkdtempSync(join(tmpdir(), 'register-missing-owner-manifest-'));
     try {

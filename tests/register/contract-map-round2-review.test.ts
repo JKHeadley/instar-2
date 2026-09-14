@@ -8,9 +8,11 @@ describe('round-two contract-map checker regressions', () => {
   it('P3-NF-07 rejects an all-pending report whose SKIPPED reason invents a design grant', () => {
     const root = mkdtempSync(join(tmpdir(), 'p3-contract-map-round-two-'));
     try {
-      mkdirSync(join(root, 'docs'), { recursive: true }); mkdirSync(join(root, 'generated'), { recursive: true });
+      mkdirSync(join(root, 'docs/07-the-declarations'), { recursive: true }); mkdirSync(join(root, 'generated'), { recursive: true });
       cpSync('docs/05-the-types.md', join(root, 'docs/05-the-types.md'));
       cpSync('docs/07-the-declarations.md', join(root, 'docs/07-the-declarations.md'));
+      cpSync('docs/07-the-declarations/part-three-slice-a1-scope.md',
+        join(root, 'docs/07-the-declarations/part-three-slice-a1-scope.md'));
       cpSync('generated/register.json', join(root, 'generated/register.json'));
       const cases = [
         { script: resolve('scripts/check-register-contract-map.mjs'), design: 'docs/07-the-declarations.md', expression: /^\| (P3-NF-\d+) \|/gm,

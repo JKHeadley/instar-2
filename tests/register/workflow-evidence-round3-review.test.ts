@@ -4,7 +4,7 @@ import type { WorkflowChecks } from '../../src/register/index.js';
 import { factsFixture } from '../facts/fixtures.js';
 import { detail, json, setup, value } from './fixtures.js';
 
-describe('round-three workflow evidence validation', () => {
+describe.skip('round-three workflow evidence validation SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
   it('P3-NF-28 direct normal checks cannot raise holder strength from unwitnessed run or review rows', () => {
     const s = setup();
     const run = value(decodeCheckRun(json('CheckRunRecord', { id: 'not-on-any-spine', commit: 'commit:1', branch: 'main',

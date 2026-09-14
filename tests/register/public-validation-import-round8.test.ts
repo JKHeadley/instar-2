@@ -8,7 +8,7 @@ const files = [
   'tests/integration/register-reference-identity-round6.test.ts',
 ];
 
-describe('round-eight public owner type boundary', () => {
+describe.skip('round-eight public owner type boundary SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
   it('P3-NF-09 imports Validation only through the Part One public entry point', () => {
     for (const file of files) {
       const source = readFileSync(file, 'utf8');

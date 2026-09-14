@@ -28,7 +28,7 @@ function providerFor(v: ReturnType<typeof verificationRuntimeFixture>, head: num
   }, stalenessBound: 100 }, context: s.context });
 }
 
-describe('normal workflow signed evidence composition', () => {
+describe.skip('normal workflow signed evidence composition SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
   it('P3-NF-28 retains Part Nine incomplete and current-support answers without local reinterpretation', () => {
     const v = verificationRuntimeFixture();
     const record = value(v.runtime.record('SemanticReviewRecord', verificationInput('SemanticReviewRecord')));

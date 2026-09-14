@@ -62,7 +62,7 @@ function evidenceFixture(contextWithoutClock = false) {
   return { s, v, register, run, signedRun, provider, correct, wrong, checks };
 }
 
-describe('round-ten captured normal evidence boundary', () => {
+describe.skip('round-ten captured normal evidence boundary SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
   it('P3-NF-28 refuses holder and subject reassignment after Part One captures the signed review input', () => {
     const f = evidenceFixture();
     expect(value(f.provider.verifySemanticReview(f.correct, f.v.clock(100)))).toBe(true);

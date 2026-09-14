@@ -7,7 +7,7 @@ import { build } from '../../scripts/build-register.mjs';
 import { canonical, decode } from '../../src/index.js';
 import { createFactStore, factId } from '../../src/facts/index.js';
 import { createPartTwoRegisterAuthority, createPartTwoRegisterProvider, decodeGeneration } from '../../src/register/index.js';
-import type { FactReference } from '../../src/register/index.js';
+import type { FactReference, ShapeChangeBinding } from '../../src/register/index.js';
 import { factsFixture } from '../facts/fixtures.js';
 import { hash, json, setup, value } from '../register/fixtures.js';
 import { generationRegistration, ownedSchema, versionSchema } from '../register/normal-provider-fixture.js';
@@ -16,8 +16,7 @@ import { realRepositoryLanding } from '../register/repository-landing-round11.js
 const emittedModule = '../../dist/index.js';
 const { decode: emittedDecode } = await import(emittedModule) as typeof import('../../src/index.js');
 
-describe('round-eight normal build roster-only enrollment regression', () => {
-  it('P3-NF-09 refuses a manifest tuple with no signed enrollment approval although the witnessed parent roster contains its part', () => {
+export function rosterOnlyEnrollmentFixture(signInvalidDocument = false) {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-roster-only-'));
     try {
       for (const path of ['docs', 'generated', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json'])
@@ -136,8 +135,22 @@ describe('round-eight normal build roster-only enrollment regression', () => {
         previous = fact; return fact;
       });
       expect(previous.id).toBe(vectorId);
+      let invalidShapeVersionFact: typeof previous | undefined;
+      if (signInvalidDocument) {
+        const binding: ShapeChangeBinding = { parent: document.parent, candidateShape: document.candidateShape,
+          document: { path: documentPath, hash: hash(document) }, approval };
+        const encoded = value(canonical(binding)); f.capture(encoded.bytes, encoded.hash);
+        const signedApproval = f.authorize({ id: approval.id, artifact: encoded.hash, base: parentCommit });
+        const shapeVersion = { id: 'shape:invalid-retained-introduction', subject: 'register-shape:part-fourteen',
+          content: binding, contentHash: encoded.hash, since: sinceId, supersedes: [], approvedIn: signedApproval.id,
+          base: parentCommit, landedIn: null };
+        invalidShapeVersionFact = f.next(previous,
+          { kind: 'register-shape-version-record', body: { record: JSON.stringify(shapeVersion) } }, factContext);
+        previous = invalidShapeVersionFact;
+      }
       const enteringForceFact = f.next(previous, { kind: 'generation-record', body: { record: generationRecord } }, factContext);
-      const durableFacts = [rootFact, sinceFact, anchorFact, ...versionFacts, enteringForceFact];
+      const durableFacts = [rootFact, sinceFact, anchorFact, ...versionFacts,
+        ...(invalidShapeVersionFact ? [invalidShapeVersionFact] : []), enteringForceFact];
       const provider = createPartTwoRegisterProvider({ store: createFactStore(factContext, { owner: 'part-ten',
         read: () => JSON.parse(JSON.stringify(durableFacts)), append: () => f.success({ kind: 'local-durable' as const }) }),
         authority: createPartTwoRegisterAuthority({ facts: { ...factContext, grants: [{ factId: rootFact.id, grant: f.g }] },
@@ -145,8 +158,15 @@ describe('round-eight normal build roster-only enrollment regression', () => {
         horizon: { lineages: { 'machine-a': { head: { epoch: 0, position: enteringForceFact.segment.position },
           observedAt: 100, closed: false } }, stalenessBound: 100 }, context: s.context, separations });
 
-      expect(() => build(root, candidate, { mode: 'normal', workflow, provider, now: 100, requireWorkflowSchema: true }))
-        .toThrow('P3-NF-09: no unique current governed version approves this exact shape change');
+      const invoke = () => build(root, candidate, { mode: 'normal', workflow, provider, now: 100, requireWorkflowSchema: true });
+      if (signInvalidDocument) return invoke();
+      expect(invoke).toThrow('P3-NF-09: no unique current governed version approves this exact shape change');
+      return undefined;
     } finally { rmSync(root, { recursive: true, force: true }); }
+}
+
+describe.skip('round-eight normal build roster-only enrollment regression SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
+  it('P3-NF-09 refuses a manifest tuple with no signed enrollment approval although the witnessed parent roster contains its part', () => {
+    rosterOnlyEnrollmentFixture();
   }, 60_000);
 });

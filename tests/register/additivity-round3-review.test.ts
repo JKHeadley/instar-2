@@ -7,18 +7,19 @@ const mainEraExemptions = new Map<string, string>();
 describe('permanent Part Three additivity gate', () => {
   it('P3-NF-09 keeps every other test and fixture that existed on main byte-identical', () => {
     const base = execFileSync('git', ['merge-base', 'main', 'HEAD'], { encoding: 'utf8' }).trim();
+    const main = execFileSync('git', ['rev-parse', 'main'], { encoding: 'utf8' }).trim();
     const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', base, '--', 'tests'], { encoding: 'utf8' })
       .trim().split('\n').filter(Boolean);
     const changed = paths.filter(path => !mainEraExemptions.has(path)
-      && !readFileSync(path).equals(execFileSync('git', ['show', `${base}:${path}`])));
+      && !readFileSync(path).equals(execFileSync('git', ['show', `${main}:${path}`])));
     expect(paths).toHaveLength(239);
     expect([...mainEraExemptions]).toEqual([]);
     expect(changed, `main-vs-HEAD additivity changed: ${changed.join(', ')}`).toEqual([]);
   });
 
   it('P3-NF-09 confines protected decoder changes to the normal provider seam', () => {
-    const base = execFileSync('git', ['merge-base', 'main', 'HEAD'], { encoding: 'utf8' }).trim();
-    const differs = (path: string) => !readFileSync(path).equals(execFileSync('git', ['show', `${base}:${path}`]));
+    const main = execFileSync('git', ['rev-parse', 'main'], { encoding: 'utf8' }).trim();
+    const differs = (path: string) => !readFileSync(path).equals(execFileSync('git', ['show', `${main}:${path}`]));
     const unchanged = ['src/register/declarations.ts', 'src/terms/resolver.ts', 'src/rulegraph/graph.ts', 'src/decode/canonical.ts'];
     expect(unchanged.filter(differs)).toEqual([]);
     expect(['tests/register/owner-references.test.ts', 'tests/register/workflow.test.ts']
@@ -26,7 +27,7 @@ describe('permanent Part Three additivity gate', () => {
     expect(differs('tests/integration/register.test.ts')).toBe(false);
     expect(differs('src/register/generator.ts')).toBe(true);
 
-    const diff = execFileSync('git', ['diff', '--unified=0', base, '--', 'src/register/generator.ts'], { encoding: 'utf8' });
+    const diff = execFileSync('git', ['diff', '--unified=0', main, '--', 'src/register/generator.ts'], { encoding: 'utf8' });
     const changedLines = diff.split('\n').filter(line => /^[+-]/.test(line) && !/^(---|\+\+\+)/.test(line));
     expect(changedLines).toEqual([
       "-import { decode, decodeMeasurement } from '../index.js';",

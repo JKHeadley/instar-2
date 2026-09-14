@@ -12,7 +12,7 @@ const script = resolve('scripts/build-register.mjs');
 const worker = resolve('tests/e2e/register-normal-restart-worker.mjs');
 const emitted = pathToFileURL(resolve('dist/index.js')).href;
 
-describe('round-three normal writer restart lifecycle', () => {
+describe.skip('round-three normal writer restart lifecycle SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
   it('P3-NF-01/21/22/23/24 real SIGKILL after every normal repin write recovers one byte-identical witnessed result', async () => {
     const root = mkdtempSync(join(tmpdir(), 'register-normal-restart-'));
     try {

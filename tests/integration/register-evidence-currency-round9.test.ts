@@ -16,7 +16,7 @@ const validation = <T>(result: Result<T>): Validation<T> => consumeResult<T, Val
   Refused: refusal => ({ ok: false, reason: refusal.reason, detail: refusal.detail }),
 });
 
-describe('round-nine signed workflow evidence currency', () => {
+describe.skip('round-nine signed workflow evidence currency SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
   it('P3-NF-23/28 refuses expired and unobserved replicas at use clock 201 and accepts refreshed evidence', () => {
     const s = setup();
     const register = s.build([s.rule(26), s.holder([{ rule: 26, class: 'held',

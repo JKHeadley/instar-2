@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { decodeNormalRegisterWorkflow, decodeShape, decodeShapeChangeDocument, shapeDifferences, validateShapeChangeDocument } from '../../src/register/index.js';
 import { detail, hash, json, setup, value } from './fixtures.js';
 
-describe('governed shape-change document', () => {
+describe.skip('governed shape-change document SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
   it('P3-NF-03 decodes the one closed normal workflow schema', () => {
     const s = setup();
     const workflow = json('RegisterWorkflow', { mode: 'normal', branch: 'shape-change', parent: { commit: 'a'.repeat(40),

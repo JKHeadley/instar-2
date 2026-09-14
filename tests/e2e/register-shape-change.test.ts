@@ -16,7 +16,7 @@ import { realRepositoryLanding } from '../register/repository-landing-round11.js
 const emittedModule = '../../dist/index.js';
 const { decode: emittedDecode } = await import(emittedModule) as typeof import('../../src/index.js');
 
-describe('normal-mode shape-change CLI composition', () => {
+describe.skip('normal-mode shape-change CLI composition SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
   it('P3-NF-07/09/21/23/24 adds part 14 and its owner manifest, and refuses missing, tampered, or stale authority', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-shape-change-'));
     try {

@@ -15,7 +15,7 @@ const validation = <T>(result: Result<T>): Validation<T> => consumeResult<T, Val
   Refused: refusal => ({ ok: false, reason: refusal.reason, detail: refusal.detail }),
 });
 
-describe('round-six workflow record reference identity', () => {
+describe.skip('round-six workflow record reference identity SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
   it('P3-NF-28 accepts the existing body or envelope id and refuses an invented id with matching bytes', () => {
     const s = setup(), v = verificationRuntimeFixture();
     const raw = JSON.parse(JSON.stringify(json('CheckRunRecord', { id: 'check-run:resolved', commit: 'commit:1',

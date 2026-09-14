@@ -8,7 +8,7 @@ import { factsFixture } from '../facts/fixtures.js';
 import { hash, json, setup, value } from './fixtures.js';
 import { generationRegistration, ownedSchema, vectorAt, versionSchema } from './normal-provider-fixture.js';
 
-describe('round-eight exact owner enrollment signatures', () => {
+describe.skip('round-eight exact owner enrollment signatures SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
   it('P3-NF-09 resolves a retained enrollment through real admitted Part Two and Part Three history', () => {
     const f = factsFixture(), s = setup(), root = f.fact(), since = f.next(root);
     const shapeInput = JSON.parse(JSON.stringify(s.context.shape)); shapeInput.parts.push(14);

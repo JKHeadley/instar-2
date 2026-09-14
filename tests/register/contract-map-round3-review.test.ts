@@ -6,16 +6,18 @@ import { describe, expect, it } from 'vitest';
 
 const cases = [
   { script: resolve('scripts/check-register-contract-map.mjs'), design: 'docs/07-the-declarations.md', expression: /^\| (P3-NF-\d+) \|/gm,
-    file: 'tests/register/shape-change-round2-review.test.ts' },
+    file: 'tests/register/generator.test.ts' },
   { script: resolve('scripts/check-contract-map.mjs'), design: 'docs/05-the-types.md', expression: /^\| (NF-\d+) \|/gm,
     file: 'tests/types/compile.test.ts' },
 ];
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'contract-map-round-three-'));
-  mkdirSync(join(root, 'docs'), { recursive: true }); mkdirSync(join(root, 'generated'), { recursive: true });
+  mkdirSync(join(root, 'docs/07-the-declarations'), { recursive: true }); mkdirSync(join(root, 'generated'), { recursive: true });
   cpSync('docs/05-the-types.md', join(root, 'docs/05-the-types.md'));
   cpSync('docs/07-the-declarations.md', join(root, 'docs/07-the-declarations.md'));
+  cpSync('docs/07-the-declarations/part-three-slice-a1-scope.md',
+    join(root, 'docs/07-the-declarations/part-three-slice-a1-scope.md'));
   cpSync('generated/register.json', join(root, 'generated/register.json'));
   return root;
 }

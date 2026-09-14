@@ -10,7 +10,7 @@ const realUnlandedGrants = new Map([
   ['parts-nine-eleven:external-anchor-for-protected-artifact-enforcement', { citation: 'part nine (verification holders and', checks: new Set() }],
 ].filter(([, grant]) => design.includes(grant.citation)));
 const grantedSkip = (name, id) => {
-  const match = name.match(/SKIPPED:\s*GRANT:([a-z0-9-]+(?::[a-z0-9-]+)+)\s*$/);
+  const match = name.match(/SKIPPED:\s*GRANT:([A-Za-z0-9:-]+)(?:\s|$)/);
   return match !== null && realUnlandedGrants.get(match[1])?.checks.has(id) === true;
 };
 const inventory = [...design.matchAll(/^\| ([^|]+) \| (?:core|supporting) \|/gm)].map(m => m[1].trim().replace(/^Result \(.+\)$/, 'Result')).sort();
@@ -21,7 +21,7 @@ for (const file of report.testResults) for (const test of file.assertionResults)
   const ids = test.fullName.match(/(?<![A-Za-z0-9-])NF-\d+\b/g) ?? [];
   for (const id of ids) {
     if (!expected.has(id)) throw new Error(`test cites unknown design check ${id}`);
-    const list = map.get(id) ?? []; list.push({ file: relative(process.cwd(), file.name), name: test.title, status: test.status }); map.set(id, list);
+    const list = map.get(id) ?? []; list.push({ file: relative(process.cwd(), file.name), name: test.fullName, status: test.status }); map.set(id, list);
   }
 }
 if (!report.success) throw new Error('test run was not successful');

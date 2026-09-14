@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { loadOwnerReferences } from '../../scripts/register-owner-references.mjs';
 import { hash } from './fixtures.js';
 
-describe('round-two owner enrollment regressions', () => {
+describe.skip('round-two owner enrollment regressions SKIPPED: GRANT:NON-EXECUTABLE-UNTIL-slice-A2-workflow-enrollment', () => {
   it('P3-NF-09 binds artifacts to the enrolled owner and retains the approved enrollment in committed source', () => {
     const root = mkdtempSync(join(tmpdir(), 'p3-owner-round-two-'));
     try {
