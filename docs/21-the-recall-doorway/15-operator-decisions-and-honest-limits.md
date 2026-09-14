@@ -95,10 +95,11 @@ this trial can show whether broader coverage catches more mistakes than it intro
 or unnecessary waits. A trial uses prepared examples without controlling real actions. This
 recommendation gives no permission to switch the check on or spend money on a trial.
 
-Decision status: The choice for real actions is deliberately deferred until the trial evidence
-and your explicit choice are available and the required rule approval is recorded. Until then,
-extra history review stays afterward or in isolated trials; existing permission and required
-evidence checks still apply before acting.
+Decision status: Decided by the operator on 2026-09-14 at 02:51 UTC: check all listed
+history-dependent actions before acting, proven first in an isolated trial. The trial runs under
+its own approval and spending limits. Enabling the live check for real actions remains a separate
+activation condition that needs the trial evidence and the governing-rule approval section 8
+records; until then, existing permission and required evidence checks still apply before acting.
 
 **Value — decision 6: what happens when an action needs missing evidence.**
 
@@ -173,14 +174,12 @@ non-executable until the cited grant lands with current owner evidence. Section 
 per-check dependency authority; section 12 derives its execution posture from that map.
 No decision here changes that posture.
 
-Questions for the operator — pending live-policy choice: OD-05, whether to review afterward,
-check email/public posts before acting, or check all listed history-dependent actions before
-acting. The third option is recommended for isolated trials; choosing and enabling the live
-policy is deferred pending evidence, explicit operator choice and governing-rule reconciliation.
-The purpose settles consequential classification and permission boundaries, not that selection.
-Section 8 records the candidate narrow exception for that governing process; it is not an approved
-purpose or rule change. No-pending-policy status may be claimed only after this choice is resolved
-or the live proposal is withdrawn. OD-02/06 retain their constitutional boundaries; OD-01/03/04
+Questions for the operator: none. The live-policy choice for OD-05 is decided (check all listed
+history-dependent actions before acting, proven first in an isolated trial; recorded in decision 5
+above). Enabling that check for real actions is a separate activation condition, not a pending
+question. The purpose settles consequential classification and permission boundaries, not that
+selection. Section 8 records the candidate narrow exception for that governing process; it is not
+an approved purpose or rule change. The choice is resolved, so the no-pending-policy status holds. OD-02/06 retain their constitutional boundaries; OD-01/03/04
 and OD-06's numeric settings remain agent-owned. Engineering settings live in sections 7/10 and
 change by measurement within those boundaries. Runtime exception and paid-run approvals remain
 separate activation conditions; this list supplies neither. A new policy question that the
