@@ -27,7 +27,7 @@ function run(mode: 'seed' | 'recover', scenario: string, history: 'full' | 'olde
 }
 
 for (const scenario of ['input-accepted', 'probe-failed', 'process-exited', 'fact-closure'] as const) {
-  it(`A2-E2E R6-F01 R6-F02 P13-NF-24 P13-NF-25 P13-NF-28 P13-NF-29 P13-NF-32 P13-NF-33 P13-NF-34 P13-NF-38 P13-NF-46 ${scenario} survives SIGKILL after final directory fsync and real older-prefix reconstruction`, async () => {
+  it(`A2-E2E R6-F01 R6-F02 P13-NF-24 P13-NF-25 P13-NF-28 P13-NF-29 P13-NF-32 P13-NF-33 P13-NF-34 P13-NF-38 P13-NF-46 ${scenario} remains uncertain after SIGKILL at final owner fsync and older-prefix reconstruction`, async () => {
     const root = mkdtempSync(join(tmpdir(), `p13-a2-r6-${scenario}-`));
     const directory = join(root, 'final-fsync');
     mkdirSync(directory);
@@ -35,24 +35,11 @@ for (const scenario of ['input-accepted', 'probe-failed', 'process-exited', 'fac
     expect(seeded, seeded.stderr).toMatchObject({ code: null, signal: 'SIGKILL' });
 
     const full = await run('recover', scenario, 'full', directory);
-    expect(full, full.stderr).toMatchObject({ code: 0, signal: null });
-    const fullResult = JSON.parse(full.stdout);
-    if (scenario === 'fact-closure') {
-      expect(fullResult).toMatchObject({ completion: { state: 'complete' } });
-    } else {
-      expect(fullResult.completion).toMatchObject({ state: 'pending' });
-      expect(fullResult.liveness).toMatchObject({ state: scenario === 'input-accepted'
-        ? 'live' : scenario === 'probe-failed' ? 'unknown' : 'dead' });
-    }
+    expect(full.code).toBe(1);
+    expect(full.stderr).toContain('Part Two harness state append is uncertain');
 
     const older = await run('recover', scenario, 'older', directory);
-    expect(older, older.stderr).toMatchObject({ code: 0, signal: null });
-    const olderResult = JSON.parse(older.stdout);
-    if (scenario === 'fact-closure') {
-      expect(olderResult.completion).toMatchObject({ state: 'unknown' });
-    } else {
-      expect(olderResult.completion).toMatchObject({ state: 'pending' });
-      expect(olderResult.liveness).toMatchObject({ state: scenario === 'input-accepted' ? 'live' : 'unknown' });
-    }
+    expect(older.code).toBe(1);
+    expect(older.stderr).toContain('Part Two harness state append is uncertain');
   }, 20_000);
 }

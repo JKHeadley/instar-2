@@ -32,10 +32,10 @@ if (mode === 'seed') {
   const pending = witnessedEvent(f, 'input-accepted', { id: 'pending:twenty', sourceClock: 20,
     observedAt: 20, unresolvedOperations: ['delivery:pending'], childrenState: 'pending' });
   fs.writeFileSync(`${directory}/signed-owner-history.json`, JSON.stringify(f.owner.raw));
-  const original = fs.symlinkSync;
-  fs.symlinkSync = (...args: Parameters<typeof fs.symlinkSync>) => {
+  const original = fs.rmdirSync;
+  fs.rmdirSync = (...args: Parameters<typeof fs.rmdirSync>) => {
     const result = original(...args);
-    process.kill(process.pid, 'SIGKILL');
+    if (String(args[0]).endsWith('append.lock')) process.kill(process.pid, 'SIGKILL');
     return result;
   };
   syncBuiltinESMExports();

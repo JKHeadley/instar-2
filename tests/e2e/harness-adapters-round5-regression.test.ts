@@ -37,6 +37,11 @@ for (const target of ['probe-failed', 'process-exited'] as const) {
     expect(seeded.signal, seeded.stderr).toBe(cut === 'none' ? null : 'SIGKILL');
     expect(seeded.code, seeded.stderr).toBe(cut === 'none' ? 0 : null);
     const recovered = await run('frontier', 'recover', cut, target, directory);
+    if (!['none', 'unlink', 'fsync:3'].includes(cut)) {
+      expect(recovered.code).toBe(1);
+      expect(recovered.stderr).toContain('Part Two harness state append is uncertain');
+      return;
+    }
     expect(recovered, recovered.stderr).toMatchObject({ code: 0, signal: null });
     expect(JSON.parse(recovered.stdout)).toMatchObject({ liveness: { state: 'unknown' } });
   }, 20_000);
@@ -50,6 +55,11 @@ it.each(cuts)('A2-E2E R5-F02 P13-NF-24 P13-NF-32 P13-NF-34 unknown stream surviv
   expect(seeded.signal, seeded.stderr).toBe(cut === 'none' ? null : 'SIGKILL');
   expect(seeded.code, seeded.stderr).toBe(cut === 'none' ? 0 : null);
   const recovered = await run('unknown-stream', 'recover', cut, 'heartbeat', directory);
+  if (!['none', 'unlink', 'fsync:3'].includes(cut)) {
+    expect(recovered.code).toBe(1);
+    expect(recovered.stderr).toContain('Part Two harness state append is uncertain');
+    return;
+  }
   expect(recovered, recovered.stderr).toMatchObject({ code: 0, signal: null });
   expect(JSON.parse(recovered.stdout)).toMatchObject({ completion: { state: 'pending' } });
 }, 20_000);

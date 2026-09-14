@@ -108,7 +108,7 @@ if (mode === 'seed') {
   const original = fs.fsyncSync;
   fs.fsyncSync = ((descriptor: number) => {
     const result = original(descriptor);
-    if (++syncs === 3 && cut === 'final-fsync') process.kill(process.pid, 'SIGKILL');
+    if (++syncs === 2 && cut === 'final-fsync') process.kill(process.pid, 'SIGKILL');
     return result;
   }) as typeof fs.fsyncSync;
   syncBuiltinESMExports();

@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { expect, it } from 'vitest';
+// @ts-expect-error The exact filesystem host is JavaScript outside pure core compilation.
+import { createHarnessAdapterFileState } from '../../scripts/slice-p13-state-storage.mjs';
 
 type ChildResult = Readonly<{
   code: number | null;
@@ -25,15 +27,6 @@ function asyncWorker(script: string, args: string[]): Promise<ChildResult> {
   });
 }
 
-async function waitFor(path: string) {
-  const limit = Date.now() + 20_000;
-  while (Date.now() < limit) {
-    try { readFileSync(path); return; } catch { /* barrier not created yet */ }
-    await new Promise(resolve => setTimeout(resolve, 10));
-  }
-  throw new Error(`timed out waiting for ${path}`);
-}
-
 const base = {
   type: 'HarnessAdapterStateSnapshot', schemaVersion: 1, id: 'state:r7:race',
   adapter: 'native', machine: 'machine-a', revision: 0,
@@ -41,39 +34,98 @@ const base = {
   handles: [], attempts: [], events: [],
 };
 
-it('A2-E2E R7-A2-R5-01 P13-NF-24 P13-NF-28 P13-NF-38 P13-NF-39 dead-writer recovery atomically claims the exact lock and acknowledges only one successor', async () => {
+it('A2-E2E A2-R6-01-BOUNDARIES P13-NF-24 P13-NF-28 P13-NF-38 P13-NF-39 all nine owner append cuts retain persistent uncertainty and the control retains the exact successor', () => {
+  const script = 'tests/harness-adapters/a2-round7-recovery-race-worker.ts';
+  const cuts = ['lock', 'open:1', 'write', 'fsync:1', 'close:1', 'rename', 'open:2', 'fsync:2', 'close:2'];
+  let scenarios = 0;
+  for (const cut of cuts) {
+    const root = mkdtempSync(join(tmpdir(), `p13-a2-r8-boundary-${cut.replace(':', '-')}-`));
+    writeFileSync(join(root, 'state.json'), JSON.stringify(base));
+    const seeded = spawnSync(worker, [script, 'boundary', root, cut], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
+    });
+    expect(seeded.signal, `${cut}: ${seeded.stderr}`).toBe('SIGKILL');
+    const reader = spawnSync(worker, [script, 'reader', root], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
+    });
+    expect(reader.status, `${cut}: ${reader.stderr}`).toBe(0);
+    expect(JSON.parse(reader.stdout).observations.every((row: { state: string }) => row.state === 'unknown'), cut)
+      .toBe(true);
+    scenarios++;
+  }
+
+  const control = mkdtempSync(join(tmpdir(), 'p13-a2-r8-boundary-control-'));
+  writeFileSync(join(control, 'state.json'), JSON.stringify(base));
+  const completed = spawnSync(worker, [script, 'control', control], {
+    cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
+  });
+  expect(completed.status, completed.stderr).toBe(0);
+  expect(createHarnessAdapterFileState(join(control, 'state.json')).load()).toMatchObject({
+    revision: 1, attempts: [{ operation: 'operation:cut' }],
+  });
+  expect(scenarios).toBe(9);
+}, 60_000);
+
+it('A2-E2E A2-R6-01 P13-NF-24 P13-NF-28 P13-NF-38 P13-NF-39 a fully fsynced pending owner append remains persistently uncertain after SIGKILL', async () => {
   const root = mkdtempSync(join(tmpdir(), 'p13-a2-r7-race-'));
   const script = 'tests/harness-adapters/a2-round7-recovery-race-worker.ts';
   writeFileSync(join(root, 'state.json'), JSON.stringify(base));
   const seed = spawnSync(worker, [script, 'seed', root], { cwd: process.cwd(), encoding: 'utf8', timeout: 30_000 });
   expect(seed.signal, seed.stderr).toBe('SIGKILL');
 
-  const b = asyncWorker(script, ['b', root]);
-  await waitFor(join(root, 'b-at-claim'));
-  const a = asyncWorker(script, ['a', root]);
-  const [aResult, bResult] = await Promise.all([a, b]);
-  expect(aResult, aResult.stderr).toMatchObject({ code: 0, signal: null });
-  expect(bResult, bResult.stderr).toMatchObject({ code: 0, signal: null });
-  const outcomes = [JSON.parse(aResult.stdout), JSON.parse(bResult.stdout)];
-  expect(outcomes.filter(row => row.state === 'saved')).toHaveLength(1);
-  expect(outcomes.filter(row => row.state === 'refused')).toHaveLength(1);
-  const final = JSON.parse(readFileSync(join(root, 'state.json'), 'utf8'));
-  expect(final.revision).toBe(1);
-  expect(final.attempts).toHaveLength(1);
-  expect(final.attempts[0].operation).toBe(outcomes.find(row => row.state === 'saved').operation);
+  const readers = await Promise.all([
+    asyncWorker(script, ['reader', root]), asyncWorker(script, ['reader', root]),
+  ]);
+  for (const reader of readers) {
+    expect(reader, reader.stderr).toMatchObject({ code: 0, signal: null });
+    const result = JSON.parse(reader.stdout);
+    expect(result.observations).toHaveLength(3);
+    expect(result.observations.every((row: { state: string; reason: string }) =>
+      row.state === 'unknown' && row.reason.includes('Part Two harness state append is uncertain'))).toBe(true);
+  }
+  expect(readFileSync(join(root, 'state.json.part-two', 'facts.pending'), 'utf8')).toContain('operation:cut');
+  expect(JSON.parse(readFileSync(join(root, 'state.json.part-two', 'facts.json'), 'utf8'))).toHaveLength(1);
 
   const control = join(root, 'control');
   mkdirSync(control);
   writeFileSync(join(control, 'state.json'), JSON.stringify(base));
-  const controlSeed = spawnSync(worker, [script, 'seed', control], {
-    cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
-  });
-  expect(controlSeed.signal, controlSeed.stderr).toBe('SIGKILL');
   const recovered = spawnSync(worker, [script, 'control', control], {
     cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
   });
   expect(recovered.status, recovered.stderr).toBe(0);
   expect(JSON.parse(recovered.stdout)).toMatchObject({ state: 'saved', staleWrite: 'refused' });
+  expect(createHarnessAdapterFileState(join(control, 'state.json')).load()).toMatchObject({
+    revision: 1, attempts: [{ operation: 'operation:cut' }],
+  });
+}, 30_000);
+
+it('A2-E2E A2-R6-02 P13-NF-24 P13-NF-28 P13-NF-39 torn owner pending bytes stay unknown across reads and block a retrying holder', () => {
+  const root = mkdtempSync(join(tmpdir(), 'p13-a2-r7-torn-'));
+  const script = 'tests/harness-adapters/a2-round7-recovery-race-worker.ts';
+  writeFileSync(join(root, 'state.json'), JSON.stringify(base));
+  const seed = spawnSync(worker, [script, 'seed-torn', root], {
+    cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
+  });
+  expect(seed.signal, seed.stderr).toBe('SIGKILL');
+  const pendingPath = join(root, 'state.json.part-two', 'facts.pending');
+  const torn = readFileSync(pendingPath, 'utf8');
+
+  for (let reconstruction = 0; reconstruction < 3; reconstruction++) {
+    const reader = spawnSync(worker, [script, 'reader', root], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
+    });
+    expect(reader.status, reader.stderr).toBe(0);
+    expect(JSON.parse(reader.stdout).observations)
+      .toEqual([1, 2, 3].map(read => expect.objectContaining({ read, state: 'unknown' })));
+    expect(readFileSync(pendingPath, 'utf8')).toBe(torn);
+  }
+
+  const holder = spawnSync(worker, [script, 'holder', root], {
+    cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
+  });
+  expect(holder.status, holder.stderr).toBe(0);
+  expect(JSON.parse(holder.stdout)).toMatchObject({ state: 'unknown' });
+  expect(readFileSync(pendingPath, 'utf8')).toBe(torn);
 }, 30_000);
 
 it('A2-E2E R7-A2-R5-02 P13-NF-25 P13-NF-28 P13-NF-38 P13-NF-51 poison evidence loss stays unresolved after final-fsync SIGKILL and older-prefix reconstruction', () => {
@@ -91,6 +143,12 @@ it('A2-E2E R7-A2-R5-02 P13-NF-25 P13-NF-28 P13-NF-38 P13-NF-51 poison evidence l
       const recovered = spawnSync(worker, [script, 'recover', cut, directory, loss, history], {
         cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
       });
+      if (cut === 'final-fsync') {
+        expect(recovered.status).toBe(1);
+        expect(recovered.stderr).toContain('Part Two harness state append is uncertain');
+        scenarios++;
+        continue;
+      }
       expect(recovered.status, recovered.stderr).toBe(0);
       const result = JSON.parse(recovered.stdout);
       if (history === 'full' && loss === 'control') {

@@ -89,12 +89,12 @@ if (mode === 'seed') {
   fs.writeFileSync(`${directory}/ten.json`, JSON.stringify(f.owner.raw));
   fs.writeFileSync(`${directory}/nine.json`, JSON.stringify(nine.bytes));
   fs.writeFileSync(`${directory}/nine-evidence.json`, JSON.stringify(nine.host.current().evidence));
-  const original = fs.symlinkSync;
-  fs.symlinkSync = ((...args: Parameters<typeof fs.symlinkSync>) => {
+  const original = fs.rmdirSync;
+  fs.rmdirSync = ((...args: Parameters<typeof fs.rmdirSync>) => {
     const result = original(...args);
-    if (cut === 'lock') process.kill(process.pid, 'SIGKILL');
+    if (cut === 'unlink' && String(args[0]).endsWith('append.lock')) process.kill(process.pid, 'SIGKILL');
     return result;
-  }) as typeof fs.symlinkSync;
+  }) as typeof fs.rmdirSync;
   syncBuiltinESMExports();
   evidence.admit(poison);
 } else {

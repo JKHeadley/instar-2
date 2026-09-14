@@ -18,8 +18,8 @@ import { createHarnessAdapterFileState } from '../../scripts/slice-p13-state-sto
 const [mode, cut, path] = process.argv.slice(2) as [string, string, string];
 const die = () => process.kill(process.pid, 'SIGKILL');
 const original = {
-  symlinkSync: fs.symlinkSync, writeFileSync: fs.writeFileSync, fsyncSync: fs.fsyncSync,
-  renameSync: fs.renameSync, unlinkSync: fs.unlinkSync,
+  mkdirSync: fs.mkdirSync, writeFileSync: fs.writeFileSync, fsyncSync: fs.fsyncSync,
+  renameSync: fs.renameSync, rmdirSync: fs.rmdirSync,
 };
 
 function exactSubject(event: HarnessRuntimeEvent): string {
@@ -95,12 +95,14 @@ for (const event of [closure, pending, resume]) evidence.admit(event);
 
 if (mode === 'seed') {
   let syncs = 0;
-  fs.symlinkSync = ((...args: Parameters<typeof fs.symlinkSync>) => {
-    const result = original.symlinkSync(...args); if (cut === 'lock') die(); return result;
-  }) as typeof fs.symlinkSync;
+  fs.mkdirSync = ((...args: Parameters<typeof fs.mkdirSync>) => {
+    const result = original.mkdirSync(...args);
+    if (cut === 'lock' && String(args[0]).endsWith('append.lock')) die();
+    return result;
+  }) as typeof fs.mkdirSync;
   fs.writeFileSync = ((...args: Parameters<typeof fs.writeFileSync>) => {
     const result = original.writeFileSync(...args);
-    if (cut === 'write' && String(args[0]).includes('.pending-')) die(); return result;
+    if (cut === 'write' && typeof args[0] === 'number') die(); return result;
   }) as typeof fs.writeFileSync;
   fs.fsyncSync = ((...args: Parameters<typeof fs.fsyncSync>) => {
     const result = original.fsyncSync(...args);
@@ -109,10 +111,11 @@ if (mode === 'seed') {
   fs.renameSync = ((...args: Parameters<typeof fs.renameSync>) => {
     const result = original.renameSync(...args); if (cut === 'rename') die(); return result;
   }) as typeof fs.renameSync;
-  fs.unlinkSync = ((...args: Parameters<typeof fs.unlinkSync>) => {
-    const result = original.unlinkSync(...args);
-    if (cut === 'unlink' && String(args[0]).includes('.lock.release-')) die(); return result;
-  }) as typeof fs.unlinkSync;
+  fs.rmdirSync = ((...args: Parameters<typeof fs.rmdirSync>) => {
+    const result = original.rmdirSync(...args);
+    if ((cut === 'unlink' || cut === 'fsync:3') && String(args[0]).endsWith('append.lock')) die();
+    return result;
+  }) as typeof fs.rmdirSync;
   syncBuiltinESMExports();
   handles.finishAttempt(delivery.operation, 'absent-from-owner-history', 20);
   process.stdout.write(JSON.stringify({ status: 'saved' }));

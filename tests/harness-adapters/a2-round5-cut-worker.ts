@@ -43,13 +43,16 @@ if (mode === 'seed') {
   fs.writeFileSync(`${directory}/signed-owner-history.json`, JSON.stringify(f.owner.raw));
   let sync = 0;
   const die = () => process.kill(process.pid, 'SIGKILL');
-  for (const [method, label] of [['symlinkSync', 'lock'], ['writeFileSync', 'write'],
-    ['renameSync', 'rename'], ['unlinkSync', 'unlink'], ['fsyncSync', 'fsync']] as const) {
+  for (const [method, label] of [['mkdirSync', 'lock'], ['writeFileSync', 'write'],
+    ['renameSync', 'rename'], ['rmdirSync', 'unlink'], ['fsyncSync', 'fsync']] as const) {
     const original = fs[method] as (...args: never[]) => unknown;
     (fs[method] as unknown as (...args: never[]) => unknown) = (...args: never[]) => {
       const result = original(...args);
       const actual = label === 'fsync' ? `fsync:${++sync}` : label;
+      if (label === 'lock' && !String(args[0]).endsWith('append.lock')) return result;
+      if (label === 'write' && typeof args[0] !== 'number') return result;
       if (actual === cut) die();
+      if (label === 'unlink' && cut === 'fsync:3') die();
       return result;
     };
   }

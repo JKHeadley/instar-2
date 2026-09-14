@@ -18,6 +18,10 @@ it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owne
   expect(checkP13A2Architecture().sourceFiles).toEqual(expect.arrayContaining([
     'adapter.ts', 'holder.ts', 'regression-boundaries.ts',
   ]));
+  const stateHost = readFileSync('scripts/slice-p13-state-storage.mjs', 'utf8');
+  expect(stateHost).toContain('createFactStore(');
+  expect(stateHost).toContain('createTransportFileStorage(');
+  expect(stateHost).not.toMatch(/symlinkSync|readlinkSync|recoverDeadWriter|randomUUID/);
 });
 
 it('R2-F08 R2-F10 P13-A2-MAP all 52 rows retain exact real-owner dispositions and held remainders', () => {

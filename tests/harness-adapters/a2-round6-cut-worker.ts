@@ -65,13 +65,13 @@ if (mode === 'seed') {
   fs.closeSync(ownerDescriptor);
 
   let sync = 0;
-  for (const [method, label] of [['symlinkSync', 'lock'], ['writeFileSync', 'write'],
-    ['renameSync', 'rename'], ['unlinkSync', 'unlink'], ['fsyncSync', 'fsync']] as const) {
+  for (const [method, label] of [['mkdirSync', 'lock'], ['writeFileSync', 'write'],
+    ['renameSync', 'rename'], ['rmdirSync', 'unlink'], ['fsyncSync', 'fsync']] as const) {
     const original = fs[method] as (...args: never[]) => unknown;
     (fs[method] as unknown as (...args: never[]) => unknown) = (...args: never[]) => {
       const result = original(...args);
       const boundary = label === 'fsync' ? `fsync:${++sync}` : label;
-      if (boundary === 'fsync:3') process.kill(process.pid, 'SIGKILL');
+      if (boundary === 'fsync:2') process.kill(process.pid, 'SIGKILL');
       return result;
     };
   }

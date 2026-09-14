@@ -295,6 +295,13 @@ export function checkP13A2Architecture() {
   for (const required of ['adapter.ts', 'holder.ts', 'regression-boundaries.ts'])
     if (!sourceFiles.includes(required)) throw new Error(`Slice A2 source missing: ${required}`);
   if (!existsSync('scripts/slice-p13-state-storage.mjs')) throw new Error('Slice A2 durable state host missing');
+  const stateHost = readFileSync('scripts/slice-p13-state-storage.mjs', 'utf8');
+  for (const ownerFactory of ['createFactStore(', 'createTransportFileStorage(']) {
+    if (!stateHost.includes(ownerFactory)) throw new Error(`Slice A2 state host bypasses ${ownerFactory}`);
+  }
+  for (const handRolled of ['symlinkSync', 'readlinkSync', 'recoverDeadWriter', 'randomUUID']) {
+    if (stateHost.includes(handRolled)) throw new Error(`Slice A2 state host retains hand-rolled recovery: ${handRolled}`);
+  }
   return { changed, sourceFiles };
 }
 

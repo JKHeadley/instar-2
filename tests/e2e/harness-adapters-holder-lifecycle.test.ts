@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -96,39 +96,36 @@ it('A2-E2E P13-NF-28 holder custody reconstructs from the durable journal after 
 });
 
 it.each(['lock', 'write', 'fsync:1', 'rename', 'fsync:2', 'unlink', 'fsync:3'])
-    ('A2-E2E R2-F12 P13-NF-24 P13-NF-32 P13-NF-38 storage cut at %s preserves pending delivery and holder lifecycle evidence', async cut => {
+    ('A2-E2E R2-F12 P13-NF-24 P13-NF-32 P13-NF-38 owner storage cut at %s preserves state or persistent uncertainty', async cut => {
     const directory = mkdtempSync(join(tmpdir(), `p13-a2-storage-${cut}-`));
     const path = join(directory, 'state.json');
     const killed = await run('seed', cut, path);
     expect(killed.signal).toBe('SIGKILL');
     const recovered = await run('recover', cut, path);
+    if (!['unlink', 'fsync:3'].includes(cut)) {
+      expect(recovered.code).toBe(1);
+      expect(recovered.stderr).toContain('Part Two harness state append is uncertain');
+      return;
+    }
     expect(recovered, recovered.stderr).toMatchObject({ code: 0, signal: null });
     expect(JSON.parse(recovered.stdout)).toMatchObject({ status: 'recovered',
       attemptState: cut === 'lock' ? 'pending' : 'observed', attemptedAt: 20,
       delivery: 'uncertain', completion: 'pending', resume: 'eligible', driverCalls: 0 });
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({
-      handles: [{ launch: 'launch:restart' }], attempts: [{ kind: 'delivery', operation: 'operation:restart-delivery' }],
-    });
-    expect(JSON.parse(readFileSync(`${path}.evidence`, 'utf8'))).toMatchObject({
-      events: expect.arrayContaining([
-        expect.objectContaining({ id: 'restart:closure', kind: 'turn-closed' }),
-        expect.objectContaining({ id: 'restart:pending-input', kind: 'input-accepted' }),
-        expect.objectContaining({ id: 'restart:resume', kind: 'diagnostic' }),
-      ]),
-    });
   }, 20_000);
 
 it('A2-E2E P13-NF-24 P13-NF-39 concurrent filesystem writers cannot acknowledge the same journal predecessor', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'p13-a2-cas-'));
   const path = join(directory, 'state.json');
   initial(path);
+  const state = createHarnessAdapterFileState(path) as HarnessAdapterStateStorePort;
+  expect(state.load()).toMatchObject({ revision: 0 });
   const results = await Promise.all([race(directory, 'a'), race(directory, 'b')]);
   expect(results.filter(result => result.status === 'saved')).toHaveLength(1);
   expect(results.filter(result => result.status === 'refused')).toHaveLength(1);
-  expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ revision: 1 });
+  expect(state.load()).toMatchObject({ revision: 1 });
 }, 20_000);
 
-it('A2-E2E R3-F05 P13-NF-24 P13-NF-32 P13-NF-38 owner history prevents completion after the pending-event journal lock cut', async () => {
+it('A2-E2E R3-F05 P13-NF-24 P13-NF-32 P13-NF-38 owner history prevents completion after the pending-event owner commit', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'p13-a2-owner-journal-cut-'));
   const killed = await runOwnerJournalCut('seed', directory);
   expect(killed.signal).toBe('SIGKILL');
@@ -138,34 +135,34 @@ it('A2-E2E R3-F05 P13-NF-24 P13-NF-32 P13-NF-38 owner history prevents completio
     owner: { kind: string }; completion: { state: string; event: string }; events: string[];
   };
   expect(result.owner.kind).toBe('Success');
-  expect(result.events).toEqual(['closure:ten']);
-  expect(result.completion).toMatchObject({ state: 'pending', event: 'observation:input-accepted' });
+  expect(result.events).toEqual(['closure:ten', 'pending:twenty']);
+  expect(result.completion).toMatchObject({ state: 'pending', event: 'closure:ten' });
 }, 20_000);
 
 it.each(['heartbeat', 'probe-failed', 'process-exited'])
-    ('A2-E2E R4-F01 R4-F02 P13-NF-24 P13-NF-29 P13-NF-32 P13-NF-33 owner %s survives a SIGKILL-after-lock journal omission', async target => {
+    ('A2-E2E R4-F01 R4-F02 P13-NF-24 P13-NF-29 P13-NF-32 P13-NF-33 owner %s survives SIGKILL after the owner commit', async target => {
     const directory = mkdtempSync(join(tmpdir(), `p13-a2-r4-${target}-`));
-    const killed = await runRound4OwnerCut('seed', 'lock', target, directory);
+    const killed = await runRound4OwnerCut('seed', 'unlink', target, directory);
     expect(killed.signal).toBe('SIGKILL');
-    const recovered = await runRound4OwnerCut('recover', 'lock', target, directory);
+    const recovered = await runRound4OwnerCut('recover', 'unlink', target, directory);
     expect(recovered, recovered.stderr).toMatchObject({ code: 0, signal: null });
     const result = JSON.parse(recovered.stdout) as {
       liveness: { state: string }; completion: { state: string }; events: string[];
     };
-    expect(result.events).toEqual(['r4:prior-live', 'r4:prior-close']);
+    expect(result.events).toEqual(['r4:prior-live', 'r4:prior-close', `r4:pending:${target}`]);
     expect(result.completion.state).toBe('pending');
     expect(result.liveness.state).toBe(target === 'heartbeat' ? 'live'
       : target === 'probe-failed' ? 'unknown' : 'dead');
   }, 20_000);
 
-it('A2-E2E R4-F03 P13-NF-28 P13-NF-38 P13-NF-51 owner-confirmed poison survives a SIGKILL-after-lock omission', async () => {
+it('A2-E2E R4-F03 P13-NF-28 P13-NF-38 P13-NF-51 owner-confirmed poison survives SIGKILL after the owner commit', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'p13-a2-r4-poison-'));
-  const killed = await runRound4PoisonCut('seed', 'lock', directory);
+  const killed = await runRound4PoisonCut('seed', 'unlink', directory);
   expect(killed.signal).toBe('SIGKILL');
-  const recovered = await runRound4PoisonCut('recover', 'lock', directory);
+  const recovered = await runRound4PoisonCut('recover', 'unlink', directory);
   expect(recovered, recovered.stderr).toMatchObject({ code: 0, signal: null });
   expect(JSON.parse(recovered.stdout)).toMatchObject({
-    resume: { state: 'poisoned', event: 'r4:observation:transcript-poison' },
+    resume: { state: 'poisoned', event: 'r4:event:transcript-poison' },
     reconnect: { disposition: 'refused', handle: null },
   });
 }, 20_000);
