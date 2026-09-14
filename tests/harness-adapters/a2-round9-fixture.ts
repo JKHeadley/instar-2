@@ -9,7 +9,7 @@ import type {
   HarnessAdapterStateSnapshot,
   HarnessRuntimeEvent,
 } from '../../src/harness-adapters/contracts.js';
-import type { HarnessAdapterStateStorePort } from '../../src/harness-adapters/holder.js';
+import type { HarnessEvidenceStateStorePort } from '../../src/harness-adapters/holder.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { value } from '../facts/fixtures.js';
 import { transportFixture } from '../transport/fixture.js';
@@ -22,7 +22,7 @@ export type Round9Nine = ReturnType<typeof verificationRuntimeFixture>;
 
 export function round9PoisonPrefixFixture(input: Readonly<{
   confirmPoison?: boolean;
-  eventState?: HarnessAdapterStateStorePort;
+  eventState?: HarnessEvidenceStateStorePort;
 }> = {}) {
   const ten = harnessFixture();
   ten.owner.time(22);
@@ -50,7 +50,7 @@ export function round9PoisonPrefixFixture(input: Readonly<{
   nine.time(22);
   nine.setGeneration('generation:fixture');
   const eventState = input.eventState ?? createMemoryHarnessAdapterStateStore('r9:poison-prefix:events');
-  const holder = (state: HarnessAdapterStateStorePort = eventState, runtime: Round9Nine = nine) =>
+  const holder = (state: HarnessEvidenceStateStorePort = eventState, runtime: Round9Nine = nine) =>
     createHarnessEvidenceHolder({
       adapter: handle.harness,
       artifact: handle.artifactDigest,
@@ -140,13 +140,9 @@ export function round9PoisonPrefixFixture(input: Readonly<{
 }
 
 export function withoutPoisonJournal(
-  state: HarnessAdapterStateStorePort,
+  state: HarnessEvidenceStateStorePort,
   poison: HarnessRuntimeEvent,
-): HarnessAdapterStateStorePort {
-  const extended = state as HarnessAdapterStateStorePort & {
-    loadValidationFloors(): readonly unknown[];
-    appendValidationFloor(floor: unknown): void;
-  };
+): HarnessEvidenceStateStorePort {
   return Object.freeze({
     owner: 'part-thirteen' as const,
     id: `${state.id}:missing-poison-event`,
@@ -154,9 +150,10 @@ export function withoutPoisonJournal(
       const snapshot = state.load() as HarnessAdapterStateSnapshot | null;
       return snapshot ? { ...snapshot, events: snapshot.events.filter(event => event.id !== poison.id) } : null;
     },
-    save: (expected: Parameters<HarnessAdapterStateStorePort['save']>[0],
-      snapshot: Parameters<HarnessAdapterStateStorePort['save']>[1]) => state.save(expected, snapshot),
-    loadValidationFloors: () => extended.loadValidationFloors(),
-    appendValidationFloor: (floor: unknown) => extended.appendValidationFloor(floor),
+    save: (expected: Parameters<HarnessEvidenceStateStorePort['save']>[0],
+      snapshot: Parameters<HarnessEvidenceStateStorePort['save']>[1]) => state.save(expected, snapshot),
+    loadValidationFloors: () => state.loadValidationFloors(),
+    appendValidationFloor: (floor: Parameters<HarnessEvidenceStateStorePort['appendValidationFloor']>[0]) =>
+      state.appendValidationFloor(floor),
   });
 }

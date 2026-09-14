@@ -7,7 +7,10 @@ import {
 } from '../../src/harness-adapters/holder.js';
 import { correlatedRecoveryProgress, preventiveCompactionDisposition }
   from '../../src/harness-adapters/regression-boundaries.js';
-import type { HarnessAdapterStateStorePort } from '../../src/harness-adapters/holder.js';
+import type {
+  HarnessAdapterStateStorePort,
+  HarnessEvidenceStateStorePort,
+} from '../../src/harness-adapters/holder.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { value } from '../facts/fixtures.js';
 import { a2Fixture } from './a2-fixture.js';
@@ -118,11 +121,14 @@ it('A2-UNIT REVIEW-F8 P13-NF-31 P13-NF-34 output stays held on the named Part Tw
 it('A2-UNIT P13-NF-24 P13-NF-28 journal read errors remain typed unknown and never become absence', () => {
   const f = a2Fixture();
   let fail = false;
-  const broken: HarnessAdapterStateStorePort = Object.freeze({
+  const broken: HarnessEvidenceStateStorePort = Object.freeze({
     owner: 'part-thirteen', id: 'a2:broken',
     load: () => { if (fail) throw new Error('EIO current journal'); return f.evidenceState.load(); },
     save: (expected: Parameters<HarnessAdapterStateStorePort['save']>[0],
       snapshot: Parameters<HarnessAdapterStateStorePort['save']>[1]) => f.evidenceState.save(expected, snapshot),
+    loadValidationFloors: () => f.evidenceState.loadValidationFloors(),
+    appendValidationFloor: (floor: Parameters<HarnessEvidenceStateStorePort['appendValidationFloor']>[0]) =>
+      f.evidenceState.appendValidationFloor(floor),
   });
   const holder = createHarnessEvidenceHolder({ adapter: 'native', artifact: f.handle.artifactDigest,
     platform: f.handle.platform, machine: f.handle.machine, scope: 'conversation:1', maxEvents: 32, maxCaptureBytes: 1024,

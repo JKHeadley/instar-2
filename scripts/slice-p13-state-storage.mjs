@@ -16,6 +16,7 @@ import {
   signEnvelope,
 } from '../src/facts/index.js';
 import {
+  decodeHarnessValidationFloor,
   decodeHarnessAdapterStateSnapshot,
   harnessAdapterIdentity,
 } from '../src/harness-adapters/index.js';
@@ -238,7 +239,7 @@ export function createHarnessAdapterFileState(path) {
       throw new Error('Part Two harness state contains a foreign fact');
     }
     return facts.filter(fact => fact.kind === VALIDATION_FLOOR_KIND).map(fact => {
-      const floor = JSON.parse(fact.body.floor);
+      const floor = take(decodeHarnessValidationFloor(JSON.parse(fact.body.floor)));
       const identity = encoded(floor);
       if (fact.body.floorId !== floor.id || fact.body.canonicalHash !== identity.hash) {
         throw new Error('Part Two harness validation floor canonical identity mismatch');
@@ -248,8 +249,9 @@ export function createHarnessAdapterFileState(path) {
   };
 
   const appendValidationFloor = floor => {
-    const identity = encoded(floor);
-    const existing = loadValidationFloors().find(candidate => candidate.id === floor.id);
+    const decoded = take(decodeHarnessValidationFloor(floor));
+    const identity = encoded(decoded);
+    const existing = loadValidationFloors().find(candidate => candidate.id === decoded.id);
     if (existing) {
       if (encoded(existing).hash !== identity.hash) throw new Error('immutable validation floor disagreement');
       return;
@@ -269,7 +271,7 @@ export function createHarnessAdapterFileState(path) {
       predecessors: {
         inSegment: head?.id ?? null, frontier: author.context.folded, required: [],
       },
-      body: { stateId, floorId: floor.id, canonicalHash: identity.hash, floor: identity.bytes },
+      body: { stateId, floorId: decoded.id, canonicalHash: identity.hash, floor: identity.bytes },
     }, author.privateKey);
     take(store.append(envelope));
   };

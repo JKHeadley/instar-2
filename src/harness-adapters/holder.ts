@@ -18,6 +18,8 @@ import {
   decodeHarnessRuntimeHandle,
   harnessAdapterIdentity,
 } from './records.js';
+import { decodeHarnessValidationFloor } from './validation-floor.js';
+import type { HarnessValidationFloor } from './validation-floor.js';
 
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -42,60 +44,25 @@ export interface HarnessAdapterStateStorePort {
   save(expected: Hash | null, snapshot: HarnessAdapterStateSnapshot): void;
 }
 
-interface HarnessValidationFloor {
-  readonly type: 'HarnessValidationFloor';
-  readonly schemaVersion: 1;
-  readonly id: string;
-  readonly purpose: 'transcript-poison';
-  readonly adapter: string;
-  readonly artifact: Hash;
-  readonly platform: string;
-  readonly machine: string;
-  readonly launch: string;
-  readonly incarnation: string;
-  readonly processIdentity: string;
-  readonly subject: string;
-  readonly event: string;
-  readonly eventHash: Hash;
-  readonly observation: string;
-  readonly observationFact: string;
-  readonly observationWitness: string;
-  readonly plan: string;
-  readonly planFact: string;
-  readonly planVersion: string;
-  readonly probe: string;
-  readonly probeFact: string;
-  readonly generation: string;
-  readonly confirmedAt: number;
-}
-
-interface HarnessValidationFloorStore {
+export interface HarnessEvidenceStateStorePort extends HarnessAdapterStateStorePort {
   loadValidationFloors(): readonly unknown[];
   appendValidationFloor(floor: HarnessValidationFloor): void;
 }
 
-const fallbackValidationFloors = new WeakMap<object, readonly HarnessValidationFloor[]>();
-
-function validationFloorStore(state: HarnessAdapterStateStorePort): HarnessValidationFloorStore {
-  const extended = state as HarnessAdapterStateStorePort & Partial<HarnessValidationFloorStore>;
-  if (extended.loadValidationFloors && extended.appendValidationFloor) {
-    return {
-      loadValidationFloors: () => extended.loadValidationFloors!(),
-      appendValidationFloor: floor => extended.appendValidationFloor!(floor),
-    };
+export class HarnessEvidenceStateStoreBindingError extends Error {
+  readonly code = 'HARNESS_EVIDENCE_DURABLE_RETENTION_REQUIRED';
+  constructor() {
+    super('evidence holder requires durable validation-floor load and append custody');
+    this.name = 'HarnessEvidenceStateStoreBindingError';
   }
-  return {
-    loadValidationFloors: () => fallbackValidationFloors.get(state) ?? [],
-    appendValidationFloor(floor) {
-      const current = fallbackValidationFloors.get(state) ?? [];
-      const existing = current.find(row => row.id === floor.id);
-      if (existing) {
-        if (bytes(existing) !== bytes(floor)) throw new Error('immutable validation floor disagreement');
-        return;
-      }
-      fallbackValidationFloors.set(state, freeze([...current, floor]));
-    },
-  };
+}
+
+function validationFloorStore(state: HarnessEvidenceStateStorePort): HarnessEvidenceStateStorePort {
+  if (typeof state.loadValidationFloors !== 'function'
+    || typeof state.appendValidationFloor !== 'function') {
+    throw new HarnessEvidenceStateStoreBindingError();
+  }
+  return state;
 }
 
 export interface HarnessHandleLookup {
@@ -187,7 +154,7 @@ export interface HarnessEvidenceOwnerPorts {
 /** Exact-byte compare-and-swap memory store used for bounded local composition and tests. */
 export function createMemoryHarnessAdapterStateStore(
   id = 'memory:harness-adapter-state',
-): HarnessAdapterStateStorePort {
+): HarnessEvidenceStateStorePort {
   let retained: HarnessAdapterStateSnapshot | null = null;
   let validationFloors: readonly HarnessValidationFloor[] = [];
   return Object.freeze({
@@ -201,12 +168,16 @@ export function createMemoryHarnessAdapterStateStore(
     },
     loadValidationFloors: () => validationFloors,
     appendValidationFloor(floor: HarnessValidationFloor) {
-      const existing = validationFloors.find(row => row.id === floor.id);
+      const decoded = consumeResult(decodeHarnessValidationFloor(floor), {
+        Success: value => value,
+        Refused: refusal => { throw new Error(refusal.detail); },
+      });
+      const existing = validationFloors.find(row => row.id === decoded.id);
       if (existing) {
-        if (bytes(existing) !== bytes(floor)) throw new Error('immutable validation floor disagreement');
+        if (bytes(existing) !== bytes(decoded)) throw new Error('immutable validation floor disagreement');
         return;
       }
-      validationFloors = freeze([...validationFloors, floor]);
+      validationFloors = freeze([...validationFloors, decoded]);
     },
   });
 }
@@ -602,7 +573,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
   maxEvents: number;
   maxCaptureBytes: number;
   context: HarnessAdapterDecodeContext;
-  state: HarnessAdapterStateStorePort;
+  state: HarnessEvidenceStateStorePort;
   admission: HarnessAdmissionPort;
   owners: HarnessEvidenceOwnerPorts;
 }>): HarnessEvidenceHolder {
@@ -617,6 +588,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     throw new Error('evidence holder requires real current Part Thirteen admission and handle holders');
   }
 
+  const validationFloors = validationFloorStore(input.state);
   const state = stateFrom({
     adapter: input.adapter,
     machine: input.machine,
@@ -627,8 +599,6 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     context: input.context,
     state: input.state,
   });
-  const validationFloors = validationFloorStore(input.state);
-
   const decision = (
     disposition: HarnessEvidenceAdmission['disposition'],
     reason: string,
@@ -890,41 +860,52 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     }
   };
 
-  const validationFloorFor = (value: unknown): HarnessValidationFloor => {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-      throw new Error('retained validation floor is malformed');
-    }
-    const row = value as Record<string, unknown>;
-    const fields = ['type', 'schemaVersion', 'id', 'purpose', 'adapter', 'artifact', 'platform', 'machine',
-      'launch', 'incarnation', 'processIdentity', 'subject', 'event', 'eventHash', 'observation',
-      'observationFact', 'observationWitness', 'plan', 'planFact', 'planVersion', 'probe', 'probeFact',
-      'generation', 'confirmedAt'];
-    if (Object.keys(row).length !== fields.length || fields.some(field => !(field in row))
-      || row.type !== 'HarnessValidationFloor' || row.schemaVersion !== 1
-      || row.purpose !== 'transcript-poison' || !Number.isSafeInteger(row.confirmedAt)
-      || (row.confirmedAt as number) < 0
-      || fields.filter(field => !['schemaVersion', 'confirmedAt'].includes(field))
-        .some(field => typeof row[field] !== 'string' || !(row[field] as string))) {
-      throw new Error('retained validation floor is malformed');
-    }
-    const floor = freeze(row as unknown as HarnessValidationFloor);
-    if (!floor.artifact.startsWith('sha256:') || !floor.eventHash.startsWith('sha256:')) {
-      throw new Error('retained validation floor has malformed hashes');
-    }
-    return floor;
-  };
+  const validationFloorFor = (value: unknown): HarnessValidationFloor =>
+    consumeResult(decodeHarnessValidationFloor(value), {
+      Success: floor => floor,
+      Refused: refusal => { throw new Error(`retained validation floor refused: ${refusal.detail}`); },
+    });
 
-  const retainedPoisonFloors = (handle: HarnessRuntimeHandle): readonly HarnessValidationFloor[] => {
+  const retainedPoisonFloors = (
+    handle: HarnessRuntimeHandle,
+    now: number,
+  ): readonly HarnessValidationFloor[] => {
     const raw = validationFloors.loadValidationFloors();
     if (!Array.isArray(raw)) throw new Error('retained validation floors are unavailable');
     const floors = raw.map(validationFloorFor);
     if (new Set(floors.map(floor => floor.id)).size !== floors.length) {
       throw new Error('retained validation floors contain duplicate identities');
     }
-    return freeze(floors.filter(floor => floor.adapter === handle.harness
+    const relevant = floors.filter(floor => floor.adapter === handle.harness
       && floor.artifact === handle.artifactDigest && floor.platform === handle.platform
       && floor.machine === handle.machine && floor.launch === handle.launch
-      && floor.incarnation === handle.incarnation && floor.processIdentity === handle.processIdentity));
+      && floor.incarnation === handle.incarnation && floor.processIdentity === handle.processIdentity);
+    if (relevant.some(floor => floor.confirmedAt > now)) {
+      throw new Error('retained validation floor confirmation is future-dated');
+    }
+    return freeze(relevant);
+  };
+
+  const floorMatchesEvent = (
+    floor: HarnessValidationFloor,
+    event: HarnessRuntimeEvent,
+  ): boolean => event.kind === 'diagnostic'
+    && event.diagnosticCode === `transcript-poison:${floor.plan}`
+    && floor.event === event.id
+    && floor.eventHash === harnessAdapterIdentity(event).canonicalHash
+    && floor.adapter === event.harness && floor.artifact === event.artifactDigest
+    && floor.platform === event.platform && floor.machine === event.machine
+    && floor.launch === event.launch && floor.incarnation === event.incarnation
+    && floor.processIdentity === event.processIdentity && floor.subject === exactSubject(event)
+    && floor.confirmedAt >= event.observedAt;
+
+  const sameImmutableFloor = (
+    first: HarnessValidationFloor,
+    reconsidered: HarnessValidationFloor,
+  ): boolean => {
+    const { confirmedAt: _firstConfirmation, ...firstImmutable } = first;
+    const { confirmedAt: _laterConfirmation, ...laterImmutable } = reconsidered;
+    return bytes(firstImmutable) === bytes(laterImmutable);
   };
 
   const validationFloorCurrent = (floor: HarnessValidationFloor, now: number): boolean => {
@@ -1001,12 +982,39 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     analysis: EvidenceAnalysis,
   ): Readonly<{ disposition: 'poisoned' | 'unknown'; evidence: MaterializedEvidence }> | null => {
     if (!input.owners.verification) return null;
-    const floors = retainedPoisonFloors(handle);
+    const floors = retainedPoisonFloors(handle, now);
     const retainedPoison = analysis.decisionSet.filter(row => row.event?.kind === 'diagnostic'
       && row.event.diagnosticCode.startsWith('transcript-poison:'));
+    for (const floor of floors) {
+      const event = analysis.all.find(candidate => candidate.id === floor.event);
+      if (!event) {
+        if (analysis.all.some(candidate => candidate.kind === 'diagnostic'
+          && candidate.diagnosticCode.startsWith('transcript-poison:'))) {
+          throw new Error('retained validation floor names an unrelated runtime event');
+        }
+        continue;
+      }
+      if (!floorMatchesEvent(floor, event)) {
+        throw new Error('retained validation floor disagrees with its immutable runtime event');
+      }
+    }
     const locallyConfirmed = retainedPoison.find(row => row.ownerCurrent && row.availability === 'current'
       && row.event && resumeDisposition(row.event, now) === 'poisoned');
-    if (locallyConfirmed) return freeze({ disposition: 'poisoned' as const, evidence: locallyConfirmed });
+    if (locallyConfirmed?.event) {
+      const confirmation = poisonConfirmation(locallyConfirmed.event, now);
+      if (!confirmation) return freeze({ disposition: 'unknown' as const, evidence: locallyConfirmed });
+      const retained = floors.find(floor => floor.id === confirmation.id);
+      if (retained) {
+        if (!sameImmutableFloor(retained, confirmation)) {
+          throw new Error('retained validation floor disagrees with current owner confirmation');
+        }
+      } else if (floors.length > 0) {
+        return freeze({ disposition: 'unknown' as const, evidence: locallyConfirmed });
+      } else {
+        validationFloors.appendValidationFloor(confirmation);
+      }
+      return freeze({ disposition: 'poisoned' as const, evidence: locallyConfirmed });
+    }
     // The floor is appended when the owner-confirmed diagnostic is admitted,
     // before the event-journal write. It therefore distinguishes a candidate
     // that never earned confirmation from a confirmation whose current owner
@@ -1063,15 +1071,14 @@ export function createHarnessEvidenceHolder(input: Readonly<{
           return decision('refused', progress.reason, false, progress.key);
         }
         if (failure) return decision('refused', failure, false, progress.key);
-        const confirmation = poisonConfirmation(event, input.owners.current.current().clock.value);
-        if (confirmation) validationFloors.appendValidationFloor(confirmation);
-
         const existing = current.events.find(row => row.id === event.id);
         if (existing) {
           return harnessAdapterIdentity(existing).canonicalHash === harnessAdapterIdentity(event).canonicalHash
             ? decision('duplicate', 'exact runtime event already recorded', false, progress.key)
             : decision('refused', 'immutable runtime event disagreement', false, progress.key);
         }
+        const confirmation = poisonConfirmation(event, input.owners.current.current().clock.value);
+        if (confirmation) validationFloors.appendValidationFloor(confirmation);
         if (progress.disposition === 'duplicate') {
           const representative = current.events
             .map((retained, index) => ({ retained, index,

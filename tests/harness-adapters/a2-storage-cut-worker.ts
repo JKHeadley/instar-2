@@ -5,7 +5,10 @@ import { createFutureHarnessAdapter } from '../../src/harness-adapters/adapter.j
 import { createHarnessEvidenceHolder, createRuntimeHandleHolder } from '../../src/harness-adapters/holder.js';
 import { decodeProbeRecord } from '../../src/verification/index.js';
 import type { HarnessRuntimeEvent } from '../../src/harness-adapters/contracts.js';
-import type { HarnessAdapterStateStorePort } from '../../src/harness-adapters/holder.js';
+import type {
+  HarnessAdapterStateStorePort,
+  HarnessEvidenceStateStorePort,
+} from '../../src/harness-adapters/holder.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { value } from '../facts/fixtures.js';
 import { harnessFixture, witnessedEvent } from './fixture.js';
@@ -86,7 +89,7 @@ const pending = witnessedEvent(f, 'input-accepted', { ...subject, id: 'restart:p
   streamState: 'open', unresolvedOperations: ['operation:restart-delivery'] });
 const resume = witnessedEvent(f, 'diagnostic', { ...subject, id: 'restart:resume', sourceClock: 20, observedAt: 20,
   diagnosticCode: 'resume-compatible:plan:restart-resume' });
-const evidenceState = createHarnessAdapterFileState(`${path}.evidence`) as HarnessAdapterStateStorePort;
+const evidenceState = createHarnessAdapterFileState(`${path}.evidence`) as HarnessEvidenceStateStorePort;
 const evidence = createHarnessEvidenceHolder({ adapter: 'native', artifact: handle.artifactDigest,
   platform: handle.platform, machine: handle.machine, scope: 'conversation:1', maxEvents: 8, maxCaptureBytes: 64,
   context: f.owner.c, state: evidenceState, admission: f.port,

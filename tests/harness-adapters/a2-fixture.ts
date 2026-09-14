@@ -5,6 +5,7 @@ import {
 } from '../../src/harness-adapters/holder.js';
 import type {
   HarnessAdapterStateStorePort,
+  HarnessEvidenceStateStorePort,
   HarnessEvidenceOwnerPorts,
 } from '../../src/harness-adapters/holder.js';
 import type { HarnessRuntimeHandle } from '../../src/harness-adapters/contracts.js';
@@ -41,7 +42,7 @@ export function signedHandle(fixture: HarnessFixture = harnessFixture(),
 
 export function a2Fixture(input: Readonly<{
   handleState?: HarnessAdapterStateStorePort;
-  evidenceState?: HarnessAdapterStateStorePort;
+  evidenceState?: HarnessEvidenceStateStorePort;
   owners?: Partial<HarnessEvidenceOwnerPorts>;
 }> = {}) {
   const base = harnessFixture();
