@@ -1,8 +1,11 @@
+import { canonical } from '../../src/index.js';
 import { assessTelegramReplyResponse, createTelegramReplyOperationAdapter,
   installTelegramReplyOperation } from '../../src/conversation/index.js';
 import type { TelegramProviderAcceptance } from '../../src/conversation/index.js';
-import { createEffectDoorway } from '../../src/effects/index.js';
+import { createEffectDoorway, createEffectSpine } from '../../src/effects/index.js';
 import type { EffectAssessmentInput } from '../../src/effects/index.js';
+import { createFactStore } from '../../src/facts/index.js';
+import { privateKey } from '../facts/fixtures.js';
 import { value } from '../intake/fixtures.js';
 import { telegramResponseAssessmentFixture } from './round17-fixture.js';
 import { telegramPreparedOutbound } from './round5-fixture.js';
@@ -12,7 +15,11 @@ type ResultSummary = Readonly<{ kind: string; detail?: string; stage?: string }>
 export interface Round20TwoHandleResult {
   readonly separateAdmission: boolean;
   readonly lostResponse: boolean;
+  readonly newStore: boolean;
   readonly distinctHandles: boolean;
+  readonly distinctStoreHandles: boolean;
+  readonly equalHistory: boolean;
+  readonly sameStorage: true;
   readonly sameConformance: boolean;
   readonly first: ResultSummary;
   readonly second: ResultSummary;
@@ -33,12 +40,20 @@ const summarize = (result: Readonly<{ kind: string; detail?: string; value?: unk
 
 /** Permanent import of rereview18's claim-two-handles.ts executable case. */
 export function round20TwoHandleClaim(separateAdmission: boolean,
-  lostResponse: boolean): Round20TwoHandleResult {
+  lostResponse: boolean, distinctStoreHandle = false): Round20TwoHandleResult {
   const fixture = telegramPreparedOutbound(lostResponse);
   const admitted = separateAdmission ? value(fixture.telegram.admit()) : fixture.telegram.admitted;
   const definition = value(fixture.doorway.inspect()).find(row => row.record.type === 'OperationDefinition'
     && row.record.id === fixture.request.definition)?.record;
   if (definition?.type !== 'OperationDefinition') throw new Error('round20 operation definition is missing');
+  const store = distinctStoreHandle
+    ? createFactStore(fixture.effects.ctx, fixture.effects.replicas.storage)
+    : fixture.effects.store;
+  const spine = distinctStoreHandle
+    ? createEffectSpine(fixture.effects.host, { context: fixture.effects.ctx, privateKey }, store)
+    : fixture.effects.spine;
+  const equalHistory = value(canonical(value(store.read()))).hash
+    === value(canonical(value(fixture.effects.store.read()))).hash;
   value(installTelegramReplyOperation({
     id: definition.id,
     generation: definition.generation,
@@ -50,7 +65,7 @@ export function round20TwoHandleClaim(separateAdmission: boolean,
     replicas: definition.replicas,
     lossModel: definition.lossModel,
     verificationBar: definition.verificationBar,
-  }, fixture.effects.host, fixture.effects.spine));
+  }, fixture.effects.host, spine));
   const secondAdapter = createTelegramReplyOperationAdapter(admitted, fixture.telegram.api,
     fixture.target, fixture.effects.host.boundary);
   let firstResult: ReturnType<typeof fixture.adapter.invoke> | undefined;
@@ -74,7 +89,11 @@ export function round20TwoHandleClaim(separateAdmission: boolean,
   return {
     separateAdmission,
     lostResponse,
+    newStore: distinctStoreHandle,
     distinctHandles: admitted !== fixture.telegram.admitted,
+    distinctStoreHandles: store !== fixture.effects.store,
+    equalHistory,
+    sameStorage: true,
     sameConformance: admitted.conformance.id === fixture.telegram.admitted.conformance.id,
     first: summarize(firstResult),
     second: summarize(secondResult),
@@ -83,6 +102,24 @@ export function round20TwoHandleClaim(separateAdmission: boolean,
     reservationStates: value(fixture.effects.transport.inspect())
       .filter(row => row.record.type === 'AdmissionReservation')
       .map(row => row.record.type === 'AdmissionReservation' ? row.record.state : 'unreachable'),
+  };
+}
+
+/** Permanent import of rereview19's claim-two-stores.ts executable case. */
+export function round21TwoStoreClaim(newStore: boolean,
+  lostResponse: boolean): Round20TwoHandleResult {
+  return round20TwoHandleClaim(true, lostResponse, newStore);
+}
+
+/** Equal fixture identities in independent durable histories remain independent. */
+export function round21IndependentStoreClaims(): Readonly<{
+  results: readonly ResultSummary[];
+  providerCalls: readonly number[];
+}> {
+  const fixtures = [telegramPreparedOutbound(), telegramPreparedOutbound()];
+  return {
+    results: fixtures.map(fixture => summarize(fixture.doorway.dispatch(fixture.request, fixture.effects.fence))),
+    providerCalls: fixtures.map(fixture => fixture.telegram.calls.send.length),
   };
 }
 

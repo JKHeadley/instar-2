@@ -98,7 +98,9 @@ it.each(outboundExpectations)(
       expect(recovered.observations.map((row: { stage: string }) => row.stage)).toContain('response');
     }
     if (['acceptance', 'acceptance-durable', 'before-provider', 'after-provider'].includes(phase)) {
-      expect(recovered.observations.map((row: { stage: string }) => row.stage)).toEqual(['executor-accepted']);
+      expect(recovered.observations.map((row: { stage: string }) => row.stage)).toEqual(phase === 'after-provider'
+        ? ['executor-accepted', 'executor-accepted']
+        : ['executor-accepted']);
     }
   },
   60_000,

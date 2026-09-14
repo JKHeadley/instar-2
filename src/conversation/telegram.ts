@@ -8,7 +8,7 @@ import { constructGoverned } from '../register/index.js';
 import { mergeVerificationRecords, verificationLogicalKey } from '../verification/index.js';
 import type { ProbeRecord, VerificationPlan } from '../verification/index.js';
 import type { EffectDoorway, EffectRequest, EffectValidation, OperationAdapterPort, OperationDefinition, EffectHost,
-  EffectSpine } from '../effects/index.js';
+  EffectSpine, OperationObservation } from '../effects/index.js';
 import { installOperationDefinition } from '../effects/index.js';
 import { boundary, ensure, freeze, json, take } from './boundary.js';
 import type {
@@ -24,11 +24,6 @@ const admissionContexts = new WeakMap<object, BoundaryContext>();
 const admissionCustodians = new WeakMap<object, TelegramBotApiCustodianPort>();
 const activeAdmissions = new Set<string>();
 const activePolls = new Set<string>();
-// An admission may be reconstructed as more than one JavaScript object while
-// retaining the same bot, mode, contract and conformance fact. Keep the
-// consume-once guard at that durable admission identity, with the owning fact
-// store separating independent operation histories that may reuse fixture ids.
-const replyInvocations = new Map<string, WeakMap<object, Set<string>>>();
 const replyOperationBindings = new WeakMap<object, Array<Readonly<{
   definition: OperationDefinition; host: EffectHost; spine: EffectSpine;
   inhibitedOperations: ReadonlySet<string>;
@@ -61,30 +56,6 @@ const nonempty = (value: unknown, name: string): string => {
 };
 const bytes = (value: string) => new TextEncoder().encode(value).length;
 const encode = (value: unknown) => take(canonical(value)).bytes;
-
-function telegramAdmissionIdentity(admitted: AdmittedTelegramAdapter): string {
-  return take(canonical({
-    bot: admitted.declaration.bot.id,
-    mode: admitted.mode,
-    contract: admitted.contract.id,
-    conformance: admitted.conformance.id,
-  })).hash;
-}
-
-function replyInvocationSet(admitted: AdmittedTelegramAdapter, spine: EffectSpine): Set<string> {
-  const identity = telegramAdmissionIdentity(admitted);
-  let stores = replyInvocations.get(identity);
-  if (stores === undefined) {
-    stores = new WeakMap<object, Set<string>>();
-    replyInvocations.set(identity, stores);
-  }
-  let operations = stores.get(spine.store);
-  if (operations === undefined) {
-    operations = new Set<string>();
-    stores.set(spine.store, operations);
-  }
-  return operations;
-}
 
 function firstDifferentField(expected: unknown, supplied: unknown, path: string): string | null {
   if (Object.is(expected, supplied)) return null;
@@ -1075,7 +1046,8 @@ export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAd
         const acceptance = effect('OperationObservation').filter(row => row.record.operation === input.operation
           && row.record.request === request.id && row.record.claim === input.claim && row.record.digest === input.digest
           && row.record.account === admitted.account && row.record.conversation === conversation
-          && row.record.stage === 'executor-accepted');
+          && row.record.stage === 'executor-accepted'
+          && !String(row.record.id).startsWith('observation:telegram-invocation-started:'));
         ensure(acceptance.length === 1, 'Telegram reply requires one durable executor-acceptance observation');
         ensure(!effect('OperationObservation').some(row => row.record.operation === input.operation
           && (row.record.stage === 'response' || row.record.stage === 'unknown')),
@@ -1103,9 +1075,57 @@ export function createTelegramReplyOperationAdapter(admitted: AdmittedTelegramAd
           && validation.generation === state.decode.register.generation.id
           && encode(validation.authority) === encode(state.authority),
         'Telegram reply dispatch validation is expired or no longer current');
-        const invoked = replyInvocationSet(admitted, binding.spine);
-        ensure(!invoked.has(input.operation), 'Telegram reply claim handoff was already used');
-        invoked.add(input.operation);
+
+        // Part Eight's executor-acceptance row proves that the Six claim was
+        // consumed before this adapter was entered. It cannot also identify
+        // which of several public adapter/store handles won the provider-call
+        // boundary, because every such handle sees that same prerequisite row.
+        // Append one second, exact executor-acceptance observation as the
+        // invocation-started consumption marker. EffectSpine reaches Part Two's
+        // physical compare-head append, so two FactStore handles over the same
+        // storage cannot both commit it. No process-local object is authoritative.
+        const invocationBytes = encode({
+          type: 'TelegramReplyInvocationStarted', schemaVersion: 1,
+          adapter: admitted.id, operation: input.operation, claim: input.claim,
+          request: request.id, digest: input.digest,
+          account: admitted.account, conversation,
+        });
+        const invocationCapture = take(binding.host.capture(invocationBytes));
+        const invocationFields = {
+          request: request.id as string, operation: input.operation, claim: input.claim,
+          digest: input.digest, account: admitted.account, conversation,
+          stage: 'executor-accepted' as const, wake: '', capture: invocationCapture,
+          attestation: 'local-recorder' as const,
+        };
+        const invocation = {
+          type: 'OperationObservation' as const, schemaVersion: 1 as const,
+          id: `observation:telegram-invocation-started:${take(canonical(invocationFields)).hash}`,
+          ...invocationFields,
+        } as unknown as OperationObservation;
+        ensure(!effect('OperationObservation').some(row => row.record.id === invocation.id),
+          'Telegram reply claim handoff was already used');
+        const appended = binding.spine.append(invocation, [
+          requests[0]!.fact.id, current.fact.id, claimed!.fact.id, acceptance[0]!.fact.id,
+        ]);
+        const receipt = consumeResult(appended, {
+          Success: value => value,
+          Refused: () => {
+            const latest = take(binding.spine.store.readForProjection());
+            const won = latest.entries.some(entry => entry.fact.kind === 'effect-OperationObservation'
+              && (entry.fact.body as { record?: { id?: string } }).record?.id === invocation.id);
+            if (won) throw new Error('Telegram reply claim handoff was already used');
+            return take(appended);
+          },
+        });
+        ensure(receipt.taint.length === 0 && encode(receipt.fact.body) === encode({ record: invocation }),
+          'Telegram reply invocation-started observation was tainted or changed bytes');
+        ensure(receipt.durability.kind === 'local-durable' || receipt.durability.kind === 'replicated',
+          'Telegram reply invocation-started observation is not durable');
+        if (binding.definition.durability === 'replicated') {
+          ensure(receipt.durability.kind === 'replicated'
+            && receipt.durability.n >= binding.definition.replicas,
+          'Telegram reply invocation-started observation missed its replica demand');
+        }
         return take(api.sendMessage({ token: admitted.declaration.token, apiVersion: admitted.declaration.apiVersion,
           chatId: boundTarget.chatId, messageThreadId: boundTarget.messageThreadId, text: input.message.text,
           parseMode: 'HTML', timeout: admitted.declaration.limits.timeout, hiddenRetries: 0 }));
