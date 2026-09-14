@@ -247,6 +247,13 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
   const isolationLive = readEvidence(composition.isolation.live(path), false, 'isolation-proof');
   requireOperator(typeof isolationLive === 'boolean', 'P11-NF-10/12: isolation result must be a boolean');
   const receiptMatches = !!receipt && receipt.operation === operation && receipt.path === path;
+  const receiptComplete = !!receipt
+    && [receipt.attestation, receipt.base, receipt.authorization]
+      .every(value => typeof value === 'string' && value.trim().length > 0)
+    && [receipt.requestDigest, receipt.priorHash, receipt.proposedHash, receipt.effectiveHash]
+      .every(value => typeof value === 'string' && /^sha256:[a-f0-9]{64}$/.test(value))
+    && (receipt.disposition !== 'committed' || receipt.effectiveHash === receipt.proposedHash);
+  if (receipt && !receiptComplete) uncertainty.push('broker-receipt-incomplete-or-inconsistent');
   const plan = probe ? rows.find(row => row.record.type === 'VerificationPlan'
     && row.record.id === probe.record.plan && row.record.bar.version === probe.record.planVersion
     && row.taint.length === 0 && row.conflicts.length === 0) : null;
@@ -264,9 +271,9 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
   if (isolationLive === false) uncertainty.push('isolation-proof-missing');
   if (brokerPosture !== 'protected') uncertainty.push('broker-posture-unprotected');
   const protectedNow = brokerPosture === 'protected' && receiptMatches && receipt?.disposition === 'committed'
-    && witnessFresh && isolationLive === true && effectiveDigestWitnessed;
+    && receiptComplete && witnessFresh && isolationLive === true && effectiveDigestWitnessed;
   return Object.freeze({ operation, posture: protectedNow ? 'protected' as const : 'unprotected' as const,
-    brokerReceipt: receiptMatches ? receipt.attestation : null, effectiveDigest: receiptMatches ? receipt.effectiveHash : null,
+    brokerReceipt: receiptMatches && receiptComplete ? receipt.attestation : null, effectiveDigest: receiptMatches ? receipt.effectiveHash : null,
     effectiveBase: receiptMatches ? receipt.base : null,
     latestProbe: probe?.fact.id ?? null, witnessFresh, isolationLive, uncertainty: Object.freeze(uncertainty) });
 }

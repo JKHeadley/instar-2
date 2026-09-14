@@ -77,9 +77,9 @@ export function resolveFailureTrace(input: FailureTraceInput, context: BoundaryC
     const trace = decodeFailureTrace(input);
     const conflict = new Set(trace.digests).size > 1;
     if (conflict) return Object.freeze({ retry: false as const, conflict: true, state: 'authority-closed' as const, owner: trace.owner, applications: trace.applications });
-    if (trace.trace === 'stale-authority' || !trace.authorityCurrent)
+    if (trace.trace === 'stale-authority' || trace.authorityCurrent === false)
       return Object.freeze({ retry: false as const, conflict: false, state: 'authority-closed' as const, owner: trace.owner, applications: trace.applications });
-    if (trace.trace === 'cancellation-race' && trace.stopCausallyPrior)
+    if (trace.trace === 'cancellation-race' && trace.stopCausallyPrior === true)
       return Object.freeze({ retry: false as const, conflict: false, state: 'stopped' as const, owner: trace.owner, applications: trace.applications });
     if (trace.outcome === 'happened' || trace.outcome === 'did-not-happen')
       return Object.freeze({ retry: false as const, conflict: false, state: 'settled' as const, owner: trace.owner, applications: trace.applications });
