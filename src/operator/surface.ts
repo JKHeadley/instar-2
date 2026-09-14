@@ -82,9 +82,26 @@ function constitutional<N extends 'Scope' | 'VerifiedPrincipal'>(status: FactSta
   return value as N extends 'Scope' ? Scope : VerifiedPrincipal;
 }
 
-function effectLanguage(action: string, scope: Scope, audience: string, consequence: string, reversibility: string): string {
+function effectLanguage(action: string, scope: Scope, audience: string, consequence: string, reversibility: string,
+  revocationTarget: AuthorityRequestView['revocationTarget']): string {
   const subject = scope.kind === 'organization' ? 'the organization' : `${scope.kind} ${scope.members.join(', ')}`;
-  return `Approving will allow ${action} for ${subject}, visible to ${audience}. Consequence: ${consequence}. Reversibility: ${reversibility}.`;
+  const target = revocationTarget ? ` The owner-resolved target is standing grant ${revocationTarget.id}.` : '';
+  return `Approving will allow ${action} for ${subject}, visible to ${audience}.${target} Consequence: ${consequence}. Reversibility: ${reversibility}.`;
+}
+
+function resolveRevocationTarget(current: FactSnapshot, action: string, artifact: Hash): AuthorityRequestView['revocationTarget'] {
+  if (action !== 'revoke-standing') return null;
+  const matches = current.entries.filter(row => row.taint.length === 0 && row.conflicts.length === 0)
+    .flatMap(row => row.historical.map(record => ({ record, status: row })))
+    .filter(({ record }) => record.view.type === 'StandingGrant' && take(canonical(record.view)).hash === artifact)
+    .sort((left, right) => left.status.fact.id.localeCompare(right.status.fact.id));
+  const distinct = [...new Map(matches.map(({ record, status }) => {
+    const grant = record.view as { readonly id: string };
+    return [`${grant.id}:${artifact}`, { id: grant.id, digest: artifact, fact: status.fact.id }];
+  })).values()];
+  requireOperator(distinct.length === 1,
+    'P11-NF-08/17/18/21: revocation artifact does not resolve one exact signed-history grant target', 'standing');
+  return Object.freeze(distinct[0]!);
 }
 
 function requestView(composition: OperatorSurfaceComposition, reference: string): AuthorityRequestView {
@@ -123,6 +140,7 @@ function requestView(composition: OperatorSurfaceComposition, reference: string)
   requireOperator(calculated === requestDigest, 'P11-NF-08: durable request digest differs from its signed subject', 'standing');
   const expiresAt = integer(body.expiresAt, 'expiresAt');
   const action = text(body.action, 'action'), audience = text(body.audience, 'audience');
+  const revocationTarget = resolveRevocationTarget(current, action, artifact);
   const consequence = text(body.consequence, 'consequence'), reversibility = text(body.reversibility, 'reversibility');
   const assertedRecurrence = strings(body.recurrence, 'recurrence');
   const recurrenceResolution = resolveAuthorizationRequestRecurrence(current, resolved.status);
@@ -135,8 +153,10 @@ function requestView(composition: OperatorSurfaceComposition, reference: string)
     consequence, reversibility, blockedWork: presentText(body.blockedWork, 'blockedWork'), recurrence,
     standingGrantCandidate: assertedRecurrence.length && recurrence.length
       ? Object.freeze({ actions: Object.freeze([action]), scope, expiresAt: grantExpiresAt }) : null,
+    revocationTarget,
     currentGeneration: composition.history.generation(), completeness: resolved.completeness, missing: resolved.missing,
-    primaryActions: Object.freeze(['approve', 'decline'] as const), plainLanguageEffect: effectLanguage(action, scope, audience, consequence, reversibility),
+    primaryActions: Object.freeze(['approve', 'decline'] as const),
+    plainLanguageEffect: effectLanguage(action, scope, audience, consequence, reversibility, revocationTarget),
     requesterText: Object.freeze({ label: 'UNTRUSTED REQUESTER TEXT' as const, text: presentText(body.requesterProse, 'requesterProse') }),
     fieldsEditable: false as const, phoneCapable: true as const });
 }

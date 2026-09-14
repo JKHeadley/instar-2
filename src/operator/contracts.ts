@@ -70,6 +70,7 @@ export interface AuthorityRequestView {
   readonly consequence: string; readonly reversibility: string; readonly blockedWork: string;
   readonly recurrence: readonly string[]; readonly currentGeneration: RegisterGenerationReference;
   readonly standingGrantCandidate: Readonly<{ actions: readonly string[]; scope: Scope; expiresAt: number }> | null;
+  readonly revocationTarget: Readonly<{ id: string; digest: Hash; fact: string }> | null;
   readonly completeness: 'complete' | 'partial'; readonly missing: readonly string[];
   readonly primaryActions: readonly ['approve', 'decline'];
   readonly plainLanguageEffect: string;

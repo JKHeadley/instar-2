@@ -17,6 +17,7 @@ const manifest = { schemaVersion: 1, owner: 'part-four',
   fixtures: [
     { id: 'P4-NF-06', stage: 'build', artifact: artifact('tests/intake/governance.test.ts') },
     ...Array.from({ length: 9 }, (_, i) => ({ id: `P4-VA-${String(i + 1).padStart(2, '0')}`, stage: 'build', artifact: artifact('tests/intake/verified-act.test.ts') })),
+    { id: 'P4-VA-10', stage: 'build', artifact: artifact('tests/intake/round20-contract-fixtures.test.ts') },
   ],
   probes: [], decoders, documents: [{ id: 'intake.contract', artifact: artifact('docs/08-the-intake.md') }] };
 mkdirSync('register-source/owner-references', { recursive: true });

@@ -81,6 +81,14 @@
         "path": "tests/intake/verified-act.test.ts",
         "hash": "sha256:7834f0e7cbab4128cb9d1142bb3df3ce1ff354929864270ed0bc11217e94be24"
       }
+    },
+    {
+      "id": "P4-VA-10",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/round20-contract-fixtures.test.ts",
+        "hash": "sha256:719ff0e52796cf32502d6794cc059bcac9c7e2f8783a6251ac761ecdb4545d6e"
+      }
     }
   ],
   "probes": [],
@@ -93,7 +101,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:5cac929969734b9c3062542cc9a8f2a0ddf32867696cb28f88f210d21d043abe"
+        "hash": "sha256:07aa39a6e79caf4b82276da92a01ab3bde8b67d1482f45d86cbd43ea0fe40480"
       }
     },
     {
@@ -104,7 +112,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:5cac929969734b9c3062542cc9a8f2a0ddf32867696cb28f88f210d21d043abe"
+        "hash": "sha256:07aa39a6e79caf4b82276da92a01ab3bde8b67d1482f45d86cbd43ea0fe40480"
       }
     },
     {
@@ -115,7 +123,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:5cac929969734b9c3062542cc9a8f2a0ddf32867696cb28f88f210d21d043abe"
+        "hash": "sha256:07aa39a6e79caf4b82276da92a01ab3bde8b67d1482f45d86cbd43ea0fe40480"
       }
     },
     {
@@ -126,7 +134,7 @@
       },
       "artifact": {
         "path": "src/intake/records.ts",
-        "hash": "sha256:5cac929969734b9c3062542cc9a8f2a0ddf32867696cb28f88f210d21d043abe"
+        "hash": "sha256:07aa39a6e79caf4b82276da92a01ab3bde8b67d1482f45d86cbd43ea0fe40480"
       }
     },
     {

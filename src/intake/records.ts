@@ -358,8 +358,9 @@ export function resolveVerifiedActRecord(raw: Json,c: FactContext,now: Clock,exp
         'verified act: free-form grant standing/actions are forbidden','standing');
     } else {
       const values=historyValues(snapshot),target=historical(values,'StandingGrant',text(a.grantId,'revocation.grantId'));
-      requireIntake(action==='revoke-standing'&&object(a.by!).id===operator&&target&&same(target.view.scope,scopeValue),
-        'verified act: Revocation target/operator/scope differs from request','standing');
+      requireIntake(action==='revoke-standing'&&object(a.by!).id===operator&&target&&same(target.view.scope,scopeValue)
+        &&take(canonical(target.view)).hash===artifact,
+      'verified act: Revocation exact target/operator/scope differs from request artifact','standing');
     }
   }
   const disposition=emergency?'emergency-stopped':decision==='decline'?'declined':'approved';

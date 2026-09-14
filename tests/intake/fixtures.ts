@@ -88,6 +88,7 @@ export function intakeFixture(options: { directory?: string } = {}) {
   const { input: registerInput, governance } = govern();
   const current = value(generationOf(governance.register, r.context));
   const generation: RegisterGenerationReference = { owner: 'part-three', name: 'RegisterGeneration', id: current.id };
+  Object.assign(context, { decode: { ...context.decode, register: { ...context.decode.register, generation } } });
   const auth = f.proof({ id: 'alice', kind: 'person' }, { id: 'alice', kind: 'person' }, 'identity', true);
   function syncCaptures() {
     for (const [reference, bytes] of Object.entries(f.captures)) {

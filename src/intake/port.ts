@@ -178,6 +178,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
           const v=object(row); return v.stimulusType==='operator-act'&&v.class==='verified';
         }),'verified act: surface adapter is not registered for verified operator acts','standing');
         const record=resolved.record;
+        requireIntake(resolved.emergency||c.decode.register.generation.id===registerGeneration.id,
+          'verified act: live decoder and loaded register generations differ','stale-base');
         const fact=appendVerifiedAct(record,at);
         return { kind: record.disposition,fact: reference(fact) };
       });
