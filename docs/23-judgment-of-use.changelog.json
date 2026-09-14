@@ -1,5 +1,31 @@
 [
   {
+    "revision": 5,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Part Twenty-Three repair round 4; fifth independent re-review at d542e73a40cc0982a1bb48274dddd44601c3ffef"
+    },
+    "changes": [
+      {
+        "what": "A01: Inventory decision-journal drift/alignment and intent CLI consumers, name replacement owners and retirement gates, and add NF-21h population/update acceptance cases.",
+        "why": "Preserve source evidence, cohort/exclusion accounting and N/A as not assessed; keep the legacy weighted score a heuristic, never a wisdom Grade.",
+        "ref": "docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md"
+      },
+      {
+        "what": "A02: Inventory the proposed-action tester and optional semantic judge, name judgment/policy replacements and retirement gates, and add NF-21i acceptance cases.",
+        "why": "Retain separate findings, method, uncertainty and enabled/disabled/unavailable review evidence while preserving the advisory boundary and refusing permission or live-holder claims from heuristic misses or canGovern.",
+        "ref": "docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md"
+      },
+      {
+        "what": "A03: Define shadow evaluation at its first local-trial use and in the terms table, and identify replay as this mode.",
+        "why": "Make the no-application boundary explicit and link the applicable input, recording and dispatch restrictions.",
+        "ref": "docs/23-judgment-of-use/05-local-wisdom-fleet-candidates-and-pillar-placement.md; docs/23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md; docs/23-judgment-of-use.md"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-09-14",
     "status": "draft",

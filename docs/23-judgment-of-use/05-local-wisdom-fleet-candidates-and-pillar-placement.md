@@ -15,7 +15,7 @@ rules 57/58/85/108; [R5 §5](research/05-proposals-and-evaluation.md).
 |---|---|
 | Observed candidate | Durable decision/feedback evidence through Nine; retain negative inspections and duplicate-linked reports |
 | Scoped trial proposal | Current permitted evidence, bounded behavior and rollback; placement fits; contrary cases assessed |
-| Local trial | Existing authority only; shadow evaluation or authorized local preference application; no widening and no experimental harm for data collection |
+| Local trial | Existing authority only; shadow evaluation (evaluate proposed choices without applying them to the real task) or authorized local preference application; no widening and no experimental harm for data collection. Shadow evaluation follows sections [2](02-sensitivity-attached-to-every-learned-fact.md) and [3](03-the-recorded-use-or-withhold-judgment.md) for permitted inputs and recorded judgments, and [8.2](08-the-pilot-and-preregistered-evaluation.md#82-execution-and-separation-of-claims) for replay input separation and structural dispatch restrictions (NF-17a) |
 | Supported local learning | Frozen affected-class bars and required later evidence pass; retain domain limits, unknowns and counterexamples |
 | Suspended / rejected | Contradiction, refutation, revoked support, missing required evidence or failed evaluation disables affected current use; preserve originals and owned repair |
 | Commons candidate | Separately permitted export projection of a local proposal; no automatic fleet promotion |

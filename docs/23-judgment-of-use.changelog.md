@@ -4,6 +4,12 @@ _Generated from `23-judgment-of-use.changelog.json` by `scripts/render-changelog
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-09-14 · draft — Part Twenty-Three repair round 4; fifth independent re-review at d542e73a40cc0982a1bb48274dddd44601c3ffef
+
+- **A01: Inventory decision-journal drift/alignment and intent CLI consumers, name replacement owners and retirement gates, and add NF-21h population/update acceptance cases.** — Preserve source evidence, cohort/exclusion accounting and N/A as not assessed; keep the legacy weighted score a heuristic, never a wisdom Grade. _(docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md)_
+- **A02: Inventory the proposed-action tester and optional semantic judge, name judgment/policy replacements and retirement gates, and add NF-21i acceptance cases.** — Retain separate findings, method, uncertainty and enabled/disabled/unavailable review evidence while preserving the advisory boundary and refusing permission or live-holder claims from heuristic misses or canGovern. _(docs/23-judgment-of-use/09-what-instar-1-x-does-today-and-what-carries-forward.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md)_
+- **A03: Define shadow evaluation at its first local-trial use and in the terms table, and identify replay as this mode.** — Make the no-application boundary explicit and link the applicable input, recording and dispatch restrictions. _(docs/23-judgment-of-use/05-local-wisdom-fleet-candidates-and-pillar-placement.md; docs/23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md; docs/23-judgment-of-use.md)_
+
 ## Revision 4 · 2026-09-14 · draft — Part Twenty-Three repair round 3; fourth independent re-review at d063624d8ca89c405cc9eeab152a082c5f38dd27
 
 - **F-01: Split NF-17 into local-isolation and commons-export/receipt-recovery arms; bind fixtures, activation and complete dependency closures to the selected arm.** — Keep FX-21 and the commons receipt crash cut under C and all row 121 conditions while local A/B acceptance requires only NF-17a. _(docs/23-judgment-of-use/10-non-functional-checks-and-activation.md; docs/23-judgment-of-use/11-negative-contract-fixtures.md; docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md)_

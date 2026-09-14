@@ -88,6 +88,8 @@ and separately granted resources; they do not set fleet or disclosure policy.
 
 ### 8.2 Execution and separation of claims
 **Rule — replay cannot dispatch an effect.** **Checks: P23-NF-15/16/17a**.
+This replay is section 5's shadow evaluation: proposed choices are evaluated and
+recorded under sections 2–3 without applying them to the real task.
 Run A/B/C once on the same permitted decision-time inputs per primary occasion.
 The replay environment has no production dispatch capability, regardless of
 model instruction. Future messages, actual outcomes and labels reach only the

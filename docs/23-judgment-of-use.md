@@ -68,6 +68,7 @@ at first use; they are not new constitutional types or landed registry entries.
 |---|---|
 | Stratification / stratum | Grouping observations / one group, so overall success cannot hide a weak group; [section 2](23-judgment-of-use/02-sensitivity-attached-to-every-learned-fact.md) |
 | Uncertainty calibration | Whether stated confidence matches observed support; [section 6](23-judgment-of-use/06-grade-the-grader-and-resist-approval-optimization.md) |
+| Shadow evaluation | Evaluate proposed choices without applying them to the real task; [section 5](23-judgment-of-use/05-local-wisdom-fleet-candidates-and-pillar-placement.md) links the permitted-input, recording and dispatch restrictions, and [section 8.2](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#82-execution-and-separation-of-claims) applies this mode to replay |
 | Paired resampling | Draw whole matched A/B incident groups repeatedly to estimate uncertainty; [section 8.3](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#83-endpoints-and-numeric-thresholds) |
 | Confidence bound | A one-sided sampling-based limit at a stated coverage level; [section 8.3](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#83-endpoints-and-numeric-thresholds) |
 | Exact binomial upper bound | Conservative event-rate ceiling for independent yes/no opportunities, with its exact equation; [section 8.3](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#83-endpoints-and-numeric-thresholds) |
