@@ -17,8 +17,10 @@ function protectionFixture(change = {}) {
   value(verification.runtime.record('VerificationPlan', plan));
   value(verification.runtime.record('ProbeRecord', probe));
   operator.setClock(21);
-  const receipt = { operation: probe.operation, path: probe.subject, requestDigest: operator.f.authorization.requestDigest,
-    base: 'base:1', proposedHash: plan.bar.subjectDigest, authorization: 'authorization:1',
+  const subject = { operation: probe.operation, path: probe.subject, base: 'base:1',
+    proposedHash: change.proposedHash ?? plan.bar.subjectDigest,
+    authorization: change.authorization ?? 'authorization:1' };
+  const receipt = { ...subject, requestDigest: value(canonical(subject)).hash,
     priorHash: plan.bar.subjectDigest, effectiveHash: plan.bar.subjectDigest, disposition: 'committed',
     attestation: 'broker-receipt', ...change };
   const verificationPort = { ...verification.runtime, probeBound: (fact, at) => {
