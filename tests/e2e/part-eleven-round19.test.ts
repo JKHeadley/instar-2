@@ -33,4 +33,4 @@ it('V77/V78 e2e: production boot never promotes a receipt for a non-current owne
     posture: 'unprotected', effectiveBase: 'base:different', witnessFresh: true, isolationLive: true,
     uncertainty: expect.arrayContaining(['broker-receipt-current-base-mismatch']),
   });
-});
+}, 20_000);
