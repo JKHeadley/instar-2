@@ -10,94 +10,6 @@ release. A recommendation is not an operator decision.
 
 Basis: Purpose's gap rule, authority constraint and “Who decides what.”
 
-**Value — OD-01: how to develop better use of knowledge.**
-
-Decision: Develop contextual assessment inside the existing judgment doorway.
-Compare it with a simpler fact-card approach and an independent challenge arm.
-
-Disposition: Agent-owned engineering default; accepted design direction, with implementation and evaluation still pending.
-The choice of algorithm is an agent-owned hypothesis, not dictated uniquely by a
-pillar. It can lose to the simpler approach if it does not improve measured results.
-
-Basis: Purpose's wisdom Value and “Who decides what”; rules 57/58/65/95;
-accepted R4/R5 recommendation; sections 3/6/8.
-
-**Value — OD-02: using private knowledge without revealing it.**
-
-Decision: Use it privately only when that use is permitted. Share it only when
-sharing is separately permitted. If permission is unclear, keep it private and
-unused. Consider what the action itself could reveal, not only its wording.
-
-Disposition: Decided by the purpose — least revelation and the authority constraint. Where the consumer cannot enforce
-the allowed use, that mode stays inactive. An undefined tolerance for what others
-might infer goes to GAP-02; it is not guessed by the model.
-
-Basis: Purpose's trust and authority constraint; rules 57/86/95;
-Part 21 §5 and §15 OD-02 as cited in section 1; sections 2/3.
-
-**Value — OD-03: whose feedback can improve the judgment.**
-
-Decision: Verify who gave the feedback and what they are entitled to assess.
-Keep evidence from people outside that scope for investigation. Grade the choice,
-its reason and the eventual outcome separately, with each affected person visible.
-
-Disposition: Decided by the purpose — wisdom, verified standing and separate evidence under rules 28/29/108. Neither operator praise nor model agreement
-makes a false premise true or cancels someone else's harm.
-
-Basis: Purpose's wisdom Value; rules 28/29/58/85/108; section 4.
-
-**Value — OD-04: how long to watch an outcome.**
-
-Decision: Begin with an immediate review, then reviews after seven and thirty days.
-Watch longer when a known promise or consequence falls later. Reopen the judgment
-when supported new evidence changes its basis.
-
-Disposition: Agent-owned engineering default for timing, bounded by preserving commitments and
-honest outcome evidence. The timings may change by measurement before a study is
-sealed. Later evidence matters because of what it shows, not simply its date.
-
-Basis: Purpose's wisdom and no-silent-loss constraint, “Who decides what”;
-rules 24/58/108; sections 4/8.
-
-**Value — OD-05: how a local lesson becomes shared learning.**
-
-Decision: Let local preferences improve local help within the constitution.
-Offer eligible lessons to the commons with evidence, limits and a place beneath
-a pillar. The commons decides fleet admission, including independent support and
-human approval. A contradictory lesson is rejected however many people favor it.
-
-Disposition: Decided by the purpose — sovereignty, alignment and the authority constraint. Fleet thresholds and
-privacy settings stay with Part 22; there is no Part 23 vote count to approve.
-
-Basis: Purpose's sovereignty, alignment and authority constraint; rules 57/86/108;
-accepted local/fleet division; sections 5/12.
-
-**Value — OD-06: how much extra review to add.**
-
-Decision: Begin with bounded assessment inside the current decision and independent
-review afterward. Test extra challenge offline or in the background. Ordinary
-conversation gains no mandatory semantic blocking reviewer.
-
-Disposition: Agent-owned engineering default for the trial posture, bounded by current permission, reachable
-help and finite resources. A future live exception must be precisely approved
-through its governing owner; this decision supplies none.
-
-Basis: Purpose's authority constraint and “Who decides what”; rules 57/65/86/95;
-sections 6/8/10. Current authorized study spend is US$0.
-
-**Value — OD-07: what counts as evidence of improvement.**
-
-Decision: Use the frozen real-case comparison, independent labels, later observation,
-separate harm and reason grades, and full failure accounting in the pilot.
-Do not claim wisdom from agreeable wording or an average approval score.
-
-Disposition: Agent-owned engineering default for experimental settings, bounded by truthful measurement.
-Sample counts, thresholds, resource caps and audit depth are specified in sections
-6/8. No human comparison or broader-than-sampled wisdom claim is authorized.
-
-Basis: Purpose's wisdom and evidence constraints, “Who decides what”;
-rules 24/58/65/108; sections 6–8.
-
 **Value — when permitted choices hurt different people.**
 
 Question: When every permitted choice causes serious harm to someone, what should
@@ -165,7 +77,7 @@ permission from the person entitled to control the information; the operator can
 (“when permitted choices hurt different people,” P23-GAP-01) and OD-09
 (“what private use may let others infer,” P23-GAP-02). OD-01/04/06/07 are
 agent-owned engineering defaults; OD-02/03/05 are decided by the purpose and
-name the deciding text above. OD-08/09 are operator policy per deployment:
+name the deciding text below. OD-08/09 are operator policy per deployment:
 pending P-18/P-19 in the policy register record their defaults, scope and adoption
 status. Neither is a purpose amendment. Only a general principle unresolved by
 all three dispositions becomes a candidate amendment, never an admitted lesson.
@@ -180,10 +92,95 @@ Basis: OD-08 / P23-GAP-01 — purpose’s wisdom Value and gap check leave the s
 
 Basis: OD-09 / P23-GAP-02 — [purpose’s least revelation](../00-the-purpose.md#the-purpose) and authority constraint decide the boundary; deployment policy P-19 records source/use/audience settings beneath it; rules 57/86/95, Part 21 §5, R4 §7 GAP-02 and sections 1/3/11 supply technical traceability.
 
-Questions for the operator — judgment questions:
+**Decided dispositions, for traceability**
 
-1. What sets the priority when every permitted choice harms someone?
-2. What limit should private-use permission place on what others can infer?
+**OD-01: how to develop better use of knowledge.**
+
+Decision: Develop contextual assessment inside the existing judgment doorway.
+Compare it with a simpler fact-card approach and an independent challenge arm.
+
+Disposition: Agent-owned engineering default; accepted design direction, with implementation and evaluation still pending.
+The choice of algorithm is an agent-owned hypothesis, not dictated uniquely by a
+pillar. It can lose to the simpler approach if it does not improve measured results.
+
+Basis: Purpose's wisdom Value and “Who decides what”; rules 57/58/65/95;
+accepted R4/R5 recommendation; sections 3/6/8.
+
+**OD-02: using private knowledge without revealing it.**
+
+Decision: Use it privately only when that use is permitted. Share it only when
+sharing is separately permitted. If permission is unclear, keep it private and
+unused. Consider what the action itself could reveal, not only its wording.
+
+Disposition: Decided by the purpose — least revelation and the authority constraint. Where the consumer cannot enforce
+the allowed use, that mode stays inactive. An undefined tolerance for what others
+might infer goes to GAP-02; it is not guessed by the model.
+
+Basis: Purpose's trust and authority constraint; rules 57/86/95;
+Part 21 §5 and §15 OD-02 as cited in section 1; sections 2/3.
+
+**OD-03: whose feedback can improve the judgment.**
+
+Decision: Verify who gave the feedback and what they are entitled to assess.
+Keep evidence from people outside that scope for investigation. Grade the choice,
+its reason and the eventual outcome separately, with each affected person visible.
+
+Disposition: Decided by the purpose — wisdom, verified standing and separate evidence under rules 28/29/108. Neither operator praise nor model agreement
+makes a false premise true or cancels someone else's harm.
+
+Basis: Purpose's wisdom Value; rules 28/29/58/85/108; section 4.
+
+**OD-04: how long to watch an outcome.**
+
+Decision: Begin with an immediate review, then reviews after seven and thirty days.
+Watch longer when a known promise or consequence falls later. Reopen the judgment
+when supported new evidence changes its basis.
+
+Disposition: Agent-owned engineering default for timing, bounded by preserving commitments and
+honest outcome evidence. The timings may change by measurement before a study is
+sealed. Later evidence matters because of what it shows, not simply its date.
+
+Basis: Purpose's wisdom and no-silent-loss constraint, “Who decides what”;
+rules 24/58/108; sections 4/8.
+
+**OD-05: how a local lesson becomes shared learning.**
+
+Decision: Let local preferences improve local help within the constitution.
+Offer eligible lessons to the commons with evidence, limits and a place beneath
+a pillar. The commons decides fleet admission, including independent support and
+human approval. A contradictory lesson is rejected however many people favor it.
+
+Disposition: Decided by the purpose — sovereignty, alignment and the authority constraint. Fleet thresholds and
+privacy settings stay with Part 22; there is no Part 23 vote count to approve.
+
+Basis: Purpose's sovereignty, alignment and authority constraint; rules 57/86/108;
+accepted local/fleet division; sections 5/12.
+
+**OD-06: how much extra review to add.**
+
+Decision: Begin with bounded assessment inside the current decision and independent
+review afterward. Test extra challenge offline or in the background. Ordinary
+conversation gains no mandatory semantic blocking reviewer.
+
+Disposition: Agent-owned engineering default for the trial posture, bounded by current permission, reachable
+help and finite resources. A future live exception must be precisely approved
+through its governing owner; this decision supplies none.
+
+Basis: Purpose's authority constraint and “Who decides what”; rules 57/65/86/95;
+sections 6/8/10. Current authorized study spend is US$0.
+
+**OD-07: what counts as evidence of improvement.**
+
+Decision: Use the frozen real-case comparison, independent labels, later observation,
+separate harm and reason grades, and full failure accounting in the pilot.
+Do not claim wisdom from agreeable wording or an average approval score.
+
+Disposition: Agent-owned engineering default for experimental settings, bounded by truthful measurement.
+Sample counts, thresholds, resource caps and audit depth are specified in sections
+6/8. No human comparison or broader-than-sampled wisdom claim is authorized.
+
+Basis: Purpose's wisdom and evidence constraints, “Who decides what”;
+rules 24/58/65/108; sections 6–8.
 
 **Value — honest limits.** This design incorporates completed source and literature
 research, an accepted direction, a specified evaluation and filed seams. It has no

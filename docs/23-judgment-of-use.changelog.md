@@ -4,6 +4,11 @@ _Generated from `23-judgment-of-use.changelog.json` by `scripts/render-changelog
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 3 · 2026-09-14 · draft — Part Twenty-Three repair round 2; third independent re-review at 7724cd6e, A01 and A02
+
+- **A01: Keep only the two open policy questions as operator cards; move all seven decided dispositions and their citations into closing-Rule traceability.** — Separate operator choices from settled purpose and engineering dispositions while preserving their text and purpose-tier labels. _(docs/23-judgment-of-use/13-operator-decisions-and-honest-limits.md)_
+- **A02: Define recovery hysteresis and coverage debt at the measurement prerequisite and add both to the index terms table.** — Make the required measurement evidence understandable at first use while retaining the measurement owner’s meanings. _(docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md; docs/23-judgment-of-use.md)_
+
 ## Revision 2 · 2026-09-14 · draft — Part Twenty-Three repair round 1; independent design verdict at 7b717740, JU-01 through JU-06
 
 - **JU-01: Correct constitutional Decision ownership to One; Seven imports and records it.** — Prevent a specialization from bypassing its real type and decoder owner. _(docs/23-judgment-of-use/01-ownership-and-boundaries.md)_

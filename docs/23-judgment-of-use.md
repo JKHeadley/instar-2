@@ -75,6 +75,8 @@ at first use; they are not new constitutional types or landed registry entries.
 | Nearest-rank percentile / p95 | Sort observations; p95 is the value at one-based position `ceil(0.95*n)`; [section 8.2](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#82-execution-and-separation-of-claims) |
 | Context delta | The changes in the current use context (audience, permissions, recipients, facts in play) since a card's assessment; [section 8](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md) |
 | Failure-detection rate | Correctly detected reference-labeled failures divided by all reference-labeled failures in the detection sample; a detection measure, distinct from information sensitivity; [section 8.3](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md) |
+| Recovery hysteresis | Different opening and recovery thresholds plus consecutive recovery windows before a burn episode closes; [section 12](23-judgment-of-use/12-inherited-duties-and-seam-disposition.md), from the [measurement owner’s vocabulary](20-measurement-ledgers/02-vocabulary-and-the-registered-measurement-plane.md) |
+| Coverage debt | The count and identities of required observations that are missing or unusable; [section 12](23-judgment-of-use/12-inherited-duties-and-seam-disposition.md), from the [measurement owner’s vocabulary](20-measurement-ledgers/02-vocabulary-and-the-registered-measurement-plane.md) |
 
 Basis: Purpose’s checkability and evidence constraints; rules 49/65/108; the
 linked sections own the exact experimental definitions.

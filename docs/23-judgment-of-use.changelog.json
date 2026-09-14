@@ -1,5 +1,26 @@
 [
   {
+    "revision": 3,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Part Twenty-Three repair round 2; third independent re-review at 7724cd6e, A01 and A02"
+    },
+    "changes": [
+      {
+        "what": "A01: Keep only the two open policy questions as operator cards; move all seven decided dispositions and their citations into closing-Rule traceability.",
+        "why": "Separate operator choices from settled purpose and engineering dispositions while preserving their text and purpose-tier labels.",
+        "ref": "docs/23-judgment-of-use/13-operator-decisions-and-honest-limits.md"
+      },
+      {
+        "what": "A02: Define recovery hysteresis and coverage debt at the measurement prerequisite and add both to the index terms table.",
+        "why": "Make the required measurement evidence understandable at first use while retaining the measurement owner’s meanings.",
+        "ref": "docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md; docs/23-judgment-of-use.md"
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-14",
     "status": "draft",

@@ -64,7 +64,10 @@ Basis: Purpose's current-document and evidence constraints; rules 33/49/69/95.
 M retains the full row-101 scope: A2a resolves single-store current quantity
 witnesses, causal refinements, later/concurrent or unavailable evidence, registered
 aggregation from one current owner-issued Two snapshot, burn population/baseline/
-amount/recovery-hysteresis/coverage-debt checks, signed-history attribution,
+amount checks, recovery hysteresis (different opening and recovery thresholds
+plus consecutive recovery windows before a burn episode closes), coverage debt
+(the count and identities of required observations that are missing or unusable),
+signed-history attribution,
 source binding, bounded history, deterministic rebuild, retention/privacy/caches,
 and closed local-fold projection construction. A2b separately admits peers and
 unions current histories/frontiers, resolves cross-replica heads/corrections,
