@@ -973,15 +973,14 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     return freeze(floors);
   };
 
-  const retainedPoisonCandidates = (handle: HarnessRuntimeHandle): readonly HarnessRuntimeEvent[] => {
+  const retainedPoisonCandidates = (): readonly HarnessRuntimeEvent[] => {
     const raw = validationFloors.loadPoisonCandidates();
     if (!Array.isArray(raw)) throw new Error('retained poison candidates are unavailable');
     const candidates = raw.map(poisonCandidateFor);
     if (new Set(candidates.map(event => event.id)).size !== candidates.length) {
       throw new Error('retained poison candidates contain duplicate identities');
     }
-    return freeze(candidates.filter(event => sameHandle(event, handle)
-      && event.kind === 'diagnostic' && event.diagnosticCode.startsWith('transcript-poison:')));
+    return freeze(candidates);
   };
 
   const appendValidationFloorDurably = (floor: HarnessValidationFloor): void => {
@@ -1015,6 +1014,14 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     && floor.launch === event.launch && floor.incarnation === event.incarnation
     && floor.processIdentity === event.processIdentity && floor.subject === exactSubject(event)
     && floor.confirmedAt >= event.observedAt;
+
+  const floorMatchesHandle = (
+    floor: HarnessValidationFloor,
+    handle: HarnessRuntimeHandle,
+  ): boolean => floor.adapter === handle.harness && floor.artifact === handle.artifactDigest
+    && floor.platform === handle.platform && floor.machine === handle.machine
+    && floor.launch === handle.launch && floor.incarnation === handle.incarnation
+    && floor.processIdentity === handle.processIdentity;
 
   const sameImmutableFloor = (
     first: HarnessValidationFloor,
@@ -1100,13 +1107,25 @@ export function createHarnessEvidenceHolder(input: Readonly<{
   ): Readonly<{ disposition: 'poisoned' | 'unknown'; evidence: MaterializedEvidence }> | null => {
     if (!input.owners.verification) return null;
     const allFloors = retainedPoisonFloors();
+    const allCandidates = retainedPoisonCandidates();
     const retainedPoison = analysis.decisionSet.filter(row => row.event?.kind === 'diagnostic'
       && row.event.diagnosticCode.startsWith('transcript-poison:'));
+    const handleSubject = bytes([handle.harness, handle.artifactDigest, handle.platform, handle.machine,
+      handle.launch, handle.run, handle.step, handle.input, handle.incarnation,
+      handle.processIdentity]) ?? '';
     for (const floor of allFloors) {
       const event = analysis.all.find(candidate => candidate.id === floor.event
         || harnessAdapterIdentity(candidate).canonicalHash === floor.eventHash
-        || floor.id === `validation-floor:${harnessAdapterIdentity(candidate).canonicalHash}`);
-      if (!event) continue;
+        || floor.id === `validation-floor:${harnessAdapterIdentity(candidate).canonicalHash}`)
+        ?? allCandidates.find(candidate => candidate.id === floor.event
+          || harnessAdapterIdentity(candidate).canonicalHash === floor.eventHash
+          || floor.id === `validation-floor:${harnessAdapterIdentity(candidate).canonicalHash}`);
+      if (!event) {
+        if (floor.subject === handleSubject && !floorMatchesHandle(floor, handle)) {
+          throw new Error('retained validation floor subject disagrees with its decomposed runtime identity');
+        }
+        continue;
+      }
       const eventHash = harnessAdapterIdentity(event).canonicalHash;
       if (floor.event !== event.id || floor.eventHash !== eventHash
         || floor.id !== `validation-floor:${eventHash}`) {
@@ -1116,10 +1135,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         throw new Error('retained validation floor disagrees with its immutable runtime event');
       }
     }
-    const floors = allFloors.filter(floor => floor.adapter === handle.harness
-      && floor.artifact === handle.artifactDigest && floor.platform === handle.platform
-      && floor.machine === handle.machine && floor.launch === handle.launch
-      && floor.incarnation === handle.incarnation && floor.processIdentity === handle.processIdentity);
+    const floors = allFloors.filter(floor => floorMatchesHandle(floor, handle));
     if (floors.some(floor => floor.confirmedAt > now)) {
       throw new Error('retained validation floor confirmation is future-dated');
     }
@@ -1160,7 +1176,8 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     const omitted = analysis.decisionSet.filter(row => !row.event && row.phase === 'pause-observed');
     if (omitted.length === 0) return null;
     try {
-      const candidates = retainedPoisonCandidates(handle);
+      const candidates = allCandidates.filter(event => sameHandle(event, handle)
+        && event.kind === 'diagnostic' && event.diagnosticCode.startsWith('transcript-poison:'));
       for (const evidence of omitted.filter(row => row.ownerCurrent && row.availability === 'current')) {
         const candidate = candidates.find(event => event.sourceEvidence.length === 1
           && event.sourceEvidence[0] === evidence.id);
