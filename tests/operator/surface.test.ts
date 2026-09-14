@@ -5,6 +5,7 @@ import type { FactSnapshot } from '../../src/facts/index.js';
 import { verificationInput } from '../verification/fixture.js';
 import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
 import { probeBoundToCurrentEvidence } from '../../src/verification/index.js';
+import { canonical } from '../../src/index.js';
 import { value } from '../fixtures.js';
 import { operatorFixture } from './fixture.js';
 
@@ -156,9 +157,12 @@ function independentlyEvaluatedProtection(unwitnessed = false, staleGeneration =
   x.setClock(21);
   const owner = value(verification.runtime.posture(plan.id, verification.clock(21)));
   const witnessedDigest = plan.bar.subjectDigest as `sha256:${string}`;
+  const requestDigest = value(canonical({ operation: probe.operation,
+    path: wrongReceiptPath ? 'other-path' : probe.subject, base: 'base:1', proposedHash: witnessedDigest,
+    authorization: 'authorization:1' })).hash;
   const broker = { ...x.composition.broker, posture: () => x.f.success('protected' as const), query: () => x.f.success({
     operation: probe.operation, path: wrongReceiptPath ? 'other-path' : probe.subject,
-    requestDigest: x.f.authorization.requestDigest, base: 'base:1', proposedHash: witnessedDigest,
+    requestDigest, base: 'base:1', proposedHash: witnessedDigest,
     authorization: 'authorization:1', priorHash: witnessedDigest, effectiveHash: witnessedDigest,
     disposition: 'committed' as const, attestation: 'broker-receipt',
   }) };
@@ -211,8 +215,10 @@ it('P11-NF-10 P11-NF-13 an unwitnessed operation cannot borrow a healthy result 
     return verification.success(probeBoundToCurrentEvidence(selected.record, probeRecord, at, current.evidence,
       current.decode, current.facts, verification.host.boundary));
   } };
+  const requestDigest = value(canonical({ operation: earlier.operation, path: earlier.subject, base: 'base:1',
+    proposedHash: x.f.artifact, authorization: 'authorization:1' })).hash;
   const broker = { ...x.composition.broker, posture: () => x.f.success('protected' as const), query: () => x.f.success({
-    operation: earlier.operation, path: earlier.subject, requestDigest: x.f.authorization.requestDigest, base: 'base:1',
+    operation: earlier.operation, path: earlier.subject, requestDigest, base: 'base:1',
     proposedHash: x.f.artifact, authorization: 'authorization:1', priorHash: x.f.artifact, effectiveHash: x.f.artifact,
     disposition: 'committed' as const, attestation: 'broker-receipt',
   }) };

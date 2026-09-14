@@ -252,6 +252,9 @@ function protectionView(composition: OperatorSurfaceComposition, operation: stri
       .every(value => typeof value === 'string' && value.trim().length > 0)
     && [receipt.requestDigest, receipt.priorHash, receipt.proposedHash, receipt.effectiveHash]
       .every(value => typeof value === 'string' && /^sha256:[a-f0-9]{64}$/.test(value))
+    && receiptMatches
+    && receipt.requestDigest === take(canonical({ operation: receipt.operation, path: receipt.path,
+      base: receipt.base, proposedHash: receipt.proposedHash, authorization: receipt.authorization })).hash
     && (receipt.disposition !== 'committed' || receipt.effectiveHash === receipt.proposedHash);
   if (receipt && !receiptComplete) uncertainty.push('broker-receipt-incomplete-or-inconsistent');
   const plan = probe ? rows.find(row => row.record.type === 'VerificationPlan'

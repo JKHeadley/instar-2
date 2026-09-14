@@ -138,12 +138,16 @@ function equalBudgets(left: AssemblyProductionBindingSet['minimalResponder']['bu
 }
 
 function validateDependencyHandle(name: AssemblyLiveDependencyHandle['name'], resolution: AssemblyResolvedProductionBinding,
-  handle: AssemblyLiveDependencyHandle): AssemblyLiveDependencyHandle {
+  handle: AssemblyLiveDependencyHandle, currentGeneration: string | null): AssemblyLiveDependencyHandle {
   ensure(handle.name === name && handle.reference === resolution.fact.id && handle.current === true
     && handle.provider.trim().length > 0, `live dependency handle differs or is stale: ${name}`);
   switch (handle.name) {
     case 'local-facts': ensure(handle.durability === 'local-durable', 'minimal fact segment is not local-durable'); break;
-    case 'register': ensure(handle.generation.trim().length > 0, 'current decoder/register generation is unavailable'); break;
+    case 'register':
+      ensure(handle.generation.trim().length > 0, 'current decoder/register generation is unavailable');
+      ensure(currentGeneration !== null && handle.generation === currentGeneration,
+        `live register dependency generation differs from current assembly generation: dependency=${handle.generation}; current=${currentGeneration ?? 'unavailable'}`);
+      break;
     case 'identity-keys': ensure(handle.keys.trim().length > 0, 'current identity keys are unavailable'); break;
     case 'clock': ensure(handle.clock.trim().length > 0, 'current clock is unavailable'); break;
     case 'lease':
@@ -266,7 +270,8 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
       const resolution = references.find(row => row.name === `dependency:${name}`)!;
       const handle = take(production.dependencyAdmission.admit({ name, fact: resolution.fact,
         completeness: resolution.completeness, missing: resolution.missing }));
-      return [name, validateDependencyHandle(name, resolution, handle)];
+      const currentGeneration = name === 'register' ? composition.host.current().generation : null;
+      return [name, validateDependencyHandle(name, resolution, handle, currentGeneration)];
     })) as AssemblyProductionCoordinator['handles']['dependencies'];
 
     ensure(production.lifecycle.owner === 'part-ten' && production.lifecycle.cutId === binding.lifecycle.cut.implementation

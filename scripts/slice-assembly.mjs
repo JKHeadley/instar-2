@@ -118,6 +118,11 @@ export function bootProductionSliceAssembly(input) {
       || reference.completeness !== 'complete' || reference.missing.length !== 0
       || handle.current !== true || typeof handle.provider !== 'string' || handle.provider.trim().length === 0)
       return `live dependency handle differs, has the wrong kind, is incomplete, or is stale: ${name}`;
+    if (name === 'register') {
+      const currentGeneration = assembly.host.current().generation;
+      if (handle.generation !== currentGeneration)
+        return `live register dependency generation differs from current assembly generation: dependency=${String(handle.generation)}; current=${currentGeneration}`;
+    }
     switch (name) {
       case 'local-facts': return handle.durability === 'local-durable' ? null : 'minimal fact segment is not local-durable';
       case 'register': return typeof handle.generation === 'string' && handle.generation.trim() ? null : 'current decoder/register generation is unavailable';
