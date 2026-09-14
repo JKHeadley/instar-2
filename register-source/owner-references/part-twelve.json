@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "owner": "part-twelve",
+  "fixtures": [
+    {
+      "id": "P12-TELEGRAM-REPLY-CAPTURE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/conversation/fixtures/telegram/reply.json",
+        "hash": "sha256:073c68317e076c099ce4de0570e7af8094cce492fac9473923b1078dba059aac"
+      }
+    }
+  ],
+  "probes": [],
+  "decoders": [],
+  "documents": []
+}
