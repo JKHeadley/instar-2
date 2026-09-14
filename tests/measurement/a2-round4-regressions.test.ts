@@ -46,7 +46,7 @@ function label(name: string): string {
   if (name.startsWith('attribution:'))
     return 'P16-NF-12 [behavior:signed-history-attribution] P16-NF-13 [behavior:unattributed-conflicted]';
   if (name.startsWith('peer:') || name.startsWith('retraction:peer'))
-    return 'P16-NF-38 [behavior:peer-completeness-clock]';
+    return 'P16-NF-38 [behavior:peer-completeness-clock] NON-EXECUTABLE-UNTIL-slice-A2b-peer-merge';
   if (name.startsWith('binding:') || name.startsWith('history:')
     || name.startsWith('retraction:read') || name.startsWith('unrelated-note:')
     || name.startsWith('restored-retraction:'))

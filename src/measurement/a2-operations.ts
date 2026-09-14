@@ -639,13 +639,14 @@ function validateResolution(resolution: QuantityOwnerResolution, key: string,
   const omitted = reported.filter(witness => !ids.includes(witness.sourceEvent));
   if (omitted.length > 0) {
     // A former complete resolution is no longer current authority when signed history
-    // later adds another disagreeing witness. Preserve that witness set as unresolved.
-    // An omitted witness that does not causally follow the resolution is malformed rather
-    // than stale, because the resolution already had to account for it.
+    // later or concurrently adds another disagreeing witness. Preserve that witness set
+    // as unresolved. Only a witness already in the resolution's causal past proves that
+    // the owner omitted evidence it necessarily knew about and makes the resolution
+    // malformed; concurrent evidence was not yet available to either causal branch.
     ensure(omitted.every(witness => {
       const dependency = witnessCurrent(witness, context);
       const fact = facts.find(candidate => candidate.id === dependency.factId)!;
-      return causalCone(fact, facts).some(candidate => candidate.id === status.fact.id);
+      return !causalCone(status.fact, facts).some(candidate => candidate.id === fact.id);
     }), 'quantity resolution does not name every current reported witness');
     return null;
   }
@@ -1400,6 +1401,39 @@ export function evaluateCurrentBurn(policyInput: BurnPolicy, previous: BurnEpiso
     if (now.target.count < policy.minimumEligibleSamples) debt.push('eligible-sample-floor');
     if (now.coverage !== null && now.coverage < policy.minimumUsageCoverage)
       debt.push('usage-coverage-floor');
+    // Current-window debt above is the landed presentation vocabulary. Baseline evidence
+    // composes beside it: never drop a failed baseline merely because the current window
+    // is complete. Each inadequate baseline retains its identity, failed conditions,
+    // completeness bits, and raw population counts in one deterministic evidence row.
+    for (let index = 1; index < all.length; index++) {
+      const window = all[index]!;
+      const condition = conditions[index]!;
+      if (condition.adequate) continue;
+      const failures = [
+        ...condition.target.debt,
+        ...condition.comparison.debt,
+        ...condition.ownerDebt,
+        !window.censusComplete ? 'census-incomplete' : null,
+        !window.collectorsComplete ? 'collector-incomplete' : null,
+        window.dispatchUncertain > 0 ? 'dispatch-uncertain' : null,
+        window.conflictedAttempts > 0 ? 'attempt-conflict' : null,
+        condition.target.count < policy.minimumEligibleSamples ? 'eligible-sample-floor' : null,
+        condition.coverage !== null && condition.coverage < policy.minimumUsageCoverage
+          ? 'usage-coverage-floor' : null,
+      ].filter((value): value is string => value !== null);
+      debt.push(`baseline:${window.id}:failed=${[...new Set(failures)].sort().join(',')}`
+        + `;censusComplete=${window.censusComplete};collectorsComplete=${window.collectorsComplete}`
+        + `;eligibleSampleCount=${condition.target.count};minimumEligibleSamples=${policy.minimumEligibleSamples}`
+        + `;observedExchanges=${window.observedExchanges}`
+        + `;usageSupportedExchanges=${window.usageSupportedExchanges}`
+        + `;usageCoverage=${condition.coverage === null ? 'undefined' : condition.coverage}`
+        + `;minimumUsageCoverage=${policy.minimumUsageCoverage}`
+        + `;attemptedDispatches=${window.attemptedDispatches}`
+        + `;provenNoExchange=${window.provenNoExchange}`
+        + `;dispatchUncertain=${window.dispatchUncertain}`
+        + `;conflictedAttempts=${window.conflictedAttempts}`
+        + `;programmaticEvents=${window.programmaticEvents}`);
+    }
     const classification = now.incomplete ? 'incomplete' as const
       : completeInactive ? 'inactive' as const
         : confidence !== 'adequate' ? 'insufficient-evidence' as const
@@ -1694,7 +1728,10 @@ export function measurementProjectionDefinition(generation: ProjectionGeneration
   return boundary('MeasurementProjectionDefinitionA2', { generation, bindings }, context, () => {
     ensure(bindings !== null && typeof bindings === 'object' && !Array.isArray(bindings),
       'projection bindings must be a closed object');
-    ensure(Object.keys(bindings).every(kind => generation.kinds.includes(kind)),
+    // Establish the closed primitive kind set before either membership lookup or object-key
+    // construction. Object.fromEntries would otherwise coerce a numeric kind into "42".
+    const kinds = exactTextArray(generation.kinds, 'projection generation kinds', 100_000);
+    ensure(Object.keys(bindings).every(kind => kinds.includes(kind)),
       'projection binding names an unregistered kind');
     for (const binding of Object.values(bindings)) {
       exactObject(binding, ['identity', 'value', 'merge']);
@@ -1705,7 +1742,7 @@ export function measurementProjectionDefinition(generation: ProjectionGeneration
     }
     return freeze({ id: 'measurement.source.all-identities', class: 'informational' as const,
       stalenessBound: 60_000, retention: 'all-identities' as const,
-      decisions: Object.fromEntries(generation.kinds.map(kind => [kind, bindings[kind]
+      decisions: Object.fromEntries(kinds.map(kind => [kind, bindings[kind]
         ? { kind: 'folds' as const, ...bindings[kind]! }
         : { kind: 'ignores' as const, reason: 'not a registered measurement source' }])) });
   });
@@ -1901,17 +1938,32 @@ export function renderCurrentMeasurementRead(request: HistoricalMeasurementReadR
       ensure(quantity !== undefined, 'historical row is absent from the complete quantity selection');
       const ordered = [...alternatives].sort((a, b) =>
         a.evidence.id.localeCompare(b.evidence.id));
-      const representative = ordered[0]!;
       const resolution = quantityDependencies.get(quantity)?.resolution ?? null;
+      const supportingWitness = quantity.state === 'resolved'
+        ? quantity.witnesses.find(witness => witness.state === 'reported'
+          && Object.is(witness.measurement.value, quantity.amount)) ?? null
+        : null;
+      const reportedWitness = quantity.witnesses.find(witness => witness.state === 'reported') ?? null;
+      const representative = ordered.find(row =>
+        row.evidence.id === (supportingWitness ?? reportedWitness)?.evidence.id) ?? ordered[0]!;
       const evidenceManifest = [...new Map([
         ...quantity.witnesses.map(witness => witness.evidence),
         ...(resolution ? [resolution.evidence] : []),
       ].map(evidence => [evidence.id, evidence] as const)).values()]
         .sort((a, b) => a.id.localeCompare(b.id));
-      const resolvedState = quantity.state === 'unresolved' ? 'conflicted' as const
-        : representative.state;
-      return freeze({ ...representative, amount: quantity.state === 'resolved'
-        ? quantity.amount : null, state: resolvedState, evidenceManifest });
+      if (quantity.state === 'unresolved')
+        return freeze({ ...representative, amount: null, state: 'conflicted' as const,
+          evidenceManifest });
+      if (quantity.state === 'unavailable')
+        return freeze({ ...representative, amount: null, evidenceManifest });
+      // A resolved amount is presented through a reported witness that actually carries
+      // that amount. When an owner resolution selects an amount not carried by a witness,
+      // that resolution becomes the primary evidence. Witness-name ordering never chooses
+      // a missing/failed state for a resolved amount.
+      return freeze({ ...representative, amount: quantity.amount,
+        evidence: supportingWitness ? representative.evidence
+          : resolution?.evidence ?? representative.evidence,
+        evidenceManifest });
     });
     const ownerPartial = (currentSelection.view?.taint.length ?? 0) > 0
       || (currentSelection.view?.conflicts.length ?? 0) > 0

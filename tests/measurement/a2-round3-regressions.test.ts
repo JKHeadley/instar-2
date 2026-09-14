@@ -14,14 +14,14 @@ describe('Part 16 A2 round-three independent review regressions', () => {
         ? 'P16-NF-33 [behavior:burn-hysteresis] P16-NF-34 [behavior:coverage-debt]'
         : reviewCase.name.startsWith('peer:') || reviewCase.name.startsWith('resource:')
           || reviewCase.name.startsWith('history:late-usage')
-          ? 'P16-NF-37 [behavior:peer-union-window]'
+          ? 'P16-NF-37 [behavior:peer-union-window] NON-EXECUTABLE-UNTIL-slice-A2b-peer-merge'
           : '';
     it(`${label} ${reviewCase.name}`.trim(), () => {
       expect(reviewCase.pass, JSON.stringify(reviewCase.actual ?? reviewCase, null, 2)).toBe(true);
     });
   }
 
-  it('P16-NF-37 [behavior:peer-union-window] peer:fresh-process-input-is-byte-equal-before-and-after-unrelated-call', () => {
+  it('P16-NF-37 [behavior:peer-union-window] NON-EXECUTABLE-UNTIL-slice-A2b-peer-merge peer:fresh-process-input-is-byte-equal-before-and-after-unrelated-call', () => {
     const output = execFileSync(viteNode, ['--script', freshPeerWorker.pathname], {
       cwd: process.cwd(), encoding: 'utf8',
     });

@@ -26,7 +26,7 @@ it('P16-NF-12 [behavior:signed-history-attribution] P16-NF-13 [behavior:unattrib
     model: 'model', machine: 'machine-a' });
 }, 30_000);
 
-it('P16-NF-04 [behavior:evidence-quantity-binding] P16-NF-14 [behavior:causal-quantity-resolution] P16-NF-16 [behavior:current-history-read] P16-NF-36 [behavior:deterministic-historical-presentation] P16-NF-37 [behavior:peer-union-window] P16-NF-38 [behavior:peer-completeness-clock] P16-NF-39 [behavior:all-identities-retention] P16-NF-40 [behavior:capture-retention] P16-NF-41 [behavior:bounded-cache-eviction] P16-NF-47 [behavior:privacy] P16-NF-48 [behavior:bounded-query] P16-NF-50 [behavior:historical-restart-rebuild] rebuilds from the real Part Two store and transport adapter across deterministic SIGKILL cuts', () => {
+it('P16-NF-04 [behavior:evidence-quantity-binding] P16-NF-14 [behavior:causal-quantity-resolution] P16-NF-16 [behavior:current-history-read] P16-NF-36 [behavior:deterministic-historical-presentation] P16-NF-37 [behavior:peer-union-window] P16-NF-38 [behavior:peer-completeness-clock] NON-EXECUTABLE-UNTIL-slice-A2b-peer-merge P16-NF-39 [behavior:all-identities-retention] P16-NF-40 [behavior:capture-retention] P16-NF-41 [behavior:bounded-cache-eviction] P16-NF-47 [behavior:privacy] P16-NF-48 [behavior:bounded-query] P16-NF-50 [behavior:historical-restart-rebuild] rebuilds from the real Part Two store and transport adapter across deterministic SIGKILL cuts', () => {
   expect(captureRetentionProof()).toMatchObject({
     protectedDetail: expect.stringContaining('protected'),
     tombstone: { status: 'tombstoned', bytes: null },

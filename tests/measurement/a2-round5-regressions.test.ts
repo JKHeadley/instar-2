@@ -11,7 +11,7 @@ function label(name: string): string {
   if (name.startsWith('read:owner-attribution'))
     return 'P16-NF-12 [behavior:signed-history-attribution] P16-NF-13 [behavior:unattributed-conflicted]';
   if (name.startsWith('peer'))
-    return 'P16-NF-37 [behavior:peer-union-window] P16-NF-38 [behavior:peer-completeness-clock]';
+    return 'P16-NF-37 [behavior:peer-union-window] P16-NF-38 [behavior:peer-completeness-clock] NON-EXECUTABLE-UNTIL-slice-A2b-peer-merge';
   if (name.startsWith('burn:'))
     return 'P16-NF-33 [behavior:burn-hysteresis] P16-NF-34 [behavior:coverage-debt]';
   return 'P16-NF-16 [behavior:current-history-read] P16-NF-36 [behavior:deterministic-historical-presentation]';

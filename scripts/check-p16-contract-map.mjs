@@ -8,6 +8,8 @@ const executable = new Set([1, 5, 22, 25, 26, 27, 28, 29, 30, 52]);
 const mixed = new Set([3, 24]);
 const sliceA1Arch = new Set([2]);
 const sliceA2 = new Set([4, 12, 13, 14, 16, 33, 34, 36, 37, 38, 39, 40, 41, 47, 48, 50]);
+const peerMergeHold = 'NON-EXECUTABLE-UNTIL-slice-A2b-peer-merge';
+const sliceA2bPeerMerge = new Set([37, 38]);
 const a2Executable = new Set([12, 13, 34, 39, 40, 41]);
 const a2Mixed = new Map(Object.entries({
   4: ['seam-response-intake-followup.md #12', 'seam-response-assembly-followup.md #14',
@@ -17,8 +19,6 @@ const a2Mixed = new Map(Object.entries({
   33: ['seam-response-assembly-followup.md'],
   36: ['seam-response-loop-followup.md accountingWindow addendum', 'SEAM-LEDGER.md row 34',
     'seam-response-declarations.md #11'],
-  37: ['seam-response-loop-followup.md accountingWindow addendum', 'SEAM-LEDGER.md row 34'],
-  38: ['seam-response-loop-followup.md #20 qualified-accounting-read', 'SEAM-LEDGER.md row 34'],
   47: ['seam-response-operator-followup.md P16-P11-measurement-spend-surface-v1', 'SEAM-LEDGER.md row 64'],
   48: ['seam-response-operator-followup.md P16-P11-measurement-spend-surface-v1', 'SEAM-LEDGER.md row 64'],
   50: ['seam-response-loop-followup.md qualified-accounting-read', 'SEAM-LEDGER.md row 34'],
@@ -152,6 +152,8 @@ function dispositions(design, activateA2) {
     };
     if (sliceA2.has(row.number) && !activateA2)
       return { ...row, status: 'NON-EXECUTABLE-UNTIL-slice-A2', dependencies: ['slice-A2'] };
+    if (activateA2 && sliceA2bPeerMerge.has(row.number))
+      return { ...row, status: peerMergeHold, dependencies: ['slice-A2b-peer-merge'] };
     if (activateA2 && a2Mixed.has(row.number)) {
       const dependencies = a2Mixed.get(row.number);
       return { ...row, status: `MIXED-EXECUTABLE-A2-PLUS-NON-EXECUTABLE-UNTIL-${dependencies.join(' + ')}`,
@@ -196,6 +198,12 @@ export function checkP16Coverage(report, dispositions = p16Dispositions()) {
     const passed = tests.filter(test => test.status === 'passed');
     const passing = tests.filter(test => test.status === 'passed'
       && behavior !== undefined && test.title.includes(`[behavior:${behavior[0]}]`));
+    if (row.status === peerMergeHold) {
+      const unheld = passed.filter(test => !test.title.includes(peerMergeHold));
+      if (unheld.length > 0)
+        throw new Error(`${row.id}: peer-merge fixture lacks the exact A2b hold label`);
+      return { ...row, tests: [], heldTests: passed, passing: 0 };
+    }
     if (row.status === 'EXECUTABLE' || row.status.startsWith('MIXED-EXECUTABLE-')
       || row.status.startsWith('SUPPLEMENTAL-EXECUTABLE-')) {
       for (const tier of tiers) if (!passing.some(test => test.file.startsWith(tier)))
@@ -219,5 +227,5 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   console.log('|---|---|---|');
   for (const row of rows)
     console.log(`| ${row.id} | ${row.status} | ${[...new Set(row.tests.map(test => test.file))].join('; ') || '—'} |`);
-  console.log(`${rows.length} labels mapped: ${rows.filter(row => row.status === 'EXECUTABLE').length} executable; ${rows.filter(row => row.status.startsWith('MIXED-EXECUTABLE-')).length} mixed; ${rows.filter(row => row.status === 'NON-EXECUTABLE-UNTIL-slice-A1-arch').length} slice-A1-arch; ${rows.filter(row => row.status === 'NON-EXECUTABLE-UNTIL-slice-A2').length} slice-A2; ${rows.filter(row => row.status.startsWith('NON-EXECUTABLE-') && !['NON-EXECUTABLE-UNTIL-slice-A1-arch', 'NON-EXECUTABLE-UNTIL-slice-A2'].includes(row.status)).length} other blocked; 1 supplemental.`);
+  console.log(`${rows.length} labels mapped: ${rows.filter(row => row.status === 'EXECUTABLE').length} executable; ${rows.filter(row => row.status.startsWith('MIXED-EXECUTABLE-')).length} mixed; ${rows.filter(row => row.status === 'NON-EXECUTABLE-UNTIL-slice-A1-arch').length} slice-A1-arch; ${rows.filter(row => row.status === 'NON-EXECUTABLE-UNTIL-slice-A2').length} slice-A2; ${rows.filter(row => row.status === peerMergeHold).length} slice-A2b-peer-merge; ${rows.filter(row => row.status.startsWith('NON-EXECUTABLE-') && !['NON-EXECUTABLE-UNTIL-slice-A1-arch', 'NON-EXECUTABLE-UNTIL-slice-A2', peerMergeHold].includes(row.status)).length} other blocked; 1 supplemental.`);
 }

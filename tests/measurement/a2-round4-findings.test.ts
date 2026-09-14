@@ -48,17 +48,21 @@ describe('Part 16 A2 round-four finding closure', () => {
     passed(['peer:relabel-history-as-required-peer-needs-owner-binding']);
   });
 
-  it('F6 records each reserved owner arm as mixed with an exact dependency', async () => {
+  it('F6 records each reserved owner arm with its exact dependency', async () => {
     // @ts-expect-error Repository contract checker is intentionally JavaScript.
     const { p16A2Dispositions } = await import('../../scripts/check-p16-contract-map.mjs');
     const rows = p16A2Dispositions() as Array<{
       number: number; status: string; dependencies: string[];
     }>;
-    for (const number of [4, 14, 16, 36, 38]) {
+    for (const number of [4, 14, 16, 36]) {
       const row = rows.find(candidate => candidate.number === number)!;
       expect(row.status).toMatch(/^MIXED-EXECUTABLE-A2-PLUS-NON-EXECUTABLE-UNTIL-/);
       expect(row.dependencies.length).toBeGreaterThan(0);
     }
+    expect(rows.find(row => row.number === 38)).toMatchObject({
+      status: 'NON-EXECUTABLE-UNTIL-slice-A2b-peer-merge',
+      dependencies: ['slice-A2b-peer-merge'],
+    });
     expect(rows.find(row => row.number === 36)?.dependencies)
       .toContain('seam-response-declarations.md #11');
   });

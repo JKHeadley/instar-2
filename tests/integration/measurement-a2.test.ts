@@ -29,7 +29,7 @@ it('P16-NF-12 [behavior:signed-history-attribution] P16-NF-13 [behavior:unattrib
     model: 'model', machine: 'machine-a', run: judgment.input.run.id });
 });
 
-it('P16-NF-04 [behavior:evidence-quantity-binding] P16-NF-14 [behavior:causal-quantity-resolution] P16-NF-37 [behavior:peer-union-window] P16-NF-38 [behavior:peer-completeness-clock] full A2 port binds quantities and peer completeness to one current owner history', () => {
+it('P16-NF-04 [behavior:evidence-quantity-binding] P16-NF-14 [behavior:causal-quantity-resolution] P16-NF-37 [behavior:peer-union-window] P16-NF-38 [behavior:peer-completeness-clock] NON-EXECUTABLE-UNTIL-slice-A2b-peer-merge full A2 port binds quantities and peer completeness to one current owner history', () => {
   const f = measurementA2Fixture();
   const observation = f.planObservation({ subject: 'exchange:integration',
     sourceEvent: 'usage:integration', amount: 8, at: 100, contract: f.eventProducer });

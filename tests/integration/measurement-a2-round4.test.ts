@@ -22,7 +22,7 @@ const exposing = new Set([
   'attribution:retracted-resolution-no-longer-attributes',
 ]);
 
-it('P16-NF-04 [behavior:evidence-quantity-binding] P16-NF-12 [behavior:signed-history-attribution] P16-NF-13 [behavior:unattributed-conflicted] P16-NF-14 [behavior:causal-quantity-resolution] P16-NF-16 [behavior:current-history-read] P16-NF-36 [behavior:deterministic-historical-presentation] P16-NF-38 [behavior:peer-completeness-clock] round-four reviewer neighbors pass through real owner machinery', () => {
+it('P16-NF-04 [behavior:evidence-quantity-binding] P16-NF-12 [behavior:signed-history-attribution] P16-NF-13 [behavior:unattributed-conflicted] P16-NF-14 [behavior:causal-quantity-resolution] P16-NF-16 [behavior:current-history-read] P16-NF-36 [behavior:deterministic-historical-presentation] P16-NF-38 [behavior:peer-completeness-clock] NON-EXECUTABLE-UNTIL-slice-A2b-peer-merge round-four reviewer neighbors pass through real owner machinery', () => {
   const cases = [...verifyCases, ...edgeCases, ...closureCases]
     .filter(candidate => exposing.has(candidate.name));
   expect(cases).toHaveLength(17);

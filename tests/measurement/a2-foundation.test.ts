@@ -147,7 +147,7 @@ describe('Part 16 slice A2 current-history measurement semantics', () => {
       attributions: [], timedOut: false }, f.c), 'exact owner snapshot');
   });
 
-  it('P16-NF-38 [behavior:peer-completeness-clock] P16-NF-37 [behavior:peer-union-window] uses owner snapshots, actual frontiers, and measured clock skew while preserving missing peers', () => {
+  it('P16-NF-38 [behavior:peer-completeness-clock] P16-NF-37 [behavior:peer-union-window] NON-EXECUTABLE-UNTIL-slice-A2b-peer-merge uses owner snapshots, actual frontiers, and measured clock skew while preserving missing peers', () => {
     const f = measurementA2Fixture();
     const observation = f.planObservation({ subject: 'exchange:peer', sourceEvent: 'usage:peer', amount: 5, at: 100 });
     f.persistObservation(observation);
