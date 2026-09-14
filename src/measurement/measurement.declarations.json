@@ -1,0 +1,12 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "measurement.contract", "kind": "governed documents", "status": "dark",
+    "requiredFacts": { "location": "docs/20-measurement-ledgers.md", "changelog": "git-history:docs/20-measurement-ledgers.md" },
+    "standards": [], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "measurement.source", "kind": "protected artifacts", "status": "dark",
+    "requiredFacts": { "pattern": "src/measurement/**", "why": "Measurement reads must remain observational, canonical, bounded, and unable to grant permission.", "surface": "repository review approval" },
+    "standards": [82], "holds": []
+  }
+]
