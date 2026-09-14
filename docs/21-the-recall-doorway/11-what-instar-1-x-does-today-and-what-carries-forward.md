@@ -1,7 +1,7 @@
 ## 11. What Instar 1.x does today and what carries forward
 
 **Rule — migration starts from a captured inventory, not an optimistic module name.** Rules
-7, 33, 44, 45, 46, 69, 89, 90 and 111; **checks: P21-NF-09/11/12/17/18/21**.
+7, 33, 44, 45, 46, 69, 89, 90 and 111; **checks: P21-NF-09/11/12/17a–j/18/21**.
 The migration target is installed Instar **1.3.1237** plus its installed `.instar/hooks/instar/`
 artifacts, identified in [R2 §§1, 8](research/02-dawn-grounding.md). The dirty reading-aid source
 checkout at `5b36623a99327e74abe5ef04d63019f9aca6b1c5` is separate; [R1 §10](research/01-instar-1x-memory.md#10-snapshot-identifiers-and-validation-boundary)
@@ -48,7 +48,7 @@ recheck in [R2 §8](research/02-dawn-grounding.md#8-comparison-with-the-installe
 They are proposed migration semantics, not a claim those changes have been executed.
 
 **Rule — customized context bodies survive separately from their dispatch instructions.**
-Rules 7, 33, 44, 45, 47, 69, 89, 95 and 111; **checks: P21-NF-05/17/21**.
+Rules 7, 33, 44, 45, 47, 69, 89, 95 and 111; **checks: P21-NF-05/17a–j/21**.
 A context segment here is a persisted Markdown file with one topic of guidance. A dispatch
 table maps task triggers to those files; it is navigation, not their contents. These are
 read-only 1.x source observations, independent of the installed-method baseline executions.
@@ -119,14 +119,14 @@ dispatch file, and supply only a template or metadata response in paired control
 precise missing/disabled/excluded source and delivery status; no dispatch text, path, byte count,
 200 response or generated default can satisfy the customized-body positive. Preserve accessible
 originals and reachable status. Rollback restores the previous readers against retained compatible
-bodies without losing newly admitted evidence. This NF-17/21 positive is **non-executable until
+bodies without losing newly admitted evidence. This NF-17a–j/21 positive is **non-executable until
 `seam-response-recall-doorway-grants.md` lands for the complete section 14 dependencies,
 including row 94's source/consumer lifecycle, the inherited current-context and continuity
 grants named there, `seam-response-declarations.md` row 77, and P21-A1/A2**. It adds no owner
 type or ungranted action; retained-owner duties stay with their owners.
 
 **Rule — typed citation evidence survives independently of entity text.** Rules 7, 28, 33,
-44, 45, 89, 90 and 95; **checks: P21-NF-05/06/11/12/17/18/21**.
+44, 45, 89, 90 and 95; **checks: P21-NF-05/06/11/12/17a–j/18/21**.
 A citation is a recorded link from a remembered claim to a particular source; it is not proof
 that the source exists, is accessible now, or supports the claim. An inverse citation lookup
 asks which remembered claims cite a given source kind and source id. The following are read-only
@@ -226,13 +226,13 @@ correctly. A name-only candidate, a route returning 200, or preserved entity pro
 delivered-but-ignored support is a reader-use failure. Run unit, public-pipeline and production
 lifecycle tiers, including two origins with colliding local ids and incomplete peer custody.
 This migration positive is **non-executable until `seam-response-recall-doorway-grants.md`
-lands for NF-17/18/21's full section 14 dependencies, `seam-response-declarations.md` row 77
+lands for NF-17a–j/18/21's full section 14 dependencies, `seam-response-declarations.md` row 77
 lands with governed recall-owner enrollment, and P21-A1/A2 land**. Existing grants supply
 custody, scope and consumer composition; no owner union is redefined and no repaired execution
 is claimed.
 
 **Rule — corrections retain the lifecycle that produces and maintains guidance.** Rules 7,
-24, 26, 33, 44, 45, 55, 85, 86 and 89; **checks: P21-NF-05/11/12/17/18/21**.
+24, 26, 33, 44, 45, 55, 85, 86 and 89; **checks: P21-NF-05/11/12/17a–j/18/21**.
 The paths in this audit are read-only 1.x sources under
 `/Users/dabombstudio/.instar/agents/echo`. A correction is a captured user observation;
 distillation is a model's proposed lesson from it. Recurrence is repeated supporting evidence,
@@ -362,7 +362,7 @@ obligations under the existing section 14 grants, not additions to another owner
 
 **Rule — a recorded correction also owns a standards/process review.** Rules 4, 7, 8,
 24, 33, 44, 45, 55, 57, 82, 85, 89, 95 and 113;
-**checks: P21-NF-17/18/21**. A record-time class review asks whether a correction reveals
+**checks: P21-NF-17a–j/18/21**. A record-time class review asks whether a correction reveals
 a missing or weak standard and a gap in the development process. It begins when the correction
 is recorded, independently of recurrence analysis. A review shell is the saved obligation to
 answer those questions before the model has answered them. Filled means that the judgment
@@ -502,11 +502,11 @@ Run this fixture through unit, public-pipeline integration and actual production
 with real owner storage/recovery/admission consumers; a helper's return value is insufficient.
 The migration positive is **NON-EXECUTABLE-UNTIL-row-97-correction-class-review-lifecycle** (until its granted owner implementation
 lands), and until the applicable scopes of **`seam-response-recall-doorway-grants.md` land**
-with the complete inherited NF-17/18/21 dependencies in section 14. No repaired review or
+with the complete inherited NF-17a–j/18/21 dependencies in section 14. No repaired review or
 migration execution is claimed by this source audit.
 
 **Rule — learned preferences retain their actual consumer and evidence limits.** Rules 7,
-33, 44, 45, 47 and 89; **checks: P21-NF-05/11/12/17/18/21**. This source audit supplements
+33, 44, 45, 47 and 89; **checks: P21-NF-05/11/12/17a–j/18/21**. This source audit supplements
 [R1's inventory](research/01-instar-1x-memory.md); paths in this block are read-only 1.x paths
 under `/Users/dabombstudio/.instar/agents/echo`, not 2.0 exports.
 
@@ -578,7 +578,7 @@ from actual input fails consumption; guidance delivered but ignored fails behavi
 each observation flag separately, remove the pattern or ledger, fail the detector/write, and
 verify delivery stays reachable while observation coverage is explicitly unavailable, never a
 clean record of compliance. These proposed migration positives are **non-executable until
-`seam-response-recall-doorway-grants.md` lands for the complete NF-17/18/21 dependencies in
+`seam-response-recall-doorway-grants.md` lands for the complete NF-17a–j/18/21 dependencies in
 section 14**, together with their inherited grants and P21 implementations. The three executed
 baseline observations remain distinct. The daily backstop and weekly analysis positives are
 **NON-EXECUTABLE-UNTIL-row-84-calendar-adapter**, until `seam-response-assembly-followup.md`
@@ -586,7 +586,7 @@ row 84 lands, and also require the U27/U30 supervisor grants named in section 14
 invocation or a one-shot fixture cannot prove these preserved cadences.
 
 **Rule — replicated knowledge preserves catalog identity without inventing body delivery.**
-Rules 7, 31, 33, 44, 45, 57, 89 and 90; **checks: P21-NF-05/11/12/17/18/21**.
+Rules 7, 31, 33, 44, 45, 57, 89 and 90; **checks: P21-NF-05/11/12/17a–j/18/21**.
 The read-only 1.x `src/core/KnowledgeReplicatedStore.ts:300–336` derives the cross-machine key
 from a nonempty source address (`url`), or the title when no address exists, plus source type. Each
 component is trimmed, lowercased and has repeated whitespace collapsed before hashing; the
@@ -635,10 +635,10 @@ a stale returning peer, and a surviving concurrent put beside a tombstone. Rebui
 through startup and compaction; no deleted value reappears in served views, no foreign metadata
 becomes authority, and helper output alone cannot pass. This migration positive is
 **non-executable until `seam-response-recall-doorway-grants.md` lands for the complete
-NF-17/18/21 dependencies in section 14**, with their inherited grants and P21 implementations.
+NF-17a–j/18/21 dependencies in section 14**, with their inherited grants and P21 implementations.
 
 **Rule — replicated relationships preserve identity evidence and consumer limits.** Rules 7,
-28, 31, 33, 44, 45, 89 and 90; **checks: P21-NF-05/06/11/12/17/18/21**.
+28, 31, 33, 44, 45, 89 and 90; **checks: P21-NF-05/06/11/12/17a–j/18/21**.
 The read-only 1.x sources in this block are under `/Users/dabombstudio/.instar/agents/echo`.
 `RelationshipsReplicatedStore.ts:409–415` derives a key from the sorted, deduplicated channel
 identifiers, not the local UUID. No-channel records have no replicated key. Different channel
@@ -685,7 +685,7 @@ foreign fields. Assert no foreign identity becomes principal authority and no de
 reappears in the served view. Repeat at startup and post-compaction; helper output alone fails.
 
 **Rule — replicated learnings preserve advisory variants without inventing injection.** Rules
-7, 31, 33, 44, 45, 57, 89 and 90; **checks: P21-NF-05/11/12/17/18/21**.
+7, 31, 33, 44, 45, 57, 89 and 90; **checks: P21-NF-05/11/12/17a–j/18/21**.
 The read-only 1.x `src/core/LearningsReplicatedStore.ts:373–384` derives the replicated key from
 normalized title and category plus the source content id, falling back to discovery time.
 It does not use a machine-local learning id or hash the whole body. Empty title/category
@@ -725,12 +725,12 @@ value, hostile markup and a current instruction overriding a remembered lesson. 
 startup and post-compaction and assert no authority is acquired from guidance.
 
 Both replicated-store migration positives are **non-executable until
-`seam-response-recall-doorway-grants.md` lands for their section 14 NF-17/18/21 dependencies**,
+`seam-response-recall-doorway-grants.md` lands for their section 14 NF-17a–j/18/21 dependencies**,
 together with those rows' inherited grants and P21 implementations. No repaired execution or
 live peer injection is claimed here.
 
 **Rule — the surrounding memory family has explicit dispositions too.** Rules 7, 33, 44,
-45, 69, 89, 90 and 111; **checks: P21-NF-02/11/12/17/18/19/20/21/23**.
+45, 69, 89, 90 and 111; **checks: P21-NF-02/11/12/17a–j/18/19/20/21/23**.
 The inventory above plus the following rows covers all 15 files under the audited 1.x
 `src/memory`, the memory-related replicated families under `src/core`, the correction,
 class-review, preference and learning loops under `src/monitoring`, and their source-visible
@@ -771,7 +771,7 @@ approval lifecycle.
 | `src/monitoring/DeferralPatternSentinel.ts:1–14`, `:123–145`; `src/core/JudgmentProvenanceLog.ts:552–610`; `src/monitoring/ReviewCanaryBattery.ts:254–281`, `:399–418`; `src/server/routes.ts:33848–33877` | Content-free distinct-deferral observations and existing provenance; separate synthetic review fixtures and battery results | The deferral helper declares itself not boot-wired and owns no store; preserve the provenance reader without claiming an active sentinel. The battery refuses outside its enabled observation-only test mode. Keep synthetic rows separate from real user episodes, retain available results before fixture cleanup, and never count a canary as production recall success. |
 
 **Rule — context outside the memory directories has an explicit owner disposition.** Rules
-7, 28, 33, 44, 45, 47, 69, 89, 95 and 111; **checks: P21-NF-02/05/17/18/19/21**.
+7, 28, 33, 44, 45, 47, 69, 89, 95 and 111; **checks: P21-NF-02/05/17a–j/18/19/21**.
 The following inventory includes sources that reach specialized model calls or user read
 surfaces, even when they do not feed ordinary conversation. “Retain owner” means keep that
 source's writer, policy and current-state resolver with its existing owner, capture permitted
@@ -822,13 +822,13 @@ learned episodes. Empty `src/harness-adapters` and `src/messaging/telegram-origi
 supply no additional source. Each other provider/feedback/remediation/threadline subdirectory
 belongs to its explicitly named family above, including its read, migration and audit helpers.
 
-For every additional family, NF-17's migrated-or-retained-owner positive exercises the real
+For every additional family, NF-17a–j's migrated-or-retained-owner positive exercises the real
 source and restarted scoped consumer with available support; pair missing, disabled/unwired
 and restricted-source cases. NF-21 additionally checks actual model input or the actual user
 read/delivery surface the row declares. Do not require model submission of a source deliberately
 retained only for an owner/user surface; report that distinction. Runtime positives remain
 **non-executable until `seam-response-recall-doorway-grants.md` lands for section 14's full
-NF-17/18/21 dependencies, `seam-response-declarations.md` row 77 lands, and P21-A1/A2 land**.
+NF-17a–j/18/21 dependencies, `seam-response-declarations.md` row 77 lands, and P21-A1/A2 land**.
 Retaining a writer with its existing owner introduces no new owner operation or payload.
 
 Name-only matches also checked: `src/core/baselineProcessPatterns.ts:1`,
@@ -864,16 +864,16 @@ constraints, while removal from a served view does not erase retained lawful his
 
 P21-A2's migration manifest must give each row's concrete installed artifact and consumer a
 captured/imported, retained-with-existing-owner, or explicit unavailable disposition. For each
-migrated source family, NF-17 exercises the real producer → retained import → restarted scoped
+migrated source family, NF-17a–j exercises the real producer → retained import → restarted scoped
 reader → actual consumer sequence and an absent/disabled/restricted neighbor; NF-18 adds peer
 variants where the row declares replication. NF-21 proves current context consumption through
 production initialization, not a helper's returned string. Other owners' retained action writers
 are not silently redirected or replayed. These obligations remain non-executable under the full
-NF-17/18/21 dependency rows in section 14, including `seam-response-recall-doorway-grants.md`
+NF-17a–j/18/21 dependency rows in section 14, including `seam-response-recall-doorway-grants.md`
 and row 77 of `seam-response-declarations.md`; source inventory alone supplies no runtime pass.
 
 **Rule — structural composition replaces inconsistent injection paths.** Rules 1, 30, 44,
-47, 66, 78, 96 and 110; **checks: P21-NF-03/05/10/17/21**. Topic-intent briefings,
+47, 66, 78, 96 and 110; **checks: P21-NF-03/05/10/17a–j/21**. Topic-intent briefings,
 session-start history, compaction hooks, ArcCheck and tone/grounding hooks currently use different
 windows, parameters and contexts ([R1 §4](research/01-instar-1x-memory.md#4-injection-and-outgoing-grounding-the-actual-boundaries)).
 Useful task/arc evidence becomes declared retriever/producer input. Shell-text matching and a
@@ -887,7 +887,7 @@ optional service without its caller preserves the original defect. The missing c
 means complete post-compaction activation remains inhibited rather than declared migrated.
 
 **Rule — the three executed failures become permanent regressions.** Rules 34, 44, 45,
-70 and 111; **checks: P21-NF-05/09/11/17**. The recorded installed baseline is
+70 and 111; **checks: P21-NF-05/09/11/17a–j**. The recorded installed baseline is
 [installed-baseline-results.json](research/fixtures/installed-baseline-results.json), executed
 at `2026-09-12T21:28:56.178Z` with real installed methods and synthetic collaborators, no model
 provider or production-state mutation. [The permanent regression contract](fixtures/legacy-regressions.json)
@@ -910,7 +910,7 @@ deadline, budget boundary, source outage and actual renderer/submission behavior
 may never be skipped merely because a replacement engine uses a different internal method.
 
 **Rule — migration is additive and restartable.** Rules 7, 32, 33, 44, 45 and 90;
-**checks: P21-NF-11/17/18**. Enumerate all installed stores, scripts, hooks, producers,
+**checks: P21-NF-11/17a–j/18**. Enumerate all installed stores, scripts, hooks, producers,
 consumers and per-machine schema versions; capture originals before conversion. A dry run maps
 every input to an imported record or explicit inert/unavailable disposition. Origin, known
 identity, missing attribution and old expiry remain historical data, not new authority. Import

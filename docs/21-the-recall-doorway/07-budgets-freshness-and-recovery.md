@@ -10,11 +10,11 @@ Zero remains zero. A caller cannot bypass a cap by renaming a query or opening a
 The following are **proposed pilot ceilings, not approved expenditure, measurements, provider
 prices or service-level promises**. They adopt [R5 §§3–6](research/05-proposals-and-evaluation.md)
 and add explicit backend/queue bounds for review. They implement the experience in
-OD-03, decided (section 15).
+OD-03, an agent-owned setting (section 15), changed by measurement within the timely-help constraint.
 Here, p95 is the duration below which 95% of observations fall. KiB and MiB mean
 1,024 and 1,048,576 bytes respectively; token counts use the selected model's tokenizer.
 
-| Resource per root | Ordinary conversation | Qualifying consequential effect |
+| Resource per root | Ordinary conversation | History-review candidate |
 |---|---|---|
 | Combined added work | 2 s wall time including accounting and final recall validation | 15 s total. Recall, review and repair each take at most 5 s. Overhead fits within that total. |
 | Inserted recall context | 4,000 tokenizer-measured tokens | 6,000 tokenizer-measured tokens |
@@ -104,9 +104,11 @@ as resolved, explicitly still-unresolved/expired, cancelled or superseded under 
 expiry does not authorize execution or erase the original directive. Proposed recovery is at
 most two rechecks within five minutes, one logical notice updated with the result plus a
 pull-visible record. This is **NON-EXECUTABLE-UNTIL-row-92-effect-recall-pending** and the selected
-operator policy. The effect owner retains the pending attempt; transport/scheduling owns
+owner policy. These numeric recovery settings are agent-owned, bounded by an unsent
+unresolved effect and reachable status, and changed by measurement rather than operator
+decision. The effect owner retains the pending attempt; transport/scheduling owns
 bounded rechecks; the run graph retains outstanding work; operator surfaces own status and
-expiry actions. OD-06 selects the waiting experience, not those engineering boundaries.
+expiry actions. OD-06 records the constitutional fail direction; the agent owns this recovery tuning.
 The request and its transitive dependencies are specified in section 14.
 
 **Rule — multi-machine history is partial until proved otherwise.** Rules 32, 33, 45 and

@@ -34,7 +34,7 @@ source knowledge is not a healthy recall target. Counts of legitimate abstention
 certainty, fabricated recollection and confident denial with unavailable history remain visible.
 
 **Rule — stage diagnosis requires stage evidence.** Rules 13, 41, 58, 86 and 108;
-**checks: P21-NF-05/09/15/17/22**. Classify capture, index, query, selection, permission,
+**checks: P21-NF-05/09/15/17a–j/22**. Classify capture, index, query, selection, permission,
 rendering, submission, reader-use, review, or delivery failure only when its evidence supports
 that conclusion. Candidate recall is not input recall; input recall is not behavior. The
 correct-evidence-but-unused measure includes only cases whose sufficient permitted support

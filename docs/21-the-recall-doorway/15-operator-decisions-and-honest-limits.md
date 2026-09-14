@@ -1,158 +1,130 @@
 ## 15. Operator decisions and honest limits
 
-**Value — decisions are derived from the constitution.** Each of the six decisions below names
-the purpose statement, pillar, or constraint that decides it, under the purpose's Rule that
-“a design question this document cannot decide is a gap in this document.” The agent owns
-measurement and tuning within those constraints. Decision 5 rests on the purpose's
-consequential-effect definition (PR #71, approved by the operator and merged at e281a2c2). These decisions authorize no
-spending or additional blocking check. Silence is not consent.
+**Value — policy decisions and experimental settings have different owners.** The constitution
+settles the permission, action-classification and missing-evidence boundaries below. The agent
+chooses and measures trial settings within those boundaries. No item authorizes spending or
+an additional blocking check. Silence is not consent.
 
 **Value — decision 1: where to measure better remembering first.**
 
-Question: Which everyday situations should get the most attention in the first trial?
+Agent-owned setting, bounded by “nothing that mattered is silently lost”; initial choice:
+balanced attention to long chats, connections across chats, email, and information from other
+people or agents; changed by measurement, not by operator decision.
 
-Choices: Balanced coverage; long conversations first; connections across conversations first.
+Reason: Equal starting attention can expose gaps across all four situations. It gives less
+detail about each in a small trial, so the agent may adjust the balance as evidence accumulates.
+Preserving important information in every channel does not require equal trial allocation.
 
-What it changes:
-
-- Balanced coverage gives equal attention to long chats, other chats, email, and information
-  from other people or agents, but learns less about each from a small trial.
-- Long conversations first gives a clearer early answer about forgetting within one chat,
-  while evidence about the other situations takes longer to collect.
-- Connections across conversations first emphasizes whether earlier email and other exchanges
-  help later work, while same-chat improvements receive less early study.
-
-DECIDED: Balanced coverage. The purpose's constraint Rule 2, “nothing that mattered is
-silently lost,” applies to every channel equally; the coherence pillar requires continuity
-across sessions, machines and time. Together they decide equal initial coverage across all
-four situations, including when the user does not explicitly ask the agent to remember.
-Owner of the measurement tuning: the agent.
+Basis: Purpose, “nothing that mattered is silently lost,” coherence pillar and “Who decides what”; section 10, P21-PILOT-01; OD-01.
 
 **Value — decision 2: using information learned from someone else.**
 
 Question: How should information learned from one person help in conversations with someone else?
 
 Background: Permission to use something privately and permission to tell another person are
-separate; remembering a private detail does not make it shareable.
+separate. A private detail might help the agent avoid an insensitive suggestion without being
+repeated or hinted at to anyone else. Even that private use needs permission.
 
 Choices: Shared information only; separately permitted private use; an agreed shared group.
 
 What it changes:
 
-- Shared information only means cross-person help uses information explicitly cleared for that
-  audience, so useful private connections may be missed.
-- Separately permitted private use lets private information improve help only with permission
-  for that use, while revealing it still needs separate permission.
-- An agreed shared group lets members benefit from information explicitly shared within that
-  group, while anything outside the agreement stays restricted.
+- Shared information only avoids using private connections that might have helped.
+- Separately permitted private use can improve help while keeping the private detail hidden.
+  Sharing it still needs separate permission.
+- An agreed shared group benefits from what members have explicitly shared within that group.
+  Other information stays restricted.
 
-DECIDED: The floor is separately permitted private use. Rules 86 and 95 decide a
-deterministic, fail-closed permission boundary because disclosure is irreversible: permission
-to use a fact privately never grants permission to reveal it. This is enforcement of recorded
-permission, not a low-context judgment of meaning.
+Decision: Use private information only when that use is permitted, and reveal it only when
+sharing is separately permitted. If permission cannot be established, keep it private and
+unused. This boundary is settled by the constitution.
 
-Above that floor, the purpose's Value “wisdom is what coherence is for” governs use-or-withhold
-judgment. Sensitivity is assessed per fact; every judgment is recorded with its reason and
-graded against outcomes under the grader's standing. Rule 57 keeps judgment within the
-permission floor: it may narrow permitted use, never widen authority. The follow-on owner
-design, “judgment of use,” specifies that layer; it is not specified here.
+Recommendation: Within that boundary, consider who could be helped or hurt by using, sharing,
+or withholding each detail. Record the choice and reason, then compare it with what happened.
+Feedback counts only from people entitled to assess that outcome. This helps improve care
+without turning a useful connection into permission to disclose it.
+
+Basis: Purpose, “wisdom is what coherence is for” and authority constraint; rules 57/86/95; section 5 current scope policy; OD-02. The follow-on “judgment of use” owner design is not specified here.
 
 **Value — decision 3: how long better remembering may take.**
 
-Question: How much extra waiting would you accept for the agent to check relevant history?
+Agent-owned setting, bounded by timely help and a reachable response; initial choice:
+a short history check within the measured time and spending limits; changed by measurement,
+not by operator decision.
 
-Choices: Keep it brief; allow a short check; investigate further when I ask.
+Reason: A brief check can recover useful context without making ordinary conversation wait
+for an open-ended investigation. When evidence remains missing, say so. A deeper investigation
+needs its own agreed time and spending limits.
 
-What it changes:
-
-- Keep it brief prioritizes a prompt reply with an explanation when evidence is missing, so
-  some hard connections may remain unresolved.
-- Allow a short check aims to add at most two seconds to ordinary conversation and fifteen
-  seconds before a consequential effect, with potentially more running cost for the harder checks.
-- Investigate further when I ask keeps the ordinary limit short but permits a separately
-  agreed time and spending limit for a difficult case.
-
-DECIDED: Allow a short check, initially about two seconds for ordinary conversation and
-fifteen seconds before a consequential effect. Rule 77, “the user experience is the product,”
-decides timely, coherent help and measurable reachability and response time. These durations
-are initial tuning owned and measured by the agent, not a policy question or a claim of
-measured performance. Section 7 holds the engineering caps and separate spend authorization.
+Basis: Rule 77; section 7 owns the initial two-second ordinary and fifteen-second history-review candidate ceilings and separate spend authorization; OD-03.
 
 **Value — decision 4: what better than human remembering should mean.**
 
-Question: Should the agent be compared with people remembering unaided, people searching their
-records, or both?
+Agent-owned setting, bounded by measuring useful judgment and supporting claims with evidence;
+initial choice: compare people remembering unaided and people searching their records,
+reporting each separately; changed by measurement, not by operator decision.
 
-Choices: Unaided memory; searchable records; report both separately.
+Reason: Separate comparisons expose the advantage of having an archive and show whether the
+agent helps beyond searching it. They require more participant time. The constitution requires
+honest measurement; it does not choose the comparison groups or the study length.
 
-What it changes:
-
-- Unaided memory shows how the agent compares with what people remember without looking
-  things up, but gives the agent an advantage from its archive.
-- Searchable records tests whether the agent helps more than a person who can look up the
-  same exchanges, but takes more participant time.
-- Report both separately shows each comparison clearly, but requires a larger study.
-
-DECIDED: Report unaided and record-assisted human recall separately over four weeks of
-repeated interactions. The purpose's wisdom Value decides this measurement method: wisdom
-is measured, never conferred. Separate results expose the archive advantage and show where
-the agent helps. The agent owns the method, with the frozen comparison and grading contract
-in section 10; this decision does not authorize paid study work.
+Basis: Purpose, wisdom Value, evidence constraint and “Who decides what”; section 10 owns P21-HUMAN-01 and the initial four-week horizon; OD-04. No paid study is authorized.
 
 **Value — decision 5: which major actions deserve an extra history check.**
 
-Question: For which actions would an extra check against earlier conversations be worth a possible delay?
+Question: When should an action receive an extra check against earlier conversations?
 
-Background: This check looks for an earlier promise, restriction, or conflicting statement
-that matters to the action. Its activation still requires the approvals and evidence in
-section 12.
+Background: “Consequential effect” has its single meaning in the purpose. “History-review
+candidates” are a policy-selected subset of those effects. They have an earlier promise,
+restriction, or conflicting statement that matters to the action. Classification alone neither
+permits the action nor enables the extra review.
 
-Choices: No extra check before acting; email and public posts; all listed major actions.
+Choices within approved policy: Review afterward; check email and public posts before acting;
+check all listed history-review candidates before acting.
 
 What it changes:
 
-- No extra check before acting keeps existing safeguards and reviews mistakes afterward, so
-  it avoids added delay but misses a chance to catch a historical mistake before it happens.
-- Email and public posts adds that chance when earlier exchanges matter to those messages,
-  with possible delay or an unnecessary wait.
-- All listed major actions also covers publishing software updates, payments, and other specifically agreed
-  actions that cannot be undone when earlier exchanges matter, increasing coverage and possible delay.
+- Reviewing afterward avoids added delay but misses a chance to catch a historical mistake first.
+- Checking email and public posts may catch a mistake before sending, but can add an unnecessary wait.
+- Checking all listed history-review candidates also covers software releases, payments and
+  other specifically agreed irreversible actions when earlier exchanges matter, adding coverage
+  and possible delay.
 
-DECIDED BY: The purpose's consequential-effect definition (PR #71, approved and merged at
-e281a2c2). The extra
-history check covers exactly the effects that pass any of its four tests:
+Decision: Inherit the purpose’s classification and keep the narrower history-review candidate
+selection separate. The constitutional boundary is settled; the proposed selection grants no
+permission to act or to block an action.
 
-- The effect cannot be undone by the agent alone.
-- It commits money or a resource above a level the operator names.
-- It reaches outside the scope the operator granted for the work.
-- It touches a matter the operator has marked as policy-sensitive.
+Recommendation: Keep the extra review from controlling real actions until its exact policy
+exception is approved and a trial shows that repairs outweigh mistakes and unnecessary waits.
+Then use it only for the approved history-review candidates. This targets the extra cost where
+history demonstrably matters.
 
-Email, public posts, releases and payments are instances, not the definition. The effect
-owner applies the constitutional classification; the operator owns the threshold and policy
-markings. A qualifying effect does not bypass section 8's historical-prerequisite selector,
-owner checks, measured-benefit requirement or exact exception approval. The live-review arm
-stays inert until section 12's activation conditions are met, exactly as section 12 requires.
+Basis: Purpose’s sole consequential-effect definition, PR #71, operator-approved and merged at e281a2c2; sections 1/8 selector and governing-rule reconciliation; section 12 activation; OD-05. The class allowlist is a proposal within that boundary, not a second constitutional definition or an approved runtime exception.
 
 **Value — decision 6: what happens when an action needs missing evidence.**
 
-Question: When an otherwise permitted action needs evidence the agent cannot yet find, how should it wait?
+Question: When an otherwise permitted action needs evidence the agent cannot yet find, what happens?
 
-Choices: Tell me immediately; try for one minute; try for five minutes.
+Background: Required evidence cannot be replaced by a guess or by waiting long enough.
+
+Choices within that boundary: Wait for your instruction; make limited rechecks while keeping
+you informed.
 
 What it changes:
 
-- Tell me immediately makes no automatic recheck and leaves the action unresolved for your
-  next instruction, with one notice explaining the missing evidence.
-- Try for one minute makes bounded rechecks, shows one waiting notice and updates it with
-  the result; if time runs out, the action stays unsent and awaits your instruction.
-- Try for five minutes gives a temporary outage longer to recover, with the same single
-  updated notice; if time runs out, the action stays unsent and awaits your instruction.
+- Waiting for your instruction avoids automatic retries but needs your attention to resume.
+- Limited rechecks can recover from a short outage without repeated notices. If they fail,
+  the action remains unsent and you can see what still needs attention.
 
-DECIDED: Rule 95 decides the fail direction: a consequential effect missing required evidence
-fails closed and waits; reachability fails open. The agent owns the initial tuning of a
-five-minute window, at most two rechecks and one logical notice updated with the result.
-These numbers bound recovery and make the wait visible; they do not grant authority or
-release an unresolved effect when the window ends.
+Decision and recommendation: Keep the action unsent and keep its status reachable. This is the
+constitutional requirement and avoids treating silence or a timeout as permission.
+
+Agent-owned setting, bounded by that unsent action and reachable status; initial choice:
+a brief recovery window with limited rechecks and one notice updated with the result;
+changed by measurement, not by operator decision. When the window ends without evidence, the
+action stays unsent and awaits further instruction.
+
+Basis: Rule 95; section 7 owns the initial five-minute window, at most two rechecks and one logical notice; sections 12/14 retain activation and owner dependencies; OD-06.
 
 **Rule — decisions stay within explicit ownership and approval.** Rules 7, 11, 13, 28, 42,
 57, 66, 77, 82, 86, 90, 93, 94, 95, 98, 103, 108 and 111;
@@ -169,10 +141,13 @@ before any evaluation, including the proposed C unnecessary-hold target below 1%
 small pilot cannot certify.
 
 OD-04 maps to `P21-HUMAN-01` in section 10, with independently graded dimensions and a frozen
-population, tools, time allowances and precision plan. OD-05 derives the qualifying effects
-from the purpose's consequential-effect definition; it grants no waiver. Section 8's rulebook
+population, tools, time allowances and precision plan. OD-05 inherits consequential
+classification from the purpose by reference. The operator retains ownership of resource
+thresholds and policy-sensitive markings. History-review candidates are section 8’s
+policy-selected subset; selection grants no waiver. Section 8's rulebook
 reconciliation, measured evidence and exact exception approval remain mandatory. Ordinary chat cannot acquire a semantic blocking reviewer.
-OD-06 chooses only waiting duration and notifications. The effect owner retains the exact
+OD-06’s fail direction is constitutionally decided; its waiting duration and notification
+counts are agent-owned settings. The effect owner retains the exact
 attempt, the scheduling owner performs at most two bounded rechecks within the selected window,
 the run graph retains outstanding work, and operator surfaces own status and follow-up actions.
 There is one logical notice updated with the result and a pull-visible record. Expiry never
@@ -186,8 +161,13 @@ non-executable until the cited grant lands with current owner evidence. Section 
 per-check dependency authority; section 12 derives its execution posture from that map.
 No decision here changes that posture.
 
-Questions for the operator — judgment questions: [] (none). Pending items: none; every
-decision above names the approved constitutional text that decides it.
+Questions for the operator — judgment questions: [] (none). Pending policy questions: none.
+The list is empty because the constitution decides the boundaries in OD-02/05/06 and the agent
+owns OD-01/03/04 and OD-06’s numeric settings. It does not uniquely settle the initial trial
+allocation or comparison method. Engineering settings live in sections 7/10 and change by
+measurement within those boundaries. Runtime exception approval and paid-run approval remain
+activation conditions, not permissions supplied by this list. A new policy question that the
+purpose cannot decide must be recorded as a candidate purpose amendment before convergence.
 
 **Value — honest limits.** The design has source-grounded mechanisms, three measured installed
 method failures, a prepared synthetic corpus and explicit experiments. It has no production

@@ -1,7 +1,7 @@
 ## 3. Evidence packets and the auditable manifest
 
 **Rule — record evidence delivered, not merely evidence intended.** Rules 7, 13, 41, 49,
-69, 75, 89 and 108; **checks: P21-NF-05/06/08/15/17/21**. Proposal A is non-model
+69, 75, 89 and 108; **checks: P21-NF-05/06/08/15/17a–j/21**. Proposal A is non-model
 accounting. `RecallManifest` is Part Twenty-One's package-owned assembly receipt; Part 11
 retains model input/output custody and the assembly owner retains its contextManifest carrier.
 P21 supplies references and digests to those existing owners, not an alternative capture store.
@@ -98,7 +98,7 @@ unrestricted export. Proposal A's 64 kibibyte (KiB; 1,024 bytes each) metadata c
 charged, durable referenced artifacts; it never silently drops required lineage.
 
 **Rule — preserve what an evidence span means.** Rules 7, 28, 29, 86 and 89;
-**checks: P21-NF-05–07/12/17**. A packet delimits retrieved text as data. It keeps original
+**checks: P21-NF-05–07/12/17a–j**. A packet delimits retrieved text as data. It keeps original
 speaker distinct from quoted author, forwarder, observer, and this agent. “Agent B heard A say X”
 cannot render as “I promised X.” A generated key, title, belief, anchor or summary is labeled
 derived and links to its support; a matching entity name cannot substitute for its body.

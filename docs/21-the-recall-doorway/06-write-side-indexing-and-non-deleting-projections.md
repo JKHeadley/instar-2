@@ -23,7 +23,7 @@ coverage; duplicate notification is idempotent by source hash, projection versio
 | Grade, complaint or observed outcome | Original observation/grade reference, affected root, criterion and source time | Coherence hypothesis, candidate replay case and procedural lesson |
 
 **Rule — projection coverage describes what was processed.** Rules 7, 13, 33, 45 and 96;
-**checks: P21-NF-05/09/11/17/23**. Each index version reports per-lineage folded-through
+**checks: P21-NF-05/09/11/17a–j/23**. Each index version reports per-lineage folded-through
 frontier, processed source/span sets, unsupported kinds, pending ranges, failures and holes.
 It advances a complete frontier only after all required work up to that frontier is admitted.
 A summary built from messages 51–250 may declare precisely that subset; it may not checkpoint
@@ -56,7 +56,7 @@ Three evidence kinds remain distinct even if they share physical storage:
 | Procedural lesson | Append proposed/accepted/rejected lesson with originating case and measured use; invalidate bad lessons through further evidence | That the hypothesized cause was proven, or that a procedure overrides standing/governance |
 
 **Rule — summarization and reflection never delete unique memory.** Rules 7, 32, 33, 44,
-45 and 90; **checks: P21-NF-11/12/17/18**. Summaries, graphs, vectors, working sets and
+45 and 90; **checks: P21-NF-11/12/17a–j/18**. Summaries, graphs, vectors, working sets and
 exported MEMORY.md are disposable views only when all unique inputs and derivations remain in
 authorized recoverable custody. Each projection declares its source inventory, rebuild recipe,
 schema/model version, scope policy, retention class and resource budget. Rebuild/delete of an

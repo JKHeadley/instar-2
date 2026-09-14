@@ -27,7 +27,7 @@ the active owner contract before it replaces an installed adapter.
 | Recursive search | An unresolved evidence question, current candidate references, allowed adapters and remaining root handle; traced expansion and stopping reason | Cycles, repeated queries, uncooperative children, depth/call exhaustion and forbidden hops cannot create new roots or concealed work |
 
 **Rule — exact history remains a first-class fallback.** Rules 7, 45, 77 and 96;
-**checks: P21-NF-05/09/11/17**. Derived structures accelerate discovery but are never the
+**checks: P21-NF-05/09/11/17a–j**. Derived structures accelerate discovery but are never the
 only route to retained originals. An explicitly referenced fact or a known index gap selects
 bounded raw lookup before the coordinator concludes that evidence is unavailable. If the
 necessary range exceeds the live budget, record the uncovered range and follow the per-consumer
@@ -60,7 +60,7 @@ search is optional and subordinate. A precomputed summary tree is a different ad
 strategy from iterative query planning; each declares its construction and read costs.
 
 **Rule — installation conformance includes a paraphrase positive.** Rule 11;
-**checks: P21-NF-09/17/21**. Through the actual doorway, a later paraphrased request must
+**checks: P21-NF-09/17a–j/21**. Through the actual doorway, a later paraphrased request must
 select the permitted earlier constraint and deliver its original body and attribution into the
 captured PRINCIPAL input. Test an ordinary task cue as well as an explicit history question.
 An installation containing only exact/lexical adapters fails complete-mode activation even if

@@ -1,8 +1,10 @@
 ## 8. Selective live review and memory sentinels
 
-**Rule — policy selects consequential moments; the sentinel does not acquire authority.**
+**Rule — policy selects history-review candidates; the sentinel does not acquire authority.**
 Rules 4, 28, 42, 57, 66, 77, 86, 95 and 103; **checks: P21-NF-03/04/07/13/14/24**.
-Proposal C is selective, owner-policy-governed live review for consequential effects only.
+Proposal C is selective, owner-policy-governed live review for history-review candidates only.
+Consequential classification inherits the purpose’s definition through section 1; selection
+for extra history review is a separate, narrower policy decision.
 Deterministic checks precede semantic work. Ordinary conversation, acknowledgments and other
 nonqualifying work use retrospective review as their default; a vague memory-risk phrase does
 not insert a live blocking reviewer. This design does not adopt R5's optional ordinary-chat
@@ -26,16 +28,21 @@ second sentinel lifecycle. Each hook declares its input, output, budget, purpose
 **checks: P21-NF-08/13/14**. OD-05, decided (section 15), first classifies the admitted operation
 using the effect registry, then resolves deterministic prerequisites and exact target. Hard
 owner violations follow the existing refusal. If those pass, live semantic review is eligible
-only for an approved consequential class with a declared historical dependency or a concrete
-unresolved source conflict. Examples are a promised email deadline, a public claim about an
+only for history-review candidates: constitutionally consequential operations in an approved
+class with a declared historical dependency or a concrete unresolved source conflict. Examples
+are a promised email deadline, a public claim about an
 earlier exchange, a deployment's remembered prerequisite, or a payment amount tied to a recorded
 agreement. The source of the dependency must be recorded; draft self-labeling cannot erase it.
 
-The proposed allowlist is email dispatch, public post/comment, deployment/change release,
+The proposed history-review candidate class allowlist is email dispatch, public post/comment,
+deployment/change release,
 money movement and other specifically registered irreversible actions. An email with no
 historical dependency does not automatically invoke a model reviewer. An ordinary chat does
 not qualify because its prose mentions money or deployment; an actual nested payment operation
-does qualify. Unknown class or missing policy means semantic review is not enabled; existing
+qualifies as a history-review candidate only when that policy and historical selector match.
+A reversible operation outside granted scope or marked policy-sensitive remains consequential
+even if it is outside the history-review candidate set. Unknown class or missing policy means
+semantic review is not enabled; existing
 effect authority and integrity checks still apply. Policy absence cannot be exploited to
 activate a mode that declares this review a required prerequisite.
 
@@ -62,7 +69,7 @@ there is no reviewer ping-pong or normalized approval hash that discards a chang
 
 **Rule — a semantic failure has only its approved consequence.** Rules 42, 57, 77, 83,
 86, 95 and 103; **checks: P21-NF-10/13/14/24**. OD-05/06, decided (section 15), permit the
-effect owner to leave a qualifying effect pending when a named required historical prerequisite
+effect owner to leave a history-review candidate pending when a named required historical prerequisite
 remains unresolved, including review timeout. Review timeout is not approval. Advisory findings
 outside such a prerequisite cannot become a new wall. Ordinary status remains reachable through
 the independent response path. The original draft/input is retained with cause, owner, deadline,

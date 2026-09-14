@@ -1,5 +1,33 @@
 [
   {
+    "revision": 2,
+    "date": "2026-09-13",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 68,
+      "note": "Independent rereview10 of 50f17eb5; repair round 10, RD-01 through RD-04"
+    },
+    "changes": [
+      {
+        "what": "Inherit consequential classification solely from the purpose and name history-review candidates separately, including selector and boundary fixtures.",
+        "why": "RD-01: policy selection for extra review must not narrow constitutional classification.",
+        "ref": "rereview10 RD-01 at 50f17eb5; PR #68"
+      },
+      {
+        "what": "Separate agent-owned experimental settings from constitutional decisions and provide plain-language recommendations with separate Basis lines.",
+        "why": "RD-02/RD-03: constitutional bounds do not uniquely choose trial settings; operator text must stand alone on a phone.",
+        "ref": "rereview10 RD-02/RD-03 at 50f17eb5; PR #68"
+      },
+      {
+        "what": "Define meaning-based search index and split NF-17 into ten named subcases with updated references and intact dependencies.",
+        "why": "RD-04: explain terms at first use and make independent regression obligations separately readable.",
+        "ref": "rereview10 RD-04 at 50f17eb5; PR #68"
+      }
+    ],
+    "multiMachinePosture": "Documentation only; cross-machine regression obligations and all inherited activation dependencies retained."
+  },
+  {
     "revision": 1,
     "date": "2026-09-13",
     "status": "draft",

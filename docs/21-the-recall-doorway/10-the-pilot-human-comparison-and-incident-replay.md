@@ -1,7 +1,7 @@
 ## 10. The pilot, human comparison, and incident replay
 
 **Rule — freeze the experiment before reading evaluation outcomes.** Rules 13, 34, 35,
-39, 58, 75, 86, 90 and 108; **checks: P21-NF-15/16/17/22**. This is the preregistered
+39, 58, 75, 86, 90 and 108; **checks: P21-NF-15/16/17a–j/22**. This is the preregistered
 design protocol `P21-PILOT-01`, derived from
 [R5 §§8–12](research/05-proposals-and-evaluation.md#8-synthetic-scenarios-adapted-to-five-benchmark-styles).
 It specifies comparisons and candidate acceptance thresholds now; execution additionally needs
@@ -21,13 +21,15 @@ after looking at reserved outcomes requires a separately labeled exploratory run
 independent evaluation material; it cannot silently redefine the preregistered success bar.
 
 **Rule — use paired scenarios and controls that can overturn the proposal.** Rules 13,
-34, 58 and 108; **checks: P21-NF-15/16/17/22**. The existing
+34, 58 and 108; **checks: P21-NF-15/16/17a–j/22**. The existing
 [fixture corpus](research/fixtures/README.md) has 20 invented seed histories, two cue forms
 and five evidence conditions, producing 200 cases: 120 development and 80 evaluation-reserved.
 Twenty supplementary boundary probes are outside that primary count. Each seed expands exactly
 240 deterministic distractor turns. Family coverage is LongMemEval-style extraction/time/update,
 LoCoMo-style arcs/multi-hop, MemBench-style evidence-kind/participation, GroupMemBench-style
-speaker/audience and PM-Bench-style intention/cue/cancellation, across all four operator settings.
+speaker/audience and PM-Bench-style intention/cue/cancellation, across all four recall situations. OD-01’s agent-owned initial allocation gives each equal
+attention, bounded by preserving important information in every channel; measurement may
+change that allocation before a new run is frozen.
 These are adaptations, not executions of the named benchmarks or secret unseen data.
 
 Every arm receives identical permitted originals, source snapshots, task instructions, reader,
@@ -102,7 +104,9 @@ Report natural unaided human recall separately from tool-assisted human performa
 exposure, original-record access, task and time/resource conditions within each comparison;
 do not compare an indexed agent to an artificially deprived human and call the result general.
 
-OD-04, decided (section 15), sets a four-week study with separately scored exact episodes, current preferences,
+OD-04 is an agent-owned experimental setting, bounded by honest evidence and measurement.
+Its initial choice is both human comparison groups over four weeks, changed by measurement
+before a new run is frozen, not by operator decision. Score exact episodes, current preferences,
 commitments/cancellations, associative use, attribution and audience restraint. Recruit people
 with comparable familiarity with the tasks. Estimate how much performance varies between people.
 Before collecting comparison results, specify the smallest difference the study must detect and
@@ -120,7 +124,7 @@ time costs. Any beyond-human statement must name the population,
 dimensions, horizon and uncertainty it actually beat. Until then the result is unknown.
 
 **Rule — implementation must accept a named incident replay artifact.** Rules 7, 35,
-41, 58, 85, 89, 90 and 108; **checks: P21-NF-15/17/22**. `P21-INCIDENT-REPLAY-v1`
+41, 58, 85, 89, 90 and 108; **checks: P21-NF-15/17a–j/22**. `P21-INCIDENT-REPLAY-v1`
 uses [the closed structural schema](fixtures/incident-replay-v1.schema.json) under this
 section’s validation Rules. The [artifact README](fixtures/README.md) is explanatory only
 and adds no requirements. The artifact contains original intake/author references,
@@ -139,7 +143,7 @@ seams. Dawn's deployed traces, Jamie outcome and the four reported incidents rem
 
 
 **Rule — replay validation preserves custody, scope and the decision-time boundary.** Rules
-7, 28, 33, 35, 41, 58, 89, 90, 95 and 108; **checks: P21-NF-05/06/17/22**.
+7, 28, 33, 35, 41, 58, 89, 90, 95 and 108; **checks: P21-NF-05/06/17a–j/22**.
 Use a Draft 2020-12 validator, including date-time format checking. Every tagged observation is
 `known` with its value, or `unknown`, `unavailable`, or `not-applicable` with a nonempty reason.
 Empty string/null is not an undocumented substitute. Known empty collections are allowed where

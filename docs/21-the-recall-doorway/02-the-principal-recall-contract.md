@@ -43,7 +43,7 @@ uses the normal PRINCIPAL judgment path. This keeps the minimal responder finite
 57, 77 and 95; **checks: P21-NF-03/05/08/09/10**. A conforming general recall installation
 must retrieve relevant evidence when the later request paraphrases the earlier exchange without
 sharing its search terms. Exact lookup and lexical retrieval (search by matching words or
-phrases) remain components and experiment controls; they cannot alone satisfy this contract. No particular vector engine is required,
+phrases) remain components and experiment controls; they cannot alone satisfy this contract. No particular meaning-based search index (a searchable representation that finds related meaning even when words differ) is required,
 and meaning-sensitive retrieval need not add a model call on every turn.
 
 The default policy inspects the current task,
