@@ -17,3 +17,6 @@ export { createMediatedStoreReader } from './custody.js';
 export { assemblyProjectionDefinitions } from './storage.js';
 export { stageLocalCapability, resolveActivePackage } from './package.js';
 export { deriveGrowthEpisodes, closeGrowthEpisode } from './growth.js';
+export { createConditionalAssemblyAppendPort } from './conditional-append.js';
+export type { AssemblyRecordSubject, AssemblySubjectFrontier, ConditionalAssemblyAppendPort,
+  ConditionalAssemblyAppendDependencies } from './conditional-append.js';
