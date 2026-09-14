@@ -81,14 +81,6 @@
         "path": "tests/intake/verified-act.test.ts",
         "hash": "sha256:7834f0e7cbab4128cb9d1142bb3df3ce1ff354929864270ed0bc11217e94be24"
       }
-    },
-    {
-      "id": "P4-VA-10",
-      "stage": "build",
-      "artifact": {
-        "path": "tests/intake/round20-contract-fixtures.test.ts",
-        "hash": "sha256:719ff0e52796cf32502d6794cc059bcac9c7e2f8783a6251ac761ecdb4545d6e"
-      }
     }
   ],
   "probes": [],
