@@ -1,5 +1,26 @@
 [
   {
+    "revision": 9,
+    "date": "2026-09-14",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Part Twenty-Three repair round 7; ninth independent re-review at b3fdd6b522b5497fa876de71d472ecfb3175f837; Echo recall-boundary and membership directions"
+    },
+    "changes": [
+      {
+        "what": "JU-01: Reconcile assessment attachment, S dependencies, acceptance and crash cuts to the granted recall/first-use boundary; admission-time attachment is optional.",
+        "why": "Row 116 grants recall-boundary attachment, not a prerequisite on source admission. Never-used unassessed facts remain coverage debt; a before-attachment first-use crash preserves durable work and no use. Rows 115/116 stay unchanged.",
+        "ref": "astra-design-judgment-of-use-b3fdd6b5.md JU-01; Echo repair-round-7 directions; docs/23-judgment-of-use/02-sensitivity-attached-to-every-learned-fact.md; docs/23-judgment-of-use/seams/source-assessment-and-recall.md"
+      },
+      {
+        "what": "JU-02: Define learned-fact membership by registered kind/producer and owner admission/adoption; share one identity set across NF-03, NF-18, sensitivity coverage and reconciliation with included/excluded fixtures.",
+        "why": "An exact population distinguishes missing attachments from excluded raw captures, assessments and operational records, includes registered derivatives and policies, avoids recursion and deduplicates adopted replicas.",
+        "ref": "astra-design-judgment-of-use-b3fdd6b5.md JU-02; Echo repair-round-7 directions; docs/23-judgment-of-use.md; docs/23-judgment-of-use/07-measurement-and-outcome-accounting.md; docs/23-judgment-of-use/10-non-functional-checks-and-activation.md; docs/23-judgment-of-use/11-negative-contract-fixtures.md; docs/23-judgment-of-use/12-inherited-duties-and-seam-disposition.md"
+      }
+    ]
+  },
+  {
     "revision": 8,
     "date": "2026-09-14",
     "status": "draft",

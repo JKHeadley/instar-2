@@ -18,7 +18,7 @@ Basis: Purpose's evidence and no-silent-loss constraints; rules 13/39/41/58/108;
 | Observation | Required account |
 |---|---|
 | Recall/input coverage | Accepted occasions; actual manifests; missing authorized context and unknown contribution; never blame judgment for evidence not delivered |
-| Sensitivity coverage | Learned fact count at a pinned frontier; assessment/pending/status links; gaps and oldest unresolved age |
+| Sensitivity coverage | Section 2's distinct owner-issued fact/version identity set at pinned source/registry frontiers, shared with NF-03/NF-18; total members, assessed/pending/disputed/unavailable links and UNASSESSED members, first-use attachment violations and broken links separately. Never-recalled unassessed members remain in the denominator and coverage debt, not violations; report missing/unusable assessment identities and oldest unresolved age. Excluded kinds contribute no members, replicas add no duplicate identities and unresolved membership forbids a completeness claim |
 | Choice adequacy | Conclusion and reason separately supported, process satisfied, acceptable-choice set and per-party harm evidence; no scalar proxy |
 | Actual outcomes | Met/unmet/pending/unverifiable/not-applicable by originally declared window, with causal attribution limits |
 | Withholding | Legitimate refusal, avoidable withholding, supported missed help and unknown counterfactual; each with eligible denominator |

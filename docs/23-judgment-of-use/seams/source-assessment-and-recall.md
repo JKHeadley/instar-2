@@ -9,7 +9,7 @@ Dependency key: S; local prerequisites: D.
 
 ## Requested additive behavior
 
-Attach restricted sensitivity/status references at learned-fact admission, including derivatives; supply permitted assessment projection, current private-use/provider/disclosure policy results, source frontiers and actual-recall references.
+Resolve section 2's registered source kind/producer membership through source-owner public records and attach a scoped assessment reference or owner-durable pending obligation before first use at the recall boundary (recall, citation or guidance of an effect). Supply permitted assessment projections, current private-use/provider/disclosure policy results, source frontiers and actual-recall references. Admission-time attachment is optional through an existing source-owner public port, never an admission prerequisite.
 
 ## Why the current seam is insufficient
 
@@ -17,7 +17,7 @@ The pinned Part 21 design specifies scope and recall; it does not implement Part
 
 ## Acceptance evidence
 
-Every permitted learned fact has an assessment or owned pending record; forbidden metadata/provider access, mixed-policy widening, consent churn and crash between append/attachment remain contained.
+NF-03, NF-18 and section 7 reconcile the same section 2 identity set, including registered admitted derivatives/policies and adopted imports/replicas, excluding raw captures, assessments and administrative/operational records. Every first use has a preceding scoped assessment/pending attachment; never-recalled unassessed members are UNASSESSED coverage debt, not violations. At first use, crash after the owner obligation is durable but before attachment: the fact stays unused, the obligation survives and reconstruction shows no use. Retry attaches once. Forbidden metadata/provider access, mixed-policy widening and consent churn remain contained.
 Require unit boundary tests, real public/HTTP integration, production-initialization
 lifecycle and wiring evidence with functioning owner ports. Include both permitted
 and refused neighbors, current identity/authority, crash/restart, loss detection,

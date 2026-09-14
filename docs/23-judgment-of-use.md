@@ -47,7 +47,7 @@ Research and seam-request files are supporting evidence and handoffs; requiremen
 and activation dependencies are stated in the indexed Rules.
 
 1. [Ownership and boundaries](23-judgment-of-use/01-ownership-and-boundaries.md)
-2. [Sensitivity attached to every learned fact](23-judgment-of-use/02-sensitivity-attached-to-every-learned-fact.md)
+2. [Sensitivity attached before learned facts are used](23-judgment-of-use/02-sensitivity-attached-to-every-learned-fact.md)
 3. [The recorded use-or-withhold judgment](23-judgment-of-use/03-the-recorded-use-or-withhold-judgment.md)
 4. [Standing, grades and time](23-judgment-of-use/04-standing-grades-and-time.md)
 5. [Local wisdom, fleet candidates and pillar placement](23-judgment-of-use/05-local-wisdom-fleet-candidates-and-pillar-placement.md)
@@ -66,6 +66,7 @@ at first use; they are not new constitutional types or landed registry entries.
 
 | Term | Plain meaning and owned definition |
 |---|---|
+| Learned fact | An owner-admitted fact whose kind and producer are registered in the Part 23 source registry as recallable into judgment contexts; membership starts at admission, or adoption for imports/replicas. Raw unprocessed captures, assessment records and administrative/operational records are excluded; registered inferences, summaries and learned policies are included. The exact owner-resolved identity predicate and first-use boundary are in [section 2](23-judgment-of-use/02-sensitivity-attached-to-every-learned-fact.md). |
 | Stratification / stratum | Grouping observations / one group, so overall success cannot hide a weak group; [section 2](23-judgment-of-use/02-sensitivity-attached-to-every-learned-fact.md) |
 | Uncertainty calibration | Whether stated confidence matches observed support; [section 6](23-judgment-of-use/06-grade-the-grader-and-resist-approval-optimization.md) |
 | Shadow evaluation | Evaluate proposed choices without applying them to the real task; [section 5](23-judgment-of-use/05-local-wisdom-fleet-candidates-and-pillar-placement.md) links the permitted-input, recording and dispatch restrictions, and [section 8.2](23-judgment-of-use/08-the-pilot-and-preregistered-evaluation.md#82-execution-and-separation-of-claims) applies this mode to replay |
