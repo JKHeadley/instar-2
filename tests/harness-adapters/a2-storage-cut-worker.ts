@@ -111,7 +111,7 @@ if (mode === 'seed') {
   }) as typeof fs.renameSync;
   fs.unlinkSync = ((...args: Parameters<typeof fs.unlinkSync>) => {
     const result = original.unlinkSync(...args);
-    if (cut === 'unlink' && String(args[0]).endsWith('.lock')) die(); return result;
+    if (cut === 'unlink' && String(args[0]).includes('.lock.release-')) die(); return result;
   }) as typeof fs.unlinkSync;
   syncBuiltinESMExports();
   handles.finishAttempt(delivery.operation, 'absent-from-owner-history', 20);

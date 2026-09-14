@@ -39,6 +39,52 @@ function processCanContinue(pid) {
   catch (error) { return error?.code !== 'ESRCH'; }
 }
 
+function lockValue(lock) {
+  try { return readlinkSync(lock); } catch { return null; }
+}
+
+function restoreMovedLock(lock, moved, value) {
+  try {
+    symlinkSync(value, lock);
+  } catch {
+    if (lockValue(lock) !== value) {
+      throw new Error('harness adapter state compare-and-swap mismatch');
+    }
+  }
+  unlinkSync(moved);
+  syncDirectory(lock);
+}
+
+/**
+ * Rename is the atomic claim. Reading the moved symlink afterwards proves
+ * whether it was still the exact lock observed by the caller. If a stale
+ * reader moved a successor's lock, restore that successor and refuse.
+ */
+function claimExactLock(lock, expected, purpose) {
+  const moved = `${lock}.${purpose}-${process.pid}-${randomUUID()}`;
+  try { renameSync(lock, moved); }
+  catch { throw new Error('harness adapter state compare-and-swap mismatch'); }
+  const claimed = lockValue(moved);
+  if (claimed !== expected) {
+    if (claimed !== null) restoreMovedLock(lock, moved, claimed);
+    throw new Error('harness adapter state compare-and-swap mismatch');
+  }
+  return moved;
+}
+
+function requireExactLock(lock, expected) {
+  if (lockValue(lock) !== expected)
+    throw new Error('harness adapter state compare-and-swap mismatch');
+}
+
+function releaseExactLock(path, lock, expected) {
+  if (!lockExists(lock)) return false;
+  const moved = claimExactLock(lock, expected, 'release');
+  unlinkSync(moved);
+  syncDirectory(path);
+  return true;
+}
+
 function successorOf(current, candidate) {
   if (!candidate || candidate.type !== 'HarnessAdapterStateSnapshot' || !Number.isSafeInteger(candidate.revision)) return false;
   if (!current) return candidate.revision === 0;
@@ -50,25 +96,45 @@ function successorOf(current, candidate) {
 
 function recoverDeadWriter(path, lock) {
   let owner;
-  try { owner = JSON.parse(readlinkSync(lock)); }
+  let observed;
+  try {
+    observed = readlinkSync(lock);
+    owner = JSON.parse(observed);
+  }
   catch { throw new Error('harness adapter state compare-and-swap mismatch'); }
   if (!Number.isSafeInteger(owner?.pid) || owner.pid < 1 || typeof owner?.temporary !== 'string'
     || !owner.temporary.startsWith(`${path}.pending-`))
     throw new Error('harness adapter state compare-and-swap mismatch');
   if (processCanContinue(owner.pid)) throw new Error('harness adapter state compare-and-swap mismatch');
 
-  if (existsSync(owner.temporary)) {
-    let candidate;
-    try { candidate = read(owner.temporary); }
-    catch { throw new Error('harness adapter state recovery retained an unreadable pending successor'); }
-    const current = read(path);
-    if (!successorOf(current, candidate))
-      throw new Error('harness adapter state recovery retained an ambiguous pending successor');
-    renameSync(owner.temporary, path);
-    syncDirectory(path);
+  const deadClaim = claimExactLock(lock, observed, 'dead');
+  const recoveryOwner = JSON.stringify({ pid: process.pid, temporary: owner.temporary });
+  try {
+    symlinkSync(recoveryOwner, lock);
+  } catch {
+    unlinkSync(deadClaim);
+    throw new Error('harness adapter state compare-and-swap mismatch');
   }
-  unlinkSync(lock);
-  syncDirectory(path);
+
+  try {
+    if (existsSync(owner.temporary)) {
+      let candidate;
+      try { candidate = read(owner.temporary); }
+      catch { throw new Error('harness adapter state recovery retained an unreadable pending successor'); }
+      const current = read(path);
+      if (!successorOf(current, candidate))
+        throw new Error('harness adapter state recovery retained an ambiguous pending successor');
+      requireExactLock(lock, recoveryOwner);
+      renameSync(owner.temporary, path);
+      syncDirectory(path);
+    }
+  } finally {
+    try { releaseExactLock(path, lock, recoveryOwner); }
+    finally {
+      if (lockExists(deadClaim)) unlinkSync(deadClaim);
+      syncDirectory(path);
+    }
+  }
 }
 
 /** Exact-byte, atomic local custody for Part Thirteen's package-local journal. */
@@ -101,16 +167,15 @@ export function createHarnessAdapterFileState(path) {
         const lockedCurrent = read(path);
         const lockedActual = lockedCurrent === null ? null : hash(lockedCurrent);
         if (lockedActual !== expected) throw new Error('harness adapter state compare-and-swap mismatch');
+        requireExactLock(lock, owner);
         writeFileSync(temporary, `${JSON.stringify(snapshot)}\n`, { encoding: 'utf8', mode: 0o600 });
         const descriptor = openSync(temporary, 'r');
         try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
+        requireExactLock(lock, owner);
         renameSync(temporary, path);
         syncDirectory(path);
       } finally {
-        if (lockExists(lock)) {
-          unlinkSync(lock);
-          syncDirectory(path);
-        }
+        if (lockExists(lock)) releaseExactLock(path, lock, owner);
       }
     },
   });

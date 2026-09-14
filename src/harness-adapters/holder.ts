@@ -789,13 +789,22 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     handle: HarnessRuntimeHandle,
     now: number,
     analysis: EvidenceAnalysis,
-  ): MaterializedEvidence | null => {
+  ): Readonly<{ disposition: 'poisoned' | 'unknown'; evidence: MaterializedEvidence }> | null => {
     if (!input.owners.verification) return null;
-    const pauses = analysis.decisionSet.filter(row => row.ownerCurrent && row.phase === 'pause-observed');
-    if (pauses.length === 0) return null;
-    const locallyConfirmed = pauses.find(row => row.event && resumeDisposition(row.event, now) === 'poisoned');
-    if (locallyConfirmed) return locallyConfirmed;
-    const omitted = pauses.filter(row => !row.event);
+    const retainedPoison = analysis.decisionSet.filter(row => row.event?.kind === 'diagnostic'
+      && row.event.diagnosticCode.startsWith('transcript-poison:'));
+    const locallyConfirmed = retainedPoison.find(row => row.ownerCurrent && row.availability === 'current'
+      && row.event && resumeDisposition(row.event, now) === 'poisoned');
+    if (locallyConfirmed) return freeze({ disposition: 'poisoned' as const, evidence: locallyConfirmed });
+    // Once poison has been witnessed, a disputed Ten observation, stale source,
+    // or unavailable Nine witness cannot make the conversation safe. There is
+    // no landed clearance record in this slice, so the conservative result is
+    // unknown until the owners can again establish the poison disposition.
+    if (retainedPoison.length > 0) {
+      return freeze({ disposition: 'unknown' as const, evidence: retainedPoison[0]! });
+    }
+
+    const omitted = analysis.decisionSet.filter(row => !row.event && row.phase === 'pause-observed');
     if (omitted.length === 0) return null;
     try {
       const rows = consumeResult(input.owners.verification.inspectCurrent(), {
@@ -805,12 +814,18 @@ export function createHarnessEvidenceHolder(input: Readonly<{
       const subject = bytes([handle.harness, handle.artifactDigest, handle.platform, handle.machine,
         handle.launch, handle.run, handle.step, handle.input, handle.incarnation,
         handle.processIdentity]) ?? '';
-      const poisoned = rows.some(row => row.record.type === 'VerificationPlan'
+      const poisonPlans = rows.filter(row => row.record.type === 'VerificationPlan'
+        && row.record.subject.holder === 'part-thirteen:transcript-poison'
+        && row.record.subject.governed === subject && row.record.subject.scope === input.scope);
+      const poisoned = poisonPlans.some(row => row.record.type === 'VerificationPlan'
         && row.taint.length === 0 && row.conflicts.length === 0
         && validResumePlan(row.record, subject, 'transcript-poison', now));
-      return poisoned ? omitted[0]! : null;
+      if (poisoned) return freeze({ disposition: 'poisoned' as const, evidence: omitted[0]! });
+      return poisonPlans.length > 0
+        ? freeze({ disposition: 'unknown' as const, evidence: omitted[0]! })
+        : null;
     } catch {
-      return null;
+      return freeze({ disposition: 'unknown' as const, evidence: omitted[0]! });
     }
   };
 
@@ -838,6 +853,19 @@ export function createHarnessEvidenceHolder(input: Readonly<{
             : decision('refused', 'immutable runtime event disagreement', false, progress.key);
         }
         if (progress.disposition === 'duplicate') {
+          const representative = current.events
+            .map((retained, index) => ({ retained, index,
+              identity: input.admission.progressIdentity(retained, []) }))
+            .filter(row => row.identity.key === progress.key)
+            .sort((left, right) => right.retained.sourceClock - left.retained.sourceClock)[0];
+          if (representative && event.sourceClock > representative.retained.sourceClock) {
+            const events = [...current.events];
+            events[representative.index] = event;
+            state.commit(current, { events });
+            return decision('duplicate',
+              `${progress.reason}; newest equivalent owner witness retained without another advance`,
+              false, progress.key);
+          }
           return decision('duplicate', progress.reason, false, progress.key);
         }
         if (current.events.length >= input.maxEvents) {
@@ -988,9 +1016,12 @@ export function createHarnessEvidenceHolder(input: Readonly<{
         const unavailable = analysis.decisionSet.find(row => row.availability === 'unavailable'
           && row.event && relevant(row.event))?.event;
         const poison = outstandingOwnerPoison(handle, now, analysis);
-        if (poison) return freeze({ state: 'poisoned' as const,
+        if (poison?.disposition === 'poisoned') return freeze({ state: 'poisoned' as const,
           reason: 'Part Nine current guard posture confirms outstanding owner poison evidence',
-          event: poison.id });
+          event: poison.evidence.id });
+        if (poison?.disposition === 'unknown') return freeze({ state: 'unknown' as const,
+          reason: 'retained poison evidence is stale, unavailable, or disputed and has no owner clearance',
+          event: poison.evidence.id });
         const omitted = analysis.decisionSet.find(row => !row.event);
         if (omitted && (!available || omitted.sourceClock >= available.sourceClock)) {
           return freeze({ state: 'unknown' as const,

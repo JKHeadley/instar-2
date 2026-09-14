@@ -186,32 +186,16 @@ it('A2-INTEGRATION R6-MONOTONICITY P13-NF-25 P13-NF-28 P13-NF-31 P13-NF-38 remov
   expect(emptyProgress.progress(handle, 20).state).not.toBe('progressed');
   evidenceLossScenarios++;
 
-  for (const loss of ['lookup', 'prefix', 'journal'] as const) {
-    const fixture = resumeFixture();
-    expect(fixture.evidence.resume(fixture.handle, 22).state).toBe('eligible');
-    const fullOwner = structuredClone(fixture.ten.owner.raw);
-    const eventIndex = fixture.ten.owner.raw.findIndex(row => {
-      try {
-        return value(fixture.ten.owner.c.history!.lookup(fixture.compatible.sourceEvidence[0]!))?.fact.id
-          === (row as { id?: string }).id;
-      } catch { return false; }
-    });
-    const compatibleRow = value(fixture.ten.owner.c.history!.lookup(fixture.compatible.sourceEvidence[0]!));
-    if (!compatibleRow) throw new Error('resume-compatible event requires its signed source row');
-    let context = fixture.ten.owner.c;
-    let state = fixture.eventState;
-    if (loss === 'lookup') {
-      const ownerHistory = fixture.ten.owner.c.history!;
-      context = { ...fixture.ten.owner.c, history: { ...ownerHistory, lookup: (reference: string) =>
-        reference === fixture.compatible.sourceEvidence[0] || reference === compatibleRow.fact.id
-          ? fixture.ten.owner.success(null) : ownerHistory.lookup(reference) } } as typeof fixture.ten.owner.c;
-    } else if (loss === 'prefix') {
-      expect(eventIndex).toBeGreaterThanOrEqual(0);
-      fixture.ten.owner.raw.splice(0, fixture.ten.owner.raw.length,
-        ...fullOwner.filter(row => (row as { id?: string }).id !== compatibleRow.fact.id));
-    } else {
-      state = createMemoryHarnessAdapterStateStore('r6:resume:empty');
-    }
+  // One owner fixture supplies all three loss projections. Rebuilding the full
+  // signed Nine graph for each projection made this property timing-sensitive
+  // without increasing its scenario coverage.
+  const fixture = resumeFixture();
+  expect(fixture.evidence.resume(fixture.handle, 22).state).toBe('eligible');
+  const fullOwner = structuredClone(fixture.ten.owner.raw);
+  const compatibleRow = value(fixture.ten.owner.c.history!.lookup(fixture.compatible.sourceEvidence[0]!));
+  if (!compatibleRow) throw new Error('resume-compatible event requires its signed source row');
+  const assertResumeLoss = (loss: string, context: typeof fixture.ten.owner.c,
+    state = fixture.eventState) => {
     const evidence = createHarnessEvidenceHolder({ adapter: fixture.handle.harness,
       artifact: fixture.handle.artifactDigest, platform: fixture.handle.platform,
       machine: fixture.handle.machine, scope: 'conversation:1', maxEvents: 8, maxCaptureBytes: 64,
@@ -222,7 +206,21 @@ it('A2-INTEGRATION R6-MONOTONICITY P13-NF-25 P13-NF-28 P13-NF-31 P13-NF-38 remov
       incarnation: fixture.handle.incarnation, fence: fixture.fence, now: 22,
       evidence, authority: fixture.six.api }, fixture.handles).disposition, loss).not.toBe('reconnect');
     evidenceLossScenarios++;
-  }
+  };
+
+  const ownerHistory = fixture.ten.owner.c.history!;
+  const hiddenResumeContext = { ...fixture.ten.owner.c, history: { ...ownerHistory, lookup: (reference: string) =>
+    reference === fixture.compatible.sourceEvidence[0] || reference === compatibleRow.fact.id
+      ? fixture.ten.owner.success(null) : ownerHistory.lookup(reference) } } as typeof fixture.ten.owner.c;
+  assertResumeLoss('lookup', hiddenResumeContext);
+
+  fixture.ten.owner.raw.splice(0, fixture.ten.owner.raw.length,
+    ...fullOwner.filter(row => (row as { id?: string }).id !== compatibleRow.fact.id));
+  assertResumeLoss('prefix', fixture.ten.owner.c);
+
+  fixture.ten.owner.raw.splice(0, fixture.ten.owner.raw.length, ...fullOwner);
+  assertResumeLoss('journal', fixture.ten.owner.c,
+    createMemoryHarnessAdapterStateStore('r6:resume:empty'));
   expect(evidenceLossScenarios).toBe(6);
 });
 

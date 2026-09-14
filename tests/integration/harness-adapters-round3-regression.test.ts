@@ -13,7 +13,7 @@ import { intakeFixture, message, route, value } from '../intake/fixtures.js';
 import { setup as runGraphFixture } from '../rungraph/fixtures.js';
 import { transportLoopFixture } from '../transport/loop-fixture.js';
 
-it('A2-INTEGRATION R4-F04 P13-NF-46 real Four custody, Five work state, Six cooldown, and preventive-compaction boundaries', () => {
+it('A2-INTEGRATION R4-F04 P13-NF-46 real Four custody, Six cooldown, and preventive-compaction boundaries; local work comparison does not claim production admission', () => {
   // The real Four recovery port preserves the receipt and returns typed unknown
   // for both storage failures; a readable retry redelivers the owner record.
   for (const code of ['EACCES', 'EIO']) {
@@ -37,8 +37,9 @@ it('A2-INTEGRATION R4-F04 P13-NF-46 real Four custody, Five work state, Six cool
     expect(value(intake.port().recover(receipt.id)).kind).toBe('admitted');
   }
 
-  // The real Five owner reports pending work. The holder accepts progress only
-  // after re-resolving an exact Five transition for the named process.
+  // This isolates the holder's local comparison against Five. The fixture's
+  // process-local admission Set and flat grounding fact are not production Six
+  // admission or the row-38/45 grounding path, so the map holds that arm.
   const run = runGraphFixture();
   const ready = value(run.graph.open(run.run));
   const grounding = value(run.graph.ground(run.id, 'w', 'h', 'start', run.lease));
