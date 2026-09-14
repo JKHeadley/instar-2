@@ -3,8 +3,8 @@
 **Value — decisions are derived from the constitution.** Each of the six decisions below names
 the purpose statement, pillar, or constraint that decides it, under the purpose's Rule that
 “a design question this document cannot decide is a gap in this document.” The agent owns
-measurement and tuning within those constraints. Decision 5 rests on purpose revision 3
-(PR #71, approved by the operator and merged at e281a2c2). These decisions authorize no
+measurement and tuning within those constraints. Decision 5 rests on the purpose's
+consequential-effect definition (PR #71, approved by the operator and merged at e281a2c2). These decisions authorize no
 spending or additional blocking check. Silence is not consent.
 
 **Value — decision 1: where to measure better remembering first.**
@@ -118,8 +118,8 @@ What it changes:
 - All listed major actions also covers publishing software updates, payments, and other specifically agreed
   actions that cannot be undone when earlier exchanges matter, increasing coverage and possible delay.
 
-DECIDED BY: The consequential-effect definition in purpose revision 3 (PR #71, approved and
-merged at e281a2c2). The extra
+DECIDED BY: The purpose's consequential-effect definition (PR #71, approved and merged at
+e281a2c2). The extra
 history check covers exactly the effects that pass any of its four tests:
 
 - The effect cannot be undone by the agent alone.
@@ -170,7 +170,7 @@ small pilot cannot certify.
 
 OD-04 maps to `P21-HUMAN-01` in section 10, with independently graded dimensions and a frozen
 population, tools, time allowances and precision plan. OD-05 derives the qualifying effects
-from the constitutional definition (purpose revision 3); it grants no waiver. Section 8's rulebook
+from the purpose's consequential-effect definition; it grants no waiver. Section 8's rulebook
 reconciliation, measured evidence and exact exception approval remain mandatory. Ordinary chat cannot acquire a semantic blocking reviewer.
 OD-06 chooses only waiting duration and notifications. The effect owner retains the exact
 attempt, the scheduling owner performs at most two bounded rechecks within the selected window,
