@@ -54,10 +54,15 @@ type WindowDependency = Readonly<{
   ownerEvidenceDebt: readonly string[];
   registerGeneration: string;
 }>;
+type RecoveryVoteDependency = Readonly<{
+  window: BurnWindow;
+  baselines: readonly BurnWindow[];
+}>;
 type EpisodeDependency = Readonly<{
   policy: string;
   window: BurnWindow;
   baselines: readonly BurnWindow[];
+  recoveryVotes: readonly RecoveryVoteDependency[];
   recoveryEligible: boolean;
   recoveryCount: number;
   registerGeneration: string;
@@ -785,6 +790,8 @@ function resolveQuantityFromCurrentHistory(request: CurrentQuantityResolutionReq
     'caller-supplied quantity resolution differs from the current owner selection');
   }
   const resolution = currentResolutions.length === 1 ? currentResolutions[0]! : null;
+  const occurrenceClocks = new Set(reported.map(witness =>
+    encoding(witnessCurrent(witness, context).occurrenceAt).bytes));
   let result: ResolvedQuantity;
   if (currentResolutions.length > 1)
     result = freeze({ key, amount: null, state: 'unresolved' as const,
@@ -795,7 +802,10 @@ function resolveQuantityFromCurrentHistory(request: CurrentQuantityResolutionReq
         || (unavailable.length > 0 ? 'current witnesses expired or lie in the future' : 'missing') });
   else {
     const amounts = [...new Set(reported.map(row => row.measurement.value))];
-    if (amounts.length === 1)
+    if (occurrenceClocks.size > 1)
+      result = freeze({ key, amount: null, state: 'unresolved' as const,
+        witnesses: allCurrent, reason: 'current witness occurrence clocks disagree' });
+    else if (amounts.length === 1)
       result = freeze({ key, amount: amounts[0]!, state: 'resolved' as const,
         witnesses: allCurrent, reason: 'compatible current witnesses' });
     else if (resolution)
@@ -1446,12 +1456,66 @@ function burnWindowCondition(policy: BurnPolicy, window: BurnWindow,
   return { target, comparison, coverage, incomplete, adequate, ownerDebt };
 }
 
+function exactNumberRational(value: number): Readonly<{
+  numerator: bigint; denominator: bigint;
+}> {
+  ensure(Number.isFinite(value), 'burn baseline median input must be finite');
+  const bytes = new ArrayBuffer(8);
+  const view = new DataView(bytes);
+  view.setFloat64(0, value, false);
+  const bits = view.getBigUint64(0, false);
+  const negative = (bits >> 63n) !== 0n;
+  const exponentBits = Number((bits >> 52n) & 0x7ffn);
+  const fraction = bits & ((1n << 52n) - 1n);
+  let numerator = exponentBits === 0 ? fraction : (1n << 52n) | fraction;
+  const exponent = exponentBits === 0 ? -1074 : exponentBits - 1023 - 52;
+  let denominator = 1n;
+  if (exponent >= 0) numerator <<= BigInt(exponent);
+  else denominator <<= BigInt(-exponent);
+  if (negative) numerator = -numerator;
+  return { numerator, denominator };
+}
+
+function exactMean(left: number, right: number): number {
+  const a = exactNumberRational(left);
+  const b = exactNumberRational(right);
+  const numerator = a.numerator * b.denominator + b.numerator * a.denominator;
+  const denominator = 2n * a.denominator * b.denominator;
+  const candidate = left / 2 + right / 2;
+  const represented = exactNumberRational(candidate);
+  ensure(represented.numerator * denominator === numerator * represented.denominator,
+    'burn baseline median is not exactly representable');
+  return candidate;
+}
+
 function median(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   const ordered = [...values].sort((a, b) => a - b);
   const middle = Math.floor(ordered.length / 2);
   return ordered.length % 2 ? ordered[middle]!
-    : (ordered[middle - 1]! + ordered[middle]!) / 2;
+    : exactMean(ordered[middle - 1]!, ordered[middle]!);
+}
+
+function recoveryVoteCurrent(policy: BurnPolicy, vote: RecoveryVoteDependency,
+  evaluationClock: Clock, context: MeasurementDecodeContext): boolean {
+  const currentDependency = validateWindowCurrent(vote.window, context, evaluationClock);
+  const baselineDependencies = vote.baselines.map(window =>
+    validateWindowCurrent(window, context, evaluationClock));
+  const conditions = [burnWindowCondition(policy, vote.window, currentDependency,
+    evaluationClock, context), ...vote.baselines.map((window, index) =>
+    burnWindowCondition(policy, window, baselineDependencies[index]!,
+      evaluationClock, context))];
+  const confidence = vote.baselines.length > 0 && conditions.every(row => row.adequate);
+  const currentAmount = conditions[0]!.target.count > 0
+    ? conditions[0]!.target.amount : null;
+  const baselineAmount = confidence
+    ? median(conditions.slice(1).map(row => row.target.amount)) : null;
+  const share = currentAmount === null || conditions[0]!.comparison.amount === 0
+    ? null : currentAmount / conditions[0]!.comparison.amount;
+  const excess = currentAmount === null || baselineAmount === null
+    ? null : Math.max(0, currentAmount - baselineAmount);
+  return confidence && excess !== null && share !== null
+    && excess <= policy.recoveryExcess && share <= policy.recoveryShare;
 }
 
 function validateEpisode(previous: BurnEpisodeState): void {
@@ -1489,40 +1553,42 @@ export function evaluateCurrentBurn(policyInput: BurnPolicy, previous: BurnEpiso
       validateWindowCurrent(window, context, consequentialClock));
     ensure(new Set([currentDependency.interval, ...baselineDependencies.map(row => row.interval)]).size
       === baselines.length + 1, 'burn current and baseline intervals must be distinct');
-    let priorRecoveryCurrent = true;
-    let priorRecoveryDebt: string | null = null;
+    let currentRecoveryVotes: readonly RecoveryVoteDependency[] = [];
+    const priorRecoveryDebt: string[] = [];
     if (previous.recoveryCount > 0) {
       const prior = episodeDependencies.get(previous);
       ensure(prior !== undefined && prior.policy === policy.id
         && prior.recoveryCount === previous.recoveryCount
+        && prior.recoveryVotes.length === previous.recoveryCount
         && prior.registerGeneration === context.register.generation.id
         && prior.recoveryEligible,
       'prior burn recovery count lacks its current owner observation');
-      const priorWindow = validateWindowCurrent(prior.window, context, consequentialClock);
-      const priorBaselineDependencies = prior.baselines.map(window =>
-        validateWindowCurrent(window, context, consequentialClock));
+      const finalVote = prior.recoveryVotes.at(-1)!;
+      ensure(finalVote.window === prior.window
+        && encoding(finalVote.baselines).bytes === encoding(prior.baselines).bytes,
+      'prior burn recovery chain differs from its latest vote');
+      const priorWindow = validateWindowCurrent(finalVote.window, context, consequentialClock);
       ensure(previous.lastEvaluatedWindow === priorWindow.interval
         && previous.lastEvaluatedObservation === priorWindow.observation,
       'prior burn recovery references differ from their owner observation');
-      const priorConditions = [burnWindowCondition(policy, prior.window, priorWindow,
-        consequentialClock, context), ...prior.baselines.map((window, index) =>
-        burnWindowCondition(policy, window, priorBaselineDependencies[index]!,
-          consequentialClock, context))];
-      const priorConfidence = prior.baselines.length > 0
-        && priorConditions.every(row => row.adequate);
-      const priorCurrentAmount = priorConditions[0]!.target.count > 0
-        ? priorConditions[0]!.target.amount : null;
-      const priorBaselineAmount = priorConfidence
-        ? median(priorConditions.slice(1).map(row => row.target.amount)) : null;
-      const priorShare = priorCurrentAmount === null
-        || priorConditions[0]!.comparison.amount === 0
-        ? null : priorCurrentAmount / priorConditions[0]!.comparison.amount;
-      const priorExcess = priorCurrentAmount === null || priorBaselineAmount === null
-        ? null : Math.max(0, priorCurrentAmount - priorBaselineAmount);
-      priorRecoveryCurrent = priorConfidence && priorExcess !== null && priorShare !== null
-        && priorExcess <= policy.recoveryExcess && priorShare <= policy.recoveryShare;
-      if (!priorRecoveryCurrent)
-        priorRecoveryDebt = `prior-recovery:${prior.window.id}:evidence-no-longer-usable`;
+      for (const vote of prior.recoveryVotes) {
+        if (!recoveryVoteCurrent(policy, vote, consequentialClock, context)) {
+          priorRecoveryDebt.push(
+            `prior-recovery:${vote.window.id}:evidence-no-longer-usable`);
+          currentRecoveryVotes = [];
+          continue;
+        }
+        const dependency = validateWindowCurrent(vote.window, context, consequentialClock);
+        const preceding = currentRecoveryVotes.at(-1);
+        const precedingInterval = preceding === undefined ? null
+          : intervalFromToken(validateWindowCurrent(preceding.window, context,
+            consequentialClock).interval);
+        currentRecoveryVotes = preceding === undefined || precedingInterval === null
+          || encoding(precedingInterval.end).bytes !== encoding(vote.window.start).bytes
+          ? [vote] : [...currentRecoveryVotes, vote];
+        ensure(dependency.interval === intervalToken(vote.window.start, vote.window.end),
+          'prior recovery vote interval is no longer owner-bound');
+      }
     }
     const orderedBaselines = baselines.map((window, index) => ({ window,
       dependency: baselineDependencies[index]! })).sort((a, b) =>
@@ -1554,7 +1620,7 @@ export function evaluateCurrentBurn(policyInput: BurnPolicy, previous: BurnEpiso
     const excess = currentAmount === null || baselineAmount === null
       ? null : Math.max(0, currentAmount - baselineAmount);
     const debt = [...now.target.debt, ...now.comparison.debt, ...now.ownerDebt];
-    if (priorRecoveryDebt !== null) debt.push(priorRecoveryDebt);
+    debt.push(...priorRecoveryDebt);
     if (!current.censusComplete) debt.push('census-incomplete');
     if (!current.collectorsComplete) debt.push('collector-incomplete');
     if (current.dispatchUncertain > 0) debt.push('dispatch-uncertain');
@@ -1624,26 +1690,36 @@ export function evaluateCurrentBurn(policyInput: BurnPolicy, previous: BurnEpiso
         lastEvaluatedObservation: currentDependency.observation });
     } else if (excess !== null && share !== null && excess <= policy.recoveryExcess
       && share <= policy.recoveryShare) {
-      const priorInterval = intervalFromToken(previous.lastEvaluatedWindow);
-      const same = priorRecoveryCurrent
-        && previous.lastEvaluatedWindow === currentDependency.interval;
-      const consecutive = priorRecoveryCurrent && priorInterval !== null
+      const priorVote = currentRecoveryVotes.at(-1);
+      const priorInterval = priorVote === undefined ? null
+        : intervalFromToken(validateWindowCurrent(priorVote.window, context,
+          consequentialClock).interval);
+      const same = priorVote !== undefined
+        && validateWindowCurrent(priorVote.window, context,
+          consequentialClock).interval === currentDependency.interval;
+      const consecutive = priorVote !== undefined && priorInterval !== null
         && encoding(priorInterval.end).bytes === encoding(current.start).bytes;
-      const recoveryCount = same ? Math.max(previous.recoveryCount, 1)
-        : consecutive ? previous.recoveryCount + 1 : 1;
+      const currentVote = freeze({ window: current, baselines: [...baselines] });
+      currentRecoveryVotes = same ? currentRecoveryVotes
+        : consecutive ? [...currentRecoveryVotes, currentVote] : [currentVote];
+      const recoveryCount = currentRecoveryVotes.length;
       episode = freeze({ ...previous,
         state: recoveryCount >= policy.recoveryWindows ? 'closed' as const : 'open' as const,
         recoveryCount: recoveryCount >= policy.recoveryWindows ? 0 : recoveryCount,
         lastEvaluatedWindow: currentDependency.interval,
         lastEvaluatedObservation: currentDependency.observation });
-    } else episode = freeze({ ...previous, recoveryCount: 0,
-      lastEvaluatedWindow: currentDependency.interval,
-      lastEvaluatedObservation: currentDependency.observation });
+    } else {
+      currentRecoveryVotes = [];
+      episode = freeze({ ...previous, recoveryCount: 0,
+        lastEvaluatedWindow: currentDependency.interval,
+        lastEvaluatedObservation: currentDependency.observation });
+    }
     const recoveryEligible = classification !== 'incomplete'
       && confidence === 'adequate' && excess !== null && share !== null
       && excess <= policy.recoveryExcess && share <= policy.recoveryShare;
     episodeDependencies.set(episode, freeze({ policy: policy.id, window: current,
-      baselines: [...baselines], recoveryEligible, recoveryCount: episode.recoveryCount,
+      baselines: [...baselines], recoveryVotes: episode.recoveryCount > 0
+        ? currentRecoveryVotes : [], recoveryEligible, recoveryCount: episode.recoveryCount,
       registerGeneration: context.register.generation.id }));
     return freeze({ classification, confidence, currentAmount, baselineAmount, excess, share,
       eligibleSampleCount: now.target.count, coverage: now.coverage,
