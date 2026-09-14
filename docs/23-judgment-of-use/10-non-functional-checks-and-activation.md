@@ -3,8 +3,8 @@
 **Rule — checks state both the contract and what prevents execution.**
 **Checks: P23-NF-01–22.** Section 12 is the dependency authority. The execution
 column below is the full expansion of its local dependency relation, not just a
-list of direct calls. P is Part 23's unimplemented consumer; letters D–O are named
-seam requests. Every runtime row is NON-EXECUTABLE until all listed requests are
+list of direct calls. P is Part 23's unimplemented consumer; the other keys name
+section 12's seam requests. Every runtime row is NON-EXECUTABLE until all listed requests are
 granted and implemented, all inherited owner conditions pass, and real evidence
 satisfies the whole row. A fixture or schema test alone cannot shorten that list.
 NF-01 is documentation validation only and can run now.
@@ -54,8 +54,9 @@ owner grants and their implementation, registered current consumer defaults,
 independent control of grading, unit/integration/lifecycle evidence, migration
 parity and applicable study permissions are separate conditions. A/B local
 activation requires NF-02–11 and NF-13–22. Commons export additionally requires
-NF-12 and C. A local loop does not depend on enabling fleet sharing. The initial
-C arm is offline/background under NF-13/14/16/17 and never controls a real action.
+NF-12 and commons dependency C. A local loop does not depend on enabling fleet
+sharing. Proposal C, the challenge arm, is distinct from dependency C. The initial
+challenge arm is offline/background under NF-13/14/16/17 and never controls a real action.
 No live C activation is specified here; any such consumer needs its exact
 operator-approved rule exception and measured benefit through the existing owner.
 
