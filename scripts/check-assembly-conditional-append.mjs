@@ -6,8 +6,8 @@ export const assemblyConditionalAppendMap = [{
   id: 'P10-SEAM-CONDITIONAL-APPEND-58',
   operation: 'appendIfSubjectFrontier',
   tiers: ['unit', 'integration', 'lifecycle'],
-  evidence: ['replay-authentication', 'stop-inhibition', 'closed-shape-refusal', 'held-lock-contention'],
-  cases: 'typed current-frontier refusal, equal-frontier append, subject scoping, replay authentication, stop inhibition at entry and use, closed-shape refusal, held-lock contention, two-process mode race, and real-storage SIGKILL boundaries',
+  evidence: ['replay-authentication', 'stop-inhibition', 'closed-shape-refusal', 'held-lock-contention', 'read-window-race', 'replay-stop'],
+  cases: 'typed current-frontier refusal, equal-frontier append, subject scoping, replay authentication, stop inhibition at entry and use including replay, closed-shape refusal, held-lock contention, adjacent Part Two read races, two-process mode race, and real-storage SIGKILL boundaries',
 }];
 
 export function checkAssemblyConditionalAppend(report, map = assemblyConditionalAppendMap) {
@@ -15,7 +15,7 @@ export function checkAssemblyConditionalAppend(report, map = assemblyConditional
   const tierPath = { unit: '/tests/assembly/', integration: '/tests/integration/', lifecycle: '/tests/e2e/' };
   for (const row of map) {
     if (!row.id || !row.operation || !row.cases || new Set(row.tiers).size !== 3
-      || !Array.isArray(row.evidence) || row.evidence.length !== 4 || new Set(row.evidence).size !== row.evidence.length)
+      || !Array.isArray(row.evidence) || row.evidence.length !== 6 || new Set(row.evidence).size !== row.evidence.length)
       throw new Error('malformed assembly conditional-append map entry');
     const assertions = report.testResults.flatMap(file => (file.assertionResults ?? []).map(test => ({
       ...test, file: file.name.replaceAll('\\', '/'),

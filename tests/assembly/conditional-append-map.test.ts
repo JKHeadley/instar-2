@@ -9,6 +9,7 @@ const report = { success: true, testResults: [
   { name: '/repo/tests/assembly/conditional-append.test.ts', assertionResults: [
     passed('[case:replay-authentication] unit'), passed('[case:stop-inhibition] unit'),
     passed('[case:closed-shape-refusal] unit'), passed('[case:held-lock-contention] unit'),
+    passed('[case:read-window-race] unit'), passed('[case:replay-stop] unit'),
   ] },
   { name: '/repo/tests/integration/assembly-conditional-append.test.ts', assertionResults: [passed('integration')] },
   { name: '/repo/tests/e2e/assembly-conditional-append.test.ts', assertionResults: [passed('lifecycle')] },

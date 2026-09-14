@@ -130,6 +130,12 @@ export function createConditionalAssemblyAppendPort(
             `conditional append subject frontier changed; current=${encoded(current).bytes}`);
           ensureAssemblyWorkPermitted(host, name);
 
+          const appendHost: AssemblyHost = { ...host, current() {
+            const current = host.current();
+            ensureAssemblyWorkPermitted({ current: () => current }, name);
+            return current;
+          } };
+
           const existing = rows.find(row => row.record.type === name
             && (row.record.id === candidate.id || assemblyLogicalKey(row.record) === assemblyLogicalKey(candidate)));
           if (existing) {
@@ -145,7 +151,7 @@ export function createConditionalAssemblyAppendPort(
                 return { kind: 'local-durable' as const };
               }),
             };
-            take(createAssemblySpine(host, author, createFactStore(author.context, authenticationStorage)).append(candidate));
+            take(createAssemblySpine(appendHost, author, createFactStore(author.context, authenticationStorage)).append(candidate));
             ensure(authenticated, 'conditional append replay did not reach Part Two authentication');
             const comparison = take(compareAssemblyRecords(name, existing.record, candidate, host.boundary));
             ensure(comparison.equal, comparison.conflict?.detail ?? 'assembly identity conflict');
@@ -153,35 +159,20 @@ export function createConditionalAssemblyAppendPort(
           }
 
           const expectedHead = observedFacts.at(-1)?.contentHash ?? null;
-          let headMoved = false;
           const pinnedStorage: SegmentStoragePort = {
             owner: 'part-ten',
             read: () => storage.read(),
             append(bytes) {
-              let result: Result<import('../facts/index.js').DurabilityState>;
-              try {
-                ensureAssemblyWorkPermitted(host, name);
-                result = storage.append(stopCheckedBytes(bytes, host, name), expectedHead);
-              }
-              catch (error) {
-                headMoved = physicalHead(storage) !== expectedHead;
-                throw error;
-              }
-              headMoved = physicalHead(storage) !== expectedHead;
-              return result;
+              ensureAssemblyWorkPermitted(host, name);
+              return storage.append(stopCheckedBytes(bytes, host, name), expectedHead);
             },
           };
           const appendStore = createFactStore(author.context, pinnedStorage);
-          const appendHost: AssemblyHost = { ...host, current() {
-            const current = host.current();
-            ensureAssemblyWorkPermitted({ current: () => current }, name);
-            return current;
-          } };
           const appendSpine = createAssemblySpine(appendHost, author, appendStore);
           const appended = appendSpine.append(candidate);
           const settled = resultParts(appended);
           if (settled.ok) return candidate;
-          if (headMoved) continue;
+          if (physicalHead(storage) !== expectedHead) continue;
           if (storageLockContended(settled.refusal)) {
             const latestStore = createFactStore(author.context, storage);
             const latestRows = assemblyRows(take(latestStore.read()), host.boundary);
