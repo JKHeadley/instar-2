@@ -1,0 +1,12 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "operator-surfaces.contract", "kind": "governed documents", "status": "dark",
+    "requiredFacts": { "location": "docs/15-the-operator-surfaces.md", "changelog": "git-history:docs/15-the-operator-surfaces.md" },
+    "standards": [], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "operator-surfaces.source", "kind": "protected artifacts", "status": "dark",
+    "requiredFacts": { "pattern": "src/operator/**", "why": "Operator authority re-resolves signed history through Part Four and production boots through Part Ten; activation still requires independent live phone, provider, semantic-review, and objective mobile evidence.", "surface": "registered independently verified phone surface" },
+    "standards": [28, 79, 82, 98, 104, 106], "holds": []
+  }
+]
