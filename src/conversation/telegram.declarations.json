@@ -1,0 +1,38 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "telegram-conversation-adapter",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "telegram.mode.long-poll.default",
+        "telegram.mode.webhook.signed-choice-only",
+        "telegram.identity.fresh-authenticated-probe",
+        "telegram.cursor.consecutive-durable-receipts",
+        "telegram.operation.ordinary-reply.supported",
+        "telegram.operation.media.inhibited",
+        "telegram.operation.reaction.inhibited",
+        "telegram.operation.typing.inhibited",
+        "telegram.operation.delete.inhibited",
+        "telegram.operation.edit.inhibited",
+        "telegram.operation.aggregate.inhibited",
+        "public.IntakePort.receive",
+        "public.EffectDoorway.handoff"
+      ],
+      "gate": { "test": "P4-NF-06", "deadline": 1893456000000 }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "external",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": { "kind": "no" }
+    },
+    "standards": [4, 14, 28, 29, 42, 46, 77, 89, 105],
+    "holds": []
+  }
+]
