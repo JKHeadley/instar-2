@@ -7,6 +7,23 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 const partialReason = 'Executable negative/positive-neighbour contract coverage and the Part Four/Part Ten owner seams are present; production activation remains dark pending independent live phone/provider, semantic-review, and objective mobile evidence.';
+export const p11HeldCases = Object.freeze([Object.freeze({
+  id: 'V90',
+  reason: 'NON-EXECUTABLE-UNTIL-slice-A2-final-append-generation',
+})]);
+
+export function checkP11HeldCases(report) {
+  for (const held of p11HeldCases) {
+    const matches = report.testResults.flatMap(file => file.assertionResults)
+      .filter(test => test.fullName.includes(held.id) && test.fullName.includes(held.reason));
+    if (matches.length !== 1) throw new Error(`${held.id}: held final-append generation case must appear exactly once`);
+    if (!['pending', 'skipped'].includes(matches[0].status))
+      throw new Error(`${held.id}: ${held.reason} must remain skipped until slice A2`);
+    if (!matches[0].title.includes(`out of slice scope: ${held.reason}`))
+      throw new Error(`${held.id}: held reason is not exact`);
+  }
+  return p11HeldCases;
+}
 
 export function p11Dispositions(design = readFileSync('docs/15-the-operator-surfaces.md', 'utf8')) {
   const ids = [...design.matchAll(/^\| (P11-NF-(\d+)) \|/gm)].map(m => ({ id: m[1], number: Number(m[2]) }));
@@ -94,11 +111,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const issues = inspectOperatorCore(sources); if (issues.length) throw new Error(issues.join('\n'));
   const declarations = JSON.parse(readFileSync('src/operator/operator.declarations.json', 'utf8'));
   if (!declarations.length || declarations.some(row => row.status !== 'dark' || row.holds?.length)) throw new Error('operator declarations falsely claim held/live activation');
-  const rows = checkP11Coverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
+  const report = JSON.parse(readFileSync('.test-results.json', 'utf8'));
+  const held = checkP11HeldCases(report);
+  const rows = checkP11Coverage(report);
   console.log('| Check | Status | Executed test files |'); console.log('|---|---|---|');
   for (const row of rows) console.log(`| ${row.id} | ${row.status} | ${[...new Set(row.tests.map(t => t.file))].join('; ') || '—'} |`);
   const conformance = checkCapabilityConformance(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   console.log(`${conformance.length} supported adapter capabilities each bound to a specific PASSING test.`);
+  for (const row of held) console.log(`Held case ${row.id}: ${row.reason}`);
   console.log(`${rows.length} P11 checks mapped to passing executable fixtures across unit, integration and lifecycle tiers. `
     + 'All dispositions remain partial; no held or live activation claim is emitted.');
 }

@@ -9,6 +9,7 @@ export const minimalPlaneProjectionIds = Object.freeze(['minimal.intake-ledger',
 const NESTED = 'Owner record identity lives under `record`; part two\'s fold language addresses only top-level body fields.';
 const RUN_KIND = 'Its top-level `run` field IS foldable; the exclusion is by declared source, not by the fold language.';
 const RUN_KINDS = Object.freeze(['run-opening', 'run-transition', 'session-grounding']);
+const REPLAY_SAMPLE_FAILURES = new Set(['timeout']);
 const ignore = (reason: string) => ({ kind: 'ignores' as const, reason });
 const fold = (merge: 'set-union' | 'exclusive-singleton', identity: string, value: string) => ({ kind: 'folds' as const, merge, identity, value });
 
@@ -77,6 +78,9 @@ export function evaluateGenesisReplay(samples: readonly ReplaySample[], matrix: 
     const digests = new Set<Hash>();
     const generations = new Set<string>(), populations = new Set<string>();
     for (const sample of samples) {
+      requireOperator(Array.isArray(sample.failures) && sample.failures.every(reason =>
+        typeof reason === 'string' && REPLAY_SAMPLE_FAILURES.has(reason)),
+      'P11-NF-30: replay sample failures must be an array of known failure names');
       if (!matrix[sample.deployment]?.includes(sample.cache)) failures.push(`${sample.deployment}:${sample.cache}:undeclared`);
       if (sample.failures.length) failures.push(...sample.failures.map(reason => `${sample.deployment}:${sample.cache}:${reason}`));
       if (!sample.resultDigest || !/^sha256:[a-f0-9]{64}$/.test(sample.resultDigest))
