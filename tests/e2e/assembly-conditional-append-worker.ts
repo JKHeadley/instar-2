@@ -10,8 +10,7 @@ import { factsFixture, privateKey, value } from '../facts/fixtures.js';
 
 const [mode, directory, cut, marker, options = '{}'] = process.argv.slice(2);
 if (!mode || !directory) throw new Error('mode and directory required');
-const opts = JSON.parse(options) as { adapter?: string; id?: string; candidateMode?: string;
-  startClock?: number; appendClock?: number; validUntil?: number };
+const opts = JSON.parse(options) as { adapter?: string; id?: string; candidateMode?: string };
 const resultContext = factsFixture();
 const result = <T>(run: () => T) => boundary('ConditionalAppendLifecycleStorage', null, resultContext.c, run);
 const cuttable = await createCuttableTransportFileStorage(directory, result, cut, marker);
@@ -30,28 +29,19 @@ if (mode === 'read') {
 
 if (mode === 'attempt') {
   const template = assemblyRuntimeFixture();
-  if (opts.startClock !== undefined) template.time(opts.startClock);
   const store = createFactStore(template.context, storage);
   const spine = createAssemblySpine(template.host, { context: template.context, privateKey }, store);
   const runtime = createAssemblyRuntime({ ...template.composition, spine });
   const adapter = opts.adapter ?? 'telegram:v1:bot:99';
   const frontier = value(runtime.inspectCurrent()).filter(row => row.record.type === 'AdapterConformance'
     && (row.record as { adapter: string }).adapter === adapter).map(row => row.fact.id);
-  const conditionalStorage = opts.appendClock === undefined ? storage : {
-    owner: 'part-ten' as const, read: storage.read,
-    append(bytes: string, expectedHead: string | null) {
-      template.time(opts.appendClock!);
-      return storage.append(bytes, expectedHead);
-    },
-  };
   const port = createConditionalAssemblyAppendPort({
-    host: template.host, author: { context: template.context, privateKey }, storage: conditionalStorage,
+    host: template.host, author: { context: template.context, privateKey }, storage,
   });
   const outcome = port.appendIfSubjectFrontier('AdapterConformance', {
     ...assemblyInput('AdapterConformance'), id: opts.id ?? 'conformance:contender', adapter,
     mode: opts.candidateMode ?? 'long-poll',
-  }, { subject: { type: 'AdapterConformance', field: 'adapter', value: adapter }, facts: frontier,
-    ...(opts.validUntil === undefined ? {} : { validUntil: opts.validUntil }) });
+  }, { subject: { type: 'AdapterConformance', field: 'adapter', value: adapter }, facts: frontier });
   const rows = value(runtime.inspect()).filter(row => row.record.type === 'AdapterConformance')
     .map(row => ({ id: row.record.id, adapter: (row.record as { adapter: string }).adapter, mode: (row.record as { mode: string }).mode }));
   process.stdout.write(`${JSON.stringify(outcome.kind === 'Success'

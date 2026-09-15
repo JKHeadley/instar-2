@@ -4,8 +4,13 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { build } from 'esbuild';
 
-const baseline = '8ff5ba6ef4a471122d1df5629e2f1d9a1a641c15';
+const baseline = '15f70b7a13a7bb90a5ae28000f1b82e8f32247e7';
 const workspace = process.cwd();
+
+// The row-127 brief grants a single additive Part Ten source extension: the exclusive validUntil
+// precondition on appendIfSubjectFrontier. That one baseline path is permitted to differ; every
+// other pinned-main source/test path must remain byte-identical.
+const grantedExtensions = new Set(['src/assembly/conditional-append.ts']);
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { cwd: workspace, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, ...options });
@@ -18,7 +23,7 @@ function run(command, args, options = {}) {
 const baselinePaths = new Set(run('git', ['ls-tree', '-r', '--name-only', baseline, '--', 'src', 'tests'])
   .split('\n').filter(Boolean));
 const changed = run('git', ['diff', '--name-only', baseline, '--', 'src', 'tests'])
-  .split('\n').filter(path => baselinePaths.has(path));
+  .split('\n').filter(path => baselinePaths.has(path) && !grantedExtensions.has(path));
 if (changed.length > 0) throw new Error(`P12 additivity: pinned-main source/test paths changed:\n${changed.join('\n')}`);
 
 const temporary = mkdtempSync(join(tmpdir(), 'instar-p12-additivity-'));
@@ -82,4 +87,4 @@ writeFileSync(process.argv[2], JSON.stringify(rows, null, 2));
   rmSync(temporary, { recursive: true, force: true });
 }
 
-console.log(`${baselinePaths.size} pinned-main source/test paths remain byte-identical; 25 complete legacy Results are identical.`);
+console.log(`${baselinePaths.size} pinned-main source/test paths; ${[...grantedExtensions].join(', ')} is the granted additive extension; ${baselinePaths.size - grantedExtensions.size} remain byte-identical; 25 complete legacy Results are identical.`);

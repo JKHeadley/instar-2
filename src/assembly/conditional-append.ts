@@ -132,7 +132,13 @@ export function createConditionalAssemblyAppendPort(
         const validUntil = hasValidity
           ? (expected as AssemblySubjectFrontierWithValidity).validUntil
           : null;
-        ensure(validUntil === null || (Number.isSafeInteger(validUntil) && validUntil >= 0),
+        // An omitted validUntil is the legacy no-expiry input and keeps the null sentinel that
+        // skips every expiry check. A validUntil that is PRESENT must be a finite nonnegative
+        // integer; a present null (or any non-number / non-finite / negative / non-integer value)
+        // is malformed data and is refused here before anything is appended — it must never be
+        // conflated with the omitted sentinel.
+        ensure(!hasValidity
+          || (typeof validUntil === 'number' && Number.isSafeInteger(validUntil) && validUntil >= 0),
           'conditional append validUntil precondition is malformed');
         ensure(expected && expected.subject && expected.subject.type === name,
           'conditional append subject type must match the record type');
