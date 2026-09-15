@@ -129,6 +129,13 @@ export interface HarnessResumeView {
   readonly event: string;
 }
 
+export interface HarnessReconnectEvidenceView {
+  readonly state: 'joint' | 'unknown';
+  readonly reason: string;
+  readonly liveness: HarnessLivenessView;
+  readonly resume: HarnessResumeView;
+}
+
 export interface HarnessEventRead {
   readonly state: 'available' | 'unknown';
   readonly events: readonly HarnessRuntimeEvent[];
@@ -146,6 +153,7 @@ export interface HarnessEvidenceHolder {
   progress(handle: HarnessRuntimeHandle, now: number): HarnessProgressView;
   completion(handle: HarnessRuntimeHandle, now: number): HarnessCompletionView;
   resume(handle: HarnessRuntimeHandle, now: number): HarnessResumeView;
+  reconnectEvidence(handle: HarnessRuntimeHandle, now: number): HarnessReconnectEvidenceView;
   events(launch: string): HarnessEventRead;
 }
 
@@ -1215,6 +1223,122 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     }
   };
 
+  const livenessFrom = (analysis: EvidenceAnalysis): HarnessLivenessView => {
+    const relevant = analysis.decisionSet.filter(row => row.event
+      ? ['process-started', 'probe-live', 'probe-failed', 'heartbeat', 'process-exited'].includes(row.event.kind)
+      : row.phase !== null && ['launched', 'uncertain', 'exit-observed'].includes(row.phase));
+    const availableRows = relevant.filter(row => row.availability === 'current');
+    const unavailableRows = relevant.filter(row => row.availability === 'unavailable');
+    const availableClock = availableRows[0]?.sourceClock ?? -1;
+    const unavailableClock = unavailableRows[0]?.sourceClock ?? -1;
+    if (unavailableClock >= availableClock && unavailableClock >= 0) {
+      return freeze({ state: 'unknown' as const,
+        reason: 'newest exact-process evidence is stale, unavailable, future-dated, or disputed',
+        event: unavailableRows[0]?.id ?? '' });
+    }
+    if (availableClock < 0) return freeze({ state: 'unknown' as const,
+      reason: 'no fresh exact-incarnation liveness witness; timeout or absence does not prove death', event: '' });
+    const frontier = availableRows.filter(row => row.sourceClock === availableClock);
+    const dispositions = new Set(frontier.map(row => {
+      if (row.event) {
+        if (row.event.kind === 'probe-failed') return 'unknown';
+        if (row.event.kind === 'process-exited') return 'dead';
+        return 'live';
+      }
+      if (row.phase === 'uncertain') return 'unknown';
+      if (row.phase === 'exit-observed') return 'dead';
+      return 'live';
+    }));
+    if (dispositions.size !== 1 || dispositions.has('unknown')) return freeze({ state: 'unknown' as const,
+      reason: 'latest source-clock frontier contains failed, contradictory, or unordered liveness evidence',
+      event: frontier[0]?.id ?? '' });
+    if (dispositions.has('dead')) return freeze({ state: 'dead' as const,
+      reason: 'explicit current correlated process-exit witness', event: frontier[0]?.id ?? '' });
+    return freeze({ state: 'live' as const,
+      reason: 'fresh exact-incarnation owner-witnessed proof', event: frontier[0]?.id ?? '' });
+  };
+
+  const resumeFrom = (
+    handle: HarnessRuntimeHandle,
+    now: number,
+    analysis: EvidenceAnalysis,
+  ): HarnessResumeView => {
+    if (!analysis.signedResumeHandle) return freeze({ state: 'unknown' as const,
+      reason: 'retained runtime handle disagrees with the current signed Ten launch or decision clock',
+      event: '' });
+    const relevant = (event: HarnessRuntimeEvent) => event.kind === 'diagnostic'
+      && (event.diagnosticCode.startsWith('resume-compatible:')
+        || event.diagnosticCode.startsWith('transcript-poison:'));
+    const availableEvents = analysis.decisionSet.filter(row => row.availability === 'current'
+      && row.event && relevant(row.event)).map(row => row.event!);
+    const available = newest(availableEvents);
+    const unavailable = analysis.decisionSet.find(row => row.availability === 'unavailable'
+      && row.event && relevant(row.event))?.event;
+    const poison = outstandingOwnerPoison(handle, now, analysis);
+    if (poison?.disposition === 'poisoned') return freeze({ state: 'poisoned' as const,
+      reason: 'Part Nine current guard posture confirms outstanding owner poison evidence',
+      event: poison.evidence.id });
+    if (poison?.disposition === 'unknown') return freeze({ state: 'unknown' as const,
+      reason: 'retained poison evidence is stale, unavailable, or disputed and has no owner clearance',
+      event: poison.evidence.id });
+    const omitted = analysis.decisionSet.find(row => !row.event);
+    if (omitted && (!available || omitted.sourceClock >= available.sourceClock)) {
+      return freeze({ state: 'unknown' as const,
+        reason: 'newer current owner evidence omitted from the local journal prevents favourable resume',
+        event: omitted.id });
+    }
+    if (unavailable && (!available || unavailable.sourceClock >= available.sourceClock)) {
+      return freeze({ state: 'unknown' as const,
+        reason: 'newest resume evidence is stale, unavailable, future-dated, or disputed',
+        event: unavailable.id });
+    }
+    if (!available) return freeze({ state: 'unknown' as const,
+      reason: 'pane text, silence, or missing evidence cannot establish resume safety', event: '' });
+    const dispositions = new Set(sourceFrontier(availableEvents).map(event => resumeDisposition(event, now)));
+    if (dispositions.size !== 1) return freeze({ state: 'unknown' as const,
+      reason: 'latest resume source-clock frontier contains unordered contradictory evidence', event: available.id });
+    const disposition = resumeDisposition(available, now);
+    if (disposition === 'poisoned') return freeze({ state: 'poisoned' as const,
+      reason: 'Part Nine current guard posture confirms the runtime conversation cannot resume safely',
+      event: available.id });
+    if (disposition === 'eligible') return freeze({ state: 'eligible' as const,
+      reason: 'Part Nine current guard posture confirms owner-gated resume compatibility',
+      event: available.id });
+    return freeze({ state: 'unknown' as const,
+      reason: 'diagnostic claim lacks a healthy current Part Nine guard posture', event: available.id });
+  };
+
+  const reconnectFrontier = (handle: HarnessRuntimeHandle): string => {
+    if (!input.context.history) throw new Error('reconnect evidence requires current Part Ten signed history');
+    const current = input.owners.current.current();
+    const localHandle = input.owners.handles.lookup(handle.launch);
+    const history = consumeResult(input.context.history.current(), {
+      Success: value => value,
+      Refused: refused => { throw new Error(refused.detail); },
+    });
+    const verification = input.owners.verification
+      ? consumeResult(input.owners.verification.inspectCurrent(), {
+          Success: value => value,
+          Refused: refused => { throw new Error(refused.detail); },
+        })
+      : null;
+    const frontier = bytes({
+      clock: current.clock,
+      generation: current.generation,
+      stopped: current.stopped,
+      handle: localHandle.state === 'found' && localHandle.handle
+        ? harnessAdapterIdentity(localHandle.handle).canonicalHash
+        : localHandle,
+      journal: harnessAdapterIdentity(state.read()).canonicalHash,
+      history,
+      verification,
+      validationFloors: validationFloors.loadValidationFloors(),
+      poisonCandidates: validationFloors.loadPoisonCandidates(),
+    });
+    if (!frontier) throw new Error('reconnect evidence frontier cannot be canonicalized');
+    return frontier;
+  };
+
   const holder: HarnessEvidenceHolder = {
     owner: 'part-thirteen',
     machine: input.machine,
@@ -1280,39 +1404,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     },
     liveness(handle, now) {
       try {
-        const analysis = readAnalysis(handle, now);
-        const relevant = analysis.decisionSet.filter(row => row.event
-          ? ['process-started', 'probe-live', 'probe-failed', 'heartbeat', 'process-exited'].includes(row.event.kind)
-          : row.phase !== null && ['launched', 'uncertain', 'exit-observed'].includes(row.phase));
-        const availableRows = relevant.filter(row => row.availability === 'current');
-        const unavailableRows = relevant.filter(row => row.availability === 'unavailable');
-        const availableClock = availableRows[0]?.sourceClock ?? -1;
-        const unavailableClock = unavailableRows[0]?.sourceClock ?? -1;
-        if (unavailableClock >= availableClock && unavailableClock >= 0) {
-          return freeze({ state: 'unknown' as const,
-            reason: 'newest exact-process evidence is stale, unavailable, future-dated, or disputed',
-            event: unavailableRows[0]?.id ?? '' });
-        }
-        if (availableClock < 0) return freeze({ state: 'unknown' as const,
-          reason: 'no fresh exact-incarnation liveness witness; timeout or absence does not prove death', event: '' });
-        const frontier = availableRows.filter(row => row.sourceClock === availableClock);
-        const dispositions = new Set(frontier.map(row => {
-          if (row.event) {
-            if (row.event.kind === 'probe-failed') return 'unknown';
-            if (row.event.kind === 'process-exited') return 'dead';
-            return 'live';
-          }
-          if (row.phase === 'uncertain') return 'unknown';
-          if (row.phase === 'exit-observed') return 'dead';
-          return 'live';
-        }));
-        if (dispositions.size !== 1 || dispositions.has('unknown')) return freeze({ state: 'unknown' as const,
-          reason: 'latest source-clock frontier contains failed, contradictory, or unordered liveness evidence',
-          event: frontier[0]?.id ?? '' });
-        if (dispositions.has('dead')) return freeze({ state: 'dead' as const,
-          reason: 'explicit current correlated process-exit witness', event: frontier[0]?.id ?? '' });
-        return freeze({ state: 'live' as const,
-          reason: 'fresh exact-incarnation owner-witnessed proof', event: frontier[0]?.id ?? '' });
+        return livenessFrom(readAnalysis(handle, now));
       } catch (error) {
         return freeze({ state: 'unknown' as const,
           reason: error instanceof Error ? error.message : 'runtime evidence journal is unavailable', event: '' });
@@ -1399,53 +1491,35 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     },
     resume(handle, now) {
       try {
-        const analysis = readAnalysis(handle, now);
-        if (!analysis.signedResumeHandle) return freeze({ state: 'unknown' as const,
-          reason: 'retained runtime handle disagrees with the current signed Ten launch or decision clock',
-          event: '' });
-        const relevant = (event: HarnessRuntimeEvent) => event.kind === 'diagnostic'
-          && (event.diagnosticCode.startsWith('resume-compatible:')
-            || event.diagnosticCode.startsWith('transcript-poison:'));
-        const availableEvents = analysis.decisionSet.filter(row => row.availability === 'current'
-          && row.event && relevant(row.event)).map(row => row.event!);
-        const available = newest(availableEvents);
-        const unavailable = analysis.decisionSet.find(row => row.availability === 'unavailable'
-          && row.event && relevant(row.event))?.event;
-        const poison = outstandingOwnerPoison(handle, now, analysis);
-        if (poison?.disposition === 'poisoned') return freeze({ state: 'poisoned' as const,
-          reason: 'Part Nine current guard posture confirms outstanding owner poison evidence',
-          event: poison.evidence.id });
-        if (poison?.disposition === 'unknown') return freeze({ state: 'unknown' as const,
-          reason: 'retained poison evidence is stale, unavailable, or disputed and has no owner clearance',
-          event: poison.evidence.id });
-        const omitted = analysis.decisionSet.find(row => !row.event);
-        if (omitted && (!available || omitted.sourceClock >= available.sourceClock)) {
-          return freeze({ state: 'unknown' as const,
-            reason: 'newer current owner evidence omitted from the local journal prevents favourable resume',
-            event: omitted.id });
-        }
-        if (unavailable && (!available || unavailable.sourceClock >= available.sourceClock)) {
-          return freeze({ state: 'unknown' as const,
-            reason: 'newest resume evidence is stale, unavailable, future-dated, or disputed',
-            event: unavailable.id });
-        }
-        if (!available) return freeze({ state: 'unknown' as const,
-          reason: 'pane text, silence, or missing evidence cannot establish resume safety', event: '' });
-        const dispositions = new Set(sourceFrontier(availableEvents).map(event => resumeDisposition(event, now)));
-        if (dispositions.size !== 1) return freeze({ state: 'unknown' as const,
-          reason: 'latest resume source-clock frontier contains unordered contradictory evidence', event: available.id });
-        const disposition = resumeDisposition(available, now);
-        if (disposition === 'poisoned') return freeze({ state: 'poisoned' as const,
-          reason: 'Part Nine current guard posture confirms the runtime conversation cannot resume safely',
-          event: available.id });
-        if (disposition === 'eligible') return freeze({ state: 'eligible' as const,
-          reason: 'Part Nine current guard posture confirms owner-gated resume compatibility',
-          event: available.id });
-        return freeze({ state: 'unknown' as const,
-          reason: 'diagnostic claim lacks a healthy current Part Nine guard posture', event: available.id });
+        return resumeFrom(handle, now, readAnalysis(handle, now));
       } catch (error) {
         return freeze({ state: 'unknown' as const,
           reason: error instanceof Error ? error.message : 'runtime evidence journal is unavailable', event: '' });
+      }
+    },
+    reconnectEvidence(handle, now) {
+      try {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const before = reconnectFrontier(handle);
+          const analysis = readAnalysis(handle, now);
+          const liveness = livenessFrom(analysis);
+          const resume = resumeFrom(handle, now, analysis);
+          if (before === reconnectFrontier(handle)) {
+            return freeze({ state: 'joint' as const,
+              reason: 'liveness and resume eligibility share one stable current evidence frontier',
+              liveness,
+              resume });
+          }
+        }
+        const reason = 'reconnect evidence did not stabilize across the bounded current-frontier reads';
+        return freeze({ state: 'unknown' as const, reason,
+          liveness: freeze({ state: 'unknown' as const, reason, event: '' }),
+          resume: freeze({ state: 'unknown' as const, reason, event: '' }) });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'reconnect evidence frontier is unavailable';
+        return freeze({ state: 'unknown' as const, reason,
+          liveness: freeze({ state: 'unknown' as const, reason, event: '' }),
+          resume: freeze({ state: 'unknown' as const, reason, event: '' }) });
       }
     },
     events(launch) {
@@ -1515,18 +1589,35 @@ export function sameMachineReconnectCandidate(
   if (!currentFence) {
     return freeze({ disposition: 'refused', reason: 'Part Six rejected the fence as non-current', handle: null });
   }
-  const liveness = input.evidence.liveness(handle, input.now);
+  const joint = input.evidence.reconnectEvidence(handle, input.now);
+  if (joint.state !== 'joint') {
+    return freeze({ disposition: 'refused',
+      reason: 'same-machine reconnect requires one stable current evidence frontier', handle: null });
+  }
+  const liveness = joint.liveness;
   if (liveness.state !== 'live') {
     return freeze({ disposition: 'refused',
       reason: 'same-machine reconnect requires fresh exact-process liveness', handle: null });
   }
-  const resume = input.evidence.resume(handle, input.now);
+  const resume = joint.resume;
   if (resume.state !== 'eligible') {
     return freeze({ disposition: 'refused',
       reason: resume.state === 'poisoned'
         ? 'confirmed poisoned runtime conversation cannot be resumed'
         : 'same-machine reconnect requires owner-validated resume compatibility',
       handle: null });
+  }
+  const finalHead = consumeResult(input.authority.inspect(), {
+    Success: rows => rows.at(-1)?.fact.id ?? 'genesis',
+    Refused: () => '',
+  });
+  const finalFence = finalHead && consumeResult(
+    input.authority.admitWrite(`p13-reconnect:${handle.launch}:${handle.incarnation}:${finalHead}`, input.fence),
+    { Success: () => true, Refused: () => false },
+  );
+  if (!finalFence) {
+    return freeze({ disposition: 'refused',
+      reason: 'Part Six fence changed or expired during reconnect evidence validation', handle: null });
   }
   return freeze({ disposition: 'reconnect',
     reason: 'candidate retains exact machine, incarnation, current fence, local handle, liveness, and owner resume validation',
