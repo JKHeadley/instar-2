@@ -33,7 +33,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
   const base = setup(); base.grant({ id: 'provider-agent-grant', grantee: base.bob });
   const directory = options.directory ?? mkdtempSync(join(tmpdir(), 'provider-path-'));
   let now = 100, stopped = false, generation = base.run.generation.id;
-  const register = { ...base.ctx.decode.register, entries: [...base.ctx.decode.register.entries, 'provider-call', 'route'] };
+  const register = { ...base.ctx.decode.register, entries: [...base.ctx.decode.register.entries, 'provider-call', 'route', 'ordinary-reply', 'reply-route'] };
   const dc = { ...base.ctx.decode, register }, boundary = { ...base.c, register };
   const metadata: Record<string, CapturedContent> = { ...base.ctx.captures };
   for (const [reference, bytes] of Object.entries(base.captures)) metadata[reference] = { bytes, hash: hashBytes(bytes), status: 'available', byteLength: Buffer.byteLength(bytes) };
@@ -67,7 +67,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
       facts: { ...context, facts: value(store.read()) }, evidence: base.evidence }) };
   context = { ...base.ctx, migrations: providerEffectMigrations, decode: dc, captures: metadata, schemas: [...base.ctx.schemas, ...transportSchemas(th), ...effectSchemas(host),
     ...providerEffectSchemas(host), ...providerJudgmentSchemas(jh), ...verificationSchemas(vh)], ownedBodies: [...base.ctx.ownedBodies ?? [],
-      ...value(registerTransportBodies(th, boundary, consumeEffectSettlement)), ...value(registerEffectBodies(host)).filter(r => r.name !== 'EffectSettlement'),
+      ...value(registerTransportBodies(th, boundary, consumeEffectSettlement)), ...value(registerEffectBodies(host)),
       ...value(registerProviderEffectBodies(host)), ...value(registerProviderJudgmentBodies(jh, boundary)), ...value(registerVerificationBodies(vh))] };
   store = createFactStore(context, storage);
   const author = { context, privateKey }, six = createTransportAuthority<EffectSettlement>(th, createTransportSpine(th, author, store), boundary, consumeEffectSettlement);
@@ -166,14 +166,15 @@ export function providerFixture(options: { directory?: string; endpoint?: string
     return { prepared, request };
   };
   const evidence = (operation: string, digest: string, predicate: string, amount?: number, overrides: Record<string, unknown> = {}) => {
-    const e = value(decode('Evidence', base.evidenceInput({ id: `proof:${predicate}:${operation}`, claim: { subject: operation, predicate, value: { digest, ...(amount === undefined ? {} : { amount }) } },
+    const sourceCapture = value(captures.put(enc({ operation, digest, predicate, amount: amount ?? null, now }).bytes, 4096));
+    const e = value(decode('Evidence', base.evidenceInput({ id: `proof:${predicate}:${operation}`, capture: sourceCapture, claim: { subject: operation, predicate, value: { digest, ...(amount === undefined ? {} : { amount }) } },
       source: 'probe', observedAt: base.clock(now), freshFor: 100, strength: 'proof', ...overrides }), dc));
     const bytes = dc.captures[e.capture.reference]!;
     metadata[e.capture.reference] = { bytes, hash: e.capture.hash, status: 'available', byteLength: Buffer.byteLength(bytes) };
     base.evidence.push(e); append('evidence-record', json({ evidence: e })); return e;
   };
   const accept = (settlement: EffectSettlement, resolution: string) => {
-    const sf = all().find(f => f.kind === 'effect-EffectSettlement' && raw(f)?.id === settlement.id)!;
+    const sf = all().find(f => f.kind === 'effect-provider-ProviderEffectSettlement' && raw(f)?.id === settlement.id)!;
     const v = value(graph.read(base.id));
     return graph.transition({ type: 'RunTransition', schemaVersion: 1, id: 'provider-accepted', run: base.id, expected: v.head,
       trigger: { owner: 'part-two', name: 'FactEnvelope', id: resolution }, kind: 'observe', from: v.state, to: 'ready', responsible: base.owner,

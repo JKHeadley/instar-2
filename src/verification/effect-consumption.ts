@@ -7,6 +7,7 @@ import type { OperationObservation } from '../effects/index.js';
 import type { ProviderOperationObservation } from '../effects/provider-api.js';
 import type { VerificationAssessment, VerificationHost, VerificationPlan, VerificationRuntimePort } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
+import { mergeVerificationRecords, verificationIdentityClosure } from './storage.js';
 import { deriveVerificationAssessment, verificationEvidenceFreshness } from './runtime.js';
 
 /** Both the legacy reply and versioned provider request use this owner boundary. */
@@ -44,8 +45,19 @@ export function createEffectSettlementAssessmentPort(host: VerificationHost, run
   const current = (input: EffectSettlementAssessmentInput) => {
     const s = host.current(), snapshot = take(store.readForProjection());
     ensure(!s.stopped && s.generation === input.generation, 'assessment stop or stale generation');
-    ensure(snapshot.entries.every(e => !e.taint.length && !e.conflicts.length), 'assessment input tainted or withdrawn');
     const facts = snapshot.entries.map(e => e.fact);
+    // Validate semantic dependencies, not unrelated records in the append history.
+    // Keep all history/statuses intact; never promote an unavailable entry.
+    const validate = (ids: readonly string[]) => {
+      const seen = new Set<string>();
+      const visit = (id: string) => {
+        if (seen.has(id)) return; seen.add(id);
+        const row = snapshot.entries.find(e => e.fact.id === id);
+        ensure(row && !row.taint.length && !row.conflicts.length, 'assessment input tainted or withdrawn');
+        row.fact.predecessors.required.forEach(visit);
+      };
+      ids.forEach(visit);
+    };
     const required: string[] = [];
     const exact = (kind: string, value: unknown) => {
       const f = facts.find(f => f.kind === kind && encoded(record(f)).bytes === encoded(value).bytes);
@@ -73,9 +85,11 @@ export function createEffectSettlementAssessmentPort(host: VerificationHost, run
         && hashBytes(cap.bytes) === cap.hash, 'assessment observation capture unavailable or changed');
     }
     const rows = take(runtime.inspectCurrent());
-    const plans = rows.filter(row => row.record.type === 'VerificationPlan' && row.record.id === input.plan);
-    ensure(plans.length === 1 && !plans[0]!.taint.length && !plans[0]!.conflicts.length, 'assessment plan absent or conflicted');
-    const plan = plans[0]!.record as VerificationPlan;
+    const plans = verificationIdentityClosure(rows, rows.filter(row => row.record.type === 'VerificationPlan' && row.record.id === input.plan));
+    const merged = mergeVerificationRecords(plans.map(row => row.record));
+    ensure(merged.records.length === 1 && merged.conflicts.length === 0
+      && plans.every(row => !row.taint.length && !row.conflicts.length), 'assessment plan absent or conflicted');
+    const plan = merged.records[0] as VerificationPlan;
     ensure(plan.bar.version === input.bar && input.request.verificationBar === input.bar
       && plan.subject.generation === s.generation, 'assessment bar or generation differs');
     required.push(plans[0]!.fact.id);
@@ -95,7 +109,8 @@ export function createEffectSettlementAssessmentPort(host: VerificationHost, run
       ensure(source, 'assessment source Evidence fact absent or changed');
       required.push(source.id); evidence.push(e);
     }
-    return { s, facts, plan, evidence, required: [...new Set(required)].sort(), rows };
+    validate(required);
+    return { s, facts, plan, evidence, required: [...new Set(required)].sort(), rows, validate };
   };
   // Pin the signed prefix actually examined for this request. Later unrelated
   // appends need not invalidate it; current status/evidence checks above still
@@ -143,6 +158,20 @@ export function createEffectSettlementAssessmentPort(host: VerificationHost, run
       const requestRow = c.rows.find(row => row.record.type === 'VerificationRequest' && row.record.id === a.request);
       ensure(requestRow?.record.type === 'VerificationRequest' && !requestRow.taint.length
         && requestRow.record.logicalKey === encoded(input).hash, 'assessment differently-bound input');
+      ensure(a.operation === requestRow.record.operation && a.operation === input.reservation.operation
+        && a.attempt === requestRow.record.attempt && a.attempt === input.reservation.attempt
+        && a.operationDigest === requestRow.record.operationDigest && a.operationDigest === input.request.digest
+        && a.barVersion === requestRow.record.barVersion && a.barVersion === input.bar,
+        'assessment record differs from its witnessed request');
+      const captureKeys = (items: VerificationAssessment['captureStatuses']) =>
+        encoded([...new Set(items.map(item => encoded(item).bytes))].sort()).bytes;
+      ensure(!a.taints.length && captureKeys(a.captureStatuses) === captureKeys(c.evidence.map(e => ({
+        reference: e.capture.reference, status: 'available' as const }))),
+        'assessment retained taint or capture status differs');
+      ensure([requestRow.fact.id, ...c.required].every(id => a.predecessors.includes(id)),
+        'assessment prerequisite closure incomplete');
+      ensure(a.validUntil <= a.validFrom + c.plan.bar.freshness, 'assessment validity differs from plan');
+      c.validate([row.fact.id, requestRow.fact.id, ...a.predecessors]);
       const pinned = pin(requestRow.fact, c);
       ensure(a.vectorDigest === pinned.digest
         && encoded(a.knownLineages).bytes === encoded(pinned.lineages).bytes, 'assessment pinned vector changed');
@@ -151,7 +180,8 @@ export function createEffectSettlementAssessmentPort(host: VerificationHost, run
         observer: a.observer, vectorDigest: a.vectorDigest, knownLineages: a.knownLineages,
         captureStatuses: c.evidence.map(e => ({ reference: e.capture.reference, status: 'available' as const })), taints: [],
         now: c.s.clock, decode: c.s.decode, predecessors: a.predecessors }, host.boundary));
-      ensure(encoded(a.predicates).bytes === encoded(derived.predicates).bytes && encoded(a.evidence).bytes === encoded(derived.evidence).bytes,
+      ensure(encoded(a.predicates).bytes === encoded(derived.predicates).bytes && encoded(a.evidence).bytes === encoded(derived.evidence).bytes
+        && encoded([...a.missingEvidence].sort()).bytes === encoded([...derived.missingEvidence].sort()).bytes,
         'assessment evidence stale, withdrawn or changed');
       const predicate = (name: string) => a.predicates.find(p => p.predicate === name)!;
       const occurrence = predicate('occurrence'), absent = predicate('non-occurrence'), quiet = predicate('quiescence'), charge = predicate('charge');

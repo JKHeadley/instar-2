@@ -4,7 +4,7 @@ import { hashBytes } from '../facts/index.js';
 import type { FactStorePort } from '../facts/index.js';
 import type { DispatchClaim, FenceToken, TransportAuthority, TransportHost } from '../transport/index.js';
 import type { Capture, JudgmentCapturePort, ProviderObservation } from '../judgment/index.js';
-import type { ProviderCallPayload } from '../effects/provider-api.js';
+type ProviderCallPayload = import('../effects/provider-api.js').ProviderCallPayload;
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 
 /** Assembly-only route custody. Its closure owns the credential; no credential or

@@ -26,7 +26,7 @@ it.each(['before-receipt', 'before-assessment', 'before-settlement', 'before-acc
     expect(reservation.record).toMatchObject({ state: 'consumed', charge: 20 });
     if (reservation.record.type !== 'AdmissionReservation') throw new Error('reservation absent');
     if (cut === 'before-receipt') refused(rebuilt.api.assess(reservation.record.operation), 'missing Seven receipt');
-    expect(rebuilt.all().filter(f => f.kind === 'effect-EffectSettlement')).toHaveLength(['before-accounting', 'before-five'].includes(cut) ? 1 : 0);
+    expect(rebuilt.all().filter(f => f.kind === 'effect-provider-ProviderEffectSettlement')).toHaveLength(['before-accounting', 'before-five'].includes(cut) ? 1 : 0);
     expect(rebuilt.all().filter(f => f.kind === 'transport-SettlementApplication')).toHaveLength(cut === 'before-five' ? 1 : 0);
     expect(rebuilt.all().filter(f => f.kind === 'judgment-provider-ProviderJudgmentResolution')).toHaveLength(0);
     expect(value(rebuilt.graph.read(rebuilt.id)).pending).toHaveLength(1);

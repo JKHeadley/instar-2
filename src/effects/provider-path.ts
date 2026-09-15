@@ -7,7 +7,7 @@ import type { Capture, PreparedProviderJudgment, ProviderJudgmentPort } from '..
 import type { RunStep, RunGraphDependencies } from '../rungraph/index.js';
 import type { ProviderInvocationPort } from '../assembly/index.js';
 import type { EffectSettlementAssessmentInput, EffectSettlementAssessmentPort } from '../verification/index.js';
-import type { EffectDurabilityPort, EffectCustodyPort, EffectHost, EffectSettlement, OperationDefinition, OperationObservation } from './contracts.js';
+import type { EffectDurabilityPort, EffectCustodyPort, EffectHost, EffectRequest, EffectSettlement, OperationDefinition, OperationObservation } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { definitionCheck, effectShapes, recordFrom, wire } from './records.js';
 import { issuedSettlement, requireSettlement, withSettlement } from './settlement-authority.js';
@@ -62,14 +62,15 @@ const observationShape = effectShapes.OperationObservation as Extract<OwnedShape
 const shapes: Readonly<Record<string, OwnedShape>> = {
   ProviderEffectRequest: { kind: 'object', fields: { ...requestFields, payload: payloadShape } },
   ProviderOperationObservation: { kind: 'object', fields: { ...observationShape.fields, judgmentReceipt: txt } },
-  EffectSettlement: effectShapes.EffectSettlement!,
+  ProviderEffectSettlement: effectShapes.EffectSettlement!,
 };
 const raw = (f: FactEnvelope) => (f.body as unknown as { record: Record<string, unknown> }).record;
 const active = new WeakMap<object, string>();
-const providerKind = (name: string) => name === 'EffectSettlement' ? 'effect-EffectSettlement' : `effect-provider-${name}`;
-export const providerEffectMigrations = [{ kind: 'effect-EffectSettlement', from: 1, to: 2, migrate: (body: import('../index.js').Json) => body }] as const;
+const providerKind = (name: string) => `effect-provider-${name === 'EffectSettlement' ? 'ProviderEffectSettlement' : name}`;
+// Provider facts occupy separate kinds and body registrations; legacy facts never migrate.
+export const providerEffectMigrations = [] as const;
 export function providerEffectSchemas(host: EffectHost): readonly FactSchema[] {
-  return Object.keys(shapes).map(name => ({ kind: providerKind(name), version: name === 'EffectSettlement' ? 2 : 1,
+  return Object.keys(shapes).map(name => ({ kind: providerKind(name), version: 1,
     fields: { record: { kind: 'owned', owner: 'part-eight', name }, evidence: { kind: 'constitutional', type: 'Evidence' }, outcome: { kind: 'constitutional', type: 'Outcome' } }, optional: ['evidence', 'outcome'], machineScope: 'shared',
     standing: 'requester', action: 'work', scope: host.scope, causallyBound: false, requiredReferences: [], authority: 'none' }));
 }
@@ -84,7 +85,7 @@ export function registerProviderEffectBodies(host: EffectHost) {
         ensure(r.type === name && typeof r.id === 'string' && r.id.length > 0, 'provider effect identity');
         ensure(ctx.origin.principal.id === host.principal.id && ctx.origin.machine === host.machine, 'provider effect recorder differs');
         ensure(!past.some(f => f.kind === ctx.origin.kind && raw(f)?.id === r.id), 'provider effect immutable collision');
-        if (ctx.mode === 'origin' && name !== 'EffectSettlement') ensure(active.get(host) === encoded(v).hash, 'provider effect requires owner admission');
+        if (ctx.mode === 'origin' && name !== 'ProviderEffectSettlement') ensure(active.get(host) === encoded(v).hash, 'provider effect requires owner admission');
         if (name === 'ProviderEffectRequest') {
           const q = v as unknown as ProviderEffectRequest, p = q.payload;
           ensure(p.kind === 'model-provider-call' && p.version === 1 && q.schemaVersion === 2, 'ordinary reply substituted for provider payload');
@@ -96,11 +97,25 @@ export function registerProviderEffectBodies(host: EffectHost) {
             && p.run === q.run && p.semanticMessage === q.semanticMessage, 'provider payload binding mismatch');
           ensure(q.closure.every(id => past.some(f => f.id === id)) && q.closure.includes(q.pending), 'provider closure absent');
         } else {
-          const q = past.find(f => ['effect-provider-ProviderEffectRequest', 'effect-EffectRequest'].includes(f.kind) && raw(f)?.id === r.request);
+          const q = past.find(f => f.kind === 'effect-provider-ProviderEffectRequest' && raw(f)?.id === r.request);
           ensure(q && raw(q)?.digest === r.digest, 'provider operation request mismatch');
           const claim = past.find(f => f.id === r.claim && f.kind === 'transport-AdmissionReservation');
           ensure(claim && raw(claim)?.state === 'dispatch-claimed' && raw(claim)?.operation === r.operation, 'provider claim missing');
-          if (name === 'EffectSettlement' && ctx.mode === 'origin') requireSettlement(host, recordFrom({ body: { record: v } } as unknown as FactEnvelope) as EffectSettlement);
+          if (name === 'ProviderEffectSettlement') {
+            const settlement = recordFrom({ body: { record: { ...r, type: 'EffectSettlement' } } } as unknown as FactEnvelope) as EffectSettlement;
+            ensure(settlement.schemaVersion === 1 && settlement.observations.length > 0
+              && settlement.observations.every(id => past.some(f => f.kind === 'effect-provider-ProviderOperationObservation'
+                && raw(f)?.id === id && raw(f)?.operation === settlement.operation && raw(f)?.request === settlement.request
+                && raw(f)?.claim === settlement.claim && raw(f)?.digest === settlement.digest)), 'provider settlement observations differ');
+            ensure(past.some(f => f.id === settlement.acceptance && f.kind === 'verification-VerificationAssessment'), 'provider assessment absent');
+            const reservation = past.find(f => f.id === settlement.reservation && f.kind === 'transport-AdmissionReservation');
+            ensure(reservation && raw(reservation)?.state === 'consumed' && raw(reservation)?.operation === settlement.operation,
+              'provider settlement consumed reservation differs');
+            ensure(!settlement.retryEligible && settlement.retainedExposure >= 0
+              && (settlement.finalCharge === null ? settlement.retainedExposure === raw(reservation)?.charge
+                : Number.isSafeInteger(settlement.finalCharge) && settlement.finalCharge >= 0), 'provider settlement charge differs');
+            if (ctx.mode === 'origin') requireSettlement(host, settlement);
+          }
           if (name === 'ProviderOperationObservation' && r.stage !== 'executor-accepted') {
             const receipt = past.find(f => f.id === r.judgmentReceipt && f.kind === 'judgment-provider-ProviderJudgmentAttemptRecord');
             ensure(receipt && raw(receipt)?.operation === r.operation && raw(receipt)?.phase === 'response-observed', 'provider observation missing Seven receipt');
@@ -113,16 +128,31 @@ export function registerProviderEffectBodies(host: EffectHost) {
 }
 export function createProviderEffectDoorway(p: ProviderEffectDependencies): ProviderEffectDoorway {
   const checked = <T>(n: string, i: unknown, fn: () => T) => boundary(n, i, p.host.boundary, fn);
-  const facts = () => { const s = take(p.store.readForProjection()); ensure(s.entries.every(e => !e.taint.length && !e.conflicts.length), 'effect source tainted or withdrawn'); return s.entries.map(e => e.fact); };
-  const find = (kind: string, id: string) => { const f = facts().find(f => f.kind === kind && raw(f)?.id === id); ensure(f, `missing ${kind}`); return f; };
+  const facts = () => take(p.store.readForProjection()).entries.map(e => e.fact);
+  const validate = (ids: readonly string[]) => {
+    const entries = take(p.store.readForProjection()).entries, seen = new Set<string>();
+    const visit = (id: string) => {
+      if (seen.has(id)) return; seen.add(id);
+      const row = entries.find(e => e.fact.id === id);
+      ensure(row && !row.taint.length && !row.conflicts.length, 'effect dependency tainted or withdrawn');
+      row.fact.predecessors.required.forEach(visit);
+    };
+    ids.forEach(visit);
+  };
+  const find = (kind: string, id: string) => { const f = facts().find(f => f.kind === kind && raw(f)?.id === id); ensure(f, `missing ${kind}`); validate([f.id]); return f; };
   const save = (r: object & { type: string; id: string }, required: readonly string[], attachments: Readonly<Record<string, import('../index.js').Json>> = {}) => {
-    const v = r.type === 'EffectSettlement' ? wire(r as EffectSettlement) : json(r);
-    const prior = facts().find(f => f.kind === providerKind(r.type) && raw(f)?.id === r.id);
+    validate(required);
+    const legacy = r.type === 'EffectSettlement' && facts().some(f => f.kind === 'effect-EffectRequest'
+      && raw(f)?.id === (r as EffectSettlement).request);
+    const kind = legacy ? 'effect-EffectSettlement' : providerKind(r.type);
+    const v = r.type === 'EffectSettlement' ? { ...wire(r as EffectSettlement) as object,
+      type: legacy ? 'EffectSettlement' : 'ProviderEffectSettlement' } : json(r);
+    const prior = facts().find(f => f.kind === kind && raw(f)?.id === r.id);
     if (prior) { ensure(encoded(raw(prior)).bytes === encoded(v).bytes, 'effect immutable collision'); return prior; }
     active.set(p.host, encoded(v).hash);
-    try { return take(authorAndAppend({ kind: providerKind(r.type), schemaVersion: r.type === 'EffectSettlement' ? 2 : 1, machine: p.host.machine,
+    try { return take(authorAndAppend({ kind, schemaVersion: 1, machine: p.host.machine,
       principal: json(p.host.principal), provenance: json(p.host.principal.provenance), at: json(p.host.current().clock),
-      body: { record: v, ...attachments }, required: [...new Set(required)] }, p.context, p.store, p.privateKey)).fact; }
+      body: { record: v, ...(legacy ? {} : attachments) }, required: [...new Set(required)] }, p.context, p.store, p.privateKey)).fact; }
     finally { active.delete(p.host); }
   };
   const demand = (d: OperationDefinition, ids: readonly string[]) => {
@@ -146,7 +176,7 @@ export function createProviderEffectDoorway(p: ProviderEffectDependencies): Prov
     const seven = take(p.judgment.readPrepared(q.payload.request, fence));
     ensure(q.id === seven.value.effectRequest && q.digest === seven.value.inputDigest && q.attempt === seven.value.attempt
       && q.run === seven.value.run && q.semanticMessage === seven.value.semanticMessage, 'request/attempt mismatch');
-    ensure(q.payload.deadline > p.host.current().clock.value && q.payload.maxCharge === d.maxCharge
+    ensure((!fence || q.payload.deadline > p.host.current().clock.value) && q.payload.maxCharge === d.maxCharge
       && q.payload.maxInputBytes <= d.maxBytes && q.payload.timeout <= d.timeout, 'provider bound exceeded');
     ensure(q.payload.route === d.adapter && q.payload.provider === d.account && q.payload.disclosure === d.conversation, 'unapproved provider route');
     return d;
@@ -159,11 +189,20 @@ export function createProviderEffectDoorway(p: ProviderEffectDependencies): Prov
   };
   const inputFor = (id: string) => {
     const op = operation(id); ensure(op.claim && op.reservation.state === 'consumed', 'missing consumed claim');
-    const q = raw(find('effect-provider-ProviderEffectRequest', op.reservation.request)) as unknown as ProviderEffectRequest;
-    const d = actual(q);
-    const observations = facts().filter(f => f.kind === 'effect-provider-ProviderOperationObservation' && raw(f)?.operation === id)
+    const provider = facts().some(f => f.kind === 'effect-provider-ProviderEffectRequest' && raw(f)?.id === op.reservation.request);
+    const q = raw(find(provider ? 'effect-provider-ProviderEffectRequest' : 'effect-EffectRequest', op.reservation.request)) as unknown as ProviderEffectRequest | EffectRequest;
+    const d = q.type === 'ProviderEffectRequest' ? actual(q) : raw(find('effect-OperationDefinition', q.definition)) as unknown as OperationDefinition;
+    if (q.type === 'EffectRequest') {
+      definitionCheck(d, p.host);
+      const message = raw(find('effect-OutboundMessage', q.message));
+      ensure(encoded(message).hash === q.digest && message?.run === q.run && message?.semanticMessage === q.semanticMessage,
+        'ordinary reply binding differs');
+    }
+    const observationKind = provider ? 'effect-provider-ProviderOperationObservation' : 'effect-OperationObservation';
+    const observations = facts().filter(f => f.kind === observationKind && raw(f)?.operation === id)
       .map(f => raw(f) as unknown as ProviderOperationObservation);
-    ensure(observations.some(o => o.judgmentReceipt.length > 0), 'missing Seven receipt; retain uncertainty');
+    validate(facts().filter(f => f.kind === observationKind && raw(f)?.operation === id).map(f => f.id));
+    ensure(!provider || observations.some(o => o.judgmentReceipt.length > 0), 'missing Seven receipt; retain uncertainty');
     const input: EffectSettlementAssessmentInput = { request: { id: q.id, digest: q.digest, attempt: q.attempt, verificationBar: q.verificationBar },
       reservation: op.reservation, claim: op.claim.id, observations, plan: p.plan, bar: q.verificationBar,
       generation: p.host.current().decode.register.generation.id };
@@ -253,8 +292,8 @@ export function createProviderEffectDoorway(p: ProviderEffectDependencies): Prov
     assess: id => checked('AssessProviderEffect', id, () => { ensure(p.assessment?.owner === 'part-nine', 'Nine assessment absent'); return take(p.assessment.assess(inputFor(id).input)); }),
     settle: (id, reference) => settle(id, reference, value => value),
     readRunSettlement: (reference, step) => checked('ProviderSettlementRunConsumer', reference, () => {
-      const f = facts().find(f => f.id === reference.id && f.kind === 'effect-EffectSettlement'); ensure(f, 'run settlement missing');
-      const s = recordFrom(f) as EffectSettlement;
+      const f = facts().find(f => f.id === reference.id && f.kind === 'effect-provider-ProviderEffectSettlement'); ensure(f, 'run settlement missing');
+      const s = recordFrom({ ...f, body: { record: { ...raw(f), type: 'EffectSettlement' } } } as unknown as FactEnvelope) as EffectSettlement;
       return take(settle(s.operation, { owner: 'part-nine', name: 'VerificationAssessment', id: s.acceptance }, current => {
         const q = raw(find('effect-provider-ProviderEffectRequest', current.request)) as unknown as ProviderEffectRequest;
         const seven = facts().find(f => f.id === q.payload.request.id);
@@ -274,22 +313,23 @@ export function createProviderEffectDoorway(p: ProviderEffectDependencies): Prov
       demand(d, [...q.closure, op.fact.id, ...proof.required]);
       take(p.custody.verify(input.observations.map(o => o.capture), d));
       ensure(encoded(inputFor(id).input).bytes === encoded(input).bytes, 'assessment input changed during durability wait');
+      const finalCharge = proof.charge.state === 'final' ? proof.charge.amount : null;
+      const uncertain = consumeOutcome(proof.outcome, { happened: () => false, 'did-not-happen': () => false, uncertain: () => true });
+      const fields = { request: q.id, operation: id, claim: op.claim!.id, reservation: op.fact.id, digest: q.digest,
+        acceptance: reference.id, observations: input.observations.map(o => o.id), outcome: proof.outcome, finalCharge,
+        delayedExecutionExcluded: proof.delayedExecutionExcluded, retainedExposure: uncertain || finalCharge === null || !proof.delayedExecutionExcluded ? op.reservation.charge : finalCharge,
+        retryEligible: false as const };
+      const candidate = freeze({ type: 'EffectSettlement', schemaVersion: 1, id: `settlement:${encoded(fields).hash}`, ...fields } as unknown as EffectSettlement);
+      const capture = take(p.host.capture(encoded({ settlement: candidate.id, operation: id }).bytes));
+      const claimClosed = !uncertain && (consumeOutcome(proof.outcome, { happened: () => true, 'did-not-happen': () => proof.delayedExecutionExcluded, uncertain: () => false }));
+      const evidence = take(decode('Evidence', { type: 'Evidence', schemaVersion: 1, id: `run-settlement:${candidate.id}`,
+        claim: { subject: q.semanticMessage, predicate: 'operation-settled', value: { digest: q.digest, claimClosed, chargeSettled: finalCharge !== null } },
+        source: p.host.principal.provenance.adapter, observedAt: p.host.current().clock, freshFor: d.timeout,
+        capture, strength: 'observation' }, p.host.current().decode));
       const saved = take(assessor.consumeEffectSettlementAssessment(reference, input, view => {
         ensure(encoded(view).bytes === encoded(proof).bytes && view.operation === id && view.attempt === q.attempt
           && view.digest === q.digest && view.bar === q.verificationBar, 'Nine consumption binding changed');
-        const finalCharge = view.charge.state === 'final' ? view.charge.amount : null;
-        const uncertain = consumeOutcome(view.outcome, { happened: () => false, 'did-not-happen': () => false, uncertain: () => true });
-        const fields = { request: q.id, operation: id, claim: op.claim!.id, reservation: op.fact.id, digest: q.digest,
-          acceptance: reference.id, observations: input.observations.map(o => o.id), outcome: view.outcome, finalCharge,
-          delayedExecutionExcluded: view.delayedExecutionExcluded, retainedExposure: uncertain || finalCharge === null || !view.delayedExecutionExcluded ? op.reservation.charge : finalCharge,
-          retryEligible: false as const };
-        const candidate = freeze({ type: 'EffectSettlement', schemaVersion: 1, id: `settlement:${encoded(fields).hash}`, ...fields } as unknown as EffectSettlement);
-        const capture = take(p.host.capture(encoded({ settlement: candidate.id, operation: id }).bytes));
-        const claimClosed = !uncertain && (consumeOutcome(view.outcome, { happened: () => true, 'did-not-happen': () => view.delayedExecutionExcluded, uncertain: () => false }));
-        const evidence = take(decode('Evidence', { type: 'Evidence', schemaVersion: 1, id: `run-settlement:${candidate.id}`,
-          claim: { subject: q.semanticMessage, predicate: 'operation-settled', value: { digest: q.digest, claimClosed, chargeSettled: finalCharge !== null } },
-          source: p.host.principal.provenance.adapter, observedAt: p.host.current().clock, freshFor: d.timeout,
-          capture, strength: 'observation' }, p.host.current().decode));
+        ensure(encoded(inputFor(id).input).bytes === encoded(input).bytes, 'assessment inputs changed before settlement append');
         const sf = withSettlement(p.host, candidate, () => save(candidate, [...view.required, ...q.closure], { evidence: json(evidence), outcome: json(view.outcome) }));
         // Durability may wait: the owner guard ends before that wait, then a new
         // current guard is required for the consequential consumer below.

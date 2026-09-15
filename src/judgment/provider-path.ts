@@ -103,8 +103,19 @@ export function registerProviderJudgmentBodies(host: JudgmentHost, c: BoundaryCo
 }
 export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): ProviderJudgmentPort {
   const checked = <T>(n: string, i: unknown, fn: () => T) => boundary(n, i, p.boundary, fn);
-  const facts = () => { const s = take(p.store.readForProjection()); ensure(s.entries.every(e => !e.taint.length && !e.conflicts.length), 'judgment source tainted'); return s.entries.map(e => e.fact); };
+  const facts = () => take(p.store.readForProjection()).entries.map(e => e.fact);
+  const validate = (ids: readonly string[]) => {
+    const entries = take(p.store.readForProjection()).entries, seen = new Set<string>();
+    const visit = (id: string) => {
+      if (seen.has(id)) return; seen.add(id);
+      const row = entries.find(e => e.fact.id === id);
+      ensure(row && !row.taint.length && !row.conflicts.length, 'judgment dependency tainted or withdrawn');
+      row.fact.predecessors.required.forEach(visit);
+    };
+    ids.forEach(visit);
+  };
   const append = <T extends { type: string; id: string }>(r: T, required: readonly string[], decision?: Decision) => {
+    validate(required);
     const prior = facts().find(f => f.kind === `judgment-provider-${r.type}` && raw(f)?.id === r.id);
     if (prior) { ensure(encoded(raw(prior)).bytes === encoded(r).bytes, 'judgment immutable collision'); return prior; }
     active.set(p.host, encoded(r).hash);
@@ -128,6 +139,7 @@ export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): Pro
     ensure(f, 'prepared request absent'); const q = raw(f) as unknown as ProviderJudgmentRequest;
     const prepared = all.find(f => f.kind === 'judgment-provider-ProviderJudgmentAttemptRecord' && raw(f)?.request === q.id && raw(f)?.phase === 'prepared');
     ensure(prepared, 'prepared attempt absent');
+    validate([f.id, prepared.id]);
     const bytes = take(p.captures.read(q.submitted));
     ensure(hashBytes(bytes) === q.submitted.hash && encoded(bytes).hash === q.inputDigest, 'missing or changed submitted bytes');
     if (fence) current(q, fence);
@@ -153,6 +165,17 @@ export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): Pro
       const prior = facts().find(f => f.kind === 'judgment-provider-ProviderJudgmentRequest' && f.schemaVersion === 1 && (raw(f)?.id === input.id
         || raw(f)?.run === input.run.id && raw(f)?.step === input.step && raw(f)?.ordinal === input.ordinal));
       if (prior) { ensure(raw(prior)?.inputDigest === digest && raw(prior)?.id === input.id, 'request immutable collision');
+        validate([prior.id]);
+        const q = raw(prior) as unknown as ProviderJudgmentRequest;
+        if (!facts().some(f => f.kind === 'judgment-provider-ProviderJudgmentAttemptRecord'
+          && raw(f)?.request === q.id && raw(f)?.phase === 'prepared')) {
+          current(q, fence);
+          const bytes = take(p.captures.read(q.submitted));
+          ensure(hashBytes(bytes) === q.submitted.hash && encoded(bytes).hash === q.inputDigest, 'missing or changed submitted bytes');
+          append({ type: 'ProviderJudgmentAttemptRecord', schemaVersion: 2, id: `${q.attempt}:prepared`, request: q.id,
+            attempt: q.attempt, phase: 'prepared', submittedDigest: q.inputDigest,
+            operation: '', reservation: '', claim: '', observation: '' }, [prior.id]);
+        }
         return take(readPrepared({ owner: 'part-seven', name: 'JudgmentRequest', id: prior.id }, fence)); }
       ensure(new TextEncoder().encode(input.question + input.context + submitted).length + 6 * d.maxOutputBytes + 8192 <= p.maxCaptureBytes, 'capture bound exceeded');
       const capture = (bytes: string) => take(p.captures.put(bytes, d.maxInputBytes));
@@ -201,7 +224,7 @@ export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): Pro
       ensure(accounting, 'unknown charge or missing Six accounting');
       return take(consumeEffectSettlement(settlement, p.boundary, s => {
         ensure(s.request === q.effectRequest && s.operation === raw(response)?.operation && s.digest === q.inputDigest, 'settlement request mismatch');
-        const sf = facts().find(f => f.kind === 'effect-EffectSettlement' && raw(f)?.id === s.id); ensure(sf, 'settlement missing');
+        const sf = facts().find(f => f.kind === 'effect-provider-ProviderEffectSettlement' && raw(f)?.id === s.id); ensure(sf, 'settlement missing');
         const resolution = append({ type: 'ProviderJudgmentResolution', schemaVersion: 2, id: `${q.id}:resolution`, request: q.id, attempt: q.attempt,
           response: response.id, settlement: sf.id, accounting: accounting.id }, [response.id, sf.id, accounting.id], decision);
         return freeze({ resolution: { owner: 'part-seven', name: 'JudgmentResolution', id: resolution.id }, decision });

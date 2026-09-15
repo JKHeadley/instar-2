@@ -17,7 +17,7 @@ function input(f: Fixture, operation: string): EffectSettlementAssessmentInput {
     reservation: consumed, claim, observations, plan: f.plan.id, bar: 'provider-bar', generation: f.th.current().generation.id };
 }
 const pending = (f: Fixture) => {
-  expect(f.all().filter(f => f.kind === 'effect-EffectSettlement' || f.kind === 'transport-SettlementApplication'
+  expect(f.all().filter(f => f.kind === 'effect-provider-ProviderEffectSettlement' || f.kind === 'transport-SettlementApplication'
     || f.kind === 'judgment-provider-ProviderJudgmentResolution')).toHaveLength(0);
   expect(f.all().filter(f => f.kind === 'run-transition').at(-1)?.body).not.toMatchObject({ record: { id: 'provider-accepted' } });
 };
@@ -70,7 +70,9 @@ it.each(['stale', 'tainted', 'withdrawn', 'differently-bound', 'changed observat
       if (label === 'wrong operation') altered = { ...bound, reservation: { ...bound.reservation, operation: 'wrong' } };
       if (label === 'wrong attempt') altered = { ...bound, request: { ...bound.request, attempt: 'wrong' } };
       if (label === 'pinned vector') Object.assign(f.context.folded, { unexpected: { epoch: 0, position: 1 } });
-      refused(f.nine.consumeEffectSettlementAssessment(a, altered, () => { throw new Error('must not consume'); }));
+      let consumerCalls = 0;
+      refused(f.nine.consumeEffectSettlementAssessment(a, altered, () => { consumerCalls++; return true; }));
+      expect(consumerCalls).toBe(0);
       if (altered === bound) refused(f.api.settle(observation.operation, a));
       else {
         const port = { ...f.nine, consumeEffectSettlementAssessment: <T>(reference: typeof a, _input: EffectSettlementAssessmentInput, callback: Parameters<typeof f.nine.consumeEffectSettlementAssessment<T>>[2]) => f.nine.consumeEffectSettlementAssessment(reference, altered, callback) };
@@ -106,7 +108,7 @@ it('MODEL-PROVIDER-PATH integration decisive non-occurrence plus quiescence sett
     const first = value(f.six.settle(f.fence, s)); expect(first).toMatchObject({ actualCharge: 0, exposure: 0, released: 20, unresolved: 0, retryEligible: 0 });
     const duplicate = value(f.api.settle(observation.operation, a)); expect(enc(duplicate).bytes).toBe(enc(s).bytes);
     expect(enc(value(f.six.settle(f.fence, duplicate))).bytes).toBe(enc(first).bytes);
-    expect(f.all().filter(f => f.kind === 'effect-EffectSettlement')).toHaveLength(1);
+    expect(f.all().filter(f => f.kind === 'effect-provider-ProviderEffectSettlement')).toHaveLength(1);
     refused(await f.api.dispatch(request, f.fence)); expect(http.requests).toHaveLength(1);
   } finally { await http.close(); }
 });
