@@ -1,0 +1,32 @@
+import assert from './assertions.mjs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { providerFixture, value, enc } from '../fixture.ts';
+import { effectFixture } from '../../effects/fixture.ts';
+import { privateKey } from '../../facts/fixtures.ts';
+import { localProvider } from '../http-provider.ts';
+import { consumeResult, consumeOutcome } from '../../../src/index.js';
+import { createEffectSettlementAssessmentPort } from '../../../src/verification/index.js';
+import { createProviderEffectDoorway, registerProviderEffectBodies, providerEffectSchemas, providerEffectMigrations } from '../../../src/effects/index.js';
+import { signEnvelope, decodeEnvelope, prepareSnapshot } from '../../../src/facts/index.js';
+const status=r=>consumeResult(r,{Success:v=>({kind:'Success',value:v}),Refused:r=>({kind:'Refused',detail:r.detail})});
+const raw=f=>f.body.record;
+const count=f=>f.all().filter(f=>f.kind==='effect-provider-ProviderEffectSettlement').length;
+function input(f,op){const rows=value(f.six.inspect()).filter(r=>r.record.type==='AdmissionReservation'&&r.record.operation===op);const r=rows.at(-1).record;return {request:{id:r.request,attempt:r.attempt,digest:r.digest,verificationBar:'provider-bar'},reservation:r,claim:rows.find(r=>r.record.state==='dispatch-claimed').fact.id,observations:f.all().filter(f=>f.kind==='effect-provider-ProviderOperationObservation'&&raw(f).operation===op).map(raw),plan:f.plan.id,bar:'provider-bar',generation:f.th.current().generation.id};}
+
+async function fixture(fn){const http=await localProvider();try{const f=providerFixture(http);http.respond({state:'complete',bytes:JSON.stringify(f.decisionInput()),providerOperation:'real-http',usage:{inputTokens:1,outputTokens:1,charge:3,source:'http'},retryBlocked:false});const {prepared,request}=f.prepare();const observed=value(await f.api.dispatch(request,f.fence));return await fn(f,request,observed,prepared,http);}finally{await http.close();}}
+function proof(f,q,o){f.evidence(o.operation,q.digest,'operation-occurred');f.evidence(o.operation,q.digest,'charge-settled',3);f.evidence(o.operation,q.digest,'old-executor-quiescent');}
+export function registerCases(test) {
+test('V1','well-formed real signed owner chain accepts once',()=>fixture((f,q,o,p,http)=>{proof(f,q,o);const a=value(f.api.assess(o.operation));const s=value(f.api.settle(o.operation,a));assert.equal(s.finalCharge,3);assert.equal(value(f.six.settle(f.fence,s)).released,17);const answer=value(f.seven.resolve(p.request,s,f.fence));assert.equal(value(f.accept(s,answer.resolution.id)).pending.length,0);assert.equal(http.requests.length,1);assert.equal(enc(http.requests[0].bytes).hash,q.digest);return {calls:1,settlements:count(f)};}));
+let n=2;
+for(const [field,changed] of [['operation','foreign-operation'],['attempt','foreign-attempt'],['operationDigest','foreign-digest'],['barVersion','foreign-bar'],['taints',['contested']],['captureStatuses',[]],['predecessors',[]],['missingEvidence',['occurrence']]]){
+ test('V'+n++,'signed assessment with mismatched '+field+' refuses at Nine',()=>fixture((f,q,o)=>{proof(f,q,o);const wrapped={...f.runtime,record:(name,v)=>f.runtime.record(name,name==='VerificationAssessment'?{...v,[field]:changed}:v)};const port=createEffectSettlementAssessmentPort(f.vh,wrapped,f.store);const a=value(port.assess(input(f,o.operation)));let calls=0;const out=status(f.nine.consumeEffectSettlementAssessment(a,input(f,o.operation),v=>{calls++;return v;}));assert.equal(calls,0);assert.equal(count(f),0);assert.equal(out.kind,'Refused',JSON.stringify(out));return out;}));
+}
+test('V10','changed evidence inside guarded settlement append cannot append a settlement',()=>fixture((f,q,o)=>{proof(f,q,o);const a=value(f.api.assess(o.operation));let changed=false;const originalCapture=f.host.capture;f.host.capture=bytes=>{if(!changed){changed=true;const list=f.vh.current().evidence;list.splice(list.findIndex(e=>e.id===`proof:operation-occurred:${o.operation}`),1);}return originalCapture(bytes);};const api=f.api;const out=status(api.settle(o.operation,a));assert.equal(out.kind,'Refused');assert.equal(count(f),0,'Refused but persisted '+count(f)+' settlement(s)');return out;}));
+test('V11','fresh final evidence after provider deadline can settle without invoking',()=>fixture((f,q,o)=>{f.time(401);proof(f,q,o);const a=value(f.api.assess(o.operation));const s=value(f.api.settle(o.operation,a));assert.equal(s.finalCharge,3);assert.equal(f.calls(),1);return {settlements:count(f)};}));
+test('V12','well-formed legacy settlement decodes byte-identically when composed',()=>{const f=effectFixture(),q=f.prepare(),o=value(f.api.dispatch(q,f.fence));f.assess('happened',0);value(f.api.settle(o.operation));const all=value(f.store.read()),sf=all.find(f=>f.kind==='effect-EffectSettlement');const base={...f.ctx,facts:all.filter(f=>f.id!==sf.id)};const composed={...base,migrations:providerEffectMigrations,schemas:[...base.schemas,...providerEffectSchemas(f.host)],ownedBodies:[...base.ownedBodies,...value(registerProviderEffectBodies(f.host))]};const a=value(prepareSnapshot([sf],base)).entries[0],b=value(prepareSnapshot([sf],composed)).entries[0];assert.equal(a.taint.length,0);assert.equal(b.taint.length,0);assert.equal(enc(a).bytes,enc(b).bytes);return {hash:enc(a).hash};});
+n=13;
+for(const [field,changed] of [['acceptance','missing-assessment'],['observations',[]],['retryEligible',true],['finalCharge','-1'],['schemaVersion',2]]){
+ test('V'+n+++'L','legacy malformed '+field+' remains refused when composed',()=>{const f=effectFixture(),q=f.prepare(),o=value(f.api.dispatch(q,f.fence));f.assess('happened',0);value(f.api.settle(o.operation));const all=value(f.store.read()),sf=all.find(f=>f.kind==='effect-EffectSettlement');const base={...f.ctx,facts:all.filter(f=>f.id!==sf.id)};const composed={...base,migrations:providerEffectMigrations,schemas:[...base.schemas,...providerEffectSchemas(f.host)],ownedBodies:[...base.ownedBodies,...value(registerProviderEffectBodies(f.host))]};const changedFact=signEnvelope({...sf,body:{...sf.body,record:{...sf.body.record,[field]:changed}}},privateKey);const before=value(prepareSnapshot([changedFact],base)).entries[0],after=value(prepareSnapshot([changedFact],composed)).entries[0];assert.ok(before.taint.length>0,'invalid baseline fixture');assert.ok(after.taint.length>0,'legacy REFUSED '+JSON.stringify(before.conflicts)+'; provider composition ACCEPTED');return {before,after};});
+}
+
+}

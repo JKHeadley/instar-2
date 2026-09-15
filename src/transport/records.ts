@@ -312,7 +312,7 @@ export function registerTransportBodies<S = never>(host: TransportHost, c: Bound
           const admitting = ctx.mode === 'origin' && candidate;
           validateTransition(v, past, host, admitting);
           if (v.type === 'SettlementApplication') {
-            checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past);
+            checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past, ctx.facts);
             if (ctx.mode === 'origin') requireApplication(host, v, settlementConsumer);
           }
           if (ctx.mode === 'origin') {

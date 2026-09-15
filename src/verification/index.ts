@@ -28,3 +28,7 @@ export type { VerificationPlanFact } from './traces.js';
 export { adapterStimulusClasses, supervisionCoverage, reviewDisclosureAllowed, reportContradictsActual,
   outcomeWindowStatus, convergenceEligible, activationGaps } from './policy.js';
 export type { SupervisionObservation, SupervisionCoverageRow, ReportClaim } from './policy.js';
+export { createEffectSettlementAssessmentPort } from './effect-consumption.js';
+export type { EffectSettlementAssessmentInput, ConsumedEffectAssessment, EffectSettlementAssessmentPort } from './effect-consumption.js';
+export { providerSettlementSupported } from './provider-settlement-support.js';
+export type { ProviderSettlementSupportInput } from './provider-settlement-support.js';

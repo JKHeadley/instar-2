@@ -2,6 +2,8 @@ import { consumeOutcome } from '../index.js';
 import type { AppendReceipt, FactEnvelope } from '../facts/index.js';
 import type { AdmissionReservation, SettlementAccountingInput, SettlementApplication, TransportFact, TransportHost } from './contracts.js';
 import { encoded, ensure, take } from './boundary.js';
+import type { FactContext } from '../facts/index.js';
+import { providerSettlementWire } from './provider-settlement.js';
 
 // A raw P2 caller cannot manufacture a conditional accounting row. Its admission
 // ticket exists only inside a live six settlement attempt whose preparation view
@@ -102,14 +104,22 @@ export function accounting(s: SettlementAccountingInput, reservation: AdmissionR
 }
 // Eight's admitted wire uses a decimal text charge / 'unknown'. This is exact
 // reference matching, not an eight constructor or live historical-consumption API.
-export function settlementMatches(s: SettlementAccountingInput, fact: FactEnvelope): boolean {
+export function settlementMatches(s: SettlementAccountingInput, fact: FactEnvelope, context?: FactContext): boolean {
+  if (fact.kind === 'effect-provider-ProviderEffectSettlement') {
+    // Delegate to Eight's owner decoder (which now also refuses a charge the referenced
+    // Nine assessment does not support): a rejected settlement THROWS through this
+    // matcher exactly as a structurally malformed one does, never silently matching.
+    return encoded(providerSettlementWire(fact, context)).bytes
+      === encoded({ ...s, type: 'ProviderEffectSettlement', finalCharge: s.finalCharge === null ? 'unknown' : String(s.finalCharge) }).bytes;
+  }
   return fact.kind === 'effect-EffectSettlement' && encoded((fact.body as { record: unknown }).record).bytes
     === encoded({ ...s, finalCharge: s.finalCharge === null ? 'unknown' : String(s.finalCharge) }).bytes;
 }
-export function checkApplicationEvidence(r: SettlementApplication, past: readonly FactEnvelope[], all: readonly TransportFact[]): void {
+export function checkApplicationEvidence(r: SettlementApplication, past: readonly FactEnvelope[], all: readonly TransportFact[], context?: FactContext): void {
   const fact = past.find(f => f.id === r.settlementFact);
-  ensure(fact?.kind === 'effect-EffectSettlement', 'eight settlement fact absent from causal closure');
-  const wire = (fact.body as unknown as { record: Omit<SettlementAccountingInput, 'finalCharge'> & { finalCharge: string } }).record;
+  ensure(fact?.kind === 'effect-EffectSettlement' || fact?.kind === 'effect-provider-ProviderEffectSettlement', 'eight settlement fact absent from causal closure');
+  const wire = fact.kind === 'effect-provider-ProviderEffectSettlement' ? providerSettlementWire(fact, context)
+    : (fact.body as unknown as { record: Omit<SettlementAccountingInput, 'finalCharge'> & { finalCharge: string } }).record;
   ensure(wire.finalCharge === 'unknown' || /^(0|[1-9][0-9]*)$/.test(wire.finalCharge), 'invalid referenced charge encoding');
   const s = { ...wire, finalCharge: wire.finalCharge === 'unknown' ? null : Number(wire.finalCharge) };
   ensure(fact.contentHash === r.settlementHash && s.id === r.settlement && s.operation === r.operation
