@@ -128,9 +128,13 @@ export function registerProviderEffectBodies(host: EffectHost) {
 }
 export function createProviderEffectDoorway(p: ProviderEffectDependencies): ProviderEffectDoorway {
   const checked = <T>(n: string, i: unknown, fn: () => T) => boundary(n, i, p.host.boundary, fn);
+  // A request object whose one-use Six claim we observed consumed can only
+  // refuse another dispatch. This accelerates refusal, never grants authority;
+  // copied requests and fresh doorways still use the durable checks below.
+  const consumedRequests = new WeakSet<ProviderEffectRequest>();
   const facts = () => take(p.store.readForProjection()).entries.map(e => e.fact);
-  const validate = (ids: readonly string[]) => {
-    const entries = take(p.store.readForProjection()).entries, seen = new Set<string>();
+  const validate = (ids: readonly string[], entries = take(p.store.readForProjection()).entries) => {
+    const seen = new Set<string>();
     const visit = (id: string) => {
       if (seen.has(id)) return; seen.add(id);
       const row = entries.find(e => e.fact.id === id);
@@ -199,9 +203,14 @@ export function createProviderEffectDoorway(p: ProviderEffectDependencies): Prov
         'ordinary reply binding differs');
     }
     const observationKind = provider ? 'effect-provider-ProviderOperationObservation' : 'effect-OperationObservation';
-    const observations = facts().filter(f => f.kind === observationKind && raw(f)?.operation === id)
-      .map(f => raw(f) as unknown as ProviderOperationObservation);
-    validate(facts().filter(f => f.kind === observationKind && raw(f)?.operation === id).map(f => f.id));
+    // Select and validate the exact observation set from ONE status-bearing P2
+    // snapshot. No host callback or other wait intervenes between these steps.
+    // Each inputFor call still obtains a fresh snapshot, including the final
+    // re-resolution after capture/custody work and before Nine's live guard.
+    const observationEntries = take(p.store.readForProjection()).entries;
+    const selected = observationEntries.filter(e => e.fact.kind === observationKind && raw(e.fact)?.operation === id);
+    const observations = selected.map(e => raw(e.fact) as unknown as ProviderOperationObservation);
+    validate(selected.map(e => e.fact.id), observationEntries);
     ensure(!provider || observations.some(o => o.judgmentReceipt.length > 0), 'missing Seven receipt; retain uncertainty');
     const input: EffectSettlementAssessmentInput = { request: { id: q.id, digest: q.digest, attempt: q.attempt, verificationBar: q.verificationBar },
       reservation: op.reservation, claim: op.claim.id, observations, plan: p.plan, bar: q.verificationBar,
@@ -258,6 +267,7 @@ export function createProviderEffectDoorway(p: ProviderEffectDependencies): Prov
     }),
     dispatch: async (q, fence) => {
       const ready = checked('DispatchProviderEffect', q, () => {
+        ensure(!consumedRequests.has(q), 'claimed provider operation uncertain; never invoke twice');
         const d = actual(q, fence), op = operationForRequest(q); matches(q, op.reservation, d);
         ensure(op.reservation.state === 'prepared', 'claimed provider operation uncertain; never invoke twice');
         demand(d, [op.fact.id, find('effect-provider-ProviderEffectRequest', q.id).id]); actual(q, fence);
@@ -276,6 +286,7 @@ export function createProviderEffectDoorway(p: ProviderEffectDependencies): Prov
         let accepted: ReturnType<typeof observation> | undefined;
         const result = await p.invocation.invoke(q.payload, claim, fence, () => checked('ProviderExecutorAccepted', null, () => {
           actual(q, fence); const consumed = operation(claim.operation); ensure(consumed.reservation.state === 'consumed', 'missing consumed claim');
+          consumedRequests.add(q);
           accepted = observation(q, 'executor-accepted', take(p.host.capture(encoded({ operation: claim.operation, executor: p.host.incarnation }).bytes)) as Capture);
           demand(d, [consumed.fact.id, accepted.fact.id]); actual(q, fence); return accepted.fact.id;
         }));
