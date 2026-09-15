@@ -934,18 +934,6 @@ export function assessTelegramReplyResponse(input: TelegramReplyAssessmentInput,
     ensure(assessment.owner === 'part-nine' && assessment.name === 'VerificationAssessment'
       && assessment.id.length > 0, 'Telegram response assessment has the wrong owner or kind');
     take(deps.assessment.read(assessment, input.effect));
-    const view = take(deps.assessment.consumeCurrent(assessment, input.effect, current => current));
-    const witnessed = consumeOutcome(view.outcome, {
-      happened: evidence => evidence,
-      'did-not-happen': () => null,
-      uncertain: () => null,
-    });
-    ensure(witnessed !== null && witnessed.length > 0,
-      'Telegram provider acceptance is not witnessed by exact current evidence');
-    ensure(view.finalCharge === null && view.delayedExecutionExcluded === false,
-      'Telegram response assessment claims an unsupported stronger closure stage');
-    ensure(view.required.includes(assessment.id),
-      'Telegram response assessment does not retain its owner-issued fact');
     const assessmentRows = take(deps.verification.inspectCurrent()).filter(row =>
       row.fact.id === assessment.id && row.record.type === 'VerificationAssessment');
     ensure(assessmentRows.length === 1 && assessmentRows[0]!.taint.length === 0
@@ -954,23 +942,36 @@ export function assessTelegramReplyResponse(input: TelegramReplyAssessmentInput,
     const ownerAssessment = assessmentRows[0]!.record;
     ensure(ownerAssessment.type === 'VerificationAssessment',
       'Telegram provider acceptance assessment has the wrong stored record kind');
-    const witnessedIds = [...new Set(witnessed)].sort();
     const ownerEvidenceIds = [...new Set(ownerAssessment.evidence)].sort();
-    ensure(ownerAssessment.operation === response.operation
-      && ownerAssessment.attempt === input.effect.reservation.attempt
-      && ownerAssessment.operationDigest === response.digest
-      && witnessedIds.length > 0
-      && encode(ownerEvidenceIds) === encode(witnessedIds)
-      && ownerAssessment.captureStatuses.length > 0
-      && ownerAssessment.captureStatuses.every(status => status.reference === response.capture.reference
-        && status.status === 'available'),
-    'Telegram provider acceptance is not bound to the exact witnessed response capture');
-    return {
-      assessment, stage: 'provider-accepted', sourceStage: 'response',
-      operation: response.operation, account: response.account, conversation: response.conversation,
-      digest: response.digest, observation: response.id, evidence: [...view.outcome.evidence],
-      unsupported: ['human-delivered', 'human-read'],
-    };
+    return take(deps.assessment.consumeCurrent(assessment, input.effect, view => {
+      const witnessed = consumeOutcome(view.outcome, {
+        happened: evidence => evidence,
+        'did-not-happen': () => null,
+        uncertain: () => null,
+      });
+      ensure(witnessed !== null && witnessed.length > 0,
+        'Telegram provider acceptance is not witnessed by exact current evidence');
+      ensure(view.finalCharge === null && view.delayedExecutionExcluded === false,
+        'Telegram response assessment claims an unsupported stronger closure stage');
+      ensure(view.required.includes(assessment.id),
+        'Telegram response assessment does not retain its owner-issued fact');
+      const witnessedIds = [...new Set(witnessed)].sort();
+      ensure(ownerAssessment.operation === response.operation
+        && ownerAssessment.attempt === input.effect.reservation.attempt
+        && ownerAssessment.operationDigest === response.digest
+        && witnessedIds.length > 0
+        && encode(ownerEvidenceIds) === encode(witnessedIds)
+        && ownerAssessment.captureStatuses.length > 0
+        && ownerAssessment.captureStatuses.every(status => status.reference === response.capture.reference
+          && status.status === 'available'),
+      'Telegram provider acceptance is not bound to the exact witnessed response capture');
+      return {
+        assessment, stage: 'provider-accepted' as const, sourceStage: 'response' as const,
+        operation: response.operation, account: response.account, conversation: response.conversation,
+        digest: response.digest, observation: response.id, evidence: [...view.outcome.evidence],
+        unsupported: ['human-delivered', 'human-read'] as const,
+      };
+    }));
   });
   consumeResult(result, {
     Success: () => { deliveryStatusHistories.set(deps.boundary, deps); },
@@ -989,7 +990,7 @@ function statusHistory(source: BoundaryContext | TelegramReplyAssessmentDependen
 }
 
 function verifyTelegramDeliveryStatus(acceptance: TelegramProviderAcceptance,
-  deps: TelegramReplyAssessmentDependencies): void {
+  deps: TelegramReplyAssessmentDependencies): (form: TelegramDeliveryStatusForm) => TelegramDeliveryStatus {
   ensure(deps.effects.owner === 'part-eight' && deps.assessment.owner === 'part-nine'
     && deps.verification.owner === 'part-nine',
   'Telegram status history requires the public Part Eight and Part Nine owners');
@@ -1035,27 +1036,34 @@ function verifyTelegramDeliveryStatus(acceptance: TelegramProviderAcceptance,
   ensure(assessment.type === 'VerificationAssessment',
     'Telegram status assessment has the wrong stored kind');
   take(deps.assessment.read(acceptance.assessment, effect));
-  const view = take(deps.assessment.consumeCurrent(acceptance.assessment, effect, current => current));
-  const witnessed = consumeOutcome(view.outcome, {
-    happened: evidence => evidence,
-    'did-not-happen': () => null,
-    uncertain: () => null,
-  });
   const statusEvidence = [...new Set(acceptance.evidence)].sort();
   const assessmentEvidence = [...new Set(assessment.evidence)].sort();
-  const witnessedEvidence = witnessed === null ? [] : [...new Set(witnessed)].sort();
-  ensure(statusEvidence.length === acceptance.evidence.length
-    && encode(statusEvidence) === encode(assessmentEvidence)
-    && encode(statusEvidence) === encode(witnessedEvidence),
-  'Telegram status evidence references do not resolve to the current assessment');
-  ensure(assessment.operation === acceptance.operation
-    && assessment.attempt === request.attempt
-    && assessment.operationDigest === acceptance.digest
-    && observation.operation === acceptance.operation
-    && observation.digest === acceptance.digest
-    && observation.account === acceptance.account
-    && observation.conversation === acceptance.conversation,
-  'Telegram status identity differs from its durable assessment and observation history');
+  return form => take(deps.assessment.consumeCurrent(acceptance.assessment, effect, view => {
+    const witnessed = consumeOutcome(view.outcome, {
+      happened: evidence => evidence,
+      'did-not-happen': () => null,
+      uncertain: () => null,
+    });
+    const witnessedEvidence = witnessed === null ? [] : [...new Set(witnessed)].sort();
+    ensure(statusEvidence.length === acceptance.evidence.length
+      && encode(statusEvidence) === encode(assessmentEvidence)
+      && encode(statusEvidence) === encode(witnessedEvidence),
+    'Telegram status evidence references do not resolve to the current assessment');
+    ensure(assessment.operation === acceptance.operation
+      && assessment.attempt === request.attempt
+      && assessment.operationDigest === acceptance.digest
+      && observation.operation === acceptance.operation
+      && observation.digest === acceptance.digest
+      && observation.account === acceptance.account
+      && observation.conversation === acceptance.conversation,
+    'Telegram status identity differs from its durable assessment and observation history');
+    return {
+      stage: acceptance.stage, sourceStage: acceptance.sourceStage, form,
+      text: form === 'word' ? 'accepted by platform' : '📨',
+      accessibleLabel: 'accepted by platform', legend: 'accepted by platform',
+      assessment: acceptance.assessment, observation: acceptance.observation,
+    };
+  }));
 }
 
 export function renderTelegramDeliveryStatus(acceptance: TelegramProviderAcceptance,
@@ -1076,13 +1084,7 @@ export function renderTelegramDeliveryStatus(acceptance: TelegramProviderAccepta
     ensure(form === 'word' || form === 'emoji', 'Telegram delivery status form is unsupported');
     ensure(dependencies !== undefined,
       'Telegram status has no durable effect and verification history resolver');
-    verifyTelegramDeliveryStatus(acceptance, dependencies);
-    return {
-      stage: acceptance.stage, sourceStage: acceptance.sourceStage, form,
-      text: form === 'word' ? 'accepted by platform' : '📨',
-      accessibleLabel: 'accepted by platform', legend: 'accepted by platform',
-      assessment: acceptance.assessment, observation: acceptance.observation,
-    };
+    return verifyTelegramDeliveryStatus(acceptance, dependencies)(form);
   });
 }
 
