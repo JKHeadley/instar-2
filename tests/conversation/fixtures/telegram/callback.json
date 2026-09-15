@@ -1,0 +1,15 @@
+{
+  "update_id": 101,
+  "callback_query": {
+    "id": "callback-1",
+    "from": { "id": 8, "is_bot": false, "first_name": "Callback sender" },
+    "message": {
+      "message_id": 501,
+      "message_thread_id": 42,
+      "chat": { "id": -1000000001001, "type": "supergroup", "is_forum": true },
+      "date": 1700000001,
+      "text": "button source"
+    },
+    "data": "sender-controlled-button-data"
+  }
+}
