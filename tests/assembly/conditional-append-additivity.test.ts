@@ -9,15 +9,15 @@ const additiveIndexSuffix = "export { createConditionalAssemblyAppendPort } from
   + "  ConditionalAssemblyAppendDependencies } from './conditional-append.js';\n";
 
 it('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:strict-additivity] preserves every pre-existing src/ and scripts/ path byte-for-byte', () => {
+  // The proof is a property of the immutable row-99 landing commit over its base, not of the tree running the test.
   expect(() => execFileSync('git', ['merge-base', '--is-ancestor', landing, 'HEAD'])).not.toThrow();
   const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', base, '--', 'src', 'scripts'], { encoding: 'utf8' })
     .trim().split('\n').filter(Boolean);
   expect(paths.length).toBeGreaterThan(0);
-  for (const path of paths.filter(path => path !== index)) {
-    const original = execFileSync('git', ['show', `${base}:${path}`]);
-    const landed = execFileSync('git', ['show', `${landing}:${path}`]);
-    expect(landed.equals(original), path).toBe(true);
-  }
+  // One diff, no renames folded away: any pre-existing path the landing deleted, modified or re-typed shows up here.
+  const touched = execFileSync('git', ['diff', '--name-only', '--no-renames', '--diff-filter=DMT', base, landing, '--', 'src', 'scripts'], { encoding: 'utf8' })
+    .trim().split('\n').filter(Boolean);
+  expect(touched).toEqual([index]);
   const originalIndex = execFileSync('git', ['show', `${base}:${index}`]);
   const landedIndex = execFileSync('git', ['show', `${landing}:${index}`]);
   expect(landedIndex.subarray(0, originalIndex.length).equals(originalIndex)).toBe(true);
