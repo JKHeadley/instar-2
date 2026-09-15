@@ -20,3 +20,7 @@ export { deriveGrowthEpisodes, closeGrowthEpisode } from './growth.js';
 export { createConditionalAssemblyAppendPort } from './conditional-append.js';
 export type { AssemblyRecordSubject, AssemblySubjectFrontier, ConditionalAssemblyAppendPort,
   ConditionalAssemblyAppendDependencies } from './conditional-append.js';
+export { createTelegramBotApiCustodian, createTelegramFileCaptureStore,
+  telegramBotApiCustodianContractMap } from './telegram-bot-api-custodian.js';
+export type { TelegramBotApiCustodianOptions, TelegramBridgeReply, TelegramConfinedBridgePort,
+  TelegramDurableCapturePort } from './telegram-bot-api-custodian.js';
