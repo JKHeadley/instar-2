@@ -7,6 +7,7 @@ import type { Capture, PreparedProviderJudgment, ProviderJudgmentPort } from '..
 import type { RunStep, RunGraphDependencies } from '../rungraph/index.js';
 import type { ProviderInvocationPort } from '../assembly/index.js';
 import type { EffectSettlementAssessmentInput, EffectSettlementAssessmentPort } from '../verification/index.js';
+import { providerSettlementSupported } from '../verification/index.js';
 import type { EffectDurabilityPort, EffectCustodyPort, EffectHost, EffectRequest, EffectSettlement, OperationDefinition, OperationObservation } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { definitionCheck, effectShapes, recordFrom, wire } from './records.js';
@@ -95,6 +96,18 @@ export function registerProviderEffectBodies(host: EffectHost) {
             && raw(request)?.attempt === q.attempt && raw(request)?.inputDigest === q.digest, 'provider preparation binding mismatch');
           ensure(p.attempt === q.attempt && p.effectRequest === q.id && p.submittedDigest === q.digest
             && p.run === q.run && p.semanticMessage === q.semanticMessage, 'provider payload binding mismatch');
+          // Re-resolve every field the payload COPIES from Seven's preparation instead
+          // of trusting the copy: the referenced request/attempt owners, every shared
+          // model/settings/bound field, and the payload's definition/bar/owner binding
+          // to its enclosing request. A mismatch is a typed refusal that appends nothing.
+          ensure(p.request.owner === 'part-seven' && p.request.name === 'JudgmentRequest'
+            && p.prepared.owner === 'part-seven' && p.prepared.name === 'JudgmentAttemptRecord', 'provider preparation owner differs');
+          for (const field of ['submitted', 'provider', 'model', 'route', 'settingsDigest', 'outputSchemaDigest', 'deadline',
+            'disclosure', 'maxInputBytes', 'maxOutputBytes', 'maxCaptureBytes', 'maxTokens', 'maxCharge', 'timeout'] as const)
+            ensure(encoded(p[field]).bytes === encoded((raw(request) as Record<string, unknown>)[field]).bytes, `provider preparation ${field} differs`);
+          ensure(p.definition === q.definition && p.verificationBar === q.verificationBar
+            && p.verificationOwner === q.verificationOwner && q.pending === raw(request)?.pending
+            && raw(prepared)?.submittedDigest === q.digest, 'provider request references differ');
           ensure(q.closure.every(id => past.some(f => f.id === id)) && q.closure.includes(q.pending), 'provider closure absent');
         } else {
           const q = past.find(f => f.kind === 'effect-provider-ProviderEffectRequest' && raw(f)?.id === r.request);
@@ -114,11 +127,43 @@ export function registerProviderEffectBodies(host: EffectHost) {
             ensure(!settlement.retryEligible && settlement.retainedExposure >= 0
               && (settlement.finalCharge === null ? settlement.retainedExposure === raw(reservation)?.charge
                 : Number.isSafeInteger(settlement.finalCharge) && settlement.finalCharge >= 0), 'provider settlement charge differs');
+            // The reported charge/outcome/exposure/quiescence must be EXACTLY what the
+            // referenced Nine assessment supports, not merely a self-consistent record:
+            // re-derive them through the owner-issued Nine historical validation.
+            const assessmentFact = past.find(f => f.id === settlement.acceptance && f.kind === 'verification-VerificationAssessment');
+            ensure(assessmentFact, 'provider assessment absent');
+            ensure(providerSettlementSupported({
+              assessment: raw(assessmentFact) as unknown as { predicates: readonly { predicate: string; verdict: string; evidence: readonly string[] }[] },
+              chargeAmount: (id): number | null => {
+                const e = past.find(f => (f.body as unknown as { evidence?: { id: string } }).evidence?.id === id);
+                if (!e) return null;
+                const v = (e.body as unknown as { evidence: { claim: { value: unknown } } }).evidence.claim.value;
+                if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+                const amount = (v as Record<string, unknown>).amount;
+                return typeof amount === 'number' ? amount : null;
+              },
+              reservationCharge: Number(raw(reservation)?.charge),
+              settlement: { finalCharge: settlement.finalCharge, retainedExposure: settlement.retainedExposure,
+                delayedExecutionExcluded: settlement.delayedExecutionExcluded,
+                outcomeKind: consumeOutcome(settlement.outcome, { happened: () => 'happened',
+                  'did-not-happen': () => 'did-not-happen', uncertain: () => 'uncertain' }) },
+            }), 'provider settlement charge/outcome not supported by referenced Nine assessment');
             if (ctx.mode === 'origin') requireSettlement(host, settlement);
           }
-          if (name === 'ProviderOperationObservation' && r.stage !== 'executor-accepted') {
-            const receipt = past.find(f => f.id === r.judgmentReceipt && f.kind === 'judgment-provider-ProviderJudgmentAttemptRecord');
-            ensure(receipt && raw(receipt)?.operation === r.operation && raw(receipt)?.phase === 'response-observed', 'provider observation missing Seven receipt');
+          if (name === 'ProviderOperationObservation') {
+            // Permitted stages only; account/destination equal the request; and for a
+            // response stage, the exact receipt/capture/claim/digest binding to Seven.
+            const payload = (raw(q) as unknown as { payload: ProviderCallPayload }).payload;
+            ensure(['executor-accepted', 'response', 'unknown'].includes(String(r.stage))
+              && r.account === payload.provider && r.conversation === payload.disclosure,
+              'provider observation stage or destination differs');
+            if (r.stage !== 'executor-accepted') {
+              const receipt = past.find(f => f.id === r.judgmentReceipt && f.kind === 'judgment-provider-ProviderJudgmentAttemptRecord');
+              ensure(receipt && raw(receipt)?.operation === r.operation && raw(receipt)?.phase === 'response-observed'
+                && raw(receipt)?.claim === r.claim && raw(receipt)?.submittedDigest === r.digest
+                && encoded(raw(receipt)?.receipt).bytes === encoded(r.capture).bytes,
+                'provider observation missing or mismatched Seven receipt');
+            }
           }
         }
         return { ok: true, value: v };
@@ -303,8 +348,23 @@ export function createProviderEffectDoorway(p: ProviderEffectDependencies): Prov
     assess: id => checked('AssessProviderEffect', id, () => { ensure(p.assessment?.owner === 'part-nine', 'Nine assessment absent'); return take(p.assessment.assess(inputFor(id).input)); }),
     settle: (id, reference) => settle(id, reference, value => value),
     readRunSettlement: (reference, step) => checked('ProviderSettlementRunConsumer', reference, () => {
-      const f = facts().find(f => f.id === reference.id && f.kind === 'effect-provider-ProviderEffectSettlement'); ensure(f, 'run settlement missing');
+      const f = facts().find(f => f.id === reference.id && f.kind === 'effect-provider-ProviderEffectSettlement'); ensure(f, 'run settlement missing'); validate([f.id]);
       const s = recordFrom({ ...f, body: { record: { ...raw(f), type: 'EffectSettlement' } } } as unknown as FactEnvelope) as EffectSettlement;
+      // The granted transition order (5.7 Six accounting → 5.8 Seven resolution) must
+      // ALREADY hold before Five consumes the provider answer: require the current,
+      // correctly-bound accounting and resolution records for THIS exact settlement.
+      const request = raw(find('effect-provider-ProviderEffectRequest', s.request)) as unknown as ProviderEffectRequest;
+      const prepared = take(p.judgment.readPrepared(request.payload.request));
+      const accounting = take(p.transport.inspect()).find(row => row.record.type === 'SettlementApplication'
+        && row.record.settlementFact === f.id && row.record.settlementHash === f.contentHash
+        && row.record.settlement === s.id && row.record.operation === s.operation
+        && row.record.request === s.request && row.record.digest === s.digest && row.record.unresolved === 0);
+      ensure(accounting, 'provider run consumption requires Six accounting');
+      const resolution = facts().find(row => row.kind === 'judgment-provider-ProviderJudgmentResolution'
+        && raw(row)?.request === prepared.value.id && raw(row)?.attempt === prepared.value.attempt
+        && raw(row)?.settlement === f.id && raw(row)?.accounting === accounting.fact.id);
+      ensure(resolution, 'provider run consumption requires Seven resolution');
+      validate([accounting.fact.id, resolution.id]);
       return take(settle(s.operation, { owner: 'part-nine', name: 'VerificationAssessment', id: s.acceptance }, current => {
         const q = raw(find('effect-provider-ProviderEffectRequest', current.request)) as unknown as ProviderEffectRequest;
         const seven = facts().find(f => f.id === q.payload.request.id);

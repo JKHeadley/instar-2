@@ -48,7 +48,21 @@ export function createConfinedProviderInvocation(route: ConfinedProviderRoute, a
           && consumed.semanticMessage === payload.semanticMessage && consumed.charge === payload.maxCharge, 'consumed claim binding differs');
         const acceptance = take(accepted());
         const snapshot = take(store.readForProjection());
-        ensure(snapshot.entries.every(e => !e.taint.length && !e.conflicts.length), 'provider acceptance tainted');
+        // Validate the ACCEPTED operation's required dependency closure, not every
+        // unrelated record in the store: an unrelated unavailable fact must not block
+        // an otherwise clean invocation, while a tainted dependency of the acceptance
+        // still refuses. Every taint/conflict status is left exactly as observed.
+        const validateDependencies = (ids: readonly string[]) => {
+          const seen = new Set<string>();
+          const visit = (id: string) => {
+            if (seen.has(id)) return; seen.add(id);
+            const dependency = snapshot.entries.find(e => e.fact.id === id);
+            ensure(dependency && !dependency.taint.length && !dependency.conflicts.length, 'provider acceptance tainted');
+            dependency.fact.predecessors.required.forEach(visit);
+          };
+          ids.forEach(visit);
+        };
+        if (snapshot.entries.some(e => e.fact.id === acceptance)) validateDependencies([acceptance]);
         const entry = snapshot.entries.find(e => e.fact.id === acceptance);
         const record = entry?.fact.body as unknown as { record?: { stage: string; operation: string; request: string; digest: string; claim: string } };
         ensure(entry?.fact.kind === 'effect-provider-ProviderOperationObservation' && record?.record?.stage === 'executor-accepted'

@@ -106,7 +106,10 @@ export function accounting(s: SettlementAccountingInput, reservation: AdmissionR
 // reference matching, not an eight constructor or live historical-consumption API.
 export function settlementMatches(s: SettlementAccountingInput, fact: FactEnvelope, context?: FactContext): boolean {
   if (fact.kind === 'effect-provider-ProviderEffectSettlement') {
-    return encoded(providerSettlementWire(fact, context)).bytes
+    // A provider settlement whose owner decoding is rejected (e.g. its charge is not
+    // supported by the referenced Nine assessment) does not match any live proposal.
+    let wire; try { wire = providerSettlementWire(fact, context); } catch { return false; }
+    return encoded(wire).bytes
       === encoded({ ...s, type: 'ProviderEffectSettlement', finalCharge: s.finalCharge === null ? 'unknown' : String(s.finalCharge) }).bytes;
   }
   return fact.kind === 'effect-EffectSettlement' && encoded((fact.body as { record: unknown }).record).bytes

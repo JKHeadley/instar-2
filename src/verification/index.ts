@@ -30,3 +30,5 @@ export { adapterStimulusClasses, supervisionCoverage, reviewDisclosureAllowed, r
 export type { SupervisionObservation, SupervisionCoverageRow, ReportClaim } from './policy.js';
 export { createEffectSettlementAssessmentPort } from './effect-consumption.js';
 export type { EffectSettlementAssessmentInput, ConsumedEffectAssessment, EffectSettlementAssessmentPort } from './effect-consumption.js';
+export { providerSettlementSupported } from './provider-settlement-support.js';
+export type { ProviderSettlementSupportInput } from './provider-settlement-support.js';

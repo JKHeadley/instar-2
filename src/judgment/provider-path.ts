@@ -85,7 +85,22 @@ export function registerProviderJudgmentBodies(host: JudgmentHost, c: BoundaryCo
           ensure(past.some(f => f.id === r.pending && f.kind === 'run-transition'), 'real Five pending step required');
           const q = v as unknown as ProviderJudgmentRequest;
           const bytes = ctx.facts.captures[q.submitted.reference];
-          if (bytes?.bytes != null) ensure(hashBytes(bytes.bytes) === q.submitted.hash && encoded(bytes.bytes).hash === q.inputDigest, 'submitted bytes changed');
+          if (bytes?.bytes != null) {
+            ensure(hashBytes(bytes.bytes) === q.submitted.hash && encoded(bytes.bytes).hash === q.inputDigest, 'submitted bytes changed');
+            // Re-resolve the copied request fields against the ACTUAL submitted bytes
+            // instead of trusting them: provider/model/route/point/generation/evidence
+            // are exactly what was submitted for the provider call.
+            const submission = JSON.parse(bytes.bytes) as Record<string, unknown>;
+            for (const field of ['provider', 'model', 'route', 'point', 'generation', 'evidence'] as const)
+              ensure(encoded(submission[field]).bytes === encoded(q[field]).bytes, `submitted ${field} differs`);
+          }
+          // Bind the request's run/predecessor to the referenced Five pending transition,
+          // and enforce finite non-negative bounds.
+          const pending = past.find(f => f.id === q.pending && f.kind === 'run-transition');
+          ensure(pending && raw(pending)?.run === q.run && raw(pending)?.id === q.predecessor,
+            'provider request pending run or predecessor differs');
+          for (const amount of [q.maxInputBytes, q.maxOutputBytes, q.maxCaptureBytes, q.maxTokens, q.maxCharge, q.timeout, q.ordinal, q.deadline])
+            ensure(Number.isSafeInteger(amount) && amount >= 0, 'provider request bound invalid');
         } else {
           const q = past.find(f => f.kind === 'judgment-provider-ProviderJudgmentRequest' && f.schemaVersion === 1 && raw(f)?.id === r.request);
           ensure(q && raw(q)?.attempt === r.attempt, 'request attempt mismatch');
@@ -94,6 +109,41 @@ export function registerProviderJudgmentBodies(host: JudgmentHost, c: BoundaryCo
             if (name === 'ProviderJudgmentAttemptRecord') ensure(consumed && raw(consumed)?.state === 'consumed'
               && raw(consumed)?.operation === r.operation && raw(consumed)?.attempt === r.attempt
               && raw(consumed)?.request === raw(q)?.effectRequest, 'missing consumed claim');
+          }
+          // Resolve every observation/claim/response/settlement/accounting the receipt
+          // and resolution NAME, by required kind, and compare their relationships —
+          // never trust the copied ids or an intake fact substituted for a real record.
+          if (name === 'ProviderJudgmentAttemptRecord') {
+            ensure((r.phase === 'prepared' || r.phase === 'response-observed')
+              && r.submittedDigest === raw(q)?.inputDigest, 'provider attempt phase or digest differs');
+            if (r.phase === 'response-observed') {
+              const observation = past.find(f => f.id === r.observation && f.kind === 'effect-provider-ProviderOperationObservation');
+              const claim = past.find(f => f.id === r.claim && f.kind === 'transport-AdmissionReservation');
+              ensure(observation && raw(observation)?.stage === 'executor-accepted'
+                && raw(observation)?.request === raw(q)?.effectRequest && raw(observation)?.operation === r.operation
+                && raw(observation)?.claim === r.claim && raw(observation)?.digest === r.submittedDigest,
+                'provider receipt observation differs');
+              ensure(claim && raw(claim)?.state === 'dispatch-claimed' && raw(claim)?.operation === r.operation
+                && raw(claim)?.attempt === r.attempt && raw(claim)?.request === raw(q)?.effectRequest
+                && raw(claim)?.digest === r.submittedDigest, 'provider receipt claim differs');
+              ensure([r.observation, r.claim, r.reservation].every(id => ctx.origin.predecessors.required.includes(String(id))),
+                'provider receipt dependency closure differs');
+            }
+          }
+          if (name === 'ProviderJudgmentResolution') {
+            const response = past.find(f => f.id === r.response && f.kind === 'judgment-provider-ProviderJudgmentAttemptRecord');
+            const settlement = past.find(f => f.id === r.settlement && f.kind === 'effect-provider-ProviderEffectSettlement');
+            const accounting = past.find(f => f.id === r.accounting && f.kind === 'transport-SettlementApplication');
+            ensure(response && raw(response)?.phase === 'response-observed' && raw(response)?.request === r.request
+              && raw(response)?.attempt === r.attempt, 'provider resolution response differs');
+            ensure(settlement && raw(settlement)?.request === raw(q)?.effectRequest
+              && raw(settlement)?.operation === raw(response)?.operation && raw(settlement)?.digest === raw(q)?.inputDigest,
+              'provider resolution settlement differs');
+            ensure(accounting && raw(accounting)?.settlement === raw(settlement)?.id
+              && raw(accounting)?.settlementFact === settlement.id && raw(accounting)?.settlementHash === settlement.contentHash
+              && raw(accounting)?.unresolved === 0, 'provider resolution accounting differs');
+            ensure([r.response, r.settlement, r.accounting].every(id => ctx.origin.predecessors.required.includes(String(id))),
+              'provider resolution dependency closure differs');
           }
         }
         return { ok: true, value: v };
