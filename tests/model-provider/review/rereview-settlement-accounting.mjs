@@ -15,7 +15,9 @@ export function registerCases(test) {
       const changed = signEnvelope({ ...sf, body: { ...sf.body, record: { ...sf.body.record, finalCharge: '0', retainedExposure: 0 } } }, privateKey);
       const ctx = { ...f.context, facts: all.slice(0, all.findIndex(x => x.id === sf.id)).concat(changed) };
       assert.equal(settlementMatches(s, sf, { ...f.context, facts: all }), true);
-      assert.equal(settlementMatches({ ...s, finalCharge: 0, retainedExposure: 0 }, changed, ctx), false);
+      // The unwitnessed-charge fact is rejected by Eight's owner decoder (delegating the
+      // Nine-support check), so Six's live matcher THROWS rather than silently matching.
+      assert.throws(() => settlementMatches({ ...s, finalCharge: 0, retainedExposure: 0 }, changed, ctx));
     } finally { await http.close(); }
   });
   test('V46', 'Six historical accounting refuses provider charge unsupported by referenced Nine assessment', async () => {
@@ -40,10 +42,12 @@ export function registerCases(test) {
       const changed = signEnvelope({ ...sf, body: { ...sf.body, record: { ...sf.body.record, id: changedValue.id, finalCharge: '0', retainedExposure: 0 } } }, privateKey);
       const before = all.slice(0, all.findIndex(x => x.id === sf.id));
       const ctx = { ...f.context, facts: before.concat(changed) };
+      // Even with a recomputed content-derived id, the unwitnessed zero charge does not
+      // decode clean (Eight's Nine-support check taints it) and Six's matcher refuses it
+      // (throws rather than matching) — an id-checksum-only patch would be insufficient.
       const checked = value(prepareSnapshot([changed], { ...f.context, facts: before })).entries[0];
-      const matches = settlementMatches(changedValue, changed, ctx);
-      assert.ok(checked.taint.length || checked.conflicts.length || !matches,
-        're-signed changed charge with matching content-derived id decoded clean and matched');
+      assert.ok(checked.taint.length || checked.conflicts.length, 're-signed changed charge decoded clean');
+      assert.throws(() => settlementMatches(changedValue, changed, ctx));
     } finally { await http.close(); }
   });
   test('V59', 'historical accounting rejects zero charge even with fresh matching settlement identity', async () => {
