@@ -23,12 +23,11 @@ async function mainDecoder(): Promise<Decode> {
   catch { main = 'origin/main'; }
   const base = execFileSync('git', ['merge-base', 'HEAD', main], { cwd: root, encoding: 'utf8' }).trim();
   let source = execFileSync('git', ['show', `${base}:src/assembly/records.ts`], { cwd: root, encoding: 'utf8' });
-  for (const [from, to] of [
-    ["'../index.js'", `'${resolve(root, 'dist/index.js')}'`],
-    ["'../facts/index.js'", `'${resolve(root, 'dist/facts/index.js')}'`],
-    ["'./boundary.js'", `'${resolve(root, 'dist/assembly/boundary.js')}'`],
-    ["'./types-internal.js'", `'${resolve(root, 'dist/assembly/types-internal.js')}'`],
-  ] as const) source = source.replaceAll(from, to);
+  // Every relative import the base decoder carries is re-pointed at this tree's built output. The rewrite is
+  // generic on purpose: an owner that later gains an additive import (Part Eleven added '../operator/index.js')
+  // must not break the main-versus-HEAD comparison, which would otherwise fail on module resolution, not on outcome.
+  source = source.replace(/from '(\.\.?\/[^']+\.js)'/g, (_match, specifier: string) =>
+    `from '${resolve(root, 'dist', specifier.startsWith('./') ? join('assembly', specifier) : specifier.slice('../'.length))}'`);
   const directory = mkdtempSync(join(tmpdir(), 'p10-main-decoder-'));
   const file = join(directory, 'records.ts');
   writeFileSync(file, source);
