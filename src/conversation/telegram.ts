@@ -933,7 +933,8 @@ export function assessTelegramReplyResponse(input: TelegramReplyAssessmentInput,
     const assessment = input.existing ?? take(deps.assessment.assess(input.effect));
     ensure(assessment.owner === 'part-nine' && assessment.name === 'VerificationAssessment'
       && assessment.id.length > 0, 'Telegram response assessment has the wrong owner or kind');
-    const view = take(deps.assessment.read(assessment, input.effect));
+    take(deps.assessment.read(assessment, input.effect));
+    const view = take(deps.assessment.consumeCurrent(assessment, input.effect, current => current));
     const witnessed = consumeOutcome(view.outcome, {
       happened: evidence => evidence,
       'did-not-happen': () => null,
@@ -1033,7 +1034,8 @@ function verifyTelegramDeliveryStatus(acceptance: TelegramProviderAcceptance,
   const assessment = assessmentRows[0]!.record;
   ensure(assessment.type === 'VerificationAssessment',
     'Telegram status assessment has the wrong stored kind');
-  const view = take(deps.assessment.read(acceptance.assessment, effect));
+  take(deps.assessment.read(acceptance.assessment, effect));
+  const view = take(deps.assessment.consumeCurrent(acceptance.assessment, effect, current => current));
   const witnessed = consumeOutcome(view.outcome, {
     happened: evidence => evidence,
     'did-not-happen': () => null,
