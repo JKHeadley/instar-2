@@ -6,7 +6,7 @@ import { bootProductionAssembly, createAssemblySpine } from '../../src/assembly/
 import type { AssemblyProductionCoordinator } from '../../src/assembly/index.js';
 import { createFactStore } from '../../src/facts/index.js';
 import { privateKey, refused, value } from '../facts/fixtures.js';
-import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
 import { installProduction, productionComposition } from '../assembly/production-fixture.js';
 // @ts-expect-error The physical file adapter is an executable JavaScript boundary.
 import { createTransportFileStorage } from '../../scripts/transport-file-storage.mjs';

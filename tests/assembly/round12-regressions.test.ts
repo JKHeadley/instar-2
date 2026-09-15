@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { bootProductionAssembly } from '../../src/assembly/index.js';
 import { consumeResult } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
-import { assemblyRuntimeFixture } from './runtime-fixture.js';
+import { assemblyRuntimeFixture } from './round8-extended-fixture.js';
 import { installProduction, productionBindingSet, productionComposition } from './production-fixture.js';
 
 const accepted = <T>(result: Result<T>) => consumeResult(result, {

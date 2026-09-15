@@ -7,7 +7,7 @@ import type { ProbeRecord } from '../../src/verification/index.js';
 import { decode } from '../../src/index.js';
 import { verificationInput } from '../verification/fixture.js';
 import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
-import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
 import { installProduction, productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
 import { operatorFixture } from './fixture.js';
 import { value } from '../facts/fixtures.js';

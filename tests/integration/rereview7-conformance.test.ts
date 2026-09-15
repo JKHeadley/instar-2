@@ -7,7 +7,7 @@ import { bootProductionAssembly, inspectProductionAssemblyBindings } from '../..
 import { evaluateMinimalPath, minimalResponse, requiredMinimalDependencies, evaluateGenesisReplay, minimalPlaneProjections, createOperatorSurface } from '../../src/operator/index.js';
 import { intakeFixture, value, message, route } from '../intake/fixtures.js';
 import { operatorFixture } from '../operator/fixture.js';
-import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
 import { productionBindingSet, installProduction, productionComposition } from '../assembly/production-fixture.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { productionOperatorSlice } from '../operator/production-slice-fixture.js';

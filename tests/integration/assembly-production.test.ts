@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { bootProductionAssembly } from '../../src/assembly/index.js';
 import { refused, value } from '../facts/fixtures.js';
-import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
 import { appendProductionBindingFacts, assertDependencyRoster, installProduction, productionBindingSet,
   productionComposition } from '../assembly/production-fixture.js';
 

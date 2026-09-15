@@ -4,7 +4,7 @@ import { canonical, decode } from '../../src/index.js';
 import { hashBytes } from '../../src/facts/index.js';
 import { operatorFixture } from '../operator/fixture.js';
 import { createOperatorSurface, evaluateGenesisReplay, evaluateMinimalPath, minimalResponse, requiredMinimalDependencies } from '../../src/operator/index.js';
-import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
 import { installProduction, productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
 import { bootProductionAssembly, inspectProductionAssemblyBindings } from '../../src/assembly/index.js';
 import { assemblyInput } from '../assembly/fixture.js';

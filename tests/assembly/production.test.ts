@@ -3,7 +3,7 @@ import { bootProductionAssembly, decodeAssemblyManifest, inspectProductionAssemb
 import { requiredMinimalDependencies } from '../../src/operator/index.js';
 import { refused, value } from '../facts/fixtures.js';
 import { assemblyInput } from './fixture.js';
-import { assemblyRuntimeFixture } from './runtime-fixture.js';
+import { assemblyRuntimeFixture } from './round8-extended-fixture.js';
 import { installProduction, productionBindingSet, productionComposition, productionPublicPorts } from './production-fixture.js';
 
 const clone = <T>(input: T): T => JSON.parse(JSON.stringify(input)) as T;

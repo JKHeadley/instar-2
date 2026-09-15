@@ -2,7 +2,7 @@ import { decodeAssemblyManifest } from '../../src/assembly/index.js';
 import type { AssemblyManifest, AssemblyProductionBindingSet, AssemblyProductionComposition } from '../../src/assembly/index.js';
 import { minimalPlaneProjections, requiredMinimalDependencies } from '../../src/operator/index.js';
 import { assemblyInput } from './fixture.js';
-import { assemblyRuntimeFixture, productionReferenceKinds } from './runtime-fixture.js';
+import { assemblyRuntimeFixture, productionReferenceKinds } from './round8-extended-fixture.js';
 import { value } from '../facts/fixtures.js';
 
 type RuntimeFixture = ReturnType<typeof assemblyRuntimeFixture>;

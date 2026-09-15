@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { bootProductionAssembly } from '../../src/assembly/index.js';
-import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
 import { installProduction, productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
 import { operatorFixture } from '../operator/fixture.js';
 import { productionOperatorSlice } from '../operator/production-slice-fixture.js';

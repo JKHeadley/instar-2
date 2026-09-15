@@ -4,7 +4,7 @@ import { evaluateGenesisReplay, evaluateMinimalPath, minimalResponse, requiredMi
 import { bootProductionAssembly, inspectProductionAssemblyBindings } from '../../src/assembly/index.js';
 import { intakeFixture, message, refused, route, value } from '../intake/fixtures.js';
 import { operatorFixture } from '../operator/fixture.js';
-import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { installProduction, productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
 

@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { bootProductionAssembly } from '../../src/assembly/index.js';
 import { refused, value } from '../facts/fixtures.js';
-import { assemblyRuntimeFixture } from './runtime-fixture.js';
+import { assemblyRuntimeFixture } from './round8-extended-fixture.js';
 import { installProduction, productionBindingSet, productionComposition } from './production-fixture.js';
 
 const requiredMethods = [
