@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { build } from 'esbuild';
 
-const baseline = '15f70b7a13a7bb90a5ae28000f1b82e8f32247e7';
+const baseline = 'e291ffec82cdac06dc7d8db279df926b0b8dff87';
 const workspace = process.cwd();
 
 // The row-127 brief grants a single additive Part Ten source extension: the exclusive validUntil

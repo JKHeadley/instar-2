@@ -691,14 +691,19 @@ function intakeLabel(value: IntakeDisposition): TelegramIntakeOutcome['intake'] 
 export function createTelegramIngress(deps: TelegramIngressDependencies) {
   requireAdmission(deps.admitted, deps.api);
   ensure(deps.facts && deps.intake && deps.observer.trim().length > 0, 'Telegram ingress requires the public intake and fact-read ports');
+  const advance = (id: number): number => {
+    ensure(id < Number.MAX_SAFE_INTEGER,
+      'Telegram cursor cannot advance past the supported safe-integer update domain');
+    return id + 1;
+  };
   const currentOffset = () => {
     const ids = durableUpdateIds(deps);
     let next = deps.admitted.declaration.cursor.initialOffset;
     for (const id of ids) {
       if (id < next) continue;
-      if (next === 0 && deps.admitted.declaration.cursor.initialOffset === 0 && id > next) { next = id + 1; continue; }
+      if (next === 0 && deps.admitted.declaration.cursor.initialOffset === 0 && id > next) { next = advance(id); continue; }
       if (id !== next) break;
-      next = id + 1;
+      next = advance(id);
     }
     return next;
   };
