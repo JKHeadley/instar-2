@@ -8,6 +8,7 @@ import { decodeLoopPolicy } from '../../src/transport/index.js';
 import { transportFixture } from './fixture.js';
 
 const MAIN_TIP = 'db15e137a259e7d56bf39be1b6839a1c56c33155';
+const LOOP_BREAKER_LANDING = '223d046df2194df8e36e1cf6fd5221a06fe1c1e7';
 const GENERATED_CASE_COUNT = 1_313;
 
 function resultValue(result: unknown): unknown {
@@ -180,6 +181,10 @@ it('SLB-LEGACY-V2-94 keeps main dispatch for a legacy breaker marker without an 
 });
 
 it('SLB-LEGACY-BYTES-100 keeps every main-owned transport source and test byte-identical', () => {
+  // The proof is a property of the immutable loop-breaker A1 landing commit over its base, not of the tree
+  // running the test: a later granted additive change to Part Six must not re-litigate that landing.
+  const ancestor = spawnSync('git', ['merge-base', '--is-ancestor', LOOP_BREAKER_LANDING, 'HEAD']);
+  expect(ancestor.status, 'the loop-breaker A1 landing must be an ancestor of HEAD').toBe(0);
   const listed = spawnSync('git', ['ls-tree', '-r', '--name-only', MAIN_TIP, '--',
     'src/transport', 'tests/transport', 'tests/fixtures'], { encoding: 'utf8' });
   expect(listed.status, listed.stderr).toBe(0);
@@ -187,9 +192,12 @@ it('SLB-LEGACY-BYTES-100 keeps every main-owned transport source and test byte-i
     && (path.startsWith('src/transport/') || path.startsWith('tests/transport/')
       || path.startsWith('tests/fixtures/transport-')));
   expect(paths.length).toBeGreaterThan(0);
-  for (const path of paths) {
-    const main = spawnSync('git', ['show', `${MAIN_TIP}:${path}`], { encoding: null });
-    expect(main.status, `${path}: ${main.stderr?.toString()}`).toBe(0);
-    expect(readFileSync(path), path).toEqual(main.stdout);
-  }
+  // One diff, no renames folded away: any pre-existing transport path the landing deleted, modified or re-typed shows up here.
+  const touched = spawnSync('git', ['diff', '--name-only', '--no-renames', '--diff-filter=DMT', MAIN_TIP, LOOP_BREAKER_LANDING, '--',
+    'src/transport', 'tests/transport', 'tests/fixtures'], { encoding: 'utf8' });
+  expect(touched.status, touched.stderr).toBe(0);
+  const changed = touched.stdout.trim().split('\n').filter(path => path
+    && (path.startsWith('src/transport/') || path.startsWith('tests/transport/')
+      || path.startsWith('tests/fixtures/transport-')));
+  expect(changed).toEqual([]);
 });
