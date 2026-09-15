@@ -1,8 +1,4 @@
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import type { BoundaryContext, Clock, Hash, ProvenanceInput, Result, SecretRef } from '../index.js';
 import type { TelegramBotApiCustodianPort, TelegramIdentityProbe, TelegramPolledBatch } from '../conversation/index.js';
 import type { InboundRoute } from '../intake/index.js';
@@ -24,12 +20,11 @@ export interface TelegramDurableCapturePort {
 }
 export interface TelegramBotApiCustodianOptions {
   readonly context: BoundaryContext;
-  readonly agentHome: string;
   readonly machine: string;
   readonly now: () => Clock;
   readonly freshFor: number;
-  readonly captures?: TelegramDurableCapturePort;
-  readonly bridge?: TelegramConfinedBridgePort;
+  readonly captures: TelegramDurableCapturePort;
+  readonly bridge: TelegramConfinedBridgePort;
 }
 
 const digest = (bytes: string): Hash => `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`;
@@ -48,43 +43,6 @@ export const telegramBotApiCustodianContractMap = Object.freeze({
     'NON-EXECUTABLE-UNTIL-rate-limit-backoff-grant',
   ]),
 });
-
-export function createTelegramFileCaptureStore(directory: string): TelegramDurableCapturePort {
-  const root = resolve(directory);
-  const pathFor = (reference: string) => join(root, `${reference.replace(/[^A-Za-z0-9_.-]/g, '_')}.capture`);
-  return Object.freeze({ owner: 'part-ten' as const,
-    preserve(reference: string, bytes: string) {
-      mkdirSync(root, { recursive: true, mode: 0o700 });
-      const destination = pathFor(reference);
-      if (existsSync(destination)) return readFileSync(destination, 'utf8') === bytes;
-      const temporary = `${destination}.${process.pid}.tmp`;
-      try {
-        writeFileSync(temporary, bytes, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-        const fd = openSync(temporary, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
-        renameSync(temporary, destination);
-        const directoryFd = openSync(root, 'r'); try { fsyncSync(directoryFd); } finally { closeSync(directoryFd); }
-        return readFileSync(destination, 'utf8') === bytes;
-      } catch { try { unlinkSync(temporary); } catch { /* absent temporary is inert */ } return false; }
-    },
-    read(reference: string) { const path = pathFor(reference); return existsSync(path) ? readFileSync(path, 'utf8') : null; },
-  });
-}
-
-function defaultBridge(agentHome: string): TelegramConfinedBridgePort {
-  return Object.freeze({ owner: 'part-ten' as const, invoke(input: Parameters<TelegramConfinedBridgePort['invoke']>[0]): TelegramBridgeReply {
-    const adjacentBridge = fileURLToPath(new URL('./telegram-bot-api-bridge.js', import.meta.url));
-    const bridge = existsSync(adjacentBridge) ? adjacentBridge : resolve('dist/assembly/telegram-bot-api-bridge.js');
-    const request = Buffer.from(JSON.stringify({ method: input.method, body: input.body, timeoutMs: input.timeoutMs }), 'utf8').toString('base64url');
-    const secretGet = join(agentHome, '.instar', 'scripts', 'secret-get.mjs');
-    const run = spawnSync(process.execPath, [secretGet, input.token.name, '--run', '--', process.execPath, bridge, request], {
-      cwd: agentHome, encoding: 'utf8', timeout: input.timeoutMs + 2_000, maxBuffer: 2 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    if (run.status !== 0 || !run.stdout) return { kind: 'uncertain' as const, limitation: run.error ? 'timeout' as const : 'transport' as const };
-    try { return JSON.parse(run.stdout) as TelegramBridgeReply; }
-    catch { return { kind: 'uncertain' as const, limitation: 'transport' as const }; }
-  } });
-}
 
 function record(value: unknown, label: string): Record<string, unknown> {
   ensure(value !== null && typeof value === 'object' && !Array.isArray(value), `${label} must be an object`);
@@ -106,10 +64,10 @@ function response(reply: TelegramBridgeReply, captures: TelegramDurableCapturePo
 
 export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOptions): Result<TelegramBotApiCustodianPort> {
   return boundary('TelegramBotApiCustodianConstruction', { machine: options.machine, freshFor: options.freshFor }, options.context, () => {
-    ensure(options.agentHome.length > 0 && options.machine.length > 0, 'Telegram custodian identity is required');
+    ensure(options.machine.length > 0, 'Telegram custodian identity is required');
     ensure(Number.isSafeInteger(options.freshFor) && options.freshFor > 0, 'Telegram identity freshness must be positive');
-    const captures = options.captures ?? createTelegramFileCaptureStore(join(options.agentHome, '.instar', 'custody', 'telegram-bot-api'));
-    const bridge = options.bridge ?? defaultBridge(options.agentHome);
+    const captures = options.captures;
+    const bridge = options.bridge;
     ensure(captures.owner === 'part-ten' && bridge.owner === 'part-ten', 'Telegram credential and capture custody must remain with Part Ten');
     let maximumPermittedOffset: number | null = null;
     const call = (token: SecretRef, method: ProviderMethod, body: ProviderBody, timeout: number, kind: string) => {

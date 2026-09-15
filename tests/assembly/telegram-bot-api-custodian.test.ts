@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { consumeResult, decode } from '../../src/index.js';
 import type { Result, SecretRef } from '../../src/index.js';
@@ -31,7 +33,7 @@ function setup(replies: TelegramBridgeReply[], captureFailureAt = Number.POSITIV
   const bridge: TelegramConfinedBridgePort = { owner: 'part-ten', invoke(input) {
     calls.push({ method: input.method, body: input.body }); return replies.shift() ?? { kind: 'uncertain', limitation: 'transport' };
   } };
-  const custodian = unwrap(createTelegramBotApiCustodian({ context: f.c, agentHome: '/confined', machine: 'machine-live',
+  const custodian = unwrap(createTelegramBotApiCustodian({ context: f.c, machine: 'machine-live',
     now: () => f.clock(500), freshFor: 60_000, captures, bridge }));
   return { f, token, bytes, calls, custodian };
 }
@@ -102,7 +104,36 @@ test('LIVE Telegram custodian: real getMe, update capture, authentication, and s
   }
   const f = factsFixture();
   const token = unwrap(decode('SecretRef', { type: 'SecretRef', schemaVersion: 1, vault: 'vault', name: 'telegram_livetest_bot_token' }, f.ctx.decode)) as SecretRef;
-  const api: TelegramBotApiCustodianPort = unwrap(createTelegramBotApiCustodian({ context: f.c, agentHome, machine: 'echo', now: () => f.clock(Date.now()), freshFor: 60_000 }));
+  const captureDirectory = join(agentHome, '.instar', 'custody', 'telegram-bot-api-live-test');
+  const captures: TelegramDurableCapturePort = { owner: 'part-ten', preserve(reference, bytes) {
+    mkdirSync(captureDirectory, { recursive: true, mode: 0o700 });
+    const destination = join(captureDirectory, `${reference.replace(/[^A-Za-z0-9_.-]/g, '_')}.capture`);
+    if (existsSync(destination)) return readFileSync(destination, 'utf8') === bytes;
+    const temporary = `${destination}.pending`;
+    try {
+      writeFileSync(temporary, bytes, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      const fd = openSync(temporary, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
+      renameSync(temporary, destination);
+      const directoryFd = openSync(captureDirectory, 'r'); try { fsyncSync(directoryFd); } finally { closeSync(directoryFd); }
+      return readFileSync(destination, 'utf8') === bytes;
+    } catch { return false; }
+  }, read(reference) {
+    const destination = join(captureDirectory, `${reference.replace(/[^A-Za-z0-9_.-]/g, '_')}.capture`);
+    return existsSync(destination) ? readFileSync(destination, 'utf8') : null;
+  } };
+  const bridge: TelegramConfinedBridgePort = { owner: 'part-ten', invoke(input) {
+    const request = Buffer.from(JSON.stringify({ method: input.method, body: input.body, timeoutMs: input.timeoutMs }), 'utf8').toString('base64url');
+    const run = spawnSync(process.execPath, [`${agentHome}/.instar/scripts/secret-get.mjs`, input.token.name, '--run', '--',
+      process.execPath, join(process.cwd(), 'src/assembly/telegram-bot-api-bridge.mjs'), request], {
+      cwd: agentHome, encoding: 'utf8', timeout: input.timeoutMs + 2_000, maxBuffer: 2 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    if (run.status !== 0 || !run.stdout) return { kind: 'uncertain', limitation: run.error ? 'timeout' : 'transport' };
+    try { return JSON.parse(run.stdout) as TelegramBridgeReply; }
+    catch { return { kind: 'uncertain', limitation: 'transport' }; }
+  } };
+  const api: TelegramBotApiCustodianPort = unwrap(createTelegramBotApiCustodian({ context: f.c, machine: 'echo',
+    now: () => f.clock(Date.now()), freshFor: 60_000, captures, bridge }));
   const identity = unwrap(api.identity({ token, apiVersion: '9.2' }));
   expect(identity.username).toBe('@echo_mmtest_seam_b27x_bot');
   const batch = unwrap(api.poll({ token, apiVersion: '9.2', offset: 0, limit: 100, timeout: 3 }));
