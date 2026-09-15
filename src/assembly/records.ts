@@ -40,7 +40,7 @@ const productionBinding = pair({
     requester: text, effectAdapter: text }),
 });
 
-export const assemblyShapes: Readonly<Record<AssemblyStoredRecordName, OwnedShape>> = freeze({
+export const assemblyShapes: Readonly<Record<AssemblyRecordName, OwnedShape>> = freeze({
   AssemblyManifest: pair({ ...common, manifestDigest: hash,
     packages: list(pair({ id: text, digest: hash, artifact: hash })),
     compatibility: pair({ runtime: text, toolchain: text, platforms: texts, schemas: texts, rollback: texts }),
@@ -61,11 +61,6 @@ export const assemblyShapes: Readonly<Record<AssemblyStoredRecordName, OwnedShap
     artifactDigest: hash, machine: text, workingScope: text, processOperation: text, resourceReferences: texts,
     portHandles: texts, environment: list(pair({ name: text, valueDigest: hash })),
     contextManifest: list(pair({ class: text, reference: text, digest: hash })), input: text, inputDigest: hash, consumptionMode: text,
-  }),
-  ContextDeliverySpecification: pair({ ...common, launch: text, run: text, step: text, input: text, inputDigest: hash,
-    incarnation: text, harness: text, artifactDigest: hash, machine: text, generation: text, executionContext: text,
-    contextManifest: list(pair({ class: text, reference: text, digest: hash })), reason: text, operation: text, claim: text,
-    previousDelivery: text, controlObservation: text,
   }),
   HarnessObservation: pair({ ...common, launch: text, run: text, step: text, input: text, incarnation: text,
     contextDelivery: text, sourceEvidence: texts, contextDigests: list(hash), generation: text, causalReferences: texts, observedAt: integer,
@@ -121,6 +116,14 @@ export const assemblyShapes: Readonly<Record<AssemblyStoredRecordName, OwnedShap
     comparisons: list(pair({ subject: text, kind: text, value: integer, threshold: integer, result: text })),
     completion: text, episode: text, investigationRun: text,
   }),
+});
+const contextDeliveryShape = pair({ ...common, launch: text, run: text, step: text, input: text, inputDigest: hash,
+  incarnation: text, harness: text, artifactDigest: hash, machine: text, generation: text, executionContext: text,
+  contextManifest: list(pair({ class: text, reference: text, digest: hash })), reason: text, operation: text, claim: text,
+  previousDelivery: text, controlObservation: text,
+});
+const assemblyStoredShapes: Readonly<Record<AssemblyStoredRecordName, OwnedShape>> = freeze({
+  ...assemblyShapes, ContextDeliverySpecification: contextDeliveryShape,
 });
 
 function shapeCheck(value: unknown, shape: OwnedShape): void {
@@ -296,7 +299,7 @@ function decoderFor<N extends AssemblyStoredRecordName>(name: N, context: Assemb
   return defineDecoder<Extract<AssemblyStoredRecord, { type: N }>, AssemblyDecodeContext>({
     name, owner: 'part-ten', currentVersion: 1, versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {},
     decodeCurrent: value => {
-      try { shapeCheck(value, assemblyShapes[name]); const record = value as unknown as Extract<AssemblyStoredRecord, { type: N }>;
+      try { shapeCheck(value, assemblyStoredShapes[name]); const record = value as unknown as Extract<AssemblyStoredRecord, { type: N }>;
         ensure(record.type === name, 'owned assembly type mismatch'); validate(record); return { ok: true, value: freeze(record) }; }
       catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'assembly decode failed' }; }
     },
@@ -475,7 +478,7 @@ function validateContextBoundObservation(record: Extract<AssemblyStoredRecord, {
 }
 export function assemblyRecordFrom(fact: FactEnvelope, context: AssemblyDecodeContext): AssemblyStoredRecord {
   const body = fact.body as { record: Json }; ensure(body.record && typeof body.record === 'object' && !Array.isArray(body.record), 'assembly record body missing');
-  const name = (body.record as Readonly<Record<string, Json>>).type; ensure(typeof name === 'string' && Object.hasOwn(assemblyShapes, name), 'unknown assembly record type');
+  const name = (body.record as Readonly<Record<string, Json>>).type; ensure(typeof name === 'string' && Object.hasOwn(assemblyStoredShapes, name), 'unknown assembly record type');
   ensure(fact.id === factId(fact.segment) && fact.machine === fact.segment.machine, 'assembly envelope origin mismatch');
   ensure(fact.kind === assemblyKindFor(name as AssemblyStoredRecordName), 'assembly fact kind mismatch');
   ensure(preimage(fact).hash === fact.contentHash, 'assembly envelope content hash mismatch');
@@ -489,16 +492,16 @@ export function assemblyRecordFrom(fact: FactEnvelope, context: AssemblyDecodeCo
   return take(decodeAssemblyRecord(name as AssemblyStoredRecordName, body.record, { ...context, validateReferences: false }));
 }
 export function assemblyRows(facts: readonly FactEnvelope[], context: AssemblyDecodeContext): readonly { fact: FactEnvelope; record: AssemblyStoredRecord }[] {
-  const kinds = new Set(Object.keys(assemblyShapes).map(name => assemblyKindFor(name as AssemblyStoredRecordName)));
+  const kinds = new Set(Object.keys(assemblyStoredShapes).map(name => assemblyKindFor(name as AssemblyStoredRecordName)));
   return facts.filter(fact => kinds.has(fact.kind)).map(fact => ({ fact, record: assemblyRecordFrom(fact, context) }));
 }
 export function assemblySchemas(host: AssemblyHost): readonly FactSchema[] {
-  return (Object.keys(assemblyShapes) as AssemblyStoredRecordName[]).map(name => ({ kind: assemblyKindFor(name), version: 1,
+  return (Object.keys(assemblyStoredShapes) as AssemblyStoredRecordName[]).map(name => ({ kind: assemblyKindFor(name), version: 1,
     fields: { record: { kind: 'owned', owner: 'part-ten', name } }, machineScope: 'shared', standing: 'requester', action: 'work',
     scope: host.scope, causallyBound: true, requiredReferences: [], authority: 'none' }));
 }
 export function registerAssemblyBodies(host: AssemblyHost): Result<readonly OwnedBodyRegistration[]> {
-  return boundary('AssemblyRegistrations', null, host.boundary, () => (Object.keys(assemblyShapes) as AssemblyStoredRecordName[]).map(name =>
+  return boundary('AssemblyRegistrations', null, host.boundary, () => (Object.keys(assemblyStoredShapes) as AssemblyStoredRecordName[]).map(name =>
     take(registerOwnedBody({ name, owner: 'part-ten', currentVersion: 1, versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {},
       decodeCurrent: (value, context) => {
         try { ensure(context.origin.machine === host.machine && context.origin.principal.id === host.principal.id && context.origin.principal.kind === host.principal.kind, 'foreign assembly recorder');
@@ -509,7 +512,7 @@ export function registerAssemblyBodies(host: AssemblyHost): Result<readonly Owne
           return { ok: true, value: json(record) };
         } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'assembly body refused' }; }
       },
-    }, assemblyShapes[name], host.boundary))));
+    }, assemblyStoredShapes[name], host.boundary))));
 }
 export function createAssemblySpine(host: AssemblyHost, author: AssemblyAuthor, store: AssemblySpine['store']): AssemblySpine {
   return Object.freeze({ store, append: (record: AssemblyStoredRecord, required: readonly string[] = [...new Set([...record.predecessors, ...record.dependencyFacts])]) => authorAndAppend({

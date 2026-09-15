@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { createRunGraph } from '../../src/rungraph/index.js';
-import type { AssemblyHistoryReadPort, ContextDeliverySpecification, HarnessLaunchSpec, HarnessObservation } from '../../src/assembly/index.js';
+import type { AssemblyHistoryReadPort, ContextDeliverySpecification, HarnessLaunchSpec } from '../../src/assembly/index.js';
 import { setup, json, ref, refused, value, digest } from './fixtures.js';
 
 function production(reason: 'initial' | 'live-input' | 'compaction' = 'initial') {
@@ -26,20 +26,20 @@ function production(reason: 'initial' | 'live-input' | 'compaction' = 'initial')
     executionContext: f.opening.id, contextManifest: manifest, reason, operation: 'effect:delivery:1', claim: 'claim:delivery:1',
     previousDelivery: reason === 'initial' ? '' : 'assembly-delivery:0', controlObservation: reason === 'compaction' ? 'control:compaction' : '' } as unknown as ContextDeliverySpecification;
   let observationFact: ReturnType<typeof f.append>['fact'] | undefined;
-  let observation = { type: 'HarnessObservation', schemaVersion: 1, id: 'assembly-observation:1', predecessors: [], dependencyFacts: [],
+  let observation: any = { type: 'HarnessObservation', schemaVersion: 1, id: 'assembly-observation:1', predecessors: [], dependencyFacts: [],
     launch: launch.id, run: f.id, step, input: f.opening.id, incarnation, contextDelivery: specification.id,
     sourceEvidence: [], contextDigests: manifest.map(row => row.digest), generation: f.run.generation.id,
-    causalReferences: [], observedAt: f.now.value, freshFor: 1000, phase: 'context-consumed', boundaryEvidence: '', detail: 'instrumented boundary' } as unknown as HarnessObservation;
+    causalReferences: [], observedAt: f.now.value, freshFor: 1000, phase: 'context-consumed', boundaryEvidence: '', detail: 'instrumented boundary' };
   let mode: 'ok' | 'partial' | 'conflicted' | 'wrong-kind' | 'copied' = 'ok';
   const verdict = { admitted: true, completeness: 'complete' as const, facts: [], conflicts: [], missing: [] };
   const history: AssemblyHistoryReadPort = { owner: 'part-ten', current: () => { events.push('history'); return f.success([]); },
     lookup: reference => {
       events.push(`resolve:${reference}`);
-      const row = reference === observationFact?.id ? { fact: mode === 'wrong-kind' ? { ...observationFact, kind: 'consumption' }
-        : mode === 'copied' ? { ...observationFact, id: 'copied-fact' } : observationFact, record: mode === 'copied' ? { ...observation, id: 'copied' } : observation }
+      const row = reference === observationFact?.id ? { fact: mode === 'wrong-kind' ? { ...observationFact!, kind: 'consumption' }
+        : mode === 'copied' ? { ...observationFact!, id: 'copied-fact' } : observationFact!, record: mode === 'copied' ? { ...observation, id: 'copied' } : observation }
         : reference === specification.id ? { fact: { ...observationFact!, id: specification.id, kind: 'assembly-ContextDeliverySpecification' }, record: specification }
           : reference === launch.id ? { fact: { ...observationFact!, id: launch.id, kind: 'assembly-HarnessLaunchSpec' }, record: launch }
-            : reference === observation.boundaryEvidence ? { fact: observationFact } : undefined;
+            : reference === observation.boundaryEvidence ? { fact: observationFact! } : undefined;
       return f.success(row ? { ...row, taint: [], conflicts: mode === 'conflicted' ? [{ key: 'conflict', kind: 'immutable-disagreement' as const, facts: ['a', 'b'], detail: 'conflict' }] : [],
         completeness: mode === 'partial' ? 'partial' as const : 'complete' as const } : null);
     }, resolve: () => { events.push('admit'); return f.success(verdict); },
@@ -62,7 +62,7 @@ function production(reason: 'initial' | 'live-input' | 'compaction' = 'initial')
   const graph = value(createRunGraph({ ...f.deps, grounding, assemblyHistory: history,
     clock: () => { events.push('clock'); return f.now; } }));
   return { ...f, ready, graph, events, history, specification, launch, step,
-    setMode: (next: typeof mode) => { mode = next; }, setObservation: (next: HarnessObservation) => { observation = next; },
+    setMode: (next: typeof mode) => { mode = next; }, setObservation: (next: any) => { observation = next; },
     observation: () => observation, observationFact: () => observationFact! };
 }
 
