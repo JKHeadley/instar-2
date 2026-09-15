@@ -91,7 +91,8 @@ export interface ProductionGroundingReaderInput {
   readonly runtime: AssemblyRuntimePort;
   readonly harness: HarnessAdapterPort;
   readonly clock: () => Clock;
-  readonly sample(request: Parameters<GroundingReadPort['read']>[0], at: Clock): Result<Readonly<{
+  readonly context: AssemblyDecodeContext;
+  sample(request: Parameters<GroundingReadPort['read']>[0], at: Clock): Result<Readonly<{
     specification: unknown;
     grounding(consumption: FactEnvelopeReference): unknown;
   }>>;
@@ -103,12 +104,13 @@ export interface ProductionGroundingReaderInput {
 export function createProductionGroundingReader(input: ProductionGroundingReaderInput): GroundingReadPort {
   return freeze({ owner: 'part-ten' as const, production: true as const,
     read(request) {
+      return boundary('ProductionGroundingRead', request, input.context, () => {
       const at = input.clock();
       // This read is deliberately before sample() and again after consumption;
       // it makes current signed assembly history part of this invocation.
       take(input.runtime.inspectCurrent());
       const sampled = take(input.sample(request, at));
-      const specification = take(input.runtime.record('ContextDeliverySpecification', sampled.specification));
+      const specification = take(input.runtime.recordContextDelivery(sampled.specification));
       ensure(specification.reason !== 'compaction', 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction');
       ensure(take(input.runtime.resolve(specification)).admitted, 'context delivery specification is not admitted');
       const accepted = take(input.harness.deliver({ launch: specification.launch, intake: specification.input,
@@ -127,6 +129,7 @@ export function createProductionGroundingReader(input: ProductionGroundingReader
         && candidate.incarnation === specification.incarnation && candidate.contextDeliveryReason === specification.reason,
       'grounding was pre-completed, retimestamped, or detached from its context delivery');
       return candidate;
+      });
     },
   });
 }

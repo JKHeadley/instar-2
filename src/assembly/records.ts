@@ -6,7 +6,7 @@ import type { ConflictClass, FactEnvelope, FactSchema, OwnedBodyRegistration, Ow
 import { minimalPlaneProjectionIds, requiredMinimalDependencies } from '../operator/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import type { AssemblyAuthor, AssemblyComparison, AssemblyDecodeContext, AssemblyHost, AssemblyIdentity,
-  AssemblyManifest, AssemblySpine, AssemblyStoredRecord, AssemblyStoredRecordName,
+  AssemblyManifest, AssemblyRecord, AssemblyRecordName, AssemblySpine, AssemblyStoredRecord, AssemblyStoredRecordName,
   ContextDeliverySpecification, CurrentAssemblyFact } from './types-internal.js';
 
 const text = { kind: 'text', maxLength: 4096 } as const;
@@ -303,6 +303,8 @@ function decoderFor<N extends AssemblyStoredRecordName>(name: N, context: Assemb
   }, context.preserved);
 }
 
+export function decodeAssemblyRecord<N extends AssemblyRecordName>(name: N, input: unknown, context: AssemblyDecodeContext): Result<Extract<AssemblyRecord, { type: N }>>;
+export function decodeAssemblyRecord<N extends AssemblyStoredRecordName>(name: N, input: unknown, context: AssemblyDecodeContext): Result<Extract<AssemblyStoredRecord, { type: N }>>;
 export function decodeAssemblyRecord<N extends AssemblyStoredRecordName>(name: N, input: unknown, context: AssemblyDecodeContext): Result<Extract<AssemblyStoredRecord, { type: N }>> {
   return boundary('AssemblyRecordDecode', input, context, () => {
     const record = take(take(decoderFor(name, context)).decode(input, context));

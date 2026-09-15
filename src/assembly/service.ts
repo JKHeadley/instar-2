@@ -37,19 +37,20 @@ export function createAssemblyRuntime(composition: AssemblyComposition): Assembl
   runtimeContext = Object.freeze({ ...host.boundary, history, validateReferences: false });
   const inspect = () => boundary('AssemblyInspect', null, runtimeContext, () => assemblyRows(take(spine.store.read()), runtimeContext));
   const inspectCurrent = () => history.current();
+  const record = <N extends AssemblyStoredRecordName>(name: N, input: unknown) =>
+    boundary<Extract<AssemblyStoredRecord, { type: N }>>('AssemblyRecord', input, host.boundary, () => {
+      ensure(!host.current().stopped || name === 'HarnessObservation' || name === 'StorageAccessObservation' || name === 'GrowthObservation' || name === 'AssemblyAdmission', 'stop inhibits new assembly work');
+      const candidate = take(decodeAssemblyRecord(name, input, runtimeContext));
+      validateAssemblyRecordReferences(candidate, runtimeContext);
+      const existing = take(inspect()).find(row => row.record.type === name &&
+        (row.record.id === candidate.id || assemblyLogicalKey(row.record) === assemblyLogicalKey(candidate)));
+      if (existing) { const compared = take(compareAssemblyRecords(name, existing.record, candidate, runtimeContext));
+        ensure(compared.equal, compared.conflict?.detail ?? 'assembly identity conflict'); return existing.record as Extract<AssemblyStoredRecord, { type: N }>; }
+      take(spine.append(candidate)); return candidate;
+    });
   return Object.freeze({ owner: 'part-ten' as const,
-    record<N extends AssemblyStoredRecordName>(name: N, input: unknown) {
-      return boundary('AssemblyRecord', input, host.boundary, () => {
-        ensure(!host.current().stopped || name === 'HarnessObservation' || name === 'StorageAccessObservation' || name === 'GrowthObservation' || name === 'AssemblyAdmission', 'stop inhibits new assembly work');
-        const candidate = take(decodeAssemblyRecord(name, input, runtimeContext));
-        validateAssemblyRecordReferences(candidate, runtimeContext);
-        const existing = take(inspect()).find(row => row.record.type === name &&
-          (row.record.id === candidate.id || assemblyLogicalKey(row.record) === assemblyLogicalKey(candidate)));
-        if (existing) { const compared = take(compareAssemblyRecords(name, existing.record, candidate, runtimeContext));
-          ensure(compared.equal, compared.conflict?.detail ?? 'assembly identity conflict'); return existing.record as Extract<AssemblyStoredRecord, { type: N }>; }
-        take(spine.append(candidate)); return candidate;
-      });
-    },
+    record: <N extends import('./contracts.js').AssemblyRecordName>(name: N, input: unknown) => record(name, input),
+    recordContextDelivery: (input: unknown) => record('ContextDeliverySpecification', input),
     inspect, inspectCurrent,
     resolve(record: AssemblyStoredRecord) { return record.type === 'ContextDeliverySpecification'
       ? history.resolveContextDelivery(record) : history.resolve(record); },

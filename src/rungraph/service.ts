@@ -27,6 +27,10 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       && Number.isSafeInteger(d.groundingPolicy.maxAge) && d.groundingPolicy.maxAge > 0
       && d.groundingPolicy.briefingClasses.length > 0, 'registered positive grounding policy required');
     const context = (): RunDecodeContext => ({ ...d.context, facts: { ...d.context.facts, facts: take(d.store.read()) } });
+    const groundingValidation = (now: import('../index.js').Clock, candidateStep?: import('./types.js').RunStep,
+      transitionTrigger?: FactEnvelopeReference) => ({ now,
+      ...(d.grounding.production ? { production: true as const, assemblyHistory: d.assemblyHistory! } : {}),
+      ...(candidateStep ? { candidateStep } : {}), ...(transitionTrigger ? { transitionTrigger } : {}) });
     const replay = (id: string): Readonly<{ view: RunView; transition: Readonly<{ fact: FactEnvelope; record: Extract<RunRecord, { type: 'RunTransition' }> }> | undefined }> => {
       let transition: Readonly<{ fact: FactEnvelope; record: Extract<RunRecord, { type: 'RunTransition' }> }> | undefined;
       const snapshot = take(d.store.readForProjection()), c = context();
@@ -48,7 +52,7 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
           if (record.exit) need(same(take(d.exitCheck.verify(record.exit, before.run, record.at)), record.exit.check), 'exit replay witness mismatch');
           transition = { fact, record };
         } return factRef(fact);
-      }) }, { production: d.grounding.production, assemblyHistory: d.assemblyHistory, now }));
+      }) }, groundingValidation(now)));
       return { view, transition };
     };
     const read = (id: string): RunView => replay(id).view;
@@ -111,16 +115,14 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
           && same(grounding.ownership, execution.ownership) && same(grounding.executionContext, execution.context)
           && clockDifference(grounding.at, before, context()) >= 0 && clockDifference(after, grounding.at, context()) >= 0, 'grounding reused an intake clock or another worker');
         need(grounding.threshold === d.groundingPolicy.threshold && same(grounding.briefingClasses, d.groundingPolicy.briefingClasses), 'grounding changed governed coverage policy');
-        validateGrounding(grounding, view.run, view.head, view.pending, context(),
-          { production: d.grounding.production, assemblyHistory: d.assemblyHistory, now: after });
+        validateGrounding(grounding, view.run, view.head, view.pending, context(), groundingValidation(after));
         const parent = predecessor(view);
         const receipt = once(write => d.admission.commit({ run, expected: view.head, ownership, generation: view.run.generation,
           operation: grounding.id, digest: encoded(grounding).hash, durability: { kind: 'local-durable' } }, write), () => {
           need(read(run).head === view.head, 'run changed during grounding');
           need(same(take(d.admission.execution(run, ownership)), execution), 'execution context changed during grounding');
           const commitNow = d.clock();
-          validateGrounding(grounding, view.run, view.head, view.pending, context(),
-            { production: d.grounding.production, assemblyHistory: d.assemblyHistory, now: commitNow });
+          validateGrounding(grounding, view.run, view.head, view.pending, context(), groundingValidation(commitNow));
           return append(grounding, [parent.id]);
         }); return receipt.fact;
       }),
@@ -135,8 +137,7 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
         once(write => d.admission.commit({ run: t.run, expected: t.expected, ownership: t.ownership, generation: t.generation,
           operation: t.step?.operation.key ?? t.id, digest: t.step?.operation.digest ?? encoded(t).hash, durability: { kind: 'local-durable' } }, write), () => {
           const current = read(t.run), c = context(), now = d.clock();
-          need(current.conflicts.length === 0, 'conflicted head inhibits admission'); validateTransition(t, current, c,
-            { production: d.grounding.production, assemblyHistory: d.assemblyHistory, now });
+          need(current.conflicts.length === 0, 'conflicted head inhibits admission'); validateTransition(t, current, c, groundingValidation(now));
           const age = clockDifference(now, t.at, c); need(age >= 0 && age <= d.groundingPolicy.maxAge, 'transition clock stale or uncertain');
           if (t.grounding) {
             const fact = c.facts.facts.find(f => f.id === t.grounding!.id); need(fact, 'grounding absent');
@@ -148,9 +149,7 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
             factReference(json(execution.context), c);
             const groundingAge = clockDifference(now, g.at, c); need(groundingAge >= 0 && groundingAge <= d.groundingPolicy.maxAge, 'actual-start grounding stale');
             need(g.threshold === d.groundingPolicy.threshold && same(g.briefingClasses, d.groundingPolicy.briefingClasses), 'grounding policy mismatch');
-            validateGrounding(g, current.run, current.head, current.pending, c,
-              { production: d.grounding.production, assemblyHistory: d.assemblyHistory, now,
-                candidateStep: t.step, transitionTrigger: t.trigger });
+            validateGrounding(g, current.run, current.head, current.pending, c, groundingValidation(now, t.step, t.trigger));
             need(c.facts.facts.filter(f => c.stimulusKinds.includes(f.kind)).every(f => g.messages.some(m => m.fact.id === f.id)), 'new inbound requires fresh grounding');
           }
           if (t.settlement) {
