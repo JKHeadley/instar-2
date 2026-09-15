@@ -8,8 +8,10 @@ import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCurso
   validateScanGeneration, validateTransition } from './records.js';
 import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
   requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication, withSettlementAttempt } from './settlement.js';
+import { bindProviderSettlementContext, providerSettlementContext } from './provider-settlement.js';
 
 export function createTransportSpine(host: TransportHost, author: FactAuthor, store: FactStorePort): TransportSpine {
+  bindProviderSettlementContext(store, author.context);
   return Object.freeze({ store, append: (record: TransportRecord, required: readonly string[]) => authorAndAppend({
     kind: kindFor(record.type), schemaVersion: 1, machine: host.machine,
     principal: json(host.principal), provenance: json(host.principal.provenance), at: json(host.current().clock),
@@ -167,7 +169,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
     const facts = snapshot.entries.map(e => e.fact), all = read(); fence(all, token);
     const op = reservations(all).find(p => p.operation === s.operation);
     ensure(op, 'settlement operation absent');
-    const sf = facts.find(f => settlementMatches(s, f));
+    const sf = facts.find(f => settlementMatches(s, f, providerSettlementContext(spine.store, facts)));
     ensure(sf, 'owner-issued settlement missing from local fact prefix');
     const fields = { operation: s.operation, request: s.request, reservation: s.reservation, claim: s.claim,
       digest: s.digest, settlement: s.id, settlementFact: sf.id, settlementHash: sf.contentHash, ...accounting(s, op) };
@@ -179,7 +181,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       record = prior;
     } else {
       const r = { ...meta(all, `settle:${encoded([s.operation, s.id]).hash}`), type: 'SettlementApplication', ...fields } as SettlementApplication;
-      checkApplicationEvidence(r, facts, all);
+      checkApplicationEvidence(r, facts, all, providerSettlementContext(spine.store, facts));
       record = withApplication(host, r, settlementConsumer, () => write(all, r).record);
     }
     // Capture a fresh checked prefix after the LAST six storage wait. The owner

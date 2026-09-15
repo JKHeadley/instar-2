@@ -1,3 +1,5 @@
+import { checkModelProviderCoverage, modelProviderArms, modelProviderHolds } from './model-provider-contracts.mjs';
+export const modelProviderDisposition = { owner: 'seven', arms: modelProviderArms.seven, holds: modelProviderHolds };
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -95,4 +97,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const issues = inspectJudgmentCore(sources); if (issues.length) throw new Error(issues.join('\n'));
   const rows = checkJudgmentCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   for (const row of rows) console.log(`${row.id}: ${row.status}; ${row.tests.length} executed slice fixtures; ${row.reason}`);
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const seam = checkModelProviderCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')), 'seven');
+  console.log(JSON.stringify({ ...seam, tests: seam.tests.length }));
 }

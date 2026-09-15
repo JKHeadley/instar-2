@@ -1,3 +1,5 @@
+import { checkModelProviderCoverage, modelProviderArms, modelProviderHolds } from './model-provider-contracts.mjs';
+export const modelProviderDisposition = { owner: 'nine', arms: modelProviderArms.nine, holds: modelProviderHolds };
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,4 +68,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     throw new Error('verification activation/declaration honesty changed before the protected owner-reference seam');
   const rows = checkVerificationCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   for (const row of rows) console.log(`${row.id}: ${row.status}; ${row.tests.length} executed fixtures; ${row.reason}`);
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const seam = checkModelProviderCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')), 'nine');
+  console.log(JSON.stringify({ ...seam, tests: seam.tests.length }));
 }

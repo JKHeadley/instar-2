@@ -24,3 +24,4 @@ export { createTelegramBotApiCustodian, createTelegramFileCaptureStore,
   telegramBotApiCustodianContractMap } from './telegram-bot-api-custodian.js';
 export type { TelegramBotApiCustodianOptions, TelegramBridgeReply, TelegramConfinedBridgePort,
   TelegramDurableCapturePort } from './telegram-bot-api-custodian.js';
+export { createConfinedProviderInvocation, type ConfinedProviderRoute, type ProviderInvocationPort } from './provider-invocation.js';

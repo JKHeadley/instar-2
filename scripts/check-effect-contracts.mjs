@@ -1,3 +1,5 @@
+import { checkModelProviderCoverage, modelProviderArms, modelProviderHolds } from './model-provider-contracts.mjs';
+export const modelProviderDisposition = { owner: 'eight', arms: modelProviderArms.eight, holds: modelProviderHolds };
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,4 +56,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const issues = inspectEffects(sources); if (issues.length) throw new Error(issues.join('\n'));
   const rows = checkEffectCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   console.log(`P8: ${rows.filter(r => r.status === 'partial').length} partially exercised checks; all ${rows.length} dispositions explicit; no held/live claim`);
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const seam = checkModelProviderCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')), 'eight');
+  console.log(JSON.stringify({ ...seam, tests: seam.tests.length }));
 }
