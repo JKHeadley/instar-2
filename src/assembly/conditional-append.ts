@@ -19,8 +19,17 @@ export interface AssemblySubjectFrontier {
   readonly facts: readonly string[];
 }
 
+export interface AssemblySubjectFrontierWithValidity extends AssemblySubjectFrontier {
+  readonly validUntil: number;
+}
+
 export interface ConditionalAssemblyAppendPort {
   readonly owner: 'part-ten';
+  appendIfSubjectFrontier<N extends AssemblyRecordName>(
+    name: N,
+    record: unknown,
+    expected: AssemblySubjectFrontierWithValidity,
+  ): Result<Extract<AssemblyRecord, { type: N }>>;
   appendIfSubjectFrontier<N extends AssemblyRecordName>(
     name: N,
     record: unknown,
@@ -70,13 +79,22 @@ function storageLockContended(refusal: Refused): boolean {
     && refusal.detail.includes('append.lock');
 }
 
-function stopCheckedBytes(bytes: string, host: AssemblyHost, name: AssemblyRecordName): string {
+function ensureEvidenceFreshAtCommit(host: AssemblyHost, validUntil: number): void {
+  const commitClock = host.current().clock.value;
+  ensure(Number.isSafeInteger(commitClock), 'conditional append commit clock is malformed');
+  ensure(commitClock < validUntil,
+    `evidence-expired: validUntil=${validUntil}; commitClock=${commitClock}`);
+}
+
+function stopCheckedBytes(bytes: string, host: AssemblyHost, name: AssemblyRecordName,
+  validUntil: number | null): string {
   // A composing storage may publish stop synchronously as append is entered.
   // Revalidate again when the unchanged byte string is actually consumed so
   // that such a wrapper cannot hand stopped work to the physical adapter.
   const guarded = new String(bytes) as String & { [Symbol.toPrimitive](): string };
   const consume = () => {
     ensureAssemblyWorkPermitted(host, name);
+    if (validUntil !== null) ensureEvidenceFreshAtCommit(host, validUntil);
     return bytes;
   };
   Object.defineProperties(guarded, {
@@ -102,11 +120,20 @@ export function createConditionalAssemblyAppendPort(
   const { host, author, storage } = dependencies;
   ensure(storage.owner === 'part-ten', 'conditional assembly append requires Part Ten physical storage');
   return Object.freeze({ owner: 'part-ten' as const,
-    appendIfSubjectFrontier<N extends AssemblyRecordName>(name: N, input: unknown, expected: AssemblySubjectFrontier) {
+    appendIfSubjectFrontier<N extends AssemblyRecordName>(name: N, input: unknown,
+      expected: AssemblySubjectFrontier | AssemblySubjectFrontierWithValidity) {
       return boundary('AssemblyConditionalAppend', { name, input, expected }, host.boundary, () => {
         ensureAssemblyWorkPermitted(host, name);
-        ensure(exactKeys(expected, ['subject', 'facts']) && exactKeys(expected?.subject, ['type', 'field', 'value']),
+        const hasValidity = expected !== null && typeof expected === 'object' && !Array.isArray(expected)
+          && Object.hasOwn(expected, 'validUntil');
+        ensure(exactKeys(expected, hasValidity ? ['subject', 'facts', 'validUntil'] : ['subject', 'facts'])
+          && exactKeys(expected?.subject, ['type', 'field', 'value']),
           'conditional append frontier token is malformed');
+        const validUntil = hasValidity
+          ? (expected as AssemblySubjectFrontierWithValidity).validUntil
+          : null;
+        ensure(validUntil === null || (Number.isSafeInteger(validUntil) && validUntil >= 0),
+          'conditional append validUntil precondition is malformed');
         ensure(expected && expected.subject && expected.subject.type === name,
           'conditional append subject type must match the record type');
         ensure(typeof expected.subject.field === 'string' && /^[A-Za-z][A-Za-z0-9]*$/.test(expected.subject.field)
@@ -148,6 +175,7 @@ export function createConditionalAssemblyAppendPort(
               owner: 'part-ten',
               read: () => storage.read(),
               append: () => boundary('AssemblyConditionalReplayAuthentication', null, host.boundary, () => {
+                if (validUntil !== null) ensureEvidenceFreshAtCommit(host, validUntil);
                 authenticated = true;
                 return { kind: 'local-durable' as const };
               }),
@@ -171,7 +199,7 @@ export function createConditionalAssemblyAppendPort(
             read: () => storage.read(),
             append(bytes) {
               ensureAssemblyWorkPermitted(host, name);
-              return storage.append(stopCheckedBytes(bytes, host, name), expectedHead);
+              return storage.append(stopCheckedBytes(bytes, host, name, validUntil), expectedHead);
             },
           };
           const appendStore = createFactStore(author.context, pinnedStorage);

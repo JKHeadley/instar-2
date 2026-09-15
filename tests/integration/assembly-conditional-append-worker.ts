@@ -30,8 +30,12 @@ if (mode === 'case') {
     provenance?: 'other-authenticated-actor' | 'other-authenticated-act' | 'foreign-recorder';
     candidateMode?: string;
     candidateId?: string;
+    startClock?: number;
+    appendClock?: number;
+    validUntil?: number;
   };
   const f = fixture(base);
+  if (opts.startClock !== undefined) f.time(opts.startClock);
   if (opts.stop) f.stop();
   const adapter = 'telegram:v1:bot:99';
   const candidate = { ...assemblyInput('AdapterConformance'), id: opts.candidateId ?? 'review:webhook',
@@ -54,10 +58,20 @@ if (mode === 'case') {
     decode: { ...context.decode, provenance: f.bob.provenance } };
   if (opts.provenance === 'other-authenticated-act') context = { ...context,
     decode: { ...context.decode, provenance: f.proof({ purpose: 'another signed act' }).p } };
+  const conditionalStorage: SegmentStoragePort = opts.appendClock === undefined ? base : {
+    owner: 'part-ten', read: base.read,
+    append(bytes, expectedHead) {
+      f.time(opts.appendClock!);
+      return base.append(bytes, expectedHead);
+    },
+  };
   const outcome = opts.ordinary
     ? f.runtime.record('AdapterConformance', candidate)
-    : createConditionalAssemblyAppendPort({ host, author: { context, privateKey }, storage: base })
-      .appendIfSubjectFrontier('AdapterConformance', candidate, expected);
+    : createConditionalAssemblyAppendPort({ host, author: { context, privateKey }, storage: conditionalStorage })
+      .appendIfSubjectFrontier('AdapterConformance', candidate, {
+        ...expected,
+        ...(opts.validUntil === undefined ? {} : { validUntil: opts.validUntil }),
+      });
   const rows = value(f.runtime.inspect()).filter(row => row.record.type === 'AdapterConformance')
     .map(row => ({ id: row.record.id, adapter: (row.record as { adapter: string }).adapter, mode: (row.record as { mode: string }).mode }));
   process.stdout.write(`${JSON.stringify(outcome.kind === 'Success'

@@ -47,6 +47,27 @@ function runWorker(directory: string, mode: 'attempt' | 'read', options: Readonl
   return lastJson(child.stdout);
 }
 
+it.each([
+  ['below-bound', 149, 149, 150, 'Success', 1],
+  ['at-bound', 149, 150, 150, 'Refused', 0],
+  ['no-bound-legacy', 149, 150, undefined, 'Success', 1],
+] as const)(
+  'P10-SEAM-CONDITIONAL-APPEND-127 [behavior:appendIfSubjectFrontier] [case:evidence-expiry] lifecycle %s',
+  (_caseId, startClock, appendClock, validUntil, expectedKind, expectedRows) => {
+    const directory = mkdtempSync(join(tmpdir(), `p10-conditional-validity-lifecycle-${_caseId}-`));
+    const result = runWorker(directory, 'attempt', {
+      startClock, appendClock, ...(validUntil === undefined ? {} : { validUntil }),
+    });
+    expect(result.kind).toBe(expectedKind);
+    expect(result.rows).toHaveLength(expectedRows);
+    if (expectedKind === 'Refused') {
+      expect(result.detail).toBe('evidence-expired: validUntil=150; commitClock=150');
+    }
+    expect(runWorker(directory, 'read').rows).toHaveLength(expectedRows);
+  },
+  30_000,
+);
+
 it('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:held-lock-contention] production-held file lock returns a subject-scoped current frontier and preserves one winner', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'p10-conditional-held-lock-'));
   assemblyRuntimeFixture(f => createTransportFileStorage(directory, <T>(run: () => T) => f.success(run())));

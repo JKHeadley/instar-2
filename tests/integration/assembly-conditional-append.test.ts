@@ -61,6 +61,28 @@ it.each([
   expect(result.rows).toHaveLength(replay ? 1 : 0);
 }, 30_000);
 
+it.each([
+  ['below-bound', 149, 149, 150, 'Success', 1],
+  ['at-bound', 149, 150, 150, 'Refused', 0],
+  ['no-bound-legacy', 149, 150, undefined, 'Success', 1],
+] as const)(
+  'P10-SEAM-CONDITIONAL-APPEND-127 [behavior:appendIfSubjectFrontier] [case:evidence-expiry] integration %s',
+  (_caseId, startClock, appendClock, validUntil, expectedKind, expectedRows) => {
+    const result = runCase(mkdtempSync(join(tmpdir(), `p10-conditional-validity-${_caseId}-`)), {
+      startClock, appendClock, ...(validUntil === undefined ? {} : { validUntil }),
+    });
+    expect(result.kind).toBe(expectedKind);
+    expect(result.rows).toHaveLength(expectedRows);
+    if (expectedKind === 'Refused') {
+      expect(result).toMatchObject({
+        reason: 'decode',
+        detail: 'evidence-expired: validUntil=150; commitClock=150',
+      });
+    }
+  },
+  30_000,
+);
+
 it.each(['webhook', 'long-poll'] as const)('P10-SEAM-CONDITIONAL-APPEND-58 [behavior:appendIfSubjectFrontier] [case:extension-current] fresh-current-resolve-%s remains admitted and untainted', candidateMode => {
   const directory = mkdtempSync(join(tmpdir(), `p10-conditional-current-${candidateMode}-`));
   expect(runCase(directory, { candidateMode, candidateId: `review:${candidateMode}` })).toMatchObject({ kind: 'Success' });

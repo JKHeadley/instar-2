@@ -2,7 +2,7 @@ import { canonical, consumeOutcome, consumeResult, decode, decodeMeasurement, gr
 import type { BoundaryContext, Clock, Json, Result } from '../index.js';
 import type { FactEnvelope } from '../facts/index.js';
 import { hashBytes, walkVersions } from '../facts/index.js';
-import type { AdapterConformance, AssemblySubjectFrontier } from '../assembly/index.js';
+import type { AdapterConformance } from '../assembly/index.js';
 import type { InboundRoute, IntakeAdapterPort, IntakeDisposition } from '../intake/index.js';
 import { constructGoverned } from '../register/index.js';
 import { mergeVerificationRecords, verificationLogicalKey } from '../verification/index.js';
@@ -383,7 +383,7 @@ function validateWebhookChoice(declaration: TelegramBotDeclaration, deps: Telegr
 }
 
 function validateIdentityProbe(declaration: TelegramBotDeclaration, deps: TelegramAdmissionDependencies,
-  probe: AdmittedTelegramAdapter['probe']): Readonly<{ validate(now: Clock): void }> {
+  probe: AdmittedTelegramAdapter['probe']): Readonly<{ validate(now: Clock): number }> {
   const captureBytes = take(deps.api.readCapture(probe.capture.reference));
   const rows = take(deps.verification.inspect());
   const referenced = rows.filter((row): row is typeof row & { record: ProbeRecord } =>
@@ -442,6 +442,7 @@ function validateIdentityProbe(declaration: TelegramBotDeclaration, deps: Telegr
         && recorded.challengeDigest === probe.capture.hash && recorded.completedAt === probe.observedAt
         && recorded.witnesses.includes(probe.capture.reference),
       'Telegram identity probe record does not bind the exact capture and declared bot');
+      return validUntil;
     },
   });
 }
@@ -548,14 +549,15 @@ export function admitTelegramAdapter(declaration: TelegramBotDeclaration, deps: 
     const now = take(decodeMeasurement('clock', deps.clock(), deps.governance.context.types));
     ensure(probe.observedAt <= now.value && now.value < reportedValidUntil,
       'Telegram identity probe is stale or retimestamped');
-    identityEvidence.validate(now);
+    const identityProofValidUntil = Math.min(reportedValidUntil, identityEvidence.validate(now));
     const modes = current.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id
       && row.record.disposition === 'passed').map(row => row.record.type === 'AdapterConformance' ? row.record.mode : '');
     ensure(modes.every(existing => existing === mode), 'one Telegram bot cannot admit two intake modes');
-    const conformanceFrontier: AssemblySubjectFrontier = freeze({
-      subject: { type: 'AdapterConformance', field: 'adapter', value: id },
+    const conformanceFrontier = freeze({
+      subject: { type: 'AdapterConformance' as const, field: 'adapter', value: id },
       facts: current.filter(row => row.record.type === 'AdapterConformance' && row.record.adapter === id)
         .map(row => row.fact.id).sort(),
+      validUntil: identityProofValidUntil,
     });
     const conformanceSeed = {
       type: 'AdapterConformance', schemaVersion: 1, id: 'pending', predecessors: [], dependencyFacts: [],
