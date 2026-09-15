@@ -17,13 +17,13 @@ const contracts = {
     test: (kind, path) => kind === 'fixture'
       ? path === 'tests/rungraph/governance.test.ts' || path === 'tests/rungraph/closure-registration-additivity.test.ts'
       : path === 'tests/rungraph/scope.test.ts' },
-  'part-four': { decoders: { ...owned('intake', ['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration']),
+  'part-four': { decoders: { ...owned('intake', ['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration', 'intakeVerifiedActRegistration']),
     'decode:Provenance': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
     'decode:VerifiedPrincipal': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
     readProjection: { module: 'src/projections/index.ts', artifact: 'src/projections/fold.ts', requires: 'intakeDedupDefinition' },
     authorAndAppend: { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', requires: 'intakeWorkRegistration' },
     'createFactStore.append': { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', symbol: 'createFactStore', requires: 'intakeWorkRegistration' } },
-    fixture: id => /^P4-NF-(0[1-9]|1[0-9]|2[0-9])$/.test(id), probe: id => id === 'P4-NF-29',
+    fixture: id => /^P4-(?:NF-(?:0[1-9]|1[0-9]|2[0-9])|VA-0[1-9])$/.test(id), probe: id => id === 'P4-NF-29',
     test: (_kind, path) => /^tests\/intake\/[a-z][a-z0-9-]*\.test\.ts$/.test(path) },
 };
 const exact = (v, keys) => {

@@ -4,11 +4,12 @@ import { canonical,decode,decodeMeasurement,historicalGrantLiveness,scopeInclude
 import type { BoundaryContext,Clock,Directive,FactEnvelopeReference,Json,Provenance,Result,VerifiedPrincipal } from '../index.js';
 import { authorAndAppend,causalCone,causalStanding,createFactStore,decodeHistoricalBody,hashBytes,prepareSnapshot } from '../facts/index.js';
 import type { FactContext,FactEnvelope,FactStatus } from '../facts/index.js';
-import { constructGoverned,readEnforcedRecord,readRegisterEntry } from '../register/index.js';
+import { constructGoverned,generationOf,readEnforcedRecord,readRegisterEntry } from '../register/index.js';
 import { foldProjection,readProjection } from '../projections/index.js';
 import { boundary,IntakeFailure,json,object,requireIntake,same,take,text } from './boundary.js';
-import type { InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort,SenderEvidence } from './contracts.js';
-import { intakeArrival,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,intakeWorkRegistration } from './records.js';
+import type { InboundRoute,IntakeDependencies,IntakeDisposition,IntakePort,SenderEvidence,VerifiedActAdmission,VerifiedActDisposition } from './contracts.js';
+import { buildVerifiedActRecord,intakeArrival,intakeScopesOverlap,intakeDedupDefinition,intakeFactSchemas,intakeStopRegistration,
+  intakeVerifiedActFactSchemas,intakeVerifiedActRegistration,intakeWorkRegistration } from './records.js';
 
 const reference=(f: FactEnvelope): FactEnvelopeReference => Object.freeze({ owner: 'part-two',name: 'FactEnvelope',id: f.id });
 type Classified={ kind: 'conversation'; ask: string; flags: readonly 'cannot-decide'[] }|{ kind: 'stop' }|{ kind: 'needs-judgment' };
@@ -49,10 +50,17 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
     take(decode('VerifiedPrincipal',{ type: 'VerifiedPrincipal',schemaVersion: 1,id: deps.author.principal.id,kind: 'system' },
       { ...initial.decode,provenance: deps.author.principal.provenance }));
     const scope=take(decode('Scope',deps.scope,initial.decode));
-    for(const schema of intakeFactSchemas(scope)) requireIntake(initial.schemas.some(s => same(s,schema)),
+    const schemas=intakeFactSchemas(scope);
+    for(const schema of schemas) requireIntake(initial.schemas.some(s => same(s,schema)),
       `P4-NF-06/12: required owner schema changed or missing: ${schema.kind}`);
+    const verifiedActSchemas=intakeVerifiedActFactSchemas(scope);
+    const hasVerifiedActSchemas=verifiedActSchemas.every(schema => initial.schemas.some(s => same(s,schema)));
+    const registerGeneration=take(generationOf(deps.governance.register,deps.governance.context));
+    const registerGenerationReference={ owner: 'part-three',name: 'RegisterGeneration',id: registerGeneration.id } as const;
     const workRegistration=take(intakeWorkRegistration(b,deps.author.principal.id));
     const stopRegistration=take(intakeStopRegistration(b,deps.author.principal.id));
+    const verifiedActRegistration=hasVerifiedActSchemas
+      ? take(intakeVerifiedActRegistration(b,deps.author.principal.id,registerGenerationReference)):undefined;
     // Snapshot assembly choices. Only context()/clock()/storage are live provider inputs.
     const adapterId=deps.adapter.id,owner=deps.workOwner,maxAge=deps.holdMaxAge,maxActive=deps.holdMaxActive;
     const authenticate=deps.adapter.authenticate.bind(deps.adapter),parse=deps.adapter.parse.bind(deps.adapter);
@@ -95,18 +103,26 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
 
     function context(preserved: string,principal?: VerifiedPrincipal): FactContext {
       const c=deps.context();
+      const ordinaryRegistrations=[...c.ownedBodies?.filter(r => !(r.owner==='part-four'
+        &&['IntakeWork','IntakeStop','VerifiedActDisposition'].includes(r.name)))??[],workRegistration,stopRegistration];
       return {
-        ...c,preserved,ownedBodies: [...c.ownedBodies?.filter(r => !(r.owner==='part-four'&&['IntakeWork','IntakeStop'].includes(r.name)))??[],workRegistration,stopRegistration],decode: {
+        ...c,preserved,ownedBodies: [...ordinaryRegistrations,...verifiedActRegistration? [verifiedActRegistration]:[]],decode: {
           ...c.decode,preserved,
           principals: [...c.decode.principals??[],author.principal,...principal? [principal]:[]]
         }
       };
     }
-    function read(preserved: string): readonly FactEnvelope[] {
+    function verifiedActContext(preserved: string): FactContext {
       const c=context(preserved);
+      requireIntake(verifiedActRegistration,'verified act: additive intake seam is unavailable because its fact schemas are not installed','standing');
+      return c;
+    }
+    function read(preserved: string,seam=false): readonly FactEnvelope[] {
+      const c=seam? verifiedActContext(preserved):context(preserved);
       return [...new Map([...c.facts,...take(createFactStore(c,deps.storage).read())].map(f => [f.id,f])).values()];
     }
-    function append(kind: string,body: Json,at: Clock,preserved: string,required: readonly string[]=[],principal?: VerifiedPrincipal,directives?: readonly Directive[]): FactEnvelope {
+    function append(kind: string,body: Json,at: Clock,preserved: string,required: readonly string[]=[],principal?: VerifiedPrincipal,
+      directives?: readonly Directive[]): FactEnvelope {
       if(kind==='intake-admitted') {
         const g={ ...deps.governance.context,preserved };
         take(constructGoverned('blocking sites','intake.admission',deps.governance.register,g));
@@ -119,6 +135,16 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         provenance: json(author.provenance),at: json(at),body,required: [...new Set(required)]
       },c,createFactStore(c,deps.storage),author.privateKey));
       requireIntake(receipt.taint.length===0,'P4-NF-24: authority-tainted append cannot admit work','integrity');
+      return receipt.fact;
+    }
+    function appendVerifiedAct(record: ReturnType<typeof buildVerifiedActRecord>['record'],at: Clock): FactEnvelope {
+      const c=verifiedActContext(record.request);
+      const receipt=take(authorAndAppend({ kind: 'intake-verified-act',schemaVersion: 1,machine: author.machine,
+        principal: json(author.principal),provenance: json(author.provenance),at: json(at),body: {
+          request: record.request,requestDigest: record.requestDigest,challenge: record.challenge,surface: record.surface,
+          generation: record.generation,disposition: record.disposition,record: json(record)
+        },required: [record.request] },c,createFactStore(c,deps.storage),author.privateKey));
+      requireIntake(receipt.taint.length===0,'P4-NF-24: authority-tainted verified act cannot be admitted','integrity');
       return receipt.fact;
     }
     function statuses(preserved: string): readonly FactStatus[] {
@@ -134,6 +160,29 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       const snapshot=take(prepareSnapshot(facts,{ ...c,facts }));
       const view=take(foldProjection(definition,snapshot,deps.dedupGeneration(),{ ...b,preserved }));
       take(readProjection(view,definition,at,{ ...b,preserved },c.folded));
+    }
+    function admitVerifiedAct(input: VerifiedActAdmission): Result<VerifiedActDisposition> {
+      return boundary('IntakeVerifiedAct',{ ...b,preserved: input?.request?.id??initial.preserved },() => {
+        requireIntake(hasVerifiedActSchemas,
+          'verified act: additive intake seam is unavailable because its fact schemas are not installed','standing');
+        const at=take(decodeMeasurement('clock',deps.clock(),initial.decode));
+        take(constructGoverned('parsers',input.surface,deps.governance.register,
+          { ...deps.governance.context,preserved: input.proof.reference }));
+        const surface=take(readRegisterEntry(input.surface,deps.governance.register,
+          { ...deps.governance.context,preserved: input.proof.reference }));
+        requireIntake(surface.declaration.status==='live','verified act: surface adapter is not live','standing');
+        const facts=read(input.request.id,true),c={ ...verifiedActContext(input.request.id),facts };
+        const resolved=buildVerifiedActRecord(json(input),c,at,registerGeneration.id);
+        const authentication=surface.declaration.requiredFacts.authenticationClass;
+        requireIntake(Array.isArray(authentication)&&authentication.some(row => {
+          const v=object(row); return v.stimulusType==='operator-act'&&v.class==='verified';
+        }),'verified act: surface adapter is not registered for verified operator acts','standing');
+        const record=resolved.record;
+        requireIntake(resolved.emergency||c.decode.register.generation.id===registerGeneration.id,
+          'verified act: live decoder and loaded register generations differ','stale-base');
+        const fact=appendVerifiedAct(record,at);
+        return { kind: record.disposition,fact: reference(fact) };
+      });
     }
     function expire(at: Clock,preserved: string): number {
       const facts=read(preserved),terminals=new Set(facts.filter(f => f.kind==='intake-expired').map(f => object(f.body).hold));
@@ -327,7 +376,8 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
         requireIntake(capture?.status==='available'&&typeof capture.bytes==='string'&&hashBytes(capture.bytes)===body.rawHash,'P4-NF-01: recovery capture unavailable','integrity');
         return take(receive(capture.bytes,arrival.route));
       }),expireHolds: () => boundary('IntakeExpiry',b,
-        () => expire(take(decodeMeasurement('clock',deps.clock(),initial.decode)),initial.preserved))
+        () => expire(take(decodeMeasurement('clock',deps.clock(),initial.decode)),initial.preserved)),
+      admitVerifiedAct
     });
   });
 }

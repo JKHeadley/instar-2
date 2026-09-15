@@ -61,7 +61,8 @@ it('P11-NF-44 P11-NF-45 a cut execution keeps stable logical identities and sati
   // Real history is preserved: the cut execution really did restart three times.
   expect(cut.report.accounting.boots).toBe(3);
   expect(control.report.accounting.boots).toBe(1);
-}, 240000);
+  expect(cut.report).toMatchObject({ assemblyBoot: { owner: 'part-ten', admission: 'admission:restart-production' } });
+}, 300000);
 
 it('P11-NF-47 P11-NF-48 an opaque adapter cut after the dispatch-claim stays owned and uncertain with retained exposure and zero replay', async () => {
   const opaque = await execute({ profile: 'reply', adapter: 'telegram-opaque', cuts: ['outbound-consume'] });
@@ -180,9 +181,10 @@ it('P11-NF-44 the enumerated boundary list matches what the control execution ac
   expect(REPLY_BOUNDARIES).toBe(PROFILE_BOUNDARIES['reply']);
 }, 180000);
 
-it('P11-NF-49 the fixture never reaches into the assembly: the worker only calls the public boot path', async () => {
+it('P11-NF-49 P11-V29 the fixture never reaches into the assembly: the restart worker uses the Part Ten production boot path', async () => {
   const worker = readFileSync('scripts/slice-worker.mjs', 'utf8');
-  expect(worker).toContain('bootSliceAssembly');
+  expect(worker).toContain('bootProductionSliceAssembly');
+  expect(worker).toContain('restartRecovery: true');
   expect(worker).not.toMatch(/require\(|__test|recoverFor|privateBoot/);
   const harness = readFileSync('tests/slice/harness.ts', 'utf8');
   expect(harness).toContain('scripts/slice-worker.mjs');

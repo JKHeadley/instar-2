@@ -12,6 +12,9 @@ through the owning parts' public entry points.
    `intakeWorkRegistration(boundary, observerId)` and
    `intakeStopRegistration(boundary, observerId)` for receiver/rebuild consumers. The intake
    factory installs the same owner decoders in its local fact context automatically.
+   Operator-surface assemblies opt into the additive seam separately with
+   `intakeVerifiedActFactSchemas(scope)`; omitting it preserves the complete legacy
+   `receive`/`recover`/`expireHolds` construction and makes only `admitVerifiedAct` unavailable.
 2. Supply a part-ten durable capture provider, segment storage, live context/capture index,
    a verified system observer and machine signing key, and the clock. The observer is a
    stable logical principal shared by the participating intake replicas; machine signing
