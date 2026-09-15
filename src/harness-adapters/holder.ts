@@ -157,6 +157,17 @@ export interface HarnessEvidenceHolder {
   events(launch: string): HarnessEventRead;
 }
 
+type ReconnectAuthorityCheck = () => Readonly<{ current: boolean; reason: string }>;
+type ReconnectAuthorityBracket = (
+  handle: HarnessRuntimeHandle,
+  now: number,
+  checkAuthority: ReconnectAuthorityCheck,
+) => HarnessReconnectEvidenceView;
+
+/* Package-private composition keeps the landed public holder contract unchanged while
+ * ensuring reconnect uses the implementation's exact observation frontier. */
+const reconnectAuthorityBrackets = new WeakMap<HarnessEvidenceHolder, ReconnectAuthorityBracket>();
+
 export interface HarnessEvidenceOwnerPorts {
   readonly work?: Pick<RunGraphPort, 'read'>;
   readonly handles: Pick<RuntimeHandleHolder, 'owner' | 'machine' | 'lookup'>;
@@ -1339,6 +1350,73 @@ export function createHarnessEvidenceHolder(input: Readonly<{
     return frontier;
   };
 
+  const unknownReconnectEvidence = (reason: string): HarnessReconnectEvidenceView => freeze({
+    state: 'unknown' as const,
+    reason,
+    liveness: freeze({ state: 'unknown' as const, reason, event: '' }),
+    resume: freeze({ state: 'unknown' as const, reason, event: '' }),
+  });
+
+  const reconnectView = (
+    handle: HarnessRuntimeHandle,
+    now: number,
+  ): HarnessReconnectEvidenceView => {
+    const analysis = readAnalysis(handle, now);
+    return freeze({ state: 'joint' as const,
+      reason: 'liveness and resume eligibility share one stable current evidence frontier',
+      liveness: livenessFrom(analysis),
+      resume: resumeFrom(handle, now, analysis) });
+  };
+
+  const reconnectCandidateView = (
+    handle: HarnessRuntimeHandle,
+    now: number,
+  ): HarnessReconnectEvidenceView => {
+    const analysis = readAnalysis(handle, now);
+    const liveness = livenessFrom(analysis);
+    if (liveness.state !== 'live') {
+      const reason = 'resume eligibility is immaterial while exact-process liveness is not live';
+      return freeze({ state: 'joint' as const,
+        reason: 'reconnect predicates share the current evidence frontier',
+        liveness,
+        resume: freeze({ state: 'unknown' as const, reason, event: '' }) });
+    }
+    return freeze({ state: 'joint' as const,
+      reason: 'reconnect predicates share the current evidence frontier',
+      liveness,
+      resume: resumeFrom(handle, now, analysis) });
+  };
+
+  const reconnectWithAuthority: ReconnectAuthorityBracket = (handle, now, checkAuthority) => {
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const preliminary = reconnectCandidateView(handle, now);
+        if (preliminary.liveness.state !== 'live' || preliminary.resume.state !== 'eligible') {
+          return preliminary;
+        }
+        const firstAuthority = checkAuthority();
+        if (!firstAuthority.current) return unknownReconnectEvidence(firstAuthority.reason);
+        const before = reconnectFrontier(handle);
+        const finalAuthority = checkAuthority();
+        if (!finalAuthority.current) return unknownReconnectEvidence(finalAuthority.reason);
+        const final = reconnectCandidateView(handle, now);
+        if (final.liveness.state !== 'live' || final.resume.state !== 'eligible') return final;
+        const afterAuthority = reconnectFrontier(handle);
+        if (before !== afterAuthority) continue;
+        const closingAuthority = checkAuthority();
+        if (!closingAuthority.current) return unknownReconnectEvidence(closingAuthority.reason);
+        if (afterAuthority === reconnectFrontier(handle)) return final;
+      }
+      return unknownReconnectEvidence(
+        'reconnect evidence and authority did not stabilize across the bounded current-frontier reads',
+      );
+    } catch (error) {
+      return unknownReconnectEvidence(
+        error instanceof Error ? error.message : 'reconnect evidence frontier is unavailable',
+      );
+    }
+  };
+
   const holder: HarnessEvidenceHolder = {
     owner: 'part-thirteen',
     machine: input.machine,
@@ -1501,25 +1579,18 @@ export function createHarnessEvidenceHolder(input: Readonly<{
       try {
         for (let attempt = 0; attempt < 3; attempt++) {
           const before = reconnectFrontier(handle);
-          const analysis = readAnalysis(handle, now);
-          const liveness = livenessFrom(analysis);
-          const resume = resumeFrom(handle, now, analysis);
+          const joint = reconnectView(handle, now);
           if (before === reconnectFrontier(handle)) {
-            return freeze({ state: 'joint' as const,
-              reason: 'liveness and resume eligibility share one stable current evidence frontier',
-              liveness,
-              resume });
+            return joint;
           }
         }
-        const reason = 'reconnect evidence did not stabilize across the bounded current-frontier reads';
-        return freeze({ state: 'unknown' as const, reason,
-          liveness: freeze({ state: 'unknown' as const, reason, event: '' }),
-          resume: freeze({ state: 'unknown' as const, reason, event: '' }) });
+        return unknownReconnectEvidence(
+          'reconnect evidence did not stabilize across the bounded current-frontier reads',
+        );
       } catch (error) {
-        const reason = error instanceof Error ? error.message : 'reconnect evidence frontier is unavailable';
-        return freeze({ state: 'unknown' as const, reason,
-          liveness: freeze({ state: 'unknown' as const, reason, event: '' }),
-          resume: freeze({ state: 'unknown' as const, reason, event: '' }) });
+        return unknownReconnectEvidence(
+          error instanceof Error ? error.message : 'reconnect evidence frontier is unavailable',
+        );
       }
     },
     events(launch) {
@@ -1533,6 +1604,7 @@ export function createHarnessEvidenceHolder(input: Readonly<{
       }
     },
   };
+  reconnectAuthorityBrackets.set(holder, reconnectWithAuthority);
   return Object.freeze(holder);
 }
 
@@ -1577,22 +1649,31 @@ export function sameMachineReconnectCandidate(
       reason: 'fence domain, machine, or requested incarnation does not name the governed conversation process lifetime',
       handle: null });
   }
-  const head = consumeResult(input.authority.inspect(), {
-    Success: rows => rows.at(-1)?.fact.id ?? 'genesis',
-    Refused: () => '',
-  });
-  if (!head) return freeze({ disposition: 'refused', reason: 'Part Six current history is unavailable', handle: null });
-  const currentFence = consumeResult(
-    input.authority.admitWrite(`p13-reconnect:${handle.launch}:${handle.incarnation}:${head}`, input.fence),
-    { Success: () => true, Refused: () => false },
-  );
-  if (!currentFence) {
-    return freeze({ disposition: 'refused', reason: 'Part Six rejected the fence as non-current', handle: null });
+  const bracket = reconnectAuthorityBrackets.get(input.evidence);
+  if (!bracket) {
+    return freeze({ disposition: 'refused',
+      reason: 'same-machine reconnect requires the current evidence-authority bracket', handle: null });
   }
-  const joint = input.evidence.reconnectEvidence(handle, input.now);
+  const joint = bracket(handle, input.now, () => {
+    const head = consumeResult(input.authority.inspect(), {
+      Success: rows => rows.at(-1)?.fact.id ?? 'genesis',
+      Refused: () => '',
+    });
+    if (!head) return freeze({ current: false,
+      reason: 'Part Six current history is unavailable' });
+    const current = consumeResult(
+      input.authority.admitWrite(`p13-reconnect:${handle.launch}:${handle.incarnation}:${head}`, input.fence),
+      { Success: () => true, Refused: () => false },
+    );
+    return freeze({ current,
+      reason: current
+        ? 'Part Six accepts the current exact-process fence'
+        : 'Part Six rejected the fence as non-current' });
+  });
   if (joint.state !== 'joint') {
     return freeze({ disposition: 'refused',
-      reason: 'same-machine reconnect requires one stable current evidence frontier', handle: null });
+      reason: `same-machine reconnect requires one stable current evidence and authority frontier: ${joint.reason}`,
+      handle: null });
   }
   const liveness = joint.liveness;
   if (liveness.state !== 'live') {
@@ -1606,18 +1687,6 @@ export function sameMachineReconnectCandidate(
         ? 'confirmed poisoned runtime conversation cannot be resumed'
         : 'same-machine reconnect requires owner-validated resume compatibility',
       handle: null });
-  }
-  const finalHead = consumeResult(input.authority.inspect(), {
-    Success: rows => rows.at(-1)?.fact.id ?? 'genesis',
-    Refused: () => '',
-  });
-  const finalFence = finalHead && consumeResult(
-    input.authority.admitWrite(`p13-reconnect:${handle.launch}:${handle.incarnation}:${finalHead}`, input.fence),
-    { Success: () => true, Refused: () => false },
-  );
-  if (!finalFence) {
-    return freeze({ disposition: 'refused',
-      reason: 'Part Six fence changed or expired during reconnect evidence validation', handle: null });
   }
   return freeze({ disposition: 'reconnect',
     reason: 'candidate retains exact machine, incarnation, current fence, local handle, liveness, and owner resume validation',

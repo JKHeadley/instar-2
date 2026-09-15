@@ -171,10 +171,18 @@ function ownerStorageUncertain(directory) {
 }
 
 function legacySnapshot(path) {
-  if (!existsSync(path)) return null;
+  let stat;
   try {
-    if (!lstatSync(path).isFile()) return null;
-    return JSON.parse(readFileSync(path, 'utf8'));
+    stat = lstatSync(path);
+  } catch (error) {
+    if (error && typeof error === 'object' && error.code === 'ENOENT') {
+      return { present: false, value: undefined };
+    }
+    throw new Error('Part Two harness state legacy import is unreadable');
+  }
+  if (!stat.isFile()) throw new Error('Part Two harness state legacy import is not a regular file');
+  try {
+    return { present: true, value: JSON.parse(readFileSync(path, 'utf8')) };
   } catch {
     throw new Error('Part Two harness state legacy import is unreadable');
   }
@@ -343,8 +351,8 @@ export function createHarnessAdapterFileState(path) {
       let found = current();
       if (!found.snapshot) {
         const legacy = legacySnapshot(path);
-        if (legacy !== null) {
-          const migrated = take(decodeHarnessAdapterStateSnapshot(legacy, author.decodeContext));
+        if (legacy.present) {
+          const migrated = take(decodeHarnessAdapterStateSnapshot(legacy.value, author.decodeContext));
           append(null, migrated);
           found = current();
         }
