@@ -82,11 +82,25 @@ export interface HarnessLaunchSpec extends AssemblyValue<'HarnessLaunchSpec'> {
   readonly input: string; readonly inputDigest: Hash; readonly consumptionMode: 'model-context-boundary' | 'advisory';
 }
 
+/** One immutable delivery attempt against an already-launched process. The
+ * launch remains the process identity; this record owns the current step,
+ * input, and ordered context delivered under one admitted operation/claim. */
+export interface ContextDeliverySpecification extends AssemblyValue<'ContextDeliverySpecification'> {
+  readonly launch: string; readonly run: string; readonly step: string; readonly input: string; readonly inputDigest: Hash;
+  readonly incarnation: string; readonly harness: string; readonly artifactDigest: Hash; readonly machine: string;
+  readonly generation: string; readonly executionContext: string;
+  readonly contextManifest: readonly Readonly<{ class: string; reference: string; digest: Hash }>[];
+  readonly reason: 'initial' | 'live-input' | 'compaction';
+  readonly operation: string; readonly claim: string; readonly previousDelivery: string; readonly controlObservation: string;
+}
+
 export interface HarnessObservation extends AssemblyValue<'HarnessObservation'> {
   readonly launch: string; readonly run: string; readonly step: string; readonly input: string; readonly incarnation: string;
+  /** Absent only on the original launch-shaped compatibility schema. */
+  readonly contextDelivery?: string;
   readonly sourceEvidence: readonly string[]; readonly contextDigests: readonly Hash[]; readonly generation: string;
   readonly causalReferences: readonly string[]; readonly observedAt: number; readonly freshFor: number;
-  readonly phase: 'launched' | 'input-accepted' | 'context-consumed' | 'output-observed' | 'pause-observed' | 'exit-observed' | 'uncertain';
+  readonly phase: 'launched' | 'input-accepted' | 'context-consumed' | 'output-observed' | 'pause-observed' | 'exit-observed' | 'refused' | 'uncertain';
   readonly boundaryEvidence: string; readonly detail: string;
 }
 
@@ -173,18 +187,25 @@ export type AssemblyRecord = AssemblyManifest | AssemblyAdmission | HarnessLaunc
   AdapterEvidenceContract | AdapterConformance | StoreCustodyPolicy | StorageAccessObservation |
   LocalCapabilityPackage | PackageTransition | GrowthPolicy | GrowthObservation;
 export type AssemblyRecordName = AssemblyRecord['type'];
+/** Additive history union. AssemblyRecord/AssemblyRecordName intentionally keep
+ * their landed compatibility surface so existing exhaustive fixtures retain
+ * their exact source and bytes. */
+export type AssemblyStoredRecord = AssemblyRecord | ContextDeliverySpecification;
+export type AssemblyStoredRecordName = AssemblyStoredRecord['type'];
 export interface AssemblyHistoryReadPort {
   readonly owner: 'part-ten';
   current(): Result<readonly CurrentAssemblyFact[]>;
-  lookup(reference: string): Result<Readonly<{ fact: FactEnvelope; record?: AssemblyRecord; taint: readonly string[]; conflicts: readonly ConflictClass[]; completeness: 'complete' | 'partial' }> | null>;
+  lookup(reference: string): Result<Readonly<{ fact: FactEnvelope; record?: AssemblyStoredRecord; taint: readonly string[]; conflicts: readonly ConflictClass[]; completeness: 'complete' | 'partial' }> | null>;
   resolve(record: AssemblyRecord): Result<AssemblyHistoryVerdict>;
+  /** Additive resolver kept separate so landed narrow fixture implementations remain source-compatible. */
+  resolveContextDelivery?(record: ContextDeliverySpecification): Result<AssemblyHistoryVerdict>;
 }
 export interface AssemblyDecodeContext extends BoundaryContext {
   readonly history?: AssemblyHistoryReadPort;
   readonly validateReferences?: boolean;
 }
 export interface AssemblyIdentity { readonly id: string; readonly logicalKey: string; readonly canonicalHash: Hash }
-export interface AssemblyFact { readonly fact: FactEnvelope; readonly record: AssemblyRecord }
+export interface AssemblyFact { readonly fact: FactEnvelope; readonly record: AssemblyStoredRecord }
 export interface CurrentAssemblyFact extends AssemblyFact { readonly taint: readonly string[]; readonly conflicts: readonly ConflictClass[] }
 export interface AssemblyHistoryVerdict {
   readonly admitted: boolean;
@@ -193,7 +214,7 @@ export interface AssemblyHistoryVerdict {
   readonly conflicts: readonly ConflictClass[];
   readonly missing: readonly string[];
 }
-export interface AssemblySpine { readonly store: FactStorePort; append(record: AssemblyRecord, required?: readonly string[]): Result<AppendReceipt> }
+export interface AssemblySpine { readonly store: FactStorePort; append(record: AssemblyStoredRecord, required?: readonly string[]): Result<AppendReceipt> }
 export interface AssemblyAuthor { readonly context: FactContext; readonly privateKey: string }
 export interface AssemblyHost {
   readonly machine: string; readonly principal: VerifiedPrincipal; readonly scope: Scope; readonly boundary: AssemblyDecodeContext;
@@ -204,7 +225,9 @@ export interface HarnessAdapterPort {
   readonly owner: 'part-ten'; readonly id: string;
   describe(): Readonly<{ artifact: Hash; platform: string; contextModes: readonly string[]; outputModes: readonly string[]; interruptionModes: readonly string[]; custodyModes: readonly string[]; observationModes: readonly string[]; conformance: string }>;
   launch(spec: HarnessLaunchSpec, operation: string, claim: string): Result<HarnessObservation>;
-  deliver(input: Readonly<{ launch: string; intake: string; digest: Hash; incarnation: string; operation: string }>): Result<HarnessObservation>;
+  deliver(input: Readonly<{ launch: string; intake: string; digest: Hash; incarnation: string; operation: string;
+    /** Required by the production arm; omitted only by the landed compatibility arm. */
+    contextDelivery?: string; claim?: string }>): Result<HarnessObservation>;
   observe(input: Readonly<{ launch: string; delivery: string; operation: string }>): Result<HarnessObservation>;
 }
 
@@ -239,10 +262,10 @@ export interface MediatedStoreReadPort {
 
 export interface AssemblyRuntimePort {
   readonly owner: 'part-ten';
-  record<N extends AssemblyRecordName>(name: N, input: unknown): Result<Extract<AssemblyRecord, { type: N }>>;
+  record<N extends AssemblyStoredRecordName>(name: N, input: unknown): Result<Extract<AssemblyStoredRecord, { type: N }>>;
   inspect(): Result<readonly AssemblyFact[]>;
   inspectCurrent(): Result<readonly CurrentAssemblyFact[]>;
-  resolve(record: AssemblyRecord): Result<AssemblyHistoryVerdict>;
+  resolve(record: AssemblyStoredRecord): Result<AssemblyHistoryVerdict>;
   admit(manifest: string, scope: string): Result<AssemblyAdmission>;
 }
 

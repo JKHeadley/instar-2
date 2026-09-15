@@ -31,6 +31,18 @@ const requiredSeamEvidence = new Map([
   ['P5-SEAM-RC-A-PRIME-F2-E2E', 'tests/e2e/rungraph-closure-review22.test.ts'],
 ]);
 
+export const productionGroundingRunGraphContract = Object.freeze({
+  executable: Object.freeze([
+    'GroundingReadPort.read:initial',
+    'GroundingReadPort.read:live-input',
+    'RunGraphPort.ground:fresh-clock-history-deliver-consume',
+    'RunGraphPort.transition(start):signed-history-re-resolution',
+    'cut-after-grounding:zero-new-pending-steps',
+  ]),
+  held: 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction',
+  compatibilityOnly: 'flat-consumption-receipt-excluded-from-production-activation-evidence',
+});
+
 const designRows = new Map();
 const seamRows = new Map();
 for (const file of report.testResults) {
@@ -56,6 +68,13 @@ for (const [id, requiredFile] of requiredSeamEvidence) {
     throw new Error(`${id}: required passing evidence absent from ${requiredFile}`);
 }
 
+const productionFiles = report.testResults.filter(file => (file.assertionResults ?? []).some(test =>
+  test.status === 'passed' && test.fullName.includes('PRODUCTION-GROUNDING'))).map(file => relative(process.cwd(), file.name));
+for (const tier of ['tests/rungraph/', 'tests/integration/', 'tests/e2e/'])
+  if (!productionFiles.some(file => file.startsWith(tier))) throw new Error(`production grounding rungraph evidence missing ${tier}`);
+if (productionGroundingRunGraphContract.held !== 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction')
+  throw new Error('compaction hold name changed');
+
 console.log('| Check | Executed test files | Scope status |');
 console.log('|---|---|---|');
 for (const id of [...expected].sort()) {
@@ -75,3 +94,4 @@ for (const id of [...expected].sort()) {
 }
 console.log(`${expected.size} P5 checks mapped to actual results; skipped portions are not held.`);
 console.log(`${requiredSeamEvidence.size} required run-closure seam evidence fixtures passed at their required tiers.`);
+console.log(`production grounding executable: ${productionGroundingRunGraphContract.executable.join(', ')}; held: ${productionGroundingRunGraphContract.held}; compatibility: ${productionGroundingRunGraphContract.compatibilityOnly}`);

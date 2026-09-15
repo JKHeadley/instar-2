@@ -6,7 +6,8 @@ import type { ConflictClass, FactEnvelope, FactSchema, OwnedBodyRegistration, Ow
 import { minimalPlaneProjectionIds, requiredMinimalDependencies } from '../operator/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import type { AssemblyAuthor, AssemblyComparison, AssemblyDecodeContext, AssemblyHost, AssemblyIdentity,
-  AssemblyManifest, AssemblyRecord, AssemblyRecordName, AssemblySpine, CurrentAssemblyFact } from './types-internal.js';
+  AssemblyManifest, AssemblySpine, AssemblyStoredRecord, AssemblyStoredRecordName,
+  ContextDeliverySpecification, CurrentAssemblyFact } from './types-internal.js';
 
 const text = { kind: 'text', maxLength: 4096 } as const;
 const integer = { kind: 'integer' } as const;
@@ -39,7 +40,7 @@ const productionBinding = pair({
     requester: text, effectAdapter: text }),
 });
 
-export const assemblyShapes: Readonly<Record<AssemblyRecordName, OwnedShape>> = freeze({
+export const assemblyShapes: Readonly<Record<AssemblyStoredRecordName, OwnedShape>> = freeze({
   AssemblyManifest: pair({ ...common, manifestDigest: hash,
     packages: list(pair({ id: text, digest: hash, artifact: hash })),
     compatibility: pair({ runtime: text, toolchain: text, platforms: texts, schemas: texts, rollback: texts }),
@@ -61,10 +62,15 @@ export const assemblyShapes: Readonly<Record<AssemblyRecordName, OwnedShape>> = 
     portHandles: texts, environment: list(pair({ name: text, valueDigest: hash })),
     contextManifest: list(pair({ class: text, reference: text, digest: hash })), input: text, inputDigest: hash, consumptionMode: text,
   }),
-  HarnessObservation: pair({ ...common, launch: text, run: text, step: text, input: text, incarnation: text,
-    sourceEvidence: texts, contextDigests: list(hash), generation: text, causalReferences: texts, observedAt: integer,
-    freshFor: integer, phase: text, boundaryEvidence: text, detail: text,
+  ContextDeliverySpecification: pair({ ...common, launch: text, run: text, step: text, input: text, inputDigest: hash,
+    incarnation: text, harness: text, artifactDigest: hash, machine: text, generation: text, executionContext: text,
+    contextManifest: list(pair({ class: text, reference: text, digest: hash })), reason: text, operation: text, claim: text,
+    previousDelivery: text, controlObservation: text,
   }),
+  HarnessObservation: pair({ ...common, launch: text, run: text, step: text, input: text, incarnation: text,
+    contextDelivery: text, sourceEvidence: texts, contextDigests: list(hash), generation: text, causalReferences: texts, observedAt: integer,
+    freshFor: integer, phase: text, boundaryEvidence: text, detail: text,
+  }, ['contextDelivery']),
   AdapterEvidenceContract: pair({ ...common, adapter: text, artifact: hash, parserDeclaration: text, stimulusClass: text,
     authenticatedFields: texts, authenticationMethod: text, credentialBinding: text, senderNamespace: text,
     conversationNamespace: text, stabilityRules: texts, forwardingTreatment: text, impersonationTreatment: text,
@@ -140,7 +146,7 @@ const growthSubjects = ['sequence-length', 'segment-bytes', 'append-rate', 'gene
   'boot-rebuild-duration', 'replication-lag', 'refusal-rate', 'unattributable-wrap-rate', 'retraction-count', 'conflict-backlog-age',
   'pending-set-depth', 'known-segment-set-size', 'machine-key-count', 'historical-encoder-count'];
 
-function validate(record: AssemblyRecord): void {
+function validate(record: AssemblyStoredRecord): void {
   ensure(record.schemaVersion === 1 && record.id.trim().length > 0, 'assembly identity/version');
   unique(record.predecessors, 'predecessors'); unique(record.dependencyFacts, 'dependency facts');
   ensure(!record.dependencyFacts.some(id => id === record.id), 'record cannot depend on its own payload id');
@@ -166,9 +172,25 @@ function validate(record: AssemblyRecord): void {
       substantive(record.incarnation, 'incarnation');
       choices(record.consumptionMode, ['model-context-boundary', 'advisory'], 'consumption mode');
       ensure(record.contextManifest.length > 0 && record.portHandles.length > 0 && record.processOperation, 'launch context/handles/operation required'); break;
+    case 'ContextDeliverySpecification':
+      for (const [field, value] of [['launch', record.launch], ['run', record.run], ['step', record.step], ['input', record.input],
+        ['incarnation', record.incarnation], ['harness', record.harness], ['machine', record.machine], ['generation', record.generation],
+        ['execution context', record.executionContext], ['operation', record.operation], ['claim', record.claim]] as const) substantive(value, field);
+      choices(record.reason, ['initial', 'live-input', 'compaction'], 'context delivery reason');
+      ensure(/^sha256:[a-f0-9]{64}$/.test(record.inputDigest) && /^sha256:[a-f0-9]{64}$/.test(record.artifactDigest), 'context delivery digest malformed');
+      ensure(record.contextManifest.length > 0, 'context delivery manifest required');
+      unique(record.contextManifest.map(row => `${row.class}\u0000${row.reference}`), 'context delivery manifest rows');
+      record.contextManifest.forEach(row => {
+        substantive(row.class, 'context manifest class'); substantive(row.reference, 'context manifest reference');
+        ensure(/^sha256:[a-f0-9]{64}$/.test(row.digest), 'context manifest digest malformed');
+      });
+      if (record.reason === 'initial') ensure(!record.previousDelivery && !record.controlObservation, 'initial delivery cannot claim a predecessor or compaction control');
+      if (record.reason === 'live-input') ensure(!!record.previousDelivery && !record.controlObservation, 'live input requires one prior delivery and no compaction control');
+      if (record.reason === 'compaction') ensure(!!record.previousDelivery && !!record.controlObservation, 'compaction delivery requires prior delivery and control observation');
+      break;
     case 'HarnessObservation':
       substantive(record.launch, 'launch');
-      choices(record.phase, ['launched', 'input-accepted', 'context-consumed', 'output-observed', 'pause-observed', 'exit-observed', 'uncertain'], 'harness phase');
+      choices(record.phase, ['launched', 'input-accepted', 'context-consumed', 'output-observed', 'pause-observed', 'exit-observed', 'refused', 'uncertain'], 'harness phase');
       nonnegative(record.observedAt, 'observed clock'); nonnegative(record.freshFor, 'freshness');
       if (record.phase === 'context-consumed') ensure(record.boundaryEvidence && record.contextDigests.length > 0, 'context consumption requires boundary evidence'); break;
     case 'AdapterEvidenceContract':
@@ -270,18 +292,18 @@ export function safePackagePath(path: string): boolean {
   return path.length > 0 && !path.startsWith('/') && !path.includes('\\') && !path.split('/').some(part => !part || part === '.' || part === '..');
 }
 
-function decoderFor<N extends AssemblyRecordName>(name: N, context: AssemblyDecodeContext) {
-  return defineDecoder<Extract<AssemblyRecord, { type: N }>, AssemblyDecodeContext>({
+function decoderFor<N extends AssemblyStoredRecordName>(name: N, context: AssemblyDecodeContext) {
+  return defineDecoder<Extract<AssemblyStoredRecord, { type: N }>, AssemblyDecodeContext>({
     name, owner: 'part-ten', currentVersion: 1, versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {},
     decodeCurrent: value => {
-      try { shapeCheck(value, assemblyShapes[name]); const record = value as unknown as Extract<AssemblyRecord, { type: N }>;
+      try { shapeCheck(value, assemblyShapes[name]); const record = value as unknown as Extract<AssemblyStoredRecord, { type: N }>;
         ensure(record.type === name, 'owned assembly type mismatch'); validate(record); return { ok: true, value: freeze(record) }; }
       catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'assembly decode failed' }; }
     },
   }, context.preserved);
 }
 
-export function decodeAssemblyRecord<N extends AssemblyRecordName>(name: N, input: unknown, context: AssemblyDecodeContext): Result<Extract<AssemblyRecord, { type: N }>> {
+export function decodeAssemblyRecord<N extends AssemblyStoredRecordName>(name: N, input: unknown, context: AssemblyDecodeContext): Result<Extract<AssemblyStoredRecord, { type: N }>> {
   return boundary('AssemblyRecordDecode', input, context, () => {
     const record = take(take(decoderFor(name, context)).decode(input, context));
     if (context.validateReferences) validateAssemblyRecordReferences(record, context);
@@ -291,6 +313,7 @@ export function decodeAssemblyRecord<N extends AssemblyRecordName>(name: N, inpu
 export const decodeAssemblyManifest = (input: unknown, context: AssemblyDecodeContext) => decodeAssemblyRecord('AssemblyManifest', input, context);
 export const decodeAssemblyAdmission = (input: unknown, context: AssemblyDecodeContext) => decodeAssemblyRecord('AssemblyAdmission', input, context);
 export const decodeHarnessLaunchSpec = (input: unknown, context: AssemblyDecodeContext) => decodeAssemblyRecord('HarnessLaunchSpec', input, context);
+export const decodeContextDeliverySpecification = (input: unknown, context: AssemblyDecodeContext) => decodeAssemblyRecord('ContextDeliverySpecification', input, context);
 export const decodeHarnessObservation = (input: unknown, context: AssemblyDecodeContext) => decodeAssemblyRecord('HarnessObservation', input, context);
 export const decodeAdapterEvidenceContract = (input: unknown, context: AssemblyDecodeContext) => decodeAssemblyRecord('AdapterEvidenceContract', input, context);
 export const decodeAdapterConformance = (input: unknown, context: AssemblyDecodeContext) => decodeAssemblyRecord('AdapterConformance', input, context);
@@ -301,12 +324,15 @@ export const decodePackageTransition = (input: unknown, context: AssemblyDecodeC
 export const decodeGrowthPolicy = (input: unknown, context: AssemblyDecodeContext) => decodeAssemblyRecord('GrowthPolicy', input, context);
 export const decodeGrowthObservation = (input: unknown, context: AssemblyDecodeContext) => decodeAssemblyRecord('GrowthObservation', input, context);
 
-export function assemblyLogicalKey(record: AssemblyRecord): string {
+export function assemblyLogicalKey(record: AssemblyStoredRecord): string {
   switch (record.type) {
     case 'AssemblyManifest': return `manifest:${record.id}`;
     case 'AssemblyAdmission': return `admission:${record.manifest}:${record.machine}:${record.scope}:${record.incarnation}`;
     case 'HarnessLaunchSpec': return `launch:${record.run}:${record.step}:${record.incarnation}`;
-    case 'HarnessObservation': return `harness-observation:${record.launch}:${record.phase}:${record.id}`;
+    case 'ContextDeliverySpecification': return `context-delivery:${record.launch}:${record.operation}`;
+    case 'HarnessObservation': return record.contextDelivery
+      ? `harness-observation:${record.contextDelivery}:${record.phase}`
+      : `harness-observation:${record.launch}:${record.phase}:${record.id}`;
     case 'AdapterEvidenceContract': return `adapter-contract:${record.adapter}:${record.contractVersion}`;
     case 'AdapterConformance': return `adapter-conformance:${record.contract}:${record.artifact}:${record.platform}:${record.mode}`;
     case 'StoreCustodyPolicy': return `custody:${record.store}:${record.governedVersion}`;
@@ -317,8 +343,8 @@ export function assemblyLogicalKey(record: AssemblyRecord): string {
     case 'GrowthObservation': return `growth-observation:${record.policy}:${record.subjectScope}:${record.id}`;
   }
 }
-export function assemblyIdentity(record: AssemblyRecord): AssemblyIdentity { return freeze({ id: record.id, logicalKey: assemblyLogicalKey(record), canonicalHash: encoded(record).hash }); }
-export function compareAssemblyRecords<N extends AssemblyRecordName>(name: N, left: unknown, right: unknown, context: AssemblyDecodeContext): Result<AssemblyComparison> {
+export function assemblyIdentity(record: AssemblyStoredRecord): AssemblyIdentity { return freeze({ id: record.id, logicalKey: assemblyLogicalKey(record), canonicalHash: encoded(record).hash }); }
+export function compareAssemblyRecords<N extends AssemblyStoredRecordName>(name: N, left: unknown, right: unknown, context: AssemblyDecodeContext): Result<AssemblyComparison> {
   return boundary('CompareAssemblyRecords', { name, left, right }, context, () => {
     const a = take(decodeAssemblyRecord(name, left, context)), b = take(decodeAssemblyRecord(name, right, context));
     const ai = assemblyIdentity(a), bi = assemblyIdentity(b);
@@ -329,16 +355,16 @@ export function compareAssemblyRecords<N extends AssemblyRecordName>(name: N, le
   });
 }
 
-export const assemblyKindFor = (name: AssemblyRecordName): string => `assembly-${name}`;
+export const assemblyKindFor = (name: AssemblyStoredRecordName): string => `assembly-${name}`;
 export interface AssemblyReference {
   readonly id: string;
-  readonly expected?: AssemblyRecordName | 'CheckRunRecord' | 'ProbeRecord' | 'Measurement' | undefined;
+  readonly expected?: AssemblyStoredRecordName | 'CheckRunRecord' | 'ProbeRecord' | 'Measurement' | undefined;
   readonly field: string;
   readonly requiredWhenSigned: boolean;
 }
 const refs = (ids: readonly string[], field: string, expected?: AssemblyReference['expected'], requiredWhenSigned = false): AssemblyReference[] =>
   ids.filter(Boolean).map(id => ({ id, expected, field, requiredWhenSigned }));
-export function assemblyReferences(record: AssemblyRecord): readonly AssemblyReference[] {
+export function assemblyReferences(record: AssemblyStoredRecord): readonly AssemblyReference[] {
   const generic = [...refs(record.predecessors, 'predecessors', undefined, true), ...refs(record.dependencyFacts, 'dependencyFacts', undefined, true)];
   switch (record.type) {
     case 'AssemblyManifest': return [...generic, ...refs(record.custodyPolicies, 'custodyPolicies', 'StoreCustodyPolicy')];
@@ -348,7 +374,14 @@ export function assemblyReferences(record: AssemblyRecord): readonly AssemblyRef
       ...refs(record.custodyEvidence, 'custodyEvidence', 'StorageAccessObservation', true),
       ...refs(record.probeEvidence, 'probeEvidence', 'ProbeRecord', true)];
     case 'HarnessLaunchSpec': return [...generic, ...refs([record.processOperation], 'processOperation')];
-    case 'HarnessObservation': return [...generic, ...refs([record.launch], 'launch', 'HarnessLaunchSpec'), ...refs(record.causalReferences, 'causalReferences')];
+    case 'ContextDeliverySpecification': return [...generic,
+      ...refs([record.launch], 'launch', 'HarnessLaunchSpec', true), ...refs([record.input], 'input', undefined, true),
+      ...refs([record.executionContext], 'executionContext', undefined, true), ...refs([record.operation], 'operation', undefined, true),
+      ...refs([record.claim], 'claim', undefined, true), ...refs([record.previousDelivery], 'previousDelivery', 'ContextDeliverySpecification', true),
+      ...refs([record.controlObservation], 'controlObservation', undefined, true)];
+    case 'HarnessObservation': return [...generic, ...refs([record.launch], 'launch', 'HarnessLaunchSpec'),
+      ...refs(record.contextDelivery ? [record.contextDelivery] : [], 'contextDelivery', 'ContextDeliverySpecification', true),
+      ...refs(record.causalReferences, 'causalReferences')];
     case 'AdapterEvidenceContract': return [...generic, ...refs([record.parserDeclaration], 'parserDeclaration')];
     case 'AdapterConformance': return [...generic, ...refs([record.contract], 'contract', 'AdapterEvidenceContract', true),
       ...refs(record.stageChecks.map(row => row.checkRun), 'stageChecks.checkRun', 'CheckRunRecord', true),
@@ -375,7 +408,7 @@ export function factReferenceAliases(fact: FactEnvelope): readonly string[] {
   return [...new Set([fact.id, body?.id, nested?.id, measurement?.id].filter((value): value is string => typeof value === 'string' && value.length > 0))];
 }
 
-export function referenceHasExpectedKind(reference: AssemblyReference, fact: FactEnvelope, record?: AssemblyRecord): boolean {
+export function referenceHasExpectedKind(reference: AssemblyReference, fact: FactEnvelope, record?: AssemblyStoredRecord): boolean {
   if (!reference.expected) return true;
   if (record) return record.type === reference.expected || reference.expected === 'Measurement' && record.type === 'GrowthObservation';
   const body = object(fact.body); const nested = object(body?.record); const measurement = object(body?.measurement);
@@ -387,7 +420,7 @@ export function referenceHasExpectedKind(reference: AssemblyReference, fact: Fac
   }
 }
 
-export function validateAssemblyRecordReferences(record: AssemblyRecord, context: AssemblyDecodeContext): void {
+export function validateAssemblyRecordReferences(record: AssemblyStoredRecord, context: AssemblyDecodeContext): void {
   ensure(context.history, 'signed history resolver required');
   for (const reference of assemblyReferences(record)) {
     const status = take(context.history.lookup(reference.id));
@@ -404,12 +437,45 @@ export function validateAssemblyRecordReferences(record: AssemblyRecord, context
     ensure(status.completeness === 'complete' || reference.field === 'predecessors' || reference.field === 'dependencyFacts',
       `${reference.field} reference is incomplete: ${reference.id}`);
   }
+  if (record.type === 'ContextDeliverySpecification') validateContextDeliveryReferences(record, context);
+  if (record.type === 'HarnessObservation' && record.contextDelivery) validateContextBoundObservation(record, context);
 }
-export function assemblyRecordFrom(fact: FactEnvelope, context: AssemblyDecodeContext): AssemblyRecord {
+function exactAssemblyReference<N extends AssemblyStoredRecordName>(reference: string, expected: N, context: AssemblyDecodeContext): Extract<AssemblyStoredRecord, { type: N }> {
+  ensure(context.history, 'signed history resolver required');
+  const status = take(context.history.lookup(reference));
+  ensure(status && status.fact.id === reference && status.fact.kind === assemblyKindFor(expected) && status.record?.type === expected,
+    `exact signed ${expected} reference required: ${reference}`);
+  ensure(status.completeness === 'complete' && status.taint.length === 0 && status.conflicts.length === 0,
+    `${expected} reference is unavailable or conflicted: ${reference}`);
+  const verdict = status.record.type === 'ContextDeliverySpecification'
+    ? (ensure(context.history.resolveContextDelivery, 'context delivery history resolver required'), take(context.history.resolveContextDelivery(status.record)))
+    : take(context.history.resolve(status.record));
+  ensure(verdict.admitted, `${expected} reference history is not admitted: ${reference}`);
+  return status.record as Extract<AssemblyStoredRecord, { type: N }>;
+}
+function validateContextDeliveryReferences(record: ContextDeliverySpecification, context: AssemblyDecodeContext): void {
+  const launch = exactAssemblyReference(record.launch, 'HarnessLaunchSpec', context);
+  ensure(launch.run === record.run && launch.incarnation === record.incarnation && launch.harness === record.harness
+    && launch.artifactDigest === record.artifactDigest && launch.machine === record.machine,
+  'context delivery replaces or mismatches the immutable launch identity');
+  if (record.previousDelivery) {
+    const previous = exactAssemblyReference(record.previousDelivery, 'ContextDeliverySpecification', context);
+    ensure(previous.launch === record.launch && previous.run === record.run && previous.incarnation === record.incarnation
+      && previous.operation !== record.operation, 'context delivery predecessor differs or replays the admitted operation');
+  }
+}
+function validateContextBoundObservation(record: Extract<AssemblyStoredRecord, { type: 'HarnessObservation' }>, context: AssemblyDecodeContext): void {
+  const specification = exactAssemblyReference(record.contextDelivery!, 'ContextDeliverySpecification', context);
+  ensure(record.launch === specification.launch && record.run === specification.run && record.step === specification.step
+    && record.input === specification.input && record.incarnation === specification.incarnation
+    && record.generation === specification.generation && encoded(record.contextDigests).bytes === encoded(specification.contextManifest.map(row => row.digest)).bytes,
+  'context-bound observation differs from its delivery specification');
+}
+export function assemblyRecordFrom(fact: FactEnvelope, context: AssemblyDecodeContext): AssemblyStoredRecord {
   const body = fact.body as { record: Json }; ensure(body.record && typeof body.record === 'object' && !Array.isArray(body.record), 'assembly record body missing');
   const name = (body.record as Readonly<Record<string, Json>>).type; ensure(typeof name === 'string' && Object.hasOwn(assemblyShapes, name), 'unknown assembly record type');
   ensure(fact.id === factId(fact.segment) && fact.machine === fact.segment.machine, 'assembly envelope origin mismatch');
-  ensure(fact.kind === assemblyKindFor(name as AssemblyRecordName), 'assembly fact kind mismatch');
+  ensure(fact.kind === assemblyKindFor(name as AssemblyStoredRecordName), 'assembly fact kind mismatch');
   ensure(preimage(fact).hash === fact.contentHash, 'assembly envelope content hash mismatch');
   const signature = Buffer.from(fact.signature, 'hex');
   const keys = (context.register as unknown as Pick<DecodeContext['register'], 'keys'>).keys;
@@ -418,19 +484,19 @@ export function assemblyRecordFrom(fact: FactEnvelope, context: AssemblyDecodeCo
     && candidate.methods.includes('fact-envelope') && /^[a-f0-9]{128}$/.test(fact.signature)
     && verify(null, Buffer.from(fact.contentHash, 'utf8'), candidate.publicKey, signature));
   ensure(key, 'assembly envelope signature or origin invalid');
-  return take(decodeAssemblyRecord(name as AssemblyRecordName, body.record, { ...context, validateReferences: false }));
+  return take(decodeAssemblyRecord(name as AssemblyStoredRecordName, body.record, { ...context, validateReferences: false }));
 }
-export function assemblyRows(facts: readonly FactEnvelope[], context: AssemblyDecodeContext): readonly { fact: FactEnvelope; record: AssemblyRecord }[] {
-  const kinds = new Set(Object.keys(assemblyShapes).map(name => assemblyKindFor(name as AssemblyRecordName)));
+export function assemblyRows(facts: readonly FactEnvelope[], context: AssemblyDecodeContext): readonly { fact: FactEnvelope; record: AssemblyStoredRecord }[] {
+  const kinds = new Set(Object.keys(assemblyShapes).map(name => assemblyKindFor(name as AssemblyStoredRecordName)));
   return facts.filter(fact => kinds.has(fact.kind)).map(fact => ({ fact, record: assemblyRecordFrom(fact, context) }));
 }
 export function assemblySchemas(host: AssemblyHost): readonly FactSchema[] {
-  return (Object.keys(assemblyShapes) as AssemblyRecordName[]).map(name => ({ kind: assemblyKindFor(name), version: 1,
+  return (Object.keys(assemblyShapes) as AssemblyStoredRecordName[]).map(name => ({ kind: assemblyKindFor(name), version: 1,
     fields: { record: { kind: 'owned', owner: 'part-ten', name } }, machineScope: 'shared', standing: 'requester', action: 'work',
     scope: host.scope, causallyBound: true, requiredReferences: [], authority: 'none' }));
 }
 export function registerAssemblyBodies(host: AssemblyHost): Result<readonly OwnedBodyRegistration[]> {
-  return boundary('AssemblyRegistrations', null, host.boundary, () => (Object.keys(assemblyShapes) as AssemblyRecordName[]).map(name =>
+  return boundary('AssemblyRegistrations', null, host.boundary, () => (Object.keys(assemblyShapes) as AssemblyStoredRecordName[]).map(name =>
     take(registerOwnedBody({ name, owner: 'part-ten', currentVersion: 1, versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {},
       decodeCurrent: (value, context) => {
         try { ensure(context.origin.machine === host.machine && context.origin.principal.id === host.principal.id && context.origin.principal.kind === host.principal.kind, 'foreign assembly recorder');
@@ -444,7 +510,7 @@ export function registerAssemblyBodies(host: AssemblyHost): Result<readonly Owne
     }, assemblyShapes[name], host.boundary))));
 }
 export function createAssemblySpine(host: AssemblyHost, author: AssemblyAuthor, store: AssemblySpine['store']): AssemblySpine {
-  return Object.freeze({ store, append: (record: AssemblyRecord, required: readonly string[] = [...new Set([...record.predecessors, ...record.dependencyFacts])]) => authorAndAppend({
+  return Object.freeze({ store, append: (record: AssemblyStoredRecord, required: readonly string[] = [...new Set([...record.predecessors, ...record.dependencyFacts])]) => authorAndAppend({
     kind: assemblyKindFor(record.type), schemaVersion: 1, machine: host.machine, principal: json(host.principal), provenance: json(host.principal.provenance),
     at: json(host.current().clock), body: { record: json(record) }, required,
   }, author.context, store, author.privateKey) });

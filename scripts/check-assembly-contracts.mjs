@@ -29,7 +29,7 @@ export function checkAssemblyCoverage(report, dispositions = assemblyDisposition
   return rows;
 }
 
-const owned = new Set(['AssemblyManifest', 'AssemblyAdmission', 'HarnessLaunchSpec', 'HarnessObservation',
+const owned = new Set(['AssemblyManifest', 'AssemblyAdmission', 'HarnessLaunchSpec', 'ContextDeliverySpecification', 'HarnessObservation',
   'AdapterEvidenceContract', 'AdapterConformance', 'StoreCustodyPolicy', 'StorageAccessObservation',
   'LocalCapabilityPackage', 'PackageTransition', 'GrowthPolicy', 'GrowthObservation',
   'HarnessAdapterPort', 'PersistenceAdapterPort']);
@@ -58,6 +58,29 @@ export function inspectAssemblyCore(sources) {
   return issues;
 }
 
+export const productionGroundingAssemblyContract = Object.freeze({
+  executable: Object.freeze([
+    'ContextDeliverySpecification:initial',
+    'ContextDeliverySpecification:live-input',
+    'HarnessAdapterPort.deliver(contextDelivery)',
+    'HarnessObservation.contextDelivery:input-accepted',
+    'HarnessObservation.contextDelivery:context-consumed',
+    'createConfinedContextDeliveryDriver',
+  ]),
+  held: 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction',
+  compatibilityOnly: 'flat-consumption-receipt-excluded-from-production-activation-evidence',
+});
+export function checkProductionGroundingAssemblyEvidence(report) {
+  if (!report.success) throw new Error('production grounding assembly evidence requires a successful test run');
+  const files = report.testResults.filter(file => (file.assertionResults ?? []).some(test =>
+    test.status === 'passed' && test.fullName.includes('PRODUCTION-GROUNDING'))).map(file => file.name);
+  for (const tier of ['/tests/assembly/', '/tests/integration/', '/tests/e2e/'])
+    if (!files.some(file => file.includes(tier))) throw new Error(`production grounding assembly evidence missing ${tier}`);
+  if (productionGroundingAssemblyContract.held !== 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction')
+    throw new Error('compaction hold name changed');
+  return { ...productionGroundingAssemblyContract, files };
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const source = Object.fromEntries(readdirSync('src/assembly').filter(name => name.endsWith('.ts'))
     .map(name => [`src/assembly/${name}`, readFileSync(`src/assembly/${name}`, 'utf8')]));
@@ -67,4 +90,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     throw new Error('assembly declarations falsely claim live/held activation');
   const rows = checkAssemblyCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   for (const row of rows) console.log(`${row.id}: ${row.status}; ${row.tests.length} executed fixtures; ${row.reason}`);
+  const grounding = checkProductionGroundingAssemblyEvidence(JSON.parse(readFileSync('.test-results.json', 'utf8')));
+  console.log(`production grounding executable: ${grounding.executable.join(', ')}; held: ${grounding.held}; compatibility: ${grounding.compatibilityOnly}`);
 }

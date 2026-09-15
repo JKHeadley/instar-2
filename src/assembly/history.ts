@@ -2,9 +2,9 @@ import type { ConflictClass, FactEnvelope, FactSnapshot } from '../facts/index.j
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { assemblyIdentity, assemblyRecordFrom, assemblyReferences, assemblyRowForReference, assemblyRows,
   factReferenceAliases, referenceHasExpectedKind } from './records.js';
-import type { AssemblyDecodeContext, AssemblyHistoryVerdict, AssemblyRecord, AssemblySpine, CurrentAssemblyFact } from './contracts.js';
+import type { AssemblyDecodeContext, AssemblyHistoryVerdict, AssemblyStoredRecord, AssemblySpine, CurrentAssemblyFact } from './contracts.js';
 
-function sameIdentity(left: AssemblyRecord, right: AssemblyRecord): boolean {
+function sameIdentity(left: AssemblyStoredRecord, right: AssemblyStoredRecord): boolean {
   return left.type === right.type && (left.id === right.id || assemblyIdentity(left).logicalKey === assemblyIdentity(right).logicalKey);
 }
 
@@ -24,7 +24,7 @@ export function currentAssemblyRows(snapshot: FactSnapshot, context: AssemblyDec
   }));
 }
 
-export function resolveAssemblyHistory(record: AssemblyRecord, spine: AssemblySpine, context: AssemblyDecodeContext): ReturnType<AssemblySpine['store']['readForProjection']> extends infer _ ? import('../index.js').Result<AssemblyHistoryVerdict> : never {
+export function resolveAssemblyHistory(record: AssemblyStoredRecord, spine: AssemblySpine, context: AssemblyDecodeContext): ReturnType<AssemblySpine['store']['readForProjection']> extends infer _ ? import('../index.js').Result<AssemblyHistoryVerdict> : never {
   return boundary('AssemblyHistoryResolution', record, context, () => {
     const snapshot = take(spine.store.readForProjection());
     const rows = currentAssemblyRows(snapshot, context); const all = snapshot.entries;
@@ -62,7 +62,7 @@ export function resolveAssemblyHistory(record: AssemblyRecord, spine: AssemblySp
   });
 }
 
-export function exactFactForRecord(record: AssemblyRecord, facts: readonly FactEnvelope[], context: AssemblyDecodeContext): FactEnvelope | undefined {
+export function exactFactForRecord(record: AssemblyStoredRecord, facts: readonly FactEnvelope[], context: AssemblyDecodeContext): FactEnvelope | undefined {
   const hash = assemblyIdentity(record).canonicalHash;
   return facts.find(fact => fact.kind === `assembly-${record.type}` && assemblyIdentity(assemblyRecordFrom(fact, context)).canonicalHash === hash);
 }

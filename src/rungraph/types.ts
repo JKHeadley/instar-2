@@ -3,6 +3,7 @@ import type { BoundaryContext, Clock, ConversationBindingReference, DecodeContex
 import type { AppendReceipt, CausalFrontier, ConflictClass, DurabilityState, FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
 import type { ProjectionGeneration, ProjectedView } from '../projections/index.js';
 import type { RegisterContext, VerifiedRegister } from '../register/index.js';
+import type { AssemblyHistoryReadPort } from '../assembly/contracts.js';
 
 declare class RunBrand<N extends string> { private readonly runValue: N; private constructor(); }
 type RecordValue<N extends string, V extends number = 1> = RunBrand<N> & Readonly<{ type: N; schemaVersion: V; id: string }>;
@@ -69,6 +70,8 @@ export type UnreachableRunExit = RecordValue<'UnreachableRunExit'> & Readonly<{
 export type RunExit = CompletedRunExit | UnreachableRunExit;
 export type SessionGrounding = RecordValue<'SessionGrounding', 2> & Readonly<{
   run: string; expected: string; worker: string; harness: string; reason: 'start' | 'recovery' | 'resume';
+  /** Required by the production context-delivery arm; omitted only by the flat compatibility arm. */
+  step?: string; incarnation?: string; contextDeliveryReason?: 'initial' | 'live-input' | 'compaction';
   ownership: LeaseReference; executionContext: FactEnvelopeReference;
   at: Clock; previousActivity: Clock; elapsed: Measurement<'elapsed-time'>;
   principal: PrincipalReference; intake: FactEnvelopeReference; binding: ConversationBindingReference;
@@ -129,6 +132,8 @@ export interface RunWriterPort {
 }
 export interface GroundingReadPort {
   readonly owner: 'part-ten';
+  /** Structural activation marker: production assembly may not fall back to a flat receipt. */
+  readonly production?: true;
   // Must measure NOW and deliver the enumerated bytes to this worker before return.
   read(request: Readonly<{ run: RunView; worker: string; harness: string; reason: SessionGrounding['reason']; execution: RunExecutionObservation }>): Result<unknown>;
 }
@@ -141,6 +146,8 @@ export interface RunGraphDependencies {
   readonly governance: RunGovernance;
   readonly context: RunDecodeContext; readonly store: FactStorePort; readonly writer: RunWriterPort;
   readonly admission: RunAdmissionPort; readonly grounding: GroundingReadPort;
+  /** Mandatory whenever grounding.production is true; omitted by legacy isolated fixtures. */
+  readonly assemblyHistory?: AssemblyHistoryReadPort;
   readonly settlement: Readonly<{ owner: 'part-eight'; read(reference: FactEnvelopeReference, step: RunStep): Result<{
     readonly record: FactEnvelopeReference; readonly outcome: Outcome; readonly claimClosed: boolean; readonly chargeSettled: boolean;
   }> }>;

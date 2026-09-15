@@ -37,10 +37,10 @@ export const runShapes: Readonly<Record<string, OwnedShape>> = {
   RunTransition: shape({ ...base, run: text, expected: text, trigger: ref, kind: text, from: text, to: text, responsible: recordRef,
     standing: ref, ownership: ref, generation: ref, at: clock, blockedOn: blocked, nextWake: wake,
     step, grounding: ref, affectedStep: text, outcome: recordRef, settlement: ref, exit }, ['step', 'grounding', 'affectedStep', 'outcome', 'settlement', 'exit']),
-  SessionGrounding: shape({ ...base, run: text, expected: text, worker: text, harness: text, reason: text, ownership: ref, executionContext: ref, at: clock, previousActivity: clock, elapsed: measurement,
+  SessionGrounding: shape({ ...base, run: text, expected: text, worker: text, harness: text, reason: text, step: text, incarnation: text, contextDeliveryReason: text, ownership: ref, executionContext: ref, at: clock, previousActivity: clock, elapsed: measurement,
     principal: recordRef, intake: ref, binding: ref, directives: list(recordRef), generation: ref, frontier: vectorText,
     knownLineages: list(text), threshold: integer, messages: list(shape({ fact: ref, sequence: integer, capture: text, hash: text })),
-    lastInbound: ref, pendingOperations: list(text), children: list(text), receipts: list(text), briefingClasses: list(text), consumption: ref }),
+    lastInbound: ref, pendingOperations: list(text), children: list(text), receipts: list(text), briefingClasses: list(text), consumption: ref }, ['step', 'incarnation', 'contextDeliveryReason']),
 };
 function checkShape(input: Json, policy: OwnedShape): void {
   if (policy.kind === 'text') { need(typeof input === 'string' && input.length > 0 && input.length <= policy.maxLength, 'bounded nonempty text required'); return; }
@@ -141,6 +141,7 @@ function decodeRecord(name: string, input: Json, c: RunDecodeContext): Json {
     reference(v.ownership!, 'part-six', 'Lease'); factReference(v.executionContext!, c);
     principal(v.principal!, c); factReference(v.intake!, c); factReference(v.lastInbound!, c); factReference(v.consumption!, c); reference(v.binding!, 'part-four', 'ConversationBinding');
     need(['start', 'recovery', 'resume'].includes(String(v.reason)), 'out of slice scope: compaction accounting');
+    if (v.contextDeliveryReason !== undefined) need(['initial', 'live-input', 'compaction'].includes(String(v.contextDeliveryReason)), 'unknown context delivery reason');
     need((v.children as Json[]).length === 0, 'out of slice scope: child grounding');
     const elapsed = take(decodeMeasurement('elapsed-time', v.elapsed, c.types));
     const now = take(decodeMeasurement('clock', v.at, c.types)), previous = take(decodeMeasurement('clock', v.previousActivity, c.types));

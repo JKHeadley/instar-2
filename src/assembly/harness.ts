@@ -1,7 +1,7 @@
-import { hashBytes } from '../facts/index.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import { decodeHarnessObservation } from './records.js';
-import type { AssemblyDecodeContext, HarnessAdapterPort, HarnessLaunchSpec, HarnessObservation } from './contracts.js';
+import type { ConfinedContextDeliveryDriverPort } from './context-delivery.js';
+import type { AssemblyDecodeContext, ContextDeliverySpecification, HarnessAdapterPort, HarnessLaunchSpec, HarnessObservation } from './contracts.js';
 
 export interface NativeHarnessDriverPort {
   readonly owner: 'part-eight';
@@ -11,9 +11,11 @@ export interface NativeHarnessDriverPort {
 }
 
 export function createNativeHarnessAdapter(input: Readonly<{ id: string; artifact: string; platform: string; conformance: string;
-  driver: NativeHarnessDriverPort; context: AssemblyDecodeContext; clock: () => number; generation: () => string }>): HarnessAdapterPort {
+  driver: NativeHarnessDriverPort; contextDeliveryDriver?: ConfinedContextDeliveryDriverPort;
+  context: AssemblyDecodeContext; clock: () => number; generation: () => string }>): HarnessAdapterPort {
   const { driver, context } = input; ensure(driver.owner === 'part-eight', 'native harness requires eight-owned operation driver');
-  const launches = new Map<string, { spec: HarnessLaunchSpec; processIdentity: string }>(); let ordinal = 0;
+  const launches = new Map<string, { spec: HarnessLaunchSpec; processIdentity: string }>();
+  const deliveries = new Map<string, ContextDeliverySpecification>(); let ordinal = 0;
   const observation = (spec: HarnessLaunchSpec, phase: HarnessObservation['phase'], evidence: string, detail: string, dependencies: readonly string[]): HarnessObservation =>
     take(decodeHarnessObservation({ type: 'HarnessObservation', schemaVersion: 1, id: `harness-observation:${spec.id}:${phase}:${++ordinal}`,
       predecessors: [], dependencyFacts: dependencies, launch: spec.id, run: spec.run, step: spec.step, input: spec.input,
@@ -36,6 +38,21 @@ export function createNativeHarnessAdapter(input: Readonly<{ id: string; artifac
     deliver(delivery) {
       return boundary('NativeHarnessDeliver', delivery, context, () => {
         const launched = launches.get(delivery.launch); ensure(launched && launched.spec.incarnation === delivery.incarnation, 'unknown or stale launch incarnation');
+        if (delivery.contextDelivery) {
+          ensure(input.contextDeliveryDriver && context.history && delivery.claim, 'production context delivery driver, history, and claim required');
+          const row = take(context.history.lookup(delivery.contextDelivery));
+          ensure(row?.record?.type === 'ContextDeliverySpecification' && row.completeness === 'complete'
+            && row.taint.length === 0 && row.conflicts.length === 0 && context.history.resolveContextDelivery
+            && take(context.history.resolveContextDelivery(row.record)).admitted,
+          'exact owner-decoded context delivery specification unavailable');
+          const specification = row.record;
+          ensure(specification.launch === delivery.launch && specification.input === delivery.intake
+            && specification.inputDigest === delivery.digest && specification.incarnation === delivery.incarnation
+            && specification.operation === delivery.operation && specification.claim === delivery.claim,
+          'adapter delivery differs from the admitted context delivery specification');
+          deliveries.set(specification.id, specification);
+          return take(input.contextDeliveryDriver.deliver(specification, { operation: delivery.operation, claim: delivery.claim }));
+        }
         ensure(delivery.intake === launched.spec.input && delivery.digest === launched.spec.inputDigest, 'delivery identity or digest differs from admitted launch input');
         const accepted = take(driver.deliver({ operation: delivery.operation, processIdentity: launched.processIdentity,
           intake: delivery.intake, digest: delivery.digest, incarnation: delivery.incarnation }));
@@ -44,7 +61,11 @@ export function createNativeHarnessAdapter(input: Readonly<{ id: string; artifac
     },
     observe(request) {
       return boundary('NativeHarnessObserve', request, context, () => {
-        const launched = launches.get(request.launch); ensure(launched, 'unknown launch'); const observed = take(driver.observe({ operation: request.operation, processIdentity: launched.processIdentity }));
+        const launched = launches.get(request.launch); ensure(launched, 'unknown launch');
+        const delivered = [...deliveries.values()].find(specification => specification.launch === request.launch
+          && specification.operation === request.operation);
+        if (delivered) return take(input.contextDeliveryDriver!.observe(delivered, request.operation));
+        const observed = take(driver.observe({ operation: request.operation, processIdentity: launched.processIdentity }));
         if (observed.phase === 'context-consumed') {
           ensure(observed.evidence.startsWith('model-context:') && context.history, 'context consumption source is not resolvable signed history');
           const rows = take(context.history.current()); const source = rows.find(row => row.fact.id === observed.evidence || row.record.id === observed.evidence);
