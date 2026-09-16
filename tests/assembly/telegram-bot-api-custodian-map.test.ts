@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import { telegramBotApiCustodianContractMap } from '../../src/assembly/index.js';
-// @ts-expect-error The owner checker is intentionally a directly executable plain-ESM script.
 import {
   checkTelegramCustodianMap,
   telegramCustodianExecutableArms,
   telegramCustodianHeldArms,
+// @ts-expect-error The owner checker is intentionally a directly executable plain-ESM script.
 } from '../../scripts/check-assembly-contracts.mjs';
 
 describe('Part Ten Telegram custodian checker wiring', () => {
