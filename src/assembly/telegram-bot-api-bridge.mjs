@@ -24,34 +24,103 @@ function decodePercent(value) {
   }
 }
 
+function htmlCodePoint(original, digits, radix) {
+  const point = Number.parseInt(digits, radix);
+  return Number.isSafeInteger(point) && point >= 0 && point <= 0x10ffff
+    ? String.fromCodePoint(point) : original;
+}
+
 function decodeHtml(value) {
   return value
-    .replace(/&#x([0-9a-f]+);?/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
-    .replace(/&#([0-9]+);?/g, (_, digits) => String.fromCodePoint(Number.parseInt(digits, 10)))
+    .replace(/&#x([0-9a-f]+);?/gi, (original, hex) => htmlCodePoint(original, hex, 16))
+    .replace(/&#([0-9]+);?/g, (original, digits) => htmlCodePoint(original, digits, 10))
     .replace(/&colon;/gi, ':');
 }
 
+function base32(bytes) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let accumulator = 0; let bits = 0; let output = '';
+  for (const byte of bytes) {
+    accumulator = (accumulator << 8) | byte; bits += 8;
+    while (bits >= 5) { bits -= 5; output += alphabet[(accumulator >>> bits) & 31]; }
+  }
+  if (bits > 0) output += alphabet[(accumulator << (5 - bits)) & 31];
+  return output;
+}
+
+function rot13(value) {
+  return value.replace(/[A-Za-z]/g, character => String.fromCharCode(
+    character.charCodeAt(0) + (character.toLowerCase() <= 'm' ? 13 : -13)));
+}
+
+// Bounded egress policy: scan literal UTF-8 text and reversible representations in
+// four named families (radix-16, radix-32, radix-64 and ROT13), over UTF-8 and
+// UTF-16LE bytes where those encodings apply. Before matching, close compositions
+// of JSON-unicode, percent and numeric/named-HTML text transforms for at most four
+// rounds and 512 candidates. Radix-64 folding is normalized as ASCII whitespace.
+// Inputs outside the 2 MiB / 4,096 JSON-value bounds fail closed. This is a finite
+// representation policy, not a claim to detect arbitrary encryption/covert channels.
+const REPRESENTATION_POLICY = Object.freeze({
+  maximumBytes: 2 * 1024 * 1024,
+  maximumJsonValues: 4096,
+  maximumCandidates: 512,
+  maximumDecodeRounds: 4,
+});
+
+function tokenRepresentations(value) {
+  const utf8 = Buffer.from(value, 'utf8');
+  const utf16le = Buffer.from(value, 'utf16le');
+  const representations = new Set([value, rot13(value)]);
+  for (const bytes of [utf8, utf16le]) {
+    const hexadecimal = bytes.toString('hex');
+    const base64 = bytes.toString('base64');
+    const radix32 = base32(bytes);
+    const paddedRadix32 = radix32.padEnd(Math.ceil(radix32.length / 8) * 8, '=');
+    representations.add(hexadecimal);
+    representations.add(hexadecimal.toUpperCase());
+    representations.add(radix32);
+    representations.add(radix32.toLowerCase());
+    representations.add(paddedRadix32);
+    representations.add(paddedRadix32.toLowerCase());
+    representations.add(base64);
+    representations.add(base64.replace(/=+$/u, ''));
+    representations.add(bytes.toString('base64url'));
+  }
+  return representations;
+}
+
 function reflectsCredential(bytes) {
-  const encodedTokenForms = [
-    Buffer.from(token, 'utf8').toString('base64'),
-    Buffer.from(token, 'utf8').toString('base64url'),
-    Buffer.from(token, 'utf8').toString('hex'),
-  ];
-  const candidates = [bytes];
+  if (Buffer.byteLength(bytes, 'utf8') > REPRESENTATION_POLICY.maximumBytes) return true;
+  const encodedTokenForms = tokenRepresentations(token);
+  const candidates = [{ value: bytes, depth: 0 }]; const seen = new Set([bytes]);
   try {
-    const visit = value => {
-      if (typeof value === 'string') candidates.push(value);
-      else if (Array.isArray(value)) value.forEach(visit);
-      else if (value !== null && typeof value === 'object') Object.values(value).forEach(visit);
-    };
-    visit(JSON.parse(bytes));
+    const pending = [JSON.parse(bytes)]; let visited = 0;
+    while (pending.length > 0) {
+      if (++visited > REPRESENTATION_POLICY.maximumJsonValues) return true;
+      const value = pending.pop();
+      if (typeof value === 'string') {
+        if (!seen.has(value)) {
+          if (candidates.length >= REPRESENTATION_POLICY.maximumCandidates) return true;
+          seen.add(value); candidates.push({ value, depth: 0 });
+        }
+      } else if (Array.isArray(value)) {
+        for (const item of value) pending.push(item);
+      } else if (value !== null && typeof value === 'object') {
+        for (const item of Object.values(value)) pending.push(item);
+      }
+    }
   } catch { /* Non-JSON responses are still scanned through the raw transformations below. */ }
-  for (let index = 0; index < candidates.length; index += 1) {
-    const candidate = candidates[index];
-    if (candidate.includes(token) || encodedTokenForms.some(encoded => candidate.includes(encoded))) return true;
+  for (let index = 0; index < candidates.length && index < REPRESENTATION_POLICY.maximumCandidates; index += 1) {
+    const { value: candidate, depth } = candidates[index];
+    const unfolded = candidate.replace(/[\t\r\n ]/gu, '');
+    if ([candidate, unfolded].some(surface => [...encodedTokenForms].some(encoded => surface.includes(encoded)))) return true;
+    if (depth >= REPRESENTATION_POLICY.maximumDecodeRounds) continue;
     for (const decoded of [decodeJsonEscapes(candidate), decodePercent(candidate), decodeHtml(candidate)]) {
       if (decoded.includes(token)) return true;
-      if (decoded !== candidate && !candidates.includes(decoded)) candidates.push(decoded);
+      if (decoded !== candidate && !seen.has(decoded)) {
+        if (candidates.length >= REPRESENTATION_POLICY.maximumCandidates) return true;
+        seen.add(decoded); candidates.push({ value: decoded, depth: depth + 1 });
+      }
     }
   }
   return false;

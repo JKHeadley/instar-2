@@ -37,9 +37,9 @@ export interface TelegramDurableCapturePort {
 }
 export interface TelegramBotApiCustodianOptions {
   readonly context: BoundaryContext;
-  /** Concrete owner binding. Optional only for the already-landed round-one replay constructor. */
+  /** Immutable independent binding required before authentication is supported. */
   readonly declaration?: TelegramBotDeclaration;
-  /** Part Nine publication context required for a probe admissible by the real owner. */
+  /** Part Nine publication context required before identity can report success. */
   readonly identityEvidence?: IdentityEvidence;
   readonly machine: string;
   readonly now: () => Clock;
@@ -137,8 +137,6 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
     }
 
     let compatibilityBinding: Readonly<{ token: SecretRef; apiVersion: string }> | null = null;
-    const compatibilityEpoch = 'live';
-    const captureAliases = new Map<string, Hash>();
     let observedBot: Readonly<{ id: string; username: string }> | null = declaration === null ? null
       : { id: declaration.bot.id, username: declaration.bot.username };
     const validateScope = (token: SecretRef, apiVersion: string) => {
@@ -195,26 +193,7 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
     const publishIdentityProbe = (captured: CapturedResponse, botId: string, apiVersion: string,
       observedAt: Clock): PublishedIdentity => {
       const evidence = options.identityEvidence;
-      if (evidence === undefined) {
-        ensure(declaration === null,
-          'Telegram identity evidence publication context is required for a declared custodian');
-        // The compatibility constructor can consume an identity already published by Part Nine.
-        // A1 still re-resolves this exact reference, signed probe body, capture hash, witness,
-        // operation and freshness before admission; an absent publication therefore cannot admit.
-        const provider = parsedRecord(captured.bytes, 'Telegram getMe response', 'Telegram getMe response malformed');
-        const bot = record(provider.result, 'Telegram getMe bot');
-        const publicationBytes = bot.username === 'fixture_bot'
-          ? JSON.stringify({ ok: true, result: { id: bot.id, username: bot.username, is_bot: bot.is_bot } })
-          : captured.bytes;
-        const publicationHash = digest(publicationBytes);
-        const capture = `capture:telegram:get-me:${botId}`;
-        ensure(safePreserve(captures, capture, publicationBytes, 'Telegram identity capture alias was not durable')
-          && safeRead(captures, capture, 'Telegram identity capture alias was not durable') === publicationBytes,
-        'Telegram identity capture alias was not durable');
-        captureAliases.set(capture, publicationHash);
-        return { reference: `probe:telegram:get-me:${botId}:${apiVersion}`,
-          capture: { reference: capture, hash: publicationHash } };
-      }
+      ensure(evidence !== undefined, 'Telegram identity evidence publication context is required');
       ensure(evidence.verification.owner === 'part-nine', 'Telegram identity evidence requires Part Nine');
       const rows = take(evidence.verification.inspectCurrent());
       const plans = rows.filter(row => row.record.type === 'VerificationPlan'
@@ -241,19 +220,9 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
       return { reference: probe.id, capture: { reference: captured.reference, hash: captured.hash } };
     };
 
-    const declarationFor = (route: InboundRoute): TelegramBotDeclaration => {
-      if (declaration !== null) return declaration;
-      const channel = /^telegram:v1:bot:([1-9][0-9]*):chat:-?[1-9][0-9]*:(?:direct|forum|chat)$/.exec(route.channel);
-      const epoch = /^telegram:v1:bot:([1-9][0-9]*):epoch:(.+)$/.exec(route.identityEpoch);
-      ensure(channel !== null && epoch !== null && channel[1] === epoch[1]
-        && epoch[2] === compatibilityEpoch, 'Telegram route identity malformed');
-      if (observedBot !== null) ensure(channel[1] === observedBot.id, 'Telegram route bot differs from witnessed identity');
-      return freeze({ schemaVersion: 1, bot: { id: channel[1]!, username: observedBot?.username ?? '@bound_bot', identityEpoch: compatibilityEpoch },
-        token: binding().token, apiVersion: binding().apiVersion,
-        cursor: { contractVersion: 'telegram-update-offset:v1', initialOffset: 0, maxBatchItems: 100, maxPollSeconds: 30 },
-        limits: { maxUpdateBytes: 64 * 1024, maxReplyCharacters: 4096, maxReplyBytes: 4096,
-          maxEntities: 100, maxConcurrentPolls: 1, maxCharge: 1, timeout: 30 },
-        supportedOperations: ['ordinary-reply'] });
+    const declarationFor = (_route: InboundRoute): TelegramBotDeclaration => {
+      ensure(declaration !== null, 'Telegram authentication requires an independent declaration');
+      return declaration;
     };
 
     const port: TelegramBotApiCustodianPort = Object.freeze({
@@ -268,7 +237,8 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
           ensure(Number.isSafeInteger(bot.id) && Number(bot.id) > 0 && typeof bot.username === 'string'
             && bot.username.length > 0 && bot.is_bot === true, 'Telegram getMe identity malformed');
           const botId = String(bot.id); const username = `@${bot.username}`;
-          if (declaration !== null) ensure(botId === declaration.bot.id && username === declaration.bot.username,
+          ensure(declaration !== null, 'Telegram identity requires an independent declaration');
+          ensure(botId === declaration.bot.id && username === declaration.bot.username,
             'Telegram identity differs from bound declaration');
           if (observedBot !== null) ensure(botId === observedBot.id && username === observedBot.username,
             'Telegram identity changed under the bound credential');
@@ -288,9 +258,7 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
           const bytes = safeRead(captures, reference, 'Telegram capture read failed');
           ensure(bytes !== null, 'Telegram capture absent');
           const expected = /:([a-f0-9]{64})$/.exec(reference)?.[1];
-          const aliased = captureAliases.get(reference);
-          ensure(expected !== undefined && digest(bytes) === `sha256:${expected}`
-            || aliased !== undefined && digest(bytes) === aliased, 'Telegram capture bytes changed');
+          ensure(expected !== undefined && digest(bytes) === `sha256:${expected}`, 'Telegram capture bytes changed');
           return bytes;
         });
       },
