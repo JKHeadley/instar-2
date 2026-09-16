@@ -1,0 +1,509 @@
+{
+  "exit": 1,
+  "passed": 82,
+  "failed": 1,
+  "skipped": 0,
+  "total": 83,
+  "cases": [
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/production-grounding-checker-round4b.test.ts",
+      "fullName": "PG-R4B F9 six executed empty matching tests and rewritten rooted reports never certify behavior",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/production-grounding-round4b.test.ts",
+      "fullName": "PG-R4B genuine common-owner production boot and native ground/start",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/production-grounding-round4b.test.ts",
+      "fullName": "PG-R4B Six authority restart cannot resurrect or reclaim a consumed context operation",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/production-grounding-round4b.test.ts",
+      "fullName": "PG-R4B factory credentials reject composition replacement and foreign store transplants",
+      "status": "failed",
+      "failure": [
+        "AssertionError: expected true to be false // Object.is equality\n    at Proxy.__vite_ssr_import_0__.chai.Assertion.<computed> (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/production-grounding-evidence.mjs:27:18)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/production-grounding-round4b.test.ts:41:86\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at runSuite (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/production-grounding.test.ts",
+      "fullName": "PRODUCTION-GROUNDING P10-NF-10 P10-NF-11 P10-NF-13 confined initial and live-input delivery re-resolve one launch and retain predecessor order",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/production-grounding.test.ts",
+      "fullName": "PG-P10-TYPED-REFUSALS refuses adapter mutation, claim replay, incarnation replacement, conflicts, and held compaction",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/production-grounding.test.ts",
+      "fullName": "PG-P10-SIGNED-DELIVERY records and resolves exact signed typed delivery evidence",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/assembly-production.test.ts",
+      "fullName": "P10-NF-06 P10-NF-08 P10-NF-40 P10-NF-45 P10-NF-51 P10-NF-52 P10-NF-54 [P10-SEAM-07] durable restart recovers the same production handles after a deterministic mid-admission cut",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/production-grounding.test.ts",
+      "fullName": "PG-E2E-INITIAL-LIVE-REPLAY PRODUCTION-GROUNDING lifecycle: initial and live-input specifications coexist while compaction execution remains explicitly held",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/production-grounding.test.ts",
+      "fullName": "PG-E2E-INITIAL-LIVE-REPLAY executes two signed actual-start boundaries on one incarnation",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/production-grounding-native.test.ts",
+      "fullName": "N1 actual public Ten reader with native confined driver gives real Five graph production capability and successful signed delivery",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/production-grounding-native.test.ts",
+      "fullName": "N2 actual reader accepts second distinct live input on the unchanged launch and incarnation",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/production-grounding.test.ts",
+      "fullName": "PG-INTEGRATION-PRODUCTION-BINDING refuses a history-labelled graph until the invocation-owned Ten reader is bound",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/production-grounding.test.ts",
+      "fullName": "PG-INTEGRATION-PRODUCTION-BINDING admits the signed row-45 binding only with a production-grounded graph",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-adjudication.test.ts",
+      "fullName": "Q7 F2 real Six consumed authority prevents driver invocation from its old specification",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-adjudication.test.ts",
+      "fullName": "Q8 F2 ordinary reply effect does not authorize harness context delivery",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-adjudication.test.ts",
+      "fullName": "R2 F2 restart after invoke before acceptance append must not invoke again",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-adjudication.test.ts",
+      "fullName": "R3 F2 a consumed claim in current history must prevent delivery using its older dispatch-claimed row",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-adjudication.test.ts",
+      "fullName": "R8 F2 real Six admitted operation identity must be accepted as the specification operation",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q1 F3 public Ten factory refuses same-tick completed receipt from a replaying adapter",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q2 F3 public Ten factory refuses retimestamped completed receipt from a replaying adapter",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q3 F8 public reader factory cannot certify null runtime and harness as production",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q4 public registration and package exports expose no direct capability issuer",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q5 F2 arbitrary registered substitute owner decoders do not constitute real Eight admission",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q6 checker still detects reintroduced private sibling import",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q9 F3 public Ten factory with a complete four-method adapter refuses same-tick completed receipt from a replaying adapter",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q10 F3 public Ten factory with a complete four-method adapter refuses retimestamped completed receipt from a replaying adapter",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V1 accepts a signed current initial specification",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V2 accepts valid spec delivery through the real recorder",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V3 refuses a second invocation after acceptance append fails",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V4 refuses ordinary evidence substituted for admitted operation and one-use claim",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V5 PG-P5-INVOKED-READ signed-history graph control accepts ground then start and zero pending before start",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V6 refuses pre-completed grounding even within the same clock tick",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V7 refuses future-reported consumption",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V8 PG-P5-SOURCE-REFUSALS refuses input digest substitution",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V9 refuses unresolvable briefing-reference substitution",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V10 refuses an ordinary note as context-consumption boundary proof",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V11 historical start remains readable after its observation freshness expires",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V12 refuses stale context at actual start",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V13 refuses observation step differing from candidate",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V14 refuses newer unaccounted inbound at start",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V15 refuses omitted message manifest row",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V16 refuses duplicate manifest row",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V17 refuses wrong-run delivery",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V18 refuses context delivery from another incarnation",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V19 refuses production flat receipt fallback",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V20 cut after grounding reconstructs zero pending steps with a fresh store",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V21 refuses predecessor skip after a second delivery",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V22 accepts unchanged incarnation for a second live-input specification",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V23 native reader accepts a real signed launch and context-delivery record",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V24 refuses copied body paired with another signed observation envelope at start",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V25-missing refuses changed observation evidence at start",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V25-wrong-kind refuses changed observation evidence at start",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V25-partial refuses changed observation evidence at start",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V25-tainted refuses changed observation evidence at start",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V25-conflicted refuses changed observation evidence at start",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V26 accepts fresh current execution context bound to delivery rather than old launch",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V27 initial and second distinct inbound can both start on one incarnation",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V30 assembly contract map refuses a report with only token titles and no named refusal assertions",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V31 production boot refuses a real graph that accepts only flat compatibility receipts",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V32 refuses retimestamped pre-completed grounding against a previously signed future receipt",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V33 refuses stale generation in the delivery specification",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V34 refuses non-consumed phase",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V35 refuses unresolvable boundary evidence",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V36 refuses equal delivery identity with differing content",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V37 refuses changed live process immediately before delivery",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V38 refuses adapter-authored spec mutation before invoking",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V39 accepts an initial specification after a durable record cut without another identity",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V40 cut immediately before start append leaves zero newly pending steps",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V41 cut immediately after durable start append reconstructs one step without another transition",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V42 signed fact reference accepts an observation while the specification payload alias refuses",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V43 start re-resolves a newly appended real signed specification conflict",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "R9 F7 a raw signed predecessor skip is refused on replay resolution",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "R10 F1 repeated consumed observation after restart at a later clock preserves the original observation",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V28 legacy graph decoder outputs, canonical bytes and root request keys equal main",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-review.test.ts",
+      "fullName": "V29 every original assembly key, digest and decoded output equals main",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-round3.test.ts",
+      "fullName": "R1 F2 kind-labelled substitute schemas must not qualify as owner admitted evidence",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-round3.test.ts",
+      "fullName": "R4 F8 marked production boot must refuse a flat graph even after public registration",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-round3.test.ts",
+      "fullName": "R5 F9 contract map must refuse named passing titles when the named behavior failed",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-round3.test.ts",
+      "fullName": "R6 F1 signed native observation reconstructs without local delivery or launch maps",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-round3.test.ts",
+      "fullName": "R7 positive initial and genuinely second inbound both start while incarnation and launch stay unchanged",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-round3.test.ts",
+      "fullName": "R9 F7 a raw signed predecessor skip must be refused on replay resolution",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-round3.test.ts",
+      "fullName": "R10 F1 repeated consumed observation after restart at a later clock must remain readable",
+      "status": "passed",
+      "failure": []
+    }
+  ]
+}

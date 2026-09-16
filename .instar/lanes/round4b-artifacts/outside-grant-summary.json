@@ -1,0 +1,71 @@
+{
+  "exit": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 9,
+  "total": 10,
+  "cases": [
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "rereview6 V78 missing durable route fact refuses production boot",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "rereview6 V79 unavailable challenge verifier method refuses production boot",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F2 verification current-clock wiring is mandatory at production boot",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "rereview6 V80 fresh independently verified stop remains usable during a binding conflict",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F2 rereview6 V81 fresh current delivery evidence is accepted",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F2 rereview6 V82 missing current delivery evidence is refused",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F2 rereview6 V83 changed delivery stage is refused",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F2 rereview6 V84 changed operation identity is refused",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F2 rereview6 V85 stale evidence is refused at Part Nine current time",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F3 rereview6 V86 clean durable reboot uses its recorded current clock and retains one witnessed reply",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts:81:16\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "exit": 0,
+  "passed": 3,
+  "failed": 0,
+  "skipped": 10,
+  "total": 13,
+  "cases": [
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/production-grounding-round4b.test.ts",
+      "fullName": "PG-R4B genuine common-owner production boot and native ground/start",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/production-grounding-round4b.test.ts",
+      "fullName": "PG-R4B Six authority restart cannot resurrect or reclaim a consumed context operation",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/production-grounding-round4b.test.ts",
+      "fullName": "PG-R4B factory credentials reject composition replacement and foreign store transplants",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/production-grounding-native.test.ts",
+      "fullName": "N1 actual public Ten reader with native confined driver gives real Five graph production capability and successful signed delivery",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/production-grounding-native.test.ts",
+      "fullName": "N2 actual reader accepts second distinct live input on the unchanged launch and incarnation",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q1 F3 public Ten factory refuses same-tick completed receipt from a replaying adapter",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q2 F3 public Ten factory refuses retimestamped completed receipt from a replaying adapter",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q3 F8 public reader factory cannot certify null runtime and harness as production",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q4 public registration and package exports expose no direct capability issuer",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q5 F2 arbitrary registered substitute owner decoders do not constitute real Eight admission",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q6 checker still detects reintroduced private sibling import",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q9 F3 public Ten factory with a complete four-method adapter refuses same-tick completed receipt from a replaying adapter",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/rungraph/production-grounding-boundary.test.ts",
+      "fullName": "Q10 F3 public Ten factory with a complete four-method adapter refuses retimestamped completed receipt from a replaying adapter",
+      "status": "skipped",
+      "failure": []
+    }
+  ]
+}

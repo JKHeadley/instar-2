@@ -1,0 +1,405 @@
+{
+  "exit": 1,
+  "passed": 114,
+  "failed": 43,
+  "skipped": 0,
+  "total": 157,
+  "partitions": {
+    "owner-tests": {
+      "passed": 85
+    },
+    "originals-and-reconciled": {
+      "failed": 43,
+      "passed": 29
+    }
+  },
+  "failures": [
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/boundary-probes.test.ts",
+      "fullName": "Q1 F3 public Ten factory refuses same-tick completed receipt from a replaying adapter",
+      "id": "Q1",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at Object.read (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-fixture.ts:192:12)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/boundary-probes.test.ts:14:24\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/boundary-probes.test.ts",
+      "fullName": "Q2 F3 public Ten factory refuses retimestamped completed receipt from a replaying adapter",
+      "id": "Q2",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at Object.read (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-fixture.ts:192:12)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/boundary-probes.test.ts:14:24\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/native-positive.test.ts",
+      "fullName": "N1 actual public Ten reader with native confined driver gives real Five graph production capability and successful signed delivery",
+      "id": "N1",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "AssertionError: expected false to be true // Object.is equality\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/native-positive.test.ts:7:88\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at runSuite (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)\n    at runFiles (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/native-positive.test.ts",
+      "fullName": "N2 actual reader accepts second distinct live input on the unchanged launch and incarnation",
+      "id": "N2",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: production reader lacks admitted native runtime provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/native-positive.test.ts:15:29\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts",
+      "fullName": "R2 F2 restart after invoke before acceptance append must not invoke again",
+      "id": "R2",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts:25:18\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts",
+      "fullName": "R3 F2 a consumed claim in current history must prevent delivery using its older dispatch-claimed row",
+      "id": "R3",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts:32:18\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts",
+      "fullName": "R6 F1 signed native observation reconstructs without local delivery or launch maps",
+      "id": "R6",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts:50:18\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts",
+      "fullName": "R7 positive initial and genuinely second inbound both start while incarnation and launch stay unchanged",
+      "id": "R7",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at executeInitialLiveInputLifecycle (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-fixture.ts:205:22)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts:56:10\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts",
+      "fullName": "R8 F2 real Six admitted operation identity must be accepted as the specification operation",
+      "id": "R8",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "AssertionError: {\"accepted\":false,\"detail\":\"context delivery requires the Eight harness-live-input payload and definition\"}: expected { accepted: false, \u2026(1) } to match object { accepted: true }\n(1 matching property omitted from actual)\n    at Proxy.<anonymous> (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/expect/dist/index.js:1155:10)\n    at Proxy.<anonymous> (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/expect/dist/index.js:1029:14)\n    at Proxy.methodWrapper (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/chai/index.js:1686:25)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts:71:97\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts",
+      "fullName": "R9 F7 a raw signed predecessor skip must be refused on replay resolution",
+      "id": "R9",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts:75:18\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts",
+      "fullName": "R10 F1 repeated consumed observation after restart at a later clock must remain readable",
+      "id": "R10",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-neighbors.test.ts:81:18\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V1 accepts a signed current initial specification",
+      "id": "V1",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "AssertionError: expected false to be true // Object.is equality\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:36:142\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at runSuite (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)\n    at runFiles (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V2 accepts valid spec delivery through the real recorder",
+      "id": "V2",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:37:90\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V3 refuses a second invocation after acceptance append fails",
+      "id": "V3",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:38:94\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V5 PG-P5-INVOKED-READ signed-history graph control accepts ground then start and zero pending before start",
+      "id": "V5",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:40:143\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V6 refuses pre-completed grounding even within the same clock tick",
+      "id": "V6",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at Object.read (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-fixture.ts:192:12)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:41:116\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V11 historical start remains readable after its observation freshness expires",
+      "id": "V11",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:46:114\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V12 refuses stale context at actual start",
+      "id": "V12",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:47:78\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V13 refuses observation step differing from candidate",
+      "id": "V13",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:48:90\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V14 refuses newer unaccounted inbound at start",
+      "id": "V14",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:49:83\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V19 refuses production flat receipt fallback",
+      "id": "V19",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "AssertionError: expected 'decode: context delivery requires gen\u2026' to contain 'exact owner-decoded HarnessObservatio\u2026'\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:62:71\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at runSuite (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)\n    at runFiles (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V20 cut after grounding reconstructs zero pending steps with a fresh store",
+      "id": "V20",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:64:103\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V21 refuses predecessor skip after a second delivery",
+      "id": "V21",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:65:86\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V22 accepts unchanged incarnation for a second live-input specification",
+      "id": "V22",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:66:105\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V23 native reader accepts a real signed launch and context-delivery record",
+      "id": "V23",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "AssertionError: {\"accepted\":false,\"detail\":\"production reader lacks admitted native runtime provenance\"}: expected { accepted: false, \u2026(1) } to match object { accepted: true }\n(1 matching property omitted from actual)\n    at Proxy.<anonymous> (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/expect/dist/index.js:1155:10)\n    at Proxy.<anonymous> (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/expect/dist/index.js:1029:14)\n    at Proxy.methodWrapper (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/chai/index.js:1686:25)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:73:40\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V24 refuses copied body paired with another signed observation envelope at start",
+      "id": "V24",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:76:27\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V25-missing refuses changed observation evidence at start",
+      "id": "V25-missing",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:83:27\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:863:59\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V25-wrong-kind refuses changed observation evidence at start",
+      "id": "V25-wrong-kind",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:83:27\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:863:59\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V25-partial refuses changed observation evidence at start",
+      "id": "V25-partial",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:83:27\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:863:59\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V25-tainted refuses changed observation evidence at start",
+      "id": "V25-tainted",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:83:27\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:863:59\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V25-conflicted refuses changed observation evidence at start",
+      "id": "V25-conflicted",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:83:27\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:863:59\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V26 accepts fresh current execution context bound to delivery rather than old launch",
+      "id": "V26",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "AssertionError: expected { accepted: false, \u2026(1) } to match object { accepted: true }\n(1 matching property omitted from actual)\n    at Proxy.<anonymous> (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/expect/dist/index.js:1155:10)\n    at Proxy.<anonymous> (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/expect/dist/index.js:1029:14)\n    at Proxy.methodWrapper (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/chai/index.js:1686:25)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:88:435\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V27 initial and second distinct inbound can both start on one incarnation",
+      "id": "V27",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at executeInitialLiveInputLifecycle (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-fixture.ts:205:22)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:91:15\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V32 refuses retimestamped pre-completed grounding against a previously signed future receipt",
+      "id": "V32",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at Object.read (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable-fixture.ts:192:12)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:106:24\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V36 refuses equal delivery identity with differing content",
+      "id": "V36",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:112:96\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V37 refuses changed live process immediately before delivery",
+      "id": "V37",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:113:97\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V38 refuses adapter-authored spec mutation before invoking",
+      "id": "V38",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:114:95\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V39 accepts an initial specification after a durable record cut without another identity",
+      "id": "V39",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:118:48\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V40 cut immediately before start append leaves zero newly pending steps",
+      "id": "V40",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:123:27\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V41 cut immediately after durable start append reconstructs one step without another transition",
+      "id": "V41",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:126:27\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V42 signed fact reference accepts an observation while the specification payload alias refuses",
+      "id": "V42",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:129:24\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts",
+      "fullName": "V43 start re-resolves a newly appended real signed specification conflict",
+      "id": "V43",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: decode: context delivery requires genuine Eight owner registration\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/reachable.test.ts:134:27\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/real-owner-probes.test.ts",
+      "fullName": "Q7 F2 real Six consumed authority prevents driver invocation from its old specification",
+      "id": "Q7",
+      "permittedObsoleteSetup": true,
+      "failure": [
+        "Error: decode: context delivery requires the Eight harness-live-input payload and definition\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:68)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/src/types/internal.ts:38:97)\n    at value (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/fixtures.ts:7:10)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/.astra-review/real-owner-probes.test.ts:31:71\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)\n    at runTest (file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)"
+      ]
+    }
+  ]
+}

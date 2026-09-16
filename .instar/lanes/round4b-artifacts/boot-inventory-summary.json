@@ -1,0 +1,1457 @@
+{
+  "exit": 1,
+  "passed": 15,
+  "failed": 31,
+  "skipped": 185,
+  "total": 231,
+  "cases": [
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/round10-regressions.test.ts",
+      "fullName": "P11-NF-43 P11-NF-49 R10-F1 every required production method must be callable before boot returns a coordinator",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/round10-regressions.test.ts",
+      "fullName": "P11-NF-43 P11-NF-49 R10-F1 V49 complete required production ports still return the active coordinator",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/round12-regressions.test.ts",
+      "fullName": "V70 P11-NF-49 P11-NF-51 a blank platform cannot satisfy the required production delivery witness binding",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/assembly/round12-regressions.test.ts",
+      "fullName": "V71 P11-NF-49 P11-NF-51 a named platform remains an accepted production delivery witness binding",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/assembly-production.test.ts",
+      "fullName": "P10-NF-06 P10-NF-08 P10-NF-40 P10-NF-45 P10-NF-51 P10-NF-52 P10-NF-54 [P10-SEAM-07] durable restart recovers the same production handles after a deterministic mid-admission cut",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts",
+      "fullName": "P11-V27 the production delivery witness refuses before the real platform port has observed that operation",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts:20:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts",
+      "fullName": "P11-V28 the production wrapper refuses a provider result not witnessed for the operation it actually drove",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts:30:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts",
+      "fullName": "P11-V44 R1 rereview5 V36 displays the resolved Part Nine probe rather than a provider-mutated matching-id copy",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts:37:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts",
+      "fullName": "R7-F2 rereview5 V35/V51 refuses an independently witnessed result when the selected stored probe loses its current evidence",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts:47:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts",
+      "fullName": "R7-F2 rereview5 V37 refuses a witnessed callback whose stage is stronger than the admitted adapter stage",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts:59:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts",
+      "fullName": "P11-NF-43 P11-NF-49 the public slice boot plus a fresh operator process revalidate durable signed history rather than serialized status fields",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts:68:19\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts",
+      "fullName": "P11-NF-44 P11-NF-45 P11-NF-46 P11-NF-47 P11-NF-48 P11-NF-50 the durable vertical-slice lifecycle retains its actual history, witness stage, ownership and accounting",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts:84:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts",
+      "fullName": "P11-NF-43 P11-NF-44 P11-NF-47 P11-NF-49 rereview5 V38 a process cut between send and evidence recovers to the same independently witnessed semantic outcome",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts",
+      "fullName": "P11-V49 R3 restart composition retains existing owner schemas and signed owner bodies",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/operator.test.ts",
+      "fullName": "P11-NF-51 P11-NF-52 P11-NF-53 activation remains dark until the real provider/witness and objective phone floor produce executed evidence",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/part-eleven-round17.test.ts",
+      "fullName": "V95/V96 P11-NF-10/11/13 production boot exposes protected only for a complete broker receipt",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/part-eleven-round18.test.ts",
+      "fullName": "V34 e2e: the public production coordinator exposes contradictory broker evidence as unprotected",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/part-eleven-round18.test.ts",
+      "fullName": "V35 e2e: the public production coordinator exposes contradictory broker evidence as unprotected",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/part-eleven-round18.test.ts",
+      "fullName": "V36 e2e: the public production coordinator exposes contradictory broker evidence as unprotected",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/part-eleven-round18.test.ts",
+      "fullName": "V79 P11-NF-33/36/38/42/49 re-resolves the owner generation before dispatch and owns the outage",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/part-eleven-round18.test.ts:36:19\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/part-eleven-round19.test.ts",
+      "fullName": "V77/V78 e2e: production boot never promotes a receipt for a non-current owner base",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V1 clean durable request renders and verified approval appends through intake",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V2 missing request refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V3 wrong kind refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V4 stale digest refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V5 channel attestation refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V6 caller valid refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V7 caller principal refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V8 grant editor refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V9 changed rendering refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V10 stale generation refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V11 long challenge refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V12 tainted request refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V13 concurrent request refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V14 changed scope refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V15 approved request cannot replay",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V16 declined request cannot replay",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V17 base current mismatch refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V18 artifact current mismatch refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V19 expiry boundary accepts at expiry, refuses after",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V20 independent emergency stop accepts despite unavailable request capture",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V21 clean assembly resolves and boots",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V22 wrong signed dependency kind refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V23 incomplete resolvable binding remains partial and refuses boot",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V24 missing local-facts preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V25 missing register preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V26 missing identity-keys preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V27 missing clock preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V28 missing lease preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V29 missing fence preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V30 missing replication-peer preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V31 missing conversation-binding preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V32 missing route preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V33 missing delivery-evidence preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V34 ordinary outage still allows honest limited response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V35 exact standing grant with recurrence accepts",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V36 standing grant without recurrence refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V37 standing grant term not derived from request refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V38 clean pending request remains readable beside conflicted request",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V39 production restart cut makes the exact route dependency unavailable",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V40 production restart recovery preserves clean route admission",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V41 caller-supplied unwitnessed delivery refuses",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts:53:73\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V42 clean delivery uses real assembly and the recorded Part Nine result despite changed callback prose",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts:54:127\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V43 real public restart after external send and before evidence retains one witnessed outcome",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V44 requester witness collision refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V45 effect adapter witness collision refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V46 unavailable required binding refuses clean signed references",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview4-conformance.test.ts",
+      "fullName": "V47 missing production bindings refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview7-conformance.test.ts",
+      "fullName": "R9-F1 V64/V67 live production re-resolution preserves input and owns an outage without dispatch",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview7-conformance.test.ts:13:17\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/rereview7-conformance.test.ts",
+      "fullName": "V71 process kill after durable Part Nine record restarts through real public assembly to the same witnessed result",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round11-conformance.test.ts",
+      "fullName": "V93 P11-NF-43 P11-NF-49 required replay-provider refusal cannot be bypassed by internal rebuilding",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round11-conformance.test.ts:7:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round11-conformance.test.ts",
+      "fullName": "V94 P11-NF-43 P11-NF-49 source-only replay delegating to the real source rebuild keeps the slice accepted",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round11-conformance.test.ts:20:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round12-v56.test.ts",
+      "fullName": "V56 P11-NF-25 P11-NF-28 P11-NF-43 P11-NF-45 P11-NF-49 rebuild evidence without digests or vectors refuses slice acceptance",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round12-v56.test.ts:6:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round12-v57.test.ts",
+      "fullName": "V57 P11-NF-25 P11-NF-28 P11-NF-43 P11-NF-45 P11-NF-49 differing genesis and checkpoint digests refuse slice acceptance",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round12-v57.test.ts:7:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round12-v69.test.ts",
+      "fullName": "V69 P11-NF-25 P11-NF-28 P11-NF-43 P11-NF-45 P11-NF-49 a stale replay vector refuses slice acceptance",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round12-v69.test.ts:6:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round13-conformance.test.ts",
+      "fullName": "V107 P11-NF-25 P11-NF-28 P11-NF-43 P11-NF-45 P11-NF-49 matching fabricated digests cannot prove source reconstruction",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round13-conformance.test.ts:7:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round13-conformance.test.ts",
+      "fullName": "V108 P11-NF-43 P11-NF-47 P11-NF-49 P11-NF-51 a delivery-witness identity changed after boot is refused",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round13-conformance.test.ts:16:13\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round7-witness-posture.test.ts",
+      "fullName": "R7-F2 rereview5 V66/V67 result agrees with Part Nine posture before and after exact evidence removal",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/e2e/round7-witness-posture.test.ts:6:20\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/assembly-production.test.ts",
+      "fullName": "P10-NF-03 P10-NF-04 P10-NF-40 P10-NF-45 P10-NF-51 P10-NF-52 [P10-SEAM-04] the full public assembly boot returns one coordinator with every owner handle",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/assembly-production.test.ts",
+      "fullName": "P10-NF-04 P10-NF-05 P10-NF-52 P10-NF-53 [P10-SEAM-05] missing, wrong-kind, or live-unavailable required production bindings refuse",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/assembly-production.test.ts",
+      "fullName": "P10-NF-21 P10-NF-45 P10-NF-53 [P10-SEAM-06] boot rechecks actual witness separation instead of trusting manifest identities",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/part-eleven-round18.test.ts",
+      "fullName": "V34 integration: current Part Nine evidence cannot protect a contradictory broker receipt",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/part-eleven-round18.test.ts",
+      "fullName": "V35 integration: current Part Nine evidence cannot protect a contradictory broker receipt",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/part-eleven-round18.test.ts",
+      "fullName": "V36 integration: current Part Nine evidence cannot protect a contradictory broker receipt",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/part-eleven-round18.test.ts",
+      "fullName": "V77 P11-NF-33/36/38/42/49 compares the register handle with the owner current generation",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/part-eleven-round18.test.ts",
+      "fullName": "V78 P11-NF-33/36/38/42/49 compares the register handle with the owner current generation",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V1 clean surface uses durable rendering and Part Four disposition",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V2 missing request refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V3 wrong kind refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V4 stale digest refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V5 channel attestation refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V6 valid flag refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V7 caller principal refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V8 free form grant refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V9 wrong rendering refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V10 stale generation refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V11 excessive challenge lifetime refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V12 tainted capture refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V13 conflicting request refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V14 scope mismatch refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V15 approve accepted once then replay refused",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V16 decline accepted once then replay refused",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V17 base mismatch refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V18 artifact mismatch refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V19 exact expiry accepts; one tick later refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V20 verified stop accepts despite unavailable request evidence",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V21 clean assembly boots 24 complete references",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V22 route declared as clock is refused by fixed role kind",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V23 resolvable partial stays visible and refuses boot",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V24 missing surface method render refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V24 missing surface method pending refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V24 missing surface method challenge refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V24 missing surface method confirm refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V24 missing surface method binding refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V24 missing surface method protection refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V24 missing surface method stopChallenge refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V24 missing surface method stop refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V25 witness identity collision principal:requester refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V25 witness identity collision surface:phone refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V25 witness identity collision adapter:telegram refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V26 missing local-facts retains input and exposure, prevents response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V26 missing register retains input and exposure, prevents response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V26 missing identity-keys retains input and exposure, prevents response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V26 missing clock retains input and exposure, prevents response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V26 missing lease retains input and exposure, prevents response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V26 missing fence retains input and exposure, prevents response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V26 missing replication-peer retains input and exposure, prevents response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V26 missing conversation-binding retains input and exposure, prevents response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V26 missing route retains input and exposure, prevents response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V26 missing delivery-evidence retains input and exposure, prevents response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V27 ordinary outage admits honest limited response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V28 superseded request refuses; clean successor remains visible",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V29 ordinary receive and recover accept around verified approval",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V30 valid historical approval does not block ordinary input after current base changes",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V31 valid historical approval does not block ordinary input after expiry",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V32 ordinary input after base change accepts without an approval in history",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V33 ordinary recovery after recorded approval and base change stays usable",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V34 recorded approval and artifact change must not block ordinary input",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V39 complete cold warm replay",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V40 divergent digest",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V41 omitted lineage",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V42 failure sample",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V43 memory over budget",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V44 duration over budget",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V45 generation mismatch",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V46 population mismatch",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V47 recorded approval history allows ordinary expiry maintenance after base change",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V48 boot refuses a missing production binding set",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V49 boot refuses unavailable peer; restored peer accepts",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "V50 missing signed route reference refuses boot",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview5-conformance.test.ts",
+      "fullName": "reviewer subject control: a correctly signed changed act digest still refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V1 clean verified approval resolves and appends one owner disposition",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V2 missing request",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V3 wrong-kind request",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V4 stale digest",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V5 channel-attested challenge",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V6 caller valid true",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V7 caller principal",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V8 caller grant fields",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V9 altered signed rendering",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V10 stale generation",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V11 future challenge",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V12 expired challenge",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V13 excess challenge lifetime",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V14 wrong scope with otherwise signed act refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V15 missing request evidence refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V16 concurrent request refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V17 replay on fresh intake port refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V18 clean decline accepted once",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V19 current currentBase mismatch refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V20 current artifact mismatch refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V21 independently signed wrong audience refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V22 independently signed wrong operator refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V23 independently signed wrong requestedBy refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V24 independently signed wrong action refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V25 same challenge cannot dispose a different request",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V26 surface renders durable system fields and immutable requester region",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V27 surface exact clean confirmation delegates to Part Four",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V28 surface changed challenge refuses before disposition",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V29 independent stop accepts during concurrent binding conflict",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V30 ordinary receive recover expire and stop remain usable after historical approval and base advance",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V31 legacy schema configuration still constructs and admits requester messages",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V32 requester protocol refuses authority-shaped payloads and accepts clean neighbor",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V33 well-formed assembly resolves every binding",
+      "status": "passed",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V34 wrong-kind route reference refuses even when caller expects that wrong kind",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V35 missing signed route refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V36 missing verifier operation refuses",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V37 partial resolvable binding retained without boot promotion",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V38 delivery witness distinct from requesterIdentity",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V39 delivery witness distinct from surface",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V40 delivery witness distinct from effectAdapterIdentity",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V41 posture missing witness renders unprotected",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V42 local-facts absence preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V43 register absence preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V44 identity-keys absence preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V45 clock absence preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V46 lease absence preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V47 fence absence preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V48 replication-peer absence preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V49 conversation-binding absence preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V50 route absence preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V51 delivery-evidence absence preserves owned outage and refuses response",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V52 ordinary dependency loss permits limited response with complete minimal prerequisites",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V53 six informational projections declare every source kind",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V54 complete measured cold/warm samples accepted",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V55 warm-only blocks replay admission",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V56 failed sample blocks replay admission",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V57 changed canonical bytes blocks replay admission",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V58 memory over budget blocks replay admission",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V59 real composition slice accepts exact current independent evidence",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts:62:99\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V60 missing independent delivery evidence refuses displayed success",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts:63:199\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V61 stale independent delivery evidence refuses displayed success",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts:63:199\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V62 wrong-stage independent delivery evidence refuses displayed success",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts:63:199\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V63 wrong-operation independent delivery evidence refuses displayed success",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts:63:199\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V64 R9-F1 live dependency that changes to current false after boot prevents slice dispatch",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts:64:120\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V65 R9-F2 assembly refuses missing required verification posture operation",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V66 boot refuses stale route handle as positive refusal control for V64",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V67 R9-F1 signed required route removed after boot prevents dispatch",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts:67:98\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V68 R9-F4 broker unavailable returns explicit unprotected status while stop stays available",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V69 R9-F3 Part One and Four accept independently approved request from channel-attested requester and surface renders it",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/rereview7-conformance.test.ts",
+      "fullName": "V70 empty present requester prose remains accepted",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "rereview6 V78 missing durable route fact refuses production boot",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "rereview6 V79 unavailable challenge verifier method refuses production boot",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F2 verification current-clock wiring is mandatory at production boot",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "rereview6 V80 fresh independently verified stop remains usable during a binding conflict",
+      "status": "skipped",
+      "failure": []
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F2 rereview6 V81 fresh current delivery evidence is accepted",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at delivery (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts:53:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts:73:77\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F2 rereview6 V82 missing current delivery evidence is refused",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at delivery (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts:53:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts:74:78\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F2 rereview6 V83 changed delivery stage is refused",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at delivery (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts:53:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts:75:67\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F2 rereview6 V84 changed operation identity is refused",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at delivery (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts:53:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts:76:71\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F2 rereview6 V85 stale evidence is refused at Part Nine current time",
+      "status": "failed",
+      "failure": [
+        "Error: decode: production boot requires genuine graph/native harness/runtime/store/scope provenance\n    at Object.Refused (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:84)\n    at consumeResult (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/dist/types/internal.js:47:99)\n    at take (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:47:39)\n    at bootProductionSliceAssembly (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/scripts/slice-assembly.mjs:79:23)\n    at productionOperatorSlice (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/operator/production-slice-fixture.ts:56:13)\n    at delivery (/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts:53:13)\n    at /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts:77:85\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20"
+      ]
+    },
+    {
+      "file": "/Users/dabombstudio/.instar/agents/echo/.worktrees/seam-production-grounding/tests/integration/round8-conformance.test.ts",
+      "fullName": "R8-F3 rereview6 V86 clean durable reboot uses its recorded current clock and retains one witnessed reply",
+      "status": "skipped",
+      "failure": []
+    }
+  ]
+}

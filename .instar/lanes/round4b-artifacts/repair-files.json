@@ -1,0 +1,255 @@
+{
+  "base": "0a6d32606e12eae40779612ed6346fad73ae0fe1",
+  "files": [
+    {
+      "path": "scripts/check-assembly-contracts.mjs",
+      "tracked": true,
+      "sha256": "0044226f56650c5eb2017e2c3b2a69390e6f5b6958eb4406940d7b7e4706f740"
+    },
+    {
+      "path": "scripts/check-p5-contract-map.mjs",
+      "tracked": true,
+      "sha256": "e6d6259b133ae746214aeed95e151142fa81ecc6fa5bb7bd52b4ea69917bba89"
+    },
+    {
+      "path": "src/assembly/context-delivery.ts",
+      "tracked": true,
+      "sha256": "dbf22605a3d67056288fc470f94a31b8ded6da3a43bd27a04e178bebce2a8060"
+    },
+    {
+      "path": "src/assembly/contracts.ts",
+      "tracked": true,
+      "sha256": "1cfa0030662346d4a031c88e521f8438c83699ad32655ee222325bd7b2cc6feb"
+    },
+    {
+      "path": "src/assembly/grounding-capability.ts",
+      "tracked": true,
+      "sha256": "1d26b5d45c8ecdeced295109f5373ec63fa6c60621ba7994e6e6aaba3b12db18"
+    },
+    {
+      "path": "src/assembly/harness.ts",
+      "tracked": true,
+      "sha256": "ac4343cfee2e3d3b487acd4e4d3e4fc50eb47aba57b64a42761f75d7e0901f8f"
+    },
+    {
+      "path": "src/assembly/production.ts",
+      "tracked": true,
+      "sha256": "6f395a205ef4838e6955240ea25e429a0ee16132a20e9d72904c24ed6685d6fb"
+    },
+    {
+      "path": "src/assembly/records.ts",
+      "tracked": true,
+      "sha256": "835d7db6c9ba3b8d5244c4cc92dbb20265d625ff92430bcb31b5bc55508c93c8"
+    },
+    {
+      "path": "src/assembly/service.ts",
+      "tracked": true,
+      "sha256": "e557e2b047fb8f3b3d7ccbd6935baf19a3583bf1628e387b5d2616232e311a63"
+    },
+    {
+      "path": "src/effects/contracts.ts",
+      "tracked": true,
+      "sha256": "542aec384858417d56c288d46a67852ad8a146f9b93f4adecdb324549fc27313"
+    },
+    {
+      "path": "src/effects/doorway.ts",
+      "tracked": true,
+      "sha256": "549f258b8d68a3f1122fd204d4f64ecabe3fd90161c2d48bf29ec7d27a3dc838"
+    },
+    {
+      "path": "src/effects/index.ts",
+      "tracked": true,
+      "sha256": "5ccd3343c40e101cc7266a41fadba1978a48c3d2cb832a8c4af150115282faec"
+    },
+    {
+      "path": "src/effects/records.ts",
+      "tracked": true,
+      "sha256": "2fd44015bce02a720c7c4c3fc211a3918af59c19d9dde7f49d97eee1e2fd142d"
+    },
+    {
+      "path": "src/rungraph/service.ts",
+      "tracked": true,
+      "sha256": "4bc203e344400b638a5131e8f37892d0dc62e211413ad2703ab55e6b74bebba4"
+    },
+    {
+      "path": "src/rungraph/types.ts",
+      "tracked": true,
+      "sha256": "38fb131c18a889afe1c38654726c0bc43ce1c6906fc4ad589da4e7f1ea65e845"
+    },
+    {
+      "path": "tests/assembly/production-grounding.test.ts",
+      "tracked": true,
+      "sha256": "3d85d52e0eb6793807d58dac47377bab971c021cf15f532ff568be8250a97507"
+    },
+    {
+      "path": "tests/assembly/round10-regressions.test.ts",
+      "tracked": true,
+      "sha256": "74548e6d7fbc2eaaa01a786330dceb773d29f87f7687999501fcfc175f82d605"
+    },
+    {
+      "path": "tests/assembly/round12-regressions.test.ts",
+      "tracked": true,
+      "sha256": "6d0619c8c1340035ae6149101b19e5adaa012760688ec86e41560b195a037dc9"
+    },
+    {
+      "path": "tests/e2e/assembly-production.test.ts",
+      "tracked": true,
+      "sha256": "8024acd9e76019a03e62763e4c89deca8cddfca5dd26cab68065f100a84d2415"
+    },
+    {
+      "path": "tests/e2e/part-eleven-round17.test.ts",
+      "tracked": true,
+      "sha256": "f6d809afe27f4055f8f23e19c2415f91f592af2ef04faa022d949789cc7553ec"
+    },
+    {
+      "path": "tests/e2e/part-eleven-round18.test.ts",
+      "tracked": true,
+      "sha256": "dd512cf6305f4ff83eccc4e8959569a6ef0e95fe89ceebf924e3701d682beeb6"
+    },
+    {
+      "path": "tests/e2e/part-eleven-round19.test.ts",
+      "tracked": true,
+      "sha256": "825efa1c97a4df49ea51adc4bfba376aa65645d3610a4b469a17f0139465a9c2"
+    },
+    {
+      "path": "tests/e2e/production-grounding.test.ts",
+      "tracked": true,
+      "sha256": "d6ee95070d10a5ad933aa8ced9e986b51691d5c145ad5960f93a3be48d97a8cd"
+    },
+    {
+      "path": "tests/e2e/rereview4-conformance.test.ts",
+      "tracked": true,
+      "sha256": "72c467fca047cc7699260f90a22afea32c7aa584e3b437cce0781497e9626271"
+    },
+    {
+      "path": "tests/integration/assembly-production.test.ts",
+      "tracked": true,
+      "sha256": "9c5eb4ec17f543269e57f97cb5a35fb0b574840c2594d48fb2de5f868a4105d1"
+    },
+    {
+      "path": "tests/integration/part-eleven-round18.test.ts",
+      "tracked": true,
+      "sha256": "7a24ba56814703fea6ca07b5a6423a83f5adfff71baf81cb82b0db289fa0bdb5"
+    },
+    {
+      "path": "tests/integration/production-grounding.test.ts",
+      "tracked": true,
+      "sha256": "c69183b24d44b60017ffad318f334034d01cb28e836b134ca29f08388aa9c3bf"
+    },
+    {
+      "path": "tests/integration/rereview5-conformance.test.ts",
+      "tracked": true,
+      "sha256": "0cb549f2939b8426a01b89be3b34aa77c43a0bd00c75951ce4f5dd4622a7dec5"
+    },
+    {
+      "path": "tests/integration/rereview7-conformance.test.ts",
+      "tracked": true,
+      "sha256": "8753e8f47d34e2fa1744d0568a556d9973f1a67bcc376b4be017fa92ebdd2cf4"
+    },
+    {
+      "path": "tests/operator/production-slice-fixture.ts",
+      "tracked": true,
+      "sha256": "2bfc8b8388a4091f5ac1772178f12b1765cef2b01ee29840cc6ff712940219cf"
+    },
+    {
+      "path": "tests/operator/round15-regressions.test.ts",
+      "tracked": true,
+      "sha256": "f5818e7a68e5783e6de987380d102f67f12a22242d4b0c2da9ff2805708b6cbd"
+    },
+    {
+      "path": "tests/rungraph/astra-production-grounding-fixture.ts",
+      "tracked": true,
+      "sha256": "651a4704fddef1b6bc6fcd7ac09305c4931a0fc78b2aaaab4188ef680b4cee30"
+    },
+    {
+      "path": "tests/rungraph/production-grounding-review.test.ts",
+      "tracked": true,
+      "sha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3"
+    },
+    {
+      "path": "tests/rungraph/production-grounding-round3.test.ts",
+      "tracked": true,
+      "sha256": "6f7297b2c22373d64c2a780378ff7960ef62c210cc458aa05ca19f4c3915c322"
+    },
+    {
+      "path": "tests/rungraph/production-grounding-scope.test.ts",
+      "tracked": true,
+      "sha256": "1ef672d41b044e20ca2c2e3bbc0a6c8a10f4ee1baeb1f31fa46752b30255125f"
+    },
+    {
+      "path": "tests/assembly/genuine-production-fixture.ts",
+      "tracked": false,
+      "sha256": "d5508e2258f0476636e62aa31bb8ef05d3237e8714c74b1dda535997ff6fcd6c"
+    },
+    {
+      "path": "tests/assembly/live-input-owner-fixture.ts",
+      "tracked": false,
+      "sha256": "e84ce2f5d82c5ef08272c5e0e36396b1e8c09e441c6245ce1d63c5d5f73be04d"
+    },
+    {
+      "path": "tests/assembly/production-grounding-checker-round4b.test.ts",
+      "tracked": false,
+      "sha256": "f4e914e9036087786bbd47d8c4505430360eda1a9bd2a83ad4d2fdbfed98543f"
+    },
+    {
+      "path": "tests/assembly/production-grounding-evidence.mjs",
+      "tracked": false,
+      "sha256": "cebebb76e95b6d708d673bf67f6bd993fe972704580289951a227c049bb2e2df"
+    },
+    {
+      "path": "tests/assembly/production-grounding-inventory.json",
+      "tracked": false,
+      "sha256": "e3aa38faba8d09b4abe3a4279b60e7fa6662d78a8ec47ecd80aa6e68534a186c"
+    },
+    {
+      "path": "tests/assembly/production-grounding-round4b.test.ts",
+      "tracked": false,
+      "sha256": "339ddc97f195521a8ec1f2b0754c6bd91019e59cb7f6fe453d4635762267b121"
+    },
+    {
+      "path": "tests/assembly/real-context-delivery-fixture.ts",
+      "tracked": false,
+      "sha256": "ad3210eaea6959b950c106c39258acfe486a4a75fa9118b04d3ecc72bb7f5108"
+    },
+    {
+      "path": "tests/integration/production-grounding-native.test.ts",
+      "tracked": false,
+      "sha256": "dd6d72d3da950a9cf215183fa7a9170b06be3dfca275515a16f30716e5e905bd"
+    },
+    {
+      "path": "tests/rungraph/astra-rereview-ten-fixture.ts",
+      "tracked": false,
+      "sha256": "de096f8750bb47c247467ae76c2f0a70afbe0da508387300b975284d19ff18ab"
+    },
+    {
+      "path": "tests/rungraph/counterfeit-context-fixture.ts",
+      "tracked": false,
+      "sha256": "2d80e70be2ff1ab10cf712fc32bf1dce8f3c4f2ad9e46a236421c974630bb8c2"
+    },
+    {
+      "path": "tests/rungraph/main-assembly-records.ts",
+      "tracked": false,
+      "sha256": "49b1a8a22146e4c9c7c3718650ec95558e1bc76749021b9def17823dd38b98bf"
+    },
+    {
+      "path": "tests/rungraph/main-rungraph-records.ts",
+      "tracked": false,
+      "sha256": "4332967d2dbde4a71315dc0236c378a8c506955ebb9fd4f4e2170cc64e57798f"
+    },
+    {
+      "path": "tests/rungraph/production-grounding-adjudication-owner-fixture.ts",
+      "tracked": false,
+      "sha256": "f5f5f0172a660f65eb0a3b083b723c927da4bf1cfa7e01c560281e156019ba01"
+    },
+    {
+      "path": "tests/rungraph/production-grounding-adjudication.test.ts",
+      "tracked": false,
+      "sha256": "1acce235b4238a3148d990715c97dcb3f0665be359bb3f60ca8beac26ab073cc"
+    },
+    {
+      "path": "tests/rungraph/production-grounding-boundary.test.ts",
+      "tracked": false,
+      "sha256": "2816732e92b999fbe9337c8a44c65bc3cd24a1318944319ec11a3bfb614f991c"
+    }
+  ]
+}

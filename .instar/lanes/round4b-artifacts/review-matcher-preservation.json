@@ -1,0 +1,474 @@
+[
+  {
+    "name": "V1 accepts a signed current initial specification",
+    "originalMatchers": [
+      "expect(result(f.runtime.recordContextDelivery(f.spec())).accepted).toBe(true)"
+    ],
+    "landedMatchers": [
+      "expect(result(f.runtime.recordContextDelivery(f.spec())).accepted).toBe(true)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V2 accepts valid spec delivery through the real recorder",
+    "originalMatchers": [
+      "expect(actual,JSON.stringify(actual)).toMatchObject({accepted:true})",
+      "expect(f.calls()).toBe(1)"
+    ],
+    "landedMatchers": [
+      "expect(actual,JSON.stringify(actual)).toMatchObject({accepted:true})",
+      "expect(f.calls()).toBe(1)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V3 refuses a second invocation after acceptance append fails",
+    "originalMatchers": [
+      "expect(f.calls()).toBe(1)"
+    ],
+    "landedMatchers": [
+      "expect(f.calls()).toBe(1)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V4 refuses ordinary evidence substituted for admitted operation and one-use claim",
+    "originalMatchers": [
+      "expect(result(f.runtime.recordContextDelivery({...f.spec(),operation:ordinary.id,claim:ordinary.id}))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.runtime.recordContextDelivery({...f.spec(),operation:ordinary.id,claim:ordinary.id}))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V5 PG-P5-INVOKED-READ signed-history graph control accepts ground then start and zero pending before start",
+    "originalMatchers": [
+      "expect(value(f.graph.read(f.id)).pending).toHaveLength(0)",
+      "expect(value(f.graph.transition(f.start(f.ready,g))).pending).toHaveLength(1)"
+    ],
+    "landedMatchers": [
+      "expect(value(f.graph.read(f.id)).pending).toHaveLength(0)",
+      "expect(value(f.graph.transition(f.start(f.ready,g))).pending).toHaveLength(1)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V6 refuses pre-completed grounding even within the same clock tick",
+    "originalMatchers": [
+      "expect(result(graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V7 refuses future-reported consumption",
+    "originalMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V8 PG-P5-SOURCE-REFUSALS refuses input digest substitution",
+    "originalMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V9 refuses unresolvable briefing-reference substitution",
+    "originalMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V10 refuses an ordinary note as context-consumption boundary proof",
+    "originalMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V11 historical start remains readable after its observation freshness expires",
+    "originalMatchers": [
+      "expect(actual,JSON.stringify(actual)).toMatchObject({accepted:true})"
+    ],
+    "landedMatchers": [
+      "expect(actual,JSON.stringify(actual)).toMatchObject({accepted:true})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V12 refuses stale context at actual start",
+    "originalMatchers": [
+      "expect(result(f.graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V13 refuses observation step differing from candidate",
+    "originalMatchers": [
+      "expect(result(f.graph.transition({...t,step:{...t.step,id:'wrong-step'}}))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.graph.transition({...t,step:{...t.step,id:'wrong-step'}}))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V14 refuses newer unaccounted inbound at start",
+    "originalMatchers": [
+      "expect(result(f.graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V15 refuses omitted message manifest row",
+    "originalMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V16 refuses duplicate manifest row",
+    "originalMatchers": [
+      "expect(()=>value(f.graph.ground(f.id,'w','h','start',f.lease))).toThrow()"
+    ],
+    "landedMatchers": [
+      "expect(()=>value(f.graph.ground(f.id,'w','h','start',f.lease))).toThrow()"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V17 refuses wrong-run delivery",
+    "originalMatchers": [
+      "expect(()=>value(f.graph.ground(f.id,'w','h','start',f.lease))).toThrow()"
+    ],
+    "landedMatchers": [
+      "expect(()=>value(f.graph.ground(f.id,'w','h','start',f.lease))).toThrow()"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V18 refuses context delivery from another incarnation",
+    "originalMatchers": [
+      "expect(()=>value(f.graph.ground(f.id,'w','h','start',f.lease))).toThrow()"
+    ],
+    "landedMatchers": [
+      "expect(()=>value(f.graph.ground(f.id,'w','h','start',f.lease))).toThrow()"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V19 refuses production flat receipt fallback",
+    "originalMatchers": [
+      "expect(actual).toMatchObject({accepted:false})",
+      "expect(actual.detail).toContain('exactowner-decodedHarnessObservationfactrequired')"
+    ],
+    "landedMatchers": [
+      "expect(actual).toMatchObject({accepted:false})",
+      "expect(actual.detail).toContain('exactowner-decodedHarnessObservationfactrequired')"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V20 cut after grounding reconstructs zero pending steps with a fresh store",
+    "originalMatchers": [
+      "expect(value(graph.read(f.id)).pending).toHaveLength(0)"
+    ],
+    "landedMatchers": [
+      "expect(value(graph.read(f.id)).pending).toHaveLength(0)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V21 refuses predecessor skip after a second delivery",
+    "originalMatchers": [
+      "expect(result(f.runtime.recordContextDelivery(f.spec('live-input',op3.id,af.id)))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.runtime.recordContextDelivery(f.spec('live-input',op3.id,af.id)))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V22 accepts unchanged incarnation for a second live-input specification",
+    "originalMatchers": [
+      "expect(b.incarnation).toBe(a.incarnation)",
+      "expect(b.id).not.toBe(a.id)"
+    ],
+    "landedMatchers": [
+      "expect(b.incarnation).toBe(a.incarnation)",
+      "expect(b.id).not.toBe(a.id)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V23 native reader accepts a real signed launch and context-delivery record",
+    "originalMatchers": [
+      "expect(actual,JSON.stringify(actual)).toMatchObject({accepted:true})",
+      "expect(events).toEqual(['clock','sample'])",
+      "expect(f.calls()).toBe(1)"
+    ],
+    "landedMatchers": [
+      "expect(actual,JSON.stringify(actual)).toMatchObject({accepted:true})",
+      "expect(events).toEqual(['clock','sample'])",
+      "expect(f.calls()).toBe(1)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V24 refuses copied body paired with another signed observation envelope at start",
+    "originalMatchers": [
+      "expect(result(graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V25-%s refuses changed observation evidence at start",
+    "originalMatchers": [
+      "expect(result(graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V26 accepts fresh current execution context bound to delivery rather than old launch",
+    "originalMatchers": [
+      "expect(result(graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:true})"
+    ],
+    "landedMatchers": [
+      "expect(result(graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:true})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V27 initial and second distinct inbound can both start on one incarnation",
+    "originalMatchers": [
+      "expect(actual.secondRunning.state).toBe('running')",
+      "expect(actual.last.spec.incarnation).toBe(actual.first.spec.incarnation)"
+    ],
+    "landedMatchers": [
+      "expect(actual.secondRunning.state).toBe('running')",
+      "expect(actual.last.spec.incarnation).toBe(actual.first.spec.incarnation)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V30 assembly contract map refuses a report with only token titles and no named refusal assertions",
+    "originalMatchers": [
+      "expect(()=>checkProductionGroundingAssemblyEvidence(report)).toThrow()"
+    ],
+    "landedMatchers": [
+      "expect(()=>checkProductionGroundingAssemblyEvidence(report)).toThrow()"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V31 production boot refuses a real graph that accepts only flat compatibility receipts",
+    "originalMatchers": [
+      "expect(result(bootProductionAssembly({...f.composition,production},installed.manifest.id,installed.binding.scope))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(bootProductionAssembly({...f.composition,production},installed.manifest.id,installed.binding.scope))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V32 refuses retimestamped pre-completed grounding against a previously signed future receipt",
+    "originalMatchers": [
+      "expect(result(graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V33 refuses stale generation in the delivery specification",
+    "originalMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V34 refuses non-consumed phase",
+    "originalMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V35 refuses unresolvable boundary evidence",
+    "originalMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V36 refuses equal delivery identity with differing content",
+    "originalMatchers": [
+      "expect(result(f.runtime.recordContextDelivery({...first,inputDigest:digest('changed')}))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.runtime.recordContextDelivery({...first,inputDigest:digest('changed')}))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V37 refuses changed live process immediately before delivery",
+    "originalMatchers": [
+      "expect(result(driver.deliver(spec,{operation:spec.operation,claim:spec.claim}))).toMatchObject({accepted:false})",
+      "expect(calls).toBe(0)"
+    ],
+    "landedMatchers": [
+      "expect(result(driver.deliver(spec,{operation:spec.operation,claim:spec.claim}))).toMatchObject({accepted:false})",
+      "expect(calls).toBe(0)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V38 refuses adapter-authored spec mutation before invoking",
+    "originalMatchers": [
+      "expect(result(f.driver.deliver({...spec,inputDigest:digest('adapter-altered')},{operation:spec.operation,claim:spec.claim}))).toMatchObject({accepted:false})",
+      "expect(f.calls()).toBe(0)"
+    ],
+    "landedMatchers": [
+      "expect(result(f.driver.deliver({...spec,inputDigest:digest('adapter-altered')},{operation:spec.operation,claim:spec.claim}))).toMatchObject({accepted:false})",
+      "expect(f.calls()).toBe(0)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V39 accepts an initial specification after a durable record cut without another identity",
+    "originalMatchers": [
+      "expect(value(runtime.recordContextDelivery(candidate))).toEqual(s)",
+      "expect(value(runtime.inspect()).filter(r=>r.record.id===s.id)).toHaveLength(1)"
+    ],
+    "landedMatchers": [
+      "expect(value(runtime.recordContextDelivery(candidate))).toEqual(s)",
+      "expect(value(runtime.inspect()).filter(r=>r.record.id===s.id)).toHaveLength(1)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V40 cut immediately before start append leaves zero newly pending steps",
+    "originalMatchers": [
+      "expect(result(graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})",
+      "expect(value(value(createRunGraph(f.deps)).read(f.id)).pending).toHaveLength(0)"
+    ],
+    "landedMatchers": [
+      "expect(result(graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})",
+      "expect(value(value(createRunGraph(f.deps)).read(f.id)).pending).toHaveLength(0)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V41 cut immediately after durable start append reconstructs one step without another transition",
+    "originalMatchers": [
+      "expect(result(graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})",
+      "expect(value(restarted.read(f.id)).pending).toHaveLength(1)",
+      "expect(value(restarted.transition(f.start(f.ready,g))).pending).toHaveLength(1)",
+      "expect(value(f.store.read()).filter(r=>r.kind==='run-transition')).toHaveLength(1)"
+    ],
+    "landedMatchers": [
+      "expect(result(graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})",
+      "expect(value(restarted.read(f.id)).pending).toHaveLength(1)",
+      "expect(value(restarted.transition(f.start(f.ready,g))).pending).toHaveLength(1)",
+      "expect(value(f.store.read()).filter(r=>r.kind==='run-transition')).toHaveLength(1)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V42 signed fact reference accepts an observation while the specification payload alias refuses",
+    "originalMatchers": [
+      "expect(result(f.runtime.record('HarnessObservation',{...o,contextDelivery:s.id}))).toMatchObject({accepted:false})",
+      "expect(result(f.runtime.record('HarnessObservation',o))).toMatchObject({accepted:true})"
+    ],
+    "landedMatchers": [
+      "expect(result(f.runtime.record('HarnessObservation',{...o,contextDelivery:s.id}))).toMatchObject({accepted:false})",
+      "expect(result(f.runtime.record('HarnessObservation',o))).toMatchObject({accepted:true})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V43 start re-resolves a newly appended real signed specification conflict",
+    "originalMatchers": [
+      "expect(value(f.runtime.inspectCurrent()).filter(r=>r.record.type==='ContextDeliverySpecification').every(r=>r.conflicts.length>0)).toBe(true)",
+      "expect(result(f.graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})"
+    ],
+    "landedMatchers": [
+      "expect(value(f.runtime.inspectCurrent()).filter(r=>r.record.type==='ContextDeliverySpecification').every(r=>r.conflicts.length>0)).toBe(true)",
+      "expect(result(f.graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false})"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V28 legacy graph decoder outputs, canonical bytes and root request keys equal main",
+    "originalMatchers": [
+      "expect(JSON.stringify(b)).toBe(JSON.stringify(a))",
+      "expect(value(canonical(b.value))).toEqual(value(canonical(a.value)))",
+      "expect(head.runIdFor(ref(f.opening))).toBe(main.runIdFor(ref(f.opening)))",
+      "expect(count).toBeGreaterThan(100)"
+    ],
+    "landedMatchers": [
+      "expect(JSON.stringify(b)).toBe(JSON.stringify(a))",
+      "expect(value(canonical(b.value))).toEqual(value(canonical(a.value)))",
+      "expect(head.runIdFor(ref(f.opening))).toBe(main.runIdFor(ref(f.opening)))",
+      "expect(count).toBeGreaterThan(100)"
+    ],
+    "unchanged": true
+  },
+  {
+    "name": "V29 every original assembly key, digest and decoded output equals main",
+    "originalMatchers": [
+      "expect(JSON.stringify(b)).toBe(JSON.stringify(a))",
+      "expect(head.assemblyIdentity(b.value)).toEqual(main.assemblyIdentity(a.value))",
+      "expect(head.assemblyLogicalKey(b.value)).toBe(main.assemblyLogicalKey(a.value))"
+    ],
+    "landedMatchers": [
+      "expect(JSON.stringify(b)).toBe(JSON.stringify(a))",
+      "expect(head.assemblyIdentity(b.value)).toEqual(main.assemblyIdentity(a.value))",
+      "expect(head.assemblyLogicalKey(b.value)).toBe(main.assemblyLogicalKey(a.value))"
+    ],
+    "unchanged": true
+  }
+]

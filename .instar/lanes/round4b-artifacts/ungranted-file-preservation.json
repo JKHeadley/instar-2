@@ -1,0 +1,4 @@
+{
+  "scripts/slice-assembly.mjs": true,
+  "tests/integration/round8-conformance.test.ts": true
+}
