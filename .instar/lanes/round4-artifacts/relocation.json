@@ -1,0 +1,158 @@
+[
+  {
+    "file": "real-owner-probes.test.ts",
+    "original": "daee964dc7a24ea0f600db9619a68b62c1054e68f9a9ca7dd1c65569ca0ef29f",
+    "relocated": "daee964dc7a24ea0f600db9619a68b62c1054e68f9a9ca7dd1c65569ca0ef29f",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "main-assembly-records.ts",
+    "original": "4b82a5322e1e5ee9dc5d8f02b876c44e6d9764e70823afd6f7f198a8395428fe",
+    "relocated": "3fc4349fdee6133264bb4c5b7af96e025a49b8719954484f10d9cd2f2131ca89",
+    "only_change": "absolute checkout prefix"
+  },
+  {
+    "file": "boundary-probes.test.ts",
+    "original": "252126cdb322a250f161a0714d12a7a0b5f93c4bd7a4972e5a8f7e4680ab9eb0",
+    "relocated": "252126cdb322a250f161a0714d12a7a0b5f93c4bd7a4972e5a8f7e4680ab9eb0",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "reachable-neighbors.test.ts",
+    "original": "665b5b11eb2d08ecd971ec282d714e4c7613cac6d89db811036e6bf42ff8fb05",
+    "relocated": "665b5b11eb2d08ecd971ec282d714e4c7613cac6d89db811036e6bf42ff8fb05",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "native-positive.test.ts",
+    "original": "f90e7d5d564a0226c05c3cf5a282493b78c5216e2d26cc03baf7e9e1cacb9365",
+    "relocated": "f90e7d5d564a0226c05c3cf5a282493b78c5216e2d26cc03baf7e9e1cacb9365",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "valid-fixture.ts",
+    "original": "304b3b4bcb8a781106778bed7814a4674e347078991332ffe9d3076d0ead9d44",
+    "relocated": "feb408387fcdd0bb10c55752675c7ab1d17f1ee1cb078c1a1b16d0973243a904",
+    "only_change": "absolute checkout prefix"
+  },
+  {
+    "file": "real-owner-fixture.ts",
+    "original": "7ab99a0dffb58cd6eb7b1d4f1c2e1d3accbcf3cb7c2013d34d8e427dc502c62f",
+    "relocated": "f5a946ba4217e29b254e2a439ff3e86fa5e4ce86d3aaed06489cf307b8f675e1",
+    "only_change": "absolute checkout prefix"
+  },
+  {
+    "file": "reachable-neighbors.config.mjs",
+    "original": "e2784b082a7400e81d639383e2fe4412715729fd41f1ca21434e23537490043c",
+    "relocated": "e2784b082a7400e81d639383e2fe4412715729fd41f1ca21434e23537490043c",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "reachable.config.mjs",
+    "original": "8ae6ecc3c3995beeffc4d095e54570b4c89341e2bc0256f33c57d5c575f19b77",
+    "relocated": "8ae6ecc3c3995beeffc4d095e54570b4c89341e2bc0256f33c57d5c575f19b77",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "reachable.test.ts",
+    "original": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
+    "relocated": "4a0490080b589d98ba6c5fc812cd5f40999e567b967bdf9b21b5ad72e95ca84e",
+    "only_change": "absolute checkout prefix"
+  },
+  {
+    "file": "real-owner-probes.config.mjs",
+    "original": "24d1e56df2a19773f547765f979f4628ab5c06db1a8d845504b2bdeb68712245",
+    "relocated": "24d1e56df2a19773f547765f979f4628ab5c06db1a8d845504b2bdeb68712245",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "adapted.config.mjs",
+    "original": "4ac7a9b8d4b67a3977974cff81f4f64c373423ffa9303c036e93e35381c527b6",
+    "relocated": "4ac7a9b8d4b67a3977974cff81f4f64c373423ffa9303c036e93e35381c527b6",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "adapted-conformance.test.ts",
+    "original": "eac7f416504f8e37c1ba7d1ba9683f3cba360c3c55938a86f65628d777027ae4",
+    "relocated": "e6f1de37ac72f724489301243779f8612e1423556f6feb8ef3ca44ecbe5c1918",
+    "only_change": "absolute checkout prefix"
+  },
+  {
+    "file": "ten-fixture.ts",
+    "original": "db57321e2ea801c0c906c223bf237256ebbf26e26c42fb3ff3d086a3fc2e1bae",
+    "relocated": "05d2480a02538066265771eb631ca3e9ff5a117a58561a8f7bfb87c534682bf1",
+    "only_change": "absolute checkout prefix"
+  },
+  {
+    "file": "checker-empty.config.mjs",
+    "original": "1cacf03ad63689ca84ff2cbd5148d5ccc8ee6fbe0a4d8a0633e46572ac8cf330",
+    "relocated": "1cacf03ad63689ca84ff2cbd5148d5ccc8ee6fbe0a4d8a0633e46572ac8cf330",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "native-fixture.ts",
+    "original": "b1a136b5960414cdc5d66010216434af7415e2d0f80f5b1aab9ef83553394575",
+    "relocated": "b1a136b5960414cdc5d66010216434af7415e2d0f80f5b1aab9ef83553394575",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "neighbors.config.mjs",
+    "original": "d9a97b613e9f094cd340fc3eb11f4e767bbeb20f8384c1e44cfbf6069ba8e132",
+    "relocated": "d9a97b613e9f094cd340fc3eb11f4e767bbeb20f8384c1e44cfbf6069ba8e132",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "main-rungraph-records.ts",
+    "original": "ae711bb73915ae2e9bbd2cc11e8cc1021cf0dd1d224c670abe03e518355f206c",
+    "relocated": "eeedb5f8fdcae8c3e2ab882dc90b8e5a96b7d75757a47bf969459ade79b2c2d1",
+    "only_change": "absolute checkout prefix"
+  },
+  {
+    "file": "reachable-fixture.ts",
+    "original": "3b7b5a5d154f9bc46b21b277f7f41055cc9ca8415e5007d6dc8ed5fb88b395e3",
+    "relocated": "1216c356b9613600c6cd487f26173ae6873b81938b041fcfc27f44c911c05663",
+    "only_change": "absolute checkout prefix"
+  },
+  {
+    "file": "reachable-ten.ts",
+    "original": "e5d44032d3951325f0537f76ca733a618c301bdfbf87b5a7ec9d8e7160c5774c",
+    "relocated": "b8ea4d21acbd1ac508cd46e5d5f67c0c82e3640c31adee778cc4239df14869ee",
+    "only_change": "absolute checkout prefix"
+  },
+  {
+    "file": "native-positive.config.mjs",
+    "original": "01d15821958a26451e3faa5f866d8033f79faf79edcdf5ed2699a7a802b9ef7d",
+    "relocated": "01d15821958a26451e3faa5f866d8033f79faf79edcdf5ed2699a7a802b9ef7d",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "boundary-probes.config.mjs",
+    "original": "53996990ad4a75b2303b489cadb7b18d57646e1a0820524aecbec72d9ac1be48",
+    "relocated": "53996990ad4a75b2303b489cadb7b18d57646e1a0820524aecbec72d9ac1be48",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "neighbors.test.ts",
+    "original": "34b9079d609e118973d10a15452dce239515e8c74a6437fcd7e720e7eee27164",
+    "relocated": "34b9079d609e118973d10a15452dce239515e8c74a6437fcd7e720e7eee27164",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "main.config.mjs",
+    "original": "dab498203c7a2695c7064683e5588d34314e6a21319a8d93b9070fe72707a563",
+    "relocated": "dab498203c7a2695c7064683e5588d34314e6a21319a8d93b9070fe72707a563",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "checker-probes.mjs",
+    "original": "82e6807b0ea6d3c50ae4961e0e94b15c4641d617652e3f613a68ab7f9ed44358",
+    "relocated": "82e6807b0ea6d3c50ae4961e0e94b15c4641d617652e3f613a68ab7f9ed44358",
+    "only_change": "byte-identical"
+  },
+  {
+    "file": "paired-fixture.ts",
+    "original": "91f70ee2b823fb2791c1dfa4d151c153884e0504f086d2b909fbbc8404d25ed2",
+    "relocated": "29748cbbff87c5674285ca7a79f87d045343ce791d4b4b13f4ac616a2afa1a5b",
+    "only_change": "absolute checkout prefix"
+  }
+]

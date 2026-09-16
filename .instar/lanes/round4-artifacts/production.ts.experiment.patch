@@ -1,0 +1,11 @@
+--- a/src/assembly/production.ts
++++ b/src/assembly/production.ts
+@@ -235,6 +235,8 @@
+       'VerificationRuntimePort.due': production.verification.port.due,
+     })) requireMethod(operation, name);
+     requireMethod(production.run.port.read, 'RunGraphPort.read');
++    ensure(isProductionGroundedRunGraph(production.run.port, binding.scope),
++      'production boot requires a factory-issued grounding graph');
+     if (binding.productionGrounding) {
+       ensure(production.productionGrounding?.owner === 'part-ten'
+         && production.productionGrounding.implementation === binding.productionGrounding.implementation,

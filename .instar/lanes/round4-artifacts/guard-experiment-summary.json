@@ -1,0 +1,32 @@
+{
+  "exit": 1,
+  "passed": 2,
+  "failed": 2,
+  "skipped": 48,
+  "cases": [
+    {
+      "file": ".astra-review/reachable.test.ts",
+      "name": "V31 production boot refuses a real graph that accepts only flat compatibility receipts",
+      "status": "passed",
+      "failure": null
+    },
+    {
+      "file": ".astra-review/real-owner-probes.test.ts",
+      "name": "Q7 F2 real Six consumed authority prevents driver invocation from its old specification",
+      "status": "failed",
+      "failure": "Error: decode: ordinary reply is not a context delivery"
+    },
+    {
+      "file": ".astra-review/real-owner-probes.test.ts",
+      "name": "Q8 F2 ordinary reply effect does not authorize harness context delivery",
+      "status": "passed",
+      "failure": null
+    },
+    {
+      "file": "tests/integration/assembly-production.test.ts",
+      "name": "P10-NF-03 P10-NF-04 P10-NF-40 P10-NF-45 P10-NF-51 P10-NF-52 [P10-SEAM-04] the full public assembly boot returns one coordinator with every owner handle",
+      "status": "failed",
+      "failure": "Error: decode: production boot requires a factory-issued grounding graph"
+    }
+  ]
+}
