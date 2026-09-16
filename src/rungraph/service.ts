@@ -4,7 +4,7 @@ import { boundary, encoded, freeze, json, need, object, same, take } from './bou
 import { factRef, foldRun, readRecordFact, validateGrounding, validateTransition, outcomeAt, clockDifference } from './graph.js';
 import { decodeRun, decodeRunTransition, decodeSessionGrounding, factReference, recordReferences, recordWire, runKinds } from './records.js';
 import { checkIdentities, identityIndex } from './identity.js';
-import { isProductionGroundingReader, registerProductionGroundedGraph } from './types.js';
+import { consumeProductionGroundingRead, isProductionGroundingReader, issueProductionGroundedGraph } from './types.js';
 import type { RunDecodeContext, RunGraphDependencies, RunGraphPort, RunRecord, RunView } from './types.js';
 import { runGraphConstruct, preserveRunInput, runAdmission, stepAdmission, transitionAdmission, stopAdmission, exitAdmission, groundingAdmission } from './rungraph.js';
 
@@ -114,14 +114,9 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
         factReference(json(execution.context), context());
         const before = d.clock(), invocation = {};
         const readResult = take(d.grounding.read({ run: view, worker, harness, reason, execution, invocation }));
-        const input = d.grounding.production ? (() => {
-          need(readResult !== null && typeof readResult === 'object' && !Array.isArray(readResult),
-            'production grounding reader returned no invocation result');
-          const result = readResult as Readonly<Record<string, unknown>>;
-          need(result.invocation === invocation && result.grounding !== undefined,
-            'production grounding read was pre-completed or replayed outside this invocation');
-          return result.grounding;
-        })() : readResult;
+        const input = d.grounding.production
+          ? consumeProductionGroundingRead(d.grounding, invocation, readResult)
+          : readResult;
         const after = d.clock();
         const grounding = take(preserveRunInput(input, context(), d.governance, captured => groundingAdmission(input, captured, d.governance)));
         need(grounding.worker === worker && grounding.harness === harness && grounding.reason === reason
@@ -179,6 +174,6 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
         return read(t.run);
       })),
     } satisfies RunGraphPort);
-    return d.grounding.production ? registerProductionGroundedGraph(graph) : graph;
+    return d.grounding.production ? issueProductionGroundedGraph(graph, d.grounding) : graph;
   });
 }

@@ -206,6 +206,8 @@ export interface AssemblyHistoryReadPort {
 export interface AssemblyDecodeContext extends BoundaryContext {
   readonly history?: AssemblyHistoryReadPort;
   readonly validateReferences?: boolean;
+  /** Current Part Two context used to run registered owner-body decoders. */
+  readonly ownerFacts?: FactContext;
 }
 export interface AssemblyIdentity { readonly id: string; readonly logicalKey: string; readonly canonicalHash: Hash }
 export interface AssemblyFact { readonly fact: FactEnvelope; readonly record: AssemblyStoredRecord }

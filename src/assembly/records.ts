@@ -1,7 +1,7 @@
 import { verify } from 'node:crypto';
 import { consumeResult, defineDecoder } from '../index.js';
 import type { DecodeContext, Json, Result } from '../index.js';
-import { authorAndAppend, causalCone, factId, preimage, registerOwnedBody } from '../facts/index.js';
+import { authorAndAppend, causalCone, decodeHistoricalBody, factId, preimage, registerOwnedBody } from '../facts/index.js';
 import type { ConflictClass, FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import { minimalPlaneProjectionIds, requiredMinimalDependencies } from '../operator/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
@@ -384,7 +384,7 @@ export function assemblyReferences(record: AssemblyStoredRecord): readonly Assem
     case 'HarnessLaunchSpec': return [...generic, ...refs([record.processOperation], 'processOperation')];
     case 'ContextDeliverySpecification': return [...generic,
       ...refs([record.launch], 'launch', 'HarnessLaunchSpec', true), ...refs([record.input], 'input', undefined, true),
-      ...refs([record.executionContext], 'executionContext', undefined, true), ...refs([record.operation], 'operation', undefined, true),
+      ...refs([record.executionContext], 'executionContext', undefined, true), ...refs([record.operation], 'operation'),
       ...refs([record.claim], 'claim', undefined, true), ...refs([record.previousDelivery], 'previousDelivery', 'ContextDeliverySpecification', true),
       ...refs([record.controlObservation], 'controlObservation', undefined, true)];
     case 'HarnessObservation': return [...generic, ...refs([record.launch], 'launch', 'HarnessLaunchSpec'),
@@ -470,6 +470,36 @@ function exactOwnerFact(reference: string, expectedKind: string | undefined, con
     `${expectedKind ?? 'owner'} reference is unavailable or conflicted: ${reference}`);
   return status.fact;
 }
+function decodedOwnerRecord(reference: string, expectedKind: string, owner: string, name: string,
+  context: AssemblyDecodeContext): Readonly<{ fact: FactEnvelope; record: Readonly<Record<string, unknown>> }> {
+  ensure(context.history && context.ownerFacts, 'owner-decoded signed history required');
+  const status = take(context.history.lookup(reference));
+  ensure(status?.fact.kind === expectedKind, `exact signed ${expectedKind} reference required: ${reference}`);
+  ensure(status.completeness === 'complete' && status.taint.length === 0 && status.conflicts.length === 0,
+    `${expectedKind} reference is unavailable or conflicted: ${reference}`);
+  const schema = context.ownerFacts.schemas.find(row => row.kind === expectedKind && row.version === status.fact.schemaVersion);
+  ensure(schema?.fields.record?.kind === 'owned' && schema.fields.record.owner === owner
+    && schema.fields.record.name === name, `${expectedKind} must use its registered ${owner} owner body`);
+  const decoded = take(decodeHistoricalBody(status.fact, context.ownerFacts, context.ownerFacts.decode)).fields.record;
+  const record = object(decoded);
+  ensure(record?.type === name && (status.fact.id === reference || record.id === reference),
+    `exact decoded ${name} identity required: ${reference}`);
+  return { fact: status.fact, record };
+}
+function currentReservation(operation: string, context: AssemblyDecodeContext) {
+  ensure(context.ownerFacts, 'current owner facts required');
+  const rows = context.ownerFacts.facts.filter(fact => fact.kind === 'transport-AdmissionReservation').map(fact => {
+    const schema = context.ownerFacts!.schemas.find(row => row.kind === fact.kind && row.version === fact.schemaVersion);
+    ensure(schema?.fields.record?.kind === 'owned' && schema.fields.record.owner === 'part-six'
+      && schema.fields.record.name === 'AdmissionReservation', 'transport reservation must use its registered Six owner body');
+    const decoded = object(take(decodeHistoricalBody(fact, context.ownerFacts!, context.ownerFacts!.decode)).fields.record);
+    ensure(decoded?.type === 'AdmissionReservation', 'decoded Six reservation required');
+    return { fact, record: decoded };
+  }).filter(row => row.record.operation === operation)
+    .sort((left, right) => Number(left.record.tick) - Number(right.record.tick));
+  ensure(rows.length > 0, `current Six reservation is unavailable: ${operation}`);
+  return rows.at(-1)!;
+}
 function ownerBody(fact: FactEnvelope): Readonly<Record<string, unknown>> {
   const body = object(fact.body); const record = object(body?.record);
   return record ?? body ?? {};
@@ -486,12 +516,20 @@ function validateContextDeliveryReferences(record: ContextDeliverySpecification,
   ensure(record.contextManifest.some(row => row.class === 'message'
     && row.reference === capture.reference && row.digest === capture.hash),
   'context delivery manifest does not contain the exact input capture');
-  exactOwnerFact(record.operation, 'effect-OperationDefinition', context);
-  const claim = ownerBody(exactOwnerFact(record.claim, 'transport-AdmissionReservation', context));
+  ensure(/^operation:sha256:[a-f0-9]{64}$/.test(record.operation), 'context delivery operation must use Six\'s injective operation key');
+  const claimRow = decodedOwnerRecord(record.claim, 'transport-AdmissionReservation', 'part-six', 'AdmissionReservation', context);
+  const claim = claimRow.record;
+  const current = currentReservation(record.operation, context);
+  ensure(current.fact.id === claimRow.fact.id && current.record.state === 'dispatch-claimed',
+    'context delivery claim is not the current one-use Six claim');
   ensure(claim.state === 'dispatch-claimed' && claim.operation === record.operation
     && claim.digest === record.inputDigest && claim.run === record.run,
   'context delivery claim is not the current one-use claim for this operation/input/run');
-  const execution = ownerBody(exactOwnerFact(record.executionContext, 'transport-Lease', context));
+  const request = decodedOwnerRecord(String(claim.request), 'effect-EffectRequest', 'part-eight', 'EffectRequest', context).record;
+  const definition = decodedOwnerRecord(String(request.definition), 'effect-OperationDefinition', 'part-eight', 'OperationDefinition', context).record;
+  ensure(request.run === record.run && request.digest === record.inputDigest && definition.id === request.definition,
+    'context delivery operation is not bound through the decoded Eight request/definition');
+  const execution = decodedOwnerRecord(record.executionContext, 'transport-Lease', 'part-six', 'Lease', context).record;
   ensure((execution.run === undefined || execution.run === record.run)
     && (execution.incarnation === undefined || execution.incarnation === record.incarnation),
   'context delivery execution context differs from the current Six lease');
@@ -526,7 +564,8 @@ function validateContextBoundObservation(record: Extract<AssemblyStoredRecord, {
     && record.input === specification.input && record.incarnation === specification.incarnation
     && record.generation === specification.generation && encoded(record.contextDigests).bytes === encoded(specification.contextManifest.map(row => row.digest)).bytes,
   'context-bound observation differs from its delivery specification');
-  const evidence = ownerBody(exactOwnerFact(record.boundaryEvidence, 'effect-OperationObservation', context));
+  const evidence = decodedOwnerRecord(record.boundaryEvidence, 'effect-OperationObservation',
+    'part-eight', 'OperationObservation', context).record;
   ensure(evidence.operation === specification.operation && evidence.claim === specification.claim
     && evidence.digest === specification.inputDigest
     && (evidence.run === undefined || evidence.run === specification.run)

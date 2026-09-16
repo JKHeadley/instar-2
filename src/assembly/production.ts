@@ -239,7 +239,7 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
       ensure(production.productionGrounding?.owner === 'part-ten'
         && production.productionGrounding.implementation === binding.productionGrounding.implementation,
       'production grounding composition binding differs from the signed manifest');
-      ensure(isProductionGroundedRunGraph(production.run.port),
+      ensure(isProductionGroundedRunGraph(production.run.port, binding.scope),
         'production RunGraphPort is not bound to the invocation-owned context-delivery reader');
     } else ensure(!production.productionGrounding,
       'production grounding composition cannot activate without its signed manifest binding');

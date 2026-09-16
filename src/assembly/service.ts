@@ -34,7 +34,11 @@ export function createAssemblyRuntime(composition: AssemblyComposition): Assembl
     resolve: (record: import('./contracts.js').AssemblyRecord) => resolveAssemblyHistory(record, spine, runtimeContext),
     resolveContextDelivery: (record: import('./contracts.js').ContextDeliverySpecification) => resolveAssemblyHistory(record, spine, runtimeContext),
   });
-  runtimeContext = Object.freeze({ ...host.boundary, history, validateReferences: false });
+  runtimeContext = Object.freeze({ ...host.boundary, history, validateReferences: false,
+    get ownerFacts() {
+      const facts = host.current().facts;
+      return { ...facts, facts: take(spine.store.read()) };
+    } });
   const inspect = () => boundary('AssemblyInspect', null, runtimeContext, () => assemblyRows(take(spine.store.read()), runtimeContext));
   const inspectCurrent = () => history.current();
   const record = <N extends AssemblyStoredRecordName>(name: N, input: unknown) =>

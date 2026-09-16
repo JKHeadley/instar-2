@@ -1,9 +1,10 @@
 import { assemblySchemas, createAssemblyRuntime, createAssemblySpine, registerAssemblyBodies } from '../../src/assembly/index.js';
 import { consumeResult, decode, decodeMeasurement } from '../../src/index.js';
 import type { Clock, FactEnvelopeReference, Json } from '../../src/index.js';
-import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
-import type { FactContext, FactEnvelope, FactSchema, SegmentStoragePort } from '../../src/facts/index.js';
-import { createRunGraph, recordWire, registerProductionGroundingReader, runFactSchemas, runIdFor } from '../../src/rungraph/index.js';
+import { authorAndAppend, createFactStore, registerOwnedBody } from '../../src/facts/index.js';
+import type { FactContext, FactEnvelope, FactSchema, OwnedShape, SegmentStoragePort } from '../../src/facts/index.js';
+import { createRunGraph, recordWire, runFactSchemas, runIdFor } from '../../src/rungraph/index.js';
+import { issueProductionGroundingRead, issueProductionGroundingReader } from '../../src/rungraph/types.js';
 import type { RunDecodeContext, RunGraphDependencies, RunTransition, RunView } from '../../src/rungraph/index.js';
 import { factsFixture, privateKey, json, refused } from '../facts/fixtures.js';
 import { assemblyInput } from '../assembly/fixture.js';
@@ -18,6 +19,7 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
 }, stimulus?: {
   fields: FactSchema['fields'];
   extra?: Readonly<Record<string, FactSchema['fields']>>;
+  ownerRecords?: boolean;
   body: (tools: { append: (kind: string, body: Json, required?: readonly string[]) => { fact: FactEnvelope };
     intent: unknown; owner: unknown; hash: string }) => Json;
 }) {
@@ -27,7 +29,16 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
   const schemas: FactSchema[] = [
     { ...f.schema, kind: 'stimulus', fields: stimulus?.fields
       ?? { intent: { kind: 'constitutional', type: 'Intent' }, owner: { kind: 'constitutional', type: 'VerifiedPrincipal' }, capture: { kind: 'capture' } } },
-    ...Object.entries(stimulus?.extra ?? {}).map(([kind, fields]): FactSchema => ({ ...f.schema, kind, fields })),
+    ...Object.entries(stimulus?.extra ?? {}).map(([kind, fields]): FactSchema => {
+      const owned = stimulus?.ownerRecords && ({
+        'effect-OperationDefinition': ['part-eight', 'OperationDefinition'],
+        'effect-EffectRequest': ['part-eight', 'EffectRequest'],
+        'effect-OperationObservation': ['part-eight', 'OperationObservation'],
+        'transport-AdmissionReservation': ['part-six', 'AdmissionReservation'],
+        'transport-Lease': ['part-six', 'Lease'],
+      } as const)[kind];
+      return { ...f.schema, kind, fields: owned ? { record: { kind: 'owned', owner: owned[0], name: owned[1] } } : fields };
+    }),
     { ...f.schema, kind: 'consumption', fields: { worker: { kind: 'text', maxLength: 80 }, harness: { kind: 'text', maxLength: 80 }, hashes: { kind: 'text', maxLength: 65536 }, classes: { kind: 'text', maxLength: 65536 } } },
     { ...f.schema, kind: 'outcome-record', fields: { evidence: { kind: 'constitutional', type: 'Evidence' }, outcome: { kind: 'constitutional', type: 'Outcome' } } },
     { ...f.schema, kind: 'evidence-record', fields: { evidence: { kind: 'constitutional', type: 'Evidence' } } },
@@ -43,7 +54,18 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
     stimulusKinds: ['stimulus', 'next-inbound'], evidenceSources: { settlement: 'probe', exit: 'probe' } };
   const assemblyHost: any = { machine: 'machine-a', principal: f.bob, scope: f.scope, boundary: f.c, current: () => ({ facts: ctx, generation: types.register.generation.id, stopped: false, clock: now }) };
   const registration = value(runFactSchemas(c));
-  ctx = { ...ctx, schemas: [...schemas, ...registration.schemas, ...assemblySchemas(assemblyHost)], ownedBodies: [...registration.registrations, ...value(registerAssemblyBodies(assemblyHost))] }; c = { ...c, facts: ctx };
+  const ownerShapes: Readonly<Record<string, Readonly<{ owner: string; name: string; shape: OwnedShape }>>> = {
+    'effect-OperationDefinition': { owner: 'part-eight', name: 'OperationDefinition', shape: { kind: 'object', fields: { type: { kind: 'text', maxLength: 80 }, schemaVersion: { kind: 'integer' }, id: { kind: 'text', maxLength: 512 } } } },
+    'effect-EffectRequest': { owner: 'part-eight', name: 'EffectRequest', shape: { kind: 'object', fields: { type: { kind: 'text', maxLength: 80 }, schemaVersion: { kind: 'integer' }, id: { kind: 'text', maxLength: 512 }, definition: { kind: 'text', maxLength: 512 }, digest: { kind: 'text', maxLength: 512 }, run: { kind: 'text', maxLength: 512 } } } },
+    'effect-OperationObservation': { owner: 'part-eight', name: 'OperationObservation', shape: { kind: 'object', fields: { type: { kind: 'text', maxLength: 80 }, schemaVersion: { kind: 'integer' }, id: { kind: 'text', maxLength: 512 }, operation: { kind: 'text', maxLength: 512 }, claim: { kind: 'text', maxLength: 512 }, digest: { kind: 'text', maxLength: 512 }, run: { kind: 'text', maxLength: 512 }, input: { kind: 'text', maxLength: 512 }, stage: { kind: 'text', maxLength: 80 } } } },
+    'transport-AdmissionReservation': { owner: 'part-six', name: 'AdmissionReservation', shape: { kind: 'object', fields: { type: { kind: 'text', maxLength: 80 }, schemaVersion: { kind: 'integer' }, operation: { kind: 'text', maxLength: 512 }, request: { kind: 'text', maxLength: 512 }, state: { kind: 'text', maxLength: 80 }, digest: { kind: 'text', maxLength: 512 }, run: { kind: 'text', maxLength: 512 }, tick: { kind: 'integer' } } } },
+    'transport-Lease': { owner: 'part-six', name: 'Lease', shape: { kind: 'object', fields: { type: { kind: 'text', maxLength: 80 }, schemaVersion: { kind: 'integer' }, id: { kind: 'text', maxLength: 512 }, run: { kind: 'text', maxLength: 512 }, incarnation: { kind: 'text', maxLength: 512 } } } },
+  };
+  const ownerRegistrations = stimulus?.ownerRecords ? Object.entries(ownerShapes).map(([_kind, row]) => value(registerOwnedBody({
+    owner: row.owner, name: row.name, currentVersion: 1, versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
+    decodeCurrent: input => ({ ok: true, value: input }),
+  }, row.shape, f.c))) : [];
+  ctx = { ...ctx, schemas: [...schemas, ...registration.schemas, ...assemblySchemas(assemblyHost)], ownedBodies: [...registration.registrations, ...ownerRegistrations, ...value(registerAssemblyBodies(assemblyHost))] }; c = { ...c, facts: ctx };
   const storage = storageFactory?.({ owner: 'part-ten', read: () => wire, append: (bytes, expected) => {
     if ((wire.at(-1) as { contentHash?: string } | undefined)?.contentHash !== (expected ?? undefined)) throw new Error('storage CAS');
     wire.push(JSON.parse(bytes)); return f.success({ kind: 'local-durable' });
@@ -133,39 +155,47 @@ export function paired(options:any={}) {
  const text={kind:'text' as const,maxLength:2048};
  const f=setup(undefined,undefined,{fields:{intent:{kind:'constitutional',type:'Intent'},owner:{kind:'constitutional',type:'VerifiedPrincipal'},capture:{kind:'capture'}},extra:{
   'effect-OperationDefinition':{id:text},
+  'effect-EffectRequest':{id:text,definition:text,digest:text,run:text},
   'transport-AdmissionReservation':{operation:text,state:text,digest:text,run:text},
   'transport-Lease':{run:text,incarnation:text},
   'effect-OperationObservation':{operation:text,claim:text,digest:text,run:text,input:text,stage:text},
   'rungraph-briefing-material':{class:text},
- },body:({intent,owner,hash})=>json({intent,owner,capture:{reference:'message:1',hash}})}); const ready=value(f.graph.open(f.run));
+ },ownerRecords:true,body:({intent,owner,hash})=>json({intent,owner,capture:{reference:'message:1',hash}})}); const ready=value(f.graph.open(f.run));
  const spine=createAssemblySpine(f.assemblyHost,{context:f.ctx,privateKey},f.store);
  const runtime=createAssemblyRuntime({host:f.assemblyHost,spine} as any);
  const history:any={owner:'part-ten',current:()=>runtime.inspectCurrent(),lookup:(id:string)=>{
-  const snap=value(f.store.readForProjection()); const a=value(runtime.inspectCurrent()).find(r=>r.fact.id===id||r.record.id===id); const s=snap.entries.find(r=>r.fact.id===(a?.fact.id??id));
+  const snap=value(f.store.readForProjection()); const a=value(runtime.inspectCurrent()).find(r=>r.fact.id===id||r.record.id===id); const s=snap.entries.find(r=>r.fact.id===(a?.fact.id??id)||(r.fact.body as any)?.record?.id===id);
   return f.success(s?{fact:s.fact,...(a?{record:a.record}:{}),taint:s.taint,conflicts:[...s.conflicts,...(a?.conflicts??[])],completeness:'complete'}:null);
  },resolve:(r:any)=>runtime.resolve(r),resolveContextDelivery:(r:any)=>runtime.resolve(r)};
  const launch=value(runtime.record('HarnessLaunchSpec',{...assemblyInput('HarnessLaunchSpec'),id:'review-launch',run:f.id,step:'launch-step',input:f.opening.id,incarnation:'incarnation:one',harness:'h'}));
  const lf=value(runtime.inspect()).find(r=>r.record.id===launch.id)!.fact;
- const execution=f.append('transport-Lease',json({run:f.id,incarnation:'incarnation:one'})).fact;
+ const execution=f.append('transport-Lease',json({record:{type:'Lease',schemaVersion:1,id:'delivery-lease:1',run:f.id,incarnation:'incarnation:one'}})).fact;
  const briefings=f.deps.groundingPolicy.briefingClasses.map(c=>f.append('rungraph-briefing-material',json({class:c})).fact);
  const admission={...f.deps.admission,execution:(run:any,ownership:any)=>{const current=value(f.deps.admission.execution(run,ownership));return f.success({...current,context:ref(execution)})}};
  let count=0; let last:any; let mutation=(s:any,o:any,g:any)=>{};
   function read(req:any) {
   const at=f.deps.clock(), ordinal=++count;
-  const operation=f.append('effect-OperationDefinition',json({id:`delivery-operation:${ordinal}`})).fact;
-  const claim=f.append('transport-AdmissionReservation',json({operation:operation.id,state:'dispatch-claimed',digest:f.ctx.captures['message:1']!.hash,run:f.id})).fact;
-  const witness=f.append('effect-OperationObservation',json({operation:operation.id,claim:claim.id,digest:f.ctx.captures['message:1']!.hash,run:f.id,input:f.opening.id,stage:'response'})).fact;
-  const spec:any={type:'ContextDeliverySpecification',schemaVersion:1,id:`delivery:${ordinal}`,predecessors:[],dependencyFacts:[],launch:lf.id,run:f.id,step:'step:operation:1',input:f.opening.id,inputDigest:f.ctx.captures['message:1']!.hash,incarnation:launch.incarnation,harness:'h',artifactDigest:launch.artifactDigest,machine:launch.machine,generation:f.run.generation.id,executionContext:req.execution.context.id,contextManifest:[{class:'message',reference:'message:1',digest:f.ctx.captures['message:1']!.hash},...briefings.map(row=>({class:(row.body as any).class,reference:row.id,digest:row.contentHash}))],reason:'initial',operation:operation.id,claim:claim.id,previousDelivery:'',controlObservation:''};
-  const obs:any={type:'HarnessObservation',schemaVersion:1,id:`consumed:${ordinal}`,predecessors:[],dependencyFacts:[],launch:lf.id,run:f.id,step:spec.step,input:spec.input,incarnation:spec.incarnation,contextDelivery:'',sourceEvidence:[witness.id],contextDigests:spec.contextManifest.map((r:any)=>r.digest),generation:spec.generation,causalReferences:[],observedAt:at.value,freshFor:1000,phase:'context-consumed',boundaryEvidence:witness.id,detail:'boundary witness'};
-  const g:any={type:'SessionGrounding',schemaVersion:2,id:`ground-review:${count}`,run:f.id,expected:req.run.head,worker:req.worker,harness:req.harness,reason:req.reason,step:spec.step,incarnation:spec.incarnation,contextDeliveryReason:spec.reason,ownership:req.execution.ownership,executionContext:req.execution.context,at,previousActivity:at,elapsed:{type:'Measurement',schemaVersion:1,subject:{kind:'elapsed-time',instance:req.worker},value:0,unit:'ms',at,by:'probe'},principal:f.owner,intake:ref(f.opening),binding:f.run.resultDestination.binding,directives:[],generation:f.run.generation,frontier:{},knownLineages:['machine-a'],threshold:20,messages:[{fact:ref(f.opening),sequence:f.opening.segment.position,capture:'message:1',hash:f.ctx.captures['message:1']!.hash}],lastInbound:ref(f.opening),pendingOperations:req.run.pending.map((s:any)=>s.operation.key),children:[],receipts:[],briefingClasses:f.deps.groundingPolicy.briefingClasses,consumption:ref(witness)};
+  const definitionId=`delivery-definition:${ordinal}`,requestId=`delivery-request:${ordinal}`,attempt=`delivery-attempt:${ordinal}`;
+  f.append('effect-OperationDefinition',json({record:{type:'OperationDefinition',schemaVersion:1,id:definitionId}}));
+  const operationKey=`operation:${digest([f.id,requestId,attempt])}`;
+  const spec:any={type:'ContextDeliverySpecification',schemaVersion:1,id:`delivery:${ordinal}`,predecessors:[],dependencyFacts:[],launch:lf.id,run:f.id,step:'step:operation:1',input:f.opening.id,inputDigest:f.ctx.captures['message:1']!.hash,incarnation:launch.incarnation,harness:'h',artifactDigest:launch.artifactDigest,machine:launch.machine,generation:f.run.generation.id,executionContext:req.execution.context.id,contextManifest:[{class:'message',reference:'message:1',digest:f.ctx.captures['message:1']!.hash},...briefings.map(row=>({class:(row.body as any).class,reference:row.id,digest:row.contentHash}))],reason:'initial',operation:operationKey,claim:'',previousDelivery:'',controlObservation:''};
+  const obs:any={type:'HarnessObservation',schemaVersion:1,id:`consumed:${ordinal}`,predecessors:[],dependencyFacts:[],launch:lf.id,run:f.id,step:spec.step,input:spec.input,incarnation:spec.incarnation,contextDelivery:'',sourceEvidence:[],contextDigests:spec.contextManifest.map((r:any)=>r.digest),generation:spec.generation,causalReferences:[],observedAt:at.value,freshFor:1000,phase:'context-consumed',boundaryEvidence:'',detail:'boundary witness'};
+  const g:any={type:'SessionGrounding',schemaVersion:2,id:`ground-review:${count}`,run:f.id,expected:req.run.head,worker:req.worker,harness:req.harness,reason:req.reason,step:spec.step,incarnation:spec.incarnation,contextDeliveryReason:spec.reason,ownership:req.execution.ownership,executionContext:req.execution.context,at,previousActivity:at,elapsed:{type:'Measurement',schemaVersion:1,subject:{kind:'elapsed-time',instance:req.worker},value:0,unit:'ms',at,by:'probe'},principal:f.owner,intake:ref(f.opening),binding:f.run.resultDestination.binding,directives:[],generation:f.run.generation,frontier:{},knownLineages:['machine-a'],threshold:20,messages:[{fact:ref(f.opening),sequence:f.opening.segment.position,capture:'message:1',hash:f.ctx.captures['message:1']!.hash}],lastInbound:ref(f.opening),pendingOperations:req.run.pending.map((s:any)=>s.operation.key),children:[],receipts:[],briefingClasses:f.deps.groundingPolicy.briefingClasses,consumption:ref(f.opening)};
   mutation(spec,obs,g);
+  f.append('effect-EffectRequest',json({record:{type:'EffectRequest',schemaVersion:1,id:requestId,definition:definitionId,digest:spec.inputDigest,run:f.id}}));
+  const claim=f.append('transport-AdmissionReservation',json({record:{type:'AdmissionReservation',schemaVersion:1,operation:operationKey,request:requestId,state:'dispatch-claimed',digest:spec.inputDigest,run:f.id,tick:ordinal}})).fact;
+  spec.claim=claim.id;
+  const witness=f.append('effect-OperationObservation',json({record:{type:'OperationObservation',schemaVersion:1,id:`delivery-observation:${ordinal}`,operation:operationKey,claim:claim.id,digest:spec.inputDigest,run:f.id,input:spec.input,stage:'response'}})).fact;
+  if (!obs.boundaryEvidence) obs.boundaryEvidence=witness.id;
+  if (!obs.sourceEvidence.length) obs.sourceEvidence=[witness.id];
   const sr=value(runtime.recordContextDelivery(spec)); const sf=value(runtime.inspect()).find(r=>r.record.id===sr.id)!.fact;
   obs.contextDelivery=sf.id;
   const or=value(runtime.record('HarnessObservation',obs)); const of=value(runtime.inspect()).find(r=>r.record.id===or.id)!.fact;
   g.consumption=ref(of);g.frontier={'machine-a':{epoch:0,position:of.segment.position}};last={spec:sr,observation:or,grounding:g,sf,of,witness};
   return f.success(g);
  }
- const grounding:any=registerProductionGroundingReader({owner:'part-ten',production:true,read:(req:any)=>{const candidate=value(read(req));return f.success({invocation:req.invocation,grounding:candidate})}});
+ let grounding:any;
+ grounding=issueProductionGroundingReader({owner:'part-ten',production:true,read:(req:any)=>{const candidate=value(read(req));return f.success(issueProductionGroundingRead(grounding,req.invocation,candidate))}},'scope:minimal');
  const deps={...f.deps,admission,grounding,assemblyHistory:history};const graph=value(createRunGraph(deps));
  return {...f,ready,runtime,history,spine,launch,lf,graph,deps,read,setMutation:(m:any)=>mutation=m,last:()=>last};
 }
@@ -180,9 +210,7 @@ export function executeInitialLiveInputLifecycle() {
  const ready=value(graph.transition({...observed,to:'ready',blockedOn:{kind:'nothing'},settlement:ref(ef)}));
  const second=f.append('next-inbound',json({capture:{reference:'message:2',hash:f.ctx.captures['message:2']!.hash}})).fact;
  f.setMutation((s:any,o:any,g:any)=>{s.reason='live-input';s.previousDelivery=first.sf.id;s.input=second.id;s.inputDigest=f.ctx.captures['message:2']!.hash;s.step='step:operation:2';o.input=s.input;o.step=s.step;g.intake=ref(second);g.lastInbound=ref(second);g.step=s.step;g.contextDeliveryReason=s.reason;g.messages.push({fact:ref(second),sequence:second.segment.position,capture:'message:2',hash:f.ctx.captures['message:2']!.hash});
-  const claim=f.append('transport-AdmissionReservation',json({operation:s.operation,state:'dispatch-claimed',digest:s.inputDigest,run:f.id})).fact;
-  const witness=f.append('effect-OperationObservation',json({operation:s.operation,claim:claim.id,digest:s.inputDigest,run:f.id,input:s.input,stage:'response'})).fact;
-  s.claim=claim.id;o.boundaryEvidence=witness.id;o.sourceEvidence=[witness.id];s.contextManifest.push({class:'message',reference:'message:2',digest:f.ctx.captures['message:2']!.hash});o.contextDigests=s.contextManifest.map((r:any)=>r.digest);
+  s.contextManifest.push({class:'message',reference:'message:2',digest:f.ctx.captures['message:2']!.hash});o.contextDigests=s.contextManifest.map((r:any)=>r.digest);
  });
  const g2=value(graph.ground(f.id,'w','h','start',f.lease)),t=f.start(ready,g2,'operation:2');
  const secondRunning=value(graph.transition({...t,trigger:ref(second)}));

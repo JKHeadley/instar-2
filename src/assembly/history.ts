@@ -14,6 +14,15 @@ export function currentAssemblyRows(snapshot: FactSnapshot, context: AssemblyDec
   return freeze(records.map(row => {
     const status = byFact.get(row.fact.id)!; const conflicts = [...status.conflicts];
     for (const other of records) {
+      if (other !== row && row.record.type === 'ContextDeliverySpecification'
+        && other.record.type === 'ContextDeliverySpecification'
+        && row.record.launch === other.record.launch
+        && row.record.previousDelivery === other.record.previousDelivery
+        && row.record.operation !== other.record.operation) {
+        conflicts.push({ key: `context-delivery-order:${row.record.launch}:${row.record.previousDelivery}`,
+          kind: 'immutable-disagreement', facts: [row.fact.id, other.fact.id].sort(),
+          detail: 'signed context deliveries have competing immediate successors' });
+      }
       if (other === row || !sameIdentity(row.record, other.record)) continue;
       const left = assemblyIdentity(row.record), right = assemblyIdentity(other.record);
       if (left.canonicalHash !== right.canonicalHash) conflicts.push({ key: left.logicalKey, kind: 'immutable-disagreement',

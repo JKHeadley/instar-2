@@ -12,17 +12,17 @@ const result = (r:any):any => consumeResult(r,{Success:v=>({accepted:true,value:
 function ten() {
  const text={kind:'text' as const,maxLength:2048};
  const f=setup(undefined,undefined,{fields:{intent:{kind:'constitutional',type:'Intent'},owner:{kind:'constitutional',type:'VerifiedPrincipal'},capture:{kind:'capture'}},extra:{
-  'effect-OperationDefinition':{id:text},'transport-AdmissionReservation':{operation:text,state:text,digest:text,run:text},
+  'effect-OperationDefinition':{id:text},'effect-EffectRequest':{id:text,definition:text,digest:text,run:text},'transport-AdmissionReservation':{operation:text,state:text,digest:text,run:text},
   'transport-Lease':{run:text,incarnation:text},'effect-OperationObservation':{operation:text,claim:text,digest:text,run:text,input:text,stage:text},
   'rungraph-briefing-material':{class:text},
- },body:({intent,owner,hash})=>json({intent,owner,capture:{reference:'message:1',hash}})});
+ },ownerRecords:true,body:({intent,owner,hash})=>json({intent,owner,capture:{reference:'message:1',hash}})});
  const spine=createAssemblySpine(f.assemblyHost,{context:f.ctx,privateKey},f.store);
  const runtime=createAssemblyRuntime({host:f.assemblyHost,spine} as any);
  const history:any={owner:'part-ten',current:()=>runtime.inspectCurrent(),lookup:(id:string)=>{const snap=value(f.store.readForProjection());const a=value(runtime.inspectCurrent()).find(r=>r.fact.id===id||r.record.id===id);const s=snap.entries.find(r=>r.fact.id===(a?.fact.id??id));return f.success(s?{fact:s.fact,...(a?{record:a.record}:{}),taint:s.taint,conflicts:[...s.conflicts,...(a?.conflicts??[])],completeness:'complete'}:null)},resolve:(r:any)=>runtime.resolve(r),resolveContextDelivery:(r:any)=>runtime.resolve(r)};
- const typed=(label:string)=>{const operation=f.append('effect-OperationDefinition',json({id:`operation:${label}`})).fact;const claim=f.append('transport-AdmissionReservation',json({operation:operation.id,state:'dispatch-claimed',digest:f.ctx.captures['message:1']!.hash,run:f.id})).fact;return{operation,claim}};
- const first=typed('first'),execution=f.append('transport-Lease',json({run:f.id,incarnation:'incarnation:one'})).fact;
- const accepted=f.append('effect-OperationObservation',json({operation:first.operation.id,claim:first.claim.id,digest:f.ctx.captures['message:1']!.hash,run:f.id,input:f.opening.id,stage:'executor-accepted'})).fact;
- const consumed=f.append('effect-OperationObservation',json({operation:first.operation.id,claim:first.claim.id,digest:f.ctx.captures['message:1']!.hash,run:f.id,input:f.opening.id,stage:'response'})).fact;
+ const typed=(label:string)=>{const definition=`definition:${label}`,request=`request:${label}`,attempt=`attempt:${label}`;f.append('effect-OperationDefinition',json({record:{type:'OperationDefinition',schemaVersion:1,id:definition}}));f.append('effect-EffectRequest',json({record:{type:'EffectRequest',schemaVersion:1,id:request,definition,digest:f.ctx.captures['message:1']!.hash,run:f.id}}));const operation={id:`operation:${digest([f.id,request,attempt])}`};const claim=f.append('transport-AdmissionReservation',json({record:{type:'AdmissionReservation',schemaVersion:1,operation:operation.id,request,state:'dispatch-claimed',digest:f.ctx.captures['message:1']!.hash,run:f.id,tick:1}})).fact;return{operation,claim}};
+ const first=typed('first'),execution=f.append('transport-Lease',json({record:{type:'Lease',schemaVersion:1,id:'delivery-lease:1',run:f.id,incarnation:'incarnation:one'}})).fact;
+ const accepted=f.append('effect-OperationObservation',json({record:{type:'OperationObservation',schemaVersion:1,id:'accepted:first',operation:first.operation.id,claim:first.claim.id,digest:f.ctx.captures['message:1']!.hash,run:f.id,input:f.opening.id,stage:'executor-accepted'}})).fact;
+ const consumed=f.append('effect-OperationObservation',json({record:{type:'OperationObservation',schemaVersion:1,id:'consumed:first',operation:first.operation.id,claim:first.claim.id,digest:f.ctx.captures['message:1']!.hash,run:f.id,input:f.opening.id,stage:'response'}})).fact;
  const launch=value(runtime.record('HarnessLaunchSpec',{...assemblyInput('HarnessLaunchSpec'),id:'typed-launch',run:f.id,step:'launch-step',input:f.opening.id,inputDigest:f.ctx.captures['message:1']!.hash,incarnation:'incarnation:one',harness:'native',processOperation:first.operation.id}));
  const launchFact=value(runtime.inspect()).find(r=>r.record.id===launch.id)!.fact;
  const specs=new Map([[first.operation.id,first.claim.id]]);
@@ -37,7 +37,7 @@ it('V2 accepts valid spec delivery through the real recorder',()=>{const f=ten()
 it('V3 refuses a second invocation after acceptance append fails',()=>{const f=ten();const s=value(f.runtime.recordContextDelivery(f.spec()));f.driver.deliver(s,{operation:s.operation,claim:s.claim});f.driver.deliver(s,{operation:s.operation,claim:s.claim});expect(f.calls()).toBe(1)});
 it('V4 refuses ordinary evidence substituted for admitted operation and one-use claim',()=>{const f=ten();const ordinary=f.append('note',json({identity:'ordinary',amount:'0'})).fact;expect(result(f.runtime.recordContextDelivery({...f.spec(),operation:ordinary.id,claim:ordinary.id}))).toMatchObject({accepted:false})});
 it('V5 PG-P5-INVOKED-READ signed-history graph control accepts ground then start and zero pending before start',()=>{const f=paired();const g=value(f.graph.ground(f.id,'w','h','start',f.lease));expect(value(f.graph.read(f.id)).pending).toHaveLength(0);expect(value(f.graph.transition(f.start(f.ready,g))).pending).toHaveLength(1)});
-it('V6 refuses pre-completed grounding even within the same clock tick',()=>{const f=paired();const cached=value(f.read({run:f.ready,worker:'w',harness:'h',reason:'start',execution:value(f.deps.admission.execution(f.id,f.lease))}));expect(result(createRunGraph({...f.deps,grounding:{owner:'part-ten',production:true,read:()=>f.success(cached)}} as any))).toMatchObject({accepted:false})});
+it('V6 refuses pre-completed grounding even within the same clock tick',()=>{const f=paired();const cached=value(f.read({run:f.ready,worker:'w',harness:'h',reason:'start',execution:value(f.deps.admission.execution(f.id,f.lease))}));const graph=value(createRunGraph({...f.deps,grounding:registerProductionGroundingReader({owner:'part-ten',production:true,read:(req:any)=>f.success({invocation:req.invocation,grounding:cached})})} as any));expect(result(graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})});
 it('V7 refuses future-reported consumption',()=>{const f=paired();f.setMutation((s,o)=>o.observedAt=100000);expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})});
 it('V8 PG-P5-SOURCE-REFUSALS refuses input digest substitution',()=>{const f=paired();f.setMutation(s=>s.inputDigest=digest('not input'));expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})});
 it('V9 refuses unresolvable briefing-reference substitution',()=>{const f=paired();f.setMutation(s=>s.contextManifest[1].reference='missing:briefing');expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})});
@@ -58,7 +58,7 @@ it('V23 native reader accepts a real signed launch and context-delivery record',
  const f=ten();const events:string[]=[];
  const harness=createNativeHarnessAdapter({id:'native',artifact:f.launch.artifactDigest,platform:'test',conformance:'test',context:{...f.c,history:f.history},clock:()=>100,generation:()=> 'generation:fixture',contextDeliveryDriver:f.driver,driver:{owner:'part-eight',launch:()=>f.success('pid:42:start:1'),deliver:()=>{throw Error('legacy deliver forbidden')},observe:()=>{throw Error('legacy observe forbidden')}}});
  value(harness.launch(f.launch,f.launch.processOperation,'launch-claim'));
- const reader=createProductionGroundingReader({runtime:f.runtime,harness,clock:()=>{events.push('clock');return f.clock(100)},context:f.c,sample:()=>{events.push('sample');return f.success({specification:f.spec(),grounding:(consumption:any)=>({at:f.clock(100),step:'step:next',incarnation:f.launch.incarnation,contextDeliveryReason:'initial',consumption})})}});
+ const reader=createProductionGroundingReader({scope:'scope:minimal',runtime:f.runtime,harness,clock:()=>{events.push('clock');return f.clock(100)},context:f.c,sample:()=>{events.push('sample');return f.success({specification:f.spec(),grounding:(consumption:any)=>({at:f.clock(100),step:'step:next',incarnation:f.launch.incarnation,contextDeliveryReason:'initial',consumption})})}});
  const actual=result(reader.read({run:{} as any,worker:'w',harness:'h',reason:'start',execution:{} as any}));
  expect(actual,JSON.stringify(actual)).toMatchObject({accepted:true});expect(events).toEqual(['clock','sample']);expect(f.calls()).toBe(1);
 });
@@ -94,7 +94,7 @@ it('V31 production boot refuses a real graph that accepts only flat compatibilit
 it('V32 refuses retimestamped pre-completed grounding against a previously signed future receipt',()=>{
  const f=paired();f.setMutation((s,o)=>o.observedAt=101);
  const raw:any=value(f.read({run:f.ready,worker:'w',harness:'h',reason:'start',execution:value(f.deps.admission.execution(f.id,f.lease))}));f.setClock(101);const at=f.deps.clock();const cached={...raw,at,previousActivity:at,elapsed:{...raw.elapsed,at}};
- expect(result(createRunGraph({...f.deps,grounding:{owner:'part-ten',production:true,read:()=>f.success(cached)}} as any))).toMatchObject({accepted:false});
+ const graph=value(createRunGraph({...f.deps,grounding:registerProductionGroundingReader({owner:'part-ten',production:true,read:(req:any)=>f.success({invocation:req.invocation,grounding:cached})})} as any));expect(result(graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false});
 });
 it('V33 refuses stale generation in the delivery specification',()=>{const f=paired();f.setMutation((s,o)=>{s.generation='generation:stale';o.generation=s.generation});expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})});
 it('V34 refuses non-consumed phase',()=>{const f=paired();f.setMutation((s,o)=>o.phase='input-accepted');expect(result(f.graph.ground(f.id,'w','h','start',f.lease))).toMatchObject({accepted:false})});
@@ -125,4 +125,18 @@ it('V43 start re-resolves a newly appended real signed specification conflict',(
  value(f.spine.append(changed));
  expect(value(f.runtime.inspectCurrent()).filter(r=>r.record.type==='ContextDeliverySpecification').every(r=>r.conflicts.length>0)).toBe(true);
  expect(result(f.graph.transition(f.start(f.ready,g)))).toMatchObject({accepted:false});
+});
+it('R9 F7 a raw signed predecessor skip is refused on replay resolution',()=>{
+ const f=ten(),a=value(f.runtime.recordContextDelivery(f.spec())),af=value(f.runtime.inspect()).find(r=>r.record.id===a.id)!.fact;
+ const op2=f.next('second').operation;value(f.runtime.recordContextDelivery(f.spec('live-input',op2.id,af.id)));
+ const op3=f.next('third').operation,skip=value(decodeAssemblyRecord('ContextDeliverySpecification',f.spec('live-input',op3.id,af.id),{...f.c,validateReferences:false}));
+ value(f.spine.append(skip));expect(result(f.runtime.resolve(skip))).toMatchObject({accepted:true,value:{admitted:false}});
+});
+it('R10 F1 repeated consumed observation after restart at a later clock preserves the original observation',()=>{
+ const f=ten(),s=value(f.runtime.recordContextDelivery(f.spec()));value(f.driver.deliver(s,{operation:s.operation,claim:s.claim}));
+ const original=value(f.driver.observe(s,s.operation));f.setClock(101);
+ const driver=createConfinedContextDeliveryDriver({history:f.history,runtime:f.runtime,context:f.c,clock:()=>101,
+  liveProcess:{owner:'part-ten',resolve:l=>f.success({launch:l.id,run:l.run,incarnation:l.incarnation,harness:l.harness,artifactDigest:l.artifactDigest,machine:l.machine,processIdentity:'pid:42:start:1'})},
+  execution:{owner:'part-eight',deliver:()=>{throw Error('must not invoke')},observe:()=>f.success({phase:'context-consumed',evidence:f.evidence.id,detail:'witness'})}});
+ const actual=result(driver.observe(s,s.operation));expect(actual,JSON.stringify(actual)).toMatchObject({accepted:true,value:{observedAt:original.observedAt,id:original.id}});
 });

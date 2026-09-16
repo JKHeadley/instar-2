@@ -1,5 +1,5 @@
 import type { Clock, FactEnvelopeReference, Hash, Result } from '../index.js';
-import { registerProductionGroundingReader } from '../rungraph/index.js';
+import { issueProductionGroundingRead, issueProductionGroundingReader } from '../rungraph/types.js';
 import type { RunView, SessionGrounding, GroundingReadPort } from '../rungraph/index.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import type { AssemblyDecodeContext, AssemblyHistoryReadPort, AssemblyRuntimePort, ContextDeliverySpecification,
@@ -62,9 +62,21 @@ export function createConfinedContextDeliveryDriver(input: Readonly<{
     ensure(signed?.record?.type === 'ContextDeliverySpecification'
       && encoded(signed.record).bytes === encoded(spec).bytes, 'signed delivery identity unavailable');
     const deliveryFact = signed.fact.id;
+    const prior = take(history.current()).filter(row => row.record.type === 'HarnessObservation'
+      && row.record.contextDelivery === deliveryFact && row.record.phase === phase);
+    if (prior.length) {
+      ensure(prior.length === 1, 'context observation history is ambiguous');
+      const row = prior[0]!;
+      ensure(row.record.type === 'HarnessObservation' && row.taint.length === 0
+        && row.conflicts.length === 0 && take(history.resolve(row.record)).admitted,
+      'context observation history is unavailable');
+      ensure(row.record.boundaryEvidence === evidence,
+        're-observation changed the immutable delivery evidence');
+      return row.record;
+    }
     return take(runtime.record('HarnessObservation', { type: 'HarnessObservation', schemaVersion: 1,
       id: `harness-observation:${encoded({ delivery: spec.id, phase }).hash}`, predecessors: [],
-      dependencyFacts: [...new Set([deliveryFact, spec.launch, spec.operation, spec.claim, spec.executionContext, evidence].filter(Boolean))],
+      dependencyFacts: [...new Set([deliveryFact, spec.launch, spec.claim, spec.executionContext, evidence].filter(Boolean))],
       launch: spec.launch, run: spec.run, step: spec.step, input: spec.input, incarnation: spec.incarnation,
       contextDelivery: deliveryFact, sourceEvidence: evidence ? [evidence] : [], contextDigests: spec.contextManifest.map(row => row.digest),
       generation: spec.generation, causalReferences: [],
@@ -97,6 +109,7 @@ export function createConfinedContextDeliveryDriver(input: Readonly<{
 }
 
 export interface ProductionGroundingReaderInput {
+  readonly scope: string;
   readonly runtime: AssemblyRuntimePort;
   readonly harness: HarnessAdapterPort;
   readonly clock: () => Clock;
@@ -111,7 +124,8 @@ export interface ProductionGroundingReaderInput {
  * specification, real delivery, witnessed consumption and returned grounding
  * are one synchronous read. No pre-completed receipt can be injected. */
 export function createProductionGroundingReader(input: ProductionGroundingReaderInput): GroundingReadPort {
-  const reader = freeze({ owner: 'part-ten' as const, production: true as const,
+  let reader: GroundingReadPort;
+  reader = freeze({ owner: 'part-ten' as const, production: true as const,
     read(request: Parameters<GroundingReadPort['read']>[0]) {
       return boundary('ProductionGroundingRead', request, input.context, () => {
       const at = input.clock();
@@ -142,9 +156,9 @@ export function createProductionGroundingReader(input: ProductionGroundingReader
       ensure(candidate.at.value === at.value && candidate.step === specification.step
         && candidate.incarnation === specification.incarnation && candidate.contextDeliveryReason === specification.reason,
       'grounding was pre-completed, retimestamped, or detached from its context delivery');
-      return request.invocation ? freeze({ invocation: request.invocation, grounding: candidate }) : candidate;
+      return request.invocation ? issueProductionGroundingRead(reader, request.invocation, candidate) : candidate;
       });
     },
   });
-  return registerProductionGroundingReader(reader);
+  return issueProductionGroundingReader(reader, input.scope);
 }

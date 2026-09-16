@@ -54,7 +54,7 @@ it('PRODUCTION-GROUNDING P10-NF-10 P10-NF-11 P10-NF-13 confined initial and live
   expect(new Set(s.written.map(row => row.contextDelivery))).toEqual(new Set([initial.id, live.id]));
 });
 
-it('PRODUCTION-GROUNDING P10-NF-40 P10-NF-45 P10-NF-53 refuses adapter mutation, claim replay, incarnation replacement, conflicts, and held compaction', () => {
+it('PG-P10-TYPED-REFUSALS refuses adapter mutation, claim replay, incarnation replacement, conflicts, and held compaction', () => {
   const s = seam(), initial = s.make('initial', 'operation:initial'); s.add(initial);
   refused(s.driver.deliver({ ...initial, input: 'adapter-minted' } as ContextDeliverySpecification,
     { operation: initial.operation, claim: initial.claim }), 'construct or alter');
@@ -69,13 +69,17 @@ it('PRODUCTION-GROUNDING P10-NF-40 P10-NF-45 P10-NF-53 refuses adapter mutation,
   expect(comparison.equal).toBe(false); expect(comparison.conflict?.kind).toBe('immutable-disagreement');
 });
 
-it('PG-P10-SIGNED-DELIVERY PG-P10-TYPED-REFUSALS records and resolves exact signed typed delivery evidence', () => {
+it('PG-P10-SIGNED-DELIVERY records and resolves exact signed typed delivery evidence', () => {
   const f = paired();
   value(f.graph.ground(f.id, 'w', 'h', 'start', f.lease));
   const delivered = f.last();
   expect(delivered.spec.operation).not.toBe(delivered.spec.claim);
-  expect((value(f.history.lookup(delivered.spec.operation)) as any).fact.kind).toBe('effect-OperationDefinition');
-  expect((value(f.history.lookup(delivered.spec.claim)) as any).fact.kind).toBe('transport-AdmissionReservation');
+  expect(delivered.spec.operation).toMatch(/^operation:sha256:[a-f0-9]{64}$/);
+  const claim = value(f.history.lookup(delivered.spec.claim)) as any;
+  expect(claim.fact.kind).toBe('transport-AdmissionReservation');
+  const request = value(f.history.lookup(claim.fact.body.record.request)) as any;
+  expect(request.fact.kind).toBe('effect-EffectRequest');
+  expect((value(f.history.lookup(request.fact.body.record.definition)) as any).fact.kind).toBe('effect-OperationDefinition');
   expect((value(f.history.lookup(delivered.observation.boundaryEvidence)) as any).fact.kind).toBe('effect-OperationObservation');
   expect(value(f.runtime.resolve(delivered.spec)).admitted).toBe(true);
 });
