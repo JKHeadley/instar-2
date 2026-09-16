@@ -77,7 +77,7 @@ export function checkProductionGroundingAssemblyEvidence(report) {
     ['PG-P10-TYPED-REFUSALS refuses adapter mutation, claim replay, incarnation replacement, conflicts, and held compaction', '/tests/assembly/production-grounding.test.ts'],
     ['PG-INTEGRATION-PRODUCTION-BINDING refuses a history-labelled graph until the invocation-owned Ten reader is bound', '/tests/integration/production-grounding.test.ts'],
     ['PG-INTEGRATION-PRODUCTION-BINDING admits the signed row-45 binding only with a production-grounded graph', '/tests/integration/production-grounding.test.ts'],
-    ['PG-E2E-INITIAL-LIVE-REPLAY lifecycle: initial and live-input specifications coexist while compaction execution remains explicitly held', '/tests/e2e/production-grounding.test.ts'],
+    ['PG-E2E-INITIAL-LIVE-REPLAY PRODUCTION-GROUNDING lifecycle: initial and live-input specifications coexist while compaction execution remains explicitly held', '/tests/e2e/production-grounding.test.ts'],
     ['PG-E2E-INITIAL-LIVE-REPLAY executes two signed actual-start boundaries on one incarnation', '/tests/e2e/production-grounding.test.ts'],
   ];
   const files = [];

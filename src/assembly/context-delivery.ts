@@ -1,7 +1,7 @@
 import type { Clock, FactEnvelopeReference, Hash, Result } from '../index.js';
-import { issueProductionGroundingRead, issueProductionGroundingReader } from '../rungraph/types.js';
 import type { RunView, SessionGrounding, GroundingReadPort } from '../rungraph/index.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
+import { issueProductionGroundingRead, issueProductionGroundingReader } from './grounding-capability.js';
 import type { AssemblyDecodeContext, AssemblyHistoryReadPort, AssemblyRuntimePort, ContextDeliverySpecification,
   HarnessAdapterPort, HarnessLaunchSpec, HarnessObservation } from './contracts.js';
 

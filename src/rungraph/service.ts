@@ -4,7 +4,8 @@ import { boundary, encoded, freeze, json, need, object, same, take } from './bou
 import { factRef, foldRun, readRecordFact, validateGrounding, validateTransition, outcomeAt, clockDifference } from './graph.js';
 import { decodeRun, decodeRunTransition, decodeSessionGrounding, factReference, recordReferences, recordWire, runKinds } from './records.js';
 import { checkIdentities, identityIndex } from './identity.js';
-import { consumeProductionGroundingRead, isProductionGroundingReader, issueProductionGroundedGraph } from './types.js';
+import { consumeProductionGroundingRead, productionGroundingReaderScope } from '../assembly/grounding-capability.js';
+import { isProductionGroundingReader, issueProductionGroundedGraph } from './types.js';
 import type { RunDecodeContext, RunGraphDependencies, RunGraphPort, RunRecord, RunView } from './types.js';
 import { runGraphConstruct, preserveRunInput, runAdmission, stepAdmission, transitionAdmission, stopAdmission, exitAdmission, groundingAdmission } from './rungraph.js';
 
@@ -19,7 +20,7 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       && typeof d.admission.reservation === 'function', 'conditional admission, execution context, reservation and durable witness reader required');
     need(d.grounding?.owner === 'part-ten' && typeof d.grounding.read === 'function', 'actual-start grounding reader required');
     need(!d.grounding.production || d.assemblyHistory?.owner === 'part-ten', 'production grounding requires public Ten assembly history');
-    need(!d.grounding.production || isProductionGroundingReader(d.grounding),
+    need(!d.grounding.production || isProductionGroundingReader(d.grounding) || productionGroundingReaderScope(d.grounding),
       'production grounding requires the invocation-bound Ten delivery reader');
     need(d.settlement?.owner === 'part-eight' && typeof d.settlement.read === 'function', 'settlement consumer required');
     need(d.control?.owner === 'part-four' && typeof d.control.verify === 'function', 'control consumer required');
@@ -174,6 +175,6 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
         return read(t.run);
       })),
     } satisfies RunGraphPort);
-    return d.grounding.production ? issueProductionGroundedGraph(graph, d.grounding) : graph;
+    return d.grounding.production ? issueProductionGroundedGraph(graph, productionGroundingReaderScope(d.grounding)) : graph;
   });
 }

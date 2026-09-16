@@ -140,9 +140,7 @@ export interface GroundingReadPort {
     invocation?: object }>): Result<unknown>;
 }
 
-const productionGroundingReaders = new WeakMap<object, string>();
 const declaredProductionGroundingReaders = new WeakSet<object>();
-const productionGroundingReads = new WeakMap<object, Readonly<{ reader: GroundingReadPort; invocation: object }>>();
 const productionGroundedGraphs = new WeakMap<object, string>();
 
 /** Runtime provenance for the Ten factory and the Five graph it actually binds.
@@ -153,7 +151,7 @@ export function registerProductionGroundingReader<T extends GroundingReadPort>(r
   return reader;
 }
 export function isProductionGroundingReader(reader: GroundingReadPort): boolean {
-  return productionGroundingReaders.has(reader) || declaredProductionGroundingReaders.has(reader);
+  return declaredProductionGroundingReaders.has(reader);
 }
 export function registerProductionGroundedGraph<T extends RunGraphPort>(graph: T): T {
   return graph;
@@ -163,25 +161,10 @@ export function isProductionGroundedRunGraph(graph: RunGraphPort, scope?: string
   return granted !== undefined && (scope === undefined || granted === scope);
 }
 
-/** Internal issuer path. Public registration functions above intentionally do
- * not grant provenance; callers cannot stamp readers or graphs as production. */
-export function issueProductionGroundingReader<T extends GroundingReadPort>(reader: T, scope: string): T {
-  if (!scope.trim()) throw new Error('production grounding scope required');
-  productionGroundingReaders.set(reader, scope); return reader;
-}
-export function issueProductionGroundingRead(reader: GroundingReadPort, invocation: object, grounding: unknown): unknown {
-  if (!productionGroundingReaders.has(reader)) throw new Error('production grounding reader was not factory-issued');
-  const result = Object.freeze({ invocation, grounding });
-  productionGroundingReads.set(result, { reader, invocation }); return result;
-}
-export function consumeProductionGroundingRead(reader: GroundingReadPort, invocation: object, result: unknown): unknown {
-  if (!result || typeof result !== 'object' || productionGroundingReads.get(result)?.reader !== reader
-    || productionGroundingReads.get(result)?.invocation !== invocation)
-    throw new Error('production grounding read was pre-completed or replayed outside this invocation');
-  return (result as Readonly<{ grounding: unknown }>).grounding;
-}
-export function issueProductionGroundedGraph<T extends RunGraphPort>(graph: T, reader: GroundingReadPort): T {
-  const scope = productionGroundingReaders.get(reader);
+/** Internal graph issuer. Scope comes only from Ten's private factory
+ * capability; the public graph registration path above intentionally grants
+ * nothing. */
+export function issueProductionGroundedGraph<T extends RunGraphPort>(graph: T, scope: string | undefined): T {
   if (!scope) return graph;
   productionGroundedGraphs.set(graph, scope); return graph;
 }

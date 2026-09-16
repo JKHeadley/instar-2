@@ -1,10 +1,10 @@
 import { assemblySchemas, createAssemblyRuntime, createAssemblySpine, registerAssemblyBodies } from '../../src/assembly/index.js';
+import { issueProductionGroundingRead, issueProductionGroundingReader } from '../../src/assembly/grounding-capability.js';
 import { consumeResult, decode, decodeMeasurement } from '../../src/index.js';
 import type { Clock, FactEnvelopeReference, Json } from '../../src/index.js';
 import { authorAndAppend, createFactStore, registerOwnedBody } from '../../src/facts/index.js';
 import type { FactContext, FactEnvelope, FactSchema, OwnedShape, SegmentStoragePort } from '../../src/facts/index.js';
 import { createRunGraph, recordWire, runFactSchemas, runIdFor } from '../../src/rungraph/index.js';
-import { issueProductionGroundingRead, issueProductionGroundingReader } from '../../src/rungraph/types.js';
 import type { RunDecodeContext, RunGraphDependencies, RunTransition, RunView } from '../../src/rungraph/index.js';
 import { factsFixture, privateKey, json, refused } from '../facts/fixtures.js';
 import { assemblyInput } from '../assembly/fixture.js';
