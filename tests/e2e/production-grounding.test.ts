@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { contextDeliveryIdFor, decodeAssemblyRecord } from '../../src/assembly/index.js';
 import { factsFixture, refused, value } from '../facts/fixtures.js';
 import { digest } from '../fixtures.js';
+import { executeInitialLiveInputLifecycle } from '../rungraph/astra-production-grounding-fixture.js';
 
 const candidate = (reason: 'initial' | 'live-input' | 'compaction', operation: string) => ({
   type: 'ContextDeliverySpecification', schemaVersion: 1, id: contextDeliveryIdFor('launch:one', operation), predecessors: [], dependencyFacts: [],
@@ -12,7 +13,7 @@ const candidate = (reason: 'initial' | 'live-input' | 'compaction', operation: s
   controlObservation: reason === 'compaction' ? 'control:compaction' : '',
 });
 
-it('PRODUCTION-GROUNDING lifecycle: initial and live-input specifications coexist while compaction execution remains explicitly held', () => {
+it('PG-E2E-INITIAL-LIVE-REPLAY PRODUCTION-GROUNDING lifecycle: initial and live-input specifications coexist while compaction execution remains explicitly held', () => {
   const f = factsFixture();
   const initial = value(decodeAssemblyRecord('ContextDeliverySpecification', candidate('initial', 'initial'), f.c));
   const live = value(decodeAssemblyRecord('ContextDeliverySpecification', candidate('live-input', 'live-input'), f.c));
@@ -24,3 +25,11 @@ it('PRODUCTION-GROUNDING lifecycle: initial and live-input specifications coexis
   expect(compact.reason).toBe('compaction');
   expect('NON-EXECUTABLE-UNTIL-live-path-unit-compaction').toContain('live-path-unit-compaction');
 });
+
+it('PG-E2E-INITIAL-LIVE-REPLAY executes two signed actual-start boundaries on one incarnation', () => {
+  const actual = executeInitialLiveInputLifecycle();
+  expect(actual.running.pending).toHaveLength(1);
+  expect(actual.ready.pending).toHaveLength(0);
+  expect(actual.secondRunning.pending).toHaveLength(1);
+  expect(actual.last.spec.incarnation).toBe(actual.first.spec.incarnation);
+}, 30_000);

@@ -4,6 +4,7 @@ import { boundary, encoded, freeze, json, need, object, same, take } from './bou
 import { factRef, foldRun, readRecordFact, validateGrounding, validateTransition, outcomeAt, clockDifference } from './graph.js';
 import { decodeRun, decodeRunTransition, decodeSessionGrounding, factReference, recordReferences, recordWire, runKinds } from './records.js';
 import { checkIdentities, identityIndex } from './identity.js';
+import { isProductionGroundingReader, registerProductionGroundedGraph } from './types.js';
 import type { RunDecodeContext, RunGraphDependencies, RunGraphPort, RunRecord, RunView } from './types.js';
 import { runGraphConstruct, preserveRunInput, runAdmission, stepAdmission, transitionAdmission, stopAdmission, exitAdmission, groundingAdmission } from './rungraph.js';
 
@@ -18,6 +19,8 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       && typeof d.admission.reservation === 'function', 'conditional admission, execution context, reservation and durable witness reader required');
     need(d.grounding?.owner === 'part-ten' && typeof d.grounding.read === 'function', 'actual-start grounding reader required');
     need(!d.grounding.production || d.assemblyHistory?.owner === 'part-ten', 'production grounding requires public Ten assembly history');
+    need(!d.grounding.production || isProductionGroundingReader(d.grounding),
+      'production grounding requires the invocation-bound Ten delivery reader');
     need(d.settlement?.owner === 'part-eight' && typeof d.settlement.read === 'function', 'settlement consumer required');
     need(d.control?.owner === 'part-four' && typeof d.control.verify === 'function', 'control consumer required');
     need(d.exitCheck?.owner === 'part-nine' && typeof d.exitCheck.verify === 'function', 'exit check consumer required');
@@ -78,7 +81,7 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       })));
       need(calls === 1 && written && same(written, receipt), 'admission did not commit the exact callback record'); return receipt;
     };
-    return freeze({
+    const graph = freeze({
       owner: 'part-five',
       read: (run: string) => boundary('ReadRun', run, d.context, () => read(run)),
       readExit: run => boundary('ReadRunExit', run, d.context, safe => {
@@ -109,7 +112,17 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
         const execution = take(d.admission.execution(run, ownership));
         need(execution.worker === worker && execution.harness === harness && same(execution.ownership, ownership), 'worker/harness differs from verified execution context');
         factReference(json(execution.context), context());
-        const before = d.clock(), input = take(d.grounding.read({ run: view, worker, harness, reason, execution })), after = d.clock();
+        const before = d.clock(), invocation = {};
+        const readResult = take(d.grounding.read({ run: view, worker, harness, reason, execution, invocation }));
+        const input = d.grounding.production ? (() => {
+          need(readResult !== null && typeof readResult === 'object' && !Array.isArray(readResult),
+            'production grounding reader returned no invocation result');
+          const result = readResult as Readonly<Record<string, unknown>>;
+          need(result.invocation === invocation && result.grounding !== undefined,
+            'production grounding read was pre-completed or replayed outside this invocation');
+          return result.grounding;
+        })() : readResult;
+        const after = d.clock();
         const grounding = take(preserveRunInput(input, context(), d.governance, captured => groundingAdmission(input, captured, d.governance)));
         need(grounding.worker === worker && grounding.harness === harness && grounding.reason === reason
           && same(grounding.ownership, execution.ownership) && same(grounding.executionContext, execution.context)
@@ -166,5 +179,6 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
         return read(t.run);
       })),
     } satisfies RunGraphPort);
+    return d.grounding.production ? registerProductionGroundedGraph(graph) : graph;
   });
 }

@@ -135,7 +135,28 @@ export interface GroundingReadPort {
   /** Structural activation marker: production assembly may not fall back to a flat receipt. */
   readonly production?: true;
   // Must measure NOW and deliver the enumerated bytes to this worker before return.
-  read(request: Readonly<{ run: RunView; worker: string; harness: string; reason: SessionGrounding['reason']; execution: RunExecutionObservation }>): Result<unknown>;
+  read(request: Readonly<{ run: RunView; worker: string; harness: string; reason: SessionGrounding['reason']; execution: RunExecutionObservation;
+    /** Per-call identity supplied by Five. It is never stored and cannot be replayed. */
+    invocation?: object }>): Result<unknown>;
+}
+
+const productionGroundingReaders = new WeakSet<object>();
+const productionGroundedGraphs = new WeakSet<object>();
+
+/** Runtime provenance for the Ten factory and the Five graph it actually binds.
+ * The stored grounding remains pure data; only this process-local construction
+ * proof selects the production composition arm. */
+export function registerProductionGroundingReader<T extends GroundingReadPort>(reader: T): T {
+  productionGroundingReaders.add(reader); return reader;
+}
+export function isProductionGroundingReader(reader: GroundingReadPort): boolean {
+  return productionGroundingReaders.has(reader);
+}
+export function registerProductionGroundedGraph<T extends RunGraphPort>(graph: T): T {
+  productionGroundedGraphs.add(graph); return graph;
+}
+export function isProductionGroundedRunGraph(graph: RunGraphPort): boolean {
+  return productionGroundedGraphs.has(graph);
 }
 export interface RunGovernance {
   readonly register: VerifiedRegister;

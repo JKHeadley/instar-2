@@ -3,6 +3,7 @@ import { compareAssemblyRecords, contextDeliveryIdFor, createConfinedContextDeli
 import type { AssemblyHistoryReadPort, AssemblyRuntimePort, ContextDeliverySpecification, HarnessLaunchSpec } from '../../src/assembly/index.js';
 import { factsFixture, refused, value } from '../facts/fixtures.js';
 import { assemblyInput } from './fixture.js';
+import { paired } from '../rungraph/astra-production-grounding-fixture.js';
 
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
 const fact = (id: string, kind: string) => ({ id, kind, schemaVersion: 1, machine: 'machine-a' }) as never;
@@ -66,4 +67,15 @@ it('PRODUCTION-GROUNDING P10-NF-40 P10-NF-45 P10-NF-53 refuses adapter mutation,
   const changed = { ...initial, inputDigest: hash('c') };
   const comparison = value(compareAssemblyRecords('ContextDeliverySpecification', initial, changed, s.f.c));
   expect(comparison.equal).toBe(false); expect(comparison.conflict?.kind).toBe('immutable-disagreement');
+});
+
+it('PG-P10-SIGNED-DELIVERY PG-P10-TYPED-REFUSALS records and resolves exact signed typed delivery evidence', () => {
+  const f = paired();
+  value(f.graph.ground(f.id, 'w', 'h', 'start', f.lease));
+  const delivered = f.last();
+  expect(delivered.spec.operation).not.toBe(delivered.spec.claim);
+  expect((value(f.history.lookup(delivered.spec.operation)) as any).fact.kind).toBe('effect-OperationDefinition');
+  expect((value(f.history.lookup(delivered.spec.claim)) as any).fact.kind).toBe('transport-AdmissionReservation');
+  expect((value(f.history.lookup(delivered.observation.boundaryEvidence)) as any).fact.kind).toBe('effect-OperationObservation');
+  expect(value(f.runtime.resolve(delivered.spec)).admitted).toBe(true);
 });

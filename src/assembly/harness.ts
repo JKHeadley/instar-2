@@ -37,7 +37,6 @@ export function createNativeHarnessAdapter(input: Readonly<{ id: string; artifac
     },
     deliver(delivery) {
       return boundary('NativeHarnessDeliver', delivery, context, () => {
-        const launched = launches.get(delivery.launch); ensure(launched && launched.spec.incarnation === delivery.incarnation, 'unknown or stale launch incarnation');
         if (delivery.contextDelivery) {
           ensure(input.contextDeliveryDriver && context.history && delivery.claim, 'production context delivery driver, history, and claim required');
           const row = take(context.history.lookup(delivery.contextDelivery));
@@ -53,6 +52,7 @@ export function createNativeHarnessAdapter(input: Readonly<{ id: string; artifac
           deliveries.set(specification.id, specification);
           return take(input.contextDeliveryDriver.deliver(specification, { operation: delivery.operation, claim: delivery.claim }));
         }
+        const launched = launches.get(delivery.launch); ensure(launched && launched.spec.incarnation === delivery.incarnation, 'unknown or stale launch incarnation');
         ensure(delivery.intake === launched.spec.input && delivery.digest === launched.spec.inputDigest, 'delivery identity or digest differs from admitted launch input');
         const accepted = take(driver.deliver({ operation: delivery.operation, processIdentity: launched.processIdentity,
           intake: delivery.intake, digest: delivery.digest, incarnation: delivery.incarnation }));
@@ -61,10 +61,25 @@ export function createNativeHarnessAdapter(input: Readonly<{ id: string; artifac
     },
     observe(request) {
       return boundary('NativeHarnessObserve', request, context, () => {
-        const launched = launches.get(request.launch); ensure(launched, 'unknown launch');
+        if (input.contextDeliveryDriver && context.history) {
+          const accepted = take(context.history.lookup(request.delivery));
+          if (accepted?.record?.type === 'HarnessObservation' && accepted.record.contextDelivery) {
+            ensure(accepted.fact.kind === 'assembly-HarnessObservation'
+              && accepted.completeness === 'complete' && !accepted.taint.length && !accepted.conflicts.length
+              && accepted.record.launch === request.launch
+              && take(context.history.resolve(accepted.record)).admitted, 'delivery observation unavailable');
+            const delivery = take(context.history.lookup(accepted.record.contextDelivery));
+            ensure(delivery?.record?.type === 'ContextDeliverySpecification'
+              && delivery.fact.id === accepted.record.contextDelivery
+              && delivery.record.launch === request.launch && delivery.record.operation === request.operation,
+            'observation does not name the exact admitted delivery');
+            return take(input.contextDeliveryDriver.observe(delivery.record, request.operation));
+          }
+        }
         const delivered = [...deliveries.values()].find(specification => specification.launch === request.launch
           && specification.operation === request.operation);
         if (delivered) return take(input.contextDeliveryDriver!.observe(delivered, request.operation));
+        const launched = launches.get(request.launch); ensure(launched, 'unknown launch');
         const observed = take(driver.observe({ operation: request.operation, processIdentity: launched.processIdentity }));
         if (observed.phase === 'context-consumed') {
           ensure(observed.evidence.startsWith('model-context:') && context.history, 'context consumption source is not resolvable signed history');

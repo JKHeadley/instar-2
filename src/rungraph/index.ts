@@ -1,4 +1,6 @@
 export type * from './types.js';
+export { registerProductionGroundingReader, isProductionGroundingReader,
+  registerProductionGroundedGraph, isProductionGroundedRunGraph } from './types.js';
 export { INITIAL_MAX_ATTEMPTS, INITIAL_MAX_CHILDREN, INITIAL_MAX_DEPTH } from './limits.js';
 export { decodeRun, decodeRunBudget, decodeRunStep, decodeRunTransition, decodeRunExit, decodeSessionGrounding,
   runFactSchemas, recordWire, recordFromWire, runIdFor, runKinds, resolveIntakeOwner } from './records.js';

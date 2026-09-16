@@ -85,7 +85,8 @@ it('V79 the changed source paths stay inside the explicit Part Four, Part Ten an
   const base = execFileSync('git', ['merge-base', main, 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
   const paths = execFileSync('git', ['diff', '--name-only', base, '--', 'src'], { cwd: root, encoding: 'utf8' })
     .trim().split('\n').filter(Boolean);
-  const outside = paths.filter(path => !['src/intake/', 'src/assembly/', 'src/operator/'].some(prefix => path.startsWith(prefix)));
+  // SEAM-LEDGER row 45 grant 08:48Z (Part Five half)
+  const outside = paths.filter(path => !['src/intake/', 'src/assembly/', 'src/operator/', 'src/rungraph/'].some(prefix => path.startsWith(prefix)));
   expect(outside).toEqual([]);
   expect(readFileSync(join(root, 'src/index.ts'), 'utf8'))
     .toBe(execFileSync('git', ['show', `${base}:src/index.ts`], { cwd: root, encoding: 'utf8' }));

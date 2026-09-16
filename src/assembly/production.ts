@@ -1,6 +1,7 @@
 import { consumeResult } from '../index.js';
 import type { Result } from '../index.js';
 import { requiredMinimalDependencies } from '../operator/index.js';
+import { isProductionGroundedRunGraph } from '../rungraph/index.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import { factReferenceAliases } from './records.js';
 import { currentAssemblyRows } from './history.js';
@@ -234,6 +235,14 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
       'VerificationRuntimePort.due': production.verification.port.due,
     })) requireMethod(operation, name);
     requireMethod(production.run.port.read, 'RunGraphPort.read');
+    if (binding.productionGrounding) {
+      ensure(production.productionGrounding?.owner === 'part-ten'
+        && production.productionGrounding.implementation === binding.productionGrounding.implementation,
+      'production grounding composition binding differs from the signed manifest');
+      ensure(isProductionGroundedRunGraph(production.run.port),
+        'production RunGraphPort is not bound to the invocation-owned context-delivery reader');
+    } else ensure(!production.productionGrounding,
+      'production grounding composition cannot activate without its signed manifest binding');
     requireMethod(production.lease.port.acquire, 'TransportAuthority.acquire');
     requireMethod(production.judgment.port.judge, 'JudgmentDoorway.judge');
     ensure(production.effect.port.owner === 'part-eight', 'effect doorway must be issued by Part Eight');

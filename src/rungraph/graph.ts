@@ -1,4 +1,5 @@
 import { consumeOutcome, consumeResult, decode, compareMeasurements, readHistoricalEvidence } from '../index.js';
+import { assemblyRecordFrom } from '../assembly/index.js';
 import type { Clock, Evidence, FactEnvelopeReference, Inventory, Json, Outcome, Result } from '../index.js';
 import { causalCone, causalStanding, decodeHistoricalBody, hashBytes } from '../facts/index.js';
 import type { ConflictClass, FactEnvelope, FactSnapshot } from '../facts/index.js';
@@ -103,7 +104,7 @@ export interface GroundingValidationOptions {
   readonly candidateStep?: RunStep;
   readonly transitionTrigger?: FactEnvelopeReference;
 }
-function exactAssembly<N extends AssemblyStoredRecordName>(reference: string, expected: N, history: AssemblyHistoryReadPort): Readonly<{
+function exactAssembly<N extends AssemblyStoredRecordName>(reference: string, expected: N, history: AssemblyHistoryReadPort, context: RunDecodeContext): Readonly<{
   fact: FactEnvelope; record: Extract<AssemblyStoredRecord, { type: N }>;
 }> {
   const row = take(history.lookup(reference));
@@ -111,6 +112,8 @@ function exactAssembly<N extends AssemblyStoredRecordName>(reference: string, ex
     `exact owner-decoded ${expected} fact required`);
   need(row.completeness === 'complete' && row.taint.length === 0 && row.conflicts.length === 0,
     `${expected} fact is partial, tainted, or conflicted`);
+  const decoded = assemblyRecordFrom(row.fact, context);
+  need(same(decoded, row.record), 'resolved record differs from the signed assembly body');
   const verdict = row.record.type === 'ContextDeliverySpecification'
     ? (need(history.resolveContextDelivery, 'context delivery history resolver required'), take(history.resolveContextDelivery(row.record)))
     : take(history.resolve(row.record));
@@ -121,13 +124,19 @@ function validateProductionGrounding(g: SessionGrounding, c: RunDecodeContext, o
   const history = options.assemblyHistory; need(history?.owner === 'part-ten', 'production grounding requires the public Ten history reader');
   need(g.step && g.incarnation && g.contextDeliveryReason, 'production grounding lacks context-delivery identity');
   need(g.contextDeliveryReason !== 'compaction', 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction');
-  const observed = exactAssembly(g.consumption.id, 'HarnessObservation', history).record as HarnessObservation;
+  const observed = exactAssembly(g.consumption.id, 'HarnessObservation', history, c).record as HarnessObservation;
   need(observed.contextDelivery && observed.phase === 'context-consumed', 'production grounding requires a context-consumed observation');
-  const specification = exactAssembly(observed.contextDelivery, 'ContextDeliverySpecification', history).record as ContextDeliverySpecification;
-  const launch = exactAssembly(specification.launch, 'HarnessLaunchSpec', history).record as HarnessLaunchSpec;
+  const specification = exactAssembly(observed.contextDelivery, 'ContextDeliverySpecification', history, c).record as ContextDeliverySpecification;
+  const launch = exactAssembly(specification.launch, 'HarnessLaunchSpec', history, c).record as HarnessLaunchSpec;
   const boundaryEvidence = take(history.lookup(observed.boundaryEvidence));
   need(boundaryEvidence && boundaryEvidence.completeness === 'complete' && boundaryEvidence.taint.length === 0
-    && boundaryEvidence.conflicts.length === 0, 'context consumption boundary evidence is not resolvable');
+    && boundaryEvidence.conflicts.length === 0 && boundaryEvidence.fact.id === observed.boundaryEvidence
+    && boundaryEvidence.fact.kind === 'effect-OperationObservation', 'context consumption boundary evidence is not resolvable');
+  const boundaryBody = object(boundaryEvidence.fact.body), boundaryRecord = object(boundaryBody.record ?? boundaryEvidence.fact.body);
+  need(boundaryRecord.operation === specification.operation && boundaryRecord.claim === specification.claim
+    && boundaryRecord.digest === specification.inputDigest
+    && (boundaryRecord.stage === 'response' || boundaryRecord.stage === 'observer-accepted'),
+  'context consumption boundary evidence differs from the exact delivered operation/claim/bytes');
   need(specification.reason === 'initial' || specification.reason === 'live-input', 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction');
   need(g.contextDeliveryReason === specification.reason && g.step === specification.step && g.incarnation === specification.incarnation,
     'grounding context-delivery reason, step, or incarnation differs');
@@ -142,9 +151,12 @@ function validateProductionGrounding(g: SessionGrounding, c: RunDecodeContext, o
     && launch.artifactDigest === specification.artifactDigest && launch.machine === specification.machine,
   'context delivery replaced the immutable launch identity');
   const now = options.now ?? g.at;
-  need(observed.observedAt >= g.at.value
+  need(observed.observedAt >= g.at.value && observed.observedAt <= now.value
     && observed.observedAt + observed.freshFor >= now.value, 'context consumption observation is pre-completed, retimestamped, or stale');
   const matched = new Set<number>();
+  const intake = g.messages.filter(message => message.fact.id === specification.input);
+  need(intake.length === 1 && intake[0]!.hash === specification.inputDigest,
+    'context delivery input digest differs from the admitted intake bytes');
   for (const message of g.messages) {
     const indexes = specification.contextManifest.map((row, index) => ({ row, index }))
       .filter(({ row }) => row.reference === message.capture && row.digest === message.hash);
@@ -153,7 +165,14 @@ function validateProductionGrounding(g: SessionGrounding, c: RunDecodeContext, o
   for (const briefing of g.briefingClasses) {
     const indexes = specification.contextManifest.map((row, index) => ({ row, index }))
       .filter(({ row }) => row.class === briefing);
-    need(indexes.length === 1, 'context manifest omitted, duplicated, or substituted a briefing class'); matched.add(indexes[0]!.index);
+    need(indexes.length === 1, 'context manifest omitted, duplicated, or substituted a briefing class');
+    const row = indexes[0]!.row, material = take(history.lookup(row.reference));
+    need(material?.fact.id === row.reference && material.fact.kind === 'rungraph-briefing-material'
+      && material.completeness === 'complete' && material.taint.length === 0 && material.conflicts.length === 0
+      && material.fact.contentHash === row.digest
+      && object(material.fact.body).class === briefing,
+    'context manifest briefing reference or digest is not current owner material');
+    matched.add(indexes[0]!.index);
   }
   need(matched.size === specification.contextManifest.length
     && specification.contextManifest.length === g.messages.length + g.briefingClasses.length,
@@ -277,7 +296,7 @@ export function foldRun(runId: string, snapshot: FactSnapshot, generation: Proje
       const predecessor = facts.find(f => object(readRecordFact(f)).id === t.expected)
         ?? snapshot.entries.find(e => e.fact.kind === runKinds.Run && object(e.fact.body).run === runId)?.fact;
       need(predecessor && causalCone(fact, c.facts.facts).some(f => f.id === predecessor.id), 'transition is not causally linked to predecessor');
-      validateTransition(t, view, c, { ...groundingOptions, now });
+      validateTransition(t, view, c, { ...groundingOptions, now: groundingOptions.production ? t.at : now });
       if (t.grounding) {
         const groundingFact = factReference(json(t.grounding), c), grounding = take(decodeSessionGrounding(readRecordFact(groundingFact), c));
         need(same(take(witnesses.verify(groundingFact, grounding, view)), factRef(groundingFact)), 'grounding admission witness mismatch');

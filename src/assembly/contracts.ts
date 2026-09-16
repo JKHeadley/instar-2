@@ -42,6 +42,9 @@ export type AssemblyImplementationBinding = Readonly<{
 }>;
 export type AssemblyProductionBindingSet = Readonly<{
   readonly scope: string;
+  /** Signed row-45 activation; omission preserves the landed Part Eleven
+   * compatibility fixture while presence requires the real delivery chain. */
+  readonly productionGrounding?: Readonly<{ implementation: 'context-delivery-v1' }>;
   readonly surface: Readonly<{
     adapter: AssemblyImplementationBinding;
     challengeVerifier: AssemblyImplementationBinding & Readonly<{ administration: 'independent' }>;
@@ -347,6 +350,7 @@ export interface AssemblyProductionComposition {
   readonly replay: AssemblySourceOnlyReplayPort;
   readonly minimalResponder: AssemblyMinimalResponderPort;
   readonly run: Readonly<{ id: string; port: RunGraphPort }>;
+  readonly productionGrounding?: Readonly<{ owner: 'part-ten'; implementation: 'context-delivery-v1' }>;
   readonly lease: Readonly<{ id: string; port: TransportAuthority }>;
   readonly judgment: Readonly<{ id: string; port: JudgmentDoorway }>;
   readonly effect: Readonly<{ id: string; port: EffectDoorway }>;

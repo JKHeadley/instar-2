@@ -68,10 +68,17 @@ for (const [id, requiredFile] of requiredSeamEvidence) {
     throw new Error(`${id}: required passing evidence absent from ${requiredFile}`);
 }
 
-const productionFiles = report.testResults.filter(file => (file.assertionResults ?? []).some(test =>
-  test.status === 'passed' && test.fullName.includes('PRODUCTION-GROUNDING'))).map(file => relative(process.cwd(), file.name));
-for (const tier of ['tests/rungraph/', 'tests/integration/', 'tests/e2e/'])
-  if (!productionFiles.some(file => file.startsWith(tier))) throw new Error(`production grounding rungraph evidence missing ${tier}`);
+const requiredProductionEvidence = new Map([
+  ['PG-P5-INVOKED-READ', 'tests/rungraph/production-grounding-review.test.ts'],
+  ['PG-P5-SOURCE-REFUSALS', 'tests/rungraph/production-grounding-review.test.ts'],
+  ['PG-INTEGRATION-PRODUCTION-BINDING', 'tests/integration/production-grounding.test.ts'],
+  ['PG-E2E-INITIAL-LIVE-REPLAY', 'tests/e2e/production-grounding.test.ts'],
+]);
+for (const [identity, requiredFile] of requiredProductionEvidence) {
+  const rows = report.testResults.flatMap(file => (file.assertionResults ?? []).filter(test =>
+    test.status === 'passed' && test.fullName.includes(identity)).map(() => relative(process.cwd(), file.name)));
+  if (!rows.includes(requiredFile)) throw new Error(`production grounding rungraph evidence missing ${identity} in ${requiredFile}`);
+}
 if (productionGroundingRunGraphContract.held !== 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction')
   throw new Error('compaction hold name changed');
 

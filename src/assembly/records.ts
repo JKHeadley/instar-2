@@ -23,6 +23,7 @@ const requiredFactBinding = pair({ reference: text, expectedKind: text, required
 const implementationBinding = pair({ implementation: text, fact: requiredFactBinding });
 const productionBinding = pair({
   scope: text,
+  productionGrounding: pair({ implementation: text }),
   surface: pair({
     adapter: implementationBinding,
     challengeVerifier: pair({ implementation: text, fact: requiredFactBinding, administration: text }),
@@ -38,7 +39,7 @@ const productionBinding = pair({
   lifecycle: pair({ cut: implementationBinding, recovery: implementationBinding }),
   deliveryWitness: pair({ implementation: text, fact: requiredFactBinding, identity: text, platform: text,
     requester: text, effectAdapter: text }),
-});
+}, ['productionGrounding']);
 
 export const assemblyShapes: Readonly<Record<AssemblyRecordName, OwnedShape>> = freeze({
   AssemblyManifest: pair({ ...common, manifestDigest: hash,
@@ -262,6 +263,8 @@ function validateRequiredFactBinding(binding: Readonly<{ reference: string; expe
 
 function validateProductionBinding(binding: NonNullable<AssemblyManifest['productionBindings']>[number]): void {
   substantive(binding.scope, 'production binding scope');
+  if (binding.productionGrounding) ensure(binding.productionGrounding.implementation === 'context-delivery-v1',
+    'unknown production grounding implementation');
   ensure(binding.surface.challengeVerifier.administration === 'independent', 'challenge verifier must be independently administered');
   ensure(binding.verifiedActIntake.operation === 'admitVerifiedAct', 'verified-act intake operation must be admitVerifiedAct');
   const folds = binding.minimalPlane.folds;
@@ -458,11 +461,59 @@ function exactAssemblyReference<N extends AssemblyStoredRecordName>(reference: s
   ensure(verdict.admitted, `${expected} reference history is not admitted: ${reference}`);
   return status.record as Extract<AssemblyStoredRecord, { type: N }>;
 }
+function exactOwnerFact(reference: string, expectedKind: string | undefined, context: AssemblyDecodeContext): FactEnvelope {
+  ensure(context.history, 'signed history resolver required');
+  const status = take(context.history.lookup(reference));
+  ensure(status?.fact.id === reference && (!expectedKind || status.fact.kind === expectedKind),
+    `exact signed ${expectedKind ?? 'owner'} reference required: ${reference}`);
+  ensure(status.completeness === 'complete' && status.taint.length === 0 && status.conflicts.length === 0,
+    `${expectedKind ?? 'owner'} reference is unavailable or conflicted: ${reference}`);
+  return status.fact;
+}
+function ownerBody(fact: FactEnvelope): Readonly<Record<string, unknown>> {
+  const body = object(fact.body); const record = object(body?.record);
+  return record ?? body ?? {};
+}
 function validateContextDeliveryReferences(record: ContextDeliverySpecification, context: AssemblyDecodeContext): void {
   const launch = exactAssemblyReference(record.launch, 'HarnessLaunchSpec', context);
   ensure(launch.run === record.run && launch.incarnation === record.incarnation && launch.harness === record.harness
     && launch.artifactDigest === record.artifactDigest && launch.machine === record.machine,
   'context delivery replaces or mismatches the immutable launch identity');
+  const input = exactOwnerFact(record.input, undefined, context);
+  const inputBody = ownerBody(input), capture = object(inputBody.capture);
+  ensure(typeof capture?.reference === 'string' && capture.hash === record.inputDigest,
+    'context delivery input digest differs from the owner-resolved intake capture');
+  ensure(record.contextManifest.some(row => row.class === 'message'
+    && row.reference === capture.reference && row.digest === capture.hash),
+  'context delivery manifest does not contain the exact input capture');
+  exactOwnerFact(record.operation, 'effect-OperationDefinition', context);
+  const claim = ownerBody(exactOwnerFact(record.claim, 'transport-AdmissionReservation', context));
+  ensure(claim.state === 'dispatch-claimed' && claim.operation === record.operation
+    && claim.digest === record.inputDigest && claim.run === record.run,
+  'context delivery claim is not the current one-use claim for this operation/input/run');
+  const execution = ownerBody(exactOwnerFact(record.executionContext, 'transport-Lease', context));
+  ensure((execution.run === undefined || execution.run === record.run)
+    && (execution.incarnation === undefined || execution.incarnation === record.incarnation),
+  'context delivery execution context differs from the current Six lease');
+  for (const row of record.contextManifest.filter(row => row.class !== 'message')) {
+    const material = exactOwnerFact(row.reference, 'rungraph-briefing-material', context);
+    const body = ownerBody(material);
+    ensure(body.class === row.class && material.contentHash === row.digest,
+      'context delivery briefing material reference or digest differs');
+  }
+  const deliveries = take(context.history!.current()).filter(row =>
+    row.record.type === 'ContextDeliverySpecification' && row.record.launch === record.launch);
+  const replay = deliveries.some(row => encoded(row.record).bytes === encoded(record).bytes);
+  if (!replay) {
+    ensure(deliveries.every(row => row.taint.length === 0 && row.conflicts.length === 0),
+      'delivery predecessor population is unavailable or conflicted');
+    const superseded = new Set(deliveries.flatMap(row => row.record.type === 'ContextDeliverySpecification'
+      && row.record.previousDelivery ? [row.record.previousDelivery] : []));
+    const heads = deliveries.filter(row => !superseded.has(row.fact.id));
+    ensure(record.reason === 'initial' ? heads.length === 0
+      : heads.length === 1 && heads[0]!.fact.id === record.previousDelivery,
+    'delivery must reference the immediately preceding delivery');
+  }
   if (record.previousDelivery) {
     const previous = exactAssemblyReference(record.previousDelivery, 'ContextDeliverySpecification', context);
     ensure(previous.launch === record.launch && previous.run === record.run && previous.incarnation === record.incarnation
@@ -475,6 +526,15 @@ function validateContextBoundObservation(record: Extract<AssemblyStoredRecord, {
     && record.input === specification.input && record.incarnation === specification.incarnation
     && record.generation === specification.generation && encoded(record.contextDigests).bytes === encoded(specification.contextManifest.map(row => row.digest)).bytes,
   'context-bound observation differs from its delivery specification');
+  const evidence = ownerBody(exactOwnerFact(record.boundaryEvidence, 'effect-OperationObservation', context));
+  ensure(evidence.operation === specification.operation && evidence.claim === specification.claim
+    && evidence.digest === specification.inputDigest
+    && (evidence.run === undefined || evidence.run === specification.run)
+    && (evidence.input === undefined || evidence.input === specification.input),
+  'context boundary evidence differs from the delivered operation, claim, input, or bytes');
+  ensure(record.phase === 'input-accepted' ? evidence.stage === 'executor-accepted'
+    : record.phase !== 'context-consumed' || evidence.stage === 'response' || evidence.stage === 'observer-accepted',
+  'context boundary evidence does not prove the recorded delivery phase');
 }
 export function assemblyRecordFrom(fact: FactEnvelope, context: AssemblyDecodeContext): AssemblyStoredRecord {
   const body = fact.body as { record: Json }; ensure(body.record && typeof body.record === 'object' && !Array.isArray(body.record), 'assembly record body missing');

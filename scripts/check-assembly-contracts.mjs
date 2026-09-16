@@ -72,13 +72,24 @@ export const productionGroundingAssemblyContract = Object.freeze({
 });
 export function checkProductionGroundingAssemblyEvidence(report) {
   if (!report.success) throw new Error('production grounding assembly evidence requires a successful test run');
-  const files = report.testResults.filter(file => (file.assertionResults ?? []).some(test =>
-    test.status === 'passed' && test.fullName.includes('PRODUCTION-GROUNDING'))).map(file => file.name);
-  for (const tier of ['/tests/assembly/', '/tests/integration/', '/tests/e2e/'])
-    if (!files.some(file => file.includes(tier))) throw new Error(`production grounding assembly evidence missing ${tier}`);
+  const required = new Map([
+    ['PG-P10-SIGNED-DELIVERY', '/tests/assembly/production-grounding.test.ts'],
+    ['PG-P10-TYPED-REFUSALS', '/tests/assembly/production-grounding.test.ts'],
+    ['PG-INTEGRATION-PRODUCTION-BINDING', '/tests/integration/production-grounding.test.ts'],
+    ['PG-E2E-INITIAL-LIVE-REPLAY', '/tests/e2e/production-grounding.test.ts'],
+  ]);
+  const files = [];
+  for (const [identity, path] of required) {
+    const matches = report.testResults.flatMap(file => (file.assertionResults ?? [])
+      .filter(test => test.status === 'passed' && test.fullName.includes(identity))
+      .map(test => ({ file: file.name, test })));
+    if (!matches.some(match => match.file.endsWith(path)))
+      throw new Error(`production grounding assembly evidence missing ${identity} in ${path}`);
+    files.push(...matches.map(match => match.file));
+  }
   if (productionGroundingAssemblyContract.held !== 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction')
     throw new Error('compaction hold name changed');
-  return { ...productionGroundingAssemblyContract, files };
+  return { ...productionGroundingAssemblyContract, files: [...new Set(files)] };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
