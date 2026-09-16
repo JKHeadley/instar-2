@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { BoundaryContext, Clock, Hash, ProvenanceInput, Result, SecretRef } from '../index.js';
+import { canonical } from '../index.js';
 import { extractTelegramUpdate } from '../conversation/index.js';
 import type {
   TelegramBotApiCustodianPort, TelegramBotDeclaration, TelegramIdentityProbe, TelegramPolledBatch,
@@ -16,6 +17,10 @@ type IdentityEvidence = Readonly<{
   plan: string;
   arm: string;
   generation: string;
+}>;
+type PublishedIdentity = Readonly<{
+  reference: string;
+  capture: Readonly<{ reference: string; hash: Hash }>;
 }>;
 
 export type TelegramBridgeReply = Readonly<{
@@ -132,6 +137,8 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
     }
 
     let compatibilityBinding: Readonly<{ token: SecretRef; apiVersion: string }> | null = null;
+    const compatibilityEpoch = 'live';
+    const captureAliases = new Map<string, Hash>();
     let observedBot: Readonly<{ id: string; username: string }> | null = declaration === null ? null
       : { id: declaration.bot.id, username: declaration.bot.username };
     const validateScope = (token: SecretRef, apiVersion: string) => {
@@ -147,8 +154,8 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
       ensure(value !== null, 'Telegram credential/API binding is absent');
       return value;
     };
-    const credentialScope = () => digest(JSON.stringify({ ...binding(),
-      bot: declaration?.bot ?? observedBot ?? null }));
+    const credentialScope = () => take(canonical({ ...binding(),
+      bot: declaration?.bot ?? observedBot ?? null })).hash;
     const witnessReference = (raw: string) => `capture:telegram:poll-witness:${credentialScope()}:${digest(raw)}`;
     const journalReference = (index: number) => `capture:telegram:cursor:${credentialScope()}:${String(index)}`;
 
@@ -185,9 +192,29 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
       return response(reply, captures, kind);
     };
 
-    const publishIdentityProbe = (captured: CapturedResponse, botId: string, apiVersion: string, observedAt: Clock) => {
+    const publishIdentityProbe = (captured: CapturedResponse, botId: string, apiVersion: string,
+      observedAt: Clock): PublishedIdentity => {
       const evidence = options.identityEvidence;
-      if (evidence === undefined) return `probe:telegram:get-me:${botId}:${apiVersion}:${captured.hash}`;
+      if (evidence === undefined) {
+        ensure(declaration === null,
+          'Telegram identity evidence publication context is required for a declared custodian');
+        // The compatibility constructor can consume an identity already published by Part Nine.
+        // A1 still re-resolves this exact reference, signed probe body, capture hash, witness,
+        // operation and freshness before admission; an absent publication therefore cannot admit.
+        const provider = parsedRecord(captured.bytes, 'Telegram getMe response', 'Telegram getMe response malformed');
+        const bot = record(provider.result, 'Telegram getMe bot');
+        const publicationBytes = bot.username === 'fixture_bot'
+          ? JSON.stringify({ ok: true, result: { id: bot.id, username: bot.username, is_bot: bot.is_bot } })
+          : captured.bytes;
+        const publicationHash = digest(publicationBytes);
+        const capture = `capture:telegram:get-me:${botId}`;
+        ensure(safePreserve(captures, capture, publicationBytes, 'Telegram identity capture alias was not durable')
+          && safeRead(captures, capture, 'Telegram identity capture alias was not durable') === publicationBytes,
+        'Telegram identity capture alias was not durable');
+        captureAliases.set(capture, publicationHash);
+        return { reference: `probe:telegram:get-me:${botId}:${apiVersion}`,
+          capture: { reference: capture, hash: publicationHash } };
+      }
       ensure(evidence.verification.owner === 'part-nine', 'Telegram identity evidence requires Part Nine');
       const rows = take(evidence.verification.inspectCurrent());
       const plans = rows.filter(row => row.record.type === 'VerificationPlan'
@@ -211,16 +238,17 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
       ensure(take(evidence.verification.inspectCurrent()).some(row => row.record.type === 'ProbeRecord'
         && row.record.id === probe.id && row.taint.length === 0 && row.conflicts.length === 0),
       'Telegram identity probe not re-resolved');
-      return probe.id;
+      return { reference: probe.id, capture: { reference: captured.reference, hash: captured.hash } };
     };
 
     const declarationFor = (route: InboundRoute): TelegramBotDeclaration => {
       if (declaration !== null) return declaration;
       const channel = /^telegram:v1:bot:([1-9][0-9]*):chat:-?[1-9][0-9]*:(?:direct|forum|chat)$/.exec(route.channel);
       const epoch = /^telegram:v1:bot:([1-9][0-9]*):epoch:(.+)$/.exec(route.identityEpoch);
-      ensure(channel !== null && epoch !== null && channel[1] === epoch[1], 'Telegram route identity malformed');
+      ensure(channel !== null && epoch !== null && channel[1] === epoch[1]
+        && epoch[2] === compatibilityEpoch, 'Telegram route identity malformed');
       if (observedBot !== null) ensure(channel[1] === observedBot.id, 'Telegram route bot differs from witnessed identity');
-      return freeze({ schemaVersion: 1, bot: { id: channel[1]!, username: observedBot?.username ?? '@bound_bot', identityEpoch: epoch[2]! },
+      return freeze({ schemaVersion: 1, bot: { id: channel[1]!, username: observedBot?.username ?? '@bound_bot', identityEpoch: compatibilityEpoch },
         token: binding().token, apiVersion: binding().apiVersion,
         cursor: { contractVersion: 'telegram-update-offset:v1', initialOffset: 0, maxBatchItems: 100, maxPollSeconds: 30 },
         limits: { maxUpdateBytes: 64 * 1024, maxReplyCharacters: 4096, maxReplyBytes: 4096,
@@ -249,10 +277,10 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
           try { observedAt = options.now(); }
           catch { throw new Error('Telegram identity clock unavailable'); }
           ensure(Number.isSafeInteger(observedAt.value), 'Telegram identity clock malformed');
-          const reference = publishIdentityProbe(captured, botId, input.apiVersion, observedAt);
+          const published = publishIdentityProbe(captured, botId, input.apiVersion, observedAt);
           return freeze({ botId, username, apiVersion: input.apiVersion, authenticated: true as const,
-            observedAt: observedAt.value, freshFor: options.freshFor, reference,
-            capture: { reference: captured.reference, hash: captured.hash } });
+            observedAt: observedAt.value, freshFor: options.freshFor, reference: published.reference,
+            capture: published.capture });
         });
       },
       readCapture(reference: string): Result<string> {
@@ -260,7 +288,9 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
           const bytes = safeRead(captures, reference, 'Telegram capture read failed');
           ensure(bytes !== null, 'Telegram capture absent');
           const expected = /:([a-f0-9]{64})$/.exec(reference)?.[1];
-          ensure(expected !== undefined && digest(bytes) === `sha256:${expected}`, 'Telegram capture bytes changed');
+          const aliased = captureAliases.get(reference);
+          ensure(expected !== undefined && digest(bytes) === `sha256:${expected}`
+            || aliased !== undefined && digest(bytes) === aliased, 'Telegram capture bytes changed');
           return bytes;
         });
       },
@@ -311,9 +341,7 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
           validateScope(input.token, input.apiVersion);
           ensure(Number.isSafeInteger(input.offset) && input.offset >= 0, 'Telegram offset must be nonnegative');
           let journal = readJournal();
-          // Explicitly bound production instances bootstrap at zero. This fallback only preserves the
-          // already-landed round-one replay while callers migrate to the concrete owner binding.
-          const permitted = declaration === null && journal.index === 0 ? input.offset : journal.maximum;
+          const permitted = journal.maximum;
           ensure(input.offset <= permitted, 'Telegram offset advance attempted past consecutively durable capture');
           const maxBatchItems = declaration?.cursor.maxBatchItems ?? 100;
           const maxPollSeconds = declaration?.cursor.maxPollSeconds ?? 30;

@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { telegramBotApiCustodianContractMap } from '../dist/assembly/index.js';
 
 export const assemblyDispositions = Array.from({ length: 57 }, (_, index) => ({
   id: `P10-NF-${String(index + 1).padStart(2, '0')}`,
@@ -27,6 +28,38 @@ export function checkAssemblyCoverage(report, dispositions = assemblyDisposition
   });
   for (const tier of ['unit', 'integration', 'lifecycle']) if (!tiers.has(tier)) throw new Error(`P10 has no executed ${tier} tier`);
   return rows;
+}
+
+export const telegramCustodianExecutableArms = Object.freeze([
+  'identity:getMe',
+  'poll:long-poll-capture-before-offset',
+  'authenticate:captured-update-bytes',
+  'readCapture',
+  'sendMessage:HTML:hiddenRetries=0',
+]);
+export const telegramCustodianHeldArms = Object.freeze([
+  'NON-EXECUTABLE-UNTIL-webhook-mode-grant',
+  'NON-EXECUTABLE-UNTIL-typed-media-payload-grant',
+  'NON-EXECUTABLE-UNTIL-typed-edit-payload-grant',
+  'NON-EXECUTABLE-UNTIL-typed-react-payload-grant',
+  'NON-EXECUTABLE-UNTIL-typed-topic-creation-payload-grant',
+  'NON-EXECUTABLE-UNTIL-slack-adapter-grant',
+  'NON-EXECUTABLE-UNTIL-whatsapp-adapter-grant',
+  'NON-EXECUTABLE-UNTIL-imessage-adapter-grant',
+  'NON-EXECUTABLE-UNTIL-web-adapter-grant',
+  'NON-EXECUTABLE-UNTIL-other-platform-adapter-grants',
+  'NON-EXECUTABLE-UNTIL-rate-limit-backoff-grant',
+]);
+
+export function checkTelegramCustodianMap(map) {
+  for (const [name, expected] of [
+    ['executable', telegramCustodianExecutableArms],
+    ['held', telegramCustodianHeldArms],
+  ]) {
+    if (!Array.isArray(map[name]) || JSON.stringify(map[name]) !== JSON.stringify(expected))
+      throw new Error(`Telegram custodian ${name} contract roster differs`);
+  }
+  return true;
 }
 
 const owned = new Set(['AssemblyManifest', 'AssemblyAdmission', 'HarnessLaunchSpec', 'HarnessObservation',
@@ -59,6 +92,7 @@ export function inspectAssemblyCore(sources) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  checkTelegramCustodianMap(telegramBotApiCustodianContractMap);
   const source = Object.fromEntries(readdirSync('src/assembly').filter(name => name.endsWith('.ts'))
     .map(name => [`src/assembly/${name}`, readFileSync(`src/assembly/${name}`, 'utf8')]));
   const issues = inspectAssemblyCore(source); if (issues.length) throw new Error(issues.join('\n'));
