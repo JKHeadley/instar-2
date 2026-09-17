@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { BoundaryContext, Clock, Hash, ProvenanceInput, Result, SecretRef } from '../index.js';
 import { canonical } from '../index.js';
 import { extractTelegramUpdate } from '../conversation/index.js';
+import { registerTelegramIdentityCaptureResolver } from '../conversation/telegram.js';
 import type {
   TelegramBotApiCustodianPort, TelegramBotDeclaration, TelegramIdentityProbe, TelegramPolledBatch,
 } from '../conversation/index.js';
@@ -218,11 +219,15 @@ function legacySealedIdentity(reply: TelegramBridgeReply, captures: TelegramDura
   ensure(reply.kind === 'response', reply.kind === 'uncertain' && reply.limitation === 'timeout'
     ? 'Telegram transport uncertainty: timeout' : 'Telegram transport uncertainty: transport');
   const legacy = reply as Extract<TelegramBridgeReply, { kind: 'response' }>;
+  ensure(typeof legacy.bytes === 'string' && Buffer.byteLength(legacy.bytes, 'utf8') <= 2 * 1024 * 1024,
+    'Telegram response bytes absent');
+  const hash = digest(legacy.bytes); const reference = `capture:telegram:sealed-getMe:${hash.slice(7)}`;
+  ensure(safePreserve(captures, reference, legacy.bytes, 'Telegram sealed identity capture was not durable')
+    && safeRead(captures, reference, 'Telegram sealed identity capture was not durable') === legacy.bytes,
+  'Telegram sealed identity capture was not durable');
   ensure(Number.isSafeInteger(legacy.status) && legacy.status >= 200 && legacy.status < 300,
     Number.isSafeInteger(legacy.status) ? `Telegram provider refused with HTTP ${String(legacy.status)}`
       : 'Telegram provider status malformed');
-  ensure(typeof legacy.bytes === 'string' && Buffer.byteLength(legacy.bytes, 'utf8') <= 2 * 1024 * 1024,
-    'Telegram response bytes absent');
   const parsed = parsedRecord(legacy.bytes, 'Telegram getMe response', 'Telegram getMe response JSON malformed');
   ensure(parsed.ok === true, 'Telegram provider returned ok:false');
   const bot = record(parsed.result, 'Telegram getMe bot');
@@ -230,28 +235,10 @@ function legacySealedIdentity(reply: TelegramBridgeReply, captures: TelegramDura
     && typeof bot.username === 'string' && bot.username.length >= 5 && bot.username.length <= 32
     && !/[^A-Za-z0-9_]/u.test(bot.username)
     && (bot.first_name === undefined || typeof bot.first_name === 'string'), 'Telegram getMe identity malformed');
-  const hash = digest(legacy.bytes); const reference = `capture:telegram:sealed-getMe:${hash.slice(7)}`;
-  ensure(safePreserve(captures, reference, legacy.bytes, 'Telegram sealed identity capture was not durable')
-    && safeRead(captures, reference, 'Telegram sealed identity capture was not durable') === legacy.bytes,
-  'Telegram sealed identity capture was not durable');
   const firstName = typeof bot.first_name === 'string'
     ? { byteLength: Buffer.byteLength(bot.first_name, 'utf8'), hash: digest(bot.first_name) } : null;
   return { captured: { bytes: legacy.bytes, reference, hash },
     identity: { id: Number(bot.id), is_bot: true, username: bot.username, first_name: firstName } };
-}
-
-// The original Part Twelve admission consumer predates the sealed projection and
-// still re-resolves the capture through its declared Part Ten port. Keep that one
-// code origin inside the owner boundary while every ordinary/public caller sees a
-// refusal. Source-map and compiled locations are both admitted; Telegram identity
-// values, fixtures, references, case ids and call order never participate.
-function sealedIdentityConsumerOrigin(): boolean {
-  const priorLimit = Error.stackTraceLimit;
-  Error.stackTraceLimit = Math.max(priorLimit, 50);
-  const stack = new Error().stack ?? '';
-  Error.stackTraceLimit = priorLimit;
-  return stack.split('\n').some(line => line.includes('validateIdentityProbe')
-    && /[/\\](?:src|dist)[/\\]conversation[/\\]telegram\.(?:ts|js):/u.test(line));
 }
 
 export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOptions): Result<TelegramBotApiCustodianPort> {
@@ -282,6 +269,7 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
 
     let compatibilityBinding: Readonly<{ token: SecretRef; apiVersion: string }> | null = null;
     const publicReferences = new Set<string>();
+    const sealedIdentityReferences = new Set<string>();
     let observedBot: Readonly<{ id: string; username: string }> | null = declaration === null ? null
       : { id: declaration.bot.id, username: declaration.bot.username };
     const validateScope = (token: SecretRef, apiVersion: string) => {
@@ -401,6 +389,7 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
           catch { throw new Error('Telegram identity clock unavailable'); }
           ensure(Number.isSafeInteger(observedAt.value), 'Telegram identity clock malformed');
           const published = publishIdentityProbe(captured, botId, input.apiVersion, observedAt);
+          sealedIdentityReferences.add(captured.reference);
           return freeze({ botId, username, apiVersion: input.apiVersion, authenticated: true as const,
             observedAt: observedAt.value, freshFor: options.freshFor, reference: published.reference,
             capture: published.capture });
@@ -408,10 +397,9 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
       },
       readCapture(reference: string): Result<string> {
         return boundary('TelegramBotApiReadCapture', { reference }, options.context, () => {
-          const sealedIdentityReference = typeof reference === 'string'
-            && reference.startsWith('capture:telegram:sealed-getMe:');
           ensure(typeof reference === 'string'
-            && (sealedIdentityReference ? sealedIdentityConsumerOrigin() : publicReferences.has(reference)),
+            && !/^capture:telegram:sealed-getMe:[a-f0-9]{64}$/u.test(reference)
+            && publicReferences.has(reference),
           'Telegram capture is not publicly readable');
           const bytes = safeRead(captures, reference, 'Telegram capture read failed');
           ensure(bytes !== null, 'Telegram capture absent');
@@ -565,6 +553,17 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
         });
       },
     });
+    registerTelegramIdentityCaptureResolver(port, reference => boundary('TelegramBotApiPrivateIdentityCapture',
+      { reference }, options.context, () => {
+        ensure(/^capture:telegram:sealed-getMe:[a-f0-9]{64}$/u.test(reference)
+          && sealedIdentityReferences.has(reference), 'Telegram sealed identity capture is not privately issued');
+        const bytes = safeRead(captures, reference, 'Telegram sealed identity capture unavailable');
+        ensure(bytes !== null, 'Telegram sealed identity capture unavailable');
+        const expected = /:([a-f0-9]{64})$/u.exec(reference)?.[1];
+        ensure(expected !== undefined && digest(bytes) === `sha256:${expected}`,
+          'Telegram sealed identity capture bytes changed');
+        return bytes;
+      }));
     return port;
   });
 }

@@ -7,7 +7,7 @@ const executable = {
   3: 'No new core type or private owner import; Telegram composes the landed Four, Six, Eight and Ten public ports.',
   4: 'The admitted declaration, exact mode, parser, sole reply operation, inhibitions and public doorways are tested and rendered in the generated briefing.',
   5: 'The adapter translates and authenticates; Part Four selects binding, standing, classification and admission, while Six/Eight own claim and outcome state.',
-  7: 'A fresh capture-backed identity probe must match bot id, username and API version and remain fresh through the conditional admission commit; a token reference alone never admits life.',
+  7: 'A fresh capture-backed identity probe must match bot id, username and API version and remain fresh through the conditional admission commit; its sealed original resolves only through the non-public Part Ten owner registration while public readCapture remains refused; a token reference alone never admits life.',
   8: 'Sender-controlled content never selects the principal; Part One decodes the custodian-attested identity and Part Four resolves it.',
   10: 'The durable identity key contains bot, authenticated chat, sender, identity epoch and provider update_id; no fallback exists.',
   17: 'All seven Telegram update dispositions are captured; channel posts remain system principals and forward/quote authors remain content.',
@@ -145,6 +145,7 @@ const concreteConsumers = [
       'identity(input:', 'expect(samples, name).toEqual([finish])', 'conformance.testedAt'],
     supporting: [{ file: 'src/conversation/telegram.ts', anchors: [
       'const probe = take(deps.api.identity(', 'const identityEvidence = validateIdentityProbe(declaration, deps, probe)',
+      'registerTelegramIdentityCaptureResolver', 'resolveTelegramIdentityCapture(deps.api, probe.capture.reference)',
       "deps.assembly.record('AdapterEvidenceContract'", 'const current = take(deps.assembly.inspectCurrent())',
       "const now = take(decodeMeasurement('clock', deps.clock()",
       'testedAt: now.value, validUntil: now.value + deps.evidence.validFor',
