@@ -1,11 +1,19 @@
 import type { Clock, FactEnvelopeReference, Hash, Result } from '../index.js';
 import { registerProductionGroundingReader } from '../rungraph/index.js';
-import { isHarnessLiveInputExecution } from '../effects/live-input/index.js';
+import * as effects from '../effects/index.js';
+import type { FactStorePort } from '../facts/index.js';
 import type { RunView, SessionGrounding, GroundingReadPort } from '../rungraph/index.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { issueProductionGroundingRead, issueProductionGroundingReader, registerContextDriver, runtimeOrigin, issueContextDeliveryExecution, consumeContextDeliveryExecution, productionGroundingReaderScope } from './grounding-capability.js';
 import type { AssemblyDecodeContext, AssemblyHistoryReadPort, AssemblyRuntimePort, ContextDeliverySpecification,
   HarnessAdapterPort, HarnessLaunchSpec, HarnessObservation } from './contracts.js';
+
+// Older Eight owners expose no live-input capability. Discover the additive
+// owner query through its public namespace and fail closed when it is absent;
+// only Eight's private constructor provenance can satisfy the query.
+const isHarnessLiveInputExecution = (execution: object, store: FactStorePort): boolean =>
+  'isHarnessLiveInputExecution' in effects && typeof effects.isHarnessLiveInputExecution === 'function'
+  && effects.isHarnessLiveInputExecution(execution, store) === true;
 
 export const contextDeliveryIdFor = (launch: string, operation: string): string =>
   `context-delivery:${encoded({ launch, operation }).hash}`;

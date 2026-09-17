@@ -1,4 +1,4 @@
-import { isHarnessLiveInputOwnerRegistration } from '../effects/live-input/index.js';
+import * as effects from '../effects/index.js';
 import { verify } from 'node:crypto';
 import { consumeResult, defineDecoder } from '../index.js';
 import type { DecodeContext, Json, Result } from '../index.js';
@@ -9,6 +9,11 @@ import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import type { AssemblyAuthor, AssemblyComparison, AssemblyDecodeContext, AssemblyHost, AssemblyIdentity,
   AssemblyManifest, AssemblyRecord, AssemblyRecordName, AssemblySpine, AssemblyStoredRecord, AssemblyStoredRecordName,
   ContextDeliverySpecification, CurrentAssemblyFact } from './types-internal.js';
+
+// An older Eight namespace cannot certify live-input owner registrations.
+const isHarnessLiveInputOwnerRegistration = (registration: OwnedBodyRegistration): boolean =>
+  'isHarnessLiveInputOwnerRegistration' in effects && typeof effects.isHarnessLiveInputOwnerRegistration === 'function'
+  && effects.isHarnessLiveInputOwnerRegistration(registration) === true;
 
 const text = { kind: 'text', maxLength: 4096 } as const;
 const integer = { kind: 'integer' } as const;
