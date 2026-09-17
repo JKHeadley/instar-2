@@ -85,7 +85,16 @@ export function inspectAssemblyCore(sources) {
       }
       if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
         const specifier = node.moduleSpecifier.text;
-        if (specifier.startsWith('../') && !specifier.endsWith('/index.js') && specifier !== '../index.js') issues.push(`${path}: private sibling import ${specifier}`);
+        // GRANT U3-A: only Ten's exact non-public identity-resolver registration import.
+        const clause = ts.isImportDeclaration(node) ? node.importClause : undefined;
+        const bindings = clause?.namedBindings;
+        const elements = bindings && ts.isNamedImports(bindings) ? bindings.elements : [];
+        const sealedIdentityRegistration = path === 'src/assembly/telegram-bot-api-custodian.ts'
+          && specifier === '../conversation/telegram.js' && clause && !clause.isTypeOnly && !clause.name
+          && elements.length === 1 && !elements[0].isTypeOnly && !elements[0].propertyName
+          && elements[0].name.text === 'registerTelegramIdentityCaptureResolver';
+        if (specifier.startsWith('../') && !specifier.endsWith('/index.js') && specifier !== '../index.js'
+          && !sealedIdentityRegistration) issues.push(`${path}: private sibling import ${specifier}`);
         if (!specifier.startsWith('.') && !specifier.startsWith('node:')) issues.push(`${path}: external core dependency ${specifier}`);
       }
       ts.forEachChild(node, visit);
