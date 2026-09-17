@@ -6,6 +6,6 @@ export { dryRunLegacyConversationMigration } from './legacy.js';
 export {
   admitTelegramAdapter, assessTelegramReplyResponse, countTelegramHtmlEntities, createTelegramIngress, createTelegramIntakeAdapter,
   createTelegramReplyOperationAdapter, extractTelegramUpdate, installTelegramReplyOperation,
-  normalizeTelegramTopic, renderTelegramDeliveryStatus, renderTelegramHtml, telegramAccount, telegramConversation,
+  normalizeTelegramTopic, registerTelegramIdentityCaptureResolver, renderTelegramDeliveryStatus, renderTelegramHtml, telegramAccount, telegramConversation,
   telegramFeatureDeclarationId, telegramParserDeclarationId,
 } from './telegram.js';

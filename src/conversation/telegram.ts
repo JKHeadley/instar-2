@@ -88,8 +88,10 @@ function firstDifferentField(expected: unknown, supplied: unknown, path: string)
 export const telegramParserDeclarationId = 'telegram-intake-v1';
 export const telegramFeatureDeclarationId = 'telegram-conversation-adapter';
 
-// Owner-composition seam for the exact sealed getMe original. This is deliberately
-// absent from the public conversation barrel and from TelegramBotApiCustodianPort.
+// Owner-composition seam for the exact sealed getMe original. It is absent from
+// TelegramBotApiCustodianPort. It is exported through the conversation barrel only because
+// Part Ten may import a sibling owner solely through its index; registration hands a
+// resolver TO this module and returns nothing, so calling it discloses no bytes.
 // Keying the genuine identity function lets an ordinary spread wrapper participate
 // in admission without receiving the sealed bytes through its public readCapture.
 export function registerTelegramIdentityCaptureResolver(api: TelegramBotApiCustodianPort,
