@@ -1,3 +1,4 @@
+import { checkProductionGroundingAssemblyEvidence } from './check-assembly-contracts.mjs';
 import { readFileSync } from 'node:fs';
 import { relative } from 'node:path';
 
@@ -68,17 +69,7 @@ for (const [id, requiredFile] of requiredSeamEvidence) {
     throw new Error(`${id}: required passing evidence absent from ${requiredFile}`);
 }
 
-const requiredProductionEvidence = new Map([
-  ['PG-P5-INVOKED-READ', 'tests/rungraph/production-grounding-review.test.ts'],
-  ['PG-P5-SOURCE-REFUSALS', 'tests/rungraph/production-grounding-review.test.ts'],
-  ['PG-INTEGRATION-PRODUCTION-BINDING', 'tests/integration/production-grounding.test.ts'],
-  ['PG-E2E-INITIAL-LIVE-REPLAY', 'tests/e2e/production-grounding.test.ts'],
-]);
-for (const [identity, requiredFile] of requiredProductionEvidence) {
-  const rows = report.testResults.flatMap(file => (file.assertionResults ?? []).filter(test =>
-    test.status === 'passed' && test.fullName.includes(identity)).map(() => relative(process.cwd(), file.name)));
-  if (!rows.includes(requiredFile)) throw new Error(`production grounding rungraph evidence missing ${identity} in ${requiredFile}`);
-}
+checkProductionGroundingAssemblyEvidence(report);
 if (productionGroundingRunGraphContract.held !== 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction')
   throw new Error('compaction hold name changed');
 

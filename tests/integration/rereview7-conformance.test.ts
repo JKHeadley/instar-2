@@ -1,4 +1,5 @@
 // @ts-nocheck -- executable reviewer cases intentionally retain their original dynamic harness shapes.
+import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { consumeResult, canonical, decode, defineDecoder } from '../../src/index.js';
 import { hashBytes } from '../../src/facts/index.js';
@@ -8,7 +9,7 @@ import { evaluateMinimalPath, minimalResponse, requiredMinimalDependencies, eval
 import { intakeFixture, value, message, route } from '../intake/fixtures.js';
 import { operatorFixture } from '../operator/fixture.js';
 import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
-import { productionBindingSet, installProduction, productionComposition } from '../assembly/production-fixture.js';
+import { productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { productionOperatorSlice } from '../operator/production-slice-fixture.js';
 beforeEach(() => new Promise<void>(resolve => setImmediate(resolve)));
@@ -44,7 +45,7 @@ check('V30','ordinary receive recover expire and stop remain usable after histor
 check('V31','legacy schema configuration still constructs and admits requester messages',()=>{const f=intakeFixture();Object.assign(f.context,{schemas:f.context.schemas.filter(r=>!['authorization-request','intake-verified-act'].includes(r.kind))});return yes(value(createIntakePort(f.deps)).receive(message(),route));});
 check('V32','requester protocol refuses authority-shaped payloads and accepts clean neighbor',()=>{expect(classifySlicePayload({schemaVersion:1,kind:'message',text:'hello'}).kind).toBe('conversation');for(const p of [{schemaVersion:1,kind:'message',text:'hello',valid:true},{schemaVersion:1,kind:'message',text:'hello',grant:{}},{schemaVersion:1,kind:'Authorization'},{schemaVersion:1,kind:'stop',command:'/stop',principal:'alice'}])expect(classifySlicePayload(p).kind).toBe('needs-judgment');});
 function assembly(){const f=assemblyRuntimeFixture(),b=productionBindingSet(),i=installProduction(f,b),p=productionComposition(f,b);return{f,b,i,p,boot:()=>bootProductionAssembly({...f.composition,production:p},i.manifest.id,b.scope)};}
-check('V33','well-formed assembly resolves every binding',()=>{const a=assembly(),o=yes(a.boot());expect(o.value.references).toHaveLength(24);expect(o.value.references.every((r:any)=>r.completeness==='complete')).toBe(true);return {references:o.value.references.length};});
+check('V33','well-formed assembly resolves every binding',()=>{const f=groundedAssemblyRuntimeFixture(),b=productionBindingSet(),i=installProduction(f,b),p=genuineProductionComposition(f,b),a={boot:()=>bootProductionAssembly({...f.composition,production:p},i.manifest.id,b.scope)},o=yes(a.boot());expect(o.value.references).toHaveLength(24);expect(o.value.references.every((r:any)=>r.completeness==='complete')).toBe(true);return {references:o.value.references.length};});
 check('V34','wrong-kind route reference refuses even when caller expects that wrong kind',()=>{const f=assemblyRuntimeFixture(),base=productionBindingSet();const b={...base,dependencies:base.dependencies.map(r=>r.name==='route'?{...r,fact:base.dependencies.find(r=>r.name==='clock')!.fact}:r)},i=installProduction(f,b);return no(bootProductionAssembly({...f.composition,production:productionComposition(f,b)},i.manifest.id,b.scope));});
 check('V35','missing signed route refuses',()=>{const a=assembly();const n=a.f.raw.findIndex((r:any)=>r.kind==='conversation-route');a.f.raw.splice(n,1);return no(a.boot());});
 check('V36','missing verifier operation refuses',()=>{const a=assembly();a.p.challengeVerifier.port.verify=null as never;return no(a.boot());});

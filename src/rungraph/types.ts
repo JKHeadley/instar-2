@@ -1,3 +1,4 @@
+import { productionGraphScope } from '../assembly/grounding-capability.js';
 import type { BoundaryContext, Clock, ConversationBindingReference, DecodeContext, FactEnvelopeReference,
   Hash, LeaseReference, Measurement, Outcome, OwnedReference, RegisterGenerationReference, Result, Scope } from '../index.js';
 import type { AppendReceipt, CausalFrontier, ConflictClass, DurabilityState, FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
@@ -132,7 +133,7 @@ export interface RunWriterPort {
 }
 export interface GroundingReadPort {
   readonly owner: 'part-ten';
-  /** Structural activation marker: production assembly may not fall back to a flat receipt. */
+  /** Reader mode declaration; production boot separately requires genuine owner-issued factory provenance. */
   readonly production?: true;
   // Must measure NOW and deliver the enumerated bytes to this worker before return.
   read(request: Readonly<{ run: RunView; worker: string; harness: string; reason: SessionGrounding['reason']; execution: RunExecutionObservation;
@@ -141,7 +142,6 @@ export interface GroundingReadPort {
 }
 
 const declaredProductionGroundingReaders = new WeakSet<object>();
-const productionGroundedGraphs = new WeakMap<object, string>();
 
 /** Runtime provenance for the Ten factory and the Five graph it actually binds.
  * The stored grounding remains pure data; only this process-local construction
@@ -157,16 +157,15 @@ export function registerProductionGroundedGraph<T extends RunGraphPort>(graph: T
   return graph;
 }
 export function isProductionGroundedRunGraph(graph: RunGraphPort, scope?: string): boolean {
-  const granted = productionGroundedGraphs.get(graph);
+  const granted = productionGraphScope(graph);
   return granted !== undefined && (scope === undefined || granted === scope);
 }
 
-/** Internal graph issuer. Scope comes only from Ten's private factory
- * capability; the public graph registration path above intentionally grants
- * nothing. */
+/** Retained inert declaration for compatibility. Only the connected Ten
+ * factory can bind current graph provenance; this function grants nothing. */
 export function issueProductionGroundedGraph<T extends RunGraphPort>(graph: T, scope: string | undefined): T {
   if (!scope) return graph;
-  productionGroundedGraphs.set(graph, scope); return graph;
+  return graph;
 }
 export interface RunGovernance {
   readonly register: VerifiedRegister;

@@ -4,7 +4,7 @@ import { boundary, encoded, freeze, json, need, object, same, take } from './bou
 import { factRef, foldRun, readRecordFact, validateGrounding, validateTransition, outcomeAt, clockDifference } from './graph.js';
 import { decodeRun, decodeRunTransition, decodeSessionGrounding, factReference, recordReferences, recordWire, runKinds } from './records.js';
 import { checkIdentities, identityIndex } from './identity.js';
-import { consumeProductionGroundingRead, productionGroundingReaderScope } from '../assembly/grounding-capability.js';
+import { consumeProductionGroundingRead, productionGroundingReaderScope, bindProductionGroundedGraph, isDeclaredFactoryReader } from '../assembly/grounding-capability.js';
 import { isProductionGroundingReader, issueProductionGroundedGraph } from './types.js';
 import type { RunDecodeContext, RunGraphDependencies, RunGraphPort, RunRecord, RunView } from './types.js';
 import { runGraphConstruct, preserveRunInput, runAdmission, stepAdmission, transitionAdmission, stopAdmission, exitAdmission, groundingAdmission } from './rungraph.js';
@@ -12,6 +12,9 @@ import { runGraphConstruct, preserveRunInput, runAdmission, stepAdmission, trans
 /** No effect executor lives here. Six/eight consume a DURABLY admitted step;
  * returned views and caller annotations are never admission authority. */
 export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
+  // Bind the actual delegation; mutating the caller's composition cannot turn
+  // an admitted production graph into a compatibility-only graph after boot.
+  d = Object.freeze({ ...d });
   return boundary('CreateRunGraph', null, d.context, () => {
     need(d.governance, 'verified governed gate installation required'); runGraphConstruct(d.governance);
     need(d.writer?.owner === 'part-ten' && typeof d.writer.append === 'function', 'real fact writer required');
@@ -20,7 +23,7 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       && typeof d.admission.reservation === 'function', 'conditional admission, execution context, reservation and durable witness reader required');
     need(d.grounding?.owner === 'part-ten' && typeof d.grounding.read === 'function', 'actual-start grounding reader required');
     need(!d.grounding.production || d.assemblyHistory?.owner === 'part-ten', 'production grounding requires public Ten assembly history');
-    need(!d.grounding.production || isProductionGroundingReader(d.grounding) || productionGroundingReaderScope(d.grounding),
+    need(!d.grounding.production || isProductionGroundingReader(d.grounding) || isDeclaredFactoryReader(d.grounding),
       'production grounding requires the invocation-bound Ten delivery reader');
     need(d.settlement?.owner === 'part-eight' && typeof d.settlement.read === 'function', 'settlement consumer required');
     need(d.control?.owner === 'part-four' && typeof d.control.verify === 'function', 'control consumer required');
@@ -30,7 +33,10 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       && Number.isSafeInteger(d.groundingPolicy.threshold) && d.groundingPolicy.threshold > 0
       && Number.isSafeInteger(d.groundingPolicy.maxAge) && d.groundingPolicy.maxAge > 0
       && d.groundingPolicy.briefingClasses.length > 0, 'registered positive grounding policy required');
-    const context = (): RunDecodeContext => ({ ...d.context, facts: { ...d.context.facts, facts: take(d.store.read()) } });
+    const context = (): RunDecodeContext => ({ ...d.context, facts: { ...d.context.facts,
+      // Preservation can add a capture during this call. Resolve the owner's
+      // current capture table at consumption, including physical custody loss.
+      get captures() { return d.context.facts.captures; }, facts: take(d.store.read()) } });
     const groundingValidation = (now: import('../index.js').Clock, candidateStep?: import('./types.js').RunStep,
       transitionTrigger?: FactEnvelopeReference) => ({ now,
       ...(d.grounding.production ? { production: true as const, assemblyHistory: d.assemblyHistory! } : {}),
@@ -175,6 +181,6 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
         return read(t.run);
       })),
     } satisfies RunGraphPort);
-    return d.grounding.production ? issueProductionGroundedGraph(graph, productionGroundingReaderScope(d.grounding)) : graph;
+    return d.grounding.production ? bindProductionGroundedGraph(graph, d.grounding, d.store, d.assemblyHistory, d.generation().reference.id) : graph;
   });
 }

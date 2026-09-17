@@ -1,3 +1,4 @@
+import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,7 +8,7 @@ import type { AssemblyProductionCoordinator } from '../../src/assembly/index.js'
 import { createFactStore } from '../../src/facts/index.js';
 import { privateKey, refused, value } from '../facts/fixtures.js';
 import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
-import { installProduction, productionComposition } from '../assembly/production-fixture.js';
+import { productionComposition } from '../assembly/production-fixture.js';
 // @ts-expect-error The physical file adapter is an executable JavaScript boundary.
 import { createTransportFileStorage } from '../../scripts/transport-file-storage.mjs';
 
@@ -34,8 +35,8 @@ function handleIdentity(coordinator: AssemblyProductionCoordinator) {
 
 it('P10-NF-06 P10-NF-08 P10-NF-40 P10-NF-45 P10-NF-51 P10-NF-52 P10-NF-54 [P10-SEAM-07] durable restart recovers the same production handles after a deterministic mid-admission cut', () => {
   const directory = mkdtempSync(join(tmpdir(), 'p10-production-'));
-  const seed = assemblyRuntimeFixture(f => createTransportFileStorage(directory, <T>(run: () => T) => f.success(run())));
-  const installed = installProduction(seed); const firstProduction = productionComposition(seed, installed.binding);
+  const seed = groundedAssemblyRuntimeFixture(f => createTransportFileStorage(directory, <T>(run: () => T) => f.success(run())));
+  const installed = installProduction(seed); const firstProduction = genuineProductionComposition(seed, installed.binding);
   const first = value(bootProductionAssembly({ ...seed.composition, production: firstProduction }, installed.manifest.id, installed.binding.scope));
   const expected = handleIdentity(first);
 
@@ -46,7 +47,7 @@ it('P10-NF-06 P10-NF-08 P10-NF-40 P10-NF-45 P10-NF-51 P10-NF-52 P10-NF-54 [P10-S
 
   const restartedStore = createFactStore(seed.context, seed.storage);
   const restartedSpine = createAssemblySpine(seed.host, { context: seed.context, privateKey }, restartedStore);
-  const restartedProduction = productionComposition(seed, installed.binding);
+  const restartedProduction = genuineProductionComposition(seed, installed.binding, { spine: restartedSpine });
   const restarted = value(bootProductionAssembly({ ...seed.composition, spine: restartedSpine, production: restartedProduction },
     installed.manifest.id, installed.binding.scope));
   expect(handleIdentity(restarted)).toEqual(expected);

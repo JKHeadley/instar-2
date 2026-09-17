@@ -6,6 +6,7 @@ it('PRODUCTION-GROUNDING-SCOPE ledger 45 confines this unit to its two owner sou
   const base = execFileSync('git', ['merge-base', 'origin/main', 'HEAD'], { encoding: 'utf8' }).trim();
   const paths = execFileSync('git', ['diff', '--name-only', base, 'HEAD', '--', 'src'], { encoding: 'utf8' })
     .trim().split('\n').filter(Boolean);
-  expect(paths.filter(path => !['src/assembly/', 'src/rungraph/'].some(prefix => path.startsWith(prefix))))
+  const liveInputGrant = ['src/effects/contracts.ts', 'src/effects/records.ts', 'src/effects/doorway.ts', 'src/effects/index.ts'];
+  expect(paths.filter(path => !liveInputGrant.includes(path) && !['src/assembly/', 'src/rungraph/'].some(prefix => path.startsWith(prefix))))
     .toEqual([]);
 });

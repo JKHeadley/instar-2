@@ -1,30 +1,54 @@
+// @ts-expect-error Executed assertion audit is ESM owner tooling.
+import { groundingCheckpoint } from '../assembly/production-grounding-evidence.mjs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { SegmentStoragePort } from '../../src/facts/index.js';
 import type { AssemblyProductionBindingSet, AssemblyProductionComposition } from '../../src/assembly/index.js';
 import type { ProbeRecord } from '../../src/verification/index.js';
 import { decode } from '../../src/index.js';
 import { verificationInput } from '../verification/fixture.js';
 import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
-import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
-import { installProduction, productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
 import { operatorFixture } from './fixture.js';
 import { value } from '../facts/fixtures.js';
 // @ts-expect-error Production section-7 assembly is an executable JavaScript boundary.
-import { bootProductionSliceAssembly, sliceConfig } from '../../scripts/slice-assembly.mjs';
+import { bootProductionSliceAssembly, prepareProductionSliceAssembly, sliceConfig } from '../../scripts/slice-assembly.mjs';
 
 export function productionOperatorSlice(options: {
   home?: string;
-  assemblyStorage?: (f: ReturnType<typeof import('../facts/fixtures.js').factsFixture>) => SegmentStoragePort;
 } = {}) {
   const home = options.home ?? mkdtempSync(join(tmpdir(), 'p11-production-slice-'));
   const operator = operatorFixture({ directory: join(home, 'operator') });
-  const assembly = assemblyRuntimeFixture(options.assemblyStorage);
+  const unavailable = new Set<string>();
+  const config = sliceConfig({ profile: 'reply' });
+  const prepared = prepareProductionSliceAssembly(join(home, 'slice'), config, {
+    beforeProjectionRead() {
+      if (unavailable.size) throw Error(`signed required fact unavailable: ${[...unavailable].join(',')}`);
+    },
+    onContextEvent(event: { phase: string; operation?: string; fact?: string; digest?: string; generation?: string }) {
+      if (event.phase === 'sample') groundingCheckpoint('current-read-sample', { generation: event.generation });
+      if (event.phase === 'consumed-before-invoke') groundingCheckpoint('six-consumed-before-physical-invoke', event);
+      if (event.phase === 'context-consumed') groundingCheckpoint('signed-ten-consumption', event);
+    },
+  });
+  groundingCheckpoint('same-store-native-factory-graph', { scope: prepared.scope,
+    sameStore: prepared.assembly.spine.store === prepared.slice.store });
+  const raw = new Proxy([] as any[], { get(_target, key) {
+    const current = prepared.slice.facts().filter((row: { id: string }) => !unavailable.has(row.id));
+    if (key === 'splice') return (start: number, count: number) => {
+      const removed = current.slice(start, start + count);
+      for (const row of removed) unavailable.add(row.id);
+      return removed;
+    };
+    const member = Reflect.get(current, key);
+    return typeof member === 'function' ? member.bind(current) : member;
+  } });
+  const assembly = { composition: prepared.assembly, runtime: prepared.runtime, spine: prepared.spine,
+    host: prepared.assembly.host, raw, context: prepared.slice.factContext,
+    success: <T>(value: T) => prepared.slice.result(() => value) };
   const verification = verificationRuntimeFixture();
-  const binding: AssemblyProductionBindingSet = productionBindingSet();
-  const installed = installProduction(assembly, binding);
-  const fixtureComposition = productionComposition(assembly, binding);
+  const binding: AssemblyProductionBindingSet = prepared.binding;
+  const installed = { binding, manifest: { id: prepared.manifest } };
+  const fixtureComposition: AssemblyProductionComposition = prepared.assembly.production;
   let runtime: ReturnType<typeof bootProductionSliceAssembly> | null = null;
   const witness: AssemblyProductionComposition['deliveryWitness'] = {
     ...fixtureComposition.deliveryWitness,
@@ -53,7 +77,7 @@ export function productionOperatorSlice(options: {
     deliveryWitness: witness,
   };
   runtime = bootProductionSliceAssembly({ assembly: { ...assembly.composition, production }, manifest: installed.manifest.id,
-    scope: binding.scope, home: join(home, 'slice'), config: sliceConfig({ profile: 'reply' }),
+    scope: binding.scope, prepared, home: join(home, 'slice'), config,
     authorizationRequest: operator.request.id });
   return { home, operator, assembly, verification, binding, installed, production, runtime };
 }

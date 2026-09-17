@@ -1,7 +1,9 @@
 import type { Clock, FactEnvelopeReference, Hash, Result } from '../index.js';
+import { registerProductionGroundingReader } from '../rungraph/index.js';
+import { isHarnessLiveInputExecution } from '../effects/index.js';
 import type { RunView, SessionGrounding, GroundingReadPort } from '../rungraph/index.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
-import { issueProductionGroundingRead, issueProductionGroundingReader } from './grounding-capability.js';
+import { issueProductionGroundingRead, issueProductionGroundingReader, registerContextDriver, runtimeOrigin, issueContextDeliveryExecution, consumeContextDeliveryExecution, productionGroundingReaderScope } from './grounding-capability.js';
 import type { AssemblyDecodeContext, AssemblyHistoryReadPort, AssemblyRuntimePort, ContextDeliverySpecification,
   HarnessAdapterPort, HarnessLaunchSpec, HarnessObservation } from './contracts.js';
 
@@ -32,7 +34,6 @@ export function createConfinedContextDeliveryDriver(input: Readonly<{
   const { history, runtime, execution, liveProcess, context } = input;
   ensure(history.owner === 'part-ten' && runtime.owner === 'part-ten' && liveProcess.owner === 'part-ten', 'context delivery requires Ten-owned history/runtime/process resolution');
   ensure(execution.owner === 'part-eight', 'context delivery requires an Eight-owned executor');
-  const invoked = new Set<string>();
   const exact = <N extends 'HarnessLaunchSpec' | 'ContextDeliverySpecification'>(reference: string, type: N) => {
     const row = take(history.lookup(reference));
     ensure(row?.fact.id === reference || row?.record?.id === reference, `exact signed ${type} reference unavailable`);
@@ -82,17 +83,20 @@ export function createConfinedContextDeliveryDriver(input: Readonly<{
       generation: spec.generation, causalReferences: [],
       observedAt: input.clock(), freshFor: 60_000, phase, boundaryEvidence: evidence, detail }));
   };
-  return freeze({ owner: 'part-ten' as const,
+  const driver: ConfinedContextDeliveryDriverPort = freeze({ owner: 'part-ten' as const,
     deliver(specification, effect) {
       return boundary('ConfinedContextDelivery', { specification, effect }, context, () => {
         const { spec, live } = admitted(specification);
         ensure(effect.operation === spec.operation && effect.claim === spec.claim, 'current admitted effect or one-use claim differs');
-        ensure(!invoked.has(spec.id), 'context delivery was already invoked; observe the durable one-use claim instead');
-        invoked.add(spec.id);
+        // Historical resolution is observational. Re-recording revalidates the
+        // current Six reservation and Eight payload immediately before handoff.
+        take(runtime.recordContextDelivery(spec));
         const evidence = take(execution.deliver({ specification: spec, processIdentity: live.processIdentity,
           operation: effect.operation, claim: effect.claim }));
         ensure(evidence, 'executor acceptance evidence required');
-        return observation(spec, 'input-accepted', evidence, 'admitted context delivery accepted by the live process');
+        const accepted = observation(spec, 'input-accepted', evidence, 'admitted context delivery accepted by the live process');
+        issueContextDeliveryExecution(accepted, driver, spec.id);
+        return accepted;
       });
     },
     observe(specification, operation) {
@@ -106,6 +110,9 @@ export function createConfinedContextDeliveryDriver(input: Readonly<{
       });
     },
   });
+  const origin = runtimeOrigin(runtime);
+  if (origin && isHarnessLiveInputExecution(execution, origin.composition.spine.store)) registerContextDriver(driver, runtime, history);
+  return driver;
 }
 
 export interface ProductionGroundingReaderInput {
@@ -128,6 +135,7 @@ export function createProductionGroundingReader(input: ProductionGroundingReader
   reader = freeze({ owner: 'part-ten' as const, production: true as const,
     read(request: Parameters<GroundingReadPort['read']>[0]) {
       return boundary('ProductionGroundingRead', request, input.context, () => {
+      ensure(productionGroundingReaderScope(reader), 'production reader lacks admitted native runtime provenance');
       const at = input.clock();
       // This read is deliberately before sample() and again after consumption;
       // it makes current signed assembly history part of this invocation.
@@ -144,6 +152,8 @@ export function createProductionGroundingReader(input: ProductionGroundingReader
       const accepted = take(input.harness.deliver({ launch: specification.launch, intake: specification.input,
         digest: specification.inputDigest, incarnation: specification.incarnation, operation: specification.operation,
         contextDelivery: deliveryReference, claim: specification.claim }));
+      ensure(consumeContextDeliveryExecution(input.harness, accepted, specification.id),
+        'context acceptance was not executed by the admitted driver in this read');
       ensure(accepted.contextDelivery === deliveryReference && accepted.phase === 'input-accepted', 'adapter did not accept the exact context delivery');
       const consumed = take(input.harness.observe({ launch: specification.launch, delivery: accepted.id, operation: specification.operation }));
       ensure(consumed.contextDelivery === deliveryReference && consumed.phase === 'context-consumed', 'adapter did not witness context consumption');
@@ -153,6 +163,8 @@ export function createProductionGroundingReader(input: ProductionGroundingReader
         && candidate.record.id === recorded.id && candidate.conflicts.length === 0 && candidate.taint.length === 0);
       ensure(row && row.fact.kind === 'assembly-HarnessObservation', 'exact signed context-consumed fact unavailable');
       const candidate = sampled.grounding({ owner: 'part-two', name: 'FactEnvelope', id: row.fact.id }) as SessionGrounding;
+      ensure(candidate.consumption?.owner === 'part-two' && candidate.consumption.name === 'FactEnvelope'
+        && candidate.consumption.id === row.fact.id, 'exact owner-decoded HarnessObservation fact required: grounding ignored the consumption witnessed in this read');
       ensure(candidate.at.value === at.value && candidate.step === specification.step
         && candidate.incarnation === specification.incarnation && candidate.contextDeliveryReason === specification.reason,
       'grounding was pre-completed, retimestamped, or detached from its context delivery');
@@ -160,5 +172,6 @@ export function createProductionGroundingReader(input: ProductionGroundingReader
       });
     },
   });
-  return issueProductionGroundingReader(reader, input.scope);
+  registerProductionGroundingReader(reader);
+  return issueProductionGroundingReader(reader, input.scope, input.runtime, input.harness);
 }

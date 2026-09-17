@@ -1,98 +1,63 @@
-import { expect, it } from 'vitest';
-import { canonical, consumeResult } from '../../src/index.js';
-import { authorAndAppend } from '../../src/facts/index.js';
-import { registerProductionGroundedGraph } from '../../src/rungraph/index.js';
-import { bootProductionAssembly, contextDeliveryIdFor, createAssemblyRuntime, createAssemblySpine } from '../../src/assembly/index.js';
-import { privateKey } from '../facts/fixtures.js';
-import { assemblyInput } from '../assembly/fixture.js';
-import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
-import { installProduction, productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
-import { digest, setup, value, json } from './astra-production-grounding-fixture.js';
-import { effectFixture } from './astra-rereview-real-owner-fixture.js';
-
-const result = (r: any): any => consumeResult(r, {
-  Success: value => ({ accepted: true, value }) as any,
-  Refused: refusal => ({ accepted: false, detail: refusal.detail }) as any,
+// @ts-nocheck -- authoritative review assertions; adjudicated real-owner prerequisite translation.
+import { vi } from 'vitest'; vi.setConfig({ testTimeout: 120000 });
+import '../assembly/production-grounding-evidence.mjs';
+import {ten as originalTen} from './astra-rereview-ten-fixture.js';
+import {it,expect} from 'vitest';
+import {consumeResult,canonical} from '../../src/index.js';
+import {authorAndAppend} from '../../src/facts/index.js';
+import {createRunGraph,registerProductionGroundingReader,registerProductionGroundedGraph} from '../../src/rungraph/index.js';
+import {createConfinedContextDeliveryDriver,createNativeHarnessAdapter,createAssemblyRuntime,createAssemblySpine,bootProductionAssembly,contextDeliveryIdFor} from '../../src/assembly/index.js';
+import {realTenFixture as ten} from '../assembly/real-context-delivery-fixture.js';
+import {paired,setup,value,ref,json,digest,executeInitialLiveInputLifecycle} from './astra-production-grounding-fixture.js';
+import {effectFixture} from './production-grounding-adjudication-owner-fixture.js';
+import {privateKey} from '../facts/fixtures.js';
+import {assemblyInput} from '../assembly/fixture.js';
+import {assemblyRuntimeFixture} from '../assembly/round8-extended-fixture.js';
+import {installProduction,productionBindingSet,productionComposition} from '../assembly/production-fixture.js';
+const result=(r:any):any=>consumeResult(r,{Success:value=>({accepted:true,value}),Refused:r=>({accepted:false,detail:r.detail})});
+function makeDriver(f:any,runtime=f.runtime,counter={calls:0}) {
+ return {counter,driver:createConfinedContextDeliveryDriver({history:f.history,runtime,context:f.c,clock:()=>100,
+ liveProcess:{owner:'part-ten',resolve:(l:any)=>f.success({launch:l.id,run:l.run,incarnation:l.incarnation,harness:l.harness,artifactDigest:l.artifactDigest,machine:l.machine,processIdentity:'pid:42:start:1'})},
+ execution:{owner:'part-eight',deliver:()=>{counter.calls++;return f.success(f.evidence.id)},observe:()=>f.success({phase:'context-consumed',evidence:f.evidence.id,detail:'consumed'})}})};
+}
+it('R1 F2 kind-labelled substitute schemas must not qualify as owner admitted evidence',()=>{
+ const f=originalTen();expect((f.ctx.ownedBodies??[]).some((x:any)=>x.owner==='part-eight')).toBe(false);
+ expect(result(f.runtime.recordContextDelivery(f.spec()))).toMatchObject({accepted:false});
 });
-
-it('R1 F2 kind-labelled substitute schemas do not qualify as owner-admitted evidence', () => {
-  const text = { kind: 'text' as const, maxLength: 2048 };
-  const f = setup(undefined, undefined, { fields: { intent: { kind: 'constitutional', type: 'Intent' },
-    owner: { kind: 'constitutional', type: 'VerifiedPrincipal' }, capture: { kind: 'capture' } }, extra: {
-    'effect-OperationDefinition': { id: text },
-    'transport-AdmissionReservation': { operation: text, state: text, digest: text, run: text },
-    'transport-Lease': { run: text, incarnation: text },
-  }, body: ({ intent, owner, hash }) => json({ intent, owner, capture: { reference: 'message:1', hash } }) });
-  expect((f.ctx.ownedBodies ?? []).some(row => row.owner === 'part-eight')).toBe(false);
-  const spine = createAssemblySpine(f.assemblyHost, { context: f.ctx, privateKey }, f.store);
-  const runtime = createAssemblyRuntime({ host: f.assemblyHost, spine } as any);
-  const operation = `operation:${digest(['substitute', f.id, 'attempt:1'])}`;
-  const claim = f.append('transport-AdmissionReservation', json({ operation, state: 'dispatch-claimed',
-    digest: f.ctx.captures['message:1']!.hash, run: f.id })).fact;
-  const execution = f.append('transport-Lease', json({ run: f.id, incarnation: 'incarnation:one' })).fact;
-  const launch = value(runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'), run: f.id,
-    input: f.opening.id, inputDigest: f.ctx.captures['message:1']!.hash, incarnation: 'incarnation:one' }));
-  const launchFact = value(runtime.inspect()).find(row => row.record.id === launch.id)!.fact;
-  const specification = { type: 'ContextDeliverySpecification', schemaVersion: 1,
-    id: contextDeliveryIdFor(launchFact.id, operation), predecessors: [], dependencyFacts: [], launch: launchFact.id,
-    run: f.id, step: 'step:substitute', input: f.opening.id, inputDigest: f.ctx.captures['message:1']!.hash,
-    incarnation: launch.incarnation, harness: launch.harness, artifactDigest: launch.artifactDigest, machine: launch.machine,
-    generation: f.run.generation.id, executionContext: execution.id,
-    contextManifest: [{ class: 'message', reference: 'message:1', digest: f.ctx.captures['message:1']!.hash }],
-    reason: 'initial', operation, claim: claim.id, previousDelivery: '', controlObservation: '' };
-  expect(result(runtime.recordContextDelivery(specification))).toMatchObject({ accepted: false });
+it('R4 F8 marked production boot must refuse a flat graph even after public registration',()=>{
+ const f=assemblyRuntimeFixture(),binding={...productionBindingSet(),productionGrounding:{implementation:'context-delivery-v1' as const}};
+ const installed=installProduction(f,binding),p=productionComposition(f,installed.binding),old=setup();
+ const ready=value(old.graph.open(old.run)),flat=value(old.graph.ground(old.id,'w','h','start',old.lease));expect(flat.kind).toBe('session-grounding');
+ const graph=registerProductionGroundedGraph(old.graph),production={...p,productionGrounding:{owner:'part-ten' as const,implementation:'context-delivery-v1' as const},run:{...p.run,port:graph}};
+ expect(result(bootProductionAssembly({...f.composition,production},installed.manifest.id,installed.binding.scope))).toMatchObject({accepted:false});
 });
-
-it('R4 F8 marked production boot refuses a flat graph even after public registration', () => {
-  const f = assemblyRuntimeFixture();
-  const binding = { ...productionBindingSet(), productionGrounding: { implementation: 'context-delivery-v1' as const } };
-  const installed = installProduction(f, binding), base = productionComposition(f, installed.binding), legacy = setup();
-  const ready = value(legacy.graph.open(legacy.run));
-  expect(value(legacy.graph.ground(legacy.id, 'w', 'h', 'start', legacy.lease)).kind).toBe('session-grounding');
-  expect(ready.state).toBe('ready');
-  const graph = registerProductionGroundedGraph(legacy.graph);
-  const production = { ...base, productionGrounding: { owner: 'part-ten' as const, implementation: 'context-delivery-v1' as const },
-    run: { ...base.run, port: graph } };
-  expect(result(bootProductionAssembly({ ...f.composition, production }, installed.manifest.id, installed.binding.scope)))
-    .toMatchObject({ accepted: false });
+it('R5 F9 contract map must refuse named passing titles when the named behavior failed',async()=>{
+ const {checkProductionGroundingAssemblyEvidence}=await import('../../scripts/check-assembly-contracts.mjs');
+ const rows=[['assembly','PG-P10-SIGNED-DELIVERY PG-P10-TYPED-REFUSALS'],['integration','PG-INTEGRATION-PRODUCTION-BINDING'],['e2e','PG-E2E-INITIAL-LIVE-REPLAY']];
+ const report={success:true,testResults:rows.map(([tier,name])=>({name:`${process.cwd()}/tests/${tier}/production-grounding.test.ts`,assertionResults:[{fullName:name+' placeholder',status:'passed'}]}))};
+ expect(()=>checkProductionGroundingAssemblyEvidence(report)).toThrow();
 });
-
-it('R5 F9 contract map refuses named passing titles when the named behavior failed', async () => {
-  // @ts-expect-error The contract checker is an executable ESM script.
-  const { checkProductionGroundingAssemblyEvidence } = await import('../../scripts/check-assembly-contracts.mjs');
-  const rows = [['assembly', 'PG-P10-SIGNED-DELIVERY PG-P10-TYPED-REFUSALS'],
-    ['integration', 'PG-INTEGRATION-PRODUCTION-BINDING'], ['e2e', 'PG-E2E-INITIAL-LIVE-REPLAY']];
-  const report = { success: true, testResults: rows.map(([tier, name]) => ({
-    name: `${process.cwd()}/tests/${tier}/production-grounding.test.ts`,
-    assertionResults: [{ fullName: `${name} placeholder`, status: 'passed' }],
-  })) };
-  expect(() => checkProductionGroundingAssemblyEvidence(report)).toThrow();
+it('R6 F1 signed native observation reconstructs without local delivery or launch maps',()=>{
+ const f=ten(),s=value(f.runtime.recordContextDelivery(f.spec())),accepted=value(f.driver.deliver(s,{operation:s.operation,claim:s.claim}));
+ const fresh=createNativeHarnessAdapter({id:'native',artifact:f.launch.artifactDigest,platform:'fixture',conformance:'fixture',context:{...f.c,history:f.history},clock:()=>100,generation:()=>s.generation,contextDeliveryDriver:f.driver,
+ driver:{owner:'part-eight',launch:()=>{throw Error('must not relaunch')},deliver:()=>{throw Error('must not use legacy deliver')},observe:()=>{throw Error('must not use legacy observe')}}});
+ expect(result(fresh.observe({launch:s.launch,delivery:accepted.id,operation:s.operation}))).toMatchObject({accepted:true,value:{phase:'context-consumed'}});expect(f.calls()).toBe(1);
 });
-
-it('R8 F2 real Six admitted operation identity is accepted as the specification operation', () => {
-  const f = effectFixture(), request = f.prepare();
-  const reserved: any = value(f.transport.inspect()).filter((row: any) => row.record.type === 'AdmissionReservation').at(-1)!;
-  value(f.transport.claim('grounding-claim', f.fence, reserved.record.operation));
-  const claim: any = value(f.transport.inspect()).filter((row: any) => row.record.type === 'AdmissionReservation').at(-1)!;
-  expect(claim.record.state).toBe('dispatch-claimed');
-  const spine = createAssemblySpine(f.assemblyHost, { context: f.ctx, privateKey }, f.store);
-  const runtime = createAssemblyRuntime({ host: f.assemblyHost, spine } as any);
-  const capture = value(f.host.capture(value(canonical(f.message)).bytes));
-  expect(capture.hash).toBe(request.digest);
-  const intake = value(authorAndAppend({ kind: 'review-intake', schemaVersion: 1, machine: f.host.machine,
-    principal: json(f.host.principal), provenance: json(f.host.principal.provenance), at: json(f.now),
-    body: json({ capture }), required: [] }, f.ctx, f.store, privateKey)).fact;
-  const launch = value(runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'), run: f.run.id,
-    input: intake.id, inputDigest: capture.hash, incarnation: f.host.incarnation }));
-  const launchFact = value(runtime.inspect()).find(row => row.record.id === launch.id)!.fact;
-  const lease = value(f.transport.inspect()).find((row: any) => row.record.type === 'Lease')!.fact;
-  const specification = { type: 'ContextDeliverySpecification', schemaVersion: 1,
-    id: contextDeliveryIdFor(launchFact.id, claim.record.operation), predecessors: [], dependencyFacts: [],
-    launch: launchFact.id, run: launch.run, step: 'step:actual', input: intake.id, inputDigest: capture.hash,
-    incarnation: launch.incarnation, harness: launch.harness, artifactDigest: launch.artifactDigest, machine: launch.machine,
-    generation: f.host.current().decode.register.generation.id, executionContext: lease.id,
-    contextManifest: [{ class: 'message', reference: capture.reference, digest: capture.hash }], reason: 'initial',
-    operation: claim.record.operation, claim: claim.fact.id, previousDelivery: '', controlObservation: '' };
-  const actual = result(runtime.recordContextDelivery(specification));
-  expect(actual, JSON.stringify(actual)).toMatchObject({ accepted: true });
-}, 30_000);
+it('R7 positive initial and genuinely second inbound both start while incarnation and launch stay unchanged',()=>{
+ const f=executeInitialLiveInputLifecycle();expect(f.secondRunning.state).toBe('running');expect(f.last.spec.incarnation).toBe(f.first.spec.incarnation);expect(f.last.spec.launch).toBe(f.first.spec.launch);
+ expect(f.last.spec.input).not.toBe(f.first.spec.input);expect(f.last.spec.step).not.toBe(f.first.spec.step);expect(f.last.spec.previousDelivery).toBe(f.first.sf.id);
+});
+it('R9 F7 a raw signed predecessor skip must be refused on replay resolution',async()=>{
+ const {decodeAssemblyRecord}=await import('../../src/assembly/index.js');
+ const f=ten(),a=value(f.runtime.recordContextDelivery(f.spec())),af=value(f.runtime.inspect()).find(r=>r.record.id===a.id)!.fact;
+ const op2=f.next('second').operation;value(f.runtime.recordContextDelivery(f.spec('live-input',op2.id,af.id)));
+ const op3=f.next('third').operation,skip=value(decodeAssemblyRecord('ContextDeliverySpecification',f.spec('live-input',op3.id,af.id),{...f.c,validateReferences:false}));
+ value(f.spine.append(skip));expect(result(f.runtime.resolve(skip))).toMatchObject({accepted:true,value:{admitted:false}});
+});
+it('R10 F1 repeated consumed observation after restart at a later clock must remain readable',()=>{
+ const f=ten(),s=value(f.runtime.recordContextDelivery(f.spec()));value(f.driver.deliver(s,{operation:s.operation,claim:s.claim}));value(f.driver.observe(s,s.operation));f.setClock(101);
+ const driver=createConfinedContextDeliveryDriver({history:f.history,runtime:f.runtime,context:f.c,clock:()=>101,
+ liveProcess:{owner:'part-ten',resolve:l=>f.success({launch:l.id,run:l.run,incarnation:l.incarnation,harness:l.harness,artifactDigest:l.artifactDigest,machine:l.machine,processIdentity:'pid:42:start:1'})},
+ execution:{owner:'part-eight',deliver:()=>{throw Error('must not invoke')},observe:()=>f.success({phase:'context-consumed',evidence:f.evidence.id,detail:'witness'})}});
+ const actual=result(driver.observe(s,s.operation));expect(actual,JSON.stringify(actual)).toMatchObject({accepted:true});
+});

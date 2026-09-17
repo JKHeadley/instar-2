@@ -151,59 +151,13 @@ export function setup(storageFactory?: (fallback: SegmentStoragePort) => Segment
       context: ref(append('note', json({ identity: `${worker}:${harness}`, amount: '0' })).fact) }; } };
 }
 
-export function paired(options:any={}) {
- const text={kind:'text' as const,maxLength:2048};
- const f=setup(undefined,undefined,{fields:{intent:{kind:'constitutional',type:'Intent'},owner:{kind:'constitutional',type:'VerifiedPrincipal'},capture:{kind:'capture'}},extra:{
-  'effect-OperationDefinition':{id:text},
-  'effect-EffectRequest':{id:text,definition:text,digest:text,run:text},
-  'transport-AdmissionReservation':{operation:text,state:text,digest:text,run:text},
-  'transport-Lease':{run:text,incarnation:text},
-  'effect-OperationObservation':{operation:text,claim:text,digest:text,run:text,input:text,stage:text},
-  'rungraph-briefing-material':{class:text},
- },ownerRecords:true,body:({intent,owner,hash})=>json({intent,owner,capture:{reference:'message:1',hash}})}); const ready=value(f.graph.open(f.run));
- const spine=createAssemblySpine(f.assemblyHost,{context:f.ctx,privateKey},f.store);
- const runtime=createAssemblyRuntime({host:f.assemblyHost,spine} as any);
- const history:any={owner:'part-ten',current:()=>runtime.inspectCurrent(),lookup:(id:string)=>{
-  const snap=value(f.store.readForProjection()); const a=value(runtime.inspectCurrent()).find(r=>r.fact.id===id||r.record.id===id); const s=snap.entries.find(r=>r.fact.id===(a?.fact.id??id)||(r.fact.body as any)?.record?.id===id);
-  return f.success(s?{fact:s.fact,...(a?{record:a.record}:{}),taint:s.taint,conflicts:[...s.conflicts,...(a?.conflicts??[])],completeness:'complete'}:null);
- },resolve:(r:any)=>runtime.resolve(r),resolveContextDelivery:(r:any)=>runtime.resolve(r)};
- const launch=value(runtime.record('HarnessLaunchSpec',{...assemblyInput('HarnessLaunchSpec'),id:'review-launch',run:f.id,step:'launch-step',input:f.opening.id,incarnation:'incarnation:one',harness:'h'}));
- const lf=value(runtime.inspect()).find(r=>r.record.id===launch.id)!.fact;
- const execution=f.append('transport-Lease',json({record:{type:'Lease',schemaVersion:1,id:'delivery-lease:1',run:f.id,incarnation:'incarnation:one'}})).fact;
- const briefings=f.deps.groundingPolicy.briefingClasses.map(c=>f.append('rungraph-briefing-material',json({class:c})).fact);
- const admission={...f.deps.admission,execution:(run:any,ownership:any)=>{const current=value(f.deps.admission.execution(run,ownership));return f.success({...current,context:ref(execution)})}};
- let count=0; let last:any; let mutation=(s:any,o:any,g:any)=>{};
-  function read(req:any) {
-  const at=f.deps.clock(), ordinal=++count;
-  const definitionId=`delivery-definition:${ordinal}`,requestId=`delivery-request:${ordinal}`,attempt=`delivery-attempt:${ordinal}`;
-  f.append('effect-OperationDefinition',json({record:{type:'OperationDefinition',schemaVersion:1,id:definitionId}}));
-  const operationKey=`operation:${digest([f.id,requestId,attempt])}`;
-  const spec:any={type:'ContextDeliverySpecification',schemaVersion:1,id:`delivery:${ordinal}`,predecessors:[],dependencyFacts:[],launch:lf.id,run:f.id,step:'step:operation:1',input:f.opening.id,inputDigest:f.ctx.captures['message:1']!.hash,incarnation:launch.incarnation,harness:'h',artifactDigest:launch.artifactDigest,machine:launch.machine,generation:f.run.generation.id,executionContext:req.execution.context.id,contextManifest:[{class:'message',reference:'message:1',digest:f.ctx.captures['message:1']!.hash},...briefings.map(row=>({class:(row.body as any).class,reference:row.id,digest:row.contentHash}))],reason:'initial',operation:operationKey,claim:'',previousDelivery:'',controlObservation:''};
-  const obs:any={type:'HarnessObservation',schemaVersion:1,id:`consumed:${ordinal}`,predecessors:[],dependencyFacts:[],launch:lf.id,run:f.id,step:spec.step,input:spec.input,incarnation:spec.incarnation,contextDelivery:'',sourceEvidence:[],contextDigests:spec.contextManifest.map((r:any)=>r.digest),generation:spec.generation,causalReferences:[],observedAt:at.value,freshFor:1000,phase:'context-consumed',boundaryEvidence:'',detail:'boundary witness'};
-  const g:any={type:'SessionGrounding',schemaVersion:2,id:`ground-review:${count}`,run:f.id,expected:req.run.head,worker:req.worker,harness:req.harness,reason:req.reason,step:spec.step,incarnation:spec.incarnation,contextDeliveryReason:spec.reason,ownership:req.execution.ownership,executionContext:req.execution.context,at,previousActivity:at,elapsed:{type:'Measurement',schemaVersion:1,subject:{kind:'elapsed-time',instance:req.worker},value:0,unit:'ms',at,by:'probe'},principal:f.owner,intake:ref(f.opening),binding:f.run.resultDestination.binding,directives:[],generation:f.run.generation,frontier:{},knownLineages:['machine-a'],threshold:20,messages:[{fact:ref(f.opening),sequence:f.opening.segment.position,capture:'message:1',hash:f.ctx.captures['message:1']!.hash}],lastInbound:ref(f.opening),pendingOperations:req.run.pending.map((s:any)=>s.operation.key),children:[],receipts:[],briefingClasses:f.deps.groundingPolicy.briefingClasses,consumption:ref(f.opening)};
-  mutation(spec,obs,g);
-  f.append('effect-EffectRequest',json({record:{type:'EffectRequest',schemaVersion:1,id:requestId,definition:definitionId,digest:spec.inputDigest,run:f.id}}));
-  const claim=f.append('transport-AdmissionReservation',json({record:{type:'AdmissionReservation',schemaVersion:1,operation:operationKey,request:requestId,state:'dispatch-claimed',digest:spec.inputDigest,run:f.id,tick:ordinal}})).fact;
-  spec.claim=claim.id;
-  const witness=f.append('effect-OperationObservation',json({record:{type:'OperationObservation',schemaVersion:1,id:`delivery-observation:${ordinal}`,operation:operationKey,claim:claim.id,digest:spec.inputDigest,run:f.id,input:spec.input,stage:'response'}})).fact;
-  if (!obs.boundaryEvidence) obs.boundaryEvidence=witness.id;
-  if (!obs.sourceEvidence.length) obs.sourceEvidence=[witness.id];
-  const sr=value(runtime.recordContextDelivery(spec)); const sf=value(runtime.inspect()).find(r=>r.record.id===sr.id)!.fact;
-  obs.contextDelivery=sf.id;
-  const or=value(runtime.record('HarnessObservation',obs)); const of=value(runtime.inspect()).find(r=>r.record.id===or.id)!.fact;
-  g.consumption=ref(of);g.frontier={'machine-a':{epoch:0,position:of.segment.position}};last={spec:sr,observation:or,grounding:g,sf,of,witness};
-  return f.success(g);
- }
- let grounding:any;
- grounding=issueProductionGroundingReader({owner:'part-ten',production:true,read:(req:any)=>{const candidate=value(read(req));return f.success(issueProductionGroundingRead(grounding,req.invocation,candidate))}},'scope:minimal');
- const deps={...f.deps,admission,grounding,assemblyHistory:history};const graph=value(createRunGraph(deps));
- return {...f,ready,runtime,history,spine,launch,lf,graph,deps,read,setMutation:(m:any)=>mutation=m,last:()=>last};
-}
+export { realPairedFixture as paired } from '../assembly/real-context-delivery-fixture.js';
+import { realPairedFixture as paired } from '../assembly/real-context-delivery-fixture.js';
 
 export function executeInitialLiveInputLifecycle() {
  const f=paired(),g1=value(f.graph.ground(f.id,'w','h','start',f.lease)),first=f.last();
  const running=value(f.graph.transition(f.start(f.ready,g1))),observed=f.observe(running,'happened');
- const outcome=(value(f.store.read()).find(r=>r.id===observed.trigger.id)!.body as any).outcome,step=running.pending[0]!;
+ const outcome=(value<readonly any[]>(f.store.read()).find(r=>r.id===observed.trigger.id)!.body as any).outcome,step=running.pending[0]!;
  const e=value(decode('Evidence',f.evidenceInput({id:'settled-review',claim:{subject:step.operation.key,predicate:'operation-settled',value:{digest:step.operation.digest,claimClosed:true,chargeSettled:true}},freshFor:10000}),f.ctx.decode));
  const ef=f.append('evidence-record',json({evidence:e})).fact;
  const graph=value(createRunGraph({...f.deps,settlement:{owner:'part-eight' as const,read:(reference:any)=>f.success({record:reference,outcome,claimClosed:true,chargeSettled:true})}}));

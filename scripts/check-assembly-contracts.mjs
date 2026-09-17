@@ -1,5 +1,7 @@
-import { readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, readdirSync, realpathSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
@@ -70,28 +72,169 @@ export const productionGroundingAssemblyContract = Object.freeze({
   held: 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction',
   compatibilityOnly: 'flat-consumption-receipt-excluded-from-production-activation-evidence',
 });
+export function productionGroundingDependencyDigest(root = realpathSync(fileURLToPath(new URL('..', import.meta.url)))) {
+  const hash = createHash('sha256');
+  const visit = path => { for (const entry of readdirSync(resolve(root, path), { withFileTypes: true }).sort((a,b) => a.name.localeCompare(b.name))) {
+    const name = `${path}/${entry.name}`;
+    if (entry.isDirectory()) visit(name);
+    else if (/\.(?:js|mjs|cjs|json)$/.test(name)) { hash.update(name); hash.update(readFileSync(resolve(root, name))); }
+  } };
+  for (const path of ['node_modules/vitest', 'node_modules/@vitest/expect', 'node_modules/@vitest/runner',
+    'node_modules/@vitest/snapshot', 'node_modules/@vitest/utils', 'node_modules/chai', 'node_modules/typescript']) visit(path);
+  return hash.digest('hex');
+}
+export function productionGroundingSourceDigest(root = realpathSync(fileURLToPath(new URL('..', import.meta.url)))) {
+  const hash = createHash('sha256');
+  const visit = path => { for (const entry of readdirSync(resolve(root, path), { withFileTypes: true }).sort((a,b) => a.name.localeCompare(b.name))) {
+    const name = `${path}/${entry.name}`;
+    if (entry.isDirectory()) visit(name);
+    else if (/\.(?:ts|js|mjs|json)$/.test(name)) { hash.update(name); hash.update(readFileSync(resolve(root, name))); }
+  } };
+  hash.update(productionGroundingDependencyDigest(root));
+  for (const path of ['src', 'tests', 'scripts', 'generated', 'dist']) if (existsSync(resolve(root, path))) visit(path);
+  for (const path of ['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'vitest.config.ts', 'tsconfig.json', 'tsconfig.build.json'])
+    if (existsSync(resolve(root, path))) { hash.update(path); hash.update(readFileSync(resolve(root, path))); }
+  return hash.digest('hex');
+}
+const REVIEWED_GROUNDING_INVENTORY = '11f589019d12ca2f4550d1ee8374469d55731ced91ccbadde46e3f98630b18c9';
 export function checkProductionGroundingAssemblyEvidence(report) {
-  if (!report.success) throw new Error('production grounding assembly evidence requires a successful test run');
-  const required = [
-    ['PG-P10-SIGNED-DELIVERY records and resolves exact signed typed delivery evidence', '/tests/assembly/production-grounding.test.ts'],
-    ['PG-P10-TYPED-REFUSALS refuses adapter mutation, claim replay, incarnation replacement, conflicts, and held compaction', '/tests/assembly/production-grounding.test.ts'],
-    ['PG-INTEGRATION-PRODUCTION-BINDING refuses a history-labelled graph until the invocation-owned Ten reader is bound', '/tests/integration/production-grounding.test.ts'],
-    ['PG-INTEGRATION-PRODUCTION-BINDING admits the signed row-45 binding only with a production-grounded graph', '/tests/integration/production-grounding.test.ts'],
-    ['PG-E2E-INITIAL-LIVE-REPLAY PRODUCTION-GROUNDING lifecycle: initial and live-input specifications coexist while compaction execution remains explicitly held', '/tests/e2e/production-grounding.test.ts'],
-    ['PG-E2E-INITIAL-LIVE-REPLAY executes two signed actual-start boundaries on one incarnation', '/tests/e2e/production-grounding.test.ts'],
-  ];
-  const files = [];
-  for (const [identity, path] of required) {
-    const matches = report.testResults.flatMap(file => (file.assertionResults ?? [])
-      .filter(test => test.status === 'passed' && test.fullName === identity)
-      .map(test => ({ file: file.name, test })));
-    if (!matches.some(match => match.file.endsWith(path)))
-      throw new Error(`production grounding assembly evidence missing ${identity} in ${path}`);
-    files.push(...matches.map(match => match.file));
+  const root = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
+  if (!report.success || report.numFailedTests || report.numFailedTestSuites || !Number.isFinite(report.startTime))
+    throw new Error('production grounding evidence requires a completed successful actual run');
+  const inventoryBytes = readFileSync(resolve(root, 'tests/assembly/production-grounding-inventory.json'), 'utf8');
+  if (createHash('sha256').update(inventoryBytes).digest('hex') !== REVIEWED_GROUNDING_INVENTORY)
+    throw new Error('production grounding inventory differs from the reviewed obligations');
+  const inventory = JSON.parse(inventoryBytes);
+  if (inventory.reviewedDependencyDigest !== productionGroundingDependencyDigest(root))
+    throw new Error('reviewed test runner/compiler/assertion dependencies changed');
+  if (inventory.cases.length !== 127 || new Set(inventory.cases.map(row => `${row.landedFile}\0${row.fullName}`)).size !== 127)
+    throw new Error('production grounding requires all 121 review/boot identities plus six real owner controls');
+  for (const [name, digest] of Object.entries(inventory.reviewedSupportSources)) {
+    const path = resolve(root, name);
+    if (!path.startsWith(root + '/') || !existsSync(path) || realpathSync(path) !== path
+      || createHash('sha256').update(readFileSync(path)).digest('hex') !== digest)
+      throw new Error(`reviewed owner/factory/runner source changed: ${name}`);
   }
-  if (productionGroundingAssemblyContract.held !== 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction')
-    throw new Error('compaction hold name changed');
-  return { ...productionGroundingAssemblyContract, files: [...new Set(files)] };
+  const auditPath = resolve(root, '.instar/lanes/round4b-artifacts/assertions.jsonl');
+  const audit = existsSync(auditPath) ? readFileSync(auditPath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+  const sourceDigest = productionGroundingSourceDigest(root);
+  const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  const processPath = resolve(root, '.instar/lanes/round4c-artifacts/process-exits.jsonl');
+  const reportDigest = createHash('sha256').update(JSON.stringify(report)).digest('hex');
+  const completed = existsSync(processPath) ? readFileSync(processPath, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : [];
+  const exits = completed.filter(row => row.root === root && row.revision === revision && row.sourceDigest === sourceDigest
+    && row.reportDigest === reportDigest && row.reportStart === report.startTime);
+  if (exits.length !== 1 || exits[0].code !== 0)
+    throw new Error('production grounding requires one actual successful Vitest process exit, not its JSON success flag');
+  const files = new Set();
+  for (const required of inventory.cases) {
+    const path = resolve(root, required.landedFile);
+    if (!existsSync(path) || realpathSync(path) !== path || !path.startsWith(root + '/')) throw new Error(`wrong rooted evidence file: ${required.landedFile}`);
+    const matches = report.testResults.flatMap(file => file.name === path ? (file.assertionResults ?? [])
+      .filter(test => test.fullName === required.fullName).map(test => ({ file, test })) : []);
+    if (matches.length !== 1 || matches[0].test.status !== 'passed') throw new Error(`missing unique passing production grounding case: ${required.fullName}`);
+    const { file, test } = matches[0];
+    const runs = audit.filter(row => row.file === path && row.fullName === required.fullName
+      && row.start >= report.startTime && row.start >= file.startTime && row.end <= file.endTime + 100
+      && row.revision === revision && row.sourceDigest === sourceDigest);
+    if (runs.length !== 1 || runs[0].assertionCalls < required.minimumExecutedAssertions || !runs[0].assertions.length || runs[0].state !== 'pass')
+      throw new Error(`missing current executed assertion evidence: ${required.fullName}`);
+    if (!required.assertionSites?.length) throw new Error(`unreviewed assertion obligations: ${required.fullName}`);
+    for (const site of required.assertionSites) if (!runs[0].assertions.some(actual => JSON.stringify(actual) === JSON.stringify(site)))
+      throw new Error(`required final assertion was not executed: ${required.fullName}`);
+    for (const condition of required.checkpoints ?? []) {
+      const { name, minimum = 1, evidence = {} } = typeof condition === 'string' ? { name: condition } : condition;
+      const reached = (runs[0].checkpoints ?? []).filter(row => row.name === name
+        && Object.entries(evidence).every(([key, expected]) => row.evidence?.[key] === expected));
+      if (reached.length < minimum) throw new Error(`required owner path was not executed: ${required.fullName}: ${name}`);
+    }
+    for (const detail of required.refusalDetails ?? []) if (!runs[0].refusals?.some(actual => actual.includes(detail)))
+      throw new Error(`intended refusal was not reached: ${required.fullName}: ${detail}`);
+    if (!required.reviewedSourceSha256 || createHash('sha256').update(readFileSync(path)).digest('hex') !== required.reviewedSourceSha256)
+      throw new Error(`tested source differs from reviewed case: ${required.fullName}`);
+    files.add(path);
+  }
+  if (productionGroundingAssemblyContract.held !== 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction') throw new Error('compaction hold changed');
+  return { ...productionGroundingAssemblyContract, files: [...files] };
+}
+
+/** Negative controls run against the same accepted, rooted full-run evidence.
+ * Every source substitution is restored synchronously, including on failure. */
+export function exerciseProductionGroundingEvidence(report) {
+  checkProductionGroundingAssemblyEvidence(report);
+  const root = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
+  const inventory = JSON.parse(readFileSync(resolve(root, 'tests/assembly/production-grounding-inventory.json'), 'utf8'));
+  const target = inventory.cases[0], path = resolve(root, target.landedFile), results = [];
+  const reject = (name, candidate) => {
+    let detail;
+    try { checkProductionGroundingAssemblyEvidence(candidate); } catch (error) { detail = error.message; }
+    if (!detail) throw new Error(`F9 mutation was incorrectly certified: ${name}`);
+    results.push({ name, refused: true, detail });
+  };
+  const processPath = resolve(root, '.instar/lanes/round4c-artifacts/process-exits.jsonl');
+  const processBytes = readFileSync(processPath, 'utf8');
+  const reportDigest = createHash('sha256').update(JSON.stringify(report)).digest('hex');
+  try {
+    const exits = processBytes.trim().split('\n').filter(Boolean).map(JSON.parse);
+    for (const row of exits) if (row.reportDigest === reportDigest) row.code = 1;
+    writeFileSync(processPath, exits.map(row => JSON.stringify(row)).join('\n') + '\n');
+    reject('failed-process-with-successful-vitest-json', report);
+    writeFileSync(processPath, '');
+    reject('missing-main-process-exit', report);
+  } finally { writeFileSync(processPath, processBytes); }
+  const compiledPath = resolve(root, 'dist/assembly/production.js'), compiledBytes = readFileSync(compiledPath);
+  try {
+    writeFileSync(compiledPath, Buffer.concat([compiledBytes, Buffer.from('\n// changed executable owner input\n')]));
+    reject('changed-compiled-owner-after-run', report);
+  } finally { writeFileSync(compiledPath, compiledBytes); }
+  for (const mode of ['delete', 'duplicate', 'failed', 'skipped', 'pending', 'renamed', 'wrong-root', 'stale']) {
+    const changed = structuredClone(report), file = changed.testResults.find(row => row.name === path);
+    const index = file.assertionResults.findIndex(row => row.fullName === target.fullName), test = file.assertionResults[index];
+    if (mode === 'delete') file.assertionResults.splice(index, 1);
+    if (mode === 'duplicate') file.assertionResults.push(structuredClone(test));
+    if (['failed', 'skipped', 'pending'].includes(mode)) test.status = mode;
+    if (mode === 'renamed') test.fullName += ' renamed';
+    if (mode === 'wrong-root') file.name = `/tmp/counterfeit/${target.landedFile}`;
+    if (mode === 'stale') changed.startTime = Date.now() + 1;
+    reject(mode, changed);
+  }
+  const caseBytes = readFileSync(path, 'utf8');
+  const artifactDir = resolve(root, '.instar/lanes/round4b-artifacts');
+  mkdirSync(artifactDir, { recursive: true });
+  const six = inventory.cases.filter(row => row.landedFile === target.landedFile).slice(0, 6);
+  if (six.length !== 6) throw new Error('six rooted empty-case controls required');
+  const configPath = resolve(artifactDir, 'rooted-empty.config.mjs'), reportPath = resolve(artifactDir, 'rooted-empty-results.json');
+  writeFileSync(configPath, `export default {test:{include:[${JSON.stringify(target.landedFile)}],pool:'forks',fileParallelism:false,maxWorkers:1,testTimeout:30000}};`);
+  let emptyReport;
+  try {
+    writeFileSync(path, `import {it} from 'vitest';\n` + six.map(row => `it(${JSON.stringify(row.fullName)},()=>{});`).join('\n'));
+    execFileSync(process.execPath, [resolve(root, 'node_modules/vitest/vitest.mjs'), 'run', '--root', root,
+      '--config', configPath, '--reporter=json', '--outputFile', reportPath], { cwd: root, stdio: 'pipe', timeout: 60000 });
+    emptyReport = JSON.parse(readFileSync(reportPath, 'utf8'));
+    if (!emptyReport.success || emptyReport.numPassedTests !== 6 || emptyReport.numFailedTests !== 0)
+      throw new Error('rooted six-empty negative control did not execute cleanly');
+    reject('six-actually-executed-empty-cases-at-required-root', emptyReport);
+  } finally { writeFileSync(path, caseBytes); }
+  reject('six-empty-case-report-after-source-restored', emptyReport);
+  for (const [name, source] of [
+    ['zero-body-at-required-root', `import {it} from 'vitest';\nit(${JSON.stringify(target.fullName)},()=>{});`],
+    ['unreachable-final-assertions', `import {it,expect} from 'vitest';\nit(${JSON.stringify(target.fullName)},()=>{if(false)expect(false).toBe(true)});`],
+    ['assertion-only-placeholder', `import {it,expect} from 'vitest';\nit(${JSON.stringify(target.fullName)},()=>{expect(true).toBe(true)});`],
+  ]) {
+    try { writeFileSync(path, source); reject(name, report); } finally { writeFileSync(path, caseBytes); }
+  }
+  const fixture = resolve(root, 'tests/assembly/genuine-production-fixture.ts'), fixtureBytes = readFileSync(fixture, 'utf8');
+  for (const [name, source] of [
+    ['private-issuer-factory-replacement', "import {issueProductionGroundedGraph} from '../../src/rungraph/types.js';\nexport const genuineProductionComposition = () => issueProductionGroundedGraph({}, 'scope:minimal');"],
+    ['foreign-store-graph-transplant', "import {paired} from '../rungraph/astra-production-grounding-fixture.js';\nexport const genuineProductionComposition = () => ({run:{port:paired().graph}});"],
+    ['fake-owner-registration', "export const genuineProductionComposition = () => ({owner:'part-ten',runtime:{owner:'part-ten'},harness:{owner:'part-ten'},ownedBodies:[{owner:'part-eight',decodeCurrent:x=>x}]});"],
+  ]) {
+    try { writeFileSync(fixture, source); reject(name, report); } finally { writeFileSync(fixture, fixtureBytes); }
+  }
+  checkProductionGroundingAssemblyEvidence(report);
+  mkdirSync(resolve(root, '.instar/lanes/round4b-artifacts'), { recursive: true });
+  writeFileSync(resolve(root, '.instar/lanes/round4b-artifacts/checker-mutations.json'), JSON.stringify(results, null, 2) + '\n');
+  return results;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -104,5 +247,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const rows = checkAssemblyCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   for (const row of rows) console.log(`${row.id}: ${row.status}; ${row.tests.length} executed fixtures; ${row.reason}`);
   const grounding = checkProductionGroundingAssemblyEvidence(JSON.parse(readFileSync('.test-results.json', 'utf8')));
+  const mutations = exerciseProductionGroundingEvidence(JSON.parse(readFileSync('.test-results.json', 'utf8')));
+  console.log(`production grounding F9: ${mutations.length} counterfeit evidence mutations refused`);
   console.log(`production grounding executable: ${grounding.executable.join(', ')}; held: ${grounding.held}; compatibility: ${grounding.compatibilityOnly}`);
 }

@@ -24,10 +24,11 @@ import { createIntakePort, intakeFactSchemas, intakeStopRegistration, intakeVeri
 import { createRunGraph, recordWire, runFactSchemas, runIdFor } from '../dist/rungraph/index.js';
 import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, registerTransportBodies, transportSchemas } from '../dist/transport/index.js';
 import { createJudgmentDoorway, createJudgmentSpine, createModelAdapter, judgmentSchemas, registerJudgmentBodies } from '../dist/judgment/index.js';
-import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, decodeOutboundMessage, effectSchemas, installOperationDefinition, registerEffectBodies } from '../dist/effects/index.js';
+import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, createHarnessLiveInputExecution, decodeOutboundMessage, effectSchemas, installOperationDefinition, registerEffectBodies } from '../dist/effects/index.js';
 import { checkpoint, foldProjection, rebuildProjection, restoreCheckpoint, signCheckpoint, verifyRebuild } from '../dist/projections/index.js';
 import { assemblySchemas, bootProductionAssembly, createAssemblyRuntime, createAssemblySpine,
-  inspectProductionAssemblyBindings, registerAssemblyBodies } from '../dist/assembly/index.js';
+  inspectProductionAssemblyBindings, registerAssemblyBodies, createProductionGroundingReader,
+  createConfinedContextDeliveryDriver, createNativeHarnessAdapter, contextDeliveryIdFor } from '../dist/assembly/index.js';
 import { createOperatorSurface, minimalPlaneProjectionIds, minimalPlaneProjections,
   requiredMinimalDependencies } from '../dist/operator/index.js';
 import { createVerificationRuntime, createVerificationSpine, registerVerificationBodies,
@@ -61,14 +62,13 @@ const textHash = text => `sha256:${createHash('sha256').update(text).digest('hex
  */
 export function bootProductionSliceAssembly(input) {
   const suppliedConfig = input.config ?? sliceConfig();
-  const slice = bootSliceAssembly(input.home, input.restartRecovery === true
-    ? { ...suppliedConfig, productionRestart: true }
-    : suppliedConfig);
+  const slice = input.prepared?.slice ?? bootSliceAssembly(input.home, { ...suppliedConfig, productionRestart: true });
   const restart = input.restartRecovery === true ? restartProductionAssembly(slice) : null;
-  const assembly = restart?.assembly ?? input.assembly;
-  const manifest = restart?.manifest ?? input.manifest;
-  const scope = restart?.scope ?? input.scope;
+  const assembly = restart?.assembly ?? input.assembly ?? input.prepared?.assembly;
+  const manifest = restart?.manifest ?? input.manifest ?? input.prepared?.manifest;
+  const scope = restart?.scope ?? input.scope ?? input.prepared?.scope;
   if (!assembly?.production) throw new Error('production slice requires Part Ten production composition');
+  if (assembly.spine.store !== slice.store) throw new Error('production slice requires its actual durable store');
   const supplied = assembly.production;
   const production = Object.freeze({ ...supplied,
     run: Object.freeze({ ...supplied.run, port: slice.runGraph() }),
@@ -268,7 +268,12 @@ export function bootProductionSliceAssembly(input) {
 // composition on every boot and lets Part Ten re-resolve all 24 bindings before
 // the recovered slice is driven. Its Part Eleven surface completes authority
 // through Part Four, and its Part Nine runtime witnesses that same execution.
-function restartProductionAssembly(slice) {
+export function prepareProductionSliceAssembly(home, config = sliceConfig(), ports = {}) {
+  const slice = bootSliceAssembly(home, { ...config, productionRestart: true }, ports);
+  return { slice, ...restartProductionAssembly(slice, 'admission:production') };
+}
+
+function restartProductionAssembly(slice, admissionId = 'admission:restart-production') {
   const h = c => `sha256:${c.repeat(64)}`;
   const scope = 'scope:minimal';
   const required = (reference, expectedKind) => ({ reference, expectedKind, required: true });
@@ -282,9 +287,9 @@ function restartProductionAssembly(slice) {
   const definitions = minimalPlaneProjections(slice.kinds());
   const boundaryContext = Object.freeze({ ...slice.boundaryContext, validateReferences: true });
   const host = { machine: slice.config.machine, principal: slice.bob, scope: slice.scope, boundary: boundaryContext,
-    current: () => ({ facts: slice.factContext, generation: 'generation:1', stopped: false, clock: slice.now() }) };
+    current: () => ({ facts: slice.factContext, generation: slice.generation().reference.id, stopped: false, clock: slice.now() }) };
   const verificationHost = { machine: slice.config.machine, principal: slice.observer, scope: slice.scope, boundary: boundaryContext,
-    current: () => ({ decode: slice.decodeContext, clock: slice.now(), generation: 'generation:1', stopped: false,
+    current: () => ({ decode: slice.decodeContext, clock: slice.now(), generation: slice.generation().reference.id, stopped: false,
       facts: slice.factContext, evidence: slice.decodeContext.evidence ?? [] }) };
   const ownerSchemas = [...assemblySchemas(host), ...verificationSchemas(verificationHost)];
   const schemaBase = slice.factContext.schemas[0];
@@ -297,8 +302,7 @@ function restartProductionAssembly(slice) {
       .map(kind => ({ ...schemaBase, kind, fields: { id: { kind: 'text', maxLength: 4096 } },
         causallyBound: false, requiredReferences: [], authority: 'none' }))]
     .filter((schema, index, all) => all.findIndex(candidate => candidate.kind === schema.kind && candidate.version === schema.version) === index);
-  const verifiedActGeneration = { owner: 'part-three', name: 'RegisterGeneration',
-    id: take(generationOf(slice.governance.register, slice.governance.context)).id };
+  const verifiedActGeneration = slice.generation().reference;
   const registrations = [...slice.factContext.ownedBodies ?? [],
     take(intakeVerifiedActRegistration(boundaryContext, slice.observer.id, verifiedActGeneration)), ...take(registerAssemblyBodies(host)),
     ...take(registerVerificationBodies(verificationHost))]
@@ -313,6 +317,7 @@ function restartProductionAssembly(slice) {
       appendExact: noValue, readExact: noValue, flushEvidence: noValue },
     independentProtection: { owner: 'part-nine', posture: () => slice.result(() => 'protected') } };
   const runtime = createAssemblyRuntime(base);
+  slice.composeProductionGrounding(base, runtime, scope);
   const verificationSpine = createVerificationSpine(verificationHost,
     { context: slice.factContext, privateKey: slice.privateKey }, slice.store);
   const verification = createVerificationRuntime(verificationHost, verificationSpine);
@@ -335,7 +340,7 @@ function restartProductionAssembly(slice) {
   const recordProbe = (id, operation, comparison) => take(verification.record('ProbeRecord', probeInput(id, operation, comparison)));
   const deliveryPlanInput = operation => ({
     type: 'VerificationPlan', schemaVersion: 1, id: `plan:delivery:${operation}`, predecessors: [],
-    subject: { rules: [26, 89], holder: 'part-nine', governed: 'platform-delivery', scope, generation: 'generation:1' },
+    subject: { rules: [26, 89], holder: 'part-nine', governed: 'platform-delivery', scope, generation: slice.generation().reference.id },
     arms: [{ id: 'delivery', kind: 'runtime', executable: 'witness:platform', fixture: 'P11-NF-47',
       outputContract: 'ProbeRecord+Evidence', canFail: 'supporting evidence unavailable', required: true }],
     bar: { version: 'delivery:v1', predicates: ['occurrence'], sources: ['slice-witness'], minimumStrength: 'observation',
@@ -435,7 +440,7 @@ function restartProductionAssembly(slice) {
       budget: 1, conformance: 'check-run:production', reason: '' })), contractVersion: 'restart:v1' }));
   const conformance = currentRecord('AdapterConformance', 'AdapterConformance') ?? take(runtime.record('AdapterConformance', { ...common('AdapterConformance'), contract: contract.id,
     adapter: 'surface:phone', package: 'slice', artifact: h('1'), platform: 'darwin-arm64', mode: 'recovery', portVersion: '1',
-    schemaVersions: ['assembly-v1'], generation: 'generation:1', fixtureDigests: [h('2')], sourceProvenance: ['signed-restart-composition'],
+    schemaVersions: ['assembly-v1'], generation: slice.generation().reference.id, fixtureDigests: [h('2')], sourceProvenance: ['signed-restart-composition'],
     stageChecks: [{ stage: 'boot', checkRun: 'check-run:production', positive: ['production coordinator admitted'], negative: ['wrong kind refused'] }],
     probes: ['probe:production'], bars: ['bar:production'], limitations: [], testedAt: 0, validUntil: 100000000, disposition: 'passed' }));
   const policy = currentRecord('StoreCustodyPolicy', 'StoreCustodyPolicy') ?? take(runtime.record('StoreCustodyPolicy', { ...common('StoreCustodyPolicy'), governedVersion: 'policy:v1', store: 'store:restart',
@@ -448,10 +453,10 @@ function restartProductionAssembly(slice) {
     compromiseResponse: 'refuse boot' }));
   const harness = currentRecord('HarnessObservation', 'HarnessObservation') ?? take(runtime.record('HarnessObservation', { ...common('HarnessObservation'), launch: 'restart-production-boot', run: 'slice-run',
     step: 'production-assembly', input: 'signed-history', incarnation: slice.incarnation, sourceEvidence: ['bootProductionAssembly'],
-    contextDigests: [h('3')], generation: 'generation:1', causalReferences: [], observedAt: 0, freshFor: 100000000,
+    contextDigests: [h('3')], generation: slice.generation().reference.id, causalReferences: [], observedAt: 0, freshFor: 100000000,
     phase: 'context-consumed', boundaryEvidence: 'production-coordinator', detail: 'Part Ten production coordinator admitted before recovery drive' }));
   const access = currentRecord('StorageAccessObservation', 'StorageAccessObservation') ?? take(runtime.record('StorageAccessObservation', { ...common('StorageAccessObservation'), store: 'store:restart', objectClass: 'segment',
-    requester: 'restart-worker', service: 'service:restart', grant: 'grant:restart', policy: 'StoreCustodyPolicy', generation: 'generation:1',
+    requester: 'restart-worker', service: 'service:restart', grant: 'grant:restart', policy: 'StoreCustodyPolicy', generation: slice.generation().reference.id,
     operation: 'operation:restart-read', observedAt: 0, byteCount: slice.facts().length, result: 'allowed', refusalReference: '' }));
   const factFor = id => rows().find(row => row.record.id === id).fact.id;
   const conformanceFact = factFor(conformance.id), policyFact = factFor(policy.id), harnessFact = factFor(harness.id), accessFact = factFor(access.id);
@@ -465,14 +470,15 @@ function restartProductionAssembly(slice) {
   manifest = manifest ?? take(runtime.record('AssemblyManifest', { ...common('AssemblyManifest', 'manifest:restart-production'), manifestDigest: h('9'),
     packages: [{ id: 'slice', digest: h('a'), artifact: h('b') }], compatibility: { runtime: 'node', toolchain: 'compiled',
       platforms: ['darwin-arm64'], schemas: ['assembly-v1'], rollback: ['restart'] }, publicPorts,
-    requiredGraph: [{ consumer: scope, dependencies: ['source', 'authority', 'route', 'durability', 'observation'] }], generation: 'generation:1',
+    requiredGraph: [{ consumer: scope, dependencies: ['source', 'authority', 'route', 'durability', 'observation'] }], generation: slice.generation().reference.id,
     declarationSources: ['assembly.contract'], genesisAnchor: 'genesis:restart', trustRoots: ['root:restart'], servicePrincipals: ['service:restart'],
     grants: ['grant:restart'], custodyPolicies: [policy.id], resourcePolicies: [{ class: 'control', resource: 'worker', limit: 1 }],
     requiredChecks: [{ tier: 'unit', ids: ['P11-V29'] }, { tier: 'integration', ids: ['P11-V29'] }, { tier: 'lifecycle', ids: ['P11-V29'] }],
     productionBindings: [binding], dependencyFacts: [conformanceFact, policyFact] }));
   const manifestFact = factFor(manifest.id);
-  if (!currentRecord('AssemblyAdmission', 'admission:restart-production')) take(runtime.record('AssemblyAdmission', { ...common('AssemblyAdmission', 'admission:restart-production'), manifest: manifest.id,
-    manifestDigest: manifest.manifestDigest, machine: host.machine, incarnation: slice.incarnation, scope, sourceGeneration: 'generation:1',
+  if (currentRecord('AssemblyAdmission', 'admission:production')) admissionId = 'admission:production';
+  if (!currentRecord('AssemblyAdmission', admissionId)) take(runtime.record('AssemblyAdmission', { ...common('AssemblyAdmission', admissionId), manifest: manifest.id,
+    manifestDigest: manifest.manifestDigest, machine: host.machine, incarnation: slice.incarnation, scope, sourceGeneration: slice.generation().reference.id,
     sourceVector: h('c'), artifacts: ['slice'], environmentEvidence: ['node-process'], conformance: [conformanceFact],
     isolationEvidence: [harnessFact], custodyEvidence: [accessFact], probeEvidence: [probeFact.id], resourceReservation: 'reservation:restart',
     observedAt: 0, validUntil: 100000000, priorAdmission: '', disposition: 'active', reason: 'production restart prerequisites admitted',
@@ -498,7 +504,7 @@ function restartProductionAssembly(slice) {
     dependencyAdmission: { owner: 'part-ten', id: 'dependency:admission', admit: input => slice.result(() => {
       if (cutDependencies.has(input.name)) throw new Error(`deterministic prerequisite cut: ${input.name}`);
       const commonHandle = { name: input.name, reference: input.fact.id, provider: `provider:${input.name}`, current: true };
-      const extras = { 'local-facts': { durability: 'local-durable' }, register: { generation: 'generation:1' },
+      const extras = { 'local-facts': { durability: 'local-durable' }, register: { generation: slice.generation().reference.id },
         'identity-keys': { keys: 'keys:restart' }, clock: { clock: 'clock:restart' }, lease: { exclusive: true }, fence: { exclusive: true },
         'replication-peer': { replicas: 1, distinctPeer: true }, 'conversation-binding': { binding: 'binding:restart' },
         route: { route: 'route:restart' }, 'delivery-evidence': { administration: 'independent' } };
@@ -519,7 +525,7 @@ function restartProductionAssembly(slice) {
           stage: slice.declaredStage(), probe: recorded };
       })()) },
   };
-  return { assembly: { ...base, production }, manifest: manifest.id, scope,
+  return { assembly: { ...base, production }, manifest: manifest.id, scope, binding, runtime, spine,
     authorizationRequest: operator.request, completeAuthority: operator.complete };
 }
 
@@ -646,7 +652,7 @@ export const DECLARED_BOUNDARIES = Object.freeze([...SLICE_BOUNDARIES,
  * @param {string} home durable slice home directory
  * @param {object} config pinned installation configuration (see sliceConfig)
  */
-export function bootSliceAssembly(home, config = sliceConfig()) {
+export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
   mkdirSync(home, { recursive: true });
   const paths = {
     home,
@@ -692,7 +698,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   const baseEntries = ['types.decode', 'host', 'probe', 'machine-a', 'machine-b', 'project-a', 'project-b', 'repo',
     'chat-a', 'intent:1', 'approval:1', 'bound', 'vault', 'judgment', 'model', 'route', 'rule:94',
     'facts.admit', 'intake.admit', 'intake-slice', 'reply', 'telegram-slice', 'telegram-opaque', 'telegram-stage-probe', 'slice-witness',
-    'surface:phone'];
+    'surface:phone', 'harness-live-input', 'native-context'];
   const registerShape = {
     generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'generation:1' },
     entries: baseEntries, producers: ['probe', 'host', 'slice-witness', 'surface:phone'],
@@ -908,7 +914,9 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     current: () => ({ decode: decodeContext, clock: now(), generation: registerShape.generation, stopped: false }) };
   const effectHost = { machine: config.machine, incarnation, principal: bob, scope, boundary: boundaryContext,
     capture: custody.capture,
-    current: () => ({ decode: decodeContext, clock: now(), stopped: false, versions: governedVersions(), authority: authorityClosure() }) };
+    current: feature => ({ decode: feature === 'harness-live-input' ? { ...decodeContext, artifact: contextArtifact } : decodeContext,
+      clock: now(), stopped: false, versions: governedVersions(),
+      authority: feature === 'harness-live-input' ? [factOfKind('slice-placement')?.id].filter(Boolean) : authorityClosure() }) };
   const judgmentHost = { transport: transportHost, point: 'judgment', floor,
     description: { owner: 'part-ten', provider: 'deterministic-slice-double', model: 'model', route: 'route',
       automaticRetries: 0, maxInputBytes: 16384, maxOutputBytes: 16384, maxCharge: config.maxCharge, measured: false,
@@ -937,9 +945,12 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     { ...shared, kind: 'slice-placement', fields: { worker: short, harness: short } },
     { ...shared, kind: 'slice-consumption', fields: { worker: short, harness: short,
       hashes: { kind: 'text', maxLength: 65536 }, classes: { kind: 'text', maxLength: 65536 } } },
+    { ...shared, kind: 'rungraph-briefing-material', fields: { class: short, text: { kind: 'text', maxLength: 65536 } } },
     { ...shared, kind: 'slice-reply-source', fields: { semanticMessage: short, basis: short,
       text: { kind: 'text', maxLength: 4096 }, result: { kind: 'constitutional', type: 'Result' } } },
     { ...shared, kind: 'slice-delivery-evidence', fields: { operation: short, stage: short, decisive: short,
+      evidence: { kind: 'constitutional', type: 'Evidence' }, outcome: { kind: 'constitutional', type: 'Outcome' } } },
+    { ...shared, kind: 'slice-harness-delivery-evidence', fields: { operation: short, stage: short, decisive: short,
       evidence: { kind: 'constitutional', type: 'Evidence' }, outcome: { kind: 'constitutional', type: 'Outcome' } } },
     { ...shared, kind: 'slice-obligation', fields: { operation: short, blocker: short, semanticMessage: short,
       state: short, owner: short, exposure: short, detail: { kind: 'text', maxLength: 4096 } } },
@@ -949,19 +960,91 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     site: 'facts.admit', preserved: decodeContext.preserved, decode: decodeContext, schemas: [],
     keys: [{ id: 'host', machine: config.machine, publicKey: PUBLIC_KEY, from: { epoch: 0, position: 0 } }],
     facts: [], grants: [], revocations: [], genesis: { hash: genesisHash, clock: genesisClock }, timeAnchors: [],
-    captures: captureIndex,
+    get captures() { return config.productionRestart === true ? { ...captureIndex, ...fileCustody.captures } : captureIndex; },
     folded: {}, ownedBodies: [],
   };
 
   const peerBase = createTransportFileStorage(paths.peer, result);
   const peerFile = join(paths.peer, 'facts.json');
-  const peerCached = memoOn(() => (existsSync(peerFile) ? statSync(peerFile).size : 0), () => peerBase.read());
+  const peerCached = memoOn(() => config.productionRestart === true
+    ? (existsSync(peerFile) ? readFileSync(peerFile, 'utf8') : '[]')
+    : (existsSync(peerFile) ? statSync(peerFile).size : 0), () => peerBase.read());
   const peerStorage = Object.freeze({ owner: 'part-ten', read: peerCached, append: peerBase.append });
-  const peerStore = createFactStore(factContext, peerStorage);
+  const peerDurableStore = createFactStore(factContext, peerStorage);
+  const peerStore = config.productionRestart === true ? verifiedStore(peerDurableStore, peerStorage) : peerDurableStore;
   const replicas = createEffectReplicaStorage(paths.facts, { id: PEER_STANDIN_ID, store: peerStore }, result);
-  const originCached = memo(() => replicas.storage.read());
-  const originStorage = Object.freeze({ owner: 'part-ten', read: originCached, append: replicas.storage.append });
-  const store = createFactStore(factContext, originStorage);
+  const originBytes = () => { const file = join(paths.facts, 'facts.json');
+    return existsSync(file) ? readFileSync(file, 'utf8') : '[]'; };
+  const originCached = config.productionRestart === true
+    ? memoOn(originBytes, () => replicas.storage.read()) : memo(() => replicas.storage.read());
+  const localProductionStorage = createTransportFileStorage(paths.facts, result);
+  const originStorage = Object.freeze({ owner: 'part-ten', read: originCached,
+    append: config.productionRestart === true ? (bytes, expected) => {
+      const fact = JSON.parse(bytes);
+      // Six's authority and accounting rows synchronously replicate before
+      // acknowledging, including consumption and settlement. Other
+      // facts acknowledge only local durability; Eight's unchanged demand()
+      // then replicates the entire exact causal closure before each effect.
+      // This batches observational/assembly records without weakening or
+      // inventing a replicated receipt, and preserves consume-before-invoke.
+      return fact.kind.startsWith('transport-')
+        ? replicas.storage.append(bytes, expected) : localProductionStorage.append(bytes, expected);
+    } : replicas.storage.append });
+  const durableStore = createFactStore(factContext, originStorage);
+  // P2 owns verification. Ten reuses its verified immutable results only while
+  // the complete physical bytes and ALL semantic policy inputs remain equal.
+  // Each store/composition has its own cache; no authority or invocation result
+  // is cached. Equal-size replacement, capture loss, owner replacement and policy
+  // changes therefore re-enter P2. Projection outages are checked on every call.
+  function verifiedStore(real, storage, beforeProjectionRead) {
+    let verified, projected;
+    const policy = () => JSON.stringify({ raw: storage.read(), decode: factContext.decode,
+      facts: factContext.facts, keys: factContext.keys, schemas: factContext.schemas, captures: factContext.captures,
+      grants: factContext.grants, revocations: factContext.revocations, historicalGrants: factContext.historicalGrants ?? [],
+      historicalRevocations: factContext.historicalRevocations ?? [], folded: factContext.folded,
+      genesis: factContext.genesis, anchors: factContext.timeAnchors, owners: factContext.ownedBodies, migrations: factContext.migrations });
+    const ownerPolicy = () => ({ ownerContainer: factContext.ownedBodies, migrationContainer: factContext.migrations,
+      owners: [...(factContext.ownedBodies ?? [])],
+      migrations: Object.entries(factContext.migrations ?? {}) });
+    const sameOwners = cached => cached
+      && cached.ownerContainer === factContext.ownedBodies && cached.migrationContainer === factContext.migrations
+      && cached.owners.length === (factContext.ownedBodies ?? []).length
+      && cached.owners.every((owner, index) => owner === factContext.ownedBodies[index])
+      && cached.migrations.length === Object.entries(factContext.migrations ?? {}).length
+      && cached.migrations.every(([key, value]) => value === factContext.migrations[key]);
+    const freezeTree = value => {
+      if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+        Object.values(value).forEach(freezeTree); Object.freeze(value);
+      }
+      return value;
+    };
+    const read = () => result(() => {
+      const key = policy();
+      if (sameOwners(verified) && verified.key === key) return verified.value;
+      const value = freezeTree([...take(real.read())]);
+      verified = policy() === key ? { key, value, ...ownerPolicy() } : undefined;
+      return value;
+    });
+    return Object.freeze({ ...real, read, readForProjection: () => result(() => {
+      beforeProjectionRead?.();
+      const key = policy();
+      if (sameOwners(projected) && projected.key === key) return projected.value;
+      // The public P2 constructor performs the semantic replay once. Its own
+      // current-policy capability remains intact; conflicts still use the real
+      // store's conflict-recording path rather than a substitute status result.
+      const owners = ownerPolicy();
+      let value = take(prepareSnapshot(take(read()), factContext, () => policy() === key && sameOwners(owners)));
+      if (value.entries.some(row => row.conflicts.length)) value = take(real.readForProjection());
+      freezeTree(value);
+      projected = policy() === key && sameOwners(owners) ? { key, value, ...owners } : undefined;
+      return value;
+    }) });
+  }
+  const store = config.productionRestart === true
+    ? verifiedStore(durableStore, originStorage, () => ports.beforeProjectionRead?.()) : durableStore;
+  // Source reconstruction remains readable during an execution-owner outage;
+  // it supplies report evidence only and never an effect/admission capability.
+  const replayStore = config.productionRestart === true ? verifiedStore(durableStore, originStorage) : null;
   const author = { context: factContext, privateKey: PRIVATE_KEY };
 
   // `intakeOwners` is the installation's resolution of part four's opaque accountable
@@ -995,9 +1078,9 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   if (config.productionRestart === true) {
     const restartBoundary = Object.freeze({ ...boundaryContext, validateReferences: true });
     const restartAssemblyHost = { machine: config.machine, principal: bob, scope, boundary: restartBoundary,
-      current: () => ({ facts: factContext, generation: 'generation:1', stopped: false, clock: now() }) };
+      current: () => ({ facts: factContext, generation: registerShape.generation.id, stopped: false, clock: now() }) };
     const restartVerificationHost = { machine: config.machine, principal: observer, scope, boundary: restartBoundary,
-      current: () => ({ decode: decodeContext, clock: now(), generation: 'generation:1', stopped: false,
+      current: () => ({ decode: decodeContext, clock: now(), generation: registerShape.generation.id, stopped: false,
         facts: factContext, evidence: decodeContext.evidence ?? [] }) };
     const ownerSchemas = [...assemblySchemas(restartAssemblyHost), ...verificationSchemas(restartVerificationHost)];
     const dependencyKinds = ['fact-local-durable-segment', 'register-generation-record', 'identity-key-set',
@@ -1024,7 +1107,9 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   // -------------------------------------------------------------- fact helpers
   // Hoisted: part five's owned-body decoders read the live owner fact through
   // `runDecodeSeed`'s getter while the schemas are still being registered.
-  const readFacts = memo(() => take(store.read()));
+  const readFacts = config.productionRestart === true ? memoOn(() => JSON.stringify({ raw: originStorage.read(),
+    genesis: factContext.genesis, keys: factContext.keys, register: factContext.decode.register, dependencies: factContext.facts }),
+  () => Object.freeze([...take(store.read())])) : memo(() => take(store.read()));
   function facts() { return readFacts(); }
   function factOfKind(kind) { return facts().find(f => f.kind === kind); }
   function factsOfKind(kind) { return facts().filter(f => f.kind === kind); }
@@ -1053,9 +1138,22 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   const approval = take(decode('Authorization', { type: 'Authorization', schemaVersion: 1, ...signedApproval, explicitYes },
     { ...decodeContext, provenance: explicitYes }));
   authorizations.push(approval);
+  const contextDefinition = { ...operationDefinition, id: 'slice-context-definition:1', feature: 'harness-live-input',
+    version: 'slice-context-version:1', adapter: 'native-context', account: 'slice-harness:1', conversation: config.domain,
+    durability: 'replicated', replicas: 1, lossModel: operationDefinition.lossModel, maxCharge: 0 };
+  const contextArtifact = capture(bytesOf(contextDefinition));
+  const contextApprovalPayload = { ...approvalPayload, id: 'slice-context-approval', artifact: contextArtifact };
+  const contextSignedApproval = { ...contextApprovalPayload, requestDigest: authorizationRequestDigest(contextApprovalPayload) };
+  const contextProof = take(decode('Provenance', proof(contextSignedApproval, { id: 'alice', kind: 'person' }, 'approval', false), decodeContext));
+  const contextApproval = take(decode('Authorization', { type: 'Authorization', schemaVersion: 1, ...contextSignedApproval, explicitYes: contextProof },
+    { ...decodeContext, artifact: contextArtifact, provenance: contextProof }));
+  authorizations.push(contextApproval);
   const governedVersions = () => [{ id: operationDefinition.version, subject: operationDefinition.feature,
     content: json(operationDefinition), contentHash: hashOf(operationDefinition), since: 'slice-installation',
-    supersedes: [], approvedIn: approval, base: approval.base, landedIn: null }];
+    supersedes: [], approvedIn: approval, base: approval.base, landedIn: null },
+    { id: contextDefinition.version, subject: contextDefinition.feature, content: json(contextDefinition),
+      contentHash: hashOf(contextDefinition), since: 'slice-installation', supersedes: [], approvedIn: contextApproval,
+      base: contextApproval.base, landedIn: null }];
   const authorityClosure = () => { const f = factOfKind('slice-reply-source'); return f ? [f.id] : []; };
 
   // ------------------------------------------------------------------ adapters
@@ -1107,12 +1205,14 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   // eight-owned EffectAssessmentPort contract and reads ONLY durable
   // slice-delivery-evidence facts written by the independent witness reader.
   let assessmentGuards = 0;
-  const evidenceRowFor = operation => factsOfKind('slice-delivery-evidence').find(f => f.body.operation === operation);
+  const evidenceRowFor = operation => facts().find(f => ['slice-delivery-evidence', 'slice-harness-delivery-evidence'].includes(f.kind)
+    && f.body.operation === operation);
   const assessmentView = input => {
     const row = evidenceRowFor(input.reservation.operation);
     if (!row) throw new Error('no independent delivery evidence is recorded for this operation');
     return Object.freeze({ outcome: take(decode('Outcome', row.body.outcome, decodeContext)),
-      finalCharge: row.body.decisive === 'decisive' ? service.finalCharge(input.reservation.operation) : null,
+      finalCharge: row.kind === 'slice-harness-delivery-evidence' ? 0
+        : row.body.decisive === 'decisive' ? service.finalCharge(input.reservation.operation) : null,
       delayedExecutionExcluded: row.body.decisive === 'decisive',
       required: Object.freeze([row.id]) });
   };
@@ -1320,11 +1420,13 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     execution: (run, ownership) => result(() => {
       const placement = readLines(paths.placement).at(-1);
       if (!placement) throw new Error('no durable placement record on this machine');
-      const lease = transportFacts().filter(v => v.record.type === 'Lease').at(-1);
+      const lease = transportFacts().filter(v => v.record.type === 'Lease'
+        && (!productionRunDeps || v.record.operation !== 'write')).at(-1);
       if (!lease || ownership.id !== `slice-lease:${lease.record.epoch}`) throw new Error('ownership reference is not the live lease');
       const contextFact = factsOfKind('slice-placement').at(-1);
       if (!contextFact) throw new Error('no durable execution-context fact');
-      return { worker: placement.worker, harness: placement.harness, ownership, context: factRef(contextFact) };
+      return { worker: placement.worker, harness: placement.harness, ownership,
+        context: factRef(productionRunDeps ? lease.fact : contextFact) };
     }),
     reservation: (reference, step) => result(() => {
       const row = transportFacts().find(v => v.record.type === 'AdmissionReservation' && v.record.operation === reference.id);
@@ -1384,13 +1486,146 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
       indexCapture(reference, encoded.bytes);
       return reference;
     }) } };
-  const runContext = () => makeRunContext({ ...factContext, facts: facts() });
+  const runContext = () => makeRunContext({ ...factContext, facts: facts(), get captures() { return factContext.captures; } });
   const runDeps = { governance: runGovernance, store, admission: runAdmission, grounding: groundingRead,
     settlement: settlementConsumer, control: controlConsumer, exitCheck, groundingPolicy, generation, clock: now,
     writer: { owner: 'part-ten', append: (kind, run, record, required) => result(() =>
       take(authorAndAppend({ kind, schemaVersion: 1, machine: config.machine, principal: json(bob), provenance: json(bob.provenance),
         at: json(now()), body: json({ run, record: recordWire(record) }), required }, factContext, store, PRIVATE_KEY))) } };
-  const runGraph = () => take(createRunGraph({ ...runDeps, context: runContext() }));
+  let productionRunDeps;
+  let composedGraph, composedGraphDependencies;
+  const runGraph = () => {
+    if (!productionRunDeps) return take(createRunGraph({ ...runDeps, context: runContext() }));
+    const dependencies = productionRunDeps ?? runDeps;
+    if (composedGraphDependencies !== dependencies) {
+      composedGraph = take(createRunGraph({ ...dependencies, context: runContext() }));
+      composedGraphDependencies = dependencies;
+    }
+    return composedGraph;
+  };
+
+  function composeProductionGrounding(composition, runtime, productionScope) {
+    if (composition.spine.store !== store) throw new Error('production grounding store differs from the durable slice');
+    const history = runtime.history, context = { ...composition.host.boundary, history };
+    const processIdentity = `pid:${process.pid}:start:${bootStartedAt}`;
+    const artifact = textHash(readFileSync(new URL(import.meta.url), 'utf8'));
+    // The doorway and the P2 owner decoder must share Eight's exact host authority.
+    const contextHost = effectHost;
+    const contextSpine = createEffectSpine(contextHost, author, store);
+    const physical = { owner: 'part-ten', id: contextDefinition.adapter,
+      describe: () => ({ contract: 'native-context:1', account: contextDefinition.account,
+        conversation: contextDefinition.conversation, maxCharge: 0, timeout: contextDefinition.timeout, hiddenRetries: 0 }),
+      invoke: input => result(() => {
+        const latest = transportFacts().filter(row => row.record.type === 'AdmissionReservation'
+          && row.record.operation === input.operation).at(-1);
+        if (latest?.record.state !== 'consumed' || input.message.purpose !== 'context-delivery')
+          throw new Error('context invocation requires the consumed Six claim and Eight context payload');
+        ports.onContextEvent?.({ phase: 'consumed-before-invoke', operation: input.operation,
+          fact: latest.fact.id, digest: input.digest });
+        const path = join(home, `context-${textHash(input.operation).slice(7)}.json`);
+        if (existsSync(path)) throw new Error('context operation already physically delivered');
+        const contents = input.message.context.manifest.map(row => {
+          const bytes = row.class === 'message' ? captureIndex[row.reference]?.bytes : bytesOf(facts().find(f => f.id === row.reference)?.body);
+          if (typeof bytes !== 'string' || (row.class === 'message' && textHash(bytes) !== row.digest))
+            throw new Error('context capture is unavailable or differs');
+          return { class: row.class, reference: row.reference, bytes };
+        });
+        writeDurable(path, home, JSON.stringify({ operation: input.operation, digest: input.digest,
+          processIdentity, text: input.message.text, contents }));
+        const delivered = JSON.parse(readFileSync(path, 'utf8'));
+        if (delivered.digest !== input.digest || delivered.text !== input.message.text)
+          throw new Error('worker context read differs from delivery');
+        return JSON.stringify({ type: 'harness-context-consumed', operation: input.operation,
+          digest: input.digest, processIdentity });
+      }), observe: () => result(() => { throw new Error('context observation is owned by Eight durable evidence'); }) };
+    const contextDoorway = createEffectDoorway({ host: contextHost, spine: contextSpine, transport,
+      durability: replicas.durability, custody: custody.custody, adapter: physical, assessment: assessor });
+    const execution = createHarnessLiveInputExecution(contextDoorway, transportHost);
+    const driver = createConfinedContextDeliveryDriver({ runtime, history, context, execution, clock: () => now().value,
+      liveProcess: { owner: 'part-ten', resolve: launch => result(() => {
+        if (launch.incarnation !== incarnation || launch.machine !== config.machine || launch.artifactDigest !== artifact)
+          throw new Error('native process no longer matches its launch');
+        return { launch: launch.id, run: launch.run, incarnation, harness: 'slice-harness:1', artifactDigest: artifact,
+          machine: config.machine, processIdentity };
+      }) } });
+    const harness = createNativeHarnessAdapter({ id: 'slice-harness:1', artifact, platform: 'darwin-arm64',
+      conformance: 'AdapterConformance', context, clock: () => now().value, generation: () => registerShape.generation.id,
+      contextDeliveryDriver: driver, driver: { owner: 'part-eight',
+        launch: () => { throw new Error('harness launch is held; current worker process only'); },
+        deliver: () => { throw new Error('legacy delivery forbidden'); }, observe: () => { throw new Error('legacy observation forbidden'); } } });
+    composition.harnesses.push(harness);
+    const reader = createProductionGroundingReader({ runtime, harness, context, scope: productionScope, clock: now,
+      sample: (request, at) => result(() => {
+        ports.onContextEvent?.({ phase: 'sample', generation: registerShape.generation.id });
+        const inputs = factsOfKind('intake-admitted'), input = inputs.at(-1);
+        if (!input) throw new Error('production context has no admitted input');
+        const material = groundingPolicy.briefingClasses.map(className => factsOfKind('rungraph-briefing-material')
+          .find(row => row.body.class === className) ?? append('rungraph-briefing-material', { class: className, text: className }));
+        const manifest = [...inputs.map(row => ({ class: 'message', reference: row.body.rawHash, digest: row.body.rawHash })),
+          ...material.map(row => ({ class: row.body.class, reference: row.id, digest: row.contentHash }))];
+        const launchId = `slice-launch:${incarnation}:${request.run.run.id}`;
+        const launch = take(runtime.inspectCurrent()).find(row => row.record.type === 'HarnessLaunchSpec' && row.record.id === launchId)
+          ?? (() => { take(runtime.record('HarnessLaunchSpec', { type: 'HarnessLaunchSpec', schemaVersion: 1, id: launchId,
+            predecessors: [], dependencyFacts: [], run: request.run.run.id, step: 'initial-context', principal: bob.id,
+            incarnation, harness: 'slice-harness:1', artifactDigest: artifact, machine: config.machine,
+            workingScope: config.domain, processOperation: processIdentity, resourceReferences: [factOfKind('slice-placement').id],
+            portHandles: ['context-delivery'], environment: [], contextManifest: manifest,
+            input: input.id, inputDigest: input.body.rawHash, consumptionMode: 'model-context-boundary' }));
+            return take(runtime.inspectCurrent()).find(row => row.record.id === launchId); })();
+        const definition = take(installOperationDefinition(contextDefinition, contextHost, contextSpine));
+        const fence = liveFence(), run = { owner: 'part-five', name: 'Run', id: request.run.run.id };
+        if (!transportFacts().some(row => row.record.type === 'LoopRecord' && row.record.run === run.id))
+          take(transport.schedule(`slice-context-schedule:${incarnation}`, fence, run,
+            take(decodeLoopPolicy({ type: 'LoopPolicy', schemaVersion: 1, id: 'slice-context-policy', maxAttempts: 3,
+              minDelay: 1, maxDuration: 1000000, timeout: 1000, concurrency: 1, failDirection: 'closed', breaker: 'stub-closed' }, boundaryContext))));
+        const prior = take(runtime.inspectCurrent()).filter(row => row.record.type === 'ContextDeliverySpecification'
+          && row.record.run === run.id).at(-1);
+        const identity = `slice-live-input:${incarnation}:${input.id}`;
+        const message = take(decodeOutboundMessage({ type: 'OutboundMessage', schemaVersion: 1, id: identity,
+          semanticMessage: identity, run: run.id, speaker: bob.id, account: contextDefinition.account,
+          conversation: contextDefinition.conversation, text: bytesOf({ inputs: inputs.map(row => row.body.rawHash), manifest }),
+          purpose: 'context-delivery', sourceResult: input.id,
+          context: { input: { fact: input.id, reference: input.body.rawHash, hash: input.body.rawHash }, manifest } }, contextHost));
+        const request8 = take(contextDoorway.prepare({ definition: definition.id, message, run,
+          pending: factOfKind('slice-placement').id, attempt: identity, verificationOwner: 'native-context',
+          obligation: transportFacts().filter(row => row.record.type === 'LoopRecord' && row.record.run === run.id).at(-1).fact.id,
+          closure: [], fence }));
+        const admitted = take(execution.admit(request8, fence));
+        const specification = { type: 'ContextDeliverySpecification', schemaVersion: 1,
+          id: contextDeliveryIdFor(launch.fact.id, admitted.operation), predecessors: [], dependencyFacts: [],
+          launch: launch.fact.id, run: run.id, step: identity, input: input.id, inputDigest: input.body.rawHash,
+          incarnation, harness: 'slice-harness:1', artifactDigest: artifact, machine: config.machine, generation: registerShape.generation.id,
+          executionContext: request.execution.context.id, contextManifest: manifest, reason: prior ? 'live-input' : 'initial',
+          operation: admitted.operation, claim: admitted.claim, previousDelivery: prior?.fact.id ?? '', controlObservation: '' };
+        return { specification, grounding: consumption => {
+          ports.onContextEvent?.({ phase: 'context-consumed', fact: consumption.id, operation: admitted.operation });
+          const bytes = readFileSync(join(home, `context-${textHash(admitted.operation).slice(7)}.json`), 'utf8');
+          const captured = take(custody.capture(bytes)); captures[captured.reference] = bytes;
+          const witness = take(decode('Evidence', { type: 'Evidence', schemaVersion: 1, id: `context-read:${admitted.operation}`,
+            claim: { subject: admitted.operation, predicate: request8.digest, value: 'happened' }, source: 'slice-witness',
+            observedAt: now(), freshFor: 1000000, capture: captured, strength: 'observation' }, decodeContext));
+          if (!evidence.some(row => row.id === witness.id)) evidence.push(witness);
+          const outcome = take(decode('Outcome', { type: 'Outcome', schemaVersion: 1, kind: 'happened', evidence: [witness.id] }, decodeContext));
+          if (!evidenceRowFor(admitted.operation)) append('slice-harness-delivery-evidence', { operation: admitted.operation,
+            stage: 'context-consumed', decisive: 'decisive', evidence: witness, outcome }, [consumption.id], bob, bob.provenance);
+          take(transport.settle(fence, take(contextDoorway.settle(admitted.operation))));
+          return ({ type: 'SessionGrounding', schemaVersion: 2,
+          id: `slice-native-grounding:${consumption.id}`, run: run.id, expected: request.run.head,
+          worker: request.worker, harness: request.harness, reason: request.reason, step: identity, incarnation,
+          contextDeliveryReason: specification.reason, ownership: request.execution.ownership, executionContext: request.execution.context,
+          at, previousActivity: genesisClock, elapsed: { type: 'Measurement', schemaVersion: 1,
+            subject: { kind: 'elapsed-time', instance: request.worker }, value: at.value - genesisClock.value, unit: 'ms', at, by: 'probe' },
+          principal: request.run.run.owner, intake: factRef(inputs[0]), binding: request.run.run.resultDestination.binding,
+          directives: [], generation: registerShape.generation,
+          frontier: { [config.machine]: (() => { const position = facts().find(row => row.id === consumption.id).segment;
+            return { epoch: position.epoch, position: position.position }; })() },
+          knownLineages: [config.machine], threshold: groundingPolicy.threshold,
+          messages: inputs.map(row => ({ fact: factRef(row), sequence: row.segment.position, capture: row.body.rawHash, hash: row.body.rawHash })),
+          lastInbound: factRef(input), pendingOperations: request.run.pending.map(row => row.operation.key), children: [], receipts: [],
+          briefingClasses: groundingPolicy.briefingClasses, consumption }); } };
+      }) });
+    productionRunDeps = { ...runDeps, grounding: reader, assemblyHistory: history };
+  }
 
   // -------------------------------------------------------- installation facts
   function install() {
@@ -1430,7 +1665,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
    * genuinely gone the evidence stays absent and consequential use refuses.
    */
   const restoreEvidence = () => {
-    for (const row of factsOfKind('slice-delivery-evidence')) {
+    for (const row of facts().filter(row => ['slice-delivery-evidence', 'slice-harness-delivery-evidence'].includes(row.kind))) {
       const raw = row.body.evidence;
       if (evidence.some(e => e.id === raw.id)) continue;
       try { evidence.push(take(decode('Evidence', raw, decodeContext))); } catch { /* absent evidence refuses at use */ }
@@ -1489,7 +1724,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
             state: 'owned-pending-prerequisite-outage', owner: 'part-ten', exposure: 0,
             detail: `live dependency admission refused after durable intake preservation: ${admission.detail}` });
         record('prerequisites', 'refused', { dependency: admission.name, detail: admission.detail });
-        return report(rebuild());
+        return report(rebuild(), admission.detail);
       }
       if (prior?.body.state === 'owned-pending-prerequisite-outage')
         obligation({ operation: prior.body.operation, blocker: 'none', semanticMessage: prior.body.semanticMessage,
@@ -1506,6 +1741,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
       opening = factOfKind('run-opening');
       if (opening) boundary('run-creation', { run: opening.body.run, owner: opening.body.record.owner.id });
     } else record('run', 'already-open');
+    if (productionRunDeps) await new Promise(resolve => setImmediate(resolve));
 
     // ---- 3. actual-start grounding -----------------------------------------
     // Attempted ONCE per execution: a refusal is recorded as an owned-pending
@@ -1520,6 +1756,11 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
       else obligation({ operation: `grounding:${opening.body.run}`, blocker: 'part-five', semanticMessage: 'actual-start-grounding',
         state: 'owned-pending-unadmitted', owner: 'part-five', exposure: 0, detail: String(outcome.detail).slice(0, 3000) });
     } else if (opening && !factOfKind('session-grounding')) record('grounding', 'held', { detail: 'recorded owned-pending; not re-attempted' });
+    if (productionRunDeps && !factOfKind('session-grounding')) return report(rebuild());
+    // Yield only between completed durable owner operations. The following
+    // effects still revalidate their live fence/claim synchronously at action
+    // time. Large signed-history reads must not starve server/runner RPCs.
+    if (productionRunDeps) await new Promise(resolve => setImmediate(resolve));
 
     // ---- 4. six's bounded observation wake (required before any reservation) --
     if (opening && !transportFacts().some(v => v.record.type === 'LoopRecord')) {
@@ -1555,6 +1796,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
 
     // ---- 7. admit and send it through the effect doorway --------------------
     if (factOfKind('slice-reply-source') && opening) driveOutbound(opening);
+    if (productionRunDeps) await new Promise(resolve => setImmediate(resolve));
 
     // ---- 8. rebuild every resulting projection from facts -------------------
     const rebuilds = rebuild();
@@ -1566,16 +1808,18 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
 
   // Six's LATEST reservation row per operation, plus the first row, which is the one
   // that carries the reserving command and therefore the operation's section-7 ROLE.
-  const sixOperationRows = () => {
+  const sixOperationRows = (source = transportFacts()) => {
     const first = new Map(), latest = new Map();
-    for (const v of transportFacts()) {
+    for (const v of source) {
       if (v.record.type !== 'AdmissionReservation') continue;
       if (!first.has(v.record.operation)) first.set(v.record.operation, v.record);
       latest.set(v.record.operation, v.record);
     }
     return [...latest.entries()].map(([operation, record]) => ({ operation, record, opened: first.get(operation) }));
   };
-  const roleOf = opened => (String(opened.command).startsWith('judgment:') ? 'model-judgment' : 'outbound-reply');
+  const roleOf = opened => String(opened.command).startsWith('judgment:') ? 'model-judgment'
+    : factsOfKind('effect-EffectRequest').some(f => f.body.record.id === opened.request
+      && f.body.record.definition === contextDefinition.id) ? 'harness-live-input' : 'outbound-reply';
   const modelOperation = () => sixOperationRows().find(row => roleOf(row.opened) === 'model-judgment');
   const applicationFor = operation => transportFacts()
     .filter(v => v.record.type === 'SettlementApplication' && v.record.operation === operation).at(-1);
@@ -1737,11 +1981,11 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
 
   function driveOutbound(opening) {
     const source = factOfKind('slice-reply-source');
-    const definitionFact = factOfKind('effect-OperationDefinition');
+    const definitionFact = factsOfKind('effect-OperationDefinition').find(f => f.body.record.id === operationDefinition.id);
     if (!definitionFact) {
       const outcome = settled(installOperationDefinition(operationDefinition, effectHost, effectSpine));
       record('definition', outcome.ok ? 'installed' : 'refused', { detail: outcome.ok ? null : outcome.detail });
-      if (!factOfKind('effect-OperationDefinition')) return;
+      if (!factsOfKind('effect-OperationDefinition').some(f => f.body.record.id === operationDefinition.id)) return;
     }
     const loop = transportFacts().filter(v => v.record.type === 'LoopRecord').at(-1);
     if (!loop) { record('outbound', 'refused', { detail: 'no six-owned observation wake' }); return; }
@@ -1750,13 +1994,13 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
       account: config.account, conversation: config.conversation, text: source.body.text,
       purpose: 'ordinary-reply', sourceResult: source.id };
     const message = take(decodeOutboundMessage(messageInput, effectHost));
-    let request = factOfKind('effect-EffectRequest');
+    let request = factsOfKind('effect-EffectRequest').find(f => f.body.record.definition === operationDefinition.id);
     if (!request || !reservationFor(request.body.record.id)) {
       const outcome = settled(effects.prepare({ definition: operationDefinition.id, message,
         run: { owner: 'part-five', name: 'Run', id: opening.body.run }, pending: source.id, attempt: 'slice-attempt:1',
         verificationOwner: 'slice-reply-verifier', obligation: loop.fact.id, closure: [], fence: liveFence() }));
       record('outbound-prepare', outcome.ok ? 'prepared' : 'refused', { detail: outcome.ok ? null : outcome.detail });
-      request = factOfKind('effect-EffectRequest');
+      request = factsOfKind('effect-EffectRequest').find(f => f.body.record.definition === operationDefinition.id);
       if (!request) {
         obligation({ operation: `unreserved:${message.semanticMessage}`, blocker: 'part-eight', semanticMessage: message.semanticMessage,
           state: 'refused-before-preparation', owner: 'part-eight', exposure: 0, detail: String(outcome.detail).slice(0, 3000) });
@@ -1786,7 +2030,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     if (reservation.record.state === 'closed') { reconcileClosed(operation, record8.semanticMessage); return; }
 
     // ---- dispatch, or RECOVER an already-claimed operation ------------------
-    const stages = () => factsOfKind('effect-OperationObservation').map(f => f.body.record.stage);
+    const stages = () => factsOfKind('effect-OperationObservation').filter(f => f.body.record.operation === operation).map(f => f.body.record.stage);
     const resolvedStage = () => stages().some(v => ['response', 'unknown', 'lookup'].includes(v));
     if (reservation.record.state === 'prepared') {
       const outcome = settled(effects.dispatch(rebuildRequest(record8), liveFence()));
@@ -1816,10 +2060,10 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     if (closeDeadFenced(operation, record8)) return;
 
     // ---- settlement ---------------------------------------------------------
-    if (!factOfKind('effect-EffectSettlement') && evidenceRowFor(operation)) {
+    if (!factsOfKind('effect-EffectSettlement').some(f => f.body.record.operation === operation) && evidenceRowFor(operation)) {
       const outcome = settled(effects.settle(operation));
       record('settlement', outcome.ok ? 'settled' : 'refused', { detail: outcome.ok ? null : outcome.detail });
-      const settlementFact = factOfKind('effect-EffectSettlement');
+      const settlementFact = factsOfKind('effect-EffectSettlement').find(f => f.body.record.operation === operation);
       if (settlementFact) {
         const r = settlementFact.body.record;
         obligation({ operation, semanticMessage: record8.semanticMessage, state: `settled-${r.outcome.kind}`,
@@ -1844,7 +2088,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     // guard is now the OBLIGATION, not the application fact: a cut writes the row before
     // the boundary fires, so guarding on the fact left recovery neither reconsuming nor
     // restoring the obligation. (astra R1)
-    if (factOfKind('effect-EffectSettlement')) {
+    if (factsOfKind('effect-EffectSettlement').some(f => f.body.record.operation === operation)) {
       const applied = applySettlement(operation);
       // Reconcile against the CURRENT (latest) obligation, and append a superseding
       // row only when the current one differs from what this boot's outcome requires —
@@ -1969,7 +2213,10 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
   }
   function rebuildOne(definition) {
     const all = facts();
-    const snapshot = take(prepareSnapshot(all, { ...factContext, facts: all }));
+    // All folds in this rebuild consume the same current, owner-issued source
+    // snapshot. Replaying signed history anew for each projection adds no proof.
+    const snapshot = replayStore ? take(replayStore.readForProjection())
+      : take(prepareSnapshot(all, { ...factContext, facts: all }));
     const gen = generation();
     // Clean genesis rebuild.
     const genesis = checkpoint(take(foldProjection(definition, snapshot, gen, boundaryContext)));
@@ -1994,7 +2241,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
    * plainly for what it is — the external application count under another name,
    * because the reply IS this slice's only user-visible notification.
    */
-  function accounting(all, journal) {
+  function accounting(all, journal, observedTransport = transportFacts()) {
     const endedAt = Date.now();
     appendLine(paths.boots, home, { event: 'end', boot: bootIndex, wallMs: endedAt,
       rss: process.memoryUsage().rss, durationMs: endedAt - bootStartedAt });
@@ -2012,7 +2259,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     const known = perBoot.map(r => r.durationMs).filter(v => Number.isSafeInteger(v));
     return {
       facts: all.length, bytes: Buffer.byteLength(readFileSync(join(paths.facts, 'facts.json'), 'utf8')),
-      boots: starts.length, attempts: transportFacts().filter(v => v.record.type === 'AdmissionReservation').length,
+      boots: starts.length, attempts: observedTransport.filter(v => v.record.type === 'AdmissionReservation').length,
       notifications: journal.applications.length,
       tokens: (() => { const a = factsOfKind('judgment-JudgmentAttemptRecord').find(f => f.body.record.phase === 'response-observed');
         if (!a) return null; const bytes = factContext.captures[a.body.record.receipt.reference]?.bytes;
@@ -2028,13 +2275,31 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     };
   }
 
-  function report(rebuilds = []) {
+  function report(rebuilds = [], authorityUnavailable = null) {
     const all = facts();
+    // An outage report may describe verified durable history, but cannot mint
+    // current Six authority or call an operation resolved while its owner is
+    // unavailable. Execution continues to use the real current Six projection.
+    const observedTransport = authorityUnavailable ? all.filter(row => row.kind.startsWith('transport-') && typeof row.body.record?.type === 'string')
+      .map(fact => ({ fact, record: fact.body.record })) : transportFacts();
     const journal = readServiceJournal(home);
-    const settlementFact = factOfKind('effect-EffectSettlement');
-    const requestFact = factOfKind('effect-EffectRequest');
-    const reservation = requestFact ? reservationFor(requestFact.body.record.id) : undefined;
+    const requestFact = factsOfKind('effect-EffectRequest').find(f => f.body.record.definition === operationDefinition.id);
+    const reservation = requestFact ? observedTransport.filter(row => row.record.type === 'AdmissionReservation'
+      && row.record.request === requestFact.body.record.id).at(-1) : undefined;
+    const settlementFact = factsOfKind('effect-EffectSettlement').find(f => f.body.record.operation === reservation?.record.operation);
+    const semanticOperations = sixOperationRows(observedTransport).filter(row => roleOf(row.opened) !== 'harness-live-input');
+    const controlOperations = sixOperationRows(observedTransport).filter(row => roleOf(row.opened) === 'harness-live-input');
+    const operationReport = row => {
+      const application = observedTransport.filter(item => item.record.type === 'SettlementApplication'
+        && item.record.operation === row.operation).at(-1);
+      return { operation: row.operation, role: roleOf(row.opened), run: row.record.run,
+        state: row.record.state, charge: row.record.charge,
+        application: application ? { exposure: application.record.exposure, released: application.record.released,
+          unresolved: application.record.unresolved, actualCharge: application.record.actualCharge } : null,
+        resolved: !authorityUnavailable && (row.record.state === 'closed' || (application ? application.record.unresolved === 0 : false)) };
+    };
     return {
+      ...(authorityUnavailable ? { currentAuthority: { owner: 'part-six', available: false, detail: authorityUnavailable } } : {}),
       boot: bootIndex, incarnation, profile: config.profile, adapter: config.adapter,
       registerChecks, steps, kinds: all.map(f => f.kind),
       // Every identity a boundary recorded, grouped by name, ACROSS every boot of
@@ -2047,21 +2312,18 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
         }
         return Object.fromEntries(Object.entries(trail).map(([k, v]) => [k, [...new Set(v)]]));
       })(),
-      operations: [...new Set(transportFacts().filter(v => v.record.type === 'AdmissionReservation').map(v => v.record.operation))],
-      // Every six-owned operation of this run with its section-7 ROLE, its terminal
+      operations: semanticOperations.map(row => row.operation),
+      // Section-7 semantic work and context-control work retain separate tables;
+      // every control is also exposed with Six's complete accounting below.
+      contextOperations: controlOperations.map(operationReport),
+      // Every six-owned semantic operation with its section-7 ROLE, its terminal
       // state, and six's own accounting for it. `resolved` is six's word, not
       // eleven's: an operation is resolved when six either applied an authentic
       // eight settlement to it (unresolved 0) or conditionally closed it.
-      sixOperations: sixOperationRows().map(row => {
-        const application = applicationFor(row.operation);
-        return { operation: row.operation, role: roleOf(row.opened), run: row.record.run,
-          state: row.record.state, charge: row.record.charge,
-          application: application ? { exposure: application.record.exposure, released: application.record.released,
-            unresolved: application.record.unresolved, actualCharge: application.record.actualCharge } : null,
-          resolved: row.record.state === 'closed' || (application ? application.record.unresolved === 0 : false) };
-      }),
-      semanticKeys: [...new Set(transportFacts().filter(v => v.record.type === 'AdmissionReservation').map(v => v.record.semanticMessage))],
-      routes: [...new Set(factsOfKind('effect-OperationObservation').map(f => `${f.body.record.account}/${f.body.record.conversation}`))],
+      sixOperations: semanticOperations.map(operationReport),
+      semanticKeys: [...new Set(semanticOperations.map(row => row.record.semanticMessage))],
+      routes: [...new Set(factsOfKind('effect-OperationObservation').filter(f => semanticOperations.some(row => row.operation === f.body.record.operation))
+        .map(f => `${f.body.record.account}/${f.body.record.conversation}`))],
       adapterCapabilities: adapterContract().capabilities,
       declaredStage: declaredStage(),
       boundariesReached: reached().map(r => r.boundary), cutsFired: cutsFired(),
@@ -2084,7 +2346,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
         semanticMessage: requestFact.body.record.semanticMessage,
         operation: reservation ? reservation.record.operation : null,
         charge: reservation ? reservation.record.charge : null,
-        observations: factsOfKind('effect-OperationObservation').map(f => f.body.record.stage) } : null,
+        observations: factsOfKind('effect-OperationObservation').filter(f => f.body.record.operation === reservation?.record.operation).map(f => f.body.record.stage) } : null,
       settlement: settlementFact ? { outcome: settlementFact.body.record.outcome.kind,
         // The wire form records an unknown charge as the exact token 'unknown'.
         finalCharge: settlementFact.body.record.finalCharge === 'unknown' ? null : settlementFact.body.record.finalCharge,
@@ -2099,7 +2361,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
       serviceIntents: journal.intents.length, charges: journal.charges,
       serviceInbound: journal.inbound.length,
       rebuilds,
-      accounting: accounting(all, journal),
+      accounting: accounting(all, journal, observedTransport),
     };
   }
 
@@ -2108,7 +2370,7 @@ export function bootSliceAssembly(home, config = sliceConfig()) {
     registerChecks, governance, decodeContext, factContext, boundaryContext, effectHost, judgmentHost, transportHost,
     alice, bob, observer, scope, floor, bindingGrant, approval, operationDefinition, governedVersions, authorityClosure,
     store, peerStore, replicas, custody, judgmentCustody, service, captureIndex,
-    intake, transport, transportFacts, judgment, effects, runGraph, assessor, model,
+    intake, transport, transportFacts, judgment, effects, runGraph, composeProductionGrounding, assessor, model,
     facts, factsOfKind, factOfKind, factRef, append, kinds, generation, now, tick, result,
     adapterContract, declaredStage, install, restoreGrants, restoreEvidence, liveFence, currentFenceEpoch, boundary, reached, cutsFired,
     drive, report, buildRun, rebuildAll, rebuildOne, obligation, restartOperator,

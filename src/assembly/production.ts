@@ -1,3 +1,4 @@
+import { productionGraphMatches } from './grounding-capability.js';
 import { consumeResult } from '../index.js';
 import type { Result } from '../index.js';
 import { requiredMinimalDependencies } from '../operator/index.js';
@@ -235,14 +236,6 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
       'VerificationRuntimePort.due': production.verification.port.due,
     })) requireMethod(operation, name);
     requireMethod(production.run.port.read, 'RunGraphPort.read');
-    if (binding.productionGrounding) {
-      ensure(production.productionGrounding?.owner === 'part-ten'
-        && production.productionGrounding.implementation === binding.productionGrounding.implementation,
-      'production grounding composition binding differs from the signed manifest');
-      ensure(isProductionGroundedRunGraph(production.run.port, binding.scope),
-        'production RunGraphPort is not bound to the invocation-owned context-delivery reader');
-    } else ensure(!production.productionGrounding,
-      'production grounding composition cannot activate without its signed manifest binding');
     requireMethod(production.lease.port.acquire, 'TransportAuthority.acquire');
     requireMethod(production.judgment.port.judge, 'JudgmentDoorway.judge');
     ensure(production.effect.port.owner === 'part-eight', 'effect doorway must be issued by Part Eight');
@@ -304,6 +297,8 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
     requireMethod(witness.observe, 'AssemblyPlatformDeliveryWitnessPort.observe');
 
     const admission = take(runtime.admit(manifestId, scope));
+    ensure(productionGraphMatches(production.run.port, composition, scope),
+      'production boot requires genuine graph/native harness/runtime/store/scope provenance');
     const handles = Object.freeze({ persistence: composition.persistence, harnesses: composition.harnesses, model: composition.model,
       intake: production.verifiedActIntake, run: production.run, lease: production.lease, judgment: production.judgment,
       effect: production.effect, verification: production.verification, verificationClock: production.verificationClock,

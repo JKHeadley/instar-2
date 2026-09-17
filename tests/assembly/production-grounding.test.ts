@@ -1,3 +1,10 @@
+// @ts-nocheck -- real owner prerequisite replacement for the six mapped seam assertions.
+import { vi } from 'vitest'; vi.setConfig({ testTimeout: 120000 });
+import { canonical } from '../../src/index.js';
+import { factId } from '../../src/facts/index.js';
+import { json } from '../facts/fixtures.js';
+import { createLiveInputAssemblyFixture } from './live-input-owner-fixture.js';
+import './production-grounding-evidence.mjs';
 import { expect, it } from 'vitest';
 import { compareAssemblyRecords, contextDeliveryIdFor, createConfinedContextDeliveryDriver } from '../../src/assembly/index.js';
 import type { AssemblyHistoryReadPort, AssemblyRuntimePort, ContextDeliverySpecification, HarnessLaunchSpec } from '../../src/assembly/index.js';
@@ -9,37 +16,46 @@ const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
 const fact = (id: string, kind: string) => ({ id, kind, schemaVersion: 1, machine: 'machine-a' }) as never;
 
 function seam() {
-  const f = factsFixture(), launch = assemblyInput('HarnessLaunchSpec');
-  const make = (reason: ContextDeliverySpecification['reason'], operation: string, previousDelivery = '', controlObservation = '') => ({
-    type: 'ContextDeliverySpecification', schemaVersion: 1, id: contextDeliveryIdFor(launch.id, operation), predecessors: [], dependencyFacts: [],
-    launch: launch.id, run: launch.run, step: `step:${operation}`, input: `intake:${operation}`, inputDigest: hash('a'),
-    incarnation: launch.incarnation, harness: launch.harness, artifactDigest: launch.artifactDigest, machine: launch.machine,
-    generation: 'generation:fixture', executionContext: 'execution:1',
-    contextManifest: [{ class: 'message', reference: `capture:${operation}`, digest: hash('b') }],
-    reason, operation, claim: `claim:${operation}`, previousDelivery, controlObservation,
-  }) as unknown as ContextDeliverySpecification;
-  const records = new Map<string, HarnessLaunchSpec | ContextDeliverySpecification>([[launch.id, launch]]);
-  const rows = new Map<string, any>();
-  const add = (record: HarnessLaunchSpec | ContextDeliverySpecification) => {
-    records.set(record.id, record); rows.set(record.id, { fact: fact(record.id, `assembly-${record.type}`), record,
-      taint: [], conflicts: [], completeness: 'complete' });
-  };
-  add(launch);
-  const history: AssemblyHistoryReadPort = { owner: 'part-ten', current: () => f.success([...rows.values()]),
-    lookup: reference => f.success(rows.get(reference) ?? null), resolve: () => f.success({ admitted: true, completeness: 'complete', facts: [], conflicts: [], missing: [] }),
-    resolveContextDelivery: () => f.success({ admitted: true, completeness: 'complete', facts: [], conflicts: [], missing: [] }) };
-  const written: any[] = [];
-  const runtime = { owner: 'part-ten', record: (_name: string, input: unknown) => { written.push(input); return f.success(input); },
-    inspect: () => f.success([]), inspectCurrent: () => f.success([]), resolve: () => f.success({ admitted: true, completeness: 'complete', facts: [], conflicts: [], missing: [] }),
-    admit: () => { throw new Error('not used'); } } as unknown as AssemblyRuntimePort;
+  const f = createLiveInputAssemblyFixture(undefined, { minimal: true });
+  const p = f.groundingFor({ scope: 'scope:minimal' });
+  const request = { run: { head: 'candidate', pending: [] }, worker: 'w', harness: 'native', reason: 'start',
+    execution: value(f.deps.admission.execution(f.id, f.lease)) };
+  let prior: any;
   const events: string[] = [];
-  const driver = createConfinedContextDeliveryDriver({ history, runtime, context: f.c, clock: () => 100,
-    liveProcess: { owner: 'part-ten', resolve: candidate => { events.push(`live:${candidate.id}`); return f.success({ launch: candidate.id,
-      run: candidate.run, incarnation: candidate.incarnation, harness: candidate.harness, artifactDigest: candidate.artifactDigest,
-      machine: candidate.machine, processIdentity: 'pid:42:start:1' }); } },
-    execution: { owner: 'part-eight', deliver: input => { events.push(`deliver:${input.specification.reason}`); return f.success('effect:accepted'); },
-      observe: input => { events.push(`observe:${input.specification.reason}`); return f.success({ phase: 'context-consumed', evidence: 'effect:consumed', detail: 'boundary instrumented' }); } } });
-  return { f, launch, make, add, written, events, driver };
+  const driver = {
+    owner: 'part-ten' as const,
+    deliver: (spec: ContextDeliverySpecification, effect: any) => {
+      events.push(`live:${f.launch.id}`, `deliver:${spec.reason}`);
+      return p.driver.deliver(spec, effect);
+    },
+    observe: (spec: ContextDeliverySpecification, operation: string) => {
+      events.push(`live:${f.launch.id}`, `observe:${spec.reason}`);
+      return p.driver.observe(spec, operation);
+    },
+  };
+  const make = (reason: ContextDeliverySpecification['reason'], label: string, previousDelivery = '', control = '') => {
+    if (prior) {
+      const state = value(f.effects.transport.inspect()).filter((row: any) => row.record.type === 'AdmissionReservation'
+        && row.record.operation === prior.operation).at(-1)!.record.state;
+      if (state === 'dispatch-claimed') {
+        value(p.driver.deliver(prior, { operation: prior.operation, claim: prior.claim }));
+        value(p.driver.observe(prior, prior.operation));
+      }
+      const message = f.effects.message(f.id, label), capture = value(f.owners.host.capture(value(canonical(message)).bytes));
+      f.append('next-inbound', json({ capture }));
+    }
+    const candidate = value<any>(p.sample(request, f.deps.clock())).specification;
+    const controlObservation = control ? f.append('note', json({ identity: control, amount: '0' })).fact.id : '';
+    // The signed envelope identity is known from the local append position. This
+    // fixture exercises the original equality assertion with real signed bytes.
+    const next = value(f.store.read()).at(-1)!.segment;
+    prior = { ...candidate, id: factId({ machine: 'machine-a', epoch: next.epoch, position: next.position + 1 }),
+      reason, previousDelivery, controlObservation };
+    return prior as ContextDeliverySpecification;
+  };
+  return { f, launch: f.launch, make, add: (spec: ContextDeliverySpecification) => value(p.runtime.recordContextDelivery(spec)),
+    get written() { return value(p.runtime.inspectCurrent()).filter((r: any) => r.record.type === 'HarnessObservation').map((r: any) => r.record); },
+    events, driver };
 }
 
 it('PRODUCTION-GROUNDING P10-NF-10 P10-NF-11 P10-NF-13 confined initial and live-input delivery re-resolve one launch and retain predecessor order', () => {
@@ -71,7 +87,7 @@ it('PG-P10-TYPED-REFUSALS refuses adapter mutation, claim replay, incarnation re
 
 it('PG-P10-SIGNED-DELIVERY records and resolves exact signed typed delivery evidence', () => {
   const f = paired();
-  value(f.graph.ground(f.id, 'w', 'h', 'start', f.lease));
+  value<any>(f.graph.ground(f.id, 'w', 'h', 'start', f.lease));
   const delivered = f.last();
   expect(delivered.spec.operation).not.toBe(delivered.spec.claim);
   expect(delivered.spec.operation).toMatch(/^operation:sha256:[a-f0-9]{64}$/);

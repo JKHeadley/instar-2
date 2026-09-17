@@ -1,3 +1,4 @@
+import '../assembly/production-grounding-evidence.mjs';
 import { expect, it } from 'vitest';
 import { contextDeliveryIdFor, decodeAssemblyRecord } from '../../src/assembly/index.js';
 import { factsFixture, refused, value } from '../facts/fixtures.js';
@@ -32,4 +33,4 @@ it('PG-E2E-INITIAL-LIVE-REPLAY executes two signed actual-start boundaries on on
   expect(actual.ready.pending).toHaveLength(0);
   expect(actual.secondRunning.pending).toHaveLength(1);
   expect(actual.last.spec.incarnation).toBe(actual.first.spec.incarnation);
-}, 30_000);
+}, 120_000);

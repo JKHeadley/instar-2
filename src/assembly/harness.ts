@@ -1,3 +1,4 @@
+import { registerNativeContextHarness } from './grounding-capability.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import { decodeHarnessObservation } from './records.js';
 import type { ConfinedContextDeliveryDriverPort } from './context-delivery.js';
@@ -94,5 +95,6 @@ export function createNativeHarnessAdapter(input: Readonly<{ id: string; artifac
       });
     },
   };
+  if (input.contextDeliveryDriver && context.history) registerNativeContextHarness(port, input.contextDeliveryDriver, context.history);
   return Object.freeze(port);
 }

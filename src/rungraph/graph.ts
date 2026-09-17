@@ -133,8 +133,12 @@ function validateProductionGrounding(g: SessionGrounding, c: RunDecodeContext, o
     && boundaryEvidence.conflicts.length === 0 && boundaryEvidence.fact.id === observed.boundaryEvidence
     && boundaryEvidence.fact.kind === 'effect-OperationObservation', 'context consumption boundary evidence is not resolvable');
   const boundaryBody = object(boundaryEvidence.fact.body), boundaryRecord = object(boundaryBody.record ?? boundaryEvidence.fact.body);
+  const claim = take(history.lookup(specification.claim));
+  need(claim?.fact.kind === 'transport-AdmissionReservation' && claim.completeness === 'complete'
+    && claim.taint.length === 0 && claim.conflicts.length === 0, 'context delivery claim is unavailable');
+  const claimBody = object(claim.fact.body), claimRecord = object(claimBody.record ?? claimBody);
   need(boundaryRecord.operation === specification.operation && boundaryRecord.claim === specification.claim
-    && boundaryRecord.digest === specification.inputDigest
+    && boundaryRecord.digest === claimRecord.digest
     && (boundaryRecord.stage === 'response' || boundaryRecord.stage === 'observer-accepted'),
   'context consumption boundary evidence differs from the exact delivered operation/claim/bytes');
   need(specification.reason === 'initial' || specification.reason === 'live-input', 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction');

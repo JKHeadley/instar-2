@@ -267,6 +267,7 @@ export interface MediatedStoreReadPort {
 
 export interface AssemblyRuntimePort {
   readonly owner: 'part-ten';
+  readonly history?: AssemblyHistoryReadPort;
   record<N extends AssemblyRecordName>(name: N, input: unknown): Result<Extract<AssemblyRecord, { type: N }>>;
   recordContextDelivery(input: unknown): Result<ContextDeliverySpecification>;
   inspect(): Result<readonly AssemblyFact[]>;

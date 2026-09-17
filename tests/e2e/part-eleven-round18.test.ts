@@ -1,7 +1,8 @@
+import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
 import { expect, it } from 'vitest';
 import { bootProductionAssembly } from '../../src/assembly/index.js';
 import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
-import { installProduction, productionComposition } from '../assembly/production-fixture.js';
+import { productionComposition } from '../assembly/production-fixture.js';
 import { value } from '../facts/fixtures.js';
 import { productionOperatorSlice } from '../operator/production-slice-fixture.js';
 import { round17ProtectionFixture } from '../operator/round17-protection-fixture.js';
@@ -13,8 +14,8 @@ it.each([
 ] as const)('%s e2e: the public production coordinator exposes contradictory broker evidence as unprotected',
   (_case, patch) => {
     const owner = round17ProtectionFixture(patch);
-    const assembly = assemblyRuntimeFixture(), installed = installProduction(assembly);
-    const base = productionComposition(assembly, installed.binding);
+    const assembly = groundedAssemblyRuntimeFixture(), installed = installProduction(assembly);
+    const base = genuineProductionComposition(assembly, installed.binding);
     const production = { ...base,
       surface: { ...owner.surface, id: installed.binding.surface.adapter.implementation },
       challengeVerifier: { id: installed.binding.surface.challengeVerifier.implementation, port: owner.operator.verifier },
@@ -45,6 +46,6 @@ it('V79 P11-NF-33/36/38/42/49 re-resolves the owner generation before dispatch a
     state: 'owned-pending-prerequisite-outage', owner: 'part-ten', blocker: 'register',
   }));
   expect(report.steps).toContainEqual(expect.objectContaining({ step: 'prerequisites', state: 'refused',
-    detail: expect.stringMatching(/generation:other.*generation:fixture/) }));
+    detail: expect.stringMatching(new RegExp(`generation:other.*${fixture.assembly.host.current().generation}`)) }));
   expect(report.independentlyWitnessedResult.stage).toBe('not-reached');
 }, 120_000);

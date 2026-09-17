@@ -1,3 +1,4 @@
+import { registerAssemblyRuntime } from './grounding-capability.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import { assemblyLogicalKey, assemblyRows, compareAssemblyRecords, decodeAssemblyRecord, factReferenceAliases,
   validateAssemblyRecordReferences } from './records.js';
@@ -52,7 +53,7 @@ export function createAssemblyRuntime(composition: AssemblyComposition): Assembl
         ensure(compared.equal, compared.conflict?.detail ?? 'assembly identity conflict'); return existing.record as Extract<AssemblyStoredRecord, { type: N }>; }
       take(spine.append(candidate)); return candidate;
     });
-  return Object.freeze({ owner: 'part-ten' as const,
+  const runtime: AssemblyRuntimePort = Object.freeze({ owner: 'part-ten' as const, history,
     record: <N extends import('./contracts.js').AssemblyRecordName>(name: N, input: unknown) => record(name, input),
     recordContextDelivery: (input: unknown) => record('ContextDeliverySpecification', input),
     inspect, inspectCurrent,
@@ -102,4 +103,6 @@ export function createAssemblyRuntime(composition: AssemblyComposition): Assembl
       });
     },
   });
+  registerAssemblyRuntime(runtime, composition, history);
+  return runtime;
 }
