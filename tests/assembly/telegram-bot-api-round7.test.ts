@@ -14,13 +14,12 @@ import { conversationFixture } from '../conversation/fixture.js';
 const response = (result: unknown): TelegramBridgeReply => ({
   kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result }),
 });
-const token = { type: 'SecretRef' as const, schemaVersion: 1 as const,
-  vault: 'vault', name: 'telegram_livetest_bot_token' };
+type DecodedResult<T> = { accepted: true; value: T } | { accepted: false; detail: string };
 
-function outcome<T>(result: Result<T>): { accepted: true; value: T } | { accepted: false; detail: string } {
+function outcome<T>(result: Result<T>): DecodedResult<T> {
   return consumeResult(result, {
-    Success: value => ({ accepted: true as const, value }),
-    Refused: refusal => ({ accepted: false as const, detail: refusal.detail }),
+    Success: value => ({ accepted: true, value }) as DecodedResult<T>,
+    Refused: refusal => ({ accepted: false, detail: refusal.detail }) as DecodedResult<T>,
   });
 }
 
@@ -32,8 +31,9 @@ function value<T>(result: Result<T>): T {
 
 function fixture(replies: TelegramBridgeReply[]) {
   const owner = conversationFixture({ skipInitialAdmission: true, botId: '818181' });
-  const declaration = { ...owner.declaration, token,
+  const declaration = { ...owner.declaration,
     bot: { ...owner.declaration.bot, username: '@fixture_bot', identityEpoch: 'live' } };
+  const fixtureToken = declaration.token;
   const rows = value(owner.verification.inspectCurrent());
   const plan = rows.find(row => row.record.type === 'VerificationPlan'
     && row.record.subject.governed === 'telegram:v1:bot:818181')?.record;
@@ -52,7 +52,7 @@ function fixture(replies: TelegramBridgeReply[]) {
   const options: TelegramBotApiCustodianOptions = { context: owner.intake.f.c, machine: 'machine-a',
     now: () => owner.intake.f.clock(100), freshFor: 50, captures, bridge, declaration, identityEvidence };
   const api = value(createTelegramBotApiCustodian(options));
-  return { api, bytes, declaration, identityEvidence, options, owner, calls: () => calls };
+  return { api, bytes, declaration, identityEvidence, options, owner, token: fixtureToken, calls: () => calls };
 }
 
 describe('round 7 sealed identity owner path', () => {
@@ -63,9 +63,10 @@ describe('round 7 sealed identity owner path', () => {
       const original = response({ id: 818181, is_bot: true, username: 'fixture_bot', first_name: secret });
       if (original.kind !== 'response') throw new Error('identity fixture malformed');
       const f = fixture([original]);
-      const restarted = value(createTelegramBotApiCustodian({ ...f.options,
-        declaration: hasDeclaration ? f.declaration : undefined,
-        identityEvidence: hasEvidence ? f.identityEvidence : undefined }));
+      const { declaration: _declaration, identityEvidence: _identityEvidence, ...common } = f.options;
+      const restarted = value(createTelegramBotApiCustodian({ ...common,
+        ...(hasDeclaration ? { declaration: f.declaration } : {}),
+        ...(hasEvidence ? { identityEvidence: f.identityEvidence } : {}) }));
       let publicReadCalls = 0;
       const wrapped: TelegramBotApiCustodianPort = Object.freeze({ ...f.api,
         readCapture(reference: string) {
@@ -93,7 +94,7 @@ describe('round 7 sealed identity owner path', () => {
     const reply = response(bot);
     if (reply.kind !== 'response') throw new Error('malformed fixture missing bytes');
     const f = fixture([reply]);
-    expect(outcome(f.api.identity({ token, apiVersion: '9.2' })).accepted).toBe(false);
+    expect(outcome(f.api.identity({ token: f.token, apiVersion: '9.2' })).accepted).toBe(false);
     expect(f.calls()).toBe(1);
     expect([...f.bytes.values()]).toContain(reply.bytes);
     const reference = [...f.bytes.entries()].find(([, bytes]) => bytes === reply.bytes)?.[0];
