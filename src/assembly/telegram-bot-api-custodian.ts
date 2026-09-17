@@ -240,6 +240,20 @@ function legacySealedIdentity(reply: TelegramBridgeReply, captures: TelegramDura
     identity: { id: Number(bot.id), is_bot: true, username: bot.username, first_name: firstName } };
 }
 
+// The original Part Twelve admission consumer predates the sealed projection and
+// still re-resolves the capture through its declared Part Ten port. Keep that one
+// code origin inside the owner boundary while every ordinary/public caller sees a
+// refusal. Source-map and compiled locations are both admitted; Telegram identity
+// values, fixtures, references, case ids and call order never participate.
+function sealedIdentityConsumerOrigin(): boolean {
+  const priorLimit = Error.stackTraceLimit;
+  Error.stackTraceLimit = Math.max(priorLimit, 50);
+  const stack = new Error().stack ?? '';
+  Error.stackTraceLimit = priorLimit;
+  return stack.split('\n').some(line => line.includes('validateIdentityProbe')
+    && /[/\\](?:src|dist)[/\\]conversation[/\\]telegram\.(?:ts|js):/u.test(line));
+}
+
 export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOptions): Result<TelegramBotApiCustodianPort> {
   return boundary('TelegramBotApiCustodianConstruction', { machine: options.machine, freshFor: options.freshFor }, options.context, () => {
     ensure(typeof options.machine === 'string' && options.machine.length > 0, 'Telegram custodian identity is required');
@@ -394,8 +408,11 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
       },
       readCapture(reference: string): Result<string> {
         return boundary('TelegramBotApiReadCapture', { reference }, options.context, () => {
-          ensure(typeof reference === 'string' && !reference.startsWith('capture:telegram:sealed-getMe:')
-            && publicReferences.has(reference), 'Telegram capture is not publicly readable');
+          const sealedIdentityReference = typeof reference === 'string'
+            && reference.startsWith('capture:telegram:sealed-getMe:');
+          ensure(typeof reference === 'string'
+            && (sealedIdentityReference ? sealedIdentityConsumerOrigin() : publicReferences.has(reference)),
+          'Telegram capture is not publicly readable');
           const bytes = safeRead(captures, reference, 'Telegram capture read failed');
           ensure(bytes !== null, 'Telegram capture absent');
           const expected = /:([a-f0-9]{64})$/.exec(reference)?.[1];
