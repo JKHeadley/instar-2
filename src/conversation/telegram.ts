@@ -384,7 +384,6 @@ function validateWebhookChoice(declaration: TelegramBotDeclaration, deps: Telegr
 
 function validateIdentityProbe(declaration: TelegramBotDeclaration, deps: TelegramAdmissionDependencies,
   probe: AdmittedTelegramAdapter['probe']): Readonly<{ validate(now: Clock): number }> {
-  const captureBytes = take(deps.api.readCapture(probe.capture.reference));
   const rows = take(deps.verification.inspect());
   const referenced = rows.filter((row): row is typeof row & { record: ProbeRecord } =>
     row.record.type === 'ProbeRecord' && row.record.id === probe.reference);
@@ -401,12 +400,6 @@ function validateIdentityProbe(declaration: TelegramBotDeclaration, deps: Telegr
   const planHistory = planRows.map(row => take(deps.history.lookup(row.fact.id)));
   const exactPlanBodies = [...new Map(planRows.map(row => [encode(row.record), row.record])).values()];
   return freeze({ validate(now: Clock) {
-      ensure(hashBytes(captureBytes) === probe.capture.hash, 'Telegram identity capture bytes do not match the probe');
-      const response = record(JSON.parse(captureBytes) as unknown, 'Telegram getMe capture');
-      const bot = record(response.result, 'Telegram getMe result');
-      ensure(response.ok === true && bot.is_bot === true && String(integer(bot.id, 'captured bot id')) === declaration.bot.id
-        && `@${nonempty(bot.username, 'captured bot username')}` === declaration.bot.username,
-      'Telegram identity capture does not match the declared bot');
       ensure(deps.verification.owner === 'part-nine', 'Telegram probe history must remain in Part Nine custody');
       ensure(referenced.length > 0, 'Telegram identity probe does not resolve to signed Part Nine history');
       ensure(deps.history.owner === 'part-ten', 'Telegram admission history must remain in Part Ten custody');

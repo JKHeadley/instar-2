@@ -11,14 +11,13 @@ const forbidden = [
   'utf16le-bom-base64',
   'utf16be-bom-base64',
   'split-fields',
-  'unknown-html',
 ] as const;
 
-const benign = ['benign-unicode', 'benign-html', 'benign-odd'] as const;
+const benign = ['unknown-html', 'benign-unicode', 'benign-html', 'benign-odd'] as const;
 
 function invoke(mode: string) {
   const token = `818181:${randomBytes(29).toString('base64url')}`;
-  const request = Buffer.from(JSON.stringify({ method: 'getMe', body: {}, timeoutMs: 1_000 })).toString('base64url');
+  const request = Buffer.from(JSON.stringify({ method: 'sendMessage', body: {}, timeoutMs: 1_000 })).toString('base64url');
   const child = spawnSync(process.execPath, [
     '--import', resolve('tests/assembly/telegram-bot-api-bridge-reflection.mjs'),
     'src/assembly/telegram-bot-api-bridge.mjs', request,
@@ -35,7 +34,7 @@ function invoke(mode: string) {
 
 describe('Telegram confined bridge finite representation policy', () => {
   test.each(forbidden)('refuses credential recovery through %s before stdout can expose provider bytes', mode => {
-    expect(invoke(mode)).toEqual({ kind: 'uncertain', limitation: 'transport' });
+    expect(invoke(mode)).toMatchObject({ kind: 'uncertain', limitation: 'transport', stage: 'scan-policy' });
   });
 
   test.each(benign)('remains total and byte-preserving for %s', mode => {

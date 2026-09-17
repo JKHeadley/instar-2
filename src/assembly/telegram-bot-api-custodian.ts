@@ -23,12 +23,58 @@ type PublishedIdentity = Readonly<{
   capture: Readonly<{ reference: string; hash: Hash }>;
 }>;
 
-export type TelegramBridgeReply = Readonly<{
-  kind: 'response' | 'uncertain'; status?: number; bytes?: string; limitation?: 'timeout' | 'transport';
+export type TelegramBridgeFailureStage = 'resolver' | 'child-exit' | 'fetch-timeout' | 'fetch-failure'
+  | 'body-read' | 'invalid-response' | 'scan-policy' | 'scan-budget' | 'sealed-capture';
+type TelegramIdentityProjection = Readonly<{
+  id: number;
+  is_bot: true;
+  username: string;
+  first_name: null | Readonly<{ byteLength: number; hash: Hash }>;
 }>;
+type TelegramSealedCaptureReceipt = Readonly<{
+  reference: string;
+  hash: Hash;
+  byteLength: number;
+}>;
+export type TelegramBridgeReply = Readonly<{
+  kind: 'response'; status: number; bytes: string;
+}> | Readonly<{
+  kind: 'identity'; status: 200; identity: TelegramIdentityProjection; capture: TelegramSealedCaptureReceipt;
+}> | Readonly<{
+  kind: 'uncertain'; limitation: 'timeout' | 'transport'; stage?: TelegramBridgeFailureStage;
+}>;
+export function telegramBridgeReplyFromExecution(input: Readonly<{
+  resolver: 'ok' | 'failed';
+  status: number | null;
+  stdout: string;
+}>): TelegramBridgeReply {
+  if (input.resolver === 'failed') return { kind: 'uncertain', limitation: 'transport', stage: 'resolver' };
+  if (input.status !== 0 || input.stdout.length === 0)
+    return { kind: 'uncertain', limitation: 'transport', stage: 'child-exit' };
+  try {
+    const parsed = JSON.parse(input.stdout) as unknown;
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid');
+    const reply = parsed as Record<string, unknown>;
+    if (reply.kind === 'response' && Number.isSafeInteger(reply.status) && typeof reply.bytes === 'string')
+      return parsed as TelegramBridgeReply;
+    if (reply.kind === 'identity' && reply.status === 200 && reply.identity !== null
+      && typeof reply.identity === 'object' && reply.capture !== null && typeof reply.capture === 'object')
+      return parsed as TelegramBridgeReply;
+    const stages: readonly TelegramBridgeFailureStage[] = ['resolver', 'child-exit', 'fetch-timeout',
+      'fetch-failure', 'body-read', 'invalid-response', 'scan-policy', 'scan-budget', 'sealed-capture'];
+    if (reply.kind === 'uncertain' && (reply.limitation === 'timeout' || reply.limitation === 'transport')
+      && (reply.stage === undefined || stages.includes(reply.stage as TelegramBridgeFailureStage))) {
+      const limitation = reply.limitation;
+      return reply.stage === undefined ? { kind: 'uncertain', limitation }
+        : { kind: 'uncertain', limitation, stage: reply.stage as TelegramBridgeFailureStage };
+    }
+  } catch { /* A child protocol failure has no public diagnostic payload. */ }
+  return { kind: 'uncertain', limitation: 'transport', stage: 'child-exit' };
+}
 export interface TelegramConfinedBridgePort {
   readonly owner: 'part-ten';
-  invoke(input: Readonly<{ token: SecretRef; method: ProviderMethod; body: ProviderBody; timeoutMs: number }>): TelegramBridgeReply;
+  invoke(input: Readonly<{ token: SecretRef; method: ProviderMethod; body: ProviderBody; timeoutMs: number;
+    identityBinding?: Readonly<{ id: number; username: string }> }>): TelegramBridgeReply;
 }
 export interface TelegramDurableCapturePort {
   readonly owner: 'part-ten';
@@ -70,6 +116,11 @@ export const telegramBotApiCustodianContractMap = Object.freeze({
     'NON-EXECUTABLE-UNTIL-web-adapter-grant',
     'NON-EXECUTABLE-UNTIL-other-platform-adapter-grants',
     'NON-EXECUTABLE-UNTIL-rate-limit-backoff-grant',
+    'F4-FREE-TEXT-REPRESENTATION-LONG-TAIL',
+    'NON-EXECUTABLE-UNTIL-free-text-representation-extension-grant',
+    'F4-MEDIATED-POLL-SEND-EVIDENCE',
+    'F4-PROVIDER-COVERT-CHANNELS',
+    'LIVE-REREVIEW4-TRANSPORT-CAUSE',
   ]),
 });
 
@@ -96,11 +147,10 @@ function safePreserve(captures: TelegramDurableCapturePort, reference: string, b
 }
 
 function response(reply: TelegramBridgeReply, captures: TelegramDurableCapturePort, kind: string): CapturedResponse {
-  let replyKind: unknown; let limitation: unknown; let bytes: unknown; let status: unknown;
-  try { ({ kind: replyKind, limitation, bytes, status } = reply); }
-  catch { throw new Error('Telegram transport uncertainty: transport'); }
-  ensure(replyKind === 'response', limitation === 'timeout'
+  ensure(reply !== null && typeof reply === 'object', 'Telegram transport uncertainty: transport');
+  ensure(reply.kind === 'response', reply.kind === 'uncertain' && reply.limitation === 'timeout'
     ? 'Telegram transport uncertainty: timeout' : 'Telegram transport uncertainty: transport');
+  const { bytes, status } = reply as Extract<TelegramBridgeReply, { kind: 'response' }>;
   ensure(typeof bytes === 'string', 'Telegram response bytes absent');
   const reference = captureReference(kind, bytes);
   ensure(safePreserve(captures, reference, bytes, 'Telegram response capture was not durable')
@@ -111,6 +161,83 @@ function response(reply: TelegramBridgeReply, captures: TelegramDurableCapturePo
   const parsed = parsedRecord(bytes, 'Telegram response', 'Telegram response JSON malformed');
   ensure(parsed.ok === true, 'Telegram provider returned ok:false');
   return { bytes, reference, hash: digest(bytes) };
+}
+
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]) {
+  return JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...keys].sort());
+}
+
+function sealedIdentity(reply: TelegramBridgeReply, captures: TelegramDurableCapturePort): Readonly<{
+  captured: CapturedResponse;
+  identity: TelegramIdentityProjection;
+}> {
+  ensure(reply.kind === 'identity', reply.kind === 'uncertain' && reply.limitation === 'timeout'
+    ? 'Telegram transport uncertainty: timeout' : 'Telegram transport uncertainty: transport');
+  const envelope = reply as Extract<TelegramBridgeReply, { kind: 'identity' }>;
+  const identity = record(envelope.identity, 'Telegram identity projection') as unknown as TelegramIdentityProjection;
+  const capture = record(envelope.capture, 'Telegram sealed capture receipt') as unknown as TelegramSealedCaptureReceipt;
+  ensure(exactKeys(envelope as unknown as Record<string, unknown>, ['kind', 'status', 'identity', 'capture'])
+    && envelope.status === 200
+    && exactKeys(identity as unknown as Record<string, unknown>, ['id', 'is_bot', 'username', 'first_name'])
+    && Number.isSafeInteger(identity.id) && identity.id > 0 && identity.is_bot === true
+    && typeof identity.username === 'string' && identity.username.length >= 5 && identity.username.length <= 32
+    && !/[^A-Za-z0-9_]/u.test(identity.username), 'Telegram identity projection malformed');
+  if (identity.first_name !== null) {
+    const firstName = record(identity.first_name, 'Telegram identity first-name commitment');
+    ensure(exactKeys(firstName, ['byteLength', 'hash'])
+      && Number.isSafeInteger(firstName.byteLength) && Number(firstName.byteLength) >= 0
+      && typeof firstName.hash === 'string' && /^sha256:[a-f0-9]{64}$/.test(firstName.hash),
+    'Telegram identity first-name commitment malformed');
+  }
+  ensure(exactKeys(capture as unknown as Record<string, unknown>, ['reference', 'hash', 'byteLength'])
+    && typeof capture.reference === 'string' && /^capture:telegram:sealed-getMe:[a-f0-9]{64}$/.test(capture.reference)
+    && typeof capture.hash === 'string' && /^sha256:[a-f0-9]{64}$/.test(capture.hash)
+    && capture.reference.endsWith(capture.hash.slice(7))
+    && Number.isSafeInteger(capture.byteLength) && capture.byteLength >= 0 && capture.byteLength <= 2 * 1024 * 1024,
+  'Telegram sealed capture receipt malformed');
+  const bytes = safeRead(captures, capture.reference, 'Telegram sealed identity capture unavailable');
+  ensure(bytes !== null && Buffer.byteLength(bytes, 'utf8') === capture.byteLength && digest(bytes) === capture.hash,
+    'Telegram sealed identity capture unavailable');
+  const parsed = parsedRecord(bytes, 'Telegram sealed getMe response', 'Telegram sealed getMe response malformed');
+  const bot = record(parsed.result, 'Telegram sealed getMe bot');
+  ensure(parsed.ok === true && bot.id === identity.id && bot.is_bot === true && bot.username === identity.username,
+    'Telegram sealed identity differs from projection');
+  if (identity.first_name === null) ensure(bot.first_name === undefined,
+    'Telegram sealed identity first-name commitment differs');
+  else ensure(typeof bot.first_name === 'string'
+    && Buffer.byteLength(bot.first_name, 'utf8') === identity.first_name.byteLength
+    && digest(bot.first_name) === identity.first_name.hash,
+  'Telegram sealed identity first-name commitment differs');
+  return { captured: { bytes, reference: capture.reference, hash: capture.hash }, identity };
+}
+
+function legacySealedIdentity(reply: TelegramBridgeReply, captures: TelegramDurableCapturePort): Readonly<{
+  captured: CapturedResponse;
+  identity: TelegramIdentityProjection;
+}> {
+  ensure(reply.kind === 'response', reply.kind === 'uncertain' && reply.limitation === 'timeout'
+    ? 'Telegram transport uncertainty: timeout' : 'Telegram transport uncertainty: transport');
+  const legacy = reply as Extract<TelegramBridgeReply, { kind: 'response' }>;
+  ensure(Number.isSafeInteger(legacy.status) && legacy.status >= 200 && legacy.status < 300,
+    Number.isSafeInteger(legacy.status) ? `Telegram provider refused with HTTP ${String(legacy.status)}`
+      : 'Telegram provider status malformed');
+  ensure(typeof legacy.bytes === 'string' && Buffer.byteLength(legacy.bytes, 'utf8') <= 2 * 1024 * 1024,
+    'Telegram response bytes absent');
+  const parsed = parsedRecord(legacy.bytes, 'Telegram getMe response', 'Telegram getMe response JSON malformed');
+  ensure(parsed.ok === true, 'Telegram provider returned ok:false');
+  const bot = record(parsed.result, 'Telegram getMe bot');
+  ensure(Number.isSafeInteger(bot.id) && Number(bot.id) > 0 && bot.is_bot === true
+    && typeof bot.username === 'string' && bot.username.length >= 5 && bot.username.length <= 32
+    && !/[^A-Za-z0-9_]/u.test(bot.username)
+    && (bot.first_name === undefined || typeof bot.first_name === 'string'), 'Telegram getMe identity malformed');
+  const hash = digest(legacy.bytes); const reference = `capture:telegram:sealed-getMe:${hash.slice(7)}`;
+  ensure(safePreserve(captures, reference, legacy.bytes, 'Telegram sealed identity capture was not durable')
+    && safeRead(captures, reference, 'Telegram sealed identity capture was not durable') === legacy.bytes,
+  'Telegram sealed identity capture was not durable');
+  const firstName = typeof bot.first_name === 'string'
+    ? { byteLength: Buffer.byteLength(bot.first_name, 'utf8'), hash: digest(bot.first_name) } : null;
+  return { captured: { bytes: legacy.bytes, reference, hash },
+    identity: { id: Number(bot.id), is_bot: true, username: bot.username, first_name: firstName } };
 }
 
 export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOptions): Result<TelegramBotApiCustodianPort> {
@@ -125,7 +252,10 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
     const declaration = options.declaration === undefined ? null : freeze(structuredClone(options.declaration));
     if (declaration !== null) {
       ensure(declaration.schemaVersion === 1 && /^[1-9][0-9]*$/.test(declaration.bot.id)
-        && /^@[A-Za-z0-9_]{5,}$/.test(declaration.bot.username) && declaration.bot.identityEpoch.length > 0,
+        && Number.isSafeInteger(Number(declaration.bot.id))
+        && declaration.bot.username.startsWith('@') && declaration.bot.username.length >= 6
+        && declaration.bot.username.length <= 33 && !/[^A-Za-z0-9_]/u.test(declaration.bot.username.slice(1))
+        && declaration.bot.identityEpoch.length > 0,
       'Telegram declaration identity malformed');
       ensure(tokenShape(declaration.token) && declaration.apiVersion.length > 0,
         'Telegram declaration credential/API binding malformed');
@@ -137,6 +267,7 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
     }
 
     let compatibilityBinding: Readonly<{ token: SecretRef; apiVersion: string }> | null = null;
+    const publicReferences = new Set<string>();
     let observedBot: Readonly<{ id: string; username: string }> | null = declaration === null ? null
       : { id: declaration.bot.id, username: declaration.bot.username };
     const validateScope = (token: SecretRef, apiVersion: string) => {
@@ -182,12 +313,17 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
       }
     };
 
-    const call = (token: SecretRef, method: ProviderMethod, body: ProviderBody, timeout: number, kind: string) => {
+    const invoke = (token: SecretRef, method: ProviderMethod, body: ProviderBody, timeout: number,
+      identityBinding?: Readonly<{ id: number; username: string }>) => {
       ensure(Number.isSafeInteger(timeout) && timeout > 0, 'Telegram timeout must be positive');
       let reply: TelegramBridgeReply;
-      try { reply = bridge.invoke({ token, method, body, timeoutMs: timeout * 1_000 }); }
+      try { reply = bridge.invoke({ token, method, body, timeoutMs: timeout * 1_000,
+        ...(identityBinding === undefined ? {} : { identityBinding }) }); }
       catch { throw new Error('Telegram transport uncertainty: transport'); }
-      return response(reply, captures, kind);
+      return reply;
+    };
+    const call = (token: SecretRef, method: ProviderMethod, body: ProviderBody, timeout: number, kind: string) => {
+      return response(invoke(token, method, body, timeout), captures, kind);
     };
 
     const publishIdentityProbe = (captured: CapturedResponse, botId: string, apiVersion: string,
@@ -231,13 +367,16 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
       identity(input: Parameters<TelegramBotApiCustodianPort['identity']>[0]): Result<TelegramIdentityProbe> {
         return boundary('TelegramBotApiIdentity', { apiVersion: input.apiVersion }, options.context, () => {
           validateScope(input.token, input.apiVersion);
-          const captured = call(input.token, 'getMe', {}, 30, 'getMe');
-          const parsed = parsedRecord(captured.bytes, 'Telegram getMe response', 'Telegram getMe response malformed');
-          const bot = record(parsed.result, 'Telegram getMe bot');
-          ensure(Number.isSafeInteger(bot.id) && Number(bot.id) > 0 && typeof bot.username === 'string'
-            && bot.username.length > 0 && bot.is_bot === true, 'Telegram getMe identity malformed');
-          const botId = String(bot.id); const username = `@${bot.username}`;
+          const identityBinding = declaration === null ? undefined
+            : { id: Number(declaration.bot.id), username: declaration.bot.username.slice(1) };
+          const reply = invoke(input.token, 'getMe', {}, 30, identityBinding);
+          const sealed = reply.kind === 'identity'
+            ? sealedIdentity(reply, captures) : legacySealedIdentity(reply, captures);
+          const captured = sealed.captured;
+          const botId = String(sealed.identity.id); const username = `@${sealed.identity.username}`;
           ensure(declaration !== null, 'Telegram identity requires an independent declaration');
+          ensure(options.identityEvidence !== undefined,
+            'Telegram identity evidence publication context is required');
           ensure(botId === declaration.bot.id && username === declaration.bot.username,
             'Telegram identity differs from bound declaration');
           if (observedBot !== null) ensure(botId === observedBot.id && username === observedBot.username,
@@ -255,6 +394,8 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
       },
       readCapture(reference: string): Result<string> {
         return boundary('TelegramBotApiReadCapture', { reference }, options.context, () => {
+          ensure(typeof reference === 'string' && !reference.startsWith('capture:telegram:sealed-getMe:')
+            && publicReferences.has(reference), 'Telegram capture is not publicly readable');
           const bytes = safeRead(captures, reference, 'Telegram capture read failed');
           ensure(bytes !== null, 'Telegram capture absent');
           const expected = /:([a-f0-9]{64})$/.exec(reference)?.[1];
@@ -297,6 +438,7 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
           ensure(safePreserve(captures, evidenceReference, evidenceBytes, 'Telegram principal evidence was not durable')
             && safeRead(captures, evidenceReference, 'Telegram principal evidence was not durable') === evidenceBytes,
           'Telegram principal evidence was not durable');
+          publicReferences.add(evidenceReference);
           return freeze({ type: 'Provenance' as const, schemaVersion: 1 as const, adapter: 'telegram-intake-v1',
             method: 'telegram-bot-api-long-poll', record: { reference: evidenceReference, hash: digest(evidenceBytes) },
             verifiedAt: input.at, machine: options.machine,
@@ -339,6 +481,7 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
             if (!safePreserve(captures, journalRef, entry, 'Telegram durable cursor capture failed')
               || safeRead(captures, journalRef, 'Telegram durable cursor read failed') !== entry) return false;
             journal = readJournal();
+            publicReferences.add(pending.reference);
             updates.push(pending.raw); pending = null;
             return true;
           };
@@ -367,6 +510,7 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
             pending = { raw, reference, next: candidateNext };
           }
           if (!metadataFailed) commitPending();
+          publicReferences.add(captured.reference);
           return freeze({ updates, response: { reference: captured.reference, hash: captured.hash } });
         });
       },

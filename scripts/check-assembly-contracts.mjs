@@ -49,6 +49,11 @@ export const telegramCustodianHeldArms = Object.freeze([
   'NON-EXECUTABLE-UNTIL-web-adapter-grant',
   'NON-EXECUTABLE-UNTIL-other-platform-adapter-grants',
   'NON-EXECUTABLE-UNTIL-rate-limit-backoff-grant',
+  'F4-FREE-TEXT-REPRESENTATION-LONG-TAIL',
+  'NON-EXECUTABLE-UNTIL-free-text-representation-extension-grant',
+  'F4-MEDIATED-POLL-SEND-EVIDENCE',
+  'F4-PROVIDER-COVERT-CHANNELS',
+  'LIVE-REREVIEW4-TRANSPORT-CAUSE',
 ]);
 
 export function checkTelegramCustodianMap(map) {

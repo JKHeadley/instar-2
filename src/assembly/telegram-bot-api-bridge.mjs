@@ -1,4 +1,24 @@
-import { readFileSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import {
+  closeSync, constants, existsSync, fsyncSync, linkSync, lstatSync, openSync,
+  readFileSync, unlinkSync, writeSync,
+} from 'node:fs';
+import { join } from 'node:path';
+
+const REPRESENTATION_POLICY = Object.freeze({
+  maximumBytes: 2 * 1024 * 1024,
+  maximumJsonValues: 4096,
+  maximumCandidates: 512,
+  maximumDecodeRounds: 4,
+});
+
+const namedHtml = Object.freeze(JSON.parse(readFileSync(
+  new URL('./telegram-html-named.json', import.meta.url), 'utf8')));
+const usernameIsValid = value => typeof value === 'string' && value.length >= 5 && value.length <= 32
+  && !/[^A-Za-z0-9_]/u.test(value);
+const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const digestHex = value => createHash('sha256').update(value, 'utf8').digest('hex');
+const digest = value => `sha256:${digestHex(value)}`;
 
 const encoded = process.argv[2];
 if (!encoded) process.exit(2);
@@ -7,9 +27,22 @@ try { request = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')); 
 catch { process.exit(2); }
 const token = readFileSync(0, 'utf8');
 const validMethod = request?.method === 'getMe' || request?.method === 'getUpdates' || request?.method === 'sendMessage';
+const identityRequestPresent = request?.method !== 'getMe' || (
+  typeof request.captureDirectory === 'string' && request.captureDirectory.length > 0
+  && record(request.identityBinding));
 if (!/^[0-9]+:[A-Za-z0-9_-]{20,}$/.test(token) || !validMethod
-  || request.body === null || typeof request.body !== 'object' || Array.isArray(request.body)
-  || !Number.isSafeInteger(request.timeoutMs) || request.timeoutMs <= 0) process.exit(2);
+  || !record(request.body)
+  || !Number.isSafeInteger(request.timeoutMs) || request.timeoutMs <= 0
+  || !identityRequestPresent) process.exit(2);
+
+function uncertain(stage, limitation = 'transport') {
+  process.stdout.write(JSON.stringify({ kind: 'uncertain', limitation, stage }));
+}
+
+if (request.method === 'getMe' && (!Number.isSafeInteger(request.identityBinding.id)
+  || request.identityBinding.id <= 0 || !usernameIsValid(request.identityBinding.username))) {
+  uncertain('invalid-response'); process.exit(0);
+}
 
 function decodeJsonEscapes(value) {
   return value.replace(/\\u([0-9a-f]{4})/gi,
@@ -34,15 +67,21 @@ function decodeHtml(value) {
   return value
     .replace(/&#x([0-9a-f]+);?/gi, (original, hex) => htmlCodePoint(original, hex, 16))
     .replace(/&#([0-9]+);?/g, (original, digits) => htmlCodePoint(original, digits, 10))
-    .replace(/&(amp|lt|gt|quot|apos|colon);/gi, (_, name) => ({
-      amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", colon: ':',
-    })[name.toLowerCase()]);
+    .replace(/&([A-Za-z][A-Za-z0-9]+);/g,
+      (original, name) => Object.hasOwn(namedHtml, name) ? namedHtml[name] : original);
 }
 
-const decodedNamedHtml = new Set(['amp', 'lt', 'gt', 'quot', 'apos', 'colon']);
-function hasUnknownNamedHtml(value) {
-  return [...value.matchAll(/&([A-Za-z][A-Za-z0-9]+);/g)]
-    .some(([, name]) => !decodedNamedHtml.has(name.toLowerCase()));
+function decodeBase32(value) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const unpadded = value.toUpperCase().replace(/=+$/u, '');
+  if (!/^[A-Z2-7]+$/u.test(unpadded)) return null;
+  let accumulator = 0; let bits = 0; const output = [];
+  for (const character of unpadded) {
+    accumulator = ((accumulator << 5) | alphabet.indexOf(character)) & 0xffff;
+    bits += 5;
+    if (bits >= 8) { bits -= 8; output.push((accumulator >>> bits) & 0xff); }
+  }
+  return Buffer.from(output);
 }
 
 function base32(bytes) {
@@ -61,23 +100,18 @@ function rot13(value) {
     character.charCodeAt(0) + (character.toLowerCase() <= 'm' ? 13 : -13)));
 }
 
-// Bounded egress policy: scan literal UTF-8 text and reversible representations in
-// four named families (radix-16, radix-32, radix-64 and ROT13), over UTF-8 and
-// UTF-16LE/BE bytes, with and without a byte-order mark, where those encodings
-// apply. Before matching, close compositions
-// of JSON-unicode, percent and numeric/named-HTML text transforms for at most four
-// rounds and 512 candidates. Radix-16/32 matching is case-insensitive; radix-64
-// folding is normalized as ASCII whitespace. Six named HTML references are decoded
-// and every other semicolon-terminated named reference fails closed. Consecutive
-// sibling string runs in JSON property/array order are checked as one candidate.
-// Inputs outside the 2 MiB / 4,096 JSON-value bounds fail closed. This is a finite
-// representation policy, not a claim to detect arbitrary encryption/covert channels.
-const REPRESENTATION_POLICY = Object.freeze({
-  maximumBytes: 2 * 1024 * 1024,
-  maximumJsonValues: 4096,
-  maximumCandidates: 512,
-  maximumDecodeRounds: 4,
-});
+// Bounded egress policy: scan literal UTF-8; JSON Unicode escapes; percent
+// escapes with total malformed-input handling; numeric HTML entities; the
+// complete finite HTML named-reference table (including multi-codepoint entries,
+// with unknown names left literal); radix-16 and radix-32 with case folding;
+// standard/url-safe radix-64 with legal padding and ASCII whitespace folding;
+// UTF-8 and UTF-16LE/BE byte forms with and without BOM; ROT13; and ordered
+// consecutive JSON sibling-string concatenations. Decode bounded whole radix
+// runs and compare decoded bytes. Match every visited node. Refuse unfinished
+// in-policy work at the four-edge frontier and any overflow beyond 2,097,152
+// UTF-8 bytes, 4,096 visited JSON values, or 512 distinct candidates. Accepted
+// bytes remain exact. This is a finite policy, not a claim to detect arbitrary
+// encryption, nonconsecutive reconstruction, or provider covert channels.
 
 function tokenRepresentations(value) {
   const utf8 = Buffer.from(value, 'utf8');
@@ -104,11 +138,40 @@ function tokenRepresentations(value) {
     exact.add(bytes.toString('base64url'));
     exact.add(paddedRadix32);
   }
-  return { exact, caseInsensitive };
+  return { exact, caseInsensitive, byteRepresentations };
 }
 
-function reflectsCredential(bytes) {
-  if (Buffer.byteLength(bytes, 'utf8') > REPRESENTATION_POLICY.maximumBytes) return true;
+function containsBytes(haystack, needles) {
+  return needles.some(needle => haystack.includes(needle));
+}
+
+function reflectsWholeRadixRun(value, byteForms) {
+  const minimumBytes = Math.min(...byteForms.map(bytes => bytes.length));
+  const minimumHex = minimumBytes * 2;
+  for (const match of value.matchAll(/[0-9A-Fa-f]+/g)) {
+    const run = match[0];
+    if (run.length >= minimumHex && run.length % 2 === 0
+      && containsBytes(Buffer.from(run, 'hex'), byteForms)) return true;
+  }
+  const minimum32 = Math.floor(minimumBytes * 8 / 5);
+  for (const match of value.matchAll(/[A-Z2-7]+={0,6}/gi)) {
+    const run = match[0];
+    if (run.length < minimum32) continue;
+    const decoded = decodeBase32(run);
+    if (decoded !== null && containsBytes(decoded, byteForms)) return true;
+  }
+  const minimum64 = Math.floor(minimumBytes * 4 / 3);
+  for (const match of value.matchAll(/[A-Za-z0-9+/_-]+={0,2}/g)) {
+    const run = match[0];
+    if (run.length < minimum64 || run.replace(/=+$/u, '').length % 4 === 1) continue;
+    const decoded = Buffer.from(run.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+    if (containsBytes(decoded, byteForms)) return true;
+  }
+  return false;
+}
+
+function scanCredential(bytes) {
+  if (Buffer.byteLength(bytes, 'utf8') > REPRESENTATION_POLICY.maximumBytes) return 'scan-budget';
   const encodedTokenForms = tokenRepresentations(token);
   const candidates = [{ value: bytes, depth: 0 }]; const seen = new Set([bytes]);
   const addCandidate = (value, depth = 0) => {
@@ -131,48 +194,126 @@ function reflectsCredential(bytes) {
   try {
     const pending = [JSON.parse(bytes)]; let visited = 0;
     while (pending.length > 0) {
-      if (++visited > REPRESENTATION_POLICY.maximumJsonValues) return true;
+      if (++visited > REPRESENTATION_POLICY.maximumJsonValues) return 'scan-budget';
       const value = pending.pop();
       if (typeof value === 'string') {
-        if (!addCandidate(value)) return true;
+        if (!addCandidate(value)) return 'scan-budget';
       } else if (Array.isArray(value)) {
-        if (!addJoinedSiblingRun(value)) return true;
+        if (!addJoinedSiblingRun(value)) return 'scan-budget';
         for (const item of value) pending.push(item);
-      } else if (value !== null && typeof value === 'object') {
+      } else if (record(value)) {
         const values = Object.values(value);
-        if (!addJoinedSiblingRun(values)) return true;
+        if (!addJoinedSiblingRun(values)) return 'scan-budget';
         for (const item of values) pending.push(item);
       }
     }
-  } catch { /* Non-JSON responses are still scanned through the raw transformations below. */ }
-  for (let index = 0; index < candidates.length && index < REPRESENTATION_POLICY.maximumCandidates; index += 1) {
+  } catch { /* Raw non-JSON error responses are scanned too. */ }
+  for (let index = 0; index < candidates.length; index += 1) {
     const { value: candidate, depth } = candidates[index];
     const unfolded = candidate.replace(/[\t\r\n ]/gu, '');
-    if (hasUnknownNamedHtml(candidate)) return true;
     if ([candidate, unfolded].some(surface => {
-      if ([...encodedTokenForms.exact].some(encoded => surface.includes(encoded))) return true;
+      if (surface.includes(token) || reflectsWholeRadixRun(surface, encodedTokenForms.byteRepresentations)) return true;
+      if ([...encodedTokenForms.exact].some(form => surface.includes(form))) return true;
       const folded = surface.toLowerCase();
-      return [...encodedTokenForms.caseInsensitive].some(encoded => folded.includes(encoded));
-    })) return true;
-    if (depth >= REPRESENTATION_POLICY.maximumDecodeRounds) continue;
-    for (const decoded of [decodeJsonEscapes(candidate), decodePercent(candidate), decodeHtml(candidate)]) {
-      if (decoded.includes(token)) return true;
-      if (decoded !== candidate && !addCandidate(decoded, depth + 1)) return true;
+      return [...encodedTokenForms.caseInsensitive].some(form => folded.includes(form));
+    })) return 'scan-policy';
+    const transformed = [decodeJsonEscapes(candidate), decodePercent(candidate), decodeHtml(candidate)];
+    if (depth >= REPRESENTATION_POLICY.maximumDecodeRounds) {
+      if (transformed.some(successor => successor !== candidate && !seen.has(successor))) return 'scan-policy';
+      continue;
+    }
+    for (const successor of transformed) {
+      if (successor.includes(token)) return 'scan-policy';
+      if (successor !== candidate && !addCandidate(successor, depth + 1)) return 'scan-budget';
     }
   }
-  return false;
+  return null;
 }
 
+function countJsonValues(root) {
+  const pending = [root]; let visited = 0;
+  while (pending.length > 0) {
+    if (++visited > REPRESENTATION_POLICY.maximumJsonValues) return false;
+    const value = pending.pop();
+    if (Array.isArray(value)) for (const item of value) pending.push(item);
+    else if (record(value)) for (const item of Object.values(value)) pending.push(item);
+  }
+  return true;
+}
+
+function readExactNoFollow(path) {
+  const descriptor = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try { return readFileSync(descriptor, 'utf8'); }
+  finally { closeSync(descriptor); }
+}
+
+function sealIdentity(bytes, directory) {
+  const directoryState = lstatSync(directory);
+  if (!directoryState.isDirectory() || directoryState.isSymbolicLink()) throw new Error('sealed-capture');
+  const hex = digestHex(bytes); const destination = join(directory, `${hex}.capture`);
+  if (!existsSync(destination)) {
+    const temporary = join(directory, `.${hex}.${process.pid}.${randomBytes(8).toString('hex')}.pending`);
+    let descriptor;
+    try {
+      descriptor = openSync(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY
+        | (constants.O_NOFOLLOW ?? 0), 0o600);
+      const buffer = Buffer.from(bytes, 'utf8'); let offset = 0;
+      while (offset < buffer.length) offset += writeSync(descriptor, buffer, offset);
+      fsyncSync(descriptor); closeSync(descriptor); descriptor = undefined;
+      try { linkSync(temporary, destination); }
+      catch (error) { if (!existsSync(destination)) throw error; }
+      const directoryDescriptor = openSync(directory, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+      try { fsyncSync(directoryDescriptor); } finally { closeSync(directoryDescriptor); }
+    } finally {
+      if (descriptor !== undefined) closeSync(descriptor);
+      try { unlinkSync(temporary); } catch { /* The final link is durable or the operation failed. */ }
+    }
+  }
+  if (readExactNoFollow(destination) !== bytes) throw new Error('sealed-capture');
+  return { reference: `capture:telegram:sealed-getMe:${hex}`, hash: `sha256:${hex}`,
+    byteLength: Buffer.byteLength(bytes, 'utf8') };
+}
+
+let provider;
 try {
-  const provider = await fetch(`https://api.telegram.org/bot${token}/${request.method}`, {
+  provider = await fetch(`https://api.telegram.org/bot${token}/${request.method}`, {
     method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' },
     body: JSON.stringify(request.body), signal: AbortSignal.timeout(request.timeoutMs),
   });
-  const bytes = await provider.text();
-  process.stdout.write(reflectsCredential(bytes)
-    ? JSON.stringify({ kind: 'uncertain', limitation: 'transport' })
-    : JSON.stringify({ kind: 'response', status: provider.status, bytes }));
 } catch (error) {
   const timeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
-  process.stdout.write(JSON.stringify({ kind: 'uncertain', limitation: timeout ? 'timeout' : 'transport' }));
+  uncertain(timeout ? 'fetch-timeout' : 'fetch-failure', timeout ? 'timeout' : 'transport');
+  process.exit(0);
 }
+
+let bytes;
+try { bytes = await provider.text(); }
+catch { uncertain('body-read'); process.exit(0); }
+
+if (typeof bytes !== 'string' || Buffer.byteLength(bytes, 'utf8') > REPRESENTATION_POLICY.maximumBytes) {
+  uncertain('scan-budget'); process.exit(0);
+}
+
+if (request.method === 'getMe') {
+  let capture;
+  try { capture = sealIdentity(bytes, request.captureDirectory); }
+  catch { uncertain('sealed-capture'); process.exit(0); }
+  try {
+    const parsed = JSON.parse(bytes);
+    if (!countJsonValues(parsed) || !record(parsed) || parsed.ok !== true || provider.status !== 200
+      || !record(parsed.result)) throw new Error('invalid');
+    const bot = parsed.result;
+    if (!Number.isSafeInteger(bot.id) || bot.id <= 0 || bot.is_bot !== true || !usernameIsValid(bot.username)
+      || bot.id !== request.identityBinding.id || bot.username !== request.identityBinding.username
+      || bot.first_name !== undefined && typeof bot.first_name !== 'string') throw new Error('invalid');
+    const firstName = typeof bot.first_name === 'string'
+      ? { byteLength: Buffer.byteLength(bot.first_name, 'utf8'), hash: digest(bot.first_name) } : null;
+    process.stdout.write(JSON.stringify({ kind: 'identity', status: 200,
+      identity: { id: bot.id, is_bot: true, username: bot.username, first_name: firstName }, capture }));
+  } catch { uncertain('invalid-response'); }
+  process.exit(0);
+}
+
+const scanFailure = scanCredential(bytes);
+if (scanFailure !== null) uncertain(scanFailure);
+else process.stdout.write(JSON.stringify({ kind: 'response', status: provider.status, bytes }));
