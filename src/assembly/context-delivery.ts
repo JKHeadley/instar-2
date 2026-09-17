@@ -139,6 +139,8 @@ export interface ProductionGroundingReaderInput {
  * specification, real delivery, witnessed consumption and returned grounding
  * are one synchronous read. No pre-completed receipt can be injected. */
 export function createProductionGroundingReader(input: ProductionGroundingReaderInput): GroundingReadPort {
+  // Retain the exact dependencies whose provenance is certified below.
+  input = Object.freeze({ ...input });
   let reader: GroundingReadPort;
   reader = freeze({ owner: 'part-ten' as const, production: true as const,
     read(request: Parameters<GroundingReadPort['read']>[0]) {
