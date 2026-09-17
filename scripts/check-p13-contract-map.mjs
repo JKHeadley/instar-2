@@ -262,9 +262,15 @@ export function checkP13Architecture() {
   // The feature-scope arm guards THIS part's slice. On a branch that touches no Part Thirteen path (another
   // part's slice re-synced onto main), every changed file is by definition outside Part Thirteen's scope, so the
   // arm has nothing to judge; the structural checks below still run unconditionally.
-  const p13SliceChanged = changed.some(path => path.startsWith('src/harness-adapters/')
+  // GRANT 45-E/45-F: only the exact pinned additivity amendment is outside this part's slice.
+  const grantedAdditivityPath = 'tests/harness-adapters/a2-governance-and-additivity.test.ts';
+  const grantedAdditivityHash = 'a3303f8e1b959ca4eac481dfa637b20eeec463ad85ad568a136de1f2a5dd5b8b';
+  const { createHash } = process.getBuiltinModule('node:crypto');
+  const p13SliceChanged = changed.some(path => !(path === grantedAdditivityPath
+    && existsSync(path) && createHash('sha256').update(readFileSync(path)).digest('hex') === grantedAdditivityHash)
+    && (path.startsWith('src/harness-adapters/')
     || path.startsWith('tests/harness-adapters/')
-    || /^tests\/(integration|e2e)\/harness-adapters(?:-[^/]*)?\.test\.ts$/.test(path));
+    || /^tests\/(integration|e2e)\/harness-adapters(?:-[^/]*)?\.test\.ts$/.test(path)));
   if (p13SliceChanged) for (const path of changed) {
     if (!allowedPath(path)) failures.push(`out-of-scope path: ${path}`);
     if (!generated.has(path) && existsOnMain(path)
