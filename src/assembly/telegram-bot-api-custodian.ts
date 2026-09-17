@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { BoundaryContext, Clock, Hash, ProvenanceInput, Result, SecretRef } from '../index.js';
 import { canonical } from '../index.js';
-import { extractTelegramUpdate, registerTelegramIdentityCaptureResolver } from '../conversation/index.js';
+import { extractTelegramUpdate } from '../conversation/index.js';
+import { registerTelegramIdentityCaptureResolver } from '../conversation/telegram.js';
 import type {
   TelegramBotApiCustodianPort, TelegramBotDeclaration, TelegramIdentityProbe, TelegramPolledBatch,
 } from '../conversation/index.js';

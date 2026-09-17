@@ -85,9 +85,8 @@ it('V79 the changed source paths stay inside the explicit Part Four, Part Ten an
   const base = execFileSync('git', ['merge-base', main, 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
   const paths = execFileSync('git', ['diff', '--name-only', base, '--', 'src'], { cwd: root, encoding: 'utf8' })
     .trim().split('\n').filter(Boolean);
-  // GRANT U3-A/U3-B (2026-09-17): the one additive Part Twelve sealed-identity consumer arm and its
-  // single barrel re-export (Part Ten may import a sibling owner only through its index), exact files.
-  const sealedIdentityGrant = ['src/conversation/telegram.ts', 'src/conversation/index.ts'];
+  // GRANT U3-A/U3-B (2026-09-17): the one additive Part Twelve sealed-identity consumer arm, exact file.
+  const sealedIdentityGrant = ['src/conversation/telegram.ts'];
   const outside = paths.filter(path => !sealedIdentityGrant.includes(path) && !['src/intake/', 'src/assembly/', 'src/operator/'].some(prefix => path.startsWith(prefix)));
   expect(outside).toEqual([]);
   expect(readFileSync(join(root, 'src/index.ts'), 'utf8'))
