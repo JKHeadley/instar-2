@@ -1,6 +1,6 @@
 import { consumeOutcome, consumeResult, decode, readEvidence } from '../index.js';
 import type { Result } from '../index.js';
-import type { FactEnvelope, FactStorePort } from '../facts/index.js';
+import type { FactEnvelope } from '../facts/index.js';
 import { causalCone } from '../facts/index.js';
 import { createTransportAuthority, createTransportSpine } from '../transport/index.js';
 import type { TransportHost, AdmissionReservation, DispatchClaim, FenceToken } from '../transport/index.js';
@@ -9,6 +9,8 @@ import type { EffectComposition, EffectDoorway, EffectRecord, EffectRequest, Eff
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { definitionCheck, live, rows, wire, readHarnessLiveInputCapture, harnessLiveInputAuthor } from './records.js';
 import { issuedSettlement, withSettlement, consumeEffectSettlement } from './settlement-authority.js';
+import { registerLiveInputExecution } from './live-input/authority.js';
+export { isHarnessLiveInputExecution } from './live-input/index.js';
 
 export interface HarnessLiveInputExecutionPort {
   readonly owner: 'part-eight';
@@ -20,7 +22,6 @@ export interface HarnessLiveInputExecutionPort {
 }
 const liveInputFactories = new WeakMap<object, () => HarnessLiveInputExecutionPort>();
 const doorwayOrigins = new WeakMap<object, EffectComposition>();
-const liveInputStores = new WeakMap<object, FactStorePort>();
 /** Only a real Eight doorway can expose the additive live-input arm. */
 export function createHarnessLiveInputExecution(doorway: EffectDoorway, transportHost: TransportHost): HarnessLiveInputExecutionPort {
   const composition = doorwayOrigins.get(doorway);
@@ -34,9 +35,6 @@ export function createHarnessLiveInputExecution(doorway: EffectDoorway, transpor
     createTransportSpine(transportHost, author, composition.spine.store), composition.host.boundary, consumeEffectSettlement);
   const confined = createEffectDoorway({ ...composition, transport });
   return liveInputFactories.get(confined)!();
-}
-export function isHarnessLiveInputExecution(port: object, store: FactStorePort): boolean {
-  return liveInputStores.get(port) === store;
 }
 
 export function createEffectDoorway(composition: EffectComposition): EffectDoorway {
@@ -393,7 +391,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
           detail: 'the admitted harness boundary witnessed exact live-input consumption' });
       }),
     });
-    liveInputStores.set(execution, spine.store);
+    registerLiveInputExecution(execution, spine.store);
     return execution;
   });
   return Object.freeze(api);

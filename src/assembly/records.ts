@@ -1,4 +1,4 @@
-import { isHarnessLiveInputOwnerRegistration } from '../effects/index.js';
+import { isHarnessLiveInputOwnerRegistration } from '../effects/live-input/index.js';
 import { verify } from 'node:crypto';
 import { consumeResult, defineDecoder } from '../index.js';
 import type { DecodeContext, Json, Result } from '../index.js';

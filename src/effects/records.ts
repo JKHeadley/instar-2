@@ -6,6 +6,8 @@ import type { EffectAuthor, EffectHost, EffectRecord, EffectSpine, OperationDefi
 import type { FactStorePort } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { requireSettlement } from './settlement-authority.js';
+import { registerLiveInputOwner } from './live-input/authority.js';
+export { isHarnessLiveInputOwnerRegistration } from './live-input/index.js';
 
 const text = { kind: 'text', maxLength: 512 } as const, integer = { kind: 'integer' } as const;
 const refs = { kind: 'array', maxLength: 64, items: text } as const;
@@ -161,10 +163,6 @@ export function effectSchemas(host: EffectHost): readonly FactSchema[] {
     standing: 'requester', action: 'work', scope: host.scope, causallyBound: false,
     requiredReferences: [], authority: 'none' }));
 }
-const genuineEffectRegistrations = new WeakSet<object>();
-export function isHarnessLiveInputOwnerRegistration(registration: OwnedBodyRegistration): boolean {
-  return genuineEffectRegistrations.has(registration);
-}
 export function registerEffectBodies(host: EffectHost): Result<readonly OwnedBodyRegistration[]> {
   return boundary('EffectRegistrations', null, host.boundary, () => Object.entries(effectShapes).map(([name, shape]) => { const registration = take(registerOwnedBody({
     name, owner: 'part-eight', currentVersion: 1, versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
@@ -179,7 +177,7 @@ export function registerEffectBodies(host: EffectHost): Result<readonly OwnedBod
         return { ok: true, value: freeze(input) };
       } catch (e) { return { ok: false, detail: e instanceof Error ? e.message : 'effect record refused' }; }
     },
-  }, shape, host.boundary)); genuineEffectRegistrations.add(registration); return registration; }));
+  }, shape, host.boundary)); registerLiveInputOwner(registration); return registration; }));
 }
 export function decodeOutboundMessage(input: unknown, host: EffectHost): Result<OutboundMessage> {
   return boundary('OutboundMessageInput', input, host.boundary, () => {

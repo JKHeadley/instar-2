@@ -1493,6 +1493,7 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
       take(authorAndAppend({ kind, schemaVersion: 1, machine: config.machine, principal: json(bob), provenance: json(bob.provenance),
         at: json(now()), body: json({ run, record: recordWire(record) }), required }, factContext, store, PRIVATE_KEY))) } };
   let productionRunDeps;
+  let restoreContextAccounting;
   let composedGraph, composedGraphDependencies;
   const runGraph = () => {
     if (!productionRunDeps) return take(createRunGraph({ ...runDeps, context: runContext() }));
@@ -1540,6 +1541,22 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
       }), observe: () => result(() => { throw new Error('context observation is owned by Eight durable evidence'); }) };
     const contextDoorway = createEffectDoorway({ host: contextHost, spine: contextSpine, transport,
       durability: replicas.durability, custody: custody.custody, adapter: physical, assessment: assessor });
+    const qualifiedContextOperations = new Set();
+    restoreContextAccounting = () => result(() => {
+      // A previous process's SettlementApplication is history, not current Six
+      // admission authority. Re-enter the actual Eight producer and Six consumer
+      // before allowing a later operation to use its released exposure. Neither
+      // delivery nor grounding evidence is replayed by this accounting step.
+      const requests = new Set(factsOfKind('effect-EffectRequest')
+        .filter(row => row.body.record.definition === contextDefinition.id).map(row => row.body.record.id));
+      const operations = new Set(transportFacts().filter(row => row.record.type === 'AdmissionReservation'
+        && requests.has(row.record.request)).map(row => row.record.operation));
+      for (const operation of operations) {
+        if (qualifiedContextOperations.has(operation)) continue;
+        take(transport.settle(liveFence(), take(contextDoorway.settle(operation))));
+        qualifiedContextOperations.add(operation);
+      }
+    });
     const execution = createHarnessLiveInputExecution(contextDoorway, transportHost);
     const driver = createConfinedContextDeliveryDriver({ runtime, history, context, execution, clock: () => now().value,
       liveProcess: { owner: 'part-ten', resolve: launch => result(() => {
@@ -1609,6 +1626,7 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
           if (!evidenceRowFor(admitted.operation)) append('slice-harness-delivery-evidence', { operation: admitted.operation,
             stage: 'context-consumed', decisive: 'decisive', evidence: witness, outcome }, [consumption.id], bob, bob.provenance);
           take(transport.settle(fence, take(contextDoorway.settle(admitted.operation))));
+          qualifiedContextOperations.add(admitted.operation);
           return ({ type: 'SessionGrounding', schemaVersion: 2,
           id: `slice-native-grounding:${consumption.id}`, run: run.id, expected: request.run.head,
           worker: request.worker, harness: request.harness, reason: request.reason, step: identity, incarnation,
@@ -1757,6 +1775,16 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
         state: 'owned-pending-unadmitted', owner: 'part-five', exposure: 0, detail: String(outcome.detail).slice(0, 3000) });
     } else if (opening && !factOfKind('session-grounding')) record('grounding', 'held', { detail: 'recorded owned-pending; not re-attempted' });
     if (productionRunDeps && !factOfKind('session-grounding')) return report(rebuild());
+    if (restoreContextAccounting) {
+      const restored = settled(restoreContextAccounting());
+      if (!restored.ok) {
+        record('context-accounting', 'refused', { detail: restored.detail });
+        obligation({ operation: `context-accounting:${opening.body.run}`, blocker: 'part-six',
+          semanticMessage: 'harness-live-input-accounting', state: 'owned-pending-unadmitted',
+          owner: 'part-six', exposure: 0, detail: String(restored.detail).slice(0, 3000) });
+        return report(rebuild());
+      }
+    }
     // Yield only between completed durable owner operations. The following
     // effects still revalidate their live fence/claim synchronously at action
     // time. Large signed-history reads must not starve server/runner RPCs.

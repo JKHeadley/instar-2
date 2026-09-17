@@ -1,6 +1,6 @@
 import type { Clock, FactEnvelopeReference, Hash, Result } from '../index.js';
 import { registerProductionGroundingReader } from '../rungraph/index.js';
-import { isHarnessLiveInputExecution } from '../effects/index.js';
+import { isHarnessLiveInputExecution } from '../effects/live-input/index.js';
 import type { RunView, SessionGrounding, GroundingReadPort } from '../rungraph/index.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { issueProductionGroundingRead, issueProductionGroundingReader, registerContextDriver, runtimeOrigin, issueContextDeliveryExecution, consumeContextDeliveryExecution, productionGroundingReaderScope } from './grounding-capability.js';
