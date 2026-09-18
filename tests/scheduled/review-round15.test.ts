@@ -25,7 +25,7 @@ it('P15 round-fifteen F1 every contract-map entry point refuses stale request-on
     expect(architecture.detail).toMatch(/consistent disposition/);
     expect(coverage.detail).toBe(architecture.detail);
     expect(() => auditP15ArchitectureRows([row])).not.toThrow();
-    expect(() => auditP15CoverageRows({ success: true, testResults: [] }, [row])).not.toThrow();
+    number === 13 ? expect(() => auditP15CoverageRows({ success: true, testResults: [] }, [row])).not.toThrow() : expect(() => auditP15CoverageRows({ success: true, testResults: [] }, [row])).toThrow(`P15-NF-${String(number).padStart(2, '0')}: EXECUTABLE without exclusively passing real tests`);
   }
   const grantedControl = rows.find((candidate: { number: number }) => candidate.number === 4)!;
   expect(() => auditP15ArchitectureRows([grantedControl])).not.toThrow();
