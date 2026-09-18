@@ -12,6 +12,14 @@ export const assemblyDispositions = Array.from({ length: 57 }, (_, index) => ({
   reason: 'Executable unit/full-port/lifecycle reference behavior is present; protected deployment activation and independently administered platform evidence remain deliberately dark.',
 }));
 
+// GRANT U4-A: the unchanged model-provider roster still holds unproven routes.
+// This additive constructor arm does not claim a live provider or a full boot.
+export const productionBootCustodyContract = Object.freeze({
+  executable: Object.freeze(['production route under confined credential custody']),
+  evidence: 'tests/assembly/production-boot-preconditions.test.ts',
+  held: Object.freeze(['NON-EXECUTABLE-UNTIL-replication-peer']),
+});
+
 export function checkAssemblyCoverage(report, dispositions = assemblyDispositions) {
   if (!report.success) throw new Error('assembly mapping requires a successful actual test run');
   if (dispositions.length !== 57 || new Set(dispositions.map(row => row.id)).size !== 57) throw new Error('missing or duplicate P10 disposition');
@@ -143,7 +151,7 @@ export function productionGroundingSourceDigest(root = realpathSync(fileURLToPat
     if (existsSync(resolve(root, path))) { hash.update(path); hash.update(readFileSync(resolve(root, path))); }
   return hash.digest('hex');
 }
-const REVIEWED_GROUNDING_INVENTORY = '39eaa0955e0b255aa49af23f0916d3f804a00152ce08e5a13a0ec2cace8f9ac3';
+const REVIEWED_GROUNDING_INVENTORY = '96fa100308989be49def99820a8dcade7cb61e9ee85ec5d1e3b7fbe625f6aa79';
 export function checkProductionGroundingAssemblyEvidence(report) {
   const root = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
   if (!report.success || report.numFailedTests || report.numFailedTestSuites || !Number.isFinite(report.startTime))

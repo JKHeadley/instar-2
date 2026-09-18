@@ -11,9 +11,22 @@ import { boundary, encoded, ensure, freeze, take } from './boundary.js';
  * client is reachable from the worker's request or the returned adapter handle. */
 export interface ConfinedProviderRoute {
   readonly provider: string; readonly model: string; readonly route: string; readonly disclosure: string;
-  readonly automaticRetries: 0; readonly environment: 'local-test';
+  readonly automaticRetries: 0; readonly environment: 'local-test' | 'production';
+  readonly custodyProof?: ProviderCustodyProof;
   invoke(bytes: string, bounds: Readonly<{ operation: string; deadline: number; timeout: number;
     maxOutputBytes: number; maxTokens: number; maxCharge: number; automaticRetries: 0 }>): Promise<ProviderObservation>;
+}
+declare const providerCustodyBrand: unique symbol;
+/** The brand alone is not authority: admission checks exact object registration. */
+export type ProviderCustodyProof = Readonly<{ [providerCustodyBrand]: true }>;
+const productionCustody = new WeakMap<ConfinedProviderRoute, ProviderCustodyProof>();
+
+/** GRANT U4-A: owner-internal registration; never export through assembly/index. */
+export function registerProductionProviderCustody(route: ConfinedProviderRoute): void {
+  ensure(Object.isFrozen(route) && route.environment === 'production'
+    && route.custodyProof !== undefined && Object.isFrozen(route.custodyProof), 'immutable provider custody required');
+  ensure(!productionCustody.has(route), 'provider custody already registered');
+  productionCustody.set(route, route.custodyProof);
 }
 export interface ProviderInvocationPort {
   readonly owner: 'part-ten';
@@ -23,7 +36,9 @@ export interface ProviderInvocationPort {
 export function createConfinedProviderInvocation(route: ConfinedProviderRoute, authority: TransportAuthority,
   host: TransportHost, captures: JudgmentCapturePort, c: BoundaryContext, store: FactStorePort): Result<ProviderInvocationPort> {
   return boundary('ConfinedProviderConstruction', null, c, () => {
-    ensure(route.environment === 'local-test', 'NON-EXECUTABLE-UNTIL-production-boot-credential-custody');
+    ensure(route.environment === 'local-test' || (route.environment === 'production'
+      && route.custodyProof !== undefined && productionCustody.get(route) === route.custodyProof),
+    'NON-EXECUTABLE-UNTIL-production-boot-credential-custody');
     ensure(route.automaticRetries === 0, 'hidden retry forbidden');
     const send = route.invoke.bind(route);
     const binding = { provider: route.provider, model: route.model, route: route.route, disclosure: route.disclosure };
