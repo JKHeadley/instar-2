@@ -34,7 +34,7 @@ export function bootProductionApplication(record: unknown, host: ProductionAppli
     const boot = take(bootProductionInstallation(record, { ...host,
       compose: (installation, storage) => boundary('ProductionApplicationComposition', null, host.context, () => {
         const configured = take(host.configure(installation, storage))();
-        ensure(configured.owners.run.admission === host.runAdmission,
+        ensure(configured.owners.run?.admission === host.runAdmission,
           'run-admission: configured owner differs from admitted binding');
         ensure(configured.owners.intake.storage === storage.segment,
           'intake: actual installed durable segment required');

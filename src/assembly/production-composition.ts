@@ -45,6 +45,13 @@ export const isProductionOwnerComposition = (composition: object): boolean => is
  * constructor neither fabricates a replication receipt nor a Six admission. */
 export function composeProductionOwners(input: ProductionOwnerCompositionInput) {
   return boundary('ProductionOwnerComposition', null, input.assembly.host.boundary, () => {
+    ensure(input.assembly?.spine?.store, 'assembly: signed store required');
+    ensure(input.run, 'run: null owner configuration refused');
+    ensure(input.effect?.spine, 'effect: null owner configuration refused');
+    ensure(input.provider?.judgment && input.provider.verification && input.provider.route, 'provider: null owner configuration refused');
+    ensure(input.operator, 'operator: null owner configuration refused');
+    ensure(Array.isArray(input.assembly.harnesses) && input.assembly.harnesses.length > 0
+      && input.assembly.harnesses.every(adapter => adapter && typeof adapter.describe === 'function'), 'harness: null adapter refused');
     const store = input.assembly.spine.store;
     ensure(input.telegram && isProductionTelegramCustodian(input.telegram), 'telegram: actual confined custodian required');
     ensure(input.run.store === store && input.provider.judgment.store === store
