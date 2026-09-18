@@ -40,6 +40,16 @@ it('U4-C production switch-on refuses to serve and names replication-peer withou
     context: f.context, io: productionStorageIO }));
   disk.close();
 });
+it('U4-F production switch-on names both missing real bindings without changing the pinned dependency roster', () => {
+  const f = fixture();
+  const detail = refused(bootProductionInstallation(f.record, f.host));
+  expect(detail).toContain('replication-peer');
+  expect(detail).toContain('run-admission');
+  expect(f.compositions()).toBe(0);
+  f.admitted['replication-peer'] = true;
+  refused(bootProductionInstallation(f.record, f.host), 'missing binding run-admission');
+  expect(f.compositions()).toBe(0);
+});
 it.each(['bot', 'provider', 'storage'])('production boot: unresolvable %s SecretRef refuses before composition', name => {
   const f = fixture();
   const detail = refused(bootProductionInstallation(f.record, { ...f.host, resolveSecret: reference => {

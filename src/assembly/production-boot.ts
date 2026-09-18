@@ -10,9 +10,11 @@ import { openProductionStorage } from './production-storage.js';
 import type { ProductionStorage, ProductionStorageIO } from './production-storage.js';
 import { bootProductionAssembly } from './production.js';
 import type { AssemblyComposition, AssemblyProductionCoordinator } from './contracts.js';
+import type { RunAdmissionPort } from '../rungraph/index.js';
 
 export const productionBootHolds = Object.freeze([
   'NON-EXECUTABLE-UNTIL-replication-peer',
+  'NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
   'NON-EXECUTABLE-UNTIL-replicated-storage-second-machine',
   'NON-EXECUTABLE-UNTIL-package-switch-rollback',
   'NON-EXECUTABLE-UNTIL-other-conversation-platforms',
@@ -29,6 +31,9 @@ export interface ProductionBootHost {
   readonly store: string;
   readonly storageIO: ProductionStorageIO;
   readonly repairOwner: string;
+  /** U4-F: absent until the separate Six production admission slice lands.
+   * The recorded lifecycle alone supplies the landed fixture binding. */
+  readonly runAdmission?: RunAdmissionPort | null;
   /** Current dependency observations, before any external operation. U4-C
    * leaves replication-peer absent in the installed host. No peer is invented. */
   dependencies(): Readonly<Record<MinimalDependency, boolean>>;
@@ -66,7 +71,12 @@ export function bootProductionInstallation(record: unknown, host: ProductionBoot
       key, policy: host.storagePolicy, store: host.store, context: host.context, io: host.storageIO })); }
     finally { key.fill(0); secrets.clear(); }
     try {
-      const posture = take(productionSwitchOnPosture({ admitted: host.dependencies(), unavailableAdapters: [],
+      const admission = host.runAdmission;
+      const missingAdmission = !admission || admission.owner !== 'part-six'
+        || ['create', 'commit', 'verify', 'execution', 'reservation'].some(name =>
+          typeof admission[name as keyof RunAdmissionPort] !== 'function');
+      const posture = take(productionSwitchOnPosture({ admitted: host.dependencies(),
+        unavailableAdapters: missingAdmission ? ['run-admission'] : [],
         repairOwner: host.repairOwner }, host.context));
       ensure(posture.serve, `switch-on refused: missing binding ${posture.missing.join(', ')}`);
       const built = take(host.compose(installation, storage));

@@ -17,15 +17,15 @@ export const assemblyDispositions = Array.from({ length: 57 }, (_, index) => ({
 export const productionBootCustodyContract = Object.freeze({
   executable: Object.freeze(['production route under confined credential custody']),
   evidence: 'tests/assembly/production-boot-preconditions.test.ts',
-  held: Object.freeze(['NON-EXECUTABLE-UNTIL-replication-peer']),
+  held: Object.freeze(['NON-EXECUTABLE-UNTIL-row-83-run-admission-production', 'NON-EXECUTABLE-UNTIL-replication-peer']),
 });
 export const productionBootPrerequisiteContract = Object.freeze({
   executable: Object.freeze(['immutable operator-authored installation configuration',
     'encrypted durable root custody and exclusive boot lease', 'confined bounded Claude Code transport',
-    'switch-on refuses missing replication-peer before network-capable composition']),
+    'switch-on refuses missing replication-peer and run-admission before network-capable composition']),
   evidence: Object.freeze(['tests/assembly/production-boot-storage.test.ts',
     'tests/assembly/production-boot-provider.test.ts', 'tests/assembly/production-boot-refusals.test.ts']),
-  held: Object.freeze(['NON-EXECUTABLE-UNTIL-replication-peer',
+  held: Object.freeze(['NON-EXECUTABLE-UNTIL-row-83-run-admission-production', 'NON-EXECUTABLE-UNTIL-replication-peer',
     'NON-EXECUTABLE-UNTIL-replicated-storage-second-machine', 'NON-EXECUTABLE-UNTIL-package-switch-rollback',
     'NON-EXECUTABLE-UNTIL-other-conversation-platforms', 'NON-EXECUTABLE-UNTIL-multiple-bots',
     'NON-EXECUTABLE-UNTIL-live-path-unit-compaction', 'NON-EXECUTABLE-UNTIL-traces-beyond-launch-message-provider-call']),

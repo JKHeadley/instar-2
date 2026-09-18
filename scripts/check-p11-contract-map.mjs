@@ -10,7 +10,7 @@ const partialReason = 'Executable negative/positive-neighbour contract coverage 
 export const productionSwitchOnContract = Object.freeze({
   executable: Object.freeze(['pre-poll switch-on posture names missing bindings without claiming preserved input']),
   evidence: 'tests/assembly/production-boot-refusals.test.ts',
-  held: Object.freeze(['NON-EXECUTABLE-UNTIL-replication-peer']),
+  held: Object.freeze(['NON-EXECUTABLE-UNTIL-row-83-run-admission-production', 'NON-EXECUTABLE-UNTIL-replication-peer']),
 });
 export const p11HeldCases = Object.freeze([Object.freeze({
   id: 'V90',
