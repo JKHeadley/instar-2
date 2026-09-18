@@ -13,6 +13,8 @@ import { createProductionProviderOwners } from './production-provider-owners.js'
 import type { ProductionProviderOwnersInput } from './production-provider-owners.js';
 import { createProductionMinimalResponder } from './production-responder.js';
 import { isProductionTelegramCustodian } from './production-telegram.js';
+import { createTelegramReplyOperationAdapter } from '../conversation/index.js';
+import { createEffectAssessmentPort } from '../verification/index.js';
 import type { TelegramBotApiCustodianPort } from '../conversation/index.js';
 import type { AssemblyComposition, AssemblyProductionComposition } from './contracts.js';
 import { boundary, ensure, take } from './boundary.js';
@@ -41,8 +43,8 @@ const issued = new WeakSet<object>();
 export const isProductionOwnerComposition = (composition: object): boolean => issued.has(composition);
 
 /** Install the actual owner constructors over the same admitted native reader
- * and signed store. The two held dependencies are supplied separately: this
- * constructor neither fabricates a replication receipt nor a Six admission. */
+ * and signed store. Held installation bindings are supplied separately; this
+ * constructor fabricates no admission, witness, or protection evidence. */
 export function composeProductionOwners(input: ProductionOwnerCompositionInput) {
   return boundary('ProductionOwnerComposition', null, input.assembly.host.boundary, () => {
     ensure(input.assembly?.spine?.store, 'assembly: signed store required');
@@ -79,7 +81,14 @@ export function composeProductionOwners(input: ProductionOwnerCompositionInput) 
       minimalResponder: responder });
     const composition: AssemblyComposition = Object.freeze({ ...input.assembly, model: provider.model, production });
     issued.add(composition);
-    return Object.freeze({ composition, intake, run, provider, responder, telegram: input.telegram });
+    const reply = (admitted: Parameters<typeof createTelegramReplyOperationAdapter>[0],
+      target: Parameters<typeof createTelegramReplyOperationAdapter>[2]) => {
+      const adapter = createTelegramReplyOperationAdapter(admitted, input.telegram, target, input.assembly.host.boundary);
+      const doorway = createEffectDoorway({ ...input.effect, adapter,
+        assessment: createEffectAssessmentPort(input.provider.verification, provider.nine) });
+      return Object.freeze({ adapter, doorway });
+    };
+    return Object.freeze({ composition, intake, run, provider, responder, reply, telegram: input.telegram });
   });
 }
 

@@ -13,6 +13,12 @@ it.each([
   ['null Telegram', o => { o.telegram = null; }, 'telegram'],
   ['copied Telegram facade', o => { o.telegram = { ...o.telegram }; }, 'telegram'],
   ['null harness', o => { o.assembly.harnesses = [null]; }, 'harness'],
+  ['mock harness', o => {
+    const original = o.grounding.harness;
+    const adapter = { ...original, describe: () => ({ ...original.describe(), artifact: 'mock-artifact' }) };
+    o.grounding.harness = adapter; o.assembly.harnesses = [adapter];
+  }, 'harness'],
+  ['foreign signed-store handle', o => { o.run = { ...o.run, store: { ...o.run.store } }; }, 'shared signed store'],
   ['missing harness', o => { o.assembly.harnesses = []; }, 'harness'],
   ['mock model', o => { o.provider.judgment.host.description.provider = 'mock-provider'; o.provider.route = { ...route, provider: 'mock-provider' }; }, 'model: mock'],
   ['test-only model', o => { o.provider.judgment.host.description.provider = 'test-only-provider'; o.provider.route = { ...route, provider: 'test-only-provider' }; }, 'model: mock'],
