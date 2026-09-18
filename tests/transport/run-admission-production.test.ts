@@ -27,8 +27,11 @@ it('Six admits the exact signed-current opening once and retains its durable nei
 
 it('Six refuses a wrong head, a stale assignment, an absent reservation and copied provenance', () => {
   const first = fixture();
-  value(first.graph.open(first.f.run));
   let calls = 0;
+  expect(refused(first.admission.create({ owner: 'part-two', name: 'FactEnvelope', id: 'missing-opening' },
+    'run:copied', () => { calls++; throw Error('must not append'); }))).toContain('run opening cause absent');
+  expect(calls).toBe(0);
+  value(first.graph.open(first.f.run));
   expect(refused(first.admission.commit({ run: first.f.id, expected: 'wrong-head', ownership: first.f.lease,
     generation: first.f.run.generation, operation: 'operation:wrong', digest: digest('wrong'),
     durability: { kind: 'local-durable' } }, () => { calls++; throw Error('must not append'); })))
@@ -40,8 +43,7 @@ it('Six refuses a wrong head, a stale assignment, an absent reservation and copi
   value(second.f.effects.transport.release('run-admission:test-release', second.f.effects.fence));
   const predecessor = value(second.f.effects.transport.inspect()).at(-1)!.fact.id;
   value(second.f.effects.transport.acquire('run-admission:test-takeover', predecessor, 500));
-  const currentHead = value(second.f.store.read()).find(row => row.kind === 'run-opening'
-    && row.body.run === second.f.id)!.id;
+  const currentHead = value(second.graph.read(second.f.id)).head;
   expect(refused(second.admission.commit({ run: second.f.id,
     expected: currentHead, ownership: second.f.lease,
     generation: second.f.run.generation, operation: 'operation:stale', digest: digest('stale'),

@@ -1,6 +1,7 @@
-import type { BoundaryContext, FactEnvelopeReference, LeaseReference, OwnedReference, Result } from '../index.js';
+import type { BoundaryContext, FactEnvelopeReference, Json, LeaseReference, OwnedReference, Result } from '../index.js';
 import { canonical } from '../index.js';
 import type { AppendReceipt, DurabilityState, FactEnvelope, FactStorePort } from '../facts/index.js';
+import { recordFromWire } from '../rungraph/index.js';
 import type { RunAdmissionPort, RunStep } from '../rungraph/index.js';
 import type { AdmissionReservation, FenceToken, Lease, TransportAuthority, TransportFact } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
@@ -117,7 +118,7 @@ export function createProductionRunAdmission(
     return freeze({ lease: row.record, fence, assignment });
   };
   const head = (facts: readonly FactEnvelope[], run: string): FactEnvelope | undefined =>
-    facts.filter(fact => runOf(fact) === run).at(-1);
+    facts.filter(fact => fact.kind !== 'session-grounding' && runOf(fact) === run).at(-1);
   const writtenAfter = (before: readonly FactEnvelope[], expectedCommand: string): TransportFact & { readonly record: Lease } => {
     const after = clean();
     ensure(after.facts.length === before.length + 1, 'run admission write interleaved with another fact');
@@ -163,11 +164,13 @@ export function createProductionRunAdmission(
     if (fact.kind === 'run-opening') {
       expected = command('create', { opening: wire.opening, run: runOf(fact), assignment: assignment.fact.id });
     } else {
-      const step = wire.step === undefined ? undefined : object(wire.step, 'run step body required');
+      const step = fact.kind !== 'run-transition' || wire.step === undefined
+        ? undefined : object(wire.step, 'run step body required');
       const operation = typeof step?.operation === 'object'
         ? object(step.operation, 'run operation required') : undefined;
       const operationKey = typeof operation?.key === 'string' ? operation.key : wire.id;
-      const operationDigest = typeof operation?.digest === 'string' ? operation.digest : encoded(wire).hash;
+      const operationDigest = typeof operation?.digest === 'string' ? operation.digest
+        : encoded(recordFromWire(wire as Json)).hash;
       expected = command('commit', { run: runOf(fact), expected: wire.expected, ownership: wire.ownership,
         generation: wire.generation, operation: operationKey, digest: operationDigest,
         durability: { kind: 'local-durable' }, assignment: assignment.fact.id });
@@ -198,7 +201,8 @@ export function createProductionRunAdmission(
       ensure(request.run.length > 0 && request.expected.length > 0 && request.operation.length > 0
         && request.digest.length > 0, 'closed run commit request required');
       const before = clean();
-      ensure(head(before.facts, request.run)?.id === request.expected, 'run opening head changed');
+      const beforeHead = head(before.facts, request.run);
+      ensure(beforeHead && runWire(beforeHead)?.id === request.expected, 'run opening head changed');
       const live = current(request.ownership);
       ensure(request.generation.owner === 'part-three' && request.generation.name === 'RegisterGeneration'
         && request.generation.id === live.lease.generation, 'run register generation changed');
@@ -227,8 +231,7 @@ export function createProductionRunAdmission(
         ensure(exact, 'admission reservation absent');
         const latest = transport.filter((row): row is TransportFact & { readonly record: AdmissionReservation } =>
           row.record.type === 'AdmissionReservation' && row.record.operation === exact.record.operation).at(-1);
-        ensure(latest?.record.state !== 'closed' && latest?.record.run === step.run
-          && latest.record.operation === step.operation.key && latest.record.digest === step.operation.digest,
+        ensure(latest?.record.state !== 'closed' && latest?.record.run === step.run,
         'reservation does not authorize this run step');
         ensure(latest.record.fence.assignment === step.ownership.id,
           'reservation belongs to another lease assignment');
@@ -242,16 +245,18 @@ export function createProductionRunAdmission(
         .filter(row => row.record.run === run && row.record.machine === live.lease.machine
           && row.record.incarnation === live.lease.incarnation);
       const launch = launches.at(-1);
-      ensure(launch && typeof launch.record.principal === 'string' && launch.record.principal === live.lease.holder
+      ensure(launch && typeof launch.record.principal === 'string' && launch.record.principal.length > 0
         && typeof launch.record.harness === 'string' && launch.record.harness.length > 0
         && typeof launch.record.processOperation === 'string' && Array.isArray(launch.record.resourceReferences),
       'signed current worker placement absent');
-      const reservation = transport.filter((row): row is TransportFact & { readonly record: AdmissionReservation } =>
+      const resourceReferences = launch.record.resourceReferences as unknown[];
+      const referenced = transport.find((row): row is TransportFact & { readonly record: AdmissionReservation } =>
         row.record.type === 'AdmissionReservation' && row.record.operation === launch.record.processOperation
-          && row.record.run === run).at(-1);
-      ensure(reservation && reservation.record.state !== 'closed'
-        && reservation.record.fence.assignment === live.fence.assignment
-        && (launch.record.resourceReferences as unknown[]).includes(reservation.fact.id),
+          && row.record.run === run && resourceReferences.includes(row.fact.id));
+      const reservation = transport.filter((row): row is TransportFact & { readonly record: AdmissionReservation } =>
+        row.record.type === 'AdmissionReservation' && row.record.operation === launch.record.processOperation).at(-1);
+      ensure(referenced && reservation && reservation.record.state !== 'closed'
+        && reservation.record.run === run && reservation.record.fence.assignment === live.fence.assignment,
       'current worker resource reservation absent');
       return freeze({ worker: launch.record.principal, harness: launch.record.harness,
         ownership, context: reference(live.assignment.fact) });

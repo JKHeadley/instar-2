@@ -8,7 +8,7 @@ import { intakeWorkRegistration, intakeStopRegistration } from '../../src/intake
 import { admitTelegramAdapter, createTelegramIntakeAdapter, extractTelegramUpdate } from '../../src/conversation/index.js';
 import { createVerificationRuntime, createVerificationSpine, verificationSchemas, registerVerificationBodies, createEffectAssessmentPort } from '../../src/verification/index.js';
 import { providerJudgmentSchemas, registerProviderJudgmentBodies } from '../../src/judgment/index.js';
-import { providerEffectSchemas, providerEffectMigrations, registerProviderEffectBodies } from '../../src/effects/index.js';
+import { decodeOutboundMessage, providerEffectSchemas, providerEffectMigrations, registerProviderEffectBodies } from '../../src/effects/index.js';
 import { bootProductionApplication } from '../../src/assembly/production-application.js';
 import { createProductionTelegramCustodian } from '../../src/assembly/production-telegram.js';
 import { createProductionJudgmentCaptures } from '../../src/assembly/production-captures.js';
@@ -162,6 +162,44 @@ export function installedFixtureHost(root, route, options = {}) {
       binding.dependencies = binding.dependencies.map(row => row.name === 'lease' ? { ...row,
         fact: { ...row.fact, reference: f.effects.leaseFact.id } } : row);
       const grounding = f.groundingFor({ scope: binding.scope });
+      let placement;
+      const originalStart = f.start;
+      const originalMessage = f.effects.message;
+      const originalPrepare = f.effects.prepare;
+      const placeRun = () => {
+        if (placement) return placement;
+        const rows = value(f.store.read());
+        const inputs = rows.filter(row => row.kind === 'intake-admitted');
+        const material = rows.filter(row => row.kind === 'rungraph-briefing-material');
+        const manifest = [...inputs.map(row => ({ class: 'message', reference: row.body.rawHash, digest: row.body.rawHash })),
+          ...material.map(row => ({ class: row.body.class, reference: row.id, digest: row.contentHash }))];
+        const message = f.effects.message(f.id, 'actual delivered Telegram input');
+        const wireMessage = value(decodeOutboundMessage({ ...message, sourceResult: f.opening.id,
+          context: { input: { fact: f.opening.id, reference: f.opening.body.rawHash, hash: f.opening.body.rawHash }, manifest } }, f.owners.host));
+        const admitted = f.effects.prepare(wireMessage);
+        const reservation = value(f.effects.transport.inspect()).find(row =>
+          row.record.type === 'AdmissionReservation' && row.record.operation === admitted.operation);
+        value(f.runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'), id: 'production-live-input-launch',
+          run: f.id, principal: 'w', machine: 'machine-a', incarnation: 'incarnation:one', harness: f.harnessId,
+          artifactDigest: grounding.harness.describe().artifact, input: f.opening.id, inputDigest: f.opening.body.rawHash,
+          processOperation: admitted.operation, resourceReferences: [reservation.fact.id] }));
+        let pendingPlacementDelivery = true;
+        f.effects.message = (...args) => pendingPlacementDelivery ? message : originalMessage(...args);
+        f.effects.prepare = (...args) => {
+          if (pendingPlacementDelivery) { pendingPlacementDelivery = false; return admitted; }
+          return originalPrepare(...args);
+        };
+        f.start = (view, ground, key) => {
+          const transition = originalStart(view, ground, key);
+          transition.step.id = ground.body.record.step;
+          transition.step.operation.digest = reservation.record.digest;
+          transition.step.allocation.reservation.id = reservation.fact.id;
+          transition.blockedOn.reference = transition.step.id;
+          return transition;
+        };
+        placement = { admitted, reservation };
+        return placement;
+      };
       const bindings = productionComposition(f, binding);
       const operator = operatorFixture();
       const operatorRoot = f.append('note', { identity: 'installation-grant-root', amount: '0' }).fact;
@@ -218,7 +256,7 @@ export function installedFixtureHost(root, route, options = {}) {
           const received = value(application.owners.intake.receive(raw, extracted.route));
           if (received.kind !== 'admitted') throw Error('Four input not admitted');
           const opening = value(f.store.read()).find(row => row.id === received.fact.id);
-          f.bindIntake(opening); Object.assign(state, { raw, extracted }); return received;
+          f.bindIntake(opening); placeRun(); Object.assign(state, { raw, extracted, placement }); return received;
         } };
       options.mutate?.(state, owners);
       return assemblyBoundary('RecordedInstallationHost', null, boundary, () => () => ({ owners, manifest: manifest.id, scope: binding.scope, installationFact }));
