@@ -11,6 +11,7 @@ import type { ProductionStorage, ProductionStorageIO } from './production-storag
 import { bootProductionAssembly } from './production.js';
 import type { AssemblyComposition, AssemblyProductionCoordinator } from './contracts.js';
 import type { RunAdmissionPort } from '../rungraph/index.js';
+import { isProductionOwnerComposition } from './production-composition.js';
 
 export const productionBootHolds = Object.freeze([
   'NON-EXECUTABLE-UNTIL-replication-peer',
@@ -99,6 +100,7 @@ export function bootProductionInstallation(record: unknown, host: ProductionBoot
         ensure(adapter && typeof adapter.describe === 'function', 'harness: null adapter refused');
         ensure(!/mock|fixture|test-only/i.test(encoded(adapter.describe()).bytes), `harness: mock or test-only adapter refused: ${adapter.id}`);
       }
+      ensure(isProductionOwnerComposition(composition), 'composition: actual production owner constructors required');
       const coordinator = take(bootProductionAssembly(composition, built.manifest, built.scope));
       // The public boot resolves signed history and actual live handles. An
       // optimistic preflight cannot substitute for these owner admissions.
