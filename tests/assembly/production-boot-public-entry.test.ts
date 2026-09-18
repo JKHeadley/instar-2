@@ -18,3 +18,20 @@ it(`boots the public application before Telegram poll; fixture-admitted: ${fixtu
     expect(built.f.opening.kind).toBe('intake-admitted');
   } finally { built?.application.close(); rmSync(root, { recursive: true, force: true }); }
 }, 180000);
+
+it(`installed bin boots the same public application and admits Four; fixture-admitted: ${fixtureAdmissionNames}`, async () => {
+  const { spawn } = await import('node:child_process');
+  const { writeFileSync, readFileSync } = await import('node:fs');
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'production-bin-entry-')));
+  try {
+    const fixture = installedFixtureHost(root, { provider: 'test-provider', model: 'model', route: 'route' });
+    const record = join(root, 'installation.json'); writeFileSync(record, JSON.stringify(fixture.record));
+    const child = spawn(process.execPath, ['--experimental-transform-types', '--import=./tests/assembly/production-boot-source-loader.mjs',
+      'bin/instar-production.mjs', record, 'tests/assembly/production-boot-bin-host.ts'],
+      { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, INSTAR_U4_RECORDED_ACTION: 'boot-only' } });
+    let stderr = ''; child.stderr.on('data', bytes => { stderr += bytes; });
+    const code = await new Promise(resolve => child.once('exit', resolve));
+    expect(code, stderr).toBe(0);
+    expect(JSON.parse(readFileSync(join(root, 'boot-proof.json'), 'utf8'))).toEqual({ admitted: true, calls: ['getMe', 'getUpdates'] });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 180000);

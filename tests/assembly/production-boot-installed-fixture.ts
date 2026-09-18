@@ -54,6 +54,15 @@ export function installedFixtureHost(root, route, options = {}) {
           const bytes = storage.captures.read(reference); if (bytes === null) throw Error(`recovery capture absent: ${reference}`);
           return [reference, bytes];
         })) } : undefined;
+      const physical = createProductionNativeContextIO(storage.captures);
+      let nativeOrdinal = 0;
+      const nativeIO = { ...physical, consume(reference, bytes) {
+        const ordinal = ++nativeOrdinal;
+        options.physicalCheckpoint?.(`native-before-consume-${ordinal}`, state);
+        const result = physical.consume(reference, bytes);
+        options.physicalCheckpoint?.(`native-after-consume-${ordinal}`, state);
+        return result;
+      } };
       const f = createProductionBootOwnerFixture(() => storage.segment, { minimal: true, deferred: true, recovery,
         prepareContext: recovery ? (context, assemblyHost, base) => {
           const dc = context.decode, boundary = { ...base.c, register: dc.register };
@@ -73,7 +82,7 @@ export function installedFixtureHost(root, route, options = {}) {
           const grantRoot = storage.segment.read().find(row => row.kind === 'note' && row.body.identity === 'installation-grant-root');
           if (grantRoot) context.grants.push({ factId: grantRoot.id, grant: t.intake.f.g });
         } : undefined,
-        native: { captures: storage.captures, io: createProductionNativeContextIO(storage.captures) },
+        native: { captures: storage.captures, io: nativeIO },
         intake: { ...initial, facts: [], opening: undefined } });
       underlyingAdmission = f.deps.admission; f.deps.admission = admission;
       const context = f.ctx, dc = context.decode, boundary = { ...f.c, register: dc.register };
@@ -131,8 +140,14 @@ export function installedFixtureHost(root, route, options = {}) {
         resolveSecret: host.resolveSecret, captures: telegramCaptures, machine: 'machine-a', now: () => f.deps.clock(), freshFor: 50,
         identityEvidence: { verification: t.verification, plan: identityPlan.id,
           arm: identityPlan.arms.find(arm => arm.required).id, generation: 'generation:fixture' },
-        io: { invoke: request => { calls.push(request.method); return { kind: 'response', status: 200,
-          bytes: request.method === 'getMe' ? getMe : request.method === 'getUpdates' ? poll : sent }; } } }));
+        io: { invoke: request => {
+          calls.push(request.method);
+          if (request.method === 'sendMessage') options.physicalCheckpoint?.('reply-before-response', state);
+          const response = { kind: 'response', status: 200,
+            bytes: request.method === 'getMe' ? getMe : request.method === 'getUpdates' ? poll : sent };
+          if (request.method === 'sendMessage') options.physicalCheckpoint?.('reply-after-response', state);
+          return response;
+        } } }));
       const admitted = value(admitTelegramAdapter(declaration, { ...t.admissionDependencies, api }));
       const intake = { ...t.intake.deps, context: () => ({ ...context, decode: { ...dc, provenance: t.intake.deps.author.principal.provenance } }), governance: t.governed.governance,
         adapter: createTelegramIntakeAdapter(admitted, api), storage: storage.segment,

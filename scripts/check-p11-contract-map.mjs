@@ -9,8 +9,11 @@ import ts from 'typescript';
 
 const partialReason = 'Executable negative/positive-neighbour contract coverage and the Part Four/Part Ten owner seams are present; production activation remains dark pending independent live phone/provider, semantic-review, and objective mobile evidence.';
 export const productionSwitchOnContract = Object.freeze({
-  executable: Object.freeze(['pre-poll switch-on posture names missing bindings without claiming preserved input']),
-  evidence: 'tests/assembly/production-boot-refusals.test.ts',
+  executable: Object.freeze(['pre-poll switch-on posture names every U4-G missing real binding without claiming preserved input',
+    'public production application uses the real minimal responder after Four preservation and Five answer acceptance']),
+  evidence: Object.freeze(['tests/assembly/production-boot-refusals.test.ts', 'tests/assembly/production-boot-command.test.ts',
+    'tests/assembly/production-boot-conversation.test.ts']),
+  fixtureAdmitted: productionBindingHolds,
   held: productionBindingHolds,
 });
 export const p11HeldCases = Object.freeze([Object.freeze({

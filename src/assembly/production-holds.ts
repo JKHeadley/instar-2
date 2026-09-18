@@ -1,5 +1,5 @@
 /** U4-G: complete missing-real-binding audit of production.ts namedBindings
- * and service.ts activation. These names confer no admission authority. */
+ * and service.ts activation, plus the installed bin driver. These names confer no admission authority. */
 export const productionMissingBindings = Object.freeze([
   'independent-worker-protection',
   'row-83-run-admission-production',
@@ -25,5 +25,6 @@ export const productionMissingBindings = Object.freeze([
   'production-context-sampling',
   'run-governance-policy',
   'provider-settlement-witness',
+  'conversation-driver',
 ] as const);
 export const productionBindingHolds = Object.freeze(productionMissingBindings.map(name => `NON-EXECUTABLE-UNTIL-${name}`));
