@@ -1,8 +1,9 @@
+import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from './genuine-production-fixture.js';
 import { expect, it } from 'vitest';
 import { bootProductionAssembly } from '../../src/assembly/index.js';
 import { refused, value } from '../facts/fixtures.js';
 import { assemblyRuntimeFixture } from './round8-extended-fixture.js';
-import { installProduction, productionBindingSet, productionComposition } from './production-fixture.js';
+import { productionBindingSet, productionComposition } from './production-fixture.js';
 
 const requiredMethods = [
   ['run', 'open', 'RunGraphPort.open'],
@@ -51,7 +52,7 @@ it('P11-NF-43 P11-NF-49 R10-F1 every required production method must be callable
 }, 30_000);
 
 it('P11-NF-43 P11-NF-49 R10-F1 V49 complete required production ports still return the active coordinator', () => {
-  const f = assemblyRuntimeFixture(), binding = productionBindingSet(), installed = installProduction(f, binding);
-  const production = productionComposition(f, binding);
+  const f = groundedAssemblyRuntimeFixture(), binding = productionBindingSet(), installed = installProduction(f, binding);
+  const production = genuineProductionComposition(f, binding);
   expect(value(bootProductionAssembly({ ...f.composition, production }, installed.manifest.id, binding.scope)).owner).toBe('part-ten');
 });

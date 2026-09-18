@@ -1,9 +1,11 @@
 import { consumeOutcome, consumeResult, decode, compareMeasurements, readHistoricalEvidence } from '../index.js';
+import { assemblyRecordFrom } from '../assembly/index.js';
 import type { Clock, Evidence, FactEnvelopeReference, Inventory, Json, Outcome, Result } from '../index.js';
 import { causalCone, causalStanding, decodeHistoricalBody, hashBytes } from '../facts/index.js';
 import type { ConflictClass, FactEnvelope, FactSnapshot } from '../facts/index.js';
 import { foldProjection, readProjection } from '../projections/index.js';
 import type { ProjectionDefinition, ProjectionGeneration } from '../projections/index.js';
+import type { AssemblyHistoryReadPort, AssemblyStoredRecord, AssemblyStoredRecordName, ContextDeliverySpecification, HarnessLaunchSpec, HarnessObservation } from '../assembly/contracts.js';
 import { boundary, encoded, freeze, json, need, object, same, take } from './boundary.js';
 import { constitutional, decodeRun, decodeRunExit, decodeRunTransition, decodeSessionGrounding, factReference, recordFromWire, runKinds } from './records.js';
 import type { CompletedRunExit, Run, RunDecodeContext, RunStep, RunTransition, RunView, SessionGrounding, RunReplayPort } from './types.js';
@@ -95,7 +97,99 @@ function captureBindingFact(fact: FactEnvelope, c: RunDecodeContext): FactEnvelo
   need(causalCone(fact, c.facts.facts).some(f => f.id === selected.ancestor.id), 'grounding capture ancestor missing or unverified');
   return selected.ancestor;
 }
-export function validateGrounding(g: SessionGrounding, run: Run, head: string, pending: readonly RunStep[], c: RunDecodeContext): void {
+export interface GroundingValidationOptions {
+  readonly production?: boolean;
+  readonly assemblyHistory?: AssemblyHistoryReadPort;
+  readonly now?: Clock;
+  readonly candidateStep?: RunStep;
+  readonly transitionTrigger?: FactEnvelopeReference;
+}
+function exactAssembly<N extends AssemblyStoredRecordName>(reference: string, expected: N, history: AssemblyHistoryReadPort, context: RunDecodeContext): Readonly<{
+  fact: FactEnvelope; record: Extract<AssemblyStoredRecord, { type: N }>;
+}> {
+  const row = take(history.lookup(reference));
+  need(row && row.fact.id === reference && row.fact.kind === `assembly-${expected}` && row.record?.type === expected,
+    `exact owner-decoded ${expected} fact required`);
+  need(row.completeness === 'complete' && row.taint.length === 0 && row.conflicts.length === 0,
+    `${expected} fact is partial, tainted, or conflicted`);
+  const decoded = assemblyRecordFrom(row.fact, context);
+  need(same(decoded, row.record), 'resolved record differs from the signed assembly body');
+  const verdict = row.record.type === 'ContextDeliverySpecification'
+    ? (need(history.resolveContextDelivery, 'context delivery history resolver required'), take(history.resolveContextDelivery(row.record)))
+    : take(history.resolve(row.record));
+  need(verdict.admitted, `${expected} history is not admitted`);
+  return { fact: row.fact, record: row.record as Extract<AssemblyStoredRecord, { type: N }> };
+}
+function validateProductionGrounding(g: SessionGrounding, c: RunDecodeContext, options: GroundingValidationOptions): void {
+  const history = options.assemblyHistory; need(history?.owner === 'part-ten', 'production grounding requires the public Ten history reader');
+  need(g.step && g.incarnation && g.contextDeliveryReason, 'production grounding lacks context-delivery identity');
+  need(g.contextDeliveryReason !== 'compaction', 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction');
+  const observed = exactAssembly(g.consumption.id, 'HarnessObservation', history, c).record as HarnessObservation;
+  need(observed.contextDelivery && observed.phase === 'context-consumed', 'production grounding requires a context-consumed observation');
+  const specification = exactAssembly(observed.contextDelivery, 'ContextDeliverySpecification', history, c).record as ContextDeliverySpecification;
+  const launch = exactAssembly(specification.launch, 'HarnessLaunchSpec', history, c).record as HarnessLaunchSpec;
+  const boundaryEvidence = take(history.lookup(observed.boundaryEvidence));
+  need(boundaryEvidence && boundaryEvidence.completeness === 'complete' && boundaryEvidence.taint.length === 0
+    && boundaryEvidence.conflicts.length === 0 && boundaryEvidence.fact.id === observed.boundaryEvidence
+    && boundaryEvidence.fact.kind === 'effect-OperationObservation', 'context consumption boundary evidence is not resolvable');
+  const boundaryBody = object(boundaryEvidence.fact.body), boundaryRecord = object(boundaryBody.record ?? boundaryEvidence.fact.body);
+  const claim = take(history.lookup(specification.claim));
+  need(claim?.fact.kind === 'transport-AdmissionReservation' && claim.completeness === 'complete'
+    && claim.taint.length === 0 && claim.conflicts.length === 0, 'context delivery claim is unavailable');
+  const claimBody = object(claim.fact.body), claimRecord = object(claimBody.record ?? claimBody);
+  need(boundaryRecord.operation === specification.operation && boundaryRecord.claim === specification.claim
+    && boundaryRecord.digest === claimRecord.digest
+    && (boundaryRecord.stage === 'response' || boundaryRecord.stage === 'observer-accepted'),
+  'context consumption boundary evidence differs from the exact delivered operation/claim/bytes');
+  need(specification.reason === 'initial' || specification.reason === 'live-input', 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction');
+  need(g.contextDeliveryReason === specification.reason && g.step === specification.step && g.incarnation === specification.incarnation,
+    'grounding context-delivery reason, step, or incarnation differs');
+  need(specification.run === g.run && specification.harness === g.harness && specification.input === g.intake.id
+    && specification.executionContext === g.executionContext.id && specification.generation === g.generation.id,
+  'context delivery differs from grounding run/input/harness/generation/execution context');
+  need(observed.launch === specification.launch && observed.run === specification.run && observed.step === specification.step
+    && observed.input === specification.input && observed.incarnation === specification.incarnation
+    && observed.generation === specification.generation && same(observed.contextDigests, specification.contextManifest.map(row => row.digest)),
+  'consumption observation differs from its context delivery specification');
+  need(launch.run === specification.run && launch.incarnation === specification.incarnation && launch.harness === specification.harness
+    && launch.artifactDigest === specification.artifactDigest && launch.machine === specification.machine,
+  'context delivery replaced the immutable launch identity');
+  const now = options.now ?? g.at;
+  need(observed.observedAt >= g.at.value && observed.observedAt <= now.value
+    && observed.observedAt + observed.freshFor >= now.value, 'context consumption observation is pre-completed, retimestamped, or stale');
+  const matched = new Set<number>();
+  const intake = g.messages.filter(message => message.fact.id === specification.input);
+  need(intake.length === 1 && intake[0]!.hash === specification.inputDigest,
+    'context delivery input digest differs from the admitted intake bytes');
+  for (const message of g.messages) {
+    const indexes = specification.contextManifest.map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.reference === message.capture && row.digest === message.hash);
+    need(indexes.length === 1, 'context manifest omitted, duplicated, or substituted a grounded message'); matched.add(indexes[0]!.index);
+  }
+  for (const briefing of g.briefingClasses) {
+    const indexes = specification.contextManifest.map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.class === briefing);
+    need(indexes.length === 1, 'context manifest omitted, duplicated, or substituted a briefing class');
+    const row = indexes[0]!.row, material = take(history.lookup(row.reference));
+    need(material?.fact.id === row.reference && material.fact.kind === 'rungraph-briefing-material'
+      && material.completeness === 'complete' && material.taint.length === 0 && material.conflicts.length === 0
+      && material.fact.contentHash === row.digest
+      && object(material.fact.body).class === briefing,
+    'context manifest briefing reference or digest is not current owner material');
+    matched.add(indexes[0]!.index);
+  }
+  need(matched.size === specification.contextManifest.length
+    && specification.contextManifest.length === g.messages.length + g.briefingClasses.length,
+  'context manifest contains extra or overlapping rows');
+  if (options.candidateStep) {
+    need(specification.step === options.candidateStep.id && g.step === options.candidateStep.id,
+      'context delivery step differs from candidate RunStep');
+    if (options.transitionTrigger) need(specification.input === options.transitionTrigger.id,
+      'context delivery input differs from candidate step admitted source');
+  }
+}
+export function validateGrounding(g: SessionGrounding, run: Run, head: string, pending: readonly RunStep[], c: RunDecodeContext,
+  options: GroundingValidationOptions = {}): void {
   need(g.run === run.id && g.expected === head && same(g.principal, run.owner) && same(g.binding, run.resultDestination.binding), 'grounding run/head/principal/binding mismatch');
   need(same(g.directives, run.directives) && same(g.generation, run.generation), 'grounding directives or generation differ');
   need(same([...g.pendingOperations].sort(), pending.map(s => s.operation.key).sort()) && g.children.length === 0, 'grounding omitted pending work');
@@ -125,13 +219,16 @@ export function validateGrounding(g: SessionGrounding, run: Run, head: string, p
   }
   need(g.knownLineages.length === Object.keys(g.frontier).length && g.knownLineages.every(k => Object.hasOwn(g.frontier, k)), 'grounding lineage coverage differs');
   const latest = history.at(-1); need(latest && latest.id === g.lastInbound.id, 'grounding last inbound differs');
-  // Ten's consumption fact is independent evidence of delivery to the named
-  // worker. A history-index enumeration alone cannot satisfy actual grounding.
-  need(body.worker === g.worker && body.harness === g.harness && typeof body.hashes === 'string' && typeof body.classes === 'string'
-    && same(JSON.parse(body.hashes), g.messages.map(m => m.hash))
-    && same(JSON.parse(body.classes), g.briefingClasses), 'harness consumption receipt does not bind delivered context');
+  if (options.production) validateProductionGrounding(g, c, options);
+  else {
+    // Compatibility-only arm. Production activation structurally selects the
+    // signed assembly observation path above and can never accept this receipt.
+    need(body.worker === g.worker && body.harness === g.harness && typeof body.hashes === 'string' && typeof body.classes === 'string'
+      && same(JSON.parse(body.hashes), g.messages.map(m => m.hash))
+      && same(JSON.parse(body.classes), g.briefingClasses), 'harness consumption receipt does not bind delivered context');
+  }
 }
-export function validateTransition(t: RunTransition, view: RunView, c: RunDecodeContext): void {
+export function validateTransition(t: RunTransition, view: RunView, c: RunDecodeContext, options: GroundingValidationOptions = {}): void {
   const run = view.run;
   checkIdentities(json(t), view.identities);
   need(t.run === run.id && t.expected === view.head && t.from === view.state, 'transition expected predecessor/state differs');
@@ -146,7 +243,8 @@ export function validateTransition(t: RunTransition, view: RunView, c: RunDecode
       && view.pending.length < run.budget.maxOutstanding && clockDifference(t.at, run.budget.safetyCeiling, c) <= 0, 'budget ceiling or zero capacity forbids work');
     need(same(s.directives, run.directives) && same(s.resultDestination, run.resultDestination), 'step changed directives/destination');
     const fact = factReference(json(t.grounding), c); need(fact.kind === runKinds.SessionGrounding, 'grounding reference has wrong schema');
-    const grounding = take(decodeSessionGrounding(readRecordFact(fact), c)); validateGrounding(grounding, run, view.head, view.pending, c);
+    const grounding = take(decodeSessionGrounding(readRecordFact(fact), c)); validateGrounding(grounding, run, view.head, view.pending, c,
+      { ...options, candidateStep: s, transitionTrigger: t.trigger });
     need(same(grounding.ownership, t.ownership), 'grounding belongs to another ownership context');
     need(clockDifference(t.at, grounding.at, c) >= 0, 'grounding clock is in the future');
     need(t.blockedOn.kind === 'step' && t.blockedOn.reference === s.id, 'running step must retain an owned pending obligation');
@@ -172,7 +270,8 @@ export function validateTransition(t: RunTransition, view: RunView, c: RunDecode
     validateExit(t.exit, run, view.head, view.pending, view.settled, t.at, c);
   }
 }
-export function foldRun(runId: string, snapshot: FactSnapshot, generation: ProjectionGeneration, c: RunDecodeContext, now: Clock, witnesses: RunReplayPort): Result<RunView> {
+export function foldRun(runId: string, snapshot: FactSnapshot, generation: ProjectionGeneration, c: RunDecodeContext, now: Clock, witnesses: RunReplayPort,
+  groundingOptions: GroundingValidationOptions = {}): Result<RunView> {
   return boundary('RunFold', null, c, () => {
     need(witnesses && typeof witnesses.verify === 'function', 'durable owner witness consumer required');
     const source = take(foldProjection(runProjection(generation), snapshot, generation, c));
@@ -201,7 +300,7 @@ export function foldRun(runId: string, snapshot: FactSnapshot, generation: Proje
       const predecessor = facts.find(f => object(readRecordFact(f)).id === t.expected)
         ?? snapshot.entries.find(e => e.fact.kind === runKinds.Run && object(e.fact.body).run === runId)?.fact;
       need(predecessor && causalCone(fact, c.facts.facts).some(f => f.id === predecessor.id), 'transition is not causally linked to predecessor');
-      validateTransition(t, view, c);
+      validateTransition(t, view, c, { ...groundingOptions, now: groundingOptions.production ? t.at : now });
       if (t.grounding) {
         const groundingFact = factReference(json(t.grounding), c), grounding = take(decodeSessionGrounding(readRecordFact(groundingFact), c));
         need(same(take(witnesses.verify(groundingFact, grounding, view)), factRef(groundingFact)), 'grounding admission witness mismatch');

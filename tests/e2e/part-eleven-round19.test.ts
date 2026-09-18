@@ -1,8 +1,9 @@
+import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
 import { expect, it } from 'vitest';
 import { bootProductionAssembly } from '../../src/assembly/index.js';
 import { canonical } from '../../src/index.js';
 import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
-import { installProduction, productionComposition } from '../assembly/production-fixture.js';
+import { productionComposition } from '../assembly/production-fixture.js';
 import { value } from '../facts/fixtures.js';
 import { round17ProtectionFixture } from '../operator/round17-protection-fixture.js';
 
@@ -11,8 +12,8 @@ function bootWithReceipt(base: string) {
   const requestDigest = value(canonical({ operation: original.operation, path: original.path, base,
     proposedHash: original.proposedHash, authorization: original.authorization }));
   const owner = round17ProtectionFixture({ base, requestDigest: requestDigest.hash });
-  const assembly = assemblyRuntimeFixture(), installed = installProduction(assembly);
-  const composed = productionComposition(assembly, installed.binding);
+  const assembly = groundedAssemblyRuntimeFixture(), installed = installProduction(assembly);
+  const composed = genuineProductionComposition(assembly, installed.binding);
   const production = { ...composed,
     surface: { ...owner.surface, id: installed.binding.surface.adapter.implementation },
     challengeVerifier: { id: installed.binding.surface.challengeVerifier.implementation, port: owner.operator.verifier },

@@ -35,62 +35,62 @@
       "id": "decodeRun",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
+        "hash": "sha256:87abbb5abef1e86427906b92acd2634b82f68d04b9b3e100423aee812f9f37f1"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:fb8da6664f08d3829908ba5ef1f17b7fa5ddaecbb65aaf388b90c9733c06d883"
+        "hash": "sha256:fd177735e2f6795fc816c7b02cbbd8cb9cf2e185534269c10530afbfcf328326"
       }
     },
     {
       "id": "decodeRunStep",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
+        "hash": "sha256:87abbb5abef1e86427906b92acd2634b82f68d04b9b3e100423aee812f9f37f1"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:fb8da6664f08d3829908ba5ef1f17b7fa5ddaecbb65aaf388b90c9733c06d883"
+        "hash": "sha256:fd177735e2f6795fc816c7b02cbbd8cb9cf2e185534269c10530afbfcf328326"
       }
     },
     {
       "id": "decodeRunTransition",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
+        "hash": "sha256:87abbb5abef1e86427906b92acd2634b82f68d04b9b3e100423aee812f9f37f1"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:fb8da6664f08d3829908ba5ef1f17b7fa5ddaecbb65aaf388b90c9733c06d883"
+        "hash": "sha256:fd177735e2f6795fc816c7b02cbbd8cb9cf2e185534269c10530afbfcf328326"
       }
     },
     {
       "id": "decodeRunExit",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
+        "hash": "sha256:87abbb5abef1e86427906b92acd2634b82f68d04b9b3e100423aee812f9f37f1"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:fb8da6664f08d3829908ba5ef1f17b7fa5ddaecbb65aaf388b90c9733c06d883"
+        "hash": "sha256:fd177735e2f6795fc816c7b02cbbd8cb9cf2e185534269c10530afbfcf328326"
       }
     },
     {
       "id": "decodeSessionGrounding",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
+        "hash": "sha256:87abbb5abef1e86427906b92acd2634b82f68d04b9b3e100423aee812f9f37f1"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:fb8da6664f08d3829908ba5ef1f17b7fa5ddaecbb65aaf388b90c9733c06d883"
+        "hash": "sha256:fd177735e2f6795fc816c7b02cbbd8cb9cf2e185534269c10530afbfcf328326"
       }
     },
     {
       "id": "decodeExhaustionRecord",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
+        "hash": "sha256:87abbb5abef1e86427906b92acd2634b82f68d04b9b3e100423aee812f9f37f1"
       },
       "artifact": {
         "path": "src/rungraph/closure-records.ts",
@@ -101,7 +101,7 @@
       "id": "decodeUnreachableRunExit",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:ba1e4840a91b73e77131f4b5f2ef6f5b275a4072f7daee0da367010408dbc89e"
+        "hash": "sha256:87abbb5abef1e86427906b92acd2634b82f68d04b9b3e100423aee812f9f37f1"
       },
       "artifact": {
         "path": "src/rungraph/closure-records.ts",

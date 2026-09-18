@@ -1,0 +1,62 @@
+[
+  {
+    "file": "tests/assembly/round10-regressions.test.ts",
+    "count": 2,
+    "unchanged": true
+  },
+  {
+    "file": "tests/assembly/round12-regressions.test.ts",
+    "count": 2,
+    "unchanged": true
+  },
+  {
+    "file": "tests/e2e/assembly-production.test.ts",
+    "count": 6,
+    "unchanged": true
+  },
+  {
+    "file": "tests/e2e/part-eleven-round17.test.ts",
+    "count": 2,
+    "unchanged": true
+  },
+  {
+    "file": "tests/e2e/part-eleven-round18.test.ts",
+    "count": 7,
+    "unchanged": true
+  },
+  {
+    "file": "tests/e2e/part-eleven-round19.test.ts",
+    "count": 2,
+    "unchanged": true
+  },
+  {
+    "file": "tests/e2e/rereview4-conformance.test.ts",
+    "count": 46,
+    "unchanged": true
+  },
+  {
+    "file": "tests/integration/assembly-production.test.ts",
+    "count": 15,
+    "unchanged": true
+  },
+  {
+    "file": "tests/integration/part-eleven-round18.test.ts",
+    "count": 4,
+    "unchanged": true
+  },
+  {
+    "file": "tests/integration/rereview5-conformance.test.ts",
+    "count": 45,
+    "unchanged": true
+  },
+  {
+    "file": "tests/integration/rereview7-conformance.test.ts",
+    "count": 49,
+    "unchanged": true
+  },
+  {
+    "file": "tests/operator/production-slice-fixture.ts",
+    "count": 0,
+    "unchanged": true
+  }
+]

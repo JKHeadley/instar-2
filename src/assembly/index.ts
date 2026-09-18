@@ -2,7 +2,7 @@ export type * from './contracts.js';
 export type { ModelAdapterPort } from '../judgment/index.js';
 export {
   assemblyShapes, decodeAssemblyRecord, decodeAssemblyManifest, decodeAssemblyAdmission,
-  decodeHarnessLaunchSpec, decodeHarnessObservation, decodeAdapterEvidenceContract, decodeAdapterConformance,
+  decodeHarnessLaunchSpec, decodeContextDeliverySpecification, decodeHarnessObservation, decodeAdapterEvidenceContract, decodeAdapterConformance,
   decodeStoreCustodyPolicy, decodeStorageAccessObservation, decodeLocalCapabilityPackage, decodePackageTransition,
   decodeGrowthPolicy, decodeGrowthObservation, assemblyLogicalKey, assemblyIdentity, compareAssemblyRecords,
   assemblyKindFor, assemblyRecordFrom, assemblyRows, assemblySchemas, registerAssemblyBodies, createAssemblySpine,
@@ -13,6 +13,8 @@ export { createAssemblyRuntime } from './service.js';
 export { bootProductionAssembly, inspectProductionAssemblyBindings, consumeProductionAssembly } from './production.js';
 export { createNativeHarnessAdapter } from './harness.js';
 export type { NativeHarnessDriverPort } from './harness.js';
+export { contextDeliveryIdFor, createConfinedContextDeliveryDriver, createProductionGroundingReader } from './context-delivery.js';
+export type { ConfinedContextDeliveryDriverPort, ContextDeliveryExecutionPort, ProductionGroundingReaderInput } from './context-delivery.js';
 export { createCustodiedPersistenceAdapter } from './persistence.js';
 export { createMediatedStoreReader } from './custody.js';
 export { assemblyProjectionDefinitions } from './storage.js';

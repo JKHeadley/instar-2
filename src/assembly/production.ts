@@ -1,6 +1,8 @@
+import { productionGraphMatches } from './grounding-capability.js';
 import { consumeResult } from '../index.js';
 import type { Result } from '../index.js';
 import { requiredMinimalDependencies } from '../operator/index.js';
+import { isProductionGroundedRunGraph } from '../rungraph/index.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import { factReferenceAliases } from './records.js';
 import { currentAssemblyRows } from './history.js';
@@ -295,6 +297,8 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
     requireMethod(witness.observe, 'AssemblyPlatformDeliveryWitnessPort.observe');
 
     const admission = take(runtime.admit(manifestId, scope));
+    ensure(productionGraphMatches(production.run.port, composition, scope),
+      'production boot requires genuine graph/native harness/runtime/store/scope provenance');
     const handles = Object.freeze({ persistence: composition.persistence, harnesses: composition.harnesses, model: composition.model,
       intake: production.verifiedActIntake, run: production.run, lease: production.lease, judgment: production.judgment,
       effect: production.effect, verification: production.verification, verificationClock: production.verificationClock,

@@ -1,13 +1,43 @@
 import { consumeOutcome, consumeResult, decode, readEvidence } from '../index.js';
 import type { Result } from '../index.js';
-import type { FactEnvelope } from '../facts/index.js';
+import type { FactEnvelope, FactStorePort } from '../facts/index.js';
 import { causalCone } from '../facts/index.js';
-import type { AdmissionReservation, DispatchClaim } from '../transport/index.js';
+import { createTransportAuthority, createTransportSpine } from '../transport/index.js';
+import type { TransportHost, AdmissionReservation, DispatchClaim, FenceToken } from '../transport/index.js';
 import type { EffectComposition, EffectDoorway, EffectRecord, EffectRequest, EffectSettlement, EffectValidation,
   OperationDefinition, OperationObservation, OutboundMessage } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
-import { definitionCheck, live, rows, wire } from './records.js';
-import { issuedSettlement, withSettlement } from './settlement-authority.js';
+import { definitionCheck, live, rows, wire, readHarnessLiveInputCapture, harnessLiveInputAuthor } from './records.js';
+import { issuedSettlement, withSettlement, consumeEffectSettlement } from './settlement-authority.js';
+
+export interface HarnessLiveInputExecutionPort {
+  readonly owner: 'part-eight';
+  admit(request: EffectRequest, fence: FenceToken): Result<Readonly<{ operation: string; claim: string }>>;
+  deliver(input: Readonly<{ specification: Readonly<{ operation: string; claim: string; inputDigest: string; run: string }>;
+    operation: string; claim: string; processIdentity: string }>): Result<string>;
+  observe(input: Readonly<{ specification: Readonly<{ operation: string; claim: string; inputDigest: string; run: string }>;
+    operation: string; processIdentity: string }>): Result<Readonly<{ phase: 'context-consumed'; evidence: string; detail: string }>>;
+}
+const liveInputFactories = new WeakMap<object, () => HarnessLiveInputExecutionPort>();
+const doorwayOrigins = new WeakMap<object, EffectComposition>();
+const liveInputStores = new WeakMap<object, FactStorePort>();
+/** Only a real Eight doorway can expose the additive live-input arm. */
+export function createHarnessLiveInputExecution(doorway: EffectDoorway, transportHost: TransportHost): HarnessLiveInputExecutionPort {
+  const composition = doorwayOrigins.get(doorway);
+  ensure(composition, 'live-input execution requires a genuine Eight doorway');
+  ensure(transportHost.incarnation === composition.host.incarnation && transportHost.machine === composition.host.machine
+    && transportHost.principal.id === composition.host.principal.id, 'live-input Six/Eight executor identity differs');
+  // Own the actual Six constructor/delegation here. A caller-supplied method-
+  // shaped transport, or a wrapper that skips consume(), cannot be certified.
+  const author = harnessLiveInputAuthor(composition.spine);
+  const transport = createTransportAuthority(transportHost,
+    createTransportSpine(transportHost, author, composition.spine.store), composition.host.boundary, consumeEffectSettlement);
+  const confined = createEffectDoorway({ ...composition, transport });
+  return liveInputFactories.get(confined)!();
+}
+export function isHarnessLiveInputExecution(port: object, store: FactStorePort): boolean {
+  return liveInputStores.get(port) === store;
+}
 
 export function createEffectDoorway(composition: EffectComposition): EffectDoorway {
   const { host, spine, transport, durability, custody, adapter, assessment } = composition;
@@ -56,6 +86,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
     ensure(encoded(stored.record).bytes === encoded(q).bytes, 'request handoff changed');
     const d = find(q.definition, 'OperationDefinition'), m = find(q.message, 'OutboundMessage');
     definitionCheck(d.record, host);
+    ensure((m.record.purpose === 'context-delivery') === (d.record.feature === 'harness-live-input'), 'live-input payload requires its governed harness-live-input definition');
     const capabilities = adapter.describe();
     ensure(adapter.owner === 'part-ten' && adapter.id === d.record.adapter && capabilities.contract.length > 0
       && capabilities.account === m.record.account && capabilities.conversation === m.record.conversation
@@ -65,7 +96,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
     return { d, m, q: stored };
   };
   const validation = (q: EffectRequest, phase: 'reservation' | 'dispatch') => {
-    const { d } = actual(q), c = host.current();
+    const { d } = actual(q), c = d.record.feature === 'harness-live-input' ? host.current(d.record.feature) : host.current();
     const fields = { request: q.id, digest: q.digest, phase, generation: c.decode.register.generation.id,
       definition: d.record.id, expires: c.clock.value + d.record.timeout, authority: [...c.authority] };
     const record = { type: 'EffectValidation', schemaVersion: 1, id: `validation:${encoded(fields).hash}`, ...fields } as unknown as EffectValidation;
@@ -106,11 +137,11 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
     owner: 'part-eight',
     inspect: () => checked('EffectInspect', null, () => rows(snapshot())),
     prepare: input => checked('EffectPrepare', input, () => {
-      live(host); ensure(input.run.owner === 'part-five' && input.run.name === 'Run' && input.run.id === input.message.run, 'run owner mismatch');
+      live(host, input.message.purpose === 'context-delivery' ? 'harness-live-input' : undefined); ensure(input.run.owner === 'part-five' && input.run.name === 'Run' && input.run.id === input.message.run, 'run owner mismatch');
       const d = find(input.definition, 'OperationDefinition'); definitionCheck(d.record, host);
       const m = persist(input.message, [input.message.sourceResult]);
       const closure = [...new Set([...input.closure, input.pending, input.obligation, d.fact.id,
-        find(m.id, 'OutboundMessage').fact.id, ...host.current().authority])];
+        find(m.id, 'OutboundMessage').fact.id, ...(d.record.feature === 'harness-live-input' ? host.current(d.record.feature) : host.current()).authority])];
       const q = persist({ type: 'EffectRequest', schemaVersion: 1,
         id: `request:${encoded([m.account, m.conversation, m.semanticMessage]).hash}`, definition: d.record.id,
         message: m.id, semanticMessage: m.semanticMessage, run: m.run, pending: input.pending, attempt: input.attempt,
@@ -134,7 +165,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
     // other rule (validation, durability demand, actual re-check) is prepare's, so the
     // reused `dispatch`/`handoff`/`settle` path is byte-identical.
     adopt: input => checked('EffectAdopt', input, () => {
-      live(host); ensure(input.run.owner === 'part-five' && input.run.name === 'Run' && input.run.id === input.message.run, 'run owner mismatch');
+      live(host, input.message.purpose === 'context-delivery' ? 'harness-live-input' : undefined); ensure(input.run.owner === 'part-five' && input.run.name === 'Run' && input.run.id === input.message.run, 'run owner mismatch');
       const d = find(input.definition, 'OperationDefinition'); definitionCheck(d.record, host);
       // Validate the CALLER's admission BEFORE persisting anything, so a refused
       // adoption leaves no dispatchable EffectRequest behind (R1). The request identity
@@ -152,7 +183,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       // admission — never a second six reservation. dispatch/handoff/settle apply unchanged.
       const m = persist(input.message, [input.message.sourceResult]);
       const closure = [...new Set([...input.closure, input.pending, input.obligation, d.fact.id,
-        find(m.id, 'OutboundMessage').fact.id, ...host.current().authority])];
+        find(m.id, 'OutboundMessage').fact.id, ...(d.record.feature === 'harness-live-input' ? host.current(d.record.feature) : host.current()).authority])];
       const q = persist({ type: 'EffectRequest', schemaVersion: 1,
         id: requestId, definition: d.record.id,
         message: m.id, semanticMessage: m.semanticMessage, run: m.run, pending: input.pending, attempt: input.attempt,
@@ -191,7 +222,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       ensure(admissionMatches(op.reservation, q, d.record), 'reservation does not match the dispatched request');
       const v = rows(snapshot()).filter(v => v.record.type === 'EffectValidation' && v.record.request === q.id && v.record.phase === 'dispatch').at(-1);
       ensure(v?.record.type === 'EffectValidation' && v.record.expires > host.current().clock.value
-        && encoded(v.record.authority).bytes === encoded(host.current().authority).bytes, 'current dispatch validation required');
+        && encoded(v.record.authority).bytes === encoded((d.record.feature === 'harness-live-input' ? host.current(d.record.feature) : host.current()).authority).bytes, 'current dispatch validation required');
       ensure(op.claim, 'claim not durable');
       ensure(causalCone(op.claim, snapshot()).some(f => f.id === v.fact.id), 'claim must follow its dispatch validation');
       demand(d.record, factsFor([...q.closure, find(q.id, 'EffectRequest').fact.id, v.fact.id, op.fact.id, op.claim.id]));
@@ -312,5 +343,58 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       demand(d, [find(settlement.id, 'EffectSettlement').fact]); return revalidate(() => issue(settlement));
     });
   }
+  doorwayOrigins.set(api, composition);
+  liveInputFactories.set(api, () => {
+    const claims = new Map<string, { request: EffectRequest; fence: FenceToken; claim: DispatchClaim; reservation: AdmissionReservation }>();
+    const execution: HarnessLiveInputExecutionPort = Object.freeze({ owner: 'part-eight' as const,
+      admit: (request: EffectRequest, fence: FenceToken) => checked('HarnessLiveInputAdmission', request, () => {
+        const { m, d } = actual(request);
+        ensure(m.record.purpose === 'context-delivery' && d.record.feature === 'harness-live-input', 'harness live-input role required');
+        const reserved = take(transport.inspect()).filter(row => row.record.type === 'AdmissionReservation'
+          && row.record.request === request.id).at(-1);
+        ensure(reserved?.record.type === 'AdmissionReservation' && reserved.record.state === 'prepared', 'live-input operation is not prepared; recovery is observation only');
+        validation(request, 'dispatch');
+        const claim = take(transport.claim(`claim:${request.id}`, fence, reserved.record.operation));
+        claims.set(claim.operation, { request, fence, claim, reservation: reserved.record });
+        return freeze({ operation: claim.operation, claim: operation(claim.operation).claim!.id });
+      }),
+      deliver: (input: Parameters<HarnessLiveInputExecutionPort['deliver']>[0]) => checked('HarnessLiveInputHandoff', input, () => {
+        const held = claims.get(input.operation), spec = input.specification;
+        ensure(held && spec.operation === input.operation && spec.claim === input.claim
+          && held.request.run === spec.run
+          && operation(input.operation).claim?.id === input.claim, 'exact live-input claim/request required');
+        const { m } = actual(held.request);
+        ensure(m.record.purpose === 'context-delivery', 'ordinary reply cannot deliver harness context');
+        ensure((m.record.context?.input.hash ?? held.request.digest) === spec.inputDigest, 'live-input captured input digest differs');
+        // Burn before entering the real handoff. Six performs the durable consume
+        // before adapter.invoke; no reconstructed executor can reissue this handle.
+        claims.delete(input.operation);
+        const result = take(api.handoff(held.request, held.reservation, held.claim, held.fence));
+        ensure(result.stage === 'response', 'live-input adapter did not return acceptance evidence');
+        const acceptance = rows(snapshot()).find(row => row.record.type === 'OperationObservation'
+          && row.record.operation === input.operation && row.record.stage === 'executor-accepted');
+        ensure(acceptance, 'durable executor acceptance missing');
+        return acceptance.fact.id;
+      }),
+      observe: (input: Parameters<HarnessLiveInputExecutionPort['observe']>[0]) => checked('HarnessLiveInputConsumption', input, () => {
+        const op = operation(input.operation), spec = input.specification;
+        const request = find(op.reservation.request, 'EffectRequest').record;
+        const { m } = actual(request);
+        ensure(op.reservation.state === 'consumed' && op.reservation.digest === request.digest
+          && (m.record.context?.input.hash ?? request.digest) === spec.inputDigest
+          && op.reservation.run === spec.run && op.claim?.id === spec.claim, 'consumed live-input owner claim required');
+        const observation = priorObservation(input.operation);
+        ensure(observation?.stage === 'response', 'live-input response is missing or uncertain');
+        const response = JSON.parse(readHarnessLiveInputCapture(spine, observation.capture)) as Record<string, unknown>;
+        ensure(response.type === 'harness-context-consumed' && response.operation === input.operation
+          && response.digest === request.digest && response.processIdentity === input.processIdentity,
+          'response does not witness this process consuming this live input');
+        return freeze({ phase: 'context-consumed' as const, evidence: find(observation.id, 'OperationObservation').fact.id,
+          detail: 'the admitted harness boundary witnessed exact live-input consumption' });
+      }),
+    });
+    liveInputStores.set(execution, spine.store);
+    return execution;
+  });
   return Object.freeze(api);
 }

@@ -2,9 +2,9 @@ import type { ConflictClass, FactEnvelope, FactSnapshot } from '../facts/index.j
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { assemblyIdentity, assemblyRecordFrom, assemblyReferences, assemblyRowForReference, assemblyRows,
   factReferenceAliases, referenceHasExpectedKind } from './records.js';
-import type { AssemblyDecodeContext, AssemblyHistoryVerdict, AssemblyRecord, AssemblySpine, CurrentAssemblyFact } from './contracts.js';
+import type { AssemblyDecodeContext, AssemblyHistoryVerdict, AssemblyStoredRecord, AssemblySpine, CurrentAssemblyFact } from './contracts.js';
 
-function sameIdentity(left: AssemblyRecord, right: AssemblyRecord): boolean {
+function sameIdentity(left: AssemblyStoredRecord, right: AssemblyStoredRecord): boolean {
   return left.type === right.type && (left.id === right.id || assemblyIdentity(left).logicalKey === assemblyIdentity(right).logicalKey);
 }
 
@@ -14,6 +14,15 @@ export function currentAssemblyRows(snapshot: FactSnapshot, context: AssemblyDec
   return freeze(records.map(row => {
     const status = byFact.get(row.fact.id)!; const conflicts = [...status.conflicts];
     for (const other of records) {
+      if (other !== row && row.record.type === 'ContextDeliverySpecification'
+        && other.record.type === 'ContextDeliverySpecification'
+        && row.record.launch === other.record.launch
+        && row.record.previousDelivery === other.record.previousDelivery
+        && row.record.operation !== other.record.operation) {
+        conflicts.push({ key: `context-delivery-order:${row.record.launch}:${row.record.previousDelivery}`,
+          kind: 'immutable-disagreement', facts: [row.fact.id, other.fact.id].sort(),
+          detail: 'signed context deliveries have competing immediate successors' });
+      }
       if (other === row || !sameIdentity(row.record, other.record)) continue;
       const left = assemblyIdentity(row.record), right = assemblyIdentity(other.record);
       if (left.canonicalHash !== right.canonicalHash) conflicts.push({ key: left.logicalKey, kind: 'immutable-disagreement',
@@ -24,7 +33,7 @@ export function currentAssemblyRows(snapshot: FactSnapshot, context: AssemblyDec
   }));
 }
 
-export function resolveAssemblyHistory(record: AssemblyRecord, spine: AssemblySpine, context: AssemblyDecodeContext): ReturnType<AssemblySpine['store']['readForProjection']> extends infer _ ? import('../index.js').Result<AssemblyHistoryVerdict> : never {
+export function resolveAssemblyHistory(record: AssemblyStoredRecord, spine: AssemblySpine, context: AssemblyDecodeContext): ReturnType<AssemblySpine['store']['readForProjection']> extends infer _ ? import('../index.js').Result<AssemblyHistoryVerdict> : never {
   return boundary('AssemblyHistoryResolution', record, context, () => {
     const snapshot = take(spine.store.readForProjection());
     const rows = currentAssemblyRows(snapshot, context); const all = snapshot.entries;
@@ -62,7 +71,7 @@ export function resolveAssemblyHistory(record: AssemblyRecord, spine: AssemblySp
   });
 }
 
-export function exactFactForRecord(record: AssemblyRecord, facts: readonly FactEnvelope[], context: AssemblyDecodeContext): FactEnvelope | undefined {
+export function exactFactForRecord(record: AssemblyStoredRecord, facts: readonly FactEnvelope[], context: AssemblyDecodeContext): FactEnvelope | undefined {
   const hash = assemblyIdentity(record).canonicalHash;
   return facts.find(fact => fact.kind === `assembly-${record.type}` && assemblyIdentity(assemblyRecordFrom(fact, context)).canonicalHash === hash);
 }

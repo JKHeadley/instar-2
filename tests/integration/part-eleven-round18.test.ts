@@ -1,9 +1,10 @@
+import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
 import { expect, it } from 'vitest';
 import { bootProductionAssembly } from '../../src/assembly/index.js';
 import type { AssemblyProductionCoordinator } from '../../src/assembly/index.js';
 import { consumeResult } from '../../src/index.js';
 import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
-import { installProduction, productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
+import { productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
 import { value } from '../facts/fixtures.js';
 import { round17ProtectionFixture } from '../operator/round17-protection-fixture.js';
 
@@ -21,8 +22,8 @@ it.each([
   ['V78', 'generation:other', false],
 ] as const)('%s P11-NF-33/36/38/42/49 compares the register handle with the owner current generation',
   (_case, generation, accepted) => {
-    const fixture = assemblyRuntimeFixture(), binding = productionBindingSet();
-    const installed = installProduction(fixture, binding), base = productionComposition(fixture, binding);
+    const fixture = groundedAssemblyRuntimeFixture(), binding = productionBindingSet();
+    const installed = installProduction(fixture, binding), base = genuineProductionComposition(fixture, binding);
     const production = { ...base, dependencyAdmission: { ...base.dependencyAdmission,
       admit(input: Parameters<typeof base.dependencyAdmission.admit>[0]) {
         const handle = value(base.dependencyAdmission.admit(input));

@@ -1,13 +1,14 @@
+import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
 import { expect, it } from 'vitest';
 import { bootProductionAssembly } from '../../src/assembly/index.js';
 import { refused, value } from '../facts/fixtures.js';
 import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
-import { appendProductionBindingFacts, assertDependencyRoster, installProduction, productionBindingSet,
+import { appendProductionBindingFacts, assertDependencyRoster, productionBindingSet,
   productionComposition } from '../assembly/production-fixture.js';
 
 it('P10-NF-03 P10-NF-04 P10-NF-40 P10-NF-45 P10-NF-51 P10-NF-52 [P10-SEAM-04] the full public assembly boot returns one coordinator with every owner handle', () => {
-  const f = assemblyRuntimeFixture(); const binding = productionBindingSet(); assertDependencyRoster(binding);
-  const installed = installProduction(f, binding); const production = productionComposition(f, binding);
+  const f = groundedAssemblyRuntimeFixture(); const binding = productionBindingSet(); assertDependencyRoster(binding);
+  const installed = installProduction(f, binding); const production = genuineProductionComposition(f, binding);
   const coordinator = value(bootProductionAssembly({ ...f.composition, production }, installed.manifest.id, binding.scope));
   expect(coordinator).toMatchObject({ owner: 'part-ten', scope: binding.scope, admission: { id: installed.admission.id, disposition: 'active' } });
   expect(Object.keys(coordinator.handles)).toEqual([

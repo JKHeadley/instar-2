@@ -20,7 +20,9 @@ export const effectShapes: Readonly<Record<string, OwnedShape>> = freeze({
     adapter: text, account: text, conversation: text, speaker: text, scopeDigest: text, durability: text,
     replicas: integer, lossModel: text, maxBytes: integer, maxCharge: integer, timeout: integer, verificationBar: text } },
   OutboundMessage: { kind: 'object', fields: { ...common, semanticMessage: text, run: text, speaker: text,
-    account: text, conversation: text, text: { kind: 'text', maxLength: 4096 }, purpose: text, sourceResult: text } },
+    account: text, conversation: text, text: { kind: 'text', maxLength: 4096 }, purpose: text, sourceResult: text,
+    context: { kind: 'object', fields: { input: { kind: 'object', fields: { fact: text, reference: text, hash: text } },
+      manifest: { kind: 'array', maxLength: 64, items: { kind: 'object', fields: { class: text, reference: text, digest: text } } } } } }, optional: ['context'] },
   EffectRequest: { kind: 'object', fields: { ...common, definition: text, message: text, semanticMessage: text,
     run: text, pending: text, attempt: text, digest: text, verificationOwner: text, verificationBar: text,
     obligation: text, closure: refs } },
@@ -52,11 +54,15 @@ function shapeCheck(v: unknown, shape: OwnedShape): void {
   if (shape.kind === 'capture') { shapeCheck(v, { kind: 'object', fields: { reference: text, hash: text } }); return; }
   ensure(shape.kind === 'object' && v && typeof v === 'object' && !Array.isArray(v), 'closed object required');
   const r = v as Record<string, unknown>;
-  ensure(Object.keys(r).length === Object.keys(shape.fields).length, 'missing or undeclared field');
-  for (const [k, s] of Object.entries(shape.fields)) { ensure(Object.hasOwn(r, k), `missing ${k}`); shapeCheck(r[k], s); }
+  ensure(Object.keys(r).every(k => Object.hasOwn(shape.fields, k))
+    && Object.keys(shape.fields).every(k => shape.optional?.includes(k) || Object.hasOwn(r, k)), 'missing or undeclared field');
+  for (const [k, s] of Object.entries(shape.fields)) {
+    if (shape.optional?.includes(k) && !Object.hasOwn(r, k)) continue;
+    ensure(Object.hasOwn(r, k), `missing ${k}`); shapeCheck(r[k], s);
+  }
 }
-export function live(host: EffectHost): void {
-  const c = host.current(); ensure(!c.stopped, 'stop inhibits effect');
+export function live(host: EffectHost, feature?: string): void {
+  const c = feature === 'harness-live-input' ? host.current(feature) : host.current(); ensure(!c.stopped, 'stop inhibits effect');
   const principal = take(decode('VerifiedPrincipal', host.principal, { ...c.decode, provenance: host.principal.provenance }));
   const now = take(decodeMeasurement('clock', c.clock, c.decode));
   const scope = take(decode('Scope', host.scope, c.decode));
@@ -68,7 +74,7 @@ export function live(host: EffectHost): void {
   ensure(c.authority.length > 0, 'authority closure missing');
 }
 export function definitionCheck(d: OperationDefinition, host: EffectHost): void {
-  const c = host.current(); live(host);
+  const c = d.feature === 'harness-live-input' ? host.current(d.feature) : host.current(); live(host, d.feature);
   const chain = walkVersions(c.versions);
   ensure(chain.conflicts.length === 0, 'governed definition contested');
   const v = chain.current.find(v => v.id === d.version && v.subject === d.feature);
@@ -93,11 +99,14 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     ensure((r.durability === 'replicated' && r.replicas > 0) || (r.durability === 'local-durable' && r.replicas === 0), 'invalid durability demand');
     if (origin) definitionCheck(r, host);
   } else if (r.type === 'OutboundMessage') {
-    ensure(r.purpose === 'ordinary-reply' && r.speaker === host.principal.id && r.text.length > 0
+    if (r.context) ensure(r.purpose === 'context-delivery' && r.context.input.fact === r.sourceResult
+      && /^sha256:[a-f0-9]{64}$/.test(r.context.input.hash), 'explicit context input binding required');
+    ensure((r.purpose === 'ordinary-reply' || r.purpose === 'context-delivery') && r.speaker === host.principal.id && r.text.length > 0
       && r.semanticMessage.length > 0 && r.sourceResult.length > 0, 'attributable reply required');
     ensure(past.some(f => f.id === r.sourceResult), 'source result fact missing');
   } else if (r.type === 'EffectRequest') {
     const d = find(r.definition, 'OperationDefinition'), m = find(r.message, 'OutboundMessage');
+    ensure((m.purpose === 'context-delivery') === (d.feature === 'harness-live-input'), 'live-input payload requires its governed harness-live-input definition');
     ensure(r.id === `request:${encoded([m.account, m.conversation, m.semanticMessage]).hash}`, 'stable semantic identity required');
     ensure(r.digest === encoded(m).hash && r.semanticMessage === m.semanticMessage && r.run === m.run, 'request/message binding');
     ensure(m.account === d.account && m.conversation === d.conversation && m.speaker === d.speaker
@@ -152,8 +161,12 @@ export function effectSchemas(host: EffectHost): readonly FactSchema[] {
     standing: 'requester', action: 'work', scope: host.scope, causallyBound: false,
     requiredReferences: [], authority: 'none' }));
 }
+const genuineEffectRegistrations = new WeakSet<object>();
+export function isHarnessLiveInputOwnerRegistration(registration: OwnedBodyRegistration): boolean {
+  return genuineEffectRegistrations.has(registration);
+}
 export function registerEffectBodies(host: EffectHost): Result<readonly OwnedBodyRegistration[]> {
-  return boundary('EffectRegistrations', null, host.boundary, () => Object.entries(effectShapes).map(([name, shape]) => take(registerOwnedBody({
+  return boundary('EffectRegistrations', null, host.boundary, () => Object.entries(effectShapes).map(([name, shape]) => { const registration = take(registerOwnedBody({
     name, owner: 'part-eight', currentVersion: 1, versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
     decodeCurrent: (input, c) => {
       try {
@@ -166,28 +179,40 @@ export function registerEffectBodies(host: EffectHost): Result<readonly OwnedBod
         return { ok: true, value: freeze(input) };
       } catch (e) { return { ok: false, detail: e instanceof Error ? e.message : 'effect record refused' }; }
     },
-  }, shape, host.boundary))));
+  }, shape, host.boundary)); genuineEffectRegistrations.add(registration); return registration; }));
 }
 export function decodeOutboundMessage(input: unknown, host: EffectHost): Result<OutboundMessage> {
   return boundary('OutboundMessageInput', input, host.boundary, () => {
     const safe = json(input); shapeCheck(safe, effectShapes.OutboundMessage!);
     const m = safe as unknown as OutboundMessage;
-    ensure(m.type === 'OutboundMessage' && m.schemaVersion === 1 && m.id.length > 0 && m.purpose === 'ordinary-reply'
+    ensure(m.type === 'OutboundMessage' && m.schemaVersion === 1 && m.id.length > 0 && (m.purpose === 'ordinary-reply' || m.purpose === 'context-delivery')
       && m.speaker === host.principal.id && m.text.length > 0, 'message identity, purpose or speaker');
+    if (m.context) ensure(m.purpose === 'context-delivery' && m.context.input.fact === m.sourceResult
+      && /^sha256:[a-f0-9]{64}$/.test(m.context.input.hash), 'explicit context input binding required');
     return freeze(m);
   });
 }
+const liveInputAuthors = new WeakMap<object, EffectAuthor>();
+export function harnessLiveInputAuthor(spine: EffectSpine): EffectAuthor {
+  const author = liveInputAuthors.get(spine); ensure(author, 'live-input requires a genuine Eight spine'); return author;
+}
+export function readHarnessLiveInputCapture(spine: EffectSpine, capture: { reference: string; hash: string }): string {
+  const stored = liveInputAuthors.get(spine)?.context.captures?.[capture.reference];
+  ensure(stored?.status === 'available' && typeof stored.bytes === 'string' && stored.hash === capture.hash, 'live-input response capture unavailable');
+  return stored.bytes;
+}
 export function createEffectSpine(host: EffectHost, author: EffectAuthor, store: FactStorePort): EffectSpine {
-  return Object.freeze({ store, append: (record: EffectRecord, required: readonly string[]) => authorAndAppend({
+  const spine = Object.freeze({ store, append: (record: EffectRecord, required: readonly string[]) => authorAndAppend({
     kind: kindFor(record.type), schemaVersion: 1, machine: host.machine,
     principal: json(host.principal), provenance: json(host.principal.provenance), at: json(host.current().clock),
     body: { record: wire(record) }, required,
   }, author.context, store, author.privateKey) });
+  liveInputAuthors.set(spine, author); return spine;
 }
 export function installOperationDefinition(input: unknown, host: EffectHost, spine: EffectSpine): Result<OperationDefinition> {
   return boundary('OperationDefinitionInput', input, host.boundary, () => {
     const safe = json(input); shapeCheck(safe, effectShapes.OperationDefinition!);
     const d = safe as unknown as OperationDefinition; definitionCheck(d, host);
-    take(spine.append(d, host.current().authority)); return freeze(d);
+    take(spine.append(d, (d.feature === 'harness-live-input' ? host.current(d.feature) : host.current()).authority)); return freeze(d);
   });
 }

@@ -1,0 +1,11 @@
+--- a/src/assembly/records.ts
++++ b/src/assembly/records.ts
+@@ -527,6 +527,8 @@
+   'context delivery claim is not the current one-use claim for this operation/input/run');
+   const request = decodedOwnerRecord(String(claim.request), 'effect-EffectRequest', 'part-eight', 'EffectRequest', context).record;
+   const definition = decodedOwnerRecord(String(request.definition), 'effect-OperationDefinition', 'part-eight', 'OperationDefinition', context).record;
++  const payload = decodedOwnerRecord(String(request.message), 'effect-OutboundMessage', 'part-eight', 'OutboundMessage', context).record;
++  ensure(payload.purpose === 'context-delivery', 'ordinary reply is not a context delivery');
+   ensure(request.run === record.run && request.digest === record.inputDigest && definition.id === request.definition,
+     'context delivery operation is not bound through the decoded Eight request/definition');
+   const execution = decodedOwnerRecord(record.executionContext, 'transport-Lease', 'part-six', 'Lease', context).record;

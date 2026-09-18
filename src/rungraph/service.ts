@@ -4,12 +4,17 @@ import { boundary, encoded, freeze, json, need, object, same, take } from './bou
 import { factRef, foldRun, readRecordFact, validateGrounding, validateTransition, outcomeAt, clockDifference } from './graph.js';
 import { decodeRun, decodeRunTransition, decodeSessionGrounding, factReference, recordReferences, recordWire, runKinds } from './records.js';
 import { checkIdentities, identityIndex } from './identity.js';
+import { consumeProductionGroundingRead, productionGroundingReaderScope, bindProductionGroundedGraph, isDeclaredFactoryReader } from '../assembly/grounding-capability.js';
+import { isProductionGroundingReader, issueProductionGroundedGraph } from './types.js';
 import type { RunDecodeContext, RunGraphDependencies, RunGraphPort, RunRecord, RunView } from './types.js';
 import { runGraphConstruct, preserveRunInput, runAdmission, stepAdmission, transitionAdmission, stopAdmission, exitAdmission, groundingAdmission } from './rungraph.js';
 
 /** No effect executor lives here. Six/eight consume a DURABLY admitted step;
  * returned views and caller annotations are never admission authority. */
 export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
+  // Bind the actual delegation; mutating the caller's composition cannot turn
+  // an admitted production graph into a compatibility-only graph after boot.
+  d = Object.freeze({ ...d });
   return boundary('CreateRunGraph', null, d.context, () => {
     need(d.governance, 'verified governed gate installation required'); runGraphConstruct(d.governance);
     need(d.writer?.owner === 'part-ten' && typeof d.writer.append === 'function', 'real fact writer required');
@@ -17,6 +22,9 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       && typeof d.admission.verify === 'function' && typeof d.admission.execution === 'function'
       && typeof d.admission.reservation === 'function', 'conditional admission, execution context, reservation and durable witness reader required');
     need(d.grounding?.owner === 'part-ten' && typeof d.grounding.read === 'function', 'actual-start grounding reader required');
+    need(!d.grounding.production || d.assemblyHistory?.owner === 'part-ten', 'production grounding requires public Ten assembly history');
+    need(!d.grounding.production || isProductionGroundingReader(d.grounding) || isDeclaredFactoryReader(d.grounding),
+      'production grounding requires the invocation-bound Ten delivery reader');
     need(d.settlement?.owner === 'part-eight' && typeof d.settlement.read === 'function', 'settlement consumer required');
     need(d.control?.owner === 'part-four' && typeof d.control.verify === 'function', 'control consumer required');
     need(d.exitCheck?.owner === 'part-nine' && typeof d.exitCheck.verify === 'function', 'exit check consumer required');
@@ -25,11 +33,19 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       && Number.isSafeInteger(d.groundingPolicy.threshold) && d.groundingPolicy.threshold > 0
       && Number.isSafeInteger(d.groundingPolicy.maxAge) && d.groundingPolicy.maxAge > 0
       && d.groundingPolicy.briefingClasses.length > 0, 'registered positive grounding policy required');
-    const context = (): RunDecodeContext => ({ ...d.context, facts: { ...d.context.facts, facts: take(d.store.read()) } });
+    const context = (): RunDecodeContext => ({ ...d.context, facts: { ...d.context.facts,
+      // Preservation can add a capture during this call. Resolve the owner's
+      // current capture table at consumption, including physical custody loss.
+      get captures() { return d.context.facts.captures; }, facts: take(d.store.read()) } });
+    const groundingValidation = (now: import('../index.js').Clock, candidateStep?: import('./types.js').RunStep,
+      transitionTrigger?: FactEnvelopeReference) => ({ now,
+      ...(d.grounding.production ? { production: true as const, assemblyHistory: d.assemblyHistory! } : {}),
+      ...(candidateStep ? { candidateStep } : {}), ...(transitionTrigger ? { transitionTrigger } : {}) });
     const replay = (id: string): Readonly<{ view: RunView; transition: Readonly<{ fact: FactEnvelope; record: Extract<RunRecord, { type: 'RunTransition' }> }> | undefined }> => {
       let transition: Readonly<{ fact: FactEnvelope; record: Extract<RunRecord, { type: 'RunTransition' }> }> | undefined;
       const snapshot = take(d.store.readForProjection()), c = context();
-      const view = take(foldRun(id, snapshot, d.generation(), c, d.clock(), { verify: (fact, record, before) => boundary('RunReplayWitness', null, c, () => {
+      const now = d.clock();
+      const view = take(foldRun(id, snapshot, d.generation(), c, now, { verify: (fact, record, before) => boundary('RunReplayWitness', null, c, () => {
         need(same(take(d.admission.verify(factRef(fact))), factRef(fact)), 'durable admission witness missing');
         if (record.type === 'RunTransition' && before) {
           if (record.step) {
@@ -46,7 +62,7 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
           if (record.exit) need(same(take(d.exitCheck.verify(record.exit, before.run, record.at)), record.exit.check), 'exit replay witness mismatch');
           transition = { fact, record };
         } return factRef(fact);
-      }) }));
+      }) }, groundingValidation(now)));
       return { view, transition };
     };
     const read = (id: string): RunView => replay(id).view;
@@ -72,7 +88,7 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       })));
       need(calls === 1 && written && same(written, receipt), 'admission did not commit the exact callback record'); return receipt;
     };
-    return freeze({
+    const graph = freeze({
       owner: 'part-five',
       read: (run: string) => boundary('ReadRun', run, d.context, () => read(run)),
       readExit: run => boundary('ReadRunExit', run, d.context, safe => {
@@ -103,19 +119,25 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
         const execution = take(d.admission.execution(run, ownership));
         need(execution.worker === worker && execution.harness === harness && same(execution.ownership, ownership), 'worker/harness differs from verified execution context');
         factReference(json(execution.context), context());
-        const before = d.clock(), input = take(d.grounding.read({ run: view, worker, harness, reason, execution })), after = d.clock();
+        const before = d.clock(), invocation = {};
+        const readResult = take(d.grounding.read({ run: view, worker, harness, reason, execution, invocation }));
+        const input = d.grounding.production
+          ? consumeProductionGroundingRead(d.grounding, invocation, readResult)
+          : readResult;
+        const after = d.clock();
         const grounding = take(preserveRunInput(input, context(), d.governance, captured => groundingAdmission(input, captured, d.governance)));
         need(grounding.worker === worker && grounding.harness === harness && grounding.reason === reason
           && same(grounding.ownership, execution.ownership) && same(grounding.executionContext, execution.context)
           && clockDifference(grounding.at, before, context()) >= 0 && clockDifference(after, grounding.at, context()) >= 0, 'grounding reused an intake clock or another worker');
         need(grounding.threshold === d.groundingPolicy.threshold && same(grounding.briefingClasses, d.groundingPolicy.briefingClasses), 'grounding changed governed coverage policy');
-        validateGrounding(grounding, view.run, view.head, view.pending, context());
+        validateGrounding(grounding, view.run, view.head, view.pending, context(), groundingValidation(after));
         const parent = predecessor(view);
         const receipt = once(write => d.admission.commit({ run, expected: view.head, ownership, generation: view.run.generation,
           operation: grounding.id, digest: encoded(grounding).hash, durability: { kind: 'local-durable' } }, write), () => {
           need(read(run).head === view.head, 'run changed during grounding');
           need(same(take(d.admission.execution(run, ownership)), execution), 'execution context changed during grounding');
-          validateGrounding(grounding, view.run, view.head, view.pending, context());
+          const commitNow = d.clock();
+          validateGrounding(grounding, view.run, view.head, view.pending, context(), groundingValidation(commitNow));
           return append(grounding, [parent.id]);
         }); return receipt.fact;
       }),
@@ -130,7 +152,7 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
         once(write => d.admission.commit({ run: t.run, expected: t.expected, ownership: t.ownership, generation: t.generation,
           operation: t.step?.operation.key ?? t.id, digest: t.step?.operation.digest ?? encoded(t).hash, durability: { kind: 'local-durable' } }, write), () => {
           const current = read(t.run), c = context(), now = d.clock();
-          need(current.conflicts.length === 0, 'conflicted head inhibits admission'); validateTransition(t, current, c);
+          need(current.conflicts.length === 0, 'conflicted head inhibits admission'); validateTransition(t, current, c, groundingValidation(now));
           const age = clockDifference(now, t.at, c); need(age >= 0 && age <= d.groundingPolicy.maxAge, 'transition clock stale or uncertain');
           if (t.grounding) {
             const fact = c.facts.facts.find(f => f.id === t.grounding!.id); need(fact, 'grounding absent');
@@ -142,7 +164,7 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
             factReference(json(execution.context), c);
             const groundingAge = clockDifference(now, g.at, c); need(groundingAge >= 0 && groundingAge <= d.groundingPolicy.maxAge, 'actual-start grounding stale');
             need(g.threshold === d.groundingPolicy.threshold && same(g.briefingClasses, d.groundingPolicy.briefingClasses), 'grounding policy mismatch');
-            validateGrounding(g, current.run, current.head, current.pending, c);
+            validateGrounding(g, current.run, current.head, current.pending, c, groundingValidation(now, t.step, t.trigger));
             need(c.facts.facts.filter(f => c.stimulusKinds.includes(f.kind)).every(f => g.messages.some(m => m.fact.id === f.id)), 'new inbound requires fresh grounding');
           }
           if (t.settlement) {
@@ -159,5 +181,6 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
         return read(t.run);
       })),
     } satisfies RunGraphPort);
+    return d.grounding.production ? bindProductionGroundedGraph(graph, d.grounding, d.store, d.assemblyHistory, d.generation().reference.id) : graph;
   });
 }

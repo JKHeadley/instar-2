@@ -16,7 +16,10 @@ export interface OperationDefinition extends RecordIdentity {
 export interface OutboundMessage extends RecordIdentity {
   readonly type: 'OutboundMessage'; readonly semanticMessage: string; readonly run: string;
   readonly speaker: string; readonly account: string; readonly conversation: string;
-  readonly text: string; readonly purpose: 'ordinary-reply'; readonly sourceResult: string;
+  readonly text: string; readonly purpose: 'ordinary-reply' | 'context-delivery'; readonly sourceResult: string;
+  /** Explicit captured input when the input is not itself this canonical payload. */
+  readonly context?: Readonly<{ input: Readonly<{ fact: string; reference: string; hash: string }>;
+    manifest: readonly Readonly<{ class: string; reference: string; digest: string }>[] }>;
 }
 export interface EffectRequest extends RecordIdentity {
   readonly type: 'EffectRequest'; readonly definition: string; readonly message: string;
@@ -52,7 +55,7 @@ export interface EffectHost {
   readonly machine: string; readonly incarnation: string; readonly principal: VerifiedPrincipal;
   readonly scope: Scope; readonly boundary: BoundaryContext;
   // Non-waiting local snapshot/clock accessor; never refresh external providers here.
-  current(): { readonly decode: DecodeContext; readonly clock: Clock; readonly stopped: boolean;
+  current(feature?: string): { readonly decode: DecodeContext; readonly clock: Clock; readonly stopped: boolean;
     readonly versions: readonly GovernedVersion[]; readonly authority: readonly string[] };
   capture(bytes: string): Result<{ readonly reference: string; readonly hash: string }>;
 }

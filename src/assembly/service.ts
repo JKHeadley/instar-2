@@ -1,8 +1,9 @@
+import { registerAssemblyRuntime } from './grounding-capability.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import { assemblyLogicalKey, assemblyRows, compareAssemblyRecords, decodeAssemblyRecord, factReferenceAliases,
   validateAssemblyRecordReferences } from './records.js';
 import { currentAssemblyRows, resolveAssemblyHistory } from './history.js';
-import type { AdapterConformance, AssemblyAdmission, AssemblyComposition, AssemblyManifest, AssemblyRecord, AssemblyRecordName, AssemblyRuntimePort } from './contracts.js';
+import type { AdapterConformance, AssemblyAdmission, AssemblyComposition, AssemblyManifest, AssemblyStoredRecord, AssemblyStoredRecordName, AssemblyRuntimePort } from './contracts.js';
 
 function activeConformance(record: AdapterConformance, generation: string, now: number, bindings: readonly AssemblyManifest['publicPorts'][number][]): boolean {
   return record.disposition === 'passed' && record.generation === generation && record.validUntil >= now && record.stageChecks.length > 0
@@ -31,26 +32,33 @@ export function createAssemblyRuntime(composition: AssemblyComposition): Assembl
         conflicts: assembly ? [...status.conflicts, ...assembly.conflicts] : status.conflicts,
         completeness: assembly?.record.type === 'GrowthObservation' && assembly.record.completion === 'incomplete' ? 'partial' as const : 'complete' as const });
     }),
-    resolve: (record: AssemblyRecord) => resolveAssemblyHistory(record, spine, runtimeContext),
+    resolve: (record: import('./contracts.js').AssemblyRecord) => resolveAssemblyHistory(record, spine, runtimeContext),
+    resolveContextDelivery: (record: import('./contracts.js').ContextDeliverySpecification) => resolveAssemblyHistory(record, spine, runtimeContext),
   });
-  runtimeContext = Object.freeze({ ...host.boundary, history, validateReferences: false });
+  runtimeContext = Object.freeze({ ...host.boundary, history, validateReferences: false,
+    get ownerFacts() {
+      const facts = host.current().facts;
+      return { ...facts, facts: take(spine.store.read()) };
+    } });
   const inspect = () => boundary('AssemblyInspect', null, runtimeContext, () => assemblyRows(take(spine.store.read()), runtimeContext));
   const inspectCurrent = () => history.current();
-  return Object.freeze({ owner: 'part-ten' as const,
-    record<N extends AssemblyRecordName>(name: N, input: unknown) {
-      return boundary('AssemblyRecord', input, host.boundary, () => {
-        ensure(!host.current().stopped || name === 'HarnessObservation' || name === 'StorageAccessObservation' || name === 'GrowthObservation' || name === 'AssemblyAdmission', 'stop inhibits new assembly work');
-        const candidate = take(decodeAssemblyRecord(name, input, runtimeContext));
-        validateAssemblyRecordReferences(candidate, runtimeContext);
-        const existing = take(inspect()).find(row => row.record.type === name &&
-          (row.record.id === candidate.id || assemblyLogicalKey(row.record) === assemblyLogicalKey(candidate)));
-        if (existing) { const compared = take(compareAssemblyRecords(name, existing.record, candidate, runtimeContext));
-          ensure(compared.equal, compared.conflict?.detail ?? 'assembly identity conflict'); return existing.record as Extract<AssemblyRecord, { type: N }>; }
-        take(spine.append(candidate)); return candidate;
-      });
-    },
+  const record = <N extends AssemblyStoredRecordName>(name: N, input: unknown) =>
+    boundary<Extract<AssemblyStoredRecord, { type: N }>>('AssemblyRecord', input, host.boundary, () => {
+      ensure(!host.current().stopped || name === 'HarnessObservation' || name === 'StorageAccessObservation' || name === 'GrowthObservation' || name === 'AssemblyAdmission', 'stop inhibits new assembly work');
+      const candidate = take(decodeAssemblyRecord(name, input, runtimeContext));
+      validateAssemblyRecordReferences(candidate, runtimeContext);
+      const existing = take(inspect()).find(row => row.record.type === name &&
+        (row.record.id === candidate.id || assemblyLogicalKey(row.record) === assemblyLogicalKey(candidate)));
+      if (existing) { const compared = take(compareAssemblyRecords(name, existing.record, candidate, runtimeContext));
+        ensure(compared.equal, compared.conflict?.detail ?? 'assembly identity conflict'); return existing.record as Extract<AssemblyStoredRecord, { type: N }>; }
+      take(spine.append(candidate)); return candidate;
+    });
+  const runtime: AssemblyRuntimePort = Object.freeze({ owner: 'part-ten' as const, history,
+    record: <N extends import('./contracts.js').AssemblyRecordName>(name: N, input: unknown) => record(name, input),
+    recordContextDelivery: (input: unknown) => record('ContextDeliverySpecification', input),
     inspect, inspectCurrent,
-    resolve(record: AssemblyRecord) { return history.resolve(record); },
+    resolve(record: AssemblyStoredRecord) { return record.type === 'ContextDeliverySpecification'
+      ? history.resolveContextDelivery(record) : history.resolve(record); },
     admit(manifestId: string, scope: string) {
       return boundary('AssemblyAdmissionConsumption', { manifestId, scope }, host.boundary, () => {
         const current = host.current(); ensure(!current.stopped, 'stopped assembly cannot activate scope');
@@ -95,4 +103,6 @@ export function createAssemblyRuntime(composition: AssemblyComposition): Assembl
       });
     },
   });
+  registerAssemblyRuntime(runtime, composition, history);
+  return runtime;
 }

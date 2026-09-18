@@ -1,0 +1,336 @@
+diff --git a/tests/assembly/round10-regressions.test.ts b/tests/assembly/round10-regressions.test.ts
+index 49d98bd..f53c6fd 100644
+--- a/tests/assembly/round10-regressions.test.ts
++++ b/tests/assembly/round10-regressions.test.ts
+@@ -1,8 +1,9 @@
++import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from './genuine-production-fixture.js';
+ import { expect, it } from 'vitest';
+ import { bootProductionAssembly } from '../../src/assembly/index.js';
+ import { refused, value } from '../facts/fixtures.js';
+ import { assemblyRuntimeFixture } from './round8-extended-fixture.js';
+-import { installProduction, productionBindingSet, productionComposition } from './production-fixture.js';
++import { productionBindingSet, productionComposition } from './production-fixture.js';
+ 
+ const requiredMethods = [
+   ['run', 'open', 'RunGraphPort.open'],
+@@ -51,7 +52,7 @@ it('P11-NF-43 P11-NF-49 R10-F1 every required production method must be callable
+ }, 30_000);
+ 
+ it('P11-NF-43 P11-NF-49 R10-F1 V49 complete required production ports still return the active coordinator', () => {
+-  const f = assemblyRuntimeFixture(), binding = productionBindingSet(), installed = installProduction(f, binding);
+-  const production = productionComposition(f, binding);
++  const f = groundedAssemblyRuntimeFixture(), binding = productionBindingSet(), installed = installProduction(f, binding);
++  const production = genuineProductionComposition(f, binding);
+   expect(value(bootProductionAssembly({ ...f.composition, production }, installed.manifest.id, binding.scope)).owner).toBe('part-ten');
+ });
+diff --git a/tests/assembly/round12-regressions.test.ts b/tests/assembly/round12-regressions.test.ts
+index fb70a89..d4aaf14 100644
+--- a/tests/assembly/round12-regressions.test.ts
++++ b/tests/assembly/round12-regressions.test.ts
+@@ -1,9 +1,10 @@
++import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from './genuine-production-fixture.js';
+ import { expect, it } from 'vitest';
+ import { bootProductionAssembly } from '../../src/assembly/index.js';
+ import { consumeResult } from '../../src/index.js';
+ import type { Result } from '../../src/index.js';
+ import { assemblyRuntimeFixture } from './round8-extended-fixture.js';
+-import { installProduction, productionBindingSet, productionComposition } from './production-fixture.js';
++import { productionBindingSet, productionComposition } from './production-fixture.js';
+ 
+ const accepted = <T>(result: Result<T>) => consumeResult(result, {
+   Success: () => true, Refused: () => false,
+@@ -17,7 +18,7 @@ it('V70 P11-NF-49 P11-NF-51 a blank platform cannot satisfy the required product
+ });
+ 
+ it('V71 P11-NF-49 P11-NF-51 a named platform remains an accepted production delivery witness binding', () => {
+-  const f = assemblyRuntimeFixture(), binding = productionBindingSet();
+-  const installed = installProduction(f, binding), production = productionComposition(f, binding);
++  const f = groundedAssemblyRuntimeFixture(), binding = productionBindingSet();
++  const installed = installProduction(f, binding), production = genuineProductionComposition(f, binding);
+   expect(accepted(bootProductionAssembly({ ...f.composition, production }, installed.manifest.id, binding.scope))).toBe(true);
+ });
+diff --git a/tests/e2e/assembly-production.test.ts b/tests/e2e/assembly-production.test.ts
+index 3adbda0..8e511fd 100644
+--- a/tests/e2e/assembly-production.test.ts
++++ b/tests/e2e/assembly-production.test.ts
+@@ -1,3 +1,4 @@
++import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
+ import { mkdtempSync } from 'node:fs';
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+@@ -7,7 +8,7 @@ import type { AssemblyProductionCoordinator } from '../../src/assembly/index.js'
+ import { createFactStore } from '../../src/facts/index.js';
+ import { privateKey, refused, value } from '../facts/fixtures.js';
+ import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
+-import { installProduction, productionComposition } from '../assembly/production-fixture.js';
++import { productionComposition } from '../assembly/production-fixture.js';
+ // @ts-expect-error The physical file adapter is an executable JavaScript boundary.
+ import { createTransportFileStorage } from '../../scripts/transport-file-storage.mjs';
+ 
+@@ -34,8 +35,8 @@ function handleIdentity(coordinator: AssemblyProductionCoordinator) {
+ 
+ it('P10-NF-06 P10-NF-08 P10-NF-40 P10-NF-45 P10-NF-51 P10-NF-52 P10-NF-54 [P10-SEAM-07] durable restart recovers the same production handles after a deterministic mid-admission cut', () => {
+   const directory = mkdtempSync(join(tmpdir(), 'p10-production-'));
+-  const seed = assemblyRuntimeFixture(f => createTransportFileStorage(directory, <T>(run: () => T) => f.success(run())));
+-  const installed = installProduction(seed); const firstProduction = productionComposition(seed, installed.binding);
++  const seed = groundedAssemblyRuntimeFixture(f => createTransportFileStorage(directory, <T>(run: () => T) => f.success(run())));
++  const installed = installProduction(seed); const firstProduction = genuineProductionComposition(seed, installed.binding);
+   const first = value(bootProductionAssembly({ ...seed.composition, production: firstProduction }, installed.manifest.id, installed.binding.scope));
+   const expected = handleIdentity(first);
+ 
+@@ -46,7 +47,7 @@ it('P10-NF-06 P10-NF-08 P10-NF-40 P10-NF-45 P10-NF-51 P10-NF-52 P10-NF-54 [P10-S
+ 
+   const restartedStore = createFactStore(seed.context, seed.storage);
+   const restartedSpine = createAssemblySpine(seed.host, { context: seed.context, privateKey }, restartedStore);
+-  const restartedProduction = productionComposition(seed, installed.binding);
++  const restartedProduction = genuineProductionComposition(seed, installed.binding, { spine: restartedSpine });
+   const restarted = value(bootProductionAssembly({ ...seed.composition, spine: restartedSpine, production: restartedProduction },
+     installed.manifest.id, installed.binding.scope));
+   expect(handleIdentity(restarted)).toEqual(expected);
+diff --git a/tests/e2e/part-eleven-round17.test.ts b/tests/e2e/part-eleven-round17.test.ts
+index 9d63cc2..776cf37 100644
+--- a/tests/e2e/part-eleven-round17.test.ts
++++ b/tests/e2e/part-eleven-round17.test.ts
+@@ -1,15 +1,16 @@
++import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
+ import { expect, it } from 'vitest';
+ import { bootProductionAssembly } from '../../src/assembly/index.js';
+ import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
+-import { installProduction, productionComposition } from '../assembly/production-fixture.js';
++import { productionComposition } from '../assembly/production-fixture.js';
+ import { value } from '../facts/fixtures.js';
+ import { round17ProtectionFixture } from '../operator/round17-protection-fixture.js';
+ 
+ it('V95/V96 P11-NF-10/11/13 production boot exposes protected only for a complete broker receipt', () => {
+   for (const [attestation, posture] of [['broker-receipt', 'protected'], ['', 'unprotected']] as const) {
+     const owner = round17ProtectionFixture({ attestation });
+-    const assembly = assemblyRuntimeFixture(), installed = installProduction(assembly);
+-    const base = productionComposition(assembly, installed.binding);
++    const assembly = groundedAssemblyRuntimeFixture(), installed = installProduction(assembly);
++    const base = genuineProductionComposition(assembly, installed.binding);
+     const production = { ...base,
+       surface: { ...owner.surface, id: installed.binding.surface.adapter.implementation },
+       challengeVerifier: { id: installed.binding.surface.challengeVerifier.implementation, port: owner.operator.verifier },
+diff --git a/tests/e2e/part-eleven-round18.test.ts b/tests/e2e/part-eleven-round18.test.ts
+index 3d4201d..1c4a08c 100644
+--- a/tests/e2e/part-eleven-round18.test.ts
++++ b/tests/e2e/part-eleven-round18.test.ts
+@@ -1,7 +1,8 @@
++import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
+ import { expect, it } from 'vitest';
+ import { bootProductionAssembly } from '../../src/assembly/index.js';
+ import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
+-import { installProduction, productionComposition } from '../assembly/production-fixture.js';
++import { productionComposition } from '../assembly/production-fixture.js';
+ import { value } from '../facts/fixtures.js';
+ import { productionOperatorSlice } from '../operator/production-slice-fixture.js';
+ import { round17ProtectionFixture } from '../operator/round17-protection-fixture.js';
+@@ -13,8 +14,8 @@ it.each([
+ ] as const)('%s e2e: the public production coordinator exposes contradictory broker evidence as unprotected',
+   (_case, patch) => {
+     const owner = round17ProtectionFixture(patch);
+-    const assembly = assemblyRuntimeFixture(), installed = installProduction(assembly);
+-    const base = productionComposition(assembly, installed.binding);
++    const assembly = groundedAssemblyRuntimeFixture(), installed = installProduction(assembly);
++    const base = genuineProductionComposition(assembly, installed.binding);
+     const production = { ...base,
+       surface: { ...owner.surface, id: installed.binding.surface.adapter.implementation },
+       challengeVerifier: { id: installed.binding.surface.challengeVerifier.implementation, port: owner.operator.verifier },
+diff --git a/tests/e2e/part-eleven-round19.test.ts b/tests/e2e/part-eleven-round19.test.ts
+index b1e84e4..6235d56 100644
+--- a/tests/e2e/part-eleven-round19.test.ts
++++ b/tests/e2e/part-eleven-round19.test.ts
+@@ -1,8 +1,9 @@
++import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
+ import { expect, it } from 'vitest';
+ import { bootProductionAssembly } from '../../src/assembly/index.js';
+ import { canonical } from '../../src/index.js';
+ import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
+-import { installProduction, productionComposition } from '../assembly/production-fixture.js';
++import { productionComposition } from '../assembly/production-fixture.js';
+ import { value } from '../facts/fixtures.js';
+ import { round17ProtectionFixture } from '../operator/round17-protection-fixture.js';
+ 
+@@ -11,8 +12,8 @@ function bootWithReceipt(base: string) {
+   const requestDigest = value(canonical({ operation: original.operation, path: original.path, base,
+     proposedHash: original.proposedHash, authorization: original.authorization }));
+   const owner = round17ProtectionFixture({ base, requestDigest: requestDigest.hash });
+-  const assembly = assemblyRuntimeFixture(), installed = installProduction(assembly);
+-  const composed = productionComposition(assembly, installed.binding);
++  const assembly = groundedAssemblyRuntimeFixture(), installed = installProduction(assembly);
++  const composed = genuineProductionComposition(assembly, installed.binding);
+   const production = { ...composed,
+     surface: { ...owner.surface, id: installed.binding.surface.adapter.implementation },
+     challengeVerifier: { id: installed.binding.surface.challengeVerifier.implementation, port: owner.operator.verifier },
+diff --git a/tests/e2e/rereview4-conformance.test.ts b/tests/e2e/rereview4-conformance.test.ts
+index df9d723..de1c52a 100644
+--- a/tests/e2e/rereview4-conformance.test.ts
++++ b/tests/e2e/rereview4-conformance.test.ts
+@@ -1,3 +1,4 @@
++import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
+ import { expect, it, afterEach } from 'vitest';
+ import { intakeFixture, value, refused } from '../intake/fixtures.js';
+ import { canonical, decode } from '../../src/index.js';
+@@ -5,7 +6,7 @@ import { hashBytes } from '../../src/facts/index.js';
+ import { operatorFixture } from '../operator/fixture.js';
+ import { createOperatorSurface, evaluateGenesisReplay, evaluateMinimalPath, minimalResponse, requiredMinimalDependencies } from '../../src/operator/index.js';
+ import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
+-import { installProduction, productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
++import { productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
+ import { bootProductionAssembly, inspectProductionAssemblyBindings } from '../../src/assembly/index.js';
+ import { assemblyInput } from '../assembly/fixture.js';
+ 
+@@ -26,7 +27,7 @@ it('V16 declined request cannot replay',()=>{const f=intakeFixture(),v=f.verifie
+ it.each([['V17 base',{currentBase:'base:changed'}],['V18 artifact',{artifact:hashBytes('changed')}]] )('%s current mismatch refuses',(_name,change)=>{const f=intakeFixture(),v=f.verifiedAct();Object.assign(f.context,{decode:{...f.context.decode,...change}});refused(f.port().admitVerifiedAct(v.input),'current');});
+ it('V19 expiry boundary accepts at expiry, refuses after',()=>{for(const time of [200,201]){const f=intakeFixture(),v=f.verifiedAct();f.setTime(time); const r=f.port().admitVerifiedAct(v.input);if(time===200)expect(value(r).kind).toBe('approved');else refused(r,'expired');}});
+ it('V20 independent emergency stop accepts despite unavailable request capture',()=>{const f=intakeFixture();Object.assign(f.context,{decode:{...f.context.decode,register:{...f.context.decode.register,actions:{...f.context.decode.register.actions,'emergency-stop':{protected:true,repository:false}}}}});const v=f.verifiedAct({action:'emergency-stop'});f.dropCapture(v.requestEvidence.reference);expect(value(f.port().admitVerifiedAct(v.input)).kind).toBe('emergency-stopped');});
+-it('V21 clean assembly resolves and boots',()=>{const f=assemblyRuntimeFixture(),x=installProduction(f);const r=value(bootProductionAssembly({...f.composition,production:productionComposition(f,x.binding)},x.manifest.id,x.binding.scope));expect(r.references.every(r=>r.completeness==='complete')).toBe(true);});
++it('V21 clean assembly resolves and boots',()=>{const f=groundedAssemblyRuntimeFixture(),x=installProduction(f);const r=value(bootProductionAssembly({...f.composition,production:genuineProductionComposition(f,x.binding)},x.manifest.id,x.binding.scope));expect(r.references.every(r=>r.completeness==='complete')).toBe(true);});
+ it('V22 wrong signed dependency kind refuses',()=>{const f=assemblyRuntimeFixture(),base=productionBindingSet();const clock=base.dependencies.find(r=>r.name==='clock')!;const b={...base,dependencies:base.dependencies.map(r=>r.name==='route'?{...r,fact:clock.fact}:r)};const x=installProduction(f,b);refused(bootProductionAssembly({...f.composition,production:productionComposition(f,b)},x.manifest.id,b.scope),'conversation-route');});
+ it('V23 incomplete resolvable binding remains partial and refuses boot',()=>{const f=assemblyRuntimeFixture();const p=value(f.runtime.record('GrowthObservation',{...assemblyInput('GrowthObservation'),id:'partial:test',completion:'incomplete',sampleCount:0,timeouts:1}));const base=productionBindingSet();const b={...base,dependencies:base.dependencies.map(r=>r.name==='local-facts'?{...r,fact:{reference:p.id,expectedKind:'assembly-GrowthObservation',required:true}}:r)};const x=installProduction(f,b as any),c={...f.composition,production:productionComposition(f,b as any)};expect(value(inspectProductionAssemblyBindings(c,x.manifest.id,b.scope)).find(r=>r.name==='dependency:local-facts')!.completeness).toBe('partial');refused(bootProductionAssembly(c,x.manifest.id,b.scope),'partial');});
+ it.each(requiredMinimalDependencies.map((d,i)=>[`V${24+i}`,d]))('%s missing %s preserves owned outage and refuses response',(_id,name)=>{const f=operatorFixture();const admitted=Object.fromEntries(requiredMinimalDependencies.map(d=>[d,d!==name]));const s=value(evaluateMinimalPath({admitted:admitted as any,ordinaryUnavailable:[],inputPreserved:true,repairOwner:'repair',maximumExposure:9},f.f.c));expect(s.maximumExposure).toBe(9);expect(s.replayCount).toBe(0);refused(minimalResponse(s,{attributable:true,pending:[],blocked:[],uncertain:[],emergencyStop:false},f.f.c));});
+diff --git a/tests/integration/assembly-production.test.ts b/tests/integration/assembly-production.test.ts
+index 934904e..a5fa9d7 100644
+--- a/tests/integration/assembly-production.test.ts
++++ b/tests/integration/assembly-production.test.ts
+@@ -1,13 +1,14 @@
++import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
+ import { expect, it } from 'vitest';
+ import { bootProductionAssembly } from '../../src/assembly/index.js';
+ import { refused, value } from '../facts/fixtures.js';
+ import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
+-import { appendProductionBindingFacts, assertDependencyRoster, installProduction, productionBindingSet,
++import { appendProductionBindingFacts, assertDependencyRoster, productionBindingSet,
+   productionComposition } from '../assembly/production-fixture.js';
+ 
+ it('P10-NF-03 P10-NF-04 P10-NF-40 P10-NF-45 P10-NF-51 P10-NF-52 [P10-SEAM-04] the full public assembly boot returns one coordinator with every owner handle', () => {
+-  const f = assemblyRuntimeFixture(); const binding = productionBindingSet(); assertDependencyRoster(binding);
+-  const installed = installProduction(f, binding); const production = productionComposition(f, binding);
++  const f = groundedAssemblyRuntimeFixture(); const binding = productionBindingSet(); assertDependencyRoster(binding);
++  const installed = installProduction(f, binding); const production = genuineProductionComposition(f, binding);
+   const coordinator = value(bootProductionAssembly({ ...f.composition, production }, installed.manifest.id, binding.scope));
+   expect(coordinator).toMatchObject({ owner: 'part-ten', scope: binding.scope, admission: { id: installed.admission.id, disposition: 'active' } });
+   expect(Object.keys(coordinator.handles)).toEqual([
+diff --git a/tests/integration/part-eleven-round18.test.ts b/tests/integration/part-eleven-round18.test.ts
+index a048d41..7dc95a7 100644
+--- a/tests/integration/part-eleven-round18.test.ts
++++ b/tests/integration/part-eleven-round18.test.ts
+@@ -1,9 +1,10 @@
++import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
+ import { expect, it } from 'vitest';
+ import { bootProductionAssembly } from '../../src/assembly/index.js';
+ import type { AssemblyProductionCoordinator } from '../../src/assembly/index.js';
+ import { consumeResult } from '../../src/index.js';
+ import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
+-import { installProduction, productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
++import { productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
+ import { value } from '../facts/fixtures.js';
+ import { round17ProtectionFixture } from '../operator/round17-protection-fixture.js';
+ 
+@@ -21,8 +22,8 @@ it.each([
+   ['V78', 'generation:other', false],
+ ] as const)('%s P11-NF-33/36/38/42/49 compares the register handle with the owner current generation',
+   (_case, generation, accepted) => {
+-    const fixture = assemblyRuntimeFixture(), binding = productionBindingSet();
+-    const installed = installProduction(fixture, binding), base = productionComposition(fixture, binding);
++    const fixture = groundedAssemblyRuntimeFixture(), binding = productionBindingSet();
++    const installed = installProduction(fixture, binding), base = genuineProductionComposition(fixture, binding);
+     const production = { ...base, dependencyAdmission: { ...base.dependencyAdmission,
+       admit(input: Parameters<typeof base.dependencyAdmission.admit>[0]) {
+         const handle = value(base.dependencyAdmission.admit(input));
+diff --git a/tests/integration/rereview5-conformance.test.ts b/tests/integration/rereview5-conformance.test.ts
+index 2912759..3adb13f 100644
+--- a/tests/integration/rereview5-conformance.test.ts
++++ b/tests/integration/rereview5-conformance.test.ts
+@@ -1,3 +1,4 @@
++import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
+ import { beforeEach, expect, it } from 'vitest';
+ import { hashBytes } from '../../src/facts/index.js';
+ import { evaluateGenesisReplay, evaluateMinimalPath, minimalResponse, requiredMinimalDependencies } from '../../src/operator/index.js';
+@@ -6,7 +7,7 @@ import { intakeFixture, message, refused, route, value } from '../intake/fixture
+ import { operatorFixture } from '../operator/fixture.js';
+ import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
+ import { assemblyInput } from '../assembly/fixture.js';
+-import { installProduction, productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
++import { productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
+ 
+ // Several production-assembly refusal cases are synchronously CPU-bound. Give
+ // Vitest's worker RPC one turn between cases so already-sent task updates cannot
+@@ -29,7 +30,7 @@ it.each([['V15 approve','approve','approved'],['V16 decline','decline','declined
+ it.each([['V17 base',{currentBase:'base:changed'}],['V18 artifact',{artifact:hashBytes('changed')}]] )('%s mismatch refuses',(_name,change)=>{const f=intakeFixture(),v=f.verifiedAct();Object.assign(f.context,{decode:{...f.context.decode,...change}});refused(f.port().admitVerifiedAct(v.input),'current');});
+ it('V19 exact expiry accepts; one tick later refuses',()=>{for(const n of [200,201]){const f=intakeFixture(),v=f.verifiedAct();f.setTime(n);if(n===200)expect(value(f.port().admitVerifiedAct(v.input)).kind).toBe('approved');else refused(f.port().admitVerifiedAct(v.input),'expired');}});
+ it('V20 verified stop accepts despite unavailable request evidence',()=>{const f=intakeFixture();Object.assign(f.context,{decode:{...f.context.decode,register:{...f.context.decode.register,actions:{...f.context.decode.register.actions,'emergency-stop':{protected:true,repository:false}}}}});const v=f.verifiedAct({action:'emergency-stop'});f.dropCapture(v.requestEvidence.reference);expect(value(f.port().admitVerifiedAct(v.input)).kind).toBe('emergency-stopped');});
+-it('V21 clean assembly boots 24 complete references',()=>{const f=assemblyRuntimeFixture(),x=installProduction(f);const r=value(bootProductionAssembly({...f.composition,production:productionComposition(f,x.binding)},x.manifest.id,x.binding.scope));expect(r.references).toHaveLength(24);expect(r.references.every(row=>row.completeness==='complete')).toBe(true);});
++it('V21 clean assembly boots 24 complete references',()=>{const f=groundedAssemblyRuntimeFixture(),x=installProduction(f);const r=value(bootProductionAssembly({...f.composition,production:genuineProductionComposition(f,x.binding)},x.manifest.id,x.binding.scope));expect(r.references).toHaveLength(24);expect(r.references.every(row=>row.completeness==='complete')).toBe(true);});
+ it('V22 route declared as clock is refused by fixed role kind',()=>{const f=assemblyRuntimeFixture(),b=productionBindingSet();const c=b.dependencies.find(row=>row.name==='clock')!;const changed={...b,dependencies:b.dependencies.map(row=>row.name==='route'?{...row,fact:c.fact}:row)};const x=installProduction(f,changed);refused(bootProductionAssembly({...f.composition,production:productionComposition(f,changed)},x.manifest.id,b.scope),'conversation-route');});
+ it('V23 resolvable partial stays visible and refuses boot',()=>{const f=assemblyRuntimeFixture(),b=productionBindingSet();const p=value(f.runtime.record('GrowthObservation',{...assemblyInput('GrowthObservation'),id:'partial:review',completion:'incomplete',sampleCount:0,timeouts:1}));const changed={...b,dependencies:b.dependencies.map(row=>row.name==='local-facts'?{...row,fact:{reference:p.id,expectedKind:'assembly-GrowthObservation',required:true as const}}:row)};const x=installProduction(f,changed),c={...f.composition,production:productionComposition(f,changed)};expect(value(inspectProductionAssemblyBindings(c,x.manifest.id,b.scope)).find(row=>row.name==='dependency:local-facts')!.completeness).toBe('partial');refused(bootProductionAssembly(c,x.manifest.id,b.scope),'partial');});
+ it.each(['render','pending','challenge','confirm','binding','protection','stopChallenge','stop'])('V24 missing surface method %s refuses',name=>{const f=assemblyRuntimeFixture(),x=installProduction(f),p=productionComposition(f,x.binding);refused(bootProductionAssembly({...f.composition,production:{...p,surface:{...p.surface,[name]:undefined}} as never},x.manifest.id,x.binding.scope),name);});
+@@ -54,7 +55,7 @@ it.each([
+ 
+ it('V47 recorded approval history allows ordinary expiry maintenance after base change',()=>{const f=intakeFixture(),v=f.verifiedAct(),p=f.port();value(p.admitVerifiedAct(v.input));Object.assign(f.context,{decode:{...f.context.decode,currentBase:'base:2'}});expect(value(p.expireHolds())).toBe(0);});
+ it('V48 boot refuses a missing production binding set',()=>{const f=assemblyRuntimeFixture(),x=installProduction(f);refused(bootProductionAssembly(f.composition,x.manifest.id,x.binding.scope),'unavailable');});
+-it('V49 boot refuses unavailable peer; restored peer accepts',()=>{const f=assemblyRuntimeFixture(),x=installProduction(f),p=productionComposition(f,x.binding);const q={...p,dependencyAdmission:{...p.dependencyAdmission,admit:(input: Parameters<typeof p.dependencyAdmission.admit>[0])=>{if(input.name==='replication-peer')throw Error('review peer unavailable');return p.dependencyAdmission.admit(input)}}};refused(bootProductionAssembly({...f.composition,production:q},x.manifest.id,x.binding.scope),'peer unavailable');expect(value(bootProductionAssembly({...f.composition,production:p},x.manifest.id,x.binding.scope)).owner).toBe('part-ten');});
++it('V49 boot refuses unavailable peer; restored peer accepts',()=>{const f=groundedAssemblyRuntimeFixture(),x=installProduction(f),p=genuineProductionComposition(f,x.binding);const q={...p,dependencyAdmission:{...p.dependencyAdmission,admit:(input: Parameters<typeof p.dependencyAdmission.admit>[0])=>{if(input.name==='replication-peer')throw Error('review peer unavailable');return p.dependencyAdmission.admit(input)}}};refused(bootProductionAssembly({...f.composition,production:q},x.manifest.id,x.binding.scope),'peer unavailable');expect(value(bootProductionAssembly({...f.composition,production:p},x.manifest.id,x.binding.scope)).owner).toBe('part-ten');});
+ it('V50 missing signed route reference refuses boot',()=>{const f=assemblyRuntimeFixture(),x=installProduction(f);const index=f.raw.findIndex(row=>(row as {kind?:string}).kind==='conversation-route');expect(index).toBeGreaterThanOrEqual(0);f.raw.splice(index,1);refused(bootProductionAssembly({...f.composition,production:productionComposition(f,x.binding)},x.manifest.id,x.binding.scope));});
+ 
+ // Keep the exact signed-subject controls adjacent to the imported review cases.
+diff --git a/tests/integration/rereview7-conformance.test.ts b/tests/integration/rereview7-conformance.test.ts
+index 815a6ff..8e5b42d 100644
+--- a/tests/integration/rereview7-conformance.test.ts
++++ b/tests/integration/rereview7-conformance.test.ts
+@@ -1,4 +1,5 @@
+ // @ts-nocheck -- executable reviewer cases intentionally retain their original dynamic harness shapes.
++import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
+ import { afterEach, beforeEach, expect, it } from 'vitest';
+ import { consumeResult, canonical, decode, defineDecoder } from '../../src/index.js';
+ import { hashBytes } from '../../src/facts/index.js';
+@@ -8,7 +9,7 @@ import { evaluateMinimalPath, minimalResponse, requiredMinimalDependencies, eval
+ import { intakeFixture, value, message, route } from '../intake/fixtures.js';
+ import { operatorFixture } from '../operator/fixture.js';
+ import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
+-import { productionBindingSet, installProduction, productionComposition } from '../assembly/production-fixture.js';
++import { productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
+ import { assemblyInput } from '../assembly/fixture.js';
+ import { productionOperatorSlice } from '../operator/production-slice-fixture.js';
+ beforeEach(() => new Promise<void>(resolve => setImmediate(resolve)));
+@@ -44,7 +45,7 @@ check('V30','ordinary receive recover expire and stop remain usable after histor
+ check('V31','legacy schema configuration still constructs and admits requester messages',()=>{const f=intakeFixture();Object.assign(f.context,{schemas:f.context.schemas.filter(r=>!['authorization-request','intake-verified-act'].includes(r.kind))});return yes(value(createIntakePort(f.deps)).receive(message(),route));});
+ check('V32','requester protocol refuses authority-shaped payloads and accepts clean neighbor',()=>{expect(classifySlicePayload({schemaVersion:1,kind:'message',text:'hello'}).kind).toBe('conversation');for(const p of [{schemaVersion:1,kind:'message',text:'hello',valid:true},{schemaVersion:1,kind:'message',text:'hello',grant:{}},{schemaVersion:1,kind:'Authorization'},{schemaVersion:1,kind:'stop',command:'/stop',principal:'alice'}])expect(classifySlicePayload(p).kind).toBe('needs-judgment');});
+ function assembly(){const f=assemblyRuntimeFixture(),b=productionBindingSet(),i=installProduction(f,b),p=productionComposition(f,b);return{f,b,i,p,boot:()=>bootProductionAssembly({...f.composition,production:p},i.manifest.id,b.scope)};}
+-check('V33','well-formed assembly resolves every binding',()=>{const a=assembly(),o=yes(a.boot());expect(o.value.references).toHaveLength(24);expect(o.value.references.every((r:any)=>r.completeness==='complete')).toBe(true);return {references:o.value.references.length};});
++check('V33','well-formed assembly resolves every binding',()=>{const f=groundedAssemblyRuntimeFixture(),b=productionBindingSet(),i=installProduction(f,b),p=genuineProductionComposition(f,b),a={boot:()=>bootProductionAssembly({...f.composition,production:p},i.manifest.id,b.scope)},o=yes(a.boot());expect(o.value.references).toHaveLength(24);expect(o.value.references.every((r:any)=>r.completeness==='complete')).toBe(true);return {references:o.value.references.length};});
+ check('V34','wrong-kind route reference refuses even when caller expects that wrong kind',()=>{const f=assemblyRuntimeFixture(),base=productionBindingSet();const b={...base,dependencies:base.dependencies.map(r=>r.name==='route'?{...r,fact:base.dependencies.find(r=>r.name==='clock')!.fact}:r)},i=installProduction(f,b);return no(bootProductionAssembly({...f.composition,production:productionComposition(f,b)},i.manifest.id,b.scope));});
+ check('V35','missing signed route refuses',()=>{const a=assembly();const n=a.f.raw.findIndex((r:any)=>r.kind==='conversation-route');a.f.raw.splice(n,1);return no(a.boot());});
+ check('V36','missing verifier operation refuses',()=>{const a=assembly();a.p.challengeVerifier.port.verify=null as never;return no(a.boot());});
+diff --git a/tests/operator/production-slice-fixture.ts b/tests/operator/production-slice-fixture.ts
+index a5ecf3a..2ab2695 100644
+--- a/tests/operator/production-slice-fixture.ts
++++ b/tests/operator/production-slice-fixture.ts
+@@ -1,3 +1,4 @@
++import { groundedAssemblyRuntimeFixture, genuineProductionComposition, installProduction } from '../assembly/genuine-production-fixture.js';
+ import { mkdtempSync } from 'node:fs';
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+@@ -8,7 +9,7 @@ import { decode } from '../../src/index.js';
+ import { verificationInput } from '../verification/fixture.js';
+ import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
+ import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
+-import { installProduction, productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
++import { productionBindingSet, productionComposition } from '../assembly/production-fixture.js';
+ import { operatorFixture } from './fixture.js';
+ import { value } from '../facts/fixtures.js';
+ // @ts-expect-error Production section-7 assembly is an executable JavaScript boundary.
+@@ -20,11 +21,11 @@ export function productionOperatorSlice(options: {
+ } = {}) {
+   const home = options.home ?? mkdtempSync(join(tmpdir(), 'p11-production-slice-'));
+   const operator = operatorFixture({ directory: join(home, 'operator') });
+-  const assembly = assemblyRuntimeFixture(options.assemblyStorage);
++  const assembly = groundedAssemblyRuntimeFixture(options.assemblyStorage);
+   const verification = verificationRuntimeFixture();
+   const binding: AssemblyProductionBindingSet = productionBindingSet();
+   const installed = installProduction(assembly, binding);
+-  const fixtureComposition = productionComposition(assembly, binding);
++  const fixtureComposition = genuineProductionComposition(assembly, binding);
+   let runtime: ReturnType<typeof bootProductionSliceAssembly> | null = null;
+   const witness: AssemblyProductionComposition['deliveryWitness'] = {
+     ...fixtureComposition.deliveryWitness,

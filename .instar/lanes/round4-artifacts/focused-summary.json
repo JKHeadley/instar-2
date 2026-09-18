@@ -1,0 +1,582 @@
+{
+  "vitestExit": 1,
+  "success": false,
+  "total": 128,
+  "passed": 119,
+  "failed": 9,
+  "skipped": 0,
+  "files": [
+    {
+      "file": ".astra-review/boundary-probes.test.ts",
+      "cases": [
+        {
+          "name": "Q1 F3 public Ten factory refuses same-tick completed receipt from a replaying adapter",
+          "status": "failed"
+        },
+        {
+          "name": "Q2 F3 public Ten factory refuses retimestamped completed receipt from a replaying adapter",
+          "status": "failed"
+        },
+        {
+          "name": "Q3 F8 public reader factory cannot certify null runtime and harness as production",
+          "status": "failed"
+        },
+        {
+          "name": "Q4 public registration and package exports expose no direct capability issuer",
+          "status": "passed"
+        },
+        {
+          "name": "Q5 F2 arbitrary registered substitute owner decoders do not constitute real Eight admission",
+          "status": "failed"
+        },
+        {
+          "name": "Q6 checker still detects reintroduced private sibling import",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": ".astra-review/native-positive.test.ts",
+      "cases": [
+        {
+          "name": "N1 actual public Ten reader with native confined driver gives real Five graph production capability and successful signed delivery",
+          "status": "passed"
+        },
+        {
+          "name": "N2 actual reader accepts second distinct live input on the unchanged launch and incarnation",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": ".astra-review/reachable-neighbors.test.ts",
+      "cases": [
+        {
+          "name": "R1 F2 kind-labelled substitute schemas must not qualify as owner admitted evidence",
+          "status": "passed"
+        },
+        {
+          "name": "R2 F2 restart after invoke before acceptance append must not invoke again",
+          "status": "failed"
+        },
+        {
+          "name": "R3 F2 a consumed claim in current history must prevent delivery using its older dispatch-claimed row",
+          "status": "failed"
+        },
+        {
+          "name": "R4 F8 marked production boot must refuse a flat graph even after public registration",
+          "status": "passed"
+        },
+        {
+          "name": "R5 F9 contract map must refuse named passing titles when the named behavior failed",
+          "status": "passed"
+        },
+        {
+          "name": "R6 F1 signed native observation reconstructs without local delivery or launch maps",
+          "status": "passed"
+        },
+        {
+          "name": "R7 positive initial and genuinely second inbound both start while incarnation and launch stay unchanged",
+          "status": "passed"
+        },
+        {
+          "name": "R8 F2 real Six admitted operation identity must be accepted as the specification operation",
+          "status": "passed"
+        },
+        {
+          "name": "R9 F7 a raw signed predecessor skip must be refused on replay resolution",
+          "status": "passed"
+        },
+        {
+          "name": "R10 F1 repeated consumed observation after restart at a later clock must remain readable",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": ".astra-review/reachable.test.ts",
+      "cases": [
+        {
+          "name": "V1 accepts a signed current initial specification",
+          "status": "passed"
+        },
+        {
+          "name": "V2 accepts valid spec delivery through the real recorder",
+          "status": "passed"
+        },
+        {
+          "name": "V3 refuses a second invocation after acceptance append fails",
+          "status": "passed"
+        },
+        {
+          "name": "V4 refuses ordinary evidence substituted for admitted operation and one-use claim",
+          "status": "passed"
+        },
+        {
+          "name": "V5 PG-P5-INVOKED-READ signed-history graph control accepts ground then start and zero pending before start",
+          "status": "passed"
+        },
+        {
+          "name": "V6 refuses pre-completed grounding even within the same clock tick",
+          "status": "passed"
+        },
+        {
+          "name": "V7 refuses future-reported consumption",
+          "status": "passed"
+        },
+        {
+          "name": "V8 PG-P5-SOURCE-REFUSALS refuses input digest substitution",
+          "status": "passed"
+        },
+        {
+          "name": "V9 refuses unresolvable briefing-reference substitution",
+          "status": "passed"
+        },
+        {
+          "name": "V10 refuses an ordinary note as context-consumption boundary proof",
+          "status": "passed"
+        },
+        {
+          "name": "V11 historical start remains readable after its observation freshness expires",
+          "status": "passed"
+        },
+        {
+          "name": "V12 refuses stale context at actual start",
+          "status": "passed"
+        },
+        {
+          "name": "V13 refuses observation step differing from candidate",
+          "status": "passed"
+        },
+        {
+          "name": "V14 refuses newer unaccounted inbound at start",
+          "status": "passed"
+        },
+        {
+          "name": "V15 refuses omitted message manifest row",
+          "status": "passed"
+        },
+        {
+          "name": "V16 refuses duplicate manifest row",
+          "status": "passed"
+        },
+        {
+          "name": "V17 refuses wrong-run delivery",
+          "status": "passed"
+        },
+        {
+          "name": "V18 refuses context delivery from another incarnation",
+          "status": "passed"
+        },
+        {
+          "name": "V19 refuses production flat receipt fallback",
+          "status": "passed"
+        },
+        {
+          "name": "V20 cut after grounding reconstructs zero pending steps with a fresh store",
+          "status": "passed"
+        },
+        {
+          "name": "V21 refuses predecessor skip after a second delivery",
+          "status": "passed"
+        },
+        {
+          "name": "V22 accepts unchanged incarnation for a second live-input specification",
+          "status": "passed"
+        },
+        {
+          "name": "V23 native reader accepts a real signed launch and context-delivery record",
+          "status": "passed"
+        },
+        {
+          "name": "V24 refuses copied body paired with another signed observation envelope at start",
+          "status": "passed"
+        },
+        {
+          "name": "V25-missing refuses changed observation evidence at start",
+          "status": "passed"
+        },
+        {
+          "name": "V25-wrong-kind refuses changed observation evidence at start",
+          "status": "passed"
+        },
+        {
+          "name": "V25-partial refuses changed observation evidence at start",
+          "status": "passed"
+        },
+        {
+          "name": "V25-tainted refuses changed observation evidence at start",
+          "status": "passed"
+        },
+        {
+          "name": "V25-conflicted refuses changed observation evidence at start",
+          "status": "passed"
+        },
+        {
+          "name": "V26 accepts fresh current execution context bound to delivery rather than old launch",
+          "status": "passed"
+        },
+        {
+          "name": "V27 initial and second distinct inbound can both start on one incarnation",
+          "status": "passed"
+        },
+        {
+          "name": "V30 assembly contract map refuses a report with only token titles and no named refusal assertions",
+          "status": "passed"
+        },
+        {
+          "name": "V31 production boot refuses a real graph that accepts only flat compatibility receipts",
+          "status": "failed"
+        },
+        {
+          "name": "V32 refuses retimestamped pre-completed grounding against a previously signed future receipt",
+          "status": "passed"
+        },
+        {
+          "name": "V33 refuses stale generation in the delivery specification",
+          "status": "passed"
+        },
+        {
+          "name": "V34 refuses non-consumed phase",
+          "status": "passed"
+        },
+        {
+          "name": "V35 refuses unresolvable boundary evidence",
+          "status": "passed"
+        },
+        {
+          "name": "V36 refuses equal delivery identity with differing content",
+          "status": "passed"
+        },
+        {
+          "name": "V37 refuses changed live process immediately before delivery",
+          "status": "passed"
+        },
+        {
+          "name": "V38 refuses adapter-authored spec mutation before invoking",
+          "status": "passed"
+        },
+        {
+          "name": "V39 accepts an initial specification after a durable record cut without another identity",
+          "status": "passed"
+        },
+        {
+          "name": "V40 cut immediately before start append leaves zero newly pending steps",
+          "status": "passed"
+        },
+        {
+          "name": "V41 cut immediately after durable start append reconstructs one step without another transition",
+          "status": "passed"
+        },
+        {
+          "name": "V42 signed fact reference accepts an observation while the specification payload alias refuses",
+          "status": "passed"
+        },
+        {
+          "name": "V43 start re-resolves a newly appended real signed specification conflict",
+          "status": "passed"
+        },
+        {
+          "name": "V28 legacy graph decoder outputs, canonical bytes and root request keys equal main",
+          "status": "passed"
+        },
+        {
+          "name": "V29 every original assembly key, digest and decoded output equals main",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": ".astra-review/real-owner-probes.test.ts",
+      "cases": [
+        {
+          "name": "Q7 F2 real Six consumed authority prevents driver invocation from its old specification",
+          "status": "failed"
+        },
+        {
+          "name": "Q8 F2 ordinary reply effect does not authorize harness context delivery",
+          "status": "failed"
+        }
+      ]
+    },
+    {
+      "file": "tests/assembly/production-grounding.test.ts",
+      "cases": [
+        {
+          "name": "PRODUCTION-GROUNDING P10-NF-10 P10-NF-11 P10-NF-13 confined initial and live-input delivery re-resolve one launch and retain predecessor order",
+          "status": "passed"
+        },
+        {
+          "name": "PG-P10-TYPED-REFUSALS refuses adapter mutation, claim replay, incarnation replacement, conflicts, and held compaction",
+          "status": "passed"
+        },
+        {
+          "name": "PG-P10-SIGNED-DELIVERY records and resolves exact signed typed delivery evidence",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "tests/e2e/production-grounding.test.ts",
+      "cases": [
+        {
+          "name": "PG-E2E-INITIAL-LIVE-REPLAY PRODUCTION-GROUNDING lifecycle: initial and live-input specifications coexist while compaction execution remains explicitly held",
+          "status": "passed"
+        },
+        {
+          "name": "PG-E2E-INITIAL-LIVE-REPLAY executes two signed actual-start boundaries on one incarnation",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "tests/rungraph/production-grounding-review.test.ts",
+      "cases": [
+        {
+          "name": "V1 accepts a signed current initial specification",
+          "status": "passed"
+        },
+        {
+          "name": "V2 accepts valid spec delivery through the real recorder",
+          "status": "passed"
+        },
+        {
+          "name": "V3 refuses a second invocation after acceptance append fails",
+          "status": "passed"
+        },
+        {
+          "name": "V4 refuses ordinary evidence substituted for admitted operation and one-use claim",
+          "status": "passed"
+        },
+        {
+          "name": "V5 PG-P5-INVOKED-READ signed-history graph control accepts ground then start and zero pending before start",
+          "status": "passed"
+        },
+        {
+          "name": "V6 refuses pre-completed grounding even within the same clock tick",
+          "status": "passed"
+        },
+        {
+          "name": "V7 refuses future-reported consumption",
+          "status": "passed"
+        },
+        {
+          "name": "V8 PG-P5-SOURCE-REFUSALS refuses input digest substitution",
+          "status": "passed"
+        },
+        {
+          "name": "V9 refuses unresolvable briefing-reference substitution",
+          "status": "passed"
+        },
+        {
+          "name": "V10 refuses an ordinary note as context-consumption boundary proof",
+          "status": "passed"
+        },
+        {
+          "name": "V11 historical start remains readable after its observation freshness expires",
+          "status": "passed"
+        },
+        {
+          "name": "V12 refuses stale context at actual start",
+          "status": "passed"
+        },
+        {
+          "name": "V13 refuses observation step differing from candidate",
+          "status": "passed"
+        },
+        {
+          "name": "V14 refuses newer unaccounted inbound at start",
+          "status": "passed"
+        },
+        {
+          "name": "V15 refuses omitted message manifest row",
+          "status": "passed"
+        },
+        {
+          "name": "V16 refuses duplicate manifest row",
+          "status": "passed"
+        },
+        {
+          "name": "V17 refuses wrong-run delivery",
+          "status": "passed"
+        },
+        {
+          "name": "V18 refuses context delivery from another incarnation",
+          "status": "passed"
+        },
+        {
+          "name": "V19 refuses production flat receipt fallback",
+          "status": "passed"
+        },
+        {
+          "name": "V20 cut after grounding reconstructs zero pending steps with a fresh store",
+          "status": "passed"
+        },
+        {
+          "name": "V21 refuses predecessor skip after a second delivery",
+          "status": "passed"
+        },
+        {
+          "name": "V22 accepts unchanged incarnation for a second live-input specification",
+          "status": "passed"
+        },
+        {
+          "name": "V23 native reader accepts a real signed launch and context-delivery record",
+          "status": "passed"
+        },
+        {
+          "name": "V24 refuses copied body paired with another signed observation envelope at start",
+          "status": "passed"
+        },
+        {
+          "name": "V25-missing refuses changed observation evidence at start",
+          "status": "passed"
+        },
+        {
+          "name": "V25-wrong-kind refuses changed observation evidence at start",
+          "status": "passed"
+        },
+        {
+          "name": "V25-partial refuses changed observation evidence at start",
+          "status": "passed"
+        },
+        {
+          "name": "V25-tainted refuses changed observation evidence at start",
+          "status": "passed"
+        },
+        {
+          "name": "V25-conflicted refuses changed observation evidence at start",
+          "status": "passed"
+        },
+        {
+          "name": "V26 accepts fresh current execution context bound to delivery rather than old launch",
+          "status": "passed"
+        },
+        {
+          "name": "V27 initial and second distinct inbound can both start on one incarnation",
+          "status": "passed"
+        },
+        {
+          "name": "V30 assembly contract map refuses a report with only token titles and no named refusal assertions",
+          "status": "passed"
+        },
+        {
+          "name": "V31 production boot refuses a real graph that accepts only flat compatibility receipts",
+          "status": "passed"
+        },
+        {
+          "name": "V32 refuses retimestamped pre-completed grounding against a previously signed future receipt",
+          "status": "passed"
+        },
+        {
+          "name": "V33 refuses stale generation in the delivery specification",
+          "status": "passed"
+        },
+        {
+          "name": "V34 refuses non-consumed phase",
+          "status": "passed"
+        },
+        {
+          "name": "V35 refuses unresolvable boundary evidence",
+          "status": "passed"
+        },
+        {
+          "name": "V36 refuses equal delivery identity with differing content",
+          "status": "passed"
+        },
+        {
+          "name": "V37 refuses changed live process immediately before delivery",
+          "status": "passed"
+        },
+        {
+          "name": "V38 refuses adapter-authored spec mutation before invoking",
+          "status": "passed"
+        },
+        {
+          "name": "V39 accepts an initial specification after a durable record cut without another identity",
+          "status": "passed"
+        },
+        {
+          "name": "V40 cut immediately before start append leaves zero newly pending steps",
+          "status": "passed"
+        },
+        {
+          "name": "V41 cut immediately after durable start append reconstructs one step without another transition",
+          "status": "passed"
+        },
+        {
+          "name": "V42 signed fact reference accepts an observation while the specification payload alias refuses",
+          "status": "passed"
+        },
+        {
+          "name": "V43 start re-resolves a newly appended real signed specification conflict",
+          "status": "passed"
+        },
+        {
+          "name": "R9 F7 a raw signed predecessor skip is refused on replay resolution",
+          "status": "passed"
+        },
+        {
+          "name": "R10 F1 repeated consumed observation after restart at a later clock preserves the original observation",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "tests/rungraph/production-grounding-round3.test.ts",
+      "cases": [
+        {
+          "name": "R1 F2 kind-labelled substitute schemas do not qualify as owner-admitted evidence",
+          "status": "passed"
+        },
+        {
+          "name": "R4 F8 marked production boot refuses a flat graph even after public registration",
+          "status": "passed"
+        },
+        {
+          "name": "R5 F9 contract map refuses named passing titles when the named behavior failed",
+          "status": "passed"
+        },
+        {
+          "name": "R8 F2 real Six admitted operation identity is accepted as the specification operation",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "tests/rungraph/production-grounding-scope.test.ts",
+      "cases": [
+        {
+          "name": "PRODUCTION-GROUNDING-SCOPE ledger 45 confines this unit to its two owner source directories",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "tests/rungraph/production-grounding.test.ts",
+      "cases": [
+        {
+          "name": "PRODUCTION-GROUNDING rejects a caller-labelled reader that was not built by the invocation-owned Ten factory",
+          "status": "passed"
+        },
+        {
+          "name": "PRODUCTION-GROUNDING flat compatibility receipts remain readable only on an unmarked isolated graph",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "tests/integration/production-grounding.test.ts",
+      "cases": [
+        {
+          "name": "PG-INTEGRATION-PRODUCTION-BINDING refuses a history-labelled graph until the invocation-owned Ten reader is bound",
+          "status": "passed"
+        },
+        {
+          "name": "PG-INTEGRATION-PRODUCTION-BINDING admits the signed row-45 binding only with a production-grounded graph",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}

@@ -4,14 +4,24 @@ import { expect, it } from 'vitest';
 // @ts-expect-error the executable repository checker is intentionally plain ESM
 import { checkP13A2Architecture, checkP13DependencyCitations, p13A2Dispositions, p13A2PathAllowed } from '../../scripts/check-p13-contract-map.mjs';
 
-it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owner legacy fixture byte-identical', () => {
+it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owner legacy fixture byte-identical', async () => {
+  const { createHash } = await import('node:crypto');
+  // GRANT 45-B/45-E: pin exactly the two authorized production fixture rewires.
+  const grantedContent = new Map([
+    ['tests/assembly/round10-regressions.test.ts', '74548e6d7fbc2eaaa01a786330dceb773d29f87f7687999501fcfc175f82d605'],
+    ['tests/assembly/round12-regressions.test.ts', '6d0619c8c1340035ae6149101b19e5adaa012760688ec86e41560b195a037dc9'],
+  ]);
   const prefixes = ['tests/rungraph/', 'tests/transport/', 'tests/effects/', 'tests/verification/', 'tests/assembly/'];
   const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' })
     .trim().split('\n').filter(path => prefixes.some(prefix => path.startsWith(prefix)));
   expect(paths.length).toBeGreaterThan(50);
   for (const path of paths) {
     const main = execFileSync('git', ['show', `main:${path}`]);
-    expect(readFileSync(path), path).toEqual(main);
+    if (grantedContent.has(path)) {
+      expect(createHash('sha256').update(readFileSync(path)).digest('hex'), path).toBe(grantedContent.get(path));
+    } else {
+      expect(readFileSync(path), path).toEqual(main);
+    }
   }
   expect(p13A2PathAllowed('src/rungraph/a2-stand-in.ts')).toBe(false);
   expect(p13A2PathAllowed('tests/verification/rewrite.test.ts')).toBe(false);
