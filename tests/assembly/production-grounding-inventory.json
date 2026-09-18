@@ -5277,7 +5277,7 @@
     "src/decode/session.ts": "70d3d5c584afaa9bd8afbb0267246d8434636fa210de9e965c84753d0d7f452f",
     "src/effects/boundary.ts": "08e9298f470c97354d4a4a586ebcbd3dd7152029efc6a6b07702f91ed084e2e9",
     "src/effects/contracts.ts": "ee629de1664a9b095c6b48cd4f13de4e9220b094e12d397c90d70dc81922a3e6",
-    "src/effects/doorway.ts": "01ea996c4a7ecf4b5b9d77b4340fcc53106cae5b7d7f8d77970d5e7a92460235",
+    "src/effects/doorway.ts": "d98477c3a015ad0d68c9e7b98b99fb0503169feb8d52f2d78a7cd97d2f02a037",
     "src/effects/index.ts": "5ccd3343c40e101cc7266a41fadba1978a48c3d2cb832a8c4af150115282faec",
     "src/effects/provider-api.ts": "455efa504aa895fc26eff718aa62a082f4d5143b4be4ba8324197444061e8ca9",
     "src/effects/provider-authority.ts": "7265de8ae76c304b77144a0b979f670079b6309560ffcda66163fe18608c78ed",

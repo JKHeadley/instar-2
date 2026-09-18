@@ -7,6 +7,8 @@ it('PRODUCTION-GROUNDING-SCOPE ledger 45 confines this unit to its two owner sou
   const paths = execFileSync('git', ['diff', '--name-only', base, 'HEAD', '--', 'src'], { encoding: 'utf8' })
     .trim().split('\n').filter(Boolean);
   const liveInputGrant = ['src/effects/contracts.ts', 'src/effects/records.ts', 'src/effects/doorway.ts', 'src/effects/index.ts'];
-  expect(paths.filter(path => !liveInputGrant.includes(path) && !['src/assembly/', 'src/rungraph/'].some(prefix => path.startsWith(prefix))))
+  // GRANT U4-E: Eleven's two exact production switch-on paths.
+  const productionBootGrant = ['src/operator/index.ts', 'src/operator/production-switch-on.ts'];
+  expect(paths.filter(path => !liveInputGrant.includes(path) && !productionBootGrant.includes(path) && !['src/assembly/', 'src/rungraph/'].some(prefix => path.startsWith(prefix))))
     .toEqual([]);
 });
