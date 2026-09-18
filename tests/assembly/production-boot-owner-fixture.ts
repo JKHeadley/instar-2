@@ -60,6 +60,16 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
   const owners = prepareLiveInputOwners(f, types, () => now, () => stopped, () => ctx, harnessId, options.native);
   const registration = value(runFactSchemas(c));
   ctx = { ...ctx, schemas: [...ctx.schemas, ...registration.schemas, ...assemblySchemas(assemblyHost), ...owners.schemas, ...productionSchemas(f).filter(s => !ctx.schemas.some(t => t.kind === s.kind))], ownedBodies: [...seed?.ownedBodies ?? [], ...registration.registrations, ...value(registerAssemblyBodies(assemblyHost)), ...owners.registrations] }; c = { ...c, facts: ctx };
+  if (options.recovery) {
+    const saved = options.recovery;
+    types.register = saved.register;
+    Object.assign(types.captures, saved.captureBytes);
+    Object.assign(ctx.captures, Object.fromEntries(Object.entries(saved.captureBytes).map(([reference, bytes]) =>
+      [reference, { bytes, hash: hashBytes(bytes), status: 'available', byteLength: Buffer.byteLength(bytes) }])));
+    ctx.schemas = [...ctx.schemas.filter(schema => !saved.schemas.some(row => row.kind === schema.kind)), ...saved.schemas];
+    c.register = types.register; Object.assign(c.intakeOwners, saved.intakeOwners ?? {});
+  }
+  options.prepareContext?.(ctx, assemblyHost, f);
   let appendCut: ((record: any) => boolean) | undefined;
   const underlyingStorage = storageFactory?.(f) ?? { owner: 'part-ten' as const, read: () => wire,
     append: (bytes: string, expected: string | null) => {
@@ -78,12 +88,24 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
     value(underlyingStorage.append(value(canonical(fact)).bytes,
       underlyingStorage.read().at(-1)?.contentHash ?? null));
   const store = createFactStore(ctx, storage);
-  const append = (kind: string, body: Json, required: readonly string[] = [], schemaVersion = 1) => value(authorAndAppend({ kind, body, required, schemaVersion,
+  const append = (kind: string, body: Json, required: readonly string[] = [], schemaVersion = 1) => {
+    if (options.recovery) {
+      const existing = value(store.read()).find(row => row.kind === kind && value(canonical(row.body)).bytes === value(canonical(body)).bytes);
+      if (existing) return { fact: existing, durability: { kind: 'local-durable' } };
+    }
+    return value(authorAndAppend({ kind, body, required, schemaVersion,
     machine: 'machine-a', principal: json(f.bob), provenance: json(f.bob.provenance), at: json(now) }, ctx, store, privateKey));
+  };
   let intent = seed?.opening ? seed.opening.body.intent : value(decode('Intent', f.intentInput({ principal: f.bob }), types));
+  if (options.recovery) {
+    const rows = value(store.read()), intakeFact = rows.find(row => row.kind === 'intake-admitted'),
+      ownerFact = rows.find(row => row.kind === 'stimulus');
+    if (intakeFact && ownerFact) c.intakeOwners[intakeFact.body.work.owner] = {
+      type: 'VerifiedPrincipal', id: 'bob', fact: ref(ownerFact), field: 'owner' };
+  }
   const effects = owners.attach(store);
   const nextPosition = (value(store.read()).at(-1)?.segment.position ?? -1) + 1;
-  const predicted = factId({ machine: 'machine-a', epoch: 0, position: nextPosition });
+  const predicted = value(store.read()).find(row => row.kind === 'stimulus')?.id ?? factId({ machine: 'machine-a', epoch: 0, position: nextPosition });
   const plannedRun = runIdFor({ owner: 'part-two', name: 'FactEnvelope', id: predicted });
   const initialMessage = effects.message(plannedRun, 'initial');
   const initialCapture = value(owners.host.capture(value(canonical(initialMessage)).bytes));
@@ -115,7 +137,7 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
     'machine-a': { head: { epoch: 0, position: value(store.read()).at(-1)!.segment.position }, observedAt: now.value, closed: false },
   } });
   let groundCounter = value(store.read()).filter(f => f.kind === 'session-grounding').length;
-  const admissions = recovery?.admissions ?? new Set<string>();
+  const admissions = recovery?.admissions ?? new Set<string>(options.recovery?.admissions ?? []);
   const commit = (write: () => import('../../src/index.js').Result<import('../../src/facts/index.js').AppendReceipt>) => {
     const receipt = value(write()); admissions.add(receipt.fact.id); recovery?.witness(receipt.fact.id); return f.success(receipt);
   };
@@ -174,7 +196,7 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
   };
   const installed = installAssemblySupport(base, options);
   installed.bindIntake = (fact: any) => {
-    if (!options.deferred || value(store.read()).some(row => row.kind === 'run-opening')) throw Error('intake binding already in use');
+    if (!options.deferred || (!options.recovery && value(store.read()).some(row => row.kind === 'run-opening'))) throw Error('intake binding already in use');
     if (fact.kind !== 'intake-admitted' || !value(store.read()).some(row => row.id === fact.id)) throw Error('durable Four input required');
     opening = fact; intent = fact.body.intent; id = runIdFor(ref(fact));
     c.intakeOwners[fact.body.work.owner] = owner;
@@ -220,7 +242,7 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
     attach(store: any) {
       const author = { context: context(), privateKey }; let spine = createEffectSpine(host, author, store);
       let transport = createTransportAuthority(transportHost, createTransportSpine(transportHost, author, store), host.boundary, consumeEffectSettlement);
-      const note = value(authorAndAppend({ kind: 'note', schemaVersion: 1, machine: host.machine, principal: json(f.bob),
+      const note = value(store.read()).find(row => row.kind === 'note' && row.body.identity === 'live-input-owner-source') ?? value(authorAndAppend({ kind: 'note', schemaVersion: 1, machine: host.machine, principal: json(f.bob),
         provenance: json(f.bob.provenance), at: json(clock()), body: { identity: 'live-input-owner-source', amount: '0' }, required: [] }, context(), store, privateKey)).fact;
       authority = [note.id];
       const definition = { type: 'OperationDefinition', schemaVersion: 1, id: 'live-input-definition:1', feature: 'harness-live-input', version: 'live-input-version:1',
@@ -230,7 +252,8 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
       const approvedIn = f.authorize({ id: 'live-input-approval', artifact: f.capture(value(canonical(definition)).bytes), base: 'live-input-base' });
       versions = [{ id: definition.version, subject: definition.feature, content: json(definition), contentHash: value(canonical(definition)).hash,
         since: note.id, supersedes: [], approvedIn, base: approvedIn.base, landedIn: null }];
-      const d = value(installOperationDefinition(definition, host, spine));
+      const d = value(store.read()).find(row => row.kind === 'effect-OperationDefinition' && row.body.record.id === definition.id)?.body.record
+        ?? value(installOperationDefinition(definition, host, spine));
       let fence = value(transport.acquire('live-input-acquire', '', 500));
       let leaseFact = value(transport.inspect()).find((row: any) => row.record.type === 'Lease')!.fact;
       const policy = value(decodeLoopPolicy({ type: 'LoopPolicy', schemaVersion: 1, id: 'live-input-policy', maxAttempts: 3,

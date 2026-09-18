@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { boundary as assemblyBoundary } from '../../src/assembly/boundary.js';
-import { canonical } from '../../src/index.js';
+import { canonical, decode } from '../../src/index.js';
 import { createFactStore, authorAndAppend } from '../../src/facts/index.js';
 import { intakeWorkRegistration, intakeStopRegistration } from '../../src/intake/index.js';
 import { admitTelegramAdapter, createTelegramIntakeAdapter, extractTelegramUpdate } from '../../src/conversation/index.js';
@@ -49,7 +49,30 @@ export function installedFixtureHost(root, route, options = {}) {
       const initial = t.intake.context;
       Object.assign(initial, { ownedBodies: [value(intakeWorkRegistration(c, t.intake.deps.author.principal.id)),
         value(intakeStopRegistration(c, t.intake.deps.author.principal.id))] });
-      const f = createProductionBootOwnerFixture(() => storage.segment, { minimal: true, deferred: true,
+      const recovery = options.recovery ? { ...options.recovery,
+        captureBytes: Object.fromEntries(options.recovery.captures.map(reference => {
+          const bytes = storage.captures.read(reference); if (bytes === null) throw Error(`recovery capture absent: ${reference}`);
+          return [reference, bytes];
+        })) } : undefined;
+      const f = createProductionBootOwnerFixture(() => storage.segment, { minimal: true, deferred: true, recovery,
+        prepareContext: recovery ? (context, assemblyHost, base) => {
+          const dc = context.decode, boundary = { ...base.c, register: dc.register };
+          const th = { ...assemblyHost, domain: 'conversation:1', incarnation: 'incarnation:one',
+            authorityIncarnation: 'authority:1', monotonic: () => base.now.value,
+            current: () => ({ decode: dc, clock: base.now, stopped: false, generation: dc.register.generation }) };
+          const judgment = { transport: th, point: 'judgment', floor: base.floor,
+            description: { owner: 'part-ten', provider: 'test-provider', model: 'model', route: 'route', automaticRetries: 0,
+              maxInputBytes: 4096, maxOutputBytes: 4096, maxCharge: 20, measured: false, basis: 'recorded HTTP provider' },
+            refreshFacts: () => base.success(undefined) };
+          const verification = { ...assemblyHost, boundary, current: () => ({ decode: dc, clock: base.now,
+            stopped: false, generation: dc.register.generation.id, facts: context, evidence: base.evidence }) };
+          context.ownedBodies.push(...value(registerVerificationBodies(verification)),
+            ...value(registerProviderJudgmentBodies(judgment, boundary)), ...value(registerProviderEffectBodies(th)),
+            value(registerProductionInstallationBody({ ...dc, ...boundary })));
+          context.migrations = providerEffectMigrations;
+          const grantRoot = storage.segment.read().find(row => row.kind === 'note' && row.body.identity === 'installation-grant-root');
+          if (grantRoot) context.grants.push({ factId: grantRoot.id, grant: t.intake.f.g });
+        } : undefined,
         native: { captures: storage.captures, io: createProductionNativeContextIO(storage.captures) },
         intake: { ...initial, facts: [], opening: undefined } });
       underlyingAdmission = f.deps.admission; f.deps.admission = admission;
@@ -71,12 +94,24 @@ export function installedFixtureHost(root, route, options = {}) {
       const vh = { machine: f.host.machine, principal: f.host.principal, scope: f.host.scope, boundary,
         current: () => ({ decode: dc, clock: f.deps.clock(), stopped: false, generation: f.run.generation.id,
           facts: { ...context, facts: value(f.store.read()) }, evidence: f.evidence }) };
+      const registrations = [...value(registerVerificationBodies(vh)),
+        ...value(registerProviderJudgmentBodies(judgmentHost, boundary)), ...value(registerProviderEffectBodies(f.owners.host)),
+        value(registerProductionInstallationBody({ ...dc, ...boundary }))];
       Object.assign(context, { migrations: providerEffectMigrations,
-        schemas: [...context.schemas.filter(s => s.kind !== 'verification-ProbeRecord'), ...verificationSchemas(vh),
+        schemas: [...context.schemas.filter(s => !['verification-', 'judgment-provider-', 'effect-provider-'].some(prefix => s.kind.startsWith(prefix))
+          && s.kind !== 'assembly-ProductionInstallation'), ...verificationSchemas(vh),
           ...providerJudgmentSchemas(judgmentHost), ...providerEffectSchemas(f.owners.host), ...productionInstallationSchemas(f.scope)],
-        ownedBodies: [...context.ownedBodies, ...value(registerVerificationBodies(vh)),
-          ...value(registerProviderJudgmentBodies(judgmentHost, boundary)), ...value(registerProviderEffectBodies(f.owners.host)),
-          value(registerProductionInstallationBody({ ...dc, ...boundary }))] });
+        ownedBodies: [...context.ownedBodies.filter(row => !registrations.some(next => next.owner === row.owner && next.name === row.name)),
+          ...registrations] });
+      if (recovery) {
+        for (const row of storage.segment.read().filter(row => row.kind === 'evidence-record')) {
+          if (!f.evidence.some(e => e.id === row.body.evidence.id)) f.evidence.push(value(decode('Evidence', row.body.evidence, dc)));
+        }
+        const priorCurrent = f.owners.host.current;
+        const versions = recovery.versions.map(version => ({ ...version, approvedIn: f.authorize({
+          id: version.approvedIn.id, artifact: version.approvedIn.artifact, base: version.approvedIn.base }) }));
+        f.owners.host.current = () => ({ ...priorCurrent(), versions });
+      }
       const runtime = createVerificationRuntime(vh, createVerificationSpine(vh, { context, privateKey }, f.store));
       const realAssessment = createEffectAssessmentPort(vh, runtime);
       Object.assign(f.effects.composition.assessment, realAssessment);
@@ -122,7 +157,7 @@ export function installedFixtureHost(root, route, options = {}) {
       for (const id of ['probe:native', 'probe:1', 'probe:word-count']) f.appendReference('verification-ProbeRecord', { record: { ...verificationInput('ProbeRecord'), id } });
       f.appendReference('assembly-reference-evidence', { id: 'bar:isolation' });
       value(f.runtime.record('AdapterEvidenceContract', assemblyInput('AdapterEvidenceContract')));
-      const conversationBinding = value(authorAndAppend({ kind: 'conversation-binding', schemaVersion: 1,
+      const conversationBinding = value(f.store.read()).find(row => row.kind === 'conversation-binding' && row.body.channel === 'boot-fixture-channel') ?? value(authorAndAppend({ kind: 'conversation-binding', schemaVersion: 1,
         machine: f.host.machine, principal: json(t.intake.f.alice), provenance: json(t.intake.f.alice.provenance), at: json(f.now),
         required: [operatorRoot.id], body: { adapter: intake.adapter.id, channel: 'boot-fixture-channel', sender: 'boot-fixture-sender',
           identityEpoch: 'installation-1', principalId: t.intake.f.alice.id, grantId: t.intake.f.g.id,
@@ -155,6 +190,11 @@ export function installedFixtureHost(root, route, options = {}) {
         names: { intake: 'intake:verified-act', run: 'run:graph', lease: 'lease:authority', judgment: 'judgment:doorway',
           effect: 'effect:doorway', verification: 'verification:runtime', responder: 'responder:minimal' },
         budgets: binding.minimalResponder.budgets, repairOwner: 'operator', dependencies: admittedDependencies };
+      if (recovery) {
+        const opening = value(f.store.read()).find(row => row.kind === 'intake-admitted');
+        if (opening) f.bindIntake(opening);
+        f.deps.settlement.read = (reference, step) => state.application.owners.provider.eight.readRunSettlement(reference, step);
+      }
       state = { f, t, root, storage, api, admitted, declaration, calls, captures, judgmentHost, vh, runtime, realAssessment, owners,
         receive(application) {
           const batch = value(api.poll({ token: declaration.token, apiVersion: declaration.apiVersion, offset: 0, limit: 100, timeout: 0 }));
@@ -168,5 +208,5 @@ export function installedFixtureHost(root, route, options = {}) {
       return assemblyBoundary('RecordedInstallationHost', null, boundary, () => () => ({ owners, manifest: manifest.id, scope: binding.scope, installationFact }));
     } };
   return { host, record, state: () => state,
-    boot: () => { const application = value(bootProductionApplication(record, host)); return { application, ...state }; } };
+    boot: () => { const application = value(bootProductionApplication(record, host)); state.application = application; return state; } };
 }
