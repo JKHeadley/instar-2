@@ -1,3 +1,4 @@
+import { productionBindingHolds } from '../dist/assembly/production-holds.js';
 // Every P11-NF identifier in docs/15 resolves to an executed check. Dispositions
 // remain partial until the independently administered live phone/provider evidence
 // and the independent live phone/provider evidence named in src/operator/README.md is present.
@@ -7,6 +8,14 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 const partialReason = 'Executable negative/positive-neighbour contract coverage and the Part Four/Part Ten owner seams are present; production activation remains dark pending independent live phone/provider, semantic-review, and objective mobile evidence.';
+export const productionSwitchOnContract = Object.freeze({
+  executable: Object.freeze(['pre-poll switch-on posture names every U4-G missing real binding without claiming preserved input',
+    'public production application uses the real minimal responder after Four preservation and Five answer acceptance']),
+  evidence: Object.freeze(['tests/assembly/production-boot-refusals.test.ts', 'tests/assembly/production-boot-command.test.ts',
+    'tests/assembly/production-boot-conversation.test.ts']),
+  fixtureAdmitted: productionBindingHolds,
+  held: productionBindingHolds,
+});
 export const p11HeldCases = Object.freeze([Object.freeze({
   id: 'V90',
   reason: 'NON-EXECUTABLE-UNTIL-slice-A2-final-append-generation',

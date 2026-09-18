@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { resolve, posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
-export const effectCommit = '36fd9e675ada432495746a829ea3bb1739bfcab4';
+export const effectCommit = '189b34693078cbd9a578181af202b680ed3eae39';
 const source = path => execFileSync('git', ['show', `${effectCommit}:${path}`], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
 const data = code => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
 const local = path => pathToFileURL(resolve(path)).href;

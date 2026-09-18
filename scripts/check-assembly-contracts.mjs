@@ -1,3 +1,4 @@
+import { productionBindingHolds } from '../dist/assembly/production-holds.js';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, realpathSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -11,6 +12,37 @@ export const assemblyDispositions = Array.from({ length: 57 }, (_, index) => ({
   status: 'partial',
   reason: 'Executable unit/full-port/lifecycle reference behavior is present; protected deployment activation and independently administered platform evidence remain deliberately dark.',
 }));
+
+// GRANT U4-A: the unchanged model-provider roster still holds unproven routes.
+// This additive constructor arm does not claim a live provider or a full boot.
+export const productionBootCustodyContract = Object.freeze({
+  executable: Object.freeze(['production route under confined credential custody']),
+  evidence: 'tests/assembly/production-boot-preconditions.test.ts',
+  held: productionBindingHolds,
+});
+export const productionBootPrerequisiteContract = Object.freeze({
+  executable: Object.freeze(['immutable operator-authored installation configuration',
+    'encrypted durable root custody and exclusive boot lease', 'confined bounded Claude Code transport',
+    'switch-on names every U4-G missing real binding before network-capable composition']),
+  evidence: Object.freeze(['tests/assembly/production-boot-storage.test.ts',
+    'tests/assembly/production-boot-provider.test.ts', 'tests/assembly/production-boot-refusals.test.ts']),
+  held: Object.freeze([...productionBindingHolds,
+    'NON-EXECUTABLE-UNTIL-replicated-storage-second-machine', 'NON-EXECUTABLE-UNTIL-package-switch-rollback',
+    'NON-EXECUTABLE-UNTIL-other-conversation-platforms', 'NON-EXECUTABLE-UNTIL-multiple-bots',
+    'NON-EXECUTABLE-UNTIL-live-path-unit-compaction', 'NON-EXECUTABLE-UNTIL-traces-beyond-launch-message-provider-call']),
+});
+
+// U4-G: executable construction and recorded lifecycle coexist with explicit
+// fixture admission of every unavailable installation binding. No LIVE claim.
+export const productionBootLifecycleContract = Object.freeze({
+  executable: Object.freeze(['bootProductionApplication and bin/instar-production.mjs compose the real owner constructors',
+    'recorded Telegram through Four/Five/Seven/Eight/Six/Nine/Five and one minimal reply',
+    'real SIGKILL and public restart at restored adjacent durable prefixes of that one trace']),
+  evidence: Object.freeze(['tests/assembly/production-boot-public-entry.test.ts',
+    'tests/assembly/production-boot-composition-refusals.test.ts', 'tests/assembly/production-boot-conversation.test.ts']),
+  fixtureAdmitted: productionBindingHolds,
+  held: productionBootPrerequisiteContract.held,
+});
 
 export function checkAssemblyCoverage(report, dispositions = assemblyDispositions) {
   if (!report.success) throw new Error('assembly mapping requires a successful actual test run');
@@ -143,7 +175,7 @@ export function productionGroundingSourceDigest(root = realpathSync(fileURLToPat
     if (existsSync(resolve(root, path))) { hash.update(path); hash.update(readFileSync(resolve(root, path))); }
   return hash.digest('hex');
 }
-const REVIEWED_GROUNDING_INVENTORY = '39eaa0955e0b255aa49af23f0916d3f804a00152ce08e5a13a0ec2cace8f9ac3';
+const REVIEWED_GROUNDING_INVENTORY = '1885876d680366068badf23d6cc52eb17b910086f7c28a02839908f640383045';
 export function checkProductionGroundingAssemblyEvidence(report) {
   const root = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
   if (!report.success || report.numFailedTests || report.numFailedTestSuites || !Number.isFinite(report.startTime))

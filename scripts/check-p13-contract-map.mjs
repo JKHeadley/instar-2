@@ -262,9 +262,9 @@ export function checkP13Architecture() {
   // The feature-scope arm guards THIS part's slice. On a branch that touches no Part Thirteen path (another
   // part's slice re-synced onto main), every changed file is by definition outside Part Thirteen's scope, so the
   // arm has nothing to judge; the structural checks below still run unconditionally.
-  // GRANT 45-E/45-F: only the exact pinned additivity amendment is outside this part's slice.
+  // Only the exact reviewed additivity amendments are outside this part's slice.
   const grantedAdditivityPath = 'tests/harness-adapters/a2-governance-and-additivity.test.ts';
-  const grantedAdditivityHash = 'a3303f8e1b959ca4eac481dfa637b20eeec463ad85ad568a136de1f2a5dd5b8b';
+  const grantedAdditivityHash = 'b6ae25224e327912c90b8e95b7a4886231a430ae9aaf1f117f96ad35d8cd8682';
   const { createHash } = process.getBuiltinModule('node:crypto');
   const p13SliceChanged = changed.some(path => !(path === grantedAdditivityPath
     && existsSync(path) && createHash('sha256').update(readFileSync(path)).digest('hex') === grantedAdditivityHash)

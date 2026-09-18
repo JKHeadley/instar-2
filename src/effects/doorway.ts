@@ -290,8 +290,15 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
           ensure(source, 'accepted evidence is absent');
           const e = take(decode('Evidence', source, current.decode));
           const claim = take(readEvidence(e, current.clock, host.boundary.preserved));
-          ensure(claim.subject === op.reservation.operation && claim.predicate === q.digest
-            && claim.value === state, 'accepted evidence has different operation/digest/predicate');
+          const value = claim.value;
+          const predicates = state === 'happened' ? ['operation-occurred'] : state === 'did-not-happen'
+            ? ['operation-did-not-occur', 'old-executor-quiescent']
+            : ['operation-occurred', 'operation-did-not-occur', 'old-executor-quiescent', 'charge-settled'];
+          ensure(claim.subject === op.reservation.operation
+            && ((claim.predicate === q.digest && value === state)
+              || (value !== null && typeof value === 'object' && !Array.isArray(value)
+                && 'digest' in value && value.digest === q.digest && predicates.includes(claim.predicate))),
+          'accepted evidence has different operation/digest/predicate');
           ensure(state === 'uncertain' || e.strength === 'proof' || e.strength === 'observation', 'inference cannot settle an external effect');
           return source;
         })).bytes;
