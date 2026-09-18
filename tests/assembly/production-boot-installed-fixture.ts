@@ -23,6 +23,7 @@ import { assemblyInput } from './fixture.js';
 import { verificationInput } from '../verification/fixture.js';
 import { value, privateKey, json } from '../facts/fixtures.js';
 import { productionStorageIO, createProductionNativeContextIO } from '../../scripts/production-boot-io.mjs';
+import { createProductionRunAdmission } from '../../src/transport/index.js';
 
 export const fixtureAdmissionNames = productionBindingHolds.join(', ');
 export function installedFixtureHost(root, route, options = {}) {
@@ -38,8 +39,7 @@ export function installedFixtureHost(root, route, options = {}) {
     botCredential: t.declaration.token, providerCredential: secret('provider'), storageCredential: secret('storage') };
   let underlyingAdmission, state;
   // Same landed Six fixture binding, constructed inside configure over the root.
-  const admission = { owner: 'part-six', ...Object.fromEntries(['create', 'commit', 'verify', 'execution', 'reservation']
-    .map(name => [name, (...args) => underlyingAdmission[name](...args)])) };
+  const admission = createProductionRunAdmission({ resolve: () => underlyingAdmission });
   const admittedDependencies = () => Object.fromEntries(requiredMinimalDependencies.map(name => [name, true]));
   const host = { context: c, storageIO: options.storageIO ?? productionStorageIO, storagePolicy: 'StoreCustodyPolicy',
     store: 'store:fact', repairOwner: 'operator', runAdmission: admission, missingBindings: [],
@@ -84,7 +84,8 @@ export function installedFixtureHost(root, route, options = {}) {
         } : undefined,
         native: { captures: storage.captures, io: nativeIO },
         intake: { ...initial, facts: [], opening: undefined } });
-      underlyingAdmission = f.deps.admission; f.deps.admission = admission;
+      underlyingAdmission = createProductionRunAdmission({ authority: f.effects.transport, store: f.store, context: f.c });
+      f.deps.admission = admission;
       const context = f.ctx, dc = context.decode, boundary = { ...f.c, register: dc.register };
       f.deps.context.evidenceSources.settlement = f.bob.provenance.adapter;
       const captures = value(createProductionJudgmentCaptures({ custody: storage.captures, context: boundary,
