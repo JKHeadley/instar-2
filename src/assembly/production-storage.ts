@@ -3,6 +3,7 @@ import type { BoundaryContext, Result } from '../index.js';
 import { hashBytes } from '../facts/index.js';
 import type { SegmentStoragePort } from '../facts/index.js';
 import type { PersistenceAdapterPort, PersistenceReceipt } from './contracts.js';
+import type { TelegramDurableCapturePort } from './telegram-bot-api-custodian.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 
 /** Physical operations belong to Ten's installed host, outside the pure core. */
@@ -30,6 +31,7 @@ export interface ProductionStorage {
   readonly root: string;
   readonly segment: SegmentStoragePort;
   readonly persistence: PersistenceAdapterPort;
+  readonly captures: TelegramDurableCapturePort;
   close(): void;
 }
 
@@ -123,6 +125,24 @@ export function openProductionStorage(input: Readonly<{ root: string; machine: s
     const exactRows = (): ExactRow[] => {
       current(); return existsSync(exactPath) ? JSON.parse(unseal('exact', exactPath)) as ExactRow[] : [];
     };
+    const capturePath = join(root, 'captures.encrypted');
+    const captureRows = (): Record<string, string> => {
+      current(); return existsSync(capturePath) ? JSON.parse(unseal('captures', capturePath)) as Record<string, string> : {};
+    };
+    const captures: TelegramDurableCapturePort = Object.freeze({ owner: 'part-ten',
+      preserve: (reference: string, bytes: string) => {
+        current(); ensure(reference.length > 0 && reference.length <= 4096 && Buffer.byteLength(bytes) <= 2 * 1024 * 1024,
+          'capture: bounded reference and bytes required');
+        const rows = captureRows();
+        if (Object.hasOwn(rows, reference)) return rows[reference] === bytes;
+        const next = { ...rows, [reference]: bytes };
+        writeDurable(capturePath, seal('captures', encoded(next).bytes));
+        return captureRows()[reference] === bytes;
+      },
+      read: (reference: string) => {
+        const rows = captureRows(); return Object.hasOwn(rows, reference) ? rows[reference]! : null;
+      },
+    });
     const persistence: PersistenceAdapterPort = Object.freeze({ owner: 'part-ten' as const, id: `production-storage:${input.store}`,
       describe: () => freeze({ backend: 'encrypted-on-disk', policy: input.policy, encrypted: true as const, appendAtomic: true as const }),
       appendExact: (request: Parameters<PersistenceAdapterPort['appendExact']>[0]) => boundary('ProductionExactAppend', null, input.context, () => {
@@ -158,8 +178,8 @@ export function openProductionStorage(input: Readonly<{ root: string; machine: s
       const probe = join(root, `.durability-${identity.nonce}`), bytes = randomBytes(32).toString('hex');
       writeDurable(probe, bytes); ensure(readFileSync(probe, 'utf8') === bytes, 'storage-root: durability proof failed');
       unlinkSync(probe); syncDirectory();
-      take(boundary('ProductionStorageRecovery', null, input.context, () => { readBytes(); exactRows(); }));
+      take(boundary('ProductionStorageRecovery', null, input.context, () => { readBytes(); exactRows(); captureRows(); }));
     } catch (error) { close(); throw error; }
-    return Object.freeze({ root, segment, persistence, close });
+    return Object.freeze({ root, segment, persistence, captures, close });
   });
 }
