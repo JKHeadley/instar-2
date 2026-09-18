@@ -22,6 +22,8 @@ import type {
 const admittedInstances = new WeakSet<object>();
 const admissionContexts = new WeakMap<object, BoundaryContext>();
 const admissionCustodians = new WeakMap<object, TelegramBotApiCustodianPort>();
+type TelegramIdentityCaptureResolver = (reference: string) => Result<string>;
+const identityCaptureResolvers = new WeakMap<object, TelegramIdentityCaptureResolver>();
 const activeAdmissions = new Set<string>();
 const activePolls = new Set<string>();
 const deliveryStatusHistories = new WeakMap<BoundaryContext, TelegramReplyAssessmentDependencies>();
@@ -85,6 +87,23 @@ function firstDifferentField(expected: unknown, supplied: unknown, path: string)
 
 export const telegramParserDeclarationId = 'telegram-intake-v1';
 export const telegramFeatureDeclarationId = 'telegram-conversation-adapter';
+
+// Owner-composition seam for the exact sealed getMe original. This is deliberately
+// absent from the public conversation barrel and from TelegramBotApiCustodianPort.
+// Keying the genuine identity function lets an ordinary spread wrapper participate
+// in admission without receiving the sealed bytes through its public readCapture.
+export function registerTelegramIdentityCaptureResolver(api: TelegramBotApiCustodianPort,
+  resolver: TelegramIdentityCaptureResolver): void {
+  identityCaptureResolvers.set(api, resolver);
+  identityCaptureResolvers.set(api.identity, resolver);
+}
+
+function resolveTelegramIdentityCapture(api: TelegramBotApiCustodianPort, reference: string): string {
+  if (!/^capture:telegram:sealed-getMe:[a-f0-9]{64}$/u.test(reference)) return take(api.readCapture(reference));
+  const resolver = identityCaptureResolvers.get(api) ?? identityCaptureResolvers.get(api.identity);
+  ensure(resolver !== undefined, 'Telegram sealed identity capture has no private owner resolver');
+  return take(resolver(reference));
+}
 
 export function telegramAccount(botId: string): string {
   ensure(/^[1-9][0-9]*$/.test(botId), 'bot id must be the canonical positive numeric Telegram id');
@@ -384,7 +403,7 @@ function validateWebhookChoice(declaration: TelegramBotDeclaration, deps: Telegr
 
 function validateIdentityProbe(declaration: TelegramBotDeclaration, deps: TelegramAdmissionDependencies,
   probe: AdmittedTelegramAdapter['probe']): Readonly<{ validate(now: Clock): number }> {
-  const captureBytes = take(deps.api.readCapture(probe.capture.reference));
+  const captureBytes = resolveTelegramIdentityCapture(deps.api, probe.capture.reference);
   const rows = take(deps.verification.inspect());
   const referenced = rows.filter((row): row is typeof row & { record: ProbeRecord } =>
     row.record.type === 'ProbeRecord' && row.record.id === probe.reference);
