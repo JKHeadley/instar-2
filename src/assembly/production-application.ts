@@ -11,7 +11,8 @@ import { boundary, ensure, take } from './boundary.js';
 export interface ProductionApplicationHost extends Omit<ProductionBootHost, 'compose'> {
   /** Installation policy and confined physical ports. The factory, rather than
    * this host, constructs all ordinary conversation owner ports. */
-  configure(installation: ProductionInstallation, storage: ProductionStorage): Result<Readonly<{
+  /** Keep mutable owner contexts behind a closure: Result values are deeply sealed. */
+  configure(installation: ProductionInstallation, storage: ProductionStorage): Result<() => Readonly<{
     owners: ProductionOwnerCompositionInput;
     manifest: string;
     scope: string;
@@ -32,7 +33,7 @@ export function bootProductionApplication(record: unknown, host: ProductionAppli
     let owners: ProductionOwnerComposition | undefined;
     const boot = take(bootProductionInstallation(record, { ...host,
       compose: (installation, storage) => boundary('ProductionApplicationComposition', null, host.context, () => {
-        const configured = take(host.configure(installation, storage));
+        const configured = take(host.configure(installation, storage))();
         ensure(configured.owners.run.admission === host.runAdmission,
           'run-admission: configured owner differs from admitted binding');
         ensure(configured.owners.intake.storage === storage.segment,

@@ -11,11 +11,11 @@ import type { ProductionStorage, ProductionStorageIO } from './production-storag
 import { bootProductionAssembly } from './production.js';
 import type { AssemblyComposition, AssemblyProductionCoordinator } from './contracts.js';
 import type { RunAdmissionPort } from '../rungraph/index.js';
+import { productionBindingHolds } from './production-holds.js';
 import { isProductionOwnerComposition } from './production-composition.js';
 
 export const productionBootHolds = Object.freeze([
-  'NON-EXECUTABLE-UNTIL-replication-peer',
-  'NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
+  ...productionBindingHolds,
   'NON-EXECUTABLE-UNTIL-replicated-storage-second-machine',
   'NON-EXECUTABLE-UNTIL-package-switch-rollback',
   'NON-EXECUTABLE-UNTIL-other-conversation-platforms',
@@ -35,6 +35,8 @@ export interface ProductionBootHost {
   /** U4-F: absent until the separate Six production admission slice lands.
    * The recorded lifecycle alone supplies the landed fixture binding. */
   readonly runAdmission?: RunAdmissionPort | null;
+  /** Installed hosts report their unavailable real bindings; omission stays closed. */
+  readonly missingBindings?: readonly string[];
   /** Current dependency observations, before any external operation. U4-C
    * leaves replication-peer absent in the installed host. No peer is invented. */
   dependencies(): Readonly<Record<MinimalDependency, boolean>>;
@@ -77,7 +79,7 @@ export function bootProductionInstallation(record: unknown, host: ProductionBoot
         || ['create', 'commit', 'verify', 'execution', 'reservation'].some(name =>
           typeof admission[name as keyof RunAdmissionPort] !== 'function');
       const posture = take(productionSwitchOnPosture({ admitted: host.dependencies(),
-        unavailableAdapters: missingAdmission ? ['run-admission'] : [],
+        unavailableAdapters: [...(missingAdmission ? ['run-admission'] : []), ...(host.missingBindings ?? productionBindingHolds)],
         repairOwner: host.repairOwner }, host.context));
       ensure(posture.serve, `switch-on refused: missing binding ${posture.missing.join(', ')}`);
       const built = take(host.compose(installation, storage));

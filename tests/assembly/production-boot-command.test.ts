@@ -5,9 +5,10 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { expect, it } from 'vitest';
 import { factsFixture } from '../facts/fixtures.js';
+import { productionBindingHolds } from '../../src/assembly/production-holds.js';
 import { requiredMinimalDependencies } from '../../src/operator/index.js';
 
-it('installed executable refuses both U4 activation holds even when a host advertises fixture bindings', () => {
+it('installed executable names every U4-G missing real binding before network-capable composition', () => {
   const f = factsFixture(), root = realpathSync(mkdtempSync(join(tmpdir(), 'production-command-')));
   try {
     const context = { ...f.ctx.decode, site: f.c.site, preserved: f.c.preserved };
@@ -32,7 +33,7 @@ export function createProductionHost() { return {
     const child = spawnSync(process.execPath, ['bin/instar-production.mjs', configuration, module],
       { encoding: 'utf8', timeout: 30000 });
     expect(child.status).toBe(1);
-    expect(child.stderr).toContain('missing binding replication-peer, run-admission');
+    for (const hold of productionBindingHolds) expect(child.stderr).toContain(hold);
     expect(child.stderr).not.toContain('synthetic-test-credential');
     expect(child.stderr).not.toContain('NETWORK-CAPABLE');
     expect(child.stdout).toBe('');

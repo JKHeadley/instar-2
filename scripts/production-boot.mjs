@@ -22,18 +22,19 @@ export async function runProductionCommand(args, output = process.stderr) {
     output.write('production boot refused: installation record or confined host unavailable\n');
     return 1;
   }
-  // U4-C/U4-F: the installed distribution has neither real binding. A supplied
-  // host cannot switch these holds off by advertising fixture-shaped handles.
-  // The recorded lifecycle supplies the two explicitly granted fixture bindings
-  // to the same core entry; this installed command supplies no substitutes.
-  const { runAdmission: _heldAdmission, ...installedHost } = host;
-  const result = bootProductionApplication(record, { ...installedHost,
-    dependencies: () => ({ ...host.dependencies(), 'replication-peer': false }) });
-  return consumeResult(result, {
-    Success: application => {
-      application.close();
-      output.write('production boot refused: unexpected admission while U4 activation holds remain\n');
-      return 1;
+  // Missing bindings default closed in the core. This executable supplies no
+  // fixture handles; its installed host owns real dependency observations.
+  const result = bootProductionApplication(record, host);
+  return await consumeResult(result, {
+    Success: async application => {
+      try {
+        if (typeof host.run !== 'function') {
+          output.write('production boot refused: missing binding conversation-driver\n');
+          return 1;
+        }
+        await host.run(application);
+        return 0;
+      } finally { application.close(); }
     },
     Refused: refusal => { output.write(`production boot refused: ${refusal.detail}\n`); return 1; },
   });

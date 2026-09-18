@@ -1,7 +1,8 @@
 // @ts-nocheck -- U4-F lifecycle adaptation; Six run admission remains the exact landed fixture binding.
 // This NEW fixture leaves the landed source byte-identical and accepts an actual Four prefix.
 import { createProductionNativeContextAdapter } from '../../src/assembly/production-native-context.js';
-import { groundingCheckpoint } from './production-grounding-evidence.mjs';
+// Standalone bin workers cannot load Vitest's unit-2 assertion instrument.
+const groundingCheckpoint = (..._event: unknown[]) => {};
 import { canonical, consumeResult, decode, decodeMeasurement } from '../../src/index.js';
 import type { Clock, FactEnvelopeReference, Json } from '../../src/index.js';
 import { authorAndAppend, createFactStore, factId, hashBytes } from '../../src/facts/index.js';
@@ -45,7 +46,7 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
   if (seed) {
     Object.assign(types.captures, seed.decode.captures);
     Object.assign(captures, seed.captures);
-    types.register = { ...types.register, entries: [...new Set([...types.register.entries, ...seed.decode.register.entries])],
+    types.register = { ...types.register, sites: { ...types.register.sites, ...seed.decode.register.sites }, entries: [...new Set([...types.register.entries, ...seed.decode.register.entries])],
       methods: [...new Set([...types.register.methods, ...seed.decode.register.methods])] };
     types.principals = [...types.principals ?? [], ...seed.decode.principals ?? []];
   }
