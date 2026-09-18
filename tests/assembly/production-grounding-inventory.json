@@ -5257,7 +5257,7 @@
     "src/assembly/growth.ts": "44dfad8e203734992a185b013ec8811362a6ff75438b70ee4fc312992cf77838",
     "src/assembly/harness.ts": "df847ca76995a193d086524ed8e3ff9c260e356b48e1971840f6672f37abd91e",
     "src/assembly/history.ts": "27be341923822c3e27cbf7395db8704d2a844e16e6382096e6941bca10b273e9",
-    "src/assembly/index.ts": "d4ca05de092ca8cd6b54e897ca1ce89506aaf4018a5ac4aed803df35f0697604",
+    "src/assembly/index.ts": "21331f603ac78922194eb3fab3829242757cb94f812f05bec5e10f6bf8e9f21f",
     "src/assembly/package.ts": "446effba83b5e4ce7367e3f789c02b661057eaee942de8de2cd25f23f5ac7c11",
     "src/assembly/persistence.ts": "0099bd62f7eb959d64940ab9915bf5d00c2d763f4917a49b81c58a4c59fab476",
     "src/assembly/production.ts": "6f395a205ef4838e6955240ea25e429a0ee16132a20e9d72904c24ed6685d6fb",

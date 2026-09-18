@@ -32,6 +32,18 @@ export const productionBootPrerequisiteContract = Object.freeze({
     'NON-EXECUTABLE-UNTIL-live-path-unit-compaction', 'NON-EXECUTABLE-UNTIL-traces-beyond-launch-message-provider-call']),
 });
 
+// U4-G: executable construction and recorded lifecycle coexist with explicit
+// fixture admission of every unavailable installation binding. No LIVE claim.
+export const productionBootLifecycleContract = Object.freeze({
+  executable: Object.freeze(['bootProductionApplication and bin/instar-production.mjs compose the real owner constructors',
+    'recorded Telegram through Four/Five/Seven/Eight/Six/Nine/Five and one minimal reply',
+    'real SIGKILL and public restart at restored adjacent durable prefixes of that one trace']),
+  evidence: Object.freeze(['tests/assembly/production-boot-public-entry.test.ts',
+    'tests/assembly/production-boot-composition-refusals.test.ts', 'tests/assembly/production-boot-conversation.test.ts']),
+  fixtureAdmitted: productionBindingHolds,
+  held: productionBootPrerequisiteContract.held,
+});
+
 export function checkAssemblyCoverage(report, dispositions = assemblyDispositions) {
   if (!report.success) throw new Error('assembly mapping requires a successful actual test run');
   if (dispositions.length !== 57 || new Set(dispositions.map(row => row.id)).size !== 57) throw new Error('missing or duplicate P10 disposition');
@@ -163,7 +175,7 @@ export function productionGroundingSourceDigest(root = realpathSync(fileURLToPat
     if (existsSync(resolve(root, path))) { hash.update(path); hash.update(readFileSync(resolve(root, path))); }
   return hash.digest('hex');
 }
-const REVIEWED_GROUNDING_INVENTORY = 'e7686ac98867e9b8712ab7ba56d016d8517bf44b5fcd6197b4913b4701ee34e0';
+const REVIEWED_GROUNDING_INVENTORY = '1885876d680366068badf23d6cc52eb17b910086f7c28a02839908f640383045';
 export function checkProductionGroundingAssemblyEvidence(report) {
   const root = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
   if (!report.success || report.numFailedTests || report.numFailedTestSuites || !Number.isFinite(report.startTime))

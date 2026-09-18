@@ -32,3 +32,5 @@ export { bootProductionInstallation, productionBootHolds } from './production-bo
 export type { ProductionBoot, ProductionBootHost } from './production-boot.js';
 export { decodeProductionInstallation, productionInstallationSchemas, registerProductionInstallationBody } from './production-installation.js';
 export type { ProductionInstallation } from './production-installation.js';
+export { bootProductionApplication } from './production-application.js';
+export type { ProductionApplication, ProductionApplicationHost } from './production-application.js';
