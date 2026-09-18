@@ -1,9 +1,8 @@
-import { isAbsolute, normalize } from 'node:path';
 import { decode } from '../index.js';
-import type { BoundaryContext, DecodeContext, Result, Scope, SecretRef } from '../index.js';
-import { registerOwnedBody } from '../facts/index.js';
-import type { FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
-import { boundary, encoded, ensure, freeze, take } from './boundary.js';
+import type { BoundaryContext, Clock, DecodeContext, Result, Scope, SecretRef, VerifiedPrincipal } from '../index.js';
+import { authorAndAppend, registerOwnedBody } from '../facts/index.js';
+import type { FactContext, FactEnvelope, FactSchema, FactStorePort, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
+import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 
 export interface ProductionInstallation {
   readonly type: 'ProductionInstallation';
@@ -45,7 +44,8 @@ export function decodeProductionInstallation(input: unknown,
     ensure(value.generation === context.register.generation.id, 'register: stale installation generation');
     for (const name of ['id', 'botDeclaration', 'providerRoute', 'machineIdentity'] as const)
       ensure(context.register.entries.includes(value[name]), `installation: unregistered ${name}`);
-    ensure(isAbsolute(value.storageRoot) && normalize(value.storageRoot) === value.storageRoot,
+    ensure(value.storageRoot.startsWith('/') && (value.storageRoot === '/'
+      || value.storageRoot.slice(1).split('/').every(part => part !== '' && part !== '.' && part !== '..')),
       'storage-root: canonical absolute directory required');
     const result = freeze({ ...value,
       botCredential: take(decode('SecretRef', value.botCredential, context)),
@@ -65,7 +65,7 @@ export function productionInstallationSchemas(scope: Scope): readonly FactSchema
   return Object.freeze([{ kind: 'assembly-ProductionInstallation', version: 1,
     fields: { record: { kind: 'owned' as const, owner: 'part-ten', name: 'ProductionInstallation' } },
     machineScope: 'shared' as const, standing: 'operator' as const, action: 'work', scope,
-    causallyBound: false, requiredReferences: [], authority: 'none' as const }]);
+    causallyBound: true, requiredReferences: [], authority: 'none' as const }]);
 }
 
 export function registerProductionInstallationBody(context: DecodeContext & BoundaryContext): Result<OwnedBodyRegistration> {
@@ -76,4 +76,26 @@ export function registerProductionInstallationBody(context: DecodeContext & Boun
       catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'installation refused' }; }
     },
   }, shape, context);
+}
+
+/** The Part Two operator-standing schema admits the installation. Reusing its
+ * identity cannot silently replace bindings, even across process restarts. */
+export function recordProductionInstallation(input: Readonly<{ record: unknown; context: FactContext;
+  boundary: DecodeContext & BoundaryContext; store: FactStorePort; privateKey: string;
+  principal: VerifiedPrincipal; at: Clock; required: readonly string[] }>): Result<FactEnvelope> {
+  return boundary('RecordProductionInstallation', null, input.boundary, () => {
+    const record = take(decodeProductionInstallation(input.record, input.boundary));
+    const matches = take(input.store.readForProjection()).entries.filter(row =>
+      row.fact.kind === 'assembly-ProductionInstallation'
+      && (row.fact.body as { record?: { id?: string } }).record?.id === record.id);
+    ensure(matches.length <= 1, 'installation: ambiguous immutable identity');
+    if (matches[0]) {
+      ensure(!matches[0].taint.length && !matches[0].conflicts.length, 'installation: unavailable signed configuration');
+      ensure(encoded(matches[0].fact.body).bytes === encoded({ record }).bytes, 'installation: immutable binding conflict');
+      return matches[0].fact;
+    }
+    return take(authorAndAppend({ kind: 'assembly-ProductionInstallation', schemaVersion: 1,
+      machine: record.machineIdentity, principal: json(input.principal), provenance: json(input.principal.provenance),
+      at: json(input.at), body: json({ record }), required: input.required }, input.context, input.store, input.privateKey)).fact;
+  });
 }

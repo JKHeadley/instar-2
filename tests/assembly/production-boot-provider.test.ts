@@ -3,8 +3,11 @@ import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { decode } from '../../src/index.js';
 import { createClaudeCodeProductionRoute } from '../../src/assembly/production-provider.js';
 import { factsFixture, refused, value } from '../facts/fixtures.js';
+// @ts-expect-error Ten physical host is executable JavaScript outside the pure core.
+import { productionProviderIO } from '../../scripts/production-boot-io.mjs';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -16,10 +19,10 @@ function fixture(body: string) {
   let resolves = 0;
   const input = { provider: 'anthropic', model: 'explicit-model', route: 'registered-route',
     disclosure: 'CLI receives recorded envelope as text; provider internal context unavailable',
-    credential: { type: 'SecretRef' as const, schemaVersion: 1 as const, vault: 'vault', name: 'provider-test-only' },
+    credential: value(decode('SecretRef', { type: 'SecretRef', schemaVersion: 1, vault: 'vault', name: 'provider-test-only' }, f.ctx.decode)),
     context: { ...f.ctx.decode, site: f.c.site, preserved: f.c.preserved },
     resolve: () => { resolves++; return 'synthetic-test-credential'; }, executable,
-    artifact: `sha256:${createHash('sha256').update(bytes).digest('hex')}`, workingDirectory: root };
+    artifact: `sha256:${createHash('sha256').update(bytes).digest('hex')}`, workingDirectory: root, io: productionProviderIO };
   const bounds = { operation: 'operation:test', deadline: 10000, timeout: 2000,
     maxOutputBytes: 4096, maxTokens: 128, maxCharge: 20, automaticRetries: 0 as const };
   return { root, input, bounds, resolves: () => resolves };
@@ -42,6 +45,7 @@ it('production provider transport: exact stdin, bounded receipt, explicit model,
     const observed = JSON.parse(readFileSync(join(f.root, 'observed.json'), 'utf8'));
     expect(observed).toMatchObject({ text: submitted, retries: '0', token: 'synthetic-test-credential', unexpected: null });
     expect(observed.args).toContain('--no-session-persistence');
+    expect(observed.args).toContain('--bare');
     expect(observed.args).toContain('--strict-mcp-config');
     expect(observed.args).toContain('{"disableAllHooks":true}');
     expect(f.resolves()).toBe(1); expect(JSON.stringify(route)).not.toContain('synthetic-test-credential');

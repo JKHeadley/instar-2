@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 const partialReason = 'Executable negative/positive-neighbour contract coverage and the Part Four/Part Ten owner seams are present; production activation remains dark pending independent live phone/provider, semantic-review, and objective mobile evidence.';
+export const productionSwitchOnContract = Object.freeze({
+  executable: Object.freeze(['pre-poll switch-on posture names missing bindings without claiming preserved input']),
+  evidence: 'tests/assembly/production-boot-refusals.test.ts',
+  held: Object.freeze(['NON-EXECUTABLE-UNTIL-replication-peer']),
+});
 export const p11HeldCases = Object.freeze([Object.freeze({
   id: 'V90',
   reason: 'NON-EXECUTABLE-UNTIL-slice-A2-final-append-generation',

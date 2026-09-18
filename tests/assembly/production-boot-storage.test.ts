@@ -3,10 +3,13 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
-import { hashBytes } from '../../src/facts/index.js';
+import { createFactStore, hashBytes } from '../../src/facts/index.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
-import { decodeProductionInstallation, isProductionInstallation } from '../../src/assembly/production-installation.js';
-import { factsFixture, refused, value } from '../facts/fixtures.js';
+import { decodeProductionInstallation, isProductionInstallation, productionInstallationSchemas,
+  recordProductionInstallation, registerProductionInstallationBody } from '../../src/assembly/production-installation.js';
+import { factsFixture, privateKey, refused, value } from '../facts/fixtures.js';
+// @ts-expect-error Ten physical host is executable JavaScript outside the pure core.
+import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -14,7 +17,7 @@ function directory() { const root = realpathSync(mkdtempSync(join(tmpdir(), 'pro
 function storageInput(root = directory()) {
   const f = factsFixture();
   return { root, machine: 'machine-a', key: new Uint8Array(32).fill(17), policy: 'policy:installation',
-    store: 'facts:installation', context: f.c };
+    store: 'facts:installation', context: f.c, io: productionStorageIO };
 }
 function installation() {
   const f = factsFixture(), context = { ...f.ctx.decode, site: f.c.site, preserved: f.c.preserved };
@@ -44,6 +47,25 @@ it('production boot installation: extra settings and raw or missing credentials 
   refused(decodeProductionInstallation({ ...record, providerCredential: 'raw-secret' }, context));
   const { botCredential: _omitted, ...missing } = record;
   refused(decodeProductionInstallation(missing, context), 'closed immutable record');
+});
+it('production boot installation: the operator appends one immutable signed configuration and reopens it from disk', () => {
+  const f = factsFixture(), { record } = installation();
+  const root = f.fact();
+  const boundary = { ...f.ctx.decode, site: f.c.site, preserved: f.c.preserved };
+  const context = { ...f.ctx, grants: [{ factId: root.id, grant: f.g }], schemas: [...f.ctx.schemas, ...productionInstallationSchemas(f.scope)],
+    ownedBodies: [...f.ctx.ownedBodies ?? [], value(registerProductionInstallationBody(boundary))] };
+  const input = storageInput(record.storageRoot), disk = value(openProductionStorage(input));
+  value(disk.segment.append(value(canonical(root)).bytes, null));
+  const store = createFactStore(context, disk.segment);
+  const write = { record, context, boundary, store, privateKey, principal: f.alice, at: f.now, required: [root.id] };
+  const installed = value(recordProductionInstallation(write));
+  expect(installed.kind).toBe('assembly-ProductionInstallation');
+  expect(value(recordProductionInstallation(write)).id).toBe(installed.id);
+  refused(recordProductionInstallation({ ...write, record: { ...record, providerRoute: 'model' } }), 'immutable binding conflict');
+  disk.close();
+  const reopened = value(openProductionStorage(input)), recovered = createFactStore(context, reopened.segment);
+  expect(value(recovered.read())).toEqual([root, installed]);
+  reopened.close();
 });
 
 it('production boot storage: fsynced encrypted segment and exact receipts recover after a fresh custodian', () => {

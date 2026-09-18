@@ -1,12 +1,30 @@
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
-import { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, openSync,
-  readFileSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
 import type { BoundaryContext, Result } from '../index.js';
 import { hashBytes } from '../facts/index.js';
 import type { SegmentStoragePort } from '../facts/index.js';
 import type { PersistenceAdapterPort, PersistenceReceipt } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
+
+/** Physical operations belong to Ten's installed host, outside the pure core. */
+export interface ProductionStorageIO {
+  readonly pid: number;
+  readonly constants: Readonly<{ O_CREAT: number; O_EXCL: number; O_WRONLY: number; O_NOFOLLOW: number }>;
+  probePid(pid: number): void;
+  join(...parts: string[]): string;
+  resolve(path: string): string;
+  closeSync(fd: number): void;
+  existsSync(path: string): boolean;
+  fsyncSync(fd: number): void;
+  lstatSync(path: string): Readonly<{ mode: number; isSymbolicLink(): boolean }>;
+  mkdirSync(path: string, options: Readonly<{ recursive?: boolean; mode: number }>): unknown;
+  openSync(path: string, flags: string | number, mode?: number): number;
+  readFileSync(path: string, encoding: 'utf8'): string;
+  realpathSync(path: string): string;
+  renameSync(from: string, to: string): void;
+  rmdirSync(path: string): void;
+  unlinkSync(path: string): void;
+  writeFileSync(fd: number, bytes: string, encoding: 'utf8'): void;
+}
 
 export interface ProductionStorage {
   readonly root: string;
@@ -19,8 +37,10 @@ export interface ProductionStorage {
  * or reused PID, incomplete lease record, or interrupted recovery stays closed.
  * All acquisition/reclamation uses the same exclusive guard directory. */
 export function openProductionStorage(input: Readonly<{ root: string; machine: string;
-  key: Uint8Array; policy: string; store: string; context: BoundaryContext }>): Result<ProductionStorage> {
+  key: Uint8Array; policy: string; store: string; context: BoundaryContext; io: ProductionStorageIO }>): Result<ProductionStorage> {
   return boundary('ProductionStorage', null, input.context, () => {
+    const { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
+      realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync, join, resolve } = input.io;
     ensure(input.key.byteLength === 32, 'storage-key: 32 bytes required');
     const root = resolve(input.root), lease = join(root, '.boot-lease'), guard = join(root, '.boot-lease-guard');
     ensure(root === input.root, 'storage-root: canonical absolute directory required');
@@ -38,7 +58,7 @@ export function openProductionStorage(input: Readonly<{ root: string; machine: s
       finally { closeSync(fd); }
       renameSync(temporary, file); syncDirectory();
     };
-    const identity = Object.freeze({ pid: process.pid, machine: input.machine, nonce: randomUUID() });
+    const identity = Object.freeze({ pid: input.io.pid, machine: input.machine, nonce: randomUUID() });
     try { mkdirSync(guard, { mode: 0o700 }); }
     catch { throw new Error('storage-lease: acquisition or recovery in progress'); }
     try {
@@ -49,7 +69,7 @@ export function openProductionStorage(input: Readonly<{ root: string; machine: s
         ensure(Number.isSafeInteger(previous.pid) && previous.pid > 0 && previous.machine === input.machine
           && typeof previous.nonce === 'string', 'storage-lease: owner identity invalid');
         let dead = false;
-        try { process.kill(previous.pid, 0); }
+        try { input.io.probePid(previous.pid); }
         catch (error) { dead = (error as NodeJS.ErrnoException).code === 'ESRCH'; }
         ensure(dead, 'storage-lease: second concurrent boot refused');
         renameSync(lease, join(root, `.retired-lease-${previous.nonce}`)); syncDirectory();

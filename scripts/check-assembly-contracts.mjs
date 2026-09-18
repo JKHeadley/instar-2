@@ -19,6 +19,17 @@ export const productionBootCustodyContract = Object.freeze({
   evidence: 'tests/assembly/production-boot-preconditions.test.ts',
   held: Object.freeze(['NON-EXECUTABLE-UNTIL-replication-peer']),
 });
+export const productionBootPrerequisiteContract = Object.freeze({
+  executable: Object.freeze(['immutable operator-authored installation configuration',
+    'encrypted durable root custody and exclusive boot lease', 'confined bounded Claude Code transport',
+    'switch-on refuses missing replication-peer before network-capable composition']),
+  evidence: Object.freeze(['tests/assembly/production-boot-storage.test.ts',
+    'tests/assembly/production-boot-provider.test.ts', 'tests/assembly/production-boot-refusals.test.ts']),
+  held: Object.freeze(['NON-EXECUTABLE-UNTIL-replication-peer',
+    'NON-EXECUTABLE-UNTIL-replicated-storage-second-machine', 'NON-EXECUTABLE-UNTIL-package-switch-rollback',
+    'NON-EXECUTABLE-UNTIL-other-conversation-platforms', 'NON-EXECUTABLE-UNTIL-multiple-bots',
+    'NON-EXECUTABLE-UNTIL-live-path-unit-compaction', 'NON-EXECUTABLE-UNTIL-traces-beyond-launch-message-provider-call']),
+});
 
 export function checkAssemblyCoverage(report, dispositions = assemblyDispositions) {
   if (!report.success) throw new Error('assembly mapping requires a successful actual test run');
@@ -151,7 +162,7 @@ export function productionGroundingSourceDigest(root = realpathSync(fileURLToPat
     if (existsSync(resolve(root, path))) { hash.update(path); hash.update(readFileSync(resolve(root, path))); }
   return hash.digest('hex');
 }
-const REVIEWED_GROUNDING_INVENTORY = '96fa100308989be49def99820a8dcade7cb61e9ee85ec5d1e3b7fbe625f6aa79';
+const REVIEWED_GROUNDING_INVENTORY = '7851ffa99c10da5777bdb7b484a02d7761d3c652b6246f45eea9aaccecd0dc91';
 export function checkProductionGroundingAssemblyEvidence(report) {
   const root = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
   if (!report.success || report.numFailedTests || report.numFailedTestSuites || !Number.isFinite(report.startTime))

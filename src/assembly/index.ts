@@ -28,3 +28,7 @@ export { createTelegramBotApiCustodian,
 export type { TelegramBotApiCustodianOptions, TelegramBridgeFailureStage, TelegramBridgeReply, TelegramConfinedBridgePort,
   TelegramDurableCapturePort } from './telegram-bot-api-custodian.js';
 export { createConfinedProviderInvocation, type ConfinedProviderRoute, type ProviderInvocationPort } from './provider-invocation.js';
+export { bootProductionInstallation, productionBootHolds } from './production-boot.js';
+export type { ProductionBoot, ProductionBootHost } from './production-boot.js';
+export { decodeProductionInstallation, productionInstallationSchemas, registerProductionInstallationBody } from './production-installation.js';
+export type { ProductionInstallation } from './production-installation.js';
