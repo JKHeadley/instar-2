@@ -22,6 +22,12 @@ it.each([
   ['missing harness', o => { o.assembly.harnesses = []; }, 'harness'],
   ['mock model', o => { o.provider.judgment.host.description.provider = 'mock-provider'; o.provider.route = { ...route, provider: 'mock-provider' }; }, 'model: mock'],
   ['test-only model', o => { o.provider.judgment.host.description.provider = 'test-only-provider'; o.provider.route = { ...route, provider: 'test-only-provider' }; }, 'model: mock'],
+  ['unproven production route', o => { o.provider.route = { ...route, environment: 'production' }; }, 'NON-EXECUTABLE-UNTIL-production-boot-credential-custody'],
+  ['copied persistence facade', o => { o.assembly.persistence = { ...o.assembly.persistence }; }, 'persistence'],
+  ['stale composed register', o => {
+    const current = o.assembly.host.current;
+    o.assembly.host = { ...o.assembly.host, current: () => ({ ...current(), generation: 'stale' }) };
+  }, 'register'],
   ['null provider', o => { o.provider = null; }, 'provider'],
   ['null effect', o => { o.effect = null; }, 'effect'],
   ['null operator', o => { o.operator = null; }, 'operator'],
