@@ -1,5 +1,6 @@
 // @ts-nocheck -- U4-F lifecycle adaptation; Six run admission remains the exact landed fixture binding.
 // This NEW fixture leaves the landed source byte-identical and accepts an actual Four prefix.
+import { createProductionNativeContextAdapter } from '../../src/assembly/production-native-context.js';
 import { groundingCheckpoint } from './production-grounding-evidence.mjs';
 import { canonical, consumeResult, decode, decodeMeasurement } from '../../src/index.js';
 import type { Clock, FactEnvelopeReference, Json } from '../../src/index.js';
@@ -55,7 +56,7 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
     stimulusKinds: seed ? ['intake-admitted'] : ['stimulus', 'next-inbound'], evidenceSources: { settlement: 'probe', exit: 'probe' } };
   const assemblyHost: any = { machine: 'machine-a', principal: f.bob, scope: f.scope, boundary: { ...f.c, register: types.register },
     current: () => ({ facts: ctx, generation: types.register.generation.id, stopped, clock: now }) };
-  const owners = prepareLiveInputOwners(f, types, () => now, () => stopped, () => ctx, harnessId);
+  const owners = prepareLiveInputOwners(f, types, () => now, () => stopped, () => ctx, harnessId, options.native);
   const registration = value(runFactSchemas(c));
   ctx = { ...ctx, schemas: [...ctx.schemas, ...registration.schemas, ...assemblySchemas(assemblyHost), ...owners.schemas, ...productionSchemas(f).filter(s => !ctx.schemas.some(t => t.kind === s.kind))], ownedBodies: [...seed?.ownedBodies ?? [], ...registration.registrations, ...value(registerAssemblyBodies(assemblyHost)), ...owners.registrations] }; c = { ...c, facts: ctx };
   let appendCut: ((record: any) => boolean) | undefined;
@@ -78,7 +79,7 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
   const store = createFactStore(ctx, storage);
   const append = (kind: string, body: Json, required: readonly string[] = [], schemaVersion = 1) => value(authorAndAppend({ kind, body, required, schemaVersion,
     machine: 'machine-a', principal: json(f.bob), provenance: json(f.bob.provenance), at: json(now) }, ctx, store, privateKey));
-  const intent = seed ? seed.opening.body.intent : value(decode('Intent', f.intentInput({ principal: f.bob }), types));
+  let intent = seed?.opening ? seed.opening.body.intent : value(decode('Intent', f.intentInput({ principal: f.bob }), types));
   const effects = owners.attach(store);
   const nextPosition = (value(store.read()).at(-1)?.segment.position ?? -1) + 1;
   const predicted = factId({ machine: 'machine-a', epoch: 0, position: nextPosition });
@@ -88,14 +89,14 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
 
   // Restart harness reconstructs from the durable cause plus installation policy,
   // never from a Run supplied by its dead caller. Existing input is not reauthored.
-  const opening = seed?.opening ?? value(store.read()).find(f => f.kind === 'stimulus')
+  let opening = seed?.opening ?? value(store.read()).find(f => f.kind === 'stimulus')
     ?? (stimulus ? append('stimulus', stimulus.body({ append, intent, owner: f.bob, hash })).fact
       : append('stimulus', json({ intent, owner: f.bob, capture: initialCapture })).fact);
   recovery?.afterIntake?.();
-  const ownerFact = seed ? append('stimulus', json({ intent: value(decode('Intent', f.intentInput({ principal: f.bob }), types)), owner: f.bob, capture: initialCapture })).fact : opening;
+  const ownerFact = seed?.opening ? append('stimulus', json({ intent: value(decode('Intent', f.intentInput({ principal: f.bob }), types)), owner: f.bob, capture: initialCapture })).fact : opening;
   const owner = { type: 'VerifiedPrincipal' as const, id: 'bob', fact: ref(ownerFact), field: 'owner' };
-  if (seed) c.intakeOwners[seed.opening.body.work.owner] = owner;
-  const id = runIdFor(ref(opening)), binding = { owner: 'part-four', name: 'ConversationBinding', id: 'binding:1' } as const;
+  if (seed?.opening) c.intakeOwners[seed.opening.body.work.owner] = owner;
+  let id = runIdFor(ref(opening)); const binding = { owner: 'part-four', name: 'ConversationBinding', id: 'binding:1' } as const;
   const lease = { owner: 'part-six', name: 'Lease', id: effects.leaseFact.id } as const; liveLease = lease.id;
   if (recovery) liveLease = recovery.lease;
   let execution = { worker: recovery?.worker ?? 'w', harness: recovery?.harness ?? harnessId, ownership: { ...lease, id: liveLease }, context: ref(effects.leaseFact) };
@@ -170,7 +171,17 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
     setClock: (n: number) => { now = value(decodeMeasurement('clock', f.clockRaw(n), types)); },
     time: (n: number) => { now = value(decodeMeasurement('clock', f.clockRaw(n), types)); }, stop: (v = true) => { stopped = v; },
   };
-  return installAssemblySupport(base, options);
+  const installed = installAssemblySupport(base, options);
+  installed.bindIntake = (fact: any) => {
+    if (!options.deferred || value(store.read()).some(row => row.kind === 'run-opening')) throw Error('intake binding already in use');
+    if (fact.kind !== 'intake-admitted' || !value(store.read()).some(row => row.id === fact.id)) throw Error('durable Four input required');
+    opening = fact; intent = fact.body.intent; id = runIdFor(ref(fact));
+    c.intakeOwners[fact.body.work.owner] = owner;
+    Object.assign(run, { id, opening: ref(fact), intent: { type: 'Intent', id: intent.id, fact: ref(fact), field: 'intent' },
+      authority: { resolution: ref(fact), grants: [] }, resultDestination: { binding, route: ref(fact) } });
+    Object.assign(base, { opening, id }); Object.assign(installed, { opening, id });
+  };
+  return installed;
 }
 
 import { assemblySchemas, registerAssemblyBodies, createAssemblySpine, createAssemblyRuntime,
@@ -190,7 +201,7 @@ function productionSchemas(f: any) {
     { ...f.schema, kind: 'assembly-measurement-reference', fields: { ...identity, measurement: { kind: 'constitutional', type: 'Measurement' } } },
   ];
 }
-function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, context: any, harnessId: string) {
+function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, context: any, harnessId: string, native: any) {
   let authority: string[] = [], versions: any[] = [], ordinal = 0;
   const events: string[] = [];
   const host: any = { machine: 'machine-a', incarnation: 'incarnation:one', principal: f.bob, scope: f.scope,
@@ -223,7 +234,9 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
       let leaseFact = value(transport.inspect()).find((row: any) => row.record.type === 'Lease')!.fact;
       const policy = value(decodeLoopPolicy({ type: 'LoopPolicy', schemaVersion: 1, id: 'live-input-policy', maxAttempts: 3,
         minDelay: 10, maxDuration: 1000, timeout: 10, concurrency: 1, failDirection: 'closed', breaker: 'stub-closed' }, host.boundary));
-      const adapter = { owner: 'part-ten', id: definition.adapter,
+      const adapter = native ? createProductionNativeContextAdapter({ id: definition.adapter, harness: harnessId, incarnation: host.incarnation,
+        artifact: native.io.current().artifact, maxCharge: definition.maxCharge, timeout: definition.timeout,
+        host, authority: transport, store, captures: native.captures, io: native.io }) : { owner: 'part-ten', id: definition.adapter,
         describe: () => ({ contract: 'native-live-input-v1', account: definition.account, conversation: definition.conversation,
           maxCharge: 20, timeout: 100, hiddenRetries: 0 }),
         invoke: (input: any) => {
@@ -333,9 +346,15 @@ function installAssemblySupport(f: any, options: any) {
   value(runtime.record('GrowthPolicy', assemblyInput('GrowthPolicy')));
   }
   const material = f.deps.groundingPolicy.briefingClasses.map((className: string) => f.append('rungraph-briefing-material', { class: className }).fact);
-  const launch = value(runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'), id: 'production-live-input-launch',
+  let launch: any, launchFact: any;
+  const ensureLaunch = () => {
+  if (launch) return;
+  launch = value(runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'), id: 'production-live-input-launch',
+    ...(options.native ? { artifactDigest: options.native.io.current().artifact } : {}),
     run: f.id, input: f.opening.id, inputDigest: options.intake ? f.opening.body.rawHash : f.initialCapture.hash, incarnation: 'incarnation:one', harness: f.harnessId }));
-  const launchFact = value(runtime.inspect()).find((r: any) => r.record.id === launch.id)!.fact;
+  launchFact = value(runtime.inspect()).find((r: any) => r.record.id === launch.id)!.fact;
+  };
+  if (!options.deferred) ensureLaunch();
   let last: any, mutation = (_s: any, _o: any, _g: any) => {}, serial = 0;
   const groundingFor = ({ spine: selected = spine, scope }: any) => {
     const selectedComposition = selected === spine ? composition : { ...composition, spine: selected };
@@ -346,14 +365,15 @@ function installAssemblySupport(f: any, options: any) {
     let observationClock: number | undefined;
     const driver = createConfinedContextDeliveryDriver({ runtime: currentRuntime, history, context, clock: () => observationClock ?? f.deps.clock().value,
       liveProcess: { owner: 'part-ten', resolve: l => { f.owners.events.push('live-process'); return f.success({ launch: l.id, run: l.run,
-        incarnation: l.incarnation, harness: l.harness, artifactDigest: l.artifactDigest, machine: l.machine, processIdentity: 'pid:42:start:1' }); } },
+        incarnation: l.incarnation, harness: l.harness, artifactDigest: l.artifactDigest, machine: l.machine, processIdentity: options.native ? options.native.io.current().identity : 'pid:42:start:1' }); } },
       execution: f.effects.executor });
-    const harness = createNativeHarnessAdapter({ id: f.harnessId, artifact: launch.artifactDigest, platform: 'darwin-arm64', conformance: 'conformance:1',
+    const harness = createNativeHarnessAdapter({ id: f.harnessId, artifact: options.native ? options.native.io.current().artifact : launch.artifactDigest, platform: 'darwin-arm64', conformance: 'conformance:1',
       context, clock: () => f.deps.clock().value, generation: () => f.run.generation.id, contextDeliveryDriver: driver,
       driver: { owner: 'part-eight', launch: () => { throw Error('launch held; existing process instrument only'); },
         deliver: () => { throw Error('legacy delivery forbidden'); }, observe: () => { throw Error('legacy observation forbidden'); } } });
     composition.harnesses.splice(0, composition.harnesses.length, harness);
     const sample = (request: any, at: any) => {
+      ensureLaunch();
       groundingCheckpoint('current-read-sample', { store: selected.store === f.store, generation: f.run.generation.id });
       f.owners.events.push('sample');
       const snapshot = value(selected.store.read()), inputs = snapshot.filter((row: any) => options.intake ? row.kind === 'intake-admitted' : ['stimulus', 'next-inbound'].includes(row.kind));

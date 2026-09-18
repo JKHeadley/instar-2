@@ -60,3 +60,28 @@ export function createProductionTelegramIO(root, captures) {
     } catch { return { kind: 'uncertain', limitation: 'transport', stage: 'sealed-capture' }; }
   } });
 }
+
+/** The worker's physical boundary is the running installed process. Encrypted
+ * custody is flushed before the worker independently reads and parses delivery. */
+export function createProductionNativeContextIO(captures) {
+  const identity = `pid:${process.pid}:start:${Math.floor(performance.timeOrigin)}`;
+  const artifact = `sha256:${createHash('sha256').update(readFileSync(fileURLToPath(import.meta.url))).digest('hex')}`;
+  const current = () => {
+    process.kill(process.pid, 0);
+    return { identity, artifact };
+  };
+  return Object.freeze({ current, consume(reference, bytes) {
+    current();
+    if (captures.read(reference) !== null) throw Error('native context operation already delivered');
+    if (!captures.preserve(reference, bytes)) throw Error('native context custody unavailable');
+    const actual = captures.read(reference);
+    if (actual !== bytes) throw Error('native context readback differs');
+    const delivered = JSON.parse(actual);
+    if (delivered.processIdentity !== identity || !Array.isArray(delivered.contents)
+      || delivered.contents.some(row => typeof row.bytes !== 'string')) throw Error('native context delivery malformed');
+    // Parsing every delivered body is the actual worker input boundary. No
+    // provider call or ungoverned output is possible through this physical port.
+    for (const row of delivered.contents) JSON.parse(row.bytes);
+    return { identity, digest: `sha256:${createHash('sha256').update(actual).digest('hex')}` };
+  } });
+}

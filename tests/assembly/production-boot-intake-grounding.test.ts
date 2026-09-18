@@ -14,9 +14,9 @@ import { createProductionBootOwnerFixture } from './production-boot-owner-fixtur
 import { genuineProductionComposition } from './genuine-production-fixture.js';
 import { productionBindingSet } from './production-fixture.js';
 import { value } from '../facts/fixtures.js';
-import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
+import { productionStorageIO, createProductionNativeContextIO } from '../../scripts/production-boot-io.mjs';
 
-it('recorded Telegram → Four → native Five grounding; replication peer and Six run admission use landed fixture bindings (U4-C/U4-F)', () => {
+it.each([false, true])('deferred admission %s: recorded Telegram → Four → native Five grounding; replication peer and Six run admission use landed fixture bindings (U4-C/U4-F)', deferred => {
   const getMe = readFileSync('tests/assembly/telegram-recorded/getMe.json', 'utf8');
   const poll = readFileSync('tests/assembly/telegram-recorded/poll-0.json', 'utf8');
   const bot = JSON.parse(getMe).result;
@@ -64,8 +64,9 @@ it('recorded Telegram → Four → native Five grounding; replication peer and S
     const facts = value(createFactStore(context, storage.segment).read());
     const opening = facts.find(row => row.id === result.fact.id);
     expect(opening.kind).toBe('intake-admitted');
-    const f = createProductionBootOwnerFixture(() => storage.segment, { minimal: true,
-      intake: { ...context, facts, opening } });
+    const f = createProductionBootOwnerFixture(() => storage.segment, { minimal: true, deferred, native: { captures: storage.captures, io: createProductionNativeContextIO(storage.captures) },
+      intake: { ...context, facts, opening: deferred ? undefined : opening } });
+    if (deferred) f.bindIntake(opening);
     const production = genuineProductionComposition(f, productionBindingSet());
     const run = value(production.run.port.open(f.run));
     expect(run.run.opening.id).toBe(opening.id);
