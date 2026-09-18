@@ -40,7 +40,7 @@ it.each([
     expect(fixture.state().calls).toEqual(['getMe']);
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 180000);
-it.each(['bot', 'provider', 'storage', 'stale generation', 'unwritable root', 'failed fsync'])(
+it.each(['bot', 'provider', 'storage', 'missing SecretRef', 'stale generation', 'unwritable root', 'failed fsync'])(
   'public application refuses %s before any network call', kind => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'boot-preflight-refusal-')));
     const fixture = installedFixtureHost(root, route);
@@ -50,6 +50,7 @@ it.each(['bot', 'provider', 'storage', 'stale generation', 'unwritable root', 'f
         const name = kind === 'bot' ? fixture.record.botCredential.name : kind;
         fixture.host.resolveSecret = reference => { if (reference.name === name) throw Error('secret unavailable'); return resolve(reference); };
       }
+      if (kind === 'missing SecretRef') delete fixture.record.botCredential;
       if (kind === 'stale generation') fixture.record.generation = 'stale';
       if (kind === 'unwritable root') chmodSync(root, 0o500);
       if (kind === 'failed fsync') fixture.host.storageIO = { ...fixture.host.storageIO, fsyncSync() { throw Error('fsync unavailable'); } };
