@@ -38,8 +38,8 @@ it('P15-CONTRACT-MAP rejects a real grant attached to the wrong validation oblig
 it('P15-CONTRACT-MAP keeps real RunAdmissionPort production wiring on its exact granted row-83 dependency', () => {
   const dispositions = p15Dispositions();
   for (const number of [6, 22, 38, 45]) {
-    expect(dispositions.find((row: { number: number }) => row.number === number)?.held)
-      .toContain('NON-EXECUTABLE-UNTIL-row-83-run-admission-production');
+    expect(dispositions.find((row: { number: number }) => row.number === number)?.held ?? '')
+      .not.toContain('NON-EXECUTABLE-UNTIL-row-83-run-admission-production');
   }
   const unrelated = 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-real-Part-Six-RunAdmissionPort-production-wiring';
   const altered = dispositions.map((row: { number: number }) => row.number === 6

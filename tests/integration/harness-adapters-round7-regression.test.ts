@@ -239,7 +239,7 @@ it('A2-INTEGRATION R7-A2-R5-03 P13-NF-31 a later duplicate retains witnessed pro
 it('A2-INTEGRATION R7-A2-R5-04 NF-46 qualifies its local work comparison under real Six admission and row-38/45 grounding dependencies', () => {
   const row = (p13A2Dispositions() as Array<{ number: number; heldArms?: string }>)
     .find(candidate => candidate.number === 46)!;
-  expect(row.heldArms).toContain('NON-EXECUTABLE-UNTIL-row-83-run-admission-production');
+  expect(row.heldArms).not.toContain('NON-EXECUTABLE-UNTIL-row-83-run-admission-production');
   expect(row.heldArms).toContain('SEAM-LEDGER.md row 38');
   expect(row.heldArms).toContain('SEAM-LEDGER.md row 45');
 });

@@ -40,7 +40,7 @@ it('P15-CONTRACT-MAP rejects the reviewer NF-10 evidence when the service-contin
   const complete = p15Dispositions().find((row: { number: number }) => row.number === 10)!;
   expect(complete).toMatchObject({
     executable: true,
-    held: 'NON-EXECUTABLE-UNTIL-impl-part-eleven-and-Part-Ten-production-minimal-plane-wiring; NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
+    held: 'NON-EXECUTABLE-UNTIL-impl-part-eleven-and-Part-Ten-production-minimal-plane-wiring',
   });
   const partial = [{ ...complete, held: undefined, status: 'EXECUTABLE' }];
   const report = { success: true, testResults: [{

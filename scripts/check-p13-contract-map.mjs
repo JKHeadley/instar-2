@@ -16,7 +16,6 @@ const ROUTE_CONFORMANCE = 'dated 07:52Z addendum in seam-response-assembly-follo
 const PROMPT = 'dated 07:10Z addenda in seam-response-effects-followup.md + seam-response-assembly-followup.md, SEAM-LEDGER.md row 41';
 const LIVE_PREREQUISITES = `LIVE-PREREQUISITES defined by ${OWNERSHIP}`;
 const HARNESS_EFFECT_IMPLEMENTATION = 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md';
-const RUN_ADMISSION_PRODUCTION = 'NON-EXECUTABLE-UNTIL-row-83-run-admission-production';
 const executable = new Map([
   [1, 'All four owned record forms and every runtime-event variant use closed total decoders, canonical comparison, migration, and deep freezing.'],
   [2, 'The root design and all indexed section files pass the governed-document checker.'],
@@ -124,13 +123,13 @@ const a2Held = new Map([
   [21, `NON-EXECUTABLE-UNTIL-${CTX_CURRENT}`],
   [4, 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md'],
   [25, CROSS_MACHINE],
-  [31, `${OUTPUT_CUSTODY} + ${RUN_ADMISSION_PRODUCTION} + NON-EXECUTABLE-UNTIL-${CTX_GROUND} + NON-EXECUTABLE-UNTIL-${CTX_CURRENT}`],
+  [31, `${OUTPUT_CUSTODY} + NON-EXECUTABLE-UNTIL-${CTX_GROUND} + NON-EXECUTABLE-UNTIL-${CTX_CURRENT}`],
   [34, OUTPUT_CUSTODY],
   [35, `NON-EXECUTABLE-UNTIL-${PROMPT} + seam-response-loop-followup.md`],
   [37, 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md'],
   [38, 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md + design-harness-adapters-seam-request-cross-machine-ownership.md'],
   [39, 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md + seam-response-loop-followup.md'],
-  [46, `NON-EXECUTABLE-UNTIL-${PROMPT} + seam-response-effects-payloads.md + seam-response-effects-followup.md + ${RUN_ADMISSION_PRODUCTION} + NON-EXECUTABLE-UNTIL-${CTX_GROUND} + NON-EXECUTABLE-UNTIL-${CTX_CURRENT}`],
+  [46, `NON-EXECUTABLE-UNTIL-${PROMPT} + seam-response-effects-payloads.md + seam-response-effects-followup.md + NON-EXECUTABLE-UNTIL-${CTX_GROUND} + NON-EXECUTABLE-UNTIL-${CTX_CURRENT}`],
   [47, `NON-EXECUTABLE-UNTIL-${CTX_GROUND} + ${CTX_CURRENT} + ${HISTORY_COVERAGE} + ${ROUTE_CONFORMANCE} + seam-response-judgment.md + seam-response-assembly-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md + seam-response-run-closure.md + seam-response-rungraph-followup.md + seam-response-loop-followup.md + ${PROMPT} + part-eleven-seam-response-assembly.md`],
   [51, `NON-EXECUTABLE-UNTIL-${CTX_GROUND} + ${CTX_CURRENT} + seam-response-loop-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md`],
   [52, 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md + seam-response-effects-followup.md'],
