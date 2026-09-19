@@ -181,7 +181,7 @@ export function createProductionRunAdmission(
   };
   const witnessed = (record: FactEnvelopeReference): FactEnvelope => {
     ensure(record.owner === 'part-two' && record.name === 'FactEnvelope', 'fact reference owner mismatch');
-    let owner = clean(true);
+    let owner = clean();
     let fact = owner.facts.find(row => row.id === record.id);
     if (!fact) { owner = clean(); fact = owner.facts.find(row => row.id === record.id); }
     const { facts, transport } = owner;
