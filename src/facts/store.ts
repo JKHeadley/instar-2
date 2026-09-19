@@ -7,7 +7,7 @@ import { decodeEnvelope, factId, genesisHash, signEnvelope } from './envelope.js
 import type { AuthorityTaint, CausalFrontier, ConflictClass, DurabilityState, FactContext, FactEnvelope } from './contracts.js';
 import { contextBoundary } from './contracts.js';
 import { decodeHistoricalBody, historicalAuthority } from './historical.js';
-import { prepareSnapshot } from './snapshot.js';
+import { prepareSnapshot, snapshotCurrent } from './snapshot.js';
 import type { FactSnapshot } from './snapshot.js';
 import { issuePrefix, prefixValid, prefixContext } from './prefix.js';
 import type { VerifiedPrefix } from './prefix.js';
@@ -76,7 +76,9 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
       const projectionKey = (facts: readonly FactEnvelope[]) => `${revision}|${facts.length}|${facts.at(-1)?.contentHash ?? ''}|${encoding({
         captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [] }).bytes}`;
       const first = take(read()), firstKey = projectionKey(first);
-      if (projectionMemo && projectionMemo.key === firstKey) return projectionMemo.snapshot;
+      // Served only while the issued snapshot is still current under ITS OWN issuance terms (policy
+      // hash, owned bodies, migrations) as well as under the key: a context change invalidates it.
+      if (projectionMemo && projectionMemo.key === firstKey && snapshotCurrent(projectionMemo.snapshot)) return projectionMemo.snapshot;
       let snapshot = take(prepareSnapshot(first, context, () => projectionKey(take(read())) === firstKey));
       const conflicts = [...new Map(snapshot.entries.flatMap(e => e.conflicts).map(c => [c.key, c])).values()];
       if (conflicts.length) {
@@ -86,11 +88,13 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
         requireFact(recovery.conflictAppender, 'signed conflict fact appender required; outbox receipt is insufficient');
         take(drainConflictFacts(context, store, recovery.conflictAppender));
       }
-      if (conflicts.length) {
-        const again = take(read()), againKey = projectionKey(again);
+      // Preparation and conflict draining can themselves move the stored tail or the context tables
+      // (a capture preserved during the call), so the key is re-derived AFTER them, exactly where the
+      // former fingerprint was taken. Only when it moved is the snapshot prepared a second time.
+      const again = take(read()), againKey = projectionKey(again);
+      if (conflicts.length || againKey !== firstKey)
         snapshot = take(prepareSnapshot(again, context, () => projectionKey(take(read())) === againKey));
-        projectionMemo = { key: againKey, snapshot };
-      } else projectionMemo = { key: firstKey, snapshot };
+      projectionMemo = { key: againKey, snapshot };
       return snapshot;
     }),
     append(input: unknown, replication?: { readonly peer: string }): Result<AppendReceipt> {
