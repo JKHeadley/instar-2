@@ -1,0 +1,39 @@
+[
+  {
+    "revision": 2,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator-directed M2 fixed single-machine installation contract"
+    },
+    "changes": [
+      {
+        "what": "Add the governed fixed-installation companion section closing G1 through G6, the two landed over-constraints, exact implementation grants, and blank operator acceptance fields.",
+        "why": "The minimal usable path needs one reviewable contract without a general setup product, automatic key generation, a new certification system, or duplicate owner records.",
+        "commits": ["7a7ab04", "1b960e7"]
+      },
+      {
+        "what": "Separate operator-administered manual preparation from supervised automated critical install and recovery stages.",
+        "why": "Manual placement of approved inputs is configuration; automation that writes or recovers critical state retains Seven's bounded supervisor obligation.",
+        "commits": ["1b960e7"]
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-05",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "the assembly, adapter contracts, storage custody, and minimal responder"
+    },
+    "changes": [
+      {
+        "what": "Initial Part Ten design.",
+        "why": "Define how real owner implementations compose without changing their meaning.",
+        "commits": ["f17ccce9a0e2bf7a26ba036e86da598e27d0b792"]
+      }
+    ]
+  }
+]

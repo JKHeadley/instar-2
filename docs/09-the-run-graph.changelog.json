@@ -1,0 +1,34 @@
+[
+  {
+    "revision": 2,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator-directed M2 closure of installed Five governance and unresolved-accounting answer use"
+    },
+    "changes": [
+      {
+        "what": "Define a reference-only installed RunGovernance mapping and permit one exact accepted provider answer to feed a reply while its accounting obligation remains pending.",
+        "why": "Production needs a serializable policy mapping without callbacks, and a usable bounded answer must not be discarded solely because final charge or quiescence remains unknown.",
+        "commits": ["1b960e7"]
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-05",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "the durable run graph, delegation contracts, and agent-transport port"
+    },
+    "changes": [
+      {
+        "what": "Initial Part Five design.",
+        "why": "Define durable work independently of a worker process.",
+        "commits": ["a30c8bfd2589e439227462d20c8aff99389def79"]
+      }
+    ]
+  }
+]

@@ -1,5 +1,21 @@
 [
   {
+    "revision": 5,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator-directed M2 proposal for one explicitly scoped single-machine installation; acceptance or rejection belongs to the pull request"
+    },
+    "changes": [
+      {
+        "what": "Propose a narrow P-08 local-loss exception for exact listed operations with complete local causal durability, while retaining the independently failing second-machine peer as the default and fallback.",
+        "why": "The approved policy register and Parts Eight and Ten permit a recorded local-loss policy, while the purpose previously required an independently failing copy without stating how that operator policy could apply.",
+        "commits": ["1b960e7"]
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-09-14",
     "status": "approved",

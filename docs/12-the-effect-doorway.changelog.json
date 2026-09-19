@@ -1,0 +1,34 @@
+[
+  {
+    "revision": 2,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator-directed M2 closure of local-loss operation policy and answer use under unresolved liability"
+    },
+    "changes": [
+      {
+        "what": "Bind local-durable dispatch to the pending purpose proposal and exact P-08 operation policy, and separate provider output availability from liability release.",
+        "why": "The peerless profile must state the full loss model and preserve unknown charge, retained exposure, and no-repeat semantics.",
+        "commits": ["1b960e7"]
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-05",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "the effect doorway and evidence-bound operation settlement"
+    },
+    "changes": [
+      {
+        "what": "Initial Part Eight design.",
+        "why": "Define the governed boundary for external effects and their settlement.",
+        "commits": ["25f0870e1272f1987cac584801f4ec2c5aa29ad2"]
+      }
+    ]
+  }
+]

@@ -1,5 +1,21 @@
 [
   {
+    "revision": 3,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator-directed M2 closure of the fixed single-machine installation contract"
+    },
+    "changes": [
+      {
+        "what": "Specify direct consumption of Six's assignment-derived fence and exact AdmissionReservation instead of standalone or fixture-shaped installation facts.",
+        "why": "The production resolver expected a stored FenceToken name and an unspecified resource reservation even though Six already owns both authority relationships.",
+        "commits": ["1b960e7"]
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-08",
     "status": "approved",

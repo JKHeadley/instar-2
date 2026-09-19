@@ -4,6 +4,10 @@ _Generated from `00-the-purpose.changelog.json` by `scripts/render-changelog.mjs
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-09-19 · draft — operator-directed M2 proposal for one explicitly scoped single-machine installation; acceptance or rejection belongs to the pull request
+
+- **Propose a narrow P-08 local-loss exception for exact listed operations with complete local causal durability, while retaining the independently failing second-machine peer as the default and fallback.** — The approved policy register and Parts Eight and Ten permit a recorded local-loss policy, while the purpose previously required an independently failing copy without stating how that operator policy could apply. _(`1b960e7`)_
+
 ## Revision 4 · 2026-09-14 · approved — operator's direction in topic 52075 on 2026-09-14 ('three tiers'): the constitution holds general principles and amends rarely; specific operating choices belong to a per-deployment operator policy register; the first application of the gap rule had produced 19 over-specific candidate amendments; approved by the operator in topic 52075 at 02:59Z 2026-09-14 ('Approved 75 and 76')
 
 - **The gap Rule's check now recognises three dispositions (decided by this document; operator policy per deployment, recorded in a policy register; agent-owned engineering default) and makes amendments rare general principles.** — Applied literally, the first check turned every undecided deployment choice into a proposed constitutional amendment. _(topic 52075, operator messages of 2026-09-14 02:36Z and 02:51Z; docs/harvests/decisions-sweep-2026-09-13.md)_

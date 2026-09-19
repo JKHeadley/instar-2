@@ -1,0 +1,34 @@
+[
+  {
+    "revision": 2,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator-directed M2 closure of provider answer use under unresolved accounting"
+    },
+    "changes": [
+      {
+        "what": "Add the bounded ProviderAnswerAcceptance contract while preserving the fully settled ProviderJudgmentResolution path.",
+        "why": "A complete evidenced answer can be useful before final billing or old-executor quiescence is known, provided maximum exposure stays held and repetition stays forbidden.",
+        "commits": ["1b960e7"]
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-05",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "the judgment doorway and benchmark record"
+    },
+    "changes": [
+      {
+        "what": "Initial Part Seven design.",
+        "why": "Define bounded, accountable model judgment without granting effect authority.",
+        "commits": ["a64d64fe99a009b869a28c40ede79aa96001ccff"]
+      }
+    ]
+  }
+]

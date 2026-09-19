@@ -1,0 +1,34 @@
+[
+  {
+    "revision": 2,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator-directed M2 local-loss dependency and verifier-readiness closure"
+    },
+    "changes": [
+      {
+        "what": "Make the minimal responder consume the exact approved operation durability demand and separate verifier selection from readiness.",
+        "why": "The fixed profile must retain the peer unless its exact local-loss policy is accepted, and installation metadata must not manufacture an independent verifier.",
+        "commits": ["1b960e7"]
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-05",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "operator surfaces and the first vertical slice"
+    },
+    "changes": [
+      {
+        "what": "Initial Part Eleven design.",
+        "why": "Define the verified operator edge and first composed slice.",
+        "commits": ["102266d36b536adddc2356074ab12dc6e6fc8407"]
+      }
+    ]
+  }
+]
