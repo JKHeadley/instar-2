@@ -103,6 +103,24 @@ count is operator policy; the principle is not. **Check:** the effect doorway re
 non-emergency irreversible effect whose authorization has no acknowledged copy on an
 independently failing store.
 
+**Proposal — one explicitly scoped installation may accept permanent local loss.** This
+proposal has no force unless the operator accepts it through the pull request that introduces it.
+The default above remains one acknowledged copy on an independently failing store. For one named
+single-machine installation, the operator may instead approve a P-08 policy listing each exact
+operation whose authorization and complete causal preparation use `local-durable`, together with
+the accepted loss model: permanent loss of that machine can destroy the authority, work,
+captures, observations and accounting evidence needed to reconstruct a paid call or send; no
+peer survives; and an unknown earlier effect cannot safely be repeated from memory or a new
+installation. Owner: the operator owns the policy choice; parts two and eight own receipts and
+dispatch enforcement. **Check:** the effect doorway accepts the exception only when the current
+signed policy names the installation, operation, full causal prefix and loss statement, and the
+exact local prefix is durable before dispatch. Missing policy, an unlisted operation, an
+incomplete prefix or automatic fallback after peer loss refuses. A listed operation with its
+complete local receipt is the positive neighbor. If the operator rejects this proposal, or if
+any predicate is absent, the independently failing peer on a second enrolled machine remains
+required. A second process on the same machine is not that peer. The exception is never named
+`replicated(0)`.
+
 **Rule — automatic suggestions never widen themselves.** A standing-permission candidate the
 system derives on its own proposes no action or scope beyond the exact authorization it was
 derived from, and a candidate creates no standing until a person approves it. **Check:** derived

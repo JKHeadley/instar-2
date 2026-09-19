@@ -169,6 +169,26 @@ The sequence below is enforced by P7-NF-11/14/15/16, including a kill between ea
    Intake classification remains separate from judgment. Late receipts/accounting still append
    after a wait closes, and part nine discovers every case from facts, not callbacks.
 
+**Rule — a complete answer may be accepted before final charge is known.** Owner: Seven owns
+`ProviderAnswerAcceptance` version 1; Nine owns response-evidence assessment; Eight owns
+settlement; Six owns accounting; Five owns use. **Check: P7-NF-53** accepts the output-use record
+only when it binds the exact current request, attempt, response-observed fact, operation,
+consumed claim, submitted and answer digests, response capture, provider/model/route/floor and
+evidence set; Nine accepts that exact response as authentic and complete; Eight's settlement and
+Six's accounting join the same operation and settlement fact/hash; the route's maximum charge is
+finite and enforced; Six retains the unreleased maximum exposure; and retry eligibility is
+false. Unknown charge or quiescence remains unknown. Missing joins, taint, conflict, released
+exposure, a second acceptance or a different decoder refuses. The positive neighbor accepts one
+complete bounded answer once while reporting unknown billing and held capacity. The existing
+`ProviderJudgmentResolution` remains the positive fully settled path and still requires zero
+unresolved accounting.
+
+The record carries immutable id, request, attempt, response, operation, claim, submitted digest,
+capture, answer digest, assessment, settlement, accounting, finite maximum charge, retained
+exposure, generation and accepted clock. Seven's public historical decoder validates every
+predecessor and the current `Decision` bytes. No callback, answer bytes, authority, actual-charge
+claim or retry permission is serialized into the record.
+
 **Rule — identities and reservation authority have one owner each.** Rules 33, 55, 60,
 63, and 75. The map below is enforced by P7-NF-17/30/52; none of its references creates
 a parallel Outcome, Result or Decision.

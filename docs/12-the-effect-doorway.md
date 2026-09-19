@@ -250,6 +250,18 @@ A single-machine deployment has an explicit choice: an operator-approved operati
 local-durable acknowledging permanent-machine-loss risk, or no execution of that operation.
 Discovery of too few peers never changes the demand automatically.
 
+**Rule — the local-demand choice depends on the approved purpose proposal.** Owner: the
+operator owns the P-08 deployment policy; Eight owns the operation demand and Two owns its
+durability evidence. **Checks: P8-NF-25/26/27**. Until the purpose proposal is accepted, or when
+the installed policy is missing, stale or does not list the exact operation, `replicated(1)` and
+a real independently failing peer remain required. If accepted, `local-durable` is available
+only for a listed operation whose policy states the permanent-machine-loss model and whose exact
+local prefix covers authorization, preparation, disclosure, maximum-charge reservation, reply
+preparation, observations and later settlement predecessors available at dispatch. A partial
+prefix, same-machine process, automatic fallback or unlisted operation refuses. The positive
+neighbors are the default peer receipt and the exact approved local receipt. No state called
+`replicated(0)` exists.
+
 **Rule — the chosen demand is enforced, without redefining the states.** Rules 26, 31,
 33, 63 and 90; P2-NF-63. **Checks: P8-NF-25/26** enforce a known positive peer count
 for replicated(n), distinct authenticated durable peer acknowledgments and an approved
@@ -499,6 +511,18 @@ record the full amount, expose a cap violation and close new affected admissions
 the observation or raid another reservation to conceal it. Part-five's conservative maximum
 write-off may account the full reservation as spent, but it is not evidence of non-occurrence
 and cannot unlock a forbidden replay.
+
+**Rule — output availability does not release effect liability.** Owner: Eight for the provider
+settlement consumer, Seven for `ProviderAnswerAcceptance`, Six for accounting and Five for run
+use. **Checks: P8-NF-47/48**. Eight may expose one exact complete model output to Five when
+Seven's acceptance binds Nine's response assessment and the exact Eight settlement and Six
+accounting, the route has an enforced finite maximum charge, maximum exposure remains held and
+retry eligibility is false. It returns `chargeSettled: false` while accounting is unresolved and
+does not claim old-executor quiescence. Five keeps the provider step and accounting obligation
+pending. Missing assessment, mismatched settlement hash, reduced exposure, duplicate use or any
+repeat path refuses. The positive neighbor is a response-observed complete answer used once with
+unknown charge still reserved; the existing zero-unresolved consumer remains the positive path
+that may report charge settled.
 
 **Rule — uncertainty has no expiry into truth.** **Checks: P8-NF-22/37/39**. Observation
 episodes have finite cap/backoff/breaker and duration; hitting a bound stops that episode and

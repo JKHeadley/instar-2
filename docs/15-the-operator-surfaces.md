@@ -71,6 +71,16 @@ The returned act binds the exact request digest. Replayed proof, moved base, alt
 changed scope, expired challenge, wrong operator or channel-attested confirmation refuses. Silence,
 page view, link click, biometric unlock alone, and a successful chat reply are never yes.
 
+**Rule — verifier selection and verifier readiness are separate.** Owner: Eleven for the
+surface verdict, Nine for the independently administered service and evidence, and Ten for the
+installed selection. **Checks: P11-NF-07–13**. The installed selection names the exact service,
+administrative domain, trust reference, surface and generation, but confers no readiness. The
+surface becomes ready only when current Nine evidence also binds its clock, `issue` and `verify`
+operations, one-use challenge, expiry and replay protection to that subject. A selection string,
+installer assertion, empty probe list or agent-administered service refuses. The positive
+neighbor joins the same selection to a current independently signed challenge execution and live
+probe evidence. A prepared selection remains useful while the readiness hold stays visible.
+
 **Rule — the surface cannot certify itself.** Rules 26, 82 and 98; **checks: P11-NF-10–13**.
 Part nine's external protection broker verifies the authorization with pinned decoders and current
 authority, then journals and applies protected changes. The surface displays broker receipt,
@@ -194,13 +204,26 @@ it has no authority over the ordinary run it reports on. Its required source dep
 verified local-durable minimal fact segment, current register/decoder generation, identity keys and
 clock. Its required transport dependency is the admitted conversation adapter and route capable of
 accepting intake and independently evidencing the delivery stage it declares. Its response uses
-eight's ordinary message operation and **replicated(1)** durability demand: local preparation is
-not dispatch permission until one required peer acknowledges the exact facts. The responder has a
-reserved finite worker, local storage, queue, transport and effect budget independent of ordinary
+eight's ordinary message operation and that operation's approved durability demand. The reference
+default is **replicated(1)**: local preparation is not dispatch permission until one required peer
+acknowledges the exact facts. The purpose's single-machine proposal, if the operator accepts it
+through this pull request, permits
+only an explicitly listed `local-durable` operation with its complete causal prefix and current
+P-08 loss policy. It never creates `replicated(0)` or an automatic fallback after peer loss. The
+responder has a reserved finite worker, local storage, queue, transport and effect budget independent of ordinary
 workloads, but that reserve cannot manufacture a peer acknowledgment, current binding, lease,
 fence, key, route or decisive effect evidence. Loss of an ordinary model, benchmark, projection,
 run owner or business-effect dependency leaves the minimal path eligible for a limited response;
 loss of a required dependency named here does not.
+
+**Rule — the minimal dependency verdict consumes the exact operation policy.** Owner: Eleven
+for the verdict, Eight for the operation demand, Two for durability evidence, and Ten for the
+installed join. **Checks: P11-NF-33–38**. The predicate requires `replication-peer` for every
+`replicated(1)` operation and requires the exact current local-loss policy plus local receipt for
+every approved `local-durable` operation. A missing or stale policy, partial causal closure,
+unlisted operation, or caller-supplied omission refuses. Positive neighbors are a real peer
+receipt for the reference mode and a complete local receipt for an explicitly approved local-loss
+operation. Every other minimal dependency remains unchanged.
 
 **Rule — always-reachable never means always-powerful.** Rules 28, 42, 63, 86 and 95; **checks:
 P11-NF-34/36/39**. The minimal responder may preserve, authenticate, explain recorded state,

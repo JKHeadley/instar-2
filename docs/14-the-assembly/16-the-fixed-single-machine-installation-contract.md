@@ -124,6 +124,13 @@ installation and generation.
 conformance, reservation, freshness, delivery, or activation. Those properties still require
 their owner-produced current records.
 
+The closed role list is the role literals in the eighteen-name table plus `scope-protection`.
+The `scope-protection` instance references the operator-approved scope policy and names its exact
+artifact classes and requirement, either `protected` or `unprotected-permitted`. Nine still owns
+the observed posture and Ten still owns the admission join. An omitted role, free-form role or
+policy value outside that two-value list refuses. The positive neighbors are the two exact arms
+in P10-SI-14.
+
 **Rule — the eighteen production names resolve without eighteen bodies.** Owner: Ten for the
 audit and consumer; each referenced fact retains the owner in the table. Predicate: P10-SI-07
 requires every applicable row to resolve exactly once. A direct-owner row rejects an
@@ -366,9 +373,12 @@ The builder's reviewed fence and pin grant is also exact:
 1. Update the source allowlists in `tests/rungraph/production-grounding-scope.test.ts` and
    `tests/operator/round15-regressions.test.ts` only to add the two exact G6 owner paths above;
    assembly paths are already within their declared source prefixes.
-2. Update only the five changed-source digests in
-   `tests/assembly/production-grounding-inventory.json`. Add or remove no reviewed obligation
-   row merely to make a changed source pass.
+2. Update only the four existing `reviewedSupportSources` digests for
+   `src/assembly/service.ts`, `src/assembly/production.ts`,
+   `src/judgment/provider-path.ts`, and `src/effects/provider-path.ts` in
+   `tests/assembly/production-grounding-inventory.json`. `src/assembly/production-boot.ts` is not
+   in that map at this baseline and is not added merely to imply prior review. Add or remove no
+   reviewed obligation row merely to make a changed source pass.
 3. Update `REVIEWED_GROUNDING_INVENTORY` in `scripts/check-assembly-contracts.mjs` to the digest
    of the independently reviewed inventory bytes.
 4. Add the resulting exact inventory digest to the narrow `grantedContent` map in

@@ -890,6 +890,17 @@ and probes. Critical install/recovery pipelines use seven's bounded step supervi
 call admission stays nonrecursive. Nine owns semantic adequacy and live freshness. Metrics
 come from the following table and section 10, never an empty declaration.
 
+**Rule — manual preparation ends where automated critical execution begins.** Owner: the
+operator owns manual administration; Ten owns pipeline composition; Seven owns bounded step
+supervision. **Check: P10-SI-11/12** classifies manual preparation only when an
+operator-administered identity places or selects already approved bootstrap bytes,
+pre-provisioned secret handles, storage location and package inputs without key creation,
+history append, migration, recovery, network effect, retry loop or activation claim. Any
+automated critical install or recovery stage requires a finite admitted step list and a current
+Seven supervisor before dispatch; absence is a named hold. The positive neighbors are manual
+placement followed by read-only verification, and a bounded supervised import performing only
+its predeclared writes. Prepared files alone never claim readiness.
+
 **Rule — non-functional claims have runnable bars and failure actions.** Rules 13, 34,
 38, 39, 43, 46, 55, 60, 62, 113; **checks: P10-NF-40/45/46/48/50**. Every numerical
 bound below is a finite deployment declaration supplied before activation, with hardware,

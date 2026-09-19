@@ -199,6 +199,14 @@ incarnation or epoch. A copied valid token presented by a different authenticate
 A high numeric epoch without commit evidence fails. Losing a lease never gives its holder the
 right to close a run, release a successor's resources or acquire another child.
 
+**Rule — installation consumers resolve the fence through current assignment.** Owner: Six;
+Ten is the consumer. **Checks: P6-NF-05/09/12**. No standalone stored `transport-FenceToken`
+fact is required. The installation asks Six's public authority for the token derived from the
+current committed assignment and revalidates domain, scope, holder, incarnation, membership and
+lease epochs at use. A `.boot-lease`, fixture id, copied token-shaped object or expired assignment
+refuses. A recovered current assignment returning its owner-derived fence is the positive
+neighbor.
+
 **Rule — lifecycle transitions have exact predecessors.** Rules 55, 63, 68;
 **checks: P6-NF-03/05/08/10** hold every row:
 
@@ -238,6 +246,14 @@ is only advice. It carries:
 | durability demand and proof | The operation's part-eight demand and part-two acknowledgment evidence |
 | attempt identity, state, predecessor | Owning part's attempt reference and one of prepared, dispatch-claimed, observed, closed; transitions append successor facts |
 | result / observation references | References to the owning part's Result, Outcome and evidence, absent until supplied |
+
+**Rule — assembly resource admission references the actual reservation.** Owner: Six;
+Ten consumes the reference. **Checks: P6-NF-09/12/35**. An
+`AssemblyAdmission.resourceReservation` resolves only to Six's exact `AdmissionReservation` for
+the same scope, holder, incarnation, fence, policy generation, lifetime and finite resource
+allocation, and is revalidated at activation and use. Configured budgets, the storage root lock,
+an expired lease or a reservation for another process refuses. A current reservation returned by
+the installed Six authority for that exact scope is the positive neighbor.
 
 **Rule — the judgment seam has one owner per record.** Rules 41, 55, 60, 63, 75, 114;
 **checks: P6-NF-09/12/13/35/39**. This map governs chargeable judgment calls:
