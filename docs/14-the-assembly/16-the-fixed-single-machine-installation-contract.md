@@ -555,11 +555,13 @@ generator, not hand-edited output, the source of a register generation.
 The builder's reviewed fence and pin grant is also exact:
 
 1. In V79 of `tests/operator/round15-regressions.test.ts`, change only the source allowlist to add
-   `src/judgment/index.ts`, `src/judgment/provider-path.ts`, and
+   `src/judgment/index.ts`, `src/judgment/provider-path.ts`,
+   `src/judgment/judgment.declarations.json`, and
    `src/effects/provider-path.ts`. The existing `src/effects/index.ts` and owner-directory
    allowances remain. No assertion or main-versus-HEAD comparison changes.
 2. In `tests/rungraph/production-grounding-scope.test.ts`, change only `liveInputGrant` to add
-   `src/judgment/index.ts`, `src/judgment/provider-path.ts`, and
+   `src/judgment/index.ts`, `src/judgment/provider-path.ts`,
+   `src/judgment/judgment.declarations.json`, and
    `src/effects/provider-path.ts`, and change only `productionBootGrant` to add
    `src/operator/contracts.ts` and `src/operator/live.ts`. Its existing
    `src/operator/index.ts` and `src/operator/production-switch-on.ts` entries remain. Assembly and
