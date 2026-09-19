@@ -20,6 +20,17 @@ applicable part approvals; a document checker cannot grant them.
 
 ---
 
+## Sections
+
+The general assembly contract remains in this file. The fixed first installation profile is a
+numbered companion section so it can take focused line comments without becoming a new part or a
+general setup product. Both files are one governed Part Ten body under the existing assembly
+declaration and this document's sibling changelog.
+
+1. [The fixed single-machine installation contract](14-the-assembly/16-the-fixed-single-machine-installation-contract.md)
+
+---
+
 ## 1. Ownership and the assembly boundary
 
 **Rule — one owner per type and behavior.** Rules 1, 30, 49, 69 and 115;
