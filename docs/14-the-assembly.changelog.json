@@ -1,5 +1,26 @@
 [
   {
+    "revision": 3,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "M2 independent design review 1 bounded repairs R1 through R5"
+    },
+    "changes": [
+      {
+        "what": "Complete the three configuration-fact admission contracts, remove the bootstrap digest cycle, define the one-use reply-run continuation, and complete the dependency source, fence, and pin grant.",
+        "why": "The initial fixed-installation contract left authority, construction order, executable reply consumption, and local-loss dependency implementation underspecified.",
+        "commits": ["f106575"]
+      },
+      {
+        "what": "Permit a separate durability peer without adding an execution voter and remove review-history wording from the governed companion.",
+        "why": "The replicated fallback and approved local-loss arm must both remain representable without process-history text in first-version design rules.",
+        "commits": ["f106575"]
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-19",
     "status": "draft",

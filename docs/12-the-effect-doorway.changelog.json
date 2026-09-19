@@ -1,5 +1,21 @@
 [
   {
+    "revision": 3,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "M2 independent design review 1 repair R3 and check-reference cleanup"
+    },
+    "changes": [
+      {
+        "what": "Bind one unresolved-accounting answer use to a separately admitted reply operation with its own dispatch claim and no second model call.",
+        "why": "Output availability must produce one executable reply while the original provider liability remains pending and unrepeated.",
+        "commits": ["f106575"]
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-19",
     "status": "draft",

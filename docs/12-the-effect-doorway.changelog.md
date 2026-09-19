@@ -4,6 +4,10 @@ _Generated from `12-the-effect-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 3 · 2026-09-19 · draft — M2 independent design review 1 repair R3 and check-reference cleanup
+
+- **Bind one unresolved-accounting answer use to a separately admitted reply operation with its own dispatch claim and no second model call.** — Output availability must produce one executable reply while the original provider liability remains pending and unrepeated. _(`f106575`)_
+
 ## Revision 2 · 2026-09-19 · draft — operator-directed M2 closure of local-loss operation policy and answer use under unresolved liability
 
 - **Bind local-durable dispatch to the pending purpose proposal and exact P-08 operation policy, and separate provider output availability from liability release.** — The peerless profile must state the full loss model and preserve unknown charge, retained exposure, and no-repeat semantics. _(`1b960e7`)_

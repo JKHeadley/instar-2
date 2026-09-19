@@ -1,5 +1,21 @@
 [
   {
+    "revision": 3,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "M2 independent design review 1 check-reference cleanup"
+    },
+    "changes": [
+      {
+        "what": "Point the installation-specific verifier-readiness rule to P10-SI-13 instead of colliding Part Nine check numbers.",
+        "why": "The behavior belongs to the fixed-installation predicates and must not reuse established debt and rebuild check identifiers.",
+        "commits": ["f106575"]
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-19",
     "status": "draft",

@@ -4,6 +4,10 @@ _Generated from `00-the-purpose.changelog.json` by `scripts/render-changelog.mjs
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 6 · 2026-09-19 · draft — M2 independent design review 1 repair R5 and governed-body history cleanup
+
+- **Keep the local-loss text as a proposal pending independently verified operator acceptance while removing pull-request process wording from the governed rule.** — Authority comes from the operator's entered acceptance, not from review-history language in the purpose body. _(`f106575`)_
+
 ## Revision 5 · 2026-09-19 · draft — operator-directed M2 proposal for one explicitly scoped single-machine installation; acceptance or rejection belongs to the pull request
 
 - **Propose a narrow P-08 local-loss exception for exact listed operations with complete local causal durability, while retaining the independently failing second-machine peer as the default and fallback.** — The approved policy register and Parts Eight and Ten permit a recorded local-loss policy, while the purpose previously required an independently failing copy without stating how that operator policy could apply. _(`1b960e7`)_

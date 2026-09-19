@@ -1,5 +1,21 @@
 [
   {
+    "revision": 3,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "M2 independent design review 1 repair R3 and check-reference cleanup"
+    },
+    "changes": [
+      {
+        "what": "Name the ProviderAnswerAcceptance producer and historical decoder, preserve origin-pinned historical meaning, and route one accepted answer into one separately admitted reply run.",
+        "why": "Accepted history must survive generation and settlement changes, and the answer must reach a real reply without reopening the model operation.",
+        "commits": ["f106575"]
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-19",
     "status": "draft",

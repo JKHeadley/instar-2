@@ -1,5 +1,21 @@
 [
   {
+    "revision": 3,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "M2 independent design review 1 repair R3"
+    },
+    "changes": [
+      {
+        "what": "Define Five's one-use acceptance-backed reply-run opening while the original provider run and accounting obligation remain pending.",
+        "why": "A usable answer needs an executable conversation path without falsely making the unresolved provider step ready or releasing liability.",
+        "commits": ["f106575"]
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-19",
     "status": "draft",

@@ -4,6 +4,10 @@ _Generated from `11-the-judgment-doorway.changelog.json` by `scripts/render-chan
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 3 · 2026-09-19 · draft — M2 independent design review 1 repair R3 and check-reference cleanup
+
+- **Name the ProviderAnswerAcceptance producer and historical decoder, preserve origin-pinned historical meaning, and route one accepted answer into one separately admitted reply run.** — Accepted history must survive generation and settlement changes, and the answer must reach a real reply without reopening the model operation. _(`f106575`)_
+
 ## Revision 2 · 2026-09-19 · draft — operator-directed M2 closure of provider answer use under unresolved accounting
 
 - **Add the bounded ProviderAnswerAcceptance contract while preserving the fully settled ProviderJudgmentResolution path.** — A complete evidenced answer can be useful before final billing or old-executor quiescence is known, provided maximum exposure stays held and repetition stays forbidden. _(`1b960e7`)_
