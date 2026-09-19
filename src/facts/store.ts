@@ -32,16 +32,26 @@ export interface FactStorePort {
 }
 export interface StoreRecovery { readonly prefix?: VerifiedPrefix; readonly verificationBudget?: number; readonly onVerified?: (fact: FactEnvelope) => void; readonly conflictAppender?: ConflictAppenderPort }
 
-// Structural JSON equality: two JSON values are canonically byte-identical exactly when they are
-// structurally equal, so this is the same integrity check as comparing canonical encodings.
+// Compare raw storage with a verified JSON frame without re-encoding either one.
+// Keep canonical's non-JSON refusals; the verified right-hand side is frozen.
 function jsonEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return typeof a === 'number' && typeof b === 'number' && a === b; // canonical maps -0 to 0, so -0 and 0 are byte-identical
+  if (a === b) return true; // canonical also identifies -0 with 0
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
   if (Array.isArray(a) !== Array.isArray(b)) return false;
-  if (Array.isArray(a)) return a.length === (b as unknown[]).length && a.every((v, i) => jsonEqual(v, (b as unknown[])[i]));
-  const ka = Object.keys(a as object), kb = Object.keys(b as object);
+  const proto = Object.getPrototypeOf(a);
+  if (proto !== Object.prototype && proto !== Array.prototype && proto !== null) return false;
+  const ka = Reflect.ownKeys(a), kb = Reflect.ownKeys(b);
   if (ka.length !== kb.length) return false;
-  for (const k of ka) if (!Object.prototype.hasOwnProperty.call(b, k) || !jsonEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k])) return false;
+  for (const k of ka) {
+    if (typeof k !== 'string') return false;
+    if (Array.isArray(a) && k === 'length') {
+      if (a.length !== (b as unknown[]).length) return false;
+      continue;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(a, k)!;
+    if (!('value' in descriptor) || !descriptor.enumerable || !Object.prototype.hasOwnProperty.call(b, k)
+      || !jsonEqual(descriptor.value, (b as Record<string, unknown>)[k])) return false;
+  }
   return true;
 }
 export function createFactStore(context: FactContext, storage: SegmentStoragePort, recovery: StoreRecovery = {}): FactStorePort {
@@ -53,7 +63,7 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
   const c = contextBoundary(context);
   const read = (): Result<readonly FactEnvelope[]> => boundary('FactStoreRead', null, c, () => {
     const raw = storage.read();
-    if (checkedContext !== prefixContext(context)) { cached = []; checkedContext = prefixContext(context); }
+    if (checkedContext !== prefixContext(context)) { revision++; cached = []; checkedContext = prefixContext(context); }
     if (prefix) { requireFact(prefixValid(prefix, context), 'prefix not verified under current context'); cached = prefix.facts; prefix = undefined; }
     requireFact(raw.length >= cached.length, 'stored verified prefix was truncated', 'integrity');
     for (let i = 0; i < cached.length; i++) requireFact(jsonEqual(raw[i], cached[i]), 'stored verified prefix changed', 'integrity');
@@ -68,11 +78,11 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
   });
   const store: FactStorePort = Object.freeze({ read,
     verifiedPrefix: () => boundary('FactStoreVerifiedPrefix', null, c, () => issuePrefix(take(read()), context)),
-    sweep: () => { cached = []; prefix = undefined; return read(); },
+    sweep: () => { revision++; cached = []; prefix = undefined; return read(); },
     readForProjection: () => boundary('FactStoreProjectionRead', null, c, () => {
       // Currency key: the store's own revision, the stored tail (count + last content hash) and the
-      // context tables — never a re-encoding of the whole history. Same guarantee as the former
-      // full fingerprint: any append, any changed stored tail, any table change invalidates.
+      // context tables. read() checks every retained frame; discarding that verified prefix
+      // advances revision. snapshotCurrent also checks the complete issuance context.
       const projectionKey = (facts: readonly FactEnvelope[]) => `${revision}|${facts.length}|${facts.at(-1)?.contentHash ?? ''}|${encoding({
         captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [] }).bytes}`;
       const first = take(read()), firstKey = projectionKey(first);
