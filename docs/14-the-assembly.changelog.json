@@ -1,5 +1,26 @@
 [
   {
+    "revision": 4,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "M2 repair round 2 builder-grant completion"
+    },
+    "changes": [
+      {
+        "what": "Complete the exact M3 and M4 source, boot-entry, declaration, export, test, fence, inventory-pin, and landing-order grant.",
+        "why": "The converged installation contract did not yet authorize every bounded implementation path required by the two build units.",
+        "commits": ["7148f52"]
+      },
+      {
+        "what": "Classify prepared-package placement as manual preparation and source-history append as a supervised critical install stage, with a named hold and a read-only M3 proof boundary.",
+        "why": "The G5 boundary must distinguish operator administration from an importer that writes critical installation history.",
+        "commits": ["7148f52"]
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-09-19",
     "status": "draft",

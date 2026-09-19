@@ -4,6 +4,11 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 4 · 2026-09-19 · draft — M2 repair round 2 builder-grant completion
+
+- **Complete the exact M3 and M4 source, boot-entry, declaration, export, test, fence, inventory-pin, and landing-order grant.** — The converged installation contract did not yet authorize every bounded implementation path required by the two build units. _(`7148f52`)_
+- **Classify prepared-package placement as manual preparation and source-history append as a supervised critical install stage, with a named hold and a read-only M3 proof boundary.** — The G5 boundary must distinguish operator administration from an importer that writes critical installation history. _(`7148f52`)_
+
 ## Revision 3 · 2026-09-19 · draft — M2 independent design review 1 bounded repairs R1 through R5
 
 - **Complete the three configuration-fact admission contracts, remove the bootstrap digest cycle, define the one-use reply-run continuation, and complete the dependency source, fence, and pin grant.** — The initial fixed-installation contract left authority, construction order, executable reply consumption, and local-loss dependency implementation underspecified. _(`f106575`)_
