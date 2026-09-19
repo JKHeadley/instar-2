@@ -5297,7 +5297,7 @@
     "src/facts/prefix.ts": "7a8e38103948efe52ee9cba40fc0f3858beb154ee7c9d60c40efd21a5f5fbda4",
     "src/facts/replication.ts": "a2f23bfda7f9ee1424213f960305ebc08bd1e85eaa8889ab353f27d6396956ea",
     "src/facts/snapshot.ts": "fb16f2d0c91b6c9bcf4189274224529e9e5a648e59e41aa827f22c4cf203be97",
-    "src/facts/store.ts": "8ed16a82ec85e8f7480b3e21f377e85c5fd8e490de76a4b4e54640aa1f9ee6f6",
+    "src/facts/store.ts": "d7d240650ac4c1815fdf470f8c4a8dc4fac36541d25c8e7e8a3b5e7b0a35c89b",
     "src/facts/stores.ts": "7925a27add05d99e53713db2b175af1a16caab03262bcf9af5d37fe5e22c9a26",
     "src/facts/verification.ts": "4032ed045bd344bf5d862c70e999b12a5391d85147acc8713998592814e339f1",
     "src/facts/version-chain.ts": "62bee2ac936a6b0c86336a9eb122b6cc3eea1b184fea09abd6ecc28104b834d3",

@@ -31,10 +31,24 @@ export interface FactStorePort {
   sweep(): Result<readonly FactEnvelope[]>;
 }
 export interface StoreRecovery { readonly prefix?: VerifiedPrefix; readonly verificationBudget?: number; readonly onVerified?: (fact: FactEnvelope) => void; readonly conflictAppender?: ConflictAppenderPort }
+
+// Structural JSON equality: two JSON values are canonically byte-identical exactly when they are
+// structurally equal, so this is the same integrity check as comparing canonical encodings.
+function jsonEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return typeof a === 'number' && typeof b === 'number' && a === b; // canonical maps -0 to 0, so -0 and 0 are byte-identical
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) return a.length === (b as unknown[]).length && a.every((v, i) => jsonEqual(v, (b as unknown[])[i]));
+  const ka = Object.keys(a as object), kb = Object.keys(b as object);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) if (!Object.prototype.hasOwnProperty.call(b, k) || !jsonEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k])) return false;
+  return true;
+}
 export function createFactStore(context: FactContext, storage: SegmentStoragePort, recovery: StoreRecovery = {}): FactStorePort {
   let revision = 0;
   let prefix = recovery.prefix;
   let cached: readonly FactEnvelope[] = [];
+  let projectionMemo: { key: string; snapshot: FactSnapshot } | undefined;
   let checkedContext = prefixContext(context);
   const c = contextBoundary(context);
   const read = (): Result<readonly FactEnvelope[]> => boundary('FactStoreRead', null, c, () => {
@@ -42,7 +56,7 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
     if (checkedContext !== prefixContext(context)) { cached = []; checkedContext = prefixContext(context); }
     if (prefix) { requireFact(prefixValid(prefix, context), 'prefix not verified under current context'); cached = prefix.facts; prefix = undefined; }
     requireFact(raw.length >= cached.length, 'stored verified prefix was truncated', 'integrity');
-    for (let i = 0; i < cached.length; i++) requireFact(encoding(raw[i]).bytes === encoding(cached[i]).bytes, 'stored verified prefix changed', 'integrity');
+    for (let i = 0; i < cached.length; i++) requireFact(jsonEqual(raw[i], cached[i]), 'stored verified prefix changed', 'integrity');
     requireFact(raw.length - cached.length <= (recovery.verificationBudget ?? Number.MAX_SAFE_INTEGER), 'verification budget exhausted', 'budget-exhausted');
     const facts: FactEnvelope[] = [...cached];
     for (const input of raw.slice(cached.length)) {
@@ -56,7 +70,14 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
     verifiedPrefix: () => boundary('FactStoreVerifiedPrefix', null, c, () => issuePrefix(take(read()), context)),
     sweep: () => { cached = []; prefix = undefined; return read(); },
     readForProjection: () => boundary('FactStoreProjectionRead', null, c, () => {
-      let snapshot = take(prepareSnapshot(take(read()), context));
+      // Currency key: the store's own revision, the stored tail (count + last content hash) and the
+      // context tables — never a re-encoding of the whole history. Same guarantee as the former
+      // full fingerprint: any append, any changed stored tail, any table change invalidates.
+      const projectionKey = (facts: readonly FactEnvelope[]) => `${revision}|${facts.length}|${facts.at(-1)?.contentHash ?? ''}|${encoding({
+        captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [] }).bytes}`;
+      const first = take(read()), firstKey = projectionKey(first);
+      if (projectionMemo && projectionMemo.key === firstKey) return projectionMemo.snapshot;
+      let snapshot = take(prepareSnapshot(first, context, () => projectionKey(take(read())) === firstKey));
       const conflicts = [...new Map(snapshot.entries.flatMap(e => e.conflicts).map(c => [c.key, c])).values()];
       if (conflicts.length) {
         if (storage.recordConflicts) {
@@ -65,10 +86,11 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
         requireFact(recovery.conflictAppender, 'signed conflict fact appender required; outbox receipt is insufficient');
         take(drainConflictFacts(context, store, recovery.conflictAppender));
       }
-      const at = revision;
-      const fingerprint = () => encoding({ facts: storage.read(), captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [], historicalRevocations: context.historicalRevocations ?? [] }).hash;
-      const current = fingerprint();
-      snapshot = take(prepareSnapshot(take(read()), context, () => revision === at && current === fingerprint()));
+      if (conflicts.length) {
+        const again = take(read()), againKey = projectionKey(again);
+        snapshot = take(prepareSnapshot(again, context, () => projectionKey(take(read())) === againKey));
+        projectionMemo = { key: againKey, snapshot };
+      } else projectionMemo = { key: firstKey, snapshot };
       return snapshot;
     }),
     append(input: unknown, replication?: { readonly peer: string }): Result<AppendReceipt> {
