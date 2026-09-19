@@ -105,26 +105,27 @@ export function createProductionRunAdmission(
     return delegated;
   }
   const input = Object.freeze({ ...configured });
-  let certified: Readonly<{ key: string; count: number; transport: readonly TransportFact[] }> | undefined;
+  let certified: Readonly<{ key: string; facts: readonly FactEnvelope[]; transport: readonly TransportFact[] }> | undefined;
   const ownerPrefix = () => {
     const prefix = take(input.store.verifiedPrefix());
     const key = encoded({ context: prefix.contextHash, count: prefix.facts.length,
       watermarks: prefix.watermarks }).hash;
     return { prefix, key };
   };
-  const clean = (): CleanPrefix => {
-    // Re-read the owner store for every decision. FactStore verifies only the
-    // suffix beyond its per-lineage watermarks; an unchanged signed prefix can
-    // reuse the owned transport rows decoded from that exact prefix below.
+  const clean = (reuse = false): CleanPrefix => {
+    // Every decision resolves from an owner-issued verified prefix. Create,
+    // commit, reservation and execution refresh it; immutable witness replays
+    // reuse rows decoded from the same prefix and its lineage watermarks.
+    if (reuse && certified) return freeze({ facts: certified.facts, transport: certified.transport });
     const { prefix, key } = ownerPrefix();
     if (certified?.key !== key) {
       const transport = transportFrom(prefix.facts);
-      certified = freeze({ key, count: prefix.facts.length, transport });
+      certified = freeze({ key, facts: prefix.facts, transport });
     }
     return freeze({ facts: prefix.facts, transport: certified.transport });
   };
-  const current = (ownership?: LeaseReference): Readonly<{ lease: Lease; fence: FenceToken; assignment: TransportFact }> => {
-    const { transport } = clean();
+  const current = (ownership?: LeaseReference, owner = clean()): Readonly<{ lease: Lease; fence: FenceToken; assignment: TransportFact }> => {
+    const { transport } = owner;
     const row = transport.filter((entry): entry is TransportFact & { readonly record: Lease } =>
       entry.record.type === 'Lease').at(-1);
     ensure(row && row.record.state === 'held', 'current held lease required');
@@ -142,7 +143,7 @@ export function createProductionRunAdmission(
   const writtenAfter = (before: readonly FactEnvelope[], expectedCommand: string,
     record: Lease): Readonly<{ facts: readonly FactEnvelope[]; witness: TransportFact & { readonly record: Lease } }> => {
     const prior = certified;
-    ensure(prior?.count === before.length, 'run admission clean prefix changed before write');
+    ensure(prior?.facts.length === before.length, 'run admission clean prefix changed before write');
     const { prefix, key } = ownerPrefix();
     ensure(prefix.facts.length === before.length + 1, 'run admission write interleaved with another fact');
     const fact = prefix.facts.at(-1);
@@ -151,7 +152,7 @@ export function createProductionRunAdmission(
       && record.operation === 'write' && record.command === expectedCommand,
     'exact Six write witness missing');
     const witness = freeze({ fact, record }) as TransportFact & { readonly record: Lease };
-    certified = freeze({ key, count: prefix.facts.length, transport: freeze([...prior.transport, witness]) });
+    certified = freeze({ key, facts: prefix.facts, transport: freeze([...prior.transport, witness]) });
     return freeze({ facts: prefix.facts, witness });
   };
   const appendOnce = (beforeWrite: readonly FactEnvelope[], writeCommand: string,
@@ -164,13 +165,13 @@ export function createProductionRunAdmission(
     })());
     ensure(calls === 1, 'run admission callback count changed');
     const prior = certified;
-    ensure(prior?.count === afterWrite.facts.length, 'run admission clean prefix changed before append');
+    ensure(prior?.facts.length === afterWrite.facts.length, 'run admission clean prefix changed before append');
     const { prefix, key } = ownerPrefix();
     ensure(prefix.facts.length === afterWrite.facts.length + 1, 'run append interleaved with another fact');
     const stored = prefix.facts.at(-1);
     ensure(stored && same(stored, receipt.fact), 'owner observation is absent or changed in the signed prefix');
     ensure(receipt.taint.length === 0, 'run append returned taint');
-    certified = freeze({ key, count: prefix.facts.length, transport: prior.transport });
+    certified = freeze({ key, facts: prefix.facts, transport: prior.transport });
     ensure(stored.predecessors.inSegment === afterWrite.witness.fact.id,
       'run append is not adjacent to its Six witness');
     const preceding = prefix.facts.find(fact => fact.id === stored.predecessors.inSegment);
@@ -180,8 +181,10 @@ export function createProductionRunAdmission(
   };
   const witnessed = (record: FactEnvelopeReference): FactEnvelope => {
     ensure(record.owner === 'part-two' && record.name === 'FactEnvelope', 'fact reference owner mismatch');
-    const { facts, transport } = clean();
-    const fact = facts.find(row => row.id === record.id);
+    let owner = clean(true);
+    let fact = owner.facts.find(row => row.id === record.id);
+    if (!fact) { owner = clean(); fact = owner.facts.find(row => row.id === record.id); }
+    const { facts, transport } = owner;
     ensure(fact && runKinds.has(fact.kind), 'admitted run fact absent');
     const predecessor = facts.find(row => row.id === fact.predecessors.inSegment);
     const witness = transport.find(row => row.fact.id === predecessor?.id);
@@ -219,7 +222,7 @@ export function createProductionRunAdmission(
       const before = clean();
       ensure(before.facts.some(fact => fact.id === opening.id), 'run opening cause absent');
       ensure(!head(before.facts, run), 'run already exists');
-      const live = current();
+      const live = current(undefined, before);
       const writeCommand = command('create', { opening, run, assignment: live.fence.assignment });
       const write = take(input.authority.admitWrite(writeCommand, live.fence));
       return appendOnce(before.facts, writeCommand, write, append, receipt => {
@@ -235,7 +238,7 @@ export function createProductionRunAdmission(
       const before = clean();
       const beforeHead = head(before.facts, request.run);
       ensure(beforeHead && runWire(beforeHead)?.id === request.expected, 'run opening head changed');
-      const live = current(request.ownership);
+      const live = current(request.ownership, before);
       ensure(request.generation.owner === 'part-three' && request.generation.name === 'RegisterGeneration'
         && request.generation.id === live.lease.generation, 'run register generation changed');
       const fields = { run: request.run, expected: request.expected, ownership: request.ownership,
@@ -271,7 +274,7 @@ export function createProductionRunAdmission(
       }),
     execution: (run, ownership) => boundary('ProductionRunExecutionObservation', { run, ownership }, input.context, () => {
       ensure(run.length > 0, 'run identity required');
-      const live = current(ownership), { facts, transport } = clean();
+      const owner = clean(), live = current(ownership, owner), { facts, transport } = owner;
       const launches = facts.filter(fact => fact.kind === 'assembly-HarnessLaunchSpec').map(fact => ({ fact,
         record: object(object(fact.body, 'launch fact body required').record, 'launch record required') }))
         .filter(row => row.record.run === run && row.record.machine === live.lease.machine
