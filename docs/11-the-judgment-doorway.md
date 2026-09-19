@@ -171,7 +171,7 @@ The sequence below is enforced by P7-NF-11/14/15/16, including a kill between ea
 
 **Rule — a complete answer may be accepted before final charge is known.** Owner: Seven owns
 `ProviderAnswerAcceptance` version 1; Nine owns response-evidence assessment; Eight owns
-settlement; Six owns accounting; Five owns use. **Check: P7-NF-53** accepts the output-use record
+settlement; Six owns accounting; Five owns use. **Check: P10-SI-17** accepts the output-use record
 only when it binds the exact current request, attempt, response-observed fact, operation,
 consumed claim, submitted and answer digests, response capture, provider/model/route/floor and
 evidence set; Nine accepts that exact response as authentic and complete; Eight's settlement and
@@ -185,9 +185,25 @@ unresolved accounting.
 
 The record carries immutable id, request, attempt, response, operation, claim, submitted digest,
 capture, answer digest, assessment, settlement, accounting, finite maximum charge, retained
-exposure, generation and accepted clock. Seven's public historical decoder validates every
-predecessor and the current `Decision` bytes. No callback, answer bytes, authority, actual-charge
-claim or retry permission is serialized into the record.
+exposure, generation and accepted clock. Seven produces
+`judgment-provider-ProviderAnswerAcceptance` through `recordProviderAnswerAcceptance` and exposes
+`decodeHistoricalProviderAnswerAcceptance`. Historical decoding uses the origin-pinned schema,
+generation, causal predecessors and captured `Decision` bytes. Current authority, freshness and
+retained exposure are rechecked before a new use, not used to erase an earlier accepted use. Later
+accounting settlement does not invalidate its historical acceptance. No callback, answer bytes,
+authority, actual-charge claim or retry permission is serialized into the record.
+
+**Rule — acceptance supplies one separately admitted reply, not readiness for the provider run.**
+Owner: Five for conditional consumption and the reply run; Seven owns the accepted answer; Eight
+owns the reply operation. **Check: P10-SI-24**. Five's public `openAcceptedProviderReply` rechecks
+the original current predecessor, stop, standing, lease-derived fence and conversation obligation,
+then deduplicates one standard `Run` v1 opening by the exact acceptance fact. The original provider
+run and accounting stay pending. The reply run obtains its own grounding, authority, budget,
+durability and Eight dispatch claim and cannot invoke the model again. Changed predecessor or stop,
+a second consumption, or a reply run without its own admission refuses. The positive neighbor
+sends one real reply from one assessed complete answer while maximum exposure remains held; restart
+finds the same reply run and outbound operation and performs neither a second model call nor a
+second reply operation.
 
 **Rule — identities and reservation authority have one owner each.** Rules 33, 55, 60,
 63, and 75. The map below is enforced by P7-NF-17/30/52; none of its references creates

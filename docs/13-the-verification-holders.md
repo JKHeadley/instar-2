@@ -538,7 +538,7 @@ not assuming those pieces already exist.
 
 **Rule — an installed verifier selection is not readiness evidence.** Owner: Nine for the
 independently administered challenge service and its evidence; Ten owns only installation
-selection; Eleven consumes the verdict. **Checks: P9-NF-58/59**. The readiness predicate binds
+selection; Eleven consumes the verdict. **Check: P10-SI-13**. The readiness predicate binds
 the exact service id, administrative domain, independently installed trust reference, surface,
 generation, comparable current clock, `issue` and `verify` operations, unpredictable one-use
 challenge, expiry and replay protection to current authenticated evidence. An `independent`

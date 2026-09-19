@@ -514,15 +514,19 @@ and cannot unlock a forbidden replay.
 
 **Rule — output availability does not release effect liability.** Owner: Eight for the provider
 settlement consumer, Seven for `ProviderAnswerAcceptance`, Six for accounting and Five for run
-use. **Checks: P8-NF-47/48**. Eight may expose one exact complete model output to Five when
+use. **Checks: P10-SI-17/24**. Eight may expose one exact complete model output to Five when
 Seven's acceptance binds Nine's response assessment and the exact Eight settlement and Six
 accounting, the route has an enforced finite maximum charge, maximum exposure remains held and
 retry eligibility is false. It returns `chargeSettled: false` while accounting is unresolved and
 does not claim old-executor quiescence. Five keeps the provider step and accounting obligation
-pending. Missing assessment, mismatched settlement hash, reduced exposure, duplicate use or any
-repeat path refuses. The positive neighbor is a response-observed complete answer used once with
-unknown charge still reserved; the existing zero-unresolved consumer remains the positive path
-that may report charge settled.
+pending. Five may bind that one use to one separately admitted reply run under the current
+predecessor, stop, standing, fence and original conversation obligation. That reply run receives
+its own grounding, authority, budget, durability and Eight outbound dispatch claim; it cannot call
+the model or complete the original provider run. Missing assessment, mismatched settlement hash,
+reduced exposure, changed predecessor or stop, duplicate use or any repeat path refuses. The
+positive neighbor is a response-observed complete answer used once for one real reply with unknown
+charge still reserved; restart reuses that reply operation, and the existing zero-unresolved
+consumer remains the positive path that may report charge settled.
 
 **Rule — uncertainty has no expiry into truth.** **Checks: P8-NF-22/37/39**. Observation
 episodes have finite cap/backoff/breaker and duration; hitting a bound stops that episode and

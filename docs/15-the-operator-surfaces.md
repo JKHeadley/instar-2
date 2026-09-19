@@ -207,7 +207,8 @@ accepting intake and independently evidencing the delivery stage it declares. It
 eight's ordinary message operation and that operation's approved durability demand. The reference
 default is **replicated(1)**: local preparation is not dispatch permission until one required peer
 acknowledges the exact facts. The purpose's single-machine proposal, if the operator accepts it
-through this pull request, permits
+through an independently verified choice that enters force for the exact installation and
+operation, permits
 only an explicitly listed `local-durable` operation with its complete causal prefix and current
 P-08 loss policy. It never creates `replicated(0)` or an automatic fallback after peer loss. The
 responder has a reserved finite worker, local storage, queue, transport and effect budget independent of ordinary
@@ -264,7 +265,7 @@ does not imply authority it lacks.
 |---|---|---|---|---|---|---|
 | Authorization completion | Four's request | Eleven surface; four/eight/nine validate | Exact request digest and existing authorization/decline fact; broker journal for protected change | render → verified act through intake → current exact validation → effect/broker → receipt | authority closed; diagnosis, stop and preserved request open | Eleven interaction; four authority decode; eight effect; nine broker |
 | Conversation binding | Genesis or verified operator act | Four standing resolution | Existing grant/revocation facts at causal frontier | inspect → verify → append → fold → receipt | no self-bind; conflict freezes new authority, not stop | Eleven surface act; four resolution; two conflict/replay |
-| Minimal plane | Facts from source parts and ten assembly | Live responder and operator views | Spine at stated vector; projections disposable | verify/replay → compare → admit scope/dependencies → preserve → replicate(1) → serve/repair | mutation closed on stale; accepted intake preserved; response requires the declared minimal path | Eleven admission/live posture; source owners close their facts; ten wiring |
+| Minimal plane | Facts from source parts and ten assembly | Live responder and operator views | Spine at stated vector; projections disposable | verify/replay → compare → admit scope/dependencies → preserve → satisfy Eight's approved operation durability demand → serve/repair | mutation closed on stale; accepted intake preserved; response requires the declared minimal path | Eleven admission/live posture; source owners close their facts; ten wiring |
 | Vertical slice | Four → five → seven → eight → nine | Ten assembly and acceptance harness | Causally linked facts plus independent delivery evidence | preserve/authenticate → run → judgment → response effect → verify → rebuild | affected effect closed; accepted input and owned repair remain live | each part its transition; eleven whole-slice verdict |
 
 **Rule — four shared traces have one answer.** Rules 24, 26, 31, 33, 42, 63 and 68;

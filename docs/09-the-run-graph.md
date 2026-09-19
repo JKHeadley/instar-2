@@ -698,10 +698,16 @@ run's result/reply input while Six reports unresolved accounting only when the a
 the current request, attempt, response, operation, digest, Nine assessment, Eight settlement and
 Six accounting; the route has an enforced finite maximum charge; maximum exposure remains held;
 and retry eligibility is false. The provider step and accounting obligation remain pending and
-cannot transition the run to ready or complete. Missing joins, released exposure, a second use or
-a disguised repeat refuses. The positive neighbor uses one complete assessed answer once while
-showing unknown charge and held capacity; the existing fully settled path may additionally close
-the step.
+cannot transition that provider run to ready or complete. Five's public
+`openAcceptedProviderReply` conditionally records one standard `Run` v1 opening keyed by the exact
+acceptance fact after rechecking the original current predecessor, stop, standing, lease-derived
+fence and conversation obligation. That separate reply run references the accepted answer and
+obtains its own grounding, authority, budget, durability and Eight dispatch claim. It cannot call
+the model or complete the original provider run. Restart reuses the same reply run and outbound
+operation. Missing joins, changed predecessor or stop, released exposure, a second use or a
+disguised repeat refuses. The positive neighbor uses one complete assessed answer once for one real
+reply while showing unknown charge and held capacity; the existing fully settled path may
+additionally close the original step.
 
 ---
 

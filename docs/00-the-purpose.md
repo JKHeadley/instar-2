@@ -104,7 +104,8 @@ non-emergency irreversible effect whose authorization has no acknowledged copy o
 independently failing store.
 
 **Proposal — one explicitly scoped installation may accept permanent local loss.** This
-proposal has no force unless the operator accepts it through the pull request that introduces it.
+proposal has no force unless the operator records an independently verified acceptance that enters
+force for the exact installation and operations.
 The default above remains one acknowledged copy on an independently failing store. For one named
 single-machine installation, the operator may instead approve a P-08 policy listing each exact
 operation whose authorization and complete causal preparation use `local-durable`, together with
