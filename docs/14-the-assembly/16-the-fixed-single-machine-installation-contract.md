@@ -293,6 +293,20 @@ a current Seven supervisor may validate owner facts and append the exact predecl
 Read-only inspection after the import may run without that supervisor because it performs no
 installation or recovery write. This profile adds no unattended OS or key provisioning pipeline.
 
+The operator may manually place or select one already approved prepared package under P10-SI-11.
+An importer that validates and appends any package fact is an automated critical install stage,
+even when an operator starts it and even when it imports only one bounded package. P10-SI-12
+therefore requires Seven's current bounded step supervisor for that append. No such supervisor
+source is landed at this baseline. The named hold is `seven-bounded-install-supervisor`. M3 may
+still deliver its importer, loader, source-only replay runner, and per-predicate report and prove
+the read-only path against the external pin and prepared bytes. Its proof must stop before source-
+history append, migration, recovery, switch-on, provider call, or Telegram call. The later positive
+executes the same finite import plan under the current Seven supervisor. Owner basis:
+`docs/14-the-assembly.md:882-902` requires the supervisor for every automated critical install or
+recovery stage and excludes history append from manual preparation.
+`docs/11-the-judgment-doorway.md:137-145` owns bounded supervision and refuses a missing supervisor
+or recursive self-authorization.
+
 **Rule — verifier binding is distinct from verifier readiness.** Owner: Ten for selection, Nine
 for the independently administered verifier and evidence, and Eleven for the surface verdict.
 Predicate: P10-SI-13 treats the `challenge-verifier` selection as prepared only. Readiness also
@@ -436,65 +450,166 @@ existing fully settled path.
 
 **Rule — the implementation grant is exact and additive.** Owner: the landing desk for the
 reviewed grant and each named source owner for its code. Predicate: P10-SI-19 rejects any modified
-existing source, fence, pin, or fixture outside the table. Positive neighbor: new sibling source
-and new tests may be added inside existing allowed directories, while the exact existing files
-below change only for the stated predicate and are re-pinned to reviewed final bytes.
+existing source, new source, fence, pin, or fixture outside the tables and rules below. Positive
+neighbor: a listed additive file is created for only its named predicates, while an exact existing
+file changes only for its stated predicate and every reviewed source is pinned to final bytes.
 
 | Existing path granted | Sole permitted change |
 |---|---|
 | `src/assembly/service.ts` | Replace the unconditional `posture(scope) === 'protected'` test with P10-SI-14's declared-scope conjunction; preserve all manifest, conformance, isolation, custody, probe, freshness, and admission checks. |
-| `src/assembly/index.ts` | Export only the two public Ten producer/decoder contracts named by P10-SI-23. |
+| `src/assembly/index.ts` | Add only the public export lines for the two P10-SI-23 Ten bodies, the M3 importer/loader/replay/report ports, and the M4 launch-boundary/custody-wiring ports named below. |
 | `src/assembly/records.ts` | Validate P10-SI-15's owner-approved required roster instead of requiring all ten dependencies unconditionally; an inapplicable peer must carry the exact local-loss selection and cannot decode as a live dependency handle. |
 | `src/assembly/contracts.ts` | Add the closed `ApprovedMinimalDependencySelection` result and its required-versus-inapplicable peer representation; preserve `AssemblyLiveDependencyHandle` as evidence of an actually admitted dependency. |
 | `src/assembly/production.ts` | Resolve the P10-SI-07 owner map, the three P10-SI-23 bodies, and P10-SI-15's operation/scope dependency selection; preserve public owner-port identity checks and final `runtime.admit`. |
 | `src/assembly/production-boot.ts` | Consume the inspected scope/dependency result before switch-on; remove the blanket missing-list fallback; preserve secret scrubbing, one opened root, close-on-error, exact installation comparison, production-owner provenance, and final owner recheck. |
+| `src/assembly/production-application.ts` | Load the verified fixed-installation inputs and pass only the admitted composition to the existing boot boundary; preserve its no-poll-before-admission rule. |
+| `bin/instar-production.mjs`, `scripts/production-boot.mjs`, `scripts/production-boot-io.mjs` | Wire the external bootstrap locator, expected digest, prepared package, confined I/O, and typed boot result into the existing production entry. These hosts add no policy, standing, fact shape, fallback, or admission bypass. |
+| `src/assembly/production-holds.ts` | Read-only. M3 and M4 may read and report its landed holds but may not edit, remove, reinterpret, or clear them. A hold closes only through its named owner evidence. |
+| `src/assembly/harness.ts`, `src/assembly/production-native-context.ts` | Bind the admitted Native launch and context readback to P10-SI-13/14/16 and the exact worker artifact without adding a launch shortcut. |
+| `src/assembly/custody.ts`, `src/assembly/provider-credential-custodian.ts` | Wire P10-SI-08/09/14 custody from pre-provisioned `SecretRef` values; preserve confinement and never expose credential bytes to the worker. |
+| `src/assembly/production-composition.ts` | Compose the selected dependency result, verifier host, accepted-answer reply path, launch boundary, and custody ports through their public owners only. |
 | `src/operator/live.ts` | Replace the global ten-name list with consumption of the exact `ApprovedMinimalDependencySelection`; preserve every required dependency and the accepted-input, exposure, repair, and zero-replay checks. |
 | `src/operator/production-switch-on.ts` | Consume the same `ApprovedMinimalDependencySelection` as live evaluation; preserve adapter refusals and repair ownership. |
+| `src/operator/contracts.ts`, `src/operator/index.ts` | Define and export the consumer-owned `MinimalDependencySelection` wire type used by both live and switch-on evaluation. Ten's `ApprovedMinimalDependencySelection` in `src/assembly/contracts.ts` implements that public type. No `src/operator/` file imports `src/assembly/`. |
 | `src/rungraph/types.ts` | Add Five's public `openAcceptedProviderReply` port contract without changing the stored `Run` v1 body. |
 | `src/rungraph/records.ts` | Admit the exact acceptance-backed standard `Run` opening and re-resolve its original conversation obligation; preserve ordinary intake openings and every existing run field and decoder rule. |
 | `src/rungraph/service.ts` | Implement P10-SI-24's conditional one-use reply opening under the current predecessor, stop, standing, fence, and conversation obligation; preserve the unresolved original provider run. |
-| `src/rungraph/index.ts` | Export only the P10-SI-23 governance loader and P10-SI-24 reply-opening public contracts. |
+| `src/rungraph/index.ts` | Add only the export lines for the P10-SI-23 governance loader and P10-SI-24 reply-opening public contracts. |
 | `src/judgment/provider-path.ts` | Register, produce, origin-decode, and historically decode `judgment-provider-ProviderAnswerAcceptance`; retain the existing `ProviderJudgmentResolution` rule that requires `unresolved === 0`. |
+| `src/judgment/index.ts` | Add only the public exports for `recordProviderAnswerAcceptance` and its origin and historical decoders. |
 | `src/effects/provider-path.ts` | Let the exact P10-SI-17 acceptance supply output to Five's P10-SI-24 reply-opening consumer while returning `chargeSettled: false` and retaining the original accounting obligation; preserve the existing fully settled path and all retry bars. |
+| `src/effects/index.ts` | Add only the public export for the accepted-answer settlement consumer used by Five. |
+| `src/assembly/assembly.declarations.json`, `src/rungraph/rungraph.declarations.json` | Add only the declaration and decoder/producer bindings for `InstallationSelection`, `ProductionSignerReference`, and `InstalledRunGovernanceReference` and their exact fact kinds from P10-SI-23. |
+| `src/judgment/judgment.declarations.json` | Add only the declaration and producer/decoder bindings for `ProviderAnswerAcceptance` and `judgment-provider-ProviderAnswerAcceptance`. |
 
-The only additive owner source files are `src/assembly/installation-selection.ts`,
-`src/assembly/production-signer-reference.ts`, and `src/rungraph/installed-governance.ts`. They may
-contain only the P10-SI-23 schemas, registrations, producers, origin/historical decoders, and Five
-loader named by this contract. `src/assembly/production-installation.ts` stays version 1. Existing
-One, Two, Three, Four, Six, Nine, Eleven, and Twelve record bodies stay unchanged. The additive R3
-tests are exactly `tests/rungraph/provider-answer-reply.test.ts` for changed predecessor, stop,
-second consumption, restart and historical settlement, and `tests/e2e/fixed-installation-reply.test.ts`
-for one provider answer, one reply operation, retained exposure, and no second model call. Other new
-tests may cover only P10-SI-14/15/16/23 inside their existing owner directories. No existing test
-fixture may be rewritten to look like production evidence.
+The additive M3 sources are exact:
+
+- `src/assembly/installation-selection.ts` and
+  `src/assembly/production-signer-reference.ts` contain only their P10-SI-23 schemas,
+  registrations, producers, and origin/historical decoders.
+- `src/rungraph/installed-governance.ts` contains only the P10-SI-10/23 body, schema,
+  registration, producer, origin/historical decoders, and Five loader.
+- `src/assembly/production-installation-import.ts` contains the finite prepared-package plan and
+  the P10-SI-12 supervised append consumer. It exposes a read-only dry-run when the named Seven
+  supervisor hold is open.
+- `src/assembly/production-installation-loader.ts` resolves the external locator and digest and
+  loads the immutable prepared bytes without writing history.
+- `src/assembly/production-installation-replay.ts` performs the source-only replay at the stated
+  vector and generation without switch-on or network access.
+- `src/assembly/production-installation-report.ts` emits the P10-SI predicate report from owner
+  verdicts and may not turn a hold into a pass.
+
+The additive M4 sources are also exact:
+
+- `src/assembly/production-launch-boundary.ts` is the single confined Native launch boundary for
+  the admitted machine, artifact, worker, scope, and dependency selection.
+- `src/assembly/production-custody-wiring.ts` joins pre-provisioned `SecretRef` values to the
+  existing storage, Telegram, and provider custodians without returning secret bytes.
+- `scripts/fixed-installation-verifier-clock-observer.mjs` is the separately launched,
+  operator-administered small host for Nine's public challenge-verifier, comparable-clock, and
+  observer ports. It does not run inside the production worker, add a fact body, or modify
+  `src/verification/`. Its trust reference, administrative domain, clock subject, observations,
+  and current evidence still pass P10-SI-13 and Nine's owner gates.
+
+No other new source file is granted. `src/assembly/production-installation.ts` stays version 1.
+Existing One, Two, Three, Four, Six, Nine, Eleven, and Twelve record bodies stay unchanged. A new
+file above implements only already named P10-SI predicates and adds no record or policy language.
+
+The new test-file grant covers every predicate without authorizing edits to landed fixtures:
+
+| Additive test path | P10-SI coverage granted |
+|---|---|
+| `tests/assembly/fixed-installation-contract.test.ts` | 01, 02, 03, 06, 07, 08, 09, 11, 12, 19, 20, 21, 22, 23 |
+| `tests/assembly/fixed-installation-bootstrap.test.ts` | 08, 09, 11, 12, 16, 22, 23 |
+| `tests/rungraph/installed-governance.test.ts` | 01, 02, 10, 19, 20, 23 |
+| `tests/operator/fixed-installation-dependencies.test.ts` | 03, 04, 05, 13, 14, 15, 16, 19, 20, 21 |
+| `tests/assembly/fixed-installation-live.test.ts` | 04, 08, 13, 14, 15, 16, 18, 19, 20, 22 |
+| `tests/assembly/fixed-installation-custody.test.ts` | 08, 09, 11, 14, 19, 20, 22 |
+| `tests/verification/fixed-installation-host.test.ts` | 13, 14, 19, 20, 22 |
+| `tests/rungraph/provider-answer-reply.test.ts` | 17, 18, 19, 20, 24 |
+| `tests/e2e/fixed-installation-reply.test.ts` | 01, 03, 04, 05, 10, 13, 14, 15, 16, 17, 18, 20, 21, 22, 24 |
+
+No landed test may be edited except the exact allowlist and digest lines below.
+`tests/model-provider/fixture.ts` and `tests/model-provider/review/assertions.mjs` remain
+byte-identical and must pass while reading the changed provider path. No fixture may be rewritten
+to look like production evidence.
+
+The declaration changes are source inputs, not generated authority. After each unit commits its
+declaration inputs, the ordinary Three generator may update only the deterministic changed files
+among `generated/capabilities.md`, `generated/conversion.json`, `generated/coverage.md`,
+`generated/fact-schemas.json`, `generated/glossary.md`, `generated/register.json`,
+`generated/rules.md`, `generated/shape.json`, and `generated/source.json`. M3 introduces only the
+three P10-SI-23 fact-kind bindings. M4 introduces only the P10-SI-17
+`judgment-provider-ProviderAnswerAcceptance` binding. Hand-edited generated output refuses.
+
+Owner basis for this path grant: `src/assembly/production-application.ts:28-49` owns the admitted
+boot composition; `src/assembly/production-holds.ts:1-30` says its names confer no authority;
+`src/assembly/production-native-context.ts:16-65` owns the claim-bound Native context boundary;
+`src/assembly/provider-credential-custodian.ts:7-45` owns confined provider credentials; and
+`src/assembly/production-composition.ts:45-91` composes only public owner ports.
+`src/operator/contracts.ts:143-149` owns the minimal-dependency consumer types, while
+`src/assembly/contracts.ts:303-323` owns Ten's admitted dependency handles.
+`docs/07-the-declarations.md:213-243` makes committed declaration inputs and the ordinary Three
+generator, not hand-edited output, the source of a register generation.
 
 The builder's reviewed fence and pin grant is also exact:
 
-1. Update the source allowlists in `tests/rungraph/production-grounding-scope.test.ts` and
-   `tests/operator/round15-regressions.test.ts` only to add
-   `src/judgment/provider-path.ts` and `src/effects/provider-path.ts`. The first allowlist also adds
-   exactly `src/operator/live.ts`; its existing `src/operator/production-switch-on.ts` allowance
-   remains. Assembly and rungraph paths remain confined to their declared source prefixes.
-2. Re-pin every changed path already present in `reviewedSupportSources` in
-   `tests/assembly/production-grounding-inventory.json`: `src/assembly/index.ts`,
+1. In V79 of `tests/operator/round15-regressions.test.ts`, change only the source allowlist to add
+   `src/judgment/index.ts`, `src/judgment/provider-path.ts`, and
+   `src/effects/provider-path.ts`. The existing `src/effects/index.ts` and owner-directory
+   allowances remain. No assertion or main-versus-HEAD comparison changes.
+2. In `tests/rungraph/production-grounding-scope.test.ts`, change only `liveInputGrant` to add
+   `src/judgment/index.ts`, `src/judgment/provider-path.ts`, and
+   `src/effects/provider-path.ts`, and change only `productionBootGrant` to add
+   `src/operator/contracts.ts` and `src/operator/live.ts`. Its existing
+   `src/operator/index.ts` and `src/operator/production-switch-on.ts` entries remain. Assembly and
+   rungraph paths remain confined to their existing prefixes.
+3. M3 adds or re-pins final independently reviewed digests in
+   `tests/assembly/production-grounding-inventory.json` for its changed host/source paths:
+   `bin/instar-production.mjs`, `scripts/production-boot.mjs`,
+   `scripts/production-boot-io.mjs`, `src/assembly/index.ts`,
    `src/assembly/contracts.ts`, `src/assembly/records.ts`, `src/assembly/service.ts`,
-   `src/assembly/production.ts`, `src/operator/live.ts`, `src/rungraph/index.ts`,
-   `src/rungraph/types.ts`, `src/rungraph/records.ts`, `src/rungraph/service.ts`,
-   `src/judgment/provider-path.ts`, and `src/effects/provider-path.ts`.
-   `src/assembly/production-boot.ts` and `src/operator/production-switch-on.ts` are not in that map
-   at this baseline and are not added merely to imply prior review. Add or remove no reviewed
-   obligation row merely to make a changed source pass.
-3. Update `REVIEWED_GROUNDING_INVENTORY` in `scripts/check-assembly-contracts.mjs` to the digest
-   of the independently reviewed inventory bytes.
-4. Add exact final reviewed digests for
+   `src/assembly/production.ts`, `src/assembly/production-boot.ts`,
+   `src/assembly/production-application.ts`, `src/assembly/installation-selection.ts`,
+   `src/assembly/production-signer-reference.ts`,
+   `src/assembly/production-installation-import.ts`,
+   `src/assembly/production-installation-loader.ts`,
+   `src/assembly/production-installation-replay.ts`,
+   `src/assembly/production-installation-report.ts`, `src/rungraph/index.ts`,
+   and `src/rungraph/installed-governance.ts`. An unmodified path retains its existing digest.
+4. M4 adds or re-pins final independently reviewed digests for its changed host/source paths:
+   `scripts/fixed-installation-verifier-clock-observer.mjs`, `src/assembly/index.ts`,
+   `src/assembly/contracts.ts`, `src/assembly/service.ts`, `src/assembly/production.ts`,
+   `src/assembly/production-boot.ts`, `src/assembly/harness.ts`, `src/assembly/custody.ts`,
+   `src/assembly/production-native-context.ts`, `src/assembly/production-composition.ts`,
+   `src/assembly/provider-credential-custodian.ts`,
+   `src/assembly/production-launch-boundary.ts`,
+   `src/assembly/production-custody-wiring.ts`, `src/operator/contracts.ts`,
+   `src/operator/index.ts`, `src/operator/live.ts`, `src/operator/production-switch-on.ts`,
+   `src/rungraph/index.ts`, `src/rungraph/types.ts`, `src/rungraph/records.ts`,
+   `src/rungraph/service.ts`, `src/judgment/index.ts`, `src/judgment/provider-path.ts`,
+   `src/effects/index.ts`, and `src/effects/provider-path.ts`. An unmodified path retains its
+   existing digest. A new key is added only after that unit's independent review has fixed its
+   final bytes; adding a path does not itself claim prior review.
+5. Each unit updates `REVIEWED_GROUNDING_INVENTORY` in
+   `scripts/check-assembly-contracts.mjs` to the digest of its independently reviewed inventory
+   bytes. Each unit also sets the exact final digests of
    `tests/assembly/production-grounding-inventory.json` and
-   `tests/rungraph/production-grounding-scope.test.ts` to A2's `grantedContent`. Preserve its
-   main-versus-HEAD comparison and every other protected file.
-5. Re-pin any affected owner-reference manifest through the ordinary Three generator from the
+   `tests/rungraph/production-grounding-scope.test.ts` in A2's `grantedContent`. No directory
+   exemption, obligation-row deletion, assertion change, or weaker main-versus-HEAD comparison is
+   granted.
+6. M3 lands first with its final source digests, single inventory digest, checker constant, A2
+   digest, declarations, and generated register outputs. M4 then rebases onto landed M3, changes
+   the shared `src/assembly/production.ts`, `src/assembly/production-boot.ts`, and
+   `src/rungraph/index.ts` from that baseline, and recomputes every M4 source digest and the one
+   inventory digest. M4 never carries forward M3's aggregate inventory digest after changing the
+   inventory bytes.
+7. Re-pin any affected owner-reference manifest through the ordinary Three generator from the
    approved declaration inputs. Do not hand-edit generated authority or widen a source-hash
    exemption.
-6. Preserve historical decoders, default replicated-mode positives, protected-scope positives,
-   unprotected protected-mutation refusals, and all current production provenance checks.
+8. Preserve historical decoders, default replicated-mode positives, protected-scope positives,
+   unprotected protected-mutation refusals, all current production provenance checks, and the
+   byte-identical landed provider-path readers named above.
 
 ---
 
