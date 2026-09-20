@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/assembly/fixed-installation-contract.test.ts",
-        "hash": "sha256:7c7fde40ba27f0f7d6ded65b31d45f612d011c3ab22f36208f96a8e1f5553268"
+        "hash": "sha256:a5f38935d30c8898410dc410a109c8ecbd5b561c18e785db5f564ec968e409fd"
       }
     },
     {
@@ -15,7 +15,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/assembly/fixed-installation-bootstrap.test.ts",
-        "hash": "sha256:08268f5470aaa0cacddffcc6b42c1129f7df3b85902b7f456a24e49148556dff"
+        "hash": "sha256:995349f1e59ebb9e3400eb9af893c88a6e092ab955df33074d94b70bca3dd5b0"
       }
     }
   ],
@@ -30,7 +30,7 @@
       },
       "artifact": {
         "path": "src/assembly/installation-selection.ts",
-        "hash": "sha256:71edfb1b633b445cb76e895715645e49935046069ed000b184ed7f48fb5ba178"
+        "hash": "sha256:b5effdec48c30b20fb9497e4b8a026c803ac06f22c6768c7bde5ff803ae548d7"
       }
     },
     {
@@ -41,7 +41,7 @@
       },
       "artifact": {
         "path": "src/assembly/installation-selection.ts",
-        "hash": "sha256:71edfb1b633b445cb76e895715645e49935046069ed000b184ed7f48fb5ba178"
+        "hash": "sha256:b5effdec48c30b20fb9497e4b8a026c803ac06f22c6768c7bde5ff803ae548d7"
       }
     },
     {
@@ -52,7 +52,7 @@
       },
       "artifact": {
         "path": "src/assembly/production-signer-reference.ts",
-        "hash": "sha256:7aa70e9a0d1a088eddf9ce640d21db683b100ed7f2fd6dc2949bb6bdb2be597f"
+        "hash": "sha256:e4c79109c2140566263d9c9428a5898aa9bedbf5da26f2e48e2917db1c8ce0f2"
       }
     },
     {
@@ -63,7 +63,7 @@
       },
       "artifact": {
         "path": "src/assembly/production-signer-reference.ts",
-        "hash": "sha256:7aa70e9a0d1a088eddf9ce640d21db683b100ed7f2fd6dc2949bb6bdb2be597f"
+        "hash": "sha256:e4c79109c2140566263d9c9428a5898aa9bedbf5da26f2e48e2917db1c8ce0f2"
       }
     }
   ]

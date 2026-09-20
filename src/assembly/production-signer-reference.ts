@@ -48,6 +48,7 @@ function validate(input: unknown, context: OwnedBodyContext, admission: Producti
     ensure(active.get(admission) === encoded(closed(input, admission)).hash, 'signer: active owner admission guard required');
     return validateFresh(input, context, admission);
   }
+  ensure(isVerifiedProductionBootstrap(admission.bootstrap), 'signer: independently verified external bootstrap required');
   // GRANT M3-E: complete-input reuse key (see installation-selection.ts); the bootstrap identity is part of it.
   const key = historicalReuseKey('assembly-ProductionSignerReference', input, context, admission, { digest: admission.bootstrap.digest, package: admission.bootstrap.package });
   const memo = historicalSigners.get(admission) ?? new Map<string, ProductionSignerReference>();

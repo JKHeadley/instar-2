@@ -36,7 +36,8 @@ function deepFrozen(value: object, seen: Set<object>): boolean {
   if (verifiedFrozen.has(value)) return true;
   if (!Object.isFrozen(value) || seen.has(value)) return false;
   seen.add(value);
-  const every = Object.values(value).every(child => child === null || typeof child !== 'object' || deepFrozen(child, seen));
+  const every = Object.values(Object.getOwnPropertyDescriptors(value)).every(descriptor => 'value' in descriptor
+    && (descriptor.value === null || typeof descriptor.value !== 'object' || deepFrozen(descriptor.value, seen)));
   seen.delete(value);
   if (every) verifiedFrozen.add(value);
   return every;

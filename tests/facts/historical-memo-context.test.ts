@@ -89,3 +89,16 @@ it('P2-M3E-04 owner-registration and migration replacement invalidate the memo; 
   const grown: FactContext = { ...f.ctx, facts: [...f.ctx.facts, f.fact] };
   value(decodeHistoricalBody(f.fact, grown, grown.decode)); expect(f.calls()).toBe(calls + 3);
 });
+
+
+it('P2-M3E-05 canonical-invalid frozen accessors refuse without being invoked', () => {
+  const f = setup();
+  value(decodeHistoricalBody(f.fact, f.ctx, f.ctx.decode));
+  let getterCalls = 0;
+  const fields = Object.freeze(Object.defineProperty({ ...f.ctx.schemas[0]!.fields }, 'extra', {
+    enumerable: true, get: () => { getterCalls++; return { kind: 'text', maxLength: 1 }; },
+  }));
+  const context: FactContext = { ...f.ctx, schemas: [{ ...f.ctx.schemas[0]!, fields }] };
+  expect(decodeHistoricalBody(f.fact, context, context.decode).kind).toBe('Refused');
+  expect(getterCalls).toBe(0);
+});

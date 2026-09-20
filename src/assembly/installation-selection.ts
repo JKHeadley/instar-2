@@ -191,7 +191,8 @@ function deepFrozen(value: object, seen: Set<object>): boolean {
   if (verifiedFrozen.has(value)) return true;
   if (!Object.isFrozen(value) || seen.has(value)) return false;
   seen.add(value);
-  const every = Object.values(value).every(child => child === null || typeof child !== 'object' || deepFrozen(child, seen));
+  const every = Object.values(Object.getOwnPropertyDescriptors(value)).every(descriptor => 'value' in descriptor
+    && (descriptor.value === null || typeof descriptor.value !== 'object' || deepFrozen(descriptor.value, seen)));
   seen.delete(value);
   if (every) verifiedFrozen.add(value);
   return every;
@@ -210,10 +211,12 @@ function identityOf(value: object | undefined): number {
 }
 export function historicalReuseKey(kind: string, input: unknown, context: OwnedBodyContext, admission: InstallationRecordAdmission, extra: unknown = null): string | null {
   try {
+    // Equal wire bytes cannot replace Three's owner-issued runtime identity.
+    take(readRegisterEntry('rungraph.contract', admission.generation.register, admission.generation.context));
     const facts = context.facts, decode = facts.decode;
     const composite = {
       kind, origin: encoded(context.origin).hash, input: encoded(input).hash,
-      cone: causalCone(context.origin, facts.facts).map(fact => fact.contentHash).sort(),
+      cone: causalCone(context.origin, facts.facts).map(fact => encoded(fact).hash).sort(),
       context: { schemas: componentHash(facts.schemas), captures: componentHash(facts.captures), keys: componentHash(facts.keys),
         grants: componentHash(facts.grants), revocations: componentHash(facts.revocations),
         historicalGrants: componentHash(facts.historicalGrants ?? []), historicalRevocations: componentHash(facts.historicalRevocations ?? []),

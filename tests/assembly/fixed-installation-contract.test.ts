@@ -250,3 +250,24 @@ describeHere('P10-SI-23 M3-E historical reuse is keyed on every consumed input',
     expect(value(recordInstallationSelection(f.record, f.writer))).toEqual(origin);
   });
 });
+
+itHere('REVIEW T1: equal-content unissued Three register cannot reuse a warm selection', () => {
+  const f = fixedRecordFixture(), origin = value(recordInstallationSelection(f.record, f.writer));
+  const context = { ...f.admission.boundary, origin, mode: 'historical' as const, facts: { ...f.f.context, facts: f.f.facts() } };
+  value(decodeHistoricalInstallationSelection(f.record, context, f.admission));
+  Object.assign(f.admission.generation, { register: { ...f.admission.generation.register } });
+  const warm = decodeHistoricalInstallationSelection(f.record, context, f.admission);
+  const cold = decodeHistoricalInstallationSelection(f.record, context, { ...f.admission });
+  refused(cold);
+  expect(warm.kind).toBe(cold.kind);
+});
+itHere('REVIEW T1: changed ancestor signature with unchanged contentHash cannot reuse a warm selection', () => {
+  const f = fixedRecordFixture(), origin = value(recordInstallationSelection(f.record, f.writer));
+  const context = { ...f.admission.boundary, origin, mode: 'historical' as const, facts: { ...f.f.context, facts: f.f.facts() } };
+  value(decodeHistoricalInstallationSelection(f.record, context, f.admission));
+  const changed = { ...context, facts: { ...context.facts, facts: context.facts.facts.map(fact => fact.id === f.admission.approvalFact ? { ...fact, signature: '00' } : fact) } };
+  const warm = decodeHistoricalInstallationSelection(f.record, changed, f.admission);
+  const cold = decodeHistoricalInstallationSelection(f.record, changed, { ...f.admission });
+  refused(cold);
+  expect(warm.kind).toBe(cold.kind);
+});

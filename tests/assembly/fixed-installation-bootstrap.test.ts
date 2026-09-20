@@ -79,3 +79,15 @@ describe('P10-SI-09 M3-E signer historical reuse is invalidated by key, range an
     expect(value(decodeHistoricalProductionSignerReference(f.records[0], context, admission))).toMatchObject({ keySet: selected.id });
   });
 });
+
+it('REVIEW T1: equal-content unissued bootstrap cannot reuse a warm signer', () => {
+  const f = signerFixture(), origin = value(recordProductionSignerReference(f.records[0], f.writer));
+  const context = { ...f.admission.boundary, origin, mode: 'historical' as const, facts: { ...f.f.context, facts: f.f.facts() } };
+  const admission = f.writer.admission;
+  value(decodeHistoricalProductionSignerReference(f.records[0], context, admission));
+  Object.assign(admission, { bootstrap: { ...admission.bootstrap } });
+  const warm = decodeHistoricalProductionSignerReference(f.records[0], context, admission);
+  const cold = decodeHistoricalProductionSignerReference(f.records[0], context, { ...admission });
+  refused(cold, 'independently verified');
+  expect(warm.kind).toBe(cold.kind);
+});
