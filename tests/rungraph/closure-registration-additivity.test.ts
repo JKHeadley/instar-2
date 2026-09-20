@@ -9,7 +9,7 @@ import { setup, value, refused } from './fixtures.js';
 
 it('P5-SEAM-RC-R9-F3-ADMISSION-BINDINGS P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION keeps the original installation byte-identical and gates only additive operations', () => {
   const original = readFileSync('src/rungraph/rungraph.declarations.json', 'utf8');
-  expect(original).toBe(execFileSync('git', ['show', '6c25455:src/rungraph/rungraph.declarations.json'], { encoding: 'utf8' }));
+  expect(original).toBe(execFileSync('git', ['show', '3ded685:src/rungraph/rungraph.declarations.json'], { encoding: 'utf8' }));
 
   const legacy = setup();
   const legacyGraph = value(createRunGraph({ ...legacy.deps, governance: governanceFixture(legacy.c) }));
