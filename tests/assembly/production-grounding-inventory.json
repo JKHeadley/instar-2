@@ -5257,7 +5257,7 @@
     "src/assembly/growth.ts": "44dfad8e203734992a185b013ec8811362a6ff75438b70ee4fc312992cf77838",
     "src/assembly/harness.ts": "df847ca76995a193d086524ed8e3ff9c260e356b48e1971840f6672f37abd91e",
     "src/assembly/history.ts": "27be341923822c3e27cbf7395db8704d2a844e16e6382096e6941bca10b273e9",
-    "src/assembly/index.ts": "21331f603ac78922194eb3fab3829242757cb94f812f05bec5e10f6bf8e9f21f",
+    "src/assembly/index.ts": "e7ec007934a2420e51bbba73bc5ebde5b738890b0fd1ce4a2219b96be58ad080",
     "src/assembly/package.ts": "446effba83b5e4ce7367e3f789c02b661057eaee942de8de2cd25f23f5ac7c11",
     "src/assembly/persistence.ts": "0099bd62f7eb959d64940ab9915bf5d00c2d763f4917a49b81c58a4c59fab476",
     "src/assembly/production.ts": "6f395a205ef4838e6955240ea25e429a0ee16132a20e9d72904c24ed6685d6fb",
@@ -5347,7 +5347,7 @@
     "src/rungraph/closure.ts": "5afc6360411fd8b6dd094b2cfb0f26229de031a4805031d0461f52175f5889f4",
     "src/rungraph/graph.ts": "3a231c2dfe43f93f1393adf4e465e8dc2fc875ad830c7a5d53b3a7c3a5a56935",
     "src/rungraph/identity.ts": "4991589335752e0f570461eb2779ab119f9dca4068f476ccd981c7d02237c0e9",
-    "src/rungraph/index.ts": "5c58a3cda81df274e65aa5ab3482e754d55545db3cb2a6d75f93ac16a078b292",
+    "src/rungraph/index.ts": "5a522143701b912971f92ab6083fca0bc0e61a2323bccc3a7b8a9ca02a78530f",
     "src/rungraph/limits.ts": "92f7906006b49e7e3d6cfd0c689330f6266431aa7c39fd2c8d1f894c280ff231",
     "src/rungraph/records.ts": "b84030c587f3a82d57a3d8237cfee43e0b8b2db7f213ab34ed9653e1f7b54d82",
     "src/rungraph/registration.ts": "1c2908672d417d1d877c7ee841c7e8637d366dfbda26938bc6291ab75b183c97",
@@ -5439,7 +5439,11 @@
     "tests/slice/boundaries.ts": "6fed144bb7907e98201b590d1cc6fc5c922ed72c02312cbb708e047d89ba781b",
     "tests/slice/harness.ts": "d075d61483dc3f965cb4859fc43b2ae0b5304e769acab6c28a9c0b562b0b48dc",
     "tests/verification/fixture.ts": "c755ef48af8e2929f6c843a8c75437bab302119b1d59530d4323d6b55159be30",
-    "tests/verification/runtime-fixture.ts": "47c7bbd758c143cf5e13505388b6b710205a57447402eba70c3d49fbb1801b9b"
+    "tests/verification/runtime-fixture.ts": "47c7bbd758c143cf5e13505388b6b710205a57447402eba70c3d49fbb1801b9b",
+    "src/assembly/installation-selection.ts": "096518b63ec17742e0cbfaa4fe3d00e17b85a55edec2a8350c2ffc4e055824ed",
+    "src/assembly/production-signer-reference.ts": "3898a4604b83c75eecd02ef683e76a1ba81923f7daafaee0a96a35fb0d166fe6",
+    "src/assembly/production-installation-loader.ts": "9bb964c33f1e1e2b6f0db6ee99eb58b1b4301a3c779b87e01303f0d52b4de397",
+    "src/rungraph/installed-governance.ts": "4022c9ee433954f81b128dbec0bca9baaf77cb8e96b99a7a05af9c0660449a8b"
   },
   "reviewedDependencyDigest": "6f76399cb703b701d1fd4dc134976a954920c60e53ac712413ed6e53f64ff662"
 }
