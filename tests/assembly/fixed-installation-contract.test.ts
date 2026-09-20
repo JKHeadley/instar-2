@@ -9,6 +9,8 @@ import { decodeGenerationRecord, generateRegister, generationOf, loadRegister } 
 import { recordProductionInstallation, registerProductionInstallationBody, productionInstallationSchemas } from '../../src/assembly/production-installation.js';
 import { recordInstallationSelection, registerInstallationSelectionBody, installationSelectionSchemas, decodeInstallationSelectionAtOrigin, decodeHistoricalInstallationSelection } from '../../src/assembly/installation-selection.js';
 import { reportInstallationHolds } from '../../src/assembly/production-installation-report.js';
+import { replayInstallationProjections } from '../../src/assembly/production-installation-replay.js';
+import { minimalPlaneProjections } from '../../src/operator/index.js';
 import { productionMissingBindings } from '../../src/assembly/production-holds.js';
 import type { InstallationRecordAdmission, InstallationRecordWriter } from '../../src/assembly/installation-selection.js';
 import { intakeFixture, json, value } from '../intake/fixtures.js';
@@ -313,5 +315,57 @@ describeHere('P10-SI-22 the twenty-five hold report', () => {
   it('refuses a caller that supplies no opened-root lookup', () => {
     const f = fixedRecordFixture();
     refused(reportInstallationHolds({ ...base(f), verdicts: [], facts: undefined as never }, f.admission.boundary), 'opened-root fact lookup');
+  });
+});
+
+// Contract §5 / docs/15 §4: the source-only replay runner over the real opened history.
+describeHere('P10-SI-12/22 source-only replay of the six minimal-plane folds', () => {
+  const setup = () => {
+    const f = fixedRecordFixture(); value(recordInstallationSelection(f.record, f.writer));
+    const generation = f.f.deps.dedupGeneration(), facts = { ...f.f.context, facts: f.f.facts() };
+    let tick = 0;
+    const input = { profile: { machine: 'machine-a', storageClass: 'fixture-memory' }, facts, generation,
+      definitions: minimalPlaneProjections(generation.kinds), matrix: ['cold', 'warm'] as ('cold' | 'warm')[], budget: 1_000_000,
+      clock: { owner: 'part-ten' as const, monotonic: () => (tick += 5) } };
+    return { f, input };
+  };
+  it('replays every fold cold then warm over real history, byte-matches the checkpoint and claims a measured bound', () => {
+    const { f, input } = setup();
+    const report = value(replayInstallationProjections(input, f.admission.boundary));
+    expect(report.samples).toHaveLength(12); expect(report.failures).toBe(0);
+    expect(new Set(report.samples.map(sample => sample.projection)).size).toBe(6);
+    expect(Object.values(report.checkpointComparison).every(verdict => verdict === 'equal')).toBe(true);
+    for (const id of Object.keys(report.checkpointComparison)) {
+      const [cold, warm] = report.samples.filter(sample => sample.projection === id);
+      expect(cold!.resultDigest).toBe(warm!.resultDigest); expect(cold!.vector).toBe(warm!.vector); expect(cold!.facts).toBe(input.facts.facts.length);
+    }
+    expect(report.claim).toBe('measured'); expect(report.measuredBound).toEqual({ duration: 5, budget: 1_000_000 });
+  });
+  it('keeps a failing fold in the report and withholds the claim instead of aborting or passing', () => {
+    const { f, input } = setup();
+    const definitions = input.definitions.map((definition, i) => i === 2 ? { ...definition, stalenessBound: -1 } : definition);
+    const report = value(replayInstallationProjections({ ...input, definitions }, f.admission.boundary));
+    expect(report.samples).toHaveLength(12); expect(report.failures).toBe(2);
+    expect(report.samples.filter(sample => sample.failure !== null).every(sample => sample.projection === definitions[2]!.id && sample.resultDigest === null)).toBe(true);
+    expect(report.claim).toBe('withheld'); expect(report.measuredBound).toBeNull();
+    expect(report.checkpointComparison[definitions[2]!.id]).toBe('not-compared');
+  });
+  it('withholds the claim when a measured sample exceeds the startup budget; the budget never populates the bound', () => {
+    const { f, input } = setup();
+    const report = value(replayInstallationProjections({ ...input, budget: 1 }, f.admission.boundary));
+    expect(report.failures).toBe(0); expect(report.claim).toBe('withheld'); expect(report.measuredBound).toBeNull();
+    expect(report.withheldBecause.join(' ')).toContain('exceeded the startup budget');
+  });
+  it.each([
+    ['a matrix without a warm sample', (input: ReturnType<typeof setup>['input']) => ({ ...input, matrix: ['cold', 'cold'] as ('cold' | 'warm')[] }), 'finite matrix'],
+    ['a matrix that starts warm', (input: ReturnType<typeof setup>['input']) => ({ ...input, matrix: ['warm', 'cold'] as ('cold' | 'warm')[] }), 'finite matrix'],
+    ['an unbounded matrix', (input: ReturnType<typeof setup>['input']) => ({ ...input, matrix: Array.from({ length: 9 }, (_, i) => i ? 'warm' : 'cold') as ('cold' | 'warm')[] }), 'finite matrix'],
+    ['a missing fold', (input: ReturnType<typeof setup>['input']) => ({ ...input, definitions: input.definitions.slice(1) }), 'six enumerated'],
+    ['a duplicated fold', (input: ReturnType<typeof setup>['input']) => ({ ...input, definitions: [...input.definitions.slice(1), input.definitions[1]!] }), 'six enumerated'],
+    ['a configured target instead of a clock', (input: ReturnType<typeof setup>['input']) => ({ ...input, clock: undefined as never }), 'monotonic clock'],
+    ['a non-finite budget', (input: ReturnType<typeof setup>['input']) => ({ ...input, budget: Number.POSITIVE_INFINITY }), 'startup budget'],
+  ])('refuses %s', (_name, change, detail) => {
+    const { f, input } = setup();
+    refused(replayInstallationProjections(change(input), f.admission.boundary), detail);
   });
 });
