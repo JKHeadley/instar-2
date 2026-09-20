@@ -5257,7 +5257,7 @@
     "src/assembly/growth.ts": "44dfad8e203734992a185b013ec8811362a6ff75438b70ee4fc312992cf77838",
     "src/assembly/harness.ts": "df847ca76995a193d086524ed8e3ff9c260e356b48e1971840f6672f37abd91e",
     "src/assembly/history.ts": "27be341923822c3e27cbf7395db8704d2a844e16e6382096e6941bca10b273e9",
-    "src/assembly/index.ts": "e7ec007934a2420e51bbba73bc5ebde5b738890b0fd1ce4a2219b96be58ad080",
+    "src/assembly/index.ts": "aa4578abcbdf9e73ec0ca48ce25a8f09a9d982ff1a35257ebe111e90bc8e57cd",
     "src/assembly/package.ts": "446effba83b5e4ce7367e3f789c02b661057eaee942de8de2cd25f23f5ac7c11",
     "src/assembly/persistence.ts": "0099bd62f7eb959d64940ab9915bf5d00c2d763f4917a49b81c58a4c59fab476",
     "src/assembly/production.ts": "6f395a205ef4838e6955240ea25e429a0ee16132a20e9d72904c24ed6685d6fb",
@@ -5443,7 +5443,8 @@
     "src/assembly/installation-selection.ts": "7f1aa98d9d109c7711e06b601b02963ec1418bb1c55b4bd9fd30e0e29378e3fb",
     "src/assembly/production-signer-reference.ts": "2d4e48e6d273e9bc2a6862c1b442a4a82e58f90f24a44644292ffa08bfc434a6",
     "src/assembly/production-installation-loader.ts": "9bb964c33f1e1e2b6f0db6ee99eb58b1b4301a3c779b87e01303f0d52b4de397",
-    "src/rungraph/installed-governance.ts": "4022c9ee433954f81b128dbec0bca9baaf77cb8e96b99a7a05af9c0660449a8b"
+    "src/rungraph/installed-governance.ts": "4022c9ee433954f81b128dbec0bca9baaf77cb8e96b99a7a05af9c0660449a8b",
+    "src/assembly/production-installation-report.ts": "762c1bfe83ff43b77ce8c20ea96814e0f6f96e58b8a661050419c2904adf82a1"
   },
   "reviewedDependencyDigest": "6f76399cb703b701d1fd4dc134976a954920c60e53ac712413ed6e53f64ff662"
 }

@@ -41,3 +41,5 @@ export type { ProductionSignerReference, ProductionSignerAdmission } from './pro
 export { productionSignerReferenceSchemas, registerProductionSignerReferenceBody, recordProductionSignerReference, decodeProductionSignerReferenceAtOrigin, decodeHistoricalProductionSignerReference } from './production-signer-reference.js';
 export type { ProductionBootstrapPackage, VerifiedProductionBootstrap, InstallationImmutableIO } from './production-installation-loader.js';
 export { loadProductionBootstrap } from './production-installation-loader.js';
+export type { InstallationHold, InstallationHoldReport, InstallationHoldRow, InstallationHoldState, InstallationHoldVerdict, InstallationReportFact, InstallationReportFactsPort } from './production-installation-report.js';
+export { installationHoldOwners, installationReportHolds, installationSupervisorHold, reportInstallationHolds } from './production-installation-report.js';

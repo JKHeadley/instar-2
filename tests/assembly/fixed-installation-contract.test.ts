@@ -8,6 +8,8 @@ import { intakeVerifiedActRegistration } from '../../src/intake/index.js';
 import { decodeGenerationRecord, generateRegister, generationOf, loadRegister } from '../../src/register/index.js';
 import { recordProductionInstallation, registerProductionInstallationBody, productionInstallationSchemas } from '../../src/assembly/production-installation.js';
 import { recordInstallationSelection, registerInstallationSelectionBody, installationSelectionSchemas, decodeInstallationSelectionAtOrigin, decodeHistoricalInstallationSelection } from '../../src/assembly/installation-selection.js';
+import { reportInstallationHolds } from '../../src/assembly/production-installation-report.js';
+import { productionMissingBindings } from '../../src/assembly/production-holds.js';
 import type { InstallationRecordAdmission, InstallationRecordWriter } from '../../src/assembly/installation-selection.js';
 import { intakeFixture, json, value } from '../intake/fixtures.js';
 import { privateKey, refused } from '../facts/fixtures.js';
@@ -270,4 +272,46 @@ itHere('REVIEW T1: changed ancestor signature with unchanged contentHash cannot 
   const cold = decodeHistoricalInstallationSelection(f.record, changed, { ...f.admission });
   refused(cold);
   expect(warm.kind).toBe(cold.kind);
+});
+// P10-SI-22: the per-hold report. Rows come from the landed hold list plus Seven's supervisor hold;
+// prepared and admitted never merge, and selection metadata alone never reads admitted.
+describeHere('P10-SI-22 the twenty-five hold report', () => {
+  const facts = (rows: Record<string, { kind: string; owner: string; fixture?: boolean; current?: boolean }>) => ({ owner: 'part-ten' as const,
+    lookup: (reference: string) => rows[reference] ? { fixture: false, current: true, ...rows[reference]! } : null });
+  const base = (f: ReturnType<typeof fixedRecordFixture>) => ({ installation: 'host', scope: 'project-a', generation: f.record.generation, vector: 'vector:1' });
+  it('reports every landed hold plus the supervisor hold exactly once, all held without owner verdicts, and never live', () => {
+    const f = fixedRecordFixture();
+    const report = value(reportInstallationHolds({ ...base(f), verdicts: [], facts: facts({}) }, f.admission.boundary));
+    expect(report.rows.map(row => row.hold)).toEqual([...productionMissingBindings, 'seven-bounded-install-supervisor']);
+    expect(report.rows).toHaveLength(25); expect(new Set(report.rows.map(row => row.hold)).size).toBe(25);
+    expect(report.counts).toEqual({ held: 25, prepared: 0, 'fixture-admitted': 0, admitted: 0 }); expect(report.live).toBe(false);
+  });
+  it('keeps prepared and admitted apart: a real recorded selection prepares its hold but never admits it', () => {
+    const f = fixedRecordFixture(), selection = value(recordInstallationSelection(f.record, f.writer));
+    const rows = { [selection.id]: { kind: selection.kind, owner: 'part-ten' }, 'replay:evidence': { kind: 'assembly-GrowthObservation', owner: 'part-ten' },
+      'replay:fixture': { kind: 'assembly-GrowthObservation', owner: 'part-ten', fixture: true }, 'replay:stale': { kind: 'assembly-GrowthObservation', owner: 'part-ten', current: false } };
+    const verdict = (extra: object) => [{ hold: 'source-only-replay-admission', owner: 'part-ten', prepared: selection.id, ...extra }];
+    const row = (extra: object) => value(reportInstallationHolds({ ...base(f), verdicts: verdict(extra), facts: facts(rows) }, f.admission.boundary))
+      .rows.find(entry => entry.hold === 'source-only-replay-admission')!;
+    expect(row({})).toMatchObject({ state: 'prepared', prepared: selection.id, evidence: null });
+    expect(row({ evidence: 'replay:evidence' })).toMatchObject({ state: 'admitted', evidence: 'replay:evidence' });
+    expect(row({ evidence: 'replay:fixture' })).toMatchObject({ state: 'fixture-admitted' });
+    expect(row({ evidence: 'replay:stale' })).toMatchObject({ state: 'prepared', reason: 'owner evidence is stale' });
+    // Selection metadata alone, in either position, never reads admitted.
+    refused(reportInstallationHolds({ ...base(f), verdicts: verdict({ evidence: selection.id }), facts: facts(rows) }, f.admission.boundary), 'selection metadata');
+  });
+  it.each([
+    ['unknown hold', [{ hold: 'made-up-hold', owner: 'part-ten' }], 'unknown hold'],
+    ['duplicate verdict', [{ hold: 'conversation-driver', owner: 'part-twelve' }, { hold: 'conversation-driver', owner: 'part-twelve' }], 'duplicate verdict'],
+    ['wrong owner verdict', [{ hold: 'independent-verification-clock', owner: 'part-ten' }], 'wrong owner'],
+    ['evidence outside the opened root', [{ hold: 'run-governance-policy', owner: 'part-five', evidence: 'absent:fact' }], 'not in the opened root'],
+    ['another owner\'s evidence', [{ hold: 'independent-challenge-verifier', owner: 'part-nine', evidence: 'ten:fact' }], 'not issued by part-nine'],
+  ])('refuses %s', (_name, verdicts, detail) => {
+    const f = fixedRecordFixture();
+    refused(reportInstallationHolds({ ...base(f), verdicts, facts: facts({ 'ten:fact': { kind: 'assembly-GrowthObservation', owner: 'part-ten' } }) }, f.admission.boundary), detail);
+  });
+  it('refuses a caller that supplies no opened-root lookup', () => {
+    const f = fixedRecordFixture();
+    refused(reportInstallationHolds({ ...base(f), verdicts: [], facts: undefined as never }, f.admission.boundary), 'opened-root fact lookup');
+  });
 });
