@@ -1,5 +1,58 @@
 [
   {
+    "revision": 7,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator amendment requiring compatibility when only one machine is available"
+    },
+    "changes": [
+      {
+        "what": "State durable authorization and causal preparation as the invariant and make the fixed single-machine installation a supported deployment shape rather than a proposal.",
+        "why": "Replica count remains operator policy, while the installation must work without inventing a peer when only one machine exists.",
+        "commits": ["1b5ac4c"]
+      },
+      {
+        "what": "Bind one install-time acceptance to the profile-enumerated provider-call and reply-only Telegram operation set and its permanent-loss model.",
+        "why": "The operator accepts the fixed set once for the installation instead of hand-listing each operation.",
+        "commits": ["1b5ac4c"]
+      }
+    ]
+  },
+  {
+    "revision": 6,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "M2 independent design review 1 repair R5 and governed-body history cleanup"
+    },
+    "changes": [
+      {
+        "what": "Keep the local-loss text as a proposal pending independently verified operator acceptance while removing pull-request process wording from the governed rule.",
+        "why": "Authority comes from the operator's entered acceptance, not from review-history language in the purpose body.",
+        "commits": ["f106575"]
+      }
+    ]
+  },
+  {
+    "revision": 5,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator-directed M2 proposal for one explicitly scoped single-machine installation; acceptance or rejection belongs to the pull request"
+    },
+    "changes": [
+      {
+        "what": "Propose a narrow P-08 local-loss exception for exact listed operations with complete local causal durability, while retaining the independently failing second-machine peer as the default and fallback.",
+        "why": "The approved policy register and Parts Eight and Ten permit a recorded local-loss policy, while the purpose previously required an independently failing copy without stating how that operator policy could apply.",
+        "commits": ["1b960e7"]
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-09-14",
     "status": "approved",

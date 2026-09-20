@@ -71,6 +71,16 @@ The returned act binds the exact request digest. Replayed proof, moved base, alt
 changed scope, expired challenge, wrong operator or channel-attested confirmation refuses. Silence,
 page view, link click, biometric unlock alone, and a successful chat reply are never yes.
 
+**Rule — verifier selection and verifier readiness are separate.** Owner: Eleven for the
+surface verdict, Nine for the independently administered service and evidence, and Ten for the
+installed selection. **Checks: P11-NF-07–13**. The installed selection names the exact service,
+administrative domain, trust reference, surface and generation, but confers no readiness. The
+surface becomes ready only when current Nine evidence also binds its clock, `issue` and `verify`
+operations, one-use challenge, expiry and replay protection to that subject. A selection string,
+installer assertion, empty probe list or agent-administered service refuses. The positive
+neighbor joins the same selection to a current independently signed challenge execution and live
+probe evidence. A prepared selection remains useful while the readiness hold stays visible.
+
 **Rule — the surface cannot certify itself.** Rules 26, 82 and 98; **checks: P11-NF-10–13**.
 Part nine's external protection broker verifies the authorization with pinned decoders and current
 authority, then journals and applies protected changes. The surface displays broker receipt,
@@ -194,13 +204,31 @@ it has no authority over the ordinary run it reports on. Its required source dep
 verified local-durable minimal fact segment, current register/decoder generation, identity keys and
 clock. Its required transport dependency is the admitted conversation adapter and route capable of
 accepting intake and independently evidencing the delivery stage it declares. Its response uses
-eight's ordinary message operation and **replicated(1)** durability demand: local preparation is
-not dispatch permission until one required peer acknowledges the exact facts. The responder has a
-reserved finite worker, local storage, queue, transport and effect budget independent of ordinary
-workloads, but that reserve cannot manufacture a peer acknowledgment, current binding, lease,
+eight's ordinary message operation and that operation's approved durability demand. The reference
+default is **replicated(1)** whenever a second machine is enrolled: local preparation is not
+dispatch permission until the required peer acknowledges the exact facts. The supported
+single-machine shape carries no peer dependency. At install time, its independently verified P-08
+choice accepts once the fixed profile's closed installed provider-call and reply-only Telegram
+operation set and permanent-machine-loss model. Only those `local-durable` operations with their
+complete causal prefixes may dispatch. The operator does not hand-list them. This shape never
+creates `replicated(0)` or an automatic fallback after peer loss. The responder has a reserved
+finite worker, local storage, queue, transport and effect budget independent of ordinary workloads,
+but that reserve cannot manufacture a peer acknowledgment, current binding, lease,
 fence, key, route or decisive effect evidence. Loss of an ordinary model, benchmark, projection,
 run owner or business-effect dependency leaves the minimal path eligible for a limited response;
 loss of a required dependency named here does not.
+
+**Rule — the minimal dependency verdict consumes the installed shape and operation policy.**
+Owner: Eleven for the verdict, Eight for the operation demand, Two for durability evidence, and
+Ten for the installed join. **Checks: P11-NF-33–38**. The predicate omits `replication-peer` from the
+single-machine dependency roster and requires the exact current installation policy plus local
+receipt for every operation in the profile's accepted closed set. A missing or stale policy,
+partial causal closure, operation outside the set, or caller-supplied omission refuses. Whenever a
+second machine is enrolled, the predicate requires `replication-peer` for the default
+`replicated(1)` demand. Any operation whose demand names replication requires that real peer and
+refuses in the single-machine shape. Positive neighbors are a complete local receipt under the
+accepted single-machine profile and a real peer receipt in the peer-backed profile. Every other
+minimal dependency remains unchanged.
 
 **Rule — always-reachable never means always-powerful.** Rules 28, 42, 63, 86 and 95; **checks:
 P11-NF-34/36/39**. The minimal responder may preserve, authenticate, explain recorded state,
@@ -215,8 +243,8 @@ independent recovery surface; it does not speak as the agent on guessed identity
 conversation worker, makes ordinary model/business-effect dependencies unavailable and corrupts
 each non-source projection while retaining every minimal-path prerequisite above; messages must
 still receive the bounded honest response. A second fault class removes each required minimal
-dependency, including the replication peer, lease authority and route, and requires preserved
-input, an owned outage/repair obligation, retained maximum exposure, zero replay under a fresh
+dependency, including the replication peer when installed, lease authority and route, and requires
+preserved input, an owned outage/repair obligation, retained maximum exposure, zero replay under a fresh
 identity, and recovery once that exact prerequisite returns—never an impossible response during
 its absence. The workload records receipt-to-preservation, receipt-to-first-honest-response when
 eligible, stop-to-halt when its authority path exists, outage interval, queue age, reserved resource
@@ -241,7 +269,7 @@ does not imply authority it lacks.
 |---|---|---|---|---|---|---|
 | Authorization completion | Four's request | Eleven surface; four/eight/nine validate | Exact request digest and existing authorization/decline fact; broker journal for protected change | render → verified act through intake → current exact validation → effect/broker → receipt | authority closed; diagnosis, stop and preserved request open | Eleven interaction; four authority decode; eight effect; nine broker |
 | Conversation binding | Genesis or verified operator act | Four standing resolution | Existing grant/revocation facts at causal frontier | inspect → verify → append → fold → receipt | no self-bind; conflict freezes new authority, not stop | Eleven surface act; four resolution; two conflict/replay |
-| Minimal plane | Facts from source parts and ten assembly | Live responder and operator views | Spine at stated vector; projections disposable | verify/replay → compare → admit scope/dependencies → preserve → replicate(1) → serve/repair | mutation closed on stale; accepted intake preserved; response requires the declared minimal path | Eleven admission/live posture; source owners close their facts; ten wiring |
+| Minimal plane | Facts from source parts and ten assembly | Live responder and operator views | Spine at stated vector; projections disposable | verify/replay → compare → admit scope/dependencies → preserve → satisfy Eight's approved operation durability demand → serve/repair | mutation closed on stale; accepted intake preserved; response requires the declared minimal path | Eleven admission/live posture; source owners close their facts; ten wiring |
 | Vertical slice | Four → five → seven → eight → nine | Ten assembly and acceptance harness | Causally linked facts plus independent delivery evidence | preserve/authenticate → run → judgment → response effect → verify → rebuild | affected effect closed; accepted input and owned repair remain live | each part its transition; eleven whole-slice verdict |
 
 **Rule — four shared traces have one answer.** Rules 24, 26, 31, 33, 42, 63 and 68;
@@ -289,9 +317,9 @@ conflicting replacement.
 **Rule — success and uncertainty are factual and bounded.** **Checks: P11-NF-45–50**. The positive
 slice names an adapter whose stable semantic operation key survives takeover, whose query/receipt
 can prove application or decisive non-occurrence, whose delayed executions have a declared finite
-quiescence observation, and whose final charge becomes observable. Its replication peer, lease
-authority, route, identity source and evidence service eventually recover within the fixture's
-declared finite recovery window. Under those prerequisites, passing requires: one admitted
+quiescence observation, and whose final charge becomes observable. Its installed durability
+source, lease authority, route, identity source and evidence service eventually recover within the
+fixture's declared finite recovery window. Under those prerequisites, passing requires: one admitted
 input; one durable run identity; one accepted judgment resolution with complete capture/meter
 references; no action outside its floor; one attributable outbound operation; no more than one
 externally observed reply for the semantic message identity; delivery proved only to the adapter's
@@ -313,9 +341,9 @@ judgment, effect, verification, surface and harness ports with non-null wiring e
 credentials and probe resources are isolated; a real platform witness observes delivery. A mock
 provider may be a unit control but cannot satisfy the live slice. Unsupported adapter evidence is
 reported as partial and cannot be promoted by the surface. Part ten must realize the minimal
-authority domain and every named source/transport/effect dependency above, enforce replicated(1)
-before reply dispatch, expose dependency admission and outage state, supply the adapter evidence
-and eventual-recovery controls used by the positive slice, and prove the owned-uncertain/retained-
+authority domain and every named source/transport/effect dependency above, enforce the installed
+durability demand before reply dispatch, expose dependency admission and outage state, supply the
+adapter evidence and eventual-recovery controls used by the positive slice, and prove the owned-uncertain/retained-
 exposure/zero-replay outcome for opaque cuts. Eleven supplies these acceptance requirements; ten
 must not invent weaker substitutes or a private recovery path.
 

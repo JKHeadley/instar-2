@@ -680,6 +680,35 @@ history, reasoned correctly about elapsed time, or answered the last message wel
 proves delivered context, recorded coverage, disclosure, and referential accounting. Part
 nine's semantic review holds quality; the rule-graph entries retain that partial scope.
 
+**Rule — installed governance is a reference mapping, never serialized behavior.** Owner: Five
+for `InstalledRunGovernanceReference` version 1 and its public loader; Three owns the verified
+register and Two owns capture. **Check: P5-NF-61** requires the installed mapping to name the
+current generation, `rungraph.contract`, `rungraph-core`, `rungraph.bound`, the six exact
+gate/decoder pairs, Two's capture declaration, and the selected grounding policy values. The
+loader resolves those references into the existing `RunGovernance` interface using current owner
+ports. A serialized callback, caller-built register, missing gate, wrong decoder, stale
+generation or mutable threshold refuses. The positive neighbor resolves every reference in one
+verified register and constructs the existing interface without storing a function or parallel
+policy fact.
+
+**Rule — a usable provider answer does not settle its accounting obligation.** Owner: Five for
+answer consumption, with Seven's `ProviderAnswerAcceptance`, Eight's settlement and Six's
+accounting as required inputs. **Check: P5-NF-62** permits one exact decoded answer to supply the
+run's result/reply input while Six reports unresolved accounting only when the acceptance binds
+the current request, attempt, response, operation, digest, Nine assessment, Eight settlement and
+Six accounting; the route has an enforced finite maximum charge; maximum exposure remains held;
+and retry eligibility is false. The provider step and accounting obligation remain pending and
+cannot transition that provider run to ready or complete. Five's public
+`openAcceptedProviderReply` conditionally records one standard `Run` v1 opening keyed by the exact
+acceptance fact after rechecking the original current predecessor, stop, standing, lease-derived
+fence and conversation obligation. That separate reply run references the accepted answer and
+obtains its own grounding, authority, budget, durability and Eight dispatch claim. It cannot call
+the model or complete the original provider run. Restart reuses the same reply run and outbound
+operation. Missing joins, changed predecessor or stop, released exposure, a second use or a
+disguised repeat refuses. The positive neighbor uses one complete assessed answer once for one real
+reply while showing unknown charge and held capacity; the existing fully settled path may
+additionally close the original step.
+
 ---
 
 ## 9. The behavioral seams, with closure named

@@ -4,6 +4,10 @@ _Generated from `00-the-policy-register.changelog.json` by `scripts/render-chang
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 4 · 2026-09-19 · draft — operator amendment requiring compatibility when only one machine is available
+
+- **Make P-08 select the accepted fixed-profile local-durable set for a single-machine installation and replicated(1) by default whenever a second machine is enrolled.** — A supported no-peer deployment needs an installation policy, while peer loss must never turn an installed replicated demand into local durability. _(`1b5ac4c`)_
+
 ## Revision 3 · 2026-09-14 · approved — operator approved PR #78 (the commons) and PR #79 (judgment of use) on the recommended options in topic 52075 at 16:27Z 2026-09-14 ('PR 78: approved - all yours', 'PR 79: approved - all yours')
 
 - **Marked P-18 competing permitted harms and P-19 observable implications of private use as adopted by the operator.** — The operator took the Part Twenty-Three recommendations, which are exactly the recorded defaults; the register no longer claims they are pending. _(docs/23-judgment-of-use/13-operator-decisions-and-honest-limits.md OD-08/OD-09; PR #79; topic 52075)_

@@ -1,0 +1,66 @@
+[
+  {
+    "revision": 4,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator amendment requiring a supported single-machine durability arm"
+    },
+    "changes": [
+      {
+        "what": "Consume the installation profile's accepted closed local-durable operation set without a peer dependency, while retaining replicated(1) whenever a second machine is enrolled or an operation demands replication.",
+        "why": "Eight must enforce both supported installation shapes without automatic fallback or a per-operation handwritten operator list.",
+        "commits": ["1b5ac4c"]
+      }
+    ]
+  },
+  {
+    "revision": 3,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "M2 independent design review 1 repair R3 and check-reference cleanup"
+    },
+    "changes": [
+      {
+        "what": "Bind one unresolved-accounting answer use to a separately admitted reply operation with its own dispatch claim and no second model call.",
+        "why": "Output availability must produce one executable reply while the original provider liability remains pending and unrepeated.",
+        "commits": ["f106575"]
+      }
+    ]
+  },
+  {
+    "revision": 2,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator-directed M2 closure of local-loss operation policy and answer use under unresolved liability"
+    },
+    "changes": [
+      {
+        "what": "Bind local-durable dispatch to the pending purpose proposal and exact P-08 operation policy, and separate provider output availability from liability release.",
+        "why": "The peerless profile must state the full loss model and preserve unknown charge, retained exposure, and no-repeat semantics.",
+        "commits": ["1b960e7"]
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-05",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "the effect doorway and evidence-bound operation settlement"
+    },
+    "changes": [
+      {
+        "what": "Initial Part Eight design.",
+        "why": "Define the governed boundary for external effects and their settlement.",
+        "commits": ["25f0870e1272f1987cac584801f4ec2c5aa29ad2"]
+      }
+    ]
+  }
+]

@@ -1,0 +1,50 @@
+[
+  {
+    "revision": 3,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "M2 independent design review 1 check-reference cleanup"
+    },
+    "changes": [
+      {
+        "what": "Point the installation-specific verifier-readiness rule to P10-SI-13 instead of colliding Part Nine check numbers.",
+        "why": "The behavior belongs to the fixed-installation predicates and must not reuse established debt and rebuild check identifiers.",
+        "commits": ["f106575"]
+      }
+    ]
+  },
+  {
+    "revision": 2,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator-directed M2 closure of the verifier binding and readiness join"
+    },
+    "changes": [
+      {
+        "what": "Separate an installed verifier selection from current independently evidenced verifier readiness.",
+        "why": "Installation metadata cannot certify that its selected challenge service is independent, fresh, healthy, or replay-safe.",
+        "commits": ["1b960e7"]
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-05",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "verification holders, independent probes, and outcome grading"
+    },
+    "changes": [
+      {
+        "what": "Initial Part Nine design.",
+        "why": "Define independent evidence holders and honest verification posture.",
+        "commits": ["0a971ba47d1301a0d293bbd309242252f6c0e1ff"]
+      }
+    ]
+  }
+]

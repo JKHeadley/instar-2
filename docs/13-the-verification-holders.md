@@ -536,6 +536,17 @@ separation is an honest deployment gap; that class cannot be called protected be
 isolation proof and eleven's verified surface are wired. Nine owns closing the enforcement test,
 not assuming those pieces already exist.
 
+**Rule — an installed verifier selection is not readiness evidence.** Owner: Nine for the
+independently administered challenge service and its evidence; Ten owns only installation
+selection; Eleven consumes the verdict. **Check: P10-SI-13**. The readiness predicate binds
+the exact service id, administrative domain, independently installed trust reference, surface,
+generation, comparable current clock, `issue` and `verify` operations, unpredictable one-use
+challenge, expiry and replay protection to current authenticated evidence. An `independent`
+field, installer signature, selected port, empty probe list or agent-administered service refuses.
+The positive neighbor is that same declared selection joined to a current independently signed
+challenge execution and required live probes. The binding may be prepared while readiness and
+the `independent-challenge-verifier` hold remain false.
+
 ---
 
 ## 10. Semantic review at every held edge

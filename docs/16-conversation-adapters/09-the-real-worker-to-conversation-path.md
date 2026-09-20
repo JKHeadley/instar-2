@@ -85,13 +85,16 @@ the landed Part Eight
 `ordinary-reply` path: one `OutboundMessage` whose speaker is the minimal system principal, whose
 text is the fixed bounded
 explanation, and whose `sourceResult` names that durable result. No new effect payload is needed.
-The same authority, current conversation binding, exclusive lease and fence, replicated(1)
-durability, route, provider observation, and independent assessment requirements apply. A private
-adapter send or a model-dependent tone gate is not this path.
+The same authority, current conversation binding, exclusive lease and fence, installed durability
+demand, route, provider observation, and independent assessment requirements apply. The supported
+single-machine profile consumes its complete local receipt under the accepted P-08 profile policy
+and carries no peer dependency. Whenever a second machine is enrolled, `replicated(1)` is the
+default and the exact peer acknowledgment is required. An operation whose demand names replication
+still requires that peer. A private adapter send or a model-dependent tone gate is not this path.
 
 This guarantee is conditional on Eleven's enumerated minimal dependencies. If the minimal fact
 segment, register/decoder generation, identity key, clock, system grant, current binding, lease,
-fence, required peer acknowledgment, conversation route, or evidence service is unavailable, the
+fence, required durability receipt, conversation route, or evidence service is unavailable, the
 adapter preserves whatever intake its available custody can honestly preserve, records an owned
 minimal-path outage and makes zero reply or replay calls under a fresh identity. The independent
 recovery surface remains the only promised report path. Recovery re-resolves the original intake

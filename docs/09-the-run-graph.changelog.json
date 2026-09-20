@@ -1,0 +1,50 @@
+[
+  {
+    "revision": 3,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "M2 independent design review 1 repair R3"
+    },
+    "changes": [
+      {
+        "what": "Define Five's one-use acceptance-backed reply-run opening while the original provider run and accounting obligation remain pending.",
+        "why": "A usable answer needs an executable conversation path without falsely making the unresolved provider step ready or releasing liability.",
+        "commits": ["f106575"]
+      }
+    ]
+  },
+  {
+    "revision": 2,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator-directed M2 closure of installed Five governance and unresolved-accounting answer use"
+    },
+    "changes": [
+      {
+        "what": "Define a reference-only installed RunGovernance mapping and permit one exact accepted provider answer to feed a reply while its accounting obligation remains pending.",
+        "why": "Production needs a serializable policy mapping without callbacks, and a usable bounded answer must not be discarded solely because final charge or quiescence remains unknown.",
+        "commits": ["1b960e7"]
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-05",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "the durable run graph, delegation contracts, and agent-transport port"
+    },
+    "changes": [
+      {
+        "what": "Initial Part Five design.",
+        "why": "Define durable work independently of a worker process.",
+        "commits": ["a30c8bfd2589e439227462d20c8aff99389def79"]
+      }
+    ]
+  }
+]

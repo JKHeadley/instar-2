@@ -1,5 +1,21 @@
 [
   {
+    "revision": 4,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator amendment requiring compatibility when only one machine is available"
+    },
+    "changes": [
+      {
+        "what": "Make P-08 select the accepted fixed-profile local-durable set for a single-machine installation and replicated(1) by default whenever a second machine is enrolled.",
+        "why": "A supported no-peer deployment needs an installation policy, while peer loss must never turn an installed replicated demand into local durability.",
+        "commits": ["1b5ac4c"]
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-09-14",
     "status": "approved",

@@ -238,26 +238,42 @@ cannot stand in for it.
 
 ## 5. Which durability an irreversible effect demands
 
-**Value — reference policy: one other durable copy before an ordinary irreversible effect.**
-This design chooses `replicated(1)` as the default demand for every ordinary irreversible
-operation: a sent message, external disclosure, paid model call, destructive unrecoverable
-write, authority change or release. The append owner must already have local durability;
-part two's n counts acknowledged peers, not the owner. This protects the prerequisite record
-against loss of the originating machine under the declared independent-peer failure model.
-It does not promise survival of all copies failing or copies sharing one failed disk. No check
-chooses the availability/storage trade. An operation can demand replicated(n) for larger n.
-A single-machine deployment has an explicit choice: an operator-approved operation demand of
-local-durable acknowledging permanent-machine-loss risk, or no execution of that operation.
-Discovery of too few peers never changes the demand automatically.
+**Value — reference policy: peer-backed by default when a peer exists, locally durable when it
+does not.** This design chooses `replicated(1)` as the default demand whenever a second machine is
+enrolled for every ordinary irreversible operation: a sent message, external disclosure, paid
+model call, destructive unrecoverable write, authority change or release. The append owner must
+already have local durability; part two's n counts acknowledged peers, not the owner. This
+protects the prerequisite record against loss of the originating machine under the declared
+independent-peer failure model. It does not promise survival of all copies failing or copies
+sharing one failed disk. No check chooses the availability/storage trade. An operation can demand
+replicated(n) for larger n. A single-machine installation is supported without a peer dependency
+for the fixed profile's accepted closed `local-durable` operation set. Discovery or loss of a peer
+never changes an installed demand automatically.
+
+**Rule — the installed shape selects the local demand before dispatch.** Owner: the operator
+owns the P-08 installation policy; Ten owns the fixed profile; Eight owns the operation demand;
+and Two owns its durability evidence. **Checks: P8-NF-25/26/27**. The single-machine shape makes
+`local-durable` available only to the profile-enumerated installed provider call and reply-only
+Telegram `ordinary-reply` send after one operator acceptance binds that complete set and the
+permanent-machine-loss model for the installation. The operator does not list those operations
+again by hand. Each exact local prefix covers authorization, preparation, disclosure,
+maximum-charge reservation, reply preparation, observations and later settlement predecessors
+available at dispatch. Missing or stale policy, an operation outside the profile set, a partial
+prefix, a same-machine process presented as a peer, or automatic fallback after peer loss refuses.
+The positive neighbors are a complete local receipt in an admitted single-machine profile and a
+real peer receipt when a second machine is enrolled. `replicated(1)` remains required whenever the
+operation demand names replication; that operation refuses in the single-machine shape. No state
+called `replicated(0)` exists.
 
 **Rule — the chosen demand is enforced, without redefining the states.** Rules 26, 31,
 33, 63 and 90; P2-NF-63. **Checks: P8-NF-25/26** enforce a known positive peer count
 for replicated(n), distinct authenticated durable peer acknowledgments and an approved
-per-operation loss model. Local-durable meets only the local demand; replicated(m) meets
-replicated(n) only when m is at least n, the referenced bytes and acknowledgment semantics
-match, and the local append is durable. A lease quorum, socket ack, replica configuration or
-projection label is not part two's durability receipt. The reference default/explicit override
-is enforced as governed policy, not introduced as an extra constitutional permission wall.
+installation-profile loss model covering the exact operation. Local-durable meets only the local
+demand. Replicated(m) meets replicated(n) only when m is at least n, the referenced bytes and
+acknowledgment semantics match, and the local append is durable. A lease quorum, socket ack,
+replica configuration or projection label is not part two's durability receipt. The reference
+default/explicit override is enforced as governed policy, not introduced as an extra
+constitutional permission wall.
 
 **Rule — demand covers the evidence closure, not just a request-shaped shell.**
 **Checks: P8-NF-25/26/27**. Before dispatch the required closure includes the request and
@@ -499,6 +515,22 @@ record the full amount, expose a cap violation and close new affected admissions
 the observation or raid another reservation to conceal it. Part-five's conservative maximum
 write-off may account the full reservation as spent, but it is not evidence of non-occurrence
 and cannot unlock a forbidden replay.
+
+**Rule — output availability does not release effect liability.** Owner: Eight for the provider
+settlement consumer, Seven for `ProviderAnswerAcceptance`, Six for accounting and Five for run
+use. **Checks: P10-SI-17/24**. Eight may expose one exact complete model output to Five when
+Seven's acceptance binds Nine's response assessment and the exact Eight settlement and Six
+accounting, the route has an enforced finite maximum charge, maximum exposure remains held and
+retry eligibility is false. It returns `chargeSettled: false` while accounting is unresolved and
+does not claim old-executor quiescence. Five keeps the provider step and accounting obligation
+pending. Five may bind that one use to one separately admitted reply run under the current
+predecessor, stop, standing, fence and original conversation obligation. That reply run receives
+its own grounding, authority, budget, durability and Eight outbound dispatch claim; it cannot call
+the model or complete the original provider run. Missing assessment, mismatched settlement hash,
+reduced exposure, changed predecessor or stop, duplicate use or any repeat path refuses. The
+positive neighbor is a response-observed complete answer used once for one real reply with unknown
+charge still reserved; restart reuses that reply operation, and the existing zero-unresolved
+consumer remains the positive path that may report charge settled.
 
 **Rule — uncertainty has no expiry into truth.** **Checks: P8-NF-22/37/39**. Observation
 episodes have finite cap/backoff/breaker and duration; hitting a bound stops that episode and
@@ -765,7 +797,7 @@ operator consent to a new deadline nor extends an existing one.
 | Duty | Disposition and exact coverage |
 |---|---|
 | 8.1: P4-NF-18, point-of-effect re-validation | **Held** at this contract: actual target/action/scope, exact approval, fresh grants/evidence/generation and final conditional claim; P8-NF-06/15/16/17/32. Intake's classification producer stays four's. External already-claimed race is explicitly limited. |
-| 8.2: name the irreversible durability demand | **Held** at the policy contract: replicated(1) default, stronger declared demands, explicit governed local-durable exception and inherited stop primitive; P8-NF-25/26/27/28. Two alone owns the durability states. |
+| 8.2: name the irreversible durability demand | **Held** at the policy contract: replicated(1) default whenever a second machine is enrolled, stronger declared demands, supported governed single-machine local-durable arm and inherited stop primitive; P8-NF-25/26/27/28. Two alone owns the durability states. |
 | 8.3: P2-NF-63 insufficient durability fixture | **Held** here as P8-NF-25, with manifest alias and required-closure boundary matrix. Quorum cannot substitute, P8-NF-26. |
 | 8.4: P2-NF-73 provisional authority before reconciliation | **Held** here as P8-NF-29 with transitive taint, legitimate clearing and recheck neighbors, P8-NF-30. Eight cannot clear two's marker. |
 | Shared eight/nine: verification and uncertainty reconciliation | **Partial**, explicitly claimed: eight owns durable follow-through, query binding, uncertainty lifecycle, settlement and retry/credit handoff, P8-NF-20/21/22/23/37/38. Nine owns versioned bars, independent assessment of actual evidence, live probes and grading. No automatic retry activation without that implemented seam. |
@@ -820,9 +852,11 @@ terms retain their existing meaning.
 tradeoffs. Technical completion of this document does not request an interruption of ordinary
 work; these are the policy questions for its approval surface.
 
-1. **Durability versus single-machine availability.** Adopt replicated(1) for ordinary
-   irreversibles, with explicit approved per-operation local-durable demands for installations
-   accepting permanent-machine-loss risk? Stops retain their approved local-durable fast path.
+1. **Durability versus single-machine availability.** Support a no-peer installation whose one
+   install-time policy accepts the fixed profile's closed local-durable operation set and
+   permanent-machine-loss model. Use replicated(1) by default whenever a second machine is
+   enrolled and for every operation whose demand names replication. Stops retain their approved
+   local-durable fast path.
 2. **Indefinite uncertainty.** Accept blocked automatic repetition and retained exposure when
    an external service cannot provide decisive evidence, with finite observation effort and
    an owned unresolved record? This follows six/seven and does not authorize timeout-to-truth.

@@ -20,6 +20,17 @@ applicable part approvals; a document checker cannot grant them.
 
 ---
 
+## Sections
+
+The general assembly contract remains in this file. The fixed first installation profile is a
+numbered companion section so it can take focused line comments without becoming a new part or a
+general setup product. Both files are one governed Part Ten body under the existing assembly
+declaration and this document's sibling changelog.
+
+1. [The fixed single-machine installation contract](14-the-assembly/16-the-fixed-single-machine-installation-contract.md)
+
+---
+
 ## 1. Ownership and the assembly boundary
 
 **Rule — one owner per type and behavior.** Rules 1, 30, 49, 69 and 115;
@@ -172,25 +183,27 @@ actual evidence separately; one healthy worker cannot stand in for the conjuncti
 | Source and custody | Verified local-durable minimal segment; eleven's six projections rebuilt from that source; current anchored register/decoder generation, keys, clock and custody handles | No guessed identity, stale authority or invented preserved input; inhibit dependent operations and expose independently administered recovery where available |
 | Authority | Current minimal system grant and operation scope; current binding and six's authoritative lease/fence for conversation service; required authority-prefix/membership evidence | Local repair stays within its own valid domain; missing conversation authority forbids attributable conversation dispatch |
 | Intake and route | Four's actual authenticated intake, admitted conversation adapter, credentials and route; exact operation/semantic identity mapping | Preserve only where durable custody is available; an unavailable route is a minimal-path outage, not ordinary worker starvation |
-| Effect and durability | Eight's real message operation, reservation, one-use claim and full causal evidence closure; two's matching durability receipts | Insufficient closure or peer proof prevents dispatch even when reserved transport and money are free |
+| Effect and durability | Eight's real message operation, reservation, one-use claim and full causal evidence closure; two's matching durability receipts | Insufficient closure or required durability proof prevents dispatch even when reserved transport and money are free |
 | Observation | Actual adapter query/receipt and independent witness for the demanded delivery stage, nine's bar and eight's settlement path | Available evidence may establish a weaker stage only; absent decisive evidence retains owned uncertainty, never proves delivery |
 
-The reference reply demand is eight's **replicated(1)**: local durability plus one distinct
-authenticated peer acknowledgment covering the required exact facts and prefixes. This includes
-the grant/approval basis, governing references, run/attempt, operation definition, reservation,
-dispatch-claim and reconstructable verification obligation required by eight. A live lease
-quorum is not that acknowledgment, and a stored replication receipt is not current ownership.
-The assembly does not select a local-durable exception when peers disappear. Any separately
-approved operation policy is consumed through eight with its explicit loss model; reserved
-capacity alone changes neither demand nor authority. Local stop retains its existing admitted
-primitive and does not wait for an ordinary reply's replication, but remote stop remains
-unconfirmed until its own evidence arrives.
+The reference reply demand is eight's **replicated(1)** whenever a second machine is enrolled:
+local durability plus one distinct authenticated peer acknowledgment covering the required exact
+facts and prefixes. This includes the grant/approval basis, governing references, run/attempt,
+operation definition, reservation, dispatch-claim and reconstructable verification obligation
+required by eight. A live lease quorum is not that acknowledgment, and a stored replication
+receipt is not current ownership. The supported single-machine shape carries no peer dependency.
+It consumes the one install-time P-08 acceptance of the fixed profile's closed local-durable
+provider-call and reply-only Telegram operation set and its explicit loss model. The assembly does
+not select local durability when an enrolled peer disappears, and an operation whose demand names
+replication still requires the peer. Reserved capacity alone changes neither demand nor authority.
+Local stop retains its existing admitted primitive and does not wait for an ordinary reply's
+replication, but remote stop remains unconfirmed until its own evidence arrives.
 
 **Rule — ordinary degradation and minimal-path loss have different outcomes.**
 **Checks: P10-NF-51/52/54** cut each dependency alone and in combinations. Loss of an ordinary
 model, benchmark, business effect or non-minimal projection leaves a limited response eligible
 only if every dependency needed by that response remains admitted. Loss of a shared source,
-required peer acknowledgment, current ownership, adapter route or demanded evidence service is
+required durability receipt, current ownership, adapter route or demanded evidence service is
 loss of that minimal function, even if the first symptom appeared in an ordinary run. Admission
 is derived from actual dependency edges, not a component label called optional.
 
@@ -879,6 +892,17 @@ and probes. Critical install/recovery pipelines use seven's bounded step supervi
 call admission stays nonrecursive. Nine owns semantic adequacy and live freshness. Metrics
 come from the following table and section 10, never an empty declaration.
 
+**Rule — manual preparation ends where automated critical execution begins.** Owner: the
+operator owns manual administration; Ten owns pipeline composition; Seven owns bounded step
+supervision. **Check: P10-SI-11/12** classifies manual preparation only when an
+operator-administered identity places or selects already approved bootstrap bytes,
+pre-provisioned secret handles, storage location and package inputs without key creation,
+history append, migration, recovery, network effect, retry loop or activation claim. Any
+automated critical install or recovery stage requires a finite admitted step list and a current
+Seven supervisor before dispatch; absence is a named hold. The positive neighbors are manual
+placement followed by read-only verification, and a bounded supervised import performing only
+its predeclared writes. Prepared files alone never claim readiness.
+
 **Rule — non-functional claims have runnable bars and failure actions.** Rules 13, 34,
 38, 39, 43, 46, 55, 60, 62, 113; **checks: P10-NF-40/45/46/48/50**. Every numerical
 bound below is a finite deployment declaration supplied before activation, with hardware,
@@ -962,7 +986,7 @@ production initialization and actual confined adapters. Naming all three is not 
 | P10-NF-49 | episode/rebuild | Replay breach creates no owner or many episodes, timer closes it or permits deletion; one measured closure and retained history pass. |
 | P10-NF-50 | activation/load | Absent numeric bounds, zero treated default, plaintext reserve spill or no-op critical holder; concrete zero/bound-plus-one and scoped failure pass. |
 | P10-NF-51 | wiring/lifecycle | Minimal run borrows ordinary authority or local repair lease speaks for conversation; actual separately granted run plus current conversation ownership passes. |
-| P10-NF-52 | fault | Healthy reserved responder dispatches without required peer receipt, binding or fence; all valid prerequisites permit the limited response and local stop keeps its own primitive. |
+| P10-NF-52 | fault | Healthy reserved responder dispatches without the installed durability receipt, binding or fence; all valid prerequisites permit the limited response and local stop keeps its own primitive. |
 | P10-NF-53 | contract | Adapter omits unsupported predicate or delivery ack substitutes for durability/consumption; exact capability matrix and genuine stage-specific witnesses pass. |
 | P10-NF-54 | load/fault | Minimal dependency loss counted as ordinary degradation, failed sample omitted or unconditional response bound asserted; finite admitted-path response and explicit measured outage remain distinct. |
 | P10-NF-55 | crash/lifecycle | Claim-before-call cut uses test-only certainty or opaque adapter earns completed slice; original owned uncertain operation and zero replay survive every boot/rebuild cut. |
@@ -987,7 +1011,7 @@ A partial row names the actual residual instead of leaving the promised machiner
 | Five — harness actual-start and compaction consumption | **Partial:** real delivered-context evidence, public-port start and P10-NF-10–16. Five owns coverage/accounting; no receipt proves comprehension, and opaque unsupported harness modes remain unavailable. |
 | Six/eight — executable capability isolation | **Partial:** real restricted execution, no raw worker credentials, platform attack matrix, P10-NF-17–21. Administrator/custodian compromise is outside worker confinement; nine owns independent protected enforcement. |
 | Big picture — native/self-hosting/local evolution | **Held contract:** same-port native, exact local packages, development-tool inventory and install/upgrade/crash lifecycle P10-NF-12/30/41–45. No built or independently converged runtime is claimed. |
-| Eleven — minimal-path realization and crash-cut evidence | **Partial:** explicit authority/dependency/durability admission and concrete evidence capability proof, P10-NF-51–56. Required peer, ownership, route or evidence loss defeats a response/completion bound; opaque effects remain owned uncertain with zero replay. Ten owns realization, eleven the conditional surface/slice verdict. |
+| Eleven — minimal-path realization and crash-cut evidence | **Partial:** explicit authority/dependency/durability admission and concrete evidence capability proof, P10-NF-51–56. Required durability, ownership, route or evidence loss defeats a response/completion bound; opaque effects remain owned uncertain with zero replay. Ten owns realization, eleven the conditional surface/slice verdict. |
 
 **Rule — parent rule coverage is scoped to the automatic checks.**
 **Check: P10-NF-02** walks the big picture's adapter, startup, dependency and self-hosting
