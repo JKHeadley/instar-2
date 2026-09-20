@@ -2,7 +2,6 @@
  * and service.ts activation, plus the installed bin driver. These names confer no admission authority. */
 export const productionMissingBindings = Object.freeze([
   'independent-worker-protection',
-  'row-83-run-admission-production',
   'replication-peer',
   'installation-trust-register-identity',
   'independent-verification-clock',

@@ -51,7 +51,7 @@ it('R2-F08 R2-F10 P13-A2-MAP all 52 rows retain exact real-owner dispositions an
   expect(rows.find(row => row.number === 31)?.heldArms)
     .toContain('NON-EXECUTABLE-UNTIL-design-17-harness-adapters-seam-request-part-two-capture-read.md');
   expect(rows.find(row => row.number === 31)?.heldArms)
-    .toContain('NON-EXECUTABLE-UNTIL-row-83-run-admission-production');
+    .not.toContain('NON-EXECUTABLE-UNTIL-row-83-run-admission-production');
   expect(rows.find(row => row.number === 31)?.heldArms).toContain('SEAM-LEDGER.md row 38');
   expect(rows.find(row => row.number === 31)?.heldArms).toContain('SEAM-LEDGER.md row 45');
 });

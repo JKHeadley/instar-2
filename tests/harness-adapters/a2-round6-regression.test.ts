@@ -183,7 +183,7 @@ it('A2-UNIT R6-F04 P13-NF-31 local comparison and duplicate classification execu
   expect(classifyHarnessRuntimeProgress(duplicate, [first], fixture.owner.c)).toMatchObject({ disposition: 'duplicate' });
 
   const row = (p13A2Dispositions() as Array<{ number: number; heldArms?: string }>).find(entry => entry.number === 31)!;
-  expect(row.heldArms).toContain('NON-EXECUTABLE-UNTIL-row-83-run-admission-production');
+  expect(row.heldArms).not.toContain('NON-EXECUTABLE-UNTIL-row-83-run-admission-production');
   expect(row.heldArms).toContain('SEAM-LEDGER.md row 38');
   expect(row.heldArms).toContain('SEAM-LEDGER.md row 45');
 });

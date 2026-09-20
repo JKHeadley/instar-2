@@ -8,6 +8,7 @@ const executable = {
   1: 'Architecture test proves Part Fifteen introduces no duplicate core type and imports every consumed owner through its public index.',
   2: 'Governance test inventories every governed Rule and all 52 distinct fixture identifiers; this checker binds the inventory to the actual run.',
   3: 'Package admission delegates active-history selection plus complete archive and dependency validation to public Part Ten owner paths.',
+  6: 'The production Four-to-Five path reports business success only from a Six-admitted Run record with an exact durable neighbour witness.',
   7: 'Arbitrary resource ids and paths preserve byte-identical decisions after public Part Ten archive validation; pinned-calendar replacement remains held.',
   8: 'Closed manifest decoding, required-field omission, duplicate identity, canonical bytes, dependency checks and complete Part Ten archive binding execute at all three tiers.',
   9: 'The local cron-v1 grammar and normalization arm executes; pinned zone/calendar expansion remains held at its named adapter seam.',
@@ -18,6 +19,7 @@ const executable = {
   17: 'Part Ten decoding, signed namespace/source selection and selected-package retirement re-resolution execute; inactive competitor classification remains owner-held.',
   18: 'Local every-machine instance identity expansion executes; authenticated cross-epoch admission and long-history arms remain held.',
   19: 'Part Ten archive validation distinguishes support from a competing manifest and active-package resolution refuses a conflicting active definition; inactive/unresolved activity and calendar expansion remain held.',
+  22: 'The production Run fold reconstructs only from signed Five records carrying replayable Six admission witnesses; copied mutable state refuses.',
   27: 'The future one-shot boundary executes; full outage coverage remains held at the named loop and calendar seams.',
   29: 'Closed percent range, explicit-action-clock freshness and unknown-evidence refusal execute through Part One; resource allocation remains separately held.',
   31: 'Local capacity evidence range, freshness and unknown-evidence classification executes; an actual capacity-inhibited launch remains held.',
@@ -30,10 +32,9 @@ const held = {
   3: 'NON-EXECUTABLE-UNTIL-seam-response-operator-followup.md-row-69-and-Part-Ten-production-wiring',
   4: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49',
   5: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-intake-followup.md-row-49-and-seam-response-loop-followup.md-row-36',
-  6: 'NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
   7: 'NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
   9: 'NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
-  10: 'NON-EXECUTABLE-UNTIL-impl-part-eleven-and-Part-Ten-production-minimal-plane-wiring; NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
+  10: 'NON-EXECUTABLE-UNTIL-impl-part-eleven-and-Part-Ten-production-minimal-plane-wiring',
   12: 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md-confined-production-driver',
   13: 'NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
   14: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
@@ -44,7 +45,6 @@ const held = {
   19: 'NON-EXECUTABLE-UNTIL-seam-response-intake-followup.md-row-49-and-P15-P10-package-resource-and-activity-v1; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
   20: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
   21: 'NON-EXECUTABLE-UNTIL-seam-response-intake-scheduled.md-and-seam-response-facts-followup.md-row-47-and-seam-response-rungraph-followup.md-row-48-and-seam-response-intake-followup.md-row-49',
-  22: 'NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
   23: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-loop-followup.md-and-seam-response-judgment.md-row-32',
   24: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
   25: 'NON-EXECUTABLE-UNTIL-seam-response-facts-followup.md-and-seam-response-loop-followup.md-row-37; NON-EXECUTABLE-UNTIL-row-84-calendar-adapter',
@@ -60,14 +60,14 @@ const held = {
   35: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-loop-followup.md-and-seam-response-judgment.md-rows-27-32',
   36: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-judgment.md-row-27-and-seam-response-intake-followup.md-row-49',
   37: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-rows-36-37-and-seam-response-facts-followup.md-row-37',
-  38: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver; NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
+  38: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-and-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver',
   39: 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md-row-36-resource-admission-arm',
   40: 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md',
   41: 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md-and-seam-response-assembly-followup.md',
   42: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-judgment.md-row-23',
   43: 'NON-EXECUTABLE-UNTIL-seam-response-judgment.md-row-27-and-seam-response-assembly-followup.md-row-30',
   44: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-judgment.md-row-23',
-  45: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver-and-seam-response-judgment.md-row-23; NON-EXECUTABLE-UNTIL-row-83-run-admission-production',
+  45: 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md-and-seam-response-assembly-followup.md-shutdown-driver-and-seam-response-judgment.md-row-23',
   46: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33',
   47: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33',
   48: 'NON-EXECUTABLE-UNTIL-seam-response-loop-breaker.md-and-seam-response-loop-followup.md-row-33-and-seam-response-operator-followup.md-row-69',
@@ -129,6 +129,9 @@ const dependencyFiles = value => value.match(/(?:SEAM-LEDGER|seam-response-[a-z0
 const namedConditionalGrants = new Map([['P15-P10-package-resource-and-activity-v1', {
   request: packageResourceRequest, response: 'seam-response-assembly-followup.md', row: '80',
 }]]);
+const exactImplementationHolds = new Set([
+  'NON-EXECUTABLE-UNTIL-impl-part-eleven-and-Part-Ten-production-minimal-plane-wiring',
+]);
 const exactConditionalRowGrants = new Map([
   ['NON-EXECUTABLE-UNTIL-row-83-run-admission-production', {
     row: '83', request: runAdmissionRequest, grantId: 'P15-P6-run-admission-production-v1',
@@ -252,7 +255,7 @@ export function auditP15ArchitectureRows(dispositions) {
     const grantIds = dependencyGrantIds(row.held);
     const conditionalRowGrants = [...exactConditionalRowGrants.entries()]
       .filter(([name]) => row.held.includes(name));
-    if (!files.length && !grantIds.length && !conditionalRowGrants.length)
+    if (!files.length && !grantIds.length && !conditionalRowGrants.length && !exactImplementationHolds.has(row.held))
       throw new Error(`${row.id}: held disposition has no existing grant evidence`);
     for (const [name, grant] of conditionalRowGrants) {
       const request = readFileSync(resolve(laneDirectory, grant.request), 'utf8');
