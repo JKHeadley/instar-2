@@ -34,3 +34,10 @@ export { decodeProductionInstallation, productionInstallationSchemas, registerPr
 export type { ProductionInstallation } from './production-installation.js';
 export { bootProductionApplication } from './production-application.js';
 export type { ProductionApplication, ProductionApplicationHost } from './production-application.js';
+
+export type { InstallationSelection, InstallationRole, InstallationRecordAdmission, InstallationRecordWriter, InstallationRecordGeneration } from './installation-selection.js';
+export { installationRoleOwners, installationSelectionSchemas, registerInstallationSelectionBody, recordInstallationSelection, decodeInstallationSelectionAtOrigin, decodeHistoricalInstallationSelection } from './installation-selection.js';
+export type { ProductionSignerReference, ProductionSignerAdmission } from './production-signer-reference.js';
+export { productionSignerReferenceSchemas, registerProductionSignerReferenceBody, recordProductionSignerReference, decodeProductionSignerReferenceAtOrigin, decodeHistoricalProductionSignerReference } from './production-signer-reference.js';
+export type { ProductionBootstrapPackage, VerifiedProductionBootstrap, InstallationImmutableIO } from './production-installation-loader.js';
+export { loadProductionBootstrap } from './production-installation-loader.js';

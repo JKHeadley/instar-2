@@ -8,5 +8,37 @@
     "type": "Declaration", "schemaVersion": 1, "id": "assembly.source", "kind": "protected artifacts", "status": "dark",
     "requiredFacts": { "pattern": "src/assembly/**", "why": "Assembly, custody, package and growth consumers must resolve signed history and cannot be weakened by configured status fields.", "surface": "repository review approval" },
     "standards": [82], "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "assembly-InstallationSelection",
+    "kind": "protected artifacts",
+    "status": "dark",
+    "requiredFacts": {
+      "pattern": "src/assembly/installation-selection.ts",
+      "why": "part-ten schema 1: recordInstallationSelection admits only operator-approved immutable configuration through decodeInstallationSelectionAtOrigin; decodeHistoricalInstallationSelection retains its original causal authority. Decoder artifacts are pinned by the owner manifest.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "assembly-ProductionSignerReference",
+    "kind": "protected artifacts",
+    "status": "dark",
+    "requiredFacts": {
+      "pattern": "src/assembly/production-signer-reference.ts",
+      "why": "part-ten schema 1: recordProductionSignerReference admits only operator-approved immutable configuration through decodeProductionSignerReferenceAtOrigin; decodeHistoricalProductionSignerReference retains its original causal authority. Decoder artifacts are pinned by the owner manifest.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
   }
 ]

@@ -243,5 +243,21 @@
         "by": "rungraph.bound"
       }
     }
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "rungraph-installed-governance-reference",
+    "kind": "protected artifacts",
+    "status": "dark",
+    "requiredFacts": {
+      "pattern": "src/rungraph/installed-governance.ts",
+      "why": "part-five schema 1: recordInstalledRunGovernanceReference admits only operator-approved immutable configuration through decodeInstalledRunGovernanceReferenceAtOrigin; decodeHistoricalInstalledRunGovernanceReference retains its original causal authority. Decoder artifacts are pinned by the owner manifest.",
+      "surface": "repository review approval"
+    },
+    "standards": [
+      82
+    ],
+    "holds": []
   }
 ]
