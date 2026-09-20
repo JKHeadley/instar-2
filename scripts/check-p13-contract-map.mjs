@@ -16,7 +16,6 @@ const ROUTE_CONFORMANCE = 'dated 07:52Z addendum in seam-response-assembly-follo
 const PROMPT = 'dated 07:10Z addenda in seam-response-effects-followup.md + seam-response-assembly-followup.md, SEAM-LEDGER.md row 41';
 const LIVE_PREREQUISITES = `LIVE-PREREQUISITES defined by ${OWNERSHIP}`;
 const HARNESS_EFFECT_IMPLEMENTATION = 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md';
-const RUN_ADMISSION_PRODUCTION = 'NON-EXECUTABLE-UNTIL-row-83-run-admission-production';
 const executable = new Map([
   [1, 'All four owned record forms and every runtime-event variant use closed total decoders, canonical comparison, migration, and deep freezing.'],
   [2, 'The root design and all indexed section files pass the governed-document checker.'],
@@ -124,13 +123,13 @@ const a2Held = new Map([
   [21, `NON-EXECUTABLE-UNTIL-${CTX_CURRENT}`],
   [4, 'NON-EXECUTABLE-UNTIL-seam-response-assembly-followup.md'],
   [25, CROSS_MACHINE],
-  [31, `${OUTPUT_CUSTODY} + ${RUN_ADMISSION_PRODUCTION} + NON-EXECUTABLE-UNTIL-${CTX_GROUND} + NON-EXECUTABLE-UNTIL-${CTX_CURRENT}`],
+  [31, `${OUTPUT_CUSTODY} + NON-EXECUTABLE-UNTIL-${CTX_GROUND} + NON-EXECUTABLE-UNTIL-${CTX_CURRENT}`],
   [34, OUTPUT_CUSTODY],
   [35, `NON-EXECUTABLE-UNTIL-${PROMPT} + seam-response-loop-followup.md`],
   [37, 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md'],
   [38, 'NON-EXECUTABLE-UNTIL-seam-response-loop-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md + design-harness-adapters-seam-request-cross-machine-ownership.md'],
   [39, 'NON-EXECUTABLE-UNTIL-seam-response-effects-followup.md + seam-response-loop-followup.md'],
-  [46, `NON-EXECUTABLE-UNTIL-${PROMPT} + seam-response-effects-payloads.md + seam-response-effects-followup.md + ${RUN_ADMISSION_PRODUCTION} + NON-EXECUTABLE-UNTIL-${CTX_GROUND} + NON-EXECUTABLE-UNTIL-${CTX_CURRENT}`],
+  [46, `NON-EXECUTABLE-UNTIL-${PROMPT} + seam-response-effects-payloads.md + seam-response-effects-followup.md + NON-EXECUTABLE-UNTIL-${CTX_GROUND} + NON-EXECUTABLE-UNTIL-${CTX_CURRENT}`],
   [47, `NON-EXECUTABLE-UNTIL-${CTX_GROUND} + ${CTX_CURRENT} + ${HISTORY_COVERAGE} + ${ROUTE_CONFORMANCE} + seam-response-judgment.md + seam-response-assembly-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md + seam-response-run-closure.md + seam-response-rungraph-followup.md + seam-response-loop-followup.md + ${PROMPT} + part-eleven-seam-response-assembly.md`],
   [51, `NON-EXECUTABLE-UNTIL-${CTX_GROUND} + ${CTX_CURRENT} + seam-response-loop-followup.md + seam-response-effects-payloads.md + seam-response-effects-followup.md`],
   [52, 'NON-EXECUTABLE-UNTIL-seam-response-effects-payloads.md + seam-response-effects-followup.md'],
@@ -263,11 +262,14 @@ export function checkP13Architecture() {
   // part's slice re-synced onto main), every changed file is by definition outside Part Thirteen's scope, so the
   // arm has nothing to judge; the structural checks below still run unconditionally.
   // Only the exact reviewed additivity amendments are outside this part's slice.
-  const grantedAdditivityPath = 'tests/harness-adapters/a2-governance-and-additivity.test.ts';
-  const grantedAdditivityHash = 'b6ae25224e327912c90b8e95b7a4886231a430ae9aaf1f117f96ad35d8cd8682';
+  const grantedAdditivityHashes = new Map([
+    ['tests/harness-adapters/a2-governance-and-additivity.test.ts', '506c4c711734df334cbb38dbc2556ee26ecfc4bafebfaf33c157e62d112c3dc4'],
+    ['tests/harness-adapters/a2-round6-regression.test.ts', 'cf563858558e979b3f9019fdbbd821583d16429848b991a6586efa8221f886c5'],
+    ['tests/integration/harness-adapters-round7-regression.test.ts', 'c35559278c2f5a2a396de6d815834fc3f4e6542b8d54eefa63222a2c43ea2b02'],
+  ]);
   const { createHash } = process.getBuiltinModule('node:crypto');
-  const p13SliceChanged = changed.some(path => !(path === grantedAdditivityPath
-    && existsSync(path) && createHash('sha256').update(readFileSync(path)).digest('hex') === grantedAdditivityHash)
+  const p13SliceChanged = changed.some(path => !(grantedAdditivityHashes.has(path)
+    && existsSync(path) && createHash('sha256').update(readFileSync(path)).digest('hex') === grantedAdditivityHashes.get(path))
     && (path.startsWith('src/harness-adapters/')
     || path.startsWith('tests/harness-adapters/')
     || /^tests\/(integration|e2e)\/harness-adapters(?:-[^/]*)?\.test\.ts$/.test(path)));

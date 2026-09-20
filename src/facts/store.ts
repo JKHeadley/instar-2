@@ -7,7 +7,7 @@ import { decodeEnvelope, factId, genesisHash, signEnvelope } from './envelope.js
 import type { AuthorityTaint, CausalFrontier, ConflictClass, DurabilityState, FactContext, FactEnvelope } from './contracts.js';
 import { contextBoundary } from './contracts.js';
 import { decodeHistoricalBody, historicalAuthority } from './historical.js';
-import { prepareSnapshot } from './snapshot.js';
+import { prepareSnapshot, snapshotCurrent } from './snapshot.js';
 import type { FactSnapshot } from './snapshot.js';
 import { issuePrefix, prefixValid, prefixContext } from './prefix.js';
 import type { VerifiedPrefix } from './prefix.js';
@@ -31,18 +31,42 @@ export interface FactStorePort {
   sweep(): Result<readonly FactEnvelope[]>;
 }
 export interface StoreRecovery { readonly prefix?: VerifiedPrefix; readonly verificationBudget?: number; readonly onVerified?: (fact: FactEnvelope) => void; readonly conflictAppender?: ConflictAppenderPort }
+
+// Compare raw storage with a verified JSON frame without re-encoding either one.
+// Keep canonical's non-JSON refusals; the verified right-hand side is frozen.
+function jsonEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true; // canonical also identifies -0 with 0
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const proto = Object.getPrototypeOf(a);
+  if (proto !== Object.prototype && proto !== Array.prototype && proto !== null) return false;
+  const ka = Reflect.ownKeys(a), kb = Reflect.ownKeys(b);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) {
+    if (typeof k !== 'string') return false;
+    if (Array.isArray(a) && k === 'length') {
+      if (a.length !== (b as unknown[]).length) return false;
+      continue;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(a, k)!;
+    if (!('value' in descriptor) || !descriptor.enumerable || !Object.prototype.hasOwnProperty.call(b, k)
+      || !jsonEqual(descriptor.value, (b as Record<string, unknown>)[k])) return false;
+  }
+  return true;
+}
 export function createFactStore(context: FactContext, storage: SegmentStoragePort, recovery: StoreRecovery = {}): FactStorePort {
   let revision = 0;
   let prefix = recovery.prefix;
   let cached: readonly FactEnvelope[] = [];
+  let projectionMemo: { key: string; snapshot: FactSnapshot } | undefined;
   let checkedContext = prefixContext(context);
   const c = contextBoundary(context);
   const read = (): Result<readonly FactEnvelope[]> => boundary('FactStoreRead', null, c, () => {
     const raw = storage.read();
-    if (checkedContext !== prefixContext(context)) { cached = []; checkedContext = prefixContext(context); }
+    if (checkedContext !== prefixContext(context)) { revision++; cached = []; checkedContext = prefixContext(context); }
     if (prefix) { requireFact(prefixValid(prefix, context), 'prefix not verified under current context'); cached = prefix.facts; prefix = undefined; }
     requireFact(raw.length >= cached.length, 'stored verified prefix was truncated', 'integrity');
-    for (let i = 0; i < cached.length; i++) requireFact(encoding(raw[i]).bytes === encoding(cached[i]).bytes, 'stored verified prefix changed', 'integrity');
+    for (let i = 0; i < cached.length; i++) requireFact(jsonEqual(raw[i], cached[i]), 'stored verified prefix changed', 'integrity');
     requireFact(raw.length - cached.length <= (recovery.verificationBudget ?? Number.MAX_SAFE_INTEGER), 'verification budget exhausted', 'budget-exhausted');
     const facts: FactEnvelope[] = [...cached];
     for (const input of raw.slice(cached.length)) {
@@ -54,9 +78,18 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
   });
   const store: FactStorePort = Object.freeze({ read,
     verifiedPrefix: () => boundary('FactStoreVerifiedPrefix', null, c, () => issuePrefix(take(read()), context)),
-    sweep: () => { cached = []; prefix = undefined; return read(); },
+    sweep: () => { revision++; cached = []; prefix = undefined; return read(); },
     readForProjection: () => boundary('FactStoreProjectionRead', null, c, () => {
-      let snapshot = take(prepareSnapshot(take(read()), context));
+      // Currency key: the store's own revision, the stored tail (count + last content hash) and the
+      // context tables. read() checks every retained frame; discarding that verified prefix
+      // advances revision. snapshotCurrent also checks the complete issuance context.
+      const projectionKey = (facts: readonly FactEnvelope[]) => `${revision}|${facts.length}|${facts.at(-1)?.contentHash ?? ''}|${encoding({
+        captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [] }).bytes}`;
+      const first = take(read()), firstKey = projectionKey(first);
+      // Served only while the issued snapshot is still current under ITS OWN issuance terms (policy
+      // hash, owned bodies, migrations) as well as under the key: a context change invalidates it.
+      if (projectionMemo && projectionMemo.key === firstKey && snapshotCurrent(projectionMemo.snapshot)) return projectionMemo.snapshot;
+      let snapshot = take(prepareSnapshot(first, context, () => projectionKey(take(read())) === firstKey));
       const conflicts = [...new Map(snapshot.entries.flatMap(e => e.conflicts).map(c => [c.key, c])).values()];
       if (conflicts.length) {
         if (storage.recordConflicts) {
@@ -65,10 +98,13 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
         requireFact(recovery.conflictAppender, 'signed conflict fact appender required; outbox receipt is insufficient');
         take(drainConflictFacts(context, store, recovery.conflictAppender));
       }
-      const at = revision;
-      const fingerprint = () => encoding({ facts: storage.read(), captures: context.captures, grants: context.grants, revocations: context.revocations, historicalGrants: context.historicalGrants ?? [], historicalRevocations: context.historicalRevocations ?? [] }).hash;
-      const current = fingerprint();
-      snapshot = take(prepareSnapshot(take(read()), context, () => revision === at && current === fingerprint()));
+      // Preparation and conflict draining can themselves move the stored tail or the context tables
+      // (a capture preserved during the call), so the key is re-derived AFTER them, exactly where the
+      // former fingerprint was taken. Only when it moved is the snapshot prepared a second time.
+      const again = take(read()), againKey = projectionKey(again);
+      if (conflicts.length || againKey !== firstKey)
+        snapshot = take(prepareSnapshot(again, context, () => projectionKey(take(read())) === againKey));
+      projectionMemo = { key: againKey, snapshot };
       return snapshot;
     }),
     append(input: unknown, replication?: { readonly peer: string }): Result<AppendReceipt> {

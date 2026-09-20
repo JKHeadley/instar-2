@@ -373,6 +373,9 @@ function installAssemblySupport(f: any, options: any) {
   let launch: any, launchFact: any;
   const ensureLaunch = () => {
   if (launch) return;
+  const existing = value(runtime.inspect()).find((row: any) => row.record.type === 'HarnessLaunchSpec'
+    && row.record.run === f.id && row.record.incarnation === 'incarnation:one');
+  if (existing) { launch = existing.record; launchFact = existing.fact; return; }
   launch = value(runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'), id: 'production-live-input-launch',
     ...(options.native ? { artifactDigest: options.native.io.current().artifact } : {}),
     run: f.id, input: f.opening.id, inputDigest: options.intake ? f.opening.body.rawHash : f.initialCapture.hash, incarnation: 'incarnation:one', harness: f.harnessId }));

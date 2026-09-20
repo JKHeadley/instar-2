@@ -8,9 +8,9 @@ import { checkP15Additivity, p15AdditivityBaseline } from '../../scripts/check-p
 
 it('P15 round-fourteen map-strict reviewer cases refuse stale REQUESTED records after their grants', () => {
   const rows = p15Dispositions();
-  for (const [number, dependency] of [[6, 'NON-EXECUTABLE-UNTIL-row-83-run-admission-production'],
+  for (const [number, dependency] of [[6, undefined],
     [13, 'NON-EXECUTABLE-UNTIL-row-84-calendar-adapter'],
-    [22, 'NON-EXECUTABLE-UNTIL-row-83-run-admission-production']] as const) {
+    [22, undefined]] as const) {
     const row = rows.find((candidate: { number: number }) => candidate.number === number)!;
     expect(row.held).toBe(dependency);
     expect(() => auditP15ArchitectureRows([row])).not.toThrow();

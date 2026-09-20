@@ -11,6 +11,7 @@ import type { ProductionStorage, ProductionStorageIO } from './production-storag
 import { bootProductionAssembly } from './production.js';
 import type { AssemblyComposition, AssemblyProductionCoordinator } from './contracts.js';
 import type { RunAdmissionPort } from '../rungraph/index.js';
+import { isProductionRunAdmission } from '../transport/index.js';
 import { productionBindingHolds } from './production-holds.js';
 import { isProductionOwnerComposition } from './production-composition.js';
 
@@ -32,8 +33,7 @@ export interface ProductionBootHost {
   readonly store: string;
   readonly storageIO: ProductionStorageIO;
   readonly repairOwner: string;
-  /** U4-F: absent until the separate Six production admission slice lands.
-   * The recorded lifecycle alone supplies the landed fixture binding. */
+  /** Six-owned factory product; structural lookalikes are not boot bindings. */
   readonly runAdmission?: RunAdmissionPort | null;
   /** Installed hosts report their unavailable real bindings; omission stays closed. */
   readonly missingBindings?: readonly string[];
@@ -77,7 +77,8 @@ export function bootProductionInstallation(record: unknown, host: ProductionBoot
       const admission = host.runAdmission;
       const missingAdmission = !admission || admission.owner !== 'part-six'
         || ['create', 'commit', 'verify', 'execution', 'reservation'].some(name =>
-          typeof admission[name as keyof RunAdmissionPort] !== 'function');
+          typeof admission[name as keyof RunAdmissionPort] !== 'function')
+        || !isProductionRunAdmission(admission);
       const posture = take(productionSwitchOnPosture({ admitted: host.dependencies(),
         unavailableAdapters: [...(missingAdmission ? ['run-admission'] : []), ...(host.missingBindings ?? productionBindingHolds)],
         repairOwner: host.repairOwner }, host.context));

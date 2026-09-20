@@ -61,8 +61,8 @@ it('P15 round-sixteen F1 refuses all 12 identifier/status mismatch probes and th
 
 it('P15 round-sixteen F2 resolves only the exact row-83 and row-84 granted dependency names', () => {
   const rows = p15Dispositions();
-  for (const number of [6, 22]) expect(rows.find((row: { number: number }) => row.number === number)?.held)
-    .toBe('NON-EXECUTABLE-UNTIL-row-83-run-admission-production');
+  for (const number of [6, 22]) expect(rows.find((row: { number: number }) => row.number === number))
+    .toMatchObject({ executable: true, held: undefined, status: 'EXECUTABLE' });
   expect(rows.find((row: { number: number }) => row.number === 13)?.held)
     .toBe('NON-EXECUTABLE-UNTIL-row-84-calendar-adapter');
   for (const number of [7, 9, 13, 14, 19, 20, 24, 25, 26, 27, 28, 52]) {
