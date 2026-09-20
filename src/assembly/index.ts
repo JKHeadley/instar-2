@@ -45,3 +45,5 @@ export type { InstallationHold, InstallationHoldReport, InstallationHoldRow, Ins
 export { installationHoldOwners, installationReportHolds, installationSupervisorHold, reportInstallationHolds } from './production-installation-report.js';
 export type { InstallationReplayInput, InstallationReplayMode, InstallationReplayProfile, InstallationReplayReport, InstallationReplaySample } from './production-installation-replay.js';
 export { replayInstallationProjections } from './production-installation-replay.js';
+export type { InstallationImportPlan, InstallationImportStep } from './production-installation-import.js';
+export { importPreparedInstallationPackage, isIssuedInstallationImportPlan, planInstallationImport } from './production-installation-import.js';
