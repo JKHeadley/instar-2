@@ -11,7 +11,9 @@
       {
         "what": "Grant the migration of the two landed production fixture helpers through real owner producers (P10-SI-20), keeping tests/assembly/production.test.ts byte-identical, and record the additive declaration-baseline move for the P5 additivity fence with its exact dependent pins.",
         "why": "Real composition showed the eighteen-name map cannot resolve the old id-only fixture wrappers; the strict owner rule stands and its consumers move with it rather than adding a compatibility path.",
-        "commits": []
+        "commits": [
+          "216cf28"
+        ]
       }
     ]
   },
