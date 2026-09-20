@@ -4,6 +4,7 @@ import type { ConstitutionalValue, DecodeContext, HistoricalRead, Json, Result, 
 import { boundary, encoding, fields, frozen, object, requireFact, same, string, take } from './boundary.js';
 import { causalCone, causalStanding, migrateBody } from './admission.js';
 import { decodeFrame, hashBytes, schemaFor } from './envelope.js';
+import { snapshot } from '../decode/canonical.js';
 import { contextBoundary } from './contracts.js';
 import type { AuthorityTaint, FactContext, FactEnvelope } from './contracts.js';
 import { decodeOwnedBody } from './owned.js';
@@ -15,7 +16,72 @@ export interface HistoricalBody {
   readonly grants: readonly HistoricalRead<StandingGrant>[];
   readonly revocations: readonly HistoricalRead<Revocation>[];
 }
-const decodedBodies = new WeakMap<object, { fingerprint: string; owners: FactContext['ownedBodies']; migrations: FactContext['migrations']; body: HistoricalBody }>();
+type DecodedBody = { fingerprint: string; owners: FactContext['ownedBodies']; migrations: FactContext['migrations']; body: HistoricalBody };
+const decodedBodies = new WeakMap<object, DecodedBody>();
+// GRANT M3-E: a projection re-materializes envelope objects, so the record-object key alone misses
+// on every read. Beside it, a decoded body is also findable by fact id and reused only when the
+// candidate envelope's canonical bytes EQUAL the bytes that were decoded — byte equality, never
+// identity or an asserted id, establishes that it is the same signed envelope.
+const decodedByContent = new Map<string, DecodedBody & { envelope: string }>();
+
+// GRANT M3-E: the memo fingerprint keeps the exact canonical bytes of its composite input, but a
+// component object that is runtime-verified deep-frozen (and so can never change) is encoded once
+// and reused by identity. Everything mutable is still walked and encoded on every read, with the
+// same structural rejections canonical snapshotting applies (prototype, accessor, symbol, sparse
+// array, cycle, depth, non-finite number). Verification of immutability is itself sound to cache:
+// a deep-frozen object graph cannot acquire, lose or replace any node afterwards.
+const verifiedFrozen = new WeakSet<object>();
+const frozenTexts = new WeakMap<object, { depth: number; text: string }>();
+function deepFrozen(value: object, seen: Set<object>): boolean {
+  if (verifiedFrozen.has(value)) return true;
+  if (!Object.isFrozen(value) || seen.has(value)) return false;
+  seen.add(value);
+  const every = Object.values(value).every(child => child === null || typeof child !== 'object' || deepFrozen(child, seen));
+  seen.delete(value);
+  if (every) verifiedFrozen.add(value);
+  return every;
+}
+function encodeJson(value: Json): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(encodeJson).join(',')}]`;
+  const record = value as Record<string, Json>;
+  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${encodeJson(record[key]!)}`).join(',')}}`;
+}
+function amortizedText(input: unknown, seen: Set<object>, depth: number): string {
+  if (depth > 64) throw new Error('input exceeds 64 levels');
+  if (input === null || typeof input === 'string' || typeof input === 'boolean') return JSON.stringify(input);
+  if (typeof input === 'number' && Number.isFinite(input)) return JSON.stringify(Object.is(input, -0) ? 0 : input);
+  if (!input || typeof input !== 'object') throw new Error('input is not finite JSON data');
+  if (deepFrozen(input, new Set())) {
+    const known = frozenTexts.get(input);
+    if (known && known.depth >= depth) return known.text;
+    const text = encodeJson(snapshot(input, seen, depth));
+    frozenTexts.set(input, { depth, text });
+    return text;
+  }
+  if (seen.has(input)) throw new Error('cyclic input');
+  const proto = Object.getPrototypeOf(input);
+  if (proto !== Object.prototype && proto !== Array.prototype && proto !== null) throw new Error('non-data prototype');
+  seen.add(input);
+  const descriptors = Object.getOwnPropertyDescriptors(input);
+  if (Reflect.ownKeys(input).some(k => typeof k !== 'string')) throw new Error('symbol field');
+  const parts: string[] = [];
+  const keys = Object.keys(descriptors).sort();
+  for (const key of keys) {
+    if (Array.isArray(input) && key === 'length') continue;
+    const descriptor = descriptors[key]!;
+    if (!('value' in descriptor) || !descriptor.enumerable) throw new Error('accessor or hidden field');
+    parts.push(Array.isArray(input) ? amortizedText(descriptor.value, seen, depth + 1) : `${JSON.stringify(key)}:${amortizedText(descriptor.value, seen, depth + 1)}`);
+  }
+  seen.delete(input);
+  if (Array.isArray(input)) {
+    const indexKeys = keys.filter(key => key !== 'length');
+    if (indexKeys.length !== input.length || indexKeys.some((key, i) => !(String(i) in descriptors))) throw new Error('sparse or extended array');
+    return `[${Array.from({ length: input.length }, (_, i) => parts[indexKeys.indexOf(String(i))]!).join(',')}]`;
+  }
+  return `{${parts.join(',')}}`;
+}
+function memoFingerprint(composite: object): string { return hashBytes(amortizedText(composite, new Set(), 0)); }
 export function historicalAuthority(context: FactContext): FactContext {
   const historicalGrants = [...context.historicalGrants ?? []], historicalRevocations = [...context.historicalRevocations ?? []];
   const c = { ...context, historicalGrants, historicalRevocations };
@@ -34,12 +100,17 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
     const issued = new Map<string, readonly HistoricalRead<ConstitutionalValue>[]>();
     const read = (record: FactEnvelope, c: DecodeContext): HistoricalBody => {
       const cached = cache.get(record.id); if (cached) return cached;
-      const fingerprint = encoding({ register: c.register, captures: c.captures, captureStatuses: context.captures, schemas: context.schemas,
+      const fingerprint = memoFingerprint({ register: c.register, captures: c.captures, captureStatuses: context.captures, schemas: context.schemas,
         now: c.now ?? null, currentBase: c.currentBase ?? null, artifact: c.artifact ?? null, subjects: c.recordSubjects ?? {},
         grants: c.grants ?? [], revocations: c.revocations ?? [], keys: context.keys,
-        cone: causalCone(record, context.facts).map(f => f.contentHash).sort() }).hash;
-      const reused = decodedBodies.get(record);
-      if (reused?.fingerprint === fingerprint && reused.owners === context.ownedBodies && reused.migrations === context.migrations) { cache.set(record.id, reused.body); issued.set(record.id, reused.body.records); return reused.body; }
+        cone: causalCone(record, context.facts).map(f => f.contentHash).sort() });
+      const byObject = decodedBodies.get(record);
+      const byContent = byObject ? undefined : decodedByContent.get(record.id);
+      const reused = byObject ?? (byContent && byContent.envelope === encoding(record).bytes ? byContent : undefined);
+      if (reused?.fingerprint === fingerprint && reused.owners === context.ownedBodies && reused.migrations === context.migrations) {
+        if (!byObject) decodedBodies.set(record, reused);
+        cache.set(record.id, reused.body); issued.set(record.id, reused.body.records); return reused.body;
+      }
       const history: HistoricalRead<ConstitutionalValue>[] = [];
       for (const ancestor of causalCone(record, context.facts)) {
         read(ancestor, causalStanding(ancestor, context, false).decode);
@@ -106,7 +177,9 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
         }
       }
       const result: HistoricalBody = { fields: out, records: own, grants, revocations, taint: unavailable ? ['evidence-unavailable'] : [] };
-      issued.set(record.id, own); cache.set(record.id, result); decodedBodies.set(record, { fingerprint, owners: context.ownedBodies, migrations: context.migrations, body: frozen(result) }); return result;
+      issued.set(record.id, own); cache.set(record.id, result);
+      const decoded: DecodedBody = { fingerprint, owners: context.ownedBodies, migrations: context.migrations, body: frozen(result) };
+      decodedBodies.set(record, decoded); decodedByContent.set(record.id, { ...decoded, envelope: encoding(record).bytes }); return result;
     };
     return read(fact, decoderContext);
   });

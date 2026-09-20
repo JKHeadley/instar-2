@@ -1,7 +1,7 @@
 import { decode, grantLiveness, historicalGrantLiveness, scopeIncludes } from '../index.js';
 import type { BoundaryContext, Clock, DecodeContext, Json, Result, Scope, VerifiedPrincipal } from '../index.js';
 import { authorAndAppend, causalCone, causalStanding, decodeEnvelope, decodeHistoricalBody, prepareSnapshot, registerOwnedBody } from '../facts/index.js';
-import type { FactContext, FactEnvelope, FactSchema, FactSnapshot, FactStorePort, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
+import type { FactContext, FactEnvelope, FactSchema, FactStorePort, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import { intakeVerifiedActRegistration } from '../intake/index.js';
 import { decodeGenerationRecord, generationOf, readRegisterEntry } from '../register/index.js';
 import type { RegisterContext, VerifiedRegister } from '../register/index.js';
@@ -76,38 +76,12 @@ function closed(input: unknown): InstallationSelection {
 }
 
 /** Shared Ten admission checks used only by its two configuration producers. */
-/** A signed origin's causal cone is immutable, so its prepared snapshot is memoized per admission.
- * Without this, decoding a history of n installation records re-prepares each earlier record's cone
- * through its own decoder (cones chain through in-segment predecessors), which is exponential in n. */
-const coneSnapshots = new WeakMap<InstallationRecordAdmission, Map<string, FactSnapshot>>();
-export interface InstallationRecordBasisResult {
-  readonly installation: { id: string; generation: string; machineIdentity: string };
-  readonly fact: (id: string, kind: string) => FactEnvelope;
-  readonly snapshot: FactSnapshot; readonly packageDigest: string;
-  readonly disposition: Readonly<Record<string, Json>>; readonly required: readonly string[]; readonly facts: FactContext;
-}
-const coneBases = new WeakMap<InstallationRecordAdmission, Map<string, InstallationRecordBasisResult>>();
 export function installationRecordBasis(record: Readonly<{ installation: string; generation: string; machine?: string }>,
-  admission: InstallationRecordAdmission, facts: FactContext, origin?: FactEnvelope): InstallationRecordBasisResult {
-  if (!origin) return installationRecordBasisUncached(record, admission, facts, origin);
-  // The whole basis of a signed origin is a pure function of its immutable cone and the admission.
-  const key = `${encoded(origin).hash}|${encoded(record).hash}|${facts.facts.length}|${facts.schemas.length}|${facts.ownedBodies?.length ?? 0}`;
-  const memo = coneBases.get(admission) ?? new Map<string, InstallationRecordBasisResult>();
-  coneBases.set(admission, memo);
-  const cached = memo.get(key); if (cached) return cached;
-  const basis = installationRecordBasisUncached(record, admission, facts, origin); memo.set(key, basis); return basis;
-}
-function installationRecordBasisUncached(record: Readonly<{ installation: string; generation: string; machine?: string }>,
-  admission: InstallationRecordAdmission, facts: FactContext, origin?: FactEnvelope): InstallationRecordBasisResult {
+  admission: InstallationRecordAdmission, facts: FactContext, origin?: FactEnvelope) {
   if (origin) take(decodeEnvelope(origin, facts, 'replication'));
   const all = origin ? causalCone(origin, facts.facts) : facts.facts;
   const pinned = { ...facts, facts: all };
-  const memoKey = origin ? `${encoded(origin).hash}|${all.length}|${facts.schemas.length}|${facts.ownedBodies?.length ?? 0}` : null;
-  const memo = memoKey ? coneSnapshots.get(admission) ?? new Map<string, FactSnapshot>() : null;
-  if (memo && memoKey) coneSnapshots.set(admission, memo);
-  const remembered = memo && memoKey ? memo.get(memoKey) : undefined;
-  const snapshot: FactSnapshot = remembered ?? take(prepareSnapshot(all, pinned));
-  if (memo && memoKey && !remembered) memo.set(memoKey, snapshot);
+  const snapshot = take(prepareSnapshot(all, pinned));
   const fact = (id: string, kind: string) => {
     const matches = snapshot.entries.filter(row => row.fact.id === id);
     ensure(matches.length === 1 && matches[0]!.fact.kind === kind && !matches[0]!.taint.length && !matches[0]!.conflicts.length,
@@ -199,18 +173,78 @@ function declaration(id: string, owner: string, admission: InstallationRecordAdm
     && entry.declaration.declaredBy.path.startsWith(`src/${ownerDirectories[owner]}/`),
   `selection: reference declaration is unapproved or wrong-owner: ${id}`);
 }
+
+// GRANT M3-E: historical validation of a signed installation record is a pure function of the
+// complete consumed inputs — the origin and input bytes, the origin's causal cone contents, every
+// consulted part of the fact context (schemas, captures, keys, grants, revocations, historical
+// grants/revocations, time anchors, genesis, decode context) with the runtime identities of the
+// opaque owner registrations and migrations, and the admission (boundary, scope, the three
+// reference facts, the approved package, Three's register and context). Reuse needs equality of
+// ALL of them; a component that is runtime-verified deep-frozen (and so can never change) is
+// encoded once and reused by identity, everything else is content-hashed on every lookup.
+// Origin-mode validation never reads this memo: its active guard, current generation and
+// signature checks run on every attempt.
+const verifiedFrozen = new WeakSet<object>();
+const frozenHashes = new WeakMap<object, string>();
+const identities = new WeakMap<object, number>(); let nextIdentity = 0;
+function deepFrozen(value: object, seen: Set<object>): boolean {
+  if (verifiedFrozen.has(value)) return true;
+  if (!Object.isFrozen(value) || seen.has(value)) return false;
+  seen.add(value);
+  const every = Object.values(value).every(child => child === null || typeof child !== 'object' || deepFrozen(child, seen));
+  seen.delete(value);
+  if (every) verifiedFrozen.add(value);
+  return every;
+}
+function componentHash(value: unknown): string {
+  if (value && typeof value === 'object' && deepFrozen(value, new Set())) {
+    const known = frozenHashes.get(value); if (known) return known;
+    const hash = encoded(value).hash; frozenHashes.set(value, hash); return hash;
+  }
+  return encoded(value ?? null).hash;
+}
+function identityOf(value: object | undefined): number {
+  if (!value) return 0;
+  let id = identities.get(value); if (id === undefined) { id = ++nextIdentity; identities.set(value, id); }
+  return id;
+}
+export function historicalReuseKey(kind: string, input: unknown, context: OwnedBodyContext, admission: InstallationRecordAdmission, extra: unknown = null): string | null {
+  try {
+    const facts = context.facts, decode = facts.decode;
+    const composite = {
+      kind, origin: encoded(context.origin).hash, input: encoded(input).hash,
+      cone: causalCone(context.origin, facts.facts).map(fact => fact.contentHash).sort(),
+      context: { schemas: componentHash(facts.schemas), captures: componentHash(facts.captures), keys: componentHash(facts.keys),
+        grants: componentHash(facts.grants), revocations: componentHash(facts.revocations),
+        historicalGrants: componentHash(facts.historicalGrants ?? []), historicalRevocations: componentHash(facts.historicalRevocations ?? []),
+        timeAnchors: componentHash(facts.timeAnchors), genesis: componentHash(facts.genesis),
+        decode: { register: componentHash(decode.register), captures: componentHash(decode.captures), currentBase: decode.currentBase ?? null,
+          artifact: decode.artifact ?? null, now: componentHash(decode.now ?? null), subjects: componentHash(decode.recordSubjects ?? {}),
+          provenance: componentHash(decode.provenance ?? null), grants: componentHash(decode.grants ?? []), revocations: componentHash(decode.revocations ?? []) },
+        ownedBodies: (facts.ownedBodies ?? []).map(identityOf), migrations: identityOf(facts.migrations as object | undefined) },
+      admission: { boundary: componentHash(admission.boundary), scope: componentHash(admission.scope), scopeId: admission.scopeId,
+        installationFact: admission.installationFact, generationFact: admission.generationFact, approvalFact: admission.approvalFact,
+        packageRecords: componentHash(admission.packageRecords), register: componentHash(admission.generation.register),
+        registerContext: componentHash(admission.generation.context) },
+      extra: componentHash(extra),
+    };
+    return encoded(composite).hash;
+  } catch { return null; }
+}
 const historicalSelections = new WeakMap<InstallationRecordAdmission, Map<string, InstallationSelection>>();
 function validate(input: unknown, context: OwnedBodyContext, admission: InstallationRecordAdmission): InstallationSelection {
-  // Historical validation is a pure function of the signed origin bytes and its immutable cone;
-  // origin-mode validation carries the active admission guard and is never memoized.
-  if (context.mode !== 'historical') return validateUncached(input, context, admission);
-  const key = `${encoded(context.origin).hash}|${encoded(input).hash}|${context.facts.schemas.length}|${context.facts.ownedBodies?.length ?? 0}`;
+  if (context.mode === 'origin') {
+    // Guard first: an inactive origin attempt refuses before any expensive basis preparation.
+    ensure(active.get(admission) === encoded(closed(input)).hash, 'selection: active owner admission guard required');
+    return validateFresh(input, context, admission);
+  }
+  const key = historicalReuseKey('assembly-InstallationSelection', input, context, admission);
   const memo = historicalSelections.get(admission) ?? new Map<string, InstallationSelection>();
   historicalSelections.set(admission, memo);
-  const cached = memo.get(key); if (cached) return cached;
-  const record = validateUncached(input, context, admission); memo.set(key, record); return record;
+  const cached = key ? memo.get(key) : undefined; if (cached) return cached;
+  const record = validateFresh(input, context, admission); if (key) memo.set(key, record); return record;
 }
-function validateUncached(input: unknown, context: OwnedBodyContext, admission: InstallationRecordAdmission): InstallationSelection {
+function validateFresh(input: unknown, context: OwnedBodyContext, admission: InstallationRecordAdmission): InstallationSelection {
   const record = closed(input);
   ensure(context.origin.kind === 'assembly-InstallationSelection', 'selection: wrong fact kind');
   ensure(record.scope === admission.scopeId, 'selection: scope differs');

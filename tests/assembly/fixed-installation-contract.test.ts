@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { authorizationRequestDigest, canonical, decode } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
 import { authorAndAppend, createFactStore, registerOwnedBody } from '../../src/facts/index.js';
-import type { FactSchema, OwnedShape } from '../../src/facts/index.js';
+import type { FactEnvelope, FactSchema, OwnedShape } from '../../src/facts/index.js';
 import { intakeVerifiedActRegistration } from '../../src/intake/index.js';
 import { decodeGenerationRecord, generateRegister, generationOf, loadRegister } from '../../src/register/index.js';
 import { recordProductionInstallation, registerProductionInstallationBody, productionInstallationSchemas } from '../../src/assembly/production-installation.js';
@@ -202,4 +202,51 @@ itHere('P10-SI-23 admits a bounded system import only with its exact package act
   const recorded = value(recordInstallationSelection(f.record, { ...f.writer, principal: system }));
   expect(recorded.principal.id).toBe(system.id);
   expect(recorded.predecessors.required).toContain(fact.id);
+});
+
+// GRANT M3-E: historical validation may reuse pure work only under the complete consumed inputs.
+describeHere('P10-SI-23 M3-E historical reuse is keyed on every consumed input', () => {
+  const cold = (f: ReturnType<typeof fixedRecordFixture>, _origin: FactEnvelope, context: Parameters<typeof decodeHistoricalInstallationSelection>[1]) => {
+    // A fresh admission object is a fresh memo scope, so this decode cannot reuse any cached verdict.
+    const admission = { ...f.admission };
+    Object.assign(f.f.context, { ownedBodies: [...f.f.context.ownedBodies!.filter(row => row.owner !== 'part-ten' || row.name !== 'InstallationSelection'), value(registerInstallationSelectionBody(admission))] });
+    return decodeHistoricalInstallationSelection(f.record, { ...context, facts: { ...context.facts, ownedBodies: f.f.context.ownedBodies! } }, admission);
+  };
+  it('reuses an unchanged historical validation and re-validates when same-size evidence changes', () => {
+    const f = fixedRecordFixture(), origin = value(recordInstallationSelection(f.record, f.writer));
+    const facts = { ...f.f.context, facts: f.f.facts() };
+    const context = { ...f.admission.boundary, origin, mode: 'historical' as const, facts };
+    expect(value(decodeHistoricalInstallationSelection(f.record, context, f.admission))).toEqual(f.record);
+    // Same-size schema change: one schema gains a field; the collection length and generation label are unchanged.
+    const schemas = facts.schemas.map((schema, i) => i === 0 ? { ...schema, fields: { ...schema.fields, extra: { kind: 'text' as const, maxLength: 1 } } } : schema);
+    const changedSchemas = { ...context, facts: { ...facts, schemas } };
+    const warm = decodeHistoricalInstallationSelection(f.record, changedSchemas, f.admission);
+    const reference = cold(f, origin, changedSchemas);
+    expect(warm.kind).toBe(reference.kind);
+    // Same-size key change: the selected machine key's permitted range moves; the signed origin must no longer verify.
+    const keys = facts.keys.map((key, i) => i === 0 ? { ...key, from: { ...key.from, position: key.from.position + 1 } } : key);
+    const changedKeys = { ...context, facts: { ...facts, keys } };
+    const warmKeys = decodeHistoricalInstallationSelection(f.record, changedKeys, f.admission);
+    expect(warmKeys.kind).toBe(cold(f, origin, changedKeys).kind);
+    // Changed admission data under the same object identity: a different approval fact must not reuse the verdict.
+    const swapped = { ...f.admission, approvalFact: f.admission.installationFact };
+    refused(decodeHistoricalInstallationSelection(f.record, context, swapped));
+    // Changed package records at the same count: the verdict is not reused.
+    const otherRecord = { ...f.record, references: [...f.record.references].reverse() };
+    const repackaged = { ...f.admission, packageRecords: [json(otherRecord)] };
+    refused(decodeHistoricalInstallationSelection(f.record, context, repackaged));
+    // The unchanged context still reuses and still agrees with a cold decode.
+    expect(value(decodeHistoricalInstallationSelection(f.record, context, f.admission))).toEqual(value(cold(f, origin, context)));
+  });
+  it('a warm historical success never makes an inactive or stale origin pass, and the genuine producer still succeeds', () => {
+    const f = fixedRecordFixture(), origin = value(recordInstallationSelection(f.record, f.writer));
+    const context = { ...f.admission.boundary, origin, mode: 'historical' as const, facts: { ...f.f.context, facts: f.f.facts() } };
+    expect(value(decodeHistoricalInstallationSelection(f.record, context, f.admission))).toEqual(f.record);
+    refused(decodeInstallationSelectionAtOrigin(f.record, { ...context, mode: 'origin' }, f.admission), 'active owner');
+    const stale = { ...context, mode: 'origin' as const, facts: { ...context.facts, decode: { ...context.facts.decode,
+      register: { ...context.facts.decode.register, generation: { ...context.facts.decode.register.generation, id: 'generation:stale' } } } } };
+    refused(decodeInstallationSelectionAtOrigin(f.record, stale, f.admission));
+    // The genuine producer path (which sets the active guard itself) still returns the exact durable fact.
+    expect(value(recordInstallationSelection(f.record, f.writer))).toEqual(origin);
+  });
 });
