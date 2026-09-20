@@ -3,7 +3,7 @@ import { canonical } from '../../src/index.js';
 import { hashBytes } from '../../src/facts/index.js';
 import { loadProductionBootstrap } from '../../src/assembly/production-installation-loader.js';
 import type { VerifiedProductionBootstrap } from '../../src/assembly/production-installation-loader.js';
-import { recordProductionSignerReference, productionSignerReferenceSchemas, registerProductionSignerReferenceBody } from '../../src/assembly/production-signer-reference.js';
+import { decodeHistoricalProductionSignerReference, recordProductionSignerReference, productionSignerReferenceSchemas, registerProductionSignerReferenceBody } from '../../src/assembly/production-signer-reference.js';
 import { fixedRecordFixture } from './fixed-installation-contract.test.js';
 import { factsFixture, json, refused, value } from '../facts/fixtures.js';
 
@@ -56,5 +56,26 @@ describe('P10-SI-09 external bootstrap and real signer references', () => {
     const input = { root: '/tmp/root', bootstrapLocator: '/tmp/operator/bootstrap', expectedBootstrapDigest: hashBytes('approved') };
     refused(loadProductionBootstrap(input, { read: locator => f.success({ realPath: locator, bytes: 'not JSON' }) }, context), 'digest differs');
     refused(loadProductionBootstrap(input, { read: () => f.success({ realPath: '/tmp/root/bootstrap', bytes: 'approved' }) }, context), 'inside');
+  });
+});
+
+// GRANT M3-E: the signer's historical reuse key covers the selected key entry, its range and genesis.
+describe('P10-SI-09 M3-E signer historical reuse is invalidated by key, range and genesis changes', () => {
+  it('re-validates when the selected key entry, its range or genesis change at unchanged sizes', () => {
+    const f = signerFixture(), origin = value(recordProductionSignerReference(f.records[0], f.writer));
+    const facts = { ...f.f.context, facts: f.f.facts() };
+    const context = { ...f.admission.boundary, origin, mode: 'historical' as const, facts };
+    const admission = f.writer.admission;
+    expect(value(decodeHistoricalProductionSignerReference(f.records[0], context, admission))).toMatchObject({ type: 'ProductionSignerReference' });
+    const selected = facts.keys[0]!;
+    const withKey = (key: typeof selected) => ({ ...context, facts: { ...facts, keys: facts.keys.map((row, i) => i === 0 ? key : row) } });
+    // A replaced public key at the same position: Two's key-set history no longer matches the external bootstrap.
+    refused(decodeHistoricalProductionSignerReference(f.records[0], withKey({ ...selected, publicKey: facts.keys[1]?.publicKey ?? selected.publicKey }), admission));
+    // A moved permitted range: the origin's segment position is no longer covered by the selected key.
+    refused(decodeHistoricalProductionSignerReference(f.records[0], withKey({ ...selected, from: { ...selected.from, position: selected.from.position + 1000 } }), admission));
+    // A different genesis under the same admission object and sizes: the bootstrap genesis differs.
+    refused(decodeHistoricalProductionSignerReference(f.records[0], { ...context, facts: { ...facts, genesis: { ...facts.genesis, hash: hashBytes('other genesis') } } }, admission));
+    // Unchanged inputs still reuse the verified record.
+    expect(value(decodeHistoricalProductionSignerReference(f.records[0], context, admission))).toMatchObject({ keySet: selected.id });
   });
 });

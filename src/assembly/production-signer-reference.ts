@@ -3,7 +3,7 @@ import type { Result, Scope, SecretRef } from '../index.js';
 import { authorAndAppend, decodeEnvelope, registerOwnedBody } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import { installationRecordAuthor, installationRecordBasis } from './installation-selection.js';
+import { historicalReuseKey, installationRecordAuthor, installationRecordBasis } from './installation-selection.js';
 import type { InstallationRecordAdmission, InstallationRecordWriter } from './installation-selection.js';
 import { isVerifiedProductionBootstrap } from './production-installation-loader.js';
 import type { VerifiedProductionBootstrap } from './production-installation-loader.js';
@@ -41,7 +41,21 @@ function closed(input: unknown, admission: ProductionSignerAdmission): Productio
   'signer: immutable external bootstrap binding differs');
   return freeze({ ...record, signer });
 }
+const historicalSigners = new WeakMap<ProductionSignerAdmission, Map<string, ProductionSignerReference>>();
 function validate(input: unknown, context: OwnedBodyContext, admission: ProductionSignerAdmission): ProductionSignerReference {
+  if (context.mode === 'origin') {
+    // Guard first: an inactive origin attempt refuses before any expensive basis preparation.
+    ensure(active.get(admission) === encoded(closed(input, admission)).hash, 'signer: active owner admission guard required');
+    return validateFresh(input, context, admission);
+  }
+  // GRANT M3-E: complete-input reuse key (see installation-selection.ts); the bootstrap identity is part of it.
+  const key = historicalReuseKey('assembly-ProductionSignerReference', input, context, admission, { digest: admission.bootstrap.digest, package: admission.bootstrap.package });
+  const memo = historicalSigners.get(admission) ?? new Map<string, ProductionSignerReference>();
+  historicalSigners.set(admission, memo);
+  const cached = key ? memo.get(key) : undefined; if (cached) return cached;
+  const record = validateFresh(input, context, admission); if (key) memo.set(key, record); return record;
+}
+function validateFresh(input: unknown, context: OwnedBodyContext, admission: ProductionSignerAdmission): ProductionSignerReference {
   const record = closed(input, admission);
   ensure(context.origin.kind === 'assembly-ProductionSignerReference', 'signer: wrong fact kind');
   installationRecordBasis(record, admission, context.facts, context.origin);

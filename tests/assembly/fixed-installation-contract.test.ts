@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { authorizationRequestDigest, canonical, decode } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
 import { authorAndAppend, createFactStore, registerOwnedBody } from '../../src/facts/index.js';
-import type { FactSchema, OwnedShape } from '../../src/facts/index.js';
+import type { FactEnvelope, FactSchema, OwnedShape } from '../../src/facts/index.js';
 import { intakeVerifiedActRegistration } from '../../src/intake/index.js';
 import { decodeGenerationRecord, generateRegister, generationOf, loadRegister } from '../../src/register/index.js';
 import { recordProductionInstallation, registerProductionInstallationBody, productionInstallationSchemas } from '../../src/assembly/production-installation.js';
@@ -13,8 +13,16 @@ import { intakeFixture, json, value } from '../intake/fixtures.js';
 import { privateKey, refused } from '../facts/fixtures.js';
 
 const digest = (input: unknown) => value(canonical(input)).hash;
-export function fixedRecordFixture(chooseRecords?: (input: { generation: string; boundary: import('../../src/index.js').DecodeContext & import('../../src/index.js').BoundaryContext; fixture: ReturnType<typeof intakeFixture> }) => Json[]) {
+export interface FixedRecordOptions {
+  /** Scope id carried by every selection and the approved package; defaults to the original fixture value. */
+  readonly scopeId?: string;
+  /** Additional fixture-approved declaration sources, keyed to the owner directory named in each path. */
+  readonly extraSources?: (f: ReturnType<typeof intakeFixture>) => readonly { declaration: object; path: string; symbol: string }[];
+}
+export function fixedRecordFixture(chooseRecords?: (input: { generation: string; scopeId: string; boundary: import('../../src/index.js').DecodeContext & import('../../src/index.js').BoundaryContext; fixture: ReturnType<typeof intakeFixture> }) => Json[],
+  options: FixedRecordOptions = {}) {
   const f = intakeFixture();
+  const scopeId = options.scopeId ?? 'project-a';
   const extra = [
     f.r.declaration('rungraph.contract', 'governed documents', { location: 'docs/09-the-run-graph.md', changelog: 'git-history:docs/09-the-run-graph.md' }),
     f.r.declaration('installation-replay-matrix', 'governed documents', { location: 'docs/14-the-assembly/16-the-fixed-single-machine-installation-contract.md', changelog: 'git-history:docs/14-the-assembly.changelog.md' }),
@@ -31,7 +39,8 @@ export function fixedRecordFixture(chooseRecords?: (input: { generation: string;
   const sources = [...f.registerInput.sources, ...bodyDeclarations, ...runDeclarations.map(declaration => ({ declaration, path: 'src/rungraph/rungraph.ts', symbol: declaration.id })),
     { declaration: f.r.declaration('part-two:run-input'), path: 'src/facts/store.ts', symbol: 'preserve' },
     ...extra.filter(declaration => declaration.id !== 'rungraph.contract').map((declaration, i) => ({ declaration,
-    path: 'src/assembly/production-installation-replay.ts', symbol: declaration.id }))];
+    path: 'src/assembly/production-installation-replay.ts', symbol: declaration.id })),
+    ...(options.extraSources?.(f) ?? [])];
   const registerContext = { ...f.r.context, register: { ...f.r.context.types.register, ...f.r.context.register,
     entries: [...f.r.context.register.entries, ...sources.map(source => (source.declaration as { id: string }).id)] } };
   registerContext.types = { ...registerContext.types, register: registerContext.register };
@@ -79,13 +88,13 @@ export function fixedRecordFixture(chooseRecords?: (input: { generation: string;
   const generationFact = value(authorAndAppend({ kind: 'generation-record', schemaVersion: 1, machine: 'machine-a',
     principal: json(f.f.alice), provenance: json(f.f.alice.provenance), at: json(f.f.now),
     body: { record: json(generationRecord) }, required: [root.id] }, f.context, store, privateKey)).fact;
-  const fields = { type: 'InstallationSelection', schemaVersion: 1, installation: 'host', machine: 'machine-a', scope: 'project-a',
+  const fields = { type: 'InstallationSelection', schemaVersion: 1, installation: 'host', machine: 'machine-a', scope: scopeId,
     role: 'minimal-plane-replay', instance: 'source-only', implementation: 'installation-replay', owner: 'part-ten',
     generation: generation.id, references: ['installation-replay', 'installation-replay-matrix'], validUntil: 'not-time-bound' };
   const record = { ...fields, id: digest(fields) };
-  const records: Json[] = chooseRecords ? chooseRecords({ generation: generation.id, boundary, fixture: f }) : [json(record)];
-  const packageDigest = digest({ installation: 'host', scope: 'project-a', generation: generation.id, records });
-  f.f.capture(value(canonical({ installation: 'host', scope: 'project-a', generation: generation.id, records })).bytes, packageDigest);
+  const records: Json[] = chooseRecords ? chooseRecords({ generation: generation.id, scopeId, boundary, fixture: f }) : [json(record)];
+  const packageDigest = digest({ installation: 'host', scope: scopeId, generation: generation.id, records });
+  f.f.capture(value(canonical({ installation: 'host', scope: scopeId, generation: generation.id, records })).bytes, packageDigest);
   f.syncCaptures();
   const requestDigest = authorizationRequestDigest({ approver: f.f.alice, action: { kind: 'work', scope: f.f.scope },
     artifact: packageDigest, base: 'host' });
@@ -94,7 +103,7 @@ export function fixedRecordFixture(chooseRecords?: (input: { generation: string;
   const act = f.verifiedAct({ request: { artifact: packageDigest, base: 'host', requestDigest }, generation: generationRef });
   Object.assign(f.context, { grants: [...priorGrants, ...f.context.grants] });
   const approved = value(f.port().admitVerifiedAct(act.input));
-  const admission: InstallationRecordAdmission = { boundary, scope: f.f.scope, scopeId: 'project-a',
+  const admission: InstallationRecordAdmission = { boundary, scope: f.f.scope, scopeId,
     installationFact: installationFact.id, generationFact: generationFact.id, approvalFact: approved.fact.id,
     packageRecords: records, generation: { register, context: registerContext } };
   Object.assign(f.context, { schemas: [...f.context.schemas, ...installationSelectionSchemas(f.f.scope)],
@@ -104,7 +113,13 @@ export function fixedRecordFixture(chooseRecords?: (input: { generation: string;
   return { f, record, records, writer, admission };
 }
 
-describe('P10-SI-06/23 owner installation selection admission', () => {
+// The fixture above is shared with the production fixtures; register these cases only when this
+// file is the collected test path so importers do not re-run them.
+function collectedInThisFile(): boolean { try { return expect.getState().testPath?.endsWith('fixed-installation-contract.test.ts') ?? false; } catch { return false; } }
+const collectedHere = collectedInThisFile();
+const describeHere: typeof describe = collectedHere ? describe : (() => undefined) as unknown as typeof describe;
+const itHere: typeof it = collectedHere ? it : (() => undefined) as unknown as typeof it;
+describeHere('P10-SI-06/23 owner installation selection admission', () => {
   it('appends an independently approved selection once and reuses the exact durable fact', () => {
     const { f, record, writer } = fixedRecordFixture();
     const first = value(recordInstallationSelection(record, writer));
@@ -126,7 +141,7 @@ describe('P10-SI-06/23 owner installation selection admission', () => {
 
 // These fixtures carry real owner-produced envelopes but explicitly fixture-admitted
 // register approvals. They never count as installed production evidence.
-describe('P10-SI-23 historical and current configuration boundaries', () => {
+describeHere('P10-SI-23 historical and current configuration boundaries', () => {
   it('historical decoding needs the signed original and origin decoding needs the active guard', () => {
     const f = fixedRecordFixture(), origin = value(recordInstallationSelection(f.record, f.writer));
     const context = { ...f.admission.boundary, origin, mode: 'historical' as const, facts: { ...f.f.context, facts: f.f.facts() } };
@@ -143,8 +158,8 @@ describe('P10-SI-23 historical and current configuration boundaries', () => {
     expect(f.f.frames.length).toBe(count);
   });
   it.each(['protected', 'unprotected-permitted'])('admits only the exact approved %s scope selection', requirement => {
-    const f = fixedRecordFixture(({ generation }) => {
-      const fields = { type: 'InstallationSelection', schemaVersion: 1, installation: 'host', machine: 'machine-a', scope: 'project-a',
+    const f = fixedRecordFixture(({ generation, scopeId }) => {
+      const fields = { type: 'InstallationSelection', schemaVersion: 1, installation: 'host', machine: 'machine-a', scope: scopeId,
         role: 'scope-protection', instance: requirement, implementation: 'installation-replay', owner: 'part-ten', generation,
         references: ['installation-artifacts', 'installation-replay'], validUntil: 'not-time-bound' };
       return [json({ ...fields, id: digest(fields) })];
@@ -162,7 +177,7 @@ describe('P10-SI-23 historical and current configuration boundaries', () => {
   });
 });
 
-it('P10-SI-23 admits a bounded system import only with its exact package action', () => {
+itHere('P10-SI-23 admits a bounded system import only with its exact package action', () => {
   const f = fixedRecordFixture(), system = f.f.f.principal('host', 'system');
   f.f.syncCaptures();
   const count = f.f.frames.length;
@@ -187,4 +202,51 @@ it('P10-SI-23 admits a bounded system import only with its exact package action'
   const recorded = value(recordInstallationSelection(f.record, { ...f.writer, principal: system }));
   expect(recorded.principal.id).toBe(system.id);
   expect(recorded.predecessors.required).toContain(fact.id);
+});
+
+// GRANT M3-E: historical validation may reuse pure work only under the complete consumed inputs.
+describeHere('P10-SI-23 M3-E historical reuse is keyed on every consumed input', () => {
+  const cold = (f: ReturnType<typeof fixedRecordFixture>, _origin: FactEnvelope, context: Parameters<typeof decodeHistoricalInstallationSelection>[1]) => {
+    // A fresh admission object is a fresh memo scope, so this decode cannot reuse any cached verdict.
+    const admission = { ...f.admission };
+    Object.assign(f.f.context, { ownedBodies: [...f.f.context.ownedBodies!.filter(row => row.owner !== 'part-ten' || row.name !== 'InstallationSelection'), value(registerInstallationSelectionBody(admission))] });
+    return decodeHistoricalInstallationSelection(f.record, { ...context, facts: { ...context.facts, ownedBodies: f.f.context.ownedBodies! } }, admission);
+  };
+  it('reuses an unchanged historical validation and re-validates when same-size evidence changes', () => {
+    const f = fixedRecordFixture(), origin = value(recordInstallationSelection(f.record, f.writer));
+    const facts = { ...f.f.context, facts: f.f.facts() };
+    const context = { ...f.admission.boundary, origin, mode: 'historical' as const, facts };
+    expect(value(decodeHistoricalInstallationSelection(f.record, context, f.admission))).toEqual(f.record);
+    // Same-size schema change: one schema gains a field; the collection length and generation label are unchanged.
+    const schemas = facts.schemas.map((schema, i) => i === 0 ? { ...schema, fields: { ...schema.fields, extra: { kind: 'text' as const, maxLength: 1 } } } : schema);
+    const changedSchemas = { ...context, facts: { ...facts, schemas } };
+    const warm = decodeHistoricalInstallationSelection(f.record, changedSchemas, f.admission);
+    const reference = cold(f, origin, changedSchemas);
+    expect(warm.kind).toBe(reference.kind);
+    // Same-size key change: the selected machine key's permitted range moves; the signed origin must no longer verify.
+    const keys = facts.keys.map((key, i) => i === 0 ? { ...key, from: { ...key.from, position: key.from.position + 1 } } : key);
+    const changedKeys = { ...context, facts: { ...facts, keys } };
+    const warmKeys = decodeHistoricalInstallationSelection(f.record, changedKeys, f.admission);
+    expect(warmKeys.kind).toBe(cold(f, origin, changedKeys).kind);
+    // Changed admission data under the same object identity: a different approval fact must not reuse the verdict.
+    const swapped = { ...f.admission, approvalFact: f.admission.installationFact };
+    refused(decodeHistoricalInstallationSelection(f.record, context, swapped));
+    // Changed package records at the same count: the verdict is not reused.
+    const otherRecord = { ...f.record, references: [...f.record.references].reverse() };
+    const repackaged = { ...f.admission, packageRecords: [json(otherRecord)] };
+    refused(decodeHistoricalInstallationSelection(f.record, context, repackaged));
+    // The unchanged context still reuses and still agrees with a cold decode.
+    expect(value(decodeHistoricalInstallationSelection(f.record, context, f.admission))).toEqual(value(cold(f, origin, context)));
+  });
+  it('a warm historical success never makes an inactive or stale origin pass, and the genuine producer still succeeds', () => {
+    const f = fixedRecordFixture(), origin = value(recordInstallationSelection(f.record, f.writer));
+    const context = { ...f.admission.boundary, origin, mode: 'historical' as const, facts: { ...f.f.context, facts: f.f.facts() } };
+    expect(value(decodeHistoricalInstallationSelection(f.record, context, f.admission))).toEqual(f.record);
+    refused(decodeInstallationSelectionAtOrigin(f.record, { ...context, mode: 'origin' }, f.admission), 'active owner');
+    const stale = { ...context, mode: 'origin' as const, facts: { ...context.facts, decode: { ...context.facts.decode,
+      register: { ...context.facts.decode.register, generation: { ...context.facts.decode.register.generation, id: 'generation:stale' } } } } };
+    refused(decodeInstallationSelectionAtOrigin(f.record, stale, f.admission));
+    // The genuine producer path (which sets the active guard itself) still returns the exact durable fact.
+    expect(value(recordInstallationSelection(f.record, f.writer))).toEqual(origin);
+  });
 });
