@@ -637,6 +637,19 @@ The builder's reviewed fence and pin grant is also exact:
    hash in register-source/owner-references.json. Preserve the main-versus-HEAD comparison and
    refresh only A2's resulting enclosing checker pin. A later baseline move requires independent
    review of the exact additive declaration delta; an arbitrary new HEAD is not an approved pin.
+   M3-E supplement (Astra adjudication, 2026-09-20): the additional source grant is only
+   src/facts/historical.ts (private memo support, fingerprint construction/reuse and cache storage,
+   equivalent canonical bytes and both identity guards preserved; no new public export, no caller
+   mutation). Ten's installation-record validation caches in src/assembly/installation-selection.ts
+   and src/assembly/production-signer-reference.ts must key historical reuse on the complete consumed
+   validation inputs (origin and input bytes, relevant cone contents, context and admission data,
+   valid owner identities); origin-mode validation never obtains a verdict or admission basis from a
+   historical cache. The only new test path is tests/facts/historical-memo-context.test.ts; the two
+   source fences tests/operator/round15-regressions.test.ts and tests/rungraph/production-grounding-
+   scope.test.ts add exactly src/facts/historical.ts to storeProjectionGrant; the inventory digest for
+   src/facts/historical.ts and the changed Ten sources, the single inventory digest, A2's inventory
+   and scope-test entries and the enclosing P13 hash move once each. tests/assembly/production.test.ts
+   stays byte-identical, timeouts included.
 8. Preserve historical decoders, default replicated-mode positives, protected-scope positives,
    unprotected protected-mutation refusals, all current production provenance checks, and the
    byte-identical landed provider-path readers named above.

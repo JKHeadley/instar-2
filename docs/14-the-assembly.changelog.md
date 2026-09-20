@@ -4,6 +4,10 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-09-20 · draft — Astra adjudication #2 on M3: equivalent historical-memo construction in Part Two and complete Ten cache invalidation (astra-m3-perf-adjudication.md)
+
+- **Add the M3-E supplement to §7: src/facts/historical.ts may amortize its historical-body memo key with identical semantics; Ten's record validation caches must key on the complete consumed inputs and never serve the origin path; one new Part Two test path; two exact fence-line amendments; the resulting pin chain.** — Real composition showed a store with many owner-produced installation records re-encodes the register, schemas and keys on every historical read; correctness of the caches is required before performance closure.
+
 ## Revision 6 · 2026-09-20 · draft — Astra adjudication of the M3 item-2 conflict between P10-SI-07 and the landed-fixture freeze (astra-m3-item2-adjudication.md)
 
 - **Grant the migration of the two landed production fixture helpers through real owner producers (P10-SI-20), keeping tests/assembly/production.test.ts byte-identical, and record the additive declaration-baseline move for the P5 additivity fence with its exact dependent pins.** — Real composition showed the eighteen-name map cannot resolve the old id-only fixture wrappers; the strict owner rule stands and its consumers move with it rather than adding a compatibility path. _(`216cf28`)_
