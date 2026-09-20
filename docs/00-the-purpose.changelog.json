@@ -1,5 +1,26 @@
 [
   {
+    "revision": 7,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator amendment requiring compatibility when only one machine is available"
+    },
+    "changes": [
+      {
+        "what": "State durable authorization and causal preparation as the invariant and make the fixed single-machine installation a supported deployment shape rather than a proposal.",
+        "why": "Replica count remains operator policy, while the installation must work without inventing a peer when only one machine exists.",
+        "commits": ["1b5ac4c"]
+      },
+      {
+        "what": "Bind one install-time acceptance to the profile-enumerated provider-call and reply-only Telegram operation set and its permanent-loss model.",
+        "why": "The operator accepts the fixed set once for the installation instead of hand-listing each operation.",
+        "commits": ["1b5ac4c"]
+      }
+    ]
+  },
+  {
     "revision": 6,
     "date": "2026-09-19",
     "status": "draft",

@@ -4,6 +4,11 @@ _Generated from `00-the-purpose.changelog.json` by `scripts/render-changelog.mjs
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-09-19 · draft — operator amendment requiring compatibility when only one machine is available
+
+- **State durable authorization and causal preparation as the invariant and make the fixed single-machine installation a supported deployment shape rather than a proposal.** — Replica count remains operator policy, while the installation must work without inventing a peer when only one machine exists. _(`1b5ac4c`)_
+- **Bind one install-time acceptance to the profile-enumerated provider-call and reply-only Telegram operation set and its permanent-loss model.** — The operator accepts the fixed set once for the installation instead of hand-listing each operation. _(`1b5ac4c`)_
+
 ## Revision 6 · 2026-09-19 · draft — M2 independent design review 1 repair R5 and governed-body history cleanup
 
 - **Keep the local-loss text as a proposal pending independently verified operator acceptance while removing pull-request process wording from the governed rule.** — Authority comes from the operator's entered acceptance, not from review-history language in the purpose body. _(`f106575`)_

@@ -1,5 +1,21 @@
 [
   {
+    "revision": 4,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator amendment requiring a supported single-machine durability arm"
+    },
+    "changes": [
+      {
+        "what": "Consume the installation profile's accepted closed local-durable operation set without a peer dependency, while retaining replicated(1) whenever a second machine is enrolled or an operation demands replication.",
+        "why": "Eight must enforce both supported installation shapes without automatic fallback or a per-operation handwritten operator list.",
+        "commits": ["1b5ac4c"]
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-09-19",
     "status": "draft",

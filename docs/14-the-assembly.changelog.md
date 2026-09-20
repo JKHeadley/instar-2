@@ -4,6 +4,11 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-09-19 · draft — operator amendment making the fixed single-machine profile a supported deployment shape
+
+- **Make the single-machine arm carry no peer dependency, bind its closed local-durable operation set to one install-time acceptance, and select the peer-backed replicated(1) arm whenever a second machine is enrolled.** — The fixed profile must be usable with one available machine without weakening replication-demand operations or falling back after peer loss. _(`1b5ac4c`)_
+- **Keep InstallationSelection, ProductionInstallation, InstalledRunGovernanceReference, ProviderAnswerAcceptance, and the supervised import contracts unchanged.** — The amendment changes deployment-policy selection and dependency applicability, not any record field or body version. _(`1b5ac4c`)_
+
 ## Revision 4 · 2026-09-19 · draft — M2 repair round 2 builder-grant completion
 
 - **Complete the exact M3 and M4 source, boot-entry, declaration, export, test, fence, inventory-pin, and landing-order grant.** — The converged installation contract did not yet authorize every bounded implementation path required by the two build units. _(`7148f52`)_

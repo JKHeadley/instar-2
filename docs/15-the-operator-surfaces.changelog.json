@@ -1,5 +1,21 @@
 [
   {
+    "revision": 4,
+    "date": "2026-09-19",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator amendment requiring a supported no-peer minimal responder"
+    },
+    "changes": [
+      {
+        "what": "Make the minimal dependency verdict admit the policy-bound single-machine operation set without a peer and require the real peer for the peer-backed or replication-demand arm.",
+        "why": "Eleven must test the installed durability demand rather than hard-code a peer into every deployment shape.",
+        "commits": ["1b5ac4c"]
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-09-19",
     "status": "draft",
