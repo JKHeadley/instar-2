@@ -1,5 +1,21 @@
 [
   {
+    "revision": 7,
+    "date": "2026-09-20",
+    "status": "draft",
+    "cause": {
+      "kind": "adjudication",
+      "note": "Astra adjudication #2 on M3: equivalent historical-memo construction in Part Two and complete Ten cache invalidation (astra-m3-perf-adjudication.md)"
+    },
+    "changes": [
+      {
+        "what": "Add the M3-E supplement to §7: src/facts/historical.ts may amortize its historical-body memo key with identical semantics; Ten's record validation caches must key on the complete consumed inputs and never serve the origin path; one new Part Two test path; two exact fence-line amendments; the resulting pin chain.",
+        "why": "Real composition showed a store with many owner-produced installation records re-encodes the register, schemas and keys on every historical read; correctness of the caches is required before performance closure.",
+        "commits": []
+      }
+    ]
+  },
+  {
     "revision": 6,
     "date": "2026-09-20",
     "status": "draft",
