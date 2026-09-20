@@ -28,9 +28,9 @@ Entries are numbered P-01 onward. "Default" is what ships. "Per deployment" stat
 
 **Value — P-07 process observation.** Default: beyond the three required watchers, only the stuck-session watcher and the idle-session cleanup may read the full process inventory, each for its registered recovery decision. Per deployment: adding a reader is an explicit widening the operator records.
 
-## Durability of irreversible acts (serves: an irreversible act outlives the machine that decided it)
+## Durability of irreversible acts (serves: an irreversible act follows its durable cause)
 
-**Value — P-08 replica count.** Default: before a non-emergency irreversible effect, its authorization has a local durable record and one acknowledged copy on an independently failing peer. Per deployment: the peer count and the accepted local-loss exception.
+**Value — P-08 replica count.** Default: when a second machine is enrolled, a non-emergency irreversible effect has a local durable authorization and causal preparation plus one acknowledged copy on that independently failing peer before dispatch. A supported single-machine installation has no peer dependency; at install time its operator accepts once the fixed profile's closed local-durable operation set and permanent-machine-loss model. An operation that demands replication still requires the second-machine peer, and loss of an enrolled peer never selects local durability automatically. Per deployment: the peer count or the accepted single-machine profile policy.
 
 **Value — P-09 active-tier retention.** Default: bounded payload retention refers to the fast, readable tier; before that tier releases a source, unique or pinned evidence moves into a tested lossless archive with a durable locator, and admission of new capacity is accounted for. Per deployment: tier sizes and archive location.
 

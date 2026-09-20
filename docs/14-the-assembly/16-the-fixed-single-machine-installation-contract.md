@@ -54,18 +54,20 @@ Native harness and model-route tuple, one Telegram bot/account/chat/topic route,
 operator principal, one reply-only audience, and the six named Eleven folds. It rejects a second
 execution machine, voter, bot, conversation, provider tuple, platform, or protected-mutation
 capability. A separately enrolled durability peer is permitted, and required whenever a selected
-operation demands replication; it is not a second execution voter. Positive neighbors: the exact
-approved local-only tuple and the same one-voter tuple with its required remote durability peer are
-eligible for their own admission. A same-machine second process satisfies neither peer requirement.
-A broader execution tuple remains not admitted in this scope.
-Owner basis: `docs/00-the-purpose.md:99-122` preserves the default independently failing copy and
-states the pending local-loss proposal; `docs/12-the-effect-doorway.md:241-263` gives Eight both
-approved operation-demand arms; `docs/15-the-operator-surfaces.md:201-227` makes Eleven consume the
-selected arm without adding an execution voter.
+operation demands replication; it is not a second execution voter. When only one machine is
+enrolled, the admitted installation carries no peer dependency and uses only the accepted closed
+local-durable operation set. Whenever a second machine is enrolled, the peer-backed arm uses
+`replicated(1)` by default. Positive neighbors are the exact admitted single-machine tuple and the
+same one-voter execution tuple with its real remote durability peer. A same-machine second process
+is not that peer. A broader execution tuple remains not admitted in this scope.
+Owner basis: `docs/00-the-purpose.md:99-126` defines the supported single-machine shape and
+peer-backed default; `docs/12-the-effect-doorway.md:241-266` gives Eight both installed
+operation-demand arms; `docs/15-the-operator-surfaces.md:201-231` makes Eleven consume the selected
+arm without adding an execution voter.
 
 ---
 
-## 2. G1 — the local-loss proposal and the peer alternative
+## 2. G1 — the supported single-machine arm and peer-backed default
 
 **Rule — every irreversible operation chooses one real durability demand.** Owner: Eight for
 the operation demand, Two for receipts, and the operator for the deployment policy. Predicate:
@@ -74,32 +76,37 @@ of these two arms:
 
 1. `replicated(1)` has an authenticated acknowledgment for the exact required prefix from an
    enrolled store on a second independently failing machine.
-2. `local-durable` names a current, independently approved P-08 local-loss policy for this
-   installation and operation, and the local durable prefix contains authorization, preparation,
-   provider disclosure and maximum-charge reservation, reply preparation, observations, and all
-   later settlement predecessors available at dispatch.
+2. `local-durable` names a current, independently approved P-08 installation policy that binds
+   this profile and the operator's one-time acceptance of its closed operation set: the installed
+   paid provider call and reply-only Telegram `ordinary-reply` send. The exact operation is a
+   member of that set. Its local durable prefix contains authorization, preparation, provider
+   disclosure and maximum-charge reservation, reply preparation, observations, and all later
+   settlement predecessors available at dispatch. The operator does not hand-list the operations.
 
-Missing policy, an operation absent from the policy, a partial causal prefix, a local second
-process, or automatic fallback after peer loss refuses dispatch. Positive neighbors: an ordinary
-replicated operation with its real peer receipt dispatches; an explicitly listed local-durable
-operation with its complete local receipt and current policy dispatches. No arm or record is
-named `replicated(0)`.
+Missing or stale policy, an operation outside the profile set, a partial causal prefix, a local
+second process presented as a peer, or automatic fallback after peer loss refuses dispatch.
+Positive neighbors are a profile operation with its complete local receipt in the single-machine
+arm and a replicated operation with its real peer receipt in the peer-backed arm. No arm or record
+is named `replicated(0)`.
 
-**Value — the proposed loss model in plain words.** If the operator accepts the local-durable
-arm, permanent loss of this one machine can destroy the authority, work, captures, observations,
-and accounting evidence needed to reconstruct a paid model call or Telegram send. No peer
-survives that loss. An unknown earlier effect cannot safely be repeated from memory or from a new
-installation. Losing the only voter, key, clock, route, or evidence path stops the dependent
-scope. No failover or delivered outage notice is promised when the path needed to deliver it is
-gone.
+**Value — the accepted loss model in plain words.** Permanent loss of this one machine can
+destroy the authority, work, captures, observations, and accounting evidence needed to
+reconstruct a paid model call or Telegram send. No peer survives that loss. An unknown earlier
+effect cannot safely be repeated from memory or from a new installation. Losing the only voter,
+key, clock, route, or evidence path stops the dependent scope. No failover or delivered outage
+notice is promised when the path needed to deliver it is gone. The installer presents this text
+with the closed operation set for the operator's one acceptance for this installation.
 
-**Rule — absence of operator acceptance retains the peer.** Owner: Eleven for the dependency
-verdict and Ten for composition. Predicate: P10-SI-05 requires `replication-peer` whenever the
-purpose proposal is not approved, the installed local-loss policy is absent or stale, or any
-selected operation still demands `replicated(1)`. Positive neighbor: a real enrolled peer on a
-second machine with an authenticated exact-prefix receipt clears that dependency without adding
-a second voter. If the proposal and exact policy are approved, only the listed local-durable
-operations omit the peer dependency.
+**Rule — the installed shape determines the peer dependency.** Owner: Eleven for the dependency
+verdict and Ten for composition. Predicate: P10-SI-05 gives the admitted single-machine arm no
+`replication-peer` dependency and requires its current P-08 policy to bind the profile, closed
+operation set, accepted loss model, and effective generation. Missing or stale policy refuses the
+single-machine arm instead of adding a peer dependency. Whenever a second machine is enrolled,
+the peer-backed arm requires `replication-peer` and uses `replicated(1)` by default. An operation
+whose demand names replication requires that arm and refuses in the single-machine arm. Loss of an
+enrolled peer refuses the replicated operation and never selects local durability automatically.
+Positive neighbors are the policy-bound no-peer arm and a real second-machine peer with an
+authenticated exact-prefix receipt; neither adds a second execution voter.
 
 ---
 
@@ -142,9 +149,10 @@ in P10-SI-14.
 audit and consumer; each referenced fact retains the owner in the table. Predicate: P10-SI-07
 requires every applicable row to resolve exactly once. A direct-owner row rejects an
 `InstallationSelection` lookalike. A selection row rejects a fabricated owner fact. A
-not-applicable peer is legal only under P10-SI-04's local-durable arm. Positive neighbor: the
-single-machine profile resolves the applicable seventeen rows with owner facts and selection
-instances; the default replicated profile resolves all eighteen including a real Two receipt.
+not-applicable peer marker is legal only as nondependency metadata for P10-SI-04's admitted
+single-machine arm. Positive neighbor: the single-machine profile resolves the applicable
+seventeen rows with owner facts and selection instances and carries no peer handle; the
+peer-backed profile resolves all eighteen including a real Two receipt.
 
 | Production name | Resolution in this profile | Body owner |
 |---|---|---|
@@ -162,7 +170,7 @@ instances; the default replicated profile resolves all eighteen including a real
 | `clock-source` | role `verification-clock` references Nine's declared service and trust configuration; current readings remain Nine evidence | Ten selects; Nine owns freshness |
 | `transport-Lease` | consume Six's `Lease` directly | Six |
 | `transport-FenceToken` | consume Six's current assignment-derived fence through its public authority; no standalone stored token is invented | Six |
-| `fact-replication-receipt` | role `fact-segment` selects the exact source prefix and Two's public `FactStorePort`; a replicated operation consumes its authentic exact-prefix `AppendReceipt` with one distinct enrolled peer, while the row is inapplicable only for the exact approved local-durable operation | Ten selects; Two owns the port and receipt |
+| `fact-replication-receipt` | role `fact-segment` selects the exact source prefix and Two's public `FactStorePort`; a replicated operation consumes its authentic exact-prefix `AppendReceipt` with one distinct enrolled peer, while the row is nondependency metadata only for the admitted single-machine profile's closed local-durable operation set | Ten selects; Two owns the port and receipt |
 | `conversation-binding` | consume Four's `conversation-binding` directly | Four |
 | `conversation-route` | role `conversation-route` references Four's binding and Twelve's authenticated bot/account/chat/topic identity evidence | Ten selects; Four/Twelve own identity |
 | `delivery-evidence-service` | role `delivery-evidence-service` references Nine's declared service and the supported Twelve evidence stage | Ten selects; Nine owns assessment |
@@ -332,17 +340,19 @@ dependency verdict, Eight for operation demands, and Ten for inspection and comp
 Predicate: P10-SI-15 derives required dependencies from the exact admitted operations and scope.
 Local facts, register generation, identity keys, clock, lease, fence, conversation binding,
 route, and supported delivery evidence remain required. A replication receipt is required only
-for an operation whose approved demand is `replicated(1)`. The local-durable arm requires its
-exact policy and receipt instead. Positive neighbors: the replicated scope reports and satisfies
-the peer; the approved local-loss scope omits only that peer and satisfies every remaining edge.
+for an operation whose approved demand is `replicated(1)`. The admitted single-machine arm has no
+peer dependency and requires its exact profile-bound policy and local receipt instead. Positive
+neighbors: the peer-backed scope reports and satisfies the peer; the accepted single-machine scope
+has no peer handle and satisfies every remaining edge.
 `ApprovedMinimalDependencySelection` is Ten's typed result. It carries the exact operation, scope,
 demand, policy reference, sorted required dependency names, and admitted handles for those names.
-Its only inapplicable form is `replication-peer` under that exact approved `local-durable` policy.
-An inapplicable peer is represented as inapplicable under the exact approved local-loss policy; it
-is never represented as an admitted replica. Both switch-on and live minimal-path evaluation
-consume the same owner-validated dependency selection. Missing policy or a replicated operation
-retains the peer requirement. Owner basis: `src/assembly/records.ts:270-283` currently requires the
-blanket roster; `src/assembly/contracts.ts:303-323` currently has only a real-replica handle;
+Its only inapplicable form is nondependency metadata for `replication-peer` under the admitted
+single-machine profile's exact `local-durable` policy. That marker is never a required dependency
+or admitted replica handle. Both switch-on and live minimal-path evaluation consume the same
+owner-validated dependency selection. Missing policy refuses the single-machine selection. A
+replicated operation requires the peer-backed selection. Owner basis:
+`src/assembly/records.ts:270-283` currently requires the blanket roster;
+`src/assembly/contracts.ts:303-323` currently has only a real-replica handle;
 `src/operator/live.ts:5-26` and `src/operator/production-switch-on.ts:15-29` currently require the
 same unconditional list.
 
@@ -649,7 +659,7 @@ owner consumes only its own portion. The blank table is a review form, not an au
 | Written acceptance | Existing record owner(s) | Fields for the operator; real values intentionally blank |
 |---|---|---|
 | Scope and administration | Ten manifest/deployment policy; One/Eleven standing | `machineIdentity: ______`; `deploymentClass: ______`; `voterCount: ______`; `nativeModelTuple: ______`; `botAccountChatTopic: ______`; `operatorPrincipal: ______`; `workerIsolationAdmin: ______`; `sourceAndKeyCustodian: ______`; `challengeAdmin: ______`; `observerAdmin: ______`; `sharedTrustedHostAndCommonFailure: ______` |
-| Local-loss policy | Eight operation demand; Two durability; operator P-08 policy | `acceptedOrRejected: ______`; `installation: ______`; `operations: ______`; `demandForEach: ______`; `fullCausalClosure: ______`; `permanentMachineLossStatementAccepted: ______`; `automaticFallbackForbidden: ______`; `effectiveGeneration: ______` |
+| Single-machine policy | Eight operation demand; Two durability; Ten profile; operator P-08 policy | `acceptedOrRejected: ______`; `installation: ______`; `profileOperationSet: P10-SI-04`; `profileOperationSetAccepted: ______`; `localDurableDemandAccepted: ______`; `fullCausalClosure: ______`; `permanentMachineLossStatementAccepted: ______`; `automaticFallbackForbidden: ______`; `effectiveGeneration: ______` |
 | Zero voter-loss availability | Six membership and reservation policy | `singleVoterAccepted: ______`; `lossStopsAdmission: ______`; `noFailover: ______`; `outageNoticeLimitAccepted: ______`; `repairOwner: ______` |
 | Unprotected artifacts | Nine posture; Ten scope policy | `artifactClasses: ______`; `postureForEach: ______`; `protectedMutationUnavailable: ______`; `workerIsolationStillRequired: ______`; `independentApprovalAndKeyCustodyStillRequired: ______`; `rootCompromiseLimitAccepted: ______` |
 | Transport evidence limits | Twelve capability; Nine assessment; Four binding | `telegramModeAndIdentity: ______`; `tokenCompromiseExposureAccepted: ______`; `providerAcceptanceClaim: ______`; `humanDeliveryOrReadNotClaimed: ______`; `ordinaryChatCannotGrantStanding: ______`; `witnessStageAndFreshness: ______` |

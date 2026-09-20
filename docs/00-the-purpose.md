@@ -96,31 +96,32 @@ a conversation, or observing beyond the agent's own processes. The framework shi
 these on. **Check:** each such capability is refused until a scoped grant record exists, and the
 grant names the surface, the custodian and the recovery obligation.
 
-**Rule — an irreversible act outlives the machine that decided it.** Before an effect the agent
-cannot undo alone, its authorization and causal preparation are durably recorded beyond the one
-machine deciding it, so a crash cannot erase why it happened or that it was allowed. The replica
-count is operator policy; the principle is not. **Check:** the effect doorway refuses a
-non-emergency irreversible effect whose authorization has no acknowledged copy on an
-independently failing store.
+**Rule — an irreversible act follows its durable cause.** Before dispatch of an effect the agent
+cannot undo alone, its authorization and causal preparation are durably recorded, so a crash
+cannot erase why it happened or that it was allowed. The replica count is operator policy; the
+principle is not. **Check:** the effect doorway refuses a non-emergency irreversible effect unless
+it consumes the exact durable authorization and causal preparation at the operation's installed
+durability demand before dispatch.
 
-**Proposal — one explicitly scoped installation may accept permanent local loss.** This
-proposal has no force unless the operator records an independently verified acceptance that enters
-force for the exact installation and operations.
-The default above remains one acknowledged copy on an independently failing store. For one named
-single-machine installation, the operator may instead approve a P-08 policy listing each exact
-operation whose authorization and complete causal preparation use `local-durable`, together with
-the accepted loss model: permanent loss of that machine can destroy the authority, work,
-captures, observations and accounting evidence needed to reconstruct a paid call or send; no
-peer survives; and an unknown earlier effect cannot safely be repeated from memory or a new
-installation. Owner: the operator owns the policy choice; parts two and eight own receipts and
-dispatch enforcement. **Check:** the effect doorway accepts the exception only when the current
-signed policy names the installation, operation, full causal prefix and loss statement, and the
-exact local prefix is durable before dispatch. Missing policy, an unlisted operation, an
-incomplete prefix or automatic fallback after peer loss refuses. A listed operation with its
-complete local receipt is the positive neighbor. If the operator rejects this proposal, or if
-any predicate is absent, the independently failing peer on a second enrolled machine remains
-required. A second process on the same machine is not that peer. The exception is never named
-`replicated(0)`.
+**Rule — a single-machine installation is a supported deployment shape.** Owner: the operator
+owns the installation policy, Ten owns the fixed profile, Eight owns operation demands, and Two
+owns durability receipts. Predicate: when only one machine is enrolled, the installation carries
+no peer dependency and may dispatch `local-durable` only for the fixed profile's closed set: its
+installed paid provider call and its reply-only Telegram `ordinary-reply` send. At install time,
+the profile presents that set and this loss model for one independently verified operator
+acceptance that enters force for the installation: permanent loss of the machine can destroy the
+authority, work, captures, observations and accounting evidence needed to reconstruct a paid call
+or send; no peer survives; and an unknown earlier effect cannot safely be repeated from memory or
+a new installation. The operator accepts the profile set as a whole and does not hand-list its
+operations. **Check:** the effect doorway accepts a local operation only when the current signed
+P-08 policy binds the installation, profile, closed operation set, full causal-prefix requirement,
+and accepted loss model, and the exact local prefix is durable before dispatch. Missing or stale
+policy, an operation outside the set, an incomplete local prefix, or automatic fallback after a
+peer is lost refuses. The same profile operation with its complete local receipt is the positive
+neighbor. Whenever a second machine is enrolled, `replicated(1)` is the default; every operation
+whose demand names replication requires an acknowledged copy on that second independently failing
+machine. Such an operation refuses in the single-machine shape instead of adding a peer dependency.
+A second process on the same machine is not a peer. No demand is named `replicated(0)`.
 
 **Rule — automatic suggestions never widen themselves.** A standing-permission candidate the
 system derives on its own proposes no action or scope beyond the exact authorization it was

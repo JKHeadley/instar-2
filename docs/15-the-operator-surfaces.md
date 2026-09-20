@@ -205,26 +205,30 @@ verified local-durable minimal fact segment, current register/decoder generation
 clock. Its required transport dependency is the admitted conversation adapter and route capable of
 accepting intake and independently evidencing the delivery stage it declares. Its response uses
 eight's ordinary message operation and that operation's approved durability demand. The reference
-default is **replicated(1)**: local preparation is not dispatch permission until one required peer
-acknowledges the exact facts. The purpose's single-machine proposal, if the operator accepts it
-through an independently verified choice that enters force for the exact installation and
-operation, permits
-only an explicitly listed `local-durable` operation with its complete causal prefix and current
-P-08 loss policy. It never creates `replicated(0)` or an automatic fallback after peer loss. The
-responder has a reserved finite worker, local storage, queue, transport and effect budget independent of ordinary
-workloads, but that reserve cannot manufacture a peer acknowledgment, current binding, lease,
+default is **replicated(1)** whenever a second machine is enrolled: local preparation is not
+dispatch permission until the required peer acknowledges the exact facts. The supported
+single-machine shape carries no peer dependency. At install time, its independently verified P-08
+choice accepts once the fixed profile's closed installed provider-call and reply-only Telegram
+operation set and permanent-machine-loss model. Only those `local-durable` operations with their
+complete causal prefixes may dispatch. The operator does not hand-list them. This shape never
+creates `replicated(0)` or an automatic fallback after peer loss. The responder has a reserved
+finite worker, local storage, queue, transport and effect budget independent of ordinary workloads,
+but that reserve cannot manufacture a peer acknowledgment, current binding, lease,
 fence, key, route or decisive effect evidence. Loss of an ordinary model, benchmark, projection,
 run owner or business-effect dependency leaves the minimal path eligible for a limited response;
 loss of a required dependency named here does not.
 
-**Rule — the minimal dependency verdict consumes the exact operation policy.** Owner: Eleven
-for the verdict, Eight for the operation demand, Two for durability evidence, and Ten for the
-installed join. **Checks: P11-NF-33–38**. The predicate requires `replication-peer` for every
-`replicated(1)` operation and requires the exact current local-loss policy plus local receipt for
-every approved `local-durable` operation. A missing or stale policy, partial causal closure,
-unlisted operation, or caller-supplied omission refuses. Positive neighbors are a real peer
-receipt for the reference mode and a complete local receipt for an explicitly approved local-loss
-operation. Every other minimal dependency remains unchanged.
+**Rule — the minimal dependency verdict consumes the installed shape and operation policy.**
+Owner: Eleven for the verdict, Eight for the operation demand, Two for durability evidence, and
+Ten for the installed join. **Checks: P11-NF-33–38**. The predicate omits `replication-peer` from the
+single-machine dependency roster and requires the exact current installation policy plus local
+receipt for every operation in the profile's accepted closed set. A missing or stale policy,
+partial causal closure, operation outside the set, or caller-supplied omission refuses. Whenever a
+second machine is enrolled, the predicate requires `replication-peer` for the default
+`replicated(1)` demand. Any operation whose demand names replication requires that real peer and
+refuses in the single-machine shape. Positive neighbors are a complete local receipt under the
+accepted single-machine profile and a real peer receipt in the peer-backed profile. Every other
+minimal dependency remains unchanged.
 
 **Rule — always-reachable never means always-powerful.** Rules 28, 42, 63, 86 and 95; **checks:
 P11-NF-34/36/39**. The minimal responder may preserve, authenticate, explain recorded state,
@@ -239,8 +243,8 @@ independent recovery surface; it does not speak as the agent on guessed identity
 conversation worker, makes ordinary model/business-effect dependencies unavailable and corrupts
 each non-source projection while retaining every minimal-path prerequisite above; messages must
 still receive the bounded honest response. A second fault class removes each required minimal
-dependency, including the replication peer, lease authority and route, and requires preserved
-input, an owned outage/repair obligation, retained maximum exposure, zero replay under a fresh
+dependency, including the replication peer when installed, lease authority and route, and requires
+preserved input, an owned outage/repair obligation, retained maximum exposure, zero replay under a fresh
 identity, and recovery once that exact prerequisite returns—never an impossible response during
 its absence. The workload records receipt-to-preservation, receipt-to-first-honest-response when
 eligible, stop-to-halt when its authority path exists, outage interval, queue age, reserved resource
@@ -313,9 +317,9 @@ conflicting replacement.
 **Rule — success and uncertainty are factual and bounded.** **Checks: P11-NF-45–50**. The positive
 slice names an adapter whose stable semantic operation key survives takeover, whose query/receipt
 can prove application or decisive non-occurrence, whose delayed executions have a declared finite
-quiescence observation, and whose final charge becomes observable. Its replication peer, lease
-authority, route, identity source and evidence service eventually recover within the fixture's
-declared finite recovery window. Under those prerequisites, passing requires: one admitted
+quiescence observation, and whose final charge becomes observable. Its installed durability
+source, lease authority, route, identity source and evidence service eventually recover within the
+fixture's declared finite recovery window. Under those prerequisites, passing requires: one admitted
 input; one durable run identity; one accepted judgment resolution with complete capture/meter
 references; no action outside its floor; one attributable outbound operation; no more than one
 externally observed reply for the semantic message identity; delivery proved only to the adapter's
@@ -337,9 +341,9 @@ judgment, effect, verification, surface and harness ports with non-null wiring e
 credentials and probe resources are isolated; a real platform witness observes delivery. A mock
 provider may be a unit control but cannot satisfy the live slice. Unsupported adapter evidence is
 reported as partial and cannot be promoted by the surface. Part ten must realize the minimal
-authority domain and every named source/transport/effect dependency above, enforce replicated(1)
-before reply dispatch, expose dependency admission and outage state, supply the adapter evidence
-and eventual-recovery controls used by the positive slice, and prove the owned-uncertain/retained-
+authority domain and every named source/transport/effect dependency above, enforce the installed
+durability demand before reply dispatch, expose dependency admission and outage state, supply the
+adapter evidence and eventual-recovery controls used by the positive slice, and prove the owned-uncertain/retained-
 exposure/zero-replay outcome for opaque cuts. Eleven supplies these acceptance requirements; ten
 must not invent weaker substitutes or a private recovery path.
 
