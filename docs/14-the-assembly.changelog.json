@@ -1,5 +1,21 @@
 [
   {
+    "revision": 6,
+    "date": "2026-09-20",
+    "status": "draft",
+    "cause": {
+      "kind": "adjudication",
+      "note": "Astra adjudication of the M3 item-2 conflict between P10-SI-07 and the landed-fixture freeze (astra-m3-item2-adjudication.md)"
+    },
+    "changes": [
+      {
+        "what": "Grant the migration of the two landed production fixture helpers through real owner producers (P10-SI-20), keeping tests/assembly/production.test.ts byte-identical, and record the additive declaration-baseline move for the P5 additivity fence with its exact dependent pins.",
+        "why": "Real composition showed the eighteen-name map cannot resolve the old id-only fixture wrappers; the strict owner rule stands and its consumers move with it rather than adding a compatibility path.",
+        "commits": []
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-09-19",
     "status": "draft",
@@ -11,12 +27,16 @@
       {
         "what": "Make the single-machine arm carry no peer dependency, bind its closed local-durable operation set to one install-time acceptance, and select the peer-backed replicated(1) arm whenever a second machine is enrolled.",
         "why": "The fixed profile must be usable with one available machine without weakening replication-demand operations or falling back after peer loss.",
-        "commits": ["1b5ac4c"]
+        "commits": [
+          "1b5ac4c"
+        ]
       },
       {
         "what": "Keep InstallationSelection, ProductionInstallation, InstalledRunGovernanceReference, ProviderAnswerAcceptance, and the supervised import contracts unchanged.",
         "why": "The amendment changes deployment-policy selection and dependency applicability, not any record field or body version.",
-        "commits": ["1b5ac4c"]
+        "commits": [
+          "1b5ac4c"
+        ]
       }
     ]
   },
@@ -32,12 +52,16 @@
       {
         "what": "Complete the exact M3 and M4 source, boot-entry, declaration, export, test, fence, inventory-pin, and landing-order grant.",
         "why": "The converged installation contract did not yet authorize every bounded implementation path required by the two build units.",
-        "commits": ["7148f52"]
+        "commits": [
+          "7148f52"
+        ]
       },
       {
         "what": "Classify prepared-package placement as manual preparation and source-history append as a supervised critical install stage, with a named hold and a read-only M3 proof boundary.",
         "why": "The G5 boundary must distinguish operator administration from an importer that writes critical installation history.",
-        "commits": ["7148f52"]
+        "commits": [
+          "7148f52"
+        ]
       }
     ]
   },
@@ -53,12 +77,16 @@
       {
         "what": "Complete the three configuration-fact admission contracts, remove the bootstrap digest cycle, define the one-use reply-run continuation, and complete the dependency source, fence, and pin grant.",
         "why": "The initial fixed-installation contract left authority, construction order, executable reply consumption, and local-loss dependency implementation underspecified.",
-        "commits": ["f106575"]
+        "commits": [
+          "f106575"
+        ]
       },
       {
         "what": "Permit a separate durability peer without adding an execution voter and remove review-history wording from the governed companion.",
         "why": "The replicated fallback and approved local-loss arm must both remain representable without process-history text in first-version design rules.",
-        "commits": ["f106575"]
+        "commits": [
+          "f106575"
+        ]
       }
     ]
   },
@@ -74,12 +102,17 @@
       {
         "what": "Add the governed fixed-installation companion section closing G1 through G6, the two landed over-constraints, exact implementation grants, and blank operator acceptance fields.",
         "why": "The minimal usable path needs one reviewable contract without a general setup product, automatic key generation, a new certification system, or duplicate owner records.",
-        "commits": ["7a7ab04", "1b960e7"]
+        "commits": [
+          "7a7ab04",
+          "1b960e7"
+        ]
       },
       {
         "what": "Separate operator-administered manual preparation from supervised automated critical install and recovery stages.",
         "why": "Manual placement of approved inputs is configuration; automation that writes or recovers critical state retains Seven's bounded supervisor obligation.",
-        "commits": ["1b960e7"]
+        "commits": [
+          "1b960e7"
+        ]
       }
     ]
   },
@@ -95,7 +128,9 @@
       {
         "what": "Initial Part Ten design.",
         "why": "Define how real owner implementations compose without changing their meaning.",
-        "commits": ["f17ccce9a0e2bf7a26ba036e86da598e27d0b792"]
+        "commits": [
+          "f17ccce9a0e2bf7a26ba036e86da598e27d0b792"
+        ]
       }
     ]
   }
