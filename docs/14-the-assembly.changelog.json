@@ -11,7 +11,9 @@
       {
         "what": "Add the M3-E supplement to §7: src/facts/historical.ts may amortize its historical-body memo key with identical semantics; Ten's record validation caches must key on the complete consumed inputs and never serve the origin path; one new Part Two test path; two exact fence-line amendments; the resulting pin chain.",
         "why": "Real composition showed a store with many owner-produced installation records re-encodes the register, schemas and keys on every historical read; correctness of the caches is required before performance closure.",
-        "commits": []
+        "commits": [
+          "4a3a0e6"
+        ]
       }
     ]
   },
