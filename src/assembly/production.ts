@@ -3,13 +3,38 @@ import { consumeResult } from '../index.js';
 import type { Result } from '../index.js';
 import { requiredMinimalDependencies } from '../operator/index.js';
 import { isProductionGroundedRunGraph } from '../rungraph/index.js';
-import { boundary, ensure, freeze, take } from './boundary.js';
+import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { factReferenceAliases } from './records.js';
 import { currentAssemblyRows } from './history.js';
 import { createAssemblyRuntime } from './service.js';
-import type { FactSnapshot, FactStatus } from '../facts/index.js';
+import type { InstallationRole, InstallationSelection } from './installation-selection.js';
+import { causalStanding, decodeHistoricalBody, prepareSnapshot } from '../facts/index.js';
+import type { FactContext, FactSnapshot, FactStatus } from '../facts/index.js';
 import type { AssemblyComposition, AssemblyImplementationBinding, AssemblyManifest, AssemblyProductionBindingSet,
   AssemblyLiveDependencyHandle, AssemblyProductionCoordinator, AssemblyResolvedProductionBinding, AssemblyRuntimePort } from './contracts.js';
+
+/** P10-SI-07: names are audit roles; only these owner-produced kinds resolve them.
+ * Receipts and fences remain public-owner results, never newly appendable kinds. */
+export const fixedInstallationBindingMap = Object.freeze({
+  'operator-surface-registration': { kind: 'assembly-InstallationSelection', role: 'operator-surface' },
+  'operator-challenge-verifier-binding': { kind: 'assembly-InstallationSelection', role: 'challenge-verifier' },
+  'intake-verified-act-binding': { kind: 'assembly-InstallationSelection', role: 'verified-act-intake' },
+  'minimal-plane-projection-binding': { kind: 'assembly-InstallationSelection', role: 'minimal-plane-fold' },
+  'minimal-plane-replay-binding': { kind: 'assembly-InstallationSelection', role: 'minimal-plane-replay' },
+  'minimal-responder-binding': { kind: 'assembly-InstallationSelection', role: 'minimal-responder' },
+  'assembly-lifecycle-control-binding': { kind: 'assembly-InstallationSelection', role: 'lifecycle' },
+  'platform-delivery-witness-binding': { kind: 'assembly-InstallationSelection', role: 'delivery-witness' },
+  'fact-local-durable-segment': { kind: 'assembly-InstallationSelection', role: 'fact-segment' },
+  'register-generation-record': { kind: 'generation-record', role: null },
+  'identity-key-set': { kind: 'assembly-ProductionSignerReference', role: null },
+  'clock-source': { kind: 'assembly-InstallationSelection', role: 'verification-clock' },
+  'transport-Lease': { kind: 'transport-Lease', role: null },
+  'transport-FenceToken': { kind: 'transport-Lease', role: null },
+  'fact-replication-receipt': { kind: 'assembly-InstallationSelection', role: 'fact-segment' },
+  'conversation-binding': { kind: 'conversation-binding', role: null },
+  'conversation-route': { kind: 'assembly-InstallationSelection', role: 'conversation-route' },
+  'delivery-evidence-service': { kind: 'assembly-InstallationSelection', role: 'delivery-evidence-service' },
+} as const);
 
 interface NamedBinding {
   readonly name: string;
@@ -51,16 +76,54 @@ function statusFor(snapshot: FactSnapshot, reference: string): FactStatus | null
 }
 
 function resolveOne(name: string, requiredKind: string, declaredKind: string, reference: string, snapshot: FactSnapshot,
-    partialAssemblyFacts: ReadonlySet<string>, unavailableAssemblyFacts: ReadonlySet<string>): AssemblyResolvedProductionBinding {
+    partialAssemblyFacts: ReadonlySet<string>, unavailableAssemblyFacts: ReadonlySet<string>,
+    input: Readonly<{ composition: AssemblyComposition; scope: string; implementation: string; facts: FactContext }>): AssemblyResolvedProductionBinding {
   const root = statusFor(snapshot, reference);
   ensure(root, `required production binding is missing from signed history: ${name}:${reference}`);
+  const mapping = fixedInstallationBindingMap[requiredKind as keyof typeof fixedInstallationBindingMap];
+  ensure(mapping, `unknown production binding name: ${requiredKind}`);
   const honestPartialPlaceholder = root.fact.kind === 'assembly-GrowthObservation' && partialAssemblyFacts.has(root.fact.id);
-  ensure(honestPartialPlaceholder || (declaredKind === requiredKind && root.fact.kind === requiredKind),
-    `required production binding has wrong signed kind: ${name}:${root.fact.kind}:expected:${requiredKind}`);
+  ensure(honestPartialPlaceholder || (declaredKind === requiredKind && root.fact.kind === mapping.kind),
+    `required production binding has wrong signed kind: ${name}:${root.fact.kind}:expected:${mapping.kind}:for:${requiredKind}`);
   ensure(root.taint.length === 0 && root.conflicts.length === 0,
     `required production binding is unavailable or conflicted: ${name}:${reference}`);
   ensure(!unavailableAssemblyFacts.has(root.fact.id),
     `required production binding is unavailable or conflicted: ${name}:${reference}`);
+  if (!honestPartialPlaceholder) {
+    const decoded = take(decodeHistoricalBody(root.fact, input.facts,
+      causalStanding(root.fact, input.facts, false).decode));
+    if (mapping.role) {
+      const record = decoded.fields.record as unknown as InstallationSelection;
+      const role: InstallationRole = mapping.role === 'lifecycle'
+        ? name === 'prerequisite-cut' ? 'prerequisite-cut' : 'prerequisite-recovery' : mapping.role;
+      ensure(record?.type === 'InstallationSelection' && record.role === role
+        && record.scope === input.scope && record.machine === input.composition.host.machine
+        && record.generation === input.composition.host.current().generation,
+      `production selection differs from exact role/scope/machine/generation: ${name}:${requiredKind}:role:${role}`);
+      if (!name.startsWith('dependency:')) ensure(record.implementation === input.implementation,
+        `production selected implementation differs: ${name}`);
+      if (name.startsWith('projection-fold:')) ensure(record.instance === name.slice('projection-fold:'.length),
+        `production selected fold instance differs: ${name}`);
+      const sameKey = snapshot.entries.filter(row => {
+        const other = (row.fact.body as { record?: InstallationSelection }).record;
+        return row.fact.kind === mapping.kind && other?.installation === record.installation
+          && other.scope === record.scope && other.generation === record.generation && other.role === record.role && other.instance === record.instance;
+      });
+      ensure(sameKey.length === 1 && sameKey[0]!.fact.id === root.fact.id,
+        `production conflicting installation selections inhibit scope: ${name}`);
+    }
+    if (requiredKind === 'transport-FenceToken') {
+      const authority = input.composition.production?.lease.port;
+      ensure(authority && typeof authority.inspect === 'function', 'fence: Six current authority required');
+      const rows = take(authority.inspect()).filter(row => row.record.type === 'Lease');
+      const latest = rows.at(-1);
+      ensure(latest?.fact.id === root.fact.id && encoded(latest.fact).bytes === encoded(root.fact).bytes
+        && latest.record.type === 'Lease' && latest.record.state === 'held'
+        && latest.record.generation === input.composition.host.current().generation
+        && latest.record.machine === input.composition.host.machine,
+      'fence: current Six assignment required; standalone fence facts are not admissible');
+    }
+  }
   const missing = new Set<string>();
   let completeness: 'complete' | 'partial' = partialAssemblyFacts.has(root.fact.id) ? 'partial' : 'complete';
   const visited = new Set<string>();
@@ -100,13 +163,15 @@ function resolveReferences(composition: AssemblyComposition, runtime: AssemblyRu
   references: readonly AssemblyResolvedProductionBinding[];
 }> {
   const { manifest, binding } = selected(runtime, manifestId, scope);
-  const snapshot = take(composition.spine.store.readForProjection());
+  const facts = { ...composition.host.current().facts, facts: take(composition.spine.store.read()) };
+  const snapshot = take(prepareSnapshot(facts.facts, facts));
   const assembly = currentAssemblyRows(snapshot, composition.host.boundary);
   const partialAssemblyFacts = new Set(assembly.filter(row => row.record.type === 'GrowthObservation'
     && row.record.completion === 'incomplete').map(row => row.fact.id));
   const unavailableAssemblyFacts = new Set(assembly.filter(row => row.taint.length > 0 || row.conflicts.length > 0).map(row => row.fact.id));
   const references = namedBindings(binding).map(({ name, requiredKind, row }) =>
-    resolveOne(name, requiredKind, row.fact.expectedKind, row.fact.reference, snapshot, partialAssemblyFacts, unavailableAssemblyFacts));
+    resolveOne(name, requiredKind, row.fact.expectedKind, row.fact.reference, snapshot, partialAssemblyFacts, unavailableAssemblyFacts,
+      { composition, scope, implementation: row.implementation, facts }));
   return freeze({ manifest, binding, references });
 }
 

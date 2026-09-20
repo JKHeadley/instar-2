@@ -1,7 +1,7 @@
 import { decode, grantLiveness, historicalGrantLiveness, scopeIncludes } from '../index.js';
 import type { BoundaryContext, Clock, DecodeContext, Json, Result, Scope, VerifiedPrincipal } from '../index.js';
 import { authorAndAppend, causalCone, causalStanding, decodeEnvelope, decodeHistoricalBody, prepareSnapshot, registerOwnedBody } from '../facts/index.js';
-import type { FactContext, FactEnvelope, FactSchema, FactStorePort, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
+import type { FactContext, FactEnvelope, FactSchema, FactSnapshot, FactStorePort, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import { intakeVerifiedActRegistration } from '../intake/index.js';
 import { decodeGenerationRecord, generationOf, readRegisterEntry } from '../register/index.js';
 import type { RegisterContext, VerifiedRegister } from '../register/index.js';
@@ -76,12 +76,38 @@ function closed(input: unknown): InstallationSelection {
 }
 
 /** Shared Ten admission checks used only by its two configuration producers. */
+/** A signed origin's causal cone is immutable, so its prepared snapshot is memoized per admission.
+ * Without this, decoding a history of n installation records re-prepares each earlier record's cone
+ * through its own decoder (cones chain through in-segment predecessors), which is exponential in n. */
+const coneSnapshots = new WeakMap<InstallationRecordAdmission, Map<string, FactSnapshot>>();
+export interface InstallationRecordBasisResult {
+  readonly installation: { id: string; generation: string; machineIdentity: string };
+  readonly fact: (id: string, kind: string) => FactEnvelope;
+  readonly snapshot: FactSnapshot; readonly packageDigest: string;
+  readonly disposition: Readonly<Record<string, Json>>; readonly required: readonly string[]; readonly facts: FactContext;
+}
+const coneBases = new WeakMap<InstallationRecordAdmission, Map<string, InstallationRecordBasisResult>>();
 export function installationRecordBasis(record: Readonly<{ installation: string; generation: string; machine?: string }>,
-  admission: InstallationRecordAdmission, facts: FactContext, origin?: FactEnvelope) {
+  admission: InstallationRecordAdmission, facts: FactContext, origin?: FactEnvelope): InstallationRecordBasisResult {
+  if (!origin) return installationRecordBasisUncached(record, admission, facts, origin);
+  // The whole basis of a signed origin is a pure function of its immutable cone and the admission.
+  const key = `${encoded(origin).hash}|${encoded(record).hash}|${facts.facts.length}|${facts.schemas.length}|${facts.ownedBodies?.length ?? 0}`;
+  const memo = coneBases.get(admission) ?? new Map<string, InstallationRecordBasisResult>();
+  coneBases.set(admission, memo);
+  const cached = memo.get(key); if (cached) return cached;
+  const basis = installationRecordBasisUncached(record, admission, facts, origin); memo.set(key, basis); return basis;
+}
+function installationRecordBasisUncached(record: Readonly<{ installation: string; generation: string; machine?: string }>,
+  admission: InstallationRecordAdmission, facts: FactContext, origin?: FactEnvelope): InstallationRecordBasisResult {
   if (origin) take(decodeEnvelope(origin, facts, 'replication'));
   const all = origin ? causalCone(origin, facts.facts) : facts.facts;
   const pinned = { ...facts, facts: all };
-  const snapshot = take(prepareSnapshot(all, pinned));
+  const memoKey = origin ? `${encoded(origin).hash}|${all.length}|${facts.schemas.length}|${facts.ownedBodies?.length ?? 0}` : null;
+  const memo = memoKey ? coneSnapshots.get(admission) ?? new Map<string, FactSnapshot>() : null;
+  if (memo && memoKey) coneSnapshots.set(admission, memo);
+  const remembered = memo && memoKey ? memo.get(memoKey) : undefined;
+  const snapshot: FactSnapshot = remembered ?? take(prepareSnapshot(all, pinned));
+  if (memo && memoKey && !remembered) memo.set(memoKey, snapshot);
   const fact = (id: string, kind: string) => {
     const matches = snapshot.entries.filter(row => row.fact.id === id);
     ensure(matches.length === 1 && matches[0]!.fact.kind === kind && !matches[0]!.taint.length && !matches[0]!.conflicts.length,
@@ -173,7 +199,18 @@ function declaration(id: string, owner: string, admission: InstallationRecordAdm
     && entry.declaration.declaredBy.path.startsWith(`src/${ownerDirectories[owner]}/`),
   `selection: reference declaration is unapproved or wrong-owner: ${id}`);
 }
+const historicalSelections = new WeakMap<InstallationRecordAdmission, Map<string, InstallationSelection>>();
 function validate(input: unknown, context: OwnedBodyContext, admission: InstallationRecordAdmission): InstallationSelection {
+  // Historical validation is a pure function of the signed origin bytes and its immutable cone;
+  // origin-mode validation carries the active admission guard and is never memoized.
+  if (context.mode !== 'historical') return validateUncached(input, context, admission);
+  const key = `${encoded(context.origin).hash}|${encoded(input).hash}|${context.facts.schemas.length}|${context.facts.ownedBodies?.length ?? 0}`;
+  const memo = historicalSelections.get(admission) ?? new Map<string, InstallationSelection>();
+  historicalSelections.set(admission, memo);
+  const cached = memo.get(key); if (cached) return cached;
+  const record = validateUncached(input, context, admission); memo.set(key, record); return record;
+}
+function validateUncached(input: unknown, context: OwnedBodyContext, admission: InstallationRecordAdmission): InstallationSelection {
   const record = closed(input);
   ensure(context.origin.kind === 'assembly-InstallationSelection', 'selection: wrong fact kind');
   ensure(record.scope === admission.scopeId, 'selection: scope differs');

@@ -41,7 +41,17 @@ function closed(input: unknown, admission: ProductionSignerAdmission): Productio
   'signer: immutable external bootstrap binding differs');
   return freeze({ ...record, signer });
 }
+const historicalSigners = new WeakMap<ProductionSignerAdmission, Map<string, ProductionSignerReference>>();
 function validate(input: unknown, context: OwnedBodyContext, admission: ProductionSignerAdmission): ProductionSignerReference {
+  // Historical validation is a pure function of the signed origin bytes and its immutable cone.
+  if (context.mode !== 'historical') return validateUncached(input, context, admission);
+  const key = `${encoded(context.origin).hash}|${encoded(input).hash}|${context.facts.schemas.length}|${context.facts.ownedBodies?.length ?? 0}`;
+  const memo = historicalSigners.get(admission) ?? new Map<string, ProductionSignerReference>();
+  historicalSigners.set(admission, memo);
+  const cached = memo.get(key); if (cached) return cached;
+  const record = validateUncached(input, context, admission); memo.set(key, record); return record;
+}
+function validateUncached(input: unknown, context: OwnedBodyContext, admission: ProductionSignerAdmission): ProductionSignerReference {
   const record = closed(input, admission);
   ensure(context.origin.kind === 'assembly-ProductionSignerReference', 'signer: wrong fact kind');
   installationRecordBasis(record, admission, context.facts, context.origin);

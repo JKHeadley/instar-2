@@ -13,8 +13,16 @@ import { intakeFixture, json, value } from '../intake/fixtures.js';
 import { privateKey, refused } from '../facts/fixtures.js';
 
 const digest = (input: unknown) => value(canonical(input)).hash;
-export function fixedRecordFixture(chooseRecords?: (input: { generation: string; boundary: import('../../src/index.js').DecodeContext & import('../../src/index.js').BoundaryContext; fixture: ReturnType<typeof intakeFixture> }) => Json[]) {
+export interface FixedRecordOptions {
+  /** Scope id carried by every selection and the approved package; defaults to the original fixture value. */
+  readonly scopeId?: string;
+  /** Additional fixture-approved declaration sources, keyed to the owner directory named in each path. */
+  readonly extraSources?: (f: ReturnType<typeof intakeFixture>) => readonly { declaration: object; path: string; symbol: string }[];
+}
+export function fixedRecordFixture(chooseRecords?: (input: { generation: string; scopeId: string; boundary: import('../../src/index.js').DecodeContext & import('../../src/index.js').BoundaryContext; fixture: ReturnType<typeof intakeFixture> }) => Json[],
+  options: FixedRecordOptions = {}) {
   const f = intakeFixture();
+  const scopeId = options.scopeId ?? 'project-a';
   const extra = [
     f.r.declaration('rungraph.contract', 'governed documents', { location: 'docs/09-the-run-graph.md', changelog: 'git-history:docs/09-the-run-graph.md' }),
     f.r.declaration('installation-replay-matrix', 'governed documents', { location: 'docs/14-the-assembly/16-the-fixed-single-machine-installation-contract.md', changelog: 'git-history:docs/14-the-assembly.changelog.md' }),
@@ -31,7 +39,8 @@ export function fixedRecordFixture(chooseRecords?: (input: { generation: string;
   const sources = [...f.registerInput.sources, ...bodyDeclarations, ...runDeclarations.map(declaration => ({ declaration, path: 'src/rungraph/rungraph.ts', symbol: declaration.id })),
     { declaration: f.r.declaration('part-two:run-input'), path: 'src/facts/store.ts', symbol: 'preserve' },
     ...extra.filter(declaration => declaration.id !== 'rungraph.contract').map((declaration, i) => ({ declaration,
-    path: 'src/assembly/production-installation-replay.ts', symbol: declaration.id }))];
+    path: 'src/assembly/production-installation-replay.ts', symbol: declaration.id })),
+    ...(options.extraSources?.(f) ?? [])];
   const registerContext = { ...f.r.context, register: { ...f.r.context.types.register, ...f.r.context.register,
     entries: [...f.r.context.register.entries, ...sources.map(source => (source.declaration as { id: string }).id)] } };
   registerContext.types = { ...registerContext.types, register: registerContext.register };
@@ -79,13 +88,13 @@ export function fixedRecordFixture(chooseRecords?: (input: { generation: string;
   const generationFact = value(authorAndAppend({ kind: 'generation-record', schemaVersion: 1, machine: 'machine-a',
     principal: json(f.f.alice), provenance: json(f.f.alice.provenance), at: json(f.f.now),
     body: { record: json(generationRecord) }, required: [root.id] }, f.context, store, privateKey)).fact;
-  const fields = { type: 'InstallationSelection', schemaVersion: 1, installation: 'host', machine: 'machine-a', scope: 'project-a',
+  const fields = { type: 'InstallationSelection', schemaVersion: 1, installation: 'host', machine: 'machine-a', scope: scopeId,
     role: 'minimal-plane-replay', instance: 'source-only', implementation: 'installation-replay', owner: 'part-ten',
     generation: generation.id, references: ['installation-replay', 'installation-replay-matrix'], validUntil: 'not-time-bound' };
   const record = { ...fields, id: digest(fields) };
-  const records: Json[] = chooseRecords ? chooseRecords({ generation: generation.id, boundary, fixture: f }) : [json(record)];
-  const packageDigest = digest({ installation: 'host', scope: 'project-a', generation: generation.id, records });
-  f.f.capture(value(canonical({ installation: 'host', scope: 'project-a', generation: generation.id, records })).bytes, packageDigest);
+  const records: Json[] = chooseRecords ? chooseRecords({ generation: generation.id, scopeId, boundary, fixture: f }) : [json(record)];
+  const packageDigest = digest({ installation: 'host', scope: scopeId, generation: generation.id, records });
+  f.f.capture(value(canonical({ installation: 'host', scope: scopeId, generation: generation.id, records })).bytes, packageDigest);
   f.syncCaptures();
   const requestDigest = authorizationRequestDigest({ approver: f.f.alice, action: { kind: 'work', scope: f.f.scope },
     artifact: packageDigest, base: 'host' });
@@ -94,7 +103,7 @@ export function fixedRecordFixture(chooseRecords?: (input: { generation: string;
   const act = f.verifiedAct({ request: { artifact: packageDigest, base: 'host', requestDigest }, generation: generationRef });
   Object.assign(f.context, { grants: [...priorGrants, ...f.context.grants] });
   const approved = value(f.port().admitVerifiedAct(act.input));
-  const admission: InstallationRecordAdmission = { boundary, scope: f.f.scope, scopeId: 'project-a',
+  const admission: InstallationRecordAdmission = { boundary, scope: f.f.scope, scopeId,
     installationFact: installationFact.id, generationFact: generationFact.id, approvalFact: approved.fact.id,
     packageRecords: records, generation: { register, context: registerContext } };
   Object.assign(f.context, { schemas: [...f.context.schemas, ...installationSelectionSchemas(f.f.scope)],
@@ -104,7 +113,13 @@ export function fixedRecordFixture(chooseRecords?: (input: { generation: string;
   return { f, record, records, writer, admission };
 }
 
-describe('P10-SI-06/23 owner installation selection admission', () => {
+// The fixture above is shared with the production fixtures; register these cases only when this
+// file is the collected test path so importers do not re-run them.
+function collectedInThisFile(): boolean { try { return expect.getState().testPath?.endsWith('fixed-installation-contract.test.ts') ?? false; } catch { return false; } }
+const collectedHere = collectedInThisFile();
+const describeHere: typeof describe = collectedHere ? describe : (() => undefined) as unknown as typeof describe;
+const itHere: typeof it = collectedHere ? it : (() => undefined) as unknown as typeof it;
+describeHere('P10-SI-06/23 owner installation selection admission', () => {
   it('appends an independently approved selection once and reuses the exact durable fact', () => {
     const { f, record, writer } = fixedRecordFixture();
     const first = value(recordInstallationSelection(record, writer));
@@ -126,7 +141,7 @@ describe('P10-SI-06/23 owner installation selection admission', () => {
 
 // These fixtures carry real owner-produced envelopes but explicitly fixture-admitted
 // register approvals. They never count as installed production evidence.
-describe('P10-SI-23 historical and current configuration boundaries', () => {
+describeHere('P10-SI-23 historical and current configuration boundaries', () => {
   it('historical decoding needs the signed original and origin decoding needs the active guard', () => {
     const f = fixedRecordFixture(), origin = value(recordInstallationSelection(f.record, f.writer));
     const context = { ...f.admission.boundary, origin, mode: 'historical' as const, facts: { ...f.f.context, facts: f.f.facts() } };
@@ -143,8 +158,8 @@ describe('P10-SI-23 historical and current configuration boundaries', () => {
     expect(f.f.frames.length).toBe(count);
   });
   it.each(['protected', 'unprotected-permitted'])('admits only the exact approved %s scope selection', requirement => {
-    const f = fixedRecordFixture(({ generation }) => {
-      const fields = { type: 'InstallationSelection', schemaVersion: 1, installation: 'host', machine: 'machine-a', scope: 'project-a',
+    const f = fixedRecordFixture(({ generation, scopeId }) => {
+      const fields = { type: 'InstallationSelection', schemaVersion: 1, installation: 'host', machine: 'machine-a', scope: scopeId,
         role: 'scope-protection', instance: requirement, implementation: 'installation-replay', owner: 'part-ten', generation,
         references: ['installation-artifacts', 'installation-replay'], validUntil: 'not-time-bound' };
       return [json({ ...fields, id: digest(fields) })];
@@ -162,7 +177,7 @@ describe('P10-SI-23 historical and current configuration boundaries', () => {
   });
 });
 
-it('P10-SI-23 admits a bounded system import only with its exact package action', () => {
+itHere('P10-SI-23 admits a bounded system import only with its exact package action', () => {
   const f = fixedRecordFixture(), system = f.f.f.principal('host', 'system');
   f.f.syncCaptures();
   const count = f.f.frames.length;
