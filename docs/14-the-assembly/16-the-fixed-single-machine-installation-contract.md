@@ -714,7 +714,7 @@ The decisions and their constitutional dispositions are explicit:
 | Capacity precedes ordinary allocation and remains visible after restart | Constitution constraint 2 (nothing silently lost), durable cause, Six §8 repair capacity, and Eleven's finite independent minimal budgets require this; P6-NF-42 and P10-SI-26 test conservation and loss detection |
 | The reservation has no run, effect or loop identity | The owner separation in §1, Six's scheduling isolation, and Ten's minimal-responder rule distinguish reserved resources from Five's admitted work; P6-NF-41/43 and P10-SI-25 test the separation |
 | A separate `CapacityReservation` rather than another `AdmissionReservation` arm | Engineering default addressing the concrete representation gap: Six's closed operation body stays historically unchanged. The constitution does not select a wire spelling; P6-NF-41 measures whether the default preserves existing operation decoding and admits capacity independently |
-| Capacity amounts, units, policy windows and finite validity | Operator deployment policy, already required by the finite resource and spend acceptance fields in §9. Missing approved values hold admission. This amendment chooses no numerical default and adds no spending authority |
+| Capacity amounts, units, policy windows and finite validity | Operator deployment policy, already required by the finite resource and spend acceptance fields in §9. Missing approved values hold admission. There is no implicit numerical default or additional spending authority |
 | Actual responder work enters Five, Six and Eight | Nothing outward by default, durable cause, least revelation and the prohibition on self-administered safeguards; P10-SI-28 retains standing, grounding, operation admission, custody and audience checks |
 | Capacity receives a named acceptance category | Constraints 2 and 3 prohibit losing accounting or claiming a passing slice by omission; P10-SI-27 requires exhaustive source coverage and keeps all actual effects accountable |
 | One execution machine and one voter remain usable | The constitution's single-machine Rule and P10-SI-03/04/05 decide this; P10-SI-29 forbids a new peer or voter prerequisite for capacity |
@@ -825,8 +825,7 @@ Permanent loss of the only machine retains the accepted loss model and no failov
 **Rule — implementation and landed-test changes have exact, separate scope.** Owner: each
 source owner below and the landing desk for grants. Predicate: P10-SI-30 requires independent
 owner review of this resolution and a separate operator-vetoable disposition for every grant
-row before implementation landing. A documentation commit supplies neither implementation
-permission nor approval of an archived draft. The following paths are the proposed bounded cut;
+row before implementation landing. Documentation approval supplies no implementation permission. The following paths are the proposed bounded cut;
 all others retain their existing grants or holds. Anchors in this subsection refer to immutable
 M3 commit `e7dd5e327374e7f2c834d042bf20288f98a8bc2f`, rather than line numbers after editing.
 They are source coordinates for review; the implementation grant is contingent on approval.
@@ -850,22 +849,28 @@ The independently vetoable fixture/helper grants are separate even when they sha
 | M3-I-H4 | `tests/assembly/live-input-owner-fixture.ts`: only M3-F3's schema/context, installation and returned-handle preparation; actual Five/Six/Eight input, cuts and mutations are preserved |
 | M3-I-H5 | `tests/assembly/production-boot-owner-fixture.ts`: only M3-F4's initial/recovery owner context, generation, lease and package setup; no installation loop; physical checkpoints and mutation timing remain |
 | M3-I-H6 | `tests/assembly/production-boot-installed-fixture.ts`: only M3-F5's descriptor, decoder, owner-history and package setup; preserve `placeRun`, physical delivery and caller mutations |
-| M3-I-H7 | `tests/assembly/genuine-production-fixture.ts`: only M3-F6's package and lease/fence adapter wiring, preserving genuine graph, harness and selected-spine checks |
-| M3-I-H8 | `tests/assembly/production-run-admission-lifecycle-host.ts:63–82`, `recoveryProof`: report operation reservations with existing run fields and uncertainty checks intact; add the owner-decoded `installationReservations` capacity category and exact coverage. Do not use “all remaining operations” as installation capacity; this is the precise capacity replacement for the operation-based M3-F6 split |
-| M3-I-H9 | `tests/slice/acceptance.ts:22,28` (`SixOperationRow`, `SliceReport`), :124 (`unaccounted`), :128 (`withinExecution`), :445 (`acrossExecutions`): add required capacity/category coverage and conservation verification per P10-SI-27. Preserve the same-run predicate at :167, unresolved ownership at :202, role ceiling at :203, exact operation identity sets and all exposure checks. Capacity cannot be admitted by weakening any of those predicates |
+| M3-I-H8 | `tests/assembly/production-run-admission-lifecycle-host.ts:63–82`, `recoveryProof`: report operation reservations with existing run fields and uncertainty checks intact; add the owner-decoded `installationReservations` capacity category and exact coverage. Do not use “all remaining operations” as installation capacity. |
+| M3-I-H9 | `tests/slice/acceptance.ts:28` (`SliceReport`), `:128` (`withinExecution`), `:445` (`acrossExecutions`): add capacity/category report types and fields and additive coverage/conservation checks per P10-SI-27. `SixOperationRow` at `:22` and `unaccounted` at `:124` remain unchanged. Preserve the same-run predicate at :167, unresolved ownership at :202, role ceiling at :203, exact operation identity sets and all exposure checks. Capacity cannot be admitted by weakening any of those predicates |
 | M3-I-H10 | `tests/slice/acceptance.test.ts:10`, shared `report` fixture: add explicit empty capacity coverage for its non-installation unit baseline and explicit source-category coverage for its operations; it cannot imply that an installed responder may omit required capacity |
+
+`tests/assembly/genuine-production-fixture.ts` remains byte-identical for this capacity cut.
+Package/reference adaptation belongs to H2, which preserves explicit bad caller references;
+genuine owner-handle preparation belongs to H4, which exposes the actual consumer-store authority
+through the existing handle shape. Neither may supply a second authority budget or a permissive
+resolver.
+
+The test bodies at `tests/slice/acceptance.test.ts:41`, `:248`, and
+`tests/assembly/fixed-installation-contract.test.ts:80` remain byte-identical; H10 may adapt only
+their shared report fixture.
 
 Each landed test below needs its own grant, not a file-wide exemption. Test names and definition
 lines are exact; the specified changes preserve all existing assertions and negative inputs:
 
 | Proposed landed-test grant | Exact test | Permitted change |
 |---|---|---|
-| M3-I-T1 | `tests/slice/acceptance.test.ts:41` — `P11-NF-45 the within-execution predicate accepts a complete execution and refuses a changed logical identity` | Add the neighbor with complete installation capacity plus the same real run; a lost capacity row must refuse. Preserve changed-run refusal |
-| M3-I-T2 | `tests/slice/acceptance.test.ts:248` — `P11-NF-41 P11-NF-48 the operation ceiling is per section-7 ROLE: the single chain's two operations pass, a duplicate role does not` | Add real capacity beside both roles, and attempted relabeling of a foreign-run operation as capacity. Preserve unknown role, foreign run, duplicate role and identity-set refusals |
-| M3-I-T3 | `tests/assembly/fixed-installation-contract.test.ts:80` — `refuses omitted role-specific references and approval substituted by a config fact` | Add wrong operation-kind capacity substitution and the exact same-store CapacityReservation positive through production resolution; retain approval and missing-owner refusals |
 | M3-I-T4 | `tests/rungraph/production-grounding-scope.test.ts:5` — `PRODUCTION-GROUNDING-SCOPE ledger 45 confines this unit to its two owner source directories` | Add only `src/transport/contracts.ts`, `src/transport/records.ts`, `src/transport/authority.ts`, `src/transport/transport.declarations.json` to an exact capacity allowlist; retain the existing index grant and all comparisons |
 | M3-I-T5 | `tests/operator/round15-regressions.test.ts:80` — `V79 the changed source paths stay inside the explicit Part Four, Part Ten and operator allowlist` | Add only the same four Six source paths to an exact capacity allowlist; preserve main comparison, all other allowances and `src/index.ts` byte equality |
-| M3-I-T6 | `tests/harness-adapters/a2-governance-and-additivity.test.ts:7` — `P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owner legacy fixture byte-identical` | Only `grantedContent` at :10–19: final reviewed digests of H1–H8 where the path is governed by this map, T3, the scope test and inventory, plus previously exact M3 pins; no prefix expansion or comparison/assertion change |
+| M3-I-T6 | `tests/harness-adapters/a2-governance-and-additivity.test.ts:7` — `P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owner legacy fixture byte-identical` | Only `grantedContent` at :10–19: final reviewed digests of actually changed H1–H6 and H8 paths governed by this map, the scope test and inventory, plus separately authorized pre-existing M3 pins where independently required; no prefix expansion or comparison/assertion change |
 
 M3-I-T7 is an additive-test grant for new
 `tests/transport/responder-capacity.test.ts`,
@@ -880,6 +885,13 @@ category coverage. New integration/lifecycle checks may use fixed-installation's
 no new permissive fixture, registration bypass or copied owner logic is granted. P10-SI-28's
 actual responder activation and P6-NF-44 remain non-executable until their separate runtime grant.
 
+`tests/slice/responder-capacity-acceptance.test.ts` owns the same-run-plus-capacity positive,
+missing-capacity negative, two-role-plus-capacity positive, and attempted foreign-operation
+relabeling negative. `tests/integration/responder-capacity.test.ts` owns the exact same-store
+capacity selection positive and operation-kind substitution negative through the production
+resolver and shared owner helper. These cases retain genuine producer/decoder evidence and do
+not copy owner validation logic into a test.
+
 Unchanged regression witnesses include the following exact observed cuts. Their failure demands
 an implementation repair or another named finding, never a changed expected result:
 
@@ -891,12 +903,13 @@ an implementation repair or another named finding, never a changed expected resu
 
 M3-I-P1 confines pin work to exact final reviewed source/support entries in
 `tests/assembly/production-grounding-inventory.json`, including the `scripts/slice-assembly.mjs` key at inventory :5245 and the
-`tests/slice/acceptance.ts` key at inventory :5438, and the changed helper/test paths above. Preserve every obligation row,
+`tests/slice/acceptance.ts` key at inventory :5438, and only the retained, actually changed helper/test paths above.
+`tests/assembly/genuine-production-fixture.ts` receives no repin for this capacity cut; separately
+authorized pre-existing M3 pins remain available where independently required. Preserve every obligation row,
 assertion mapping and unrelated digest. Refresh the resulting inventory digest at
 `scripts/check-assembly-contracts.mjs:178`, T6's existing inventory/scope and granted helper/test
 entries, and T6's enclosing hash at `scripts/check-p13-contract-map.mjs:266` only after independent
-review. `register-source/owner-references/part-ten.json:5–12` receives only the reviewed
-P10-SI-06 fixture artifact digest when T3 changes. Six's declared bindings and new predicates go
+review. Six's declared bindings and new predicates go
 through its committed declaration input and Three's ordinary generator; only §7's enumerated
 generated outputs may change. Review records retain old/new digests and reviewed source commit.
 No pin update authorizes another source or test edit. Any additional fence, snapshot, registration
@@ -922,7 +935,7 @@ physical and activation checks below are independently necessary to clear their 
 
 | Named hold | Closure owner and work retained |
 |---|---|
-| `M3-I — responder reservation representation and consumer completeness` (`SIX–TEN–ELEVEN responder-capacity admission`) | Six/Ten/Eleven and the landing desk: closes only after reviewed implementation of the minimum cut and the full affected consumer evidence; this design draft alone does not close it |
+| `M3-I — responder reservation representation and consumer completeness` (`SIX–TEN–ELEVEN responder-capacity admission`) | Six/Ten/Eleven and the landing desk: closes only after reviewed implementation of the minimum cut and the full affected consumer evidence; documentation approval alone does not close it |
 | `seven-bounded-install-supervisor` | Seven, consumed by Ten: real bounded supervision for any automated critical installation append, migration or recovery; manual placement and read-only inspection retain P10-SI-11/12's boundary |
 | `minimal-responder-budget-admission` | Six for enforceable worker/memory/storage/queue/transport/effect reservation and child isolation, Five for its governed minimal Run, Ten/Eleven for measured dependency and limited-voice admission. P6-NF-44/P10-SI-28 activation tests, actual resource enforcement and the minimal-operation report/consumer grant remain here |
 | `activation-resource-reservation` | Six/Ten: current exact holder/incarnation/fence/generation/lifetime joins and shared parent/child debit at actual launch and each use, with restart and revocation evidence. Prepared history never closes this hold |
