@@ -1,5 +1,21 @@
 [
   {
+    "revision": 4,
+    "date": "2026-09-20",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "operator-directed M3-I owner resolution for SIX–TEN–ELEVEN responder-capacity admission"
+    },
+    "changes": [
+      {
+        "what": "Define Six-owned CapacityReservation v1 and P6-NF-41–44 for guarded production, origin/historical decoding, finite parent/child conservation, restart retention and scheduling isolation; keep operation AdmissionReservation unchanged.",
+        "why": "The operation-bound reservation cannot represent standing installation capacity without inventing a run and effect; Six must own the new allocation semantics and its decoder.",
+        "ref": "git-history: docs/10-the-transport-and-leases.md §4a; commit subject: Design: responder-capacity admission (M3-I owner resolution)"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-09-19",
     "status": "draft",

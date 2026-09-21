@@ -4,13 +4,24 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 7 · 2026-09-20 · draft — Astra adjudication #2 on M3: equivalent historical-memo construction in Part Two and complete Ten cache invalidation (astra-m3-perf-adjudication.md)
+## Revision 9 · 2026-09-20 · draft — operator review on PR #93; Astra adjudication #2 on M3: equivalent historical-memo construction in Part Two and complete Ten cache invalidation (astra-m3-perf-adjudication.md)
 
 - **Add the M3-E supplement to §7: src/facts/historical.ts may amortize its historical-body memo key with identical semantics; Ten's record validation caches must key on the complete consumed inputs and never serve the origin path; one new Part Two test path; two exact fence-line amendments; the resulting pin chain.** — Real composition showed a store with many owner-produced installation records re-encodes the register, schemas and keys on every historical read; correctness of the caches is required before performance closure. _(`4a3a0e6`)_
 
-## Revision 6 · 2026-09-20 · draft — Astra adjudication of the M3 item-2 conflict between P10-SI-07 and the landed-fixture freeze (astra-m3-item2-adjudication.md)
+## Revision 8 · 2026-09-20 · draft — operator review on PR #93; Astra adjudication of the M3 item-2 conflict between P10-SI-07 and the landed-fixture freeze (astra-m3-item2-adjudication.md)
 
 - **Grant the migration of the two landed production fixture helpers through real owner producers (P10-SI-20), keeping tests/assembly/production.test.ts byte-identical, and record the additive declaration-baseline move for the P5 additivity fence with its exact dependent pins.** — Real composition showed the eighteen-name map cannot resolve the old id-only fixture wrappers; the strict owner rule stands and its consumers move with it rather than adding a compatibility path. _(`216cf28`)_
+
+## Revision 7 · 2026-09-20 · draft — round 2 corrections from the non-converged M3-I review of 4b4d8f4
+
+- **Retire proposed grants M3-I-T1, T2 and T3; assign their capacity neighbors to the existing additive T7 acceptance and integration files and remove capacity-only T3 pin work without renumbering T4–T7.** — The existing landed test bodies need no changes; additive tests retain every requested capacity positive and negative through the genuine owner path. _(astra-m3-amendment-review-4b4d8f4.md, finding 1)_
+- **Retire proposed H7, preserve genuine-production-fixture.ts for this cut, narrow H9 to report fields and additive checks, and restrict T6/P1 to retained actual changes while preserving independently required prior pins.** — H2/H4 already supply the wrapper’s package and owner handles; SixOperationRow and unaccounted need no capacity semantics. _(astra-m3-amendment-review-4b4d8f4.md, finding 2)_
+- **Keep the current H8 capacity coverage and actual-operation accounting contract without narrating the prior M3-F6 split, which separated run reservations from remaining operation reservations as installation accounting.** — The capacity category replaces that operation-based split; the prior design belongs in history, while operative accounting protections remain in the contract. _(astra-m3-amendment-review-4b4d8f4.md, finding 3; seam-m3-grant-f.md, item 6)_
+- **Move archived-draft disposition and amendment narration into history: the archived H/F/item-4 draft remains incomplete and unapproved; documentation approval supplies no implementation permission and does not close M3-I.** — The contract reads as its first version while retaining independent review, separate grants, immutable source coordinates and every operative hold condition. _(astra-m3-amendment-review-4b4d8f4.md, finding 3; seam-m3-hold-i.md)_
+
+## Revision 6 · 2026-09-20 · draft — operator-directed M3-I owner resolution for SIX–TEN–ELEVEN responder-capacity admission
+
+- **Resolve standing responder capacity separately from selection and execution, with P10-SI-25–31, exact proposed source/helper/test grants, explicit installation-capacity acceptance and retained activation holds.** — The M3-I cross-owner finding exposed both conversation-loop occupation and an installation operation misclassified as semantic reply work; Part B needs genuine capacity and complete unchanged consumer evidence. _(git-history: docs/14-the-assembly/16-the-fixed-single-machine-installation-contract.md §11; commit subject: Design: responder-capacity admission (M3-I owner resolution))_
 
 ## Revision 5 · 2026-09-19 · draft — operator amendment making the fixed single-machine profile a supported deployment shape
 
