@@ -102,3 +102,22 @@ it('P2-M3E-05 canonical-invalid frozen accessors refuse without being invoked', 
   expect(decodeHistoricalBody(f.fact, context, context.decode).kind).toBe('Refused');
   expect(getterCalls).toBe(0);
 });
+
+it('P2-M3E4-01 a mutable equal-byte envelope cannot reuse after its signature changes', () => {
+  const f = setup();
+  const baseline = value(decodeHistoricalBody(f.fact, f.ctx, f.ctx.decode)); const calls = f.calls();
+  const mutable = JSON.parse(JSON.stringify(f.fact)) as typeof f.fact;
+  expect(Object.isFrozen(mutable)).toBe(false);
+
+  // The valid equal-byte copy remains a content hit.
+  expect(value(decodeHistoricalBody(mutable, f.ctx, f.ctx.decode))).toEqual(baseline);
+  expect(f.calls()).toBe(calls);
+
+  Object.assign(mutable, { signature: '00' });
+  const warm = decodeHistoricalBody(mutable, f.ctx, f.ctx.decode);
+  const reference = decodeHistoricalBody(JSON.parse(JSON.stringify(mutable)),
+    { ...f.ctx, ownedBodies: [f.register()] }, f.ctx.decode);
+  expect(warm).toEqual(reference);
+  expect(warm.kind).toBe('Refused');
+  if (warm.kind === 'Refused') expect(warm.detail).toContain('signature encoding');
+});

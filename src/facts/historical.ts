@@ -17,11 +17,10 @@ export interface HistoricalBody {
   readonly revocations: readonly HistoricalRead<Revocation>[];
 }
 type DecodedBody = { fingerprint: string; owners: FactContext['ownedBodies']; migrations: FactContext['migrations']; body: HistoricalBody };
-const decodedBodies = new WeakMap<object, DecodedBody>();
 // GRANT M3-E: a projection re-materializes envelope objects, so the record-object key alone misses
-// on every read. Beside it, a decoded body is also findable by fact id and reused only when the
-// candidate envelope's canonical bytes EQUAL the bytes that were decoded — byte equality, never
-// identity or an asserted id, establishes that it is the same signed envelope.
+// on every read. A decoded body is findable by fact id and reused only when the candidate
+// envelope's complete current canonical bytes EQUAL the bytes that were decoded — byte equality,
+// never identity or an asserted id, establishes that it is the same signed envelope.
 const decodedByContent = new Map<string, DecodedBody & { envelope: string }>();
 
 // GRANT M3-E: the memo fingerprint keeps the exact canonical bytes of its composite input, but a
@@ -105,11 +104,9 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
         now: c.now ?? null, currentBase: c.currentBase ?? null, artifact: c.artifact ?? null, subjects: c.recordSubjects ?? {},
         grants: c.grants ?? [], revocations: c.revocations ?? [], keys: context.keys,
         cone: causalCone(record, context.facts).map(f => f.contentHash).sort() });
-      const byObject = decodedBodies.get(record);
-      const byContent = byObject ? undefined : decodedByContent.get(record.id);
-      const reused = byObject ?? (byContent && byContent.envelope === encoding(record).bytes ? byContent : undefined);
+      const byContent = decodedByContent.get(record.id);
+      const reused = byContent?.envelope === encoding(record).bytes ? byContent : undefined;
       if (reused?.fingerprint === fingerprint && reused.owners === context.ownedBodies && reused.migrations === context.migrations) {
-        if (!byObject) decodedBodies.set(record, reused);
         cache.set(record.id, reused.body); issued.set(record.id, reused.body.records); return reused.body;
       }
       const history: HistoricalRead<ConstitutionalValue>[] = [];
@@ -180,7 +177,7 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
       const result: HistoricalBody = { fields: out, records: own, grants, revocations, taint: unavailable ? ['evidence-unavailable'] : [] };
       issued.set(record.id, own); cache.set(record.id, result);
       const decoded: DecodedBody = { fingerprint, owners: context.ownedBodies, migrations: context.migrations, body: frozen(result) };
-      decodedBodies.set(record, decoded); decodedByContent.set(record.id, { ...decoded, envelope: encoding(record).bytes }); return result;
+      decodedByContent.set(record.id, { ...decoded, envelope: encoding(record).bytes }); return result;
     };
     return read(fact, decoderContext);
   });
