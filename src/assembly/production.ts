@@ -421,13 +421,25 @@ export function inspectOpenedProductionInstallation(composition: AssemblyComposi
       && (status.fact.body as { record?: { installation?: string; scope?: string; role?: string } }).record?.scope === scope
       && (status.fact.body as { record?: { installation?: string; scope?: string; role?: string } }).record?.role === 'scope-protection');
     const protectionUnavailable = rawProtection.map(status => history.unavailable.get(status.fact.id)).find(Boolean);
-    const protectionInput = protectionUnavailable ? null : protectionCandidates[0] ?? null;
-    const protectionActual = protectionInput?.fact ?? rawProtection[0]?.fact ?? null;
+    const protectionGroups = new Map<string, typeof protectionCandidates>();
+    for (const candidate of protectionCandidates) {
+      const key = encoded(candidate.selection).bytes;
+      const group = protectionGroups.get(key) ?? [];
+      group.push(candidate); protectionGroups.set(key, group);
+    }
+    const soleProtectionGroup = protectionGroups.size === 1 ? [...protectionGroups.values()][0]! : null;
+    const protectionReferences = [...new Set(protectionCandidates.map(candidate => candidate.fact.id))].sort();
+    const protectionAmbiguity = protectionGroups.size > 1
+      ? `scope-protection ambiguity: distinct canonical decoded selections; sources=${protectionReferences.join(',')}` : null;
+    const protectionInput = protectionUnavailable || protectionAmbiguity ? null : soleProtectionGroup?.[0] ?? null;
+    const protectionActual = protectionAmbiguity ? null : protectionInput?.fact ?? rawProtection[0]?.fact ?? null;
     const protectionSource = { location: `installation:${installation.id}:scope:${scope}:role:scope-protection`,
       expectedKind: 'assembly-InstallationSelectionSet', expectedReference: null,
       actualReference: protectionActual ? envelopeReference(protectionActual) : null };
-    const protectionReason = protectionUnavailable
-      ? `${protectionUnavailable}; required installation selection set is unavailable`
+    const protectionHold = [protectionUnavailable, protectionAmbiguity]
+      .filter((reason): reason is string => typeof reason === 'string').join('; ');
+    const protectionReason = protectionHold
+      ? `${protectionHold}; required installation selection set is unavailable`
       : protectionInput ? 'singleton history is diagnostic only; required installation selection set is unavailable'
       : rawProtection.length ? 'historical-installation-admission-context; required installation selection set is unavailable'
       : 'scope-protection source bytes are absent; required installation selection set is unavailable';

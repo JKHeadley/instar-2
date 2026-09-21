@@ -300,6 +300,38 @@ describe('P10-SI-16/35 historical immutable conflict inspection', () => {
     expect(report.ownerInputs.scopeProtection).toMatchObject({ kind: 'singleton-history', selection: { instance: 'protected' } });
   }, 180000);
 
+  it('withholds competing protected and unprotected-permitted scope history in both input orders', () => {
+    const scope = 'scope:minimal';
+    const fixed = fixedRecordFixture(({ generation, scopeId }) => ['protected', 'unprotected-permitted'].map(instance => {
+      const fields = { type: 'InstallationSelection', schemaVersion: 1, installation: 'host', machine: 'machine-a',
+        scope: scopeId, role: 'scope-protection', instance, implementation: 'installation-replay',
+        owner: 'part-ten', generation, references: ['installation-artifacts', 'installation-replay'], validUntil: 'not-time-bound' };
+      return json({ ...fields, id: value(canonical(fields)).hash });
+    }), { scopeId: scope });
+    const setup = historyInspectionFixture(fixed, scope);
+    const protectedFact = value(recordInstallationSelection(fixed.records[0],
+      { ...fixed.writer, context: setup.context, store: setup.store }));
+    const permittedFact = value(recordInstallationSelection(fixed.records[1],
+      { ...fixed.writer, context: setup.context, store: setup.store }));
+    const manifest = setup.manifest();
+    for (const facts of [[protectedFact, permittedFact], [permittedFact, protectedFact]]) {
+      const report = inspectWithoutWrites(setup, manifest, scope, facts.map(fact => ({ kind: 'singleton-history',
+        fact: historicalReference(fact), admission: fixed.admission })));
+      const history = report.history.filter(row => row.source.expectedKind === 'assembly-InstallationSelection');
+      expect(history).toHaveLength(2);
+      expect(history.every(row => row.state === 'resolved' && row.reason === null)).toBe(true);
+      expect(history.map(row => row.source.actualReference?.id).sort()).toEqual([protectedFact.id, permittedFact.id].sort());
+      expect(report.ownerInputs.historical.filter(input => [protectedFact.id, permittedFact.id].includes(input.fact.id))).toHaveLength(2);
+      expect(report.ownerInputs.scopeProtection).toBeNull();
+      const verdict = report.bindings.find(row => row.name === 'scope-protection');
+      expect(verdict).toMatchObject({ state: 'unresolved', input: null,
+        reason: expect.stringContaining('scope-protection ambiguity'), source: { actualReference: null } });
+      expect(verdict?.reason).toContain(protectedFact.id);
+      expect(verdict?.reason).toContain(permittedFact.id);
+      expect(report.unresolved).toContain(verdict);
+    }
+  }, 180000);
+
   it('keeps a missing original admission context as an explicit unavailable historical hold', () => {
     const scope = 'scope:minimal';
     const fixed = fixedRecordFixture(({ generation, scopeId }) => {
