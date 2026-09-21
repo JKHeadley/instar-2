@@ -27,13 +27,14 @@ and effect settlement. Part nine owns independent verification and grading. Part
 judgment and its benchmark record. Parts one through four retain their types and doorways.
 
 **Rule — inventory is closed.** **Check: P6-NF-02**, comparing schemas, constructors and imports
-with these tables, enforces rules 5, 69 and 90. This part defines exactly these nine types:
+with these tables, enforces rules 5, 69 and 90. This part defines exactly these ten types:
 
 | Defined here | What it represents | Producer |
 |---|---|---|
 | Lease | A recorded, temporary assignment of one execution scope to one worker incarnation | Lease authority, through verified decoding |
 | FenceToken | The scope and increasing ownership epoch checked at execution admission | Derived from a committed lease assignment |
 | AdmissionReservation | One durable reservation to attempt a named operation under a fence | Conditional admission at the lease authority |
+| CapacityReservation | Finite standing installation capacity, independent of any run or operation | Six authority through guarded conditional capacity admission (§4a) |
 | LoopPolicy | The registered brakes and resource demands for a repeating activity | Governed declaration decoder |
 | LoopRecord | Durable progress, next wake and closure of one bounded repetition episode | Loop primitive through conditional append |
 | RecoveryRecord | The facts examined, actions attempted and disposition of one recovery episode | Recovery holder under its recorded standing |
@@ -249,9 +250,11 @@ is only advice. It carries:
 
 **Rule — assembly resource admission references the actual reservation.** Owner: Six;
 Ten consumes the reference. **Checks: P6-NF-09/12/35**. An
-`AssemblyAdmission.resourceReservation` resolves only to Six's exact `AdmissionReservation` for
-the same scope, holder, incarnation, fence, policy generation, lifetime and finite resource
-allocation, and is revalidated at activation and use. Configured budgets, the storage root lock,
+`AssemblyAdmission.resourceReservation` resolves to Six's exact `AdmissionReservation` for
+operation admission or, for standing installation capacity, its exact `CapacityReservation`
+under §4a. Each resolves for the same scope, holder, incarnation, fence, policy generation,
+lifetime and finite resource allocation, and is revalidated at activation and use. An operation
+reservation cannot satisfy the standing minimal-responder allocation. Configured budgets, the storage root lock,
 an expired lease or a reservation for another process refuses. A current reservation returned by
 the installed Six authority for that exact scope is the positive neighbor.
 
@@ -354,6 +357,119 @@ and independent evidence assessment. A missing eight/nine evidence contract keep
 family unable to enable automatic retry. The partial duty is explicit: six can prove that
 verification was scheduled and that uncertainty blocked retry, not that a third party's evidence
 is sufficient. Their integration fixture must supply both decisive and inconclusive responses.
+
+## 4a. Installation responder capacity
+
+**Rule — standing capacity has its own Six-owned record.** Owner: Six for the record,
+producer, decoder and accounting; Two for its admitted envelope; Three for registration.
+**Check: P6-NF-41** requires `CapacityReservation` v1, fact kind
+`transport-CapacityReservation` schema 1, to denote a finite installation allocation without an
+operation. `AdmissionReservation` remains the operation record in §4, with its existing body,
+run, request, attempt, exposure, recovery-loop and dispatch rules. Neither an operation with zero
+charge nor a fabricated Run or EffectRequest can stand in for capacity. The positive neighbor
+reserves capacity through Six before any conversation loop or outbound operation exists.
+
+The constitution's durable-cause rule and constraint 2 require retained allocation evidence;
+§8's repair-capacity rule requires deduction and scheduling isolation. They decide the semantics,
+not a wire spelling. A separate record is the engineering default for the representation gap:
+its checkable advantage is that the closed operation schema and historical interpretation stay
+unchanged. P6-NF-41 tests that advantage. Resource quantities, units, replenishment windows and
+lifetime limits are the operator's existing finite deployment policy, not values inferred from
+free memory or spare money. Missing approved quantities hold admission; no numerical policy
+is introduced here.
+
+The closed body fields are:
+
+| Field | Meaning and decoder obligation |
+|---|---|
+| `type`, `schemaVersion` | `CapacityReservation`, `1` |
+| `capacity` | Stable digest key of installation, machine, scope, instance, budget-policy reference and generation; a second unequal allocation under this key conflicts |
+| `domain`, `command`, `predecessor`, `authority`, `tick` | Six's ordinary serialized authority-row metadata; predecessor is the exact committed domain head, tick is comparable only in its authority incarnation |
+| `installation`, `machine`, `scope`, `instance`, `generation` | Exact admitted installation, machine, scope, minimal-responder instance and entering-force generation |
+| `budgetPolicy`, `approval`, `grant` | Exact owner-resolved finite parent-budget policy, independent approval and standing for this allocation; requester metadata is insufficient |
+| `ordinaryDomain`, `responderDomain` | The ordinary allocation domain and a distinct minimal-work child domain; both belong to the same declared finite parent budget and installed Six authority/store |
+| `allocation` | Closed vector `worker`, `memory`, `storage`, `queue`, `transport`, `effect`; each entry has a finite nonnegative safe-integer quantity and the exact policy unit/window reference. Every required minimal function has a strictly positive usable allocation; zero is legal only where the selected function demands none |
+| `fence`, `holder`, `incarnation` | The current allocating authority's assignment-derived fence and matching holder/incarnation, not a conversation ownership grant for the responder |
+| `validUntil` | Finite One clock measurement bound to the issuer's comparable clock/incarnation and no later than the approved allocation and lease horizons |
+| `transition`, `state`, `previousCapacity` | `reserve` produces `held` with no previous capacity fact; `rebind` produces `held` and `release` produces `released`, each naming the exact preceding capacity fact |
+
+Each successor retains the allocation identity, policy, domains and quantities. A rebind may
+change only authority-row metadata, current fence/holder/incarnation, bounded validity and
+transition linkage under the same approval. A new policy or allocation requires a separately
+approved replacement and atomic accounting of both allocations until the old one can be released.
+The body has no Run, EffectRequest, operation, attempt, semantic-message, executor, charge,
+settlement or dispatch state. Its envelope id identifies the exact version; `capacity` identifies
+the allocation across successors. Equal command and input reuse the committed result, including
+a lost append acknowledgment; unequal reuse refuses. Two's signature, causal closure, conflict
+and taint checks remain mandatory.
+
+`createTransportAuthority` exposes the public `reserveCapacity`, `rebindCapacity`,
+`releaseCapacity` and read-only `inspectCapacity` ports. The installed authority is the sole
+producer. `reserveCapacity` accepts the approved allocation inputs and expected head, validates
+current standing, policy, stop and fence, and returns the actual appended fact reference and
+Six-owned record. It never calls `schedule` or `reserve`. `registerTransportBodies` registers
+`decodeCapacityReservationAtOrigin` and `decodeHistoricalCapacityReservation`, exported through
+Six's public index. The origin decoder requires the authority's active append guard and the
+complete owner-resolved causal input. Historical decoding uses the origin-pinned schema,
+generation, standing and prefix, not today's authority. Neither public decoder is a constructor
+for current permission. `inspectCapacity` returns the historically decoded allocation, exact
+source frontier, successor references, balance and current usable/held verdict separately.
+
+**Rule — ordinary work cannot borrow the reserve.** Owner: Six. **Check: P6-NF-42** enforces
+componentwise conservation at every allocation/operation admission and on replay. For each
+policy unit and window, let B be the finite parent capacity, R the sum of unreleased standing
+allocations, O ordinary outstanding allocation/exposure/consumption, and M the corresponding
+minimal child usage. Require `R + O <= B` and `M <= R`; ordinary new work must fit `B - R - O`.
+Minimal usage is a debit within R, never added a second time to the parent debit. A settled charge
+still consumes its policy window; settlement releases only what Eight proves unused. Unknown
+minimal exposure remains inside R and cannot be lent to ordinary work. Physical worker, memory,
+storage, queue and transport admission use their own units, never a conversion from the scalar
+money budget. Reports distinguish reservation, retained exposure, actual charge and measured use.
+
+The parent policy must declare the required minimal allocation before admitting ordinary work.
+A missing required reservation therefore closes ordinary admission instead of making R zero.
+All issuer objects sharing the budget consume the same authenticated prefix and conditional
+parent-budget serialization. There is no second budget store, separately refillable host budget,
+or caller-selected domain that escapes the debit. Installing capacity after ordinary work has
+already consumed the headroom refuses without evicting or erasing that work. The positive
+neighbor reserves first, admits ordinary work up to the remainder, and refuses the next unit.
+
+On restart, Six recovers its committed prefix and maximum fence epoch before admitting either
+class. It replays every capacity successor and all operation accounting from the same source;
+projections are rebuildable indexes. Absent/truncated required history, an unequal key, taint,
+unknown window, or ambiguous authority keeps the budget unavailable and is reported by
+`inspectCapacity` and Ten's replay report. A foreign clock/incarnation or expired horizon makes
+the allocation unusable but does not release its debit. A current rebind is a guarded successor,
+not resurrection of an old lease. `releaseCapacity` requires independently authorized withdrawal
+or replacement of the required reserve, fencing of its users, and proof of no remaining child
+allocation, dispatch claim, unknown execution or retained charge/exposure. Only its durable
+successor returns unused capacity; expiry, process absence and a reporting filter cannot do so.
+A crash before acknowledgment leaves the committed debit in place and a retry reads it once.
+
+**Rule — reservation never schedules; activation accounts for actual work.** Owner: Six for
+isolation and accounting, Five for a minimal Run, Eight for effects. **Checks: P6-NF-43/44**.
+Creating, inspecting, rebinding or releasing capacity creates no `LoopRecord` and occupies none
+of the ordinary conversation's one loop slot. An ordinary run can schedule while capacity is
+held; a second ordinary loop is still refused. No change to the existing one-loop-per-domain
+rule is implied. The minimal domain cannot issue the disputed conversation's lease.
+
+Actual minimal work requires Five's governed admission, current system-principal grant,
+actual-start grounding and its own bounded recovery episode. Six admits its resource use against
+the selected child allocation, and Eight admits each real effect with its own operation-bound
+`AdmissionReservation`, one-use claim, causal durability, observation and settlement. Every
+minimal operation retains run and operation accounting; it can never decode as capacity. Child
+operation accounting and the parent debit must share serialization before dispatch, including
+across issuer objects and restart. A child-domain runtime without this join refuses activation.
+Ten rechecks the selected allocation's current successor, scope, holder, incarnation, generation,
+lifetime, stop and finite remainder at activation and each use. Selection or historical decoding
+alone grants nothing. An attributable conversation response additionally needs Four's current
+binding and Six's exclusive conversation lease/fence at dispatch. An independently granted
+infrastructure receipt keeps its own identity and cannot impersonate that response.
+
+P6-NF-41/42/43 are reservation, decoder, conservation, replay and scheduling checks; P6-NF-44 is
+an activation integration/lifecycle check. The fixed-profile cut and the activation work still
+held are specified in Part Ten's fixed-installation contract §11. No Nine reconstruction rule
+changes: Nine reconstructs actual effects and never manufactures an outcome for standing capacity.
 
 ## 5. The loop primitive
 
@@ -892,6 +1008,10 @@ are required implementation artifacts, not tests this document claims already ex
 | P6-NF-38 | onboarding / lifecycle | Stall class absent, detected only by label, or recovery bypasses finite loop/authority admission |
 | P6-NF-39 | integration | Chargeable model call before fenced spend reservation; attempt maps to multiple operations; takeover double-charges; unknown charge releases credit; seven mutates a parallel spend ledger; stale answer advances run |
 | P6-NF-40 | integration | Lost ack after durable receipt resubmits uncertain effect, creates missing work, re-calls provider or duplicates collection; lookup miss clears uncertainty; delivery-attempt id substitutes for semantic/effect identity; returned old receipt resets peer deadline |
+| P6-NF-41 | unit / integration | Capacity needs a Run, EffectRequest or loop; fabricated producer/decoder; changed operation schema; unequal reuse of a capacity key |
+| P6-NF-42 | integration / lifecycle | Ordinary work borrows required capacity; duplicate issuers overspend; restart or missing prefix restores free budget; expiry releases retained debit; child usage is double-counted or unaccounted |
+| P6-NF-43 | integration / lifecycle | Capacity consumes the conversation loop slot; second ordinary loop admitted; minimal domain grants itself conversation ownership |
+| P6-NF-44 | activation / lifecycle | Minimal work bypasses Five grounding, Six child/parent accounting or Eight effects; stale use admitted; unknown minimal exposure released. Non-executable until the fixed-profile activation holds close |
 
 ## 15. Terms introduced here
 
