@@ -1,5 +1,31 @@
 [
   {
+    "revision": 13,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Nine exact-response output-use supplement from astra-m4-g6-nine-adjudication.md; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec. Unstaged docs-first draft; desk owns merge and final implementation grants."
+    },
+    "changes": [
+      {
+        "what": "Specify P10-SI-37’s one-route exact-response capture and same-assessment G6 ordering, limits, operator costs and named holds.",
+        "why": "The CLI capture lacks authenticated-source and terminal evidence; those concrete contract inputs remain held rather than inferred from occurrence, JSON or exit success.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-g6-nine-adjudication.md §§2–4,6; docs-first task on design-m4-nine-exact-response-assessment; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec"
+      },
+      {
+        "what": "Enumerate every proposed source/helper/registration/landed-test/pin/generated grant at actual base coordinates, with LIVE protection and unchanged generic consumers.",
+        "why": "The exact Nine version delta and Seven return copier need reviewable owner grants; the coverage mapper and count assertions require narrowly named population extensions.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-g6-nine-adjudication.md §§2–4,6; docs-first task on design-m4-nine-exact-response-assessment; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec"
+      },
+      {
+        "what": "Require M3-S at 1e7feb2, then Eight launch at e5ea93f, then this rebased supplement; reserve P10-SI-37 and P9-NF-64–66.",
+        "why": "Avoid colliding with P10-SI-32–35 and P10-SI-36 or the pending Ten changelog entries 10–12; preserve both maps. No custody/host sequencing exception belongs in this supplement.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-g6-nine-adjudication.md §§2–4,6; docs-first task on design-m4-nine-exact-response-assessment; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec"
+      }
+    ]
+  },
+  {
     "revision": 9,
     "date": "2026-09-20",
     "status": "draft",

@@ -193,6 +193,38 @@ retained exposure are rechecked before a new use, not used to erase an earlier a
 accounting settlement does not invalidate its historical acceptance. No callback, answer bytes,
 authority, actual-charge claim or retry permission is serialized into the record.
 
+**Rule — the response evidence reaches Nine without losing its source.** Owner: Seven for the
+bounded optional `ProviderObservation.responseEvidence` contract and exact Decision decode;
+Ten for actual return capture; Nine for its assessment. **Checks: P9-NF-64/65/66 and P10-SI-37**,
+with P7-NF-10/21/22/34/38/39/43. Nine §2/§5 defines the closed v2 subject, both evidence bars,
+producer, registered version decoders and current consumer. Fixed-installation §6 defines the
+one-route response envelope and capture path; §7 names its exact proposed source/test grants.
+The envelope carries bounded authenticated-source observation, terminal Evidence and parser/
+response-contract references, never credential bytes. The return boundary preserves the actual
+raw source/terminal bytes and their distinct digests in local custody before recording Seven's
+response-observed fact and Eight's linked response observation. Neither a copied completion flag
+nor metadata discarded before capture can satisfy Nine. Legacy observations without this envelope
+remain readable on their existing settlement path and are ineligible for output-use acceptance.
+
+Seven exposes `decodeCapturedProviderDecision` as the read-only operation on its genuine provider
+port for Nine's pre-settlement completeness assessment. It extracts the existing captured-answer
+validation from `src/judgment/provider-path.ts:263–272`, resolves the request/response facts and
+available exact capture, and returns the decoded Decision with its source and answer digest.
+It records no acceptance, requires no settlement and grants no effect or caller-defined evaluator.
+Its registered public implementation is shared by the existing fully settled resolver and the
+acceptance producer, preserving the same interpretation. Ten binds that exact Seven port into
+Nine's same-store assessment composition; an arbitrary callback or typed substitute refuses.
+
+Seven consumes `consumeProviderResponseAssessment` from the genuine same-store Nine port and
+rechecks its exact captured Decision, including floor, judgment point, model/route and evidence
+subset. It records the same Nine assessment fact used by Eight's settlement, followed by the
+exact Six accounting join. Construction order is captured response/observations, Nine question
+and assessment, Eight settlement, Six accounting, Seven acceptance, then Five's conditional reply
+opening. The assessment subject never requires the later acceptance or settlement. A prior
+occurrence-only settlement does not qualify for this first output-use mode; it is neither replaced
+nor retroactively upgraded. No change to the fully settled resolution's zero-unresolved rule,
+raw-capture custody, model-authority ceiling or exposure retention follows from this contract.
+
 **Rule — acceptance supplies one separately admitted reply, not readiness for the provider run.**
 Owner: Five for conditional consumption and the reply run; Seven owns the accepted answer; Eight
 owns the reply operation. **Check: P10-SI-24**. Five's public `openAcceptedProviderReply` rechecks
