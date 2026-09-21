@@ -146,6 +146,8 @@ function validate(input: unknown, context: OwnedBodyContext, admission: Installa
   const record = closed(input);
   need(context.origin.kind === 'rungraph-installed-governance-reference' && record.scope === admission.scopeId,
     'governance: wrong kind or scope');
+  if (context.mode === 'origin')
+    need(active.get(admission) === encoded(record).hash, 'governance: active owner admission guard required');
   installationRecordBasis(record, admission, context.facts, context.origin);
   need(admission.packageRecords.some(candidate => encoded(candidate).bytes === encoded(record).bytes),
     'governance: policy differs from independently approved package');
