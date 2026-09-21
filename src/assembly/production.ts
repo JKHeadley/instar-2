@@ -237,26 +237,69 @@ function historicalVerdicts(snapshot: FactSnapshot, facts: FactContext, installa
   supplied: readonly OpenedProductionInstallationHistoricalInput[]): Readonly<{
     verdicts: readonly OpenedProductionInstallationBindingVerdict[];
     inputs: ReadonlyMap<string, OpenedProductionInstallationOwnerInput>;
+    unavailable: ReadonlyMap<string, string>;
   }> {
   const kinds = new Set(['assembly-InstallationSelection', 'assembly-ProductionSignerReference',
     'rungraph-installed-governance-reference']);
   const inputs = new Map<string, OpenedProductionInstallationOwnerInput>();
+  const unavailable = new Map<string, string>();
   const rows = snapshot.entries.filter(row => kinds.has(row.fact.kind)
     && (row.fact.body as { record?: { installation?: string } }).record?.installation === installation);
-  const verdicts = rows.map((status): OpenedProductionInstallationBindingVerdict => {
+  type DecodedHistoryRow = Readonly<{ status: FactStatus; owner: string;
+    source: OpenedProductionInstallationBindingVerdict['source']; name: string;
+    input: OpenedProductionInstallationOwnerInput | null; refusal: string | null }>;
+  const ownerRecord = (input: OpenedProductionInstallationOwnerInput): Json => input.kind === 'singleton-history'
+    ? input.selection as unknown as Json : input.kind === 'direct-owner' ? input.record : input.row;
+  const decoded = rows.map(status => {
     const owner = status.fact.kind === 'rungraph-installed-governance-reference' ? 'part-five'
       : status.fact.kind === 'assembly-ProductionSignerReference' ? 'part-two' : 'part-ten';
     const source = { location: `opened-root:${status.fact.kind}:${status.fact.id}`, expectedKind: status.fact.kind,
       expectedReference: status.fact.id, actualReference: envelopeReference(status.fact) };
-    const decoded = historicalInputFor(status.fact, facts, supplied);
-    return consumeResult<OpenedProductionInstallationOwnerInput, OpenedProductionInstallationBindingVerdict>(decoded, {
-      Success: input => { inputs.set(status.fact.id, input); return freeze({ name: `historical:${status.fact.kind}:${status.fact.id}`,
-        owner, state: 'resolved' as const, reason: null, source, input }); },
-      Refused: refusal => freeze({ name: `historical:${status.fact.kind}:${status.fact.id}`, owner,
-        state: 'unresolved' as const, reason: refusal.detail, source, input: null }),
-    });
+    const name = `historical:${status.fact.kind}:${status.fact.id}`;
+    return consumeResult<OpenedProductionInstallationOwnerInput, DecodedHistoryRow>(
+      historicalInputFor(status.fact, facts, supplied), {
+      Success: input => ({ status, owner, source, name, input, refusal: null }),
+      Refused: refusal => ({ status, owner, source, name, input: null, refusal: refusal.detail }),
+      });
   });
-  return freeze({ verdicts, inputs });
+  const groups = new Map<string, typeof decoded>();
+  for (const row of decoded) {
+    if (!row.input) continue;
+    const record = ownerRecord(row.input);
+    const fields = record as Readonly<Record<string, Json>>;
+    const key = row.status.fact.kind === 'assembly-InstallationSelection'
+      ? encoded([fields.installation!, fields.scope!, fields.generation!, fields.role!, fields.instance!]).bytes
+      : row.status.fact.kind === 'assembly-ProductionSignerReference'
+        ? encoded([fields.installation!, fields.machine!, fields.generation!]).bytes
+        : encoded([fields.installation!, fields.scope!, fields.generation!]).bytes;
+    const grouped = groups.get(`${row.status.fact.kind}:${key}`) ?? [];
+    grouped.push(row); groups.set(`${row.status.fact.kind}:${key}`, grouped);
+  }
+  const immutableConflicts = new Map<string, string>();
+  for (const group of groups.values()) {
+    const records = new Set(group.map(row => encoded(ownerRecord(row.input!)).bytes));
+    if (records.size <= 1) continue;
+    const references = group.map(row => row.status.fact.id).sort().join(',');
+    const reason = `historical immutable conflict: unequal canonical records share owner key; sources=${references}`;
+    for (const row of group) immutableConflicts.set(row.status.fact.id, reason);
+  }
+  const verdicts = decoded.map((row): OpenedProductionInstallationBindingVerdict => {
+    const fact = row.status.fact, immutableConflict = immutableConflicts.get(fact.id);
+    const statusUnavailable = row.status.taint.length || row.status.conflicts.length
+      ? `historical owner source is unavailable or conflicted: ${encoded({ taint: row.status.taint, conflicts: row.status.conflicts }).bytes}`
+      : null;
+    const reason = [row.refusal, immutableConflict, statusUnavailable]
+      .filter((value): value is string => typeof value === 'string').join('; ') || null;
+    if (reason) {
+      unavailable.set(fact.id, reason);
+      return freeze({ name: row.name, owner: row.owner, state: 'unresolved' as const,
+        reason, source: row.source, input: null });
+    }
+    inputs.set(fact.id, row.input!);
+    return freeze({ name: row.name, owner: row.owner, state: 'resolved' as const,
+      reason: null, source: row.source, input: row.input! });
+  });
+  return freeze({ verdicts, inputs, unavailable });
 }
 
 function directOwnerInput(status: FactStatus, facts: FactContext): Result<OpenedProductionInstallationOwnerInput> {
@@ -320,6 +363,7 @@ export function inspectOpenedProductionInstallation(composition: AssemblyComposi
       const selection = inspectionSelection(name, requiredKind);
       if (selection) {
         let input = actual ? history.inputs.get(actual.id) ?? null : null;
+        const historyUnavailable = actual ? history.unavailable.get(actual.id) ?? null : null;
         let detail = found.reason ?? (actual ? '' : 'binding source bytes are absent');
         if (actual?.kind === 'assembly-InstallationSelection' && input?.kind === 'singleton-history') {
           const record = input.selection;
@@ -330,7 +374,7 @@ export function inspectOpenedProductionInstallation(composition: AssemblyComposi
           if (!exact) detail = 'singleton history differs from the exact installation/role/instance binding';
           else detail = 'singleton history is diagnostic only; required installation selection set is unavailable';
         } else if (actual?.kind === 'assembly-InstallationSelection' && !input) {
-          detail = 'historical-installation-admission-context; required installation selection set is unavailable';
+          detail = `${historyUnavailable ?? 'historical-installation-admission-context'}; required installation selection set is unavailable`;
         } else if (actual) {
           input = null;
           detail = `required installation selection set is unavailable; actual kind is ${actual.kind}`;
@@ -346,6 +390,9 @@ export function inspectOpenedProductionInstallation(composition: AssemblyComposi
       if (row.fact.expectedKind !== requiredKind || status.fact.kind !== expected.kind)
         return freeze({ name, owner: expected.owner, state: 'unresolved' as const,
           reason: `direct owner kind differs: ${status.fact.kind}:expected:${expected.kind}`, source, input: null });
+      const historyUnavailable = history.unavailable.get(status.fact.id);
+      if (historyUnavailable) return freeze({ name, owner: expected.owner,
+        state: 'unresolved' as const, reason: historyUnavailable, source, input: null });
       if (status.taint.length || status.conflicts.length) return freeze({ name, owner: expected.owner,
         state: 'unresolved' as const, reason: 'direct owner source is unavailable or conflicted', source, input: null });
       const causal = causalInspection(snapshot, status);
@@ -373,13 +420,14 @@ export function inspectOpenedProductionInstallation(composition: AssemblyComposi
       && (status.fact.body as { record?: { installation?: string; scope?: string; role?: string } }).record?.installation === installation.id
       && (status.fact.body as { record?: { installation?: string; scope?: string; role?: string } }).record?.scope === scope
       && (status.fact.body as { record?: { installation?: string; scope?: string; role?: string } }).record?.role === 'scope-protection');
-    const protectionInput = protectionCandidates.length === 1 ? protectionCandidates[0]! : null;
-    const protectionActual = protectionInput?.fact ?? (rawProtection.length === 1 ? rawProtection[0]!.fact : null);
+    const protectionUnavailable = rawProtection.map(status => history.unavailable.get(status.fact.id)).find(Boolean);
+    const protectionInput = protectionUnavailable ? null : protectionCandidates[0] ?? null;
+    const protectionActual = protectionInput?.fact ?? rawProtection[0]?.fact ?? null;
     const protectionSource = { location: `installation:${installation.id}:scope:${scope}:role:scope-protection`,
       expectedKind: 'assembly-InstallationSelectionSet', expectedReference: null,
       actualReference: protectionActual ? envelopeReference(protectionActual) : null };
-    const protectionReason = protectionCandidates.length > 1 || rawProtection.length > 1
-      ? 'conflicting scope-protection history; required installation selection set is unavailable'
+    const protectionReason = protectionUnavailable
+      ? `${protectionUnavailable}; required installation selection set is unavailable`
       : protectionInput ? 'singleton history is diagnostic only; required installation selection set is unavailable'
       : rawProtection.length ? 'historical-installation-admission-context; required installation selection set is unavailable'
       : 'scope-protection source bytes are absent; required installation selection set is unavailable';
