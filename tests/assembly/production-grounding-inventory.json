@@ -5260,7 +5260,7 @@
     "src/assembly/index.ts": "9c908979212edf632ecd8b41dba470c4e15009f7cbd534f97c2ad47572aefa31",
     "src/assembly/package.ts": "446effba83b5e4ce7367e3f789c02b661057eaee942de8de2cd25f23f5ac7c11",
     "src/assembly/persistence.ts": "0099bd62f7eb959d64940ab9915bf5d00c2d763f4917a49b81c58a4c59fab476",
-    "src/assembly/production.ts": "a22b17b797d07f7da1ea99acec12d532d18c5d9dddb0dcefb9e588fbcd052d95",
+    "src/assembly/production.ts": "c8eeb4eb1d9ba6568d499242747667cb3d7f2b24d6cc4d1e5b8c04c0c63a272d",
     "src/assembly/provider-invocation.ts": "cdb38bbda9ab339a10cb9798b7f40fd31a4ce0ef4c2c829be126a831d5ff6749",
     "src/assembly/records.ts": "7dc16c7f71acf80d863b451537944d74a28ebc17072029875ad918f6d11bc548",
     "src/assembly/service.ts": "e557e2b047fb8f3b3d7ccbd6935baf19a3583bf1628e387b5d2616232e311a63",
